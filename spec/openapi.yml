@@ -55,22 +55,15 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
-    BuildConfig:
-      type: object
-      required:
-        - Dockerfile
-      properties:
-        Dockerfile:
-          type: string
-          description: Dockerfile content
-
     EnvironmentToBuild:
       required:
         - buildConfig
         - dockerFile
       properties:
-        buildConfig:
-          $ref: "#/components/schemas/BuildConfig"
+        buildContext:
+          description: Docker build context
+          type: string
+          format: binary
         dockerFile:
           type: string
           description: Dockerfile content
@@ -202,16 +195,19 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               $ref: "#/components/schemas/EnvironmentToBuild"
+            encoding:
+              buildContext:
+                contentType: application/gzip
       responses:
         200:
           description: Successfully returned all environments
           content:
             application/json:
               schema:
-                - $ref: "#/components/schemas/Environment"
+                $ref: "#/components/schemas/Environment"
         401:
           $ref: "#/components/responses/401"
         500:
