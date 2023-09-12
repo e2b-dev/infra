@@ -68,7 +68,6 @@ components:
       required:
         - buildConfig
         - dockerFile
-        - envID
       properties:
         buildConfig:
           $ref: "#/components/schemas/BuildConfig"
