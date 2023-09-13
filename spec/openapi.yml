@@ -58,13 +58,13 @@ components:
     EnvironmentToBuild:
       required:
         - buildConfig
-        - dockerFile
+        - dockerfile
       properties:
         buildContext:
           description: Docker build context
           type: string
           format: binary
-        dockerFile:
+        dockerfile:
           type: string
           description: Dockerfile content
         envID:
@@ -173,6 +173,9 @@ paths:
     #   get:
     #     description: List all environments
     #     tags: [envs]
+    #     security:
+    #       - ApiKeyAuth: [ ]
+    #       - AccessTokenAuth: [ ]
     #     responses:
     #       200:
     #         description: Successfully returned all environments
@@ -216,6 +219,8 @@ paths:
   # /envs/{envID}:
   #   delete:
   #     description: Delete the environment
+  #     security:
+  #     - AccessTokenAuth: [ ]
   #     tags: [envs]
   #     parameters:
   #       - $ref: "#/components/parameters/envID"

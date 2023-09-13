@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"github.com/e2b-dev/api/packages/api/internal/api"
 	"github.com/e2b-dev/api/packages/api/internal/constants"
 	"net/http"
 	"time"
@@ -10,15 +11,20 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-func (a *APIStore) PostEnvsEnvIDInstances(
+func (a *APIStore) PostInstances(
 	c *gin.Context,
-	envID string,
 ) {
 	ctx := c.Request.Context()
 
+	body, err := parseBody[api.PostInstancesJSONRequestBody](ctx, c)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
+		return
+	}
+
+	envID := body.EnvID
 	// Get team id from context, use TeamIDContextKey
 	teamID := c.Value(constants.TeamIDContextKey).(string)
-	fmt.Println("Team ID:", teamID)
 
 	ReportEvent(ctx, "validated API key")
 	SetAttributes(ctx, attribute.String("instance.team_id", teamID))
