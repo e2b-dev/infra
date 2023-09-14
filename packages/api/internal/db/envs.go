@@ -19,8 +19,9 @@ func (db *DB) DeleteEnv(envID string) error {
 	return nil
 }
 
-func (db *DB) GetEnvs() (result []*api.Environment, err error) {
-	envs, err := models.Envs().All(db.Client)
+func (db *DB) GetEnvs(teamID string) (result []*api.Environment, err error) {
+	teamWhere := models.EnvWhere.TeamID.EQ(teamID)
+	envs, err := models.Envs(teamWhere).All(db.Client)
 	if err != nil {
 
 		return nil, fmt.Errorf("failed to list envs: %w", err)

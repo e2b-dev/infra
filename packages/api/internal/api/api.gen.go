@@ -14,6 +14,9 @@ import (
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
+	// (GET /envs)
+	GetEnvs(c *gin.Context)
+
 	// (POST /envs)
 	PostEnvs(c *gin.Context)
 
@@ -35,6 +38,21 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(c *gin.Context)
+
+// GetEnvs operation middleware
+func (siw *ServerInterfaceWrapper) GetEnvs(c *gin.Context) {
+
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetEnvs(c)
+}
 
 // PostEnvs operation middleware
 func (siw *ServerInterfaceWrapper) PostEnvs(c *gin.Context) {
@@ -132,6 +150,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
+	router.GET(options.BaseURL+"/envs", wrapper.GetEnvs)
 	router.POST(options.BaseURL+"/envs", wrapper.PostEnvs)
 	router.GET(options.BaseURL+"/health", wrapper.GetHealth)
 	router.POST(options.BaseURL+"/instances", wrapper.PostInstances)
