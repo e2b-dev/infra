@@ -36,6 +36,21 @@ func (db *DB) GetEnvs(teamID string) (result []*api.Environment, err error) {
 	return result, nil
 }
 
+func (db *DB) GetEnv(envID string, teamID string) (env *api.Environment, err error) {
+	teamWhere := models.EnvWhere.TeamID.EQ(teamID)
+	envWhere := models.EnvWhere.ID.EQ(envID)
+	dbEnv, err := models.Envs(teamWhere, envWhere).One(db.Client)
+	if err != nil {
+
+		return nil, fmt.Errorf("failed to list envs: %w", err)
+	}
+
+	return &api.Environment{
+		EnvID:  dbEnv.ID,
+		Status: api.EnvironmentStatus(dbEnv.Status),
+	}, nil
+}
+
 type newEnv struct {
 	ID string `json:"id"`
 }

@@ -12,10 +12,21 @@ const (
 	ApiKeyAuthScopes      = "ApiKeyAuth.Scopes"
 )
 
+// Defines values for EnvironmentStatus.
+const (
+	EnvironmentStatusBuilding EnvironmentStatus = "building"
+	EnvironmentStatusError    EnvironmentStatus = "error"
+	EnvironmentStatusReady    EnvironmentStatus = "ready"
+)
+
 // Environment defines model for Environment.
 type Environment struct {
-	EnvID string `json:"envID"`
+	EnvID  string            `json:"envID"`
+	Status EnvironmentStatus `json:"status"`
 }
+
+// EnvironmentStatus defines model for Environment.Status.
+type EnvironmentStatus string
 
 // Error defines model for Error.
 type Error struct {
@@ -38,6 +49,9 @@ type Instance struct {
 	InstanceID string `json:"instanceID"`
 }
 
+// EnvID defines model for envID.
+type EnvID = string
+
 // InstanceID defines model for instanceID.
 type InstanceID = string
 
@@ -46,6 +60,9 @@ type N400 = Error
 
 // N401 defines model for 401.
 type N401 = Error
+
+// N404 defines model for 404.
+type N404 = Error
 
 // N500 defines model for 500.
 type N500 = Error

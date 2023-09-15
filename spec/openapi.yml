@@ -47,6 +47,13 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    404:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
     500:
       description: Server error
       content:
@@ -58,9 +65,16 @@ components:
     Environment:
       required:
         - envID
+        - status
       properties:
         envID:
           type: string
+        status:
+          type: string
+          enum:
+            - building
+            - ready
+            - error
 
     Instance:
       required:
@@ -213,22 +227,24 @@ paths:
         500:
           $ref: "#/components/responses/500"
 
-  # /envs/{envID}:
-  #   delete:
-  #     description: Delete the environment
-  #     tags: [envs]
-  #     parameters:
-  #       - $ref: "#/components/parameters/envID"
-  #     responses:
-  #       204:
-  #         description: Successfully deleted the environment
-  #       400:
-  #         description: Cannot delete the environment
-  #         content:
-  #           application/json:
-  #             schema:
-  #               $ref: "#/components/schemas/Error"
-  #       401:
-  #         $ref: "#/components/responses/401"
-  #       500:
-  #         $ref: "#/components/responses/500"
+  /envs/{envID}:
+    get:
+      description: Get environment info
+      tags: [envs]
+      security:
+        - AccessTokenAuth: [ ]
+      parameters:
+        - $ref: "#/components/parameters/envID"
+      responses:
+        200:
+          description: Successfully returned the environment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Environment"
+        401:
+          $ref: "#/components/responses/401"
+        404:
+          $ref: "#/components/responses/404"
+        500:
+          $ref: "#/components/responses/500"
