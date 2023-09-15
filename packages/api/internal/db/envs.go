@@ -31,7 +31,9 @@ func (db *DB) GetEnvs(teamID string) (result []*api.Environment, err error) {
 
 	for _, env := range envs {
 		result = append(result, &api.Environment{
-			EnvID: env.ID,
+			EnvID:  env.ID,
+			Status: api.EnvironmentStatus(env.Status),
+			Public: env.Public,
 		})
 	}
 
@@ -51,19 +53,17 @@ func (db *DB) GetEnv(envID string, teamID string) (env *api.Environment, err err
 	return &api.Environment{
 		EnvID:  dbEnv.ID,
 		Status: api.EnvironmentStatus(dbEnv.Status),
+		Public: dbEnv.Public,
 	}, nil
 }
 
-type newEnv struct {
-	ID string `json:"id"`
-}
-
-func (db *DB) CreateEnv(envID string, teamID string, dockerfile string) (*newEnv, error) {
+func (db *DB) CreateEnv(envID string, teamID string, dockerfile string) (*api.Environment, error) {
 	// trunk-ignore(golangci-lint/exhaustruct)
 	env := &models.Env{
 		ID:         envID,
 		TeamID:     teamID,
 		Dockerfile: dockerfile,
+		Public:     false,
 	}
 	err := env.Insert(db.Client, boil.Infer())
 
@@ -73,5 +73,5 @@ func (db *DB) CreateEnv(envID string, teamID string, dockerfile string) (*newEnv
 		return nil, fmt.Errorf("failed to create env with id '%s' with Dockerfile '%s': %w", envID, dockerfile, err)
 	}
 
-	return &newEnv{envID}, nil
+	return &api.Environment{EnvID: envID, Status: api.EnvironmentStatusBuilding, Public: false}, nil
 }

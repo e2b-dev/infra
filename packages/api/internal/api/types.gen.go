@@ -21,11 +21,17 @@ const (
 
 // Environment defines model for Environment.
 type Environment struct {
-	EnvID  string            `json:"envID"`
+	// EnvID Identifier of the environment
+	EnvID string `json:"envID"`
+
+	// Public Whether the environment is public or only accessible by the team
+	Public bool `json:"public"`
+
+	// Status Status of the environment
 	Status EnvironmentStatus `json:"status"`
 }
 
-// EnvironmentStatus defines model for Environment.Status.
+// EnvironmentStatus Status of the environment
 type EnvironmentStatus string
 
 // Error defines model for Error.
