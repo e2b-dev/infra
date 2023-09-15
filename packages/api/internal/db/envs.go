@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"github.com/volatiletech/sqlboiler/v4/queries/qm"
 
 	"github.com/e2b-dev/api/packages/api/internal/api"
 	"github.com/e2b-dev/api/packages/api/internal/db/models"
@@ -20,8 +21,9 @@ func (db *DB) DeleteEnv(envID string) error {
 }
 
 func (db *DB) GetEnvs(teamID string) (result []*api.Environment, err error) {
+	publicWhere := models.EnvWhere.Public.EQ(true)
 	teamWhere := models.EnvWhere.TeamID.EQ(teamID)
-	envs, err := models.Envs(teamWhere).All(db.Client)
+	envs, err := models.Envs(publicWhere, qm.Or2(teamWhere)).All(db.Client)
 	if err != nil {
 
 		return nil, fmt.Errorf("failed to list envs: %w", err)
@@ -37,9 +39,10 @@ func (db *DB) GetEnvs(teamID string) (result []*api.Environment, err error) {
 }
 
 func (db *DB) GetEnv(envID string, teamID string) (env *api.Environment, err error) {
+	publicWhere := models.EnvWhere.Public.EQ(true)
 	teamWhere := models.EnvWhere.TeamID.EQ(teamID)
 	envWhere := models.EnvWhere.ID.EQ(envID)
-	dbEnv, err := models.Envs(teamWhere, envWhere).One(db.Client)
+	dbEnv, err := models.Envs(qm.Expr(publicWhere, qm.Or2(teamWhere)), envWhere).One(db.Client)
 	if err != nil {
 
 		return nil, fmt.Errorf("failed to list envs: %w", err)
