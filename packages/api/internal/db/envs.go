@@ -76,6 +76,29 @@ func (db *DB) CreateEnv(envID string, teamID string, dockerfile string) (*api.En
 	return &api.Environment{EnvID: envID, Status: api.EnvironmentStatusBuilding, Public: false}, nil
 }
 
+func (db *DB) UpdateEnv(envID string, dockerfile string) (*api.Environment, error) {
+	// trunk-ignore(golangci-lint/exhaustruct)
+	env := &models.Env{
+		ID:         envID,
+		Dockerfile: dockerfile,
+		Public:     false,
+		Status:     models.EnvStatusEnumBuilding,
+	}
+	rowsAffected, err := env.Update(db.Client, boil.Whitelist("status", "dockerfile"))
+
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+
+		return nil, fmt.Errorf("failed to create env with id '%s' with Dockerfile '%s': %w", envID, dockerfile, err)
+	}
+
+	if rowsAffected == 0 {
+		return nil, fmt.Errorf("failed to update env with id '%s' with Dockerfile '%s': %w", envID, dockerfile, err)
+	}
+
+	return &api.Environment{EnvID: envID, Status: api.EnvironmentStatusBuilding, Public: false}, nil
+}
+
 func (db *DB) HasEnvAccess(envID string, teamID string) (bool, error) {
 	env, err := db.GetEnv(envID, teamID)
 	return env != nil, err
