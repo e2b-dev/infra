@@ -73,7 +73,7 @@ func (a *APIStore) PostEnvs(
 	}
 
 	// Upload and build env
-	go a.buildEnvs(ctx, envID, team.ID, fileHandler.Filename, fileContent)
+	go a.buildEnvs(ctx, envID, fileHandler.Filename, fileContent)
 	c.JSON(http.StatusOK, env)
 }
 

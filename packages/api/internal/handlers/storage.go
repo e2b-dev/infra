@@ -43,7 +43,7 @@ func (cs *cloudStorage) streamFileUpload(folder string, name string, content io.
 	return &url, nil
 }
 
-func (a *APIStore) buildEnvs(ctx context.Context, envID string, teamID string, filename string, content io.Reader) {
+func (a *APIStore) buildEnvs(ctx context.Context, envID string, filename string, content io.Reader) {
 	buildID, err := uuid.GenerateUUID()
 
 	if err != nil {
@@ -52,7 +52,7 @@ func (a *APIStore) buildEnvs(ctx context.Context, envID string, teamID string, f
 		return
 	}
 
-	url, err := a.cloudStorage.streamFileUpload(strings.Join([]string{"v1", teamID, envID, buildID, ""}, "/"), filename, content)
+	url, err := a.cloudStorage.streamFileUpload(strings.Join([]string{"v1", envID, buildID, ""}, "/"), filename, content)
 	if err != nil {
 		fmt.Println(err)
 
