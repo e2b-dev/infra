@@ -62,4 +62,5 @@ func (a *APIStore) buildEnvs(ctx context.Context, envID string, teamID string, f
 	// TODO: Start building env
 	println(url)
 	//a.nomad.StartBuildingEnv(a.tracer, ctx, envID, url)
+	//a.supabase.MarkEnvAsReady(envID)
 }
