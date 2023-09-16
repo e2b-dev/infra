@@ -52,9 +52,14 @@ func (a *APIStore) PostEnvs(
 			return
 		}
 	} else {
-		hasAccess, err := a.supabase.HasEnvAccess(envID, team.ID)
-		if err != nil || !hasAccess {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting envs: %s", err))
+		hasAccess, err := a.supabase.HasEnvAccess(envID, team.ID, false)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when checking team access: %s", err))
+
+			return
+		}
+		if !hasAccess {
+			a.sendAPIStoreError(c, http.StatusForbidden, "You don't have access to this environment")
 
 			return
 		}
@@ -67,13 +72,8 @@ func (a *APIStore) PostEnvs(
 		}
 	}
 
-	// Upload file to cloud storage
+	// Upload and build env
 	go a.buildEnvs(ctx, envID, team.ID, fileHandler.Filename, fileContent)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when uploading file: %s", err))
-
-		return
-	}
 	c.JSON(http.StatusOK, env)
 }
 
@@ -102,7 +102,6 @@ func (a *APIStore) GetEnvs(
 func (a *APIStore) GetEnvsEnvID(
 	c *gin.Context,
 	envID string,
-
 ) {
 	userID := c.Value(constants.UserIDContextKey).(string)
 	team, err := a.supabase.GetDefaultTeamFromUserID(userID)

@@ -120,7 +120,10 @@ func (db *DB) MarkEnvAsReady(envID string) (*api.Environment, error) {
 	return &api.Environment{EnvID: envID, Status: api.EnvironmentStatusBuilding, Public: false}, nil
 }
 
-func (db *DB) HasEnvAccess(envID string, teamID string) (bool, error) {
+func (db *DB) HasEnvAccess(envID string, teamID string, public bool) (bool, error) {
 	env, err := db.GetEnv(envID, teamID)
+	if !public && env.Public {
+		return false, err
+	}
 	return env != nil, err
 }
