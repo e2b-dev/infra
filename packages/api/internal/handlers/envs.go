@@ -6,6 +6,7 @@ import (
 	"github.com/e2b-dev/api/packages/api/internal/constants"
 	"github.com/e2b-dev/api/packages/api/internal/utils"
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/attribute"
 	"net/http"
 	"strings"
 )
@@ -24,6 +25,8 @@ func (a *APIStore) PostEnvs(
 
 		return
 	}
+
+	SetAttributes(ctx, attribute.String("env.user_id", userID), attribute.String("env.team_id", team.ID))
 
 	fileContent, fileHandler, err := c.Request.FormFile("buildContext")
 	if err != nil {
@@ -51,6 +54,7 @@ func (a *APIStore) PostEnvs(
 
 			return
 		}
+		ReportEvent(ctx, "created new environment")
 	} else {
 		hasAccess, err := a.supabase.HasEnvAccess(envID, team.ID, false)
 		if err != nil {
@@ -70,6 +74,8 @@ func (a *APIStore) PostEnvs(
 
 			return
 		}
+		ReportEvent(ctx, "updated environment")
+
 	}
 
 	// Upload and build env
@@ -85,6 +91,8 @@ func (a *APIStore) PostEnvs(
 func (a *APIStore) GetEnvs(
 	c *gin.Context,
 ) {
+	ctx := c.Request.Context()
+
 	userID := c.Value(constants.UserIDContextKey).(string)
 	team, err := a.supabase.GetDefaultTeamFromUserID(userID)
 
@@ -93,6 +101,7 @@ func (a *APIStore) GetEnvs(
 
 		return
 	}
+	SetAttributes(ctx, attribute.String("env.user_id", userID), attribute.String("env.team_id", team.ID))
 
 	envs, err := a.supabase.GetEnvs(team.ID)
 
@@ -101,6 +110,9 @@ func (a *APIStore) GetEnvs(
 
 		return
 	}
+
+	ReportEvent(ctx, "listed environments")
+
 	a.IdentifyAnalyticsTeam(team.ID)
 	properties := a.GetPackageToPosthogProperties(&c.Request.Header)
 	a.CreateAnalyticsUserEvent(userID, team.ID, "listed environments", properties)
@@ -112,8 +124,12 @@ func (a *APIStore) GetEnvsEnvID(
 	c *gin.Context,
 	envID string,
 ) {
+	ctx := c.Request.Context()
+
 	userID := c.Value(constants.UserIDContextKey).(string)
 	team, err := a.supabase.GetDefaultTeamFromUserID(userID)
+
+	SetAttributes(ctx, attribute.String("env.user_id", userID), attribute.String("env.team_id", team.ID))
 
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
@@ -129,8 +145,11 @@ func (a *APIStore) GetEnvsEnvID(
 		return
 	}
 
+	ReportEvent(ctx, "got environment detail")
+
 	a.IdentifyAnalyticsTeam(team.ID)
 	properties := a.GetPackageToPosthogProperties(&c.Request.Header)
 	a.CreateAnalyticsUserEvent(userID, team.ID, "got environment detail", properties.Set("environment", envID))
+
 	c.JSON(http.StatusOK, env)
 }
