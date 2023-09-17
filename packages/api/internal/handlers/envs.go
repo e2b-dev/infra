@@ -23,6 +23,9 @@ func (a *APIStore) PostEnvs(
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
+		err = fmt.Errorf("error when getting default team: %w", err)
+		ReportCriticalError(ctx, err)
+
 		return
 	}
 
@@ -30,8 +33,11 @@ func (a *APIStore) PostEnvs(
 
 	fileContent, fileHandler, err := c.Request.FormFile("buildContext")
 	if err != nil {
-		formErr := fmt.Errorf("error when parsing form data: %w", err)
-		ReportCriticalError(ctx, formErr)
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when parsing form data")
+
+		err = fmt.Errorf("error when parsing form data: %w", err)
+		ReportError(ctx, err)
+
 		return
 	}
 	defer fileContent.Close()
@@ -39,6 +45,9 @@ func (a *APIStore) PostEnvs(
 	// Check if file is a tar.gz file
 	if !strings.HasSuffix(fileHandler.Filename, ".tar.gz.e2b") {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Build context must be a tar.gz.e2b file")
+
+		err = fmt.Errorf("build context doesn't have corrent extension, the file is %s", fileHandler.Filename)
+		ReportCriticalError(ctx, err)
 
 		return
 	}
@@ -52,18 +61,23 @@ func (a *APIStore) PostEnvs(
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating env: %s", err))
 
+			err = fmt.Errorf("error when creating env: %w", err)
+			ReportCriticalError(ctx, err)
+
 			return
 		}
 		ReportEvent(ctx, "created new environment")
 	} else {
 		hasAccess, err := a.supabase.HasEnvAccess(envID, team.ID, false)
 		if err != nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when checking team access: %s", err))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("The environment '%s' does not exist", envID))
+			ReportEvent(ctx, "environment not found", attribute.String("environment", envID), attribute.String("team_id", team.ID))
 
 			return
 		}
 		if !hasAccess {
 			a.sendAPIStoreError(c, http.StatusForbidden, "You don't have access to this environment")
+			ReportEvent(ctx, "environment access denied", attribute.String("environment", envID), attribute.String("team_id", team.ID))
 
 			return
 		}
@@ -71,6 +85,9 @@ func (a *APIStore) PostEnvs(
 
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating envs: %s", err))
+
+			err = fmt.Errorf("error when updating envs: %w", err)
+			ReportCriticalError(ctx, err)
 
 			return
 		}
@@ -99,6 +116,9 @@ func (a *APIStore) GetEnvs(
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
+		err = fmt.Errorf("error when getting default team: %w", err)
+		ReportCriticalError(ctx, err)
+
 		return
 	}
 	SetAttributes(ctx, attribute.String("env.user_id", userID), attribute.String("env.team_id", team.ID))
@@ -107,6 +127,9 @@ func (a *APIStore) GetEnvs(
 
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting envs: %s", err))
+
+		err = fmt.Errorf("error when getting envs: %w", err)
+		ReportCriticalError(ctx, err)
 
 		return
 	}
@@ -134,14 +157,16 @@ func (a *APIStore) GetEnvsEnvID(
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
+		err = fmt.Errorf("error when getting default team: %w", err)
 		return
 	}
 
 	env, err := a.supabase.GetEnv(envID, team.ID)
 
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting envs: %s", err))
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting env: %s", err))
 
+		ReportEvent(ctx, "environment not found", attribute.String("environment", envID), attribute.String("team_id", team.ID))
 		return
 	}
 
