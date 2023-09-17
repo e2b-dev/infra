@@ -74,6 +74,11 @@ func (a *APIStore) PostEnvs(
 
 	// Upload and build env
 	go a.buildEnvs(ctx, envID, fileHandler.Filename, fileContent)
+	a.IdentifyAnalyticsTeam(team.ID)
+	properties := a.GetPackageToPosthogProperties(&c.Request.Header)
+	a.CreateAnalyticsUserEvent(userID, team.ID, "created environment", properties.
+		Set("environment", envID))
+
 	c.JSON(http.StatusOK, env)
 }
 
@@ -96,6 +101,10 @@ func (a *APIStore) GetEnvs(
 
 		return
 	}
+	a.IdentifyAnalyticsTeam(team.ID)
+	properties := a.GetPackageToPosthogProperties(&c.Request.Header)
+	a.CreateAnalyticsUserEvent(userID, team.ID, "listed environments", properties)
+
 	c.JSON(http.StatusOK, envs)
 }
 
@@ -119,5 +128,9 @@ func (a *APIStore) GetEnvsEnvID(
 
 		return
 	}
+
+	a.IdentifyAnalyticsTeam(team.ID)
+	properties := a.GetPackageToPosthogProperties(&c.Request.Header)
+	a.CreateAnalyticsUserEvent(userID, team.ID, "got environment detail", properties.Set("environment", envID))
 	c.JSON(http.StatusOK, env)
 }
