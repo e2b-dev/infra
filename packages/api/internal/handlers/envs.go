@@ -36,7 +36,7 @@ func (a *APIStore) PostEnvs(
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when parsing form data")
 
 		err = fmt.Errorf("error when parsing form data: %w", err)
-		ReportError(ctx, err)
+		ReportCriticalError(ctx, err)
 
 		return
 	}
@@ -71,13 +71,17 @@ func (a *APIStore) PostEnvs(
 		hasAccess, err := a.supabase.HasEnvAccess(envID, team.ID, false)
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("The environment '%s' does not exist", envID))
-			ReportEvent(ctx, "environment not found", attribute.String("environment", envID), attribute.String("team_id", team.ID))
+
+			err = fmt.Errorf("error env not found: %w", err)
+			ReportError(ctx, err)
 
 			return
 		}
 		if !hasAccess {
 			a.sendAPIStoreError(c, http.StatusForbidden, "You don't have access to this environment")
-			ReportEvent(ctx, "environment access denied", attribute.String("environment", envID), attribute.String("team_id", team.ID))
+
+			err = fmt.Errorf("user doesn't have access to env: %w", err)
+			ReportError(ctx, err)
 
 			return
 		}
@@ -166,7 +170,8 @@ func (a *APIStore) GetEnvsEnvID(
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting env: %s", err))
 
-		ReportEvent(ctx, "environment not found", attribute.String("environment", envID), attribute.String("team_id", team.ID))
+		err = fmt.Errorf("error when getting env: %w", err)
+		ReportError(ctx, err)
 		return
 	}
 
