@@ -88,7 +88,7 @@ func NewGinServer(apiStore *handlers.APIStore, port int) *http.Server {
 		}))
 
 	// We now register our store above as the handler for the interface
-	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{BaseURL: "/v1"})
+	api.RegisterHandlers(r, apiStore)
 
 	s := &http.Server{
 		Handler: r,

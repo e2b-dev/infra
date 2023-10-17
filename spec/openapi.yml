@@ -4,10 +4,7 @@ info:
   title: E2B API
 
 servers:
-  - url: "{server}/v1"
-    variables:
-      server:
-        default: https://api.e2b.dev
+  - url: "https://api.e2b.dev"
 
 components:
   securitySchemes:
@@ -190,12 +187,7 @@ paths:
         401:
           $ref: "#/components/responses/401"
         404:
-          description: Error refreshing instance - not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
+          $ref: "#/components/responses/404"
   /envs:
     get:
       description: List all environments
@@ -316,8 +308,4 @@ paths:
         401:
           $ref: "#/components/responses/401"
         404:
-          description: Error adding a build log - build not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/404"
