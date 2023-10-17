@@ -91,7 +91,7 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 		env:          env,
 	}
 
-	err := rootfs.buildDockerImage(childCtx, tracer)
+	err := rootfs.buildDockerImage(childCtx, tracer, httpClient)
 	if err != nil {
 		errMsg := fmt.Errorf("error building docker image %w", err)
 
@@ -110,7 +110,7 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 	return rootfs, nil
 }
 
-func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer) error {
+func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer, httpClient *http.Client) error {
 	childCtx, childSpan := tracer.Start(ctx, "build-docker-image")
 	defer childSpan.End()
 
@@ -144,6 +144,9 @@ func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer) erro
 	buildOutputWriter := telemetry.NewEventWriter(innerBuildCtx, "docker-build-output")
 	writer := &Writer{
 		telemetryWriter:  buildOutputWriter,
+		httpClient: httpClient,
+		envId: r.env.EnvID,
+		buildId: r.env.BuildID,
 	}
 	err = r.legacyClient.BuildImage(docker.BuildImageOptions{
 		Context:      buildCtx,

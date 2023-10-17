@@ -2,6 +2,7 @@ package env
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
@@ -22,6 +23,8 @@ func MockBuild(envID, buildID string) {
 	if err != nil {
 		panic(err)
 	}
+
+	httpClient := &http.Client{}
 
 	contextsPath := "/mnt/disks/docker-contexts/v1"
 	registry := "us-central1-docker.pkg.dev/e2b-prod/custom-environments"
@@ -51,7 +54,7 @@ func MockBuild(envID, buildID string) {
 		ContextFileName:       contextFileName,
 	}
 
-	err = e.Build(ctx, tracer, client, legacyClient)
+	err = e.Build(ctx, tracer, client, legacyClient, httpClient)
 	if err != nil {
 		panic(err)
 	}

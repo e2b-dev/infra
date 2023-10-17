@@ -136,7 +136,7 @@ func (e *Env) Build(ctx context.Context, tracer trace.Tracer, docker *client.Cli
 
 	defer e.Cleanup(childCtx, tracer)
 
-	rootfs, err := NewRootfs(childCtx, tracer, e, docker, legacyDocker)
+	rootfs, err := NewRootfs(childCtx, tracer, e, docker, legacyDocker, httpClient)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs for env '%s' during build '%s': %w", e.EnvID, e.BuildID, err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
