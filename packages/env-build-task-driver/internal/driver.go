@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
@@ -53,6 +54,9 @@ type (
 
 		legacyDockerClient *docker.Client
 
+		// httpClient is used to make HTTP requests
+		httpClient *http.Client
+
 		drivers.DriverExecTaskNotSupported
 		drivers.DriverSignalTaskNotSupported
 	}
@@ -89,11 +93,13 @@ func NewPlugin(logger hclog.Logger) drivers.DriverPlugin {
 	if err != nil {
 		panic(err)
 	}
+	httpClient := &http.Client{}
 
 	return &Driver{
 		tracer:         tracer,
 		docker:         client,
 		legacyDockerClient: legacyClient,
+		httpClient:     httpClient,
 		eventer:        eventer.NewEventer(ctx, logger),
 		config:         &Config{},
 		tasks:          newTaskStore(),

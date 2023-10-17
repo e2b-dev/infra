@@ -79,6 +79,8 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	pkgsPath := cfg.Env["PKGS_PATH"]
 	firecrackerBinaryPath := cfg.Env["FIRECRACKER_BINARY_PATH"]
 	contextFileName := cfg.Env["CONTEXT_FILE_NAME"]
+// TODO: SECRET 
+	// secret := cfg.Env["SECRET"]
 
 	env := env.Env{
 		BuildID:               taskConfig.BuildID,
@@ -131,7 +133,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		)
 		defer childBuildSpan.End()
 
-		h.run(buildContext, d.tracer, d.docker, d.legacyDockerClient)
+		h.run(buildContext, d.tracer, d.docker, d.legacyDockerClient, d.httpClient)
 	}()
 
 	return handle, nil, nil

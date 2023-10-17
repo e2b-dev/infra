@@ -2,9 +2,12 @@ package env
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -38,8 +41,47 @@ type Rootfs struct {
 
 	env *Env
 }
+// type apiWriter interface {
+// 	Write(p []byte) (n int, err error)
+// }
 
-func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *client.Client, legacyDocker *docker.Client) (*Rootfs, error) {
+type Writer struct {
+	// apiWriter apiWriter
+	telemetryWriter  io.Writer
+	httpClient *http.Client
+	envId string
+	buildId string
+}
+
+type LogsData struct {
+    Logs []string `json:"logs"`
+	ApiSecret string `json:"apiSecret"`
+}
+
+func (w *Writer) Write(p []byte) (n int, err error) {
+	n, err = w.telemetryWriter.Write(p)
+
+	data := LogsData{
+        Logs: []string{string(p)},
+		ApiSecret: "SUPER_SECR3T_4PI_K3Y", // TODO: load from driver
+    }
+
+	jsonData, jsonErr := json.Marshal(data)
+	if jsonErr != nil {
+		fmt.Println(jsonErr)
+		return n, err
+	}
+
+	_, postErr := w.httpClient.Post("https://api.e2b.dev/v1/envs/" + w.envId + "/builds/" + w.buildId + "/logs", "application/json", bytes.NewBuffer(jsonData))
+
+	if postErr != nil {
+		fmt.Println(postErr)
+	}
+
+	return n, err
+}
+
+func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *client.Client, legacyDocker *docker.Client, httpClient *http.Client) (*Rootfs, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-rootfs")
 	defer childSpan.End()
 
@@ -100,12 +142,14 @@ func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer) erro
 	defer innerBuildSpan.End()
 
 	buildOutputWriter := telemetry.NewEventWriter(innerBuildCtx, "docker-build-output")
-
+	writer := &Writer{
+		telemetryWriter:  buildOutputWriter,
+	}
 	err = r.legacyClient.BuildImage(docker.BuildImageOptions{
 		Context:      buildCtx,
 		Dockerfile:   dockerfileName,
 		InputStream:  dockerContextFile,
-		OutputStream: buildOutputWriter,
+		OutputStream: writer,
 		Name:         r.dockerTag(),
 	})
 	if err != nil {

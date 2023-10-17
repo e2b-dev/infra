@@ -3,6 +3,7 @@ package env
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -121,7 +122,7 @@ func (e *Env) envSnapfilePath() string {
 	return filepath.Join(e.envDirPath(), snapfileName)
 }
 
-func (e *Env) Build(ctx context.Context, tracer trace.Tracer, docker *client.Client, legacyDocker *docker.Client) error {
+func (e *Env) Build(ctx context.Context, tracer trace.Tracer, docker *client.Client, legacyDocker *docker.Client, httpClient *http.Client) error {
 	childCtx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
