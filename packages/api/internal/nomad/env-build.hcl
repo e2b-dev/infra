@@ -33,7 +33,7 @@ job "{{ .JobName }}/{{ .EnvID }}-{{ .BuildID }}" {
         KERNEL_IMAGE_PATH = "/fc-vm/vmlinux.bin"
         FIRECRACKER_BINARY_PATH = "/usr/bin/firecracker"
         CONTEXT_FILE_NAME = "context.tar.gz"
-        APISecret = "{{ .APISecret }}"
+        API_SECRET = "{{ .APISecret }}"
       }
 
       config {
