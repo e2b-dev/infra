@@ -23,16 +23,16 @@ import (
 )
 
 type APIStore struct {
-	Ctx          context.Context
-	posthog      posthog.Client
-	tracer       trace.Tracer
-	cache        *nomad.InstanceCache
-	nomad        *nomad.NomadClient
-	supabase     *db.DB
-	cloudStorage *cloudStorage
-	NextId       int64
-	Lock         sync.Mutex
-	apiSecret    string
+	Ctx             context.Context
+	posthog         posthog.Client
+	tracer          trace.Tracer
+	cache           *nomad.InstanceCache
+	nomad           *nomad.NomadClient
+	supabase        *db.DB
+	cloudStorage    *cloudStorage
+	NextId          int64
+	Lock            sync.Mutex
+	apiSecret       string
 	dockerBuildLogs map[string][]string // TODO: Change to cache with TTL refreshed on polling
 }
 
@@ -113,16 +113,16 @@ func NewAPIStore() *APIStore {
 	}
 
 	return &APIStore{
-		Ctx:          ctx,
-		nomad:        nomadClient,
-		supabase:     supabaseClient,
-		NextId:       1000,
-		cache:        cache,
-		tracer:       tracer,
-		posthog:      posthogClient,
-		cloudStorage: cStorage,
-		apiSecret:  "SUPER_SECR3T_4PI_K3Y", // TODO: switch to an env variable
-		dockerBuildLogs: make(map[string][]string),
+		Ctx:             ctx,
+		nomad:           nomadClient,
+		supabase:        supabaseClient,
+		NextId:          1000,
+		cache:           cache,
+		tracer:          tracer,
+		posthog:         posthogClient,
+		cloudStorage:    cStorage,
+		apiSecret:       "SUPER_SECR3T_4PI_K3Y",    // TODO: switch to an env variable
+		dockerBuildLogs: make(map[string][]string), // TODO: Add key for buildId as well
 	}
 }
 
