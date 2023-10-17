@@ -226,14 +226,9 @@ func (a *APIStore) GetEnvs(
 func (a *APIStore) GetEnvsEnvID(
 	c *gin.Context,
 	envID string,
+	params api.GetEnvsEnvIDParams,
 ) {
 	ctx := c.Request.Context()
-
-	body, err := parseBody[api.GetEnvsEnvIDParams](ctx, c)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing body: %s", err))
-		return
-	}
 
 	userID := c.Value(constants.UserIDContextKey).(string)
 	team, err := a.supabase.GetDefaultTeamFromUserID(userID)
@@ -268,8 +263,7 @@ func (a *APIStore) GetEnvsEnvID(
 		return
 	}
 
-	logIndex := *body.Logs
-	env.Logs = a.dockerBuildLogs[envID][logIndex:]
+	env.Logs = a.dockerBuildLogs[envID][*params.Logs:]
 
 	ReportEvent(ctx, "got environment detail")
 
