@@ -50,6 +50,7 @@ type APIWriterWrapper struct {
 	telemetryWriter io.Writer
 	httpClient      *http.Client
 	env             *Env
+	channel 		chan string
 }
 
 type LogsData struct {
@@ -57,28 +58,53 @@ type LogsData struct {
 	Logs      []string `json:"logs"`
 }
 
-func (w *APIWriterWrapper) Write(p []byte) (n int, err error) {
-	n, err = w.telemetryWriter.Write(p)
 
+func (w *APIWriterWrapper) Close() {
+	close(w.channel)
+}
+
+func (w *APIWriterWrapper) helperFunc(logs []string) error {
 	data := LogsData{
-		Logs:      []string{string(p)},
+		Logs:      logs,
 		APISecret: w.env.APISecret,
 	}
 
 	jsonData, jsonErr := json.Marshal(data)
 	if jsonErr != nil {
-		fmt.Println(jsonErr)
-		return n, err
+		return jsonErr
 	}
 
-	response, postErr := w.httpClient.Post("https://api.e2b.dev/v1/envs/" + w.env.EnvID + "/builds/" + w.env.BuildID + "/logs", "application/json", bytes.NewBuffer(jsonData))
+	response, postErr := w.httpClient.Post("http://localhost:50001/envs/"+w.env.EnvID+"/builds/"+w.env.BuildID+"/logs", "application/json", bytes.NewBuffer(jsonData))
+	defer response.Body.Close()
 
 	if postErr != nil {
 		fmt.Println(postErr)
+		return postErr
 	}
-	defer response.Body.Close()
+	return nil
+}
 
-	return n, err
+func (w *APIWriterWrapper) sendToAPI() {
+	// childCtx, childSpan := tracer.Start(w.ctx, "new-rootfs")
+	var count = 0
+	var logs = []string{}
+
+	for log := range w.channel {
+		logs = append(logs, log)
+		count++
+		if count == 20 {
+			w.helperFunc(logs)
+			logs = []string{}
+		}
+	}
+	if count > 0 {
+		w.helperFunc(logs)
+	}
+}
+
+func (w *APIWriterWrapper) Write(p []byte) (n int, err error) {
+	w.channel <- string(p)
+	return w.telemetryWriter.Write(p)
 }
 
 func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *client.Client, legacyDocker *docker.Client, httpClient *http.Client) (*Rootfs, error) {
@@ -142,11 +168,15 @@ func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer, http
 	defer innerBuildSpan.End()
 
 	buildOutputWriter := telemetry.NewEventWriter(innerBuildCtx, "docker-build-output")
+	channel := make(chan string)
 	writer := &APIWriterWrapper{
 		telemetryWriter: buildOutputWriter,
 		httpClient:      httpClient,
 		env:             r.env,
+		channel:         channel,
 	}
+	go writer.sendToAPI()
+	defer writer.Close()
 
 	err = r.legacyClient.BuildImage(docker.BuildImageOptions{
 		Context:      buildCtx,
@@ -280,7 +310,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 			} else {
 				telemetry.ReportEvent(childCtx, "added envd to tar writer")
 			}
-		}
+					}
 	}()
 
 	// Copy tar to the container
