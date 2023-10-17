@@ -34,36 +34,27 @@ func (c *BuildLogsCache) Get(envID, buildID string) ([]string, error) {
 	defer c.mutex.RUnlock()
 
 	key := &logIdentifier{envID: envID, buildID: buildID}
-	item := c.cache.Get(*key).Value()
+	item := c.cache.Get(*key)
 
 	if item != nil {
-		return item, nil
+		return item.Value(), nil
 	}
 
 	return nil, fmt.Errorf("build %s for %s not found in cache", buildID, envID)
 }
 
-func (c *BuildLogsCache) Refresh(envID, buildID string) error {
+func (c *BuildLogsCache) Append(envID, buildID string, logs []string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	key := &logIdentifier{envID: envID, buildID: buildID}
-
 	item := c.cache.Get(*key)
 
 	if item == nil {
-		return fmt.Errorf("build %s for %s not found in cache", buildID, envID)
+		c.cache.Set(*key, logs, logsExpiration)
+	} else {
+		c.cache.Set(*key, append(item.Value(), logs...), logsExpiration)
 	}
-
-	return nil
-}
-
-func (c *BuildLogsCache) Set(envID, buildID string, value []string) error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	key := &logIdentifier{envID: envID, buildID: buildID}
-	c.cache.Set(*key, value, logsExpiration)
 
 	return nil
 }

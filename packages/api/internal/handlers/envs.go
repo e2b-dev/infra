@@ -224,7 +224,7 @@ func (a *APIStore) GetEnvs(
 	c.JSON(http.StatusOK, envs)
 }
 
-func (a *APIStore) 	GetEnvsEnvIDBuildsBuildID(c *gin.Context, envID api.EnvID, buildID api.BuildID, params api.GetEnvsEnvIDBuildsBuildIDParams){
+func (a *APIStore) GetEnvsEnvIDBuildsBuildID(c *gin.Context, envID api.EnvID, buildID api.BuildID, params api.GetEnvsEnvIDBuildsBuildIDParams) {
 	ctx := c.Request.Context()
 
 	userID := c.Value(constants.UserIDContextKey).(string)
@@ -299,32 +299,14 @@ func (a *APIStore) PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context, envID api.EnvI
 		return
 	}
 
-	for _, log := range body.Logs {
-		value, err := a.dockerBuildLogs.Get(envID, buildID)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting env build logs: %s", err))
+	err = a.dockerBuildLogs.Append(envID, buildID, body.Logs)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when saving docker build logs: %s", err))
 
-			err = fmt.Errorf("error when getting env build logs: %w", err)
-			ReportCriticalError(ctx, err)
+		err = fmt.Errorf("error when saving docker build logs: %w", err)
+		ReportCriticalError(ctx, err)
 
-			return
-		}
-
-		if value == nil {
-			value = make([]string, 0)
-		}
-
-		value = append(value, log)
-		err = a.dockerBuildLogs.Set(envID, buildID, value)
-
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when setting env build logs: %s", err))
-
-			err = fmt.Errorf("error when setting env build logs: %w", err)
-			ReportCriticalError(ctx, err)
-
-			return
-		}
+		return
 	}
 
 	ReportEvent(ctx, "got docker build log")
