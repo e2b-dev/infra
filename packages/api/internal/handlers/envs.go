@@ -266,6 +266,7 @@ func (a *APIStore) GetEnvsEnvIDBuildsBuildID(c *gin.Context, envID api.EnvID, bu
 	if err == nil {
 		env.Logs = logs[*params.LogsOffset:]
 	} else {
+		env.Logs = []string{}
 		msg := fmt.Sprintf("no logs found for env %s and build %s", envID, buildID)
 		ReportEvent(ctx, msg)
 	}
