@@ -33,7 +33,7 @@ type APIStore struct {
 	NextId          int64
 	Lock            sync.Mutex
 	apiSecret       string
-	dockerBuildLogs map[string][]string // TODO: Change to cache with TTL refreshed on polling
+	dockerBuildLogs *utils.BuildLogsCache
 }
 
 func NewAPIStore() *APIStore {
@@ -117,6 +117,7 @@ func NewAPIStore() *APIStore {
 		apiSecret = "SUPER_SECR3T_4PI_K3Y"
 	}
 
+	dockerBuildLogs := utils.NewBuildLogsCache()
 	return &APIStore{
 		Ctx:             ctx,
 		nomad:           nomadClient,
@@ -126,8 +127,8 @@ func NewAPIStore() *APIStore {
 		tracer:          tracer,
 		posthog:         posthogClient,
 		cloudStorage:    cStorage,
-		apiSecret:       apiSecret, 
-		dockerBuildLogs: make(map[string][]string), // TODO: Add key for buildId as well
+		apiSecret:       apiSecret,
+		dockerBuildLogs: dockerBuildLogs,
 	}
 }
 

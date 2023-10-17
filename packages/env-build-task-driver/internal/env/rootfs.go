@@ -46,15 +46,14 @@ type Rootfs struct {
 // }
 
 type APIWriterWrapper struct {
-	// apiWriter apiWriter
 	telemetryWriter  io.Writer
 	httpClient *http.Client
-	env Env
+	env *Env
 }
 
 type LogsData struct {
-    Logs []string `json:"logs"`
 	APISecret string `json:"apiSecret"`
+	Logs []string `json:"logs"`
 }
 
 func (w *APIWriterWrapper) Write(p []byte) (n int, err error) {

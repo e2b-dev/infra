@@ -20,7 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 )
 
-func (a *APIStore) buildEnv(ctx context.Context, envID string, content io.Reader) {
+func (a *APIStore) buildEnv(ctx context.Context, envID string, buildID string, content io.Reader) {
 	childCtx, childSpan := a.tracer.Start(ctx, "build-env",
 		trace.WithAttributes(
 			attribute.String("env_id", envID),
@@ -28,15 +28,7 @@ func (a *APIStore) buildEnv(ctx context.Context, envID string, content io.Reader
 	)
 	defer childSpan.End()
 
-	buildID, err := uuid.GenerateUUID()
-	if err != nil {
-		err = fmt.Errorf("error when generating build id: %w", err)
-		ReportCriticalError(childCtx, err)
-
-		return
-	}
-
-	_, err = a.cloudStorage.streamFileUpload(strings.Join([]string{"v1", envID, buildID, "context.tar.gz"}, "/"), content)
+	_, err := a.cloudStorage.streamFileUpload(strings.Join([]string{"v1", envID, buildID, "context.tar.gz"}, "/"), content)
 	if err != nil {
 		err = fmt.Errorf("error when uploading file to cloud storage: %w", err)
 		ReportCriticalError(childCtx, err)
@@ -166,13 +158,22 @@ func (a *APIStore) PostEnvs(c *gin.Context) {
 		ReportEvent(ctx, "updated environment")
 	}
 
+	buildID, err := uuid.GenerateUUID()
+	if err != nil {
+		err = fmt.Errorf("error when generating build id: %w", err)
+		ReportCriticalError(ctx, err)
+
+		return
+	}
+	env.BuildID = buildID
+
 	go func() {
 		buildContext, childSpan := a.tracer.Start(
 			trace.ContextWithSpanContext(a.Ctx, span.SpanContext()),
 			"background-build-env",
 		)
 
-		a.buildEnv(buildContext, envID, fileContent)
+		a.buildEnv(buildContext, envID, buildID, fileContent)
 
 		childSpan.End()
 	}()
@@ -223,11 +224,7 @@ func (a *APIStore) GetEnvs(
 	c.JSON(http.StatusOK, envs)
 }
 
-func (a *APIStore) GetEnvsEnvID(
-	c *gin.Context,
-	envID string,
-	params api.GetEnvsEnvIDParams,
-) {
+func (a *APIStore) 	GetEnvsEnvIDBuildsBuildID(c *gin.Context, envID api.EnvID, buildID api.BuildID, params api.GetEnvsEnvIDBuildsBuildIDParams){
 	ctx := c.Request.Context()
 
 	userID := c.Value(constants.UserIDContextKey).(string)
@@ -263,9 +260,21 @@ func (a *APIStore) GetEnvsEnvID(
 		return
 	}
 
-	env.Logs = a.dockerBuildLogs[envID][*params.Logs:]
-
 	ReportEvent(ctx, "got environment detail")
+
+	logs, err := a.dockerBuildLogs.Get(envID, buildID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting env: %s", err))
+
+		err = fmt.Errorf("error when getting env: %w", err)
+		ReportCriticalError(ctx, err)
+
+		return
+	}
+
+	env.Logs = logs[*params.LogsOffset:]
+
+	ReportEvent(ctx, "got environment build logs")
 
 	a.IdentifyAnalyticsTeam(team.ID)
 	properties := a.GetPackageToPosthogProperties(&c.Request.Header)
@@ -291,12 +300,31 @@ func (a *APIStore) PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context, envID api.EnvI
 	}
 
 	for _, log := range body.Logs {
-		value, exists := a.dockerBuildLogs[envID]
-		if !exists {
+		value, err := a.dockerBuildLogs.Get(envID, buildID)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting env build logs: %s", err))
+
+			err = fmt.Errorf("error when getting env build logs: %w", err)
+			ReportCriticalError(ctx, err)
+
+			return
+		}
+
+		if value == nil {
 			value = make([]string, 0)
 		}
 
-		a.dockerBuildLogs[envID] = append(value, log)
+		value = append(value, log)
+		err = a.dockerBuildLogs.Set(envID, buildID, value)
+
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when setting env build logs: %s", err))
+
+			err = fmt.Errorf("error when setting env build logs: %w", err)
+			ReportCriticalError(ctx, err)
+
+			return
+		}
 	}
 
 	ReportEvent(ctx, "got docker build log")
