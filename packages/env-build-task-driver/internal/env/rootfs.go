@@ -41,28 +41,29 @@ type Rootfs struct {
 
 	env *Env
 }
+
 // type apiWriter interface {
 // 	Write(p []byte) (n int, err error)
 // }
 
 type APIWriterWrapper struct {
-	telemetryWriter  io.Writer
-	httpClient *http.Client
-	env *Env
+	telemetryWriter io.Writer
+	httpClient      *http.Client
+	env             *Env
 }
 
 type LogsData struct {
-	APISecret string `json:"apiSecret"`
-	Logs []string `json:"logs"`
+	APISecret string   `json:"apiSecret"`
+	Logs      []string `json:"logs"`
 }
 
 func (w *APIWriterWrapper) Write(p []byte) (n int, err error) {
 	n, err = w.telemetryWriter.Write(p)
 
 	data := LogsData{
-        Logs: []string{string(p)},
+		Logs:      []string{string(p)},
 		APISecret: w.env.APISecret,
-    }
+	}
 
 	jsonData, jsonErr := json.Marshal(data)
 	if jsonErr != nil {
@@ -70,11 +71,12 @@ func (w *APIWriterWrapper) Write(p []byte) (n int, err error) {
 		return n, err
 	}
 
-	_, postErr := w.httpClient.Post("https://api.e2b.dev/v1/envs/" + w.env.EnvID + "/builds/" + w.env.BuildID + "/logs", "application/json", bytes.NewBuffer(jsonData))
+	response, postErr := w.httpClient.Post("https://api.e2b.dev/v1/envs/" + w.env.EnvID + "/builds/" + w.env.BuildID + "/logs", "application/json", bytes.NewBuffer(jsonData))
 
 	if postErr != nil {
 		fmt.Println(postErr)
 	}
+	defer response.Body.Close()
 
 	return n, err
 }
@@ -141,9 +143,9 @@ func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer, http
 
 	buildOutputWriter := telemetry.NewEventWriter(innerBuildCtx, "docker-build-output")
 	writer := &APIWriterWrapper{
-		telemetryWriter:  buildOutputWriter,
-		httpClient: httpClient,
-		env: r.env,
+		telemetryWriter: buildOutputWriter,
+		httpClient:      httpClient,
+		env:             r.env,
 	}
 
 	err = r.legacyClient.BuildImage(docker.BuildImageOptions{
