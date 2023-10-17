@@ -100,8 +100,8 @@ type GetEnvsEnvIDParams struct {
 	Logs *int `form:"logs,omitempty" json:"logs,omitempty"`
 }
 
-// PostEnvsEnvIDBuildsBuildIDJSONBody defines parameters for PostEnvsEnvIDBuildsBuildID.
-type PostEnvsEnvIDBuildsBuildIDJSONBody struct {
+// PostEnvsEnvIDBuildsBuildIDLogsJSONBody defines parameters for PostEnvsEnvIDBuildsBuildIDLogs.
+type PostEnvsEnvIDBuildsBuildIDLogsJSONBody struct {
 	// ApiSecret API secret
 	ApiSecret string    `json:"apiSecret"`
 	Logs      *[]string `json:"logs,omitempty"`
@@ -110,8 +110,8 @@ type PostEnvsEnvIDBuildsBuildIDJSONBody struct {
 // PostEnvsMultipartRequestBody defines body for PostEnvs for multipart/form-data ContentType.
 type PostEnvsMultipartRequestBody PostEnvsMultipartBody
 
-// PostEnvsEnvIDBuildsBuildIDJSONRequestBody defines body for PostEnvsEnvIDBuildsBuildID for application/json ContentType.
-type PostEnvsEnvIDBuildsBuildIDJSONRequestBody PostEnvsEnvIDBuildsBuildIDJSONBody
+// PostEnvsEnvIDBuildsBuildIDLogsJSONRequestBody defines body for PostEnvsEnvIDBuildsBuildIDLogs for application/json ContentType.
+type PostEnvsEnvIDBuildsBuildIDLogsJSONRequestBody PostEnvsEnvIDBuildsBuildIDLogsJSONBody
 
 // PostInstancesJSONRequestBody defines body for PostInstances for application/json ContentType.
 type PostInstancesJSONRequestBody = NewInstance

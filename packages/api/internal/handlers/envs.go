@@ -280,18 +280,19 @@ func (a *APIStore) GetEnvsEnvID(
 	c.JSON(http.StatusOK, env)
 }
 
-func (a *APIStore) PostEnvsEnvIDBuildsBuildID(c *gin.Context, envID api.EnvID, buildID int) {
+func (a *APIStore) PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context, envID api.EnvID, buildID int) {
 	ctx := c.Request.Context()
 
-	body, err := parseBody[api.PostEnvsEnvIDBuildsBuildIDJSONRequestBody](ctx, c)
-
+	body, err := parseBody[api.PostEnvsEnvIDBuildsBuildIDLogsJSONRequestBody](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing body: %s", err))
+
 		return
 	}
 
 	if body.ApiSecret != a.apiSecret {
 		a.sendAPIStoreError(c, http.StatusForbidden, "Invalid api secret")
+
 		return
 	}
 
@@ -300,8 +301,10 @@ func (a *APIStore) PostEnvsEnvIDBuildsBuildID(c *gin.Context, envID api.EnvID, b
 		if !exists {
 			value = make([]string, 0)
 		}
+
 		a.dockerBuildLogs[envID] = append(value, log)
 	}
+
 	ReportEvent(ctx, "got docker build log")
 
 	c.JSON(http.StatusCreated, nil)

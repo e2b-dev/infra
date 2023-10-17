@@ -23,8 +23,8 @@ type ServerInterface interface {
 	// (GET /envs/{envID})
 	GetEnvsEnvID(c *gin.Context, envID EnvID, params GetEnvsEnvIDParams)
 
-	// (POST /envs/{envID}/builds/{buildID})
-	PostEnvsEnvIDBuildsBuildID(c *gin.Context, envID EnvID, buildID int)
+	// (POST /envs/{envID}/builds/{buildID}/logs)
+	PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context, envID EnvID, buildID int)
 
 	// (GET /health)
 	GetHealth(c *gin.Context)
@@ -112,8 +112,8 @@ func (siw *ServerInterfaceWrapper) GetEnvsEnvID(c *gin.Context) {
 	siw.Handler.GetEnvsEnvID(c, envID, params)
 }
 
-// PostEnvsEnvIDBuildsBuildID operation middleware
-func (siw *ServerInterfaceWrapper) PostEnvsEnvIDBuildsBuildID(c *gin.Context) {
+// PostEnvsEnvIDBuildsBuildIDLogs operation middleware
+func (siw *ServerInterfaceWrapper) PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context) {
 
 	var err error
 
@@ -142,7 +142,7 @@ func (siw *ServerInterfaceWrapper) PostEnvsEnvIDBuildsBuildID(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.PostEnvsEnvIDBuildsBuildID(c, envID, buildID)
+	siw.Handler.PostEnvsEnvIDBuildsBuildIDLogs(c, envID, buildID)
 }
 
 // GetHealth operation middleware
@@ -229,7 +229,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/envs", wrapper.GetEnvs)
 	router.POST(options.BaseURL+"/envs", wrapper.PostEnvs)
 	router.GET(options.BaseURL+"/envs/:envID", wrapper.GetEnvsEnvID)
-	router.POST(options.BaseURL+"/envs/:envID/builds/:buildID", wrapper.PostEnvsEnvIDBuildsBuildID)
+	router.POST(options.BaseURL+"/envs/:envID/builds/:buildID/logs", wrapper.PostEnvsEnvIDBuildsBuildIDLogs)
 	router.GET(options.BaseURL+"/health", wrapper.GetHealth)
 	router.POST(options.BaseURL+"/instances", wrapper.PostInstances)
 	router.POST(options.BaseURL+"/instances/:instanceID/refreshes", wrapper.PostInstancesInstanceIDRefreshes)
