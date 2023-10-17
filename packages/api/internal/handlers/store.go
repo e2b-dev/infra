@@ -112,6 +112,11 @@ func NewAPIStore() *APIStore {
 		context: ctx,
 	}
 
+	apiSecret := os.Getenv("API_SECRET")
+	if apiSecret == "" {
+		apiSecret = "SUPER_SECR3T_4PI_K3Y"
+	}
+
 	return &APIStore{
 		Ctx:             ctx,
 		nomad:           nomadClient,
@@ -121,7 +126,7 @@ func NewAPIStore() *APIStore {
 		tracer:          tracer,
 		posthog:         posthogClient,
 		cloudStorage:    cStorage,
-		apiSecret:       "SUPER_SECR3T_4PI_K3Y",    // TODO: switch to an env variable
+		apiSecret:       apiSecret, 
 		dockerBuildLogs: make(map[string][]string), // TODO: Add key for buildId as well
 	}
 }

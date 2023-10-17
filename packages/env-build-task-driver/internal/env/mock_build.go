@@ -37,6 +37,7 @@ func MockBuild(envID, buildID string) {
 	vCPUCount := int64(1)
 	memoryMB := int64(512)
 	diskSizeMB := int64(512)
+	apiSecret := "SUPER_SECR3T_4PI_K3Y"
 
 	e := Env{
 		BuildID:               buildID,
@@ -52,6 +53,7 @@ func MockBuild(envID, buildID string) {
 		FirecrackerBinaryPath: firecrackerBinaryPath,
 		EnvdPath:              envdPath,
 		ContextFileName:       contextFileName,
+		APISecret: 			   apiSecret,
 	}
 
 	err = e.Build(ctx, tracer, client, legacyClient, httpClient)

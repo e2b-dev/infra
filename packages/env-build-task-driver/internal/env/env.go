@@ -64,6 +64,9 @@ type Env struct {
 
 	// The amount of free disk to allocate to the VM, in MiB.
 	DiskSizeMB int64
+
+	// Secret to authenticate in API
+	APISecret string
 }
 
 //go:embed provision.sh

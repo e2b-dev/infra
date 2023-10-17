@@ -45,25 +45,24 @@ type Rootfs struct {
 // 	Write(p []byte) (n int, err error)
 // }
 
-type Writer struct {
+type APIWriterWrapper struct {
 	// apiWriter apiWriter
 	telemetryWriter  io.Writer
 	httpClient *http.Client
-	envId string
-	buildId string
+	env Env
 }
 
 type LogsData struct {
     Logs []string `json:"logs"`
-	ApiSecret string `json:"apiSecret"`
+	APISecret string `json:"apiSecret"`
 }
 
-func (w *Writer) Write(p []byte) (n int, err error) {
+func (w *APIWriterWrapper) Write(p []byte) (n int, err error) {
 	n, err = w.telemetryWriter.Write(p)
 
 	data := LogsData{
         Logs: []string{string(p)},
-		ApiSecret: "SUPER_SECR3T_4PI_K3Y", // TODO: load from driver
+		APISecret: w.env.APISecret,
     }
 
 	jsonData, jsonErr := json.Marshal(data)
@@ -72,7 +71,7 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 		return n, err
 	}
 
-	_, postErr := w.httpClient.Post("https://api.e2b.dev/v1/envs/" + w.envId + "/builds/" + w.buildId + "/logs", "application/json", bytes.NewBuffer(jsonData))
+	_, postErr := w.httpClient.Post("https://api.e2b.dev/v1/envs/" + w.env.EnvID + "/builds/" + w.env.BuildID + "/logs", "application/json", bytes.NewBuffer(jsonData))
 
 	if postErr != nil {
 		fmt.Println(postErr)
@@ -142,12 +141,12 @@ func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer, http
 	defer innerBuildSpan.End()
 
 	buildOutputWriter := telemetry.NewEventWriter(innerBuildCtx, "docker-build-output")
-	writer := &Writer{
+	writer := &APIWriterWrapper{
 		telemetryWriter:  buildOutputWriter,
 		httpClient: httpClient,
-		envId: r.env.EnvID,
-		buildId: r.env.BuildID,
+		env: r.env,
 	}
+
 	err = r.legacyClient.BuildImage(docker.BuildImageOptions{
 		Context:      buildCtx,
 		Dockerfile:   dockerfileName,
@@ -155,6 +154,7 @@ func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer, http
 		OutputStream: writer,
 		Name:         r.dockerTag(),
 	})
+
 	if err != nil {
 		errMsg := fmt.Errorf("error building docker image for env %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
