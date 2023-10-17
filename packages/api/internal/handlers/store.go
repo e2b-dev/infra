@@ -33,6 +33,7 @@ type APIStore struct {
 	NextId       int64
 	Lock         sync.Mutex
 	apiSecret    string
+	dockerBuildLogs map[string][]string // TODO: Change to cache with TTL refreshed on polling
 }
 
 func NewAPIStore() *APIStore {
@@ -121,6 +122,7 @@ func NewAPIStore() *APIStore {
 		posthog:      posthogClient,
 		cloudStorage: cStorage,
 		apiSecret:  "SUPER_SECR3T_4PI_K3Y", // TODO: switch to an env variable
+		dockerBuildLogs: make(map[string][]string),
 	}
 }
 
