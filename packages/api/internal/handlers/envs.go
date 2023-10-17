@@ -46,7 +46,7 @@ func (a *APIStore) buildEnv(ctx context.Context, envID string, content io.Reader
 
 	var buildStatus models.EnvStatusEnum
 
-	err = a.nomad.BuildEnvJob(a.tracer, childCtx, envID, buildID)
+	err = a.nomad.BuildEnvJob(a.tracer, childCtx, envID, buildID, a.apiSecret)
 	if err != nil {
 		err = fmt.Errorf("error when starting build: %w", err)
 		ReportCriticalError(childCtx, err)

@@ -32,6 +32,7 @@ type APIStore struct {
 	cloudStorage *cloudStorage
 	NextId       int64
 	Lock         sync.Mutex
+	apiSecret    string
 }
 
 func NewAPIStore() *APIStore {
@@ -119,6 +120,7 @@ func NewAPIStore() *APIStore {
 		tracer:       tracer,
 		posthog:      posthogClient,
 		cloudStorage: cStorage,
+		apiSecret:  "SUPER_SECR3T_4PI_K3Y", // TODO: switch to an env variable
 	}
 }
 
