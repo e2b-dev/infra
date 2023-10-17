@@ -284,7 +284,7 @@ paths:
         - in: path
           name: buildID
           schema:
-            type: integer
+            type: string
           required: true
           description: ID of the build
       requestBody:
@@ -295,7 +295,7 @@ paths:
               type: object
               required:
                 - apiSecret
-                - log
+                - logs
               properties:
                 apiSecret:
                   description: API secret

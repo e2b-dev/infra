@@ -24,7 +24,7 @@ type ServerInterface interface {
 	GetEnvsEnvID(c *gin.Context, envID EnvID, params GetEnvsEnvIDParams)
 
 	// (POST /envs/{envID}/builds/{buildID}/logs)
-	PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context, envID EnvID, buildID int)
+	PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context, envID EnvID, buildID string)
 
 	// (GET /health)
 	GetHealth(c *gin.Context)
@@ -127,7 +127,7 @@ func (siw *ServerInterfaceWrapper) PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context
 	}
 
 	// ------------- Path parameter "buildID" -------------
-	var buildID int
+	var buildID string
 
 	err = runtime.BindStyledParameter("simple", false, "buildID", c.Param("buildID"), &buildID)
 	if err != nil {

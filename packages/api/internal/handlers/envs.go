@@ -274,7 +274,7 @@ func (a *APIStore) GetEnvsEnvID(
 	c.JSON(http.StatusOK, env)
 }
 
-func (a *APIStore) PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context, envID api.EnvID, buildID int) {
+func (a *APIStore) PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context, envID api.EnvID, buildID string) {
 	ctx := c.Request.Context()
 
 	body, err := parseBody[api.PostEnvsEnvIDBuildsBuildIDLogsJSONRequestBody](ctx, c)
@@ -290,7 +290,7 @@ func (a *APIStore) PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context, envID api.EnvI
 		return
 	}
 
-	for _, log := range *body.Logs {
+	for _, log := range body.Logs {
 		value, exists := a.dockerBuildLogs[envID]
 		if !exists {
 			value = make([]string, 0)
