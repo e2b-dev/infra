@@ -295,10 +295,15 @@ paths:
               type: object
               required:
                 - apiSecret
+                - log
               properties:
                 apiSecret:
                   description: API secret
                   type: string
+                logs:
+                  type: array
+                  items:
+                    type: string
       responses:
         201:
           description: Successfully added log

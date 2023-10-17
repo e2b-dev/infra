@@ -60,6 +60,7 @@ func (db *DB) GetEnv(envID string, teamID string) (env *api.Environment, err err
 	return &api.Environment{
 		EnvID:  dbEnv.ID,
 		Status: api.EnvironmentStatus(dbEnv.Status),
+		Logs: nil,
 		Public: dbEnv.Public,
 	}, nil
 }

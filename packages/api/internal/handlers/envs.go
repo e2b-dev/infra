@@ -229,6 +229,12 @@ func (a *APIStore) GetEnvsEnvID(
 ) {
 	ctx := c.Request.Context()
 
+	body, err := parseBody[api.GetEnvsEnvIDParams](ctx, c)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing body: %s", err))
+		return
+	}
+
 	userID := c.Value(constants.UserIDContextKey).(string)
 	team, err := a.supabase.GetDefaultTeamFromUserID(userID)
 
@@ -262,6 +268,9 @@ func (a *APIStore) GetEnvsEnvID(
 		return
 	}
 
+	logIndex := *body.Logs
+	env.Logs = a.dockerBuildLogs[envID][logIndex:]
+
 	ReportEvent(ctx, "got environment detail")
 
 	a.IdentifyAnalyticsTeam(team.ID)
@@ -269,4 +278,31 @@ func (a *APIStore) GetEnvsEnvID(
 	a.CreateAnalyticsUserEvent(userID, team.ID, "got environment detail", properties.Set("environment", envID))
 
 	c.JSON(http.StatusOK, env)
+}
+
+func (a *APIStore) PostEnvsEnvIDBuildsBuildID(c *gin.Context, envID api.EnvID, buildID int) {
+	ctx := c.Request.Context()
+
+	body, err := parseBody[api.PostEnvsEnvIDBuildsBuildIDJSONRequestBody](ctx, c)
+
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing body: %s", err))
+		return
+	}
+
+	if body.ApiSecret != a.apiSecret {
+		a.sendAPIStoreError(c, http.StatusForbidden, "Invalid api secret")
+		return
+	}
+
+	for _, log := range *body.Logs {
+		value, exists := a.dockerBuildLogs[envID]
+		if !exists {
+			value = make([]string, 0)
+		}
+		a.dockerBuildLogs[envID] = append(value, log)
+	}
+	ReportEvent(ctx, "got docker build log")
+
+	c.JSON(http.StatusCreated, nil)
 }

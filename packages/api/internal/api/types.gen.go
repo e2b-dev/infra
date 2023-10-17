@@ -103,7 +103,8 @@ type GetEnvsEnvIDParams struct {
 // PostEnvsEnvIDBuildsBuildIDJSONBody defines parameters for PostEnvsEnvIDBuildsBuildID.
 type PostEnvsEnvIDBuildsBuildIDJSONBody struct {
 	// ApiSecret API secret
-	ApiSecret string `json:"apiSecret"`
+	ApiSecret string    `json:"apiSecret"`
+	Logs      *[]string `json:"logs,omitempty"`
 }
 
 // PostEnvsMultipartRequestBody defines body for PostEnvs for multipart/form-data ContentType.
