@@ -263,16 +263,12 @@ func (a *APIStore) GetEnvsEnvIDBuildsBuildID(c *gin.Context, envID api.EnvID, bu
 	ReportEvent(ctx, "got environment detail")
 
 	logs, err := a.dockerBuildLogs.Get(envID, buildID)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting env: %s", err))
-
-		err = fmt.Errorf("error when getting env: %w", err)
-		ReportCriticalError(ctx, err)
-
-		return
+	if err == nil {
+		env.Logs = logs[*params.LogsOffset:]
+	} else {
+		msg := fmt.Sprintf("no logs found for env %s and build %s", envID, buildID)
+		ReportEvent(ctx, msg)
 	}
-
-	env.Logs = logs[*params.LogsOffset:]
 
 	ReportEvent(ctx, "got environment build logs")
 
