@@ -262,6 +262,7 @@ func (a *APIStore) GetEnvsEnvIDBuildsBuildID(c *gin.Context, envID api.EnvID, bu
 
 	ReportEvent(ctx, "got environment detail")
 
+	env.BuildID = buildID
 	logs, err := a.dockerBuildLogs.Get(envID, buildID)
 	if err == nil {
 		env.Logs = logs[*params.LogsOffset:]

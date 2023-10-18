@@ -81,7 +81,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	contextFileName := cfg.Env["CONTEXT_FILE_NAME"]
 	apiSecret := cfg.Env["API_SECRET"]
 
-	writer := env.NewWriter(d.httpClient, taskConfig.BuildID, taskConfig.EnvID, apiSecret)
+	writer := env.NewWriter(d.httpClient, taskConfig.EnvID, taskConfig.BuildID, apiSecret)
 
 	env := env.Env{
 		BuildID:               taskConfig.BuildID,
@@ -97,7 +97,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		FirecrackerBinaryPath: firecrackerBinaryPath,
 		EnvdPath:              envdPath,
 		ContextFileName:       contextFileName,
-		BuildLogsWriter:	   writer,
+		BuildLogsWriter:       writer,
 	}
 
 	cancellableBuildContext, cancel := context.WithCancel(d.ctx)
@@ -124,7 +124,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 
 	d.tasks.Set(cfg.ID, h)
 
-	go func() {		
+	go func() {
 		defer writer.Close()
 		defer cancel()
 		h.cancel = cancel
@@ -136,7 +136,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		defer childBuildSpan.End()
 
 		h.run(buildContext, d.tracer, d.docker, d.legacyDockerClient)
-		<- writer.Done
+		<-writer.Done
 	}()
 
 	return handle, nil, nil
