@@ -33,6 +33,20 @@ resource "random_password" "api_secret" {
   length = 32
 }
 
+resource "google_secret_manager_secret" "api_secret" {
+  secret_id = "api-secret"
+
+  replication {
+    automatic = true
+  }
+}
+
+resource "google_secret_manager_secret_version" "api_secret_value" {
+  secret = google_secret_manager_secret.api_secret.id
+
+  secret_data = random_password.api_secret.result
+}
+
 resource "nomad_job" "api" {
   jobspec = file("${path.module}/api.hcl")
 
