@@ -39,6 +39,8 @@ func MockBuild(envID, buildID string) {
 	diskSizeMB := int64(512)
 	apiSecret := "SUPER_SECR3T_4PI_K3Y"
 
+	writer := NewWriter(httpClient, envID, buildID, apiSecret)
+
 	e := Env{
 		BuildID:               buildID,
 		EnvID:                 envID,
@@ -53,11 +55,13 @@ func MockBuild(envID, buildID string) {
 		FirecrackerBinaryPath: firecrackerBinaryPath,
 		EnvdPath:              envdPath,
 		ContextFileName:       contextFileName,
-		APISecret: 			   apiSecret,
+		BuildLogsWriter: 	   writer,			
 	}
 
-	err = e.Build(ctx, tracer, client, legacyClient, httpClient)
+	err = e.Build(ctx, tracer, client, legacyClient)
 	if err != nil {
 		panic(err)
 	}
+	writer.Close()
+	<- writer.Done
 }

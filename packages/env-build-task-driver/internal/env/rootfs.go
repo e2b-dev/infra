@@ -2,12 +2,9 @@ package env
 
 import (
 	"archive/tar"
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -46,68 +43,22 @@ type Rootfs struct {
 // 	Write(p []byte) (n int, err error)
 // }
 
-type APIWriterWrapper struct {
-	telemetryWriter io.Writer
-	httpClient      *http.Client
-	env             *Env
-	channel 		chan string
+type MergedWriters struct {
+	writers []io.Writer
 }
 
-type LogsData struct {
-	APISecret string   `json:"apiSecret"`
-	Logs      []string `json:"logs"`
-}
-
-
-func (w *APIWriterWrapper) Close() {
-	close(w.channel)
-}
-
-func (w *APIWriterWrapper) helperFunc(logs []string) error {
-	data := LogsData{
-		Logs:      logs,
-		APISecret: w.env.APISecret,
-	}
-
-	jsonData, jsonErr := json.Marshal(data)
-	if jsonErr != nil {
-		return jsonErr
-	}
-
-	response, postErr := w.httpClient.Post("http://localhost:50001/envs/"+w.env.EnvID+"/builds/"+w.env.BuildID+"/logs", "application/json", bytes.NewBuffer(jsonData))
-	defer response.Body.Close()
-
-	if postErr != nil {
-		fmt.Println(postErr)
-		return postErr
-	}
-	return nil
-}
-
-func (w *APIWriterWrapper) sendToAPI() {
-	// childCtx, childSpan := tracer.Start(w.ctx, "new-rootfs")
-	var count = 0
-	var logs = []string{}
-
-	for log := range w.channel {
-		logs = append(logs, log)
-		count++
-		if count == 20 {
-			w.helperFunc(logs)
-			logs = []string{}
+func (mw *MergedWriters) Write(p []byte) (n int, err error) {
+	for _, writer := range mw.writers {
+		_, err := writer.Write(p)
+		if err != nil {
+			return 0, err
 		}
 	}
-	if count > 0 {
-		w.helperFunc(logs)
-	}
+	return len(p), nil
 }
 
-func (w *APIWriterWrapper) Write(p []byte) (n int, err error) {
-	w.channel <- string(p)
-	return w.telemetryWriter.Write(p)
-}
 
-func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *client.Client, legacyDocker *docker.Client, httpClient *http.Client) (*Rootfs, error) {
+func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *client.Client, legacyDocker *docker.Client) (*Rootfs, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-rootfs")
 	defer childSpan.End()
 
@@ -117,7 +68,7 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 		env:          env,
 	}
 
-	err := rootfs.buildDockerImage(childCtx, tracer, httpClient)
+	err := rootfs.buildDockerImage(childCtx, tracer)
 	if err != nil {
 		errMsg := fmt.Errorf("error building docker image %w", err)
 
@@ -136,7 +87,7 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 	return rootfs, nil
 }
 
-func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer, httpClient *http.Client) error {
+func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer) error {
 	childCtx, childSpan := tracer.Start(ctx, "build-docker-image")
 	defer childSpan.End()
 
@@ -168,15 +119,9 @@ func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer, http
 	defer innerBuildSpan.End()
 
 	buildOutputWriter := telemetry.NewEventWriter(innerBuildCtx, "docker-build-output")
-	channel := make(chan string)
-	writer := &APIWriterWrapper{
-		telemetryWriter: buildOutputWriter,
-		httpClient:      httpClient,
-		env:             r.env,
-		channel:         channel,
+	writer := &MergedWriters{
+		writers: []io.Writer{buildOutputWriter, r.env.BuildLogsWriter},
 	}
-	go writer.sendToAPI()
-	defer writer.Close()
 
 	err = r.legacyClient.BuildImage(docker.BuildImageOptions{
 		Context:      buildCtx,
@@ -193,6 +138,7 @@ func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer, http
 		return errMsg
 	}
 
+	r.env.BuildLogsWriter.Write([]byte("Running postprocessing. It can take up to few minutes.\n"))
 	telemetry.ReportEvent(childCtx, "finished docker image build", attribute.String("tag", r.dockerTag()))
 
 	return nil

@@ -3,7 +3,7 @@ package env
 import (
 	"context"
 	"fmt"
-	"net/http"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -65,8 +65,8 @@ type Env struct {
 	// The amount of free disk to allocate to the VM, in MiB.
 	DiskSizeMB int64
 
-	// Secret to authenticate in API
-	APISecret string
+	// Path to the directory where the temporary files for the build are stored.
+	BuildLogsWriter io.Writer
 }
 
 //go:embed provision.sh
@@ -125,7 +125,7 @@ func (e *Env) envSnapfilePath() string {
 	return filepath.Join(e.envDirPath(), snapfileName)
 }
 
-func (e *Env) Build(ctx context.Context, tracer trace.Tracer, docker *client.Client, legacyDocker *docker.Client, httpClient *http.Client) error {
+func (e *Env) Build(ctx context.Context, tracer trace.Tracer, docker *client.Client, legacyDocker *docker.Client) error {
 	childCtx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
@@ -139,7 +139,7 @@ func (e *Env) Build(ctx context.Context, tracer trace.Tracer, docker *client.Cli
 
 	defer e.Cleanup(childCtx, tracer)
 
-	rootfs, err := NewRootfs(childCtx, tracer, e, docker, legacyDocker, httpClient)
+	rootfs, err := NewRootfs(childCtx, tracer, e, docker, legacyDocker)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs for env '%s' during build '%s': %w", e.EnvID, e.BuildID, err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
