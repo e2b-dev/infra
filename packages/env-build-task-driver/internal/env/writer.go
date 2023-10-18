@@ -14,12 +14,12 @@ const (
 )
 
 type BuildLogsWriter struct {
-	httpClient *http.Client
-	channel    chan string
-	Done       chan struct{}
-	envID      string
-	buildID    string
-	apiSecret  string
+	httpClient   *http.Client
+	inputChannel chan string
+	Done         chan struct{}
+	envID        string
+	buildID      string
+	apiSecret    string
 }
 
 type LogsData struct {
@@ -28,12 +28,12 @@ type LogsData struct {
 }
 
 func (w BuildLogsWriter) Close() error {
-	close(w.channel)
+	close(w.inputChannel)
 
 	return nil
 }
 
-func (w *BuildLogsWriter) sendLogsAPICall(logs []string) error {
+func (w BuildLogsWriter) sendLogsAPICall(logs []string) error {
 	data := LogsData{
 		Logs:      logs,
 		APISecret: w.apiSecret,
@@ -70,7 +70,7 @@ func (w BuildLogsWriter) sendToAPI() {
 forLoop:
 	for {
 		select {
-		case log, open := <-w.channel:
+		case log, open := <-w.inputChannel:
 			logs = append(logs, log)
 			if !open {
 				timer.Stop()
@@ -100,20 +100,19 @@ forLoop:
 }
 
 func (w BuildLogsWriter) Write(p []byte) (n int, err error) {
-	w.channel <- string(p)
+	w.inputChannel <- string(p)
 
 	return len(p), nil
 }
 
-func NewWriter(httpClient *http.Client, envID string, buildID string, apiSecret string) BuildLogsWriter {
-	channel := make(chan string)
+func NewWriter(envID string, buildID string, apiSecret string) BuildLogsWriter {
 	writer := BuildLogsWriter{
-		channel:    channel,
-		Done:       make(chan struct{}),
-		httpClient: httpClient,
-		envID:      envID,
-		buildID:    buildID,
-		apiSecret:  apiSecret,
+		inputChannel: make(chan string, 100),
+		Done:         make(chan struct{}, 1),
+		httpClient:   &http.Client{},
+		envID:        envID,
+		buildID:      buildID,
+		apiSecret:    apiSecret,
 	}
 
 	go writer.sendToAPI()

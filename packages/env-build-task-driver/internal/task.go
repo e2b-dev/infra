@@ -81,7 +81,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	contextFileName := cfg.Env["CONTEXT_FILE_NAME"]
 	apiSecret := cfg.Env["API_SECRET"]
 
-	writer := env.NewWriter(d.httpClient, taskConfig.EnvID, taskConfig.BuildID, apiSecret)
+	writer := env.NewWriter(taskConfig.EnvID, taskConfig.BuildID, apiSecret)
 
 	env := env.Env{
 		BuildID:               taskConfig.BuildID,

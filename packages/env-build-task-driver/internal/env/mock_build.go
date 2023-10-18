@@ -2,8 +2,6 @@ package env
 
 import (
 	"context"
-	"net/http"
-
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
 	"go.opentelemetry.io/otel"
@@ -24,8 +22,6 @@ func MockBuild(envID, buildID string) {
 		panic(err)
 	}
 
-	httpClient := &http.Client{}
-
 	contextsPath := "/mnt/disks/docker-contexts/v1"
 	registry := "us-central1-docker.pkg.dev/e2b-prod/custom-environments"
 	envsDisk := "/mnt/disks/fc-envs/v1"
@@ -39,7 +35,7 @@ func MockBuild(envID, buildID string) {
 	diskSizeMB := int64(512)
 	apiSecret := "SUPER_SECR3T_4PI_K3Y"
 
-	writer := NewWriter(httpClient, envID, buildID, apiSecret)
+	writer := NewWriter(envID, buildID, apiSecret)
 
 	e := Env{
 		BuildID:               buildID,
@@ -55,7 +51,7 @@ func MockBuild(envID, buildID string) {
 		FirecrackerBinaryPath: firecrackerBinaryPath,
 		EnvdPath:              envdPath,
 		ContextFileName:       contextFileName,
-		BuildLogsWriter: 	   writer,			
+		BuildLogsWriter:       writer,
 	}
 
 	err = e.Build(ctx, tracer, client, legacyClient)
@@ -63,5 +59,5 @@ func MockBuild(envID, buildID string) {
 		panic(err)
 	}
 	writer.Close()
-	<- writer.Done
+	<-writer.Done
 }
