@@ -9,17 +9,17 @@ import (
 )
 
 const (
-	API_HOST = "http://localhost:50001"
+	API_HOST      = "http://localhost:50001"
 	flushInterval = time.Millisecond * 200
 )
 
 type BuildLogsWriter struct {
-	httpClient      *http.Client
-	channel 		chan string
-	Done		 	chan struct{}
-	envID 			string
-	buildID 		string
-	apiSecret 		string
+	httpClient *http.Client
+	channel    chan string
+	Done       chan struct{}
+	envID      string
+	buildID    string
+	apiSecret  string
 }
 
 type LogsData struct {
@@ -46,11 +46,11 @@ func (w *BuildLogsWriter) sendLogsAPICall(logs []string) error {
 		return err
 	}
 
-	response, err := w.httpClient.Post(API_HOST + "/envs/" + w.envID + "/builds/" + w.buildID + "/logs", "application/json", bytes.NewBuffer(jsonData))
+	response, err := w.httpClient.Post(API_HOST+"/envs/"+w.envID+"/builds/"+w.buildID+"/logs", "application/json", bytes.NewBuffer(jsonData))
 
 	if err != nil {
 		err = fmt.Errorf("error posting logs to API: %w", err)
-	
+
 		return err
 	}
 	defer response.Body.Close()
@@ -67,7 +67,7 @@ func (w BuildLogsWriter) sendToAPI() {
 
 	timer := time.NewTicker(flushInterval)
 
-	forLoop: 
+forLoop:
 	for {
 		select {
 		case log, open := <-w.channel:
@@ -99,7 +99,6 @@ func (w BuildLogsWriter) sendToAPI() {
 	close(w.Done)
 }
 
-
 func (w BuildLogsWriter) Write(p []byte) (n int, err error) {
 	w.channel <- string(p)
 
@@ -109,13 +108,15 @@ func (w BuildLogsWriter) Write(p []byte) (n int, err error) {
 func NewWriter(httpClient *http.Client, envID string, buildID string, apiSecret string) BuildLogsWriter {
 	channel := make(chan string)
 	writer := BuildLogsWriter{
-		channel: channel,
-		Done: make(chan struct{}),
+		channel:    channel,
+		Done:       make(chan struct{}),
 		httpClient: httpClient,
-		envID:     envID,
+		envID:      envID,
 		buildID:    buildID,
 		apiSecret:  apiSecret,
 	}
+
+	go writer.sendToAPI()
 
 	return writer
 }
