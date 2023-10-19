@@ -15,7 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/predicate"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/team"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/teamapikey"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 // TeamApiKeyUpdate is the builder for updating TeamApiKey entities.

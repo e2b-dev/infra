@@ -10,7 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/team"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 // Team is the model entity for the Team schema.

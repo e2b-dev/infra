@@ -10,7 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/teamapikey"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 // TeamApiKey is the model entity for the TeamApiKey schema.

@@ -9,7 +9,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/user"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 // User is the model entity for the User schema.

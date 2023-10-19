@@ -15,7 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/team"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/user"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/usersteams"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 // TeamUpdate is the builder for updating Team entities.

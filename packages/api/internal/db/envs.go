@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/env"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 func (db *DB) DeleteEnv(envID string) error {
@@ -21,7 +21,7 @@ func (db *DB) GetEnvs(teamID string) (result []*api.Environment, err error) {
 	//teamWhere := models.EnvWhere.TeamID.EQ(teamID)
 	//
 	//envs, err := models.Envs(publicWhere, qm.Or2(teamWhere)).All(db.Client)
-	id, err := uuid.FromString(teamID)
+	id, err := uuid.Parse(teamID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse teamID: %w", err)
 	}
@@ -47,7 +47,7 @@ func (db *DB) GetEnvs(teamID string) (result []*api.Environment, err error) {
 var ErrEnvNotFound = fmt.Errorf("env not found")
 
 func (db *DB) GetEnv(envID string, teamID string) (result *api.Environment, err error) {
-	id, err := uuid.FromString(teamID)
+	id, err := uuid.Parse(teamID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse teamID: %w", err)
 	}
@@ -68,7 +68,7 @@ func (db *DB) GetEnv(envID string, teamID string) (result *api.Environment, err 
 }
 
 func (db *DB) CreateEnv(envID string, teamID string, dockerfile string) (*api.Environment, error) {
-	id, err := uuid.FromString(teamID)
+	id, err := uuid.Parse(teamID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse teamID: %w", err)
 	}

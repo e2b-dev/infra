@@ -12,7 +12,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/env"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/team"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 // EnvCreate is the builder for creating a Env entity.

@@ -15,7 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/team"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/user"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/usersteams"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 // UsersTeamsQuery is the builder for querying UsersTeams entities.

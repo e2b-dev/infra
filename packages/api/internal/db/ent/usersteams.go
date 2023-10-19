@@ -11,7 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/team"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/user"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/usersteams"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 // UsersTeams is the model entity for the UsersTeams schema.

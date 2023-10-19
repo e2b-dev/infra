@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/team"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/user"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 func (db *DB) GetDefaultTeamFromUserID(userID string) (teamID string, err error) {
-	userUUID, err := uuid.FromString(userID)
+	userUUID, err := uuid.Parse(userID)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse userID: %w", err)
 	}

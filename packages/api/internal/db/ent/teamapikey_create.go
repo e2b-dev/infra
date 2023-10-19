@@ -12,7 +12,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/team"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/teamapikey"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 // TeamApiKeyCreate is the builder for creating a TeamApiKey entity.

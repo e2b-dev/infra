@@ -15,7 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/internal"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/predicate"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/user"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 // AccessTokenUpdate is the builder for updating AccessToken entities.

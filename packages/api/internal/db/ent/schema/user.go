@@ -4,7 +4,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 // User holds the schema definition for the User entity.

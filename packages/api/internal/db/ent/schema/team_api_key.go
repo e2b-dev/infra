@@ -5,7 +5,7 @@ import (
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 type TeamApiKey struct {

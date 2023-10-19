@@ -12,7 +12,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/accesstoken"
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/user"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 )
 
 // AccessTokenCreate is the builder for creating a AccessToken entity.

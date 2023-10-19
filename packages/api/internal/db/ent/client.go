@@ -10,7 +10,7 @@ import (
 	"reflect"
 
 	"github.com/e2b-dev/infra/packages/api/internal/db/ent/migrate"
-	"github.com/gofrs/uuid"
+	"github.com/google/uuid"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
