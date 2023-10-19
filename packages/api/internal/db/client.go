@@ -1,16 +1,18 @@
 package db
 
 import (
-	"database/sql"
+	"context"
+	"entgo.io/ent/dialect"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/api/internal/db/ent"
 	"os"
 
-	"github.com/volatiletech/sqlboiler/v4/boil"
 	_ "github.com/volatiletech/sqlboiler/v4/drivers/sqlboiler-psql/driver"
 )
 
 type DB struct {
-	Client *sql.DB
+	Client *ent.Client
+	ctx    context.Context
 }
 
 var databaseURL = os.Getenv("SUPABASE_CONNECTION_STRING")
@@ -20,16 +22,15 @@ func NewClient() (*DB, error) {
 		return nil, fmt.Errorf("database URL is empty")
 	}
 
-	db, err := sql.Open("postgres", databaseURL)
+	client, err := ent.Open(dialect.Postgres, databaseURL, ent.Debug(), ent.AlternateSchema(ent.SchemaConfig{
+		User: "auth",
+	}))
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+		err = fmt.Errorf("failed to connect to database: %w", err)
+		return nil, err
 	}
-
-	boil.SetDB(db)
-
-	return &DB{
-		Client: db,
-	}, nil
+	ctx := context.Background()
+	return &DB{Client: client, ctx: ctx}, nil
 }
 
 func (db *DB) Close() {

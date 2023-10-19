@@ -17,7 +17,7 @@ generate:
 	PSQL_PORT=$(PSQL_PORT) \
 	PSQL_USER=$(PSQL_USER) \
 	PSQL_DBNAME=$(PSQL_DBNAME) \
-	$(sqlboiler) psql -o ./internal/db/models --no-context
+	go generate
 
 .PHONY: build
 build:
