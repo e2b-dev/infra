@@ -125,7 +125,6 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	d.tasks.Set(cfg.ID, h)
 
 	go func() {
-		defer writer.Close()
 		defer cancel()
 		h.cancel = cancel
 
@@ -136,6 +135,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		defer childBuildSpan.End()
 
 		h.run(buildContext, d.tracer, d.docker, d.legacyDockerClient)
+		writer.Close()
 		<-writer.Done
 	}()
 
