@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -30,10 +29,8 @@ type APIStore struct {
 	nomad           *nomad.NomadClient
 	supabase        *db.DB
 	cloudStorage    *cloudStorage
-	NextId          int64
-	Lock            sync.Mutex
-	apiSecret       string
 	dockerBuildLogs *utils.BuildLogsCache
+	apiSecret       string
 }
 
 func NewAPIStore() *APIStore {
@@ -118,11 +115,11 @@ func NewAPIStore() *APIStore {
 	}
 
 	dockerBuildLogs := utils.NewBuildLogsCache()
+
 	return &APIStore{
 		Ctx:             ctx,
 		nomad:           nomadClient,
 		supabase:        supabaseClient,
-		NextId:          1000,
 		cache:           cache,
 		tracer:          tracer,
 		posthog:         posthogClient,
