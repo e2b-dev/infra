@@ -2,7 +2,6 @@
 
 openapi := ../../spec/openapi.yml
 codegen := go run github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest
-sqlboiler := go run github.com/volatiletech/sqlboiler/v4@latest
 
 GCP_PROJECT := e2b-prod
 IMAGE := orchestration/api
