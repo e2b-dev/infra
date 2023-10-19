@@ -62,11 +62,11 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 		env:          env,
 	}
 
-	defer rootfs.cleanupDockerImage(childCtx, tracer)
 	err := rootfs.buildDockerImage(childCtx, tracer)
 	if err != nil {
 		errMsg := fmt.Errorf("error building docker image %w", err)
 
+		rootfs.cleanupDockerImage(childCtx, tracer)
 		return nil, errMsg
 	}
 
@@ -74,8 +74,26 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs file %w", err)
 
+		rootfs.cleanupDockerImage(childCtx, tracer)
 		return nil, errMsg
 	}
+
+	go func() {
+		pushContext, pushSpan := tracer.Start(
+			trace.ContextWithSpanContext(childCtx, childSpan.SpanContext()),
+			"push-docker-image-and-cleanup",
+		)
+		defer pushSpan.End()
+
+		defer rootfs.cleanupDockerImage(pushContext, tracer)
+		err := rootfs.pushDockerImage(pushContext, tracer)
+		if err != nil {
+			errMsg := fmt.Errorf("error pushing docker image %w", err)
+			telemetry.ReportCriticalError(pushContext, errMsg)
+		} else {
+			telemetry.ReportEvent(pushContext, "pushed docker image")
+		}
+	}()
 
 	return rootfs, nil
 }
@@ -136,6 +154,31 @@ func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer) erro
 
 	r.env.BuildLogsWriter.Write([]byte("Running postprocessing. It can take up to few minutes.\n"))
 	telemetry.ReportEvent(childCtx, "finished docker image build", attribute.String("tag", r.dockerTag()))
+
+	return nil
+}
+
+func (r *Rootfs) pushDockerImage(ctx context.Context, tracer trace.Tracer) error {
+	childCtx, childSpan := tracer.Start(ctx, "push-docker-image")
+	defer childSpan.End()
+
+	logs, err := r.client.ImagePush(childCtx, r.dockerTag(), types.ImagePushOptions{})
+	if err != nil {
+		errMsg := fmt.Errorf("error pushing image %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
+	}
+
+	err = logs.Close()
+	if err != nil {
+		errMsg := fmt.Errorf("error closing logs %w", err)
+		telemetry.ReportError(childCtx, errMsg)
+
+		return errMsg
+	}
+
+	telemetry.ReportEvent(childCtx, "pushed image")
 
 	return nil
 }
