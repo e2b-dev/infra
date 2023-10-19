@@ -12,12 +12,8 @@ generate:
 	$(codegen) -old-config-style -generate gin --package api $(openapi) > internal/api/api.gen.go
 	$(codegen) -old-config-style -generate types --package api $(openapi) > internal/api/types.gen.go
 	$(codegen) -old-config-style -generate spec --package api $(openapi) > internal/api/spec.gen.go
-	PSQL_PASS=$(PSQL_PASS) \
-	PSQL_HOST=$(PSQL_HOST) \
-	PSQL_PORT=$(PSQL_PORT) \
-	PSQL_USER=$(PSQL_USER) \
-	PSQL_DBNAME=$(PSQL_DBNAME) \
-	go generate
+	go generate ./internal/db/ent/generate.go
+
 
 .PHONY: build
 build:
