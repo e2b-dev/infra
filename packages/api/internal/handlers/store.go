@@ -36,13 +36,15 @@ type APIStore struct {
 func NewAPIStore() *APIStore {
 	fmt.Println("Initializing API store")
 
+	ctx := context.Background()
+
 	tracer := otel.Tracer("api")
 
 	nomadClient := nomad.InitNomadClient()
 
 	fmt.Println("Initialized Nomad client")
 
-	supabaseClient, err := db.NewClient()
+	supabaseClient, err := db.NewClient(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing Supabase client\n: %s", err)
 		panic(err)
@@ -94,8 +96,6 @@ func NewAPIStore() *APIStore {
 	} else {
 		fmt.Println("Skipping syncing sessions with Nomad, running locally")
 	}
-
-	ctx := context.Background()
 
 	storageClient, err := storage.NewClient(ctx)
 	if err != nil {

@@ -17,7 +17,7 @@ type DB struct {
 
 var databaseURL = os.Getenv("SUPABASE_CONNECTION_STRING")
 
-func NewClient() (*DB, error) {
+func NewClient(ctx context.Context) (*DB, error) {
 	if databaseURL == "" {
 		return nil, fmt.Errorf("database URL is empty")
 	}
@@ -29,7 +29,7 @@ func NewClient() (*DB, error) {
 		err = fmt.Errorf("failed to connect to database: %w", err)
 		return nil, err
 	}
-	ctx := context.Background()
+
 	return &DB{Client: client, ctx: ctx}, nil
 }
 
