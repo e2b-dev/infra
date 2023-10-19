@@ -12,19 +12,19 @@ const (
 	logsExpiration = time.Second * 60 * 5 // 5 minutes
 )
 
-type logIdentifier struct {
+type buildEnvID struct {
 	envID   string
 	buildID string
 }
 
 type BuildLogsCache struct {
-	cache *ttlcache.Cache[logIdentifier, []string]
+	cache *ttlcache.Cache[buildEnvID, []string]
 	mutex sync.RWMutex
 }
 
 func NewBuildLogsCache() *BuildLogsCache {
 	return &BuildLogsCache{
-		cache: ttlcache.New(ttlcache.WithTTL[logIdentifier, []string](logsExpiration)),
+		cache: ttlcache.New(ttlcache.WithTTL[buildEnvID, []string](logsExpiration)),
 		mutex: sync.RWMutex{},
 	}
 }
@@ -33,7 +33,7 @@ func (c *BuildLogsCache) Get(envID, buildID string) ([]string, error) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
-	key := &logIdentifier{envID: envID, buildID: buildID}
+	key := &buildEnvID{envID: envID, buildID: buildID}
 	item := c.cache.Get(*key)
 
 	if item != nil {
@@ -47,7 +47,7 @@ func (c *BuildLogsCache) Append(envID, buildID string, logs []string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	key := &logIdentifier{envID: envID, buildID: buildID}
+	key := &buildEnvID{envID: envID, buildID: buildID}
 	item := c.cache.Get(*key)
 
 	if item == nil {

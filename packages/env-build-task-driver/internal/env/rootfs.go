@@ -39,15 +39,11 @@ type Rootfs struct {
 	env *Env
 }
 
-// type apiWriter interface {
-// 	Write(p []byte) (n int, err error)
-// }
-
-type MergedWriters struct {
+type MultiWriter struct {
 	writers []io.Writer
 }
 
-func (mw *MergedWriters) Write(p []byte) (n int, err error) {
+func (mw *MultiWriter) Write(p []byte) (n int, err error) {
 	for _, writer := range mw.writers {
 		_, err := writer.Write(p)
 		if err != nil {
@@ -56,7 +52,6 @@ func (mw *MergedWriters) Write(p []byte) (n int, err error) {
 	}
 	return len(p), nil
 }
-
 
 func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *client.Client, legacyDocker *docker.Client) (*Rootfs, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-rootfs")
@@ -118,7 +113,7 @@ func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer) erro
 	defer innerBuildSpan.End()
 
 	buildOutputWriter := telemetry.NewEventWriter(innerBuildCtx, "docker-build-output")
-	writer := &MergedWriters{
+	writer := &MultiWriter{
 		writers: []io.Writer{buildOutputWriter, r.env.BuildLogsWriter},
 	}
 
@@ -258,7 +253,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 			} else {
 				telemetry.ReportEvent(childCtx, "added envd to tar writer")
 			}
-					}
+		}
 	}()
 
 	// Copy tar to the container

@@ -108,7 +108,7 @@ func (w BuildLogsWriter) Write(p []byte) (n int, err error) {
 func NewWriter(envID string, buildID string, apiSecret string) BuildLogsWriter {
 	writer := BuildLogsWriter{
 		inputChannel: make(chan string, 100),
-		Done:         make(chan struct{}, 1),
+		Done:         make(chan struct{}),
 		httpClient:   &http.Client{},
 		envID:        envID,
 		buildID:      buildID,
