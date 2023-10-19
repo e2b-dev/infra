@@ -131,6 +131,9 @@ func (r *Rootfs) buildDockerImage(ctx context.Context, tracer trace.Tracer) erro
 	})
 
 	if err != nil {
+		r.env.BuildLogsWriter.Write([]byte(err.Error() + "\n"))
+		r.env.BuildLogsWriter.Write([]byte("Build failed, received error while building docker image.\n"))
+
 		errMsg := fmt.Errorf("error building docker image for env %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
