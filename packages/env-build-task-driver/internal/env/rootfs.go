@@ -78,23 +78,6 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 		return nil, errMsg
 	}
 
-	go func() {
-		pushContext, pushSpan := tracer.Start(
-			trace.ContextWithSpanContext(childCtx, childSpan.SpanContext()),
-			"push-docker-image-and-cleanup",
-		)
-		defer pushSpan.End()
-
-		defer rootfs.cleanupDockerImage(pushContext, tracer)
-		err := rootfs.pushDockerImage(pushContext, tracer)
-		if err != nil {
-			errMsg := fmt.Errorf("error pushing docker image %w", err)
-			telemetry.ReportCriticalError(pushContext, errMsg)
-		} else {
-			telemetry.ReportEvent(pushContext, "pushed docker image")
-		}
-	}()
-
 	return rootfs, nil
 }
 
