@@ -39,7 +39,6 @@ variable "environment" {
   type = string
 }
 
-variable "service_account_secret" {
+variable "google_service_account_secret" {
   type = string
-  sensitive = true
 }
