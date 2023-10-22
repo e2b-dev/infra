@@ -38,3 +38,8 @@ variable "logs_proxy_address" {
 variable "environment" {
   type = string
 }
+
+variable "service_account_secret" {
+  type = string
+  sensitive = true
+}

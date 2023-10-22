@@ -67,6 +67,9 @@ type Env struct {
 
 	// Path to the directory where the temporary files for the build are stored.
 	BuildLogsWriter io.Writer
+
+	// Google service account JSON secret base64 encoded.
+	GoogleServiceAccountBase64 string
 }
 
 //go:embed provision.sh

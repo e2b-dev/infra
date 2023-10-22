@@ -71,6 +71,7 @@ resource "nomad_job" "api" {
       environment                = var.environment
       bucket_name                = var.bucket_name
       api_secret                 = resource.random_password.api_secret.result
+      service_account_secret     = var.service_account_secret
     }
   }
 }
