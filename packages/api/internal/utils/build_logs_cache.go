@@ -32,10 +32,7 @@ func NewBuildLogsCache() *BuildLogsCache {
 	}
 }
 
-func (c *BuildLogsCache) Get(envID string, buildID string) (BuildLogs, error) {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
+func (c *BuildLogsCache) get(envID string, buildID string) (BuildLogs, error) {
 	item := c.cache.Get(envID)
 
 	if item != nil {
@@ -48,11 +45,18 @@ func (c *BuildLogsCache) Get(envID string, buildID string) (BuildLogs, error) {
 	return BuildLogs{}, fmt.Errorf("build for %s not found in cache", envID)
 }
 
+func (c *BuildLogsCache) Get(envID string, buildID string) (BuildLogs, error) {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	return c.get(envID, buildID)
+}
+
 func (c *BuildLogsCache) Append(envID, buildID string, logs []string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	item, err := c.Get(envID, buildID)
+	item, err := c.get(envID, buildID)
 	if err != nil {
 		err = fmt.Errorf("build for %s not found in cache", envID)
 		return err
@@ -68,16 +72,27 @@ func (c *BuildLogsCache) Append(envID, buildID string, logs []string) error {
 	return nil
 }
 
-func (c *BuildLogsCache) Exists(envID string) bool {
+func (c *BuildLogsCache) CreateIfNotExists(teamID, envID, buildID string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	item := c.cache.Get(envID)
+	if item != nil && item.Value().Status == api.EnvironmentBuildStatusBuilding {
+		return fmt.Errorf("build for %s already exists in cache", envID)
+	}
 
-	return item != nil || item.Value().Status != api.EnvironmentBuildStatusBuilding
+	buildLog := BuildLogs{
+		BuildID: buildID,
+		TeamID:  teamID,
+		Status:  api.EnvironmentBuildStatusBuilding,
+		Logs:    []string{},
+	}
+	c.cache.Set(envID, buildLog, logsExpiration)
+
+	return nil
 }
 
-func (c *BuildLogsCache) Create(envID string, buildID string, teamID string) {
+func (c *BuildLogsCache) Create(teamID string, envID string, buildID string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -94,7 +109,7 @@ func (c *BuildLogsCache) SetDone(envID string, buildID string, status api.Enviro
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	item, err := c.Get(envID, buildID)
+	item, err := c.get(envID, buildID)
 
 	if err != nil {
 		return fmt.Errorf("build %s not found in cache", envID)

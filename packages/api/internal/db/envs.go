@@ -63,32 +63,28 @@ func (db *DB) GetEnv(envID string, teamID string) (result *api.Environment, err 
 	}, nil
 }
 
-func (db *DB) CreateEnv(teamID, envID, buildID, dockerfile string) (*api.Environment, error) {
+func (db *DB) UpsertEnv(teamID, envID, buildID, dockerfile string) error {
 	teamUUID, err := uuid.Parse(teamID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse teamID: %w", err)
+		return fmt.Errorf("failed to parse teamID: %w", err)
 	}
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse teamID: %w", err)
+		return fmt.Errorf("failed to parse teamID: %w", err)
 	}
 
-	e, err := db.Client.Env.Create().SetID(envID).SetBuildID(buildUUID).SetTeamID(teamUUID).SetDockerfile(dockerfile).SetPublic(false).Save(db.ctx)
+	err = db.Client.Env.Create().SetID(envID).SetBuildID(buildUUID).SetTeamID(teamUUID).SetDockerfile(dockerfile).SetPublic(false).OnConflict().UpdateNewValues().Exec(db.ctx)
 
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create env with id '%s': %w", envID, err)
 
 		fmt.Println(errMsg.Error())
 
-		return nil, errMsg
+		return errMsg
 	}
 
-	return &api.Environment{
-		EnvID:   e.ID,
-		BuildID: e.BuildID.String(),
-		Public:  e.Public,
-	}, nil
+	return nil
 }
 
 func (db *DB) UpdateDockerfileEnv(envID string, dockerfile string) error {

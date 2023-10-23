@@ -45,7 +45,7 @@ func (a *APIStore) buildEnv(ctx context.Context, teamID string, envID string, bu
 		return
 	}
 
-	_, err = a.supabase.CreateEnv(teamID, envID, buildID, dockerfile)
+	err = a.supabase.UpsertEnv(teamID, envID, buildID, dockerfile)
 
 	if err != nil {
 		err = fmt.Errorf("error when updating env: %w", err)
@@ -123,6 +123,8 @@ func (a *APIStore) PostEnvs(c *gin.Context) {
 		envID = utils.GenerateID()
 		SetAttributes(ctx, attribute.String("env.id", envID))
 
+		a.dockerBuildCache.Create(teamID, envID, buildID)
+
 		ReportEvent(ctx, "creating new environment")
 	} else {
 		SetAttributes(ctx, attribute.String("env.id", envID))
@@ -144,7 +146,9 @@ func (a *APIStore) PostEnvs(c *gin.Context) {
 
 			return
 		}
-		if a.dockerBuildCache.Exists(envID) {
+
+		err = a.dockerBuildCache.CreateIfNotExists(teamID, envID, buildID)
+		if err != nil {
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("There's already running build for %s", envID))
 
 			err = fmt.Errorf("there's already running build for %s", envID)
@@ -155,8 +159,6 @@ func (a *APIStore) PostEnvs(c *gin.Context) {
 
 		ReportEvent(ctx, "started updating environment")
 	}
-
-	a.dockerBuildCache.Create(envID, buildID, teamID)
 
 	dockerfile := c.PostForm("dockerfile")
 	go func() {
