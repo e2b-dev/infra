@@ -63,13 +63,18 @@ func (db *DB) GetEnv(envID string, teamID string) (result *api.Environment, err 
 	}, nil
 }
 
-func (db *DB) CreateEnv(envID string, teamID string, dockerfile string) (*api.Environment, error) {
-	id, err := uuid.Parse(teamID)
+func (db *DB) CreateEnv(teamID, envID, buildID, dockerfile string) (*api.Environment, error) {
+	teamUUID, err := uuid.Parse(teamID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse teamID: %w", err)
 	}
 
-	e, err := db.Client.Env.Create().SetID(envID).SetTeamID(id).SetDockerfile(dockerfile).SetPublic(false).Save(db.ctx)
+	buildUUID, err := uuid.Parse(buildID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse teamID: %w", err)
+	}
+
+	e, err := db.Client.Env.Create().SetID(envID).SetBuildID(buildUUID).SetTeamID(teamUUID).SetDockerfile(dockerfile).SetPublic(false).Save(db.ctx)
 
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create env with id '%s': %w", envID, err)

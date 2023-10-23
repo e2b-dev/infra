@@ -16,7 +16,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (a *APIStore) buildEnv(ctx context.Context, envID string, buildID string, dockerfile string, content io.Reader) {
+func (a *APIStore) buildEnv(ctx context.Context, teamID string, envID string, buildID string, dockerfile string, content io.Reader) {
 	childCtx, childSpan := a.tracer.Start(ctx, "build-env",
 		trace.WithAttributes(
 			attribute.String("env_id", envID),
@@ -45,7 +45,7 @@ func (a *APIStore) buildEnv(ctx context.Context, envID string, buildID string, d
 		return
 	}
 
-	_, err = a.supabase.CreateEnv(envID, buildID, dockerfile)
+	_, err = a.supabase.CreateEnv(teamID, envID, buildID, dockerfile)
 
 	if err != nil {
 		err = fmt.Errorf("error when updating env: %w", err)
@@ -165,7 +165,7 @@ func (a *APIStore) PostEnvs(c *gin.Context) {
 			"background-build-env",
 		)
 
-		a.buildEnv(buildContext, envID, buildID, dockerfile, fileContent)
+		a.buildEnv(buildContext, teamID, envID, buildID, dockerfile, fileContent)
 
 		childSpan.End()
 	}()
