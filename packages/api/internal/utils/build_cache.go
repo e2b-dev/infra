@@ -32,6 +32,7 @@ func NewBuildCache() *BuildCache {
 	}
 }
 
+// get returns the build info without locking the mutex
 func (c *BuildCache) get(envID string, buildID string) (Build, error) {
 	item := c.cache.Get(envID)
 
@@ -45,6 +46,7 @@ func (c *BuildCache) get(envID string, buildID string) (Build, error) {
 	return Build{}, fmt.Errorf("build for %s not found in cache", envID)
 }
 
+// Get returns the build info
 func (c *BuildCache) Get(envID string, buildID string) (Build, error) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
@@ -52,6 +54,7 @@ func (c *BuildCache) Get(envID string, buildID string) (Build, error) {
 	return c.get(envID, buildID)
 }
 
+// Append appends logs to the build
 func (c *BuildCache) Append(envID, buildID string, logs []string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -73,6 +76,7 @@ func (c *BuildCache) Append(envID, buildID string, logs []string) error {
 	return nil
 }
 
+// CreateIfNotExists creates a new build if it doesn't exist in the cache or the build was already finished
 func (c *BuildCache) CreateIfNotExists(teamID, envID, buildID string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -93,6 +97,7 @@ func (c *BuildCache) CreateIfNotExists(teamID, envID, buildID string) error {
 	return nil
 }
 
+// Create creates a new build in the cache
 func (c *BuildCache) Create(teamID string, envID string, buildID string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -106,6 +111,7 @@ func (c *BuildCache) Create(teamID string, envID string, buildID string) {
 	c.cache.Set(envID, buildLog, logsExpiration)
 }
 
+// SetDone marks the build as finished
 func (c *BuildCache) SetDone(envID string, buildID string, status api.EnvironmentBuildStatus) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()

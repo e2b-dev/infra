@@ -151,7 +151,7 @@ func (a *APIStore) PostEnvs(c *gin.Context) {
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("There's already running build for %s", envID))
 
-			err = fmt.Errorf("there's already running build for %s", envID)
+			err = fmt.Errorf("build is already running build for %s", envID)
 			ReportCriticalError(ctx, err)
 
 			return
@@ -245,10 +245,10 @@ func (a *APIStore) GetEnvsEnvIDBuildsBuildID(c *gin.Context, envID api.EnvID, bu
 
 	dockerBuild, err := a.buildCache.Get(envID, buildID)
 	if err != nil {
-		msg := fmt.Errorf("no logs found for env %s and build %s", envID, buildID)
+		msg := fmt.Errorf("didn't find cache for env %s and build %s", envID, buildID)
 		a.sendAPIStoreError(c, http.StatusNotFound, msg.Error())
 
-		ReportCriticalError(ctx, msg)
+		ReportError(ctx, msg)
 
 		return
 	}
@@ -299,7 +299,7 @@ func (a *APIStore) PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context, envID api.EnvI
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when saving docker build logs: %s", err))
 
 		err = fmt.Errorf("error when saving docker build logs: %w", err)
-		ReportCriticalError(ctx, err)
+		ReportError(ctx, err)
 
 		return
 	}
