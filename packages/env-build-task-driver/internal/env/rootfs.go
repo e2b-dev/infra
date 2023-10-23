@@ -150,7 +150,7 @@ func (r *Rootfs) pushDockerImage(ctx context.Context, tracer trace.Tracer) error
 
 	authConfig := registry.AuthConfig{
 		Username: "_json_key_base64",
-		Password: string(r.env.GoogleServiceAccountBase64),
+		Password: r.env.GoogleServiceAccountBase64,
 	}
 	authConfigBytes, err := json.Marshal(authConfig)
 	if err != nil {
@@ -166,6 +166,14 @@ func (r *Rootfs) pushDockerImage(ctx context.Context, tracer trace.Tracer) error
 	if err != nil {
 		errMsg := fmt.Errorf("error pushing image %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
+	}
+
+	_, err = io.Copy(os.Stdout, logs)
+	if err != nil {
+		errMsg := fmt.Errorf("error copying logs %w", err)
+		telemetry.ReportError(childCtx, errMsg)
 
 		return errMsg
 	}

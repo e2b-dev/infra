@@ -153,7 +153,7 @@ func (e *Env) Build(ctx context.Context, tracer trace.Tracer, docker *client.Cli
 	defer func() {
 		go func() {
 			pushContext, pushSpan := tracer.Start(
-				trace.ContextWithSpanContext(childCtx, childSpan.SpanContext()),
+				trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
 				"push-docker-image-and-cleanup",
 			)
 			defer pushSpan.End()
