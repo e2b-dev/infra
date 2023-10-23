@@ -58,7 +58,8 @@ func (c *BuildCache) Append(envID, buildID string, logs []string) error {
 
 	item, err := c.get(envID, buildID)
 	if err != nil {
-		err = fmt.Errorf("build for %s not found in cache", envID)
+		err = fmt.Errorf("build for %s not found in cache: %w", envID, err)
+
 		return err
 	}
 
@@ -112,7 +113,7 @@ func (c *BuildCache) SetDone(envID string, buildID string, status api.Environmen
 	item, err := c.get(envID, buildID)
 
 	if err != nil {
-		return fmt.Errorf("build %s not found in cache", envID)
+		return fmt.Errorf("build %s not found in cache: %w", buildID, err)
 	}
 
 	c.cache.Set(envID, Build{
