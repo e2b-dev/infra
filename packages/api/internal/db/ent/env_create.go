@@ -48,12 +48,6 @@ func (ec *EnvCreate) SetDockerfile(s string) *EnvCreate {
 	return ec
 }
 
-// SetStatus sets the "status" field.
-func (ec *EnvCreate) SetStatus(e env.Status) *EnvCreate {
-	ec.mutation.SetStatus(e)
-	return ec
-}
-
 // SetPublic sets the "public" field.
 func (ec *EnvCreate) SetPublic(b bool) *EnvCreate {
 	ec.mutation.SetPublic(b)
@@ -63,14 +57,6 @@ func (ec *EnvCreate) SetPublic(b bool) *EnvCreate {
 // SetBuildID sets the "build_id" field.
 func (ec *EnvCreate) SetBuildID(u uuid.UUID) *EnvCreate {
 	ec.mutation.SetBuildID(u)
-	return ec
-}
-
-// SetNillableBuildID sets the "build_id" field if the given value is not nil.
-func (ec *EnvCreate) SetNillableBuildID(u *uuid.UUID) *EnvCreate {
-	if u != nil {
-		ec.SetBuildID(*u)
-	}
 	return ec
 }
 
@@ -147,16 +133,11 @@ func (ec *EnvCreate) check() error {
 	if _, ok := ec.mutation.Dockerfile(); !ok {
 		return &ValidationError{Name: "dockerfile", err: errors.New(`ent: missing required field "Env.dockerfile"`)}
 	}
-	if _, ok := ec.mutation.Status(); !ok {
-		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Env.status"`)}
-	}
-	if v, ok := ec.mutation.Status(); ok {
-		if err := env.StatusValidator(v); err != nil {
-			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Env.status": %w`, err)}
-		}
-	}
 	if _, ok := ec.mutation.Public(); !ok {
 		return &ValidationError{Name: "public", err: errors.New(`ent: missing required field "Env.public"`)}
+	}
+	if _, ok := ec.mutation.BuildID(); !ok {
+		return &ValidationError{Name: "build_id", err: errors.New(`ent: missing required field "Env.build_id"`)}
 	}
 	return nil
 }
@@ -205,10 +186,6 @@ func (ec *EnvCreate) createSpec() (*Env, *sqlgraph.CreateSpec) {
 	if value, ok := ec.mutation.Dockerfile(); ok {
 		_spec.SetField(env.FieldDockerfile, field.TypeString, value)
 		_node.Dockerfile = value
-	}
-	if value, ok := ec.mutation.Status(); ok {
-		_spec.SetField(env.FieldStatus, field.TypeEnum, value)
-		_node.Status = value
 	}
 	if value, ok := ec.mutation.Public(); ok {
 		_spec.SetField(env.FieldPublic, field.TypeBool, value)
