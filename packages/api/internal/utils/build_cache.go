@@ -13,46 +13,46 @@ const (
 	logsExpiration = time.Second * 60 * 5 // 5 minutes
 )
 
-type BuildLogs struct {
+type Build struct {
 	BuildID string
 	TeamID  string
 	Status  api.EnvironmentBuildStatus
 	Logs    []string
 }
 
-type BuildLogsCache struct {
-	cache *ttlcache.Cache[string, BuildLogs]
+type BuildCache struct {
+	cache *ttlcache.Cache[string, Build]
 	mutex sync.RWMutex
 }
 
-func NewBuildLogsCache() *BuildLogsCache {
-	return &BuildLogsCache{
-		cache: ttlcache.New(ttlcache.WithTTL[string, BuildLogs](logsExpiration)),
+func NewBuildCache() *BuildCache {
+	return &BuildCache{
+		cache: ttlcache.New(ttlcache.WithTTL[string, Build](logsExpiration)),
 		mutex: sync.RWMutex{},
 	}
 }
 
-func (c *BuildLogsCache) get(envID string, buildID string) (BuildLogs, error) {
+func (c *BuildCache) get(envID string, buildID string) (Build, error) {
 	item := c.cache.Get(envID)
 
 	if item != nil {
 		if item.Value().BuildID != buildID {
-			return BuildLogs{}, fmt.Errorf("received logs for another build %s env %s", buildID, envID)
+			return Build{}, fmt.Errorf("received logs for another build %s env %s", buildID, envID)
 		}
 		return item.Value(), nil
 	}
 
-	return BuildLogs{}, fmt.Errorf("build for %s not found in cache", envID)
+	return Build{}, fmt.Errorf("build for %s not found in cache", envID)
 }
 
-func (c *BuildLogsCache) Get(envID string, buildID string) (BuildLogs, error) {
+func (c *BuildCache) Get(envID string, buildID string) (Build, error) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
 	return c.get(envID, buildID)
 }
 
-func (c *BuildLogsCache) Append(envID, buildID string, logs []string) error {
+func (c *BuildCache) Append(envID, buildID string, logs []string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -62,7 +62,7 @@ func (c *BuildLogsCache) Append(envID, buildID string, logs []string) error {
 		return err
 	}
 
-	c.cache.Set(envID, BuildLogs{
+	c.cache.Set(envID, Build{
 		BuildID: item.BuildID,
 		TeamID:  item.TeamID,
 		Status:  item.Status,
@@ -72,7 +72,7 @@ func (c *BuildLogsCache) Append(envID, buildID string, logs []string) error {
 	return nil
 }
 
-func (c *BuildLogsCache) CreateIfNotExists(teamID, envID, buildID string) error {
+func (c *BuildCache) CreateIfNotExists(teamID, envID, buildID string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -81,7 +81,7 @@ func (c *BuildLogsCache) CreateIfNotExists(teamID, envID, buildID string) error 
 		return fmt.Errorf("build for %s already exists in cache", envID)
 	}
 
-	buildLog := BuildLogs{
+	buildLog := Build{
 		BuildID: buildID,
 		TeamID:  teamID,
 		Status:  api.EnvironmentBuildStatusBuilding,
@@ -92,11 +92,11 @@ func (c *BuildLogsCache) CreateIfNotExists(teamID, envID, buildID string) error 
 	return nil
 }
 
-func (c *BuildLogsCache) Create(teamID string, envID string, buildID string) {
+func (c *BuildCache) Create(teamID string, envID string, buildID string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	buildLog := BuildLogs{
+	buildLog := Build{
 		BuildID: buildID,
 		TeamID:  teamID,
 		Status:  api.EnvironmentBuildStatusBuilding,
@@ -105,7 +105,7 @@ func (c *BuildLogsCache) Create(teamID string, envID string, buildID string) {
 	c.cache.Set(envID, buildLog, logsExpiration)
 }
 
-func (c *BuildLogsCache) SetDone(envID string, buildID string, status api.EnvironmentBuildStatus) error {
+func (c *BuildCache) SetDone(envID string, buildID string, status api.EnvironmentBuildStatus) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -115,7 +115,7 @@ func (c *BuildLogsCache) SetDone(envID string, buildID string, status api.Enviro
 		return fmt.Errorf("build %s not found in cache", envID)
 	}
 
-	c.cache.Set(envID, BuildLogs{
+	c.cache.Set(envID, Build{
 		BuildID: item.BuildID,
 		Status:  status,
 		Logs:    item.Logs,

@@ -80,21 +80,7 @@ func (db *DB) UpsertEnv(teamID, envID, buildID, dockerfile string) error {
 		Exec(db.ctx)
 
 	if err != nil {
-		errMsg := fmt.Errorf("failed to create env with id '%s': %w", envID, err)
-
-		fmt.Println(errMsg.Error())
-
-		return errMsg
-	}
-
-	return nil
-}
-
-func (db *DB) UpdateDockerfileEnv(envID string, dockerfile string) error {
-	_, err := db.Client.Env.UpdateOneID(envID).SetDockerfile(dockerfile).Save(db.ctx)
-
-	if err != nil {
-		errMsg := fmt.Errorf("failed to update env with id '%s' with Dockerfile '%s': %w", envID, dockerfile, err)
+		errMsg := fmt.Errorf("failed to upsert env with id '%s': %w", envID, err)
 
 		fmt.Println(errMsg.Error())
 

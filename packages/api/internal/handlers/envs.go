@@ -37,7 +37,7 @@ func (a *APIStore) buildEnv(ctx context.Context, teamID string, envID string, bu
 		err = fmt.Errorf("error when starting build: %w", err)
 		ReportCriticalError(childCtx, err)
 
-		err = a.dockerBuildCache.SetDone(envID, buildID, api.EnvironmentBuildStatusError)
+		err = a.buildCache.SetDone(envID, buildID, api.EnvironmentBuildStatusError)
 		if err != nil {
 			err = fmt.Errorf("error when setting build done in logs: %w", err)
 			ReportCriticalError(childCtx, err)
@@ -52,7 +52,7 @@ func (a *APIStore) buildEnv(ctx context.Context, teamID string, envID string, bu
 		ReportCriticalError(childCtx, err)
 	}
 
-	err = a.dockerBuildCache.SetDone(envID, buildID, api.EnvironmentBuildStatusReady)
+	err = a.buildCache.SetDone(envID, buildID, api.EnvironmentBuildStatusReady)
 	if err != nil {
 		err = fmt.Errorf("error when setting build done in logs: %w", err)
 		ReportCriticalError(childCtx, err)
@@ -123,9 +123,9 @@ func (a *APIStore) PostEnvs(c *gin.Context) {
 		envID = utils.GenerateID()
 		SetAttributes(ctx, attribute.String("env.id", envID))
 
-		a.dockerBuildCache.Create(teamID, envID, buildID)
+		a.buildCache.Create(teamID, envID, buildID)
 
-		ReportEvent(ctx, "creating new environment")
+		ReportEvent(ctx, "started creating new environment")
 	} else {
 		SetAttributes(ctx, attribute.String("env.id", envID))
 
@@ -147,7 +147,7 @@ func (a *APIStore) PostEnvs(c *gin.Context) {
 			return
 		}
 
-		err = a.dockerBuildCache.CreateIfNotExists(teamID, envID, buildID)
+		err = a.buildCache.CreateIfNotExists(teamID, envID, buildID)
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("There's already running build for %s", envID))
 
@@ -243,7 +243,7 @@ func (a *APIStore) GetEnvsEnvIDBuildsBuildID(c *gin.Context, envID api.EnvID, bu
 		return
 	}
 
-	dockerBuild, err := a.dockerBuildCache.Get(envID, buildID)
+	dockerBuild, err := a.buildCache.Get(envID, buildID)
 	if err != nil {
 		msg := fmt.Errorf("no logs found for env %s and build %s", envID, buildID)
 		a.sendAPIStoreError(c, http.StatusNotFound, msg.Error())
@@ -294,7 +294,7 @@ func (a *APIStore) PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context, envID api.EnvI
 		return
 	}
 
-	err = a.dockerBuildCache.Append(envID, buildID, body.Logs)
+	err = a.buildCache.Append(envID, buildID, body.Logs)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when saving docker build logs: %s", err))
 
