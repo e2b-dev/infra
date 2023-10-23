@@ -74,7 +74,10 @@ func (db *DB) UpsertEnv(teamID, envID, buildID, dockerfile string) error {
 		return fmt.Errorf("failed to parse teamID: %w", err)
 	}
 
-	err = db.Client.Env.Create().SetID(envID).SetBuildID(buildUUID).SetTeamID(teamUUID).SetDockerfile(dockerfile).SetPublic(false).OnConflict().UpdateNewValues().Exec(db.ctx)
+	err = db.Client.Env.Create().SetID(envID).SetBuildID(buildUUID).SetTeamID(teamUUID).SetDockerfile(dockerfile).SetPublic(false).
+		OnConflictColumns(env.FieldID).
+		UpdateBuildID().UpdateDockerfile().
+		Exec(db.ctx)
 
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create env with id '%s': %w", envID, err)
