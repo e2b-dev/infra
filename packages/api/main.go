@@ -3,18 +3,20 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
+	"net/http"
+	"os"
+
 	middleware "github.com/deepmap/oapi-codegen/pkg/gin-middleware"
-	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/handlers"
-	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
-	"log"
-	"net/http"
-	"os"
+
+	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/handlers"
+	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 )
 
 const (

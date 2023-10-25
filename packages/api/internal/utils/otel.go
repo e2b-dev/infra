@@ -3,20 +3,19 @@ package utils
 import (
 	"context"
 	"fmt"
-	"go.opentelemetry.io/otel/propagation"
-	"google.golang.org/grpc/encoding/gzip"
 	"log"
 	"os"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/encoding/gzip"
 )
 
 const ServiceName = "TODO"
@@ -26,6 +25,9 @@ const otelCollectorGRPCEndpoint = "0.0.0.0:4317"
 // InitOTLPExporter initializes an OTLP exporter, and configures the corresponding trace providers.
 func InitOTLPExporter(serviceName string) (func(), error) {
 	env := os.Getenv("ENVIRONMENT")
+	if env == "" {
+		return func() {}, nil
+	}
 
 	hostname, err := os.Hostname()
 
