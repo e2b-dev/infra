@@ -3,29 +3,22 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"time"
-
-	"github.com/getkin/kin-openapi/openapi3filter"
-
-	"github.com/gin-contrib/cors"
-	"github.com/lightstep/otel-launcher-go/launcher"
-
-	"github.com/gin-contrib/pprof"
-
+	middleware "github.com/deepmap/oapi-codegen/pkg/gin-middleware"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
-
-	middleware "github.com/deepmap/oapi-codegen/pkg/gin-middleware"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
+	"log"
+	"net/http"
+	"os"
 )
 
 const (
-	serviceName               = "orchestration-api"
-	otelCollectorGRPCEndpoint = "0.0.0.0:4317"
+	serviceName = "orchestration-api"
 )
 
 var ignoreLoggingForPaths = []string{"/health"}
@@ -102,7 +95,6 @@ func NewGinServer(apiStore *handlers.APIStore, port int) *http.Server {
 func main() {
 	fmt.Println("Initializing...")
 
-	telemetryAPIKey := flag.String("telemetry-api", "", "api key for telemetry")
 	port := flag.Int("port", 80, "Port for test HTTP server")
 	flag.Parse()
 
@@ -112,24 +104,11 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	if *telemetryAPIKey == "" {
-		otelLauncher := launcher.ConfigureOpentelemetry(
-			launcher.WithServiceName(serviceName),
-			launcher.WithMetricReportingPeriod(20*time.Second),
-			launcher.WithSpanExporterEndpoint(otelCollectorGRPCEndpoint),
-			launcher.WithMetricExporterEndpoint(otelCollectorGRPCEndpoint),
-			launcher.WithMetricExporterInsecure(true),
-			launcher.WithSpanExporterInsecure(true),
-			launcher.WithPropagators([]string{"tracecontext", "baggage"}),
-		)
-		defer otelLauncher.Shutdown()
-	} else {
-		otelLauncher := launcher.ConfigureOpentelemetry(
-			launcher.WithServiceName(serviceName),
-			launcher.WithAccessToken(*telemetryAPIKey),
-		)
-		defer otelLauncher.Shutdown()
+	shutdown, err := utils.InitOTLPExporter(serviceName)
+	if err != nil {
+		log.Fatalf("failed to initialize OTLP exporter: %v", err)
 	}
+	defer shutdown()
 
 	// Create an instance of our handler which satisfies the generated interface
 	apiStore := handlers.NewAPIStore()
