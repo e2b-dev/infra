@@ -7,6 +7,7 @@ require (
 	entgo.io/ent v0.12.4
 	github.com/dchest/uniuri v1.2.0
 	github.com/deepmap/oapi-codegen v1.15.0
+	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/getkin/kin-openapi v0.120.0
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-contrib/pprof v1.4.0
@@ -19,14 +20,12 @@ require (
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.34.0
 	go.opentelemetry.io/otel v1.19.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.19.0
-	go.opentelemetry.io/otel/sdk v1.19.0
 	go.opentelemetry.io/otel/trace v1.19.0
 )
 
 require (
 	ariga.io/atlas v0.14.1-0.20230918065911-83ad451a4935 // indirect
-	cloud.google.com/go v0.110.6 // indirect
+	cloud.google.com/go v0.110.7 // indirect
 	cloud.google.com/go/compute v1.23.0 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	cloud.google.com/go/iam v1.1.1 // indirect
@@ -54,16 +53,18 @@ require (
 	github.com/zclconf/go-cty v1.8.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.19.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.19.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.19.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.0.0 // indirect
 	golang.org/x/arch v0.5.0 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/mod v0.12.0 // indirect
-	golang.org/x/oauth2 v0.10.0 // indirect
+	golang.org/x/oauth2 v0.11.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/api v0.126.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20230803162519-f966b187b2e5 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20230807174057-1744710a1577 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20230822172742-b8732ec3820d // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20230822172742-b8732ec3820d // indirect
 )
 
 require (
@@ -104,8 +105,10 @@ require (
 	golang.org/x/sync v0.3.0 // indirect
 	golang.org/x/sys v0.12.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
-	google.golang.org/genproto v0.0.0-20230803162519-f966b187b2e5 // indirect
-	google.golang.org/grpc v1.58.2
+	google.golang.org/genproto v0.0.0-20230822172742-b8732ec3820d // indirect
+	google.golang.org/grpc v1.59.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
