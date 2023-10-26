@@ -1,14 +1,13 @@
 package main
 
 import (
-	"github.com/e2b-dev/infra/packages/shared/utils"
 	log "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins"
 	"net/http"
+	_ "net/http/pprof"
 
 	driver "github.com/e2b-dev/infra/packages/env-instance-task-driver/internal"
-
-	_ "net/http/pprof"
+	"github.com/e2b-dev/infra/packages/shared/utils"
 )
 
 func configurePlugin() {
