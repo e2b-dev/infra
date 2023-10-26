@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -18,12 +19,15 @@ import (
 	"google.golang.org/grpc/encoding/gzip"
 )
 
-const ServiceName = "TODO"
-const ServiceVersion = "TODO"
 const otelCollectorGRPCEndpoint = "0.0.0.0:4317"
 
+type ExtraAttribute struct {
+	Key   string
+	Value string
+}
+
 // InitOTLPExporter initializes an OTLP exporter, and configures the corresponding trace providers.
-func InitOTLPExporter(serviceName string) (func(), error) {
+func InitOTLPExporter(serviceName string, serviceVersion string, extraAttributes ...attribute.KeyValue) (func(), error) {
 	env := os.Getenv("ENVIRONMENT")
 	if env == "" {
 		return func() {}, nil
@@ -38,13 +42,13 @@ func InitOTLPExporter(serviceName string) (func(), error) {
 	res, err := resource.New(
 		context.Background(),
 		resource.WithSchemaURL(semconv.SchemaURL),
+		resource.WithAttributes(extraAttributes...),
 		resource.WithAttributes(
-			semconv.ServiceName(ServiceName),
+			semconv.ServiceName(serviceName),
+			semconv.ServiceVersion(serviceVersion),
 			semconv.TelemetrySDKName("otel"),
 			semconv.TelemetrySDKLanguageGo,
-			semconv.TelemetrySDKVersion("TODO"),
 			semconv.ServiceName(serviceName),
-			semconv.ServiceVersion(ServiceVersion),
 			semconv.HostName(hostname),
 			semconv.DeploymentEnvironment(env),
 		),
@@ -56,7 +60,8 @@ func InitOTLPExporter(serviceName string) (func(), error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	conn, err := grpc.DialContext(ctx, otelCollectorGRPCEndpoint,
+	conn, err := grpc.DialContext(ctx,
+		otelCollectorGRPCEndpoint,
 		// Note the use of insecure transport here. TLS is recommended in production.
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(),

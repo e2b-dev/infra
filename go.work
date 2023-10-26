@@ -1,8 +1,9 @@
-go 1.21
-
-toolchain go1.21.0
+go 1.21.0
 
 use (
 	./packages/api
+	./packages/env-build-task-driver
+	./packages/env-instance-task-driver
 	./packages/envd
+	packages/shared
 )
