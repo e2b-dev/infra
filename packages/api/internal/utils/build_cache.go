@@ -116,7 +116,11 @@ func (c *BuildCache) Create(teamID string, envID string, buildID string) {
 		Logs:    []string{},
 	}
 	c.cache.Set(envID, buildLog, logsExpiration)
-	c.counter.Add(context.Background(), 1, metric.WithAttributes(attribute.String("env_id", envID)), metric.WithAttributes(attribute.String("build_id", buildID)))
+	c.counter.Add(
+		context.Background(),
+		1,
+		metric.WithAttributes(attribute.String("env_id", envID)),
+		metric.WithAttributes(attribute.String("build_id", buildID)))
 }
 
 // SetDone marks the build as finished

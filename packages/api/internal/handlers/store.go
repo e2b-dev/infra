@@ -129,7 +129,7 @@ func NewAPIStore() *APIStore {
 	buildCounter, err := meter.Int64UpDownCounter(
 		"running_builds",
 		metric.WithDescription(
-			"Number of running instances.",
+			"Number of running builds.",
 		),
 		metric.WithUnit("{build}"),
 	)
