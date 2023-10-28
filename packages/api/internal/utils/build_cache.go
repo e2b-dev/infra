@@ -120,7 +120,8 @@ func (c *BuildCache) Create(teamID string, envID string, buildID string) {
 		context.Background(),
 		1,
 		metric.WithAttributes(attribute.String("env_id", envID)),
-		metric.WithAttributes(attribute.String("build_id", buildID)))
+		metric.WithAttributes(attribute.String("build_id", buildID)),
+	)
 }
 
 // SetDone marks the build as finished
