@@ -92,7 +92,7 @@ func NewAPIStore() *APIStore {
 	meter := otel.GetMeterProvider().Meter("nomad")
 
 	instancesCounter, err := meter.Int64UpDownCounter(
-		"running_instances",
+		"api.env.instance.running",
 		metric.WithDescription(
 			"Number of running instances.",
 		),
@@ -127,7 +127,7 @@ func NewAPIStore() *APIStore {
 	}
 
 	buildCounter, err := meter.Int64UpDownCounter(
-		"running_builds",
+		"api.env.build.running",
 		metric.WithDescription(
 			"Number of running builds.",
 		),
