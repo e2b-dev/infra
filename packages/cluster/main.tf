@@ -26,19 +26,21 @@ resource "google_project_iam_member" "service-account-roles" {
   member  = "serviceAccount:${var.google_service_account_email}"
 }
 
-variable "setup_files" {
-  type = map(string)
-  default = {
-    "scripts/run-nomad.sh"  = "run-nomad.sh",
-    "scripts/run-consul.sh" = "run-consul.sh"
+
+resource "google_storage_bucket_object" "consul_start_script" {
+  name   = "run-consul.sh"
+  source = "${path.module}/run-consul.sh"
+  bucket = var.setup_bucket
+
+  lifecycle {
+    create_before_destroy = false
   }
 }
 
-resource "google_storage_bucket_object" "setup_config_objects" {
-  for_each = var.setup_files
-  name     = each.value
-  source   = "${path.module}/${each.key}"
-  bucket   = var.setup_bucket
+resource "google_storage_bucket_object" "nomad_start_script" {
+  name   = "run-nomad.sh"
+  source = "${path.module}/run-nomad.sh"
+  bucket = var.setup_bucket
 
   lifecycle {
     create_before_destroy = false
@@ -67,7 +69,7 @@ module "server_cluster" {
 
   service_account_email = var.google_service_account_email
 
-  depends_on = [google_storage_bucket_object.setup_config_objects]
+  depends_on = [google_storage_bucket_object.consul_start_script, google_storage_bucket_object.nomad_start_script]
 }
 
 module "client_cluster" {
@@ -99,7 +101,7 @@ module "client_cluster" {
 
   service_account_email = var.google_service_account_email
 
-  depends_on = [google_storage_bucket_object.setup_config_objects]
+  depends_on = [google_storage_bucket_object.consul_start_script, google_storage_bucket_object.nomad_start_script]
 }
 
 resource "google_compute_firewall" "orchstrator_firewall_ingress" {
