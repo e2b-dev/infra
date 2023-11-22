@@ -137,13 +137,13 @@ data "google_compute_ssl_certificate" "api_certificate" {
   name = "e2b-api"
 }
 
-# resource "google_certificate_manager_certificate" "instance_certificate" {
-#   name  = "e2b-api-cert"
-#   scope = "ALL_REGIONS"
-#   managed {
-#     domains = ["*.e2b-api.com", "e2b-api.com"]
-#   }
-# }
+resource "google_certificate_manager_certificate" "instance_certificate" {
+  name  = "e2b-api-cert"
+  scope = "ALL_REGIONS"
+  managed {
+    domains = ["*.e2b-api.com", "e2b-api.com"]
+  }
+}
 
 resource "google_compute_url_map" "client_map" {
   name            = "orch-external-session-map-client"
@@ -152,7 +152,7 @@ resource "google_compute_url_map" "client_map" {
   host_rule {
     hosts = [
       "api.e2b.dev",
-      # "e2b-api.com",
+      "e2b-api.com",
     ]
     path_matcher = "api-paths"
   }
@@ -160,7 +160,7 @@ resource "google_compute_url_map" "client_map" {
   host_rule {
     hosts = [
       "*.e2b.dev",
-      # "*.e2b-api.com",
+      "*.e2b-api.com",
     ]
     path_matcher = "session-paths"
   }
@@ -189,7 +189,7 @@ module "gce_lb_http" {
   ssl_certificates = [
     data.google_compute_ssl_certificate.session_certificate.self_link,
     data.google_compute_ssl_certificate.api_certificate.self_link,
-    # resource.google_certificate_manager_certificate.instance_certificate.id,
+    resource.google_certificate_manager_certificate.instance_certificate.id,
   ]
   create_address       = false
   use_ssl_certificates = true
