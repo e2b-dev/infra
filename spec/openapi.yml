@@ -280,6 +280,26 @@ paths:
         500:
           $ref: "#/components/responses/500"
 
+  /envs/{envID}/update:
+    post:
+      description: Update the environment by rebuilding it with the last build context
+      tags: [envs]
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/envID"
+      responses:
+        202:
+          description: The build has started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Environment"
+        401:
+          $ref: "#/components/responses/401"
+        500:
+          $ref: "#/components/responses/500"
+
   /envs/{envID}:
     post:
       description: Rebuild an environment

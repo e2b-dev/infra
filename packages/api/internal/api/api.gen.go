@@ -32,6 +32,9 @@ type ServerInterface interface {
 	// (POST /envs/{envID}/builds/{buildID}/logs)
 	PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context, envID EnvID, buildID BuildID)
 
+	// (POST /envs/{envID}/update)
+	PostEnvsEnvIDUpdate(c *gin.Context, envID EnvID)
+
 	// (GET /health)
 	GetHealth(c *gin.Context)
 
@@ -212,6 +215,32 @@ func (siw *ServerInterfaceWrapper) PostEnvsEnvIDBuildsBuildIDLogs(c *gin.Context
 	siw.Handler.PostEnvsEnvIDBuildsBuildIDLogs(c, envID, buildID)
 }
 
+// PostEnvsEnvIDUpdate operation middleware
+func (siw *ServerInterfaceWrapper) PostEnvsEnvIDUpdate(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "envID" -------------
+	var envID EnvID
+
+	err = runtime.BindStyledParameter("simple", false, "envID", c.Param("envID"), &envID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter envID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostEnvsEnvIDUpdate(c, envID)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(c *gin.Context) {
 
@@ -299,6 +328,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/envs/:envID", wrapper.PostEnvsEnvID)
 	router.GET(options.BaseURL+"/envs/:envID/builds/:buildID", wrapper.GetEnvsEnvIDBuildsBuildID)
 	router.POST(options.BaseURL+"/envs/:envID/builds/:buildID/logs", wrapper.PostEnvsEnvIDBuildsBuildIDLogs)
+	router.POST(options.BaseURL+"/envs/:envID/update", wrapper.PostEnvsEnvIDUpdate)
 	router.GET(options.BaseURL+"/health", wrapper.GetHealth)
 	router.POST(options.BaseURL+"/instances", wrapper.PostInstances)
 	router.POST(options.BaseURL+"/instances/:instanceID/refreshes", wrapper.PostInstancesInstanceIDRefreshes)
