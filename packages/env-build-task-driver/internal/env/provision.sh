@@ -31,7 +31,7 @@ User=root
 Group=root
 Environment=GOTRACEBACK=all
 LimitCORE=infinity
-ExecStart=/usr/bin/bash -l -c "/usr/bin/envd"
+ExecStart=/usr/bin/bash -l -c "/usr/bin/envd -c '{{ .StartCmd }}'"
 OOMPolicy=continue
 OOMScoreAdjust=-999
 
@@ -104,29 +104,5 @@ echo "nameserver 8.8.8.8" >/etc/resolv.conf
 # Start systemd services
 systemctl enable envd
 systemctl enable chrony 2>&1
-
-# Add start command service if the start command is not empty.
-if [ -n "{{ .StartCmd }}" ]; then
-
-  cat <<EOF >/etc/systemd/system/start_cmd.service
-[Unit]
-Description=Start Command Service
-After=multi-user.target network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-Restart=no
-User=user
-Group=user
-ExecStart=/usr/bin/bash -l -c "{{ .StartCmd }}"
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-  systemctl enable start_cmd
-
-fi
 
 echo "Finished provisioning script"

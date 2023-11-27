@@ -231,7 +231,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	}{
 		EnvID:    r.env.EnvID,
 		BuildID:  r.env.BuildID,
-		StartCmd: strings.ReplaceAll(r.env.StartCmd, "\"", "\\\""),
+		StartCmd: strings.ReplaceAll(r.env.StartCmd, "'", "\\'"),
 	})
 	if err != nil {
 		errMsg := fmt.Errorf("error executing provision script %w", err)
