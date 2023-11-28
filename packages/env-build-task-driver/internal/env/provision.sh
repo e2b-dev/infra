@@ -31,7 +31,7 @@ User=root
 Group=root
 Environment=GOTRACEBACK=all
 LimitCORE=infinity
-ExecStart=/usr/bin/bash -l -c "/usr/bin/envd -c '{{ .StartCmd }}'"
+ExecStart=/usr/bin/bash -l -c "/usr/bin/envd -cmd '{{ .StartCmd }}'"
 OOMPolicy=continue
 OOMScoreAdjust=-999
 
