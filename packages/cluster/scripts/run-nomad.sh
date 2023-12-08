@@ -182,6 +182,9 @@ client {
     path = "/mnt/disks/fc-envs"
     read_only = false
   }
+  options = {
+    "docker.auth.helper" = "gcloud"
+  }
 }
 leave_on_terminate = true
 
@@ -215,9 +218,6 @@ plugin "docker" {
   config {
     volumes {
       enabled = true
-    }
-    auth {
-      config = "/root/docker/config.json"
     }
   }
 }
