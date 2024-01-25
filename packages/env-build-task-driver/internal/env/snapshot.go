@@ -274,16 +274,15 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 	rootfs := "rootfs"
 	ioEngine := "Async"
 	isRootDevice := true
-	isReadOnly := false
 	pathOnHost := s.env.tmpRootfsPath()
 	driversConfig := operations.PutGuestDriveByIDParams{
 		Context: childCtx,
 		DriveID: rootfs,
 		Body: &models.Drive{
 			DriveID:      &rootfs,
-			PathOnHost:   &pathOnHost,
+			PathOnHost:   pathOnHost,
 			IsRootDevice: &isRootDevice,
-			IsReadOnly:   &isReadOnly,
+			IsReadOnly:   false,
 			IoEngine:     &ioEngine,
 		},
 	}
