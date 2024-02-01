@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -34,7 +35,7 @@ type InstanceFiles struct {
 func newInstanceFiles(
 	ctx context.Context,
 	tracer trace.Tracer,
-	slot *IPSlot,
+	slot *instance.IPSlot,
 	envID,
 	envsDisk string,
 ) (*InstanceFiles, error) {
@@ -82,7 +83,7 @@ func newInstanceFiles(
 	}
 
 	// Create socket
-	socketPath, sockErr := getSocketPath(slot.InstanceID)
+	socketPath, sockErr := instance.GetSocketPath(slot.InstanceID)
 	if sockErr != nil {
 		errMsg := fmt.Errorf("error getting socket path: %w", sockErr)
 		telemetry.ReportCriticalError(childCtx, errMsg)

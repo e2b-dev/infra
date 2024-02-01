@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/txn2/txeh"
 
+	"github.com/txn2/txeh"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -14,7 +15,7 @@ type Instance struct {
 	EnvID string
 
 	Files *InstanceFiles
-	Slot  *IPSlot
+	Slot  *instance.IPSlot
 	FC    *FC
 
 	config *InstanceConfig
@@ -42,7 +43,7 @@ func NewInstance(
 	defer childSpan.End()
 
 	// Get slot from Consul KV
-	ips, err := NewSlot(
+	ips, err := instance.NewSlot(
 		childCtx,
 		tracer,
 		config.NodeID,

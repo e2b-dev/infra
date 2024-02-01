@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -114,7 +115,7 @@ func startFC(
 	ctx context.Context,
 	tracer trace.Tracer,
 	allocID string,
-	slot *IPSlot,
+	slot *instance.IPSlot,
 	fsEnv *InstanceFiles,
 	mmdsMetadata *MmdsMetadata,
 ) (*FC, error) {

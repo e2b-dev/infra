@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -29,9 +30,6 @@ const (
 
 	fcIfaceID  = "eth0"
 	tmpDirPath = "/tmp"
-
-	socketReadyCheckInterval = 100 * time.Millisecond
-	socketWaitTimeout        = 2 * time.Second
 
 	waitTimeForFCConfig = 500 * time.Millisecond
 
@@ -45,32 +43,6 @@ type Snapshot struct {
 
 	env        *Env
 	socketPath string
-}
-
-func waitForSocket(socketPath string, timeout time.Duration) error {
-	start := time.Now()
-
-	for {
-		_, err := os.Stat(socketPath)
-		if err == nil {
-			// Socket file exists
-			return nil
-		} else if os.IsNotExist(err) {
-			// Socket file doesn't exist yet
-
-			// Check if timeout has been reached
-			elapsed := time.Since(start)
-			if elapsed >= timeout {
-				return fmt.Errorf("timeout reached while waiting for socket file")
-			}
-
-			// Wait for a short duration before checking again
-			time.Sleep(socketReadyCheckInterval)
-		} else {
-			// Error occurred while checking for socket file
-			return err
-		}
-	}
 }
 
 func newFirecrackerClient(socketPath string) *client.Firecracker {
@@ -234,7 +206,7 @@ func (s *Snapshot) startFCProcess(ctx context.Context, tracer trace.Tracer, fcBi
 	}()
 
 	// Wait for the FC process to start so we can use FC API
-	err = waitForSocket(s.socketPath, socketWaitTimeout)
+	err = instance.WaitForSocket(s.socketPath, instance.SocketWaitTimeout)
 	if err != nil {
 		errMsg := fmt.Errorf("error waiting for fc socket %w", err)
 
