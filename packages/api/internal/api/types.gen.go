@@ -156,6 +156,15 @@ type Sandbox struct {
 	TemplateID string `json:"templateID"`
 }
 
+// SandboxLogs defines model for SandboxLogs.
+type SandboxLogs struct {
+	// Logs Logs of the sandbox
+	Logs []string `json:"logs"`
+
+	// LogsOffset Index of the last log
+	LogsOffset int `json:"logsOffset"`
+}
+
 // SandboxMetadata defines model for SandboxMetadata.
 type SandboxMetadata map[string]string
 
@@ -266,6 +275,15 @@ type PostEnvsEnvIDBuildsBuildIDLogsJSONBody struct {
 type PostInstancesInstanceIDRefreshesJSONBody struct {
 	// Duration Duration for which the instance should be kept alive in seconds
 	Duration *int `json:"duration,omitempty"`
+}
+
+// GetSandboxesSandboxIDLogsParams defines parameters for GetSandboxesSandboxIDLogs.
+type GetSandboxesSandboxIDLogsParams struct {
+	// Offset Index of the starting log that should be returned with the sandbox
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Limit Maximum number of logs that should be returned with the sandbox
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // PostSandboxesSandboxIDRefreshesJSONBody defines parameters for PostSandboxesSandboxIDRefreshes.

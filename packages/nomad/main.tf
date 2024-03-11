@@ -80,6 +80,8 @@ resource "nomad_job" "api" {
       analytics_collector_host      = data.google_secret_manager_secret_version.analytics_collector_host.secret_data
       analytics_collector_api_token = data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data
       otel_tracing_print            = "false"
+
+      loki_service_port_number = var.loki_service_port.port
     }
   }
 }
@@ -147,9 +149,28 @@ resource "nomad_job" "logs-collector" {
       logs_health_path        = var.logs_health_proxy_port.health_path
       logs_port_name          = var.logs_proxy_port.name
 
+      loki_service_port_number = var.loki_service_port.port
+
       grafana_api_key       = data.google_secret_manager_secret_version.grafana_api_key.secret_data
       grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_endpoint.secret_data
       grafana_logs_username = data.google_secret_manager_secret_version.grafana_logs_username.secret_data
+    }
+  }
+}
+
+resource "nomad_job" "loki" {
+  jobspec = file("${path.module}/loki.hcl")
+
+  hcl2 {
+    vars = {
+      gcp_zone = var.gcp_zone
+
+      consul_token = var.consul_acl_token_secret
+
+      loki_bucket_name = var.loki_bucket_name
+
+      loki_service_port_number = var.loki_service_port.port
+      loki_service_port_name   = var.loki_service_port.name
     }
   }
 }

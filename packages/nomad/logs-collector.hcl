@@ -30,6 +30,10 @@ variable "grafana_logs_endpoint" {
   type = string
 }
 
+variable "loki_service_port_number" {
+  type = number
+}
+
 job "logs-collector" {
   datacenters = [var.gcp_zone]
   type        = "service"
@@ -101,8 +105,8 @@ job "logs-collector" {
 data_dir = "alloc/data/vector/"
 
 [api]
-  enabled = true
-  address = "0.0.0.0:${var.logs_health_port_number}"
+enabled = true
+address = "0.0.0.0:${var.logs_health_port_number}"
 
 [sources.vector]
 type = "internal_logs"
@@ -125,6 +129,16 @@ inputs = ["envd"]
 source = """
 .service = "envd"
 """
+
+[sinks.local_loki_logs]
+type = "loki"
+inputs = [ "add_source_envd" ]
+endpoint = "http://localhost:${var.loki_service_port_number}"
+encoding.codec = "json"
+
+[sinks.local_loki_logs.labels]
+source = "logs-collector"
+service = "{{ service }}"
 
 [sinks.grafana]
 type = "loki"
