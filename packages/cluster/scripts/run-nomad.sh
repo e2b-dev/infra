@@ -270,6 +270,9 @@ function generate_supervisor_config {
 
   log_info "Creating Supervisor config file to run Nomad in $supervisor_config_path"
   cat >"$supervisor_config_path" <<EOF
+[supervisord]
+nocleanup=true
+
 [program:nomad]
 command=$nomad_bin_dir/nomad agent -config $nomad_config_dir -data-dir $nomad_data_dir
 stdout_logfile=$nomad_log_dir/nomad-stdout.log
@@ -290,8 +293,7 @@ function start_nomad {
 
 function bootstrap {
   log_info "Waiting for Nomad to start"
-  while test -z "$(curl -s http://127.0.0.1:4646/v1/agent/health)"
-  do
+  while test -z "$(curl -s http://127.0.0.1:4646/v1/agent/health)"; do
     log_info "Nomad not yet started. Waiting for 1 second."
     sleep 1
   done
@@ -299,7 +301,7 @@ function bootstrap {
 
   local readonly nomad_token="$1"
   log_info "Bootstrapping Nomad"
-  echo "$nomad_token" > "/tmp/nomad.token"
+  echo "$nomad_token" >"/tmp/nomad.token"
   nomad acl bootstrap /tmp/nomad.token
   rm "/tmp/nomad.token"
 }
