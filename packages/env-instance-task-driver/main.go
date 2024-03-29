@@ -2,9 +2,11 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"sync"
 	"time"
 
 	log "github.com/hashicorp/go-hclog"
@@ -40,6 +42,7 @@ func main() {
 	envID := flag.String("env", "", "env id")
 	instanceID := flag.String("instance", "", "instance id")
 	keepAlive := flag.Int("alive", 0, "keep alive")
+	count := flag.Int("count", 1, "number of spawned instances")
 
 	flag.Parse()
 
@@ -47,7 +50,31 @@ func main() {
 		// Start of mock build for testing
 		consulToken := os.Getenv("CONSUL_TOKEN")
 
-		instance.MockInstance(*envID, *instanceID, consulToken, time.Duration(*keepAlive)*time.Second)
+		dns, err := instance.NewDNS()
+		if err != nil {
+			panic(err)
+		}
+
+		groupSize := 2
+
+		for i := 0; i < *count; i++ {
+			func(in int, envID, instanceID string, count int) {
+				var wg sync.WaitGroup
+
+				for j := 0; j < groupSize; j++ {
+					wg.Add(1)
+
+					go func(jn int) {
+						defer wg.Done()
+						id := fmt.Sprintf("%s_%d", instanceID, in+jn*count)
+						fmt.Printf("\nSTARTING [%s]\n\n", id)
+						instance.MockInstance(envID, id, consulToken, dns, time.Duration(*keepAlive)*time.Second)
+					}(j)
+				}
+
+				wg.Wait()
+			}(i, *envID, *instanceID, *count)
+		}
 	} else {
 		configurePlugin()
 	}
