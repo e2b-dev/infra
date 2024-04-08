@@ -74,6 +74,16 @@ cat <<EOF >/root/docker/config.json
 }
 EOF
 
+mkdir -p /etc/systemd/resolved.conf.d/
+touch /etc/systemd/resolved.conf.d/consul.conf
+cat <<EOF >/etc/systemd/resolved.conf.d/consul.conf
+[Resolve]
+DNS=127.0.0.1:8600
+DNSSEC=false
+Domains=~consul
+EOF
+systemctl restart systemd-resolved
+
 # Set up huge pages
 # We are not enabling Transparent Huge Pages for now, as they are not swappable and may result in slowdowns + we are not using swap right now.
 # The THP are by default set to madvise
@@ -147,5 +157,10 @@ echo "- Allocating $overcommitment_hugepages huge pages ($overcommitment_hugepag
 echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
 
 # These variables are passed in via Terraform template interpolation
-/opt/consul/bin/run-consul.sh --client --consul-token "${CONSUL_TOKEN}" --cluster-tag-name "${CLUSTER_TAG_NAME}" --enable-gossip-encryption --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" &
+/opt/consul/bin/run-consul.sh --client \
+  --consul-token "${CONSUL_TOKEN}" \
+  --cluster-tag-name "${CLUSTER_TAG_NAME}" \
+  --enable-gossip-encryption \
+  --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" \
+  --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" &
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" &
