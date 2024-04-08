@@ -167,6 +167,7 @@ client {
     path = "/mnt/disks/fc-envs"
     read_only = false
   }
+}
 
 plugin "env-instance-task-driver" {}
 plugin "env-build-task-driver" {}
@@ -174,8 +175,6 @@ plugin "template-delete-task-driver" {}
 
 EOF
 )
-
-
 %{ else }
   local server_config=$(
       cat <<EOF
@@ -314,7 +313,7 @@ function run {
   local log_dir=""
   local user=""
   local skip_nomad_config="false"
-  local use_sudo=""
+  local use_sudo="false"
   local all_args=()
 
   while [[ $# > 0 ]]; do
@@ -394,12 +393,12 @@ function run {
   assert_not_empty "--num-servers" "$num_servers"
 %{ endif }
 
-  if [[ -z "$use_sudo" ]]; then
 %{ if TARGET == "client" }
-      use_sudo="true"
-%{ else }
-      use_sudo="false"
+  if [[ -z "$use_sudo" ]]; then
+    use_sudo="true"
+  fi
 %{ endif }
+
 
   assert_is_installed "supervisorctl"
   assert_is_installed "curl"

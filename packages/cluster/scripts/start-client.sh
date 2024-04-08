@@ -172,9 +172,8 @@ EOF
 systemctl restart systemd-resolved
 
 # These variables are passed in via Terraform template interpolation
-/opt/consul/bin/run-consul.sh --client \
-  --cluster-tag-name "${CLUSTER_TAG_NAME}" \
+/opt/consul/bin/run-consul.sh --cluster-tag-name "${CLUSTER_TAG_NAME}" \
   --enable-gossip-encryption \
   --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" \
   --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" &
-/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" &
+/opt/nomad/bin/run-nomad.sh --consul-token "${CONSUL_TOKEN}" &
