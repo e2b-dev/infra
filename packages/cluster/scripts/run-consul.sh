@@ -5,7 +5,7 @@ set -e
 
 # Import the appropriate bash commons libraries
 readonly BASH_COMMONS_DIR="/opt/gruntwork/bash-commons"
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR="$(cd "$(dirname "$${BASH_SOURCE[0]}")" && pwd)"
 
 readonly CONSUL_CONFIG_FILE="default.json"
 readonly SYSTEMD_CONFIG_PATH="/etc/systemd/system/consul.service"
@@ -40,8 +40,6 @@ function print_usage {
   echo
   echo "Options:"
   echo
-  echo -e "  --server\t\tIf set, run in server mode. Optional. Exactly one of --server or --client must be set."
-  echo -e "  --client\t\tIf set, run in client mode. Optional. Exactly one of --server or --client must be set."
   echo -e "  --consul-token\t\tThe Consul ACL token to use."
   echo -e "  --cluster-tag-name\tAutomatically form a cluster with Instances that have the same value for this Compute Instance tag name. Optional."
   echo -e "  --datacenter\t\tThe name of the datacenter Consul is running in. Optional. If not specified, will default to GCP region name."
@@ -76,7 +74,7 @@ function print_usage {
   echo
   echo "Example:"
   echo
-  echo "  run-consul.sh --server --cluster-tag-name consul-xyz --config-dir /custom/path/to/consul/config"
+  echo "  run-consul.sh --cluster-tag-name consul-xyz --config-dir /custom/path/to/consul/config"
 }
 
 # Get the value at a specific Instance Metadata path.
@@ -136,34 +134,33 @@ function split_by_lines {
   shift
 
   for var in "$@"; do
-    echo "${prefix}${var}"
+    echo "$${prefix}$${var}"
   done
 }
 
 function generate_consul_config {
-  local -r server="${1}"
-  local -r config_dir="${2}"
-  local -r user="${3}"
-  local -r cluster_tag_name="${4}"
-  local -r cluster_size_instance_metadata_key_name="${5}"
-  local -r datacenter="${6}"
-  local -r enable_gossip_encryption="${7}"
-  local -r gossip_encryption_key="${8}"
-  local -r enable_rpc_encryption="${9}"
-  local -r verify_server_hostname="${10}"
-  local -r ca_path="${11}"
-  local -r cert_file_path="${12}"
-  local -r key_file_path="${13}"
-  local -r cleanup_dead_servers="${14}"
-  local -r last_contact_threshold="${15}"
-  local -r max_trailing_logs="${16}"
-  local -r server_stabilization_time="${17}"
-  local -r redundancy_zone_tag="${18}"
-  local -r disable_upgrade_migration="${19}"
-  local -r upgrade_version_tag=${20}
+  local -r config_dir="$${1}"
+  local -r user="$${2}"
+  local -r cluster_tag_name="$${3}"
+  local -r cluster_size_instance_metadata_key_name="$${4}"
+  local -r datacenter="$${5}"
+  local -r enable_gossip_encryption="$${6}"
+  local -r gossip_encryption_key="$${7}"
+  local -r enable_rpc_encryption="$${8}"
+  local -r verify_server_hostname="$${9}"
+  local -r ca_path="$${10}"
+  local -r cert_file_path="$${11}"
+  local -r key_file_path="$${12}"
+  local -r cleanup_dead_servers="$${13}"
+  local -r last_contact_threshold="$${14}"
+  local -r max_trailing_logs="$${15}"
+  local -r server_stabilization_time="$${16}"
+  local -r redundancy_zone_tag="$${17}"
+  local -r disable_upgrade_migration="$${18}"
+  local -r upgrade_version_tag=$${19}
   local -r config_path="$config_dir/$CONSUL_CONFIG_FILE"
 
-  shift 20
+  shift 19
   local -ar recursors=("$@")
 
   local instance_id=""
@@ -191,23 +188,23 @@ EOF
   fi
 
   local recursors_config=""
-  if [[ ${#recursors[@]} -ne 0 ]]; then
+  if [[ $${#recursors[@]} -ne 0 ]]; then
     recursors_config="\"recursors\" : [ "
-    for recursor in "${recursors[@]}"; do
-      recursors_config="${recursors_config}\"${recursor}\", "
+    for recursor in "$${recursors[@]}"; do
+      recursors_config="$${recursors_config}\"$${recursor}\", "
     done
-    recursors_config=$(echo "${recursors_config}" | sed 's/, $//')" ],"
+    recursors_config=$(echo "$${recursors_config}" | sed 's/, $//')" ],"
   fi
 
   local bootstrap_expect=""
-  if [[ "$server" == "true" ]]; then
+%{ if TARGET == "server" }
     local cluster_size=""
 
     cluster_size=$(get_instance_custom_metadata_value "$cluster_size_instance_metadata_key_name")
 
     bootstrap_expect="\"bootstrap_expect\": $cluster_size,"
     ui="true"
-  fi
+%{ endif }
 
   local autopilot_configuration
   autopilot_configuration=$(
@@ -275,7 +272,7 @@ EOF
   "skip_leave_on_interrupt": true,
   $recursors_config
   $retry_join_json
-  "server": $server,
+  "server": %{ if TARGET == "server" }true%{ else }false%{ endif },
   $gossip_encryption_configuration
   $rpc_encryption_configuration
   $autopilot_configuration
@@ -327,7 +324,7 @@ KillMode=process
 Restart=on-failure
 TimeoutSec=300s
 LimitNOFILE=65536
-$(split_by_lines "Environment=" "${environment[@]}")
+$(split_by_lines "Environment=" "$${environment[@]}")
 EOF
   )
 
@@ -372,7 +369,7 @@ function bootstrap {
     if [[ "$consul_leader_addr" == "\"$instance_ip_address:8300\"" ]]; then
       local consul_token="$1"
       log_info "Bootstrapping Consul"
-      echo "${consul_token}" >/tmp/consul.token
+      echo "$${consul_token}" >/tmp/consul.token
       consul acl bootstrap /tmp/consul.token
       rm /tmp/consul.token
 
@@ -390,8 +387,8 @@ service_prefix "" {
 EOF
 
 
-      consul acl policy create -name "dns-request-policy" -rules @dns-request-policy.hcl -token="${consul_token}"
-      consul acl token create -secret "${dns_token}" -description "DNS Request Token" -policy-name "dns-request-policy" -token="${consul_token}" > /tmp/dns-request-token
+      consul acl policy create -name "dns-request-policy" -rules @dns-request-policy.hcl -token="$${consul_token}"
+      consul acl token create -secret "$${dns_token}" -description "DNS Request Token" -policy-name "dns-request-policy" -token="$${consul_token}" > /tmp/dns-request-token
 
       break
     fi
@@ -410,8 +407,8 @@ EOF
 function setup_dns_resolving {
   log_info "Waiting for Consul to start"
   while true; do
-    local readonly consul_leader_addr=$(consul info -token="${consul_token}"| grep "leader_addr =" | awk -F'=' '{print $2}' | tr -d ' ')
-    local readonly consul_leader=$(consul info -token="${consul_token}"| grep "leader =" | awk -F'=' '{print $2}' | tr -d ' ')
+    local readonly consul_leader_addr=$(consul info -token="$${consul_token}"| grep "leader_addr =" | awk -F'=' '{print $2}' | tr -d ' ')
+    local readonly consul_leader=$(consul info -token="$${consul_token}"| grep "leader =" | awk -F'=' '{print $2}' | tr -d ' ')
     if [[ -n "$consul_leader_addr" ]]; then
       log_info "Consul leader elected"  log_info "Setting up Consul as the DNS resolver"
       break
@@ -421,7 +418,7 @@ function setup_dns_resolving {
   # Based on https://developer.hashicorp.com/consul/tutorials/security/access-control-setup-production#token-for-dns
   # Token is created on the leader node, so there's no problem with duplication
   local readonly dns_token="$1"
-  consul acl set-agent-token -token="${consul_token}" default "${dns_token}"
+  consul acl set-agent-token -token="$${consul_token}" default "$${dns_token}"
   log_info "DNS Request Token set"
 }
 
@@ -446,8 +443,6 @@ function get_owner_home_dir {
 }
 
 function run {
-  local server="false"
-  local client="false"
   local config_dir=""
   local data_dir=""
   local systemd_stdout=""
@@ -478,12 +473,6 @@ function run {
     local key="$1"
 
     case "$key" in
-    --server)
-      server="true"
-      ;;
-    --client)
-      client="true"
-      ;;
     --consul-token)
       assert_not_empty "$key" "$2"
       consul_token="$2"
@@ -624,11 +613,6 @@ function run {
     shift
   done
 
-  if [[ ("$server" == "true" && "$client" == "true") || ("$server" == "false" && "$client" == "false") ]]; then
-    log_error "Exactly one of --server or --client must be set."
-    exit 1
-  fi
-
   assert_is_installed "systemctl"
   assert_is_installed "curl"
   assert_is_installed "jq"
@@ -667,8 +651,7 @@ function run {
       assert_not_empty "--key_file_path" "$key_file_path"
     fi
 
-    generate_consul_config "$server" \
-      "$config_dir" \
+    generate_consul_config "$config_dir" \
       "$user" \
       "$cluster_tag_name" \
       "$CLUSTER_SIZE_INSTANCE_METADATA_KEY_NAME" \
@@ -687,19 +670,18 @@ function run {
       "$redundancy_zone_tag" \
       "$disable_upgrade_migration" \
       "$upgrade_version_tag" \
-      "${recursors[@]}"
+      "$${recursors[@]}"
   fi
 
-  generate_systemd_config "$SYSTEMD_CONFIG_PATH" "$config_dir" "$data_dir" "$systemd_stdout" "$systemd_stderr" "$bin_dir" "$user" "${environment[@]}"
+  generate_systemd_config "$SYSTEMD_CONFIG_PATH" "$config_dir" "$data_dir" "$systemd_stdout" "$systemd_stderr" "$bin_dir" "$user" "$${environment[@]}"
   start_consul
 
-  if [[ "$client" == "true" ]]; then
-    setup_dns_resolving "$consul_token" "$dns_request_token"
-  fi
-
-  if [[ "$server" == "true" ]]; then
-    bootstrap "$consul_token" "$dns_request_token"
-  fi
+%{ if TARGET == "client" }
+  setup_dns_resolving "$consul_token" "$dns_request_token"
+%{ endif }
+%{ if TARGET == "server" }
+  bootstrap "$consul_token" "$dns_request_token"
+%{ endif }
 }
 
 run "$@"

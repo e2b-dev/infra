@@ -1,11 +1,5 @@
 # Server cluster instances are not currently automatically updated when you create a new
 # orchestrator image with Packer.
-locals {
-  file_hash = {
-    "scripts/run-consul.sh" = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
-    "scripts/run-nomad.sh"  = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
-  }
-}
 
 resource "google_secret_manager_secret" "consul_gossip_encryption_key" {
   secret_id = "${var.prefix}consul-gossip-key"
@@ -46,18 +40,27 @@ resource "google_project_iam_member" "network_viewer" {
   role    = "roles/compute.networkViewer"
 }
 
-variable "setup_files" {
-  type = map(string)
-  default = {
-    "scripts/run-nomad.sh"  = "run-nomad",
-    "scripts/run-consul.sh" = "run-consul"
-  }
+variable "targets" {
+  type    = list(string)
+  default = ["server", "client"]
+}
+
+variable "template_files" {
+  type = list(string)
+  default = [
+  "run-nomad.sh", "run-consul.sh"]
+}
+
+locals {
+  setup_files = setproduct(var.targets, var.template_files)
+  files       = { for target in var.targets : target => { for file in var.template_files : file => templatefile("${path.module}/scripts/${file}", { TARGET : target }) } }
+  hashes      = { for target in var.targets : target => { for file in var.template_files : file => substr(sha256(local.files[target][file]), 0, 8) } }
 }
 
 resource "google_storage_bucket_object" "setup_config_objects" {
-  for_each = var.setup_files
-  name     = "${each.value}-${local.file_hash[each.key]}.sh"
-  source   = "${path.module}/${each.key}"
+  for_each = { for value in local.setup_files : "${value[0]}-${value[1]}" => { target : value[0], path : value[1] } }
+  name     = "${split(".", each.value.path)[0]}-${each.value.target}-${local.hashes[each.value.target][each.value.path]}.sh"
+  content  = local.files[each.value.target][each.value.path]
   bucket   = var.cluster_setup_bucket_name
 }
 
@@ -70,8 +73,8 @@ module "server_cluster" {
     SCRIPTS_BUCKET               = var.cluster_setup_bucket_name
     NOMAD_TOKEN                  = var.nomad_acl_token_secret
     CONSUL_TOKEN                 = var.consul_acl_token_secret
-    RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
-    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
+    RUN_CONSUL_FILE_HASH         = local.hashes["server"]["run-consul.sh"]
+    RUN_NOMAD_FILE_HASH          = local.hashes["server"]["run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
   })
@@ -106,8 +109,8 @@ module "client_cluster" {
     GOOGLE_SERVICE_ACCOUNT_KEY   = var.google_service_account_key
     NOMAD_TOKEN                  = var.nomad_acl_token_secret
     CONSUL_TOKEN                 = var.consul_acl_token_secret
-    RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
-    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
+    RUN_CONSUL_FILE_HASH         = local.hashes["client"]["run-consul.sh"]
+    RUN_NOMAD_FILE_HASH          = local.hashes["client"]["run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
   })

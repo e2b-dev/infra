@@ -9,7 +9,7 @@ readonly SUPERVISOR_CONFIG_PATH="/etc/supervisor/conf.d/run-nomad.conf"
 readonly COMPUTE_INSTANCE_METADATA_URL="http://metadata.google.internal/computeMetadata/v1"
 readonly GOOGLE_CLOUD_METADATA_REQUEST_HEADER="Metadata-Flavor: Google"
 
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR="$(cd "$(dirname "$${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_NAME="$(basename "$0")"
 
 function print_usage {
@@ -20,8 +20,6 @@ function print_usage {
   echo
   echo "Options:"
   echo
-  echo -e "  --server\t\tIf set, run in server mode. Optional. At least one of --server or --client must be set."
-  echo -e "  --client\t\tIf set, run in client mode. Optional. At least one of --server or --client must be set."
   echo -e "  --num-servers\t\tThe minimum number of servers to expect in the Nomad cluster. Required if --server is true."
   echo -e "  --consul-token\t\tThe ACL token that Consul uses."
   echo -e "  --nomad-token\t\tThe Nomad ACL token to use."
@@ -35,14 +33,14 @@ function print_usage {
   echo
   echo "Example:"
   echo
-  echo "  run-nomad.sh --server --config-dir /custom/path/to/nomad/config"
+  echo "  run-nomad.sh --config-dir /custom/path/to/nomad/config"
 }
 
 function log {
   local readonly level="$1"
   local readonly message="$2"
   local readonly timestamp=$(date +"%Y-%m-%d %H:%M:%S")
-  echo >&2 -e "${timestamp} [${level}] [$SCRIPT_NAME] ${message}"
+  echo >&2 -e "$${timestamp} [$${level}] [$${SCRIPT_NAME}] $${message}"
 }
 
 function log_info {
@@ -64,7 +62,7 @@ function log_error {
 function strip_prefix {
   local readonly str="$1"
   local readonly prefix="$2"
-  echo "${str#$prefix}"
+  echo "$${str#$prefix}"
 }
 
 function assert_not_empty {
@@ -137,19 +135,17 @@ function get_instance_ip_address {
 function assert_is_installed {
   local readonly name="$1"
 
-  if [[ ! $(command -v ${name}) ]]; then
+  if [[ ! $(command -v $${name}) ]]; then
     log_error "The binary '$name' is required by this script but is not installed or in the system's PATH."
     exit 1
   fi
 }
 
 function generate_nomad_config {
-  local readonly server="$1"
-  local readonly client="$2"
-  local readonly num_servers="$3"
-  local readonly config_dir="$4"
-  local readonly user="$5"
-  local readonly consul_token="$6"
+  local readonly num_servers="$1"
+  local readonly config_dir="$2"
+  local readonly user="$3"
+  local readonly consul_token="$4"
   local readonly config_path="$config_dir/$NOMAD_CONFIG_FILE"
 
   local instance_name=""
@@ -162,22 +158,8 @@ function generate_nomad_config {
   instance_region=$(get_instance_region)
   zone=$(get_instance_zone)
 
-  local server_config=""
-  if [[ "$server" == "true" ]]; then
-    server_config=$(
-      cat <<EOF
-server {
-  enabled = true
-  bootstrap_expect = $num_servers
-}
-
-EOF
-    )
-  fi
-
-  local client_config=""
-  if [[ "$client" == "true" ]]; then
-    client_config=$(
+%{ if TARGET == "client" }
+  local client_config=$(
       cat <<EOF
 client {
   enabled = true
@@ -185,15 +167,27 @@ client {
     path = "/mnt/disks/fc-envs"
     read_only = false
   }
-}
 
 plugin "env-instance-task-driver" {}
 plugin "env-build-task-driver" {}
 plugin "template-delete-task-driver" {}
 
 EOF
-    )
-  fi
+)
+
+
+%{ else }
+  local server_config=$(
+      cat <<EOF
+server {
+  enabled = true
+  bootstrap_expect = $num_servers
+}
+
+EOF
+)
+%{ endif }
+
 
   log_info "Creating default Nomad config file in $config_path"
   cat >"$config_path" <<EOF
@@ -211,9 +205,11 @@ advertise {
 leave_on_interrupt = true
 leave_on_terminate = true
 
+%{ if TARGET == "client" }
 $client_config
-
+%{ else }
 $server_config
+%{ endif }
 
 plugin_dir = "/opt/nomad/plugins"
 
@@ -311,8 +307,6 @@ function get_owner_of_path {
 }
 
 function run {
-  local server="false"
-  local client="false"
   local num_servers=""
   local config_dir=""
   local data_dir=""
@@ -327,12 +321,6 @@ function run {
     local key="$1"
 
     case "$key" in
-    --server)
-      server="true"
-      ;;
-    --client)
-      client="true"
-      ;;
     --num-servers)
       num_servers="$2"
       shift
@@ -402,22 +390,16 @@ function run {
     shift
   done
 
-  if [[ "$server" == "true" ]]; then
-    assert_not_empty "--num-servers" "$num_servers"
-  fi
-
-  if [[ "$server" == "false" && "$client" == "false" ]]; then
-    log_error "At least one of --server or --client must be set"
-    exit 1
-  fi
+%{ if TARGET == "server" }
+  assert_not_empty "--num-servers" "$num_servers"
+%{ endif }
 
   if [[ -z "$use_sudo" ]]; then
-    if [[ "$client" == "true" ]]; then
+%{ if TARGET == "client" }
       use_sudo="true"
-    else
+%{ else }
       use_sudo="false"
-    fi
-  fi
+%{ endif }
 
   assert_is_installed "supervisorctl"
   assert_is_installed "curl"
@@ -445,15 +427,15 @@ function run {
   if [[ "$skip_nomad_config" == "true" ]]; then
     log_info "The --skip-nomad-config flag is set, so will not generate a default Nomad config file."
   else
-    generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$consul_token"
+    generate_nomad_config "$num_servers" "$config_dir" "$user" "$consul_token"
   fi
 
   generate_supervisor_config "$SUPERVISOR_CONFIG_PATH" "$config_dir" "$data_dir" "$bin_dir" "$log_dir" "$user" "$use_sudo"
   start_nomad
 
-  if [[ "$server" == "true" ]]; then
-    bootstrap "$nomad_token"
-  fi
+  %{ if TARGET == "server" }
+  bootstrap "$nomad_token"
+  %{ endif }
 }
 
 run "$@"
