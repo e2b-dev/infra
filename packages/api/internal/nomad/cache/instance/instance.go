@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -38,7 +39,6 @@ type InstanceCache struct {
 
 	logger *zap.SugaredLogger
 
-	counter   metric.Int64UpDownCounter
 	analytics analyticscollector.AnalyticsCollectorClient
 
 	mu sync.Mutex
@@ -46,18 +46,46 @@ type InstanceCache struct {
 
 // We will need to either use Redis for storing active instances OR retrieve them from Nomad when we start API to keep everything in sync
 // We are retrieving the tasks from Nomad now.
-func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap.SugaredLogger, deleteInstance func(data InstanceInfo, purge bool) *api.APIError, initialInstances []*InstanceInfo, counter metric.Int64UpDownCounter) *InstanceCache {
+func NewCache(
+	analytics analyticscollector.AnalyticsCollectorClient,
+	logger *zap.SugaredLogger,
+	deleteInstance func(data InstanceInfo, purge bool) *api.APIError,
+	initialInstances []*InstanceInfo,
+	counter metric.Int64ObservableUpDownCounter,
+	meter metric.Meter,
+) (*InstanceCache, error) {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, InstanceInfo](InstanceExpiration),
 	)
 
 	instanceCache := &InstanceCache{
 		cache:     cache,
-		counter:   counter,
 		logger:    logger,
 		analytics: analytics,
 
 		reservations: NewReservationCache(),
+	}
+
+	_, err := meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
+		if instanceCache.cache.Len() == 0 {
+			o.ObserveInt64(counter, 0)
+		} else {
+			for _, item := range instanceCache.cache.Items() {
+				instance := item.Value()
+				o.ObserveInt64(
+					counter,
+					1,
+					metric.WithAttributes(
+						attribute.String("instance_id", instance.Instance.SandboxID),
+						attribute.String("env_id", instance.Instance.TemplateID),
+						attribute.String("team_id", instance.TeamID.String()),
+					))
+			}
+		}
+		return nil
+	}, counter)
+	if err != nil {
+		return nil, fmt.Errorf("error registering callback: %w", err)
 	}
 
 	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, InstanceInfo]) {
@@ -80,8 +108,6 @@ func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap
 			if err != nil {
 				logger.Errorf("Error deleting instance (%v)\n: %v", er, err.Err)
 			}
-
-			instanceCache.UpdateCounter(i.Value(), -1)
 		}
 	})
 
@@ -94,5 +120,5 @@ func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap
 
 	go cache.Start()
 
-	return instanceCache
+	return instanceCache, nil
 }

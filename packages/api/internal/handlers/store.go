@@ -90,7 +90,7 @@ func NewAPIStore() *APIStore {
 
 	meter := otel.GetMeterProvider().Meter("nomad")
 
-	instancesCounter, err := meter.Int64UpDownCounter(
+	instancesCounter, err := meter.Int64ObservableUpDownCounter(
 		"api.env.instance.running",
 		metric.WithDescription(
 			"Number of running instances.",
@@ -108,7 +108,11 @@ func NewAPIStore() *APIStore {
 
 	logger.Info("Initialized Analytics client")
 
-	instanceCache := instance.NewCache(analytics.Client, logger, getDeleteInstanceFunction(ctx, nomadClient, analytics, posthogClient, logger), initialInstances, instancesCounter)
+	instanceCache, err := instance.NewCache(analytics.Client, logger, getDeleteInstanceFunction(ctx, nomadClient, analytics, posthogClient, logger), initialInstances, instancesCounter, meter)
+	if err != nil {
+		logger.Errorf("Error initializing instance cache\n: %v", err)
+		panic(err)
+	}
 
 	logger.Info("Initialized instance cache")
 
