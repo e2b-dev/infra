@@ -53,6 +53,7 @@ function print_usage {
   echo -e "  --user\t\tThe user to run Consul as. Optional. Default is to use the owner of --config-dir."
   echo -e "  --enable-gossip-encryption\t\tEnable encryption of gossip traffic between nodes. Optional. Must also specify --gossip-encryption-key."
   echo -e "  --gossip-encryption-key\t\tThe key to use for encrypting gossip traffic. Optional. Must be specified with --enable-gossip-encryption."
+  echo -e "  --dns-request-token\t\tThe token to use for DNS requests."
   echo -e "  --enable-rpc-encryption\t\tEnable encryption of RPC traffic between nodes. Optional. Must also specify --ca-file-path, --cert-file-path and --key-file-path."
   echo -e "  --ca-path\t\tPath to the directory of CA files used to verify outgoing connections. Optional. Must be specified with --enable-rpc-encryption."
   echo -e "  --cert-file-path\tPath to the certificate file used to verify incoming connections. Optional. Must be specified with --enable-rpc-encryption and --key-file-path."
@@ -375,6 +376,23 @@ function bootstrap {
       consul acl bootstrap /tmp/consul.token
       rm /tmp/consul.token
 
+      local readonly dns_token="$2"
+      # Based on https://developer.hashicorp.com/consul/tutorials/security/access-control-setup-production#token-for-dns
+      # Token is created on the leader node, so there's no problem with duplication
+      touch dns-request-policy.hcl
+      cat <<EOF >dns-request-policy.hcl
+node_prefix "" {
+  policy = "read"
+}
+service_prefix "" {
+  policy = "read"
+}
+EOF
+
+
+      consul acl policy create -name "dns-request-policy" -rules @dns-request-policy.hcl -token="${consul_token}"
+      consul acl token create -secret "${dns_token}" -description "DNS Request Token" -policy-name "dns-request-policy" -token="${consul_token}" > /tmp/dns-request-token
+
       break
     fi
 
@@ -387,6 +405,24 @@ function bootstrap {
     log_info "Waiting for Consul to start"
     sleep 1
   done
+}
+
+function setup_dns_resolving {
+  log_info "Waiting for Consul to start"
+  while true; do
+    local readonly consul_leader_addr=$(consul info -token="${consul_token}"| grep "leader_addr =" | awk -F'=' '{print $2}' | tr -d ' ')
+    local readonly consul_leader=$(consul info -token="${consul_token}"| grep "leader =" | awk -F'=' '{print $2}' | tr -d ' ')
+    if [[ -n "$consul_leader_addr" ]]; then
+      log_info "Consul leader elected"  log_info "Setting up Consul as the DNS resolver"
+      break
+    fi
+  done
+
+  # Based on https://developer.hashicorp.com/consul/tutorials/security/access-control-setup-production#token-for-dns
+  # Token is created on the leader node, so there's no problem with duplication
+  local readonly dns_token="$1"
+  consul acl set-agent-token -token="${consul_token}" default "${dns_token}"
+  log_info "DNS Request Token set"
 }
 
 # Based on: http://unix.stackexchange.com/a/7732/215969
@@ -535,6 +571,11 @@ function run {
       gossip_encryption_key="$2"
       shift
       ;;
+    --dns-request-token)
+      assert_not_empty "$key" "$2"
+      dns_request_token="$2"
+      shift
+      ;;
     --enable-rpc-encryption)
       enable_rpc_encryption="true"
       ;;
@@ -652,8 +693,12 @@ function run {
   generate_systemd_config "$SYSTEMD_CONFIG_PATH" "$config_dir" "$data_dir" "$systemd_stdout" "$systemd_stderr" "$bin_dir" "$user" "${environment[@]}"
   start_consul
 
+  if [[ "$client" == "true" ]]; then
+    setup_dns_resolving "$consul_token" "$dns_request_token"
+  fi
+
   if [[ "$server" == "true" ]]; then
-    bootstrap "$consul_token"
+    bootstrap "$consul_token" "$dns_request_token"
   fi
 }
 
