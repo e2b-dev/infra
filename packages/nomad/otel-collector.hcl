@@ -137,6 +137,7 @@ processors:
     timeout: 5s
 
 extensions:
+%{ if var.grafana_api_key != " " }
   basicauth/grafana_cloud_traces:
     client_auth:
       username: "${var.grafana_traces_username}"
@@ -149,11 +150,13 @@ extensions:
     client_auth:
       username: "${var.grafana_logs_username}"
       password: "${var.grafana_api_key}"
+%{ endif }
   health_check:
 
 exporters:
   debug:
     verbosity: detailed
+%{ if var.grafana_api_key != " " }
   otlp/grafana_cloud_traces:
     endpoint: "${var.grafana_traces_endpoint}"
     auth:
@@ -166,37 +169,54 @@ exporters:
     endpoint: "${var.grafana_metrics_endpoint}"
     auth:
       authenticator: basicauth/grafana_cloud_metrics
+%{ endif }
 
 service:
   telemetry:
     logs:
       level: warn
   extensions:
+    - health_check
+%{ if var.grafana_api_key != " " }
     - basicauth/grafana_cloud_traces
     - basicauth/grafana_cloud_metrics
     - basicauth/grafana_cloud_logs
-    - health_check
+%{ endif }
   pipelines:
     metrics:
       receivers:
         - prometheus
         - otlp
       processors: [batch]
+%{ if var.grafana_api_key != " " }
       exporters:
         - prometheusremotewrite/grafana_cloud_metrics
+%{ else }
+      exporters:
+        - debug
+%{ endif }
     traces:
       receivers:
         - otlp
       processors: [batch]
+%{ if var.grafana_api_key != " " }
       exporters:
         - otlp/grafana_cloud_traces
+%{ else }
+      exporters:
+        - debug
+%{ endif }
     logs:
       receivers:
         - otlp
       processors: [batch]
+%{ if var.grafana_api_key != " " }
       exporters:
         - loki/grafana_cloud_logs
-
+%{ else }
+      exporters:
+        - debug
+%{ endif }
 EOF
 
         destination = "local/config/otel-collector-config.yaml"

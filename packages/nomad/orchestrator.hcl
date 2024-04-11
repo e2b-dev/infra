@@ -91,6 +91,8 @@ job "orchestrator" {
       }
 
       config {
+        network_mode = "host"
+
         command = "/bin/bash"
         args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${var.port}"]
       }
