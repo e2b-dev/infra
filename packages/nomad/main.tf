@@ -60,9 +60,9 @@ resource "nomad_job" "api" {
 
   hcl2 {
     vars = {
+      loki_address                  = "http://loki.service.consul:${var.loki_service_port.port}"
       orchestrator_address          = "http://localhost:${var.orchestrator_port}"
       template_manager_address      = "http://localhost:${var.template_manager_port}"
-      loki_address                  = "http://localhost:${var.loki_service_port.port}"
       gcp_zone                      = var.gcp_zone
       api_port_name                 = var.api_port.name
       api_port_number               = var.api_port.port

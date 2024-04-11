@@ -96,6 +96,7 @@ job "template-manager" {
       }
 
       config {
+        network_mode = "host"
         command = "/bin/bash"
         args    = ["-c", " chmod +x local/template-manager && local/template-manager --port ${var.port}"]
       }
