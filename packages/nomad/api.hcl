@@ -1,6 +1,6 @@
 variable "gcp_zone" {
   type    = string
-  default = ""
+  default = "us-central1-a"
 }
 
 variable "image_name" {
@@ -128,8 +128,8 @@ job "orchestration-api" {
       driver = "docker"
 
       resources {
+        memory_max = 4096
         memory     = 2048
-        memory_max = 2048
         cpu        = 1024
       }
 
