@@ -1,8 +1,12 @@
-variable "gcp_project_id" {
+variable "aws_region" {
   type    = string
 }
 
-variable "gcp_zone" {
+variable "aws_access_key" {
+  type    = string
+}
+
+variable "aws_secret_key" {
   type    = string
 }
 

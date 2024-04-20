@@ -5,7 +5,7 @@ init:
 	packer init -upgrade .
 
 build:
-	packer build -var "gcp_project_id=$(GCP_PROJECT_ID)" -var "gcp_zone=$(GCP_ZONE)"  .
+	packer build -var "aws_region=$(AWS_REGION)" -var "aws_access_key=$(AWS_ACCESS_KEY)" -var "aws_secret_key=$(AWS_SECRET_KEY)" .
 
 format:
 	packer fmt .

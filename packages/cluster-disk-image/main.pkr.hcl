@@ -1,33 +1,32 @@
 packer {
   required_version = ">=1.8.4"
   required_plugins {
-    googlecompute = {
+    amazon = {
       version = "1.0.16"
-      source  = "github.com/hashicorp/googlecompute"
+      source  = "github.com/hashicorp/amazon"
     }
   }
 }
 
-source "googlecompute" "orch" {
-  image_family = "e2b-orch"
-  # TODO: Overwrite the image instead of creating timestamped images every time we build its
-  image_name          = "e2b-orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
-  project_id          = var.gcp_project_id
-  source_image_family = "ubuntu-2204-lts"
-  ssh_username        = "ubuntu"
-  zone                = var.gcp_zone
-  disk_size           = 10
-  disk_type           = "pd-ssd"
-
-  # This is used only for building the image and the GCE VM is then deleted
-  machine_type = "n1-standard-4"
-
-  # Enable nested virtualization
-  image_licenses = ["projects/vm-options/global/licenses/enable-vmx"]
+source "amazon-ebs" "orch" {
+  ami_name            = "e2b-orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
+  instance_type       = "t2.large"
+  region              = var.aws_region
+  source_ami_filter {
+    filters = {
+      name                = "ubuntu/images/hvm-ssd/ubuntu-22.04-amd64-server-*"
+      root-device-type    = "ebs"
+      virtualization-type = "hvm"
+    }
+    owners = ["099720109477"]  # Canonical
+    most_recent = true
+  }
+  ssh_username = "ubuntu"
+  ami_description = "An AMI for e2b-orch"
 }
 
 build {
-  sources = ["source.googlecompute.orch"]
+  sources = ["source.amazon-ebs.orch"]
 
   provisioner "file" {
     source      = "${path.root}/setup/supervisord.conf"
@@ -56,16 +55,15 @@ build {
 
   provisioner "shell" {
     inline = [
-      "export GCSFUSE_REPO=gcsfuse-`lsb_release -c -s`",
-      "echo \"deb https://packages.cloud.google.com/apt $GCSFUSE_REPO main\" | sudo tee /etc/apt/sources.list.d/gcsfuse.list",
-      "curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -",
-    ]
-  }
-
-  provisioner "shell" {
-    inline = [
-      "sudo apt-get update",
-      "sudo apt-get install -y unzip jq net-tools qemu-utils gcsfuse make build-essential",
+      "sudo apt-get update -y",
+      "sudo apt-get install -y unzip jq net-tools make gcc",
+      "sudo curl -sSL https://github.com/s3fs-fuse/s3fs-fuse/archive/v1.89.tar.gz -o s3fs-fuse.tar.gz",
+      "tar xzf s3fs-fuse.tar.gz",
+      "cd s3fs-fuse-1.89",
+      "sudo ./autogen.sh",
+      "sudo ./configure",
+      "sudo make",
+      "sudo make install",
     ]
   }
 
