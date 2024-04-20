@@ -5,7 +5,7 @@ init:
 	packer init -upgrade .
 
 build:
-	packer build -var "aws_region=$(AWS_REGION)" -var "aws_access_key=$(AWS_ACCESS_KEY)" -var "aws_secret_key=$(AWS_SECRET_KEY)" .
+	AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID) AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY) packer build -var "aws_region=$(AWS_REGION)" .
 
 format:
 	packer fmt .

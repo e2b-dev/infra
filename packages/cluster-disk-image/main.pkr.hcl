@@ -2,7 +2,7 @@ packer {
   required_version = ">=1.8.4"
   required_plugins {
     amazon = {
-      version = "1.0.16"
+      version = "1.3.2"
       source  = "github.com/hashicorp/amazon"
     }
   }
@@ -12,20 +12,23 @@ source "amazon-ebs" "orch" {
   ami_name            = "e2b-orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
   instance_type       = "t2.large"
   region              = var.aws_region
+
   source_ami_filter {
     filters = {
-      name                = "ubuntu/images/hvm-ssd/ubuntu-22.04-amd64-server-*"
+      name                = "ubuntu/images/*ubuntu-jammy-22.04-amd64-server-*"
       root-device-type    = "ebs"
       virtualization-type = "hvm"
     }
-    owners = ["099720109477"]  # Canonical
     most_recent = true
+    owners      = ["099720109477"]
   }
+
   ssh_username = "ubuntu"
   ami_description = "An AMI for e2b-orch"
 }
 
 build {
+  name = "e2b-orch-disk-image"
   sources = ["source.amazon-ebs.orch"]
 
   provisioner "file" {
@@ -56,14 +59,7 @@ build {
   provisioner "shell" {
     inline = [
       "sudo apt-get update -y",
-      "sudo apt-get install -y unzip jq net-tools make gcc",
-      "sudo curl -sSL https://github.com/s3fs-fuse/s3fs-fuse/archive/v1.89.tar.gz -o s3fs-fuse.tar.gz",
-      "tar xzf s3fs-fuse.tar.gz",
-      "cd s3fs-fuse-1.89",
-      "sudo ./autogen.sh",
-      "sudo ./configure",
-      "sudo make",
-      "sudo make install",
+      "sudo apt-get install -y unzip jq net-tools make gcc s3fs",
     ]
   }
 
@@ -101,20 +97,6 @@ build {
   provisioner "shell" {
     inline = [
       "sudo mkdir -p /opt/nomad/plugins",
-    ]
-  }
-
-  provisioner "file" {
-    source      = "${path.root}/setup/gc-ops.config.yaml"
-    destination = "/tmp/gc-ops.config.yaml"
-  }
-
-  provisioner "shell" {
-    inline = [
-      "sudo curl -sSO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh",
-      "sudo bash add-google-cloud-ops-agent-repo.sh --also-install",
-      "sudo mkdir -p /etc/google-cloud-ops-agent",
-      "sudo mv /tmp/gc-ops.config.yaml /etc/google-cloud-ops-agent/config.yaml",
     ]
   }
 }
