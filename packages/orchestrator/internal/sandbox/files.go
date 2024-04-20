@@ -288,21 +288,21 @@ func (env *InstanceFiles) Cleanup(
 			telemetry.ReportEvent(childCtx, "removed UFFD socket")
 		}
 	}
-	//
-	//err = os.Remove(env.FirecrackerBinaryPath)
-	//if err != nil {
-	//	errMsg := fmt.Errorf("error deleting firecracker: %w", err)
-	//	telemetry.ReportCriticalError(childCtx, errMsg)
-	//} else {
-	//	telemetry.ReportEvent(childCtx, "removed firecracker binary")
-	//}
-	//
-	//err = os.Remove(env.UFFDBinaryPath)
-	//if err != nil {
-	//	errMsg := fmt.Errorf("error deleting uffd: %w", err)
-	//	telemetry.ReportCriticalError(childCtx, errMsg)
-	//} else {
-	//	telemetry.ReportEvent(childCtx, "removed UFFD binary")
-	//}
+
+	err = os.Remove(env.FirecrackerBinaryPath)
+	if err != nil {
+		errMsg := fmt.Errorf("error deleting firecracker: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+	} else {
+		telemetry.ReportEvent(childCtx, "removed firecracker binary")
+	}
+
+	err = os.Remove(env.UFFDBinaryPath)
+	if err != nil {
+		errMsg := fmt.Errorf("error deleting uffd: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+	} else {
+		telemetry.ReportEvent(childCtx, "removed UFFD binary")
+	}
 	return nil
 }
