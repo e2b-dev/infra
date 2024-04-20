@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -81,6 +82,7 @@ func newInstanceFiles(
 	firecrackerBinaryPath,
 	uffdBinaryPath string,
 	hugePages bool,
+	sandboxID string,
 ) (*InstanceFiles, error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-env-instance",
 		trace.WithAttributes(
@@ -151,6 +153,78 @@ func newInstanceFiles(
 	// Create kernel path
 	kernelPath := filepath.Join(kernelsDir, kernelVersion)
 
+	// Copy FC binary
+	fcBinaryPath := filepath.Join("/tmp", sandboxID, "firecracker")
+	err = os.MkdirAll(filepath.Dir(fcBinaryPath), 0o777)
+	if err != nil {
+		return nil, err
+	}
+	sourceFileStat, err := os.Stat(firecrackerBinaryPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if !sourceFileStat.Mode().IsRegular() {
+		return nil, err
+	}
+
+	source, err := os.Open(firecrackerBinaryPath)
+	if err != nil {
+		return nil, err
+	}
+	defer source.Close()
+
+	destination, err := os.Create(fcBinaryPath)
+	if err != nil {
+		return nil, err
+	}
+	defer destination.Close()
+	_, err = io.Copy(destination, source)
+	if err != nil {
+		return nil, err
+	}
+
+	err = os.Chmod(fcBinaryPath, 0o777)
+	if err != nil {
+		return nil, err
+
+	}
+	// Copy UFFD
+	uffdPath := filepath.Join("/tmp", sandboxID, "uffd")
+	err = os.MkdirAll(filepath.Dir(uffdPath), 0o777)
+	if err != nil {
+		return nil, err
+	}
+	uffdStat, err := os.Stat(uffdBinaryPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if !uffdStat.Mode().IsRegular() {
+		return nil, err
+	}
+
+	uffdSource, err := os.Open(uffdBinaryPath)
+	if err != nil {
+		return nil, err
+	}
+	defer uffdSource.Close()
+
+	uffdDestination, err := os.Create(uffdPath)
+	if err != nil {
+		return nil, err
+	}
+	defer uffdDestination.Close()
+	_, err = io.Copy(uffdDestination, uffdSource)
+	if err != nil {
+		return nil, err
+	}
+
+	err = os.Chmod(uffdPath, 0o777)
+	if err != nil {
+		return nil, err
+	}
+
 	childSpan.SetAttributes(
 		attribute.String("instance.env_instance_path", envInstancePath),
 		attribute.String("instance.build.dir_path", buildDirPath),
@@ -167,9 +241,9 @@ func newInstanceFiles(
 		SocketPath:            socketPath,
 		KernelDirPath:         kernelPath,
 		KernelMountDirPath:    kernelMountDir,
-		FirecrackerBinaryPath: firecrackerBinaryPath,
+		FirecrackerBinaryPath: fcBinaryPath,
 		UFFDSocketPath:        uffdSocketPath,
-		UFFDBinaryPath:        uffdBinaryPath,
+		UFFDBinaryPath:        uffdPath,
 	}, nil
 }
 
@@ -214,6 +288,21 @@ func (env *InstanceFiles) Cleanup(
 			telemetry.ReportEvent(childCtx, "removed UFFD socket")
 		}
 	}
-
+	//
+	//err = os.Remove(env.FirecrackerBinaryPath)
+	//if err != nil {
+	//	errMsg := fmt.Errorf("error deleting firecracker: %w", err)
+	//	telemetry.ReportCriticalError(childCtx, errMsg)
+	//} else {
+	//	telemetry.ReportEvent(childCtx, "removed firecracker binary")
+	//}
+	//
+	//err = os.Remove(env.UFFDBinaryPath)
+	//if err != nil {
+	//	errMsg := fmt.Errorf("error deleting uffd: %w", err)
+	//	telemetry.ReportCriticalError(childCtx, errMsg)
+	//} else {
+	//	telemetry.ReportEvent(childCtx, "removed UFFD binary")
+	//}
 	return nil
 }

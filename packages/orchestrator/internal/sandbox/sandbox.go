@@ -122,6 +122,7 @@ func New(
 		config.FirecrackerBinaryPath,
 		config.UFFDBinaryPath,
 		config.HugePages,
+		config.SandboxID,
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create env for FC: %w", err)
