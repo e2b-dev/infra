@@ -64,8 +64,16 @@ build {
 
   provisioner "shell" {
     inline = [
+      "echo set debconf to Noninteractive",
+      "echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections",
       "sudo apt-get update",
       "sudo apt-get install -y unzip jq net-tools qemu-utils gcsfuse make build-essential",
+      "DEBIAN_FRONTEND=noninteractive sudo apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" kdump-tools",
+      "echo 'GRUB_CMDLINE_LINUX_DEFAULT=\"$GRUB_CMDLINE_LINUX_DEFAULT crashkernel=512M-:512M\"' | sudo tee /etc/default/grub.d/kdump-tools.cfg",
+      "sudo update-grub",
+      "sudo systemctl enable kdump-tools",
+      "sudo systemctl enable apport",
+      "ulimit -c unlimited",
     ]
   }
 
