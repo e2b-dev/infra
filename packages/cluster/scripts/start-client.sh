@@ -6,6 +6,11 @@
 
 set -euo pipefail
 
+# Copy kernels
+mkdir -p /mnt/disks/docker-context
+gcsfuse -o=allow_other --implicit-dirs "e2b-staging-kuba-envs-docker-context" /mnt/disks/docker-context
+cp -r /var/crash/* /mnt/disks/docker-context || true
+
 # Send the log output from this script to user-data.log, syslog, and the console
 # Inspired by https://alestic.com/2010/12/ec2-user-data-output/
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
