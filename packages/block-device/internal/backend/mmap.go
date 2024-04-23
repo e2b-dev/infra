@@ -5,33 +5,39 @@ import (
 	"os"
 	"sync"
 
+	"github.com/e2b-dev/infra/packages/block-device/internal/block"
 	"github.com/edsrzf/mmap-go"
 )
 
 type mmapped struct {
-	mmap mmap.MMap
-	file *os.File
-	mu   sync.RWMutex
+	mmap          mmap.MMap
+	file          *os.File
+	mu            sync.RWMutex
+	SparseTracker *block.SparseFile
 }
 
-func newMmapped(size int64, filePath string) (*mmapped, error) {
+func newMmapped(size int64, filePath string, createFile bool) (*mmapped, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o666)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 
-	// Truncate or expand the file to ensure it's the right size.
-	// Is should be sparse.
-	if err = f.Truncate(size); err != nil {
-		return nil, err
+	var sparseTracker *block.SparseFile
+	if createFile {
+		// Truncate or expand the file to ensure it's the right size.
+		// Is should be sparse.
+		if err = f.Truncate(size); err != nil {
+			return nil, err
+		}
+
+		// TODO: Try to preallocate the file via fallocate.
+		// err = fallocate.preAllocate(size, f)
+		// if err != nil {
+		// 	return nil, err
+		// }
+	} else {
+		sparseTracker = block.NewSparseFileChecker(f)
 	}
-
-	// TODO: Try to preallocate the file via fallocate.
-	// err = fallocate.preAllocate(size, f)
-	// if err != nil {
-	// 	return nil, err
-	// }
 
 	// Memory-map the file
 	mm, err := mmap.Map(f, mmap.RDWR, 0)
@@ -40,8 +46,9 @@ func newMmapped(size int64, filePath string) (*mmapped, error) {
 	}
 
 	return &mmapped{
-		mmap: mm,
-		file: f,
+		mmap:          mm,
+		file:          f,
+		SparseTracker: sparseTracker,
 	}, nil
 }
 
