@@ -379,24 +379,6 @@ function bootstrap {
       echo "${consul_token}" >/tmp/consul.token
       consul acl bootstrap /tmp/consul.token
       rm /tmp/consul.token
-
-      local readonly dns_token="$2"
-      # Based on https://developer.hashicorp.com/consul/tutorials/security/access-control-setup-production#token-for-dns
-      # Token is created on the leader node, so there's no problem with duplication
-      touch dns-request-policy.hcl
-      cat <<EOF >dns-request-policy.hcl
-node_prefix "" {
-  policy = "read"
-}
-service_prefix "" {
-  policy = "read"
-}
-EOF
-
-
-      consul acl policy create -name "dns-request-policy" -rules @dns-request-policy.hcl -token="${consul_token}"
-      consul acl token create -secret "${dns_token}" -description "DNS Request Token" -policy-name "dns-request-policy" -token="${consul_token}" > /tmp/dns-request-token
-
       break
     fi
 
@@ -421,10 +403,28 @@ function setup_dns_resolving {
     sleep 1
   done
 
-  # Based on https://developer.hashicorp.com/consul/tutorials/security/access-control-setup-production#token-for-dns
-  # Token is created on the leader node, so there's no problem with duplication
-  local readonly dns_token="$1"
-  consul acl set-agent-token -token="${consul_token}" default "${dns_token}"
+  if (($(consul acl policy read -name="dns-request-policy" -token="${consul_token}" | jq '.ID' | wc -l) > 0)); then
+    log_info "DNS Request Policy already exists"
+    return
+  else
+    # Based on https://developer.hashicorp.com/consul/tutorials/security/access-control-setup-production#token-for-dns
+    # Token is created on the leader node, so there's no problem with duplication
+    touch dns-request-policy.hcl
+    cat <<EOF >dns-request-policy.hcl
+node_prefix "" {
+  policy = "read"
+}
+service_prefix "" {
+  policy = "read"
+}
+EOF
+      consul acl policy create -name "dns-request-policy" -rules @dns-request-policy.hcl -token="${consul_token}"
+      consul acl token create -secret "${dns_request_token}" -description "DNS Request Token" -policy-name "dns-request-policy" -token="${consul_token}" > /tmp/dns-request-token
+      rm dns-request-policy.hcl
+  fi
+
+
+  consul acl set-agent-token -token="${consul_token}" default "${dns_request_token}"
   log_info "DNS Request Token set"
 }
 
@@ -702,7 +702,7 @@ function run {
   fi
 
   if [[ "$server" == "true" ]]; then
-    bootstrap "$consul_token" "$dns_request_token"
+    bootstrap "$consul_token"
   fi
 }
 
