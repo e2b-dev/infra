@@ -34,7 +34,10 @@ func (o *Overlay) ReadAt(b []byte, off int64) (int, error) {
 		}
 
 		if o.cacheReads {
-			o.cache.WriteAt(b[:n], off)
+			n, err := o.cache.WriteAt(b[:n], off)
+			if err != nil {
+				return n, err
+			}
 		}
 	}
 
