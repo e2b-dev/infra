@@ -60,8 +60,10 @@ func (m *mmapped) WriteAt(b []byte, off int64) (int, error) {
 }
 
 func (m *mmapped) Close() error {
+	flushErr := m.mmap.Flush()
+
 	mmapErr := m.mmap.Unmap()
 	closeErr := m.file.Close()
 
-	return errors.Join(mmapErr, closeErr)
+	return errors.Join(flushErr, mmapErr, closeErr)
 }
