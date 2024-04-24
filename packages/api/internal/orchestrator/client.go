@@ -19,8 +19,7 @@ type GRPCClient struct {
 	connection e2bgrpc.ClientConnInterface
 }
 
-func NewClient(nodeID string) (*GRPCClient, error) {
-	host := fmt.Sprintf("%s.node.consul", nodeID)
+func NewClient(host string) (*GRPCClient, error) {
 	portInt, err := strconv.Atoi(port)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert port to int: %w", err)

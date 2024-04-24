@@ -55,7 +55,12 @@ func (o *Orchestrator) CreateSandbox(
 		return nil, fmt.Errorf("failed to get least busy node: %w", err)
 	}
 
-	client, err := o.GetClient(nodeID)
+	host, err := o.GetHost(nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get host: %w", err)
+	}
+
+	client, err := o.GetClient(host)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GRPC client: %w", err)
 	}

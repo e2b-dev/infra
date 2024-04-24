@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -76,19 +75,11 @@ func NewAPIStore() *APIStore {
 		panic(posthogErr)
 	}
 
-	orch, err := orchestrator.New()
-	if err != nil {
-		logger.Errorf("Error initializing Orchestrator client\n: %v", err)
-		panic(err)
-	}
-
 	templateManager, err := template_manager.New()
 	if err != nil {
 		logger.Errorf("Error initializing Template manager client\n: %v", err)
 		panic(err)
 	}
-
-	var initialInstances []*instance.InstanceInfo
 
 	config := &consulapi.Config{Token: os.Getenv("CONSUL_TOKEN")}
 	consulClient, err := consulapi.NewClient(config)
@@ -97,26 +88,20 @@ func NewAPIStore() *APIStore {
 		panic(err)
 	}
 
+	orch, err := orchestrator.New(consulClient)
+	if err != nil {
+		logger.Errorf("Error initializing Orchestrator client\n: %v", err)
+		panic(err)
+	}
+
+	var initialInstances []*instance.InstanceInfo
 	if env.IsLocal() {
 		logger.Info("Skipping loading sandboxes, running locally")
 	} else {
-		// TODO: Add function for this, filter only clients
-		// TODO: Add mapping between node ID and client ID
-		nodes, _, err := consulClient.Catalog().Nodes(nil)
+		initialInstances, err = orch.InitialSync(ctx)
 		if err != nil {
-			logger.Errorf("Error getting nodes from Consul\n: %v", err)
+			logger.Errorf("Error initializing Orchestrator client\n: %v", err)
 			panic(err)
-		}
-
-		for _, node := range nodes {
-			if strings.Contains(node.Node, "client") {
-				instances, instancesErr := orch.GetInstances(ctx, node.Node)
-				if instancesErr != nil {
-					logger.Errorf("Error loading current sandboxes\n: %w", instancesErr)
-				}
-
-				initialInstances = append(initialInstances, instances...)
-			}
 		}
 	}
 

@@ -15,7 +15,12 @@ import (
 )
 
 func (o *Orchestrator) GetInstances(ctx context.Context, nodeID string) ([]*instance.InstanceInfo, error) {
-	client, err := o.GetClient(nodeID)
+	host, err := o.GetHost(nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get host: %w", err)
+	}
+
+	client, err := o.GetClient(host)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GRPC client: %w", err)
 	}

@@ -9,7 +9,12 @@ import (
 )
 
 func (o *Orchestrator) DeleteInstance(ctx context.Context, nodeID, sandboxID string) error {
-	client, err := o.GetClient(nodeID)
+	host, err := o.GetHost(nodeID)
+	if err != nil {
+		return fmt.Errorf("failed to get host: %w", err)
+	}
+
+	client, err := o.GetClient(host)
 	if err != nil {
 		return fmt.Errorf("failed to get GRPC client: %w", err)
 	}

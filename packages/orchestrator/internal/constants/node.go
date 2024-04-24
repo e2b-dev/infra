@@ -1,10 +1,9 @@
 package constants
 
-import "os"
+import (
+	"os"
 
-const shortNodeIDLength = 8
-
-var (
-	nodeID   = os.Getenv("NODE_ID")
-	ClientID = nodeID[:shortNodeIDLength]
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
+
+var ClientID = os.Getenv("NODE_ID")[:consts.NodeIDLength]
