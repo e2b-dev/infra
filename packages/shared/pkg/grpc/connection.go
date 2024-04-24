@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"google.golang.org/grpc"
@@ -21,7 +20,7 @@ type ClientConnInterface interface {
 }
 
 // TODO: Imrpove the TLS condition
-func GetConnection(host string, port int, options ...grpc.DialOption) (ClientConnInterface, error) {
+func GetConnection(host string, port int, tls bool, options ...grpc.DialOption) (ClientConnInterface, error) {
 	if strings.TrimSpace(host) == "" {
 		fmt.Println("Host for gRPC not set, using dummy connection")
 
@@ -29,7 +28,7 @@ func GetConnection(host string, port int, options ...grpc.DialOption) (ClientCon
 	}
 
 	host = regex.ReplaceAllString(host, "")
-	if strings.HasPrefix(host, "localhost") || strings.Contains(host, "node.consul") {
+	if strings.HasPrefix(host, "localhost") || !tls {
 		options = append(options, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		conn, err := grpc.Dial(fmt.Sprintf("%s:%d", host, port), options...)
 		if err != nil {

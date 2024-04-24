@@ -20,7 +20,7 @@ type GRPCClient struct {
 }
 
 func NewClient() (*GRPCClient, error) {
-	conn, err := e2bgrpc.GetConnection(host, port, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	conn, err := e2bgrpc.GetConnection(host, port, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}

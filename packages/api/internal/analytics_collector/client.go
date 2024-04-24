@@ -16,7 +16,7 @@ type Analytics struct {
 }
 
 func NewAnalytics() (*Analytics, error) {
-	conn, err := e2bgrpc.GetConnection(host, 443, grpc.WithPerRPCCredentials(&gRPCApiKey{}))
+	conn, err := e2bgrpc.GetConnection(host, 443, true, grpc.WithPerRPCCredentials(&gRPCApiKey{}))
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}

@@ -25,7 +25,7 @@ func NewClient(host string) (*GRPCClient, error) {
 		return nil, fmt.Errorf("failed to convert port to int: %w", err)
 	}
 
-	conn, err := e2bgrpc.GetConnection(host, portInt, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	conn, err := e2bgrpc.GetConnection(host, portInt, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
