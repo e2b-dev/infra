@@ -50,7 +50,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	telemetry.ReportEvent(childCtx, "Got FC version info")
 
-	nodeID, err := getLeastBusyNode(childCtx, t, consulClient)
+	nodeID, err := o.getLeastBusyNode(childCtx, t, consulClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get least busy node: %w", err)
 	}
@@ -103,7 +103,7 @@ type Node struct {
 	RamUsage int64
 }
 
-func getLeastBusyNode(ctx context.Context, tracer trace.Tracer, consulClient *consulapi.Client) (string, error) {
+func (o *Orchestrator) getLeastBusyNode(ctx context.Context, tracer trace.Tracer, consulClient *consulapi.Client) (string, error) {
 	childCtx, childSpan := tracer.Start(ctx, "get-least-busy-node")
 	defer childSpan.End()
 
@@ -126,7 +126,7 @@ func getLeastBusyNode(ctx context.Context, tracer trace.Tracer, consulClient *co
 	nodes := make([]*Node, 0, len(nodesInfo))
 	for _, nodeInfo := range nodesInfo {
 		node := &Node{
-			ID: nodeInfo.Node,
+			ID: o.getIdFromNode(nodeInfo),
 		}
 		key := orchestration.GetKVSandboxDataPrefix(node.ID)
 		sandboxes, _, err := consulClient.KV().List(key, nil)

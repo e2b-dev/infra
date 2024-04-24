@@ -22,6 +22,7 @@ func New(consulClient *api.Client) (*Orchestrator, error) {
 	return &Orchestrator{
 		consulClient: consulClient,
 		clients:      map[string]*GRPCClient{},
+		nodeToHost:   map[string]string{},
 	}, nil
 }
 
@@ -69,7 +70,7 @@ func (o *Orchestrator) GetHost(nodeID string) (string, error) {
 }
 
 func (o *Orchestrator) ListNodes() ([]*api.Node, error) {
-	nodes, _, err := o.consulClient.Catalog().Nodes(&api.QueryOptions{Filter: "\"client\" in Name"})
+	nodes, _, err := o.consulClient.Catalog().Nodes(&api.QueryOptions{Filter: "\"client\" in Node"})
 	if err != nil {
 		return nil, err
 	}
