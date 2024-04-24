@@ -20,6 +20,7 @@ type ClientConnInterface interface {
 	Close() error
 }
 
+// TODO: Imrpove the TLS condition
 func GetConnection(host string, port int, options ...grpc.DialOption) (ClientConnInterface, error) {
 	if strings.TrimSpace(host) == "" {
 		fmt.Println("Host for gRPC not set, using dummy connection")
@@ -28,7 +29,7 @@ func GetConnection(host string, port int, options ...grpc.DialOption) (ClientCon
 	}
 
 	host = regex.ReplaceAllString(host, "")
-	if strings.HasPrefix(host, "localhost") {
+	if strings.HasPrefix(host, "localhost") || strings.Contains(host, "node.consul") {
 		options = append(options, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		conn, err := grpc.Dial(host, options...)
 		if err != nil {
