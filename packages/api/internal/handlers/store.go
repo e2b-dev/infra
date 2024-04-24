@@ -106,7 +106,7 @@ func NewAPIStore() *APIStore {
 		}
 
 		for _, node := range nodes {
-			instances, instancesErr := orch.GetInstances(ctx, node.ID)
+			instances, instancesErr := orch.GetInstances(ctx, node.ID[:8])
 			if instancesErr != nil {
 				logger.Errorf("Error loading current sandboxes\n: %w", instancesErr)
 			}

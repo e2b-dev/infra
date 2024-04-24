@@ -154,5 +154,6 @@ func getLeastBusyNode(ctx context.Context, tracer trace.Tracer, consulClient *co
 		}
 	}
 
-	return nodes[0].ID, nil
+	// TODO: use function to get the node ID
+	return nodes[0].ID[:8], nil
 }
