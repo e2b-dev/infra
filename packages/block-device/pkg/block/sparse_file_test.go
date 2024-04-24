@@ -35,7 +35,7 @@ func TestSparseFileMarkerWithMmap(t *testing.T) {
 	}
 
 	// Test FirstUnmarked in the middle of the file
-	start, err := sfm.FirstUnmarked(5)
+	start, err := sfm.FirstUnmarked(10)
 	if err != nil {
 		t.Errorf("FirstUnmarked failed: %s", err)
 	}
