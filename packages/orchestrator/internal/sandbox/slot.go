@@ -115,7 +115,7 @@ func RecoverSlot(instanceID string, slotIdx int) *IPSlot {
 	return &IPSlot{
 		InstanceID: instanceID,
 		SlotIdx:    slotIdx,
-		KVKey:      getKVKey(slotIdx),
+		KVKey:      getKVSlotKey(slotIdx),
 	}
 }
 
@@ -153,7 +153,7 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 
 	for randomTry := 1; randomTry <= 10; randomTry++ {
 		slotIdx := rand.Intn(IPSlotsSize)
-		key := getKVKey(slotIdx)
+		key := getKVSlotKey(slotIdx)
 
 		maybeSlot, err := trySlot(slotIdx, key)
 		if err != nil {
@@ -177,7 +177,7 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 		}
 
 		for slotIdx := 0; slotIdx < IPSlotsSize; slotIdx++ {
-			key := getKVKey(slotIdx)
+			key := getKVSlotKey(slotIdx)
 
 			if slices.Contains(reservedKeys, key) {
 				continue
@@ -273,6 +273,6 @@ func (ips *IPSlot) Release(ctx context.Context, tracer trace.Tracer, consulClien
 	return nil
 }
 
-func getKVKey(slotIdx int) string {
-	return fmt.Sprintf("%s/%d", constants.ClientID, slotIdx)
+func getKVSlotKey(slotIdx int) string {
+	return fmt.Sprintf("client/%s/slot/%d", constants.ClientID, slotIdx)
 }
