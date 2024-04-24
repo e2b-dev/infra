@@ -51,7 +51,7 @@ func GetConnection(host string, port int, options ...grpc.DialOption) (ClientCon
 	})
 
 	options = append(options, grpc.WithAuthority(host), grpc.WithTransportCredentials(cred))
-	conn, err := grpc.Dial(fmt.Sprintf("%s:%s", host, port), options...)
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", host, port), options...)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial: %w", err)

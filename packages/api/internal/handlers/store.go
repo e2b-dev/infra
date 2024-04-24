@@ -137,6 +137,7 @@ func NewAPIStore() *APIStore {
 	analytics, err := analyticscollector.NewAnalytics()
 	if err != nil {
 		logger.Errorf("Error initializing Analytics client\n: %v", err)
+		panic(err)
 	}
 
 	logger.Info("Initialized Analytics client")

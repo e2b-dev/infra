@@ -20,7 +20,7 @@ type GRPCClient struct {
 }
 
 func NewClient(nodeID string) (*GRPCClient, error) {
-	host := fmt.Sprintf("%s.node.consul:%s", nodeID, port)
+	host := fmt.Sprintf("%s.node.consul", nodeID)
 	portInt, err := strconv.Atoi(port)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert port to int: %w", err)
