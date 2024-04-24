@@ -18,6 +18,15 @@ variable "api_port_number" {
   default = 0
 }
 
+variable "consul_token" {
+  type    = string
+  default = ""
+}
+variable "nomad_token" {
+  type    = string
+  default = ""
+}
+
 variable "postgres_connection_string" {
   type    = string
   default = ""
@@ -53,7 +62,7 @@ variable "loki_address" {
   default = ""
 }
 
-variable "orchestrator_address" {
+variable "orchestrator_port" {
   type    = string
   default = ""
 }
@@ -63,7 +72,7 @@ variable "template_manager_address" {
   default = ""
 }
 
-job "orchestration-api" {
+job "api" {
   datacenters = [var.gcp_zone]
 
   priority = 90
@@ -99,8 +108,10 @@ job "orchestration-api" {
       }
 
       env {
-        ORCHESTRATOR_ADDRESS          = var.orchestrator_address
+        ORCHESTRATOR_PORT             = var.orchestrator_port
         TEMPLATE_MANAGER_ADDRESS      = var.template_manager_address
+        NOMAD_TOKEN                   = var.nomad_token
+        CONSUL_TOKEN                  = var.consul_token
         POSTGRES_CONNECTION_STRING    = var.postgres_connection_string
         ENVIRONMENT                   = var.environment
         POSTHOG_API_KEY               = var.posthog_api_key

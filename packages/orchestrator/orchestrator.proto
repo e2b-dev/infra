@@ -20,6 +20,9 @@ message SandboxConfig {
   
   string sandboxID = 9;
   map<string, string> metadata = 10;
+
+  int64 vCpu = 11;
+  int64 RamMB = 12;
 }
 
 

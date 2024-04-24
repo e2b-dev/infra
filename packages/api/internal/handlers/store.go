@@ -10,6 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	loki "github.com/grafana/loki/pkg/logcli/client"
+	consulapi "github.com/hashicorp/consul/api"
+	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
@@ -73,29 +75,47 @@ func NewAPIStore() *APIStore {
 		panic(posthogErr)
 	}
 
-	orch, err := orchestrator.New()
-	if err != nil {
-		logger.Errorf("Error initializing Orchestrator client\n: %v", err)
-		panic(err)
-	}
-
 	templateManager, err := template_manager.New()
 	if err != nil {
 		logger.Errorf("Error initializing Template manager client\n: %v", err)
 		panic(err)
 	}
 
-	var initialInstances []*instance.InstanceInfo
+	consulConfig := &consulapi.Config{
+		Address: env.GetEnv("CONSUL_ADDRESS", "localhost:8500"),
+		Token:   os.Getenv("CONSUL_TOKEN"),
+	}
+	consulClient, err := consulapi.NewClient(consulConfig)
+	if err != nil {
+		logger.Errorf("Error initializing Consul client\n: %v", err)
+		panic(err)
+	}
 
+	nomadConfig := &nomadapi.Config{
+		Address:  env.GetEnv("NOMAD_ADDRESS", "http://localhost:4646"),
+		SecretID: os.Getenv("NOMAD_TOKEN"),
+	}
+	nomadClient, err := nomadapi.NewClient(nomadConfig)
+	if err != nil {
+		logger.Errorf("Error initializing Nomad client\n: %v", err)
+		panic(err)
+	}
+
+	orch, err := orchestrator.New(nomadClient, consulClient)
+	if err != nil {
+		logger.Errorf("Error initializing Orchestrator client\n: %v", err)
+		panic(err)
+	}
+
+	var initialInstances []*instance.InstanceInfo
 	if env.IsLocal() {
 		logger.Info("Skipping loading sandboxes, running locally")
 	} else {
-		instances, instancesErr := orch.GetInstances(ctx)
-		if instancesErr != nil {
-			logger.Errorf("Error loading current sandboxes\n: %w", instancesErr)
+		initialInstances, err = orch.InitialSync(ctx)
+		if err != nil {
+			logger.Errorf("Error initializing Orchestrator client\n: %v", err)
+			panic(err)
 		}
-
-		initialInstances = instances
 	}
 
 	// TODO: rename later
@@ -115,6 +135,7 @@ func NewAPIStore() *APIStore {
 	analytics, err := analyticscollector.NewAnalytics()
 	if err != nil {
 		logger.Errorf("Error initializing Analytics client\n: %v", err)
+		panic(err)
 	}
 
 	logger.Info("Initialized Analytics client")
@@ -270,7 +291,7 @@ func deleteInstance(
 ) *api.APIError {
 	duration := time.Since(*info.StartTime).Seconds()
 
-	delErr := orchestrator.DeleteInstance(ctx, info.Instance.SandboxID)
+	delErr := orchestrator.DeleteInstance(ctx, info.Instance.ClientID, info.Instance.SandboxID)
 	if delErr != nil {
 		errMsg := fmt.Errorf("cannot delete instance '%s': %w", info.Instance.SandboxID, delErr)
 

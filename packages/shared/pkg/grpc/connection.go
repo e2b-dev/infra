@@ -5,11 +5,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"regexp"
+	"strings"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"regexp"
-	"strings"
 )
 
 var regex = regexp.MustCompile(`http[s]?://`)
@@ -20,17 +21,18 @@ type ClientConnInterface interface {
 	Close() error
 }
 
-func GetConnection(host string, options ...grpc.DialOption) (ClientConnInterface, error) {
+// TODO: Imrpove the TLS condition
+func GetConnection(host string, port int, useTLS bool, options ...grpc.DialOption) (ClientConnInterface, error) {
+	host = regex.ReplaceAllString(host, "")
 	if strings.TrimSpace(host) == "" {
 		fmt.Println("Host for gRPC not set, using dummy connection")
 
 		return &DummyConn{}, nil
 	}
 
-	host = regex.ReplaceAllString(host, "")
-	if strings.HasPrefix(host, "localhost") {
+	if strings.HasPrefix(host, "localhost") || !useTLS {
 		options = append(options, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		conn, err := grpc.Dial(host, options...)
+		conn, err := grpc.Dial(fmt.Sprintf("%s:%d", host, port), options...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial: %w", err)
 		}
@@ -51,7 +53,7 @@ func GetConnection(host string, options ...grpc.DialOption) (ClientConnInterface
 	})
 
 	options = append(options, grpc.WithAuthority(host), grpc.WithTransportCredentials(cred))
-	conn, err := grpc.Dial(host+":443", options...)
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", host, port), options...)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial: %w", err)

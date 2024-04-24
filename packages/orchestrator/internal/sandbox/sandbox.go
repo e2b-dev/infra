@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,10 +13,12 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/orchestration"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	consul "github.com/hashicorp/consul/api"
+	consulapi "github.com/hashicorp/consul/api"
 )
 
 const (
@@ -52,7 +55,7 @@ type Sandbox struct {
 func RecoverSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
-	consul *consul.Client,
+	consul *consulapi.Client,
 	dns *DNS,
 	config *orchestrator.SandboxConfig,
 	traceID string,
@@ -140,7 +143,7 @@ func fcBinaryPath(fcVersion string) string {
 func NewSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
-	consul *consul.Client,
+	consul *consulapi.Client,
 	dns *DNS,
 	config *orchestrator.SandboxConfig,
 	traceID string,
@@ -326,6 +329,28 @@ func NewSandbox(
 
 	instance.StartedAt = time.Now()
 
+	go func() {
+		sandboxInfo := &orchestration.Info{
+			SlotIdx:   ips.SlotIdx,
+			Config:    config,
+			TraceID:   traceID,
+			StartedAt: instance.StartedAt,
+			UffdPid:   instance.UffdPid(),
+			FcPid:     instance.FcPid(),
+		}
+		value, err := json.Marshal(sandboxInfo)
+		if err != nil {
+			telemetry.ReportError(childCtx, fmt.Errorf("failed to marshal sandbox info: %w", err))
+			return
+		}
+		key := orchestration.GetKVSandboxDataKey(constants.ClientID, config.SandboxID)
+		kvPair := &consulapi.KVPair{Key: key, Value: value}
+		_, err = consul.KV().Put(kvPair, nil)
+		if err != nil {
+			telemetry.ReportError(childCtx, fmt.Errorf("failed to save sandbox info: %w", err))
+		}
+	}()
+
 	return instance, nil
 }
 
@@ -374,7 +399,7 @@ syncLoop:
 func (s *Sandbox) CleanupAfterFCStop(
 	ctx context.Context,
 	tracer trace.Tracer,
-	consul *consul.Client,
+	consul *consulapi.Client,
 	dns *DNS,
 ) {
 	childCtx, childSpan := tracer.Start(ctx, "delete-instance")
@@ -402,6 +427,14 @@ func (s *Sandbox) CleanupAfterFCStop(
 		telemetry.ReportCriticalError(childCtx, errMsg)
 	} else {
 		telemetry.ReportEvent(childCtx, "released slot")
+	}
+
+	_, err = consul.KV().Delete(orchestration.GetKVSandboxDataKey(constants.ClientID, s.Sandbox.SandboxID), nil)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to delete sandbox info from Consul: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+	} else {
+		telemetry.ReportEvent(childCtx, "deleted sandbox info from Consul")
 	}
 }
 

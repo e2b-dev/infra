@@ -1,3 +1,4 @@
+# TODO: Route to the correct session proxy based on the client ID in the domain name
 variable "gcp_zone" {
   type = string
 }
