@@ -14,8 +14,13 @@ import (
 	"github.com/google/uuid"
 )
 
-func (o *Orchestrator) GetInstances(ctx context.Context) ([]*instance.InstanceInfo, error) {
-	res, err := o.grpc.Sandbox.List(ctx, &empty.Empty{})
+func (o *Orchestrator) GetInstances(ctx context.Context, nodeID string) ([]*instance.InstanceInfo, error) {
+	client, err := o.GetClient(nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GRPC client: %w", err)
+	}
+
+	res, err := client.Sandbox.List(ctx, &empty.Empty{})
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {

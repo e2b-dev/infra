@@ -51,7 +51,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration) 
 	return nil
 }
 
-func (c *InstanceCache) Sync(instances []*InstanceInfo) {
+func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 	instanceMap := make(map[string]*InstanceInfo)
 
 	// Use map for faster lookup
@@ -61,6 +61,10 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo) {
 
 	// Delete instances that are not in Orchestrator anymore
 	for _, item := range c.cache.Items() {
+		if item.Value().Instance.ClientID != nodeID {
+			continue
+		}
+
 		_, found := instanceMap[item.Key()]
 		if !found {
 			c.cache.Delete(item.Key())
@@ -76,11 +80,13 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo) {
 			}
 		}
 	}
+}
 
+func (c *InstanceCache) SendAnalyticsEvent() {
 	// Send running instances event to analytics
-	instanceIds := make([]string, len(instances))
-	for i, instance := range instances {
-		instanceIds[i] = instance.Instance.SandboxID
+	instanceIds := make([]string, 0, len(c.cache.Items()))
+	for _, instance := range c.cache.Items() {
+		instanceIds = append(instanceIds, instance.Key())
 	}
 
 	_, err := c.analytics.RunningInstances(context.Background(), &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})

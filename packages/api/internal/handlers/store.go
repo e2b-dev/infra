@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	loki "github.com/grafana/loki/pkg/logcli/client"
+	consulapi "github.com/hashicorp/consul/api"
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
@@ -41,6 +42,7 @@ type APIStore struct {
 	db              *db.DB
 	lokiClient      *loki.DefaultClient
 	logger          *zap.SugaredLogger
+	consulClient    *consulapi.Client
 }
 
 var lokiAddress = os.Getenv("LOKI_ADDRESS")
@@ -87,15 +89,30 @@ func NewAPIStore() *APIStore {
 
 	var initialInstances []*instance.InstanceInfo
 
+	config := &consulapi.Config{Token: os.Getenv("CONSUL_TOKEN")}
+	consulClient, err := consulapi.NewClient(config)
+	if err != nil {
+		logger.Errorf("Error initializing Consul client\n: %v", err)
+		panic(err)
+	}
+
 	if env.IsLocal() {
 		logger.Info("Skipping loading sandboxes, running locally")
 	} else {
-		instances, instancesErr := orch.GetInstances(ctx)
-		if instancesErr != nil {
-			logger.Errorf("Error loading current sandboxes\n: %w", instancesErr)
+		nodes, _, err := consulClient.Catalog().Nodes(nil)
+		if err != nil {
+			logger.Errorf("Error getting nodes from Consul\n: %v", err)
+			panic(err)
 		}
 
-		initialInstances = instances
+		for _, node := range nodes {
+			instances, instancesErr := orch.GetInstances(ctx, node.ID)
+			if instancesErr != nil {
+				logger.Errorf("Error loading current sandboxes\n: %w", instancesErr)
+			}
+
+			initialInstances = append(initialInstances, instances...)
+		}
 	}
 
 	// TODO: rename later
@@ -164,6 +181,7 @@ func NewAPIStore() *APIStore {
 		buildCache:      buildCache,
 		logger:          logger,
 		lokiClient:      lokiClient,
+		consulClient:    consulClient,
 	}
 }
 
@@ -270,7 +288,7 @@ func deleteInstance(
 ) *api.APIError {
 	duration := time.Since(*info.StartTime).Seconds()
 
-	delErr := orchestrator.DeleteInstance(ctx, info.Instance.SandboxID)
+	delErr := orchestrator.DeleteInstance(ctx, info.Instance.ClientID, info.Instance.SandboxID)
 	if delErr != nil {
 		errMsg := fmt.Errorf("cannot delete instance '%s': %w", info.Instance.SandboxID, delErr)
 
