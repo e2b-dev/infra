@@ -2,8 +2,6 @@ package template_manager
 
 import (
 	"fmt"
-	"os"
-
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
@@ -12,7 +10,8 @@ import (
 )
 
 var (
-	host = os.Getenv("TEMPLATE_MANAGER_ADDRESS")
+	host = "localhost"
+	port = 5009 // TODO: Change to env var
 )
 
 type GRPCClient struct {
@@ -21,7 +20,7 @@ type GRPCClient struct {
 }
 
 func NewClient() (*GRPCClient, error) {
-	conn, err := e2bgrpc.GetConnection(host, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	conn, err := e2bgrpc.GetConnection(host, port, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}

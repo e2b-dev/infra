@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -20,7 +21,12 @@ type GRPCClient struct {
 
 func NewClient(nodeID string) (*GRPCClient, error) {
 	host := fmt.Sprintf("%s.node.consul:%s", nodeID, port)
-	conn, err := e2bgrpc.GetConnection(host, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	portInt, err := strconv.Atoi(port)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert port to int: %w", err)
+	}
+
+	conn, err := e2bgrpc.GetConnection(host, portInt, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}

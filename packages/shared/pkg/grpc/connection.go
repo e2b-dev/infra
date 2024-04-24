@@ -20,7 +20,7 @@ type ClientConnInterface interface {
 	Close() error
 }
 
-func GetConnection(host string, options ...grpc.DialOption) (ClientConnInterface, error) {
+func GetConnection(host string, port int, options ...grpc.DialOption) (ClientConnInterface, error) {
 	if strings.TrimSpace(host) == "" {
 		fmt.Println("Host for gRPC not set, using dummy connection")
 
@@ -51,7 +51,7 @@ func GetConnection(host string, options ...grpc.DialOption) (ClientConnInterface
 	})
 
 	options = append(options, grpc.WithAuthority(host), grpc.WithTransportCredentials(cred))
-	conn, err := grpc.Dial(host+":443", options...)
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%s", host, port), options...)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial: %w", err)
