@@ -77,3 +77,68 @@ func (o *Orchestrator) CreateSandbox(
 		Alias:      &alias,
 	}, nil
 }
+
+type Node struct {
+	ID       string
+	CPUUsage int64
+	RamUsage int64
+}
+
+func getLeastBusyNode(ctx context.Context, tracer trace.Tracer, consulClient *consulapi.Client) (string, error) {
+	childCtx, childSpan := tracer.Start(ctx, "get-least-busy-node")
+	defer childSpan.End()
+
+	nodesInfo, _, err := consulClient.Catalog().Nodes(nil)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to get nodes from Consul: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return "", errMsg
+	}
+	telemetry.ReportEvent(childCtx, "Got nodes from Consul")
+
+	if len(nodesInfo) == 0 {
+		errMsg := fmt.Errorf("no nodes found in Consul")
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return "", errMsg
+	}
+
+	nodes := make([]*Node, 0, len(nodesInfo))
+	for _, nodeInfo := range nodesInfo {
+		node := &Node{
+			ID: nodeInfo.ID,
+		}
+		key := orchestration.GetKVSandboxDataPrefix(node.ID)
+		sandboxes, _, err := consulClient.KV().List(key, nil)
+		if err != nil {
+			errMsg := fmt.Errorf("failed to get sandboxes from Consul: %w", err)
+			telemetry.ReportCriticalError(childCtx, errMsg)
+
+			return "", errMsg
+		}
+
+		for _, s := range sandboxes {
+			var sandboxInfo = &orchestration.Info{}
+			if err := json.Unmarshal(s.Value, sandboxInfo); err != nil {
+				errMsg := fmt.Errorf("failed to unmarshal sandbox info: %w", err)
+				telemetry.ReportCriticalError(childCtx, errMsg)
+
+				return "", errMsg
+			}
+			node.CPUUsage += sandboxInfo.Config.VCpu
+			node.RamUsage += sandboxInfo.Config.RamMB
+		}
+		nodes = append(nodes, node)
+	}
+
+	// TODO: implement a better algorithm for choosing the least busy node
+	leastBusyNode := nodes[0]
+	for _, node := range nodes {
+		if node.CPUUsage < leastBusyNode.CPUUsage {
+			leastBusyNode = node
+		}
+	}
+
+	return nodes[0].ID, nil
+}
