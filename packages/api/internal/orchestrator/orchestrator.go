@@ -6,20 +6,23 @@ import (
 	"os"
 	"time"
 
-	"github.com/hashicorp/consul/api"
+	consulapi "github.com/hashicorp/consul/api"
+	nomadapi "github.com/hashicorp/nomad/api"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 type Orchestrator struct {
-	consulClient *api.Client
+	nomadClient  *nomadapi.Client
+	consulClient *consulapi.Client
 	clients      map[string]*GRPCClient
 	nodeToHost   map[string]string
 }
 
-func New(consulClient *api.Client) (*Orchestrator, error) {
+func New(nomadClient *nomadapi.Client, consulClient *consulapi.Client) (*Orchestrator, error) {
 	return &Orchestrator{
+		nomadClient:  nomadClient,
 		consulClient: consulClient,
 		clients:      map[string]*GRPCClient{},
 		nodeToHost:   map[string]string{},
@@ -66,14 +69,24 @@ func (o *Orchestrator) GetHost(nodeID string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("node not found")
+	return "", fmt.Errorf("node %s not found", nodeID)
 }
 
-func (o *Orchestrator) ListNodes() ([]*api.Node, error) {
-	nodes, _, err := o.consulClient.Catalog().Nodes(&api.QueryOptions{Filter: "\"client\" in Node"})
+func (o *Orchestrator) GetClientByNodeID(nodeID string) (*GRPCClient, error) {
+	host, err := o.GetHost(nodeID)
 	if err != nil {
 		return nil, err
 	}
+
+	return o.GetClient(host)
+}
+
+func (o *Orchestrator) ListNodes() ([]*nomadapi.NodeListStub, error) {
+	nodes, _, err := o.nomadClient.Nodes().List(&nomadapi.QueryOptions{Filter: "Status == \"ready\""})
+	if err != nil {
+		return nil, err
+	}
+
 	return nodes, nil
 }
 
@@ -82,7 +95,8 @@ func (o *Orchestrator) KeepInSync(ctx context.Context, instanceCache *instance.I
 	for {
 		time.Sleep(instance.CacheSyncTime)
 
-		for nodeID := range o.clients {
+		// TODO: We can use host directly instead of nodeID
+		for nodeID := range o.nodeToHost {
 			activeInstances, err := o.GetInstances(ctx, nodeID)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error loading current sandboxes\n: %v", err)
@@ -114,6 +128,6 @@ func (o *Orchestrator) InitialSync(ctx context.Context) (instances []*instance.I
 	return instances, nil
 }
 
-func (o *Orchestrator) getIdFromNode(node *api.Node) string {
+func (o *Orchestrator) getIdFromNode(node *nomadapi.NodeListStub) string {
 	return node.ID[:consts.NodeIDLength]
 }

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	consulapi "github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -21,7 +20,6 @@ import (
 func (o *Orchestrator) CreateSandbox(
 	t trace.Tracer,
 	ctx context.Context,
-	consulClient *consulapi.Client,
 	sandboxID,
 	templateID,
 	alias,
@@ -50,22 +48,22 @@ func (o *Orchestrator) CreateSandbox(
 
 	telemetry.ReportEvent(childCtx, "Got FC version info")
 
-	nodeID, err := o.getLeastBusyNode(childCtx, t, consulClient)
+	nodeID, err := o.getLeastBusyNode(childCtx, t)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get least busy node: %w", err)
 	}
 
-	host, err := o.GetHost(nodeID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get host: %w", err)
-	}
+	telemetry.SetAttributes(childCtx, attribute.String("node.id", nodeID))
+	telemetry.ReportEvent(childCtx, "Placing sandbox on node")
 
-	client, err := o.GetClient(host)
+	client, err := o.GetClientByNodeID(nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GRPC client: %w", err)
 	}
 
-	res, err := client.Sandbox.Create(ctx, &orchestrator.SandboxCreateRequest{
+	telemetry.ReportEvent(childCtx, "Got GRPC client")
+
+	_, err = client.Sandbox.Create(ctx, &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
 			TemplateID:         templateID,
 			Alias:              &alias,
@@ -90,7 +88,7 @@ func (o *Orchestrator) CreateSandbox(
 	telemetry.ReportEvent(childCtx, "Created sandbox")
 
 	return &api.Sandbox{
-		ClientID:   res.ClientID,
+		ClientID:   nodeID,
 		SandboxID:  sandboxID,
 		TemplateID: templateID,
 		Alias:      &alias,
@@ -103,21 +101,21 @@ type Node struct {
 	RamUsage int64
 }
 
-func (o *Orchestrator) getLeastBusyNode(ctx context.Context, tracer trace.Tracer, consulClient *consulapi.Client) (string, error) {
+func (o *Orchestrator) getLeastBusyNode(ctx context.Context, tracer trace.Tracer) (string, error) {
 	childCtx, childSpan := tracer.Start(ctx, "get-least-busy-node")
 	defer childSpan.End()
 
-	nodesInfo, _, err := consulClient.Catalog().Nodes(nil)
+	nodesInfo, err := o.ListNodes()
 	if err != nil {
-		errMsg := fmt.Errorf("failed to get nodes from Consul: %w", err)
+		errMsg := fmt.Errorf("failed to get nodes: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return "", errMsg
 	}
-	telemetry.ReportEvent(childCtx, "Got nodes from Consul")
+	telemetry.ReportEvent(childCtx, "Got list of nodes ")
 
 	if len(nodesInfo) == 0 {
-		errMsg := fmt.Errorf("no nodes found in Consul")
+		errMsg := fmt.Errorf("no nodes found")
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return "", errMsg
@@ -125,13 +123,12 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, tracer trace.Tracer
 
 	nodes := make([]*Node, 0, len(nodesInfo))
 	for _, nodeInfo := range nodesInfo {
-		node := &Node{
-			ID: o.getIdFromNode(nodeInfo),
-		}
+		node := &Node{ID: o.getIdFromNode(nodeInfo)}
 		key := orchestration.GetKVSandboxDataPrefix(node.ID)
-		sandboxes, _, err := consulClient.KV().List(key, nil)
+
+		sandboxes, _, err := o.consulClient.KV().List(key, nil)
 		if err != nil {
-			errMsg := fmt.Errorf("failed to get sandboxes from Consul: %w", err)
+			errMsg := fmt.Errorf("failed to get sandbox info from Consul: %w", err)
 			telemetry.ReportCriticalError(childCtx, errMsg)
 
 			return "", errMsg
@@ -151,6 +148,8 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, tracer trace.Tracer
 		nodes = append(nodes, node)
 	}
 
+	telemetry.ReportEvent(childCtx, "Calculated CPU and RAM usage for nodes")
+
 	// TODO: implement a better algorithm for choosing the least busy node
 	leastBusyNode := nodes[0]
 	for _, node := range nodes {
@@ -159,6 +158,6 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, tracer trace.Tracer
 		}
 	}
 
-	// TODO: use function to get the node ID
-	return nodes[0].ID, nil
+	telemetry.ReportEvent(childCtx, "Found least busy node")
+	return leastBusyNode.ID, nil
 }
