@@ -9,7 +9,7 @@ type MmapCache struct {
 	memTracker block.Tracker
 }
 
-func NewMMapCache(size int64, filePath string, createFile bool) (*MmapCache, error) {
+func NewMmapCache(size int64, filePath string, createFile bool) (*MmapCache, error) {
 	m, err := newMmapped(size, filePath, createFile)
 	if err != nil {
 		return nil, err
