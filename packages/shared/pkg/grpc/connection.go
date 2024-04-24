@@ -31,7 +31,7 @@ func GetConnection(host string, port int, options ...grpc.DialOption) (ClientCon
 	host = regex.ReplaceAllString(host, "")
 	if strings.HasPrefix(host, "localhost") || strings.Contains(host, "node.consul") {
 		options = append(options, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		conn, err := grpc.Dial(host, options...)
+		conn, err := grpc.Dial(fmt.Sprintf("%s:%d", host, port), options...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial: %w", err)
 		}
