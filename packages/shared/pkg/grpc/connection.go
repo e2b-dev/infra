@@ -23,13 +23,13 @@ type ClientConnInterface interface {
 
 // TODO: Imrpove the TLS condition
 func GetConnection(host string, port int, useTLS bool, options ...grpc.DialOption) (ClientConnInterface, error) {
+	host = regex.ReplaceAllString(host, "")
 	if strings.TrimSpace(host) == "" {
 		fmt.Println("Host for gRPC not set, using dummy connection")
 
 		return &DummyConn{}, nil
 	}
 
-	host = regex.ReplaceAllString(host, "")
 	if strings.HasPrefix(host, "localhost") || !useTLS {
 		options = append(options, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		conn, err := grpc.Dial(fmt.Sprintf("%s:%d", host, port), options...)
