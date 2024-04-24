@@ -2,13 +2,15 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"regexp"
+	"strings"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"regexp"
-	"strings"
 )
 
 var regex = regexp.MustCompile(`http[s]?://`)
@@ -20,7 +22,7 @@ type ClientConnInterface interface {
 }
 
 // TODO: Imrpove the TLS condition
-func GetConnection(host string, port int, tls bool, options ...grpc.DialOption) (ClientConnInterface, error) {
+func GetConnection(host string, port int, useTLS bool, options ...grpc.DialOption) (ClientConnInterface, error) {
 	if strings.TrimSpace(host) == "" {
 		fmt.Println("Host for gRPC not set, using dummy connection")
 
@@ -28,7 +30,7 @@ func GetConnection(host string, port int, tls bool, options ...grpc.DialOption) 
 	}
 
 	host = regex.ReplaceAllString(host, "")
-	if strings.HasPrefix(host, "localhost") || !tls {
+	if strings.HasPrefix(host, "localhost") || !useTLS {
 		options = append(options, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		conn, err := grpc.Dial(fmt.Sprintf("%s:%d", host, port), options...)
 		if err != nil {
