@@ -130,7 +130,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	sandbox, instanceErr := a.orchestrator.CreateSandbox(
 		a.tracer,
 		ctx,
-		a.consulClient,
 		sandboxID,
 		env.TemplateID,
 		alias,

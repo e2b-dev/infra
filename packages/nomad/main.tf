@@ -64,6 +64,7 @@ resource "nomad_job" "api" {
       template_manager_address      = "http://localhost:${var.template_manager_port}"
       loki_address                  = "http://localhost:${var.loki_service_port.port}"
       consul_token                  = var.consul_acl_token_secret
+      nomad_token                   = var.nomad_acl_token_secret
       gcp_zone                      = var.gcp_zone
       api_port_name                 = var.api_port.name
       api_port_number               = var.api_port.port
@@ -121,7 +122,6 @@ resource "nomad_job" "session_proxy" {
   hcl2 {
     vars = {
       gcp_zone                   = var.gcp_zone
-      client_cluster_size        = var.client_cluster_size
       session_proxy_port_number  = var.session_proxy_port.port
       session_proxy_port_name    = var.session_proxy_port.name
       session_proxy_service_name = var.session_proxy_service_name

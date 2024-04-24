@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	loki "github.com/grafana/loki/pkg/logcli/client"
 	consulapi "github.com/hashicorp/consul/api"
+	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
@@ -42,7 +43,6 @@ type APIStore struct {
 	db              *db.DB
 	lokiClient      *loki.DefaultClient
 	logger          *zap.SugaredLogger
-	consulClient    *consulapi.Client
 }
 
 var lokiAddress = os.Getenv("LOKI_ADDRESS")
@@ -81,17 +81,27 @@ func NewAPIStore() *APIStore {
 		panic(err)
 	}
 
-	config := &consulapi.Config{
+	consulConfig := &consulapi.Config{
 		Address: env.GetEnv("CONSUL_ADDRESS", "localhost:8500"),
 		Token:   os.Getenv("CONSUL_TOKEN"),
 	}
-	consulClient, err := consulapi.NewClient(config)
+	consulClient, err := consulapi.NewClient(consulConfig)
 	if err != nil {
 		logger.Errorf("Error initializing Consul client\n: %v", err)
 		panic(err)
 	}
 
-	orch, err := orchestrator.New(consulClient)
+	nomadConfig := &nomadapi.Config{
+		Address:  env.GetEnv("NOMAD_ADDRESS", "http://localhost:4646"),
+		SecretID: os.Getenv("NOMAD_TOKEN"),
+	}
+	nomadClient, err := nomadapi.NewClient(nomadConfig)
+	if err != nil {
+		logger.Errorf("Error initializing Nomad client\n: %v", err)
+		panic(err)
+	}
+
+	orch, err := orchestrator.New(nomadClient, consulClient)
 	if err != nil {
 		logger.Errorf("Error initializing Orchestrator client\n: %v", err)
 		panic(err)
@@ -175,7 +185,6 @@ func NewAPIStore() *APIStore {
 		buildCache:      buildCache,
 		logger:          logger,
 		lokiClient:      lokiClient,
-		consulClient:    consulClient,
 	}
 }
 

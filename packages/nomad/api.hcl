@@ -18,12 +18,11 @@ variable "api_port_number" {
   default = 0
 }
 
-variable "consul_address" {
+variable "consul_token" {
   type    = string
   default = ""
 }
-
-variable "consul_token" {
+variable "nomad_token" {
   type    = string
   default = ""
 }
@@ -111,7 +110,7 @@ job "api" {
       env {
         ORCHESTRATOR_PORT             = var.orchestrator_port
         TEMPLATE_MANAGER_ADDRESS      = var.template_manager_address
-        CONSUL_ADDRESS                = var.consul_address
+        NOMAD_TOKEN                   = var.nomad_token
         CONSUL_TOKEN                  = var.consul_token
         POSTGRES_CONNECTION_STRING    = var.postgres_connection_string
         ENVIRONMENT                   = var.environment
