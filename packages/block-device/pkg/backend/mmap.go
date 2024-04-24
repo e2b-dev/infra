@@ -5,15 +5,15 @@ import (
 	"os"
 	"sync"
 
-	"github.com/e2b-dev/infra/packages/block-device/internal/block"
+	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
 	"github.com/edsrzf/mmap-go"
 )
 
 type mmapped struct {
-	mmap          mmap.MMap
-	file          *os.File
-	mu            sync.RWMutex
-	SparseTracker *block.SparseFile
+	mmap   mmap.MMap
+	file   *os.File
+	mu     sync.RWMutex
+	marked *block.SparseFileMarker
 }
 
 func newMmapped(size int64, filePath string, createFile bool) (*mmapped, error) {
@@ -22,7 +22,7 @@ func newMmapped(size int64, filePath string, createFile bool) (*mmapped, error) 
 		return nil, err
 	}
 
-	var sparseTracker *block.SparseFile
+	var sparseMarker *block.SparseFileMarker
 	if createFile {
 		// Truncate or expand the file to ensure it's the right size.
 		// Is should be sparse.
@@ -36,7 +36,7 @@ func newMmapped(size int64, filePath string, createFile bool) (*mmapped, error) 
 		// 	return nil, err
 		// }
 	} else {
-		sparseTracker = block.NewSparseFileChecker(f)
+		sparseMarker = block.NewSparseFileMarker(f)
 	}
 
 	// Memory-map the file
@@ -46,9 +46,9 @@ func newMmapped(size int64, filePath string, createFile bool) (*mmapped, error) 
 	}
 
 	return &mmapped{
-		mmap:          mm,
-		file:          f,
-		SparseTracker: sparseTracker,
+		mmap:   mm,
+		file:   f,
+		marked: sparseMarker,
 	}, nil
 }
 

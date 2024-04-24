@@ -5,7 +5,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/e2b-dev/infra/packages/block-device/internal/block"
+	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
 )
 
 const (
@@ -13,11 +13,11 @@ const (
 )
 
 type ChunkerSyncer struct {
-	base  io.ReaderAt
-	cache block.Device
+	chunks map[int64]chan error
+	cache  block.Device
 
+	base      io.ReaderAt
 	chunkLock sync.Mutex
-	chunks    map[int64]chan error
 }
 
 func NewChunkerSyncer(base io.ReaderAt, cache block.Device) *ChunkerSyncer {

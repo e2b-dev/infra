@@ -7,27 +7,24 @@ import (
 )
 
 type Bitset struct {
-	bitset.BitSet
-	mu        sync.RWMutex
-	blockSize int64
+	bitset bitset.BitSet
+	mu     sync.RWMutex
 }
 
-func NewBitset(blockSize int64) *Bitset {
-	return &Bitset{
-		blockSize: blockSize,
-	}
+func NewBitset() *Bitset {
+	return &Bitset{}
 }
 
 func (b *Bitset) Mark(off int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	b.Set(uint(off / b.blockSize))
+	b.bitset.Set(uint(off))
 }
 
 func (b *Bitset) IsMarked(off int64) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	return b.Test(uint(off / b.blockSize))
+	return b.bitset.Test(uint(off))
 }

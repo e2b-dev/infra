@@ -1,12 +1,11 @@
-package internal
+package pkg
 
 import (
 	"context"
 	"errors"
-	"io"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/block-device/internal/backend"
+	"github.com/e2b-dev/infra/packages/block-device/pkg/backend"
 )
 
 type BucketSource struct {
@@ -21,7 +20,7 @@ type BucketSource struct {
 	size int64
 }
 
-func NewServer(
+func NewBucketSource(
 	ctx context.Context,
 	bucketName,
 	bucketPath,
@@ -78,36 +77,4 @@ func (d *BucketSource) Close() error {
 
 func (d *BucketSource) CreateOverlay(cachePath string) (*BucketOverlay, error) {
 	return newBucketOverlay(d.source, cachePath, d.size)
-}
-
-type BucketOverlay struct {
-	overlay *backend.Overlay
-	cache   *backend.MmapCache
-}
-
-func newBucketOverlay(source io.ReaderAt, cachePath string, size int64) (*BucketOverlay, error) {
-	cacheExists := false
-	if _, err := os.Stat(cachePath); err == nil {
-		cacheExists = true
-	}
-
-	cache, err := backend.NewMmapCache(size, cachePath, cacheExists)
-	if err != nil {
-		return nil, err
-	}
-
-	overlay := backend.NewOverlay(source, cache, true)
-
-	return &BucketOverlay{
-		overlay: overlay,
-		cache:   cache,
-	}, nil
-}
-
-func (o *BucketOverlay) ReadAt(p []byte, off int64) (n int, err error) {
-	return o.overlay.ReadAt(p, off)
-}
-
-func (o *BucketOverlay) Close() error {
-	return o.cache.Close()
 }

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/e2b-dev/infra/packages/block-device/internal/block"
+	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
 )
 
 type Overlay struct {

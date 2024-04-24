@@ -6,10 +6,9 @@ import (
 )
 
 type Prefetcher struct {
-	source    io.ReaderAt
-	stop      chan struct{}
-	size      int64
-	chunkSize int64
+	source io.ReaderAt
+	stop   chan struct{}
+	size   int64
 }
 
 func NewPrefetcher(source io.ReaderAt, size int64) *Prefetcher {
@@ -23,18 +22,22 @@ func NewPrefetcher(source io.ReaderAt, size int64) *Prefetcher {
 func (p *Prefetcher) prefetch(off int64) error {
 	// TODO: Handle in device implementation that if the buffer is 0 just start fetching and don't wait/copy.
 	_, err := p.source.ReadAt([]byte{}, off)
+
 	return err
 }
 
 func (p *Prefetcher) Start() {
-	for i := int64(0); i < p.size; i += ChunkSize {
+	start := p.size / ChunkSize
+	end := (p.size + ChunkSize - 1) / ChunkSize
+
+	for chunkIdx := start; chunkIdx < end; chunkIdx++ {
 		select {
 		case <-p.stop:
 			return
 		default:
-			err := p.prefetch(i)
+			err := p.prefetch(chunkIdx * ChunkSize)
 			if err != nil {
-				fmt.Printf("error prefetching %d: %v", i, err)
+				fmt.Printf("error prefetching chunk %d (%d-%d): %v", chunkIdx, chunkIdx*ChunkSize, chunkIdx*ChunkSize+ChunkSize, err)
 			}
 		}
 	}
