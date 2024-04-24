@@ -81,7 +81,10 @@ func NewAPIStore() *APIStore {
 		panic(err)
 	}
 
-	config := &consulapi.Config{Token: os.Getenv("CONSUL_TOKEN")}
+	config := &consulapi.Config{
+		Address: env.GetEnv("CONSUL_ADDRESS", "localhost:8500"),
+		Token:   os.Getenv("CONSUL_TOKEN"),
+	}
 	consulClient, err := consulapi.NewClient(config)
 	if err != nil {
 		logger.Errorf("Error initializing Consul client\n: %v", err)
