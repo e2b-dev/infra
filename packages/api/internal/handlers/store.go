@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -99,6 +100,8 @@ func NewAPIStore() *APIStore {
 	if env.IsLocal() {
 		logger.Info("Skipping loading sandboxes, running locally")
 	} else {
+		// TODO: Add function for this, filter only clients
+		// TODO: Add mapping between node ID and client ID
 		nodes, _, err := consulClient.Catalog().Nodes(nil)
 		if err != nil {
 			logger.Errorf("Error getting nodes from Consul\n: %v", err)
@@ -106,12 +109,14 @@ func NewAPIStore() *APIStore {
 		}
 
 		for _, node := range nodes {
-			instances, instancesErr := orch.GetInstances(ctx, node.ID[:8])
-			if instancesErr != nil {
-				logger.Errorf("Error loading current sandboxes\n: %w", instancesErr)
-			}
+			if strings.Contains(node.Node, "client") {
+				instances, instancesErr := orch.GetInstances(ctx, node.Node)
+				if instancesErr != nil {
+					logger.Errorf("Error loading current sandboxes\n: %w", instancesErr)
+				}
 
-			initialInstances = append(initialInstances, instances...)
+				initialInstances = append(initialInstances, instances...)
+			}
 		}
 	}
 

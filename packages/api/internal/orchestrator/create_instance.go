@@ -121,7 +121,7 @@ func getLeastBusyNode(ctx context.Context, tracer trace.Tracer, consulClient *co
 	nodes := make([]*Node, 0, len(nodesInfo))
 	for _, nodeInfo := range nodesInfo {
 		node := &Node{
-			ID: nodeInfo.ID,
+			ID: nodeInfo.Node,
 		}
 		key := orchestration.GetKVSandboxDataPrefix(node.ID)
 		sandboxes, _, err := consulClient.KV().List(key, nil)
@@ -155,5 +155,5 @@ func getLeastBusyNode(ctx context.Context, tracer trace.Tracer, consulClient *co
 	}
 
 	// TODO: use function to get the node ID
-	return nodes[0].ID[:8], nil
+	return nodes[0].ID, nil
 }
