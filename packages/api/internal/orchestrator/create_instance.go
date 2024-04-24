@@ -27,6 +27,8 @@ func (o *Orchestrator) CreateSandbox(
 	metadata map[string]string,
 	kernelVersion,
 	firecrackerVersion string,
+	vCPU int64,
+	ramMB int64,
 ) (*api.Sandbox, error) {
 	childCtx, childSpan := t.Start(ctx, "create-sandbox",
 		trace.WithAttributes(
@@ -56,6 +58,8 @@ func (o *Orchestrator) CreateSandbox(
 			Metadata:           metadata,
 			MaxInstanceLength:  maxInstanceLengthHours,
 			HugePages:          features.HasHugePages(),
+			VCpu:               vCPU,
+			RamMB:              ramMB,
 		},
 	})
 

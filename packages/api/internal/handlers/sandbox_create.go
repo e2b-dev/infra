@@ -127,7 +127,22 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		metadata = *body.Metadata
 	}
 
-	sandbox, instanceErr := a.orchestrator.CreateSandbox(a.tracer, ctx, sandboxID, env.TemplateID, alias, team.ID.String(), build.ID.String(), team.Edges.TeamTier.MaxLengthHours, metadata, build.KernelVersion, build.FirecrackerVersion)
+	sandbox, instanceErr := a.orchestrator.CreateSandbox(
+		a.tracer,
+		ctx,
+		a.consulClient,
+		sandboxID,
+		env.TemplateID,
+		alias,
+		team.ID.String(),
+		build.ID.String(),
+		team.Edges.TeamTier.MaxLengthHours,
+		metadata,
+		build.KernelVersion,
+		build.FirecrackerVersion,
+		build.Vcpu,
+		build.RAMMB,
+	)
 	if instanceErr != nil {
 		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
