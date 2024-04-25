@@ -4,9 +4,14 @@ import (
 	"context"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 type DummyConn struct{}
+
+func (dc *DummyConn) GetState() connectivity.State {
+	return connectivity.Ready
+}
 
 func (dc *DummyConn) Invoke(_ context.Context, _ string, _ any, _ any, _ ...grpc.CallOption) error {
 	return nil

@@ -51,7 +51,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration) 
 	return nil
 }
 
-func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
+func (c *InstanceCache) Sync(instances []*InstanceInfo, clientID string) []*InstanceInfo {
 	instanceMap := make(map[string]*InstanceInfo)
 
 	// Use map for faster lookup
@@ -61,7 +61,7 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 
 	// Delete instances that are not in Orchestrator anymore
 	for _, item := range c.cache.Items() {
-		if item.Value().Instance.ClientID != nodeID {
+		if item.Value().Instance.ClientID != clientID {
 			continue
 		}
 
@@ -71,6 +71,7 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 		}
 	}
 
+	addedInstances := make([]*InstanceInfo, 0)
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
 		if !c.Exists(instance.Instance.SandboxID) {
@@ -78,8 +79,10 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 			if err != nil {
 				fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
 			}
+			addedInstances = append(addedInstances, instance)
 		}
 	}
+	return addedInstances
 }
 
 func (c *InstanceCache) SendAnalyticsEvent() {

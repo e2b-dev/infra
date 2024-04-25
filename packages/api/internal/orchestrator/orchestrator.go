@@ -3,29 +3,35 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"os"
+	"log"
 	"time"
 
-	consulapi "github.com/hashicorp/consul/api"
 	nomadapi "github.com/hashicorp/nomad/api"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-type Orchestrator struct {
-	nomadClient  *nomadapi.Client
-	consulClient *consulapi.Client
-	clients      map[string]*GRPCClient
-	nodeToHost   map[string]string
+type Node struct {
+	ID       string
+	CPUUsage int64
+	RamUsage int64
 }
 
-func New(nomadClient *nomadapi.Client, consulClient *consulapi.Client) (*Orchestrator, error) {
+type Orchestrator struct {
+	nomadClient *nomadapi.Client
+	clients     map[string]*GRPCClient
+	nodeToHost  map[string]string
+	nodes       map[string]*Node
+}
+
+func New(nomadClient *nomadapi.Client) (*Orchestrator, error) {
 	return &Orchestrator{
-		nomadClient:  nomadClient,
-		consulClient: consulClient,
-		clients:      map[string]*GRPCClient{},
-		nodeToHost:   map[string]string{},
+		nomadClient: nomadClient,
+		clients:     map[string]*GRPCClient{},
+		nodeToHost:  map[string]string{},
+		nodes:       map[string]*Node{},
 	}, nil
 }
 
@@ -37,6 +43,10 @@ func (o *Orchestrator) Close() error {
 		}
 	}
 	return nil
+}
+
+func (o *Orchestrator) GetNodeById(nodeID string) *Node {
+	return o.nodes[nodeID]
 }
 
 func (o *Orchestrator) GetClient(host string) (*GRPCClient, error) {
@@ -91,24 +101,53 @@ func (o *Orchestrator) ListNodes() ([]*nomadapi.NodeListStub, error) {
 }
 
 // KeepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) KeepInSync(ctx context.Context, instanceCache *instance.InstanceCache) {
+func (o *Orchestrator) KeepInSync(ctx context.Context, instanceCache *instance.InstanceCache, logger *zap.SugaredLogger) {
 	for {
 		time.Sleep(instance.CacheSyncTime)
+		nodes, err := o.ListNodes()
+		if err != nil {
+			log.Printf("Error loading nodes\n: %v", err)
+			continue
+		}
 
-		// TODO: We can use host directly instead of nodeID
+		nodeIds := make([]string, 0, len(nodes))
+		for _, node := range nodes {
+			nodeIds = append(nodeIds, o.getIdFromNode(node))
+			if _, ok := o.nodes[o.getIdFromNode(node)]; !ok {
+				_, err := o.connectToNode(ctx, node)
+				if err != nil {
+					log.Printf("Error connecting to node\n: %v", err)
+				}
+			}
+		}
+
+		for nodeID := range o.nodes {
+			if _, ok := o.nodeToHost[nodeID]; !ok {
+				delete(o.nodes, nodeID)
+			}
+		}
+
 		for nodeID := range o.nodeToHost {
 			activeInstances, err := o.GetInstances(ctx, nodeID)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error loading current sandboxes\n: %v", err)
+				log.Printf("Error loading current sandboxes\n: %v", err)
 			} else {
-				instanceCache.Sync(activeInstances, nodeID)
+				added := instanceCache.Sync(activeInstances, nodeID)
+				for _, sandbox := range added {
+					o.nodes[nodeID].RamUsage += sandbox.RamMB
+					o.nodes[nodeID].CPUUsage += sandbox.VCPU
+				}
 			}
 		}
+		logger.Info("Synced instances with Orchestrator")
+		for _, node := range o.nodes {
+			logger.Infof("Node %s: CPU: %d, RAM: %d", node.ID, node.CPUUsage, node.RamUsage)
+		}
+
 		instanceCache.SendAnalyticsEvent()
 	}
 }
 
-// TODO: load all hosts?
 // InitialSync loads already running instances from Orchestrator
 func (o *Orchestrator) InitialSync(ctx context.Context) (instances []*instance.InstanceInfo, err error) {
 	nodes, err := o.ListNodes()
@@ -117,7 +156,7 @@ func (o *Orchestrator) InitialSync(ctx context.Context) (instances []*instance.I
 	}
 
 	for _, node := range nodes {
-		activeInstances, instancesErr := o.GetInstances(ctx, o.getIdFromNode(node))
+		activeInstances, instancesErr := o.connectToNode(ctx, node)
 		if instancesErr != nil {
 			return nil, instancesErr
 		}
@@ -130,4 +169,20 @@ func (o *Orchestrator) InitialSync(ctx context.Context) (instances []*instance.I
 
 func (o *Orchestrator) getIdFromNode(node *nomadapi.NodeListStub) string {
 	return node.ID[:consts.NodeIDLength]
+}
+
+func (o *Orchestrator) connectToNode(ctx context.Context, node *nomadapi.NodeListStub) ([]*instance.InstanceInfo, error) {
+	n := &Node{ID: o.getIdFromNode(node)}
+	o.nodes[n.ID] = n
+
+	activeInstances, instancesErr := o.GetInstances(ctx, o.getIdFromNode(node))
+	if instancesErr != nil {
+		return nil, instancesErr
+	}
+
+	for _, sandbox := range activeInstances {
+		n.RamUsage += sandbox.RamMB
+		n.CPUUsage += sandbox.VCPU
+	}
+	return activeInstances, nil
 }

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	loki "github.com/grafana/loki/pkg/logcli/client"
-	consulapi "github.com/hashicorp/consul/api"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel"
@@ -29,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type APIStore struct {
@@ -56,7 +57,7 @@ func NewAPIStore() *APIStore {
 
 	logger, err := logging.New(env.IsLocal())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error initializing logger\n: %v\n", err)
+		log.Printf("Error initializing logger\n: %v\n", err)
 		panic(err)
 	}
 
@@ -81,16 +82,6 @@ func NewAPIStore() *APIStore {
 		panic(err)
 	}
 
-	consulConfig := &consulapi.Config{
-		Address: env.GetEnv("CONSUL_ADDRESS", "localhost:8500"),
-		Token:   os.Getenv("CONSUL_TOKEN"),
-	}
-	consulClient, err := consulapi.NewClient(consulConfig)
-	if err != nil {
-		logger.Errorf("Error initializing Consul client\n: %v", err)
-		panic(err)
-	}
-
 	nomadConfig := &nomadapi.Config{
 		Address:  env.GetEnv("NOMAD_ADDRESS", "http://localhost:4646"),
 		SecretID: os.Getenv("NOMAD_TOKEN"),
@@ -101,7 +92,7 @@ func NewAPIStore() *APIStore {
 		panic(err)
 	}
 
-	orch, err := orchestrator.New(nomadClient, consulClient)
+	orch, err := orchestrator.New(nomadClient)
 	if err != nil {
 		logger.Errorf("Error initializing Orchestrator client\n: %v", err)
 		panic(err)
@@ -140,14 +131,21 @@ func NewAPIStore() *APIStore {
 
 	logger.Info("Initialized Analytics client")
 
-	instanceCache := instance.NewCache(analytics.Client, logger, getDeleteInstanceFunction(ctx, orch, analytics, posthogClient, logger), initialInstances, instancesCounter)
+	instanceCache := instance.NewCache(
+		analytics.Client,
+		logger,
+		getInsertInstanceFunction(ctx, orch, analytics),
+		getDeleteInstanceFunction(ctx, orch, analytics, posthogClient, logger),
+		initialInstances,
+		instancesCounter,
+	)
 
 	logger.Info("Initialized instance cache")
 
 	if env.IsLocal() {
 		logger.Info("Skipping syncing sandboxes, running locally")
 	} else {
-		go orch.KeepInSync(ctx, instanceCache)
+		go orch.KeepInSync(ctx, instanceCache, logger)
 	}
 
 	var lokiClient *loki.DefaultClient
@@ -249,7 +247,7 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken strin
 	return *userID, nil
 }
 
-func (a *APIStore) DeleteInstance(instanceID string, purge bool) *api.APIError {
+func (a *APIStore) DeleteInstance(instanceID string) *api.APIError {
 	info, err := a.instanceCache.GetInstance(instanceID)
 	if err != nil {
 		return &api.APIError{
@@ -259,7 +257,7 @@ func (a *APIStore) DeleteInstance(instanceID string, purge bool) *api.APIError {
 		}
 	}
 
-	return deleteInstance(a.Ctx, a.orchestrator, a.analytics, a.posthog, a.logger, info)
+	return deleteInstance(a.Ctx, a.orchestrator, a.analytics, a.posthog, a.logger, &info)
 }
 
 func (a *APIStore) CheckTeamAccessEnv(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID, public bool) (env *api.Template, build *models.EnvBuild, err error) {
@@ -275,8 +273,28 @@ func (a *APIStore) CheckTeamAccessEnv(ctx context.Context, aliasOrEnvID string, 
 	}, build, nil
 }
 
-func getDeleteInstanceFunction(ctx context.Context, orchestrator *orchestrator.Orchestrator, analytics *analyticscollector.Analytics, posthogClient *PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo, purge bool) *api.APIError {
-	return func(info instance.InstanceInfo, purge bool) *api.APIError {
+func getInsertInstanceFunction(ctx context.Context, orchestrator *orchestrator.Orchestrator, analytics *analyticscollector.Analytics) func(info *instance.InstanceInfo) *api.APIError {
+	return func(info *instance.InstanceInfo) *api.APIError {
+		node := orchestrator.GetNodeById(info.Instance.ClientID)
+		node.CPUUsage += info.VCPU
+		node.RamUsage += info.RamMB
+
+		_, err := analytics.Client.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
+			InstanceId:    info.Instance.SandboxID,
+			EnvironmentId: info.Instance.TemplateID,
+			BuildId:       info.BuildID.String(),
+			TeamId:        info.TeamID.String(),
+			Timestamp:     timestamppb.Now(),
+		})
+		if err != nil {
+			errMsg := fmt.Errorf("error when sending analytics event: %w", err)
+			telemetry.ReportCriticalError(ctx, errMsg)
+		}
+		return nil
+	}
+}
+func getDeleteInstanceFunction(ctx context.Context, orchestrator *orchestrator.Orchestrator, analytics *analyticscollector.Analytics, posthogClient *PosthogClient, logger *zap.SugaredLogger) func(info *instance.InstanceInfo) *api.APIError {
+	return func(info *instance.InstanceInfo) *api.APIError {
 		return deleteInstance(ctx, orchestrator, analytics, posthogClient, logger, info)
 	}
 }
@@ -287,11 +305,11 @@ func deleteInstance(
 	analytics *analyticscollector.Analytics,
 	posthogClient *PosthogClient,
 	logger *zap.SugaredLogger,
-	info instance.InstanceInfo,
+	info *instance.InstanceInfo,
 ) *api.APIError {
 	duration := time.Since(*info.StartTime).Seconds()
 
-	delErr := orchestrator.DeleteInstance(ctx, info.Instance.ClientID, info.Instance.SandboxID)
+	delErr := orchestrator.DeleteInstance(ctx, info)
 	if delErr != nil {
 		errMsg := fmt.Errorf("cannot delete instance '%s': %w", info.Instance.SandboxID, delErr)
 

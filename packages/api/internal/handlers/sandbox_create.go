@@ -165,11 +165,13 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		TeamID:            &team.ID,
 		Metadata:          metadata,
 		MaxInstanceLength: time.Duration(team.Edges.TeamTier.MaxLengthHours) * time.Hour,
+		VCPU:              build.Vcpu,
+		RamMB:             build.RAMMB,
 	}); cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 
-		delErr := a.DeleteInstance(sandbox.SandboxID, true)
+		delErr := a.DeleteInstance(sandbox.SandboxID)
 		if delErr != nil {
 			delErrMsg := fmt.Errorf("couldn't delete instance that couldn't be added to cache: %w", delErr.Err)
 			telemetry.ReportError(ctx, delErrMsg)

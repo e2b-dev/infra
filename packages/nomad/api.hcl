@@ -18,10 +18,6 @@ variable "api_port_number" {
   default = 0
 }
 
-variable "consul_token" {
-  type    = string
-  default = ""
-}
 variable "nomad_token" {
   type    = string
   default = ""
@@ -67,10 +63,16 @@ variable "orchestrator_port" {
   default = ""
 }
 
-variable "template_manager_address" {
+variable "template_manager_host" {
   type    = string
   default = ""
 }
+
+variable "template_manager_port" {
+  type    = string
+  default = ""
+}
+
 
 job "api" {
   datacenters = [var.gcp_zone]
@@ -109,9 +111,9 @@ job "api" {
 
       env {
         ORCHESTRATOR_PORT             = var.orchestrator_port
-        TEMPLATE_MANAGER_ADDRESS      = var.template_manager_address
+        TEMPLATE_MANAGER_HOST         = var.template_manager_host
+        TEMPLATE_MANAGER_PORT         = var.template_manager_port
         NOMAD_TOKEN                   = var.nomad_token
-        CONSUL_TOKEN                  = var.consul_token
         POSTGRES_CONNECTION_STRING    = var.postgres_connection_string
         ENVIRONMENT                   = var.environment
         POSTHOG_API_KEY               = var.posthog_api_key

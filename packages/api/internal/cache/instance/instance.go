@@ -6,20 +6,17 @@ import (
 	"sync"
 	"time"
 
+	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/types/known/timestamppb"
-
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
-	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
 	InstanceExpiration = time.Second * 15
-	CacheSyncTime      = time.Minute * 3
+	CacheSyncTime      = time.Minute
 )
 
 type InstanceInfo struct {
@@ -29,6 +26,8 @@ type InstanceInfo struct {
 	Metadata          map[string]string
 	StartTime         *time.Time
 	MaxInstanceLength time.Duration
+	VCPU              int64
+	RamMB             int64
 }
 
 type InstanceCache struct {
@@ -44,7 +43,14 @@ type InstanceCache struct {
 	mu sync.Mutex
 }
 
-func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap.SugaredLogger, deleteInstance func(data InstanceInfo, purge bool) *api.APIError, initialInstances []*InstanceInfo, counter metric.Int64UpDownCounter) *InstanceCache {
+func NewCache(
+	analytics analyticscollector.AnalyticsCollectorClient,
+	logger *zap.SugaredLogger,
+	insertInstance func(data *InstanceInfo) *api.APIError,
+	deleteInstance func(data *InstanceInfo) *api.APIError,
+	initialInstances []*InstanceInfo,
+	counter metric.Int64UpDownCounter,
+) *InstanceCache {
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
 	cache := ttlcache.New(
@@ -62,21 +68,15 @@ func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap
 
 	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, InstanceInfo]) {
 		instanceInfo := i.Value()
-		_, err := analytics.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
-			InstanceId:    instanceInfo.Instance.SandboxID,
-			EnvironmentId: instanceInfo.Instance.TemplateID,
-			BuildId:       instanceInfo.BuildID.String(),
-			TeamId:        instanceInfo.TeamID.String(),
-			Timestamp:     timestamppb.Now(),
-		})
+		err := insertInstance(&instanceInfo)
 		if err != nil {
-			errMsg := fmt.Errorf("error when sending analytics event: %w", err)
-			telemetry.ReportCriticalError(ctx, errMsg)
+			logger.Errorf("Error inserting instance: %v", err.Err)
 		}
 	})
 	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, InstanceInfo]) {
 		if er == ttlcache.EvictionReasonExpired || er == ttlcache.EvictionReasonDeleted {
-			err := deleteInstance(i.Value(), true)
+			value := i.Value()
+			err := deleteInstance(&value)
 			if err != nil {
 				logger.Errorf("Error deleting instance (%v)\n: %v", er, err.Err)
 			}
