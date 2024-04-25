@@ -261,13 +261,13 @@ func NewSandbox(
 		for {
 			select {
 			case <-time.After(waitForUffd):
-				fmt.Printf("waiting for uffd to initialize")
+				fmt.Println("waiting for uffd to initialize")
 				return nil, fmt.Errorf("timeout waiting to uffd to initialize")
 			case <-childCtx.Done():
 				return nil, childCtx.Err()
 			default:
 				isRunning, _ := checkIsRunning(uffd.process)
-				fmt.Printf("uffd is running: %v", isRunning)
+				fmt.Printf("uffd is running: %v\n", isRunning)
 				if isRunning {
 					break uffdWait
 				}
