@@ -122,7 +122,14 @@ func (o *Orchestrator) KeepInSync(ctx context.Context, instanceCache *instance.I
 		}
 
 		for nodeID := range o.nodes {
-			if _, ok := o.nodeToHost[nodeID]; !ok {
+			found := false
+			for _, id := range nodeIds {
+				if nodeID == id {
+					found = true
+					break
+				}
+			}
+			if !found {
 				delete(o.nodes, nodeID)
 			}
 		}
