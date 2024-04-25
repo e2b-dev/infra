@@ -6,12 +6,13 @@ import (
 	"sync"
 	"time"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+
+	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 )
 
 const (
@@ -46,8 +47,8 @@ type InstanceCache struct {
 func NewCache(
 	analytics analyticscollector.AnalyticsCollectorClient,
 	logger *zap.SugaredLogger,
-	insertInstance func(data *InstanceInfo) *api.APIError,
-	deleteInstance func(data *InstanceInfo) *api.APIError,
+	insertInstance func(data InstanceInfo) *api.APIError,
+	deleteInstance func(data InstanceInfo) *api.APIError,
 	initialInstances []*InstanceInfo,
 	counter metric.Int64UpDownCounter,
 ) *InstanceCache {
@@ -67,16 +68,14 @@ func NewCache(
 	}
 
 	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, InstanceInfo]) {
-		instanceInfo := i.Value()
-		err := insertInstance(&instanceInfo)
+		err := insertInstance(i.Value())
 		if err != nil {
 			logger.Errorf("Error inserting instance: %v", err.Err)
 		}
 	})
 	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, InstanceInfo]) {
 		if er == ttlcache.EvictionReasonExpired || er == ttlcache.EvictionReasonDeleted {
-			value := i.Value()
-			err := deleteInstance(&value)
+			err := deleteInstance(i.Value())
 			if err != nil {
 				logger.Errorf("Error deleting instance (%v)\n: %v", er, err.Err)
 			}
