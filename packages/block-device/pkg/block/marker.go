@@ -1,11 +1,33 @@
 package block
 
-// We may want to use a different (compressed) bitset implementation, hash maps or trees later, based on the performance.
-// https://github.com/RoaringBitmap/roaring
-// https://github.com/bits-and-blooms/bitset
-type Marker interface {
-	// Check if the block at specified offset is marked.
-	IsMarked(off int64) bool
-	// Mark the block at specified offset.
-	Mark(off int64)
+import (
+	"sync"
+
+	"github.com/bits-and-blooms/bitset"
+)
+
+type Marker struct {
+	bitset *bitset.BitSet
+	mu     sync.RWMutex
+}
+
+// TODO: Not sure if the pre-allocation is necessary.
+func NewMarker(size uint) *Marker {
+	return &Marker{
+		bitset: bitset.New(size),
+	}
+}
+
+func (b *Marker) Mark(off int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.bitset.Set(uint(off))
+}
+
+func (b *Marker) IsMarked(off int64) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	return b.bitset.Test(uint(off))
 }

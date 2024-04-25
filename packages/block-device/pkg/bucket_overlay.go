@@ -4,12 +4,13 @@ import (
 	"io"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/block-device/pkg/backend"
+	"github.com/e2b-dev/infra/packages/block-device/pkg/cache"
+	"github.com/e2b-dev/infra/packages/block-device/pkg/overlay"
 )
 
 type BucketOverlay struct {
-	overlay *backend.Overlay
-	cache   *backend.MmapCache
+	overlay *overlay.Overlay
+	cache   *cache.Mmap
 }
 
 func newBucketOverlay(source io.ReaderAt, cachePath string, size int64) (*BucketOverlay, error) {
@@ -18,12 +19,12 @@ func newBucketOverlay(source io.ReaderAt, cachePath string, size int64) (*Bucket
 		cacheExists = true
 	}
 
-	cache, err := backend.NewMmapCache(size, cachePath, cacheExists)
+	cache, err := cache.NewMmapCache(size, cachePath, cacheExists)
 	if err != nil {
 		return nil, err
 	}
 
-	overlay := backend.NewOverlay(source, cache, true)
+	overlay := overlay.New(source, cache, true)
 
 	return &BucketOverlay{
 		overlay: overlay,

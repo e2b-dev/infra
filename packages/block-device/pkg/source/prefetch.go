@@ -1,27 +1,32 @@
-package backend
+package source
 
 import (
+	"context"
 	"fmt"
 	"io"
 )
 
 type Prefetcher struct {
-	source io.ReaderAt
-	stop   chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+	base   io.ReaderAt
 	size   int64
 }
 
-func NewPrefetcher(source io.ReaderAt, size int64) *Prefetcher {
+func NewPrefetcher(ctx context.Context, base io.ReaderAt, size int64) *Prefetcher {
+	ctx, cancel := context.WithCancel(ctx)
+
 	return &Prefetcher{
-		source: source,
+		ctx:    ctx,
+		base:   base,
 		size:   size,
-		stop:   make(chan struct{}),
+		cancel: cancel,
 	}
 }
 
 func (p *Prefetcher) prefetch(off int64) error {
 	// TODO: Handle in device implementation that if the buffer is 0 just start fetching and don't wait/copy.
-	_, err := p.source.ReadAt([]byte{}, off)
+	_, err := p.base.ReadAt([]byte{}, off)
 
 	return err
 }
@@ -32,7 +37,7 @@ func (p *Prefetcher) Start() {
 
 	for chunkIdx := start; chunkIdx < end; chunkIdx++ {
 		select {
-		case <-p.stop:
+		case <-p.ctx.Done():
 			return
 		default:
 			err := p.prefetch(chunkIdx * ChunkSize)
@@ -44,5 +49,5 @@ func (p *Prefetcher) Start() {
 }
 
 func (p *Prefetcher) Close() {
-	close(p.stop)
+	p.cancel()
 }

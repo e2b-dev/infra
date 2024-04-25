@@ -4,6 +4,8 @@ import (
 	"io"
 )
 
+// Size is the size of a block in bytes.
+// This needs to be accurate to the filesystem block size we are using.
 const Size int64 = 4096 // 4KB
 
 type ErrBytesNotAvailable struct{}

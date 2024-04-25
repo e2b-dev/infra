@@ -5,17 +5,15 @@ import (
 	"errors"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/block-device/pkg/backend"
+	"github.com/e2b-dev/infra/packages/block-device/pkg/cache"
+	"github.com/e2b-dev/infra/packages/block-device/pkg/source"
 )
 
 type BucketSource struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-
-	source      *backend.GCS
-	cache       *backend.MmapCache
-	prefetecher *backend.Prefetcher
-	chunker     *backend.ChunkerSyncer
+	base        *source.GCS
+	cache       *cache.Mmap
+	prefetecher *source.Prefetcher
+	chunker     *source.Chunker
 
 	size int64
 }
@@ -32,27 +30,23 @@ func NewBucketSource(
 		cacheExists = true
 	}
 
-	source, err := backend.NewGCS(
-		ctx,
-		bucketName,
-		bucketPath,
-	)
+	base, err := source.NewGCS(ctx, bucketName, bucketPath)
 	if err != nil {
 		return nil, err
 	}
 
-	cache, err := backend.NewMmapCache(size, bucketCachePath, cacheExists)
+	cache, err := cache.NewMmapCache(size, bucketCachePath, cacheExists)
 	if err != nil {
 		return nil, err
 	}
 
-	chunker := backend.NewChunkerSyncer(source, cache)
+	chunker := source.NewChunker(ctx, base, cache)
 
-	prefetcher := backend.NewPrefetcher(cache, size)
+	prefetcher := source.NewPrefetcher(ctx, chunker, size)
 	go prefetcher.Start()
 
 	return &BucketSource{
-		source:      source,
+		base:        base,
 		cache:       cache,
 		prefetecher: prefetcher,
 		chunker:     chunker,
@@ -66,15 +60,13 @@ func (d *BucketSource) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 func (d *BucketSource) Close() error {
-	d.cancel()
-
 	d.prefetecher.Close()
-	sourceErr := d.source.Close()
+	sourceErr := d.base.Close()
 	cacheErr := d.cache.Close()
 
 	return errors.Join(sourceErr, cacheErr)
 }
 
 func (d *BucketSource) CreateOverlay(cachePath string) (*BucketOverlay, error) {
-	return newBucketOverlay(d.source, cachePath, d.size)
+	return newBucketOverlay(d.base, cachePath, d.size)
 }

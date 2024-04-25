@@ -1,4 +1,4 @@
-package backend
+package overlay
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ type Overlay struct {
 	cacheReads bool
 }
 
-func NewOverlay(base io.ReaderAt, cache block.Device, cacheReads bool) *Overlay {
+func New(base io.ReaderAt, cache block.Device, cacheReads bool) *Overlay {
 	return &Overlay{
 		base:       base,
 		cache:      cache,
