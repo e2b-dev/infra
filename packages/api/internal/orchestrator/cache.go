@@ -3,35 +3,22 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/google/uuid"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogClient *analyticscollector.PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
 		duration := time.Since(*info.StartTime).Seconds()
-
-		node, err := o.GetNode(info.Instance.ClientID)
-		if err != nil {
-			return fmt.Errorf("failed to get node '%s': %w", info.Instance.ClientID, err)
-		}
-
-		node.CPUUsage -= info.VCPU
-		node.RamUsage -= info.RamMB
-
-		_, err := node.Client.Sandbox.Delete(ctx, &orchestrator.SandboxRequest{SandboxID: info.Instance.SandboxID})
-		if err != nil {
-			return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
-		}
 
 		if info.TeamID != nil && info.StartTime != nil {
 			_, err := o.analytics.Client.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
@@ -52,6 +39,19 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 					Set("environment", info.Instance.TemplateID).
 					Set("duration", duration),
 			)
+		}
+
+		node, err := o.GetNode(info.Instance.ClientID)
+		if err != nil {
+			return fmt.Errorf("failed to get node '%s': %w", info.Instance.ClientID, err)
+		}
+
+		node.CPUUsage -= info.VCPU
+		node.RamUsage -= info.RamMB
+
+		_, err = node.Client.Sandbox.Delete(ctx, &orchestrator.SandboxRequest{SandboxID: info.Instance.SandboxID})
+		if err != nil {
+			return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
 		}
 
 		logger.Infof("Closed sandbox '%s' after %f seconds", info.Instance.SandboxID, duration)
