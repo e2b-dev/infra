@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"log"
 	"time"
 
@@ -214,8 +213,4 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *nomadapi.NodeLis
 	}()
 
 	return activeInstances, nil
-}
-
-func (o *Orchestrator) Reserve(sandboxID string, teamID uuid.UUID, maxInstancesPerTeam int64) (error, func()) {
-	return o.instanceCache.Reserve(sandboxID, teamID, maxInstancesPerTeam)
 }
