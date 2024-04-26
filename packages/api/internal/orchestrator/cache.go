@@ -12,15 +12,14 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogClient *handlers.PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
+func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogClient *analyticscollector.PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
 		duration := time.Since(*info.StartTime).Seconds()
 
-		delErr := o.DeleteInstance(ctx, info.Instance.SandboxID)
+		delErr := o.DeleteInstanceRequest(ctx, info.Instance.SandboxID, &info.Instance.ClientID)
 		if delErr != nil {
 			return fmt.Errorf("cannot delete instance '%s': %w", info.Instance.SandboxID, delErr)
 		}

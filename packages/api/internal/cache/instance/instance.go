@@ -70,14 +70,14 @@ func NewCache(
 	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, InstanceInfo]) {
 		err := insertInstance(i.Value())
 		if err != nil {
-			logger.Errorf("Error inserting instance: %v", err.Err)
+			logger.Errorf("Error inserting instance: %v", err)
 		}
 	})
 	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, InstanceInfo]) {
 		if er == ttlcache.EvictionReasonExpired || er == ttlcache.EvictionReasonDeleted {
 			err := deleteInstance(i.Value())
 			if err != nil {
-				logger.Errorf("Error deleting instance (%v)\n: %v", er, err.Err)
+				logger.Errorf("Error deleting instance (%v)\n: %v", er, err)
 			}
 
 			instanceCache.UpdateCounter(i.Value(), -1)

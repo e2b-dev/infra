@@ -1,4 +1,4 @@
-package handlers
+package analyticscollector
 
 import (
 	"log"

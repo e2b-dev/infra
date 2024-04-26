@@ -26,7 +26,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		attribute.String("team.id", teamID.String()),
 	)
 
-	err := a.orchestrator.DeleteInstance(ctx, sandboxID)
+	err := a.orchestrator.DeleteInstanceRequest(ctx, sandboxID, nil)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting sandbox")
 		telemetry.ReportCriticalError(ctx, err)

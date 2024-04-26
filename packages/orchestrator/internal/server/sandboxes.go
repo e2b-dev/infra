@@ -116,7 +116,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 	return nil, nil
 }
 
-func (s *server) StreamFailedSandbox(_ *emptypb.Empty, stream orchestrator.Sandbox_StreamFailedSandboxServer) error {
+func (s *server) StreamClosedSandboxes(_ *emptypb.Empty, stream orchestrator.Sandbox_StreamClosedSandboxesServer) error {
 	ctx := stream.Context()
 	_, childSpan := s.tracer.Start(ctx, "failed-sandbox")
 	defer childSpan.End()
@@ -126,7 +126,7 @@ func (s *server) StreamFailedSandbox(_ *emptypb.Empty, stream orchestrator.Sandb
 		case <-ctx.Done():
 			return ctx.Err()
 		case sandboxID := <-s.failedSandbox:
-			if err := stream.Send(&orchestrator.FailedSandbox{SandboxID: sandboxID}); err != nil {
+			if err := stream.Send(&orchestrator.ClosedSandbox{SandboxID: sandboxID}); err != nil {
 				return err
 			}
 		}

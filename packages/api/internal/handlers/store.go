@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
@@ -28,7 +29,7 @@ import (
 
 type APIStore struct {
 	Ctx             context.Context
-	posthog         *PosthogClient
+	posthog         *analyticscollector.PosthogClient
 	tracer          trace.Tracer
 	orchestrator    *orchestrator.Orchestrator
 	templateManager *template_manager.TemplateManager
@@ -61,7 +62,7 @@ func NewAPIStore() *APIStore {
 
 	logger.Info("Initialized Supabase client")
 
-	posthogClient, posthogErr := NewPosthogClient(logger)
+	posthogClient, posthogErr := analyticscollector.NewPosthogClient(logger)
 
 	if posthogErr != nil {
 		logger.Errorf("Error initializing Posthog client\n: %v", posthogErr)
@@ -96,7 +97,7 @@ func NewAPIStore() *APIStore {
 	if env.IsLocal() {
 		logger.Info("Skipping syncing sandboxes, running locally")
 	} else {
-		go orch.KeepInSync(ctx)
+		go orch.KeepInSync(ctx, logger)
 	}
 
 	var lokiClient *loki.DefaultClient

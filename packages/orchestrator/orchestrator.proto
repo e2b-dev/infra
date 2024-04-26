@@ -42,7 +42,7 @@ message SandboxRequest {
 }
 
 // ID of the failed sandbox
-message FailedSandbox {
+message ClosedSandbox {
   string sandboxID = 1;
 }
 
@@ -65,6 +65,6 @@ service Sandbox {
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
   // Delete is a gRPC service that kills a sandbox.
   rpc Delete(SandboxRequest) returns (google.protobuf.Empty);
-  // Report failed sandboxes
-  rpc StreamFailedSandbox(google.protobuf.Empty) returns (stream FailedSandbox);
+  // Report closed sandboxes
+  rpc StreamClosedSandboxes(google.protobuf.Empty) returns (stream ClosedSandbox);
 }

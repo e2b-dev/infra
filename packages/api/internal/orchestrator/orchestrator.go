@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -11,10 +10,10 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/connectivity"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
@@ -23,7 +22,6 @@ type Node struct {
 	ID       string
 	CPUUsage int64
 	RamUsage int64
-	Host     string
 	Client   *GRPCClient
 }
 
@@ -34,7 +32,7 @@ type Orchestrator struct {
 	analytics     *analyticscollector.Analytics
 }
 
-func New(ctx context.Context, nomadClient *nomadapi.Client, logger *zap.SugaredLogger, posthogClient *handlers.PosthogClient) (*Orchestrator, error) {
+func New(ctx context.Context, nomadClient *nomadapi.Client, logger *zap.SugaredLogger, posthogClient *analyticscollector.PosthogClient) (*Orchestrator, error) {
 	analytics, err := analyticscollector.NewAnalytics()
 	if err != nil {
 		logger.Errorf("Error initializing Analytics client\n: %v", err)
@@ -107,6 +105,7 @@ func (o *Orchestrator) GetNode(nodeID string) (*Node, error) {
 	if node := o.nodes[nodeID]; node != nil {
 		return node, nil
 	}
+
 	return nil, fmt.Errorf("node %s not found", nodeID)
 }
 
@@ -129,12 +128,12 @@ func (o *Orchestrator) listNomadNodes() ([]*nomadapi.NodeListStub, error) {
 }
 
 // KeepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) KeepInSync(ctx context.Context) {
+func (o *Orchestrator) KeepInSync(ctx context.Context, logger *zap.SugaredLogger) {
 	for {
 		time.Sleep(instance.CacheSyncTime)
 		nodes, err := o.listNomadNodes()
 		if err != nil {
-			log.Printf("Error loading nodes\n: %v", err)
+			logger.Errorf("Error loading nodes\n: %v", err)
 			continue
 		}
 
@@ -144,9 +143,14 @@ func (o *Orchestrator) KeepInSync(ctx context.Context) {
 			if err != nil {
 				_, err := o.connectToNode(ctx, node)
 				if err != nil {
-					log.Printf("Error connecting to node\n: %v", err)
+					logger.Errorf("Error connecting to node\n: %v", err)
 				}
 			}
+		}
+
+		logger.Infof("Node usages:\n")
+		for _, node := range o.nodes {
+			logger.Infof("Node %s: CPU: %d, RAM: %d\n", node.ID, node.CPUUsage, node.RamUsage)
 		}
 
 		o.instanceCache.SendAnalyticsEvent()
@@ -157,7 +161,7 @@ func (o *Orchestrator) KeepInSync(ctx context.Context) {
 func (o *Orchestrator) InitialSync(ctx context.Context) (instances []*instance.InstanceInfo, err error) {
 	nodes, err := o.listNomadNodes()
 	if err != nil {
-		return instances, err
+		return nil, err
 	}
 
 	for _, node := range nodes {
@@ -177,9 +181,16 @@ func (o *Orchestrator) getIdFromNode(node *nomadapi.NodeListStub) string {
 }
 
 func (o *Orchestrator) connectToNode(ctx context.Context, node *nomadapi.NodeListStub) ([]*instance.InstanceInfo, error) {
-	n := &Node{ID: o.getIdFromNode(node)}
-	o.nodes[n.ID] = n
+	client, err := NewClient(node.Address)
+	if err != nil {
+		return nil, err
+	}
 
+	n := &Node{
+		ID:     o.getIdFromNode(node),
+		Client: client,
+	}
+	o.nodes[n.ID] = n
 	activeInstances, instancesErr := o.getInstances(ctx, o.getIdFromNode(node))
 	if instancesErr != nil {
 		return nil, instancesErr
@@ -190,26 +201,35 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *nomadapi.NodeLis
 		n.CPUUsage += sandbox.VCPU
 	}
 
-	client, err := NewClient(node.Address)
+	stream, err := client.Sandbox.StreamClosedSandboxes(context.Background(), &empty.Empty{})
 	if err != nil {
-		return nil, err
-	}
-
-	n.Client = client
-
-	stream, err := client.Sandbox.StreamFailedSandbox(context.Background(), &empty.Empty{})
-	if err != nil {
-		fmt.Printf("failed to stream failed sandbox: %v", err)
+		fmt.Printf("failed to stream failed sandbox: %v\n", err)
 	}
 
 	go func() {
 		for {
 			sandboxID, err := stream.Recv()
 			if err != nil {
-				fmt.Printf("failed to receive from stream: %v", err)
+				if n.Client.connection.GetState() != connectivity.Ready {
+					fmt.Printf("failed to receive from stream: %v\n", err)
+					break
+				}
+				fmt.Printf("failed to receive from stream: %v\n", err)
+				continue
 			}
+
+			// Delete the instance from the cache if it exists
 			o.instanceCache.Kill(sandboxID.SandboxID)
 		}
+
+		// Close the client if the stream failed
+		fmt.Printf("removing node %s\n", n.ID)
+		err := o.nodes[n.ID].Client.Close()
+		if err != nil {
+			fmt.Printf("failed to close client: %v\n", err)
+		}
+
+		delete(o.nodes, n.ID)
 	}()
 
 	return activeInstances, nil
