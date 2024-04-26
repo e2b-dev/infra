@@ -51,8 +51,6 @@ func (s *SparseFileView) MarkedBlockRange(offset int64) (start int64, end int64,
 		return 0, 0, ErrNoMarkFound{}
 	}
 
-	// TODO: Check if this is correct
-	// TODO: Return block indexes to ease calculations in chunker
 	start = offset / block.Size
 	end = (firstUnmarked + block.Size) / block.Size
 

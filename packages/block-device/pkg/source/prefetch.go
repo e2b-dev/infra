@@ -27,7 +27,6 @@ func NewPrefetcher(ctx context.Context, base io.ReaderAt, size int64) *Prefetche
 }
 
 func (p *Prefetcher) prefetch(off int64) error {
-	// TODO: Handle in device implementation that if the buffer is 0 just start fetching and don't wait/copy.
 	_, err := p.base.ReadAt([]byte{}, off)
 
 	return fmt.Errorf("failed to prefetch %d: %w", off, err)

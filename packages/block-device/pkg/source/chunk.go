@@ -16,7 +16,6 @@ import (
 const (
 	ChunkSize = block.Size * 1024 // 4 MB
 
-	// TODO: Sync concurrency across global pool?
 	concurrentFetches    = 8
 	concurrentPrefetches = 2
 )
@@ -63,7 +62,7 @@ type Chunker struct {
 	chunksInProgressLock sync.Mutex
 }
 
-func NewChunker(ctx context.Context, base io.ReaderAt, cache *cache.Mmap) *Chunker {
+func NewChunker(ctx context.Context, base io.ReaderAt, cache block.Device) *Chunker {
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &Chunker{
@@ -119,9 +118,8 @@ func (c *Chunker) ensureChunk(chunk int64, prefetch bool) chan error {
 			}
 		default:
 			data := chunkSlicePool.get()
-			chunkN, chunkErr := c.fetchChunk(data, chunk)
-			chunkSlicePool.put(data)
 
+			chunkN, chunkErr := c.fetchChunk(data, chunk)
 			if chunkErr != nil {
 				ch <- fmt.Errorf("failed to fetch chunk %d: %w", chunk, chunkErr)
 			}
@@ -129,6 +127,17 @@ func (c *Chunker) ensureChunk(chunk int64, prefetch bool) chan error {
 			if chunkN != ChunkSize {
 				ch <- fmt.Errorf("failed to fetch chunk %d: invalid length %d", chunk, chunkN)
 			}
+
+			cacheN, cacheErr := c.cache.WriteAt(data, chunk*ChunkSize)
+			if cacheErr != nil {
+				ch <- fmt.Errorf("failed to write chunk %d to cache: %w", chunk, cacheErr)
+			}
+
+			if cacheN != int(ChunkSize) {
+				ch <- fmt.Errorf("failed to fetch chunk %d: invalid length %d", chunk, chunkN)
+			}
+
+			chunkSlicePool.put(data)
 		}
 	}(sem, chunk)
 

@@ -1,79 +1,46 @@
 package cache
 
 import (
+	"bytes"
 	"os"
-	"path/filepath"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewMmappedFile(t *testing.T) {
-	// Test creating a new mmapped
-
-	name := filepath.Join(os.TempDir(), "mmap_test")
-	size := int64(1024 * block.Size)
-
-	mmapedFile, err := newMmappedFile(size, name, true)
-	require.NoError(t, err)
-	defer mmapedFile.Close()
-	defer os.Remove(name)
-
-	// Check if the file was created and has the correct size
-	fileInfo, err := os.Stat(name)
-	require.NoError(t, err)
-	assert.Equal(t, size, fileInfo.Size())
-}
-
-func TestMmapedFile_ReadWriteAt(t *testing.T) {
+func TestMmapedFile(t *testing.T) {
 	// Create a temporary file for testing
-	file, err := os.CreateTemp("", "mmap_test")
-	require.NoError(t, err)
-	defer os.Remove(file.Name())
-	defer file.Close()
+	tempFile, err := os.CreateTemp("", "mmap_test")
+	require.NoError(t, err, "error creating temp file")
+	defer os.Remove(tempFile.Name())
 
-	// Allocate space for the file using fallocate
-	size := int64(1024 * 1024) // 1 MB
-	err = fallocate(size, file)
-	require.NoError(t, err)
+	// Create a new mmapedFile instance
+	size := int64(1024)
+	mf, err := newMmappedFile(size, tempFile.Name(), true)
+	require.NoError(t, err, "error creating mmapedFile")
+	defer mf.Close()
 
-	// Create an mmapped file
-	mmapedFile, err := newMmappedFile(size, file.Name(), false)
-	require.NoError(t, err)
-	defer mmapedFile.Close()
-
-	// Test writing to the mmapped file
+	// Test writing to the mmapedFile
 	data := []byte("Hello, World!")
 	offset := int64(100)
-	n, err := mmapedFile.WriteAt(data, offset)
-	assert.NoError(t, err)
-	assert.Equal(t, len(data), n)
+	n, err := mf.WriteAt(data, offset)
+	assert.NoError(t, err, "error writing to mmapedFile")
+	assert.Equal(t, len(data), n, "expected to write %d bytes, but wrote %d bytes", len(data), n)
 
-	// Test reading from the mmapped file
+	// Test reading from the mmapedFile
 	readData := make([]byte, len(data))
-	n, err = mmapedFile.ReadAt(readData, offset)
-	assert.NoError(t, err)
-	assert.Equal(t, len(data), n)
-	assert.Equal(t, data, readData)
+	n, err = mf.ReadAt(readData, offset)
+	assert.NoError(t, err, "error reading from mmapedFile")
+	assert.Equal(t, len(data), n, "expected to read %d bytes, but read %d bytes", len(data), n)
+	assert.True(t, bytes.Equal(data, readData), "expected to read %s, but read %s", data, readData)
+
+	// Test reading from an invalid offset
+	invalidOffset := size + 1
+	_, err = mf.ReadAt(readData, invalidOffset)
+	assert.Error(t, err, "expected an error when reading from an invalid offset")
+
+	// Test writing to an invalid offset
+	_, err = mf.WriteAt(data, invalidOffset)
+	assert.Error(t, err, "expected an error when writing to an invalid offset")
 }
-
-func TestMmapedFile_Close(t *testing.T) {
-	// Create a temporary file for testing
-	file, err := os.CreateTemp("", "mmap_test")
-	require.NoError(t, err)
-	defer os.Remove(file.Name())
-	defer file.Close()
-
-	// Create an mmapped file
-	size := int64(1024 * 1024) // 1 MB
-	mmapedFile, err := newMmappedFile(size, file.Name(), true)
-	require.NoError(t, err)
-
-	// Close the mmapped file
-	err = mmapedFile.Close()
-	assert.NoError(t, err)
-}
-
-// Add test for .Slice

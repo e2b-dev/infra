@@ -11,7 +11,6 @@ type Marker struct {
 	mu     sync.RWMutex
 }
 
-// TODO: Not sure if the pre-allocation is necessary.
 func NewMarker(size uint) *Marker {
 	return &Marker{
 		bitset: bitset.New(size),

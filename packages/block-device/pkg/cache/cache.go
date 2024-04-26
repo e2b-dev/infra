@@ -55,12 +55,11 @@ func (m *Mmap) checkFile(off int64) bool {
 
 	defer m.syncMarkers(start, end)
 
-	// TODO: Check if it is really [off, unmarkedStart)
 	return start != off/block.Size
 }
 
 func (m *Mmap) ReadAt(b []byte, off int64) (int, error) {
-	if m.marker.IsMarked(off/block.Size) || m.checkFile(off) {
+	if m.isMarked(off) {
 		return m.mmap.ReadAt(b, off)
 	}
 
@@ -80,4 +79,8 @@ func (m *Mmap) WriteAt(b []byte, off int64) (n int, err error) {
 
 func (m *Mmap) Close() error {
 	return m.mmap.Close()
+}
+
+func (m *Mmap) isMarked(off int64) bool {
+	return m.marker.IsMarked(off/block.Size) || m.checkFile(off)
 }

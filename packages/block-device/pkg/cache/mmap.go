@@ -24,7 +24,7 @@ func newMmappedFile(size int64, filePath string, createFile bool) (*mmapedFile, 
 		flag = os.O_RDWR
 	}
 
-	f, err := os.OpenFile(filePath, flag, 0o666)
+	f, err := os.OpenFile(filePath, flag, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
 	}
