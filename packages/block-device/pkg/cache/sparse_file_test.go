@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,8 +26,8 @@ func TestSparseFileView_MarkedBlockRange(t *testing.T) {
 
 	// Test case 1: No marked blocks
 	start, end, err := view.MarkedBlockRange(0)
-	assert.Equal(t, int64(0), start)
-	assert.Equal(t, int64(0), end)
+	assert.EqualValues(t, 0, start)
+	assert.EqualValues(t, 0, end)
 	assert.ErrorIs(t, err, ErrNoMarkFound{})
 
 	// Test case 2: Marked block at offset 0
@@ -35,8 +36,8 @@ func TestSparseFileView_MarkedBlockRange(t *testing.T) {
 	_, err = file.WriteAt([]byte{1}, 0)
 	require.NoError(t, err)
 	start, end, err = view.MarkedBlockRange(0)
-	assert.Equal(t, int64(0), start)
-	assert.Equal(t, 1*block.Size-1, end)
+	assert.EqualValues(t, 0, start)
+	assert.EqualValues(t, 1*block.Size-1, end)
 	assert.NoError(t, err)
 
 	// Test case 3: Marked block at offset block.Size
@@ -77,8 +78,9 @@ func TestSparseFileView_MarkedBlockRange(t *testing.T) {
 
 	// Test case 6: Offset beyond the file size
 	err = fallocate(size, file)
+	assert.NoError(t, err)
 	start, end, err = view.MarkedBlockRange(size + 1)
-	assert.Equal(t, int64(0), start)
-	assert.Equal(t, int64(0), end)
+	assert.EqualValues(t, 0, start)
+	assert.EqualValues(t, 0, end)
 	assert.ErrorIs(t, err, ErrNoMarkFound{})
 }
