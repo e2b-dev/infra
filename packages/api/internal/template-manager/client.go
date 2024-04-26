@@ -2,10 +2,11 @@ package template_manager
 
 import (
 	"fmt"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"google.golang.org/grpc"
 	"os"
 	"strconv"
+
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"google.golang.org/grpc"
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"

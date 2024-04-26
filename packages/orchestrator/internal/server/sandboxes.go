@@ -59,7 +59,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			telemetry.ReportCriticalError(closeCtx, errMsg)
 		}
 
-		go func(sandboxID string) { s.failedSandbox <- sandboxID }(req.Sandbox.SandboxID)
+		go func(sandboxID string) { s.closedSandboxes <- sandboxID }(req.Sandbox.SandboxID)
 
 		// Wait before removing all resources (see defers above)
 		time.Sleep(1 * time.Second)
@@ -125,7 +125,7 @@ func (s *server) StreamClosedSandboxes(_ *emptypb.Empty, stream orchestrator.San
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case sandboxID := <-s.failedSandbox:
+		case sandboxID := <-s.closedSandboxes:
 			if err := stream.Send(&orchestrator.ClosedSandbox{SandboxID: sandboxID}); err != nil {
 				return err
 			}
