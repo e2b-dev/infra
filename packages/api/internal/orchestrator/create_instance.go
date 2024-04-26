@@ -54,8 +54,7 @@ func (o *Orchestrator) CreateSandbox(
 			return nil, fmt.Errorf("failed to get least busy node: %w", err)
 		}
 
-		telemetry.SetAttributes(childCtx, attribute.String("node.id", node.ID))
-		telemetry.ReportEvent(childCtx, "Placing sandbox on node")
+		telemetry.ReportEvent(childCtx, "Trying to place sandbox on node")
 
 		client, err := o.GetClientByNodeID(node.ID)
 		if err != nil {
@@ -84,6 +83,7 @@ func (o *Orchestrator) CreateSandbox(
 		err = utils.UnwrapGRPCError(err)
 		if err != nil {
 			if client.connection.GetState() != connectivity.Ready {
+				telemetry.ReportEvent(childCtx, "Placing sandbox on node failed, node not ready", attribute.String("node.id", node.ID))
 				excludedNodes = append(excludedNodes, node.ID)
 			} else {
 				return nil, fmt.Errorf("failed to create sandbox '%s': %w", templateID, err)
@@ -93,6 +93,7 @@ func (o *Orchestrator) CreateSandbox(
 		break
 	}
 
+	telemetry.SetAttributes(childCtx, attribute.String("node.id", node.ID))
 	telemetry.ReportEvent(childCtx, "Created sandbox")
 
 	return &api.Sandbox{
