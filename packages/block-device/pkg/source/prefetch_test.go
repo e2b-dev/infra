@@ -3,7 +3,6 @@ package source
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -50,7 +49,6 @@ func TestPrefetcher(t *testing.T) {
 		cancel()
 
 		err := prefetcher.Start()
-		fmt.Printf("err: %v", err)
 		assert.ErrorIs(t, err, context.Canceled, "expected context.Canceled error")
 	})
 }

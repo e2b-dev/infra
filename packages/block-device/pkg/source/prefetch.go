@@ -28,25 +28,27 @@ func NewPrefetcher(ctx context.Context, base io.ReaderAt, size int64) *Prefetche
 
 func (p *Prefetcher) prefetch(off int64) error {
 	_, err := p.base.ReadAt([]byte{}, off)
+	if err != nil {
+		return fmt.Errorf("failed to prefetch %d: %w", off, err)
+	}
 
-	return fmt.Errorf("failed to prefetch %d: %w", off, err)
+	return nil
 }
 
 func (p *Prefetcher) Start() error {
 	start := int64(0)
-	end := p.size/ChunkSize
+	end := p.size / ChunkSize
 
 	defer close(p.done)
 
 	for chunkIdx := start; chunkIdx < end; chunkIdx++ {
-		fmt.Printf("prefetching chunk %d (%d-%d)\n", chunkIdx, chunkIdx*ChunkSize, chunkIdx*ChunkSize+ChunkSize)
 		select {
 		case <-p.ctx.Done():
 			return p.ctx.Err()
 		default:
 			err := p.prefetch(chunkIdx * ChunkSize)
 			if err != nil {
-				fmt.Printf("error prefetching chunk %d (%d-%d): %v", chunkIdx, chunkIdx*ChunkSize, chunkIdx*ChunkSize+ChunkSize, err)
+				fmt.Printf("error prefetching chunk %d (%d-%d): %v\n", chunkIdx, chunkIdx*ChunkSize, chunkIdx*ChunkSize+ChunkSize, err)
 			}
 		}
 	}
