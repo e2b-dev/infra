@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSparseFileView_MarkedBlockRange(t *testing.T) {
+func TestSparseFileView_CheckMarked(t *testing.T) {
 	// Create a temporary file for testing
 	file, err := os.CreateTemp("", "sparse_file_test")
 	require.NoError(t, err)
@@ -19,51 +19,98 @@ func TestSparseFileView_MarkedBlockRange(t *testing.T) {
 
 	// Test fallocate with a specific number of blocks
 	size := int64(32 * block.Size)
-	err = fallocate(size, file)
+	err = file.Truncate(size)
 	assert.NoError(t, err)
 	// Create a sparse file view
 	view := NewSparseFileView(file)
 
 	// Test case 1: No marked blocks
-	start, end, err := view.MarkedBlockRange(0)
-	assert.EqualValues(t, 0, start)
-	assert.EqualValues(t, 0, end)
-	assert.ErrorIs(t, err, ErrNoMarkFound{})
+	marked, err := view.IsMarked(0)
+	assert.False(t, marked)
+	assert.NoError(t, err)
+}
+
+func TestSparseFileView_CheckMarked_MarkedBlockAtOffset0(t *testing.T) {
+	// Create a temporary file for testing
+	file, err := os.CreateTemp("", "sparse_file_test")
+	require.NoError(t, err)
+	defer file.Close()
+	defer os.Remove(file.Name())
+
+	// Test fallocate with a specific number of blocks
+	size := int64(32 * block.Size)
+	err = file.Truncate(size)
+	assert.NoError(t, err)
+	// Create a sparse file view
+	view := NewSparseFileView(file)
 
 	// Test case 2: Marked block at offset 0
-	err = fallocate(size, file)
-	assert.NoError(t, err)
 	_, err = file.WriteAt([]byte{1}, 0)
 	require.NoError(t, err)
-	start, end, err = view.MarkedBlockRange(0)
-	assert.EqualValues(t, 0, start)
-	assert.EqualValues(t, 1*block.Size-1, end)
+	marked, err := view.IsMarked(0)
+	assert.True(t, marked)
 	assert.NoError(t, err)
+}
+
+func TestSparseFileView_CheckMarked_MarkedBlockAtOffsetBlockSize(t *testing.T) {
+	// Create a temporary file for testing
+	file, err := os.CreateTemp("", "sparse_file_test")
+	require.NoError(t, err)
+	defer file.Close()
+	defer os.Remove(file.Name())
+
+	// Test fallocate with a specific number of blocks
+	size := int64(32 * block.Size)
+	err = file.Truncate(size)
+	assert.NoError(t, err)
+	// Create a sparse file view
+	view := NewSparseFileView(file)
 
 	// Test case 3: Marked block at offset block.Size
-	err = fallocate(size, file)
-	assert.NoError(t, err)
 	_, err = file.WriteAt([]byte{1}, block.Size)
 	require.NoError(t, err)
-	start, end, err = view.MarkedBlockRange(block.Size)
-	assert.Equal(t, block.Size, start)
-	assert.Equal(t, block.Size*2-1, end)
+	marked, err := view.IsMarked(block.Size)
+	assert.True(t, marked)
 	assert.NoError(t, err)
+}
+
+func TestSparseFileView_CheckMarked_OffsetInMiddleOfMarkedBlock(t *testing.T) {
+	// Create a temporary file for testing
+	file, err := os.CreateTemp("", "sparse_file_test")
+	require.NoError(t, err)
+	defer file.Close()
+	defer os.Remove(file.Name())
+
+	// Test fallocate with a specific number of blocks
+	size := int64(32 * block.Size)
+	err = file.Truncate(size)
+	assert.NoError(t, err)
+	// Create a sparse file view
+	view := NewSparseFileView(file)
 
 	// Test case 4: Offset in the middle of a marked block
-	err = fallocate(size, file)
-	assert.NoError(t, err)
-	_, err = file.WriteAt([]byte{1}, block.Size/2+block.Size)
+	_, err = file.WriteAt([]byte{1}, block.Size)
 	require.NoError(t, err)
-	start, end, err = view.MarkedBlockRange(block.Size)
-	assert.Equal(t, block.Size, start)
-	assert.Equal(t, block.Size*2-1, end)
+	marked, err := view.IsMarked(block.Size)
+	assert.True(t, marked)
 	assert.NoError(t, err)
+}
+
+func TestSparseFileView_CheckMarked_OffsetOverTwoMarkedBlocks(t *testing.T) {
+	// Create a temporary file for testing
+	file, err := os.CreateTemp("", "sparse_file_test")
+	require.NoError(t, err)
+	defer file.Close()
+	defer os.Remove(file.Name())
+
+	// Test fallocate with a specific number of blocks
+	size := int64(32 * block.Size)
+	err = file.Truncate(size)
+	assert.NoError(t, err)
+	// Create a sparse file view
+	view := NewSparseFileView(file)
 
 	// Test case 5: Offset over two marked blocks
-	err = fallocate(size, file)
-	assert.NoError(t, err)
-
 	data := make([]byte, 2*block.Size)
 	for i := range data {
 		data[i] = byte(i % 256)
@@ -71,16 +118,7 @@ func TestSparseFileView_MarkedBlockRange(t *testing.T) {
 
 	_, err = file.WriteAt(data, block.Size/2+block.Size)
 	require.NoError(t, err)
-	start, end, err = view.MarkedBlockRange(block.Size * 2)
-	assert.Equal(t, block.Size*2, start)
-	assert.Equal(t, block.Size*4-1, end)
+	marked, err := view.IsMarked(block.Size * 2)
+	assert.True(t, marked)
 	assert.NoError(t, err)
-
-	// Test case 6: Offset beyond the file size
-	err = fallocate(size, file)
-	assert.NoError(t, err)
-	start, end, err = view.MarkedBlockRange(size + 1)
-	assert.EqualValues(t, 0, start)
-	assert.EqualValues(t, 0, end)
-	assert.ErrorIs(t, err, ErrNoMarkFound{})
 }

@@ -28,38 +28,8 @@ func NewMmapCache(size int64, filePath string, createFile bool) (*Mmap, error) {
 	}, nil
 }
 
-func (m *Mmap) syncMarkers(markStart, markEnd int64) {
-	if m.fileView == nil {
-		return
-	}
-
-	start := markStart / block.Size
-	end := markEnd / block.Size // Use +block.Size-1 to ensure the last block is included if emptyStart is not a multiple of block.Size
-
-	for blockIdx := start; blockIdx < end; blockIdx++ {
-		m.marker.Mark(blockIdx)
-	}
-}
-
-func (m *Mmap) checkFile(off int64) bool {
-	if m.fileView != nil {
-		return false
-	}
-
-	// We can use the first marked block instead if we want.
-	start, end, err := m.fileView.MarkedBlockRange(off)
-	if err != nil {
-		// It does not matter if the whole file is sparse here.
-		return false
-	}
-
-	defer m.syncMarkers(start, end)
-
-	return start != off/block.Size
-}
-
 func (m *Mmap) ReadAt(b []byte, off int64) (int, error) {
-	if m.isMarked(off) {
+	if m.IsMarked(off) {
 		return m.mmap.ReadAt(b, off)
 	}
 
@@ -81,6 +51,22 @@ func (m *Mmap) Close() error {
 	return m.mmap.Close()
 }
 
-func (m *Mmap) isMarked(off int64) bool {
-	return m.marker.IsMarked(off/block.Size) || m.checkFile(off)
+func (m *Mmap) IsMarked(off int64) bool {
+	markedInMemory := m.marker.IsMarked(off / block.Size)
+	if markedInMemory {
+		return true
+	}
+
+	if m.fileView == nil {
+		return false
+	}
+
+	markedInFile, err := m.fileView.IsMarked(off)
+	if err != nil {
+		return false
+	}
+
+	m.marker.Mark(off / block.Size)
+
+	return markedInFile
 }

@@ -13,6 +13,7 @@ type mmapedFile struct {
 	File *os.File
 	mmap mmap.MMap
 	mu   sync.RWMutex
+	size int64
 }
 
 func newMmappedFile(size int64, filePath string, createFile bool) (*mmapedFile, error) {
@@ -30,7 +31,7 @@ func newMmappedFile(size int64, filePath string, createFile bool) (*mmapedFile, 
 	}
 
 	if createFile {
-		err = fallocate(size, f)
+		err = f.Truncate(size)
 		if err != nil {
 			return nil, fmt.Errorf("error allocating file: %w", err)
 		}
@@ -41,13 +42,23 @@ func newMmappedFile(size int64, filePath string, createFile bool) (*mmapedFile, 
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("error getting file size: %w", err)
+	}
+
 	return &mmapedFile{
 		mmap: mm,
 		File: f,
+		size: stat.Size(),
 	}, nil
 }
 
 func (m *mmapedFile) ReadAt(b []byte, off int64) (int, error) {
+	if off < 0 || off > m.size-1 {
+		return 0, fmt.Errorf("invalid offset: %d", off)
+	}
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -55,6 +66,10 @@ func (m *mmapedFile) ReadAt(b []byte, off int64) (int, error) {
 }
 
 func (m *mmapedFile) WriteAt(b []byte, off int64) (int, error) {
+	if off < 0 || off > m.size-1 {
+		return 0, fmt.Errorf("invalid offset: %d", off)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

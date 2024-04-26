@@ -5,19 +5,24 @@ import (
 	"os"
 	"testing"
 
+	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMmapedFile(t *testing.T) {
-	// Create a temporary file for testing
-	tempFile, err := os.CreateTemp("", "mmap_test")
-	require.NoError(t, err, "error creating temp file")
-	defer os.Remove(tempFile.Name())
+	file, err := os.CreateTemp("", "mmap_file_test")
+	require.NoError(t, err)
+	defer file.Close()
+	defer os.Remove(file.Name())
 
-	// Create a new mmapedFile instance
-	size := int64(1024)
-	mf, err := newMmappedFile(size, tempFile.Name(), true)
+	// Test fallocate with a specific number of blocks
+	size := int64(32 * block.Size)
+	err = file.Truncate(size)
+	assert.NoError(t, err)
+
+	mf, err := newMmappedFile(size, file.Name(), false)
 	require.NoError(t, err, "error creating mmapedFile")
 	defer mf.Close()
 
@@ -35,12 +40,20 @@ func TestMmapedFile(t *testing.T) {
 	assert.Equal(t, len(data), n, "expected to read %d bytes, but read %d bytes", len(data), n)
 	assert.True(t, bytes.Equal(data, readData), "expected to read %s, but read %s", data, readData)
 
-	// Test reading from an invalid offset
-	invalidOffset := size + 1
-	_, err = mf.ReadAt(readData, invalidOffset)
-	assert.Error(t, err, "expected an error when reading from an invalid offset")
+	// Test writing and reading at different offsets
+	data2 := []byte("Additional data")
+	offset2 := int64(1000)
+	n, err = mf.WriteAt(data2, offset2)
+	assert.NoError(t, err, "error writing to mmapedFile")
+	assert.Equal(t, len(data2), n, "expected to write %d bytes, but wrote %d bytes", len(data2), n)
 
-	// Test writing to an invalid offset
-	_, err = mf.WriteAt(data, invalidOffset)
-	assert.Error(t, err, "expected an error when writing to an invalid offset")
+	readData2 := make([]byte, len(data2))
+	n, err = mf.ReadAt(readData2, offset2)
+	assert.NoError(t, err, "error reading from mmapedFile")
+	assert.Equal(t, len(data2), n, "expected to read %d bytes, but read %d bytes", len(data2), n)
+	assert.True(t, bytes.Equal(data2, readData2), "expected to read %s, but read %s", data2, readData2)
+
+	// Test reading from an offset beyond the file size
+	_, err = mf.ReadAt(readData, size+1)
+	assert.Error(t, err, "expected an error when reading beyond file size")
 }
