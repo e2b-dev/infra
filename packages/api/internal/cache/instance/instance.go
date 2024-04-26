@@ -6,13 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
 const (

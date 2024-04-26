@@ -293,6 +293,7 @@ func getInsertInstanceFunction(ctx context.Context, orchestrator *orchestrator.O
 		return nil
 	}
 }
+
 func getDeleteInstanceFunction(ctx context.Context, orchestrator *orchestrator.Orchestrator, analytics *analyticscollector.Analytics, posthogClient *PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo) *api.APIError {
 	return func(info instance.InstanceInfo) *api.APIError {
 		return deleteInstance(ctx, orchestrator, analytics, posthogClient, logger, &info)

@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var regex = regexp.MustCompile(`http[s]?://`)
+var regex = regexp.MustCompile(`https?://`)
 
 type ClientConnInterface interface {
 	GetState() connectivity.State
