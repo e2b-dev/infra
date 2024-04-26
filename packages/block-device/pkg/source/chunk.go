@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
-	"github.com/e2b-dev/infra/packages/block-device/pkg/cache"
 
 	"golang.org/x/sync/semaphore"
 )
@@ -20,6 +19,7 @@ const (
 	concurrentPrefetches = 2
 )
 
+// For this use case we don't need to cleanup the slices' content, because we are overwriting them fully with data.
 type chunkPool struct {
 	pool sync.Pool
 }
