@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -195,14 +196,10 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *nomadapi.NodeLis
 		return nil, instancesErr
 	}
 
-	for _, sandbox := range activeInstances {
-		n.RamUsage += sandbox.RamMB
-		n.CPUUsage += sandbox.VCPU
-	}
-
 	stream, err := client.Sandbox.StreamClosedSandboxes(context.Background(), &empty.Empty{})
 	if err != nil {
-		fmt.Printf("failed to stream failed sandbox: %v\n", err)
+		log.Printf("failed to load stream for closed sandboxes: %v\n", err)
+		return nil, err
 	}
 
 	go func() {
@@ -223,7 +220,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *nomadapi.NodeLis
 
 		// Close the client if the stream failed
 		fmt.Printf("removing node %s\n", n.ID)
-		err := o.nodes[n.ID].Client.Close()
+		err := n.Client.Close()
 		if err != nil {
 			fmt.Printf("failed to close client: %v\n", err)
 		}
