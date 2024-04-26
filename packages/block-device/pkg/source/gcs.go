@@ -2,6 +2,8 @@ package source
 
 import (
 	"context"
+	"fmt"
+	"log"
 
 	"cloud.google.com/go/storage"
 )
@@ -15,7 +17,7 @@ type GCS struct {
 func NewGCS(ctx context.Context, bucket, filepath string) (*GCS, error) {
 	client, err := storage.NewClient(ctx, storage.WithJSONReads())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
 
 	obj := client.Bucket(bucket).Object(filepath)
@@ -30,14 +32,29 @@ func NewGCS(ctx context.Context, bucket, filepath string) (*GCS, error) {
 func (g *GCS) ReadAt(b []byte, off int64) (int, error) {
 	reader, err := g.object.NewRangeReader(g.ctx, off, int64(len(b)))
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to create GCS reader: %w", err)
 	}
 
-	defer reader.Close()
+	go func() {
+		closeErr := reader.Close()
+		if closeErr != nil {
+			log.Printf("failed to close GCS reader: %v", closeErr)
+		}
+	}()
 
-	return reader.Read(b)
+	n, readErr := reader.Read(b)
+	if readErr != nil {
+		return 0, fmt.Errorf("failed to read GCS object: %w", readErr)
+	}
+
+	return n, nil
 }
 
 func (g *GCS) Close() error {
-	return g.client.Close()
+	err := g.client.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close GCS client: %w", err)
+	}
+
+	return nil
 }

@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"fmt"
 	"io"
 	"os"
 
@@ -10,10 +11,10 @@ import (
 
 type BucketOverlay struct {
 	overlay *overlay.Overlay
-	cache   *cache.Mmap
+	Close   func() error
 }
 
-func newBucketOverlay(source io.ReaderAt, cachePath string, size int64) (*BucketOverlay, error) {
+func newBucketOverlay(base io.ReaderAt, cachePath string, size int64) (*BucketOverlay, error) {
 	cacheExists := false
 	if _, err := os.Stat(cachePath); err == nil {
 		cacheExists = true
@@ -24,11 +25,19 @@ func newBucketOverlay(source io.ReaderAt, cachePath string, size int64) (*Bucket
 		return nil, err
 	}
 
-	overlay := overlay.New(source, cache, true)
+	overlay := overlay.New(base, cache, true)
 
 	return &BucketOverlay{
 		overlay: overlay,
-		cache:   cache,
+
+		Close: func() error {
+			err := cache.Close()
+			if err != nil {
+				return fmt.Errorf("error closing cache: %v", err)
+			}
+
+			return nil
+		},
 	}, nil
 }
 
@@ -38,8 +47,4 @@ func (o *BucketOverlay) ReadAt(p []byte, off int64) (n int, err error) {
 
 func (o *BucketOverlay) WriteAt(p []byte, off int64) (n int, err error) {
 	return o.overlay.WriteAt(p, off)
-}
-
-func (o *BucketOverlay) Close() error {
-	return o.cache.Close()
 }

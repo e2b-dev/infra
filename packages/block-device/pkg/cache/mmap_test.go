@@ -75,3 +75,5 @@ func TestMmapedFile_Close(t *testing.T) {
 	err = mmapedFile.Close()
 	assert.NoError(t, err)
 }
+
+// Add test for .Slice
