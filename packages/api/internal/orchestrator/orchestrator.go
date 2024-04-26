@@ -148,9 +148,8 @@ func (o *Orchestrator) KeepInSync(ctx context.Context, logger *zap.SugaredLogger
 			}
 		}
 
-		logger.Infof("Node usages:\n")
 		for _, node := range o.nodes {
-			logger.Infof("Node %s: CPU: %d, RAM: %d\n", node.ID, node.CPUUsage, node.RamUsage)
+			logger.Infof("Node %s: CPU: %d, RAM: %d", node.ID, node.CPUUsage, node.RamUsage)
 		}
 
 		o.instanceCache.SendAnalyticsEvent()

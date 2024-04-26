@@ -24,6 +24,13 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 			return fmt.Errorf("cannot delete instance '%s': %w", info.Instance.SandboxID, delErr)
 		}
 
+		node, err := o.GetNode(info.Instance.ClientID)
+		if err != nil {
+			return fmt.Errorf("failed to get node '%s': %w", info.Instance.ClientID, err)
+		}
+		node.CPUUsage -= info.VCPU
+		node.RamUsage -= info.RamMB
+
 		if info.TeamID != nil && info.StartTime != nil {
 			_, err := o.analytics.Client.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
 				TeamId:        info.TeamID.String(),

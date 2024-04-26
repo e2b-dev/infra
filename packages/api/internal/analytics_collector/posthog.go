@@ -44,7 +44,7 @@ func NewPosthogClient(logger *zap.SugaredLogger) (*PosthogClient, error) {
 	})
 
 	if err != nil {
-		logger.Fatalf("error initializing Posthog client: %v\n", err)
+		logger.Fatalf("error initializing Posthog client: %v", err)
 	}
 
 	return &PosthogClient{
