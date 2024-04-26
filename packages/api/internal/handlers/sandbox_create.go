@@ -3,11 +3,12 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/semaphore"
-	"net/http"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -103,7 +104,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	sandboxID := InstanceIDPrefix + utils.GenerateID()
 
-	err, releaseTeamSandboxReservation := a.instanceCache.Reserve(sandboxID, team.ID, maxInstancesPerTeam)
+	err, releaseTeamSandboxReservation := a.orchestrator.Reserve(sandboxID, team.ID, maxInstancesPerTeam)
 	if err != nil {
 		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, team.Edges.TeamTier.ConcurrentInstances)
 		telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
