@@ -51,7 +51,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration) 
 	return nil
 }
 
-func (c *InstanceCache) Sync(instances []*InstanceInfo, clientID string) []*InstanceInfo {
+func (c *InstanceCache) Sync(instances []*InstanceInfo, clientID string) {
 	instanceMap := make(map[string]*InstanceInfo)
 
 	// Use map for faster lookup
@@ -70,19 +70,6 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, clientID string) []*Inst
 			c.cache.Delete(item.Key())
 		}
 	}
-
-	addedInstances := make([]*InstanceInfo, 0)
-	// Add instances that are not in the cache with the default TTL
-	for _, instance := range instances {
-		if !c.Exists(instance.Instance.SandboxID) {
-			err := c.Add(*instance)
-			if err != nil {
-				fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
-			}
-			addedInstances = append(addedInstances, instance)
-		}
-	}
-	return addedInstances
 }
 
 func (c *InstanceCache) SendAnalyticsEvent() {

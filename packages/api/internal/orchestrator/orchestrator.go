@@ -139,16 +139,8 @@ func (o *Orchestrator) KeepInSync(ctx context.Context, instanceCache *instance.I
 			if err != nil {
 				log.Printf("Error loading current sandboxes\n: %v", err)
 			} else {
-				added := instanceCache.Sync(activeInstances, nodeID)
-				for _, sandbox := range added {
-					o.nodes[nodeID].RamUsage += sandbox.RamMB
-					o.nodes[nodeID].CPUUsage += sandbox.VCPU
-				}
+				instanceCache.Sync(activeInstances, nodeID)
 			}
-		}
-		logger.Info("Synced instances with Orchestrator")
-		for _, node := range o.nodes {
-			logger.Infof("Node %s: CPU: %d, RAM: %d", node.ID, node.CPUUsage, node.RamUsage)
 		}
 
 		instanceCache.SendAnalyticsEvent()
