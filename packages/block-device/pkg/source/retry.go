@@ -32,22 +32,18 @@ func (r *Retrier) ReadAt(p []byte, off int64) (n int, err error) {
 	for i := 0; i < r.maxRetries; i++ {
 		select {
 		case <-r.ctx.Done():
-			ctxErr := r.ctx.Err()
-			if ctxErr != nil {
-				return 0, fmt.Errorf("context done: %w", ctxErr)
-			}
+			return 0, r.ctx.Err()
 		default:
+			n, err = r.base.ReadAt(p, off)
+			if err != nil {
+				time.Sleep(r.retryDelay)
+				log.Printf("retrying after error: %v\n", err)
+
+				continue
+			}
+
+			return n, nil
 		}
-
-		n, err = r.base.ReadAt(p, off)
-		if err != nil {
-			time.Sleep(r.retryDelay)
-			log.Printf("retrying after error: %v\n", err)
-
-			continue
-		}
-
-		return n, nil
 	}
 
 	return 0, fmt.Errorf("failed to read after %d retries", r.maxRetries)

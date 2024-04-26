@@ -112,10 +112,7 @@ func (c *Chunker) ensureChunk(chunk int64, prefetch bool) chan error {
 
 		select {
 		case <-c.ctx.Done():
-			ctxErr := c.ctx.Err()
-			if ctxErr != nil {
-				ch <- fmt.Errorf("context done when ensuring chunk %d: %w", chunk, ctxErr)
-			}
+			ch <- c.ctx.Err()
 		default:
 			data := chunkSlicePool.get()
 
@@ -158,10 +155,7 @@ func (c *Chunker) ensureChunks(chunkIdxs []int64, prefetch bool) error {
 				return fmt.Errorf("failed to ensure chunks %v: %w", chunkIdxs, err)
 			}
 		case <-c.ctx.Done():
-			err := c.ctx.Err()
-			if err != nil {
-				return fmt.Errorf("context done when ensuring chunks %v: %w", chunkIdxs, err)
-			}
+			return c.ctx.Err()
 		}
 	}
 

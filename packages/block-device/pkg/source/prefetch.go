@@ -33,18 +33,16 @@ func (p *Prefetcher) prefetch(off int64) error {
 }
 
 func (p *Prefetcher) Start() error {
-	start := p.size / ChunkSize
-	end := (p.size + ChunkSize - 1) / ChunkSize
+	start := int64(0)
+	end := p.size/ChunkSize
 
 	defer close(p.done)
 
 	for chunkIdx := start; chunkIdx < end; chunkIdx++ {
+		fmt.Printf("prefetching chunk %d (%d-%d)\n", chunkIdx, chunkIdx*ChunkSize, chunkIdx*ChunkSize+ChunkSize)
 		select {
 		case <-p.ctx.Done():
-			ctxErr := p.ctx.Err()
-			if ctxErr != nil {
-				return fmt.Errorf("context done: %w", ctxErr)
-			}
+			return p.ctx.Err()
 		default:
 			err := p.prefetch(chunkIdx * ChunkSize)
 			if err != nil {
