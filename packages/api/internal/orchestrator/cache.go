@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/google/uuid"
 	"time"
 
@@ -19,17 +20,18 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 	return func(info instance.InstanceInfo) error {
 		duration := time.Since(*info.StartTime).Seconds()
 
-		delErr := o.DeleteInstanceRequest(ctx, info.Instance.SandboxID, &info.Instance.ClientID)
-		if delErr != nil {
-			return fmt.Errorf("cannot delete instance '%s': %w", info.Instance.SandboxID, delErr)
-		}
-
 		node, err := o.GetNode(info.Instance.ClientID)
 		if err != nil {
 			return fmt.Errorf("failed to get node '%s': %w", info.Instance.ClientID, err)
 		}
+
 		node.CPUUsage -= info.VCPU
 		node.RamUsage -= info.RamMB
+
+		_, err := node.Client.Sandbox.Delete(ctx, &orchestrator.SandboxRequest{SandboxID: info.Instance.SandboxID})
+		if err != nil {
+			return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
+		}
 
 		if info.TeamID != nil && info.StartTime != nil {
 			_, err := o.analytics.Client.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{

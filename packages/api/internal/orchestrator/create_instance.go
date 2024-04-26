@@ -143,7 +143,7 @@ func (o *Orchestrator) CreateSandbox(
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 
-		delErr := o.DeleteInstanceRequest(ctx, sandboxID, &node.ID)
+		_, delErr := node.Client.Sandbox.Delete(ctx, &orchestrator.SandboxRequest{SandboxID: sandboxID})
 		if delErr != nil {
 			delErrMsg := fmt.Errorf("couldn't delete instance that couldn't be added to cache: %w", delErr)
 			telemetry.ReportError(ctx, delErrMsg)
