@@ -2,6 +2,7 @@ package overlay
 
 import (
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
@@ -22,7 +23,12 @@ func New(base io.ReaderAt, cache block.Device, cacheReads bool) *Overlay {
 }
 
 func (o *Overlay) WriteAt(p []byte, off int64) (int, error) {
-	return o.cache.WriteAt(p, off)
+	n, err := o.cache.WriteAt(p, off)
+	if err != nil {
+		return n, fmt.Errorf("error writing to cache: %w", err)
+	}
+
+	return n, nil
 }
 
 func (o *Overlay) ReadAt(b []byte, off int64) (int, error) {
@@ -30,19 +36,19 @@ func (o *Overlay) ReadAt(b []byte, off int64) (int, error) {
 	if errors.As(err, &block.ErrBytesNotAvailable{}) {
 		n, err = o.base.ReadAt(b, off)
 		if err != nil {
-			return n, err
+			return n, fmt.Errorf("error reading from base: %w", err)
 		}
 
 		if o.cacheReads {
-			n, err := o.cache.WriteAt(b[:n], off)
-			if err != nil {
-				return n, err
+			_, cacheErr := o.cache.WriteAt(b[:n], off)
+			if cacheErr != nil {
+				return n, fmt.Errorf("error writing to cache: %w", cacheErr)
 			}
 		}
 	}
 
 	if err != nil {
-		return n, err
+		return n, fmt.Errorf("error reading from cache: %w", err)
 	}
 
 	return n, nil

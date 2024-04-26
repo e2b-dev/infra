@@ -2,6 +2,7 @@ package cache
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 
@@ -25,19 +26,19 @@ func newMmappedFile(size int64, filePath string, createFile bool) (*mmapedFile, 
 
 	f, err := os.OpenFile(filePath, flag, 0o666)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error opening file: %w", err)
 	}
 
 	if createFile {
 		err = fallocate(size, f)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error allocating file: %w", err)
 		}
 	}
 
 	mm, err := mmap.Map(f, mmap.RDWR, 0)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
 	return &mmapedFile{
