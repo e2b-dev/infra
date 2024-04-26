@@ -6,92 +6,120 @@ import (
 	"log"
 	"time"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	nomadapi "github.com/hashicorp/nomad/api"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
 type Node struct {
 	ID       string
 	CPUUsage int64
 	RamUsage int64
+	Host     string
+	Client   *GRPCClient
 }
 
 type Orchestrator struct {
-	nomadClient *nomadapi.Client
-	clients     map[string]*GRPCClient
-	nodeToHost  map[string]string
-	nodes       map[string]*Node
+	nomadClient   *nomadapi.Client
+	nodes         map[string]*Node
+	instanceCache *instance.InstanceCache
+	analytics     *analyticscollector.Analytics
 }
 
-func New(nomadClient *nomadapi.Client) (*Orchestrator, error) {
-	return &Orchestrator{
+func New(ctx context.Context, nomadClient *nomadapi.Client, logger *zap.SugaredLogger, posthogClient *handlers.PosthogClient) (*Orchestrator, error) {
+	analytics, err := analyticscollector.NewAnalytics()
+	if err != nil {
+		logger.Errorf("Error initializing Analytics client\n: %v", err)
+		panic(err)
+	}
+
+	orch := &Orchestrator{
 		nomadClient: nomadClient,
-		clients:     map[string]*GRPCClient{},
-		nodeToHost:  map[string]string{},
 		nodes:       map[string]*Node{},
-	}, nil
+		analytics:   analytics,
+	}
+
+	var initialInstances []*instance.InstanceInfo
+	if env.IsLocal() {
+		logger.Info("Skipping loading sandboxes, running locally")
+	} else {
+		initialInstances, err = orch.InitialSync(ctx)
+		if err != nil {
+			logger.Errorf("Error initializing Orchestrator client\n: %v", err)
+			panic(err)
+		}
+	}
+
+	meter := otel.GetMeterProvider().Meter("nomad")
+
+	instancesCounter, err := meter.Int64UpDownCounter(
+		"api.env.instance.running",
+		metric.WithDescription(
+			"Number of running instances.",
+		),
+		metric.WithUnit("{instance}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	logger.Info("Initialized Analytics client")
+	instanceCache := instance.NewCache(
+		analytics.Client,
+		logger,
+		orch.getInsertInstanceFunction(ctx),
+		orch.getDeleteInstanceFunction(ctx, posthogClient, logger),
+		initialInstances,
+		instancesCounter,
+	)
+
+	logger.Info("Initialized instance cache")
+
+	orch.instanceCache = instanceCache
+	return orch, nil
 }
 
 func (o *Orchestrator) Close() error {
-	for _, client := range o.clients {
-		err := client.Close()
+	err := o.analytics.Close()
+	if err != nil {
+		return err
+	}
+
+	for _, node := range o.nodes {
+		err := node.Client.Close()
 		if err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
-func (o *Orchestrator) GetNodeById(nodeID string) *Node {
-	return o.nodes[nodeID]
+func (o *Orchestrator) GetNode(nodeID string) (*Node, error) {
+	if node := o.nodes[nodeID]; node != nil {
+		return node, nil
+	}
+	return nil, fmt.Errorf("node %s not found", nodeID)
 }
 
-func (o *Orchestrator) GetClient(host string) (*GRPCClient, error) {
-	if ok := o.clients[host]; ok != nil {
-		return ok, nil
-	}
-	client, err := NewClient(host)
+func (o *Orchestrator) GetClient(nodeID string) (*GRPCClient, error) {
+	node, err := o.GetNode(nodeID)
 	if err != nil {
 		return nil, err
 	}
 
-	o.clients[host] = client
-	return client, nil
+	return node.Client, nil
 }
 
-func (o *Orchestrator) GetHost(nodeID string) (string, error) {
-	if host, ok := o.nodeToHost[nodeID]; ok {
-		return host, nil
-	}
-
-	nodes, err := o.ListNodes()
-	if err != nil {
-		return "", err
-	}
-
-	for _, node := range nodes {
-		if o.getIdFromNode(node) == nodeID {
-			o.nodeToHost[nodeID] = node.Address
-			return node.Address, nil
-		}
-	}
-
-	return "", fmt.Errorf("node %s not found", nodeID)
-}
-
-func (o *Orchestrator) GetClientByNodeID(nodeID string) (*GRPCClient, error) {
-	host, err := o.GetHost(nodeID)
-	if err != nil {
-		return nil, err
-	}
-
-	return o.GetClient(host)
-}
-
-func (o *Orchestrator) ListNodes() ([]*nomadapi.NodeListStub, error) {
+func (o *Orchestrator) listNomadNodes() ([]*nomadapi.NodeListStub, error) {
 	nodes, _, err := o.nomadClient.Nodes().List(&nomadapi.QueryOptions{Filter: "Status == \"ready\""})
 	if err != nil {
 		return nil, err
@@ -101,19 +129,19 @@ func (o *Orchestrator) ListNodes() ([]*nomadapi.NodeListStub, error) {
 }
 
 // KeepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) KeepInSync(ctx context.Context, instanceCache *instance.InstanceCache, logger *zap.SugaredLogger) {
+func (o *Orchestrator) KeepInSync(ctx context.Context) {
 	for {
 		time.Sleep(instance.CacheSyncTime)
-		nodes, err := o.ListNodes()
+		nodes, err := o.listNomadNodes()
 		if err != nil {
 			log.Printf("Error loading nodes\n: %v", err)
 			continue
 		}
 
-		nodeIds := make([]string, 0, len(nodes))
 		for _, node := range nodes {
-			nodeIds = append(nodeIds, o.getIdFromNode(node))
-			if _, ok := o.nodes[o.getIdFromNode(node)]; !ok {
+			// If the node is not in the list, connect to it
+			_, err := o.GetNode(o.getIdFromNode(node))
+			if err != nil {
 				_, err := o.connectToNode(ctx, node)
 				if err != nil {
 					log.Printf("Error connecting to node\n: %v", err)
@@ -121,35 +149,13 @@ func (o *Orchestrator) KeepInSync(ctx context.Context, instanceCache *instance.I
 			}
 		}
 
-		for nodeID := range o.nodes {
-			found := false
-			for _, id := range nodeIds {
-				if nodeID == id {
-					found = true
-					break
-				}
-			}
-			if !found {
-				delete(o.nodes, nodeID)
-			}
-		}
-
-		for nodeID := range o.nodeToHost {
-			activeInstances, err := o.GetInstances(ctx, nodeID)
-			if err != nil {
-				log.Printf("Error loading current sandboxes\n: %v", err)
-			} else {
-				instanceCache.Sync(activeInstances, nodeID)
-			}
-		}
-
-		instanceCache.SendAnalyticsEvent()
+		o.instanceCache.SendAnalyticsEvent()
 	}
 }
 
 // InitialSync loads already running instances from Orchestrator
 func (o *Orchestrator) InitialSync(ctx context.Context) (instances []*instance.InstanceInfo, err error) {
-	nodes, err := o.ListNodes()
+	nodes, err := o.listNomadNodes()
 	if err != nil {
 		return instances, err
 	}
@@ -174,7 +180,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *nomadapi.NodeLis
 	n := &Node{ID: o.getIdFromNode(node)}
 	o.nodes[n.ID] = n
 
-	activeInstances, instancesErr := o.GetInstances(ctx, o.getIdFromNode(node))
+	activeInstances, instancesErr := o.getInstances(ctx, o.getIdFromNode(node))
 	if instancesErr != nil {
 		return nil, instancesErr
 	}
@@ -183,5 +189,28 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *nomadapi.NodeLis
 		n.RamUsage += sandbox.RamMB
 		n.CPUUsage += sandbox.VCPU
 	}
+
+	client, err := NewClient(node.Address)
+	if err != nil {
+		return nil, err
+	}
+
+	n.Client = client
+
+	stream, err := client.Sandbox.StreamFailedSandbox(context.Background(), &empty.Empty{})
+	if err != nil {
+		fmt.Printf("failed to stream failed sandbox: %v", err)
+	}
+
+	go func() {
+		for {
+			sandboxID, err := stream.Recv()
+			if err != nil {
+				fmt.Printf("failed to receive from stream: %v", err)
+			}
+			o.instanceCache.Kill(sandboxID.SandboxID)
+		}
+	}()
+
 	return activeInstances, nil
 }

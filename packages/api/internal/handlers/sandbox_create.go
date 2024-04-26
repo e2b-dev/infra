@@ -3,17 +3,14 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"time"
-
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/semaphore"
+	"net/http"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -133,8 +130,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		sandboxID,
 		env.TemplateID,
 		alias,
-		team.ID.String(),
-		build.ID.String(),
+		team.ID,
+		build.ID,
 		team.Edges.TeamTier.MaxLengthHours,
 		metadata,
 		build.KernelVersion,
@@ -157,33 +154,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
-
-	if cacheErr := a.instanceCache.Add(instance.InstanceInfo{
-		StartTime:         nil,
-		Instance:          sandbox,
-		BuildID:           &build.ID,
-		TeamID:            &team.ID,
-		Metadata:          metadata,
-		MaxInstanceLength: time.Duration(team.Edges.TeamTier.MaxLengthHours) * time.Hour,
-		VCPU:              build.Vcpu,
-		RamMB:             build.RAMMB,
-	}); cacheErr != nil {
-		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
-		telemetry.ReportError(ctx, errMsg)
-
-		delErr := a.DeleteInstance(sandbox.SandboxID)
-		if delErr != nil {
-			delErrMsg := fmt.Errorf("couldn't delete instance that couldn't be added to cache: %w", delErr.Err)
-			telemetry.ReportError(ctx, delErrMsg)
-		} else {
-			telemetry.ReportEvent(ctx, "deleted instance that couldn't be added to cache")
-		}
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Cannot create a sandbox right now")
-
-		return
-	}
-
 	c.Set("instanceID", sandbox.SandboxID)
 
 	telemetry.ReportEvent(ctx, "Added sandbox to cache")

@@ -59,6 +59,8 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			telemetry.ReportCriticalError(closeCtx, errMsg)
 		}
 
+		go func(sandboxID string) { s.failedSandbox <- sandboxID }(req.Sandbox.SandboxID)
+
 		// Wait before removing all resources (see defers above)
 		time.Sleep(1 * time.Second)
 	}()
@@ -112,4 +114,21 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 	sbx.Stop(ctx, s.tracer)
 
 	return nil, nil
+}
+
+func (s *server) StreamFailedSandbox(_ *emptypb.Empty, stream orchestrator.Sandbox_StreamFailedSandboxServer) error {
+	ctx := stream.Context()
+	_, childSpan := s.tracer.Start(ctx, "failed-sandbox")
+	defer childSpan.End()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case sandboxID := <-s.failedSandbox:
+			if err := stream.Send(&orchestrator.FailedSandbox{SandboxID: sandboxID}); err != nil {
+				return err
+			}
+		}
+	}
 }

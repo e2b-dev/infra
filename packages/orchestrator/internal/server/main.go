@@ -25,10 +25,11 @@ import (
 
 type server struct {
 	orchestrator.UnimplementedSandboxServer
-	sandboxes *smap.Map[*sandbox.Sandbox]
-	dns       *sandbox.DNS
-	tracer    trace.Tracer
-	consul    *consulapi.Client
+	sandboxes     *smap.Map[*sandbox.Sandbox]
+	dns           *sandbox.DNS
+	tracer        trace.Tracer
+	consul        *consulapi.Client
+	failedSandbox chan string
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -39,6 +40,10 @@ func New(logger *zap.Logger) *grpc.Server {
 		grpc.ChainUnaryInterceptor(
 			grpc_zap.UnaryServerInterceptor(logger, opts...),
 			recovery.UnaryServerInterceptor(),
+		),
+		grpc.ChainStreamInterceptor(
+			grpc_zap.StreamServerInterceptor(logger, opts...),
+			recovery.StreamServerInterceptor(),
 		),
 	)
 
@@ -57,10 +62,11 @@ func New(logger *zap.Logger) *grpc.Server {
 	}
 
 	orchestrator.RegisterSandboxServer(s, &server{
-		tracer:    otel.Tracer(constants.ServiceName),
-		consul:    consulClient,
-		dns:       dns,
-		sandboxes: smap.New[*sandbox.Sandbox](),
+		tracer:        otel.Tracer(constants.ServiceName),
+		consul:        consulClient,
+		dns:           dns,
+		sandboxes:     smap.New[*sandbox.Sandbox](),
+		failedSandbox: make(chan string),
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

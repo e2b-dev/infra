@@ -6,38 +6,30 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	loki "github.com/grafana/loki/pkg/logcli/client"
 	nomadapi "github.com/hashicorp/nomad/api"
-	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type APIStore struct {
 	Ctx             context.Context
-	analytics       *analyticscollector.Analytics
 	posthog         *PosthogClient
 	tracer          trace.Tracer
-	instanceCache   *instance.InstanceCache
 	orchestrator    *orchestrator.Orchestrator
 	templateManager *template_manager.TemplateManager
 	buildCache      *builds.BuildCache
@@ -92,60 +84,19 @@ func NewAPIStore() *APIStore {
 		panic(err)
 	}
 
-	orch, err := orchestrator.New(nomadClient)
+	orch, err := orchestrator.New(ctx, nomadClient, logger, posthogClient)
 	if err != nil {
 		logger.Errorf("Error initializing Orchestrator client\n: %v", err)
 		panic(err)
 	}
 
-	var initialInstances []*instance.InstanceInfo
-	if env.IsLocal() {
-		logger.Info("Skipping loading sandboxes, running locally")
-	} else {
-		initialInstances, err = orch.InitialSync(ctx)
-		if err != nil {
-			logger.Errorf("Error initializing Orchestrator client\n: %v", err)
-			panic(err)
-		}
-	}
-
 	// TODO: rename later
 	meter := otel.GetMeterProvider().Meter("nomad")
-
-	instancesCounter, err := meter.Int64UpDownCounter(
-		"api.env.instance.running",
-		metric.WithDescription(
-			"Number of running instances.",
-		),
-		metric.WithUnit("{instance}"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	analytics, err := analyticscollector.NewAnalytics()
-	if err != nil {
-		logger.Errorf("Error initializing Analytics client\n: %v", err)
-		panic(err)
-	}
-
-	logger.Info("Initialized Analytics client")
-
-	instanceCache := instance.NewCache(
-		analytics.Client,
-		logger,
-		getInsertInstanceFunction(ctx, orch, analytics),
-		getDeleteInstanceFunction(ctx, orch, analytics, posthogClient, logger),
-		initialInstances,
-		instancesCounter,
-	)
-
-	logger.Info("Initialized instance cache")
 
 	if env.IsLocal() {
 		logger.Info("Skipping syncing sandboxes, running locally")
 	} else {
-		go orch.KeepInSync(ctx, instanceCache, logger)
+		go orch.KeepInSync(ctx)
 	}
 
 	var lokiClient *loki.DefaultClient
@@ -176,9 +127,7 @@ func NewAPIStore() *APIStore {
 		orchestrator:    orch,
 		templateManager: templateManager,
 		db:              dbClient,
-		instanceCache:   instanceCache,
 		tracer:          tracer,
-		analytics:       analytics,
 		posthog:         posthogClient,
 		buildCache:      buildCache,
 		logger:          logger,
@@ -189,12 +138,7 @@ func NewAPIStore() *APIStore {
 func (a *APIStore) Close() {
 	a.db.Close()
 
-	err := a.analytics.Close()
-	if err != nil {
-		a.logger.Errorf("Error closing Analytics\n: %v", err)
-	}
-
-	err = a.posthog.Close()
+	err := a.posthog.Close()
 	if err != nil {
 		a.logger.Errorf("Error closing Posthog client\n: %v", err)
 	}
@@ -247,19 +191,6 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken strin
 	return *userID, nil
 }
 
-func (a *APIStore) DeleteInstance(instanceID string) *api.APIError {
-	info, err := a.instanceCache.GetInstance(instanceID)
-	if err != nil {
-		return &api.APIError{
-			Err:       err,
-			ClientMsg: "Cannot delete the instance right now",
-			Code:      http.StatusInternalServerError,
-		}
-	}
-
-	return deleteInstance(a.Ctx, a.orchestrator, a.analytics, a.posthog, a.logger, &info)
-}
-
 func (a *APIStore) CheckTeamAccessEnv(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID, public bool) (env *api.Template, build *models.EnvBuild, err error) {
 	template, build, err := a.db.GetEnv(ctx, aliasOrEnvID, teamID, public)
 	if err != nil {
@@ -271,78 +202,4 @@ func (a *APIStore) CheckTeamAccessEnv(ctx context.Context, aliasOrEnvID string, 
 		Public:     template.Public,
 		Aliases:    template.Aliases,
 	}, build, nil
-}
-
-func getInsertInstanceFunction(ctx context.Context, orchestrator *orchestrator.Orchestrator, analytics *analyticscollector.Analytics) func(info instance.InstanceInfo) *api.APIError {
-	return func(info instance.InstanceInfo) *api.APIError {
-		node := orchestrator.GetNodeById(info.Instance.ClientID)
-		node.CPUUsage += info.VCPU
-		node.RamUsage += info.RamMB
-
-		_, err := analytics.Client.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
-			InstanceId:    info.Instance.SandboxID,
-			EnvironmentId: info.Instance.TemplateID,
-			BuildId:       info.BuildID.String(),
-			TeamId:        info.TeamID.String(),
-			Timestamp:     timestamppb.Now(),
-		})
-		if err != nil {
-			errMsg := fmt.Errorf("error when sending analytics event: %w", err)
-			telemetry.ReportCriticalError(ctx, errMsg)
-		}
-		return nil
-	}
-}
-
-func getDeleteInstanceFunction(ctx context.Context, orchestrator *orchestrator.Orchestrator, analytics *analyticscollector.Analytics, posthogClient *PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo) *api.APIError {
-	return func(info instance.InstanceInfo) *api.APIError {
-		return deleteInstance(ctx, orchestrator, analytics, posthogClient, logger, &info)
-	}
-}
-
-func deleteInstance(
-	ctx context.Context,
-	orchestrator *orchestrator.Orchestrator,
-	analytics *analyticscollector.Analytics,
-	posthogClient *PosthogClient,
-	logger *zap.SugaredLogger,
-	info *instance.InstanceInfo,
-) *api.APIError {
-	duration := time.Since(*info.StartTime).Seconds()
-
-	delErr := orchestrator.DeleteInstance(ctx, info)
-	if delErr != nil {
-		errMsg := fmt.Errorf("cannot delete instance '%s': %w", info.Instance.SandboxID, delErr)
-
-		return &api.APIError{
-			Err:       errMsg,
-			ClientMsg: "Cannot delete the instance right now",
-			Code:      http.StatusInternalServerError,
-		}
-	}
-
-	if info.TeamID != nil && info.StartTime != nil {
-		_, err := analytics.Client.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
-			TeamId:        info.TeamID.String(),
-			EnvironmentId: info.Instance.TemplateID,
-			InstanceId:    info.Instance.SandboxID,
-			Timestamp:     timestamppb.Now(),
-			Duration:      float32(duration),
-		})
-		if err != nil {
-			logger.Errorf("error sending Analytics event: %v", err)
-		}
-
-		posthogClient.CreateAnalyticsTeamEvent(
-			info.TeamID.String(),
-			"closed_instance", posthog.NewProperties().
-				Set("instance_id", info.Instance.SandboxID).
-				Set("environment", info.Instance.TemplateID).
-				Set("duration", duration),
-		)
-	}
-
-	logger.Infof("Closed sandbox '%s' after %f seconds", info.Instance.SandboxID, duration)
-
-	return nil
 }

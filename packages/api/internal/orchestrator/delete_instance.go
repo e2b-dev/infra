@@ -4,26 +4,26 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (o *Orchestrator) DeleteInstance(ctx context.Context, info *instance.InstanceInfo) error {
-	nodeID := info.Instance.ClientID
-	sandboxID := info.Instance.SandboxID
-
-	if node, ok := o.nodes[nodeID]; ok {
-		node.CPUUsage -= info.VCPU
-		node.RamUsage -= info.RamMB
-	}
-
-	client, err := o.GetClientByNodeID(nodeID)
+func (o *Orchestrator) DeleteInstance(ctx context.Context, sandboxID string) error {
+	sbx, err := o.instanceCache.GetInstance(sandboxID)
 	if err != nil {
-		return fmt.Errorf("failed to get GRPC client: %w", err)
+		return fmt.Errorf("failed to get sandbox '%s': %w", sandboxID, err)
 	}
 
-	_, err = client.Sandbox.Delete(ctx, &orchestrator.SandboxRequest{
+	nodeID := sbx.Instance.ClientID
+	node, err := o.GetNode(nodeID)
+	if err != nil {
+		return fmt.Errorf("failed to get node '%s': %w", nodeID, err)
+	}
+
+	node.CPUUsage -= sbx.VCPU
+	node.RamUsage -= sbx.RamMB
+
+	_, err = node.Client.Sandbox.Delete(ctx, &orchestrator.SandboxRequest{
 		SandboxID: sandboxID,
 	})
 

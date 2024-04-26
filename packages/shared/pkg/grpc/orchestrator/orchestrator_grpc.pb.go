@@ -29,6 +29,8 @@ type SandboxClient interface {
 	List(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListResponse, error)
 	// Delete is a gRPC service that kills a sandbox.
 	Delete(ctx context.Context, in *SandboxRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Report failed sandboxes
+	StreamFailedSandbox(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (Sandbox_StreamFailedSandboxClient, error)
 }
 
 type sandboxClient struct {
@@ -66,6 +68,38 @@ func (c *sandboxClient) Delete(ctx context.Context, in *SandboxRequest, opts ...
 	return out, nil
 }
 
+func (c *sandboxClient) StreamFailedSandbox(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (Sandbox_StreamFailedSandboxClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Sandbox_ServiceDesc.Streams[0], "/Sandbox/StreamFailedSandbox", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &sandboxStreamFailedSandboxClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Sandbox_StreamFailedSandboxClient interface {
+	Recv() (*FailedSandbox, error)
+	grpc.ClientStream
+}
+
+type sandboxStreamFailedSandboxClient struct {
+	grpc.ClientStream
+}
+
+func (x *sandboxStreamFailedSandboxClient) Recv() (*FailedSandbox, error) {
+	m := new(FailedSandbox)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // SandboxServer is the server API for Sandbox service.
 // All implementations must embed UnimplementedSandboxServer
 // for forward compatibility
@@ -76,6 +110,8 @@ type SandboxServer interface {
 	List(context.Context, *emptypb.Empty) (*SandboxListResponse, error)
 	// Delete is a gRPC service that kills a sandbox.
 	Delete(context.Context, *SandboxRequest) (*emptypb.Empty, error)
+	// Report failed sandboxes
+	StreamFailedSandbox(*emptypb.Empty, Sandbox_StreamFailedSandboxServer) error
 	mustEmbedUnimplementedSandboxServer()
 }
 
@@ -91,6 +127,9 @@ func (UnimplementedSandboxServer) List(context.Context, *emptypb.Empty) (*Sandbo
 }
 func (UnimplementedSandboxServer) Delete(context.Context, *SandboxRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedSandboxServer) StreamFailedSandbox(*emptypb.Empty, Sandbox_StreamFailedSandboxServer) error {
+	return status.Errorf(codes.Unimplemented, "method StreamFailedSandbox not implemented")
 }
 func (UnimplementedSandboxServer) mustEmbedUnimplementedSandboxServer() {}
 
@@ -159,6 +198,27 @@ func _Sandbox_Delete_Handler(srv interface{}, ctx context.Context, dec func(inte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Sandbox_StreamFailedSandbox_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(emptypb.Empty)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SandboxServer).StreamFailedSandbox(m, &sandboxStreamFailedSandboxServer{stream})
+}
+
+type Sandbox_StreamFailedSandboxServer interface {
+	Send(*FailedSandbox) error
+	grpc.ServerStream
+}
+
+type sandboxStreamFailedSandboxServer struct {
+	grpc.ServerStream
+}
+
+func (x *sandboxStreamFailedSandboxServer) Send(m *FailedSandbox) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // Sandbox_ServiceDesc is the grpc.ServiceDesc for Sandbox service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -179,6 +239,12 @@ var Sandbox_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Sandbox_Delete_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "StreamFailedSandbox",
+			Handler:       _Sandbox_StreamFailedSandbox_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "orchestrator.proto",
 }

@@ -47,8 +47,8 @@ type InstanceCache struct {
 func NewCache(
 	analytics analyticscollector.AnalyticsCollectorClient,
 	logger *zap.SugaredLogger,
-	insertInstance func(data InstanceInfo) *api.APIError,
-	deleteInstance func(data InstanceInfo) *api.APIError,
+	insertInstance func(data InstanceInfo) error,
+	deleteInstance func(data InstanceInfo) error,
 	initialInstances []*InstanceInfo,
 	counter metric.Int64UpDownCounter,
 ) *InstanceCache {

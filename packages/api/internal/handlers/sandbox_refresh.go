@@ -41,7 +41,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 		duration = instance.InstanceExpiration
 	}
 
-	err = a.instanceCache.KeepAliveFor(sandboxID, duration)
+	err = a.orchestrator.KeepAliveFor(sandboxID, duration)
 	if err != nil {
 		errMsg := fmt.Errorf("error when refreshing instance: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
