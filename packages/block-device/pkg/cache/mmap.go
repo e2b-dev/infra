@@ -41,6 +41,7 @@ func newMmappedFile(size int64, filePath string, createFile bool, overlay bool) 
 	mmapFlags := unix.MAP_SHARED
 	if overlay {
 		// TODO: Test overlay mmaped file — if the private is only process wise we would need to run separate processes for handlng each fc rootfs overlay though.
+		// TODO: Check mmap.COPY - multiple map initializations for the same file?
 		mmapFlags = unix.MAP_PRIVATE
 	}
 
