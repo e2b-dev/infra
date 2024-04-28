@@ -11,7 +11,7 @@ type Mmap struct {
 }
 
 func NewMmapCache(size int64, filePath string, createFile bool) (*Mmap, error) {
-	m, err := newMmappedFile(size, filePath, createFile)
+	m, err := newMmappedFile(size, filePath, createFile, false)
 	if err != nil {
 		return nil, err
 	}

@@ -22,7 +22,7 @@ func TestMmapedFile(t *testing.T) {
 	err = file.Truncate(size)
 	assert.NoError(t, err)
 
-	mf, err := newMmappedFile(size, file.Name(), false)
+	mf, err := newMmappedFile(size, file.Name(), false, false)
 	require.NoError(t, err, "error creating mmapedFile")
 	defer mf.Close()
 
