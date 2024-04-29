@@ -11,7 +11,7 @@ type Mmap struct {
 }
 
 func NewMmapCache(size int64, filePath string, createFile bool) (*Mmap, error) {
-	m, err := newMmappedFile(size, filePath, createFile, false)
+	m, err := newMmappedFile(size, filePath, createFile)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,7 @@ func (m *Mmap) ReadAt(b []byte, off int64) (int, error) {
 		return m.mmap.ReadAt(b, off)
 	}
 
-	return 0, block.ErrBytesNotAvailable{}
+	return 0, block.ErrBytesNotAvailable{}w
 }
 
 func (m *Mmap) WriteAt(b []byte, off int64) (n int, err error) {

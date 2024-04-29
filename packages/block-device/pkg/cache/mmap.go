@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/edsrzf/mmap-go"
-	"golang.org/x/sys/unix"
 )
 
 type mmapedFile struct {
@@ -17,7 +16,7 @@ type mmapedFile struct {
 	size int64
 }
 
-func newMmappedFile(size int64, filePath string, createFile bool, overlay bool) (*mmapedFile, error) {
+func newMmappedFile(size int64, filePath string, createFile bool) (*mmapedFile, error) {
 	var flag int
 
 	if createFile {
@@ -38,14 +37,7 @@ func newMmappedFile(size int64, filePath string, createFile bool, overlay bool) 
 		}
 	}
 
-	mmapFlags := unix.MAP_SHARED
-	if overlay {
-		// TODO: Test overlay mmaped file — if the private is only process wise we would need to run separate processes for handlng each fc rootfs overlay though.
-		// TODO: Check mmap.COPY - multiple map initializations for the same file?
-		mmapFlags = unix.MAP_PRIVATE
-	}
-
-	mm, err := mmap.Map(f, mmap.RDWR, mmapFlags)
+	mm, err := mmap.Map(f, mmap.RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
