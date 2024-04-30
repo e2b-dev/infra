@@ -11,8 +11,8 @@ import (
 func TestOverlay(t *testing.T) {
 	size := int64(30)
 	offset := int64(10)
-	base := block.NewMockDevice(make([]byte, size))
-	cache := block.NewMockDevice(make([]byte, size))
+	base := block.NewMockDevice(make([]byte, size), true)
+	cache := block.NewMockDevice(make([]byte, size), false)
 	overlay := New(base, cache, true)
 
 	data := []byte("hello world")
@@ -42,8 +42,8 @@ func TestOverlay(t *testing.T) {
 func TestOverlayWithCacheReadsFalse(t *testing.T) {
 	size := int64(30)
 	offset := int64(10)
-	base := block.NewMockDevice(make([]byte, size))
-	cache := block.NewMockDevice(make([]byte, size))
+	base := block.NewMockDevice(make([]byte, size), true)
+	cache := block.NewMockDevice(make([]byte, size), false)
 	overlay := New(base, cache, false)
 
 	data := []byte("hello world")

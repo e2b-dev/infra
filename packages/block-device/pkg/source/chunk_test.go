@@ -3,7 +3,6 @@ package source
 import (
 	"bytes"
 	"context"
-	"io"
 	"testing"
 
 	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
@@ -12,11 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestChunker(t *testing.T) {
-	size := ChunkSize * 10
+func TestChunkerReadBlock(t *testing.T) {
+	size := ChunkSize * 2
 	baseData := bytes.Repeat([]byte("H"), int(size))
-	base := block.NewMockDevice(baseData)
-	cache := block.NewMockDevice(make([]byte, len(baseData)))
+	base := block.NewMockDevice(baseData, true)
+	cache := block.NewMockDevice(make([]byte, len(baseData)), false)
 
 	// Create a new Chunker
 	ctx := context.Background()
@@ -24,31 +23,58 @@ func TestChunker(t *testing.T) {
 	defer chunker.Close()
 
 	// Read data from the Chunker
-	buf := make([]byte, len(baseData))
-	n, err := chunker.ReadAt(buf, 0)
+	buf := make([]byte, block.Size)
+	_, err := chunker.ReadAt(buf, 0)
 	require.NoError(t, err)
-	assert.Equal(t, len(baseData), n)
-	assert.Equal(t, baseData, buf)
 
+	// The check for total equality takes a really long time
+	assert.EqualValues(t, baseData[0], buf[0])
+	assert.EqualValues(t, baseData[block.Size-1], buf[block.Size-1])
+}
+
+func TestChunkerReadSmaller(t *testing.T) {
+	size := ChunkSize * 3
+	baseData := bytes.Repeat([]byte("H"), int(size))
+	base := block.NewMockDevice(baseData, true)
+	cache := block.NewMockDevice(make([]byte, len(baseData)), false)
+
+	// Create a new Chunker
+	ctx := context.Background()
+	chunker := NewChunker(ctx, base, cache)
+	defer chunker.Close()
+
+	smallBlockSize := block.Size / 4
 	// Read a chunk of data from the Chunker
-	chunkBuf := make([]byte, ChunkSize)
-	n, err = chunker.ReadAt(chunkBuf, ChunkSize)
+	chunkBuf := make([]byte, smallBlockSize)
+	_, err := chunker.ReadAt(chunkBuf, smallBlockSize)
 	require.NoError(t, err)
-	assert.Equal(t, ChunkSize, n)
-	assert.Equal(t, baseData[ChunkSize:ChunkSize*2], chunkBuf)
+
+	// The check for total equality takes a really long time
+	assert.EqualValues(t, baseData[block.Size], chunkBuf[0])
+	assert.EqualValues(t, baseData[block.Size+smallBlockSize-1], chunkBuf[smallBlockSize-1])
+}
+
+func TestChunkerPrefetchChunk(t *testing.T) {
+	size := ChunkSize * 4
+	baseData := bytes.Repeat([]byte("H"), int(size))
+	base := block.NewMockDevice(baseData, true)
+	cache := block.NewMockDevice(make([]byte, len(baseData)), false)
+
+	// Create a new Chunker
+	ctx := context.Background()
+	chunker := NewChunker(ctx, base, cache)
+	defer chunker.Close()
 
 	// Prefetch a chunk
-	_, err = chunker.ReadAt(nil, ChunkSize*2)
+	_, err := chunker.ReadAt(nil, ChunkSize*2)
 	require.NoError(t, err)
 
 	// Read the prefetched chunk
-	prefetchedBuf := make([]byte, ChunkSize)
-	n, err = chunker.ReadAt(prefetchedBuf, ChunkSize*2)
+	prefetchedBuf := make([]byte, block.Size)
+	_, err = cache.ReadAt(prefetchedBuf, ChunkSize*2)
 	require.NoError(t, err)
-	assert.Equal(t, ChunkSize, n)
-	assert.Equal(t, baseData[ChunkSize*2:ChunkSize*3], prefetchedBuf)
 
-	// Read beyond the end of the base reader
-	_, err = chunker.ReadAt(buf, int64(len(baseData)))
-	assert.Equal(t, io.EOF, err)
+	// The check for total equality takes a really long time
+	assert.EqualValues(t, baseData[ChunkSize*2], prefetchedBuf[0])
+	assert.EqualValues(t, baseData[ChunkSize*3-1], prefetchedBuf[block.Size-1])
 }

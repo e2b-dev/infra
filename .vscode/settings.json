@@ -26,6 +26,9 @@
   "[terraform]": {
     "editor.tabSize": 2
   },
+  "go.delveConfig": {
+    "debuggerMode": "native",
+  },
   "[go]": {
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {

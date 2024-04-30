@@ -8,7 +8,8 @@ import (
 
 func TestMockDevice(t *testing.T) {
 	data := []byte("Hello, World!")
-	device := NewMockDevice(data)
+
+	device := NewMockDevice(data, true)
 
 	// Test ReadAt
 	buf := make([]byte, 5)

@@ -33,7 +33,7 @@ func (m *Mmap) ReadAt(b []byte, off int64) (int, error) {
 		return m.mmap.ReadAt(b, off)
 	}
 
-	return 0, block.ErrBytesNotAvailable{}w
+	return 0, block.ErrBytesNotAvailable{}
 }
 
 func (m *Mmap) WriteAt(b []byte, off int64) (n int, err error) {
