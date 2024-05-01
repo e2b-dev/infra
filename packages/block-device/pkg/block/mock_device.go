@@ -39,6 +39,7 @@ func (m *MockDevice) ReadAt(p []byte, off int64) (n int, err error) {
 	return n, nil
 }
 
+// WriteAt can write more than one block at a time.
 func (m *MockDevice) WriteAt(p []byte, off int64) (n int, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -46,7 +47,9 @@ func (m *MockDevice) WriteAt(p []byte, off int64) (n int, err error) {
 	n = copy(m.data[off:off+int64(len(p))], p)
 
 	if m.marker != nil {
-		m.marker.Mark(off / Size)
+		for i := off; i < off+int64(n); i += Size {
+			m.marker.Mark(i / Size)
+		}
 	}
 
 	return n, nil

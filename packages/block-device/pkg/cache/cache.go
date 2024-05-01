@@ -36,13 +36,16 @@ func (m *Mmap) ReadAt(b []byte, off int64) (int, error) {
 	return 0, block.ErrBytesNotAvailable{}
 }
 
+// WriteAt can write more than one block at a time.
 func (m *Mmap) WriteAt(b []byte, off int64) (n int, err error) {
 	n, err = m.mmap.WriteAt(b, off)
 	if err != nil {
 		return n, err
 	}
 
-	m.marker.Mark(off / block.Size)
+	for i := off; i < off+int64(n); i += block.Size {
+		m.marker.Mark(i / block.Size)
+	}
 
 	return n, nil
 }

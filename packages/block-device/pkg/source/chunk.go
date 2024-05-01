@@ -14,36 +14,14 @@ import (
 
 const (
 	// Chunks must always be bigger or equal to the block size.
+	// TODO: We need to ensure how to handle if the whole file is not divisible by the chunk size.
 	ChunkSize = block.Size * 1024 // 4 MB
 
 	concurrentFetches    = 8
 	concurrentPrefetches = 2
 )
 
-// For this use case we don't need to cleanup the slices' content, because we are overwriting them fully with data.
-type chunkPool struct {
-	pool sync.Pool
-}
-
-func (c *chunkPool) get() []byte {
-	return c.pool.Get().([]byte)
-}
-
-func (c *chunkPool) put(b []byte) {
-	c.pool.Put(b)
-}
-
-func NewChunkPool() *chunkPool {
-	return &chunkPool{
-		pool: sync.Pool{
-			New: func() any {
-				return make([]byte, ChunkSize)
-			},
-		},
-	}
-}
-
-var chunkSlicePool = NewChunkPool()
+var chunkPool = NewSlicePool(ChunkSize)
 
 type Chunker struct {
 	ctx    context.Context
@@ -114,28 +92,9 @@ func (c *Chunker) ensureChunk(chunk int64, prefetch bool) chan error {
 		case <-c.ctx.Done():
 			ch <- c.ctx.Err()
 		default:
-			data := chunkSlicePool.get()
-			defer chunkSlicePool.put(data)
-
-			chunkN, chunkErr := c.fetchChunk(data, chunk)
-			if chunkErr != nil {
-				ch <- fmt.Errorf("failed to fetch chunk %d: %w", chunk, chunkErr)
-			}
-
-			if chunkN != ChunkSize {
-				ch <- fmt.Errorf("failed to fetch chunk %d: invalid length %d", chunk, chunkN)
-			}
-
-			// Iterate over blocks in chunks and write them to cache.
-			for i := int64(0); i < int64(len(data)); i += block.Size {
-				cacheN, cacheErr := c.cache.WriteAt(data[i:i+block.Size], i)
-				if cacheErr != nil {
-					ch <- fmt.Errorf("failed to write block %d from chunk %d to cache: %w", i, chunk, cacheErr)
-				}
-
-				if cacheN != int(block.Size) {
-					ch <- fmt.Errorf("failed to write block %d from chunk %d to cache: invalid length %d", i, chunk, cacheN)
-				}
+			err := c.fetchChunk(chunk)
+			if err != nil {
+				ch <- fmt.Errorf("failed to fetch chunk %d: %w", chunk, err)
 			}
 		}
 	}(sem, chunk)
@@ -152,9 +111,9 @@ func (c *Chunker) ReadAt(b []byte, off int64) (int, error) {
 		chunkCh := c.ensureChunk(chunkIdx, len(b) == 0)
 
 		select {
-		case err := <-chunkCh:
-			if err != nil {
-				return 0, fmt.Errorf("failed to ensure chunk %d: %w", chunkIdx, err)
+		case chunkErr := <-chunkCh:
+			if chunkErr != nil {
+				return 0, fmt.Errorf("failed to ensure chunk %d: %w", chunkIdx, chunkErr)
 			}
 		case <-c.ctx.Done():
 			return 0, c.ctx.Err()
@@ -175,15 +134,32 @@ func (c *Chunker) ReadAt(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
-func (c *Chunker) fetchChunk(b []byte, idx int64) (int64, error) {
+func (c *Chunker) fetchChunk(idx int64) error {
 	off := idx * ChunkSize
 
-	n, err := c.base.ReadAt(b, off)
+	b := chunkPool.get()
+	defer chunkPool.put(b)
+
+	_, err := c.base.ReadAt(b, off)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read chunk %d: %w", idx, err)
+		return fmt.Errorf("failed to read chunk from base %d: %w", idx, err)
 	}
 
-	return int64(n), nil
+	// Iterate over blocks in chunks and write them to cache.
+	// TODO: Could start at a different chunk from 0
+	// TODO: Write the whole chunk to the cache in one go
+	for i := idx * ChunkSize; i < (idx+1)*ChunkSize; i += block.Size {
+		cacheN, cacheErr := c.cache.WriteAt(b[i:i+block.Size], i)
+		if cacheErr != nil {
+			return fmt.Errorf("failed to write block %d from chunk %d to cache: %w", i, idx, cacheErr)
+		}
+
+		if cacheN != int(block.Size) {
+			return fmt.Errorf("failed to write block %d from chunk %d to cache: invalid length %d", i, idx, cacheN)
+		}
+	}
+
+	return nil
 }
 
 func (c *Chunker) Close() {

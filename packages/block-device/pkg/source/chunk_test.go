@@ -66,7 +66,7 @@ func TestChunkerPrefetchChunk(t *testing.T) {
 	defer chunker.Close()
 
 	// Prefetch a chunk
-	_, err := chunker.ReadAt(nil, ChunkSize*2)
+	_, err := chunker.ReadAt(make([]byte, block.Size), ChunkSize*2)
 	require.NoError(t, err)
 
 	// Read the prefetched chunk
