@@ -48,7 +48,7 @@ func (p *Prefetcher) Start() error {
 		default:
 			err := p.prefetch(chunkIdx * ChunkSize)
 			if err != nil {
-				fmt.Printf("error prefetching chunk %d (%d-%d): %v\n", chunkIdx, chunkIdx*ChunkSize, chunkIdx*ChunkSize+ChunkSize, err)
+				return fmt.Errorf("error prefetching chunk %d (%d-%d): %w", chunkIdx, chunkIdx*ChunkSize, chunkIdx*ChunkSize+ChunkSize, err)
 			}
 		}
 	}

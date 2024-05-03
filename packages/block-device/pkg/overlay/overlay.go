@@ -9,16 +9,16 @@ import (
 )
 
 type Overlay struct {
-	base       io.ReaderAt
-	cache      block.Device
-	cacheReads bool
+	base         io.ReaderAt
+	cache        block.Device
+	writeToCache bool
 }
 
-func New(base io.ReaderAt, cache block.Device, cacheReads bool) *Overlay {
+func New(base io.ReaderAt, cache block.Device, writeToCache bool) *Overlay {
 	return &Overlay{
-		base:       base,
-		cache:      cache,
-		cacheReads: cacheReads,
+		base:         base,
+		cache:        cache,
+		writeToCache: writeToCache,
 	}
 }
 
@@ -39,7 +39,7 @@ func (o *Overlay) ReadAt(b []byte, off int64) (int, error) {
 			return n, fmt.Errorf("error reading from base: %w", err)
 		}
 
-		if o.cacheReads {
+		if o.writeToCache {
 			_, cacheErr := o.cache.WriteAt(b[:n], off)
 			if cacheErr != nil {
 				return n, fmt.Errorf("error writing to cache: %w", cacheErr)
@@ -52,4 +52,8 @@ func (o *Overlay) ReadAt(b []byte, off int64) (int, error) {
 	}
 
 	return n, nil
+}
+
+func (o *Overlay) Sync() error {
+	return o.cache.Sync()
 }

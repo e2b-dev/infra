@@ -64,3 +64,7 @@ func (m *MockDevice) WriteAt(p []byte, off int64) (n int, err error) {
 
 	return n, nil
 }
+
+func (m *MockDevice) Sync() error {
+	return nil
+}

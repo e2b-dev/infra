@@ -20,7 +20,7 @@ const (
 	concurrentPrefetches = 2
 )
 
-var chunkPool = NewSlicePool(ChunkSize)
+var chunkPool = newSlicePool(ChunkSize)
 
 type Chunker struct {
 	ctx    context.Context

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"log"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/block-device/pkg/cache"
@@ -18,6 +18,11 @@ type BucketSource struct {
 	size         int64
 }
 
+const (
+	bucketFetchRetries    = 3
+	bucketFetchRetryDelay = 1 * time.Millisecond
+)
+
 func NewBucketSource(
 	ctx context.Context,
 	bucketName,
@@ -25,19 +30,14 @@ func NewBucketSource(
 	bucketCachePath string,
 	size int64,
 ) (*BucketSource, error) {
-	cacheExists := false
-	if _, err := os.Stat(bucketCachePath); err == nil {
-		cacheExists = true
-	}
-
 	bucket, err := source.NewGCS(ctx, bucketName, bucketPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bucket source: %w", err)
 	}
 
-	retrier := source.NewRetrier(ctx, bucket, 3, 1*time.Millisecond)
+	retrier := source.NewRetrier(ctx, bucket, bucketFetchRetries, bucketFetchRetryDelay)
 
-	cache, err := cache.NewMmapCache(size, bucketCachePath, cacheExists)
+	cache, err := cache.NewMmapCache(size, bucketCachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bucket cache: %w", err)
 	}
@@ -45,7 +45,12 @@ func NewBucketSource(
 	chunker := source.NewChunker(ctx, retrier, cache)
 
 	prefetcher := source.NewPrefetcher(ctx, chunker, size)
-	go prefetcher.Start()
+	go func() {
+		prefetchErr := prefetcher.Start()
+		if prefetchErr != nil {
+			log.Printf("error prefetching chunks: %v", prefetchErr)
+		}
+	}()
 
 	return &BucketSource{
 		bucketReader: chunker,
@@ -80,4 +85,8 @@ func (d *BucketSource) CreateOverlay(cachePath string) (*BucketOverlay, error) {
 	}
 
 	return overlay, nil
+}
+
+func (d *BucketSource) Size() int64 {
+	return d.size
 }

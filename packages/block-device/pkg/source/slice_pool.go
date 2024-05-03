@@ -15,7 +15,7 @@ func (c *slicePool) put(b []byte) {
 	c.pool.Put(b)
 }
 
-func NewSlicePool(size int64) *slicePool {
+func newSlicePool(size int64) *slicePool {
 	return &slicePool{
 		pool: sync.Pool{
 			New: func() any {

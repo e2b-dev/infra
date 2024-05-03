@@ -10,31 +10,21 @@ import (
 )
 
 type mmapedFile struct {
-	File *os.File
+	file *os.File
 	mmap mmap.MMap
 	mu   sync.RWMutex
 	size int64
 }
 
-func newMmappedFile(size int64, filePath string, createFile bool) (*mmapedFile, error) {
-	var flag int
-
-	if createFile {
-		flag = os.O_RDWR | os.O_CREATE
-	} else {
-		flag = os.O_RDWR
-	}
-
-	f, err := os.OpenFile(filePath, flag, 0o644)
+func newMmappedFile(size int64, filePath string) (*mmapedFile, error) {
+	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
 	}
 
-	if createFile {
-		err = f.Truncate(size)
-		if err != nil {
-			return nil, fmt.Errorf("error allocating file: %w", err)
-		}
+	err = f.Truncate(size)
+	if err != nil {
+		return nil, fmt.Errorf("error allocating file: %w", err)
 	}
 
 	mm, err := mmap.Map(f, mmap.RDWR, 0)
@@ -42,15 +32,10 @@ func newMmappedFile(size int64, filePath string, createFile bool) (*mmapedFile, 
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
-	stat, err := f.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("error getting file size: %w", err)
-	}
-
 	return &mmapedFile{
 		mmap: mm,
-		File: f,
-		size: stat.Size(),
+		file: f,
+		size: int64(len(mm)),
 	}, nil
 }
 
@@ -82,7 +67,15 @@ func (m *mmapedFile) Close() error {
 	flushErr := m.mmap.Flush()
 
 	mmapErr := m.mmap.Unmap()
-	closeErr := m.File.Close()
+	closeErr := m.file.Close()
 
 	return errors.Join(flushErr, mmapErr, closeErr)
+}
+
+func (m *mmapedFile) Sync() error {
+	return m.mmap.Flush()
+}
+
+func (m *mmapedFile) Size() int64 {
+	return m.size
 }

@@ -4,31 +4,24 @@ import (
 	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
 )
 
-type Mmap struct {
-	mmap     *mmapedFile
-	marker   *block.Marker
-	fileView *SparseFileView
+type MmapCache struct {
+	mmap   *mmapedFile
+	marker *block.Marker
 }
 
-func NewMmapCache(size int64, filePath string, createFile bool) (*Mmap, error) {
-	m, err := newMmappedFile(size, filePath, createFile)
+func NewMmapCache(size int64, filePath string) (*MmapCache, error) {
+	m, err := newMmappedFile(size, filePath)
 	if err != nil {
 		return nil, err
 	}
 
-	var sparseMarker *SparseFileView
-	if !createFile {
-		sparseMarker = NewSparseFileView(m.File)
-	}
-
-	return &Mmap{
-		mmap:     m,
-		marker:   block.NewMarker(uint(size / block.Size)),
-		fileView: sparseMarker,
+	return &MmapCache{
+		mmap:   m,
+		marker: block.NewMarker(uint(size / block.Size)),
 	}, nil
 }
 
-func (m *Mmap) ReadAt(b []byte, off int64) (int, error) {
+func (m *MmapCache) ReadAt(b []byte, off int64) (int, error) {
 	if m.IsMarked(off) {
 		return m.mmap.ReadAt(b, off)
 	}
@@ -37,7 +30,7 @@ func (m *Mmap) ReadAt(b []byte, off int64) (int, error) {
 }
 
 // WriteAt can write more than one block at a time.
-func (m *Mmap) WriteAt(b []byte, off int64) (n int, err error) {
+func (m *MmapCache) WriteAt(b []byte, off int64) (n int, err error) {
 	n, err = m.mmap.WriteAt(b, off)
 	if err != nil {
 		return n, err
@@ -50,26 +43,18 @@ func (m *Mmap) WriteAt(b []byte, off int64) (n int, err error) {
 	return n, nil
 }
 
-func (m *Mmap) Close() error {
+func (m *MmapCache) Close() error {
 	return m.mmap.Close()
 }
 
-func (m *Mmap) IsMarked(off int64) bool {
-	markedInMemory := m.marker.IsMarked(off / block.Size)
-	if markedInMemory {
-		return true
-	}
+func (m *MmapCache) IsMarked(off int64) bool {
+	return m.marker.IsMarked(off / block.Size)
+}
 
-	if m.fileView == nil {
-		return false
-	}
+func (m *MmapCache) Sync() error {
+	return m.mmap.Sync()
+}
 
-	markedInFile, err := m.fileView.IsMarked(off)
-	if err != nil {
-		return false
-	}
-
-	m.marker.Mark(off / block.Size)
-
-	return markedInFile
+func (m *MmapCache) Size() int64 {
+	return m.mmap.Size()
 }

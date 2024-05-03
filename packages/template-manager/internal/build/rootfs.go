@@ -35,12 +35,10 @@ const (
 	cacheTimeout  = "48h"
 )
 
-var (
-	authConfig = registry.AuthConfig{
-		Username: "_json_key_base64",
-		Password: consts.GoogleServiceAccountSecret,
-	}
-)
+var authConfig = registry.AuthConfig{
+	Username: "_json_key_base64",
+	Password: consts.GoogleServiceAccountSecret,
+}
 
 type Rootfs struct {
 	client       *client.Client

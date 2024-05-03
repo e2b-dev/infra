@@ -2,7 +2,6 @@ package source
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,18 +21,6 @@ func TestPrefetcher(t *testing.T) {
 		err := prefetcher.Start()
 		assert.NoError(t, err, "unexpected error")
 		assert.Equal(t, 100, readAtCalls, "expected 100 ReadAt calls")
-	})
-
-	t.Run("prefetch error", func(t *testing.T) {
-		mockReader := &mockReaderAt{
-			readAtFunc: func(p []byte, off int64) (n int, err error) {
-				return 0, errors.New("read error")
-			},
-		}
-
-		prefetcher := NewPrefetcher(context.Background(), mockReader, 100*ChunkSize)
-		err := prefetcher.Start()
-		assert.NoError(t, err, "unexpected error")
 	})
 
 	t.Run("context cancel", func(t *testing.T) {

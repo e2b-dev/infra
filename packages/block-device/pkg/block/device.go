@@ -20,4 +20,5 @@ func (ErrBytesNotAvailable) Error() string {
 type Device interface {
 	io.ReaderAt
 	io.WriterAt
+	Sync() error
 }

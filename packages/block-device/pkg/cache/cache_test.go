@@ -13,26 +13,21 @@ import (
 func TestNewMmapCache(t *testing.T) {
 	size := int64(20 * block.Size)
 	filePath := "test_mmap.dat"
-	createFile := true
 
-	mmap, err := NewMmapCache(size, filePath, createFile)
+	mmap, err := NewMmapCache(size, filePath)
 	require.NoError(t, err, "Failed to create Mmap cache")
 	defer mmap.Close()
 	defer os.Remove(filePath)
 
 	assert.NotNil(t, mmap.mmap, "mmap field is nil")
 	assert.NotNil(t, mmap.marker, "marker field is nil")
-	if createFile {
-		assert.Nil(t, mmap.fileView, "fileView should be nil when createFile is true")
-	}
 }
 
 func TestMmap(t *testing.T) {
 	size := int64(20 * block.Size)
 	filePath := "test_mmap.dat"
-	createFile := true
 
-	mmap, err := NewMmapCache(size, filePath, createFile)
+	mmap, err := NewMmapCache(size, filePath)
 	require.NoError(t, err, "Failed to create Mmap cache")
 	defer mmap.Close()
 	defer os.Remove(filePath)
