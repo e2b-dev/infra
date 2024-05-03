@@ -145,20 +145,11 @@ func (c *Chunker) fetchChunk(idx int64) error {
 		return fmt.Errorf("failed to read chunk from base %d: %w", idx, err)
 	}
 
-	// Iterate over blocks in chunks and write them to cache.
-	// TODO: Could start at a different chunk from 0
-	// TODO: Write the whole chunk to the cache in one go
-	for i := idx * ChunkSize; i < (idx+1)*ChunkSize; i += block.Size {
-		cacheN, cacheErr := c.cache.WriteAt(b[i:i+block.Size], i)
-		if cacheErr != nil {
-			return fmt.Errorf("failed to write block %d from chunk %d to cache: %w", i, idx, cacheErr)
-		}
-
-		if cacheN != int(block.Size) {
-			return fmt.Errorf("failed to write block %d from chunk %d to cache: invalid length %d", i, idx, cacheN)
-		}
+	// TODO: Allow for sizes that are not divisible by the chunk size
+	_, cacheErr := c.cache.WriteAt(b, off)
+	if cacheErr != nil {
+		return fmt.Errorf("failed to write chunk %d to cache: %w", idx, cacheErr)
 	}
-
 	return nil
 }
 
