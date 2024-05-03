@@ -27,6 +27,11 @@ func NewMockDevice(data []byte, fillMarker bool) *MockDevice {
 }
 
 func (m *MockDevice) ReadAt(p []byte, off int64) (n int, err error) {
+	length := int64(len(p))
+	if length+off > int64(len(m.data)) {
+		length = int64(len(m.data)) - off
+	}
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -34,17 +39,22 @@ func (m *MockDevice) ReadAt(p []byte, off int64) (n int, err error) {
 		return 0, ErrBytesNotAvailable{}
 	}
 
-	n = copy(p, m.data[off:off+int64(len(p))])
+	n = copy(p, m.data[off:off+length])
 
 	return n, nil
 }
 
 // WriteAt can write more than one block at a time.
 func (m *MockDevice) WriteAt(p []byte, off int64) (n int, err error) {
+	length := int64(len(p))
+	if length+off > int64(len(m.data)) {
+		length = int64(len(m.data)) - off
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	n = copy(m.data[off:off+int64(len(p))], p)
+	n = copy(m.data[off:off+length], p)
 
 	if m.marker != nil {
 		for i := off; i < off+int64(n); i += Size {

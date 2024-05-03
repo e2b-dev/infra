@@ -52,8 +52,4 @@ func TestMmapedFile(t *testing.T) {
 	assert.NoError(t, err, "error reading from mmapedFile")
 	assert.Equal(t, len(data2), n, "expected to read %d bytes, but read %d bytes", len(data2), n)
 	assert.True(t, bytes.Equal(data2, readData2), "expected to read %s, but read %s", data2, readData2)
-
-	// Test reading from an offset beyond the file size
-	_, err = mf.ReadAt(readData, size+1)
-	assert.Error(t, err, "expected an error when reading beyond file size")
 }

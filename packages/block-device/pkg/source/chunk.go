@@ -14,7 +14,6 @@ import (
 
 const (
 	// Chunks must always be bigger or equal to the block size.
-	// TODO: We need to ensure how to handle if the whole file is not divisible by the chunk size.
 	ChunkSize = block.Size * 1024 // 4 MB
 
 	concurrentFetches    = 8
@@ -119,12 +118,12 @@ func (c *Chunker) ReadAt(b []byte, off int64) (int, error) {
 			return 0, c.ctx.Err()
 		}
 
-		ensuredN, cacheErr := c.cache.ReadAt(b, off)
+		cacheN, cacheErr := c.cache.ReadAt(b, off)
 		if cacheErr != nil {
-			return ensuredN, fmt.Errorf("failed to read from cache after ensuring chunk %d: %w", chunkIdx, cacheErr)
+			return 0, fmt.Errorf("failed to read from cache after ensuring chunk %d: %w", chunkIdx, cacheErr)
 		}
 
-		return ensuredN, nil
+		return cacheN, nil
 	}
 
 	if err != nil {
@@ -145,11 +144,11 @@ func (c *Chunker) fetchChunk(idx int64) error {
 		return fmt.Errorf("failed to read chunk from base %d: %w", idx, err)
 	}
 
-	// TODO: Allow for sizes that are not divisible by the chunk size
 	_, cacheErr := c.cache.WriteAt(b, off)
 	if cacheErr != nil {
 		return fmt.Errorf("failed to write chunk %d to cache: %w", idx, cacheErr)
 	}
+
 	return nil
 }
 

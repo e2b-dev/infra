@@ -22,11 +22,10 @@ func TestGCS(t *testing.T) {
 	defer gcs.Close()
 
 	// Test ReadAt method
-	b := make([]byte, 2*block.Size)
-	n, err := gcs.ReadAt(b, 0)
+	b := make([]byte, 30*block.Size)
+	_, err = gcs.ReadAt(b, 0)
 
 	assert.NoError(t, err)
-	assert.Equal(t, len(b), n)
 	assert.NotEmpty(t, b)
 
 	// Test Close method

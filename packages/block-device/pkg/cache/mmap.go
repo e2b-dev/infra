@@ -55,25 +55,27 @@ func newMmappedFile(size int64, filePath string, createFile bool) (*mmapedFile, 
 }
 
 func (m *mmapedFile) ReadAt(b []byte, off int64) (int, error) {
-	if off < 0 || off > m.size-1 {
-		return 0, fmt.Errorf("invalid offset: %d", off)
+	length := int64(len(b))
+	if length+off > m.size {
+		length = m.size - off
 	}
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return copy(b, m.mmap[off:off+int64(len(b))]), nil
+	return copy(b, m.mmap[off:off+length]), nil
 }
 
 func (m *mmapedFile) WriteAt(b []byte, off int64) (int, error) {
-	if off < 0 || off > m.size-1 {
-		return 0, fmt.Errorf("invalid offset: %d", off)
+	length := int64(len(b))
+	if length+off > m.size {
+		length = m.size - off
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return copy(m.mmap[off:off+int64(len(b))], b), nil
+	return copy(m.mmap[off:off+length], b), nil
 }
 
 func (m *mmapedFile) Close() error {
