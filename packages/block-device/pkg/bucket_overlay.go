@@ -10,7 +10,7 @@ import (
 
 type BucketObjectOverlay struct {
 	overlay *overlay.Overlay
-	Close   func() error
+	cache   *cache.MmapCache
 	size    int64
 }
 
@@ -25,15 +25,7 @@ func newBucketObjectOverlay(base io.ReaderAt, cachePath string, size int64) (*Bu
 	return &BucketObjectOverlay{
 		overlay: overlay,
 		size:    size,
-
-		Close: func() error {
-			closeErr := cache.Close()
-			if closeErr != nil {
-				return fmt.Errorf("error closing cache: %w", closeErr)
-			}
-
-			return nil
-		},
+		cache:   cache,
 	}, nil
 }
 
@@ -51,4 +43,8 @@ func (d *BucketObjectOverlay) Size() int64 {
 
 func (d *BucketObjectOverlay) Sync() error {
 	return d.overlay.Sync()
+}
+
+func (d *BucketObjectOverlay) Close() error {
+	return d.cache.Close()
 }

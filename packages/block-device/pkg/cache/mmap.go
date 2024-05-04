@@ -6,17 +6,20 @@ import (
 	"os"
 	"sync"
 
+	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
+
 	"github.com/edsrzf/mmap-go"
 )
 
-type mmapedFile struct {
-	file *os.File
-	mmap mmap.MMap
-	mu   sync.RWMutex
-	size int64
+type MmapCache struct {
+	file   *os.File
+	marker *block.Marker
+	mmap   mmap.MMap
+	size   int64
+	mu     sync.RWMutex
 }
 
-func newMmappedFile(size int64, filePath string) (*mmapedFile, error) {
+func NewMmapCache(size int64, filePath string) (*MmapCache, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
@@ -32,14 +35,19 @@ func newMmappedFile(size int64, filePath string) (*mmapedFile, error) {
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
-	return &mmapedFile{
-		mmap: mm,
-		file: f,
-		size: int64(len(mm)),
+	return &MmapCache{
+		mmap:   mm,
+		file:   f,
+		size:   size,
+		marker: block.NewMarker(uint(size / block.Size)),
 	}, nil
 }
 
-func (m *mmapedFile) ReadAt(b []byte, off int64) (int, error) {
+func (m *MmapCache) ReadAt(b []byte, off int64) (int, error) {
+	if !m.marker.IsMarked(off) {
+		return 0, block.ErrBytesNotAvailable{}
+	}
+
 	length := int64(len(b))
 	if length+off > m.size {
 		length = m.size - off
@@ -51,31 +59,34 @@ func (m *mmapedFile) ReadAt(b []byte, off int64) (int, error) {
 	return copy(b, m.mmap[off:off+length]), nil
 }
 
-func (m *mmapedFile) WriteAt(b []byte, off int64) (int, error) {
+func (m *MmapCache) WriteAt(b []byte, off int64) (int, error) {
 	length := int64(len(b))
 	if length+off > m.size {
 		length = m.size - off
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	n := copy(m.mmap[off:off+length], b)
+	m.mu.Unlock()
 
-	return copy(m.mmap[off:off+length], b), nil
+	for i := off; i < off+int64(n); i += block.Size {
+		m.marker.Mark(i / block.Size)
+	}
+
+	return n, nil
 }
 
-func (m *mmapedFile) Close() error {
-	flushErr := m.mmap.Flush()
-
+func (m *MmapCache) Close() error {
 	mmapErr := m.mmap.Unmap()
 	closeErr := m.file.Close()
 
-	return errors.Join(flushErr, mmapErr, closeErr)
+	return errors.Join(mmapErr, closeErr)
 }
 
-func (m *mmapedFile) Sync() error {
+func (m *MmapCache) Sync() error {
 	return m.mmap.Flush()
 }
 
-func (m *mmapedFile) Size() int64 {
+func (m *MmapCache) Size() int64 {
 	return m.size
 }

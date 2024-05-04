@@ -14,14 +14,14 @@ type GCSObject struct {
 	ctx    context.Context
 }
 
-func NewGCSObject(ctx context.Context, client *storage.Client, bucket, filepath string) (*GCSObject, error) {
+func NewGCSObject(ctx context.Context, client *storage.Client, bucket, filepath string) *GCSObject {
 	obj := client.Bucket(bucket).Object(filepath)
 
 	return &GCSObject{
 		client: client,
 		object: obj,
 		ctx:    ctx,
-	}, nil
+	}
 }
 
 func (g *GCSObject) ReadAt(b []byte, off int64) (int, error) {
@@ -43,15 +43,6 @@ func (g *GCSObject) ReadAt(b []byte, off int64) (int, error) {
 	}
 
 	return n, nil
-}
-
-func (g *GCSObject) Close() error {
-	err := g.client.Close()
-	if err != nil {
-		return fmt.Errorf("failed to close GCS client: %w", err)
-	}
-
-	return nil
 }
 
 func (g *GCSObject) Size() (int64, error) {

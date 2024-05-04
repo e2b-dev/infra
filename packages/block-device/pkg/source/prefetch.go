@@ -7,22 +7,18 @@ import (
 )
 
 type Prefetcher struct {
-	base   io.ReaderAt
-	ctx    context.Context
-	cancel context.CancelFunc
-	done   chan struct{}
-	size   int64
+	base io.ReaderAt
+	ctx  context.Context
+	done chan struct{}
+	size int64
 }
 
 func NewPrefetcher(ctx context.Context, base io.ReaderAt, size int64) *Prefetcher {
-	ctx, cancel := context.WithCancel(ctx)
-
 	return &Prefetcher{
-		ctx:    ctx,
-		base:   base,
-		size:   size,
-		cancel: cancel,
-		done:   make(chan struct{}),
+		ctx:  ctx,
+		base: base,
+		size: size,
+		done: make(chan struct{}),
 	}
 }
 
@@ -54,8 +50,4 @@ func (p *Prefetcher) Start() error {
 	}
 
 	return nil
-}
-
-func (p *Prefetcher) Close() {
-	p.cancel()
 }

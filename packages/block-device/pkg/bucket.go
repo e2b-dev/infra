@@ -2,9 +2,7 @@ package pkg
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"time"
 
@@ -15,9 +13,11 @@ import (
 )
 
 type BucketObjectSource struct {
-	reader io.ReaderAt
-	Close  func() error
-	size   int64
+	retrier    *source.Retrier
+	chunker    *source.Chunker
+	prefetcher *source.Prefetcher
+	cache      *cache.MmapCache
+	size       int64
 }
 
 const (
@@ -32,14 +32,11 @@ func NewBucketObjectSource(
 	bucketPath,
 	bucketCachePath string,
 ) (*BucketObjectSource, error) {
-	object, err := source.NewGCSObject(ctx, client, bucketName, bucketPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create bucket source: %w", err)
-	}
+	object := source.NewGCSObject(ctx, client, bucketName, bucketPath)
 
 	size, err := object.Size()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get bucket size: %w", err)
+		return nil, fmt.Errorf("failed to get object size: %w", err)
 	}
 
 	retrier := source.NewRetrier(ctx, object, bucketFetchRetries, bucketFetchRetryDelay)
@@ -60,24 +57,16 @@ func NewBucketObjectSource(
 	}()
 
 	return &BucketObjectSource{
-		reader: chunker,
-		size:   size,
-
-		Close: func() error {
-			prefetcher.Close()
-			retrier.Close()
-			chunker.Close()
-
-			objectErr := object.Close()
-			cacheErr := cache.Close()
-
-			return errors.Join(objectErr, cacheErr)
-		},
+		size:       size,
+		retrier:    retrier,
+		chunker:    chunker,
+		prefetcher: prefetcher,
+		cache:      cache,
 	}, nil
 }
 
 func (d *BucketObjectSource) ReadAt(p []byte, off int64) (n int, err error) {
-	n, err = d.reader.ReadAt(p, off)
+	n, err = d.chunker.ReadAt(p, off)
 	if err != nil {
 		return n, fmt.Errorf("failed to read %d: %w", off, err)
 	}
@@ -86,7 +75,7 @@ func (d *BucketObjectSource) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 func (d *BucketObjectSource) CreateOverlay(cachePath string) (*BucketObjectOverlay, error) {
-	overlay, err := newBucketObjectOverlay(d.reader, cachePath, d.size)
+	overlay, err := newBucketObjectOverlay(d.chunker, cachePath, d.size)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bucket overlay: %w", err)
 	}
@@ -96,4 +85,12 @@ func (d *BucketObjectSource) CreateOverlay(cachePath string) (*BucketObjectOverl
 
 func (d *BucketObjectSource) Size() int64 {
 	return d.size
+}
+
+func (d *BucketObjectSource) Close() error {
+	d.prefetcher.Close()
+	d.retrier.Close()
+	d.chunker.Close()
+
+	return d.cache.Close()
 }

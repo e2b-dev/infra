@@ -10,21 +10,17 @@ import (
 
 type Retrier struct {
 	ctx        context.Context
-	cancel     context.CancelFunc
 	base       io.ReaderAt
 	retryDelay time.Duration
 	maxRetries int
 }
 
 func NewRetrier(ctx context.Context, base io.ReaderAt, maxRetries int, retryDelay time.Duration) *Retrier {
-	ctx, cancel := context.WithCancel(ctx)
-
 	return &Retrier{
 		ctx:        ctx,
 		maxRetries: maxRetries,
 		retryDelay: retryDelay,
 		base:       base,
-		cancel:     cancel,
 	}
 }
 
@@ -47,8 +43,4 @@ func (r *Retrier) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 
 	return 0, fmt.Errorf("failed to read after %d retries", r.maxRetries)
-}
-
-func (r *Retrier) Close() {
-	r.cancel()
 }

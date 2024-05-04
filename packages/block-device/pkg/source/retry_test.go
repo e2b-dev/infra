@@ -25,8 +25,10 @@ func TestRetrier_ReadAt(t *testing.T) {
 			},
 		}
 
-		retrier := NewRetrier(context.Background(), mockReader, 3, time.Millisecond)
-		defer retrier.Close()
+		ctx, cancel := context.WithCancel(context.Background())
+
+		retrier := NewRetrier(ctx, mockReader, 3, time.Millisecond)
+		defer cancel()
 
 		p := make([]byte, 10)
 		n, err := retrier.ReadAt(p, 0)
@@ -47,8 +49,10 @@ func TestRetrier_ReadAt(t *testing.T) {
 			},
 		}
 
-		retrier := NewRetrier(context.Background(), mockReader, 5, time.Millisecond)
-		defer retrier.Close()
+		ctx, cancel := context.WithCancel(context.Background())
+
+		retrier := NewRetrier(ctx, mockReader, 5, time.Millisecond)
+		defer cancel()
 
 		p := make([]byte, 10)
 		n, err := retrier.ReadAt(p, 0)
@@ -65,8 +69,10 @@ func TestRetrier_ReadAt(t *testing.T) {
 			},
 		}
 
-		retrier := NewRetrier(context.Background(), mockReader, 3, time.Millisecond)
-		defer retrier.Close()
+		ctx, cancel := context.WithCancel(context.Background())
+
+		retrier := NewRetrier(ctx, mockReader, 3, time.Millisecond)
+		defer cancel()
 
 		p := make([]byte, 10)
 		n, err := retrier.ReadAt(p, 0)
@@ -84,9 +90,7 @@ func TestRetrier_ReadAt(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		retrier := NewRetrier(ctx, mockReader, 5, time.Millisecond)
-		defer retrier.Close()
-
-		cancel()
+		defer cancel()
 
 		p := make([]byte, 10)
 		n, err := retrier.ReadAt(p, 0)

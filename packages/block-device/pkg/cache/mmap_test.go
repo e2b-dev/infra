@@ -22,7 +22,7 @@ func TestMmapedFile(t *testing.T) {
 	err = file.Truncate(size)
 	assert.NoError(t, err)
 
-	mf, err := newMmappedFile(size, file.Name())
+	mf, err := NewMmapCache(size, file.Name())
 	require.NoError(t, err, "error creating mmapedFile")
 	defer mf.Close()
 
@@ -52,4 +52,37 @@ func TestMmapedFile(t *testing.T) {
 	assert.NoError(t, err, "error reading from mmapedFile")
 	assert.Equal(t, len(data2), n, "expected to read %d bytes, but read %d bytes", len(data2), n)
 	assert.True(t, bytes.Equal(data2, readData2), "expected to read %s, but read %s", data2, readData2)
+}
+
+func TestMmap2(t *testing.T) {
+	size := int64(20 * block.Size)
+	filePath := "test_mmap.dat"
+
+	mmap, err := NewMmapCache(size, filePath)
+	require.NoError(t, err, "Failed to create Mmap cache")
+	defer mmap.Close()
+	defer os.Remove(filePath)
+
+	data := []byte("Hello, World!")
+	off := int64(0)
+
+	// Write data to the cache
+	n, err := mmap.WriteAt(data, off)
+	require.NoError(t, err, "Failed to write data")
+	assert.Equal(t, len(data), n, "Wrote %d bytes, expected %d bytes", n, len(data))
+
+	// Read data from the cache
+	readData := make([]byte, len(data))
+	n, err = mmap.ReadAt(readData, off)
+	require.NoError(t, err, "Failed to read data")
+	assert.Equal(t, len(data), n, "Read %d bytes, expected %d bytes", n, len(data))
+	assert.Equal(t, string(data), string(readData), "Read data mismatch")
+
+	// Read from unmarked offset
+	_, err = mmap.ReadAt(readData, size)
+	assert.Error(t, err, "Expected error for reading from unmarked offset")
+
+	// Check if the offset is marked
+	assert.True(t, mmap.marker.IsMarked(off), "Offset should be marked after writing")
+	assert.False(t, mmap.marker.IsMarked(size), "Offset should not be marked")
 }

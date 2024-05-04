@@ -23,8 +23,7 @@ const (
 var chunkPool = newSlicePool(ChunkSize)
 
 type Chunker struct {
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx context.Context
 
 	chunksInProgress map[int64]chan error
 
@@ -41,11 +40,8 @@ type Chunker struct {
 }
 
 func NewChunker(ctx context.Context, base io.ReaderAt, cache block.Device) *Chunker {
-	ctx, cancel := context.WithCancel(ctx)
-
 	return &Chunker{
 		ctx:               ctx,
-		cancel:            cancel,
 		base:              base,
 		cache:             cache,
 		chunksInProgress:  make(map[int64]chan error),
@@ -91,9 +87,9 @@ func (c *Chunker) ensureChunk(chunk int64, prefetch bool) chan error {
 		case <-c.ctx.Done():
 			ch <- c.ctx.Err()
 		default:
-			err := c.fetchChunk(chunk)
-			if err != nil {
-				ch <- fmt.Errorf("failed to fetch chunk %d: %w", chunk, err)
+			fetchErr := c.fetchChunk(chunk)
+			if fetchErr != nil {
+				ch <- fmt.Errorf("failed to fetch chunk %d: %w", chunk, fetchErr)
 			}
 		}
 	}(sem, chunk)
@@ -150,8 +146,4 @@ func (c *Chunker) fetchChunk(idx int64) error {
 	}
 
 	return nil
-}
-
-func (c *Chunker) Close() {
-	c.cancel()
 }
