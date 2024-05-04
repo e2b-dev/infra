@@ -8,6 +8,11 @@ import (
 	"time"
 )
 
+const (
+	FetchRetries    = 3
+	FetchRetryDelay = 1 * time.Millisecond
+)
+
 type Retrier struct {
 	ctx        context.Context
 	base       io.ReaderAt

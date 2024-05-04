@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/e2b-dev/infra/packages/block-device/pkg/cache"
 	"github.com/e2b-dev/infra/packages/block-device/pkg/source"
@@ -18,10 +17,7 @@ type BucketObjectSource struct {
 	size   int64
 }
 
-const (
-	bucketFetchRetries    = 3
-	bucketFetchRetryDelay = 1 * time.Millisecond
-)
+
 
 func NewBucketObjectSource(
 	ctx context.Context,
@@ -37,7 +33,7 @@ func NewBucketObjectSource(
 		return nil, fmt.Errorf("failed to get object size: %w", err)
 	}
 
-	retrier := source.NewRetrier(ctx, object, bucketFetchRetries, bucketFetchRetryDelay)
+	retrier := source.NewRetrier(ctx, object, source.FetchRetries, source.FetchRetryDelay)
 
 	cache, err := cache.NewMmapCache(size, cachePath)
 	if err != nil {
