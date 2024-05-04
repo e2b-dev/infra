@@ -8,13 +8,13 @@ import (
 	"github.com/e2b-dev/infra/packages/block-device/pkg/overlay"
 )
 
-type BucketOverlay struct {
+type BucketObjectOverlay struct {
 	overlay *overlay.Overlay
 	Close   func() error
 	size    int64
 }
 
-func newBucketOverlay(base io.ReaderAt, cachePath string, size int64) (*BucketOverlay, error) {
+func newBucketObjectOverlay(base io.ReaderAt, cachePath string, size int64) (*BucketObjectOverlay, error) {
 	cache, err := cache.NewMmapCache(size, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating cache: %w", err)
@@ -22,7 +22,7 @@ func newBucketOverlay(base io.ReaderAt, cachePath string, size int64) (*BucketOv
 
 	overlay := overlay.New(base, cache, true)
 
-	return &BucketOverlay{
+	return &BucketObjectOverlay{
 		overlay: overlay,
 		size:    size,
 
@@ -37,18 +37,18 @@ func newBucketOverlay(base io.ReaderAt, cachePath string, size int64) (*BucketOv
 	}, nil
 }
 
-func (o *BucketOverlay) ReadAt(p []byte, off int64) (n int, err error) {
+func (o *BucketObjectOverlay) ReadAt(p []byte, off int64) (n int, err error) {
 	return o.overlay.ReadAt(p, off)
 }
 
-func (o *BucketOverlay) WriteAt(p []byte, off int64) (n int, err error) {
+func (o *BucketObjectOverlay) WriteAt(p []byte, off int64) (n int, err error) {
 	return o.overlay.WriteAt(p, off)
 }
 
-func (d *BucketOverlay) Size() int64 {
+func (d *BucketObjectOverlay) Size() int64 {
 	return d.size
 }
 
-func (d *BucketOverlay) Sync() error {
+func (d *BucketObjectOverlay) Sync() error {
 	return d.overlay.Sync()
 }

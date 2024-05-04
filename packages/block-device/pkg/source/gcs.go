@@ -8,28 +8,23 @@ import (
 	"cloud.google.com/go/storage"
 )
 
-type GCS struct {
+type GCSObject struct {
 	client *storage.Client
 	object *storage.ObjectHandle
 	ctx    context.Context
 }
 
-func NewGCS(ctx context.Context, bucket, filepath string) (*GCS, error) {
-	client, err := storage.NewClient(ctx, storage.WithJSONReads())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GCS client: %w", err)
-	}
-
+func NewGCSObject(ctx context.Context, client *storage.Client, bucket, filepath string) (*GCSObject, error) {
 	obj := client.Bucket(bucket).Object(filepath)
 
-	return &GCS{
+	return &GCSObject{
 		client: client,
 		object: obj,
 		ctx:    ctx,
 	}, nil
 }
 
-func (g *GCS) ReadAt(b []byte, off int64) (int, error) {
+func (g *GCSObject) ReadAt(b []byte, off int64) (int, error) {
 	reader, err := g.object.NewRangeReader(g.ctx, off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to create GCS reader: %w", err)
@@ -50,11 +45,20 @@ func (g *GCS) ReadAt(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
-func (g *GCS) Close() error {
+func (g *GCSObject) Close() error {
 	err := g.client.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close GCS client: %w", err)
 	}
 
 	return nil
+}
+
+func (g *GCSObject) Size() (int64, error) {
+	attrs, err := g.object.Attrs(g.ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get GCS object attributes: %w", err)
+	}
+
+	return attrs.Size, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"cloud.google.com/go/storage"
 	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
 
 	"github.com/stretchr/testify/assert"
@@ -16,8 +17,13 @@ func TestGCS(t *testing.T) {
 	bucket := "test-fc-mount"
 	filepath := "test1"
 
+	client, err := storage.NewClient(ctx, storage.WithJSONReads())
+	if err != nil {
+		t.Fatalf("failed to create GCS client: %v", err)
+	}
+
 	// Create a new GCS source
-	gcs, err := NewGCS(ctx, bucket, filepath)
+	gcs, err := NewGCSObject(ctx, client, bucket, filepath)
 	require.NoError(t, err)
 	defer gcs.Close()
 
