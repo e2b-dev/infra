@@ -100,7 +100,7 @@ job "otel-collector" {
       }
 
       resources {
-        max_memory = 2048
+        memory_max = 2048
         memory = 512
         cpu    = 512
       }
@@ -124,7 +124,7 @@ receivers:
           params:
             format: ['prometheus']
           consul_sd_configs:
-          - services: ['nomad-client', 'nomad', 'api', 'client-proxy', 'session-proxy', 'otel-collector', 'logs-collector', 'docker-reverse-proxy', 'loki', 'orchestrator']
+          - services: ['nomad-client', 'nomad', 'api', 'client-proxy', 'session-proxy', 'otel-collector', 'logs-collector', 'docker-reverse-proxy', 'loki', 'orchestrator', 'template-manager']
             token: "${var.consul_token}"
 
           relabel_configs:

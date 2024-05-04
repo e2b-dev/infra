@@ -4,10 +4,10 @@ toolchain go1.21.0
 
 use (
 	./packages/api
+	./packages/block-device
 	./packages/docker-reverse-proxy
-	./packages/env-build-task-driver
 	./packages/envd
 	./packages/orchestrator
 	./packages/shared
-	./packages/template-delete-task-driver
+	./packages/template-manager
 )

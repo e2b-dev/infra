@@ -1,0 +1,4 @@
+bin
+bin/**
+test/**
+__debug_bin*
