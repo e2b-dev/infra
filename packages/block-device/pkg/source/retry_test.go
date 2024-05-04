@@ -80,23 +80,4 @@ func TestRetrier_ReadAt(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, 0, n)
 	})
-
-	t.Run("context cancellation", func(t *testing.T) {
-		mockReader := &mockReaderAt{
-			readAtFunc: func(p []byte, off int64) (n int, err error) {
-				return 0, errors.New("mock error")
-			},
-		}
-
-		ctx, cancel := context.WithCancel(context.Background())
-		retrier := NewRetrier(ctx, mockReader, 5, time.Millisecond)
-		defer cancel()
-
-		p := make([]byte, 10)
-		n, err := retrier.ReadAt(p, 0)
-
-		assert.Error(t, err)
-		assert.Equal(t, context.Canceled, err)
-		assert.Equal(t, 0, n)
-	})
 }

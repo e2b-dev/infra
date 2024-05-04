@@ -13,11 +13,9 @@ import (
 )
 
 type BucketObjectSource struct {
-	retrier    *source.Retrier
-	chunker    *source.Chunker
-	prefetcher *source.Prefetcher
-	cache      *cache.MmapCache
-	size       int64
+	source *source.Chunker
+	cache  *cache.MmapCache
+	size   int64
 }
 
 const (
@@ -28,11 +26,11 @@ const (
 func NewBucketObjectSource(
 	ctx context.Context,
 	client *storage.Client,
-	bucketName,
-	bucketPath,
-	bucketCachePath string,
+	bucket,
+	bucketObjectPath,
+	cachePath string,
 ) (*BucketObjectSource, error) {
-	object := source.NewGCSObject(ctx, client, bucketName, bucketPath)
+	object := source.NewGCSObject(ctx, client, bucket, bucketObjectPath)
 
 	size, err := object.Size()
 	if err != nil {
@@ -41,7 +39,7 @@ func NewBucketObjectSource(
 
 	retrier := source.NewRetrier(ctx, object, bucketFetchRetries, bucketFetchRetryDelay)
 
-	cache, err := cache.NewMmapCache(size, bucketCachePath)
+	cache, err := cache.NewMmapCache(size, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bucket cache: %w", err)
 	}
@@ -57,16 +55,14 @@ func NewBucketObjectSource(
 	}()
 
 	return &BucketObjectSource{
-		size:       size,
-		retrier:    retrier,
-		chunker:    chunker,
-		prefetcher: prefetcher,
-		cache:      cache,
+		size:   size,
+		source: chunker,
+		cache:  cache,
 	}, nil
 }
 
 func (d *BucketObjectSource) ReadAt(p []byte, off int64) (n int, err error) {
-	n, err = d.chunker.ReadAt(p, off)
+	n, err = d.source.ReadAt(p, off)
 	if err != nil {
 		return n, fmt.Errorf("failed to read %d: %w", off, err)
 	}
@@ -75,7 +71,7 @@ func (d *BucketObjectSource) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 func (d *BucketObjectSource) CreateOverlay(cachePath string) (*BucketObjectOverlay, error) {
-	overlay, err := newBucketObjectOverlay(d.chunker, cachePath, d.size)
+	overlay, err := newBucketObjectOverlay(d.source, cachePath, d.size)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bucket overlay: %w", err)
 	}
@@ -88,9 +84,5 @@ func (d *BucketObjectSource) Size() int64 {
 }
 
 func (d *BucketObjectSource) Close() error {
-	d.prefetcher.Close()
-	d.retrier.Close()
-	d.chunker.Close()
-
 	return d.cache.Close()
 }

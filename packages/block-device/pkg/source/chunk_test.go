@@ -18,9 +18,9 @@ func TestChunkerReadBlock(t *testing.T) {
 	cache := block.NewMockDevice(make([]byte, len(baseData)), false)
 
 	// Create a new Chunker
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	chunker := NewChunker(ctx, base, cache)
-	defer chunker.Close()
+	defer cancel()
 
 	// Read data from the Chunker
 	buf := make([]byte, block.Size)
@@ -39,9 +39,9 @@ func TestChunkerReadSmaller(t *testing.T) {
 	cache := block.NewMockDevice(make([]byte, len(baseData)), false)
 
 	// Create a new Chunker
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	chunker := NewChunker(ctx, base, cache)
-	defer chunker.Close()
+	defer cancel()
 
 	smallBlockSize := block.Size / 4
 	// Read a chunk of data from the Chunker
@@ -61,9 +61,9 @@ func TestChunkerPrefetchChunk(t *testing.T) {
 	cache := block.NewMockDevice(make([]byte, len(baseData)), false)
 
 	// Create a new Chunker
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	chunker := NewChunker(ctx, base, cache)
-	defer chunker.Close()
+	defer cancel()
 
 	// Prefetch a chunk
 	_, err := chunker.ReadAt(nil, ChunkSize*2)

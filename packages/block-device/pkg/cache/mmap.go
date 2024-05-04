@@ -3,6 +3,7 @@ package cache
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 
@@ -44,7 +45,7 @@ func NewMmapCache(size int64, filePath string) (*MmapCache, error) {
 }
 
 func (m *MmapCache) ReadAt(b []byte, off int64) (int, error) {
-	if !m.marker.IsMarked(off) {
+	if !m.marker.IsMarked(off / block.Size) {
 		return 0, block.ErrBytesNotAvailable{}
 	}
 
@@ -69,7 +70,10 @@ func (m *MmapCache) WriteAt(b []byte, off int64) (int, error) {
 	n := copy(m.mmap[off:off+length], b)
 	m.mu.Unlock()
 
+	log.Printf("Wrote %d bytes at %d", n, off)
+
 	for i := off; i < off+int64(n); i += block.Size {
+		log.Printf("Marking %d", i)
 		m.marker.Mark(i / block.Size)
 	}
 

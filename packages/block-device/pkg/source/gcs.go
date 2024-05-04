@@ -9,28 +9,27 @@ import (
 )
 
 type GCSObject struct {
-	client *storage.Client
 	object *storage.ObjectHandle
 	ctx    context.Context
 }
 
-func NewGCSObject(ctx context.Context, client *storage.Client, bucket, filepath string) *GCSObject {
-	obj := client.Bucket(bucket).Object(filepath)
+func NewGCSObject(ctx context.Context, client *storage.Client, bucket, objectPath string) *GCSObject {
+	obj := client.Bucket(bucket).Object(objectPath)
 
 	return &GCSObject{
-		client: client,
 		object: obj,
 		ctx:    ctx,
 	}
 }
 
 func (g *GCSObject) ReadAt(b []byte, off int64) (int, error) {
+	// The file should not be gzip compressed
 	reader, err := g.object.NewRangeReader(g.ctx, off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to create GCS reader: %w", err)
 	}
 
-	go func() {
+	defer func() {
 		closeErr := reader.Close()
 		if closeErr != nil {
 			log.Printf("failed to close GCS reader: %v", closeErr)
