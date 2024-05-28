@@ -350,6 +350,70 @@ resource "google_compute_firewall" "default-hc" {
   }
 }
 
+
+resource "google_compute_network" "logs_network" {
+  name                    = "${var.prefix}logs-network"
+  auto_create_subnetworks = true
+}
+
+
+resource "google_compute_firewall" "logs-allow-internal" {
+  name     = "${var.prefix}logs-allow-internal"
+  network  = google_compute_network.logs_network.name
+  priority = 998
+  source_ranges = [
+    "10.128.0.0/9"
+  ]
+  direction = "INGRESS"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["0-65535"]
+  }
+  allow {
+    protocol = "udp"
+    ports    = ["0-65535"]
+  }
+  allow {
+    protocol = "icmp"
+  }
+}
+
+resource "google_compute_firewall" "logs-deny-external" {
+  name     = "${var.prefix}logs-deny-external"
+  network  = google_compute_network.logs_network.name
+  priority = 999
+  source_ranges = [
+    "0.0.0.0/0"
+  ]
+  direction = "INGRESS"
+
+  deny {
+    protocol = "tcp"
+    ports    = ["0-65535"]
+  }
+  deny {
+    protocol = "udp"
+    ports    = ["0-65535"]
+  }
+  deny {
+    protocol = "icmp"
+  }
+}
+
+resource "google_compute_firewall" "logs-allow-external" {
+  name     = "${var.prefix}logs-allow-external"
+  network  = google_compute_network.logs_network.name
+  priority = 1000
+  source_ranges = [
+    "0.0.0.0/0"
+  ]
+  direction = "EGRESS"
+  allow {
+    protocol = "all"
+  }
+}
+
 module "gce_lb_http_logs" {
   source            = "GoogleCloudPlatform/lb-http/google"
   version           = "~> 9.3"
@@ -358,7 +422,7 @@ module "gce_lb_http_logs" {
   address           = google_compute_global_address.orch_logs_ip.address
   create_address    = false
   target_tags       = [var.cluster_tag_name]
-  firewall_networks = [var.network_name]
+  firewall_networks = [google_compute_network.logs_network.name]
 
   labels = var.labels
   backends = {
