@@ -223,10 +223,10 @@ service:
     logs:
       level: warn
   extensions:
+    - health_check
     - basicauth/grafana_cloud_traces
     - basicauth/grafana_cloud_metrics
     - basicauth/grafana_cloud_logs
-    - health_check
   pipelines:
     metrics:
       receivers:

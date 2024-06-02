@@ -63,7 +63,7 @@ variable "template_manager_address" {
   default = ""
 }
 
-job "orchestration-api" {
+job "api" {
   datacenters = [var.gcp_zone]
 
   priority = 90

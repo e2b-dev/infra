@@ -123,7 +123,7 @@ source = """
 [sinks.local_loki_logs]
 type = "loki"
 inputs = [ "add_source_envd" ]
-endpoint = "http://0.0.0.0:${var.loki_service_port_number}"
+endpoint = "http://loki.service.consul:${var.loki_service_port_number}"
 encoding.codec = "json"
 
 [sinks.local_loki_logs.labels]
@@ -133,6 +133,7 @@ teamID = "{{ teamID }}"
 envID = "{{ envID }}"
 sandboxID = "{{ sandboxID }}"
 
+%{ if var.grafana_logs_endpoint != " " }
 [sinks.grafana]
 type = "loki"
 inputs = [ "add_source_envd" ]
@@ -148,7 +149,7 @@ service = "{{ service }}"
 teamID = "{{ teamID }}"
 envID = "{{ envID }}"
 sandboxID = "{{ sandboxID }}"
-
+%{ endif }
         EOH
       }
     }
