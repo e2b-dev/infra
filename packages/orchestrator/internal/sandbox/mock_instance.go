@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/pool"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
@@ -22,11 +23,14 @@ func MockInstance(envID, instanceID string, dns *DNS, keepAlive time.Duration) {
 
 	consulClient, err := consul.New(childCtx)
 
+	networkPool := pool.New[*IPSlot](1)
+
 	instance, err := NewSandbox(
 		childCtx,
 		tracer,
 		consulClient,
 		dns,
+		networkPool,
 		&orchestrator.SandboxConfig{
 			TemplateID:         envID,
 			FirecrackerVersion: "v1.7.0-dev_8bb88311",
@@ -47,7 +51,7 @@ func MockInstance(envID, instanceID string, dns *DNS, keepAlive time.Duration) {
 
 	time.Sleep(keepAlive)
 
-	defer instance.CleanupAfterFCStop(childCtx, tracer, consulClient, dns)
+	defer instance.CleanupAfterFCStop(childCtx, tracer, consulClient, dns, instanceID)
 
 	instance.Stop(childCtx, tracer)
 }

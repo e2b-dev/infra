@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/KarpelesLab/reflink"
@@ -91,7 +92,7 @@ func newSandboxFiles(
 	defer childSpan.End()
 
 	envPath := filepath.Join(envsDisk, envID)
-	envInstancePath := filepath.Join(envPath, EnvInstancesDirName, slot.InstanceID)
+	envInstancePath := filepath.Join(envPath, EnvInstancesDirName, strconv.Itoa(slot.SlotIdx))
 
 	// Mount overlay
 	buildIDPath := filepath.Join(envPath, BuildIDName)
@@ -105,7 +106,7 @@ func newSandboxFiles(
 	buildDirPath := filepath.Join(envPath, BuildDirName, buildID)
 
 	// Assemble socket path
-	socketPath, sockErr := getSocketPath(slot.InstanceID)
+	socketPath, sockErr := getSocketPath(strconv.Itoa(slot.SlotIdx))
 	if sockErr != nil {
 		errMsg := fmt.Errorf("error getting socket path: %w", sockErr)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -116,7 +117,7 @@ func newSandboxFiles(
 	var uffdSocketPath *string
 
 	if hugePages {
-		socketName := fmt.Sprintf("uffd-%s", slot.InstanceID)
+		socketName := fmt.Sprintf("uffd-%d", slot.SlotIdx)
 		socket, sockErr := getSocketPath(socketName)
 		if sockErr != nil {
 			errMsg := fmt.Errorf("error getting UFFD socket path: %w", sockErr)

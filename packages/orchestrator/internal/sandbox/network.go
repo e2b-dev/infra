@@ -51,6 +51,7 @@ func (ips *IPSlot) CreateNetwork(
 	ctx context.Context,
 	tracer trace.Tracer,
 	dns *DNS,
+	instanceID string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-network", trace.WithAttributes(
 		attribute.Int("instance.slot.index", ips.SlotIdx),
@@ -64,7 +65,7 @@ func (ips *IPSlot) CreateNetwork(
 		attribute.String("instance.slot.veth.name", ips.VethName()),
 		attribute.String("instance.slot.vpeer.name", ips.VpeerName()),
 		attribute.String("instance.slot.namespace.id", ips.NamespaceID()),
-		attribute.String("instance.id", ips.InstanceID),
+		attribute.String("instance.id", instanceID),
 	))
 	defer childSpan.End()
 
@@ -404,7 +405,7 @@ func (ips *IPSlot) CreateNetwork(
 	telemetry.ReportEvent(childCtx, "Created postrouting rule")
 
 	// Add entry to etc hosts
-	err = dns.Add(ips)
+	err = dns.Add(ips, instanceID)
 	if err != nil {
 		errMsg := fmt.Errorf("error adding env instance to etc hosts: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -416,11 +417,11 @@ func (ips *IPSlot) CreateNetwork(
 	return nil
 }
 
-func (ipSlot *IPSlot) RemoveNetwork(ctx context.Context, tracer trace.Tracer, dns *DNS) error {
+func (ipSlot *IPSlot) RemoveNetwork(ctx context.Context, tracer trace.Tracer, dns *DNS, instanceID string) error {
 	childCtx, childSpan := tracer.Start(ctx, "remove-network")
 	defer childSpan.End()
 
-	err := dns.Remove(ipSlot)
+	err := dns.Remove(instanceID)
 	if err != nil {
 		errMsg := fmt.Errorf("error removing env instance to etc hosts: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)

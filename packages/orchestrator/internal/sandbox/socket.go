@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-func getSocketPath(instanceID string) (string, error) {
+func getSocketPath(id string) (string, error) {
 	filename := strings.Join([]string{
 		"firecracker-",
-		instanceID,
+		id,
 		".socket",
 	}, "")
 

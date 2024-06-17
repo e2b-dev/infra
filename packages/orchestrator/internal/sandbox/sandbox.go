@@ -3,6 +3,8 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/pool"
+	"go.opentelemetry.io/otel/attribute"
 	"io"
 	"net/http"
 	"os"
@@ -60,6 +62,7 @@ func NewSandbox(
 	tracer trace.Tracer,
 	consul *consul.Client,
 	dns *DNS,
+	networkPool *pool.Pool[*IPSlot],
 	config *orchestrator.SandboxConfig,
 	traceID string,
 ) (*Sandbox, error) {
@@ -67,20 +70,12 @@ func NewSandbox(
 	defer childSpan.End()
 
 	// Get slot from Consul KV
-	ips, err := NewSlot(
-		childCtx,
-		tracer,
-		consul,
-		config.SandboxID,
-	)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to get IP slot: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-		return nil, errMsg
-	}
+	ips := networkPool.Get()
 
+	telemetry.SetAttributes(childCtx, attribute.String("instance.slot.kv.key", ips.KVKey))
 	telemetry.ReportEvent(childCtx, "reserved ip slot")
 
+	var err error
 	defer func() {
 		if err != nil {
 			slotErr := ips.Release(childCtx, tracer, consul)
@@ -95,7 +90,7 @@ func NewSandbox(
 
 	defer func() {
 		if err != nil {
-			ntErr := ips.RemoveNetwork(childCtx, tracer, dns)
+			ntErr := ips.RemoveNetwork(childCtx, tracer, dns, config.SandboxID)
 			if ntErr != nil {
 				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", ntErr)
 				telemetry.ReportError(childCtx, errMsg)
@@ -105,7 +100,7 @@ func NewSandbox(
 		}
 	}()
 
-	err = ips.CreateNetwork(childCtx, tracer, dns)
+	err = ips.CreateNetwork(childCtx, tracer, dns, config.SandboxID)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create namespaces: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -294,11 +289,12 @@ func (s *Sandbox) CleanupAfterFCStop(
 	tracer trace.Tracer,
 	consul *consul.Client,
 	dns *DNS,
+	instanceID string,
 ) {
 	childCtx, childSpan := tracer.Start(ctx, "delete-instance")
 	defer childSpan.End()
 
-	err := s.slot.RemoveNetwork(childCtx, tracer, dns)
+	err := s.slot.RemoveNetwork(childCtx, tracer, dns, instanceID)
 	if err != nil {
 		errMsg := fmt.Errorf("cannot remove network when destroying task: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
