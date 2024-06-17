@@ -100,15 +100,15 @@ func NewSandbox(
 		}
 	}()
 
-	err = ips.CreateNetwork(childCtx, tracer, dns, config.SandboxID)
+	// Add entry to etc hosts
+	err = dns.Add(ips, config.SandboxID)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to create namespaces: %w", err)
+		errMsg := fmt.Errorf("error adding env instance to etc hosts: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return nil, errMsg
 	}
-
-	telemetry.ReportEvent(childCtx, "created network")
+	telemetry.ReportEvent(childCtx, "Added env instance to etc hosts")
 
 	fsEnv, err := newSandboxFiles(
 		childCtx,
