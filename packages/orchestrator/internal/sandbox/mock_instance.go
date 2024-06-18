@@ -22,6 +22,10 @@ func MockInstance(envID, instanceID string, dns *DNS, keepAlive time.Duration) {
 	childCtx, _ := tracer.Start(ctx, "mock-instance")
 
 	consulClient, err := consul.New(childCtx)
+	if err != nil {
+		fmt.Printf("failed to create consul client %v\n", err)
+		panic(err)
+	}
 
 	networkPool := pool.New[*FC](1)
 
