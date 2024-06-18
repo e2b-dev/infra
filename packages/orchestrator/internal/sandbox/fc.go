@@ -315,6 +315,7 @@ func (fc *FC) start(ctx context.Context, tracer trace.Tracer, slotIdx int, envID
 
 	envPath := filepath.Join(envsDisk, envID)
 	envInstancePath := filepath.Join(envPath, EnvInstancesDirName, strconv.Itoa(slotIdx))
+	fc.envPath = envPath
 
 	// Mount overlay
 	buildIDPath := filepath.Join(envPath, BuildIDName)
