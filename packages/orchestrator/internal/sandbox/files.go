@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/KarpelesLab/reflink"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -29,13 +28,8 @@ const (
 )
 
 type SandboxFiles struct {
-	UFFDSocketPath *string
-
-	EnvPath      string
-	BuildDirPath string
-
-	EnvInstancePath string
-	SocketPath      string
+	UFFDSocketPath string
+	SocketPath     string
 
 	KernelDirPath      string
 	KernelMountDirPath string
@@ -74,36 +68,19 @@ func newSandboxFiles(
 	ctx context.Context,
 	tracer trace.Tracer,
 	slot *IPSlot,
-	envID,
 	kernelVersion,
 	kernelsDir,
 	kernelMountDir,
 	kernelName,
 	firecrackerBinaryPath,
 	uffdBinaryPath string,
-	hugePages bool,
 ) (*SandboxFiles, error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-env-instance",
 		trace.WithAttributes(
-			attribute.String("env.id", envID),
 			attribute.String("envs_disk", envsDisk),
 		),
 	)
 	defer childSpan.End()
-
-	envPath := filepath.Join(envsDisk, envID)
-	envInstancePath := filepath.Join(envPath, EnvInstancesDirName, strconv.Itoa(slot.SlotIdx))
-
-	// Mount overlay
-	buildIDPath := filepath.Join(envPath, BuildIDName)
-
-	data, err := os.ReadFile(buildIDPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed reading build id for the env %s: %w", envID, err)
-	}
-
-	buildID := string(data)
-	buildDirPath := filepath.Join(envPath, BuildDirName, buildID)
 
 	// Assemble socket path
 	socketPath, sockErr := getSocketPath(strconv.Itoa(slot.SlotIdx))
@@ -113,95 +90,68 @@ func newSandboxFiles(
 		return nil, errMsg
 	}
 
-	// Assemble UFFD socket path
-	var uffdSocketPath *string
-
-	if hugePages {
-		socketName := fmt.Sprintf("uffd-%d", slot.SlotIdx)
-		socket, sockErr := getSocketPath(socketName)
-		if sockErr != nil {
-			errMsg := fmt.Errorf("error getting UFFD socket path: %w", sockErr)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-			return nil, errMsg
-		}
-
-		uffdSocketPath = &socket
+	socketName := fmt.Sprintf("uffd-%d", slot.SlotIdx)
+	socket, sockErr := getSocketPath(socketName)
+	if sockErr != nil {
+		errMsg := fmt.Errorf("error getting UFFD socket path: %w", sockErr)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+		return nil, errMsg
 	}
 
 	// Create kernel path
 	kernelPath := filepath.Join(kernelsDir, kernelVersion)
 
 	childSpan.SetAttributes(
-		attribute.String("instance.env_instance_path", envInstancePath),
-		attribute.String("instance.build.dir_path", buildDirPath),
-		attribute.String("instance.env_path", envPath),
 		attribute.String("instance.kernel.mount_path", filepath.Join(kernelMountDir, kernelName)),
 		attribute.String("instance.kernel.path", filepath.Join(kernelPath, kernelName)),
 		attribute.String("instance.firecracker.path", firecrackerBinaryPath),
 	)
 
 	return &SandboxFiles{
-		EnvInstancePath:       envInstancePath,
-		BuildDirPath:          buildDirPath,
-		EnvPath:               envPath,
 		SocketPath:            socketPath,
 		KernelDirPath:         kernelPath,
 		KernelMountDirPath:    kernelMountDir,
 		FirecrackerBinaryPath: firecrackerBinaryPath,
-		UFFDSocketPath:        uffdSocketPath,
+		UFFDSocketPath:        socket,
 		UFFDBinaryPath:        uffdBinaryPath,
 	}, nil
 }
 
-func (env *SandboxFiles) Ensure(ctx context.Context) error {
-	err := os.MkdirAll(env.EnvInstancePath, 0o777)
-	if err != nil {
-		telemetry.ReportError(ctx, err)
-	}
-
-	mkdirErr := os.MkdirAll(env.BuildDirPath, 0o777)
-	if mkdirErr != nil {
-		telemetry.ReportError(ctx, err)
-	}
-
-	err = reflink.Always(
-		filepath.Join(env.EnvPath, RootfsName),
-		filepath.Join(env.EnvInstancePath, RootfsName),
-	)
-	if err != nil {
-		errMsg := fmt.Errorf("error creating reflinked rootfs: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return errMsg
-	}
-
-	return nil
-}
+//
+//func (env *SandboxFiles) Ensure(ctx context.Context) error {
+//	err := os.MkdirAll(env.EnvInstancePath, 0o777)
+//	if err != nil {
+//		telemetry.ReportError(ctx, err)
+//	}
+//
+//	mkdirErr := os.MkdirAll(env.BuildDirPath, 0o777)
+//	if mkdirErr != nil {
+//		telemetry.ReportError(ctx, err)
+//	}
+//
+//	err = reflink.Always(
+//		filepath.Join(env.EnvPath, RootfsName),
+//		filepath.Join(env.EnvInstancePath, RootfsName),
+//	)
+//	if err != nil {
+//		errMsg := fmt.Errorf("error creating reflinked rootfs: %w", err)
+//		telemetry.ReportCriticalError(ctx, errMsg)
+//
+//		return errMsg
+//	}
+//
+//	return nil
+//}
 
 func (env *SandboxFiles) Cleanup(
 	ctx context.Context,
 	tracer trace.Tracer,
 ) error {
-	childCtx, childSpan := tracer.Start(ctx, "cleanup-env-instance",
-		trace.WithAttributes(
-			attribute.String("instance.env_instance_path", env.EnvInstancePath),
-			attribute.String("instance.build_dir_path", env.BuildDirPath),
-			attribute.String("instance.env_path", env.EnvPath),
-		),
-	)
+	childCtx, childSpan := tracer.Start(ctx, "cleanup-env-instance")
 	defer childSpan.End()
 
-	err := os.RemoveAll(env.EnvInstancePath)
-	if err != nil {
-		errMsg := fmt.Errorf("error deleting env instance files: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		// TODO: Check the socket?
-		telemetry.ReportEvent(childCtx, "removed all env instance files")
-	}
-
 	// Remove socket
-	err = os.Remove(env.SocketPath)
+	err := os.Remove(env.SocketPath)
 	if err != nil {
 		errMsg := fmt.Errorf("error deleting socket: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -210,14 +160,12 @@ func (env *SandboxFiles) Cleanup(
 	}
 
 	// Remove UFFD socket
-	if env.UFFDSocketPath != nil {
-		err = os.Remove(*env.UFFDSocketPath)
-		if err != nil {
-			errMsg := fmt.Errorf("error deleting socket for UFFD: %w", err)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-		} else {
-			telemetry.ReportEvent(childCtx, "removed UFFD socket")
-		}
+	err = os.Remove(env.UFFDSocketPath)
+	if err != nil {
+		errMsg := fmt.Errorf("error deleting socket for UFFD: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+	} else {
+		telemetry.ReportEvent(childCtx, "removed UFFD socket")
 	}
 
 	return nil

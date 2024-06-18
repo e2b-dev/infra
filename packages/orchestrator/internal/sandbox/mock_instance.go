@@ -23,7 +23,7 @@ func MockInstance(envID, instanceID string, dns *DNS, keepAlive time.Duration) {
 
 	consulClient, err := consul.New(childCtx)
 
-	networkPool := pool.New[*IPSlot](1)
+	networkPool := pool.New[*FC](1)
 
 	instance, err := NewSandbox(
 		childCtx,

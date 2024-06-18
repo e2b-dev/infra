@@ -42,6 +42,7 @@ func (p *Pool[T]) Populate(ctx context.Context, concurrency int64, fn func() (T,
 			if err != nil {
 				sem.Release(1)
 
+				fmt.Printf("Error: %v\n", err)
 				return err
 			}
 

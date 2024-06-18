@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 
@@ -29,7 +31,7 @@ type MmdsMetadata struct {
 	TeamID     string `json:"teamID"`
 }
 
-type fc struct {
+type FC struct {
 	ctx context.Context
 
 	mu sync.Mutex
@@ -41,17 +43,21 @@ type fc struct {
 
 	metadata *MmdsMetadata
 
-	uffdSocketPath *string
+	uffd           *uffd
+	fsEnv          *SandboxFiles
+	uffdSocketPath string
+	httpClient     *client.Firecracker
 
 	id string
 
 	socketPath string
 	envPath    string
 
+	ips *IPSlot
 	pid int
 }
 
-func (fc *fc) wait() error {
+func (fc *FC) wait() error {
 	return fc.cmd.Wait()
 }
 
@@ -64,13 +70,14 @@ func newFirecrackerClient(socketPath string) *client.Firecracker {
 	return httpClient
 }
 
-func (fc *fc) loadSnapshot(
+func (fc *FC) loadSnapshot(
 	ctx context.Context,
 	tracer trace.Tracer,
+	httpClient *client.Firecracker,
 	socketPath,
 	envPath string,
 	metadata interface{},
-	uffdSocketPath *string,
+	uffdSocketPath string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
 		attribute.String("instance.socket.path", socketPath),
@@ -78,7 +85,6 @@ func (fc *fc) loadSnapshot(
 	))
 	defer childSpan.End()
 
-	httpClient := newFirecrackerClient(socketPath)
 	telemetry.ReportEvent(childCtx, "created FC socket client")
 
 	memfilePath := filepath.Join(envPath, MemfileName)
@@ -90,29 +96,19 @@ func (fc *fc) loadSnapshot(
 		attribute.String("instance.snapfile.path", snapfilePath),
 	)
 
-	var backend *models.MemoryBackend
+	err := waitForSocket(uffdSocketPath, socketWaitTimeout)
+	if err != nil {
+		telemetry.ReportCriticalError(childCtx, err)
 
-	if uffdSocketPath != nil {
-		err := waitForSocket(*uffdSocketPath, socketWaitTimeout)
-		if err != nil {
-			telemetry.ReportCriticalError(childCtx, err)
-
-			return err
-		} else {
-			telemetry.ReportEvent(childCtx, "uffd socket ready")
-		}
-
-		backendType := models.MemoryBackendBackendTypeUffd
-		backend = &models.MemoryBackend{
-			BackendPath: uffdSocketPath,
-			BackendType: &backendType,
-		}
+		return err
 	} else {
-		backendType := models.MemoryBackendBackendTypeFile
-		backend = &models.MemoryBackend{
-			BackendPath: &memfilePath,
-			BackendType: &backendType,
-		}
+		telemetry.ReportEvent(childCtx, "uffd socket ready")
+	}
+
+	backendType := models.MemoryBackendBackendTypeUffd
+	backend := &models.MemoryBackend{
+		BackendPath: &uffdSocketPath,
+		BackendType: &backendType,
 	}
 
 	snapshotConfig := operations.LoadSnapshotParams{
@@ -130,7 +126,7 @@ func (fc *fc) loadSnapshot(
 		Body:    metadata,
 	}
 
-	_, err := httpClient.Operations.PutMmds(&mmdsConfig)
+	_, err = httpClient.Operations.PutMmds(&mmdsConfig)
 	if err != nil {
 		telemetry.ReportCriticalError(childCtx, err)
 		return err
@@ -153,10 +149,8 @@ func newFC(
 	tracer trace.Tracer,
 	slot *IPSlot,
 	fsEnv *SandboxFiles,
-	mmdsMetadata *MmdsMetadata,
-) *fc {
+) *FC {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
-		attribute.String("instance.id", mmdsMetadata.InstanceID),
 		attribute.Int("instance.slot.index", slot.SlotIdx),
 	))
 	defer childSpan.End()
@@ -164,12 +158,6 @@ func newFC(
 	vmmCtx, _ := tracer.Start(
 		trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
 		"fc-vmm",
-	)
-
-	rootfsMountCmd := fmt.Sprintf(
-		"mount --bind %s %s && ",
-		fsEnv.EnvInstancePath,
-		fsEnv.BuildDirPath,
 	)
 
 	kernelMountCmd := fmt.Sprintf(
@@ -193,7 +181,7 @@ func newFC(
 		"--",
 		"bash",
 		"-c",
-		rootfsMountCmd+kernelMountCmd+inNetNSCmd+fcCmd,
+		kernelMountCmd+inNetNSCmd+fcCmd,
 	)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -206,25 +194,26 @@ func newFC(
 	cmd.Stderr = cmdStdoutWriter
 	cmd.Stdout = cmdStderrWriter
 
-	return &fc{
-		id:             mmdsMetadata.InstanceID,
+	return &FC{
 		cmd:            cmd,
 		stdout:         cmdStdoutReader,
 		stderr:         cmdStderrReader,
 		ctx:            vmmCtx,
+		ips:            slot,
 		socketPath:     fsEnv.SocketPath,
-		envPath:        fsEnv.EnvPath,
-		metadata:       mmdsMetadata,
 		uffdSocketPath: fsEnv.UFFDSocketPath,
 	}
 }
 
-func (fc *fc) start(
+func (fc *FC) prep(
 	ctx context.Context,
 	tracer trace.Tracer,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
+
+	httpClient := newFirecrackerClient(fc.socketPath)
+	fc.httpClient = httpClient
 
 	go func() {
 		defer func() {
@@ -275,14 +264,14 @@ func (fc *fc) start(
 				attribute.String("type", "stderr"),
 				attribute.String("message", line),
 			)
-			fmt.Printf("[firecracker stderr]: %s — %v", fc.id, line)
+			fmt.Printf("[firecracker stderr]: %s — %v\n", fc.id, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
 			errMsg := fmt.Errorf("error closing vmm stderr reader: %w", readerErr)
 			telemetry.ReportError(fc.ctx, errMsg)
-			fmt.Printf("[firecracker stderr error]: %s — %v", fc.id, errMsg)
+			fmt.Printf("[firecracker stderr error]: %s — %v\n", fc.id, errMsg)
 		} else {
 			telemetry.ReportEvent(fc.ctx, "vmm stderr reader closed")
 		}
@@ -296,6 +285,12 @@ func (fc *fc) start(
 		return errMsg
 	}
 
+	defer func() {
+		if err != nil {
+			fc.stop(childCtx, tracer)
+		}
+	}()
+
 	telemetry.ReportEvent(childCtx, "started fc process")
 
 	// Wait for the FC process to start so we can use FC API
@@ -308,9 +303,121 @@ func (fc *fc) start(
 
 	telemetry.ReportEvent(childCtx, "fc process created socket")
 
+	return nil
+}
+
+func (fc *FC) start(ctx context.Context, tracer trace.Tracer, slotIdx int, envID string) error {
+	childCtx, childSpan := tracer.Start(ctx, "start-fc")
+	defer childSpan.End()
+
+	envPath := filepath.Join(envsDisk, envID)
+	envInstancePath := filepath.Join(envPath, EnvInstancesDirName, strconv.Itoa(slotIdx))
+
+	// Mount overlay
+	buildIDPath := filepath.Join(envPath, BuildIDName)
+
+	data, err := os.ReadFile(buildIDPath)
+	if err != nil {
+		return fmt.Errorf("failed reading build id for the env %s: %w", envID, err)
+	}
+
+	buildID := string(data)
+	buildDirPath := filepath.Join(envPath, BuildDirName, buildID)
+
+	rootfsMountCmd := fmt.Sprintf(
+		"mount --bind %s %s",
+		envInstancePath,
+		buildDirPath,
+	)
+
+	cmd := exec.Command(
+		"nsenter", "--mount=/proc/"+strconv.Itoa(fc.pid)+"/ns/mnt", "--",
+		"bash",
+		"-c",
+		rootfsMountCmd,
+	)
+
+	err = cmd.Start()
+	if err != nil {
+		errMsg := fmt.Errorf("error starting fc process: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+		fmt.Printf("error starting fc process: %v\n", err)
+
+		return errMsg
+	}
+
+	cmdStdoutReader, cmdStdoutWriter := io.Pipe()
+	cmdStderrReader, cmdStderrWriter := io.Pipe()
+
+	cmd.Stderr = cmdStdoutWriter
+	cmd.Stdout = cmdStderrWriter
+
+	go func() {
+		defer func() {
+			readerErr := cmdStdoutReader.Close()
+			if readerErr != nil {
+				errMsg := fmt.Errorf("error closing vmm stdout reader: %w", readerErr)
+				telemetry.ReportError(fc.ctx, errMsg)
+			}
+		}()
+
+		scanner := bufio.NewScanner(cmdStdoutReader)
+
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			telemetry.ReportEvent(fc.ctx, "vmm log",
+				attribute.String("type", "stdout"),
+				attribute.String("message", line),
+			)
+			fmt.Printf("[XXX stdout]: %s — %s\n", fc.id, line)
+		}
+
+		readerErr := scanner.Err()
+		if readerErr != nil {
+			errMsg := fmt.Errorf("error reading vmm stdout: %w", readerErr)
+			telemetry.ReportError(fc.ctx, errMsg)
+			fmt.Printf("[XXX stdout error]: %s — %v\n", fc.id, errMsg)
+		} else {
+			telemetry.ReportEvent(fc.ctx, "vmm stdout reader closed")
+		}
+	}()
+
+	go func() {
+		defer func() {
+			readerErr := cmdStderrReader.Close()
+			if readerErr != nil {
+				errMsg := fmt.Errorf("error closing vmm stdout reader: %w", readerErr)
+				telemetry.ReportError(fc.ctx, errMsg)
+			}
+		}()
+
+		scanner := bufio.NewScanner(cmdStderrReader)
+
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			telemetry.ReportEvent(fc.ctx, "vmm log",
+				attribute.String("type", "stderr"),
+				attribute.String("message", line),
+			)
+			fmt.Printf("[firecracker stderr]: %s — %v\n", fc.id, line)
+		}
+
+		readerErr := scanner.Err()
+		if readerErr != nil {
+			errMsg := fmt.Errorf("error closing vmm stderr reader: %w", readerErr)
+			telemetry.ReportError(fc.ctx, errMsg)
+			fmt.Printf("[firecracker stderr error]: %s — %v\n", fc.id, errMsg)
+		} else {
+			telemetry.ReportEvent(fc.ctx, "vmm stderr reader closed")
+		}
+	}()
+
 	if err := fc.loadSnapshot(
 		childCtx,
 		tracer,
+		fc.httpClient,
 		fc.socketPath,
 		fc.envPath,
 		fc.metadata,
@@ -326,12 +433,6 @@ func (fc *fc) start(
 
 	telemetry.ReportEvent(childCtx, "loaded snapshot")
 
-	defer func() {
-		if err != nil {
-			fc.stop(childCtx, tracer)
-		}
-	}()
-
 	telemetry.SetAttributes(
 		childCtx,
 		attribute.String("instance.socket.path", fc.socketPath),
@@ -345,7 +446,7 @@ func (fc *fc) start(
 	return nil
 }
 
-func (fc *fc) stop(ctx context.Context, tracer trace.Tracer) {
+func (fc *FC) stop(ctx context.Context, tracer trace.Tracer) {
 	childCtx, childSpan := tracer.Start(ctx, "stop-fc", trace.WithAttributes(
 		attribute.String("instance.cmd", fc.cmd.String()),
 		attribute.String("instance.cmd.dir", fc.cmd.Dir),

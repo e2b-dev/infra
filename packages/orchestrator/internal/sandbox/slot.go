@@ -30,6 +30,8 @@ type IPSlot struct {
 
 	KVKey   string
 	SlotIdx int
+
+	FC *FC
 }
 
 func (ips *IPSlot) VpeerName() string {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/pool"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"go.opentelemetry.io/otel/attribute"
 	"io"
 	"net/http"
@@ -20,8 +21,9 @@ import (
 )
 
 const (
-	fcVersionsDir  = "/fc-versions"
-	kernelsDir     = "/fc-kernels"
+	fcVersionsDir = "/fc-versions"
+	kernelsDir    = "/fc-kernels"
+	// Build
 	kernelMountDir = "/fc-vm"
 	kernelName     = "vmlinux.bin"
 	uffdBinaryName = "uffd"
@@ -41,7 +43,7 @@ type Sandbox struct {
 	slot  *IPSlot
 	files *SandboxFiles
 
-	fc   *fc
+	fc   *FC
 	uffd *uffd
 
 	Sandbox   *orchestrator.SandboxConfig
@@ -62,7 +64,7 @@ func NewSandbox(
 	tracer trace.Tracer,
 	consul *consul.Client,
 	dns *DNS,
-	networkPool *pool.Pool[*IPSlot],
+	networkPool *pool.Pool[*FC],
 	config *orchestrator.SandboxConfig,
 	traceID string,
 ) (*Sandbox, error) {
@@ -70,15 +72,45 @@ func NewSandbox(
 	defer childSpan.End()
 
 	// Get slot from Consul KV
-	ips := networkPool.Get()
+	fc := networkPool.Get()
 
-	telemetry.SetAttributes(childCtx, attribute.String("instance.slot.kv.key", ips.KVKey))
+	telemetry.SetAttributes(childCtx, attribute.String("instance.slot.kv.key", fc.ips.KVKey))
 	telemetry.ReportEvent(childCtx, "reserved ip slot")
 
-	var err error
+	envPath := filepath.Join(envsDisk, config.TemplateID)
+
+	uffd := newUFFD(fc.fsEnv, envPath)
+	err := uffd.start()
+	if err != nil {
+		errMsg := fmt.Errorf("failed to start uffd: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return nil, errMsg
+	}
+
+	// Wait for uffd to initialize — it should be possible to handle this better?
+uffdWait:
+	for {
+		select {
+		case <-time.After(waitForUffd):
+			fmt.Printf("waiting for uffd to initialize")
+			return nil, fmt.Errorf("timeout waiting to uffd to initialize")
+		case <-childCtx.Done():
+			return nil, childCtx.Err()
+		default:
+			isRunning, _ := checkIsRunning(uffd.cmd.Process)
+			fmt.Printf("uffd is running: %v", isRunning)
+			if isRunning {
+				break uffdWait
+			}
+
+			time.Sleep(uffdCheckInterval)
+		}
+	}
+
 	defer func() {
 		if err != nil {
-			slotErr := ips.Release(childCtx, tracer, consul)
+			slotErr := fc.ips.Release(childCtx, tracer, consul)
 			if slotErr != nil {
 				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", slotErr)
 				telemetry.ReportError(childCtx, errMsg)
@@ -90,7 +122,7 @@ func NewSandbox(
 
 	defer func() {
 		if err != nil {
-			ntErr := ips.RemoveNetwork(childCtx, tracer, dns, config.SandboxID)
+			ntErr := fc.ips.RemoveNetwork(childCtx, tracer, dns, config.SandboxID)
 			if ntErr != nil {
 				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", ntErr)
 				telemetry.ReportError(childCtx, errMsg)
@@ -101,7 +133,7 @@ func NewSandbox(
 	}()
 
 	// Add entry to etc hosts
-	err = dns.Add(ips, config.SandboxID)
+	err = dns.Add(fc.ips, config.SandboxID)
 	if err != nil {
 		errMsg := fmt.Errorf("error adding env instance to etc hosts: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -110,103 +142,8 @@ func NewSandbox(
 	}
 	telemetry.ReportEvent(childCtx, "Added env instance to etc hosts")
 
-	fsEnv, err := newSandboxFiles(
-		childCtx,
-		tracer,
-		ips,
-		config.TemplateID,
-		config.KernelVersion,
-		kernelsDir,
-		kernelMountDir,
-		kernelName,
-		fcBinaryPath(config.FirecrackerVersion),
-		uffdBinaryPath(config.FirecrackerVersion),
-		config.HugePages,
-	)
+	err = fc.start(childCtx, tracer, fc.ips.SlotIdx, config.TemplateID)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to assemble env files info for FC: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return nil, errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "assembled env files info")
-
-	err = fsEnv.Ensure(childCtx)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create env for FC: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return nil, errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "created env for FC")
-
-	defer func() {
-		if err != nil {
-			envErr := fsEnv.Cleanup(childCtx, tracer)
-			if envErr != nil {
-				errMsg := fmt.Errorf("error deleting env after failed fc start: %w", err)
-				telemetry.ReportCriticalError(childCtx, errMsg)
-			} else {
-				telemetry.ReportEvent(childCtx, "deleted env")
-			}
-		}
-	}()
-
-	var uffd *uffd
-	if fsEnv.UFFDSocketPath != nil {
-		uffd = newUFFD(fsEnv)
-
-		uffdErr := uffd.start()
-		if err != nil {
-			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-
-			return nil, errMsg
-		}
-
-		// Wait for uffd to initialize — it should be possible to handle this better?
-	uffdWait:
-		for {
-			select {
-			case <-time.After(waitForUffd):
-				fmt.Printf("waiting for uffd to initialize")
-				return nil, fmt.Errorf("timeout waiting to uffd to initialize")
-			case <-childCtx.Done():
-				return nil, childCtx.Err()
-			default:
-				isRunning, _ := checkIsRunning(uffd.cmd.Process)
-				fmt.Printf("uffd is running: %v", isRunning)
-				if isRunning {
-					break uffdWait
-				}
-
-				time.Sleep(uffdCheckInterval)
-			}
-		}
-	}
-
-	fc := newFC(
-		childCtx,
-		tracer,
-		ips,
-		fsEnv,
-		&MmdsMetadata{
-			InstanceID: config.SandboxID,
-			EnvID:      config.TemplateID,
-			Address:    logsProxyAddress,
-			TraceID:    traceID,
-			TeamID:     config.TeamID,
-		},
-	)
-
-	err = fc.start(childCtx, tracer)
-	if err != nil {
-		if uffd != nil {
-			uffd.stop(childCtx, tracer)
-		}
-
 		errMsg := fmt.Errorf("failed to start FC: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
@@ -216,10 +153,10 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
 	instance := &Sandbox{
-		files: fsEnv,
-		slot:  ips,
+		files: fc.fsEnv,
+		slot:  fc.ips,
 		fc:    fc,
-		uffd:  uffd,
+		uffd:  fc.uffd,
 
 		Sandbox: config,
 	}
@@ -360,4 +297,71 @@ func (s *Sandbox) UffdPid() *int {
 	}
 
 	return &s.uffd.pid
+}
+
+func PrepareFirecracker(ctx context.Context, tracer trace.Tracer, consulClient *consul.Client) (*FC, error) {
+	childCtx, childSpan := tracer.Start(ctx, "prepare-firecracker")
+	defer childSpan.End()
+
+	ips, err := NewSlot(ctx, tracer, consulClient)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ips.CreateNetwork(ctx, tracer)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to create namespaces: %w", err)
+
+		return nil, errMsg
+	}
+
+	fsEnv, err := newSandboxFiles(
+		childCtx,
+		tracer,
+		ips,
+		schema.DefaultKernelVersion,
+		kernelsDir,
+		kernelMountDir,
+		kernelName,
+		fcBinaryPath(schema.DefaultFirecrackerVersion),
+		uffdBinaryPath(schema.DefaultFirecrackerVersion),
+	)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to assemble env files info for FC: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return nil, errMsg
+	}
+
+	telemetry.ReportEvent(childCtx, "assembled env files info")
+
+	defer func() {
+		if err != nil {
+			envErr := fsEnv.Cleanup(childCtx, tracer)
+			if envErr != nil {
+				errMsg := fmt.Errorf("error deleting env after failed fc start: %w", err)
+				telemetry.ReportCriticalError(childCtx, errMsg)
+			} else {
+				telemetry.ReportEvent(childCtx, "deleted env")
+			}
+		}
+	}()
+
+	fc := newFC(
+		childCtx,
+		tracer,
+		ips,
+		fsEnv,
+	)
+
+	fc.fsEnv = fsEnv
+
+	err = fc.prep(childCtx, tracer)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to prepare FC: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return nil, errMsg
+	}
+	return fc, nil
 }

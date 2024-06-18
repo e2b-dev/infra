@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
@@ -35,7 +34,7 @@ type server struct {
 	dns         *sandbox.DNS
 	tracer      trace.Tracer
 	consul      *consulapi.Client
-	networkPool *pool.Pool[*sandbox.IPSlot]
+	networkPool *pool.Pool[*sandbox.FC]
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -64,29 +63,16 @@ func New(logger *zap.Logger) *grpc.Server {
 		panic(err)
 	}
 
-	createNetwork := func() (*sandbox.IPSlot, error) {
-		ips, err := sandbox.NewSlot(ctx, tracer, consulClient)
-		if err != nil {
-			return nil, err
-		}
-
-		err = ips.CreateNetwork(ctx, tracer)
-		if err != nil {
-			errMsg := fmt.Errorf("failed to create namespaces: %w", err)
-
-			return nil, errMsg
-		}
-
-		return ips, nil
+	prepFirecrackers := func() (*sandbox.FC, error) {
+		return sandbox.PrepareFirecracker(ctx, tracer, consulClient)
 	}
-
-	networkPool := pool.New[*sandbox.IPSlot](ipSlotSize)
+	networkPool := pool.New[*sandbox.FC](1)
 
 	go func() {
 		err := networkPool.Populate(
 			ctx,
 			ipSlotConcurrency,
-			createNetwork,
+			prepFirecrackers,
 		)
 		if err != nil {
 			logger.Fatal("failed to populate network pool", zap.Error(err))
