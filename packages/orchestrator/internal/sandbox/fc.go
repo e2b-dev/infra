@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/KarpelesLab/reflink"
 	"io"
 	"os"
 	"os/exec"
@@ -316,6 +317,11 @@ func (fc *FC) start(ctx context.Context, tracer trace.Tracer, slotIdx int, envID
 	// Mount overlay
 	buildIDPath := filepath.Join(envPath, BuildIDName)
 
+	err := os.MkdirAll(envInstancePath, 0o777)
+	if err != nil {
+		telemetry.ReportError(ctx, err)
+	}
+
 	data, err := os.ReadFile(buildIDPath)
 	if err != nil {
 		return fmt.Errorf("failed reading build id for the env %s: %w", envID, err)
@@ -323,6 +329,22 @@ func (fc *FC) start(ctx context.Context, tracer trace.Tracer, slotIdx int, envID
 
 	buildID := string(data)
 	buildDirPath := filepath.Join(envPath, BuildDirName, buildID)
+
+	mkdirErr := os.MkdirAll(buildDirPath, 0o777)
+	if mkdirErr != nil {
+		telemetry.ReportError(ctx, err)
+	}
+
+	err = reflink.Always(
+		filepath.Join(envPath, RootfsName),
+		filepath.Join(envInstancePath, RootfsName),
+	)
+	if err != nil {
+		errMsg := fmt.Errorf("error creating reflinked rootfs: %w", err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return errMsg
+	}
 
 	rootfsMountCmd := fmt.Sprintf(
 		"mount --bind %s %s",
