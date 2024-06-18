@@ -286,6 +286,8 @@ func (fc *FC) prep(
 		return errMsg
 	}
 
+	fc.pid = fc.cmd.Process.Pid
+
 	defer func() {
 		if err != nil {
 			fc.stop(childCtx, tracer)
