@@ -142,6 +142,13 @@ uffdWait:
 	}
 	telemetry.ReportEvent(childCtx, "Added env instance to etc hosts")
 
+	fc.metadata = &MmdsMetadata{
+		InstanceID: config.SandboxID,
+		EnvID:      config.TemplateID,
+		Address:    logsProxyAddress,
+		TraceID:    traceID,
+		TeamID:     config.TeamID,
+	}
 	err = fc.start(childCtx, tracer, fc.ips.SlotIdx, config.TemplateID)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to start FC: %w", err)
