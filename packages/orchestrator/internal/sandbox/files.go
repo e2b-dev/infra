@@ -85,7 +85,7 @@ func newSandboxFiles(
 	tracer trace.Tracer,
 	slot *IPSlot,
 	kernelVersion,
-	firecrackerBinaryPath string,
+	firecrackerVersion string,
 	hugePages bool,
 ) (*SandboxFiles, error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-sandbox-files",
@@ -121,8 +121,8 @@ func newSandboxFiles(
 	// Create kernel path
 	kernelPath := filepath.Join(kernelsDir, kernelVersion)
 
-	firecrackerBinaryPath = getFcBinaryPath(firecrackerBinaryPath)
-	uffdBinaryPath := getUffdBinaryPath(firecrackerBinaryPath)
+	firecrackerBinaryPath := getFcBinaryPath(firecrackerVersion)
+	uffdBinaryPath := getUffdBinaryPath(firecrackerVersion)
 
 	childSpan.SetAttributes(
 		attribute.String("instance.kernel.mount_path", filepath.Join(kernelMountDir, kernelName)),
