@@ -97,7 +97,7 @@ func PrepareFC(
 	kernelMountCmd := fmt.Sprintf(
 		"mount --bind %s %s && ",
 		sbxFiles.KernelDirPath,
-		sbxFiles.KernelMountDirPath,
+		kernelMountDir,
 	)
 
 	fcCmd := fmt.Sprintf("%s --api-sock %s", sbxFiles.FirecrackerBinaryPath, sbxFiles.SocketPath)

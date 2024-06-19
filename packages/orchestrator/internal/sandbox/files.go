@@ -49,8 +49,7 @@ type SandboxFiles struct {
 
 	SocketPath string
 
-	KernelDirPath      string
-	KernelMountDirPath string
+	KernelDirPath string
 
 	FirecrackerBinaryPath string
 }
