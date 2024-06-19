@@ -171,6 +171,15 @@ func NewSandbox(
 	cmd.Stderr = cmdStdoutWriter
 	cmd.Stdout = cmdStderrWriter
 
+	err = cmd.Wait()
+	if err != nil {
+		errMsg := fmt.Errorf("error waiting for fc process: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+		fmt.Printf("error waiting for fc process: %v\n", err)
+
+		return nil, errMsg
+	}
+
 	go func() {
 		defer func() {
 			readerErr := cmdStdoutReader.Close()
