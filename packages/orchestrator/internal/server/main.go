@@ -22,11 +22,16 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-const ipSlotConcurrency = 5
-const ipSlotSize = 250
+const (
+	ipSlotConcurrency = 5
+	ipSlotPoolSize    = 300
+	fcConcurrency     = 5
+	fcPoolSize        = 200
+)
 
 type server struct {
 	orchestrator.UnimplementedSandboxServer
@@ -35,6 +40,7 @@ type server struct {
 	tracer      trace.Tracer
 	consul      *consulapi.Client
 	networkPool *pool.Pool[*sandbox.IPSlot]
+	fcPool      *pool.Pool[*sandbox.FC]
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -67,7 +73,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		return sandbox.NewSlot(ctx, tracer, consulClient)
 	}
 
-	networkPool := pool.New[*sandbox.IPSlot](ipSlotSize)
+	networkPool := pool.New[*sandbox.IPSlot](ipSlotPoolSize)
 
 	go func() {
 		err := networkPool.Populate(
@@ -81,12 +87,28 @@ func New(logger *zap.Logger) *grpc.Server {
 		}
 	}()
 
+	fcPool := pool.New[*sandbox.FC](fcPoolSize)
+	go func() {
+		err := fcPool.Populate(
+			ctx,
+			fcConcurrency,
+			func() (*sandbox.FC, error) {
+				ips := networkPool.Get()
+				return sandbox.PrepareFC(ctx, tracer, consulClient, ips, schema.DefaultKernelVersion, schema.DefaultFirecrackerVersion, true)
+			},
+		)
+		if err != nil {
+			logger.Fatal("failed to populate firecracker pool", zap.Error(err))
+			panic(err)
+		}
+	}()
 	orchestrator.RegisterSandboxServer(s, &server{
 		tracer:      tracer,
 		consul:      consulClient,
 		dns:         dns,
 		sandboxes:   smap.New[*sandbox.Sandbox](),
 		networkPool: networkPool,
+		fcPool:      fcPool,
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

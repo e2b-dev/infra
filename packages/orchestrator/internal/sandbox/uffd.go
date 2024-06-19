@@ -78,11 +78,9 @@ killWait:
 	}
 }
 
-func newUFFD(
-	fsEnv *SandboxFiles,
-) *uffd {
-	memfilePath := filepath.Join(fsEnv.EnvPath, MemfileName)
-	cmd := exec.Command(fsEnv.UFFDBinaryPath, *fsEnv.UFFDSocketPath, memfilePath)
+func (fc *FC) newUFFD(envPath string) *uffd {
+	memfilePath := filepath.Join(envPath, MemfileName)
+	cmd := exec.Command(fc.sbxFiles.UFFDBinaryPath, *fc.sbxFiles.UFFDSocketPath, memfilePath)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid: true, // Create a new session
@@ -97,7 +95,7 @@ func newUFFD(
 
 	return &uffd{
 		cmd:            cmd,
-		uffdSocketPath: fsEnv.UFFDSocketPath,
+		uffdSocketPath: fc.sbxFiles.UFFDSocketPath,
 	}
 }
 

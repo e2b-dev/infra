@@ -77,11 +77,6 @@ job "orchestrator" {
     task "start" {
       driver = "raw_exec"
 
-      resources {
-        memory     = var.memory_mb
-        cpu        = var.cpu_mhz
-      }
-
       env {
         NODE_ID            = "${node.unique.id}"
         CONSUL_TOKEN       = var.consul_token

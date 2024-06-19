@@ -50,8 +50,6 @@ func getDefaultGateway() (string, error) {
 func (ips *IPSlot) CreateNetwork(
 	ctx context.Context,
 	tracer trace.Tracer,
-	dns *DNS,
-	instanceID string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-network", trace.WithAttributes(
 		attribute.Int("instance.slot.index", ips.SlotIdx),
@@ -65,7 +63,6 @@ func (ips *IPSlot) CreateNetwork(
 		attribute.String("instance.slot.veth.name", ips.VethName()),
 		attribute.String("instance.slot.vpeer.name", ips.VpeerName()),
 		attribute.String("instance.slot.namespace.id", ips.NamespaceID()),
-		attribute.String("instance.id", instanceID),
 	))
 	defer childSpan.End()
 
@@ -403,16 +400,6 @@ func (ips *IPSlot) CreateNetwork(
 		return errMsg
 	}
 	telemetry.ReportEvent(childCtx, "Created postrouting rule")
-
-	// Add entry to etc hosts
-	err = dns.Add(ips, instanceID)
-	if err != nil {
-		errMsg := fmt.Errorf("error adding env instance to etc hosts: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-	telemetry.ReportEvent(childCtx, "Added env instance to etc hosts")
 
 	return nil
 }

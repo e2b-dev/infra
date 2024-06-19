@@ -3,14 +3,14 @@ package sandbox
 import (
 	"context"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/pool"
 	"time"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 
 	"go.opentelemetry.io/otel"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -24,12 +24,22 @@ func MockInstance(envID, instanceID string, dns *DNS, keepAlive time.Duration) {
 	consulClient, err := consul.New(childCtx)
 
 	networkPool := pool.New[*IPSlot](1)
+	go networkPool.Populate(childCtx, 1, func() (*IPSlot, error) {
+		return NewSlot(childCtx, tracer, consulClient)
+	})
+	fcPool := pool.New[*FC](1)
+
+	go fcPool.Populate(childCtx, 1, func() (*FC, error) {
+		ips := networkPool.Get()
+		return PrepareFC(childCtx, tracer, consulClient, ips, schema.DefaultKernelVersion, schema.DefaultFirecrackerVersion, true)
+	})
 
 	instance, err := NewSandbox(
 		childCtx,
 		tracer,
 		consulClient,
 		dns,
+		fcPool,
 		networkPool,
 		&orchestrator.SandboxConfig{
 			TemplateID:         envID,

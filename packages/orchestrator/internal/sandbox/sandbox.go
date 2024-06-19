@@ -1,14 +1,17 @@
 package sandbox
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/pool"
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"go.opentelemetry.io/otel/attribute"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
+	"os/exec"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -20,13 +23,6 @@ import (
 )
 
 const (
-	fcVersionsDir  = "/fc-versions"
-	kernelsDir     = "/fc-kernels"
-	kernelMountDir = "/fc-vm"
-	kernelName     = "vmlinux.bin"
-	uffdBinaryName = "uffd"
-	fcBinaryName   = "firecracker"
-
 	waitForUffd       = 80 * time.Millisecond
 	uffdCheckInterval = 10 * time.Millisecond
 )
@@ -38,10 +34,11 @@ var httpClient = http.Client{
 }
 
 type Sandbox struct {
-	slot  *IPSlot
-	files *SandboxFiles
+	slot     *IPSlot
+	sbxFiles *SandboxFiles
+	envFiles *EnvFiles
 
-	fc   *fc
+	fc   *FC
 	uffd *uffd
 
 	Sandbox   *orchestrator.SandboxConfig
@@ -49,79 +46,37 @@ type Sandbox struct {
 	TraceID   string
 }
 
-func uffdBinaryPath(fcVersion string) string {
-	return filepath.Join(fcVersionsDir, fcVersion, uffdBinaryName)
-}
-
-func fcBinaryPath(fcVersion string) string {
-	return filepath.Join(fcVersionsDir, fcVersion, fcBinaryName)
-}
-
 func NewSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
 	consul *consul.Client,
 	dns *DNS,
+	fcPool *pool.Pool[*FC],
 	networkPool *pool.Pool[*IPSlot],
 	config *orchestrator.SandboxConfig,
 	traceID string,
 ) (*Sandbox, error) {
-	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
+	childCtx, childSpan := tracer.Start(ctx, "new-sandbox", trace.WithAttributes(
+		attribute.String("instance.id", config.SandboxID),
+	))
 	defer childSpan.End()
 
-	// Get slot from Consul KV
-	ips := networkPool.Get()
-
-	telemetry.SetAttributes(childCtx, attribute.String("instance.slot.kv.key", ips.KVKey))
-	telemetry.ReportEvent(childCtx, "reserved ip slot")
-
-	var err error
-	defer func() {
-		if err != nil {
-			slotErr := ips.Release(childCtx, tracer, consul)
-			if slotErr != nil {
-				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", slotErr)
-				telemetry.ReportError(childCtx, errMsg)
-			} else {
-				telemetry.ReportEvent(childCtx, "released ip slot")
-			}
-		}
-	}()
-
-	defer func() {
-		if err != nil {
-			ntErr := ips.RemoveNetwork(childCtx, tracer, dns, config.SandboxID)
-			if ntErr != nil {
-				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", ntErr)
-				telemetry.ReportError(childCtx, errMsg)
-			} else {
-				telemetry.ReportEvent(childCtx, "removed network namespace")
-			}
-		}
-	}()
-
-	err = ips.CreateNetwork(childCtx, tracer, dns, config.SandboxID)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create namespaces: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return nil, errMsg
+	var preFC *FC
+	if config.FirecrackerVersion == schema.DefaultFirecrackerVersion && config.KernelVersion == schema.DefaultKernelVersion {
+		preFC = fcPool.Get()
+		//	TODO: cleanup preFC
+	} else {
+		//	TODO:
 	}
 
+	telemetry.SetAttributes(childCtx, attribute.Int("instance.slot.index", preFC.ips.SlotIdx))
 	telemetry.ReportEvent(childCtx, "created network")
 
-	fsEnv, err := newSandboxFiles(
+	envFiles, err := newEnvFiles(
 		childCtx,
 		tracer,
-		ips,
+		preFC.ips,
 		config.TemplateID,
-		config.KernelVersion,
-		kernelsDir,
-		kernelMountDir,
-		kernelName,
-		fcBinaryPath(config.FirecrackerVersion),
-		uffdBinaryPath(config.FirecrackerVersion),
-		config.HugePages,
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to assemble env files info for FC: %w", err)
@@ -132,7 +87,7 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "assembled env files info")
 
-	err = fsEnv.Ensure(childCtx)
+	err = envFiles.Ensure(childCtx)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create env for FC: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -144,7 +99,7 @@ func NewSandbox(
 
 	defer func() {
 		if err != nil {
-			envErr := fsEnv.Cleanup(childCtx, tracer)
+			envErr := envFiles.Cleanup(childCtx, tracer)
 			if envErr != nil {
 				errMsg := fmt.Errorf("error deleting env after failed fc start: %w", err)
 				telemetry.ReportCriticalError(childCtx, errMsg)
@@ -155,8 +110,8 @@ func NewSandbox(
 	}()
 
 	var uffd *uffd
-	if fsEnv.UFFDSocketPath != nil {
-		uffd = newUFFD(fsEnv)
+	if preFC.sbxFiles.UFFDSocketPath != nil {
+		uffd = preFC.newUFFD(envFiles.EnvPath)
 
 		uffdErr := uffd.start()
 		if err != nil {
@@ -187,21 +142,114 @@ func NewSandbox(
 		}
 	}
 
-	fc := newFC(
-		childCtx,
-		tracer,
-		ips,
-		fsEnv,
-		&MmdsMetadata{
-			InstanceID: config.SandboxID,
-			EnvID:      config.TemplateID,
-			Address:    logsProxyAddress,
-			TraceID:    traceID,
-			TeamID:     config.TeamID,
-		},
+	// Improve logs
+	rootfsMountCmd := fmt.Sprintf(
+		"mount --bind %s %s && ",
+		envFiles.EnvInstancePath,
+		envFiles.BuildDirPath,
 	)
 
-	err = fc.start(childCtx, tracer)
+	cmd := exec.Command(
+		"nsenter", "--mount=/proc/"+strconv.Itoa(preFC.cmd.Process.Pid)+"/ns/mnt", "--",
+		"bash",
+		"-c",
+		rootfsMountCmd,
+	)
+
+	err = cmd.Start()
+	if err != nil {
+		errMsg := fmt.Errorf("error starting fc process: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+		fmt.Printf("error starting fc process: %v\n", err)
+
+		return nil, errMsg
+	}
+
+	cmdStdoutReader, cmdStdoutWriter := io.Pipe()
+	cmdStderrReader, cmdStderrWriter := io.Pipe()
+
+	cmd.Stderr = cmdStdoutWriter
+	cmd.Stdout = cmdStderrWriter
+
+	go func() {
+		defer func() {
+			readerErr := cmdStdoutReader.Close()
+			if readerErr != nil {
+				errMsg := fmt.Errorf("error closing vmm stdout reader: %w", readerErr)
+				telemetry.ReportError(preFC.ctx, errMsg)
+			}
+		}()
+
+		scanner := bufio.NewScanner(cmdStdoutReader)
+
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			telemetry.ReportEvent(preFC.ctx, "vmm log",
+				attribute.String("type", "stdout"),
+				attribute.String("message", line),
+			)
+			fmt.Printf("[XXX stdout]: %s — %s\n", preFC.ips.SlotIdx, line)
+		}
+
+		readerErr := scanner.Err()
+		if readerErr != nil {
+			errMsg := fmt.Errorf("error reading vmm stdout: %w", readerErr)
+			telemetry.ReportError(preFC.ctx, errMsg)
+			fmt.Printf("[XXX stdout error]: %s — %v\n", preFC.ips.SlotIdx, errMsg)
+		} else {
+			telemetry.ReportEvent(preFC.ctx, "vmm stdout reader closed")
+		}
+	}()
+
+	go func() {
+		defer func() {
+			readerErr := cmdStderrReader.Close()
+			if readerErr != nil {
+				errMsg := fmt.Errorf("error closing vmm stdout reader: %w", readerErr)
+				telemetry.ReportError(preFC.ctx, errMsg)
+			}
+		}()
+
+		scanner := bufio.NewScanner(cmdStderrReader)
+
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			telemetry.ReportEvent(preFC.ctx, "vmm log",
+				attribute.String("type", "stderr"),
+				attribute.String("message", line),
+			)
+			fmt.Printf("[firecracker stderr]: %s — %v\n", preFC.ips.SlotIdx, line)
+		}
+
+		readerErr := scanner.Err()
+		if readerErr != nil {
+			errMsg := fmt.Errorf("error closing vmm stderr reader: %w", readerErr)
+			telemetry.ReportError(preFC.ctx, errMsg)
+			fmt.Printf("[firecracker stderr error]: %s — %v\n", preFC.ips.SlotIdx, errMsg)
+		} else {
+			telemetry.ReportEvent(preFC.ctx, "vmm stderr reader closed")
+		}
+	}()
+
+	err = dns.Add(preFC.ips, config.SandboxID)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to add DNS record: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return nil, errMsg
+	}
+
+	metadata := &MmdsMetadata{
+		InstanceID: config.SandboxID,
+		EnvID:      config.TemplateID,
+		Address:    logsProxyAddress,
+		TraceID:    traceID,
+		TeamID:     config.TeamID,
+	}
+
+	err = preFC.loadSnapshot(childCtx, tracer, envFiles.EnvPath, metadata, preFC.sbxFiles.UFFDSocketPath)
 	if err != nil {
 		if uffd != nil {
 			uffd.stop(childCtx, tracer)
@@ -216,10 +264,11 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
 	instance := &Sandbox{
-		files: fsEnv,
-		slot:  ips,
-		fc:    fc,
-		uffd:  uffd,
+		envFiles: envFiles,
+		sbxFiles: preFC.sbxFiles,
+		slot:     preFC.ips,
+		fc:       preFC,
+		uffd:     uffd,
 
 		Sandbox: config,
 	}
@@ -302,7 +351,15 @@ func (s *Sandbox) CleanupAfterFCStop(
 		telemetry.ReportEvent(childCtx, "removed network")
 	}
 
-	err = s.files.Cleanup(childCtx, tracer)
+	err = s.sbxFiles.Cleanup(childCtx, tracer)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to delete instance files: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+	} else {
+		telemetry.ReportEvent(childCtx, "deleted instance files")
+	}
+
+	err = s.envFiles.Cleanup(childCtx, tracer)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to delete instance files: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -329,7 +386,7 @@ func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) (err error) {
 		}()
 	}
 
-	return s.fc.wait()
+	return s.fc.cmd.Wait()
 }
 
 func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) {
@@ -351,7 +408,7 @@ func (s *Sandbox) SlotIdx() int {
 }
 
 func (s *Sandbox) FcPid() int {
-	return s.fc.pid
+	return s.fc.cmd.Process.Pid
 }
 
 func (s *Sandbox) UffdPid() *int {

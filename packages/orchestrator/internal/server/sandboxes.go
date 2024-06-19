@@ -33,6 +33,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.tracer,
 		s.consul,
 		s.dns,
+		s.fcPool,
 		s.networkPool,
 		req.Sandbox,
 		childSpan.SpanContext().TraceID().String(),
