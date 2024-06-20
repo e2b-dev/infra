@@ -1,7 +1,6 @@
 package sandbox
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/pool"
@@ -142,103 +141,19 @@ func NewSandbox(
 		}
 	}
 
-	// Improve logs
-	rootfsMountCmd := fmt.Sprintf(
-		"mount --bind %s %s",
-		envFiles.EnvInstancePath,
-		envFiles.BuildDirPath,
-	)
-
-	cmd := exec.Command(
+	rootfsMountCmd := exec.Command(
 		"nsenter", "--target", strconv.Itoa(preFC.cmd.Process.Pid),
-		rootfsMountCmd,
+		"mount", "--bind", envFiles.EnvInstancePath, envFiles.BuildDirPath,
 	)
 
-	err = cmd.Start()
+	err = rootfsMountCmd.Run()
 	if err != nil {
-		errMsg := fmt.Errorf("error starting fc process: %w", err)
+		errMsg := fmt.Errorf("error running rootfs mount command: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
-		fmt.Printf("error starting fc process: %v\n", err)
+		fmt.Printf("error running rootfs mount command: %v\n", err)
 
 		return nil, errMsg
 	}
-
-	cmdStdoutReader, cmdStdoutWriter := io.Pipe()
-	cmdStderrReader, cmdStderrWriter := io.Pipe()
-
-	cmd.Stderr = cmdStdoutWriter
-	cmd.Stdout = cmdStderrWriter
-
-	err = cmd.Wait()
-	if err != nil {
-		errMsg := fmt.Errorf("error waiting for fc process: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-		fmt.Printf("error waiting for fc process: %v\n", err)
-
-		return nil, errMsg
-	}
-
-	go func() {
-		defer func() {
-			readerErr := cmdStdoutReader.Close()
-			if readerErr != nil {
-				errMsg := fmt.Errorf("error closing vmm stdout reader: %w", readerErr)
-				telemetry.ReportError(preFC.ctx, errMsg)
-			}
-		}()
-
-		scanner := bufio.NewScanner(cmdStdoutReader)
-
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			telemetry.ReportEvent(preFC.ctx, "vmm log",
-				attribute.String("type", "stdout"),
-				attribute.String("message", line),
-			)
-			fmt.Printf("[XXX stdout]: %s — %s\n", preFC.ips.SlotIdx, line)
-		}
-
-		readerErr := scanner.Err()
-		if readerErr != nil {
-			errMsg := fmt.Errorf("error reading vmm stdout: %w", readerErr)
-			telemetry.ReportError(preFC.ctx, errMsg)
-			fmt.Printf("[XXX stdout error]: %s — %v\n", preFC.ips.SlotIdx, errMsg)
-		} else {
-			telemetry.ReportEvent(preFC.ctx, "vmm stdout reader closed")
-		}
-	}()
-
-	go func() {
-		defer func() {
-			readerErr := cmdStderrReader.Close()
-			if readerErr != nil {
-				errMsg := fmt.Errorf("error closing vmm stdout reader: %w", readerErr)
-				telemetry.ReportError(preFC.ctx, errMsg)
-			}
-		}()
-
-		scanner := bufio.NewScanner(cmdStderrReader)
-
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			telemetry.ReportEvent(preFC.ctx, "vmm log",
-				attribute.String("type", "stderr"),
-				attribute.String("message", line),
-			)
-			fmt.Printf("[firecracker stderr]: %s — %v\n", preFC.ips.SlotIdx, line)
-		}
-
-		readerErr := scanner.Err()
-		if readerErr != nil {
-			errMsg := fmt.Errorf("error closing vmm stderr reader: %w", readerErr)
-			telemetry.ReportError(preFC.ctx, errMsg)
-			fmt.Printf("[firecracker stderr error]: %s — %v\n", preFC.ips.SlotIdx, errMsg)
-		} else {
-			telemetry.ReportEvent(preFC.ctx, "vmm stderr reader closed")
-		}
-	}()
 
 	err = dns.Add(preFC.ips, config.SandboxID)
 	if err != nil {
