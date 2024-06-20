@@ -141,19 +141,19 @@ func NewSandbox(
 		}
 	}
 
-	rootfsMountCmd := exec.Command(
-		"nsenter", "--target", strconv.Itoa(preFC.cmd.Process.Pid),
-		"mount", "--bind", envFiles.EnvInstancePath, envFiles.BuildDirPath,
-	)
-
-	err = rootfsMountCmd.Run()
+	rootfsMountCmd := fmt.Sprintf("mount --bind %s %s", envFiles.EnvInstancePath, envFiles.BuildDirPath)
+	err = exec.Command(
+		"nsenter", "--mount", "--target", strconv.Itoa(preFC.cmd.Process.Pid), "bash", "-c", rootfsMountCmd,
+	).Run()
 	if err != nil {
-		errMsg := fmt.Errorf("error running rootfs mount command: %w", err)
+		errMsg := fmt.Errorf("error mounting rootfs: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
-		fmt.Printf("error running rootfs mount command: %v\n", err)
+		fmt.Printf("error mounting rootfs: %v\n", err)
 
 		return nil, errMsg
 	}
+
+	telemetry.ReportEvent(childCtx, "mounted rootfs")
 
 	err = dns.Add(preFC.ips, config.SandboxID)
 	if err != nil {
