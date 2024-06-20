@@ -7,6 +7,7 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 
@@ -166,12 +167,6 @@ func newFC(
 		"fc-vmm",
 	)
 
-	rootfsMountCmd := fmt.Sprintf(
-		"mount --bind %s %s && ",
-		fsEnv.EnvInstancePath,
-		fsEnv.BuildDirPath,
-	)
-
 	kernelMountCmd := fmt.Sprintf(
 		"mount --bind %s %s && ",
 		fsEnv.KernelDirPath,
@@ -193,7 +188,7 @@ func newFC(
 		"--",
 		"bash",
 		"-c",
-		rootfsMountCmd+kernelMountCmd+inNetNSCmd+fcCmd,
+		kernelMountCmd+inNetNSCmd+fcCmd,
 	)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -222,6 +217,7 @@ func newFC(
 func (fc *fc) start(
 	ctx context.Context,
 	tracer trace.Tracer,
+	fsEnv *SandboxFiles,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
@@ -291,6 +287,17 @@ func (fc *fc) start(
 	err := fc.cmd.Start()
 	if err != nil {
 		errMsg := fmt.Errorf("error starting fc process: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
+	}
+
+	err = exec.Command(
+		"nsenter", "--target", strconv.Itoa(fc.cmd.Process.Pid), "mount", "--bind", fsEnv.EnvInstancePath,
+		fsEnv.BuildDirPath,
+	).Run()
+	if err != nil {
+		errMsg := fmt.Errorf("error mounting build dir: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg

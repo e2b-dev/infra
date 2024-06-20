@@ -206,7 +206,7 @@ func NewSandbox(
 		},
 	)
 
-	err = fc.start(childCtx, tracer)
+	err = fc.start(childCtx, tracer, fsEnv)
 	if err != nil {
 		if uffd != nil {
 			uffd.stop(childCtx, tracer)
