@@ -292,9 +292,9 @@ func (fc *fc) start(
 		return errMsg
 	}
 
+	mountCmd := fmt.Sprintf("mount --bind %s %s", fsEnv.EnvInstancePath, fsEnv.BuildDirPath)
 	cmd := exec.Command(
-		"nsenter", "--target", strconv.Itoa(fc.cmd.Process.Pid), "mount", "--bind", fsEnv.EnvInstancePath,
-		fsEnv.BuildDirPath,
+		"nsenter", "--mount", "--target", strconv.Itoa(fc.cmd.Process.Pid), "bash", "-c", mountCmd,
 	)
 	out, err := cmd.Output()
 	if err != nil {
