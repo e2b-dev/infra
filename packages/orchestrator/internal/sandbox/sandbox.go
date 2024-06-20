@@ -132,7 +132,7 @@ func NewSandbox(
 				return nil, childCtx.Err()
 			default:
 				isRunning, _ := checkIsRunning(uffd.cmd.Process)
-				fmt.Printf("uffd is running: %v", isRunning)
+				fmt.Printf("uffd is running: %v\n", isRunning)
 				if isRunning {
 					break uffdWait
 				}
