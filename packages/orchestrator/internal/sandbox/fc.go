@@ -292,12 +292,13 @@ func (fc *fc) start(
 		return errMsg
 	}
 
-	out, err := exec.Command(
+	cmd := exec.Command(
 		"nsenter", "--target", strconv.Itoa(fc.cmd.Process.Pid), "mount", "--bind", fsEnv.EnvInstancePath,
 		fsEnv.BuildDirPath,
-	).Output()
+	)
+	out, err := cmd.Output()
 	if err != nil {
-		errMsg := fmt.Errorf("error mounting build dir: %w", err)
+		errMsg := fmt.Errorf("error mounting build dir: %w (exit status: %d)", err, cmd.ProcessState.ExitCode())
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg
@@ -305,11 +306,12 @@ func (fc *fc) start(
 	fmt.Printf("mount output: %s\n", out)
 	telemetry.ReportEvent(childCtx, "mounted build dir")
 
-	out, err = exec.Command(
+	cmd = exec.Command(
 		"nsenter", "--target", strconv.Itoa(fc.cmd.Process.Pid), "df", "-h",
-	).Output()
+	)
+	out, err = cmd.Output()
 	if err != nil {
-		errMsg := fmt.Errorf("error getting df: %w", err)
+		errMsg := fmt.Errorf("error getting df: %w (exit status: %d)", err, cmd.ProcessState.ExitCode())
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg
