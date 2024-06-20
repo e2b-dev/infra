@@ -144,7 +144,7 @@ func NewSandbox(
 
 	// Improve logs
 	rootfsMountCmd := fmt.Sprintf(
-		"mount --bind %s %s && ",
+		"mount --bind %s %s",
 		envFiles.EnvInstancePath,
 		envFiles.BuildDirPath,
 	)
