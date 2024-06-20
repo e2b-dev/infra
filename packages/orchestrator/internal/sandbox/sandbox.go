@@ -150,9 +150,7 @@ func NewSandbox(
 	)
 
 	cmd := exec.Command(
-		"nsenter", "--target", strconv.Itoa(preFC.cmd.Process.Pid), "--",
-		"bash",
-		"-c",
+		"nsenter", "--target", strconv.Itoa(preFC.cmd.Process.Pid),
 		rootfsMountCmd,
 	)
 
