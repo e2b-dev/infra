@@ -75,8 +75,8 @@ func NewSandbox(
 	envFiles, err := newEnvFiles(
 		childCtx,
 		tracer,
-		preFC.ips,
 		config.TemplateID,
+		config.SandboxID,
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to assemble env files info for FC: %w", err)
@@ -150,7 +150,7 @@ func NewSandbox(
 	)
 
 	cmd := exec.Command(
-		"nsenter", "--mount=/proc/"+strconv.Itoa(preFC.cmd.Process.Pid)+"/ns/mnt", "--",
+		"nsenter", "--target", strconv.Itoa(preFC.cmd.Process.Pid), "--",
 		"bash",
 		"-c",
 		rootfsMountCmd,
