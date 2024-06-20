@@ -74,8 +74,8 @@ func NewSandbox(
 	envFiles, err := newEnvFiles(
 		childCtx,
 		tracer,
+		preFC.ips,
 		config.TemplateID,
-		config.SandboxID,
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to assemble env files info for FC: %w", err)

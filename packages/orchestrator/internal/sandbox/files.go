@@ -149,8 +149,8 @@ type EnvFiles struct {
 func newEnvFiles(
 	ctx context.Context,
 	tracer trace.Tracer,
+	slot *IPSlot,
 	envID string,
-	sandboxID string,
 ) (*EnvFiles, error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-env-files",
 		trace.WithAttributes(
@@ -161,7 +161,7 @@ func newEnvFiles(
 	defer childSpan.End()
 
 	envPath := filepath.Join(envsDisk, envID)
-	envInstancePath := filepath.Join(envPath, EnvInstancesDirName, sandboxID)
+	envInstancePath := filepath.Join(envPath, EnvInstancesDirName, strconv.Itoa(slot.SlotIdx))
 
 	// Mount overlay
 	buildIDPath := filepath.Join(envPath, BuildIDName)
