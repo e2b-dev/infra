@@ -292,17 +292,30 @@ func (fc *fc) start(
 		return errMsg
 	}
 
-	err = exec.Command(
+	out, err := exec.Command(
 		"nsenter", "--target", strconv.Itoa(fc.cmd.Process.Pid), "mount", "--bind", fsEnv.EnvInstancePath,
 		fsEnv.BuildDirPath,
-	).Run()
+	).Output()
 	if err != nil {
 		errMsg := fmt.Errorf("error mounting build dir: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg
 	}
+	fmt.Printf("mount output: %s\n", out)
+	telemetry.ReportEvent(childCtx, "mounted build dir")
 
+	out, err = exec.Command(
+		"nsenter", "--target", strconv.Itoa(fc.cmd.Process.Pid), "df", "-h",
+	).Output()
+	if err != nil {
+		errMsg := fmt.Errorf("error getting df: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
+	}
+
+	fmt.Printf("df output: %s\n", out)
 	telemetry.ReportEvent(childCtx, "started fc process")
 
 	// Wait for the FC process to start so we can use FC API
