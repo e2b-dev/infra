@@ -13,4 +13,4 @@ Versions are defined in the `firecracker_versions.txt` file. Each version is on 
 
 To add a new version, simply add a new line to the file with the desired version.
 
-The string under which the versions are stored and used in buckets and in the database is the `<last_tag-prelease>-<first-8-letters-of-the-specific-commit>`. If you want to make this version the default one you need to change the `DefaultFirecrackerVersion` in the [packages/pkg/shared/schema/env.go](../shared/pkg/schema/env.go) file to this string.
+The string under which the versions are stored and used in buckets and in the database is the `<last_tag-prelease>_<first-8-letters-of-the-specific-commit>`. If you want to make this version the default one you need to change the `DefaultFirecrackerVersion` in the [packages/pkg/shared/schema/env.go](../shared/pkg/schema/build.go) file to this string.

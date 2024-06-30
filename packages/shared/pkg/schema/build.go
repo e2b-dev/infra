@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	DefaultKernelVersion = "vmlinux-5.10.186"
+	DefaultKernelVersion = "vmlinux-6.1.91"
 	// The Firecracker version the last tag + the short SHA (so we can build our dev previews)
-	DefaultFirecrackerVersion = "v1.7.0-dev_8bb88311"
+	DefaultFirecrackerVersion = "v1.9.0-dev_6d6caf4f"
 )
 
 type EnvBuild struct {
