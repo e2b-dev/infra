@@ -29,7 +29,7 @@ type InstanceInfo struct {
 	Metadata          map[string]string
 	StartTime         *time.Time
 	MaxInstanceLength time.Duration
-	Timeout           *int64
+	EndTime           *time.Time
 }
 
 type InstanceCache struct {
