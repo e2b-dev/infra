@@ -85,6 +85,9 @@ func (c *InstanceCache) Add(instance InstanceInfo, timeout *int32) error {
 		t = time.Duration(*timeout) * time.Second
 	}
 
+	endAt := time.Now().Add(t)
+	instance.EndTime = &endAt
+
 	c.cache.Set(instance.Instance.SandboxID, instance, t)
 	c.UpdateCounter(instance, 1)
 

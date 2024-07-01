@@ -23,30 +23,6 @@ func getMaxAllowedTTL(startTime time.Time, duration, maxInstanceLength time.Dura
 	}
 }
 
-// SetTimeout for the instance's expiration timer.
-func (c *InstanceCache) SetTimeout(instanceID string, duration time.Duration) error {
-	item, err := c.Get(instanceID)
-	if err != nil {
-		return err
-	}
-
-	instance := item.Value()
-	if (time.Since(*instance.StartTime)) > instance.MaxInstanceLength {
-		c.cache.Delete(instanceID)
-
-		return fmt.Errorf("instance \"%s\" reached maximal allowed uptime", instanceID)
-	} else {
-		maxAllowedTTL := getMaxAllowedTTL(*instance.StartTime, duration, instance.MaxInstanceLength)
-
-		item = c.cache.Set(instanceID, instance, maxAllowedTTL)
-		if item == nil {
-			return fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
-		}
-	}
-
-	return nil
-}
-
 // KeepAliveFor the instance's expiration timer.
 func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration) error {
 	item, err := c.Get(instanceID)
@@ -65,6 +41,11 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration) 
 		return fmt.Errorf("instance \"%s\" reached maximal allowed uptime", instanceID)
 	} else {
 		maxAllowedTTL := getMaxAllowedTTL(*instance.StartTime, duration, instance.MaxInstanceLength)
+
+		if instance.StartTime != nil {
+			newEndTime := item.ExpiresAt()
+			instance.EndTime = &newEndTime
+		}
 
 		item = c.cache.Set(instanceID, instance, maxAllowedTTL)
 		if item == nil {
