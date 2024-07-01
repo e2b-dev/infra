@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -25,6 +26,39 @@ func Must[T any](obj T, err error) T {
 	}
 
 	return obj
+}
+
+var blockedRanges = []string{
+	"10.0.0.0/8",
+	"169.254.0.0/16",
+	"192.168.0.0/16",
+	"172.16.0.0/12",
+}
+
+func getBlockingRule(ips *IPSlot, ipRange string) []string {
+	return []string{"-p", "all", "-i", ips.TapName(), "-d", ipRange, "-j", "DROP"}
+}
+
+func getAllowRule(ips *IPSlot) []string {
+	return []string{"-p", "tcp", "-i", ips.TapName(), "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"}
+}
+
+func (ips *IPSlot) addBlockingRules(tables *iptables.IPTables) error {
+	for _, ipRange := range blockedRanges {
+		rule := getBlockingRule(ips, ipRange)
+		err := tables.Append("filter", "FORWARD", rule...)
+		if err != nil {
+			return fmt.Errorf("error adding blocking rule: %w", err)
+		}
+	}
+
+	allowRule := getAllowRule(ips)
+	err := tables.Insert("filter", "FORWARD", 1, allowRule...)
+	if err != nil {
+		return fmt.Errorf("error adding response rule: %w", err)
+	}
+
+	return nil
 }
 
 func getDefaultGateway() (string, error) {
@@ -50,7 +84,7 @@ func getDefaultGateway() (string, error) {
 func (ips *IPSlot) CreateNetwork(
 	ctx context.Context,
 	tracer trace.Tracer,
-	dns *DNS,
+	dns *dns.DNS,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-network", trace.WithAttributes(
 		attribute.Int("instance.slot.index", ips.SlotIdx),
@@ -342,6 +376,15 @@ func (ips *IPSlot) CreateNetwork(
 	}
 	telemetry.ReportEvent(childCtx, "Created postrouting rule from vpeer")
 
+	err = ips.addBlockingRules(tables)
+	if err != nil {
+		errMsg := fmt.Errorf("error adding blocking rules: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
+	}
+	telemetry.ReportEvent(childCtx, "Added blocking rules")
+
 	// Go back to original namespace
 	err = netns.Set(hostNS)
 	if err != nil {
@@ -403,30 +446,18 @@ func (ips *IPSlot) CreateNetwork(
 	}
 	telemetry.ReportEvent(childCtx, "Created postrouting rule")
 
-	// Add entry to etc hosts
-	err = dns.Add(ips)
-	if err != nil {
-		errMsg := fmt.Errorf("error adding env instance to etc hosts: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-	telemetry.ReportEvent(childCtx, "Added env instance to etc hosts")
+	dns.Add(ips.InstanceID, ips.HostSnapshotIP())
+	telemetry.ReportEvent(childCtx, "added env instance to dns")
 
 	return nil
 }
 
-func (ipSlot *IPSlot) RemoveNetwork(ctx context.Context, tracer trace.Tracer, dns *DNS) error {
+func (ipSlot *IPSlot) RemoveNetwork(ctx context.Context, tracer trace.Tracer, dns *dns.DNS) error {
 	childCtx, childSpan := tracer.Start(ctx, "remove-network")
 	defer childSpan.End()
 
-	err := dns.Remove(ipSlot)
-	if err != nil {
-		errMsg := fmt.Errorf("error removing env instance to etc hosts: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "removed env instance to etc hosts")
-	}
+	dns.Remove(ipSlot.InstanceID)
+	telemetry.ReportEvent(childCtx, "removed env instance from dns")
 
 	tables, err := iptables.New()
 	if err != nil {

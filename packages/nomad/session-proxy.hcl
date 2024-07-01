@@ -123,7 +123,7 @@ server {
   # By default, nginx won't use /etc/hosts for the name resolution.
   # We use the systemd nameserver to resolve against /etc/hosts.
   # See https://stackoverflow.com/questions/29980884/proxy-pass-does-not-resolve-dns-using-etc-hosts
-  resolver 127.0.0.53;
+  resolver 127.0.0.1;
 
   client_max_body_size 1024m;
   
