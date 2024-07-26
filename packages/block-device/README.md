@@ -10,3 +10,4 @@
 - <https://github.com/alternative-storage/torus/tree/master/internal/nbd>
 - <https://github.com/abligh/gonbdserver>
 - <https://github.com/NetworkBlockDevice/nbd> (in C)
+- <https://github.com/loopholelabs/userfaultfd-go>
