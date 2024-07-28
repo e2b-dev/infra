@@ -216,6 +216,9 @@ components:
         dockerfile:
           description: Dockerfile for the template
           type: string
+        teamID:
+          type: string
+          description: Identifier of the team
         startCmd:
           description: Start command to execute in the template after the build
           type: string

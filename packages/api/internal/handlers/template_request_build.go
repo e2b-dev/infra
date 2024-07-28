@@ -57,12 +57,57 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 
 	telemetry.ReportEvent(ctx, "started request for environment build")
 
+	var team *models.Team
 	// Prepare info for rebuilding env
-	userID, team, tier, err := a.GetUserAndTeam(c)
+	userID, teams, err := a.GetUserAndTeams(c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
 		err = fmt.Errorf("error when getting default team: %w", err)
+		telemetry.ReportCriticalError(ctx, err)
+
+		return nil
+	}
+
+	if body.TeamID != nil {
+		teamUUID, err := uuid.Parse(*body.TeamID)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid team ID: %s", *body.TeamID))
+
+			err = fmt.Errorf("invalid team ID: %w", err)
+			telemetry.ReportCriticalError(ctx, err)
+
+			return nil
+		}
+
+		for _, t := range teams {
+			if t.ID == teamUUID {
+				team = t
+				break
+			}
+		}
+
+		if team == nil {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Team not found: %s", *body.TeamID))
+
+			err = fmt.Errorf("team not found: %w", err)
+			telemetry.ReportCriticalError(ctx, err)
+
+			return nil
+		}
+	} else {
+		for _, t := range teams {
+			if t.Edges.UsersTeams[0].IsDefault {
+				team = t
+				break
+			}
+		}
+	}
+
+	if team == nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Default team not found")
+
+		err = fmt.Errorf("default team not found: %w", err)
 		telemetry.ReportCriticalError(ctx, err)
 
 		return nil
@@ -97,7 +142,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		attribute.String("env.id", templateID),
-		attribute.String("env.team.tier", tier.ID),
+		attribute.String("env.team.tier", team.Tier),
 		attribute.String("build.id", buildID.String()),
 		attribute.String("env.dockerfile", body.Dockerfile),
 	)
@@ -117,7 +162,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		telemetry.SetAttributes(ctx, attribute.Int("env.memory_mb", int(*body.MemoryMB)))
 	}
 
-	cpuCount, ramMB, apiError := getCPUAndRAM(tier.ID, body.CpuCount, body.MemoryMB)
+	cpuCount, ramMB, apiError := getCPUAndRAM(team.Tier, body.CpuCount, body.MemoryMB)
 	if apiError != nil {
 		telemetry.ReportCriticalError(ctx, apiError.Err)
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
@@ -195,7 +240,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		SetVcpu(cpuCount).
 		SetKernelVersion(schema.DefaultKernelVersion).
 		SetFirecrackerVersion(schema.DefaultFirecrackerVersion).
-		SetFreeDiskSizeMB(tier.DiskMB).
+		SetFreeDiskSizeMB(team.Edges.TeamTier.DiskMB).
 		SetNillableStartCmd(body.StartCmd).
 		SetDockerfile(body.Dockerfile).
 		Exec(ctx)

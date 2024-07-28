@@ -180,6 +180,7 @@ var (
 	// UsersTeamsColumns holds the columns for the "users_teams" table.
 	UsersTeamsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "is_default", Type: field.TypeBool, Default: false},
 		{Name: "user_id", Type: field.TypeUUID},
 		{Name: "team_id", Type: field.TypeUUID},
 	}
@@ -191,13 +192,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "users_teams_users_users",
-				Columns:    []*schema.Column{UsersTeamsColumns[1]},
+				Columns:    []*schema.Column{UsersTeamsColumns[2]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
 			{
 				Symbol:     "users_teams_teams_teams",
-				Columns:    []*schema.Column{UsersTeamsColumns[2]},
+				Columns:    []*schema.Column{UsersTeamsColumns[3]},
 				RefColumns: []*schema.Column{TeamsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -206,7 +207,7 @@ var (
 			{
 				Name:    "usersteams_team_id_user_id",
 				Unique:  true,
-				Columns: []*schema.Column{UsersTeamsColumns[2], UsersTeamsColumns[1]},
+				Columns: []*schema.Column{UsersTeamsColumns[3], UsersTeamsColumns[2]},
 			},
 		},
 	}

@@ -1,4 +1,10 @@
 CREATE SCHEMA auth;
+CREATE ROLE authenticated;
+CREATE FUNCTION auth.uid() RETURNS uuid AS $$
+BEGIN
+END;
+$$ LANGUAGE plpgsql;
+
 -- Create "users" table
 CREATE TABLE "auth"."users"
 (

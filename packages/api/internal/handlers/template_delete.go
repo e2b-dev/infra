@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -27,7 +28,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	// Prepare info for rebuilding env
-	userID, team, _, err := a.GetUserAndTeam(c)
+	userID, teams, err := a.GetUserAndTeams(c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
@@ -37,12 +38,29 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	env, build, accessErr := a.CheckTeamAccessEnv(ctx, cleanedAliasOrEnvID, team.ID, false)
-	if accessErr != nil {
-		errMsg := fmt.Errorf("error env not found: %w", accessErr)
+	env, build, err := a.db.GetEnv(ctx, cleanedAliasOrEnvID)
+	if err != nil {
+		errMsg := fmt.Errorf("error env not found: %w", err)
 		telemetry.ReportError(ctx, errMsg)
 
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("the sandbox template '%s' wasn't found", cleanedAliasOrEnvID))
+
+		return
+	}
+
+	var team *models.Team
+	for _, t := range teams {
+		if t.ID == env.TeamID {
+			team = t
+			break
+		}
+	}
+
+	if team == nil {
+		errMsg := fmt.Errorf("user '%s' doesn't have access to the sandbox template '%s'", cleanedAliasOrEnvID)
+		telemetry.ReportError(ctx, errMsg)
+
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("You don't have access to sandbox template '%s'", cleanedAliasOrEnvID))
 
 		return
 	}

@@ -161,6 +161,9 @@ type TemplateBuildRequest struct {
 
 	// StartCmd Start command to execute in the template after the build
 	StartCmd *string `json:"startCmd,omitempty"`
+
+	// TeamID Identifier of the team
+	TeamID *string `json:"teamID,omitempty"`
 }
 
 // BuildID defines model for buildID.

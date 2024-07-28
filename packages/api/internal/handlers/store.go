@@ -28,7 +28,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 )
 
 type APIStore struct {
@@ -259,20 +258,6 @@ func (a *APIStore) DeleteInstance(instanceID string, purge bool) *api.APIError {
 	}
 
 	return deleteInstance(a.Ctx, a.Tracer, a.orchestrator, a.analytics, a.posthog, a.logger, info)
-}
-
-func (a *APIStore) CheckTeamAccessEnv(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID, public bool) (env *api.Template, build *models.EnvBuild, err error) {
-	template, build, err := a.db.GetEnv(ctx, aliasOrEnvID, teamID, public)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error getting env %s for team %s: %w", aliasOrEnvID, teamID, err)
-	}
-
-	return &api.Template{
-		TemplateID: template.TemplateID,
-		BuildID:    build.ID.String(),
-		Public:     template.Public,
-		Aliases:    template.Aliases,
-	}, build, nil
 }
 
 func getDeleteInstanceFunction(ctx context.Context, tracer trace.Tracer, orchestrator *orchestrator.Orchestrator, analytics *analyticscollector.Analytics, posthogClient *PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo, purge bool) *api.APIError {

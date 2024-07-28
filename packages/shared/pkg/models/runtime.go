@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 )
 
@@ -82,4 +83,10 @@ func init() {
 	userDescEmail := userFields[1].Descriptor()
 	// user.EmailValidator is a validator for the "email" field. It is called by the builders before save.
 	user.EmailValidator = userDescEmail.Validators[0].(func(string) error)
+	usersteamsFields := schema.UsersTeams{}.Fields()
+	_ = usersteamsFields
+	// usersteamsDescIsDefault is the schema descriptor for is_default field.
+	usersteamsDescIsDefault := usersteamsFields[2].Descriptor()
+	// usersteams.DefaultIsDefault holds the default value on creation for the is_default field.
+	usersteams.DefaultIsDefault = usersteamsDescIsDefault.Default.(bool)
 }
