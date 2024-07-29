@@ -15,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
-	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -109,8 +108,8 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 			a.buildCache,
 			templateID,
 			buildUUID,
-			schema.DefaultKernelVersion,
-			schema.DefaultFirecrackerVersion,
+			build.KernelVersion,
+			build.FirecrackerVersion,
 			startCmd,
 			build.Vcpu,
 			build.FreeDiskSizeMB,
