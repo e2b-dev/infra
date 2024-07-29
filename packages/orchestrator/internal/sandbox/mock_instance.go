@@ -24,30 +24,26 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 
 	networkPool := make(chan IPSlot, 1)
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				ips, err := NewSlot(ctx, tracer, consulClient)
-				if err != nil {
-					fmt.Printf("failed to create network: %v\n", err)
-					continue
-				}
-
-				err = ips.CreateNetwork(ctx, tracer)
-				if err != nil {
-					ips.Release(ctx, tracer, consulClient)
-
-					fmt.Printf("failed to create network: %v\n", err)
-					continue
-				}
-
-				networkPool <- *ips
-			}
+	select {
+	case <-ctx.Done():
+		return
+	default:
+		ips, err := NewSlot(ctx, tracer, consulClient)
+		if err != nil {
+			fmt.Printf("failed to create network: %v\n", err)
+			return
 		}
-	}()
+
+		err = ips.CreateNetwork(ctx, tracer)
+		if err != nil {
+			ips.Release(ctx, tracer, consulClient)
+
+			fmt.Printf("failed to create network: %v\n", err)
+			return
+		}
+
+		networkPool <- *ips
+	}
 
 	instance, err := NewSandbox(
 		childCtx,

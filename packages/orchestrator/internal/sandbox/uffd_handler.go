@@ -23,16 +23,19 @@ func handleUffd(ud mapper.UFFD, start uintptr, src io.ReaderAt, pagesize int) er
 			}},
 			-1,
 		); err != nil {
+			fmt.Printf("%w", err)
 			return err
 		}
 
 		buf := make([]byte, unsafe.Sizeof(constants.UffdMsg{}))
 		if _, err := syscall.Read(int(ud), buf); err != nil {
+			fmt.Printf("%w", err)
 			return err
 		}
 
 		msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
 		if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
+			fmt.Printf("%w", ErrUnexpectedEventType)
 			return ErrUnexpectedEventType
 		}
 
@@ -63,6 +66,7 @@ func handleUffd(ud mapper.UFFD, start uintptr, src io.ReaderAt, pagesize int) er
 			constants.UFFDIO_COPY,
 			uintptr(unsafe.Pointer(&cpy)),
 		); errno != 0 {
+			fmt.Printf("%v", errno)
 			return fmt.Errorf("%v", errno)
 		}
 	}
