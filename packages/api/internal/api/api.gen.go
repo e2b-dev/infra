@@ -39,7 +39,7 @@ type ServerInterface interface {
 	GetTeams(c *gin.Context)
 
 	// (GET /templates)
-	GetTemplates(c *gin.Context)
+	GetTemplates(c *gin.Context, params GetTemplatesParams)
 
 	// (POST /templates)
 	PostTemplates(c *gin.Context)
@@ -250,7 +250,20 @@ func (siw *ServerInterfaceWrapper) GetTeams(c *gin.Context) {
 // GetTemplates operation middleware
 func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
 
+	var err error
+
 	c.Set(AccessTokenAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTemplatesParams
+
+	// ------------- Optional query parameter "teamID" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "teamID", c.Request.URL.Query(), &params.TeamID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -259,7 +272,7 @@ func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetTemplates(c)
+	siw.Handler.GetTemplates(c, params)
 }
 
 // PostTemplates operation middleware

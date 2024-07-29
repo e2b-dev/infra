@@ -10,25 +10,15 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 // GetTemplates serves to list templates (e.g. in CLI)
-func (a *APIStore) GetTemplates(c *gin.Context) {
+func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	ctx := c.Request.Context()
 
 	userID := c.Value(auth.UserIDContextKey).(uuid.UUID)
-
-	body, err := utils.ParseBody[api.TemplatesListRequest](ctx, c)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid request body")
-
-		telemetry.ReportError(ctx, err)
-
-		return
-	}
 
 	var team *models.Team
 	teams, err := a.db.GetTeams(ctx, userID)
@@ -41,8 +31,8 @@ func (a *APIStore) GetTemplates(c *gin.Context) {
 		return
 	}
 
-	if body.TeamID != "" {
-		teamUUID, err := uuid.Parse(body.TeamID)
+	if params.TeamID != nil {
+		teamUUID, err := uuid.Parse(*params.TeamID)
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid team ID")
 

@@ -181,12 +181,6 @@ type TemplateBuildRequest struct {
 	TeamID *string `json:"teamID,omitempty"`
 }
 
-// TemplatesListRequest defines model for TemplatesListRequest.
-type TemplatesListRequest struct {
-	// TeamID Identifier of the team
-	TeamID string `json:"teamID"`
-}
-
 // BuildID defines model for buildID.
 type BuildID = string
 
@@ -229,6 +223,11 @@ type PostSandboxesSandboxIDTimeoutJSONBody struct {
 	Timeout int32 `json:"timeout"`
 }
 
+// GetTemplatesParams defines parameters for GetTemplates.
+type GetTemplatesParams struct {
+	TeamID *string `form:"teamID,omitempty" json:"teamID,omitempty"`
+}
+
 // GetTemplatesTemplateIDBuildsBuildIDStatusParams defines parameters for GetTemplatesTemplateIDBuildsBuildIDStatus.
 type GetTemplatesTemplateIDBuildsBuildIDStatusParams struct {
 	// LogsOffset Index of the starting build log that should be returned with the template
@@ -243,9 +242,6 @@ type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefres
 
 // PostSandboxesSandboxIDTimeoutJSONRequestBody defines body for PostSandboxesSandboxIDTimeout for application/json ContentType.
 type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJSONBody
-
-// GetTemplatesJSONRequestBody defines body for GetTemplates for application/json ContentType.
-type GetTemplatesJSONRequestBody = TemplatesListRequest
 
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 type PostTemplatesJSONRequestBody = TemplateBuildRequest
