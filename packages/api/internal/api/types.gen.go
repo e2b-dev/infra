@@ -166,6 +166,12 @@ type TemplateBuildRequest struct {
 	TeamID *string `json:"teamID,omitempty"`
 }
 
+// TemplatesListRequest defines model for TemplatesListRequest.
+type TemplatesListRequest struct {
+	// TeamID Identifier of the team
+	TeamID string `json:"teamID"`
+}
+
 // BuildID defines model for buildID.
 type BuildID = string
 
@@ -222,6 +228,9 @@ type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefres
 
 // PostSandboxesSandboxIDTimeoutJSONRequestBody defines body for PostSandboxesSandboxIDTimeout for application/json ContentType.
 type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJSONBody
+
+// GetTemplatesJSONRequestBody defines body for GetTemplates for application/json ContentType.
+type GetTemplatesJSONRequestBody = TemplatesListRequest
 
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 type PostTemplatesJSONRequestBody = TemplateBuildRequest

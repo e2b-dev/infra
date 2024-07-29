@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -19,14 +21,65 @@ func (a *APIStore) GetTemplates(c *gin.Context) {
 
 	userID := c.Value(auth.UserIDContextKey).(uuid.UUID)
 
-	team, err := a.db.GetDefaultTeamFromUserID(ctx, userID)
+	body, err := utils.ParseBody[api.TemplatesListRequest](ctx, c)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid request body")
 
-		err = fmt.Errorf("error when getting default team: %w", err)
+		telemetry.ReportError(ctx, err)
+
+		return
+	}
+
+	var team *models.Team
+	teams, err := a.db.GetTeams(ctx, userID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting teams"))
+
+		err = fmt.Errorf("error when getting teams: %w", err)
 		telemetry.ReportCriticalError(ctx, err)
 
 		return
+	}
+
+	if body.TeamID != "" {
+		teamUUID, err := uuid.Parse(body.TeamID)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid team ID")
+
+			telemetry.ReportError(ctx, err)
+
+			return
+		}
+
+		for _, t := range teams {
+			if t.ID == teamUUID {
+				team = t
+				break
+			}
+		}
+
+		if team == nil {
+			a.sendAPIStoreError(c, http.StatusNotFound, "Team not found")
+
+			telemetry.ReportError(ctx, fmt.Errorf("team not found"))
+
+			return
+		}
+	} else {
+		for _, t := range teams {
+			if t.Edges.UsersTeams[0].IsDefault {
+				team = t
+				break
+			}
+		}
+
+		if team == nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Default team not found")
+
+			telemetry.ReportError(ctx, fmt.Errorf("default team not found"))
+
+			return
+		}
 	}
 
 	telemetry.SetAttributes(ctx,

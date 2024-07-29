@@ -227,6 +227,14 @@ components:
         memoryMB:
           $ref: "#/components/schemas/MemoryMB"
 
+    TemplatesListRequest:
+      required:
+        - teamID
+      properties:
+        teamID:
+          type: string
+          description: Identifier of the team
+
     TemplateBuild:
       required:
         - templateID
@@ -421,7 +429,6 @@ paths:
         - ApiKeyAuth: []
       tags: [sandboxes]
       requestBody:
-        required: false
         content:
           application/json:
             schema:
@@ -448,6 +455,13 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplatesListRequest"
+
       responses:
         "200":
           description: Successfully returned all templates
