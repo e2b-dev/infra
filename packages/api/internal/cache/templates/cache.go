@@ -79,12 +79,9 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 			return nil, nil, fmt.Errorf("error when getting team auth: %w", err)
 		}
 
-		if envDB.TeamID != teamID {
-			if !public {
-				return nil, nil, fmt.Errorf("team does not have access to the environment")
-			} else if !envDB.Public {
-				return nil, nil, fmt.Errorf("team does not have access to the environment")
-			}
+		// Check if the team has access to the environment
+		if envDB.TeamID != teamID && (!public || !envDB.Public) {
+			return nil, nil, fmt.Errorf("team does not have access to the environment")
 		}
 
 		c.aliasCache.cache.Set(envDB.TemplateID, envDB.TemplateID, templateInfoExpiration)
