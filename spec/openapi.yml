@@ -65,6 +65,22 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    Team:
+      required:
+        - teamID
+        - name
+        - apiKey
+      properties:
+        teamID:
+          type: string
+          description: Identifier of the team
+        name:
+          type: string
+          description: Name of the team
+        apiKey:
+          type: string
+          description: API key for the team
+
     CPUCount:
       type: integer
       format: int32
@@ -278,6 +294,7 @@ components:
 tags:
   - name: templates
   - name: sandboxes
+  - name: auth
 
 paths:
   /health:
@@ -288,6 +305,24 @@ paths:
           description: Request was successful
         "401":
           $ref: "#/components/responses/401"
+
+  /teams:
+    get:
+      description: List all teams
+      tags: [auth]
+      security:
+        - AccessTokenAuth: []
+      responses:
+        "200":
+          description: Successfully returned all teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
 
   /sandboxes:
     get:

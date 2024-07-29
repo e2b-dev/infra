@@ -106,6 +106,18 @@ type SandboxLogs struct {
 // SandboxMetadata defines model for SandboxMetadata.
 type SandboxMetadata map[string]string
 
+// Team defines model for Team.
+type Team struct {
+	// ApiKey API key for the team
+	ApiKey string `json:"apiKey"`
+
+	// Name Name of the team
+	Name string `json:"name"`
+
+	// TeamID Identifier of the team
+	TeamID string `json:"teamID"`
+}
+
 // Template defines model for Template.
 type Template struct {
 	// Aliases Aliases of the template

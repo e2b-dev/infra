@@ -17,7 +17,6 @@ func (db *DB) GetTeams(ctx context.Context, userID uuid.UUID) ([]*models.Team, e
 		Client.
 		Team.
 		Query().
-		Select(team.FieldID).
 		Where(team.HasUsersWith(user.ID(userID))).
 		WithTeamTier().
 		WithUsersTeams(func(query *models.UsersTeamsQuery) {
