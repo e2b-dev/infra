@@ -7,7 +7,6 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
-	"sync"
 	"syscall"
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
@@ -31,8 +30,6 @@ type MmdsMetadata struct {
 
 type fc struct {
 	ctx context.Context
-
-	mu sync.Mutex
 
 	cmd *exec.Cmd
 

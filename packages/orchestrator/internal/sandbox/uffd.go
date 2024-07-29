@@ -3,104 +3,110 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"log"
+	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"sync"
-	"syscall"
-	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+
+	"github.com/loopholelabs/userfaultfd-go/pkg/transfer"
 	"go.opentelemetry.io/otel/trace"
 )
 
 const (
-	SigkillWait      = 5 * time.Second
-	SigkillWaitCheck = 100 * time.Millisecond
+	hugePageSize = 2 * 1024 * 1024 // 2 MB
 )
 
 type uffd struct {
-	cmd            *exec.Cmd
-	uffdSocketPath *string
+	uffdSocketPath string
+	memfilePath    string
 
-	pid int
-
-	mu sync.Mutex
+	file *os.File
+	conn *net.UnixConn
 }
 
 func (u *uffd) start() error {
-	err := u.cmd.Start()
+	file, err := os.OpenFile(u.memfilePath, os.O_RDONLY, os.ModePerm)
 	if err != nil {
-		return fmt.Errorf("failed to start uffd: %w", err)
+		return fmt.Errorf("failed to open memfile: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			file.Close()
+		}
+	}()
+
+	u.file = file
+
+	addr, err := net.ResolveUnixAddr("unix", u.uffdSocketPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve unix addr: %w", err)
 	}
 
-	u.pid = u.cmd.Process.Pid
+	lis, err := net.ListenUnix("unix", addr)
+	if err != nil {
+		return fmt.Errorf("failed to listen unix: %w", err)
+	}
 
-	return nil
+	for {
+		conn, err := lis.AcceptUnix()
+
+		u.conn = conn
+
+		if err != nil {
+			return fmt.Errorf("failed to accept unix conn: %w", err)
+		}
+
+		go func() {
+			defer func() {
+				if err := recover(); err != nil {
+					log.Println("Could not handle connection, stopping:", err)
+				}
+
+				_ = conn.Close()
+			}()
+
+			ud, start, err := transfer.ReceiveUFFD(conn)
+			if err != nil {
+				fmt.Printf("failed to receive uffd: %v", err)
+				return
+			}
+
+			if err := handleUffd(ud, start, u.file, hugePageSize); err != nil {
+				fmt.Printf("failed to handle uffd: %v", err)
+				return
+			}
+		}()
+	}
 }
 
 func (u *uffd) stop(ctx context.Context, tracer trace.Tracer) {
 	childCtx, childSpan := tracer.Start(ctx, "stop-uffd", trace.WithAttributes())
 	defer childSpan.End()
 
-	err := u.cmd.Process.Signal(syscall.SIGTERM)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to send SIGTERM to uffd: %w", err)
-		telemetry.ReportError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "uffd SIGTERM sent")
-	}
-
-killWait:
-	for {
-		select {
-		case <-time.After(SigkillWait):
-			break killWait
-		case <-ctx.Done():
-			break killWait
-		default:
-			isRunning, _ := checkIsRunning(u.cmd.Process)
-
-			if !isRunning {
-				break killWait
-			}
-
-			time.Sleep(SigkillWaitCheck)
+	if u.file != nil {
+		err := u.file.Close()
+		if err != nil {
+			errMsg := fmt.Errorf("failed to close memfile: %w", err)
+			telemetry.ReportError(childCtx, errMsg)
 		}
 	}
 
-	err = u.cmd.Process.Kill()
-	if err != nil {
-		errMsg := fmt.Errorf("failed to send SIGKILL (after SIGTERM) to uffd: %w", err)
-		telemetry.ReportError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "uffd SIGKILL sent")
+	if u.conn != nil {
+		err := u.conn.Close()
+		if err != nil {
+			errMsg := fmt.Errorf("failed to close unix conn: %w", err)
+			telemetry.ReportError(childCtx, errMsg)
+		}
 	}
 }
 
-func newUFFD(
-	fsEnv *SandboxFiles,
-) *uffd {
+func newUFFD(fsEnv *SandboxFiles) *uffd {
 	memfilePath := filepath.Join(fsEnv.EnvPath, MemfileName)
-	cmd := exec.Command(fsEnv.UFFDBinaryPath, *fsEnv.UFFDSocketPath, memfilePath)
-
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true, // Create a new session
-		Credential: &syscall.Credential{
-			Uid: 1000, // UID for user "ubuntu"
-			Gid: 1000, // GID for user "ubuntu"
-		},
-	}
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 
 	return &uffd{
-		cmd:            cmd,
-		uffdSocketPath: fsEnv.UFFDSocketPath,
+		memfilePath:    memfilePath,
+		uffdSocketPath: *fsEnv.UFFDSocketPath,
 	}
-}
-
-func (u *uffd) wait() error {
-	return u.cmd.Wait()
 }

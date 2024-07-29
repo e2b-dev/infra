@@ -163,26 +163,6 @@ func NewSandbox(
 
 			return nil, errMsg
 		}
-
-		// Wait for uffd to initialize — it should be possible to handle this better?
-	uffdWait:
-		for {
-			select {
-			case <-time.After(waitForUffd):
-				fmt.Printf("waiting for uffd to initialize")
-				return nil, fmt.Errorf("timeout waiting to uffd to initialize")
-			case <-childCtx.Done():
-				return nil, childCtx.Err()
-			default:
-				isRunning, _ := checkIsRunning(uffd.cmd.Process)
-				fmt.Printf("uffd is running: %v", isRunning)
-				if isRunning {
-					break uffdWait
-				}
-
-				time.Sleep(uffdCheckInterval)
-			}
-		}
 	}
 
 	fc := newFC(
@@ -327,13 +307,6 @@ func (s *Sandbox) CleanupAfterFCStop(
 func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) (err error) {
 	defer s.Stop(ctx, tracer)
 
-	if s.uffd != nil {
-		go func() {
-			err := s.uffd.wait()
-			fmt.Printf("uffd wait error: %v", err)
-		}()
-	}
-
 	return s.fc.wait()
 }
 
@@ -357,12 +330,4 @@ func (s *Sandbox) SlotIdx() int {
 
 func (s *Sandbox) FcPid() int {
 	return s.fc.pid
-}
-
-func (s *Sandbox) UffdPid() *int {
-	if s.uffd == nil {
-		return nil
-	}
-
-	return &s.uffd.pid
 }
