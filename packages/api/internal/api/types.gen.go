@@ -111,6 +111,9 @@ type Team struct {
 	// ApiKey API key for the team
 	ApiKey string `json:"apiKey"`
 
+	// IsDefault Whether the team is the default team
+	IsDefault bool `json:"isDefault"`
+
 	// Name Name of the team
 	Name string `json:"name"`
 
