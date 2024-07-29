@@ -102,15 +102,15 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 				break
 			}
 		}
-	}
 
-	if team == nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Default team not found")
+		if team == nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Default team not found")
 
-		err = fmt.Errorf("default team not found: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+			err = fmt.Errorf("default team not found: %w", err)
+			telemetry.ReportCriticalError(ctx, err)
 
-		return nil
+			return nil
+		}
 	}
 
 	if !new {

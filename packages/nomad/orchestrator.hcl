@@ -77,6 +77,10 @@ job "orchestrator" {
     task "start" {
       driver = "raw_exec"
 
+      resources {
+        memory     = var.memory_mb
+        cpu        = var.cpu_mhz
+      }
 
       env {
         NODE_ID            = "${node.unique.id}"
@@ -84,7 +88,7 @@ job "orchestrator" {
         OTEL_TRACING_PRINT = var.otel_tracing_print
         LOGS_PROXY_ADDRESS = var.logs_proxy_address
         ENVIRONMENT        = var.environment
-        RUST_BACKTRACE     = "full"
+        RUST_BACKTRACE     = 1
       }
 
       config {

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -60,7 +60,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		errMsg := fmt.Errorf("user '%s' doesn't have access to the sandbox template '%s'", cleanedAliasOrEnvID)
 		telemetry.ReportError(ctx, errMsg)
 
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("You don't have access to sandbox template '%s'", cleanedAliasOrEnvID))
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", cleanedAliasOrEnvID))
 
 		return
 	}
