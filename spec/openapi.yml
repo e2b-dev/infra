@@ -82,8 +82,8 @@ components:
           type: string
           description: API key for the team
         isDefault:
-            type: boolean
-            description: Whether the team is the default team
+          type: boolean
+          description: Whether the team is the default team
 
     CPUCount:
       type: integer
@@ -322,7 +322,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Team"
+                type: array
+                items:
+                  allOf:
+                    - $ref: "#/components/schemas/Team"
         "401":
           $ref: "#/components/responses/401"
         "500":
