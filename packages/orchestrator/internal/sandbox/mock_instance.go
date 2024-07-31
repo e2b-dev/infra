@@ -14,7 +14,7 @@ import (
 )
 
 func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duration) {
-	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), telemetry.DebugID, instanceID), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), telemetry.DebugID, instanceID), time.Second*4)
 	defer cancel()
 
 	tracer := otel.Tracer(fmt.Sprintf("instance-%s", instanceID))

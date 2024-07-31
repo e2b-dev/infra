@@ -156,13 +156,17 @@ func NewSandbox(
 	if fsEnv.UFFDSocketPath != nil {
 		uffd = newUFFD(fsEnv)
 
-		uffdErr := uffd.start()
+		telemetry.ReportEvent(childCtx, "created uffd")
+
+		uffdErr := uffd.start(childCtx, tracer)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
 			telemetry.ReportCriticalError(childCtx, errMsg)
 
 			return nil, errMsg
 		}
+
+		telemetry.ReportEvent(childCtx, "started uffd")
 	}
 
 	fc := newFC(
