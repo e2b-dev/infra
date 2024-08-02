@@ -286,7 +286,7 @@ func deleteInstance(
 	)
 
 	timestamp := timestamppb.Now()
-	duration := timestamp.AsTime().Sub(*info.StartTime).Seconds()
+	duration := timestamp.AsTime().Sub(info.StartTime).Seconds()
 
 	delErr := orchestrator.DeleteInstance(childCtx, tracer, info.Instance.SandboxID)
 	if delErr != nil {
@@ -299,7 +299,7 @@ func deleteInstance(
 		}
 	}
 
-	if info.TeamID != nil && info.StartTime != nil {
+	if info.TeamID != nil {
 		_, err := analytics.Client.InstanceStopped(childCtx, &analyticscollector.InstanceStoppedEvent{
 			TeamId:        info.TeamID.String(),
 			EnvironmentId: info.Instance.TemplateID,
