@@ -27,9 +27,9 @@ type InstanceInfo struct {
 	TeamID            *uuid.UUID
 	BuildID           *uuid.UUID
 	Metadata          map[string]string
-	StartTime         *time.Time
 	MaxInstanceLength time.Duration
-	Timeout           *int64
+	StartTime         time.Time
+	EndTime           time.Time
 }
 
 type InstanceCache struct {
@@ -87,7 +87,7 @@ func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap
 	})
 
 	for _, instance := range initialInstances {
-		err := instanceCache.Add(*instance, nil)
+		err := instanceCache.Add(*instance)
 		if err != nil {
 			fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
 		}

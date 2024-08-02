@@ -47,8 +47,6 @@ func (o *Orchestrator) GetInstances(ctx context.Context, tracer trace.Tracer) ([
 			return nil, fmt.Errorf("failed to parse build ID '%s' for job: %w", config.BuildID, err)
 		}
 
-		startTime := sbx.StartTime.AsTime()
-
 		sandboxesInfo = append(sandboxesInfo, &instance.InstanceInfo{
 			Instance: &api.Sandbox{
 				SandboxID:  config.SandboxID,
@@ -56,7 +54,8 @@ func (o *Orchestrator) GetInstances(ctx context.Context, tracer trace.Tracer) ([
 				Alias:      config.Alias,
 				ClientID:   sbx.ClientID,
 			},
-			StartTime:         &startTime,
+			StartTime:         sbx.StartTime.AsTime(),
+			EndTime:           sbx.EndTime.AsTime(),
 			BuildID:           &buildID,
 			TeamID:            &teamID,
 			Metadata:          config.Metadata,

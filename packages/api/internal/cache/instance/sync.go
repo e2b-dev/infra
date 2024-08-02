@@ -23,56 +23,35 @@ func getMaxAllowedTTL(startTime time.Time, duration, maxInstanceLength time.Dura
 	}
 }
 
-// SetTimeout for the instance's expiration timer.
-func (c *InstanceCache) SetTimeout(instanceID string, duration time.Duration) error {
-	item, err := c.Get(instanceID)
-	if err != nil {
-		return err
-	}
-
-	instance := item.Value()
-	if (time.Since(*instance.StartTime)) > instance.MaxInstanceLength {
-		c.cache.Delete(instanceID)
-
-		return fmt.Errorf("instance \"%s\" reached maximal allowed uptime", instanceID)
-	} else {
-		maxAllowedTTL := getMaxAllowedTTL(*instance.StartTime, duration, instance.MaxInstanceLength)
-
-		item = c.cache.Set(instanceID, instance, maxAllowedTTL)
-		if item == nil {
-			return fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
-		}
-	}
-
-	return nil
-}
-
 // KeepAliveFor the instance's expiration timer.
-func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration) error {
+func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration) (*InstanceInfo, error) {
 	item, err := c.Get(instanceID)
 	if err != nil {
-		return err
-	}
-
-	if item.ExpiresAt().After(time.Now().Add(duration)) {
-		return nil
+		return nil, err
 	}
 
 	instance := item.Value()
-	if (time.Since(*instance.StartTime)) > instance.MaxInstanceLength {
+	if item.ExpiresAt().After(time.Now().Add(duration)) {
+		return &instance, nil
+	}
+
+	if (time.Since(instance.StartTime)) > instance.MaxInstanceLength {
 		c.cache.Delete(instanceID)
 
-		return fmt.Errorf("instance \"%s\" reached maximal allowed uptime", instanceID)
+		return nil, fmt.Errorf("instance \"%s\" reached maximal allowed uptime", instanceID)
 	} else {
-		maxAllowedTTL := getMaxAllowedTTL(*instance.StartTime, duration, instance.MaxInstanceLength)
+		maxAllowedTTL := getMaxAllowedTTL(instance.StartTime, duration, instance.MaxInstanceLength)
+
+		newEndTime := item.ExpiresAt()
+		instance.EndTime = newEndTime
 
 		item = c.cache.Set(instanceID, instance, maxAllowedTTL)
 		if item == nil {
-			return fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
+			return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
 		}
 	}
 
-	return nil
+	return &instance, nil
 }
 
 func (c *InstanceCache) Sync(instances []*InstanceInfo) {
@@ -94,7 +73,7 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo) {
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
 		if !c.Exists(instance.Instance.SandboxID) {
-			err := c.Add(*instance, nil)
+			err := c.Add(*instance)
 			if err != nil {
 				fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
 			}

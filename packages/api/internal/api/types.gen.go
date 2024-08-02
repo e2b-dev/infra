@@ -56,6 +56,9 @@ type RunningSandbox struct {
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
 
+	// EndAt Time when the sandbox will expire
+	EndAt time.Time `json:"endAt"`
+
 	// MemoryMB Memory for the sandbox in MB
 	MemoryMB MemoryMB         `json:"memoryMB"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`

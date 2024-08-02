@@ -64,6 +64,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 			StartedAt:  *info.StartTime,
 			CpuCount:   int32(buildsMap[*info.BuildID].Vcpu),
 			MemoryMB:   int32(buildsMap[*info.BuildID].RAMMB),
+			EndAt:      *info.EndTime,
 		}
 
 		if info.Metadata != nil {
