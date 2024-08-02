@@ -16,6 +16,7 @@ import (
 type Template struct {
 	TemplateID string
 	BuildID    string
+	TeamID     uuid.UUID
 	VCPU       int64
 	DiskMB     int64
 	RAMMB      int64
@@ -65,6 +66,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 		build := item.Edges.Builds[0]
 		result = append(result, &Template{
 			TemplateID: item.ID,
+			TeamID:     item.TeamID,
 			BuildID:    build.ID.String(),
 			VCPU:       build.Vcpu,
 			RAMMB:      build.RAMMB,
@@ -79,7 +81,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 
 var ErrEnvNotFound = fmt.Errorf("env not found")
 
-func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID, canBePublic bool) (result *Template, build *models.EnvBuild, err error) {
+func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template, build *models.EnvBuild, err error) {
 	dbEnv, err := db.
 		Client.
 		Env.
@@ -88,10 +90,6 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID,
 			env.Or(
 				env.HasEnvAliasesWith(envalias.ID(aliasOrEnvID)),
 				env.ID(aliasOrEnvID),
-			),
-			env.Or(
-				env.TeamID(teamID),
-				env.Public(true),
 			),
 			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
 		).
@@ -109,10 +107,6 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID,
 		return nil, nil, fmt.Errorf("failed to get env '%s': %w", aliasOrEnvID, err)
 	}
 
-	if !canBePublic && dbEnv.TeamID != teamID {
-		return nil, nil, fmt.Errorf("you don't have access to this env '%s'", aliasOrEnvID)
-	}
-
 	aliases := make([]string, len(dbEnv.Edges.EnvAliases))
 	for i, alias := range dbEnv.Edges.EnvAliases {
 		aliases[i] = alias.ID
@@ -127,6 +121,7 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID,
 		DiskMB:     build.FreeDiskSizeMB,
 		Public:     dbEnv.Public,
 		Aliases:    &aliases,
+		TeamID:     dbEnv.TeamID,
 	}, build, nil
 }
 

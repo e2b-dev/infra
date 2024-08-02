@@ -106,6 +106,21 @@ type SandboxLogs struct {
 // SandboxMetadata defines model for SandboxMetadata.
 type SandboxMetadata map[string]string
 
+// Team defines model for Team.
+type Team struct {
+	// ApiKey API key for the team
+	ApiKey string `json:"apiKey"`
+
+	// IsDefault Whether the team is the default team
+	IsDefault bool `json:"isDefault"`
+
+	// Name Name of the team
+	Name string `json:"name"`
+
+	// TeamID Identifier of the team
+	TeamID string `json:"teamID"`
+}
+
 // Template defines model for Template.
 type Template struct {
 	// Aliases Aliases of the template
@@ -161,6 +176,9 @@ type TemplateBuildRequest struct {
 
 	// StartCmd Start command to execute in the template after the build
 	StartCmd *string `json:"startCmd,omitempty"`
+
+	// TeamID Identifier of the team
+	TeamID *string `json:"teamID,omitempty"`
 }
 
 // BuildID defines model for buildID.
@@ -203,6 +221,11 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 type PostSandboxesSandboxIDTimeoutJSONBody struct {
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
 	Timeout int32 `json:"timeout"`
+}
+
+// GetTemplatesParams defines parameters for GetTemplates.
+type GetTemplatesParams struct {
+	TeamID *string `form:"teamID,omitempty" json:"teamID,omitempty"`
 }
 
 // GetTemplatesTemplateIDBuildsBuildIDStatusParams defines parameters for GetTemplatesTemplateIDBuildsBuildIDStatus.

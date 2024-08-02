@@ -23,6 +23,8 @@ type UsersTeams struct {
 	UserID uuid.UUID `json:"user_id,omitempty"`
 	// TeamID holds the value of the "team_id" field.
 	TeamID uuid.UUID `json:"team_id,omitempty"`
+	// IsDefault holds the value of the "is_default" field.
+	IsDefault bool `json:"is_default,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the UsersTeamsQuery when eager-loading is set.
 	Edges        UsersTeamsEdges `json:"edges"`
@@ -71,6 +73,8 @@ func (*UsersTeams) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case usersteams.FieldIsDefault:
+			values[i] = new(sql.NullBool)
 		case usersteams.FieldID:
 			values[i] = new(sql.NullInt64)
 		case usersteams.FieldUserID, usersteams.FieldTeamID:
@@ -107,6 +111,12 @@ func (ut *UsersTeams) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field team_id", values[i])
 			} else if value != nil {
 				ut.TeamID = *value
+			}
+		case usersteams.FieldIsDefault:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field is_default", values[i])
+			} else if value.Valid {
+				ut.IsDefault = value.Bool
 			}
 		default:
 			ut.selectValues.Set(columns[i], values[i])
@@ -159,6 +169,9 @@ func (ut *UsersTeams) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("team_id=")
 	builder.WriteString(fmt.Sprintf("%v", ut.TeamID))
+	builder.WriteString(", ")
+	builder.WriteString("is_default=")
+	builder.WriteString(fmt.Sprintf("%v", ut.IsDefault))
 	builder.WriteByte(')')
 	return builder.String()
 }
