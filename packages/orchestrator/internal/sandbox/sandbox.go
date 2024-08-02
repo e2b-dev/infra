@@ -46,6 +46,7 @@ type Sandbox struct {
 
 	Sandbox   *orchestrator.SandboxConfig
 	StartedAt time.Time
+	EndAt     time.Time
 	TraceID   string
 }
 
@@ -65,6 +66,8 @@ func NewSandbox(
 	networkPool chan IPSlot,
 	config *orchestrator.SandboxConfig,
 	traceID string,
+	startedAt time.Time,
+	endAt time.Time,
 ) (*Sandbox, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -219,7 +222,9 @@ func NewSandbox(
 		fc:    fc,
 		uffd:  uffd,
 
-		Sandbox: config,
+		Sandbox:   config,
+		StartedAt: startedAt,
+		EndAt:     endAt,
 	}
 
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
