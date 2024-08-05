@@ -42,7 +42,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 	} else {
 		maxAllowedTTL := getMaxAllowedTTL(instance.StartTime, duration, instance.MaxInstanceLength)
 
-		newEndTime := item.ExpiresAt()
+		newEndTime := item.ExpiresAt().Add(maxAllowedTTL)
 		instance.EndTime = newEndTime
 
 		item = c.cache.Set(instanceID, instance, maxAllowedTTL)
