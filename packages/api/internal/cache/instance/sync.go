@@ -24,14 +24,14 @@ func getMaxAllowedTTL(startTime time.Time, duration, maxInstanceLength time.Dura
 }
 
 // KeepAliveFor the instance's expiration timer.
-func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration) (*InstanceInfo, error) {
+func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, allowShorter bool) (*InstanceInfo, error) {
 	item, err := c.Get(instanceID)
 	if err != nil {
 		return nil, err
 	}
 
 	instance := item.Value()
-	if item.ExpiresAt().After(time.Now().Add(duration)) {
+	if !allowShorter && item.ExpiresAt().After(time.Now().Add(duration)) {
 		return &instance, nil
 	}
 
@@ -42,7 +42,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration) 
 	} else {
 		maxAllowedTTL := getMaxAllowedTTL(instance.StartTime, duration, instance.MaxInstanceLength)
 
-		newEndTime := item.ExpiresAt()
+		newEndTime := item.ExpiresAt().Add(maxAllowedTTL)
 		instance.EndTime = newEndTime
 
 		item = c.cache.Set(instanceID, instance, maxAllowedTTL)
