@@ -37,7 +37,7 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 		duration = time.Duration(body.Timeout) * time.Second
 	}
 
-	info, err := a.instanceCache.KeepAliveFor(sandboxID, duration)
+	info, err := a.instanceCache.KeepAliveFor(sandboxID, duration, true)
 	if err != nil {
 		errMsg := fmt.Errorf("error setting sandbox timeout: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
