@@ -14,9 +14,7 @@ import (
 
 // Defines values for EntryInfoType.
 const (
-	Directory   EntryInfoType = "directory"
-	File        EntryInfoType = "file"
-	Unspecified EntryInfoType = "unspecified"
+	File EntryInfoType = "file"
 )
 
 // EntryInfo defines model for EntryInfo.

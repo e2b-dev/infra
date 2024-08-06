@@ -169,5 +169,3 @@ components:
           description: Type of the file
           enum:
               - file
-              - directory
-              - unspecified
