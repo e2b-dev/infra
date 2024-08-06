@@ -12,6 +12,26 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for EntryInfoType.
+const (
+	File EntryInfoType = "file"
+)
+
+// EntryInfo defines model for EntryInfo.
+type EntryInfo struct {
+	// Name Name of the file
+	Name string `json:"name"`
+
+	// Path Path to the file
+	Path string `json:"path"`
+
+	// Type Type of the file
+	Type EntryInfoType `json:"type"`
+}
+
+// EntryInfoType Type of the file
+type EntryInfoType string
+
 // Error defines model for Error.
 type Error struct {
 	// Code Error code
@@ -27,20 +47,23 @@ type FilePath = string
 // User defines model for User.
 type User = string
 
-// DirectoryPathError defines model for DirectoryPathError.
-type DirectoryPathError = Error
-
 // FileNotFound defines model for FileNotFound.
 type FileNotFound = Error
 
 // InternalServerError defines model for InternalServerError.
 type InternalServerError = Error
 
+// InvalidPath defines model for InvalidPath.
+type InvalidPath = Error
+
 // InvalidUser defines model for InvalidUser.
 type InvalidUser = Error
 
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
+
+// UploadSuccess defines model for UploadSuccess.
+type UploadSuccess = []EntryInfo
 
 // GetFilesParams defines parameters for GetFiles.
 type GetFilesParams struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -53,6 +54,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		e[i] = &rpc.EntryInfo{
 			Name: entry.Name(),
 			Type: t,
+			Path: path.Join(dirPath, entry.Name()),
 		}
 	}
 
@@ -95,5 +97,11 @@ func (Service) MakeDir(ctx context.Context, req *connect.Request[rpc.MakeDirRequ
 		return nil, connect.NewError(connect.CodeInternal, userErr)
 	}
 
-	return connect.NewResponse(&rpc.MakeDirResponse{}), nil
+	return connect.NewResponse(&rpc.MakeDirResponse{
+		Entry: &rpc.EntryInfo{
+			Name: path.Base(dirPath),
+			Type: rpc.FileType_FILE_TYPE_DIRECTORY,
+			Path: dirPath,
+		},
+	}), nil
 }
