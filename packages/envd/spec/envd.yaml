@@ -49,7 +49,7 @@ paths:
       requestBody:
         $ref: "#/components/requestBodies/File"
       responses:
-        "204":
+        "200":
           $ref: "#/components/responses/UploadSuccess"
         "400":
           $ref: "#/components/responses/InvalidPath"
@@ -155,7 +155,19 @@ components:
     EntryInfo:
       required:
         - path
+        - name
+        - type
       properties:
         path:
           type: string
           description: Path to the file
+        name:
+          type: string
+          description: Name of the file
+        type:
+          type: string
+          description: Type of the file
+          enum:
+              - file
+              - directory
+              - unspecified

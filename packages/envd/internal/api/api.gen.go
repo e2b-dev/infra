@@ -12,11 +12,27 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for EntryInfoType.
+const (
+	Directory   EntryInfoType = "directory"
+	File        EntryInfoType = "file"
+	Unspecified EntryInfoType = "unspecified"
+)
+
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
+	// Name Name of the file
+	Name string `json:"name"`
+
 	// Path Path to the file
 	Path string `json:"path"`
+
+	// Type Type of the file
+	Type EntryInfoType `json:"type"`
 }
+
+// EntryInfoType Type of the file
+type EntryInfoType string
 
 // Error defines model for Error.
 type Error struct {

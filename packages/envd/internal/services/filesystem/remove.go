@@ -25,9 +25,17 @@ func (Service) Remove(ctx context.Context, req *connect.Request[rpc.RemoveReques
 
 	entry, err := os.Stat(resolvedPath)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error statting file or directory: %w", err))
+		if os.IsNotExist(err) {
+			return connect.NewResponse(&rpc.RemoveResponse{
+				Entry: &rpc.EntryInfo{
+					Name: path.Base(resolvedPath),
+					Type: rpc.FileType_FILE_TYPE_UNSPECIFIED,
+					Path: resolvedPath,
+				},
+			}), nil
 		}
+
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error statting file or directory: %w", err))
 	}
 
 	err = os.RemoveAll(resolvedPath)

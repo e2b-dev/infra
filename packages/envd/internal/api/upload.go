@@ -226,14 +226,17 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 				return
 			}
 
-			paths = append(paths, EntryInfo{Path: filePath})
+			paths = append(paths, EntryInfo{
+				Path: filePath,
+				Name: filepath.Base(filePath),
+				Type: File,
+			})
 		}
 
 		part.Close()
 	}
 
 	data, err := json.Marshal(paths)
-
 	if err != nil {
 		errMsg = fmt.Errorf("error marshaling response: %w", err)
 		errorCode = http.StatusInternalServerError
@@ -242,6 +245,6 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
 }
