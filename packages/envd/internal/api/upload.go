@@ -206,7 +206,6 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 			break
 		}
 
-		// Check if there can be more parts named "file", throw error if there are more files with the same name
 		if part.FormName() == "file" {
 			filePath, err := resolvePath(part, &paths, u, params)
 			if err != nil {
