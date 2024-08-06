@@ -28,7 +28,7 @@ func (Service) Move(ctx context.Context, req *connect.Request[rpc.MoveRequest]) 
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	_, err = os.Stat(source)
+	entry, err := os.Stat(source)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("source path not found: %w", err))
@@ -52,5 +52,18 @@ func (Service) Move(ctx context.Context, req *connect.Request[rpc.MoveRequest]) 
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error renaming: %w", err))
 	}
 
-	return connect.NewResponse(&rpc.MoveResponse{}), nil
+	var t rpc.FileType
+	if entry.IsDir() {
+		t = rpc.FileType_FILE_TYPE_DIRECTORY
+	} else {
+		t = rpc.FileType_FILE_TYPE_FILE
+	}
+
+	return connect.NewResponse(&rpc.MoveResponse{
+		Entry: &rpc.EntryInfo{
+			Name: filepath.Base(destination),
+			Type: t,
+			Path: destination,
+		},
+	}), nil
 }

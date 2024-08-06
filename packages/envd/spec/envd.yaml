@@ -93,6 +93,14 @@ components:
   responses:
     UploadSuccess:
       description: The file was uploaded successfully.
+      content:
+        application/json:
+          schema:
+            required:
+            type: array
+            items:
+              $ref: "#/components/schemas/EntryInfo"
+
     DownloadSuccess:
       description: Entire file downloaded successfully.
       content:
@@ -144,3 +152,10 @@ components:
         code:
           type: integer
           description: Error code
+    EntryInfo:
+      required:
+        - path
+      properties:
+        path:
+          type: string
+          description: Path to the file
