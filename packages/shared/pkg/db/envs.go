@@ -44,7 +44,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 		Env.
 		Query().
 		Where(
-			env.Or(env.TeamID(teamID), env.Public(true)),
+			env.TeamID(teamID),
 			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
 		).
 		Order(models.Asc(env.FieldCreatedAt)).
