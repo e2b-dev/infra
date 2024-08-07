@@ -299,7 +299,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 				telemetry.ReportEvent(cleanupContext, "removed container")
 			}
 
-			// Move prunning to separate goroutine
+			// Move pruning to separate goroutine
 			cacheTimeoutArg := filters.Arg("until", cacheTimeout)
 
 			_, pruneErr := r.client.BuildCachePrune(cleanupContext, types.BuildCachePruneOptions{
