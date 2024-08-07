@@ -48,7 +48,7 @@ init:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	terraform fmt -recursive
-	$(tf_vars) terraform plan -compact-warnings -detailed-exitcode 	-target=module.cluster.module.client_cluster -target=module.nomad.nomad_job.api -target=module.nomad.nomad_job.orchestrator
+	$(tf_vars) terraform plan -compact-warnings -detailed-exitcode $(ALL_MODULES_ARGS)
 
 .PHONY: apply
 apply:
@@ -60,7 +60,7 @@ apply:
 	-input=false \
 	-compact-warnings \
 	-parallelism=20 \
-	-target=module.cluster.module.client_cluster  -target=module.nomad.nomad_job.api -target=module.nomad.nomad_job.orchestrator
+	-target=module.cluster.module.client_cluster $(ALL_MODULES_ARGS)
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
