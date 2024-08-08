@@ -20,7 +20,7 @@ func NewLogger(ctx context.Context, debug bool) *zerolog.Logger {
 	if debug {
 		exporters = append(exporters, os.Stdout)
 	} else {
-		exporters = append(exporters, exporter.NewHTTPLogsExporter(ctx, false))
+		exporters = append(exporters, exporter.NewHTTPLogsExporter(ctx, false), os.Stdout)
 	}
 
 	l := zerolog.
