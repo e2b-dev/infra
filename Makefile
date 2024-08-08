@@ -59,8 +59,7 @@ apply:
 	-auto-approve \
 	-input=false \
 	-compact-warnings \
-	-parallelism=20 \
-	-target=module.cluster.module.client_cluster $(ALL_MODULES_ARGS)
+	-parallelism=20 $(ALL_MODULES_ARGS)
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
