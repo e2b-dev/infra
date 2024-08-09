@@ -21,6 +21,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+var hugefileCache = NewHugefileCache()
+
 type MmdsMetadata struct {
 	InstanceID string `json:"instanceID"`
 	EnvID      string `json:"envID"`
@@ -84,35 +86,24 @@ func (fc *fc) loadSnapshot(
 	memfilePath := filepath.Join(envPath, MemfileName)
 	snapfilePath := filepath.Join(envPath, SnapfileName)
 
+	hugeMemfilePath, hugefileErr := hugefileCache.GetHugefilePath(memfilePath)
+	if hugefileErr != nil {
+		return fmt.Errorf("failed to get hugefile: %w", hugefileErr)
+	}
+
 	telemetry.SetAttributes(
 		childCtx,
+		attribute.String("instance.hugememfile.path", hugeMemfilePath),
 		attribute.String("instance.memfile.path", memfilePath),
 		attribute.String("instance.snapfile.path", snapfilePath),
 	)
 
 	var backend *models.MemoryBackend
 
-	if uffdSocketPath != nil {
-		err := waitForSocket(*uffdSocketPath, socketWaitTimeout)
-		if err != nil {
-			telemetry.ReportCriticalError(childCtx, err)
-
-			return err
-		} else {
-			telemetry.ReportEvent(childCtx, "uffd socket ready")
-		}
-
-		backendType := models.MemoryBackendBackendTypeUffd
-		backend = &models.MemoryBackend{
-			BackendPath: uffdSocketPath,
-			BackendType: &backendType,
-		}
-	} else {
-		backendType := models.MemoryBackendBackendTypeFile
-		backend = &models.MemoryBackend{
-			BackendPath: &memfilePath,
-			BackendType: &backendType,
-		}
+	backendType := models.MemoryBackendBackendTypeFile
+	backend = &models.MemoryBackend{
+		BackendPath: &hugeMemfilePath,
+		BackendType: &backendType,
 	}
 
 	snapshotConfig := operations.LoadSnapshotParams{

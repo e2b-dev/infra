@@ -6,11 +6,13 @@ require (
 	github.com/KarpelesLab/reflink v1.0.1
 	github.com/coreos/go-iptables v0.7.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
+	github.com/edsrzf/mmap-go v1.1.0
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
 	github.com/go-openapi/strfmt v0.21.7
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.1.0
 	github.com/hashicorp/consul/api v1.26.1
+	github.com/jellydator/ttlcache/v3 v3.2.0
 	github.com/miekg/dns v1.1.50
 	github.com/vishvananda/netlink v1.2.1-beta.2
 	github.com/vishvananda/netns v0.0.4
@@ -18,6 +20,7 @@ require (
 	go.opentelemetry.io/otel v1.23.0
 	go.opentelemetry.io/otel/trace v1.23.0
 	go.uber.org/zap v1.18.1
+	golang.org/x/sys v0.18.0
 	google.golang.org/grpc v1.61.1
 	google.golang.org/protobuf v1.33.0
 )
@@ -77,7 +80,7 @@ require (
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
 	golang.org/x/mod v0.13.0 // indirect
 	golang.org/x/net v0.23.0 // indirect
-	golang.org/x/sys v0.18.0 // indirect
+	golang.org/x/sync v0.6.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/tools v0.14.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240205150955-31a09d347014 // indirect
