@@ -27,11 +27,7 @@ const (
 	kernelsDir     = "/fc-kernels"
 	kernelMountDir = "/fc-vm"
 	kernelName     = "vmlinux.bin"
-	uffdBinaryName = "uffd"
 	fcBinaryName   = "firecracker"
-
-	waitForUffd       = 80 * time.Millisecond
-	uffdCheckInterval = 10 * time.Millisecond
 )
 
 var logsProxyAddress = os.Getenv("LOGS_PROXY_ADDRESS")
@@ -44,17 +40,12 @@ type Sandbox struct {
 	slot  IPSlot
 	files *SandboxFiles
 
-	fc   *fc
-	uffd *uffd
+	fc *fc
 
 	Sandbox   *orchestrator.SandboxConfig
 	StartedAt time.Time
 	EndAt     time.Time
 	TraceID   string
-}
-
-func uffdBinaryPath(fcVersion string) string {
-	return filepath.Join(fcVersionsDir, fcVersion, uffdBinaryName)
 }
 
 func fcBinaryPath(fcVersion string) string {
@@ -124,7 +115,6 @@ func NewSandbox(
 		kernelMountDir,
 		kernelName,
 		fcBinaryPath(config.FirecrackerVersion),
-		uffdBinaryPath(config.FirecrackerVersion),
 		config.HugePages,
 	)
 	if err != nil {
@@ -158,39 +148,6 @@ func NewSandbox(
 		}
 	}()
 
-	var uffd *uffd
-	if fsEnv.UFFDSocketPath != nil {
-		uffd = newUFFD(fsEnv)
-
-		uffdErr := uffd.start()
-		if err != nil {
-			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-
-			return nil, errMsg
-		}
-
-		// Wait for uffd to initialize — it should be possible to handle this better?
-	uffdWait:
-		for {
-			select {
-			case <-time.After(waitForUffd):
-				fmt.Printf("waiting for uffd to initialize")
-				return nil, fmt.Errorf("timeout waiting to uffd to initialize")
-			case <-childCtx.Done():
-				return nil, childCtx.Err()
-			default:
-				isRunning, _ := checkIsRunning(uffd.cmd.Process)
-				fmt.Printf("uffd is running: %v", isRunning)
-				if isRunning {
-					break uffdWait
-				}
-
-				time.Sleep(uffdCheckInterval)
-			}
-		}
-	}
-
 	fc := newFC(
 		childCtx,
 		tracer,
@@ -207,10 +164,6 @@ func NewSandbox(
 
 	err = fc.start(childCtx, tracer)
 	if err != nil {
-		if uffd != nil {
-			uffd.stop(childCtx, tracer)
-		}
-
 		errMsg := fmt.Errorf("failed to start FC: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
@@ -223,7 +176,6 @@ func NewSandbox(
 		files: fsEnv,
 		slot:  ips,
 		fc:    fc,
-		uffd:  uffd,
 
 		Sandbox:   config,
 		StartedAt: startedAt,
@@ -381,13 +333,6 @@ func (s *Sandbox) CleanupAfterFCStop(
 func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) (err error) {
 	defer s.Stop(ctx, tracer)
 
-	if s.uffd != nil {
-		go func() {
-			err := s.uffd.wait()
-			fmt.Printf("uffd wait error: %v", err)
-		}()
-	}
-
 	return s.fc.wait()
 }
 
@@ -396,13 +341,6 @@ func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) {
 	defer childSpan.End()
 
 	s.fc.stop(childCtx, tracer)
-
-	if s.uffd != nil {
-		// Wait until we stop uffd if it exists
-		time.Sleep(1 * time.Second)
-
-		s.uffd.stop(childCtx, tracer)
-	}
 }
 
 func (s *Sandbox) SlotIdx() int {
@@ -411,12 +349,4 @@ func (s *Sandbox) SlotIdx() int {
 
 func (s *Sandbox) FcPid() int {
 	return s.fc.pid
-}
-
-func (s *Sandbox) UffdPid() *int {
-	if s.uffd == nil {
-		return nil
-	}
-
-	return &s.uffd.pid
 }

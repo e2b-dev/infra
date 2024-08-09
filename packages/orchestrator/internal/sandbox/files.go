@@ -27,9 +27,10 @@ const (
 	socketWaitTimeout = 2 * time.Second
 )
 
-type SandboxFiles struct {
-	UFFDSocketPath *string
+// TODO: We should be able to parallelize the memfile copying with the FC start
+var hugefileCache = NewHugefileCache()
 
+type SandboxFiles struct {
 	EnvPath      string
 	BuildDirPath string
 
@@ -40,7 +41,8 @@ type SandboxFiles struct {
 	KernelMountDirPath string
 
 	FirecrackerBinaryPath string
-	UFFDBinaryPath        string
+
+	MemfilePath string
 }
 
 // waitForSocket waits for the given file to exist
@@ -78,8 +80,7 @@ func newSandboxFiles(
 	kernelsDir,
 	kernelMountDir,
 	kernelName,
-	firecrackerBinaryPath,
-	uffdBinaryPath string,
+	firecrackerBinaryPath string,
 	hugePages bool,
 ) (*SandboxFiles, error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-env-instance",
@@ -112,23 +113,22 @@ func newSandboxFiles(
 		return nil, errMsg
 	}
 
-	// Assemble UFFD socket path
-	var uffdSocketPath *string
-
-	if hugePages {
-		socketName := fmt.Sprintf("uffd-%s", sandboxID)
-		socket, sockErr := getSocketPath(socketName)
-		if sockErr != nil {
-			errMsg := fmt.Errorf("error getting UFFD socket path: %w", sockErr)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-			return nil, errMsg
-		}
-
-		uffdSocketPath = &socket
-	}
-
 	// Create kernel path
 	kernelPath := filepath.Join(kernelsDir, kernelVersion)
+
+	memfilePath := filepath.Join(envPath, MemfileName)
+
+	if hugePages {
+		// Create hugepages backed memfile
+		hugefilePath, hugefileErr := hugefileCache.GetHugefilePath(memfilePath)
+		if hugefileErr != nil {
+			return nil, fmt.Errorf("failed to get hugefile: %w", hugefileErr)
+		}
+
+		memfilePath = hugefilePath
+
+		telemetry.ReportEvent(childCtx, "hugefile cached")
+	}
 
 	childSpan.SetAttributes(
 		attribute.String("instance.env_instance_path", envInstancePath),
@@ -147,8 +147,7 @@ func newSandboxFiles(
 		KernelDirPath:         kernelPath,
 		KernelMountDirPath:    kernelMountDir,
 		FirecrackerBinaryPath: firecrackerBinaryPath,
-		UFFDSocketPath:        uffdSocketPath,
-		UFFDBinaryPath:        uffdBinaryPath,
+		MemfilePath:           memfilePath,
 	}, nil
 }
 
@@ -206,17 +205,6 @@ func (env *SandboxFiles) Cleanup(
 		telemetry.ReportCriticalError(childCtx, errMsg)
 	} else {
 		telemetry.ReportEvent(childCtx, "removed socket")
-	}
-
-	// Remove UFFD socket
-	if env.UFFDSocketPath != nil {
-		err = os.Remove(*env.UFFDSocketPath)
-		if err != nil {
-			errMsg := fmt.Errorf("error deleting socket for UFFD: %w", err)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-		} else {
-			telemetry.ReportEvent(childCtx, "removed UFFD socket")
-		}
 	}
 
 	return nil

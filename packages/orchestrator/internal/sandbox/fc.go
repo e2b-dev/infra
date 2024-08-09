@@ -21,8 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var hugefileCache = NewHugefileCache()
-
 type MmdsMetadata struct {
 	InstanceID string `json:"instanceID"`
 	EnvID      string `json:"envID"`
@@ -43,12 +41,11 @@ type fc struct {
 
 	metadata *MmdsMetadata
 
-	uffdSocketPath *string
-
 	id string
 
-	socketPath string
-	envPath    string
+	socketPath  string
+	envPath     string
+	memfilePath string
 
 	pid int
 }
@@ -70,9 +67,9 @@ func (fc *fc) loadSnapshot(
 	ctx context.Context,
 	tracer trace.Tracer,
 	socketPath,
-	envPath string,
+	envPath,
+	memfilePath string,
 	metadata interface{},
-	uffdSocketPath *string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
 		attribute.String("instance.socket.path", socketPath),
@@ -83,17 +80,10 @@ func (fc *fc) loadSnapshot(
 	httpClient := newFirecrackerClient(socketPath)
 	telemetry.ReportEvent(childCtx, "created FC socket client")
 
-	memfilePath := filepath.Join(envPath, MemfileName)
 	snapfilePath := filepath.Join(envPath, SnapfileName)
-
-	hugeMemfilePath, hugefileErr := hugefileCache.GetHugefilePath(memfilePath)
-	if hugefileErr != nil {
-		return fmt.Errorf("failed to get hugefile: %w", hugefileErr)
-	}
 
 	telemetry.SetAttributes(
 		childCtx,
-		attribute.String("instance.hugememfile.path", hugeMemfilePath),
 		attribute.String("instance.memfile.path", memfilePath),
 		attribute.String("instance.snapfile.path", snapfilePath),
 	)
@@ -102,7 +92,7 @@ func (fc *fc) loadSnapshot(
 
 	backendType := models.MemoryBackendBackendTypeFile
 	backend = &models.MemoryBackend{
-		BackendPath: &hugeMemfilePath,
+		BackendPath: &memfilePath,
 		BackendType: &backendType,
 	}
 
@@ -198,15 +188,15 @@ func newFC(
 	cmd.Stdout = cmdStderrWriter
 
 	return &fc{
-		id:             mmdsMetadata.InstanceID,
-		cmd:            cmd,
-		stdout:         cmdStdoutReader,
-		stderr:         cmdStderrReader,
-		ctx:            vmmCtx,
-		socketPath:     fsEnv.SocketPath,
-		envPath:        fsEnv.EnvPath,
-		metadata:       mmdsMetadata,
-		uffdSocketPath: fsEnv.UFFDSocketPath,
+		id:          mmdsMetadata.InstanceID,
+		cmd:         cmd,
+		stdout:      cmdStdoutReader,
+		stderr:      cmdStderrReader,
+		ctx:         vmmCtx,
+		socketPath:  fsEnv.SocketPath,
+		envPath:     fsEnv.EnvPath,
+		metadata:    mmdsMetadata,
+		memfilePath: fsEnv.MemfilePath,
 	}
 }
 
@@ -304,8 +294,8 @@ func (fc *fc) start(
 		tracer,
 		fc.socketPath,
 		fc.envPath,
+		fc.memfilePath,
 		fc.metadata,
-		fc.uffdSocketPath,
 	); err != nil {
 		fc.stop(childCtx, tracer)
 
