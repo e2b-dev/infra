@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -133,6 +134,14 @@ func NewHugefileCache() *HugefileCache {
 	cache := ttlcache.New[string, *Hugefile](
 		ttlcache.WithTTL[string, *Hugefile](hugefileExpiration),
 	)
+
+	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, *Hugefile]) {
+		h := i.Value()
+		err := h.Close()
+		if err != nil {
+			fmt.Println(fmt.Errorf("failed to close hugefile: %w", err))
+		}
+	})
 
 	go cache.Start()
 
