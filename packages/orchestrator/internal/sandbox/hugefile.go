@@ -124,6 +124,7 @@ func (c *HugefileCache) GetHugefilePath(originFilePath string, envID string, bui
 
 	path, err := hugefile.Value().EnsureCopy()
 	if err != nil {
+		c.cache.Delete(key)
 		return "", fmt.Errorf("failed to copy hugefile: %w", err)
 	}
 
