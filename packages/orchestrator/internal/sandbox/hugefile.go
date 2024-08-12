@@ -14,21 +14,28 @@ import (
 )
 
 const (
-	hugefileExpiration = time.Hour * 24
+	hugefileExpiration = time.Hour * 25
 	hugepagesDir       = "/mnt/hugepages"
+	EnvsDirName        = "envs"
 	copyBufferSize     = 128 * 1024 * 1024
 )
 
 type Hugefile struct {
 	mp         *mmap.MMap
-	mu         sync.Mutex
 	EnsureCopy func() (string, error)
 }
 
-func (h *Hugefile) copy(path string) (string, error) {
-	hugefilePath := filepath.Join(hugepagesDir, path)
+func (h *Hugefile) copy(originFilePath string, envID string, buildID string) (string, error) {
+	hugefileDir := filepath.Join(hugepagesDir, EnvsDirName, envID, BuildDirName, buildID)
 
-	s, err := os.Stat(path)
+	err := os.MkdirAll(hugefileDir, 0o777)
+	if err != nil {
+		return "", fmt.Errorf("failed to create hugefile directory: %w", err)
+	}
+
+	hugefilePath := filepath.Join(hugefileDir, MemfileName)
+
+	s, err := os.Stat(originFilePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to stat hugefile: %w", err)
 	}
@@ -45,7 +52,7 @@ func (h *Hugefile) copy(path string) (string, error) {
 		return "", fmt.Errorf("failed to mmap hugefile: %w", err)
 	}
 
-	originalFile, err := os.Open(path)
+	originalFile, err := os.Open(originFilePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open original file: %w", err)
 	}
@@ -71,6 +78,11 @@ func (h *Hugefile) copy(path string) (string, error) {
 
 	h.mp = &mp
 
+	err = mp.Flush()
+	if err != nil {
+		return "", fmt.Errorf("failed to flush hugefile: %w", err)
+	}
+
 	return hugefilePath, nil
 }
 
@@ -82,11 +94,11 @@ func (h *Hugefile) Close() error {
 	return h.mp.Unmap()
 }
 
-func NewHugefile(path string) *Hugefile {
+func NewHugefile(originFilePath string, envID string, buildID string) *Hugefile {
 	h := &Hugefile{}
 
 	h.EnsureCopy = sync.OnceValues[string, error](func() (string, error) {
-		hugefilePath, err := h.copy(path)
+		hugefilePath, err := h.copy(originFilePath, envID, buildID)
 		if err != nil {
 			return "", fmt.Errorf("failed to copy hugefile: %w", err)
 		}
@@ -104,8 +116,10 @@ type HugefileCache struct {
 
 // TODO: Do we need to flush the changes?
 // TODO: Does FC unlink the mmaped file?
-func (c *HugefileCache) GetHugefilePath(originFilePath string) (string, error) {
-	hugefile, _ := c.cache.GetOrSet(originFilePath, NewHugefile(originFilePath), ttlcache.WithTTL[string, *Hugefile](hugefileExpiration))
+func (c *HugefileCache) GetHugefilePath(originFilePath string, envID string, buildID string) (string, error) {
+	key := fmt.Sprintf("%s_%s", envID, buildID)
+
+	hugefile, _ := c.cache.GetOrSet(key, NewHugefile(originFilePath, envID, buildID), ttlcache.WithTTL[string, *Hugefile](hugefileExpiration))
 
 	path, err := hugefile.Value().EnsureCopy()
 	if err != nil {

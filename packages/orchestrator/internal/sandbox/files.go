@@ -120,7 +120,7 @@ func newSandboxFiles(
 
 	if hugePages {
 		// Create hugepages backed memfile
-		hugefilePath, hugefileErr := hugefileCache.GetHugefilePath(memfilePath)
+		hugefilePath, hugefileErr := hugefileCache.GetHugefilePath(memfilePath, envID, buildID)
 		if hugefileErr != nil {
 			return nil, fmt.Errorf("failed to get hugefile: %w", hugefileErr)
 		}
