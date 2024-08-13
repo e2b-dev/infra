@@ -287,7 +287,7 @@ type PostInitJSONBody struct {
 }
 
 func (s *Sandbox) initRequest(ctx context.Context, port int64, envVars map[string]string) error {
-	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostSnapshotIP(), port)
+	address := fmt.Sprintf("http://%s:%d/init", s.slot.HostSnapshotIP(), port)
 
 	jsonBody := &PostInitJSONBody{
 		EnvVars: &envVars,
