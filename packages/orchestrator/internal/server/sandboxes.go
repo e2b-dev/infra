@@ -26,6 +26,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		attribute.String("env.kernel.version", req.Sandbox.KernelVersion),
 		attribute.String("instance.id", req.Sandbox.SandboxID),
 		attribute.String("client.id", constants.ClientID),
+		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
 	sbx, err := sandbox.NewSandbox(
