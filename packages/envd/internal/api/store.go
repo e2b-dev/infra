@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -36,8 +37,11 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if initRequest.EnvVars != nil {
+			a.logger.Debug().Msg(fmt.Sprintf("Setting %d env vars", len(*initRequest.EnvVars)))
+
 			for key, value := range *initRequest.EnvVars {
-				println("key", key, "value", value)
+				a.logger.Debug().Msgf("Setting env var for %s", key)
+
 				a.envVars.Store(key, value)
 			}
 		}
