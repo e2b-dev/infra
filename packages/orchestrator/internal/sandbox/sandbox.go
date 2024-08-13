@@ -232,7 +232,7 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
 
-	if semver.Compare(config.EnvdVersion, "v0.1.1") >= 0 {
+	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
 		clockErr := instance.initRequest(ctx, consts.DefaultEnvdServerPort, config.EnvVars)
 		if clockErr != nil {
 			telemetry.ReportError(ctx, fmt.Errorf("failed to sync clock: %w", clockErr))
@@ -305,6 +305,10 @@ func (s *Sandbox) initRequest(ctx context.Context, port int64, envVars map[strin
 	response, err := httpClient.Do(request)
 	if err != nil {
 		return err
+	}
+
+	if response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
 
 	if _, err := io.Copy(io.Discard, response.Body); err != nil {
