@@ -2,12 +2,12 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 	"io"
 	"net/http"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 
 	"github.com/rs/zerolog"
 )

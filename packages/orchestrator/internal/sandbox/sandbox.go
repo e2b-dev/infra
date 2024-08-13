@@ -1,14 +1,15 @@
 package sandbox
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"golang.org/x/mod/semver"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
@@ -281,11 +282,22 @@ func (s *Sandbox) syncClock(ctx context.Context, port int64) error {
 	return nil
 }
 
+type PostInitJSONBody struct {
+	EnvVars *map[string]string `json:"envVars"`
+}
+
 func (s *Sandbox) initRequest(ctx context.Context, port int64, envVars map[string]string) error {
 	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostSnapshotIP(), port)
 
-	body := strings.NewReader(fmt.Sprintf("{\"envVars\": \"%s\"}", envVars))
-	request, err := http.NewRequestWithContext(ctx, "POST", address, body)
+	jsonBody := &PostInitJSONBody{
+		EnvVars: &envVars,
+	}
+	envVarsJSON, err := json.Marshal(jsonBody)
+	if err != nil {
+		return err
+	}
+
+	request, err := http.NewRequestWithContext(ctx, "POST", address, bytes.NewReader(envVarsJSON))
 	if err != nil {
 		return err
 	}
