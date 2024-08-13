@@ -1,6 +1,9 @@
 package api
 
 import (
+	"encoding/json"
+	"github.com/e2b-dev/infra/packages/envd/internal/utils"
+	"io"
 	"net/http"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
@@ -10,15 +13,35 @@ import (
 )
 
 type API struct {
-	logger *zerolog.Logger
+	logger  *zerolog.Logger
+	envVars *utils.Map[string, string]
 }
 
-func New(l *zerolog.Logger) *API {
-	return &API{logger: l}
+func New(l *zerolog.Logger, envVars *utils.Map[string, string]) *API {
+	return &API{logger: l, envVars: envVars}
 }
 
-func (a *API) PostSync(w http.ResponseWriter, r *http.Request) {
+func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
+
+	if r.Body != nil {
+		var initRequest PostInitJSONBody
+
+		err := json.NewDecoder(r.Body).Decode(&initRequest)
+		if err != nil && err != io.EOF {
+			a.logger.Error().Msgf("Failed to decode request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
+
+		if initRequest.EnvVars != nil {
+			for key, value := range *initRequest.EnvVars {
+				println("key", key, "value", value)
+				a.envVars.Store(key, value)
+			}
+		}
+	}
 
 	operationID := logs.AssignOperationID()
 

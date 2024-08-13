@@ -36,6 +36,7 @@ type MemoryMB = int32
 
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
+	EnvVars  *SandboxMetadata `json:"envVars,omitempty"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
 
 	// TemplateID Identifier of the required template

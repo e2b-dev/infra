@@ -104,6 +104,11 @@ components:
         type: string
         description: Metadata of the sandbox
 
+    EnvVars:
+      additionalProperties:
+        type: string
+        description: Metadata of the sandbox
+
     SandboxLog:
       description: Log entry with timestamp and line
       required:
@@ -202,6 +207,8 @@ components:
           default: 15
           description: Time to live for the sandbox in seconds.
         metadata:
+          $ref: "#/components/schemas/SandboxMetadata"
+        envVars:
           $ref: "#/components/schemas/SandboxMetadata"
 
     Template:

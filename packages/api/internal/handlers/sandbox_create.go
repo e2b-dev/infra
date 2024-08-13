@@ -136,6 +136,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		metadata = *body.Metadata
 	}
 
+	var envVars map[string]string
+	if body.EnvVars != nil {
+		envVars = *body.EnvVars
+	}
+
 	startTime := time.Now()
 	timeout := instance.InstanceExpiration
 	if body.Timeout != nil {
@@ -143,7 +148,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 	endTime := startTime.Add(timeout)
 
-	sandbox, instanceErr := a.orchestrator.CreateSandbox(a.Tracer, ctx, sandboxID, env.TemplateID, alias, team.ID.String(), build, teamInfo.Tier.MaxLengthHours, metadata, build.KernelVersion, build.FirecrackerVersion, startTime, endTime)
+	sandbox, instanceErr := a.orchestrator.CreateSandbox(a.Tracer, ctx, sandboxID, env.TemplateID, alias, team.ID.String(), build, teamInfo.Tier.MaxLengthHours, metadata, envVars, build.KernelVersion, build.FirecrackerVersion, *build.EnvdVersion, startTime, endTime)
 	if instanceErr != nil {
 		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
 		telemetry.ReportCriticalError(ctx, errMsg)

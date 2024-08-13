@@ -3,10 +3,12 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"golang.org/x/mod/semver"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
@@ -229,17 +231,25 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
 
-	// TODO: Switch to using the sync in the new envd
-	go func() {
-		backgroundCtx := context.Background()
-
-		clockErr := instance.EnsureClockSync(backgroundCtx, consts.OldEnvdServerPort)
+	if semver.Compare(config.EnvdVersion, "v1.1.0") >= 0 {
+		clockErr := instance.initRequest(ctx, consts.DefaultEnvdServerPort, config.EnvVars)
 		if clockErr != nil {
-			telemetry.ReportError(backgroundCtx, fmt.Errorf("failed to sync clock (old envd): %w", clockErr))
+			telemetry.ReportError(ctx, fmt.Errorf("failed to sync clock: %w", clockErr))
 		} else {
-			telemetry.ReportEvent(backgroundCtx, "clock synced (old envd)")
+			telemetry.ReportEvent(ctx, "clock synced")
 		}
-	}()
+	} else {
+		go func() {
+			backgroundCtx := context.Background()
+
+			clockErr := instance.EnsureClockSync(backgroundCtx, consts.OldEnvdServerPort)
+			if clockErr != nil {
+				telemetry.ReportError(backgroundCtx, fmt.Errorf("failed to sync clock (old envd): %w", clockErr))
+			} else {
+				telemetry.ReportEvent(backgroundCtx, "clock synced (old envd)")
+			}
+		}()
+	}
 
 	instance.StartedAt = time.Now()
 
@@ -253,6 +263,29 @@ func (s *Sandbox) syncClock(ctx context.Context, port int64) error {
 	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostSnapshotIP(), port)
 
 	request, err := http.NewRequestWithContext(ctx, "POST", address, nil)
+	if err != nil {
+		return err
+	}
+
+	response, err := httpClient.Do(request)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(io.Discard, response.Body); err != nil {
+		return err
+	}
+
+	defer response.Body.Close()
+
+	return nil
+}
+
+func (s *Sandbox) initRequest(ctx context.Context, port int64, envVars map[string]string) error {
+	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostSnapshotIP(), port)
+
+	body := strings.NewReader(fmt.Sprintf("{\"envVars\": \"%s\"}", envVars))
+	request, err := http.NewRequestWithContext(ctx, "POST", address, body)
 	if err != nil {
 		return err
 	}
