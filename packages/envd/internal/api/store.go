@@ -25,29 +25,29 @@ func New(l *zerolog.Logger, envVars *utils.Map[string, string]) *API {
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
+	operationID := logs.AssignOperationID()
+
 	if r.Body != nil {
 		var initRequest PostInitJSONBody
 
 		err := json.NewDecoder(r.Body).Decode(&initRequest)
 		if err != nil && err != io.EOF {
-			a.logger.Error().Msgf("Failed to decode request: %v", err)
+			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Msgf("Failed to decode request: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
 
 			return
 		}
 
 		if initRequest.EnvVars != nil {
-			a.logger.Debug().Msg(fmt.Sprintf("Setting %d env vars", len(*initRequest.EnvVars)))
+			a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg(fmt.Sprintf("Setting %d env vars", len(*initRequest.EnvVars)))
 
 			for key, value := range *initRequest.EnvVars {
-				a.logger.Debug().Msgf("Setting env var for %s", key)
+				a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msgf("Setting env var for %s", key)
 
 				a.envVars.Store(key, value)
 			}
 		}
 	}
-
-	operationID := logs.AssignOperationID()
 
 	a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg("Syncing host")
 
