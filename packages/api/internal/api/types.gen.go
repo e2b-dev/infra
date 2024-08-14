@@ -22,6 +22,9 @@ const (
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
 
+// EnvVars defines model for EnvVars.
+type EnvVars map[string]string
+
 // Error defines model for Error.
 type Error struct {
 	// Code Error code
@@ -36,7 +39,7 @@ type MemoryMB = int32
 
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
-	EnvVars  *SandboxMetadata `json:"envVars,omitempty"`
+	EnvVars  *EnvVars         `json:"envVars,omitempty"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
 
 	// TemplateID Identifier of the required template
