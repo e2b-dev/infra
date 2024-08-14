@@ -105,6 +105,9 @@ type PostInitJSONRequestBody PostInitJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Get the environment variables
+	// (GET /envs)
+	GetEnvs(w http.ResponseWriter, r *http.Request)
 	// Download a file
 	// (GET /files)
 	GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesParams)
@@ -122,6 +125,12 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Get the environment variables
+// (GET /envs)
+func (_ Unimplemented) GetEnvs(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Download a file
 // (GET /files)
@@ -155,6 +164,21 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetEnvs operation middleware
+func (siw *ServerInterfaceWrapper) GetEnvs(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEnvs(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
 
 // GetFiles operation middleware
 func (siw *ServerInterfaceWrapper) GetFiles(w http.ResponseWriter, r *http.Request) {
@@ -385,6 +409,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/envs", wrapper.GetEnvs)
+	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/files", wrapper.GetFiles)
 	})

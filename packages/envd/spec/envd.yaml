@@ -30,6 +30,17 @@ paths:
         "204":
           description: Env vars set, the time and metadata is synced with the host
 
+  /envs:
+    get:
+      summary: Get the environment variables
+      responses:
+        "200":
+          description: Environment variables
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvVars"
+
   /files:
     get:
       summary: Download a file
