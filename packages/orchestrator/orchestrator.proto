@@ -20,6 +20,9 @@ message SandboxConfig {
   
   string sandboxID = 9;
   map<string, string> metadata = 10;
+
+  string envdVersion = 11;
+  map<string, string> envVars = 12;
 }
 
 

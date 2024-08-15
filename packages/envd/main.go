@@ -10,11 +10,11 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/api"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
-
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
+	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 
 	"connectrpc.com/authn"
 	connectcors "connectrpc.com/cors"
@@ -32,7 +32,7 @@ const (
 
 var (
 	// These vars are automatically set by goreleaser.
-	Version = "0.1.0"
+	Version = "0.1.1"
 
 	debug bool
 	port  int64
@@ -123,10 +123,12 @@ func main() {
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
 	filesystemRpc.Handle(m, &fsLogger)
 
-	processLogger := l.With().Str("logger", "process").Logger()
-	processService := processRpc.Handle(m, &processLogger)
+	envVars := utils.NewMap[string, string]()
 
-	handler := api.HandlerFromMux(api.New(&fsLogger), m)
+	processLogger := l.With().Str("logger", "process").Logger()
+	processService := processRpc.Handle(m, &processLogger, envVars)
+
+	handler := api.HandlerFromMux(api.New(&fsLogger, envVars), m)
 
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 

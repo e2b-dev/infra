@@ -7,6 +7,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/services/process/handler"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	spec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process/processconnect"
+	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 
 	"connectrpc.com/connect"
 	"github.com/go-chi/chi/v5"
@@ -14,25 +15,27 @@ import (
 )
 
 type Service struct {
-	processes *Map[uint32, *handler.Handler]
+	processes *utils.Map[uint32, *handler.Handler]
 	logger    *zerolog.Logger
+	envs      *utils.Map[string, string]
 }
 
-func newService(l *zerolog.Logger) *Service {
+func newService(l *zerolog.Logger, envs *utils.Map[string, string]) *Service {
 	return &Service{
 		logger:    l,
-		processes: newMap[uint32, *handler.Handler](),
+		processes: utils.NewMap[uint32, *handler.Handler](),
+		envs:      envs,
 	}
 }
 
-func Handle(server *chi.Mux, l *zerolog.Logger) *Service {
-	service := newService(l)
+func Handle(server *chi.Mux, l *zerolog.Logger, envs *utils.Map[string, string]) *Service {
+	service := newService(l, envs)
 
 	interceptors := connect.WithInterceptors(logs.NewUnaryLogInterceptor(l))
 
-	path, handler := spec.NewProcessHandler(service, interceptors)
+	path, h := spec.NewProcessHandler(service, interceptors)
 
-	server.Mount(path, handler)
+	server.Mount(path, h)
 
 	return service
 }
