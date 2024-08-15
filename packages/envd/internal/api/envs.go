@@ -11,7 +11,7 @@ func (a *API) GetEnvs(w http.ResponseWriter, _ *http.Request) {
 
 	a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg("Getting env vars")
 
-	var envs EnvVars
+	envs := make(EnvVars)
 	a.envVars.Range(func(key, value string) bool {
 		envs[key] = value
 
