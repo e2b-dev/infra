@@ -44,6 +44,11 @@ build {
     destination = "/tmp/daemon.json"
   }
 
+  provisioner "file" {
+    source      = "${path.root}/setup/limits.conf"
+    destination = "/etc/security/limits.conf"
+  }
+
   # Install Docker
   provisioner "shell" {
     inline = [
