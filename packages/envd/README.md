@@ -10,7 +10,7 @@ Run the following command to start a Docker container and run the envd daemon in
 make run-envd
 ```
 
-> You can use E2B SDKs with env var `E2B_DEBUG=true` or with a debug parameter set to true when creating or connecting to a sandbox to connect to the envd started with this command locally.
+You can use E2B SDKs with env var `E2B_DEBUG=true` or with a debug parameter set to true when creating or connecting to a sandbox to connect to the envd started with this command locally.
 
 ### Generating API server stubs
 
