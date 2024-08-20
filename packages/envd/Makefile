@@ -25,7 +25,7 @@ build-debug:
 	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
 
 build-docker:
-	make build
+	CGO_ENABLED=0 GOOS=linux go build -a -o bin/envd ${LDFLAGS}
 	DOCKER_BUILDKIT=1 docker build -t envd-debug . -f debug.Dockerfile
 
 start-docker:
@@ -116,3 +116,10 @@ build-and-upload:
 generate:
 	go generate ./...
 	cd spec && buf generate
+
+.PHONY: init-generate
+init-generate:
+	go install github.com/bufbuild/buf/cmd/buf@latest
+	go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
