@@ -80,3 +80,7 @@ func (c *TeamAuthCache) Refresh(apiKey string) {
 
 	c.cache.Set(apiKey, &TeamInfo{team: team, tier: tier, lastRefresh: time.Now()}, authInfoExpiration)
 }
+
+func (c *TeamAuthCache) InvalidateAll() {
+	c.cache.DeleteAll()
+}

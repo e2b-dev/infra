@@ -97,3 +97,7 @@ func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap
 
 	return instanceCache
 }
+
+func (c *InstanceCache) InvalidateAll() {
+	c.cache.DeleteAll()
+}

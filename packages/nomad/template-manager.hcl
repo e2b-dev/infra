@@ -20,11 +20,6 @@ variable "docker_registry" {
   default = ""
 }
 
-variable "api_secret" {
-  type    = string
-  default = ""
-}
-
 variable "otel_tracing_print" {
   type    = string
   default = ""
@@ -90,7 +85,6 @@ job "template-manager" {
         GCP_PROJECT_ID                = var.gcp_project
         GCP_REGION                    = var.gcp_region
         GCP_DOCKER_REPOSITORY_NAME    = var.docker_registry
-        API_SECRET                    = var.api_secret
         OTEL_TRACING_PRINT            = var.otel_tracing_print
         ENVIRONMENT                   = var.environment
       }

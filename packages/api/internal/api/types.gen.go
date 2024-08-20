@@ -9,7 +9,17 @@ import (
 
 const (
 	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
+	AdminAuthScopes       = "AdminAuth.Scopes"
 	ApiKeyAuthScopes      = "ApiKeyAuth.Scopes"
+)
+
+// Defines values for CacheInvalidationRequestCache.
+const (
+	All       CacheInvalidationRequestCache = "all"
+	Auth      CacheInvalidationRequestCache = "auth"
+	Builds    CacheInvalidationRequestCache = "builds"
+	Sandboxes CacheInvalidationRequestCache = "sandboxes"
+	Templates CacheInvalidationRequestCache = "templates"
 )
 
 // Defines values for TemplateBuildStatus.
@@ -21,6 +31,15 @@ const (
 
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
+
+// CacheInvalidationRequest defines model for CacheInvalidationRequest.
+type CacheInvalidationRequest struct {
+	// Cache Cache to invalidate
+	Cache CacheInvalidationRequestCache `json:"cache"`
+}
+
+// CacheInvalidationRequestCache Cache to invalidate
+type CacheInvalidationRequestCache string
 
 // EnvVars defines model for EnvVars.
 type EnvVars map[string]string
@@ -240,6 +259,9 @@ type GetTemplatesTemplateIDBuildsBuildIDStatusParams struct {
 	// LogsOffset Index of the starting build log that should be returned with the template
 	LogsOffset *int32 `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
 }
+
+// PostAdminCachesInvalidateJSONRequestBody defines body for PostAdminCachesInvalidate for application/json ContentType.
+type PostAdminCachesInvalidateJSONRequestBody = CacheInvalidationRequest
 
 // PostSandboxesJSONRequestBody defines body for PostSandboxes for application/json ContentType.
 type PostSandboxesJSONRequestBody = NewSandbox

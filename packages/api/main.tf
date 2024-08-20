@@ -61,21 +61,21 @@ resource "google_secret_manager_secret_version" "posthog_api_key" {
   }
 }
 
-resource "random_password" "api_secret" {
+resource "random_password" "api_admin_key" {
   length  = 32
   special = false
 }
 
-resource "google_secret_manager_secret" "api_secret" {
-  secret_id = "${var.prefix}api-secret"
+resource "google_secret_manager_secret" "api_admin_key" {
+  secret_id = "${var.prefix}api-admin-key"
 
   replication {
     auto {}
   }
 }
 
-resource "google_secret_manager_secret_version" "api_secret_value" {
-  secret = google_secret_manager_secret.api_secret.id
+resource "google_secret_manager_secret_version" "api_admin_key" {
+  secret = google_secret_manager_secret.api_admin_key.id
 
-  secret_data = random_password.api_secret.result
+  secret_data = random_password.api_admin_key.result
 }
