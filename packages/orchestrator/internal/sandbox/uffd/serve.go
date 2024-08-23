@@ -12,6 +12,10 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 )
 
+const (
+	maxEagainAttempts = 32
+)
+
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
 type GuestRegionUffdMapping struct {
@@ -48,7 +52,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 				continue
 			}
 
-			return fmt.Errorf("failed polling: %v", err)
+			return fmt.Errorf("failed polling: %w", err)
 		}
 
 		exitFd := pollFds[1]
@@ -61,13 +65,13 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 		var i int
 
 		for {
-			_, err := syscall.Read(int(uffd), buf)
+			_, err := syscall.Read(uffd, buf)
 			if err == nil {
 				break
 			}
 
 			if err == syscall.EAGAIN {
-				if i > 32 {
+				if i > maxEagainAttempts {
 					return fmt.Errorf("too many uffd read attempts, last error: %w", err)
 				}
 

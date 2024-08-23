@@ -13,6 +13,12 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 )
 
+const (
+	uffdMsgListenerTimeout = 5 * time.Second
+	fdSize                 = 4
+	mappingsSize           = 1024
+)
+
 var memfileCache = cache.NewMmapfileCache()
 
 type UffdSetup struct {
@@ -96,7 +102,7 @@ func (u *Uffd) Start() error {
 }
 
 func (u *Uffd) receiveSetup() (*UffdSetup, error) {
-	err := u.lis.SetDeadline(time.Now().Add(5 * time.Second))
+	err := u.lis.SetDeadline(time.Now().Add(uffdMsgListenerTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("failed setting listener deadline: %w", err)
 	}
@@ -108,8 +114,8 @@ func (u *Uffd) receiveSetup() (*UffdSetup, error) {
 
 	unixConn := conn.(*net.UnixConn)
 
-	mappingsBuf := make([]byte, 1024)
-	uffdBuf := make([]byte, syscall.CmsgSpace(4))
+	mappingsBuf := make([]byte, mappingsSize)
+	uffdBuf := make([]byte, syscall.CmsgSpace(fdSize))
 
 	numBytesMappings, numBytesFd, _, _, err := unixConn.ReadMsgUnix(mappingsBuf, uffdBuf)
 	if err != nil {
@@ -156,7 +162,12 @@ func (u *Uffd) handle(memory *cache.Mmapfile) (err error) {
 	}
 
 	uffd := setup.Fd
-	defer syscall.Close(int(uffd))
+	defer func() {
+		closeErr := syscall.Close(int(uffd))
+		if closeErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to close uffd: %v", closeErr)
+		}
+	}()
 
 	u.PollReady <- struct{}{}
 
