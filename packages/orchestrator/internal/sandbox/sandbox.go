@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -24,7 +25,6 @@ const (
 	kernelsDir     = "/fc-kernels"
 	kernelMountDir = "/fc-vm"
 	kernelName     = "vmlinux.bin"
-	uffdBinaryName = "uffd"
 	fcBinaryName   = "firecracker"
 
 	waitForUffd       = 80 * time.Millisecond
@@ -42,15 +42,11 @@ type Sandbox struct {
 	files *SandboxFiles
 
 	fc   *fc
-	uffd *uffd
+	uffd *uffd.Uffd
 
 	Sandbox   *orchestrator.SandboxConfig
 	StartedAt time.Time
 	TraceID   string
-}
-
-func uffdBinaryPath(fcVersion string) string {
-	return filepath.Join(fcVersionsDir, fcVersion, uffdBinaryName)
 }
 
 func fcBinaryPath(fcVersion string) string {
@@ -118,7 +114,6 @@ func NewSandbox(
 		kernelMountDir,
 		kernelName,
 		fcBinaryPath(config.FirecrackerVersion),
-		uffdBinaryPath(config.FirecrackerVersion),
 		config.HugePages,
 	)
 	if err != nil {
@@ -152,13 +147,13 @@ func NewSandbox(
 		}
 	}()
 
-	var uffd *uffd
+	var fcUffd *uffd.Uffd
 	if fsEnv.UFFDSocketPath != nil {
-		uffd = newUFFD(fsEnv)
+		fcUffd = uffd.New(fsEnv.MemfilePath(), *fsEnv.UFFDSocketPath, config.TemplateID, config.BuildID)
 
 		telemetry.ReportEvent(childCtx, "created uffd")
 
-		uffdErr := uffd.start(childCtx, tracer)
+		uffdErr := fcUffd.Start(childCtx, tracer)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
 			telemetry.ReportCriticalError(childCtx, errMsg)
@@ -185,8 +180,8 @@ func NewSandbox(
 
 	err = fc.start(childCtx, tracer)
 	if err != nil {
-		if uffd != nil {
-			uffd.stop(childCtx, tracer)
+		if fcUffd != nil {
+			fcUffd.Stop(childCtx, tracer)
 		}
 
 		errMsg := fmt.Errorf("failed to start FC: %w", err)
@@ -201,7 +196,7 @@ func NewSandbox(
 		files: fsEnv,
 		slot:  ips,
 		fc:    fc,
-		uffd:  uffd,
+		uffd:  fcUffd,
 
 		Sandbox: config,
 	}
@@ -311,6 +306,15 @@ func (s *Sandbox) CleanupAfterFCStop(
 func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) (err error) {
 	defer s.Stop(ctx, tracer)
 
+	if s.uffd != nil {
+		go func() {
+			uffdErr := s.uffd.Wait()
+			if uffdErr != nil {
+				fmt.Printf("failed to wait for uffd: %v", uffdErr)
+			}
+		}()
+	}
+
 	return s.fc.wait()
 }
 
@@ -324,7 +328,7 @@ func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) {
 		// Wait until we stop uffd if it exists
 		time.Sleep(1 * time.Second)
 
-		s.uffd.stop(childCtx, tracer)
+		s.uffd.Stop(childCtx, tracer)
 	}
 }
 

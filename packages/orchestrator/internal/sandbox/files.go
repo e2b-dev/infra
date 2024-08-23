@@ -40,7 +40,10 @@ type SandboxFiles struct {
 	KernelMountDirPath string
 
 	FirecrackerBinaryPath string
-	UFFDBinaryPath        string
+}
+
+func (f *SandboxFiles) MemfilePath() string {
+	return filepath.Join(f.EnvPath, MemfileName)
 }
 
 // waitForSocket waits for the given file to exist
@@ -78,8 +81,7 @@ func newSandboxFiles(
 	kernelsDir,
 	kernelMountDir,
 	kernelName,
-	firecrackerBinaryPath,
-	uffdBinaryPath string,
+	firecrackerBinaryPath string,
 	hugePages bool,
 ) (*SandboxFiles, error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-env-instance",
@@ -148,7 +150,6 @@ func newSandboxFiles(
 		KernelMountDirPath:    kernelMountDir,
 		FirecrackerBinaryPath: firecrackerBinaryPath,
 		UFFDSocketPath:        uffdSocketPath,
-		UFFDBinaryPath:        uffdBinaryPath,
 	}, nil
 }
 
@@ -213,7 +214,7 @@ func (env *SandboxFiles) Cleanup(
 		err = os.Remove(*env.UFFDSocketPath)
 		if err != nil {
 			errMsg := fmt.Errorf("error deleting socket for UFFD: %w", err)
-			telemetry.ReportCriticalError(childCtx, errMsg)
+			telemetry.ReportError(childCtx, errMsg)
 		} else {
 			telemetry.ReportEvent(childCtx, "removed UFFD socket")
 		}

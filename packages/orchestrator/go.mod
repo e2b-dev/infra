@@ -6,11 +6,13 @@ require (
 	github.com/KarpelesLab/reflink v1.0.1
 	github.com/coreos/go-iptables v0.7.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
+	github.com/edsrzf/mmap-go v1.1.0
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
 	github.com/go-openapi/strfmt v0.21.7
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.1.0
 	github.com/hashicorp/consul/api v1.26.1
+	github.com/jellydator/ttlcache/v3 v3.2.0
 	github.com/loopholelabs/userfaultfd-go v0.1.2
 	github.com/miekg/dns v1.1.50
 	github.com/vishvananda/netlink v1.2.1-beta.2

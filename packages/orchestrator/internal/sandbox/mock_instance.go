@@ -45,6 +45,8 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 		networkPool <- *ips
 	}
 
+	start := time.Now()
+
 	instance, err := NewSandbox(
 		childCtx,
 		tracer,
@@ -53,10 +55,10 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 		networkPool,
 		&orchestrator.SandboxConfig{
 			TemplateID:         envID,
-			FirecrackerVersion: "v1.7.0-dev_8bb88311",
-			KernelVersion:      "vmlinux-5.10.186",
+			FirecrackerVersion: "v1.9.0_fake-2476009",
+			KernelVersion:      "vmlinux-6.1.99",
 			TeamID:             "test-team",
-			BuildID:            "",
+			BuildID:            "id",
 			HugePages:          true,
 			MaxInstanceLength:  1,
 			SandboxID:          instanceID,
@@ -67,7 +69,9 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 		panic(err)
 	}
 
-	fmt.Println("[Sandbox is running]")
+	duration := time.Since(start)
+
+	fmt.Printf("[Sandbox is running] - started in %dms (without network)\n", duration.Milliseconds())
 
 	time.Sleep(keepAlive)
 
