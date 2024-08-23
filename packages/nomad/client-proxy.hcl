@@ -87,7 +87,7 @@ job "client-proxy" {
         right_delimiter = "]]"
         data            = var.load_balancer_conf
         destination     = "local/conf.d/load-balancer.conf"
-        change_mode     = "signal"
+        change_mode     = "noop"  #TODO: change to signal
         change_signal   = "SIGHUP"
       }
 
