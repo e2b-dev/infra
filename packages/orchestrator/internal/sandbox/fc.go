@@ -21,6 +21,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const (
+	uffdPollingTimeout = 10 * time.Second
+)
+
 type MmdsMetadata struct {
 	InstanceID string `json:"instanceID"`
 	EnvID      string `json:"envID"`
@@ -52,7 +56,12 @@ type fc struct {
 }
 
 func (fc *fc) wait() error {
-	return fc.cmd.Wait()
+	err := fc.cmd.Wait()
+	if err != nil {
+		return fmt.Errorf("error waiting for fc process: %w", err)
+	}
+
+	return nil
 }
 
 func newFirecrackerClient(socketPath string) *client.Firecracker {
@@ -80,6 +89,7 @@ func (fc *fc) loadSnapshot(
 	defer childSpan.End()
 
 	httpClient := newFirecrackerClient(socketPath)
+
 	telemetry.ReportEvent(childCtx, "created FC socket client")
 
 	memfilePath := filepath.Join(envPath, MemfileName)
@@ -128,16 +138,20 @@ func (fc *fc) loadSnapshot(
 
 	_, err := httpClient.Operations.LoadSnapshot(&snapshotConfig)
 	if err != nil {
-		telemetry.ReportCriticalError(childCtx, err)
+		errMsg := fmt.Errorf("error loading snapshot: %w", err)
 
-		return err
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
 	}
 
 	if pollReady != nil {
 		select {
 		case <-pollReady:
+			telemetry.ReportEvent(childCtx, "uffd polling ready")
+
 			break
-		case <-time.After(10 * time.Second):
+		case <-time.After(uffdPollingTimeout):
 			return fmt.Errorf("timeout waiting for the uffd polling to be ready")
 		}
 	}
@@ -167,9 +181,10 @@ func (fc *fc) loadSnapshot(
 
 	_, err = httpClient.Operations.PutMmds(&mmdsConfig)
 	if err != nil {
-		telemetry.ReportCriticalError(childCtx, err)
+		errMsg := fmt.Errorf("error setting mmds data: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
 
-		return err
+		return errMsg
 	}
 
 	telemetry.ReportEvent(childCtx, "mmds data set")
@@ -339,7 +354,7 @@ func (fc *fc) start(
 
 	telemetry.ReportEvent(childCtx, "fc process created socket")
 
-	if err := fc.loadSnapshot(
+	if loadErr := fc.loadSnapshot(
 		childCtx,
 		tracer,
 		fc.socketPath,
@@ -347,10 +362,10 @@ func (fc *fc) start(
 		fc.metadata,
 		fc.uffdSocketPath,
 		fc.pollReady,
-	); err != nil {
+	); loadErr != nil {
 		fc.stop(childCtx, tracer)
 
-		errMsg := fmt.Errorf("failed to load snapshot: %w", err)
+		errMsg := fmt.Errorf("failed to load snapshot: %w", loadErr)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg
@@ -392,6 +407,4 @@ func (fc *fc) stop(ctx context.Context, tracer trace.Tracer) {
 	} else {
 		telemetry.ReportEvent(childCtx, "sent KILL to FC process")
 	}
-
-	return
 }

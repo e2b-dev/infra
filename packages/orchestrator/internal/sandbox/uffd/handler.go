@@ -1,6 +1,7 @@
 package uffd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -75,11 +78,19 @@ type Uffd struct {
 	buildID string
 }
 
-func (u *Uffd) Start() error {
+func (u *Uffd) Start(
+	ctx context.Context,
+	tracer trace.Tracer,
+) error {
+	childCtx, childSpan := tracer.Start(ctx, "start-uffd")
+	defer childSpan.End()
+
 	mf, err := memfileCache.GetMmapfile(u.memfilePath, fmt.Sprintf("%s-%s", u.envID, u.buildID))
 	if err != nil {
 		return fmt.Errorf("failed to get mmapfile: %w", err)
 	}
+
+	telemetry.ReportEvent(childCtx, "got mmapfile")
 
 	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: u.socketPath, Net: "unix"})
 	if err != nil {
@@ -88,10 +99,14 @@ func (u *Uffd) Start() error {
 
 	u.lis = lis
 
+	telemetry.ReportEvent(childCtx, "listening on socket")
+
 	err = os.Chmod(u.socketPath, 0o777)
 	if err != nil {
 		return fmt.Errorf("failed setting socket permissions: %w", err)
 	}
+
+	telemetry.ReportEvent(childCtx, "set socket permissions")
 
 	go func() {
 		u.exitChan <- u.handle(mf)

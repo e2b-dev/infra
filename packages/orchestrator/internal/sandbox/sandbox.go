@@ -155,7 +155,7 @@ func NewSandbox(
 
 		telemetry.ReportEvent(childCtx, "created uffd")
 
-		uffdErr := fcUffd.Start()
+		uffdErr := fcUffd.Start(childCtx, tracer)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
 			telemetry.ReportCriticalError(childCtx, errMsg)
@@ -314,8 +314,13 @@ func (s *Sandbox) CleanupAfterFCStop(
 	}
 }
 
-func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) (err error) {
-	defer s.Stop(ctx, tracer)
+func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) error {
+	defer func() {
+		err := s.Stop(ctx, tracer)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error when stopping sandbox: %v\n", err)
+		}
+	}()
 
 	uffdExit := make(chan error)
 
@@ -331,18 +336,27 @@ func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) (err error) {
 	return s.fc.wait()
 }
 
-func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) {
+func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) error {
 	childCtx, childSpan := tracer.Start(ctx, "stop-sandbox", trace.WithAttributes())
 	defer childSpan.End()
 
 	s.fc.stop(childCtx, tracer)
 
+	telemetry.ReportEvent(childCtx, "stopped fc process")
+
 	if s.uffd != nil {
 		// Wait until we stop uffd if it exists
 		time.Sleep(1 * time.Second)
 
-		s.uffd.Stop()
+		err := s.uffd.Stop()
+		if err != nil {
+			return fmt.Errorf("failed to stop uffd: %w", err)
+		}
+
+		telemetry.ReportEvent(childCtx, "stopped uffd")
 	}
+
+	return nil
 }
 
 func (s *Sandbox) SlotIdx() int {

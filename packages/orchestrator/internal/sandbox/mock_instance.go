@@ -31,6 +31,7 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 		ips, err := NewSlot(ctx, tracer, consulClient)
 		if err != nil {
 			fmt.Printf("failed to create network: %v\n", err)
+
 			return
 		}
 
@@ -39,6 +40,7 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 			ips.Release(ctx, tracer, consulClient)
 
 			fmt.Printf("failed to create network: %v\n", err)
+
 			return
 		}
 
