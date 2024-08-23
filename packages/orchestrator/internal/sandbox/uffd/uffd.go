@@ -44,11 +44,14 @@ func (u *Uffd) Start(ctx context.Context, tracer trace.Tracer) error {
 		return fmt.Errorf("failed to start handler: %w", err)
 	}
 
-	return nil
-}
+	go func() {
+		err = handler.Wait()
+		if err != nil {
+			fmt.Printf("uffd handler exited with error: %v\n", err)
+		}
+	}()
 
-func (u *Uffd) Wait() error {
-	return u.handler.Wait()
+	return nil
 }
 
 func (u *Uffd) Stop(ctx context.Context, tracer trace.Tracer) error {

@@ -306,15 +306,6 @@ func (s *Sandbox) CleanupAfterFCStop(
 func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) (err error) {
 	defer s.Stop(ctx, tracer)
 
-	if s.uffd != nil {
-		go func() {
-			uffdErr := s.uffd.Wait()
-			if uffdErr != nil {
-				fmt.Printf("failed to wait for uffd: %v", uffdErr)
-			}
-		}()
-	}
-
 	return s.fc.wait()
 }
 
