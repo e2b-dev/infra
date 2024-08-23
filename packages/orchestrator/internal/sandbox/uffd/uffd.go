@@ -9,20 +9,16 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 )
 
-const (
-	hugePageSize = 2 * 1024 * 1024 // 2 MB
-)
-
 var memfileCache = cache.NewMmapfileCache()
 
 type Uffd struct {
+	handler *Handler
+
 	socketPath  string
 	memfilePath string
 
 	envID   string
 	buildID string
-
-	handler *Handler
 }
 
 func (u *Uffd) Start(ctx context.Context, tracer trace.Tracer) error {
@@ -34,10 +30,7 @@ func (u *Uffd) Start(ctx context.Context, tracer trace.Tracer) error {
 		return fmt.Errorf("failed to get mmapfile: %w", err)
 	}
 
-	handler, err := NewHandler(hugePageSize)
-	if err != nil {
-		return fmt.Errorf("failed to create handler: %w", err)
-	}
+	handler := Handler{}
 
 	err = handler.Start(u.socketPath, mf)
 	if err != nil {

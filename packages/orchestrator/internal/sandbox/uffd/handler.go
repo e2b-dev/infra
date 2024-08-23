@@ -26,12 +26,6 @@ type Handler struct {
 	pageSize int
 }
 
-func NewHandler(pageSize int) (*Handler, error) {
-	return &Handler{
-		pageSize: pageSize,
-	}, nil
-}
-
 func (h *Handler) Start(socketPath string, memory *cache.Mmapfile) error {
 	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath, Net: "unix"})
 	if err != nil {
@@ -121,7 +115,7 @@ func (h *Handler) handle(memory *cache.Mmapfile) (err error) {
 	uffd := setup.Fd
 	defer syscall.Close(int(uffd))
 
-	err = Serve(int(uffd), setup.Mappings, memory, uint64(h.pageSize), h.exitReader.Fd())
+	err = Serve(int(uffd), setup.Mappings, memory, h.exitReader.Fd())
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}

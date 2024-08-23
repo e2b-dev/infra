@@ -18,6 +18,7 @@ type GuestRegionUffdMapping struct {
 	BaseHostVirtAddr uintptr `json:"base_host_virt_addr"`
 	Size             uintptr `json:"size"`
 	Offset           uintptr `json:"offset"`
+	PageSize         uintptr `json:"page_size_kib"`
 }
 
 func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUffdMapping, error) {
@@ -29,10 +30,10 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 		return &m, nil
 	}
 
-	return nil, fmt.Errorf("address %d not found int any mapping", addr)
+	return nil, fmt.Errorf("address %d not found in any mapping", addr)
 }
 
-func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, pagesize uint64, fd uintptr) error {
+func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd uintptr) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: int32(fd), Events: unix.POLLIN},
@@ -57,7 +58,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, pag
 
 		buf := make([]byte, unsafe.Sizeof(constants.UffdMsg{}))
 		if _, err := syscall.Read(int(uffd), buf); err != nil {
-			return fmt.Errorf("read: %v", err)
+			return fmt.Errorf("failed to read: %v", err)
 		}
 
 		msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
@@ -72,7 +73,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, pag
 
 		mapping, err := getMapping(uintptr(addr), mappings)
 		if err != nil {
-			return fmt.Errorf("no mapping match: %v", err)
+			return fmt.Errorf("failed to map: %v", err)
 		}
 
 		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
@@ -80,6 +81,8 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, pag
 		if offset >= uint64(len(*src.Map)) {
 			return fmt.Errorf("offset %v is out of bounds", offset)
 		}
+
+		pagesize := uint64(mapping.PageSize)
 
 		b := (*src.Map)[offset : offset+pagesize]
 
@@ -101,7 +104,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, pag
 				return nil
 			}
 
-			return fmt.Errorf("uffdio copy %v", errno)
+			return fmt.Errorf("failed uffdio copy %v", errno)
 		}
 	}
 }
