@@ -3,6 +3,7 @@ package uffd
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"go.opentelemetry.io/otel/trace"
 
@@ -40,7 +41,7 @@ func (u *Uffd) Start(ctx context.Context, tracer trace.Tracer) error {
 	go func() {
 		err = handler.Wait()
 		if err != nil {
-			fmt.Printf("uffd handler exited with error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "uffd handler exited with error: %v\n", err)
 		}
 	}()
 
