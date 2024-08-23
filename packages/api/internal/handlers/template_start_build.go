@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -79,6 +80,12 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 		return
 	}
+
+	telemetry.SetAttributes(ctx,
+		attribute.String("user.id", userID.String()),
+		attribute.String("team.id", team.ID.String()),
+		attribute.String("template.id", templateID),
+	)
 
 	// Create a new build cache for storing logs
 	err = a.buildCache.Create(templateID, buildUUID, team.ID)
