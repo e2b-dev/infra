@@ -47,5 +47,5 @@ func (v *VersionInfo) HasUffd() bool {
 		return false
 	}
 
-	return true
+	return v.HasHugePages()
 }
