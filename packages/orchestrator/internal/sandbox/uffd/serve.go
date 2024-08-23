@@ -3,7 +3,6 @@ package uffd
 import (
 	"errors"
 	"fmt"
-	"os"
 	"syscall"
 	"unsafe"
 
@@ -59,6 +58,8 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 
 		buf := make([]byte, unsafe.Sizeof(constants.UffdMsg{}))
 
+		var i int
+
 		for {
 			_, err := syscall.Read(int(uffd), buf)
 			if err == nil {
@@ -66,7 +67,11 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 			}
 
 			if err == syscall.EAGAIN {
-				fmt.Fprintf(os.Stderr, "uffd read would block\n")
+				if i > 32 {
+					return fmt.Errorf("too many uffd read attempts, last error: %w", err)
+				}
+
+				i++
 
 				continue
 			}
