@@ -6,59 +6,94 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"syscall"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 )
+
+var memfileCache = cache.NewMmapfileCache()
 
 type UffdSetup struct {
 	Mappings []GuestRegionUffdMapping
 	Fd       uintptr
 }
 
-type Handler struct {
-	lis      net.Listener
+func New(
+	memfilePath,
+	socketPath,
+	envID,
+	buildID string,
+) (*Uffd, error) {
+	pRead, pWrite, err := os.Pipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create exit fd: %w", err)
+	}
+
+	return &Uffd{
+		exitChan:    make(chan error),
+		exitReader:  pRead,
+		exitWriter:  pWrite,
+		envID:       envID,
+		buildID:     buildID,
+		memfilePath: memfilePath,
+		socketPath:  socketPath,
+		Stop: sync.OnceValue(func() error {
+			_, writeErr := pWrite.Write([]byte{0})
+			if writeErr != nil {
+				return fmt.Errorf("failed write to exit writer: %w", writeErr)
+			}
+
+			return nil
+		}),
+	}, nil
+}
+
+type Uffd struct {
 	exitChan chan error
 
 	exitReader *os.File
 	exitWriter *os.File
 
-	pageSize int
+	Stop func() error
+
+	lis net.Listener
+
+	socketPath  string
+	memfilePath string
+
+	envID   string
+	buildID string
 }
 
-func (h *Handler) Start(socketPath string, memory *cache.Mmapfile) error {
-	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath, Net: "unix"})
+func (u *Uffd) Start() error {
+	mf, err := memfileCache.GetMmapfile(u.memfilePath, fmt.Sprintf("%s-%s", u.envID, u.buildID))
+	if err != nil {
+		return fmt.Errorf("failed to get mmapfile: %w", err)
+	}
+
+	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: u.socketPath, Net: "unix"})
 	if err != nil {
 		return fmt.Errorf("failed listening on socket: %w", err)
 	}
 
-	h.lis = lis
+	u.lis = lis
 
-	err = os.Chmod(socketPath, 0o777)
+	err = os.Chmod(u.socketPath, 0o777)
 	if err != nil {
 		return fmt.Errorf("failed setting socket permissions: %w", err)
 	}
 
-	h.exitChan = make(chan error)
-
-	pRead, pWrite, err := os.Pipe()
-	if err != nil {
-		return fmt.Errorf("failed to create exit fd: %w", err)
-	}
-
-	h.exitReader = pRead
-	h.exitWriter = pWrite
-
 	go func() {
-		h.exitChan <- h.handle(memory)
-		close(h.exitChan)
+		u.exitChan <- u.handle(mf)
+		close(u.exitChan)
 	}()
 
 	return nil
 }
 
-func (h *Handler) receiveSetupMsg() (*UffdSetup, error) {
-	conn, err := h.lis.Accept()
+func (u *Uffd) receiveSetup() (*UffdSetup, error) {
+	conn, err := u.lis.Accept()
 	if err != nil {
 		return nil, fmt.Errorf("failed accepting firecracker connection: %w", err)
 	}
@@ -106,8 +141,8 @@ func (h *Handler) receiveSetupMsg() (*UffdSetup, error) {
 	}, nil
 }
 
-func (h *Handler) handle(memory *cache.Mmapfile) (err error) {
-	setup, err := h.receiveSetupMsg()
+func (u *Uffd) handle(memory *cache.Mmapfile) (err error) {
+	setup, err := u.receiveSetup()
 	if err != nil {
 		return fmt.Errorf("failed to receive setup message from firecracker: %w", err)
 	}
@@ -115,7 +150,7 @@ func (h *Handler) handle(memory *cache.Mmapfile) (err error) {
 	uffd := setup.Fd
 	defer syscall.Close(int(uffd))
 
-	err = Serve(int(uffd), setup.Mappings, memory, h.exitReader.Fd())
+	err = Serve(int(uffd), setup.Mappings, memory, u.exitReader.Fd())
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}
@@ -123,20 +158,11 @@ func (h *Handler) handle(memory *cache.Mmapfile) (err error) {
 	return nil
 }
 
-func (h *Handler) Wait() error {
-	handleErr := <-h.exitChan
+func (u *Uffd) Wait() error {
+	handleErr := <-u.exitChan
 
-	closeErr := h.lis.Close()
-	writerErr := h.exitWriter.Close()
+	closeErr := u.lis.Close()
+	writerErr := u.exitWriter.Close()
 
 	return errors.Join(handleErr, closeErr, writerErr)
-}
-
-func (h *Handler) Stop() error {
-	_, err := h.exitWriter.Write([]byte{0})
-	if err != nil {
-		return fmt.Errorf("failed write to exit writer: %w", err)
-	}
-
-	return nil
 }

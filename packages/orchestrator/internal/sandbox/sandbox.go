@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,9 +27,6 @@ const (
 	kernelMountDir = "/fc-vm"
 	kernelName     = "vmlinux.bin"
 	fcBinaryName   = "firecracker"
-
-	waitForUffd       = 80 * time.Millisecond
-	uffdCheckInterval = 10 * time.Millisecond
 )
 
 var logsProxyAddress = os.Getenv("LOGS_PROXY_ADDRESS")
@@ -38,15 +36,16 @@ var httpClient = http.Client{
 }
 
 type Sandbox struct {
-	slot  IPSlot
 	files *SandboxFiles
-
+	
 	fc   *fc
 	uffd *uffd.Uffd
-
+	
 	Sandbox   *orchestrator.SandboxConfig
 	StartedAt time.Time
 	TraceID   string
+	
+	slot  IPSlot
 }
 
 func fcBinaryPath(fcVersion string) string {
@@ -149,11 +148,14 @@ func NewSandbox(
 
 	var fcUffd *uffd.Uffd
 	if fsEnv.UFFDSocketPath != nil {
-		fcUffd = uffd.New(fsEnv.MemfilePath(), *fsEnv.UFFDSocketPath, config.TemplateID, config.BuildID)
+		fcUffd, err = uffd.New(fsEnv.MemfilePath(), *fsEnv.UFFDSocketPath, config.TemplateID, config.BuildID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create uffd: %w", err)
+		}
 
 		telemetry.ReportEvent(childCtx, "created uffd")
 
-		uffdErr := fcUffd.Start(childCtx, tracer)
+		uffdErr := fcUffd.Start()
 		if err != nil {
 			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
 			telemetry.ReportCriticalError(childCtx, errMsg)
@@ -180,12 +182,13 @@ func NewSandbox(
 
 	err = fc.start(childCtx, tracer)
 	if err != nil {
+		var fcUffdErr error
 		if fcUffd != nil {
-			fcUffd.Stop(childCtx, tracer)
+			fcUffdErr = fcUffd.Stop()
 		}
 
 		errMsg := fmt.Errorf("failed to start FC: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, errors.Join(errMsg, fcUffdErr))
 
 		return nil, errMsg
 	}
@@ -256,8 +259,10 @@ syncLoop:
 			err := s.syncClock(ctx, port)
 			if err != nil {
 				telemetry.ReportError(ctx, fmt.Errorf("error syncing clock: %w", err))
+
 				continue
 			}
+
 			break syncLoop
 		}
 	}
@@ -306,6 +311,15 @@ func (s *Sandbox) CleanupAfterFCStop(
 func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) (err error) {
 	defer s.Stop(ctx, tracer)
 
+	uffdExit := make(chan error)
+
+	if s.uffd != nil {
+		go func() {
+			uffdExit <- s.uffd.Wait()
+			close(uffdExit)
+		}()
+	}
+
 	return s.fc.wait()
 }
 
@@ -319,7 +333,7 @@ func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) {
 		// Wait until we stop uffd if it exists
 		time.Sleep(1 * time.Second)
 
-		s.uffd.Stop(childCtx, tracer)
+		s.uffd.Stop()
 	}
 }
 
