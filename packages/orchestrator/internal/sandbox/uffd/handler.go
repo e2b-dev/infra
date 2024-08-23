@@ -8,6 +8,7 @@ import (
 	"os"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 )
@@ -31,7 +32,8 @@ func New(
 	}
 
 	return &Uffd{
-		exitChan:    make(chan error),
+		exitChan:    make(chan error, 1),
+		PollReady:   make(chan struct{}, 1),
 		exitReader:  pRead,
 		exitWriter:  pWrite,
 		envID:       envID,
@@ -50,14 +52,15 @@ func New(
 }
 
 type Uffd struct {
-	exitChan chan error
+	exitChan  chan error
+	PollReady chan struct{}
 
 	exitReader *os.File
 	exitWriter *os.File
 
 	Stop func() error
 
-	lis net.Listener
+	lis *net.UnixListener
 
 	socketPath  string
 	memfilePath string
@@ -93,6 +96,11 @@ func (u *Uffd) Start() error {
 }
 
 func (u *Uffd) receiveSetup() (*UffdSetup, error) {
+	err := u.lis.SetDeadline(time.Now().Add(5 * time.Second))
+	if err != nil {
+		return nil, fmt.Errorf("failed setting listener deadline: %w", err)
+	}
+
 	conn, err := u.lis.Accept()
 	if err != nil {
 		return nil, fmt.Errorf("failed accepting firecracker connection: %w", err)
@@ -150,6 +158,8 @@ func (u *Uffd) handle(memory *cache.Mmapfile) (err error) {
 	uffd := setup.Fd
 	defer syscall.Close(int(uffd))
 
+	u.PollReady <- struct{}{}
+
 	err = Serve(int(uffd), setup.Mappings, memory, u.exitReader.Fd())
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
@@ -160,6 +170,8 @@ func (u *Uffd) handle(memory *cache.Mmapfile) (err error) {
 
 func (u *Uffd) Wait() error {
 	handleErr := <-u.exitChan
+
+	close(u.PollReady)
 
 	closeErr := u.lis.Close()
 	writerErr := u.exitWriter.Close()

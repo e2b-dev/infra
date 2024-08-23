@@ -30,6 +30,8 @@ type MmdsMetadata struct {
 }
 
 type fc struct {
+	pollReady chan struct{}
+
 	ctx context.Context
 
 	cmd *exec.Cmd
@@ -69,6 +71,7 @@ func (fc *fc) loadSnapshot(
 	envPath string,
 	metadata interface{},
 	uffdSocketPath *string,
+	pollReady chan struct{},
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
 		attribute.String("instance.socket.path", socketPath),
@@ -130,7 +133,14 @@ func (fc *fc) loadSnapshot(
 		return err
 	}
 
-	time.Sleep(10 * time.Millisecond)
+	if pollReady != nil {
+		select {
+		case <-pollReady:
+			break
+		case <-time.After(10 * time.Second):
+			return fmt.Errorf("timeout waiting for the uffd polling to be ready")
+		}
+	}
 
 	state := models.VMStateResumed
 	pauseConfig := operations.PatchVMParams{
@@ -158,6 +168,7 @@ func (fc *fc) loadSnapshot(
 	_, err = httpClient.Operations.PutMmds(&mmdsConfig)
 	if err != nil {
 		telemetry.ReportCriticalError(childCtx, err)
+
 		return err
 	}
 
@@ -172,6 +183,7 @@ func newFC(
 	slot IPSlot,
 	fsEnv *SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
+	pollReady chan struct{},
 ) *fc {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.String("instance.id", mmdsMetadata.InstanceID),
@@ -225,6 +237,7 @@ func newFC(
 	cmd.Stdout = cmdStderrWriter
 
 	return &fc{
+		pollReady:      pollReady,
 		id:             mmdsMetadata.InstanceID,
 		cmd:            cmd,
 		stdout:         cmdStdoutReader,
@@ -333,6 +346,7 @@ func (fc *fc) start(
 		fc.envPath,
 		fc.metadata,
 		fc.uffdSocketPath,
+		fc.pollReady,
 	); err != nil {
 		fc.stop(childCtx, tracer)
 

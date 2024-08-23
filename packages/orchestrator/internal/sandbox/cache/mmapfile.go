@@ -27,12 +27,17 @@ func (m *Mmapfile) ReadAt(p []byte, off int64) (n int, err error) {
 	return n, nil
 }
 
-func (h *Mmapfile) Close() error {
-	if h.Map == nil {
+func (m *Mmapfile) Close() error {
+	if m.Map == nil {
 		return nil
 	}
 
-	return h.Map.Unmap()
+	err := m.Map.Unmap()
+	if err != nil {
+		return fmt.Errorf("failed to unmap region: %w", err)
+	}
+
+	return nil
 }
 
 func getMmapfile(path string) (*mmap.MMap, error) {
@@ -41,7 +46,12 @@ func getMmapfile(path string) (*mmap.MMap, error) {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 
-	defer f.Close()
+	defer func() {
+		closeErr := f.Close()
+		if closeErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to close file: %v", closeErr)
+		}
+	}()
 
 	mp, err := mmap.Map(f, unix.PROT_READ, mmap.RDONLY)
 	if err != nil {

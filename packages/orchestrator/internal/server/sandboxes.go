@@ -49,13 +49,14 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	go func() {
 		tracer := otel.Tracer("close")
 		closeCtx, _ := tracer.Start(ctx, "close-sandbox")
+
 		defer telemetry.ReportEvent(closeCtx, "sandbox closed")
 		defer s.sandboxes.Remove(req.Sandbox.SandboxID)
 		defer sbx.CleanupAfterFCStop(context.Background(), tracer, s.consul, s.dns, req.Sandbox.SandboxID)
 
-		err := sbx.Wait(context.Background(), tracer)
-		if err != nil {
-			errMsg := fmt.Errorf("failed to wait for Sandbox: %w", err)
+		waitErr := sbx.Wait(context.Background(), tracer)
+		if waitErr != nil {
+			errMsg := fmt.Errorf("failed to wait for Sandbox: %w", waitErr)
 			fmt.Println(errMsg)
 		} else {
 			fmt.Printf("Sandbox %s wait finished\n", req.Sandbox.SandboxID)

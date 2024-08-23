@@ -37,15 +37,15 @@ var httpClient = http.Client{
 
 type Sandbox struct {
 	files *SandboxFiles
-	
+
 	fc   *fc
 	uffd *uffd.Uffd
-	
+
 	Sandbox   *orchestrator.SandboxConfig
 	StartedAt time.Time
 	TraceID   string
-	
-	slot  IPSlot
+
+	slot IPSlot
 }
 
 func fcBinaryPath(fcVersion string) string {
@@ -166,6 +166,11 @@ func NewSandbox(
 		telemetry.ReportEvent(childCtx, "started uffd")
 	}
 
+	var pollReady chan struct{}
+	if fcUffd != nil {
+		pollReady = fcUffd.PollReady
+	}
+
 	fc := newFC(
 		childCtx,
 		tracer,
@@ -178,6 +183,7 @@ func NewSandbox(
 			TraceID:    traceID,
 			TeamID:     config.TeamID,
 		},
+		pollReady,
 	)
 
 	err = fc.start(childCtx, tracer)
@@ -319,6 +325,8 @@ func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) (err error) {
 			close(uffdExit)
 		}()
 	}
+
+	// TODO: Exit fc on uffd exit and exit uffd on fc exit?
 
 	return s.fc.wait()
 }
