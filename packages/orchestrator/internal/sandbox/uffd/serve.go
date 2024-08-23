@@ -99,12 +99,11 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 		}
 
 		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
+		pagesize := uint64(mapping.PageSize)
 
-		if offset >= uint64(len(*src.Map)) {
+		if offset+pagesize > uint64(len(*src.Map)) {
 			return fmt.Errorf("offset %v is out of bounds", offset)
 		}
-
-		pagesize := uint64(mapping.PageSize)
 
 		b := (*src.Map)[offset : offset+pagesize]
 
