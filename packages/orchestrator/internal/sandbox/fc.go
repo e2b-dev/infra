@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
@@ -115,7 +116,7 @@ func (fc *fc) loadSnapshot(
 	snapshotConfig := operations.LoadSnapshotParams{
 		Context: childCtx,
 		Body: &models.SnapshotLoadParams{
-			ResumeVM:            true,
+			ResumeVM:            false,
 			EnableDiffSnapshots: false,
 			MemBackend:          backend,
 			SnapshotPath:        &snapfilePath,
@@ -125,8 +126,28 @@ func (fc *fc) loadSnapshot(
 	_, err := httpClient.Operations.LoadSnapshot(&snapshotConfig)
 	if err != nil {
 		telemetry.ReportCriticalError(childCtx, err)
+
 		return err
 	}
+
+	time.Sleep(10 * time.Millisecond)
+
+	state := models.VMStateResumed
+	pauseConfig := operations.PatchVMParams{
+		Context: childCtx,
+		Body: &models.VM{
+			State: &state,
+		},
+	}
+
+	_, err = httpClient.Operations.PatchVM(&pauseConfig)
+	if err != nil {
+		errMsg := fmt.Errorf("error pausing vm: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
+	}
+
 	telemetry.ReportEvent(childCtx, "snapshot loaded")
 
 	mmdsConfig := operations.PutMmdsParams{

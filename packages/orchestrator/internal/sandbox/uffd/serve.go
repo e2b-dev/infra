@@ -3,6 +3,7 @@ package uffd
 import (
 	"errors"
 	"fmt"
+	"os"
 	"syscall"
 	"unsafe"
 
@@ -57,8 +58,20 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 		}
 
 		buf := make([]byte, unsafe.Sizeof(constants.UffdMsg{}))
-		if _, err := syscall.Read(int(uffd), buf); err != nil {
-			return fmt.Errorf("failed to read: %v", err)
+
+		for {
+			_, err := syscall.Read(int(uffd), buf)
+			if err == nil {
+				break
+			}
+
+			if err == syscall.EAGAIN {
+				fmt.Fprintf(os.Stderr, "uffd read would block\n")
+
+				continue
+			}
+
+			return fmt.Errorf("failed to read: %w", err)
 		}
 
 		msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
@@ -73,7 +86,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 
 		mapping, err := getMapping(uintptr(addr), mappings)
 		if err != nil {
-			return fmt.Errorf("failed to map: %v", err)
+			return fmt.Errorf("failed to map: %w", err)
 		}
 
 		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
@@ -101,10 +114,11 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 			uintptr(unsafe.Pointer(&cpy)),
 		); errno != 0 {
 			if errno == unix.EEXIST {
-				return nil
+				// Page is already mapped
+				continue
 			}
 
-			return fmt.Errorf("failed uffdio copy %v", errno)
+			return fmt.Errorf("failed uffdio copy %w", errno)
 		}
 	}
 }
