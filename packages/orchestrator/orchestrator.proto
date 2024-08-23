@@ -23,6 +23,8 @@ message SandboxConfig {
 
   string envdVersion = 11;
   map<string, string> envVars = 12;
+
+  bool useUffd = 13;
 }
 
 

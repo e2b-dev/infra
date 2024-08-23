@@ -41,6 +41,8 @@ type fc struct {
 
 	metadata *MmdsMetadata
 
+	uffdSocketPath *string
+
 	id string
 
 	socketPath  string
@@ -70,6 +72,7 @@ func (fc *fc) loadSnapshot(
 	envPath,
 	memfilePath string,
 	metadata interface{},
+	uffdSocketPath *string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
 		attribute.String("instance.socket.path", socketPath),
@@ -90,10 +93,27 @@ func (fc *fc) loadSnapshot(
 
 	var backend *models.MemoryBackend
 
-	backendType := models.MemoryBackendBackendTypeFile
-	backend = &models.MemoryBackend{
-		BackendPath: &memfilePath,
-		BackendType: &backendType,
+	if uffdSocketPath != nil {
+		err := waitForSocket(*uffdSocketPath, socketWaitTimeout)
+		if err != nil {
+			telemetry.ReportCriticalError(childCtx, err)
+
+			return err
+		} else {
+			telemetry.ReportEvent(childCtx, "uffd socket ready")
+		}
+
+		backendType := models.MemoryBackendBackendTypeUffd
+		backend = &models.MemoryBackend{
+			BackendPath: uffdSocketPath,
+			BackendType: &backendType,
+		}
+	} else {
+		backendType := models.MemoryBackendBackendTypeFile
+		backend = &models.MemoryBackend{
+			BackendPath: &memfilePath,
+			BackendType: &backendType,
+		}
 	}
 
 	snapshotConfig := operations.LoadSnapshotParams{
@@ -188,15 +208,16 @@ func newFC(
 	cmd.Stdout = cmdStderrWriter
 
 	return &fc{
-		id:          mmdsMetadata.InstanceID,
-		cmd:         cmd,
-		stdout:      cmdStdoutReader,
-		stderr:      cmdStderrReader,
-		ctx:         vmmCtx,
-		socketPath:  fsEnv.SocketPath,
-		envPath:     fsEnv.EnvPath,
-		metadata:    mmdsMetadata,
-		memfilePath: fsEnv.MemfilePath,
+		id:             mmdsMetadata.InstanceID,
+		cmd:            cmd,
+		stdout:         cmdStdoutReader,
+		stderr:         cmdStderrReader,
+		ctx:            vmmCtx,
+		socketPath:     fsEnv.SocketPath,
+		envPath:        fsEnv.EnvPath,
+		metadata:       mmdsMetadata,
+		uffdSocketPath: fsEnv.UFFDSocketPath,
+		memfilePath:    fsEnv.MemfilePath,
 	}
 }
 
@@ -296,6 +317,7 @@ func (fc *fc) start(
 		fc.envPath,
 		fc.memfilePath,
 		fc.metadata,
+		fc.uffdSocketPath,
 	); err != nil {
 		fc.stop(childCtx, tracer)
 

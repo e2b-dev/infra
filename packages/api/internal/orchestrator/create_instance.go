@@ -65,6 +65,7 @@ func (o *Orchestrator) CreateSandbox(
 			EnvVars:            envVars,
 			MaxInstanceLength:  maxInstanceLengthHours,
 			HugePages:          features.HasHugePages(),
+			UseUffd:            features.HasUffd(),
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),

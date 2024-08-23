@@ -41,3 +41,11 @@ func (v *VersionInfo) HasHugePages() bool {
 
 	return false
 }
+
+func (v *VersionInfo) HasUffd() bool {
+	if v.commitHash == "9e0b47a" {
+		return false
+	}
+
+	return true
+}
