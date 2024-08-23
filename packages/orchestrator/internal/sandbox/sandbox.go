@@ -395,14 +395,14 @@ func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) {
 	childCtx, childSpan := tracer.Start(ctx, "stop-sandbox", trace.WithAttributes())
 	defer childSpan.End()
 
+	s.fc.stop(childCtx, tracer)
+
 	if s.uffd != nil {
 		// Wait until we stop uffd if it exists
 		time.Sleep(1 * time.Second)
 
 		s.uffd.stop(childCtx, tracer)
 	}
-
-	s.fc.stop(childCtx, tracer)
 }
 
 func (s *Sandbox) SlotIdx() int {
