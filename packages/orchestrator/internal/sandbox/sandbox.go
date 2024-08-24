@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
@@ -36,7 +37,8 @@ var httpClient = http.Client{
 }
 
 type Sandbox struct {
-	files *SandboxFiles
+	files    *SandboxFiles
+	stopOnce func() error
 
 	fc   *fc
 	uffd *uffd.Uffd
@@ -208,6 +210,26 @@ func NewSandbox(
 		uffd:  fcUffd,
 
 		Sandbox: config,
+		stopOnce: sync.OnceValue(func() error {
+			fcErr := fc.stop()
+
+			var uffdErr error
+			if fcUffd != nil {
+				// Wait until we stop uffd if it exists
+				time.Sleep(1 * time.Second)
+
+				uffdErr = fcUffd.Stop()
+				if uffdErr != nil {
+					uffdErr = fmt.Errorf("failed to stop uffd: %w", err)
+				}
+			}
+
+			if fcErr != nil || uffdErr != nil {
+				return errors.Join(fcErr, uffdErr)
+			}
+
+			return nil
+		}),
 	}
 
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
@@ -315,14 +337,13 @@ func (s *Sandbox) CleanupAfterFCStop(
 }
 
 func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) error {
-	defer func() {
-		err := s.Stop(ctx, tracer)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error when stopping sandbox: %v\n", err)
-		}
-	}()
-
 	uffdExit := make(chan error)
+	fcExit := make(chan error)
+
+	go func() {
+		fcExit <- s.fc.wait()
+		close(fcExit)
+	}()
 
 	if s.uffd != nil {
 		go func() {
@@ -331,30 +352,32 @@ func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) error {
 		}()
 	}
 
-	// TODO: Exit fc on uffd exit and exit uffd on fc exit?
+	select {
+	case fcErr := <-fcExit:
+		stopErr := s.Stop(ctx, tracer)
+		uffdErr := <-uffdExit
 
-	return s.fc.wait()
+		return errors.Join(fcErr, stopErr, uffdErr)
+	case uffdErr := <-uffdExit:
+		stopErr := s.Stop(ctx, tracer)
+		fcErr := <-fcExit
+
+		return errors.Join(uffdErr, stopErr, fcErr)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) error {
 	childCtx, childSpan := tracer.Start(ctx, "stop-sandbox", trace.WithAttributes())
 	defer childSpan.End()
 
-	s.fc.stop(childCtx, tracer)
-
-	telemetry.ReportEvent(childCtx, "stopped fc process")
-
-	if s.uffd != nil {
-		// Wait until we stop uffd if it exists
-		time.Sleep(1 * time.Second)
-
-		err := s.uffd.Stop()
-		if err != nil {
-			return fmt.Errorf("failed to stop uffd: %w", err)
-		}
-
-		telemetry.ReportEvent(childCtx, "stopped uffd")
+	err := s.stopOnce()
+	if err != nil {
+		return fmt.Errorf("failed to stop sandbox: %w", err)
 	}
+
+	telemetry.ReportEvent(childCtx, "stopped sandbox")
 
 	return nil
 }

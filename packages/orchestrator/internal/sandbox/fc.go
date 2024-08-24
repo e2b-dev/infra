@@ -3,6 +3,7 @@ package sandbox
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -363,9 +364,9 @@ func (fc *fc) start(
 		fc.uffdSocketPath,
 		fc.pollReady,
 	); loadErr != nil {
-		fc.stop(childCtx, tracer)
+		fcErr := fc.stop()
 
-		errMsg := fmt.Errorf("failed to load snapshot: %w", loadErr)
+		errMsg := fmt.Errorf("failed to load snapshot: %w", errors.Join(loadErr, fcErr))
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg
@@ -375,7 +376,12 @@ func (fc *fc) start(
 
 	defer func() {
 		if err != nil {
-			fc.stop(childCtx, tracer)
+			err := fc.stop()
+			if err != nil {
+				errMsg := fmt.Errorf("error stopping FC process: %w", err)
+
+				telemetry.ReportError(childCtx, errMsg)
+			}
 		}
 	}()
 
@@ -392,19 +398,11 @@ func (fc *fc) start(
 	return nil
 }
 
-func (fc *fc) stop(ctx context.Context, tracer trace.Tracer) {
-	childCtx, childSpan := tracer.Start(ctx, "stop-fc", trace.WithAttributes(
-		attribute.String("instance.cmd", fc.cmd.String()),
-		attribute.String("instance.cmd.dir", fc.cmd.Dir),
-		attribute.String("instance.cmd.path", fc.cmd.Path),
-	))
-	defer childSpan.End()
-
+func (fc *fc) stop() error {
 	err := fc.cmd.Process.Kill()
 	if err != nil {
-		errMsg := fmt.Errorf("failed to send KILL to FC process: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "sent KILL to FC process")
+		return fmt.Errorf("failed to send KILL to FC process: %w", err)
 	}
+
+	return nil
 }
