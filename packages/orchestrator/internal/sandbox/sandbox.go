@@ -219,8 +219,6 @@ func NewSandbox(
 		StartedAt: startedAt,
 		EndAt:     endAt,
 		stopOnce: sync.OnceValue(func() error {
-			fcErr := fc.stop()
-
 			var uffdErr error
 			if fcUffd != nil {
 				// Wait until we stop uffd if it exists
@@ -231,6 +229,8 @@ func NewSandbox(
 					uffdErr = fmt.Errorf("failed to stop uffd: %w", err)
 				}
 			}
+
+			fcErr := fc.stop()
 
 			if fcErr != nil || uffdErr != nil {
 				return errors.Join(fcErr, uffdErr)
