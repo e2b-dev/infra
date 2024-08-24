@@ -82,7 +82,7 @@
     {
       "preLaunchTask": "prepare-debug",
       "postDebugTask": "stop-debug-docker",
-      "name": "Debug in Docker",
+      "name": "Debug envd",
       "type": "go",
       "request": "attach",
       "mode": "remote",
@@ -90,6 +90,7 @@
       "port": 2345,
       "host": "127.0.0.1",
       "showLog": true,
+      "stopOnEntry": true,
       "trace": "log",
       "logOutput": "rpc"
     },

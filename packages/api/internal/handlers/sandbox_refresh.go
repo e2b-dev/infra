@@ -41,11 +41,20 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 		duration = instance.InstanceExpiration
 	}
 
-	err = a.instanceCache.KeepAliveFor(sandboxID, duration)
+	info, err := a.instanceCache.KeepAliveFor(sandboxID, duration, false)
 	if err != nil {
 		errMsg := fmt.Errorf("error when refreshing instance: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error refreshing sandbox - sandbox '%s' was not found", sandboxID))
+
+		return
+	}
+
+	err = a.orchestrator.UpdateSandbox(a.Tracer, ctx, sandboxID, info.EndTime)
+	if err != nil {
+		errMsg := fmt.Errorf("error when refreshing instance: %w", err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error refreshing sandbox - sandbox '%s' was not found", sandboxID))
 
 		return
 	}

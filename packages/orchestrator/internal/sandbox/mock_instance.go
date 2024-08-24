@@ -66,6 +66,8 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 			SandboxID:          instanceID,
 		},
 		"trace-test-1",
+		time.Now(),
+		time.Now(),
 	)
 	if err != nil {
 		panic(err)

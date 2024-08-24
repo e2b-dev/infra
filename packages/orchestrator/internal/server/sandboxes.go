@@ -26,6 +26,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		attribute.String("env.kernel.version", req.Sandbox.KernelVersion),
 		attribute.String("instance.id", req.Sandbox.SandboxID),
 		attribute.String("client.id", constants.ClientID),
+		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
 	sbx, err := sandbox.NewSandbox(
@@ -36,6 +37,8 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.networkPool,
 		req.Sandbox,
 		childSpan.SpanContext().TraceID().String(),
+		req.StartTime.AsTime(),
+		req.EndTime.AsTime(),
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create sandbox: %w", err)
@@ -68,6 +71,23 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}, nil
 }
 
+func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {
+	_, childSpan := s.tracer.Start(ctx, "sandbox-update")
+	defer childSpan.End()
+
+	item, ok := s.sandboxes.Get(req.SandboxID)
+	if !ok {
+		errMsg := fmt.Errorf("sandbox not found")
+		telemetry.ReportError(ctx, errMsg)
+
+		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
+	}
+
+	item.EndAt = req.EndTime.AsTime()
+
+	return &emptypb.Empty{}, nil
+}
+
 func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListResponse, error) {
 	_, childSpan := s.tracer.Start(ctx, "sandbox-list")
 	defer childSpan.End()
@@ -89,6 +109,7 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			Config:    sbx.Sandbox,
 			ClientID:  constants.ClientID,
 			StartTime: timestamppb.New(sbx.StartedAt),
+			EndTime:   timestamppb.New(sbx.EndAt),
 		})
 	}
 

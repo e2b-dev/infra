@@ -65,6 +65,11 @@ func TeamID(v uuid.UUID) predicate.UsersTeams {
 	return predicate.UsersTeams(sql.FieldEQ(FieldTeamID, v))
 }
 
+// IsDefault applies equality check predicate on the "is_default" field. It's identical to IsDefaultEQ.
+func IsDefault(v bool) predicate.UsersTeams {
+	return predicate.UsersTeams(sql.FieldEQ(FieldIsDefault, v))
+}
+
 // UserIDEQ applies the EQ predicate on the "user_id" field.
 func UserIDEQ(v uuid.UUID) predicate.UsersTeams {
 	return predicate.UsersTeams(sql.FieldEQ(FieldUserID, v))
@@ -103,6 +108,16 @@ func TeamIDIn(vs ...uuid.UUID) predicate.UsersTeams {
 // TeamIDNotIn applies the NotIn predicate on the "team_id" field.
 func TeamIDNotIn(vs ...uuid.UUID) predicate.UsersTeams {
 	return predicate.UsersTeams(sql.FieldNotIn(FieldTeamID, vs...))
+}
+
+// IsDefaultEQ applies the EQ predicate on the "is_default" field.
+func IsDefaultEQ(v bool) predicate.UsersTeams {
+	return predicate.UsersTeams(sql.FieldEQ(FieldIsDefault, v))
+}
+
+// IsDefaultNEQ applies the NEQ predicate on the "is_default" field.
+func IsDefaultNEQ(v bool) predicate.UsersTeams {
+	return predicate.UsersTeams(sql.FieldNEQ(FieldIsDefault, v))
 }
 
 // HasUsers applies the HasEdge predicate on the "users" edge.

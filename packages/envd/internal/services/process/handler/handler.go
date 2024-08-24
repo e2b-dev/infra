@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
+	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 
 	"connectrpc.com/connect"
 	"github.com/creack/pty"
@@ -52,7 +53,7 @@ func (p *Handler) Pid() uint32 {
 	return uint32(p.cmd.Process.Pid)
 }
 
-func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger) (*Handler, error) {
+func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars *utils.Map[string, string]) (*Handler, error) {
 	cmd := exec.Command(req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
 
 	uid, gid, err := permissions.GetUserIds(user)
@@ -83,6 +84,14 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger) (*Handl
 	formattedVars = append(formattedVars, "HOME="+user.HomeDir)
 	formattedVars = append(formattedVars, "USER="+user.Username)
 	formattedVars = append(formattedVars, "LOGNAME="+user.Username)
+
+	// Add the environment variables from the global environment
+	if envVars != nil {
+		envVars.Range(func(key string, value string) bool {
+			formattedVars = append(formattedVars, key+"="+value)
+			return true
+		})
+	}
 
 	// Only the last values of the env vars are used - this allows for overwriting defaults
 	for key, value := range req.GetProcess().GetEnvs() {

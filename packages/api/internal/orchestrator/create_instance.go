@@ -4,9 +4,11 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -25,9 +27,13 @@ func (o *Orchestrator) CreateSandbox(
 	teamID string,
 	build *models.EnvBuild,
 	maxInstanceLengthHours int64,
-	metadata map[string]string,
+	metadata,
+	envVars map[string]string,
 	kernelVersion,
-	firecrackerVersion string,
+	firecrackerVersion,
+	envdVersion string,
+	startTime time.Time,
+	endTime time.Time,
 ) (*api.Sandbox, error) {
 	childCtx, childSpan := t.Start(ctx, "create-sandbox",
 		trace.WithAttributes(
@@ -54,10 +60,14 @@ func (o *Orchestrator) CreateSandbox(
 			SandboxID:          sandboxID,
 			KernelVersion:      kernelVersion,
 			FirecrackerVersion: firecrackerVersion,
+			EnvdVersion:        envdVersion,
 			Metadata:           metadata,
+			EnvVars:            envVars,
 			MaxInstanceLength:  maxInstanceLengthHours,
 			HugePages:          features.HasHugePages(),
 		},
+		StartTime: timestamppb.New(startTime),
+		EndTime:   timestamppb.New(endTime),
 	})
 
 	err = utils.UnwrapGRPCError(err)

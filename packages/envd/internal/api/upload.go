@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -8,12 +9,13 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 	"syscall"
+
+	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
-
-	"github.com/rs/zerolog"
 )
 
 func freeDiskSpace(path string) (free uint64, err error) {
@@ -30,25 +32,10 @@ func freeDiskSpace(path string) (free uint64, err error) {
 	return freeSpace, nil
 }
 
-func processFile(r *http.Request, params PostFilesParams, part *multipart.Part, user *user.User, logger zerolog.Logger) (int, error) {
-	var pathToResolve string
-
-	if params.Path != nil {
-		pathToResolve = *params.Path
-	} else {
-		pathToResolve = part.FileName()
-	}
-
+func processFile(r *http.Request, path string, part *multipart.Part, user *user.User, logger zerolog.Logger) (int, error) {
 	logger.Debug().
-		Str("path", pathToResolve).
+		Str("path", path).
 		Msg("File processing")
-
-	resolvedPath, err := permissions.ExpandAndResolve(pathToResolve, user)
-	if err != nil {
-		errMsg := fmt.Errorf("error resolving path: %w", err)
-
-		return http.StatusBadRequest, errMsg
-	}
 
 	uid, gid, err := permissions.GetUserIds(user)
 	if err != nil {
@@ -57,14 +44,14 @@ func processFile(r *http.Request, params PostFilesParams, part *multipart.Part, 
 		return http.StatusInternalServerError, errMsg
 	}
 
-	err = permissions.EnsureDirs(filepath.Dir(resolvedPath), int(uid), int(gid))
+	err = permissions.EnsureDirs(filepath.Dir(path), int(uid), int(gid))
 	if err != nil {
 		errMsg := fmt.Errorf("error ensuring directories: %w", err)
 
 		return http.StatusInternalServerError, errMsg
 	}
 
-	freeSpace, err := freeDiskSpace(filepath.Dir(resolvedPath))
+	freeSpace, err := freeDiskSpace(filepath.Dir(path))
 	if err != nil {
 		errMsg := fmt.Errorf("error checking free disk space: %w", err)
 
@@ -74,12 +61,12 @@ func processFile(r *http.Request, params PostFilesParams, part *multipart.Part, 
 	// Sometimes the size can be unknown resulting in ContentLength being -1 or 0.
 	// We are still comparing these values — this condition will just always evaluate false for them.
 	if int64(freeSpace) < r.ContentLength {
-		errMsg := fmt.Errorf("not enough disk space on '%s': %d bytes required, %d bytes free", filepath.Dir(resolvedPath), r.ContentLength, freeSpace)
+		errMsg := fmt.Errorf("not enough disk space on '%s': %d bytes required, %d bytes free", filepath.Dir(path), r.ContentLength, freeSpace)
 
 		return http.StatusInsufficientStorage, errMsg
 	}
 
-	stat, err := os.Stat(resolvedPath)
+	stat, err := os.Stat(path)
 	if err != nil && !os.IsNotExist(err) {
 		errMsg := fmt.Errorf("error getting file info: %w", err)
 
@@ -88,13 +75,13 @@ func processFile(r *http.Request, params PostFilesParams, part *multipart.Part, 
 
 	if err == nil {
 		if stat.IsDir() {
-			errMsg := fmt.Errorf("path is a directory: %s", resolvedPath)
+			errMsg := fmt.Errorf("path is a directory: %s", path)
 
 			return http.StatusBadRequest, errMsg
 		}
 	}
 
-	file, err := os.Create(resolvedPath)
+	file, err := os.Create(path)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating file: %w", err)
 
@@ -103,7 +90,7 @@ func processFile(r *http.Request, params PostFilesParams, part *multipart.Part, 
 
 	defer file.Close()
 
-	err = os.Chown(resolvedPath, int(uid), int(gid))
+	err = os.Chown(path, int(uid), int(gid))
 	if err != nil {
 		errMsg := fmt.Errorf("error changing file ownership: %w", err)
 
@@ -120,6 +107,41 @@ func processFile(r *http.Request, params PostFilesParams, part *multipart.Part, 
 	return http.StatusNoContent, nil
 }
 
+func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, params PostFilesParams) (string, error) {
+	var pathToResolve string
+
+	if params.Path != nil {
+		pathToResolve = *params.Path
+	} else {
+		pathToResolve = part.FileName()
+	}
+
+	filePath, err := permissions.ExpandAndResolve(pathToResolve, u)
+	if err != nil {
+		return "", fmt.Errorf("error resolving path: %w", err)
+	}
+
+	for _, entry := range *paths {
+		if entry.Path == filePath {
+			var alreadyUploaded []string
+			for _, uploadedFile := range *paths {
+				if uploadedFile.Path != filePath {
+					alreadyUploaded = append(alreadyUploaded, uploadedFile.Path)
+				}
+			}
+
+			errMsg := fmt.Errorf("you cannot upload multiple files to the same path '%s' in one upload request, only the first specified file was uploaded", filePath)
+
+			if len(alreadyUploaded) > 1 {
+				errMsg = fmt.Errorf("%s, also the following files were uploaded: %v", errMsg, strings.Join(alreadyUploaded, ", "))
+			}
+
+			return "", errMsg
+		}
+	}
+
+	return filePath, nil
+}
 func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
 	defer r.Body.Close()
 
@@ -168,6 +190,8 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		return
 	}
 
+	paths := UploadSuccess{}
+
 	for {
 		part, partErr := f.NextPart()
 
@@ -183,19 +207,43 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		}
 
 		if part.FormName() == "file" {
-			status, processErr := processFile(r, params, part, u, a.logger.With().Str(string(logs.OperationIDKey), operationID).Str("event_type", "file_processing").Logger())
-			if processErr != nil {
-				errorCode = status
-				errMsg = processErr
-
+			filePath, err := resolvePath(part, &paths, u, params)
+			if err != nil {
+				errorCode = http.StatusBadRequest
+				errMsg = err
 				jsonError(w, errorCode, errMsg)
 
 				return
 			}
+
+			status, processErr := processFile(r, filePath, part, u, a.logger.With().Str(string(logs.OperationIDKey), operationID).Str("event_type", "file_processing").Logger())
+			if processErr != nil {
+				errorCode = status
+				errMsg = processErr
+				jsonError(w, errorCode, errMsg)
+
+				return
+			}
+
+			paths = append(paths, EntryInfo{
+				Path: filePath,
+				Name: filepath.Base(filePath),
+				Type: File,
+			})
 		}
 
 		part.Close()
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	data, err := json.Marshal(paths)
+	if err != nil {
+		errMsg = fmt.Errorf("error marshaling response: %w", err)
+		errorCode = http.StatusInternalServerError
+		jsonError(w, errorCode, errMsg)
+
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }

@@ -12,6 +12,29 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for EntryInfoType.
+const (
+	File EntryInfoType = "file"
+)
+
+// EntryInfo defines model for EntryInfo.
+type EntryInfo struct {
+	// Name Name of the file
+	Name string `json:"name"`
+
+	// Path Path to the file
+	Path string `json:"path"`
+
+	// Type Type of the file
+	Type EntryInfoType `json:"type"`
+}
+
+// EntryInfoType Type of the file
+type EntryInfoType string
+
+// EnvVars Environment variables to set
+type EnvVars map[string]string
+
 // Error defines model for Error.
 type Error struct {
 	// Code Error code
@@ -27,20 +50,23 @@ type FilePath = string
 // User defines model for User.
 type User = string
 
-// DirectoryPathError defines model for DirectoryPathError.
-type DirectoryPathError = Error
-
 // FileNotFound defines model for FileNotFound.
 type FileNotFound = Error
 
 // InternalServerError defines model for InternalServerError.
 type InternalServerError = Error
 
+// InvalidPath defines model for InvalidPath.
+type InvalidPath = Error
+
 // InvalidUser defines model for InvalidUser.
 type InvalidUser = Error
 
 // NotEnoughDiskSpace defines model for NotEnoughDiskSpace.
 type NotEnoughDiskSpace = Error
+
+// UploadSuccess defines model for UploadSuccess.
+type UploadSuccess = []EntryInfo
 
 // GetFilesParams defines parameters for GetFiles.
 type GetFilesParams struct {
@@ -65,11 +91,23 @@ type PostFilesParams struct {
 	Username User `form:"username" json:"username"`
 }
 
+// PostInitJSONBody defines parameters for PostInit.
+type PostInitJSONBody struct {
+	// EnvVars Environment variables to set
+	EnvVars *EnvVars `json:"envVars,omitempty"`
+}
+
 // PostFilesMultipartRequestBody defines body for PostFiles for multipart/form-data ContentType.
 type PostFilesMultipartRequestBody PostFilesMultipartBody
 
+// PostInitJSONRequestBody defines body for PostInit for application/json ContentType.
+type PostInitJSONRequestBody PostInitJSONBody
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Get the environment variables
+	// (GET /envs)
+	GetEnvs(w http.ResponseWriter, r *http.Request)
 	// Download a file
 	// (GET /files)
 	GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesParams)
@@ -79,14 +117,20 @@ type ServerInterface interface {
 	// Check the health of the service
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
-	// Ensure the time and metadata is synced with the host
-	// (POST /sync)
-	PostSync(w http.ResponseWriter, r *http.Request)
+	// Set env vars, ensure the time and metadata is synced with the host
+	// (POST /init)
+	PostInit(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Get the environment variables
+// (GET /envs)
+func (_ Unimplemented) GetEnvs(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Download a file
 // (GET /files)
@@ -106,9 +150,9 @@ func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Ensure the time and metadata is synced with the host
-// (POST /sync)
-func (_ Unimplemented) PostSync(w http.ResponseWriter, r *http.Request) {
+// Set env vars, ensure the time and metadata is synced with the host
+// (POST /init)
+func (_ Unimplemented) PostInit(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -120,6 +164,21 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetEnvs operation middleware
+func (siw *ServerInterfaceWrapper) GetEnvs(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEnvs(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
 
 // GetFiles operation middleware
 func (siw *ServerInterfaceWrapper) GetFiles(w http.ResponseWriter, r *http.Request) {
@@ -222,12 +281,12 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r.WithContext(ctx))
 }
 
-// PostSync operation middleware
-func (siw *ServerInterfaceWrapper) PostSync(w http.ResponseWriter, r *http.Request) {
+// PostInit operation middleware
+func (siw *ServerInterfaceWrapper) PostInit(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostSync(w, r)
+		siw.Handler.PostInit(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -351,6 +410,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/envs", wrapper.GetEnvs)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/files", wrapper.GetFiles)
 	})
 	r.Group(func(r chi.Router) {
@@ -360,7 +422,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/sync", wrapper.PostSync)
+		r.Post(options.BaseURL+"/init", wrapper.PostInit)
 	})
 
 	return r

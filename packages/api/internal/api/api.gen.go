@@ -35,8 +35,11 @@ type ServerInterface interface {
 	// (POST /sandboxes/{sandboxID}/timeout)
 	PostSandboxesSandboxIDTimeout(c *gin.Context, sandboxID SandboxID)
 
+	// (GET /teams)
+	GetTeams(c *gin.Context)
+
 	// (GET /templates)
-	GetTemplates(c *gin.Context)
+	GetTemplates(c *gin.Context, params GetTemplatesParams)
 
 	// (POST /templates)
 	PostTemplates(c *gin.Context)
@@ -229,8 +232,8 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDTimeout(c *gin.Context)
 	siw.Handler.PostSandboxesSandboxIDTimeout(c, sandboxID)
 }
 
-// GetTemplates operation middleware
-func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
+// GetTeams operation middleware
+func (siw *ServerInterfaceWrapper) GetTeams(c *gin.Context) {
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
@@ -241,7 +244,35 @@ func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetTemplates(c)
+	siw.Handler.GetTeams(c)
+}
+
+// GetTemplates operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
+
+	var err error
+
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTemplatesParams
+
+	// ------------- Optional query parameter "teamID" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "teamID", c.Request.URL.Query(), &params.TeamID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter teamID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplates(c, params)
 }
 
 // PostTemplates operation middleware
@@ -426,6 +457,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID/logs", wrapper.GetSandboxesSandboxIDLogs)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/refreshes", wrapper.PostSandboxesSandboxIDRefreshes)
 	router.POST(options.BaseURL+"/sandboxes/:sandboxID/timeout", wrapper.PostSandboxesSandboxIDTimeout)
+	router.GET(options.BaseURL+"/teams", wrapper.GetTeams)
 	router.GET(options.BaseURL+"/templates", wrapper.GetTemplates)
 	router.POST(options.BaseURL+"/templates", wrapper.PostTemplates)
 	router.DELETE(options.BaseURL+"/templates/:templateID", wrapper.DeleteTemplatesTemplateID)

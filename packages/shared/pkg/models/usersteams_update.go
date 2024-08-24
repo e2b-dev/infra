@@ -60,6 +60,20 @@ func (utu *UsersTeamsUpdate) SetNillableTeamID(u *uuid.UUID) *UsersTeamsUpdate {
 	return utu
 }
 
+// SetIsDefault sets the "is_default" field.
+func (utu *UsersTeamsUpdate) SetIsDefault(b bool) *UsersTeamsUpdate {
+	utu.mutation.SetIsDefault(b)
+	return utu
+}
+
+// SetNillableIsDefault sets the "is_default" field if the given value is not nil.
+func (utu *UsersTeamsUpdate) SetNillableIsDefault(b *bool) *UsersTeamsUpdate {
+	if b != nil {
+		utu.SetIsDefault(*b)
+	}
+	return utu
+}
+
 // SetUsersID sets the "users" edge to the User entity by ID.
 func (utu *UsersTeamsUpdate) SetUsersID(id uuid.UUID) *UsersTeamsUpdate {
 	utu.mutation.SetUsersID(id)
@@ -154,6 +168,9 @@ func (utu *UsersTeamsUpdate) sqlSave(ctx context.Context) (n int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := utu.mutation.IsDefault(); ok {
+		_spec.SetField(usersteams.FieldIsDefault, field.TypeBool, value)
 	}
 	if utu.mutation.UsersCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -265,6 +282,20 @@ func (utuo *UsersTeamsUpdateOne) SetTeamID(u uuid.UUID) *UsersTeamsUpdateOne {
 func (utuo *UsersTeamsUpdateOne) SetNillableTeamID(u *uuid.UUID) *UsersTeamsUpdateOne {
 	if u != nil {
 		utuo.SetTeamID(*u)
+	}
+	return utuo
+}
+
+// SetIsDefault sets the "is_default" field.
+func (utuo *UsersTeamsUpdateOne) SetIsDefault(b bool) *UsersTeamsUpdateOne {
+	utuo.mutation.SetIsDefault(b)
+	return utuo
+}
+
+// SetNillableIsDefault sets the "is_default" field if the given value is not nil.
+func (utuo *UsersTeamsUpdateOne) SetNillableIsDefault(b *bool) *UsersTeamsUpdateOne {
+	if b != nil {
+		utuo.SetIsDefault(*b)
 	}
 	return utuo
 }
@@ -393,6 +424,9 @@ func (utuo *UsersTeamsUpdateOne) sqlSave(ctx context.Context) (_node *UsersTeams
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := utuo.mutation.IsDefault(); ok {
+		_spec.SetField(usersteams.FieldIsDefault, field.TypeBool, value)
 	}
 	if utuo.mutation.UsersCleared() {
 		edge := &sqlgraph.EdgeSpec{

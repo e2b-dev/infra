@@ -6093,6 +6093,7 @@ type UsersTeamsMutation struct {
 	op            Op
 	typ           string
 	id            *int
+	is_default    *bool
 	clearedFields map[string]struct{}
 	users         *uuid.UUID
 	clearedusers  bool
@@ -6273,6 +6274,42 @@ func (m *UsersTeamsMutation) ResetTeamID() {
 	m.teams = nil
 }
 
+// SetIsDefault sets the "is_default" field.
+func (m *UsersTeamsMutation) SetIsDefault(b bool) {
+	m.is_default = &b
+}
+
+// IsDefault returns the value of the "is_default" field in the mutation.
+func (m *UsersTeamsMutation) IsDefault() (r bool, exists bool) {
+	v := m.is_default
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsDefault returns the old "is_default" field's value of the UsersTeams entity.
+// If the UsersTeams object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsersTeamsMutation) OldIsDefault(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsDefault is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsDefault requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsDefault: %w", err)
+	}
+	return oldValue.IsDefault, nil
+}
+
+// ResetIsDefault resets all changes to the "is_default" field.
+func (m *UsersTeamsMutation) ResetIsDefault() {
+	m.is_default = nil
+}
+
 // SetUsersID sets the "users" edge to the User entity by id.
 func (m *UsersTeamsMutation) SetUsersID(id uuid.UUID) {
 	m.users = &id
@@ -6387,12 +6424,15 @@ func (m *UsersTeamsMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsersTeamsMutation) Fields() []string {
-	fields := make([]string, 0, 2)
+	fields := make([]string, 0, 3)
 	if m.users != nil {
 		fields = append(fields, usersteams.FieldUserID)
 	}
 	if m.teams != nil {
 		fields = append(fields, usersteams.FieldTeamID)
+	}
+	if m.is_default != nil {
+		fields = append(fields, usersteams.FieldIsDefault)
 	}
 	return fields
 }
@@ -6406,6 +6446,8 @@ func (m *UsersTeamsMutation) Field(name string) (ent.Value, bool) {
 		return m.UserID()
 	case usersteams.FieldTeamID:
 		return m.TeamID()
+	case usersteams.FieldIsDefault:
+		return m.IsDefault()
 	}
 	return nil, false
 }
@@ -6419,6 +6461,8 @@ func (m *UsersTeamsMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldUserID(ctx)
 	case usersteams.FieldTeamID:
 		return m.OldTeamID(ctx)
+	case usersteams.FieldIsDefault:
+		return m.OldIsDefault(ctx)
 	}
 	return nil, fmt.Errorf("unknown UsersTeams field %s", name)
 }
@@ -6441,6 +6485,13 @@ func (m *UsersTeamsMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTeamID(v)
+		return nil
+	case usersteams.FieldIsDefault:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsDefault(v)
 		return nil
 	}
 	return fmt.Errorf("unknown UsersTeams field %s", name)
@@ -6496,6 +6547,9 @@ func (m *UsersTeamsMutation) ResetField(name string) error {
 		return nil
 	case usersteams.FieldTeamID:
 		m.ResetTeamID()
+		return nil
+	case usersteams.FieldIsDefault:
+		m.ResetIsDefault()
 		return nil
 	}
 	return fmt.Errorf("unknown UsersTeams field %s", name)

@@ -136,7 +136,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		metadata = *body.Metadata
 	}
 
-	sandbox, instanceErr := a.orchestrator.CreateSandbox(a.Tracer, ctx, sandboxID, env.TemplateID, alias, team.ID.String(), build, teamInfo.Tier.MaxLengthHours, metadata, build.KernelVersion, build.FirecrackerVersion)
+	var envVars map[string]string
+	if body.EnvVars != nil {
+		envVars = *body.EnvVars
+	}
+
+	startTime := time.Now()
+	timeout := instance.InstanceExpiration
+	if body.Timeout != nil {
+		timeout = time.Duration(*body.Timeout) * time.Second
+	}
+	endTime := startTime.Add(timeout)
+
+	sandbox, instanceErr := a.orchestrator.CreateSandbox(a.Tracer, ctx, sandboxID, env.TemplateID, alias, team.ID.String(), build, teamInfo.Tier.MaxLengthHours, metadata, envVars, build.KernelVersion, build.FirecrackerVersion, *build.EnvdVersion, startTime, endTime)
 	if instanceErr != nil {
 		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -155,13 +167,14 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	_, cacheSpan := a.Tracer.Start(ctx, "add-instance-to-cache")
 	if cacheErr := a.instanceCache.Add(instance.InstanceInfo{
-		StartTime:         nil,
+		StartTime:         startTime,
+		EndTime:           endTime,
 		Instance:          sandbox,
 		BuildID:           &build.ID,
 		TeamID:            &team.ID,
 		Metadata:          metadata,
 		MaxInstanceLength: time.Duration(teamInfo.Tier.MaxLengthHours) * time.Hour,
-	}, body.Timeout); cacheErr != nil {
+	}); cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 

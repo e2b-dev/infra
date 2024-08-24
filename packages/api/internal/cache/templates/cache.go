@@ -74,9 +74,9 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 	}
 
 	if item == nil {
-		envDB, build, err = c.db.GetEnv(ctx, aliasOrEnvID, teamID, public)
+		envDB, build, err = c.db.GetEnv(ctx, aliasOrEnvID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error when getting team auth: %w", err)
+			return nil, nil, fmt.Errorf("error when getting template: %w", err)
 		}
 
 		c.aliasCache.cache.Set(envDB.TemplateID, envDB.TemplateID, templateInfoExpiration)
@@ -84,6 +84,11 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 			for _, alias := range *envDB.Aliases {
 				c.aliasCache.cache.Set(alias, envDB.TemplateID, templateInfoExpiration)
 			}
+		}
+
+		// Check if the team has access to the environment
+		if envDB.TeamID != teamID && (!public || !envDB.Public) {
+			return nil, nil, fmt.Errorf("team  '%s' does not have access to the template '%s'", teamID, aliasOrEnvID)
 		}
 
 		templateInfo = &TemplateInfo{template: &api.Template{
@@ -96,10 +101,10 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 		c.cache.Set(envDB.TemplateID, templateInfo, templateInfoExpiration)
 	} else {
 		templateInfo = item.Value()
-	}
 
-	if templateInfo.teamID != teamID && !templateInfo.template.Public {
-		return nil, nil, fmt.Errorf("team does not have access to the environment")
+		if templateInfo.teamID != teamID && !templateInfo.template.Public {
+			return nil, nil, fmt.Errorf("team '%s' does not have access to the template '%s'", teamID, aliasOrEnvID)
+		}
 	}
 
 	return templateInfo.template, templateInfo.build, nil

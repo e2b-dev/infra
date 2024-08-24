@@ -43,6 +43,7 @@ init:
 	terraform init -input=false -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 	$(MAKE) -C packages/cluster-disk-image init
 	$(tf_vars) terraform apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
+	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
 .PHONY: plan
 plan:
@@ -59,8 +60,7 @@ apply:
 	-auto-approve \
 	-input=false \
 	-compact-warnings \
-	-parallelism=20 \
-	$(ALL_MODULES_ARGS)
+	-parallelism=20 $(ALL_MODULES_ARGS)
 
 .PHONY: plan-without-jobs
 plan-without-jobs:

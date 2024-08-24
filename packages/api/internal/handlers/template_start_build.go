@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -33,7 +34,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
-	userID, team, _, err := a.GetUserAndTeam(c)
+	userID, teams, err := a.GetUserAndTeams(c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
@@ -48,20 +49,43 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	// Check if the user has access to the template, load the template with build info
 	envDB, err := a.db.Client.Env.Query().Where(
 		env.ID(templateID),
-		env.TeamID(team.ID),
 	).WithBuilds(
 		func(query *models.EnvBuildQuery) {
 			query.Where(envbuild.ID(buildUUID))
 		},
 	).Only(ctx)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting env: %s", err))
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
 
 		err = fmt.Errorf("error when getting env: %w", err)
 		telemetry.ReportCriticalError(ctx, err)
 
 		return
 	}
+
+	var team *models.Team
+	// Check if the user has access to the template
+	for _, t := range teams {
+		if t.ID == envDB.TeamID {
+			team = t
+			break
+		}
+	}
+
+	if team == nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("User does not have access to the template"))
+
+		err = fmt.Errorf("user '%s' does not have access to the template '%s'", userID, templateID)
+		telemetry.ReportCriticalError(ctx, err)
+
+		return
+	}
+
+	telemetry.SetAttributes(ctx,
+		attribute.String("user.id", userID.String()),
+		attribute.String("team.id", team.ID.String()),
+		attribute.String("template.id", templateID),
+	)
 
 	// Create a new build cache for storing logs
 	err = a.buildCache.Create(templateID, buildUUID, team.ID)

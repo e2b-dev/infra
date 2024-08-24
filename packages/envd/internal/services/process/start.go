@@ -27,7 +27,7 @@ func (s *Service) InitializeStartProcess(ctx context.Context, user *user.User, r
 
 	handlerL := s.logger.With().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Logger()
 
-	proc, err := handler.New(user, req, &handlerL)
+	proc, err := handler.New(user, req, &handlerL, nil)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		return err
 	}
 
-	proc, err := handler.New(u, req.Msg, &handlerL)
+	proc, err := handler.New(u, req.Msg, &handlerL, s.envs)
 	if err != nil {
 		return err
 	}

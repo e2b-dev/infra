@@ -22,6 +22,9 @@ const (
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
 
+// EnvVars defines model for EnvVars.
+type EnvVars map[string]string
+
 // Error defines model for Error.
 type Error struct {
 	// Code Error code
@@ -36,6 +39,7 @@ type MemoryMB = int32
 
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
+	EnvVars  *EnvVars         `json:"envVars,omitempty"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
 
 	// TemplateID Identifier of the required template
@@ -55,6 +59,9 @@ type RunningSandbox struct {
 
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
+
+	// EndAt Time when the sandbox will expire
+	EndAt time.Time `json:"endAt"`
 
 	// MemoryMB Memory for the sandbox in MB
 	MemoryMB MemoryMB         `json:"memoryMB"`
@@ -105,6 +112,21 @@ type SandboxLogs struct {
 
 // SandboxMetadata defines model for SandboxMetadata.
 type SandboxMetadata map[string]string
+
+// Team defines model for Team.
+type Team struct {
+	// ApiKey API key for the team
+	ApiKey string `json:"apiKey"`
+
+	// IsDefault Whether the team is the default team
+	IsDefault bool `json:"isDefault"`
+
+	// Name Name of the team
+	Name string `json:"name"`
+
+	// TeamID Identifier of the team
+	TeamID string `json:"teamID"`
+}
 
 // Template defines model for Template.
 type Template struct {
@@ -161,6 +183,9 @@ type TemplateBuildRequest struct {
 
 	// StartCmd Start command to execute in the template after the build
 	StartCmd *string `json:"startCmd,omitempty"`
+
+	// TeamID Identifier of the team
+	TeamID *string `json:"teamID,omitempty"`
 }
 
 // BuildID defines model for buildID.
@@ -203,6 +228,11 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 type PostSandboxesSandboxIDTimeoutJSONBody struct {
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
 	Timeout int32 `json:"timeout"`
+}
+
+// GetTemplatesParams defines parameters for GetTemplates.
+type GetTemplatesParams struct {
+	TeamID *string `form:"teamID,omitempty" json:"teamID,omitempty"`
 }
 
 // GetTemplatesTemplateIDBuildsBuildIDStatusParams defines parameters for GetTemplatesTemplateIDBuildsBuildIDStatus.

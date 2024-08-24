@@ -1,4 +1,4 @@
-package process
+package utils
 
 import "sync"
 
@@ -6,7 +6,7 @@ type Map[K comparable, V any] struct {
 	m sync.Map
 }
 
-func newMap[K comparable, V any]() *Map[K, V] {
+func NewMap[K comparable, V any]() *Map[K, V] {
 	return &Map[K, V]{
 		m: sync.Map{},
 	}
