@@ -105,7 +105,7 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 
 	if req.GetPty() != nil {
 		// The pty should ideally start only in the Start method, but the package does not support that and we would have to code it manually.
-		// The output of the pty should correctly passed though.
+		// The output of the pty should correctly be passed though.
 		tty, err := pty.StartWithSize(cmd, &pty.Winsize{
 			Cols: uint16(req.GetPty().GetSize().Cols),
 			Rows: uint16(req.GetPty().GetSize().Rows),
@@ -290,9 +290,12 @@ func (p *Handler) WriteTty(data []byte) error {
 }
 
 func (p *Handler) Start() (uint32, error) {
-	err := p.cmd.Start()
-	if err != nil {
-		return 0, fmt.Errorf("error starting process '%s': %w", p.cmd, err)
+	// Pty is already started in the New method
+	if p.tty == nil {
+		err := p.cmd.Start()
+		if err != nil {
+			return 0, fmt.Errorf("error starting process '%s': %w", p.cmd, err)
+		}
 	}
 
 	adjustErr := adjustOomScore(p.cmd.Process.Pid, defaultOomScore)
