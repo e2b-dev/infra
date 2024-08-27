@@ -61,7 +61,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 	// Prepare info for rebuilding env
 	userID, teams, err := a.GetUserAndTeams(c)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err))
 
 		err = fmt.Errorf("error when getting default team: %w", err)
 		telemetry.ReportCriticalError(ctx, err)
@@ -88,7 +88,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		}
 
 		if team == nil {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Team not found: %s", *body.TeamID))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Team '%s' not found", *body.TeamID))
 
 			err = fmt.Errorf("team not found: %w", err)
 			telemetry.ReportCriticalError(ctx, err)
@@ -117,9 +117,10 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		// Check if the user has access to the template
 		_, err = a.db.Client.Env.Query().Where(env.ID(templateID), env.TeamID(team.ID)).Only(ctx)
 		if err != nil {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
+			errMsg := fmt.Sprintf("Error when getting template '%s' for team '%s'", templateID, team.ID.String())
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("%s: %s", errMsg, err))
 
-			err = fmt.Errorf("error when getting env: %w", err)
+			err = fmt.Errorf("%s: %w", errMsg, err)
 			telemetry.ReportCriticalError(ctx, err)
 
 			return nil
@@ -209,7 +210,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		}).
 		Exec(ctx)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating env: %s", err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating template: %s", err))
 
 		err = fmt.Errorf("error when updating env: %w", err)
 		telemetry.ReportCriticalError(ctx, err)
@@ -223,7 +224,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		envbuild.StatusEQ(envbuild.StatusWaiting),
 	).SetStatus(envbuild.StatusFailed).SetFinishedAt(time.Now()).Exec(ctx)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating env: %s", err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating template: %s", err))
 
 		err = fmt.Errorf("error when updating env: %w", err)
 		telemetry.ReportCriticalError(ctx, err)
@@ -253,9 +254,9 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 			Where(env.ID(alias)).
 			All(ctx)
 		if err != nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when checking alias: %s", err))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when querying alias '%s': %s", alias, err))
 
-			err = fmt.Errorf("error when checking alias: %w", err)
+			err = fmt.Errorf("error when checking alias '%s': %w", alias, err)
 			telemetry.ReportCriticalError(ctx, err)
 
 			return nil
@@ -263,19 +264,18 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		}
 
 		if len(envs) > 0 {
-			a.sendAPIStoreError(c, http.StatusConflict, "Alias already used")
+			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Alias '%s' is already used", alias))
 
-			err = fmt.Errorf("alias already used: %w", err)
+			err = fmt.Errorf("conflict of alias '%s' with template ID: %w", alias, err)
 			telemetry.ReportCriticalError(ctx, err)
 
 			return nil
 		}
 
 		aliasDB, err := tx.EnvAlias.Query().Where(envalias.ID(alias)).Only(ctx)
-
 		if err != nil {
 			if !models.IsNotFound(err) {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when checking alias: %s", err))
+				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when querying for alias: %s", err))
 
 				err = fmt.Errorf("error when checking alias: %w", err)
 				telemetry.ReportCriticalError(ctx, err)
@@ -304,18 +304,18 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 				SetEnvID(templateID).SetIsRenamable(true).SetID(alias).
 				Exec(ctx)
 			if err != nil {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when inserting alias: %s", err))
+				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when inserting alias '%s': %s", alias, err))
 
-				err = fmt.Errorf("error when inserting alias: %w", err)
+				err = fmt.Errorf("error when inserting alias '%s': %w", alias, err)
 				telemetry.ReportCriticalError(ctx, err)
 
 				return nil
 
 			}
 		} else if aliasDB.EnvID != templateID {
-			a.sendAPIStoreError(c, http.StatusForbidden, "Alias already used")
+			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("Alias '%s' already used", alias))
 
-			err = fmt.Errorf("alias already used: %w", err)
+			err = fmt.Errorf("alias '%s' already used: %w", alias, err)
 			telemetry.ReportCriticalError(ctx, err)
 
 			return nil
