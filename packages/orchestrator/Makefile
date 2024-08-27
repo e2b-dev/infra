@@ -19,6 +19,12 @@ generate:
 
 .PHONY: build
 build:
+	@cp -r ../shared .shared/
+	@docker build --platform linux/amd64 --output=bin .
+	@rm -rf .shared/
+
+.PHONY: build-local
+build-local:
 	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/orchestrator .
 
 .PHONY: build-debug
