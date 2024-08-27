@@ -5,14 +5,11 @@
     "hashicorp.hcl",
     "42Crunch.vscode-openapi",
     "foxundermoon.shell-format",
-    "trunk.io",
     "ms-vscode.makefile-tools",
     "hashicorp.terraform",
     "redhat.vscode-yaml",
     "christian-kohler.path-intellisense",
     "googlecloudtools.cloudcode",
-    "GitHub.copilot",
-    "GitHub.copilot-chat",
     "ms-azuretools.vscode-docker"
   ]
 }

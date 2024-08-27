@@ -4,15 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"golang.org/x/mod/semver"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
+	"golang.org/x/mod/semver"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -27,11 +31,7 @@ const (
 	kernelsDir     = "/fc-kernels"
 	kernelMountDir = "/fc-vm"
 	kernelName     = "vmlinux.bin"
-	uffdBinaryName = "uffd"
 	fcBinaryName   = "firecracker"
-
-	waitForUffd       = 80 * time.Millisecond
-	uffdCheckInterval = 10 * time.Millisecond
 )
 
 var logsProxyAddress = os.Getenv("LOGS_PROXY_ADDRESS")
@@ -41,20 +41,18 @@ var httpClient = http.Client{
 }
 
 type Sandbox struct {
-	slot  IPSlot
-	files *SandboxFiles
+	files    *SandboxFiles
+	stopOnce func() error
 
 	fc   *fc
-	uffd *uffd
+	uffd *uffd.Uffd
 
 	Sandbox   *orchestrator.SandboxConfig
 	StartedAt time.Time
 	EndAt     time.Time
 	TraceID   string
-}
 
-func uffdBinaryPath(fcVersion string) string {
-	return filepath.Join(fcVersionsDir, fcVersion, uffdBinaryName)
+	slot IPSlot
 }
 
 func fcBinaryPath(fcVersion string) string {
@@ -124,7 +122,6 @@ func NewSandbox(
 		kernelMountDir,
 		kernelName,
 		fcBinaryPath(config.FirecrackerVersion),
-		uffdBinaryPath(config.FirecrackerVersion),
 		config.HugePages,
 	)
 	if err != nil {
@@ -158,11 +155,16 @@ func NewSandbox(
 		}
 	}()
 
-	var uffd *uffd
+	var fcUffd *uffd.Uffd
 	if fsEnv.UFFDSocketPath != nil {
-		uffd = newUFFD(fsEnv)
+		fcUffd, err = uffd.New(fsEnv.MemfilePath(), *fsEnv.UFFDSocketPath, config.TemplateID, config.BuildID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create uffd: %w", err)
+		}
 
-		uffdErr := uffd.start()
+		telemetry.ReportEvent(childCtx, "created uffd")
+
+		uffdErr := fcUffd.Start(childCtx, tracer)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
 			telemetry.ReportCriticalError(childCtx, errMsg)
@@ -170,25 +172,12 @@ func NewSandbox(
 			return nil, errMsg
 		}
 
-		// Wait for uffd to initialize — it should be possible to handle this better?
-	uffdWait:
-		for {
-			select {
-			case <-time.After(waitForUffd):
-				fmt.Printf("waiting for uffd to initialize")
-				return nil, fmt.Errorf("timeout waiting to uffd to initialize")
-			case <-childCtx.Done():
-				return nil, childCtx.Err()
-			default:
-				isRunning, _ := checkIsRunning(uffd.cmd.Process)
-				fmt.Printf("uffd is running: %v", isRunning)
-				if isRunning {
-					break uffdWait
-				}
+		telemetry.ReportEvent(childCtx, "started uffd")
+	}
 
-				time.Sleep(uffdCheckInterval)
-			}
-		}
+	var pollReady chan struct{}
+	if fcUffd != nil {
+		pollReady = fcUffd.PollReady
 	}
 
 	fc := newFC(
@@ -203,16 +192,18 @@ func NewSandbox(
 			TraceID:    traceID,
 			TeamID:     config.TeamID,
 		},
+		pollReady,
 	)
 
 	err = fc.start(childCtx, tracer)
 	if err != nil {
-		if uffd != nil {
-			uffd.stop(childCtx, tracer)
+		var fcUffdErr error
+		if fcUffd != nil {
+			fcUffdErr = fcUffd.Stop()
 		}
 
 		errMsg := fmt.Errorf("failed to start FC: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, errors.Join(errMsg, fcUffdErr))
 
 		return nil, errMsg
 	}
@@ -220,14 +211,33 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
 	instance := &Sandbox{
-		files: fsEnv,
-		slot:  ips,
-		fc:    fc,
-		uffd:  uffd,
-
+		files:     fsEnv,
+		slot:      ips,
+		fc:        fc,
+		uffd:      fcUffd,
 		Sandbox:   config,
 		StartedAt: startedAt,
 		EndAt:     endAt,
+		stopOnce: sync.OnceValue(func() error {
+			var uffdErr error
+			if fcUffd != nil {
+				// Wait until we stop uffd if it exists
+				time.Sleep(1 * time.Second)
+
+				uffdErr = fcUffd.Stop()
+				if uffdErr != nil {
+					uffdErr = fmt.Errorf("failed to stop uffd: %w", err)
+				}
+			}
+
+			fcErr := fc.stop()
+
+			if fcErr != nil || uffdErr != nil {
+				return errors.Join(fcErr, uffdErr)
+			}
+
+			return nil
+		}),
 	}
 
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
@@ -331,8 +341,10 @@ syncLoop:
 			err := s.syncClock(ctx, port)
 			if err != nil {
 				telemetry.ReportError(ctx, fmt.Errorf("error syncing clock: %w", err))
+
 				continue
 			}
+
 			break syncLoop
 		}
 	}
@@ -378,31 +390,50 @@ func (s *Sandbox) CleanupAfterFCStop(
 	}
 }
 
-func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) (err error) {
-	defer s.Stop(ctx, tracer)
+func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) error {
+	uffdExit := make(chan error)
+	fcExit := make(chan error)
+
+	go func() {
+		fcExit <- s.fc.wait()
+		close(fcExit)
+	}()
 
 	if s.uffd != nil {
 		go func() {
-			err := s.uffd.wait()
-			fmt.Printf("uffd wait error: %v", err)
+			uffdExit <- s.uffd.Wait()
+			close(uffdExit)
 		}()
 	}
 
-	return s.fc.wait()
+	select {
+	case fcErr := <-fcExit:
+		stopErr := s.Stop(ctx, tracer)
+		uffdErr := <-uffdExit
+
+		return errors.Join(fcErr, stopErr, uffdErr)
+	case uffdErr := <-uffdExit:
+		stopErr := s.Stop(ctx, tracer)
+		fcErr := <-fcExit
+
+		return errors.Join(uffdErr, stopErr, fcErr)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
-func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) {
+func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) error {
 	childCtx, childSpan := tracer.Start(ctx, "stop-sandbox", trace.WithAttributes())
 	defer childSpan.End()
 
-	s.fc.stop(childCtx, tracer)
-
-	if s.uffd != nil {
-		// Wait until we stop uffd if it exists
-		time.Sleep(1 * time.Second)
-
-		s.uffd.stop(childCtx, tracer)
+	err := s.stopOnce()
+	if err != nil {
+		return fmt.Errorf("failed to stop sandbox: %w", err)
 	}
+
+	telemetry.ReportEvent(childCtx, "stopped sandbox")
+
+	return nil
 }
 
 func (s *Sandbox) SlotIdx() int {
@@ -411,12 +442,4 @@ func (s *Sandbox) SlotIdx() int {
 
 func (s *Sandbox) FcPid() int {
 	return s.fc.pid
-}
-
-func (s *Sandbox) UffdPid() *int {
-	if s.uffd == nil {
-		return nil
-	}
-
-	return &s.uffd.pid
 }

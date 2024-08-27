@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	ipSlotPoolSize = 25
+	ipSlotPoolSize = 32
 )
 
 type server struct {
@@ -76,6 +76,7 @@ func New(logger *zap.Logger) *grpc.Server {
 				ips, err := sandbox.NewSlot(ctx, tracer, consulClient)
 				if err != nil {
 					logger.Error("failed to create network", zap.Error(err))
+
 					continue
 				}
 
@@ -84,6 +85,7 @@ func New(logger *zap.Logger) *grpc.Server {
 					ips.Release(ctx, tracer, consulClient)
 
 					logger.Error("failed to create network", zap.Error(err))
+
 					continue
 				}
 

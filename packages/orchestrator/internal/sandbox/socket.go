@@ -20,6 +20,7 @@ func getSocketPath(instanceID string) (string, error) {
 		dir = os.TempDir()
 	} else {
 		errMsg := fmt.Errorf("unable to find a location for firecracker socket")
+
 		return "", errMsg
 	}
 

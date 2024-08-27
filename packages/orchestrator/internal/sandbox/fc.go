@@ -3,12 +3,13 @@ package sandbox
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
 	"path/filepath"
-	"sync"
 	"syscall"
+	"time"
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
@@ -21,6 +22,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const (
+	uffdPollingTimeout = 10 * time.Second
+)
+
 type MmdsMetadata struct {
 	InstanceID string `json:"instanceID"`
 	EnvID      string `json:"envID"`
@@ -30,9 +35,9 @@ type MmdsMetadata struct {
 }
 
 type fc struct {
-	ctx context.Context
+	pollReady chan struct{}
 
-	mu sync.Mutex
+	ctx context.Context
 
 	cmd *exec.Cmd
 
@@ -52,7 +57,12 @@ type fc struct {
 }
 
 func (fc *fc) wait() error {
-	return fc.cmd.Wait()
+	err := fc.cmd.Wait()
+	if err != nil {
+		return fmt.Errorf("error waiting for fc process: %w", err)
+	}
+
+	return nil
 }
 
 func newFirecrackerClient(socketPath string) *client.Firecracker {
@@ -71,6 +81,7 @@ func (fc *fc) loadSnapshot(
 	envPath string,
 	metadata interface{},
 	uffdSocketPath *string,
+	pollReady chan struct{},
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
 		attribute.String("instance.socket.path", socketPath),
@@ -79,6 +90,7 @@ func (fc *fc) loadSnapshot(
 	defer childSpan.End()
 
 	httpClient := newFirecrackerClient(socketPath)
+
 	telemetry.ReportEvent(childCtx, "created FC socket client")
 
 	memfilePath := filepath.Join(envPath, MemfileName)
@@ -118,7 +130,7 @@ func (fc *fc) loadSnapshot(
 	snapshotConfig := operations.LoadSnapshotParams{
 		Context: childCtx,
 		Body: &models.SnapshotLoadParams{
-			ResumeVM:            true,
+			ResumeVM:            false,
 			EnableDiffSnapshots: false,
 			MemBackend:          backend,
 			SnapshotPath:        &snapfilePath,
@@ -127,9 +139,40 @@ func (fc *fc) loadSnapshot(
 
 	_, err := httpClient.Operations.LoadSnapshot(&snapshotConfig)
 	if err != nil {
-		telemetry.ReportCriticalError(childCtx, err)
-		return err
+		errMsg := fmt.Errorf("error loading snapshot: %w", err)
+
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
 	}
+
+	if pollReady != nil {
+		select {
+		case <-pollReady:
+			telemetry.ReportEvent(childCtx, "uffd polling ready")
+
+			break
+		case <-time.After(uffdPollingTimeout):
+			return fmt.Errorf("timeout waiting for the uffd polling to be ready")
+		}
+	}
+
+	state := models.VMStateResumed
+	pauseConfig := operations.PatchVMParams{
+		Context: childCtx,
+		Body: &models.VM{
+			State: &state,
+		},
+	}
+
+	_, err = httpClient.Operations.PatchVM(&pauseConfig)
+	if err != nil {
+		errMsg := fmt.Errorf("error pausing vm: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
+	}
+
 	telemetry.ReportEvent(childCtx, "snapshot loaded")
 
 	mmdsConfig := operations.PutMmdsParams{
@@ -139,8 +182,10 @@ func (fc *fc) loadSnapshot(
 
 	_, err = httpClient.Operations.PutMmds(&mmdsConfig)
 	if err != nil {
-		telemetry.ReportCriticalError(childCtx, err)
-		return err
+		errMsg := fmt.Errorf("error setting mmds data: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
 	}
 
 	telemetry.ReportEvent(childCtx, "mmds data set")
@@ -154,6 +199,7 @@ func newFC(
 	slot IPSlot,
 	fsEnv *SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
+	pollReady chan struct{},
 ) *fc {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.String("instance.id", mmdsMetadata.InstanceID),
@@ -207,6 +253,7 @@ func newFC(
 	cmd.Stdout = cmdStderrWriter
 
 	return &fc{
+		pollReady:      pollReady,
 		id:             mmdsMetadata.InstanceID,
 		cmd:            cmd,
 		stdout:         cmdStdoutReader,
@@ -308,17 +355,18 @@ func (fc *fc) start(
 
 	telemetry.ReportEvent(childCtx, "fc process created socket")
 
-	if err := fc.loadSnapshot(
+	if loadErr := fc.loadSnapshot(
 		childCtx,
 		tracer,
 		fc.socketPath,
 		fc.envPath,
 		fc.metadata,
 		fc.uffdSocketPath,
-	); err != nil {
-		fc.stop(childCtx, tracer)
+		fc.pollReady,
+	); loadErr != nil {
+		fcErr := fc.stop()
 
-		errMsg := fmt.Errorf("failed to load snapshot: %w", err)
+		errMsg := fmt.Errorf("failed to load snapshot: %w", errors.Join(loadErr, fcErr))
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg
@@ -328,7 +376,12 @@ func (fc *fc) start(
 
 	defer func() {
 		if err != nil {
-			fc.stop(childCtx, tracer)
+			err := fc.stop()
+			if err != nil {
+				errMsg := fmt.Errorf("error stopping FC process: %w", err)
+
+				telemetry.ReportError(childCtx, errMsg)
+			}
 		}
 	}()
 
@@ -345,21 +398,11 @@ func (fc *fc) start(
 	return nil
 }
 
-func (fc *fc) stop(ctx context.Context, tracer trace.Tracer) {
-	childCtx, childSpan := tracer.Start(ctx, "stop-fc", trace.WithAttributes(
-		attribute.String("instance.cmd", fc.cmd.String()),
-		attribute.String("instance.cmd.dir", fc.cmd.Dir),
-		attribute.String("instance.cmd.path", fc.cmd.Path),
-	))
-	defer childSpan.End()
-
+func (fc *fc) stop() error {
 	err := fc.cmd.Process.Kill()
 	if err != nil {
-		errMsg := fmt.Errorf("failed to send KILL to FC process: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "sent KILL to FC process")
+		return fmt.Errorf("failed to send KILL to FC process: %w", err)
 	}
 
-	return
+	return nil
 }

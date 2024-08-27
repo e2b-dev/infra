@@ -45,6 +45,7 @@ func getAllowRule(ips *IPSlot) []string {
 func (ips *IPSlot) addBlockingRules(tables *iptables.IPTables) error {
 	for _, ipRange := range blockedRanges {
 		rule := getBlockingRule(ips, ipRange)
+
 		err := tables.Append("filter", "FORWARD", rule...)
 		if err != nil {
 			return fmt.Errorf("error adding blocking rule: %w", err)
@@ -52,6 +53,7 @@ func (ips *IPSlot) addBlockingRules(tables *iptables.IPTables) error {
 	}
 
 	allowRule := getAllowRule(ips)
+
 	err := tables.Insert("filter", "FORWARD", 1, allowRule...)
 	if err != nil {
 		return fmt.Errorf("error adding response rule: %w", err)
@@ -68,9 +70,9 @@ func getDefaultGateway() (string, error) {
 
 	for _, route := range routes {
 		if route.Dst == nil && route.Gw != nil {
-			link, err := netlink.LinkByIndex(route.LinkIndex)
-			if err != nil {
-				return "", fmt.Errorf("error fetching interface for default gateway: %w", err)
+			link, linkErr := netlink.LinkByIndex(route.LinkIndex)
+			if linkErr != nil {
+				return "", fmt.Errorf("error fetching interface for default gateway: %w", linkErr)
 			}
 
 			return link.Attrs().Name, nil
@@ -101,8 +103,10 @@ func (ips *IPSlot) CreateNetwork(
 
 	// Prevent thread changes so we can safely manipulate with namespaces
 	telemetry.ReportEvent(childCtx, "waiting for OS thread lock")
+
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+
 	telemetry.ReportEvent(childCtx, "OS thread lock passed")
 
 	// Save the original (host) namespace and restore it upon function exit
@@ -113,13 +117,16 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Saved original ns")
+
 	defer func() {
 		err = netns.Set(hostNS)
 		if err != nil {
 			errMsg := fmt.Errorf("error resetting network namespace back to the host namespace: %w", err)
 			telemetry.ReportError(childCtx, errMsg)
 		}
+
 		err = hostNS.Close()
 		if err != nil {
 			errMsg := fmt.Errorf("error closing host network namespace: %w", err)
@@ -135,8 +142,10 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
-	telemetry.ReportEvent(childCtx, "Created ns")
+
 	defer ns.Close()
+
+	telemetry.ReportEvent(childCtx, "Created ns")
 
 	// Create the Veth and Vpeer
 	vethAttrs := netlink.NewLinkAttrs()
@@ -145,6 +154,7 @@ func (ips *IPSlot) CreateNetwork(
 		LinkAttrs: vethAttrs,
 		PeerName:  ips.VpeerName(),
 	}
+
 	err = netlink.LinkAdd(veth)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating veth device: %w", err)
@@ -152,6 +162,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Created veth device")
 
 	vpeer, err := netlink.LinkByName(ips.VpeerName())
@@ -161,6 +172,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Linked veth")
 
 	err = netlink.LinkSetUp(vpeer)
@@ -193,6 +205,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Added veth address")
 
 	// Move Veth device to the host NS
@@ -203,6 +216,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Moved veth to host")
 
 	err = netns.Set(hostNS)
@@ -230,6 +244,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Set veth device up")
 
 	ip, ipNet, err = net.ParseCIDR(ips.VethCIDR())
@@ -239,6 +254,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Parsed CIDR")
 
 	err = netlink.AddrAdd(vethInHost, &netlink.Addr{
@@ -272,6 +288,7 @@ func (ips *IPSlot) CreateNetwork(
 		Mode:      netlink.TUNTAP_MODE_TAP,
 		LinkAttrs: tapAttrs,
 	}
+
 	err = netlink.LinkAdd(tap)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating tap device: %w", err)
@@ -279,6 +296,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Created tap device")
 
 	err = netlink.LinkSetUp(tap)
@@ -288,6 +306,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Set tap device up")
 
 	ip, ipNet, err = net.ParseCIDR(ips.TapCIDR())
@@ -297,6 +316,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Parsed CIDR")
 
 	err = netlink.AddrAdd(tap, &netlink.Addr{
@@ -311,6 +331,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Set tap device address")
 
 	// Set NS lo device up
@@ -321,6 +342,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Found lo")
 
 	err = netlink.LinkSetUp(lo)
@@ -330,6 +352,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Set lo device up")
 
 	// Add NS default route
@@ -343,6 +366,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Added default ns route")
 
 	tables, err := iptables.New()
@@ -352,6 +376,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Initialized iptables")
 
 	// Add NAT routing rules to NS
@@ -362,6 +387,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Created postrouting rule to vpeer")
 
 	err = tables.Append("nat", "PREROUTING", "-i", ips.VpeerName(), "-d", ips.HostSnapshotIP(), "-j", "DNAT", "--to", ips.NamespaceSnapshotIP())
@@ -371,6 +397,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Created postrouting rule from vpeer")
 
 	err = ips.addBlockingRules(tables)
@@ -380,6 +407,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Added blocking rules")
 
 	// Go back to original namespace
@@ -390,6 +418,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Set network namespace back")
 
 	// Add routing from host to FC namespace
@@ -400,6 +429,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Parsed CIDR")
 
 	err = netlink.RouteAdd(&netlink.Route{
@@ -412,6 +442,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Added route from host to FC")
 
 	// Add host forwarding rules
@@ -422,6 +453,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Created forwarding rule to default gateway")
 
 	err = tables.Append("filter", "FORWARD", "-i", hostDefaultGateway, "-o", ips.VethName(), "-j", "ACCEPT")
@@ -431,6 +463,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Created forwarding rule from default gateway")
 
 	// Add host postrouting rules
@@ -441,6 +474,7 @@ func (ips *IPSlot) CreateNetwork(
 
 		return errMsg
 	}
+
 	telemetry.ReportEvent(childCtx, "Created postrouting rule")
 
 	return nil
