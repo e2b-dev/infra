@@ -79,8 +79,6 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 	return result, nil
 }
 
-var ErrEnvNotFound = fmt.Errorf("env not found")
-
 func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template, build *models.EnvBuild, err error) {
 	dbEnv, err := db.
 		Client.
@@ -102,7 +100,7 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 
 	notFound := models.IsNotFound(err)
 	if notFound {
-		return nil, nil, ErrEnvNotFound
+		return nil, nil, fmt.Errorf("template '%s' not found", aliasOrEnvID)
 	} else if err != nil {
 		return nil, nil, fmt.Errorf("failed to get env '%s': %w", aliasOrEnvID, err)
 	}
