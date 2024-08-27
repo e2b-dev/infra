@@ -117,7 +117,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		// Check if the user has access to the template
 		_, err = a.db.Client.Env.Query().Where(env.ID(templateID), env.TeamID(team.ID)).Only(ctx)
 		if err != nil {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting env: %s", err))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
 
 			err = fmt.Errorf("error when getting env: %w", err)
 			telemetry.ReportCriticalError(ctx, err)
