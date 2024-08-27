@@ -13,9 +13,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -31,7 +30,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(
 	ctx := c.Request.Context()
 	sandboxID = utils.ShortID(sandboxID)
 
-	teamID := c.Value(auth.TeamContextKey).(models.Team).ID
+	teamID := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team.ID
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("instance.id", sandboxID),
@@ -53,7 +52,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(
 	id := strings.ReplaceAll(sandboxID, "`", "")
 	query := fmt.Sprintf("{source=\"logs-collector\", service=\"envd\", teamID=`%s`, sandboxID=`%s`}", teamID.String(), id)
 
-	res, err := a.lokiClient.QueryRange(query, *params.Limit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), false)
+	res, err := a.lokiClient.QueryRange(query, int(*params.Limit), start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), false)
 	if err != nil {
 		errMsg := fmt.Errorf("error when returning logs for sandbox: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)

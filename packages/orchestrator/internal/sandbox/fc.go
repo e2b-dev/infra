@@ -3,12 +3,11 @@ package sandbox
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"time"
 
@@ -23,6 +22,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const (
+	uffdPollingTimeout = 10 * time.Second
+)
+
 type MmdsMetadata struct {
 	InstanceID string `json:"instanceID"`
 	EnvID      string `json:"envID"`
@@ -32,12 +35,11 @@ type MmdsMetadata struct {
 }
 
 type fc struct {
+	pollReady chan struct{}
+
 	ctx context.Context
 
-	mu sync.Mutex
-
-	cmd     *exec.Cmd
-	process *os.Process
+	cmd *exec.Cmd
 
 	stdout *io.PipeReader
 	stderr *io.PipeReader
@@ -51,38 +53,14 @@ type fc struct {
 	socketPath string
 	envPath    string
 
-	pid            int
-	isBeingStopped bool
+	pid int
 }
 
 func (fc *fc) wait() error {
-	if fc.cmd != nil {
-		return fc.cmd.Wait()
-	}
-
-	if fc.process == nil {
-		return fmt.Errorf("process is nil")
-	}
-
-	// When we recover process and the current process is not parent of that process. Wait will usually not work and throw an error.
-	for {
-		time.Sleep(processCheckInterval)
-
-		isRunning, err := checkIsRunning(fc.process)
-		if !isRunning {
-			return err
-		}
-	}
-}
-
-func (fc *fc) recover(pid int) error {
-	p, err := recoverProcess(pid)
+	err := fc.cmd.Wait()
 	if err != nil {
-		return fmt.Errorf("failed to recover process %d: %w", pid, err)
+		return fmt.Errorf("error waiting for fc process: %w", err)
 	}
-
-	fc.pid = pid
-	fc.process = p
 
 	return nil
 }
@@ -103,6 +81,7 @@ func (fc *fc) loadSnapshot(
 	envPath string,
 	metadata interface{},
 	uffdSocketPath *string,
+	pollReady chan struct{},
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
 		attribute.String("instance.socket.path", socketPath),
@@ -111,6 +90,7 @@ func (fc *fc) loadSnapshot(
 	defer childSpan.End()
 
 	httpClient := newFirecrackerClient(socketPath)
+
 	telemetry.ReportEvent(childCtx, "created FC socket client")
 
 	memfilePath := filepath.Join(envPath, MemfileName)
@@ -150,7 +130,7 @@ func (fc *fc) loadSnapshot(
 	snapshotConfig := operations.LoadSnapshotParams{
 		Context: childCtx,
 		Body: &models.SnapshotLoadParams{
-			ResumeVM:            true,
+			ResumeVM:            false,
 			EnableDiffSnapshots: false,
 			MemBackend:          backend,
 			SnapshotPath:        &snapfilePath,
@@ -159,9 +139,40 @@ func (fc *fc) loadSnapshot(
 
 	_, err := httpClient.Operations.LoadSnapshot(&snapshotConfig)
 	if err != nil {
-		telemetry.ReportCriticalError(childCtx, err)
-		return err
+		errMsg := fmt.Errorf("error loading snapshot: %w", err)
+
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
 	}
+
+	if pollReady != nil {
+		select {
+		case <-pollReady:
+			telemetry.ReportEvent(childCtx, "uffd polling ready")
+
+			break
+		case <-time.After(uffdPollingTimeout):
+			return fmt.Errorf("timeout waiting for the uffd polling to be ready")
+		}
+	}
+
+	state := models.VMStateResumed
+	pauseConfig := operations.PatchVMParams{
+		Context: childCtx,
+		Body: &models.VM{
+			State: &state,
+		},
+	}
+
+	_, err = httpClient.Operations.PatchVM(&pauseConfig)
+	if err != nil {
+		errMsg := fmt.Errorf("error pausing vm: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
+	}
+
 	telemetry.ReportEvent(childCtx, "snapshot loaded")
 
 	mmdsConfig := operations.PutMmdsParams{
@@ -171,8 +182,10 @@ func (fc *fc) loadSnapshot(
 
 	_, err = httpClient.Operations.PutMmds(&mmdsConfig)
 	if err != nil {
-		telemetry.ReportCriticalError(childCtx, err)
-		return err
+		errMsg := fmt.Errorf("error setting mmds data: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
 	}
 
 	telemetry.ReportEvent(childCtx, "mmds data set")
@@ -183,12 +196,13 @@ func (fc *fc) loadSnapshot(
 func newFC(
 	ctx context.Context,
 	tracer trace.Tracer,
-	slot *IPSlot,
+	slot IPSlot,
 	fsEnv *SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
+	pollReady chan struct{},
 ) *fc {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
-		attribute.String("instance.id", slot.InstanceID),
+		attribute.String("instance.id", mmdsMetadata.InstanceID),
 		attribute.Int("instance.slot.index", slot.SlotIdx),
 	))
 	defer childSpan.End()
@@ -239,7 +253,8 @@ func newFC(
 	cmd.Stdout = cmdStderrWriter
 
 	return &fc{
-		id:             slot.InstanceID,
+		pollReady:      pollReady,
+		id:             mmdsMetadata.InstanceID,
 		cmd:            cmd,
 		stdout:         cmdStdoutReader,
 		stderr:         cmdStderrReader,
@@ -307,14 +322,14 @@ func (fc *fc) start(
 				attribute.String("type", "stderr"),
 				attribute.String("message", line),
 			)
-			fmt.Printf("[firecracker stderr]: %s — %v", fc.id, line)
+			fmt.Printf("[firecracker stderr]: %s — %v\n", fc.id, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
 			errMsg := fmt.Errorf("error closing vmm stderr reader: %w", readerErr)
 			telemetry.ReportError(fc.ctx, errMsg)
-			fmt.Printf("[firecracker stderr error]: %s — %v", fc.id, errMsg)
+			fmt.Printf("[firecracker stderr error]: %s — %v\n", fc.id, errMsg)
 		} else {
 			telemetry.ReportEvent(fc.ctx, "vmm stderr reader closed")
 		}
@@ -340,17 +355,18 @@ func (fc *fc) start(
 
 	telemetry.ReportEvent(childCtx, "fc process created socket")
 
-	if err := fc.loadSnapshot(
+	if loadErr := fc.loadSnapshot(
 		childCtx,
 		tracer,
 		fc.socketPath,
 		fc.envPath,
 		fc.metadata,
 		fc.uffdSocketPath,
-	); err != nil {
-		fc.stop(childCtx, tracer)
+		fc.pollReady,
+	); loadErr != nil {
+		fcErr := fc.stop()
 
-		errMsg := fmt.Errorf("failed to load snapshot: %w", err)
+		errMsg := fmt.Errorf("failed to load snapshot: %w", errors.Join(loadErr, fcErr))
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg
@@ -360,7 +376,12 @@ func (fc *fc) start(
 
 	defer func() {
 		if err != nil {
-			fc.stop(childCtx, tracer)
+			err := fc.stop()
+			if err != nil {
+				errMsg := fmt.Errorf("error stopping FC process: %w", err)
+
+				telemetry.ReportError(childCtx, errMsg)
+			}
 		}
 	}()
 
@@ -377,29 +398,11 @@ func (fc *fc) start(
 	return nil
 }
 
-func (fc *fc) stop(ctx context.Context, tracer trace.Tracer) {
-	fc.mu.Lock()
-	if fc.isBeingStopped {
-		fc.mu.Unlock()
-		return
-	}
-	fc.isBeingStopped = true
-	fc.mu.Unlock()
-
-	childCtx, childSpan := tracer.Start(ctx, "stop-fc", trace.WithAttributes(
-		attribute.String("instance.cmd", fc.cmd.String()),
-		attribute.String("instance.cmd.dir", fc.cmd.Dir),
-		attribute.String("instance.cmd.path", fc.cmd.Path),
-	))
-	defer childSpan.End()
-
+func (fc *fc) stop() error {
 	err := fc.cmd.Process.Kill()
 	if err != nil {
-		errMsg := fmt.Errorf("failed to send KILL to FC process: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "sent KILL to FC process")
+		return fmt.Errorf("failed to send KILL to FC process: %w", err)
 	}
 
-	return
+	return nil
 }

@@ -4,14 +4,17 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -21,12 +24,16 @@ func (o *Orchestrator) CreateSandbox(
 	sandboxID,
 	templateID,
 	alias,
-	teamID,
-	buildID string,
+	teamID string,
+	build *models.EnvBuild,
 	maxInstanceLengthHours int64,
-	metadata map[string]string,
+	metadata,
+	envVars map[string]string,
 	kernelVersion,
-	firecrackerVersion string,
+	firecrackerVersion,
+	envdVersion string,
+	startTime time.Time,
+	endTime time.Time,
 ) (*api.Sandbox, error) {
 	childCtx, childSpan := t.Start(ctx, "create-sandbox",
 		trace.WithAttributes(
@@ -49,14 +56,18 @@ func (o *Orchestrator) CreateSandbox(
 			TemplateID:         templateID,
 			Alias:              &alias,
 			TeamID:             teamID,
-			BuildID:            buildID,
+			BuildID:            build.ID.String(),
 			SandboxID:          sandboxID,
 			KernelVersion:      kernelVersion,
 			FirecrackerVersion: firecrackerVersion,
+			EnvdVersion:        envdVersion,
 			Metadata:           metadata,
+			EnvVars:            envVars,
 			MaxInstanceLength:  maxInstanceLengthHours,
 			HugePages:          features.HasHugePages(),
 		},
+		StartTime: timestamppb.New(startTime),
+		EndTime:   timestamppb.New(endTime),
 	})
 
 	err = utils.UnwrapGRPCError(err)
@@ -67,9 +78,10 @@ func (o *Orchestrator) CreateSandbox(
 	telemetry.ReportEvent(childCtx, "Created sandbox")
 
 	return &api.Sandbox{
-		ClientID:   res.ClientID,
-		SandboxID:  sandboxID,
-		TemplateID: templateID,
-		Alias:      &alias,
+		ClientID:    res.ClientID,
+		SandboxID:   sandboxID,
+		TemplateID:  templateID,
+		Alias:       &alias,
+		EnvdVersion: *build.EnvdVersion,
 	}, nil
 }

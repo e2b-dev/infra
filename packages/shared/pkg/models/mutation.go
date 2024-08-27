@@ -1915,6 +1915,7 @@ type EnvBuildMutation struct {
 	addtotal_disk_size_mb *int64
 	kernel_version        *string
 	firecracker_version   *string
+	envd_version          *string
 	clearedFields         map[string]struct{}
 	env                   *string
 	clearedenv            bool
@@ -2641,6 +2642,55 @@ func (m *EnvBuildMutation) ResetFirecrackerVersion() {
 	m.firecracker_version = nil
 }
 
+// SetEnvdVersion sets the "envd_version" field.
+func (m *EnvBuildMutation) SetEnvdVersion(s string) {
+	m.envd_version = &s
+}
+
+// EnvdVersion returns the value of the "envd_version" field in the mutation.
+func (m *EnvBuildMutation) EnvdVersion() (r string, exists bool) {
+	v := m.envd_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvdVersion returns the old "envd_version" field's value of the EnvBuild entity.
+// If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnvBuildMutation) OldEnvdVersion(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvdVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvdVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvdVersion: %w", err)
+	}
+	return oldValue.EnvdVersion, nil
+}
+
+// ClearEnvdVersion clears the value of the "envd_version" field.
+func (m *EnvBuildMutation) ClearEnvdVersion() {
+	m.envd_version = nil
+	m.clearedFields[envbuild.FieldEnvdVersion] = struct{}{}
+}
+
+// EnvdVersionCleared returns if the "envd_version" field was cleared in this mutation.
+func (m *EnvBuildMutation) EnvdVersionCleared() bool {
+	_, ok := m.clearedFields[envbuild.FieldEnvdVersion]
+	return ok
+}
+
+// ResetEnvdVersion resets all changes to the "envd_version" field.
+func (m *EnvBuildMutation) ResetEnvdVersion() {
+	m.envd_version = nil
+	delete(m.clearedFields, envbuild.FieldEnvdVersion)
+}
+
 // ClearEnv clears the "env" edge to the Env entity.
 func (m *EnvBuildMutation) ClearEnv() {
 	m.clearedenv = true
@@ -2702,7 +2752,7 @@ func (m *EnvBuildMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EnvBuildMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.created_at != nil {
 		fields = append(fields, envbuild.FieldCreatedAt)
 	}
@@ -2742,6 +2792,9 @@ func (m *EnvBuildMutation) Fields() []string {
 	if m.firecracker_version != nil {
 		fields = append(fields, envbuild.FieldFirecrackerVersion)
 	}
+	if m.envd_version != nil {
+		fields = append(fields, envbuild.FieldEnvdVersion)
+	}
 	return fields
 }
 
@@ -2776,6 +2829,8 @@ func (m *EnvBuildMutation) Field(name string) (ent.Value, bool) {
 		return m.KernelVersion()
 	case envbuild.FieldFirecrackerVersion:
 		return m.FirecrackerVersion()
+	case envbuild.FieldEnvdVersion:
+		return m.EnvdVersion()
 	}
 	return nil, false
 }
@@ -2811,6 +2866,8 @@ func (m *EnvBuildMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldKernelVersion(ctx)
 	case envbuild.FieldFirecrackerVersion:
 		return m.OldFirecrackerVersion(ctx)
+	case envbuild.FieldEnvdVersion:
+		return m.OldEnvdVersion(ctx)
 	}
 	return nil, fmt.Errorf("unknown EnvBuild field %s", name)
 }
@@ -2911,6 +2968,13 @@ func (m *EnvBuildMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetFirecrackerVersion(v)
 		return nil
+	case envbuild.FieldEnvdVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvdVersion(v)
+		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild field %s", name)
 }
@@ -3007,6 +3071,9 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(envbuild.FieldTotalDiskSizeMB) {
 		fields = append(fields, envbuild.FieldTotalDiskSizeMB)
 	}
+	if m.FieldCleared(envbuild.FieldEnvdVersion) {
+		fields = append(fields, envbuild.FieldEnvdVersion)
+	}
 	return fields
 }
 
@@ -3035,6 +3102,9 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 		return nil
 	case envbuild.FieldTotalDiskSizeMB:
 		m.ClearTotalDiskSizeMB()
+		return nil
+	case envbuild.FieldEnvdVersion:
+		m.ClearEnvdVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild nullable field %s", name)
@@ -3082,6 +3152,9 @@ func (m *EnvBuildMutation) ResetField(name string) error {
 		return nil
 	case envbuild.FieldFirecrackerVersion:
 		m.ResetFirecrackerVersion()
+		return nil
+	case envbuild.FieldEnvdVersion:
+		m.ResetEnvdVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild field %s", name)
@@ -6020,6 +6093,7 @@ type UsersTeamsMutation struct {
 	op            Op
 	typ           string
 	id            *int
+	is_default    *bool
 	clearedFields map[string]struct{}
 	users         *uuid.UUID
 	clearedusers  bool
@@ -6200,6 +6274,42 @@ func (m *UsersTeamsMutation) ResetTeamID() {
 	m.teams = nil
 }
 
+// SetIsDefault sets the "is_default" field.
+func (m *UsersTeamsMutation) SetIsDefault(b bool) {
+	m.is_default = &b
+}
+
+// IsDefault returns the value of the "is_default" field in the mutation.
+func (m *UsersTeamsMutation) IsDefault() (r bool, exists bool) {
+	v := m.is_default
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsDefault returns the old "is_default" field's value of the UsersTeams entity.
+// If the UsersTeams object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsersTeamsMutation) OldIsDefault(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsDefault is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsDefault requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsDefault: %w", err)
+	}
+	return oldValue.IsDefault, nil
+}
+
+// ResetIsDefault resets all changes to the "is_default" field.
+func (m *UsersTeamsMutation) ResetIsDefault() {
+	m.is_default = nil
+}
+
 // SetUsersID sets the "users" edge to the User entity by id.
 func (m *UsersTeamsMutation) SetUsersID(id uuid.UUID) {
 	m.users = &id
@@ -6314,12 +6424,15 @@ func (m *UsersTeamsMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsersTeamsMutation) Fields() []string {
-	fields := make([]string, 0, 2)
+	fields := make([]string, 0, 3)
 	if m.users != nil {
 		fields = append(fields, usersteams.FieldUserID)
 	}
 	if m.teams != nil {
 		fields = append(fields, usersteams.FieldTeamID)
+	}
+	if m.is_default != nil {
+		fields = append(fields, usersteams.FieldIsDefault)
 	}
 	return fields
 }
@@ -6333,6 +6446,8 @@ func (m *UsersTeamsMutation) Field(name string) (ent.Value, bool) {
 		return m.UserID()
 	case usersteams.FieldTeamID:
 		return m.TeamID()
+	case usersteams.FieldIsDefault:
+		return m.IsDefault()
 	}
 	return nil, false
 }
@@ -6346,6 +6461,8 @@ func (m *UsersTeamsMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldUserID(ctx)
 	case usersteams.FieldTeamID:
 		return m.OldTeamID(ctx)
+	case usersteams.FieldIsDefault:
+		return m.OldIsDefault(ctx)
 	}
 	return nil, fmt.Errorf("unknown UsersTeams field %s", name)
 }
@@ -6368,6 +6485,13 @@ func (m *UsersTeamsMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTeamID(v)
+		return nil
+	case usersteams.FieldIsDefault:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsDefault(v)
 		return nil
 	}
 	return fmt.Errorf("unknown UsersTeams field %s", name)
@@ -6423,6 +6547,9 @@ func (m *UsersTeamsMutation) ResetField(name string) error {
 		return nil
 	case usersteams.FieldTeamID:
 		m.ResetTeamID()
+		return nil
+	case usersteams.FieldIsDefault:
+		m.ResetIsDefault()
 		return nil
 	}
 	return fmt.Errorf("unknown UsersTeams field %s", name)

@@ -36,6 +36,20 @@ func (utc *UsersTeamsCreate) SetTeamID(u uuid.UUID) *UsersTeamsCreate {
 	return utc
 }
 
+// SetIsDefault sets the "is_default" field.
+func (utc *UsersTeamsCreate) SetIsDefault(b bool) *UsersTeamsCreate {
+	utc.mutation.SetIsDefault(b)
+	return utc
+}
+
+// SetNillableIsDefault sets the "is_default" field if the given value is not nil.
+func (utc *UsersTeamsCreate) SetNillableIsDefault(b *bool) *UsersTeamsCreate {
+	if b != nil {
+		utc.SetIsDefault(*b)
+	}
+	return utc
+}
+
 // SetUsersID sets the "users" edge to the User entity by ID.
 func (utc *UsersTeamsCreate) SetUsersID(id uuid.UUID) *UsersTeamsCreate {
 	utc.mutation.SetUsersID(id)
@@ -65,6 +79,7 @@ func (utc *UsersTeamsCreate) Mutation() *UsersTeamsMutation {
 
 // Save creates the UsersTeams in the database.
 func (utc *UsersTeamsCreate) Save(ctx context.Context) (*UsersTeams, error) {
+	utc.defaults()
 	return withHooks(ctx, utc.sqlSave, utc.mutation, utc.hooks)
 }
 
@@ -90,6 +105,14 @@ func (utc *UsersTeamsCreate) ExecX(ctx context.Context) {
 	}
 }
 
+// defaults sets the default values of the builder before save.
+func (utc *UsersTeamsCreate) defaults() {
+	if _, ok := utc.mutation.IsDefault(); !ok {
+		v := usersteams.DefaultIsDefault
+		utc.mutation.SetIsDefault(v)
+	}
+}
+
 // check runs all checks and user-defined validators on the builder.
 func (utc *UsersTeamsCreate) check() error {
 	if _, ok := utc.mutation.UserID(); !ok {
@@ -97,6 +120,9 @@ func (utc *UsersTeamsCreate) check() error {
 	}
 	if _, ok := utc.mutation.TeamID(); !ok {
 		return &ValidationError{Name: "team_id", err: errors.New(`models: missing required field "UsersTeams.team_id"`)}
+	}
+	if _, ok := utc.mutation.IsDefault(); !ok {
+		return &ValidationError{Name: "is_default", err: errors.New(`models: missing required field "UsersTeams.is_default"`)}
 	}
 	if _, ok := utc.mutation.UsersID(); !ok {
 		return &ValidationError{Name: "users", err: errors.New(`models: missing required edge "UsersTeams.users"`)}
@@ -132,6 +158,10 @@ func (utc *UsersTeamsCreate) createSpec() (*UsersTeams, *sqlgraph.CreateSpec) {
 	)
 	_spec.Schema = utc.schemaConfig.UsersTeams
 	_spec.OnConflict = utc.conflict
+	if value, ok := utc.mutation.IsDefault(); ok {
+		_spec.SetField(usersteams.FieldIsDefault, field.TypeBool, value)
+		_node.IsDefault = value
+	}
 	if nodes := utc.mutation.UsersIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
@@ -244,6 +274,18 @@ func (u *UsersTeamsUpsert) UpdateTeamID() *UsersTeamsUpsert {
 	return u
 }
 
+// SetIsDefault sets the "is_default" field.
+func (u *UsersTeamsUpsert) SetIsDefault(v bool) *UsersTeamsUpsert {
+	u.Set(usersteams.FieldIsDefault, v)
+	return u
+}
+
+// UpdateIsDefault sets the "is_default" field to the value that was provided on create.
+func (u *UsersTeamsUpsert) UpdateIsDefault() *UsersTeamsUpsert {
+	u.SetExcluded(usersteams.FieldIsDefault)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -312,6 +354,20 @@ func (u *UsersTeamsUpsertOne) UpdateTeamID() *UsersTeamsUpsertOne {
 	})
 }
 
+// SetIsDefault sets the "is_default" field.
+func (u *UsersTeamsUpsertOne) SetIsDefault(v bool) *UsersTeamsUpsertOne {
+	return u.Update(func(s *UsersTeamsUpsert) {
+		s.SetIsDefault(v)
+	})
+}
+
+// UpdateIsDefault sets the "is_default" field to the value that was provided on create.
+func (u *UsersTeamsUpsertOne) UpdateIsDefault() *UsersTeamsUpsertOne {
+	return u.Update(func(s *UsersTeamsUpsert) {
+		s.UpdateIsDefault()
+	})
+}
+
 // Exec executes the query.
 func (u *UsersTeamsUpsertOne) Exec(ctx context.Context) error {
 	if len(u.create.conflict) == 0 {
@@ -364,6 +420,7 @@ func (utcb *UsersTeamsCreateBulk) Save(ctx context.Context) ([]*UsersTeams, erro
 	for i := range utcb.builders {
 		func(i int, root context.Context) {
 			builder := utcb.builders[i]
+			builder.defaults()
 			var mut Mutator = MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
 				mutation, ok := m.(*UsersTeamsMutation)
 				if !ok {
@@ -540,6 +597,20 @@ func (u *UsersTeamsUpsertBulk) SetTeamID(v uuid.UUID) *UsersTeamsUpsertBulk {
 func (u *UsersTeamsUpsertBulk) UpdateTeamID() *UsersTeamsUpsertBulk {
 	return u.Update(func(s *UsersTeamsUpsert) {
 		s.UpdateTeamID()
+	})
+}
+
+// SetIsDefault sets the "is_default" field.
+func (u *UsersTeamsUpsertBulk) SetIsDefault(v bool) *UsersTeamsUpsertBulk {
+	return u.Update(func(s *UsersTeamsUpsert) {
+		s.SetIsDefault(v)
+	})
+}
+
+// UpdateIsDefault sets the "is_default" field to the value that was provided on create.
+func (u *UsersTeamsUpsertBulk) UpdateIsDefault() *UsersTeamsUpsertBulk {
+	return u.Update(func(s *UsersTeamsUpsert) {
+		s.UpdateIsDefault()
 	})
 }
 

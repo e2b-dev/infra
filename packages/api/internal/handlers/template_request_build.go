@@ -57,10 +57,11 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 
 	telemetry.ReportEvent(ctx, "started request for environment build")
 
+	var team *models.Team
 	// Prepare info for rebuilding env
-	userID, team, tier, err := a.GetUserAndTeam(c)
+	userID, teams, err := a.GetUserAndTeams(c)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err))
 
 		err = fmt.Errorf("error when getting default team: %w", err)
 		telemetry.ReportCriticalError(ctx, err)
@@ -68,13 +69,58 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		return nil
 	}
 
+	if body.TeamID != nil {
+		teamUUID, err := uuid.Parse(*body.TeamID)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid team ID: %s", *body.TeamID))
+
+			err = fmt.Errorf("invalid team ID: %w", err)
+			telemetry.ReportCriticalError(ctx, err)
+
+			return nil
+		}
+
+		for _, t := range teams {
+			if t.ID == teamUUID {
+				team = t
+				break
+			}
+		}
+
+		if team == nil {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Team '%s' not found", *body.TeamID))
+
+			err = fmt.Errorf("team not found: %w", err)
+			telemetry.ReportCriticalError(ctx, err)
+
+			return nil
+		}
+	} else {
+		for _, t := range teams {
+			if t.Edges.UsersTeams[0].IsDefault {
+				team = t
+				break
+			}
+		}
+
+		if team == nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Default team not found")
+
+			err = fmt.Errorf("default team not found: %w", err)
+			telemetry.ReportCriticalError(ctx, err)
+
+			return nil
+		}
+	}
+
 	if !new {
 		// Check if the user has access to the template
 		_, err = a.db.Client.Env.Query().Where(env.ID(templateID), env.TeamID(team.ID)).Only(ctx)
 		if err != nil {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting env: %s", err))
+			errMsg := fmt.Sprintf("Error when getting template '%s' for team '%s'", templateID, team.ID.String())
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("%s: %s", errMsg, err))
 
-			err = fmt.Errorf("error when getting env: %w", err)
+			err = fmt.Errorf("%s: %w", errMsg, err)
 			telemetry.ReportCriticalError(ctx, err)
 
 			return nil
@@ -97,7 +143,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		attribute.String("env.id", templateID),
-		attribute.String("env.team.tier", tier.ID),
+		attribute.String("env.team.tier", team.Tier),
 		attribute.String("build.id", buildID.String()),
 		attribute.String("env.dockerfile", body.Dockerfile),
 	)
@@ -110,14 +156,14 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 	}
 
 	if body.CpuCount != nil {
-		telemetry.SetAttributes(ctx, attribute.Int("env.cpu", *body.CpuCount))
+		telemetry.SetAttributes(ctx, attribute.Int("env.cpu", int(*body.CpuCount)))
 	}
 
 	if body.MemoryMB != nil {
-		telemetry.SetAttributes(ctx, attribute.Int("env.memory_mb", *body.MemoryMB))
+		telemetry.SetAttributes(ctx, attribute.Int("env.memory_mb", int(*body.MemoryMB)))
 	}
 
-	cpuCount, ramMB, apiError := getCPUAndRAM(tier.ID, body.CpuCount, body.MemoryMB)
+	cpuCount, ramMB, apiError := getCPUAndRAM(team.Tier, body.CpuCount, body.MemoryMB)
 	if apiError != nil {
 		telemetry.ReportCriticalError(ctx, apiError.Err)
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
@@ -164,7 +210,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		}).
 		Exec(ctx)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating env: %s", err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating template: %s", err))
 
 		err = fmt.Errorf("error when updating env: %w", err)
 		telemetry.ReportCriticalError(ctx, err)
@@ -178,7 +224,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		envbuild.StatusEQ(envbuild.StatusWaiting),
 	).SetStatus(envbuild.StatusFailed).SetFinishedAt(time.Now()).Exec(ctx)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating env: %s", err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating template: %s", err))
 
 		err = fmt.Errorf("error when updating env: %w", err)
 		telemetry.ReportCriticalError(ctx, err)
@@ -195,7 +241,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		SetVcpu(cpuCount).
 		SetKernelVersion(schema.DefaultKernelVersion).
 		SetFirecrackerVersion(schema.DefaultFirecrackerVersion).
-		SetFreeDiskSizeMB(tier.DiskMB).
+		SetFreeDiskSizeMB(team.Edges.TeamTier.DiskMB).
 		SetNillableStartCmd(body.StartCmd).
 		SetDockerfile(body.Dockerfile).
 		Exec(ctx)
@@ -208,9 +254,9 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 			Where(env.ID(alias)).
 			All(ctx)
 		if err != nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when checking alias: %s", err))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when querying alias '%s': %s", alias, err))
 
-			err = fmt.Errorf("error when checking alias: %w", err)
+			err = fmt.Errorf("error when checking alias '%s': %w", alias, err)
 			telemetry.ReportCriticalError(ctx, err)
 
 			return nil
@@ -218,19 +264,18 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		}
 
 		if len(envs) > 0 {
-			a.sendAPIStoreError(c, http.StatusConflict, "Alias already used")
+			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Alias '%s' is already used", alias))
 
-			err = fmt.Errorf("alias already used: %w", err)
+			err = fmt.Errorf("conflict of alias '%s' with template ID: %w", alias, err)
 			telemetry.ReportCriticalError(ctx, err)
 
 			return nil
 		}
 
 		aliasDB, err := tx.EnvAlias.Query().Where(envalias.ID(alias)).Only(ctx)
-
 		if err != nil {
 			if !models.IsNotFound(err) {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when checking alias: %s", err))
+				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when querying for alias: %s", err))
 
 				err = fmt.Errorf("error when checking alias: %w", err)
 				telemetry.ReportCriticalError(ctx, err)
@@ -259,18 +304,18 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 				SetEnvID(templateID).SetIsRenamable(true).SetID(alias).
 				Exec(ctx)
 			if err != nil {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when inserting alias: %s", err))
+				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when inserting alias '%s': %s", alias, err))
 
-				err = fmt.Errorf("error when inserting alias: %w", err)
+				err = fmt.Errorf("error when inserting alias '%s': %w", alias, err)
 				telemetry.ReportCriticalError(ctx, err)
 
 				return nil
 
 			}
 		} else if aliasDB.EnvID != templateID {
-			a.sendAPIStoreError(c, http.StatusForbidden, "Alias already used")
+			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("Alias '%s' already used", alias))
 
-			err = fmt.Errorf("alias already used: %w", err)
+			err = fmt.Errorf("alias '%s' already used: %w", alias, err)
 			telemetry.ReportCriticalError(ctx, err)
 
 			return nil
@@ -321,7 +366,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 	}
 }
 
-func getCPUAndRAM(tierID string, cpuCount, memoryMB *int) (int64, int64, *api.APIError) {
+func getCPUAndRAM(tierID string, cpuCount, memoryMB *int32) (int64, int64, *api.APIError) {
 	cpu := constants.DefaultTemplateCPU
 	ramMB := constants.DefaultTemplateMemory
 

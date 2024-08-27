@@ -27,8 +27,9 @@ type InstanceInfo struct {
 	TeamID            *uuid.UUID
 	BuildID           *uuid.UUID
 	Metadata          map[string]string
-	StartTime         *time.Time
 	MaxInstanceLength time.Duration
+	StartTime         time.Time
+	EndTime           time.Time
 }
 
 type InstanceCache struct {

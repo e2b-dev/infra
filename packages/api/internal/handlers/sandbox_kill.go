@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/gin-gonic/gin"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (a *APIStore) DeleteSandboxesSandboxID(
@@ -20,7 +20,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	ctx := c.Request.Context()
 	sandboxID = utils.ShortID(sandboxID)
 
-	teamID := c.Value(auth.TeamContextKey).(models.Team).ID
+	teamID := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team.ID
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("instance.id", sandboxID),
@@ -41,7 +41,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		errMsg := fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String())
 		telemetry.ReportCriticalError(ctx, errMsg)
 
-		a.sendAPIStoreError(c, http.StatusUnauthorized, fmt.Sprintf("Error killing sandbox - sandbox '%s' does not belong to your team", sandboxID))
+		a.sendAPIStoreError(c, http.StatusUnauthorized, fmt.Sprintf("Error killing sandbox - sandbox '%s' does not belong to your team '%s'", sandboxID, teamID.String()))
 
 		return
 	}

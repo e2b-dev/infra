@@ -10,6 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -18,15 +19,9 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	ctx := c.Request.Context()
 
 	userID := c.Value(auth.UserIDContextKey).(uuid.UUID)
-	team, err := a.db.GetDefaultTeamFromUserID(ctx, userID)
-
-	telemetry.SetAttributes(ctx,
-		attribute.String("user.id", userID.String()),
-		attribute.String("env.team.id", team.ID.String()),
-	)
-
+	teams, err := a.db.GetTeams(ctx, userID)
 	if err != nil {
-		errMsg := fmt.Errorf("error when getting default team: %w", err)
+		errMsg := fmt.Errorf("error when getting teams: %w", err)
 
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get the default team")
 
@@ -34,6 +29,11 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 		return
 	}
+
+	telemetry.SetAttributes(ctx,
+		attribute.String("user.id", userID.String()),
+		attribute.String("env.id", templateID),
+	)
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
@@ -57,7 +57,17 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	if team.ID != dockerBuild.GetTeamID() {
+	templateTeamID := dockerBuild.GetTeamID()
+
+	var team *models.Team
+	for _, t := range teams {
+		if t.ID == templateTeamID {
+			team = t
+			break
+		}
+	}
+
+	if team == nil {
 		msg := fmt.Errorf("user doesn't have access to env '%s'", templateID)
 
 		a.sendAPIStoreError(c, http.StatusForbidden, "You don't have access to this sandbox template")
@@ -67,6 +77,8 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
+	telemetry.SetAttributes(ctx, attribute.String("team.id", team.ID.String()))
+
 	status := dockerBuild.GetStatus()
 	logs := dockerBuild.GetLogs()
 
@@ -74,7 +86,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		Logs:       logs[*params.LogsOffset:],
 		TemplateID: templateID,
 		BuildID:    buildID,
-		Status:     &status,
+		Status:     status,
 	}
 
 	telemetry.ReportEvent(ctx, "got template build status")

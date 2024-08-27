@@ -20,17 +20,28 @@ message SandboxConfig {
   
   string sandboxID = 9;
   map<string, string> metadata = 10;
+
+  string envdVersion = 11;
+  map<string, string> envVars = 12;
 }
 
 
 // Data required for creating a new sandbox.
 message SandboxCreateRequest {
   SandboxConfig sandbox = 1;
+  google.protobuf.Timestamp startTime = 2;
+  google.protobuf.Timestamp endTime = 3;
 }
 
 // Data about the sandbox.
 message SandboxCreateResponse {
   string clientID = 1;
+}
+
+// Data required for creating a new sandbox.
+message SandboxUpdateRequest {
+  string sandboxID = 1;
+  google.protobuf.Timestamp endTime = 2;
 }
 
 // Data required for action on a specified sandbox.
@@ -42,6 +53,7 @@ message RunningSandbox {
   SandboxConfig config = 1;
   string clientID = 2;
   google.protobuf.Timestamp startTime = 9;
+  google.protobuf.Timestamp endTime = 10;
 }
 
 // Data returned after listing all the sandboxes.
@@ -53,6 +65,8 @@ message SandboxListResponse {
 service Sandbox {
   // Create is a gRPC service that creates a new sandbox.
   rpc Create(SandboxCreateRequest) returns (SandboxCreateResponse);
+  // Update is a gRPC service that updates a sandbox.
+  rpc Update(SandboxUpdateRequest) returns (google.protobuf.Empty);
   // List is a gRPC service that returns a list of all the sandboxes.
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
   // Delete is a gRPC service that kills a sandbox.

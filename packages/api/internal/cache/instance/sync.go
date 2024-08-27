@@ -24,31 +24,34 @@ func getMaxAllowedTTL(startTime time.Time, duration, maxInstanceLength time.Dura
 }
 
 // KeepAliveFor the instance's expiration timer.
-func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration) error {
+func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, allowShorter bool) (*InstanceInfo, error) {
 	item, err := c.Get(instanceID)
 	if err != nil {
-		return err
-	}
-
-	if item.ExpiresAt().After(time.Now().Add(duration)) {
-		return nil
+		return nil, err
 	}
 
 	instance := item.Value()
-	if (time.Since(*instance.StartTime)) > instance.MaxInstanceLength {
+	if !allowShorter && item.ExpiresAt().After(time.Now().Add(duration)) {
+		return &instance, nil
+	}
+
+	if (time.Since(instance.StartTime)) > instance.MaxInstanceLength {
 		c.cache.Delete(instanceID)
 
-		return fmt.Errorf("instance \"%s\" reached maximal allowed uptime", instanceID)
+		return nil, fmt.Errorf("instance \"%s\" reached maximal allowed uptime", instanceID)
 	} else {
-		maxAllowedTTL := getMaxAllowedTTL(*instance.StartTime, duration, instance.MaxInstanceLength)
+		maxAllowedTTL := getMaxAllowedTTL(instance.StartTime, duration, instance.MaxInstanceLength)
+
+		newEndTime := item.ExpiresAt().Add(maxAllowedTTL)
+		instance.EndTime = newEndTime
 
 		item = c.cache.Set(instanceID, instance, maxAllowedTTL)
 		if item == nil {
-			return fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
+			return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
 		}
 	}
 
-	return nil
+	return &instance, nil
 }
 
 func (c *InstanceCache) Sync(instances []*InstanceInfo) {

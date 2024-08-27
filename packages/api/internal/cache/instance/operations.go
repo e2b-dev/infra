@@ -2,8 +2,6 @@ package instance
 
 import (
 	"fmt"
-	"time"
-
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 )
@@ -70,16 +68,11 @@ func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []InstanceInf
 // Add the instance to the cache and start expiration timer.
 // If the instance already exists we do nothing - it was loaded from Orchestrator.
 func (c *InstanceCache) Add(instance InstanceInfo) error {
-	if instance.StartTime == nil {
-		now := time.Now()
-		instance.StartTime = &now
-	}
-
 	if instance.TeamID == nil || instance.Instance.SandboxID == "" || instance.Instance.ClientID == "" || instance.Instance.TemplateID == "" {
 		return fmt.Errorf("instance %+v (%+v) is missing team ID, instance ID, client ID, or env ID ", instance, instance.Instance)
 	}
 
-	c.cache.Set(instance.Instance.SandboxID, instance, ttlcache.DefaultTTL)
+	c.cache.Set(instance.Instance.SandboxID, instance, instance.EndTime.Sub(instance.StartTime))
 	c.UpdateCounter(instance, 1)
 
 	// Release the reservation if it exists

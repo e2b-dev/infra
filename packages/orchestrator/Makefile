@@ -19,7 +19,13 @@ generate:
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/orchestrator .
+	@cp -r ../shared .shared/
+	@docker build --platform linux/amd64 --output=bin .
+	@rm -rf .shared/
+
+.PHONY: build-local
+build-local:
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/orchestrator .
 
 .PHONY: build-debug
 build-debug:
@@ -34,4 +40,4 @@ build-and-upload: build upload
 
 .PHONY: test
 test:
-	sudo CONSUL_TOKEN=$(CONSUL_TOKEN) go run -race -gcflags=all="-N -l" main.go -env idnrwvs3vrde6hknozc0 -instance test-instance-1 -alive 1 -count 1
+	sudo NODE_ID="test-client-22" CONSUL_TOKEN=$(CONSUL_TOKEN) go run -race -gcflags=all="-N -l" main.go -env zli4m3wxr03ma3i99w8h -instance test-instance-1 -alive 1 -count 1

@@ -127,7 +127,7 @@ func (c *BuildCache) Create(envID string, buildID uuid.UUID, teamID uuid.UUID) e
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	item := c.cache.Get(envID)
+	item := c.cache.Get(envID, ttlcache.WithDisableTouchOnHit[string, *BuildInfo]())
 	if item != nil && item.Value().GetStatus() == api.TemplateBuildStatusBuilding {
 		return fmt.Errorf("build for %s already exists in cache", envID)
 	}

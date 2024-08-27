@@ -8,6 +8,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -16,7 +17,8 @@ import (
 func (a *APIStore) GetSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	team := c.Value(auth.TeamContextKey).(models.Team)
+	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
+	team := teamInfo.Team
 
 	telemetry.ReportEvent(ctx, "list running instances")
 
@@ -47,21 +49,22 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 		buildsMap[build.ID] = build
 	}
 
-	sandboxes := make([]api.RunningSandboxes, 0)
+	sandboxes := make([]api.RunningSandbox, 0)
 
 	for _, info := range instanceInfo {
 		if *info.TeamID != team.ID {
 			continue
 		}
 
-		instance := api.RunningSandboxes{
+		instance := api.RunningSandbox{
 			ClientID:   info.Instance.ClientID,
 			TemplateID: info.Instance.TemplateID,
 			Alias:      info.Instance.Alias,
 			SandboxID:  info.Instance.SandboxID,
-			StartedAt:  *info.StartTime,
-			CpuCount:   int(buildsMap[*info.BuildID].Vcpu),
-			MemoryMB:   int(buildsMap[*info.BuildID].RAMMB),
+			StartedAt:  info.StartTime,
+			CpuCount:   int32(buildsMap[*info.BuildID].Vcpu),
+			MemoryMB:   int32(buildsMap[*info.BuildID].RAMMB),
+			EndAt:      info.EndTime,
 		}
 
 		if info.Metadata != nil {

@@ -17,6 +17,7 @@ func (UsersTeams) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("user_id", uuid.UUID{}),
 		field.UUID("team_id", uuid.UUID{}),
+		field.Bool("is_default").Default(false),
 	}
 }
 

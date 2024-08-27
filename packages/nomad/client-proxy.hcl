@@ -26,12 +26,12 @@ variable "session_proxy_service_name" {
   type = string
 }
 
-variable "domain_name" {
+variable "load_balancer_conf" {
   type = string
 }
 
-locals {
-  domain_name_escaped = replace(var.domain_name, ".", "\\.")
+variable "nginx_conf" {
+  type = string
 }
 
 job "client-proxy" {
@@ -67,79 +67,37 @@ job "client-proxy" {
       driver = "docker"
 
       resources {
-        memory_max = 2048
-        memory = 512
-        cpu    = 512
+        memory_max = 6000
+        memory = 6000
+        cpu    = 2048
       }
 
       config {
-        image        = "nginx"
+        image        = "nginx:1.27.0"
         network_mode = "host"
         ports        = [var.client_proxy_health_port_name, var.client_proxy_port_name]
         volumes = [
-          "local:/etc/nginx/conf.d",
+          "local:/etc/nginx/",
+          "/var/log/client-proxy:/var/log/nginx"
         ]
       }
 
       template {
         left_delimiter  = "[["
         right_delimiter = "]]"
-        destination     = "local/load-balancer.conf"
+        data            = var.load_balancer_conf
+        destination     = "local/conf.d/load-balancer.conf"
         change_mode     = "signal"
         change_signal   = "SIGHUP"
-        data            = <<EOF
-map $http_upgrade $conn_upgrade {
-  default     "";
-  "websocket" "Upgrade";
-}
+      }
 
-server {
-  listen 3002 default_server;
-  server_name _;
-  return 400 "Unsupported domain";
-}
-[[ range service "session-proxy" ]]
-server {
-  listen 3002;
-  server_name ~^(.+)-[[ index .ServiceMeta "Client" | sprig_substr 0 8 ]]\.${local.domain_name_escaped}$;
-
-  proxy_set_header Host $host;
-  proxy_set_header X-Real-IP $remote_addr;
-
-  proxy_set_header Upgrade $http_upgrade;
-  proxy_set_header Connection $conn_upgrade;
-
-  proxy_hide_header x-frame-options;
-
-  proxy_http_version 1.1;
-
-  proxy_read_timeout 7d;
-  proxy_send_timeout 7d;
-
-  proxy_cache_bypass 1;
-  proxy_no_cache 1;
-
-  client_max_body_size 100M;
-
-  location / {
-    proxy_pass $scheme://[[ .Address ]]:[[ .Port ]]$request_uri;
-  }
-}
-[[ end ]]
-server {
-  listen 3001;
-  location /health {
-    access_log off;
-    add_header 'Content-Type' 'application/json';
-    return 200 '{"status":"UP"}';
-  }
-
-  location /status {
-    stub_status;
-    allow all;
-  }
-}
-EOF
+      template {
+        left_delimiter  = "[["
+        right_delimiter = "]]"
+        data            = var.nginx_conf
+        destination     = "local/nginx.conf"
+        change_mode     = "signal"
+        change_signal   = "SIGHUP"
       }
     }
   }

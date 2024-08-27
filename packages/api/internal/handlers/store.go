@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	loki "github.com/grafana/loki/pkg/logcli/client"
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -19,21 +19,22 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 )
 
 type APIStore struct {
 	Ctx             context.Context
 	analytics       *analyticscollector.Analytics
 	posthog         *PosthogClient
-	tracer          trace.Tracer
+	Tracer          trace.Tracer
 	instanceCache   *instance.InstanceCache
 	orchestrator    *orchestrator.Orchestrator
 	templateManager *template_manager.TemplateManager
@@ -41,6 +42,9 @@ type APIStore struct {
 	db              *db.DB
 	lokiClient      *loki.DefaultClient
 	logger          *zap.SugaredLogger
+	sandboxLogger   *zap.SugaredLogger
+	templateCache   *templatecache.TemplateCache
+	authCache       *authcache.TeamAuthCache
 }
 
 var lokiAddress = os.Getenv("LOKI_ADDRESS")
@@ -90,7 +94,7 @@ func NewAPIStore() *APIStore {
 	if env.IsLocal() {
 		logger.Info("Skipping loading sandboxes, running locally")
 	} else {
-		instances, instancesErr := orch.GetInstances(ctx)
+		instances, instancesErr := orch.GetInstances(ctx, tracer)
 		if instancesErr != nil {
 			logger.Errorf("Error loading current sandboxes\n: %w", instancesErr)
 		}
@@ -119,14 +123,14 @@ func NewAPIStore() *APIStore {
 
 	logger.Info("Initialized Analytics client")
 
-	instanceCache := instance.NewCache(analytics.Client, logger, getDeleteInstanceFunction(ctx, orch, analytics, posthogClient, logger), initialInstances, instancesCounter)
+	instanceCache := instance.NewCache(analytics.Client, logger, getDeleteInstanceFunction(ctx, tracer, orch, analytics, posthogClient, logger), initialInstances, instancesCounter)
 
 	logger.Info("Initialized instance cache")
 
 	if env.IsLocal() {
 		logger.Info("Skipping syncing sandboxes, running locally")
 	} else {
-		go orch.KeepInSync(ctx, instanceCache)
+		go orch.KeepInSync(ctx, tracer, instanceCache)
 	}
 
 	var lokiClient *loki.DefaultClient
@@ -152,18 +156,30 @@ func NewAPIStore() *APIStore {
 
 	buildCache := builds.NewBuildCache(buildCounter)
 
+	sandboxLogger, err := logging.NewCollectorLogger()
+	if err != nil {
+		logger.Errorf("Error initializing sandbox logger\n: %v", err)
+		panic(err)
+	}
+
+	templateCache := templatecache.NewTemplateCache(dbClient)
+	authCache := authcache.NewTeamAuthCache(dbClient)
+
 	return &APIStore{
 		Ctx:             ctx,
 		orchestrator:    orch,
 		templateManager: templateManager,
 		db:              dbClient,
 		instanceCache:   instanceCache,
-		tracer:          tracer,
+		Tracer:          tracer,
 		analytics:       analytics,
 		posthog:         posthogClient,
 		buildCache:      buildCache,
 		logger:          logger,
 		lokiClient:      lokiClient,
+		sandboxLogger:   sandboxLogger,
+		templateCache:   templateCache,
+		authCache:       authCache,
 	}
 }
 
@@ -202,17 +218,20 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 	c.String(http.StatusOK, "Health check successful")
 }
 
-func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (models.Team, *api.APIError) {
-	team, err := a.db.GetTeamAuth(ctx, apiKey)
+func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authcache.AuthTeamInfo, *api.APIError) {
+	team, tier, err := a.authCache.Get(ctx, apiKey)
 	if err != nil {
-		return models.Team{}, &api.APIError{
+		return authcache.AuthTeamInfo{}, &api.APIError{
 			Err:       fmt.Errorf("failed to get the team from db for an api key: %w", err),
 			ClientMsg: "Cannot get the team for the given API key",
 			Code:      http.StatusUnauthorized,
 		}
 	}
 
-	return *team, nil
+	return authcache.AuthTeamInfo{
+		Team: team,
+		Tier: tier,
+	}, nil
 }
 
 func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken string) (uuid.UUID, *api.APIError) {
@@ -238,39 +257,38 @@ func (a *APIStore) DeleteInstance(instanceID string, purge bool) *api.APIError {
 		}
 	}
 
-	return deleteInstance(a.Ctx, a.orchestrator, a.analytics, a.posthog, a.logger, info)
+	return deleteInstance(a.Ctx, a.Tracer, a.orchestrator, a.analytics, a.posthog, a.logger, info)
 }
 
-func (a *APIStore) CheckTeamAccessEnv(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID, public bool) (env *api.Template, build *models.EnvBuild, err error) {
-	template, build, err := a.db.GetEnv(ctx, aliasOrEnvID, teamID, public)
-	if err != nil {
-		return nil, nil, err
-	}
-	return &api.Template{
-		TemplateID: template.TemplateID,
-		BuildID:    build.ID.String(),
-		Public:     template.Public,
-		Aliases:    template.Aliases,
-	}, build, nil
-}
-
-func getDeleteInstanceFunction(ctx context.Context, orchestrator *orchestrator.Orchestrator, analytics *analyticscollector.Analytics, posthogClient *PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo, purge bool) *api.APIError {
+func getDeleteInstanceFunction(ctx context.Context, tracer trace.Tracer, orchestrator *orchestrator.Orchestrator, analytics *analyticscollector.Analytics, posthogClient *PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo, purge bool) *api.APIError {
 	return func(info instance.InstanceInfo, purge bool) *api.APIError {
-		return deleteInstance(ctx, orchestrator, analytics, posthogClient, logger, info)
+		return deleteInstance(ctx, tracer, orchestrator, analytics, posthogClient, logger, info)
 	}
 }
 
 func deleteInstance(
 	ctx context.Context,
+	tracer trace.Tracer,
 	orchestrator *orchestrator.Orchestrator,
 	analytics *analyticscollector.Analytics,
 	posthogClient *PosthogClient,
 	logger *zap.SugaredLogger,
 	info instance.InstanceInfo,
 ) *api.APIError {
-	duration := time.Since(*info.StartTime).Seconds()
+	childCtx, span := tracer.Start(ctx, "delete-instance")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("instance.id", info.Instance.SandboxID),
+		attribute.String("client.id", info.Instance.ClientID),
+		attribute.String("env.id", info.Instance.TemplateID),
+		attribute.String("team.id", info.TeamID.String()),
+		attribute.String("build.id", info.BuildID.String()),
+	)
 
-	delErr := orchestrator.DeleteInstance(ctx, info.Instance.SandboxID)
+	timestamp := timestamppb.Now()
+	duration := timestamp.AsTime().Sub(info.StartTime).Seconds()
+
+	delErr := orchestrator.DeleteInstance(childCtx, tracer, info.Instance.SandboxID)
 	if delErr != nil {
 		errMsg := fmt.Errorf("cannot delete instance '%s': %w", info.Instance.SandboxID, delErr)
 
@@ -281,12 +299,12 @@ func deleteInstance(
 		}
 	}
 
-	if info.TeamID != nil && info.StartTime != nil {
-		_, err := analytics.Client.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
+	if info.TeamID != nil {
+		_, err := analytics.Client.InstanceStopped(childCtx, &analyticscollector.InstanceStoppedEvent{
 			TeamId:        info.TeamID.String(),
 			EnvironmentId: info.Instance.TemplateID,
 			InstanceId:    info.Instance.SandboxID,
-			Timestamp:     timestamppb.Now(),
+			Timestamp:     timestamp,
 			Duration:      float32(duration),
 		})
 		if err != nil {

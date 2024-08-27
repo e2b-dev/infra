@@ -35,7 +35,7 @@ variable "consul_token" {
 }
 
 variables {
-  otel_image = "otel/opentelemetry-collector-contrib:0.90.1"
+  otel_image = "otel/opentelemetry-collector-contrib:0.99.0"
 }
 
 job "otel-collector" {
@@ -44,7 +44,7 @@ job "otel-collector" {
 
   priority = 95
 
-  group "collector" {
+  group "otel-collector" {
     network {
       port "health" {
         to = 13133
@@ -86,6 +86,11 @@ job "otel-collector" {
         network_mode = "host"
         image        = var.otel_image
 
+        volumes = [
+          "local/config:/config",
+          "/var/log/session-proxy:/var/log/session-proxy",
+          "/var/log/client-proxy:/var/log/client-proxy",
+        ]
         args = [
           "--config=local/config/otel-collector-config.yaml",
           "--feature-gates=pkg.translator.prometheus.NormalizeName",
@@ -111,7 +116,44 @@ receivers:
   otlp:
     protocols:
       grpc:
+        max_recv_msg_size_mib: 100
+        read_buffer_size: 10943040
+        max_concurrent_streams: 200
+        write_buffer_size: 10943040
       http:
+  nginx/session-proxy:
+    endpoint: http://localhost:3004/status
+    collection_interval: 10s
+  nginx/client-proxy:
+    endpoint: http://localhost:3001/status
+    collection_interval: 10s
+  # filelog/session-proxy:
+  #   include:
+  #     - /var/log/session-proxy/access.log
+  #   operators:
+  #     - type: json_parser
+  #       timestamp:
+  #         parse_from: attributes.time
+  #         layout: '%Y-%m-%dT%H:%M:%S%j'
+  #     - type: remove
+  #       id: body
+  #       field: body
+  #   resource:
+  #     service.name: session-proxy
+  # filelog/client-proxy:
+  #   include:
+  #     - /var/log/client-proxy/access.log
+  #   operators:
+  #     - type: json_parser
+  #       timestamp:
+  #         parse_from: attributes.time
+  #         layout: '%Y-%m-%dT%H:%M:%S%j'
+  #     - type: remove
+  #       id: body
+  #       field: body
+  #   resource:
+  #     service.name: client-proxy
+  #     service.node: {{ env "node.unique.id" }}
   prometheus:
     config:
       scrape_configs:
@@ -135,7 +177,16 @@ receivers:
 processors:
   batch:
     timeout: 5s
-
+  attributes/session-proxy:
+    actions:
+      - key: service.name
+        action: upsert
+        value: session-proxy
+  attributes/client-proxy:
+    actions:
+      - key: service.name
+        action: upsert
+        value: client-proxy
 extensions:
   basicauth/grafana_cloud_traces:
     client_auth:
@@ -184,6 +235,18 @@ service:
       processors: [batch]
       exporters:
         - prometheusremotewrite/grafana_cloud_metrics
+    metrics/session-proxy:
+      receivers:
+        - nginx/session-proxy
+      processors: [batch, attributes/session-proxy]
+      exporters:
+        - prometheusremotewrite/grafana_cloud_metrics
+    metrics/client-proxy:
+      receivers:
+        - nginx/client-proxy
+      processors: [batch, attributes/client-proxy]
+      exporters:
+        - prometheusremotewrite/grafana_cloud_metrics
     traces:
       receivers:
         - otlp
@@ -192,11 +255,12 @@ service:
         - otlp/grafana_cloud_traces
     logs:
       receivers:
+      # - filelog/session-proxy
+      # - filelog/client-proxy
         - otlp
       processors: [batch]
       exporters:
         - loki/grafana_cloud_logs
-
 EOF
 
         destination = "local/config/otel-collector-config.yaml"

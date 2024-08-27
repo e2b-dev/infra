@@ -14,21 +14,14 @@ func (a *APIStore) GetUserID(c *gin.Context) uuid.UUID {
 	return c.Value(auth.UserIDContextKey).(uuid.UUID)
 }
 
-func (a *APIStore) GetTeam(c *gin.Context) (*models.Team, error) {
+func (a *APIStore) GetUserAndTeams(c *gin.Context) (*uuid.UUID, []*models.Team, error) {
+	userID := a.GetUserID(c)
 	ctx := c.Request.Context()
 
-	userID := a.GetUserID(c)
-
-	team, err := a.db.GetDefaultTeamAndTierFromUserID(ctx, userID)
+	teams, err := a.db.GetTeams(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("error when getting default team: %w", err)
+		return nil, nil, fmt.Errorf("error when getting default team: %w", err)
 	}
 
-	return team, nil
-}
-
-func (a *APIStore) GetUserAndTeam(c *gin.Context) (userID uuid.UUID, team *models.Team, tier *models.Tier, err error) {
-	team, err = a.GetTeam(c)
-
-	return a.GetUserID(c), team, team.Edges.TeamTier, err
+	return &userID, teams, err
 }
