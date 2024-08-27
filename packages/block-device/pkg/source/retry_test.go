@@ -28,6 +28,7 @@ func TestRetrier_ReadAt(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		retrier := NewRetrier(ctx, mockReader, 3, time.Millisecond)
+
 		defer cancel()
 
 		p := make([]byte, 10)
@@ -39,12 +40,14 @@ func TestRetrier_ReadAt(t *testing.T) {
 
 	t.Run("success after retries", func(t *testing.T) {
 		var attempts int
+
 		mockReader := &mockReaderAt{
 			readAtFunc: func(p []byte, off int64) (n int, err error) {
 				attempts++
 				if attempts < 3 {
 					return 0, errors.New("mock error")
 				}
+
 				return len(p), nil
 			},
 		}
@@ -52,6 +55,7 @@ func TestRetrier_ReadAt(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		retrier := NewRetrier(ctx, mockReader, 5, time.Millisecond)
+
 		defer cancel()
 
 		p := make([]byte, 10)
@@ -72,6 +76,7 @@ func TestRetrier_ReadAt(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		retrier := NewRetrier(ctx, mockReader, 3, time.Millisecond)
+
 		defer cancel()
 
 		p := make([]byte, 10)
