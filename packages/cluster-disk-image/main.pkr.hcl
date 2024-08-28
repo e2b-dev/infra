@@ -119,4 +119,10 @@ build {
       "sudo mv /tmp/gc-ops.config.yaml /etc/google-cloud-ops-agent/config.yaml",
     ]
   }
+
+  provisioner "shell" {
+    inline = [
+      "echo 'net.netfilter.nf_conntrack_max = 1048576' | sudo tee -a /etc/sysctl.conf", # Increase the maximum number of connections by 4x
+    ]
+  }
 }
