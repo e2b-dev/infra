@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"cloud.google.com/go/storage"
-	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -26,7 +25,8 @@ func TestGCS(t *testing.T) {
 	gcs := NewGCSObject(ctx, client, bucket, filepath)
 
 	// Test ReadAt method
-	b := make([]byte, 30*block.Size)
+	blockSize := int64(4096)
+	b := make([]byte, 30*blockSize)
 	_, err = gcs.ReadAt(b, 0)
 
 	// Test size method

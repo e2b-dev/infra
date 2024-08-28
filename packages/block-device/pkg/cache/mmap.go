@@ -13,14 +13,15 @@ import (
 )
 
 type MmapCache struct {
-	file   *os.File
-	marker *block.Marker
-	mmap   mmap.MMap
-	size   int64
-	mu     sync.RWMutex
+	size      int64
+	blockSize int64
+	file      *os.File
+	marker    *block.Marker
+	mmap      mmap.MMap
+	mu        sync.RWMutex
 }
 
-func NewMmapCache(size int64, filePath string) (*MmapCache, error) {
+func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
@@ -37,15 +38,16 @@ func NewMmapCache(size int64, filePath string) (*MmapCache, error) {
 	}
 
 	return &MmapCache{
-		mmap:   mm,
-		file:   f,
-		size:   size,
-		marker: block.NewMarker(uint(size / block.Size)),
+		mmap:      mm,
+		file:      f,
+		size:      size,
+		marker:    block.NewMarker(uint(size / blockSize)),
+		blockSize: blockSize,
 	}, nil
 }
 
 func (m *MmapCache) ReadAt(b []byte, off int64) (int, error) {
-	if !m.marker.IsMarked(off / block.Size) {
+	if !m.marker.IsMarked(off / m.blockSize) {
 		return 0, block.ErrBytesNotAvailable{}
 	}
 
@@ -72,9 +74,9 @@ func (m *MmapCache) WriteAt(b []byte, off int64) (int, error) {
 
 	log.Printf("Wrote %d bytes at %d", n, off)
 
-	for i := off; i < off+int64(n); i += block.Size {
+	for i := off; i < off+int64(n); i += m.blockSize {
 		log.Printf("Marking %d", i)
-		m.marker.Mark(i / block.Size)
+		m.marker.Mark(i / m.blockSize)
 	}
 
 	return n, nil

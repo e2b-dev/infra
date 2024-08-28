@@ -12,12 +12,11 @@ import (
 )
 
 type BucketObjectSource struct {
-	source *source.Chunker
-	cache  *cache.MmapCache
-	size   int64
+	source    *source.Chunker
+	cache     *cache.MmapCache
+	size      int64
+	blockSize int64
 }
-
-
 
 func NewBucketObjectSource(
 	ctx context.Context,
@@ -25,6 +24,7 @@ func NewBucketObjectSource(
 	bucket,
 	bucketObjectPath,
 	cachePath string,
+	blockSize int64,
 ) (*BucketObjectSource, error) {
 	object := source.NewGCSObject(ctx, client, bucket, bucketObjectPath)
 
@@ -35,7 +35,7 @@ func NewBucketObjectSource(
 
 	retrier := source.NewRetrier(ctx, object, source.FetchRetries, source.FetchRetryDelay)
 
-	cache, err := cache.NewMmapCache(size, cachePath)
+	cache, err := cache.NewMmapCache(size, blockSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bucket cache: %w", err)
 	}
@@ -51,9 +51,10 @@ func NewBucketObjectSource(
 	}()
 
 	return &BucketObjectSource{
-		size:   size,
-		source: chunker,
-		cache:  cache,
+		size:      size,
+		blockSize: blockSize,
+		source:    chunker,
+		cache:     cache,
 	}, nil
 }
 
@@ -67,7 +68,7 @@ func (d *BucketObjectSource) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 func (d *BucketObjectSource) CreateOverlay(cachePath string) (*BucketObjectOverlay, error) {
-	overlay, err := newBucketObjectOverlay(d.source, cachePath, d.size)
+	overlay, err := newBucketObjectOverlay(d.source, cachePath, d.size, d.blockSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bucket overlay: %w", err)
 	}

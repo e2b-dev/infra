@@ -14,7 +14,7 @@ import (
 
 const (
 	// Chunks must always be bigger or equal to the block size.
-	ChunkSize = block.Size * 1024 // 4 MB
+	ChunkSize = 2 * 1024 * 1024 // 2 MB
 
 	concurrentFetches    = 8
 	concurrentPrefetches = 2

@@ -9,13 +9,14 @@ import (
 )
 
 type BucketObjectOverlay struct {
-	overlay *overlay.Overlay
-	cache   *cache.MmapCache
-	size    int64
+	overlay   *overlay.Overlay
+	cache     *cache.MmapCache
+	size      int64
+	blockSize int64
 }
 
-func newBucketObjectOverlay(base io.ReaderAt, cachePath string, size int64) (*BucketObjectOverlay, error) {
-	cache, err := cache.NewMmapCache(size, cachePath)
+func newBucketObjectOverlay(base io.ReaderAt, cachePath string, size, blockSize int64) (*BucketObjectOverlay, error) {
+	cache, err := cache.NewMmapCache(size, blockSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating cache: %w", err)
 	}
@@ -23,9 +24,10 @@ func newBucketObjectOverlay(base io.ReaderAt, cachePath string, size int64) (*Bu
 	overlay := overlay.New(base, cache, true)
 
 	return &BucketObjectOverlay{
-		overlay: overlay,
-		size:    size,
-		cache:   cache,
+		blockSize: blockSize,
+		overlay:   overlay,
+		size:      size,
+		cache:     cache,
 	}, nil
 }
 

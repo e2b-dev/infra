@@ -5,17 +5,17 @@ import (
 	"os"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMmapedFile(t *testing.T) {
-	size := int64(20 * block.Size)
+	blockSize := int64(4096)
+
+	size := int64(20 * blockSize)
 	filePath := "test_mmap.dat"
 
-	cache, err := NewMmapCache(size, filePath)
+	cache, err := NewMmapCache(size, blockSize, filePath)
 	require.NoError(t, err, "error creating mmapedFile")
 	defer cache.Close()
 	defer os.Remove(filePath)
@@ -49,10 +49,11 @@ func TestMmapedFile(t *testing.T) {
 }
 
 func TestMmap2(t *testing.T) {
-	size := int64(20 * block.Size)
+	blockSize := int64(4096)
+	size := int64(20 * blockSize)
 	filePath := "test_mmap.dat"
 
-	mmap, err := NewMmapCache(size, filePath)
+	mmap, err := NewMmapCache(size, blockSize, filePath)
 	require.NoError(t, err, "Failed to create Mmap cache")
 	defer mmap.Close()
 	defer os.Remove(filePath)
