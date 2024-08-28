@@ -124,7 +124,9 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 
 			if fsnotify.Create.Has(e.Op) {
 				ops = append(ops, rpc.EventType_EVENT_TYPE_CREATE)
-
+				if err := determineWatch(w, e.Name); err != nil {
+					return err
+				}
 			}
 
 			if fsnotify.Rename.Has(e.Op) {
@@ -145,25 +147,6 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 
 			for _, op := range ops {
 				path := filepath.Clean(e.Name)
-
-				if op == rpc.EventType_EVENT_TYPE_CREATE {
-					info, err := os.Lstat(path)
-					if err != nil {
-						if os.IsNotExist(err) {
-							return connect.NewError(connect.CodeNotFound, fmt.Errorf("path %s not found: %w", path, err))
-						}
-
-						return connect.NewError(connect.CodeInternal, fmt.Errorf("error statting path %s: %w", path, err))
-					}
-
-					// When a new directory is created, add it to the watch list
-					if info.IsDir() && !doNotWatchDirsRegex.MatchString(path) {
-						err := w.Add(path)
-						if err != nil {
-							return connect.NewError(connect.CodeInternal, fmt.Errorf("error adding path %s to watcher: %w", path, err))
-						}
-					}
-				}
 
 				filesystemEvent := &rpc.WatchDirResponse_Filesystem{
 					Filesystem: &rpc.WatchDirResponse_FilesystemEvent{
@@ -193,4 +176,28 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 			}
 		}
 	}
+}
+
+func determineWatch(w *fsnotify.Watcher, path string) error {
+	cleanPath := filepath.Clean(path)
+
+	info, err := os.Lstat(cleanPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return connect.NewError(connect.CodeNotFound, fmt.Errorf("path %s not found: %w", cleanPath, err))
+		}
+
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("error statting path %s: %w", cleanPath, err))
+	}
+
+	// When a new directory is created, add it to the watch list
+	if info.IsDir() && !doNotWatchDirsRegex.MatchString(cleanPath) {
+		// TODO when /a/b is created, only /a is added to watch list
+		err := w.Add(cleanPath)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("error adding path %s to watcher: %w", cleanPath, err))
+		}
+	}
+
+	return nil
 }
