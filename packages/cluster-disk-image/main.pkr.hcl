@@ -44,6 +44,11 @@ build {
     destination = "/tmp/daemon.json"
   }
 
+  provisioner "file" {
+    source      = "${path.root}/setup/limits.conf"
+    destination = "/tmp/limits.conf"
+  }
+
   # Install Docker
   provisioner "shell" {
     inline = [
@@ -122,7 +127,10 @@ build {
 
   provisioner "shell" {
     inline = [
-      "echo 'net.netfilter.nf_conntrack_max = 1048576' | sudo tee -a /etc/sysctl.conf", # Increase the maximum number of connections by 4x
+      # Increase the maximum number of open files
+      "sudo mv /tmp/limits.conf /etc/security/limits.conf",
+      # Increase the maximum number of connections by 4x
+      "echo 'net.netfilter.nf_conntrack_max = 2097152' | sudo tee -a /etc/sysctl.conf",
     ]
   }
 }
