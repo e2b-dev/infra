@@ -7,6 +7,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type mockReaderAt struct {
+	readAtFunc func(p []byte, off int64) (n int, err error)
+}
+
+func (m *mockReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	return m.readAtFunc(p, off)
+}
+
 func TestPrefetcher(t *testing.T) {
 	t.Run("prefetch success", func(t *testing.T) {
 		var readAtCalls int

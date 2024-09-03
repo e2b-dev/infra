@@ -44,14 +44,12 @@ func New(
 		return nil, fmt.Errorf("failed to get storage object size: %w", err)
 	}
 
-	retrier := source.NewRetrier(ctx, object, source.FetchRetries, source.FetchRetryDelay)
-
 	cache, err := cache.NewMmapCache(size, blockSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bucket cache: %w", err)
 	}
 
-	chunker := source.NewChunker(ctx, retrier, cache)
+	chunker := source.NewChunker(ctx, object, cache)
 
 	prefetcher := source.NewPrefetcher(ctx, chunker, size)
 	go func() {
