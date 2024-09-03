@@ -1,8 +1,9 @@
-package pkg
+package block_storage
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 
 	"github.com/e2b-dev/infra/packages/block-device/pkg/cache"
@@ -11,26 +12,36 @@ import (
 	"cloud.google.com/go/storage"
 )
 
-type BucketObjectSource struct {
+type BlockStorage struct {
 	source    *source.Chunker
 	cache     *cache.MmapCache
 	size      int64
 	blockSize int64
 }
 
-func NewBucketObjectSource(
+type StorageObject interface {
+	io.ReaderAt
+	Size() (int64, error)
+}
+
+func NewBucketObject(
 	ctx context.Context,
 	client *storage.Client,
-	bucket,
-	bucketObjectPath,
+	bucket string,
+	bucketObjectPath string,
+) StorageObject {
+	return source.NewGCSObject(ctx, client, bucket, bucketObjectPath)
+}
+
+func New(
+	ctx context.Context,
+	object StorageObject,
 	cachePath string,
 	blockSize int64,
-) (*BucketObjectSource, error) {
-	object := source.NewGCSObject(ctx, client, bucket, bucketObjectPath)
-
+) (*BlockStorage, error) {
 	size, err := object.Size()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get object size: %w", err)
+		return nil, fmt.Errorf("failed to get storage object size: %w", err)
 	}
 
 	retrier := source.NewRetrier(ctx, object, source.FetchRetries, source.FetchRetryDelay)
@@ -50,7 +61,7 @@ func NewBucketObjectSource(
 		}
 	}()
 
-	return &BucketObjectSource{
+	return &BlockStorage{
 		size:      size,
 		blockSize: blockSize,
 		source:    chunker,
@@ -58,7 +69,7 @@ func NewBucketObjectSource(
 	}, nil
 }
 
-func (d *BucketObjectSource) ReadAt(p []byte, off int64) (n int, err error) {
+func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
 	n, err = d.source.ReadAt(p, off)
 	if err != nil {
 		return n, fmt.Errorf("failed to read %d: %w", off, err)
@@ -67,8 +78,8 @@ func (d *BucketObjectSource) ReadAt(p []byte, off int64) (n int, err error) {
 	return n, nil
 }
 
-func (d *BucketObjectSource) CreateOverlay(cachePath string) (*BucketObjectOverlay, error) {
-	overlay, err := newBucketObjectOverlay(d.source, cachePath, d.size, d.blockSize)
+func (d *BlockStorage) CreateOverlay(cachePath string) (*BlockStorageOverlay, error) {
+	overlay, err := newBlockStorageOverlay(d.source, cachePath, d.size, d.blockSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bucket overlay: %w", err)
 	}
@@ -76,10 +87,10 @@ func (d *BucketObjectSource) CreateOverlay(cachePath string) (*BucketObjectOverl
 	return overlay, nil
 }
 
-func (d *BucketObjectSource) Size() int64 {
+func (d *BlockStorage) Size() int64 {
 	return d.size
 }
 
-func (d *BucketObjectSource) Close() error {
+func (d *BlockStorage) Close() error {
 	return d.cache.Close()
 }
