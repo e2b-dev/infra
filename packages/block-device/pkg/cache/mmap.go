@@ -3,7 +3,6 @@ package cache
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"sync"
 
@@ -72,10 +71,7 @@ func (m *MmapCache) WriteAt(b []byte, off int64) (int, error) {
 	n := copy(m.mmap[off:off+length], b)
 	m.mu.Unlock()
 
-	log.Printf("Wrote %d bytes at %d", n, off)
-
 	for i := off; i < off+int64(n); i += m.blockSize {
-		log.Printf("Marking %d", i)
 		m.marker.Mark(i / m.blockSize)
 	}
 

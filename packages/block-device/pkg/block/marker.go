@@ -6,6 +6,7 @@ import (
 	"github.com/bits-and-blooms/bitset"
 )
 
+// Marker is a thread-safe structure to mark offsets as dirty.
 type Marker struct {
 	bitset *bitset.BitSet
 	mu     sync.RWMutex

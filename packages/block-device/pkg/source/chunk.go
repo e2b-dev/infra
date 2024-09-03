@@ -136,7 +136,7 @@ func (c *Chunker) fetchChunk(idx int64) error {
 	defer chunkPool.put(b)
 
 	_, err := c.base.ReadAt(b, off)
-	if err != nil {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("failed to read chunk from base %d: %w", idx, err)
 	}
 

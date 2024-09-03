@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -37,11 +38,15 @@ func TestBlockStorageReadFromStartByBlock(t *testing.T) {
 
 	cachePath := "/tmp/start-by-block.test"
 	blockSize := int64(4096)
-	size := int64(511 * blockSize)
+	size := int64(1022 * blockSize)
 
 	object := NewMockStorageObject(size)
 
 	storage, err := New(ctx, object, cachePath, blockSize)
+	defer func() {
+		storage.Close()
+		os.RemoveAll(cachePath)
+	}()
 	assert.NoError(t, err)
 
 	b := make([]byte, blockSize)
@@ -49,37 +54,11 @@ func TestBlockStorageReadFromStartByBlock(t *testing.T) {
 
 	for i := int64(0); i < size; i += blockSize {
 		_, err := storage.ReadAt(b, i)
-		assert.NoError(t, err)
+		require.NoError(t, err, "failed to read block %d", (i/blockSize)+1)
 
 		_, err = object.ReadAt(testB, i)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		require.True(t, bytes.Equal(testB, b), "expected to read %x, but read %x", testB, b)
-	}
-}
-
-func TestBlockStorageReadFromStartByBlock(t *testing.T) {
-	ctx := context.Background()
-
-	cachePath := "/tmp/start-by-block.test"
-	blockSize := int64(4096)
-	size := int64(511 * blockSize)
-
-	object := NewMockStorageObject(size)
-
-	storage, err := New(ctx, object, cachePath, blockSize)
-	assert.NoError(t, err)
-
-	b := make([]byte, blockSize)
-	testB := make([]byte, blockSize)
-
-	for i := int64(0); i < size; i += blockSize {
-		_, err := storage.ReadAt(b, i)
-		assert.NoError(t, err)
-
-		_, err = object.ReadAt(testB, i)
-		assert.NoError(t, err)
-
-		require.True(t, bytes.Equal(testB, b), "expected to read %x, but read %x", testB, b)
+		require.True(t, bytes.Equal(testB, b), "block %d — expected \n%x\n but received \n%x\n", (i/blockSize)+1, testB, b)
 	}
 }
