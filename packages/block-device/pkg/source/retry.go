@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -36,7 +37,7 @@ func (r *Retrier) ReadAt(p []byte, off int64) (n int, err error) {
 			return 0, r.ctx.Err()
 		default:
 			n, err = r.base.ReadAt(p, off)
-			if err != nil {
+			if err != nil && !errors.Is(err, io.EOF) {
 				time.Sleep(r.retryDelay)
 				log.Printf("retrying after error: %v\n", err)
 
