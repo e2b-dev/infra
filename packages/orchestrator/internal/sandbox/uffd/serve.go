@@ -13,6 +13,7 @@ import (
 
 const (
 	maxEagainAttempts = 32
+	maxPageSize       = 2 << 20
 )
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
@@ -100,17 +101,17 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src io.ReaderAt, fd uint
 		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
 		pagesize := uint64(mapping.PageSize)
 
-		if offset+pagesize > uint64(len(*src.Map)) {
-			return fmt.Errorf("offset %v is out of bounds", offset)
+		pageBuf := make([]byte, pagesize)
+
+		n, err := src.ReadAt(pageBuf, int64(offset))
+		if err != nil {
+			if !errors.Is(err, io.EOF) && n != 0 {
+				return fmt.Errorf("failed to read from source: %w", err)
+			}
 		}
 
-		b := (*src.Map)[offset : offset+pagesize]
-
-		
-
-
 		cpy := constants.NewUffdioCopy(
-			b,
+			pageBuf,
 			addr&^constants.CULong(pagesize-1),
 			constants.CULong(pagesize),
 			0,

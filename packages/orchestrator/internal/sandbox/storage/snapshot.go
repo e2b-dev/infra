@@ -22,18 +22,18 @@ const (
 )
 
 type SnapshotData struct {
-	memfile    *blockStorage.BlockStorage
-	EnsureOpen func() (*SnapshotData, error)
+	Memfile    *blockStorage.BlockStorage
+	ensureOpen func() (*SnapshotData, error)
 }
 
 func (s *SnapshotData) Close() error {
-	return s.memfile.Close()
+	return s.Memfile.Close()
 }
 
 func newTemplateData(ctx context.Context, client *storage.Client, bucket, templateId, buildId string) *SnapshotData {
 	h := &SnapshotData{}
 
-	h.EnsureOpen = sync.OnceValues(func() (*SnapshotData, error) {
+	h.ensureOpen = sync.OnceValues(func() (*SnapshotData, error) {
 		fileKey := filepath.Join(templateId, buildId, memfileName)
 
 		memfileObject := blockStorage.NewBucketObject(
@@ -50,7 +50,7 @@ func newTemplateData(ctx context.Context, client *storage.Client, bucket, templa
 			hugepageSize,
 		)
 
-		h.memfile = memfileStorage
+		h.Memfile = memfileStorage
 
 		return h, err
 	})
@@ -74,7 +74,7 @@ func (c *SnapshotDataCache) GetTemplateData(templateID, buildID string) (*Snapsh
 		ttlcache.WithTTL[string, *SnapshotData](snapshotDataExpiration),
 	)
 
-	mp, err := snapshotData.Value().EnsureOpen()
+	mp, err := snapshotData.Value().ensureOpen()
 	if err != nil {
 		c.cache.Delete(id)
 

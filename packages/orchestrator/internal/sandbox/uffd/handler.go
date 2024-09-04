@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
-	
+	blockStorage "github.com/e2b-dev/infra/packages/block-storage/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -23,18 +23,14 @@ const (
 	mappingsSize           = 1024
 )
 
-var memfileCache = cache.NewMmapfileCache()
-
 type UffdSetup struct {
 	Mappings []GuestRegionUffdMapping
 	Fd       uintptr
 }
 
 func New(
-	memfilePath,
-	socketPath,
-	envID,
-	buildID string,
+	memfile *blockStorage.BlockStorage,
+	socketPath string,
 ) (*Uffd, error) {
 	pRead, pWrite, err := os.Pipe()
 	if err != nil {
@@ -42,14 +38,12 @@ func New(
 	}
 
 	return &Uffd{
-		exitChan:    make(chan error, 1),
-		PollReady:   make(chan struct{}, 1),
-		exitReader:  pRead,
-		exitWriter:  pWrite,
-		envID:       envID,
-		buildID:     buildID,
-		memfilePath: memfilePath,
-		socketPath:  socketPath,
+		exitChan:   make(chan error, 1),
+		PollReady:  make(chan struct{}, 1),
+		exitReader: pRead,
+		exitWriter: pWrite,
+		memfile:    memfile,
+		socketPath: socketPath,
 		Stop: sync.OnceValue(func() error {
 			_, writeErr := pWrite.Write([]byte{0})
 			if writeErr != nil {
@@ -72,11 +66,8 @@ type Uffd struct {
 
 	lis *net.UnixListener
 
-	socketPath  string
-	memfilePath string
-
-	envID   string
-	buildID string
+	socketPath string
+	memfile    *blockStorage.BlockStorage
 }
 
 func (u *Uffd) Start(
@@ -85,13 +76,6 @@ func (u *Uffd) Start(
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-uffd")
 	defer childSpan.End()
-
-	mf, err := memfileCache.GetMmapfile(u.memfilePath, fmt.Sprintf("%s-%s", u.envID, u.buildID))
-	if err != nil {
-		return fmt.Errorf("failed to get mmapfile: %w", err)
-	}
-
-	telemetry.ReportEvent(childCtx, "got mmapfile")
 
 	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: u.socketPath, Net: "unix"})
 	if err != nil {
@@ -110,7 +94,7 @@ func (u *Uffd) Start(
 	telemetry.ReportEvent(childCtx, "set socket permissions")
 
 	go func() {
-		u.exitChan <- u.handle(mf)
+		u.exitChan <- u.handle(u.memfile)
 		close(u.exitChan)
 	}()
 
@@ -171,7 +155,7 @@ func (u *Uffd) receiveSetup() (*UffdSetup, error) {
 	}, nil
 }
 
-func (u *Uffd) handle(memory *cache.Mmapfile) (err error) {
+func (u *Uffd) handle(memfile *blockStorage.BlockStorage) (err error) {
 	setup, err := u.receiveSetup()
 	if err != nil {
 		return fmt.Errorf("failed to receive setup message from firecracker: %w", err)
@@ -187,7 +171,7 @@ func (u *Uffd) handle(memory *cache.Mmapfile) (err error) {
 
 	u.PollReady <- struct{}{}
 
-	err = Serve(int(uffd), setup.Mappings, memory, u.exitReader.Fd())
+	err = Serve(int(uffd), setup.Mappings, memfile, u.exitReader.Fd())
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}

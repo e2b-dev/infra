@@ -16,6 +16,7 @@ import (
 	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	snapshotStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -65,6 +66,7 @@ func NewSandbox(
 	consul *consul.Client,
 	dns *dns.DNS,
 	networkPool chan IPSlot,
+	snapshotCache *snapshotStorage.SnapshotDataCache,
 	config *orchestrator.SandboxConfig,
 	traceID string,
 	startedAt time.Time,
@@ -72,6 +74,13 @@ func NewSandbox(
 ) (*Sandbox, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
+
+	snapshotData, err := snapshotCache.GetTemplateData(config.TemplateID, config.BuildID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
+	}
+
+	telemetry.ReportEvent(childCtx, "got template snapshot data")
 
 	_, networkSpan := tracer.Start(childCtx, "get-network-slot")
 	// Get slot from Consul KV
@@ -85,8 +94,6 @@ func NewSandbox(
 	}
 
 	networkSpan.End()
-
-	var err error
 
 	defer func() {
 		if err != nil {
@@ -157,7 +164,7 @@ func NewSandbox(
 
 	var fcUffd *uffd.Uffd
 	if fsEnv.UFFDSocketPath != nil {
-		fcUffd, err = uffd.New(fsEnv.MemfilePath(), *fsEnv.UFFDSocketPath, config.TemplateID, config.BuildID)
+		fcUffd, err = uffd.New(snapshotData.Memfile, *fsEnv.UFFDSocketPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create uffd: %w", err)
 		}

@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	snapshotStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -29,6 +30,7 @@ import (
 
 const (
 	ipSlotPoolSize = 32
+	bucket
 )
 
 type server struct {
@@ -38,7 +40,7 @@ type server struct {
 	tracer        trace.Tracer
 	consul        *consulapi.Client
 	networkPool   chan sandbox.IPSlot
-	storageClient *storage.Client
+	snapshotCache *snapshotStorage.SnapshotDataCache
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -71,6 +73,8 @@ func New(logger *zap.Logger) *grpc.Server {
 		errMsg := fmt.Errorf("failed to create GCS client: %v", err)
 		panic(errMsg)
 	}
+
+	snapshotCache := snapshotStorage.NewSnapshotDataCache(ctx, client, constants.BucketName)
 
 	// Sandboxes waiting for the network slot can be passed and reschedulede
 	// so we should include a FIFO system for waiting.
@@ -109,7 +113,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		dns:           dns,
 		sandboxes:     smap.New[*sandbox.Sandbox](),
 		networkPool:   networkPool,
-		storageClient: client,
+		snapshotCache: snapshotCache,
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())
