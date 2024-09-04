@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log"
 
+	"cloud.google.com/go/storage"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	consulapi "github.com/hashicorp/consul/api"
@@ -31,11 +33,12 @@ const (
 
 type server struct {
 	orchestrator.UnimplementedSandboxServer
-	sandboxes   *smap.Map[*sandbox.Sandbox]
-	dns         *dns.DNS
-	tracer      trace.Tracer
-	consul      *consulapi.Client
-	networkPool chan sandbox.IPSlot
+	sandboxes     *smap.Map[*sandbox.Sandbox]
+	dns           *dns.DNS
+	tracer        trace.Tracer
+	consul        *consulapi.Client
+	networkPool   chan sandbox.IPSlot
+	storageClient *storage.Client
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -61,6 +64,12 @@ func New(logger *zap.Logger) *grpc.Server {
 	consulClient, err := consul.New(ctx)
 	if err != nil {
 		panic(err)
+	}
+
+	client, err := storage.NewClient(ctx, storage.WithJSONReads())
+	if err != nil {
+		errMsg := fmt.Errorf("failed to create GCS client: %v", err)
+		panic(errMsg)
 	}
 
 	// Sandboxes waiting for the network slot can be passed and reschedulede
@@ -95,11 +104,12 @@ func New(logger *zap.Logger) *grpc.Server {
 	}()
 
 	orchestrator.RegisterSandboxServer(s, &server{
-		tracer:      tracer,
-		consul:      consulClient,
-		dns:         dns,
-		sandboxes:   smap.New[*sandbox.Sandbox](),
-		networkPool: networkPool,
+		tracer:        tracer,
+		consul:        consulClient,
+		dns:           dns,
+		sandboxes:     smap.New[*sandbox.Sandbox](),
+		networkPool:   networkPool,
+		storageClient: client,
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 )
 
 type Overlay struct {

@@ -3,7 +3,7 @@ package overlay
 import (
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 
 	"github.com/stretchr/testify/assert"
 )

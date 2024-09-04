@@ -1,4 +1,4 @@
-# Block device
+# Block storage
 
 ## Other similar projects
 

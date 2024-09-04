@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/e2b-dev/infra/packages/block-device/pkg/cache"
-	"github.com/e2b-dev/infra/packages/block-device/pkg/overlay"
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/cache"
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/overlay"
 )
 
 type BlockStorageOverlay struct {

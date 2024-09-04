@@ -11,7 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
+	
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"go.opentelemetry.io/otel/trace"
 )

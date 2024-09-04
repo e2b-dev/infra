@@ -3,13 +3,12 @@ package uffd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"syscall"
 	"unsafe"
 
 	"github.com/loopholelabs/userfaultfd-go/pkg/constants"
 	"golang.org/x/sys/unix"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 )
 
 const (
@@ -37,7 +36,7 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 	return nil, fmt.Errorf("address %d not found in any mapping", addr)
 }
 
-func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd uintptr) error {
+func Serve(uffd int, mappings []GuestRegionUffdMapping, src io.ReaderAt, fd uintptr) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: int32(fd), Events: unix.POLLIN},
@@ -106,6 +105,9 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 		}
 
 		b := (*src.Map)[offset : offset+pagesize]
+
+		
+
 
 		cpy := constants.NewUffdioCopy(
 			b,

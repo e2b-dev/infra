@@ -4,7 +4,7 @@ toolchain go1.21
 
 use (
 	./packages/api
-	./packages/block-device
+	./packages/block-storage
 	./packages/docker-reverse-proxy
 	./packages/envd
 	./packages/orchestrator

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -45,7 +44,6 @@ func TestBlockStorageReadFromStartByBlock(t *testing.T) {
 	storage, err := New(ctx, object, cachePath, blockSize)
 	defer func() {
 		storage.Close()
-		os.RemoveAll(cachePath)
 	}()
 	assert.NoError(t, err)
 

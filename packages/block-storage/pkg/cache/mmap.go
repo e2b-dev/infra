@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 
 	"github.com/edsrzf/mmap-go"
 )
@@ -14,7 +14,7 @@ import (
 type MmapCache struct {
 	size      int64
 	blockSize int64
-	file      *os.File
+	filePath  string
 	marker    *block.Marker
 	mmap      mmap.MMap
 	mu        sync.RWMutex
@@ -25,6 +25,7 @@ func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
 	}
+	defer f.Close()
 
 	err = f.Truncate(size)
 	if err != nil {
@@ -38,7 +39,7 @@ func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
 
 	return &MmapCache{
 		mmap:      mm,
-		file:      f,
+		filePath:  filePath,
 		size:      size,
 		marker:    block.NewMarker(uint(size / blockSize)),
 		blockSize: blockSize,
@@ -80,9 +81,10 @@ func (m *MmapCache) WriteAt(b []byte, off int64) (int, error) {
 
 func (m *MmapCache) Close() error {
 	mmapErr := m.mmap.Unmap()
-	closeErr := m.file.Close()
 
-	return errors.Join(mmapErr, closeErr)
+	removeErr := os.Remove(m.filePath)
+
+	return errors.Join(mmapErr, removeErr)
 }
 
 func (m *MmapCache) Sync() error {

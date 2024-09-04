@@ -6,8 +6,8 @@ import (
 	"io"
 	"log"
 
-	"github.com/e2b-dev/infra/packages/block-device/pkg/cache"
-	"github.com/e2b-dev/infra/packages/block-device/pkg/source"
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/cache"
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/source"
 
 	"cloud.google.com/go/storage"
 )

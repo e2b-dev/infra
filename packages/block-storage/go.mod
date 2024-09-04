@@ -1,4 +1,4 @@
-module github.com/e2b-dev/infra/packages/block-device
+module github.com/e2b-dev/infra/packages/block-storage
 
 go 1.21
 
@@ -6,6 +6,7 @@ require (
 	cloud.google.com/go/storage v1.40.0
 	github.com/bits-and-blooms/bitset v1.13.0
 	github.com/edsrzf/mmap-go v1.1.0
+	github.com/googleapis/gax-go/v2 v2.12.3
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/sync v0.7.0
 )
@@ -25,7 +26,6 @@ require (
 	github.com/google/s2a-go v0.1.7 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
-	github.com/googleapis/gax-go/v2 v2.12.3 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.50.0 // indirect

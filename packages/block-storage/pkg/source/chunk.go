@@ -7,7 +7,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/e2b-dev/infra/packages/block-device/pkg/block"
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 
 	"golang.org/x/sync/semaphore"
 )
