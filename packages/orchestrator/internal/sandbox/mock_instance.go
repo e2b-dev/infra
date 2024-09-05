@@ -16,7 +16,7 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duration) {
+func MockInstance(envID, buildID, instanceID string, dns *dns.DNS, keepAlive time.Duration) {
 	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), telemetry.DebugID, instanceID), time.Second*4)
 	defer cancel()
 
@@ -72,7 +72,7 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 			FirecrackerVersion: "v1.9.0_fake-2476009",
 			KernelVersion:      "vmlinux-6.1.99",
 			TeamID:             "test-team",
-			BuildID:            "id",
+			BuildID:            buildID,
 			HugePages:          true,
 			MaxInstanceLength:  1,
 			SandboxID:          instanceID,

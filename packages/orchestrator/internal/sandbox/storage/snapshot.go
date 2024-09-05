@@ -34,7 +34,8 @@ func newTemplateData(ctx context.Context, client *storage.Client, bucket, templa
 	h := &SnapshotData{}
 
 	h.ensureOpen = sync.OnceValues(func() (*SnapshotData, error) {
-		fileKey := filepath.Join(templateId, buildId, memfileName)
+		dirKey := filepath.Join(templateId, buildId)
+		fileKey := filepath.Join(dirKey, memfileName)
 
 		memfileObject := blockStorage.NewBucketObject(
 			ctx,
@@ -43,10 +44,19 @@ func newTemplateData(ctx context.Context, client *storage.Client, bucket, templa
 			fileKey,
 		)
 
+		dirPath := filepath.Join(os.TempDir(), dirKey)
+
+		err := os.MkdirAll(dirPath, os.ModePerm)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create directory %s: %w", dirPath, err)
+		}
+
+		cachePath := filepath.Join(dirPath, memfileName)
+
 		memfileStorage, err := blockStorage.New(
 			ctx,
 			memfileObject,
-			filepath.Join(os.TempDir(), fileKey),
+			cachePath,
 			hugepageSize,
 		)
 
