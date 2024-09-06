@@ -8,7 +8,7 @@ terraform {
 }
 
 data "google_secret_manager_secret_version" "cloudflare_api_token" {
-  secret = "${var.prefix}cloudflare-api-token"
+  secret = var.cloudflare_api_token_secret_name
 }
 
 provider "cloudflare" {

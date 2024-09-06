@@ -54,11 +54,29 @@ resource "google_secret_manager_secret" "grafana_api_key" {
   }
 }
 
+resource "google_secret_manager_secret_version" "grafana_api_key" {
+  secret      = google_secret_manager_secret.grafana_api_key.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
 resource "google_secret_manager_secret" "grafana_traces_endpoint" {
   secret_id = "${var.prefix}grafana-traces-endpoint"
 
   replication {
     auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "grafana_traces_endpoint" {
+  secret      = google_secret_manager_secret.grafana_traces_endpoint.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
   }
 }
 
@@ -70,11 +88,29 @@ resource "google_secret_manager_secret" "grafana_logs_endpoint" {
   }
 }
 
+resource "google_secret_manager_secret_version" "grafana_logs_endpoint" {
+  secret      = google_secret_manager_secret.grafana_logs_endpoint.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
 resource "google_secret_manager_secret" "grafana_metrics_endpoint" {
   secret_id = "${var.prefix}grafana-metrics-endpoint"
 
   replication {
     auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "grafana_metrics_endpoint" {
+  secret      = google_secret_manager_secret.grafana_metrics_endpoint.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
   }
 }
 
@@ -86,11 +122,29 @@ resource "google_secret_manager_secret" "grafana_traces_username" {
   }
 }
 
+resource "google_secret_manager_secret_version" "grafana_traces_username" {
+  secret      = google_secret_manager_secret.grafana_traces_username.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
 resource "google_secret_manager_secret" "grafana_logs_username" {
   secret_id = "${var.prefix}grafana-logs-username"
 
   replication {
     auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "grafana_logs_username" {
+  secret      = google_secret_manager_secret.grafana_logs_username.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
   }
 }
 
@@ -102,6 +156,15 @@ resource "google_secret_manager_secret" "grafana_metrics_username" {
   }
 }
 
+resource "google_secret_manager_secret_version" "grafana_metrics_username" {
+  secret      = google_secret_manager_secret.grafana_metrics_username.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
 resource "google_secret_manager_secret" "analytics_collector_host" {
   secret_id = "${var.prefix}analytics-collector-host"
 
@@ -110,11 +173,29 @@ resource "google_secret_manager_secret" "analytics_collector_host" {
   }
 }
 
+resource "google_secret_manager_secret_version" "analytics_collector_host" {
+  secret      = google_secret_manager_secret.analytics_collector_host.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
 resource "google_secret_manager_secret" "analytics_collector_api_token" {
   secret_id = "${var.prefix}analytics-collector-api-token"
 
   replication {
     auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "analytics_collector_api_token" {
+  secret      = google_secret_manager_secret.analytics_collector_api_token.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
   }
 }
 

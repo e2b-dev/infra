@@ -18,6 +18,10 @@ variable "gcp_project_id" {
 }
 
 
+variable "cloudflare_api_token_secret_name" {
+  type = string
+}
+
 variable "api_port" {
   type = object({
     name        = string

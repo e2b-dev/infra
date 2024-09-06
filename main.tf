@@ -110,10 +110,11 @@ module "github_tf" {
 module "cluster" {
   source = "./packages/cluster"
 
-  gcp_project_id             = var.gcp_project_id
-  gcp_region                 = var.gcp_region
-  gcp_zone                   = var.gcp_zone
-  google_service_account_key = module.init.google_service_account_key
+  cloudflare_api_token_secret_name = module.init.cloudflare_api_token_secret_name
+  gcp_project_id                   = var.gcp_project_id
+  gcp_region                       = var.gcp_region
+  gcp_zone                         = var.gcp_zone
+  google_service_account_key       = module.init.google_service_account_key
 
   server_cluster_size = var.server_cluster_size
   client_cluster_size = var.client_cluster_size

@@ -140,6 +140,8 @@ module "client_cluster" {
 module "network" {
   source = "./network"
 
+  cloudflare_api_token_secret_name = var.cloudflare_api_token_secret_name
+
   gcp_project_id = var.gcp_project_id
 
   api_port                  = var.api_port

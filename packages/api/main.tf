@@ -52,6 +52,15 @@ resource "google_secret_manager_secret" "posthog_api_key" {
   }
 }
 
+resource "google_secret_manager_secret_version" "posthog_api_key" {
+  secret      = google_secret_manager_secret.posthog_api_key.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
 resource "random_password" "api_secret" {
   length  = 32
   special = false
