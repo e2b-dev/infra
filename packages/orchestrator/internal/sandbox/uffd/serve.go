@@ -102,21 +102,12 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
 		pagesize := uint64(mapping.PageSize)
 
-		// pageBuf := make([]byte, pagesize)
-
 		b, close, err := src.ReadRaw(int64(offset), int64(pagesize))
 		if err != nil {
 			close()
 
 			return fmt.Errorf("failed to read from source: %w", err)
 		}
-
-		// n, err := src.ReadAt(pageBuf, int64(offset))
-		// if err != nil {
-		// 	if !errors.Is(err, io.EOF) && n != 0 {
-		// 		return fmt.Errorf("failed to read from source: %w", err)
-		// 	}
-		// }
 
 		cpy := constants.NewUffdioCopy(
 			b,
