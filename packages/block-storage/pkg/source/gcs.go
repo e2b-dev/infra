@@ -2,7 +2,9 @@ package source
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"time"
 
@@ -11,7 +13,8 @@ import (
 )
 
 const (
-	fetchTimeout = 10 * time.Second
+	fetchTimeout     = 10 * time.Second
+	uploadBufferSize = 8 * 2 << 20
 )
 
 type GCSObject struct {
@@ -33,6 +36,24 @@ func NewGCSObject(ctx context.Context, client *storage.Client, bucket, objectPat
 		object: obj,
 		ctx:    ctx,
 	}
+}
+
+func (g *GCSObject) ReadFrom(src io.Reader) (int64, error) {
+	w := g.object.NewWriter(g.ctx)
+
+	b := make([]byte, uploadBufferSize)
+
+	n, err := io.CopyBuffer(w, src, b)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return n, fmt.Errorf("failed to copy buffer to storage: %w", err)
+	}
+
+	err = w.Close()
+	if err != nil {
+		return n, fmt.Errorf("failed to close GCS writer: %w", err)
+	}
+
+	return n, nil
 }
 
 func (g *GCSObject) ReadAt(b []byte, off int64) (int, error) {
