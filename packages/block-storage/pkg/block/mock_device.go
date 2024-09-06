@@ -28,6 +28,16 @@ func NewMockDevice(data []byte, blockSize int64, fillMarker bool) *MockDevice {
 	}
 }
 
+func (m *MockDevice) ReadRaw(off, length int64) ([]byte, func(), error) {
+	b := make([]byte, length)
+	_, err := m.ReadAt(b, off)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return b, func() {}, nil
+}
+
 func (m *MockDevice) ReadAt(p []byte, off int64) (n int, err error) {
 	length := int64(len(p))
 	if length+off > int64(len(m.data)) {

@@ -97,6 +97,37 @@ func (c *Chunker) ensureChunk(chunk int64, prefetch bool) chan error {
 	return ch
 }
 
+func (c *Chunker) ReadRaw(off, length int64) ([]byte, func(), error) {
+	m, close, err := c.cache.ReadRaw(off, length)
+	if errors.As(err, &block.ErrBytesNotAvailable{}) {
+		chunkIdx := off / ChunkSize
+
+		chunkCh := c.ensureChunk(chunkIdx, length == 0)
+
+		select {
+		case chunkErr := <-chunkCh:
+			if chunkErr != nil {
+				return nil, func () {}, fmt.Errorf("failed to ensure chunk %d: %w", chunkIdx, chunkErr)
+			}
+		case <-c.ctx.Done():
+			return nil, func() {}, c.ctx.Err()
+		}
+
+		m, close, cacheErr := c.cache.ReadRaw(off, length)
+		if cacheErr != nil {
+			return nil, func() {}, fmt.Errorf("failed to read from cache after ensuring chunk %d: %w", chunkIdx, cacheErr)
+		}
+
+		return m, close, nil
+	}
+
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("failed read from cache %d: %w", off, err)
+	}
+
+	return m, close, nil
+}
+
 // Reads with zero length are threated as prefetches.
 func (c *Chunker) ReadAt(b []byte, off int64) (int, error) {
 	n, err := c.cache.ReadAt(b, off)

@@ -94,3 +94,19 @@ func (m *MmapCache) Sync() error {
 func (m *MmapCache) Size() int64 {
 	return m.size
 }
+
+func (m *MmapCache) ReadRaw(off, length int64) ([]byte, func(), error) {
+	if !m.marker.IsMarked(off / m.blockSize) {
+		return nil, nil, block.ErrBytesNotAvailable{}
+	}
+
+	if length+off > m.size {
+		length = m.size - off
+	}
+
+	m.mu.RLock()
+
+	return m.mmap[off : off+length], func() {
+		m.mu.RUnlock()
+	}, nil
+}

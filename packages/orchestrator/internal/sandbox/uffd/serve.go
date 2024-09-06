@@ -3,10 +3,10 @@ package uffd
 import (
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"syscall"
 	"unsafe"
+
+	blockStorage "github.com/e2b-dev/infra/packages/block-storage/pkg"
 
 	"github.com/loopholelabs/userfaultfd-go/pkg/constants"
 	"golang.org/x/sys/unix"
@@ -38,7 +38,7 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 	return nil, fmt.Errorf("address %d not found in any mapping", addr)
 }
 
-func Serve(uffd int, mappings []GuestRegionUffdMapping, src io.ReaderAt, fd uintptr) error {
+func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockStorage, fd uintptr) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: int32(fd), Events: unix.POLLIN},
@@ -94,53 +94,54 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src io.ReaderAt, fd uint
 
 		addr := constants.GetPagefaultAddress(&pagefault)
 
-		go func(addr constants.CULong) (err error) {
-			defer func() {
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "failed to handle pagefault: %v\n", err)
-				}
-			}()
+		mapping, err := getMapping(uintptr(addr), mappings)
+		if err != nil {
+			return fmt.Errorf("failed to map: %w", err)
+		}
 
-			mapping, err := getMapping(uintptr(addr), mappings)
-			if err != nil {
-				return fmt.Errorf("failed to map: %w", err)
+		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
+		pagesize := uint64(mapping.PageSize)
+
+		// pageBuf := make([]byte, pagesize)
+
+		b, close, err := src.ReadRaw(int64(offset), int64(pagesize))
+		if err != nil {
+			close()
+
+			return fmt.Errorf("failed to read from source: %w", err)
+		}
+
+		// n, err := src.ReadAt(pageBuf, int64(offset))
+		// if err != nil {
+		// 	if !errors.Is(err, io.EOF) && n != 0 {
+		// 		return fmt.Errorf("failed to read from source: %w", err)
+		// 	}
+		// }
+
+		cpy := constants.NewUffdioCopy(
+			b,
+			addr&^constants.CULong(pagesize-1),
+			constants.CULong(pagesize),
+			0,
+			0,
+		)
+
+		if _, _, errno := syscall.Syscall(
+			syscall.SYS_IOCTL,
+			uintptr(uffd),
+			constants.UFFDIO_COPY,
+			uintptr(unsafe.Pointer(&cpy)),
+		); errno != 0 {
+			close()
+
+			if errno == unix.EEXIST {
+				// Page is already mapped
+				continue
 			}
 
-			offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
-			pagesize := uint64(mapping.PageSize)
+			return fmt.Errorf("failed uffdio copy %w", errno)
+		}
 
-			pageBuf := make([]byte, pagesize)
-
-			n, err := src.ReadAt(pageBuf, int64(offset))
-			if err != nil {
-				if !errors.Is(err, io.EOF) && n != 0 {
-					return fmt.Errorf("failed to read from source: %w", err)
-				}
-			}
-
-			cpy := constants.NewUffdioCopy(
-				pageBuf,
-				addr&^constants.CULong(pagesize-1),
-				constants.CULong(pagesize),
-				0,
-				0,
-			)
-
-			if _, _, errno := syscall.Syscall(
-				syscall.SYS_IOCTL,
-				uintptr(uffd),
-				constants.UFFDIO_COPY,
-				uintptr(unsafe.Pointer(&cpy)),
-			); errno != 0 {
-				if errno == unix.EEXIST {
-					// Page is already mapped
-					return nil
-				}
-
-				return fmt.Errorf("failed uffdio copy %w", errno)
-			}
-
-			return nil
-		}(addr)
+		close()
 	}
 }
