@@ -21,8 +21,6 @@
 				"redhat.vscode-yaml",
 				"christian-kohler.path-intellisense",
 				"googlecloudtools.cloudcode",
-				"GitHub.copilot",
-				"GitHub.copilot-chat",
 				"ms-azuretools.vscode-docker"
 			]
 		}

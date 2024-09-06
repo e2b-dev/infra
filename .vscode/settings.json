@@ -51,7 +51,6 @@
   ],
   "remote.SSH.defaultExtensions": [
     "golang.go",
-    "GitHub.copilot",
   ],
   "go.autocompleteUnimportedPackages": true,
   "go.toolsManagement.autoUpdate": true,
