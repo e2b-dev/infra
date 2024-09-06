@@ -4,6 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
+)
+
+const (
+	prefetchInterval = 20 * time.Millisecond
 )
 
 type Prefetcher struct {
@@ -46,6 +51,8 @@ func (p *Prefetcher) Start() error {
 			if err != nil {
 				return fmt.Errorf("error prefetching chunk %d (%d-%d): %w", chunkIdx, chunkIdx*ChunkSize, chunkIdx*ChunkSize+ChunkSize, err)
 			}
+			// fmt.Printf("Prefetched chunk %d\n", chunkIdx)
+			time.Sleep(prefetchInterval)
 		}
 	}
 

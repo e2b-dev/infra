@@ -16,8 +16,7 @@ const (
 	// Chunks must always be bigger or equal to the block size.
 	ChunkSize = 2 * 1024 * 1024 // 2 MB
 
-	concurrentFetches    = 12
-	concurrentPrefetches = 2
+	concurrentFetches = 16
 )
 
 var chunkPool = newSlicePool(ChunkSize)
@@ -33,24 +32,20 @@ type Chunker struct {
 	// Semaphore to limit the number of concurrent fetches.
 	fetchSemaphore *semaphore.Weighted
 
-	// Semaphore to limit the number of concurrent prefetches.
-	prefetchSemaphore *semaphore.Weighted
-
 	chunksInProgressLock sync.Mutex
 }
 
 func NewChunker(ctx context.Context, base io.ReaderAt, cache block.Device) *Chunker {
 	return &Chunker{
-		ctx:               ctx,
-		base:              base,
-		cache:             cache,
-		chunksInProgress:  make(map[int64]chan error),
-		fetchSemaphore:    semaphore.NewWeighted(int64(concurrentFetches)),
-		prefetchSemaphore: semaphore.NewWeighted(int64(concurrentPrefetches)),
+		ctx:              ctx,
+		base:             base,
+		cache:            cache,
+		chunksInProgress: make(map[int64]chan error),
+		fetchSemaphore:   semaphore.NewWeighted(int64(concurrentFetches)),
 	}
 }
 
-func (c *Chunker) ensureChunk(chunk int64, prefetch bool) chan error {
+func (c *Chunker) ensureChunk(chunk int64) chan error {
 	c.chunksInProgressLock.Lock()
 	ch, ok := c.chunksInProgress[chunk]
 
@@ -64,14 +59,7 @@ func (c *Chunker) ensureChunk(chunk int64, prefetch bool) chan error {
 	c.chunksInProgress[chunk] = ch
 	c.chunksInProgressLock.Unlock()
 
-	var sem *semaphore.Weighted
-	if prefetch {
-		sem = c.prefetchSemaphore
-	} else {
-		sem = c.fetchSemaphore
-	}
-
-	err := sem.Acquire(c.ctx, 1)
+	err := c.fetchSemaphore.Acquire(c.ctx, 1)
 	if err != nil {
 		ch <- fmt.Errorf("failed to acquire semaphore: %w", err)
 		close(ch)
@@ -92,7 +80,7 @@ func (c *Chunker) ensureChunk(chunk int64, prefetch bool) chan error {
 				ch <- fmt.Errorf("failed to fetch chunk %d: %w", chunk, fetchErr)
 			}
 		}
-	}(sem, chunk)
+	}(c.fetchSemaphore, chunk)
 
 	return ch
 }
@@ -102,12 +90,12 @@ func (c *Chunker) ReadRaw(off, length int64) ([]byte, func(), error) {
 	if errors.As(err, &block.ErrBytesNotAvailable{}) {
 		chunkIdx := off / ChunkSize
 
-		chunkCh := c.ensureChunk(chunkIdx, length == 0)
+		chunkCh := c.ensureChunk(chunkIdx)
 
 		select {
 		case chunkErr := <-chunkCh:
 			if chunkErr != nil {
-				return nil, func () {}, fmt.Errorf("failed to ensure chunk %d: %w", chunkIdx, chunkErr)
+				return nil, func() {}, fmt.Errorf("failed to ensure chunk %d: %w", chunkIdx, chunkErr)
 			}
 		case <-c.ctx.Done():
 			return nil, func() {}, c.ctx.Err()
@@ -134,7 +122,7 @@ func (c *Chunker) ReadAt(b []byte, off int64) (int, error) {
 	if errors.As(err, &block.ErrBytesNotAvailable{}) {
 		chunkIdx := off / ChunkSize
 
-		chunkCh := c.ensureChunk(chunkIdx, len(b) == 0)
+		chunkCh := c.ensureChunk(chunkIdx)
 
 		select {
 		case chunkErr := <-chunkCh:
