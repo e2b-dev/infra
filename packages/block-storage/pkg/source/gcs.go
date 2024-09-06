@@ -13,8 +13,11 @@ import (
 )
 
 const (
-	fetchTimeout     = 10 * time.Second
-	uploadBufferSize = 8 * 2 << 20
+	fetchTimeout      = 10 * time.Second
+	uploadBufferSize  = 8 * 2 << 20
+	initialBackoff    = 10 * time.Millisecond
+	maxBackoff        = 10 * time.Second
+	backoffMultiplier = 2
 )
 
 type GCSObject struct {
@@ -25,9 +28,9 @@ type GCSObject struct {
 func NewGCSObject(ctx context.Context, client *storage.Client, bucket, objectPath string) *GCSObject {
 	obj := client.Bucket(bucket).Object(objectPath).Retryer(
 		storage.WithBackoff(gax.Backoff{
-			Initial:    10 * time.Millisecond,
-			Max:        10 * time.Second,
-			Multiplier: 2,
+			Initial:    initialBackoff,
+			Max:        maxBackoff,
+			Multiplier: backoffMultiplier,
 		}),
 		storage.WithPolicy(storage.RetryAlways),
 	)
@@ -56,7 +59,7 @@ func (g *GCSObject) ReadFrom(src io.Reader) (int64, error) {
 	return n, nil
 }
 
-func (g *GCSObject) ReadAt(b []byte, off int64) (int, error) {
+func (g *GCSObject) ReadAt(b []byte, off int64) (n int, err error) {
 	ctx, cancel := context.WithTimeout(g.ctx, fetchTimeout)
 	defer cancel()
 
@@ -73,10 +76,18 @@ func (g *GCSObject) ReadAt(b []byte, off int64) (int, error) {
 		}
 	}()
 
-	n, readErr := reader.Read(b)
-	if readErr != nil {
-		return 0, fmt.Errorf("failed to read GCS object: %w", readErr)
+	for remain := reader.Remain(); remain > 0; {
+		nr, readErr := reader.Read(b[:remain])
+
+		n += nr
+
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return n, fmt.Errorf("failed to read from GCS object: %w", readErr)
+		}
 	}
+
+	// fmt.Printf("offset %d, length %d, size %d", off, len(b), reader.Size())
+	// fmt.Printf("-> remains %d\n", reader.Remain())
 
 	return n, nil
 }
