@@ -76,8 +76,8 @@ func (g *GCSObject) ReadAt(b []byte, off int64) (n int, err error) {
 		}
 	}()
 
-	for remain := reader.Remain(); remain > 0; {
-		nr, readErr := reader.Read(b[:remain])
+	for reader.Remain() > 0 {
+		nr, readErr := reader.Read(b[n:])
 
 		n += nr
 
@@ -85,9 +85,6 @@ func (g *GCSObject) ReadAt(b []byte, off int64) (n int, err error) {
 			return n, fmt.Errorf("failed to read from GCS object: %w", readErr)
 		}
 	}
-
-	// fmt.Printf("offset %d, length %d, size %d", off, len(b), reader.Size())
-	// fmt.Printf("-> remains %d\n", reader.Remain())
 
 	return n, nil
 }

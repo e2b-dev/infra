@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"syscall"
 	"unsafe"
 
@@ -93,43 +94,53 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src io.ReaderAt, fd uint
 
 		addr := constants.GetPagefaultAddress(&pagefault)
 
-		mapping, err := getMapping(uintptr(addr), mappings)
-		if err != nil {
-			return fmt.Errorf("failed to map: %w", err)
-		}
+		go func(addr constants.CULong) (err error) {
+			defer func() {
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "failed to handle pagefault: %v\n", err)
+				}
+			}()
 
-		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
-		pagesize := uint64(mapping.PageSize)
-
-		pageBuf := make([]byte, pagesize)
-
-		n, err := src.ReadAt(pageBuf, int64(offset))
-		if err != nil {
-			if !errors.Is(err, io.EOF) && n != 0 {
-				return fmt.Errorf("failed to read from source: %w", err)
-			}
-		}
-
-		cpy := constants.NewUffdioCopy(
-			pageBuf,
-			addr&^constants.CULong(pagesize-1),
-			constants.CULong(pagesize),
-			0,
-			0,
-		)
-
-		if _, _, errno := syscall.Syscall(
-			syscall.SYS_IOCTL,
-			uintptr(uffd),
-			constants.UFFDIO_COPY,
-			uintptr(unsafe.Pointer(&cpy)),
-		); errno != 0 {
-			if errno == unix.EEXIST {
-				// Page is already mapped
-				continue
+			mapping, err := getMapping(uintptr(addr), mappings)
+			if err != nil {
+				return fmt.Errorf("failed to map: %w", err)
 			}
 
-			return fmt.Errorf("failed uffdio copy %w", errno)
-		}
+			offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
+			pagesize := uint64(mapping.PageSize)
+
+			pageBuf := make([]byte, pagesize)
+
+			n, err := src.ReadAt(pageBuf, int64(offset))
+			if err != nil {
+				if !errors.Is(err, io.EOF) && n != 0 {
+					return fmt.Errorf("failed to read from source: %w", err)
+				}
+			}
+
+			cpy := constants.NewUffdioCopy(
+				pageBuf,
+				addr&^constants.CULong(pagesize-1),
+				constants.CULong(pagesize),
+				0,
+				0,
+			)
+
+			if _, _, errno := syscall.Syscall(
+				syscall.SYS_IOCTL,
+				uintptr(uffd),
+				constants.UFFDIO_COPY,
+				uintptr(unsafe.Pointer(&cpy)),
+			); errno != 0 {
+				if errno == unix.EEXIST {
+					// Page is already mapped
+					return nil
+				}
+
+				return fmt.Errorf("failed uffdio copy %w", errno)
+			}
+
+			return nil
+		}(addr)
 	}
 }
