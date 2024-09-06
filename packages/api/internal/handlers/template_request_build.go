@@ -260,7 +260,6 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 			telemetry.ReportCriticalError(ctx, err)
 
 			return nil
-
 		}
 
 		if len(envs) > 0 {
