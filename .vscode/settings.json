@@ -54,11 +54,11 @@
   ],
   "remote.SSH.defaultExtensions": [
     "golang.go",
-    "GitHub.copilot",
   ],
   "go.autocompleteUnimportedPackages": true,
   "go.toolsManagement.autoUpdate": true,
   "go.testOnSave": false,
+  "go.testTimeout": "20s",
   "go.inlayHints.assignVariableTypes": true,
   "go.inlayHints.compositeLiteralFields": true,
   "go.inlayHints.compositeLiteralTypes": true,
