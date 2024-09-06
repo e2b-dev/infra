@@ -10,6 +10,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -38,29 +40,43 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	env, build, err := a.db.GetEnv(ctx, cleanedAliasOrEnvID)
-	if err != nil {
-		errMsg := fmt.Errorf("error env not found: %w", err)
-		telemetry.ReportError(ctx, errMsg)
+	template, err := a.db.
+		Client.
+		Env.
+		Query().
+		Where(
+			env.Or(
+				env.HasEnvAliasesWith(envalias.ID(aliasOrTemplateID)),
+				env.ID(aliasOrTemplateID),
+			),
+		).Only(ctx)
 
+	notFound := models.IsNotFound(err)
+	if notFound {
+		telemetry.ReportError(ctx, fmt.Errorf("template '%s' not found", aliasOrTemplateID))
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("the sandbox template '%s' wasn't found", cleanedAliasOrEnvID))
+
+		return
+	} else if err != nil {
+		telemetry.ReportError(ctx, fmt.Errorf("failed to get env '%s': %w", aliasOrTemplateID, err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting env")
 
 		return
 	}
 
 	var team *models.Team
 	for _, t := range teams {
-		if t.ID == env.TeamID {
+		if t.ID == template.TeamID {
 			team = t
 			break
 		}
 	}
 
 	if team == nil {
-		errMsg := fmt.Errorf("user '%s' doesn't have access to the sandbox template '%s'", cleanedAliasOrEnvID)
+		errMsg := fmt.Errorf("user '%s' doesn't have access to the sandbox template '%s'", userID, cleanedAliasOrEnvID)
 		telemetry.ReportError(ctx, errMsg)
 
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to sandbox template '%s'", cleanedAliasOrEnvID))
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) don't have access to sandbox template '%s'", userID, cleanedAliasOrEnvID))
 
 		return
 	}
@@ -69,12 +85,10 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		attribute.String("user.id", userID.String()),
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
-		attribute.String("env.id", env.TemplateID),
-		attribute.String("env.kernel.version", build.KernelVersion),
-		attribute.String("env.firecracker.version", build.FirecrackerVersion),
+		attribute.String("env.id", template.ID),
 	)
 
-	deleteJobErr := a.templateManager.DeleteInstance(ctx, env.TemplateID)
+	deleteJobErr := a.templateManager.DeleteInstance(ctx, template.ID)
 	if deleteJobErr != nil {
 		errMsg := fmt.Errorf("error when deleting env files from fc-envs disk: %w", deleteJobErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -82,7 +96,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		telemetry.ReportEvent(ctx, "deleted env from fc-envs disk")
 	}
 
-	dbErr := a.db.DeleteEnv(ctx, env.TemplateID)
+	dbErr := a.db.DeleteEnv(ctx, template.ID)
 	if dbErr != nil {
 		errMsg := fmt.Errorf("error when deleting env from db: %w", dbErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -92,15 +106,15 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	a.templateCache.Invalidate(env.TemplateID)
+	a.templateCache.Invalidate(template.ID)
 
 	telemetry.ReportEvent(ctx, "deleted env from db")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "deleted environment", properties.Set("environment", env.TemplateID))
+	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "deleted environment", properties.Set("environment", template.ID))
 
-	a.logger.Infof("Deleted env '%s' from team '%s'", env.TemplateID, team.ID)
+	a.logger.Infof("Deleted env '%s' from team '%s'", template.ID, team.ID)
 
 	c.JSON(http.StatusOK, nil)
 }
