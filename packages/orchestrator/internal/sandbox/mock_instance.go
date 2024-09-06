@@ -5,33 +5,30 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	snapshotStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 
-	"cloud.google.com/go/storage"
 	"go.opentelemetry.io/otel"
 )
 
-func MockInstance(envID, buildID, instanceID string, dns *dns.DNS, keepAlive time.Duration) {
-	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), telemetry.DebugID, instanceID), time.Second*4)
+func MockInstance(
+	envID,
+	buildID,
+	instanceID string,
+	dns *dns.DNS,
+	snapshotCache *snapshotStorage.SnapshotDataCache,
+	keepAlive time.Duration,
+) {
+	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), telemetry.DebugID, instanceID), time.Second*400)
 	defer cancel()
 
 	tracer := otel.Tracer(fmt.Sprintf("instance-%s", instanceID))
 	childCtx, _ := tracer.Start(ctx, "mock-instance")
 
 	consulClient, err := consul.New(childCtx)
-
-	client, err := storage.NewClient(ctx, storage.WithJSONReads())
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create GCS client: %v", err)
-		panic(errMsg)
-	}
-
-	snapshotCache := snapshotStorage.NewSnapshotDataCache(ctx, client, constants.BucketName)
 
 	networkPool := make(chan IPSlot, 1)
 
