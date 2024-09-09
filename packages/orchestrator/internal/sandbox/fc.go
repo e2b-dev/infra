@@ -46,7 +46,7 @@ type fc struct {
 
 	metadata *MmdsMetadata
 
-	uffdSocketPath *string
+	uffdSocketPath string
 
 	id string
 
@@ -80,7 +80,7 @@ func (fc *fc) loadSnapshot(
 	socketPath,
 	envPath string,
 	metadata interface{},
-	uffdSocketPath *string,
+	uffdSocketPath string,
 	pollReady chan struct{},
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
@@ -93,38 +93,23 @@ func (fc *fc) loadSnapshot(
 
 	telemetry.ReportEvent(childCtx, "created FC socket client")
 
-	memfilePath := filepath.Join(envPath, MemfileName)
 	snapfilePath := filepath.Join(envPath, SnapfileName)
-
-	telemetry.SetAttributes(
-		childCtx,
-		attribute.String("instance.memfile.path", memfilePath),
-		attribute.String("instance.snapfile.path", snapfilePath),
-	)
 
 	var backend *models.MemoryBackend
 
-	if uffdSocketPath != nil {
-		err := waitForSocket(*uffdSocketPath, socketWaitTimeout)
-		if err != nil {
-			telemetry.ReportCriticalError(childCtx, err)
+	err := waitForSocket(uffdSocketPath, socketWaitTimeout)
+	if err != nil {
+		telemetry.ReportCriticalError(childCtx, err)
 
-			return err
-		} else {
-			telemetry.ReportEvent(childCtx, "uffd socket ready")
-		}
-
-		backendType := models.MemoryBackendBackendTypeUffd
-		backend = &models.MemoryBackend{
-			BackendPath: uffdSocketPath,
-			BackendType: &backendType,
-		}
+		return err
 	} else {
-		backendType := models.MemoryBackendBackendTypeFile
-		backend = &models.MemoryBackend{
-			BackendPath: &memfilePath,
-			BackendType: &backendType,
-		}
+		telemetry.ReportEvent(childCtx, "uffd socket ready")
+	}
+
+	backendType := models.MemoryBackendBackendTypeUffd
+	backend = &models.MemoryBackend{
+		BackendPath: &uffdSocketPath,
+		BackendType: &backendType,
 	}
 
 	snapshotConfig := operations.LoadSnapshotParams{
@@ -137,7 +122,7 @@ func (fc *fc) loadSnapshot(
 		},
 	}
 
-	_, err := httpClient.Operations.LoadSnapshot(&snapshotConfig)
+	_, err = httpClient.Operations.LoadSnapshot(&snapshotConfig)
 	if err != nil {
 		errMsg := fmt.Errorf("error loading snapshot: %w", err)
 

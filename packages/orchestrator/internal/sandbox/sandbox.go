@@ -33,12 +33,14 @@ const (
 	kernelMountDir = "/fc-vm"
 	kernelName     = "vmlinux.bin"
 	fcBinaryName   = "firecracker"
+
+	fcOperationTimeout = 10 * time.Second
 )
 
 var logsProxyAddress = os.Getenv("LOGS_PROXY_ADDRESS")
 
 var httpClient = http.Client{
-	Timeout: 5 * time.Second,
+	Timeout: fcOperationTimeout,
 }
 
 type Sandbox struct {
@@ -75,7 +77,7 @@ func NewSandbox(
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
-	snapshotData, err := snapshotCache.GetTemplateData(config.TemplateID, config.BuildID)
+	snapshotData, err := snapshotCache.GetTemplateData(config.TemplateID, config.BuildID, config.HugePages)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
@@ -130,7 +132,6 @@ func NewSandbox(
 		kernelMountDir,
 		kernelName,
 		fcBinaryPath(config.FirecrackerVersion),
-		config.HugePages,
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to assemble env files info for FC: %w", err)
@@ -163,30 +164,24 @@ func NewSandbox(
 		}
 	}()
 
-	var fcUffd *uffd.Uffd
-	if fsEnv.UFFDSocketPath != nil {
-		fcUffd, err = uffd.New(snapshotData.Memfile, *fsEnv.UFFDSocketPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create uffd: %w", err)
-		}
-
-		telemetry.ReportEvent(childCtx, "created uffd")
-
-		uffdErr := fcUffd.Start(childCtx, tracer)
-		if err != nil {
-			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-
-			return nil, errMsg
-		}
-
-		telemetry.ReportEvent(childCtx, "started uffd")
+	fcUffd, err := uffd.New(snapshotData.Memfile, fsEnv.UFFDSocketPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}
 
-	var pollReady chan struct{}
-	if fcUffd != nil {
-		pollReady = fcUffd.PollReady
+	telemetry.ReportEvent(childCtx, "created uffd")
+
+	uffdErr := fcUffd.Start(childCtx, tracer)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return nil, errMsg
 	}
+
+	telemetry.ReportEvent(childCtx, "started uffd")
+
+	pollReady := fcUffd.PollReady
 
 	fc := newFC(
 		childCtx,
@@ -310,6 +305,7 @@ func (s *Sandbox) initRequest(ctx context.Context, port int64, envVars map[strin
 	jsonBody := &PostInitJSONBody{
 		EnvVars: &envVars,
 	}
+
 	envVarsJSON, err := json.Marshal(jsonBody)
 	if err != nil {
 		return err

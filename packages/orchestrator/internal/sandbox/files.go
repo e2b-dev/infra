@@ -17,7 +17,6 @@ import (
 const (
 	RootfsName   = "rootfs.ext4"
 	SnapfileName = "snapfile"
-	MemfileName  = "memfile"
 	envsDisk     = "/mnt/disks/fc-envs/v1"
 
 	BuildDirName        = "builds"
@@ -27,7 +26,7 @@ const (
 )
 
 type SandboxFiles struct {
-	UFFDSocketPath *string
+	UFFDSocketPath string
 
 	EnvPath      string
 	BuildDirPath string
@@ -39,10 +38,6 @@ type SandboxFiles struct {
 	KernelMountDirPath string
 
 	FirecrackerBinaryPath string
-}
-
-func (f *SandboxFiles) MemfilePath() string {
-	return filepath.Join(f.EnvPath, MemfileName)
 }
 
 // waitForSocket waits for the given file to exist.
@@ -82,7 +77,6 @@ func newSandboxFiles(
 	kernelMountDir,
 	kernelName,
 	firecrackerBinaryPath string,
-	hugePages bool,
 ) (*SandboxFiles, error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-env-instance",
 		trace.WithAttributes(
@@ -107,20 +101,14 @@ func newSandboxFiles(
 	}
 
 	// Assemble UFFD socket path
-	var uffdSocketPath *string
+	socketName := fmt.Sprintf("uffd-%s", sandboxID)
 
-	if hugePages {
-		socketName := fmt.Sprintf("uffd-%s", sandboxID)
+	uffdSocketPath, sockPathErr := getSocketPath(socketName)
+	if sockPathErr != nil {
+		errMsg := fmt.Errorf("error getting UFFD socket path: %w", sockPathErr)
+		telemetry.ReportCriticalError(childCtx, errMsg)
 
-		socket, sockPathErr := getSocketPath(socketName)
-		if sockPathErr != nil {
-			errMsg := fmt.Errorf("error getting UFFD socket path: %w", sockPathErr)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-
-			return nil, errMsg
-		}
-
-		uffdSocketPath = &socket
+		return nil, errMsg
 	}
 
 	// Create kernel path
@@ -204,14 +192,12 @@ func (f *SandboxFiles) Cleanup(
 	}
 
 	// Remove UFFD socket
-	if f.UFFDSocketPath != nil {
-		err = os.Remove(*f.UFFDSocketPath)
-		if err != nil {
-			errMsg := fmt.Errorf("error deleting socket for UFFD: %w", err)
-			telemetry.ReportError(childCtx, errMsg)
-		} else {
-			telemetry.ReportEvent(childCtx, "removed UFFD socket")
-		}
+	err = os.Remove(f.UFFDSocketPath)
+	if err != nil {
+		errMsg := fmt.Errorf("error deleting socket for UFFD: %w", err)
+		telemetry.ReportError(childCtx, errMsg)
+	} else {
+		telemetry.ReportEvent(childCtx, "removed UFFD socket")
 	}
 
 	return nil

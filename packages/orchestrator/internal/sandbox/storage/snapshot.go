@@ -16,6 +16,7 @@ import (
 
 const (
 	snapshotDataExpiration = time.Hour * 25
+	pageSize               = 2 << 11
 	hugepageSize           = 2 << 20
 	// TODO: Extract shared constants.
 	memfileName      = "memfile"
@@ -31,7 +32,7 @@ func (s *SnapshotData) Close() error {
 	return s.Memfile.Close()
 }
 
-func newTemplateData(ctx context.Context, client *storage.Client, bucket, templateId, buildId string) *SnapshotData {
+func newTemplateData(ctx context.Context, client *storage.Client, bucket, templateId, buildId string, hugePages bool) *SnapshotData {
 	h := &SnapshotData{}
 
 	h.ensureOpen = sync.OnceValues(func() (*SnapshotData, error) {
@@ -54,11 +55,18 @@ func newTemplateData(ctx context.Context, client *storage.Client, bucket, templa
 
 		cachePath := filepath.Join(dirPath, memfileName)
 
+		var blockSize int64
+		if hugePages {
+			blockSize = hugepageSize
+		} else {
+			blockSize = pageSize
+		}
+
 		memfileStorage, err := blockStorage.New(
 			ctx,
 			memfileObject,
 			cachePath,
-			hugepageSize,
+			blockSize,
 		)
 
 		h.Memfile = memfileStorage
@@ -76,12 +84,12 @@ type SnapshotDataCache struct {
 	bucket        string
 }
 
-func (c *SnapshotDataCache) GetTemplateData(templateID, buildID string) (*SnapshotData, error) {
+func (c *SnapshotDataCache) GetTemplateData(templateID, buildID string, hugePages bool) (*SnapshotData, error) {
 	id := fmt.Sprintf("%s-%s", templateID, buildID)
 
 	snapshotData, _ := c.cache.GetOrSet(
 		id,
-		newTemplateData(c.ctx, c.storageClient, c.bucket, templateID, buildID),
+		newTemplateData(c.ctx, c.storageClient, c.bucket, templateID, buildID, hugePages),
 		ttlcache.WithTTL[string, *SnapshotData](snapshotDataExpiration),
 	)
 

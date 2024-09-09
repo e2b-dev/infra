@@ -31,6 +31,7 @@ import (
 const (
 	ipSlotPoolSize = 32
 	bucket
+	ServiceName = "orchestrator"
 )
 
 type server struct {
@@ -61,7 +62,7 @@ func New(logger *zap.Logger) *grpc.Server {
 	dns := dns.New()
 	go dns.Start("127.0.0.1:53")
 
-	tracer := otel.Tracer(constants.ServiceName)
+	tracer := otel.Tracer(ServiceName)
 
 	consulClient, err := consul.New(ctx)
 	if err != nil {

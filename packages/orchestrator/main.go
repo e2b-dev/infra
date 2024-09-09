@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/test"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -37,7 +36,7 @@ func main() {
 	}
 
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(constants.ServiceName, "no")
+		shutdown := telemetry.InitOTLPExporter(server.ServiceName, "no")
 		defer shutdown()
 	}
 
