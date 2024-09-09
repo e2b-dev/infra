@@ -15,27 +15,27 @@ import (
 )
 
 const (
-	snapshotDataExpiration = time.Hour * 25
+	templateDataExpiration = time.Hour * 25
 	pageSize               = 2 << 11
 	hugepageSize           = 2 << 20
 	// TODO: Extract shared constants.
 	memfileName      = "memfile"
-	snapshotCacheDir = "/snapshots/cache"
+	templateCacheDir = "/template/cache"
 )
 
-type SnapshotData struct {
+type TemplateData struct {
 	Memfile    *blockStorage.BlockStorage
-	ensureOpen func() (*SnapshotData, error)
+	ensureOpen func() (*TemplateData, error)
 }
 
-func (s *SnapshotData) Close() error {
-	return s.Memfile.Close()
+func (t *TemplateData) Close() error {
+	return t.Memfile.Close()
 }
 
-func newTemplateData(ctx context.Context, client *storage.Client, bucket, templateId, buildId string, hugePages bool) *SnapshotData {
-	h := &SnapshotData{}
+func newTemplateData(ctx context.Context, client *storage.Client, bucket, templateId, buildId string, hugePages bool) *TemplateData {
+	h := &TemplateData{}
 
-	h.ensureOpen = sync.OnceValues(func() (*SnapshotData, error) {
+	h.ensureOpen = sync.OnceValues(func() (*TemplateData, error) {
 		dirKey := filepath.Join(templateId, buildId)
 		fileKey := filepath.Join(dirKey, memfileName)
 
@@ -46,7 +46,7 @@ func newTemplateData(ctx context.Context, client *storage.Client, bucket, templa
 			fileKey,
 		)
 
-		dirPath := filepath.Join(snapshotCacheDir, dirKey)
+		dirPath := filepath.Join(templateCacheDir, dirKey)
 
 		err := os.MkdirAll(dirPath, os.ModePerm)
 		if err != nil {
@@ -77,49 +77,49 @@ func newTemplateData(ctx context.Context, client *storage.Client, bucket, templa
 	return h
 }
 
-type SnapshotDataCache struct {
-	cache         *ttlcache.Cache[string, *SnapshotData]
+type TemplateDataCache struct {
+	cache         *ttlcache.Cache[string, *TemplateData]
 	storageClient *storage.Client
 	ctx           context.Context
 	bucket        string
 }
 
-func (c *SnapshotDataCache) GetTemplateData(templateID, buildID string, hugePages bool) (*SnapshotData, error) {
+func (t *TemplateDataCache) GetTemplateData(templateID, buildID string, hugePages bool) (*TemplateData, error) {
 	id := fmt.Sprintf("%s-%s", templateID, buildID)
 
-	snapshotData, _ := c.cache.GetOrSet(
+	templateData, _ := t.cache.GetOrSet(
 		id,
-		newTemplateData(c.ctx, c.storageClient, c.bucket, templateID, buildID, hugePages),
-		ttlcache.WithTTL[string, *SnapshotData](snapshotDataExpiration),
+		newTemplateData(t.ctx, t.storageClient, t.bucket, templateID, buildID, hugePages),
+		ttlcache.WithTTL[string, *TemplateData](templateDataExpiration),
 	)
 
-	mp, err := snapshotData.Value().ensureOpen()
+	mp, err := templateData.Value().ensureOpen()
 	if err != nil {
-		c.cache.Delete(id)
+		t.cache.Delete(id)
 
-		return nil, fmt.Errorf("failed to create snapshot data %s: %w", id, err)
+		return nil, fmt.Errorf("failed to create template data cache %s: %w", id, err)
 	}
 
 	return mp, nil
 }
 
-func NewSnapshotDataCache(ctx context.Context, client *storage.Client, bucket string) *SnapshotDataCache {
+func NewTemplateDataCache(ctx context.Context, client *storage.Client, bucket string) *TemplateDataCache {
 	cache := ttlcache.New(
-		ttlcache.WithTTL[string, *SnapshotData](snapshotDataExpiration),
+		ttlcache.WithTTL[string, *TemplateData](templateDataExpiration),
 	)
 
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *SnapshotData]) {
+	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *TemplateData]) {
 		data := item.Value()
 
 		err := data.Close()
 		if err != nil {
-			fmt.Printf("failed to cleanup snapshot data for item %s: %v", item.Key(), err)
+			fmt.Printf("failed to cleanup template data for item %s: %v", item.Key(), err)
 		}
 	})
 
 	go cache.Start()
 
-	return &SnapshotDataCache{
+	return &TemplateDataCache{
 		bucket:        bucket,
 		cache:         cache,
 		storageClient: client,

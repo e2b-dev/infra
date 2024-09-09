@@ -19,7 +19,7 @@ func MockInstance(
 	buildID,
 	instanceID string,
 	dns *dns.DNS,
-	snapshotCache *snapshotStorage.SnapshotDataCache,
+	templateCache *snapshotStorage.TemplateDataCache,
 	keepAlive time.Duration,
 ) {
 	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), telemetry.DebugID, instanceID), time.Second*400)
@@ -63,7 +63,7 @@ func MockInstance(
 		consulClient,
 		dns,
 		networkPool,
-		snapshotCache,
+		templateCache,
 		&orchestrator.SandboxConfig{
 			TemplateID:         envID,
 			FirecrackerVersion: "v1.9.0_fake-2476009",

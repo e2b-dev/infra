@@ -40,7 +40,7 @@ type server struct {
 	tracer        trace.Tracer
 	consul        *consulapi.Client
 	networkPool   chan sandbox.IPSlot
-	snapshotCache *snapshotStorage.SnapshotDataCache
+	snapshotCache *snapshotStorage.TemplateDataCache
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -74,7 +74,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		panic(errMsg)
 	}
 
-	snapshotCache := snapshotStorage.NewSnapshotDataCache(ctx, client, constants.BucketName)
+	snapshotCache := snapshotStorage.NewTemplateDataCache(ctx, client, constants.BucketName)
 
 	// Sandboxes waiting for the network slot can be passed and reschedulede
 	// so we should include a FIFO system for waiting.

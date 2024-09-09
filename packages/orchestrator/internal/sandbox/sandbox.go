@@ -68,7 +68,7 @@ func NewSandbox(
 	consul *consul.Client,
 	dns *dns.DNS,
 	networkPool chan IPSlot,
-	snapshotCache *snapshotStorage.SnapshotDataCache,
+	templateCache *snapshotStorage.TemplateDataCache,
 	config *orchestrator.SandboxConfig,
 	traceID string,
 	startedAt time.Time,
@@ -77,7 +77,7 @@ func NewSandbox(
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
-	snapshotData, err := snapshotCache.GetTemplateData(config.TemplateID, config.BuildID, config.HugePages)
+	templateData, err := templateCache.GetTemplateData(config.TemplateID, config.BuildID, config.HugePages)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
@@ -164,7 +164,7 @@ func NewSandbox(
 		}
 	}()
 
-	fcUffd, err := uffd.New(snapshotData.Memfile, fsEnv.UFFDSocketPath)
+	fcUffd, err := uffd.New(templateData.Memfile, fsEnv.UFFDSocketPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}
