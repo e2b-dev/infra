@@ -18,7 +18,8 @@ const (
 	snapshotDataExpiration = time.Hour * 25
 	hugepageSize           = 2 << 20
 	// TODO: Extract shared constants.
-	memfileName = "memfile"
+	memfileName      = "memfile"
+	snapshotCacheDir = "/snapshots/cache"
 )
 
 type SnapshotData struct {
@@ -44,7 +45,7 @@ func newTemplateData(ctx context.Context, client *storage.Client, bucket, templa
 			fileKey,
 		)
 
-		dirPath := filepath.Join(os.TempDir(), dirKey)
+		dirPath := filepath.Join(snapshotCacheDir, dirKey)
 
 		err := os.MkdirAll(dirPath, os.ModePerm)
 		if err != nil {
