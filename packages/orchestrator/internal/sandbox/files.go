@@ -15,7 +15,6 @@ import (
 )
 
 const (
-	BuildIDName  = "build_id"
 	RootfsName   = "rootfs.ext4"
 	SnapfileName = "snapfile"
 	MemfileName  = "memfile"
@@ -77,6 +76,7 @@ func newSandboxFiles(
 	tracer trace.Tracer,
 	sandboxID,
 	envID,
+	buildID,
 	kernelVersion,
 	kernelsDir,
 	kernelMountDir,
@@ -95,15 +95,6 @@ func newSandboxFiles(
 	envPath := filepath.Join(envsDisk, envID)
 	envInstancePath := filepath.Join(envPath, EnvInstancesDirName, sandboxID)
 
-	// Mount overlay
-	buildIDPath := filepath.Join(envPath, BuildIDName)
-
-	data, err := os.ReadFile(buildIDPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed reading build id for the env %s: %w", envID, err)
-	}
-
-	buildID := string(data)
 	buildDirPath := filepath.Join(envPath, BuildDirName, buildID)
 
 	// Assemble socket path

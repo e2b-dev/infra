@@ -124,6 +124,7 @@ func NewSandbox(
 		tracer,
 		config.SandboxID,
 		config.TemplateID,
+		config.BuildID,
 		config.KernelVersion,
 		kernelsDir,
 		kernelMountDir,
