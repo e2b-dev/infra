@@ -29,9 +29,8 @@ import (
 )
 
 const (
+	ServiceName    = "orchestrator"
 	ipSlotPoolSize = 32
-	bucket
-	ServiceName = "orchestrator"
 )
 
 type server struct {
