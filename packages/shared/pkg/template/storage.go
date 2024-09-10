@@ -11,7 +11,7 @@ const (
 	SnapfileName = "snapfile"
 )
 
-var BucketName = os.Getenv("BUCKET_NAME")
+var BucketName = os.Getenv("TEMPLATE_BUCKET_NAME")
 
 type TemplateFiles struct {
 	templateID string

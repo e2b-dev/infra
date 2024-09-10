@@ -34,8 +34,8 @@ build-and-upload: build upload
 
 .PHONY: test-build
 test-build:
-	sudo go run -race -gcflags=all="-N -l" main.go -test build -template 0v0c9frk1etrhpxr5ljw -build 3351eada-8633-4e77-a757-6f869abd17c2
+	sudo BUCKET_NAME=$(BUCKET_NAME) GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) GCP_PROJECT_ID=$(GCP_PROJECT_ID) GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) GCP_REGION=$(GCP_REGION) go run -race -gcflags=all="-N -l" main.go -test build -template 0v0c9frk1etrhpxr5ljw -build 3351eada-8633-4e77-a757-6f869abd17c2
 
 .PHONY: test-delete
 test-delete:
-	sudo go run -race -gcflags=all="-N -l" main.go -test delete -env 0v0c9frk1etrhpxr5ljw
+	sudo BUCKET_NAME=$(BUCKET_NAME) GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) GCP_PROJECT_ID=$(GCP_PROJECT_ID) GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) GCP_REGION=$(GCP_REGION) go run -race -gcflags=all="-N -l" main.go -test delete -env 0v0c9frk1etrhpxr5ljw
