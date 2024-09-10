@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+
 	blockStorage "github.com/e2b-dev/infra/packages/block-storage/pkg/source"
 )
 
@@ -25,26 +26,25 @@ func NewSimpleFile(
 	bucketPath string,
 	path string,
 ) *SimpleFile {
-	s := &SimpleFile{}
+	return &SimpleFile{
+		Ensure: sync.OnceValues(func() (string, error) {
+			fileCtx, fileCancel := context.WithTimeout(ctx, downloadTimeout)
+			defer fileCancel()
 
-	s.Ensure = sync.OnceValues(func() (string, error) {
-		fileCtx, fileCancel := context.WithTimeout(ctx, downloadTimeout)
-		defer fileCancel()
+			object := blockStorage.NewGCSObjectFromBucket(fileCtx, bucket, bucketPath)
 
-		object := blockStorage.NewGCSObjectFromBucket(fileCtx, bucket, bucketPath)
+			dst, err := os.Create(path)
+			if err != nil {
+				return "", fmt.Errorf("failed to create file: %w", err)
+			}
+			defer dst.Close()
 
-		dst, err := os.Create(path)
-		if err != nil {
-			return "", fmt.Errorf("failed to create file: %w", err)
-		}
+			_, err = object.WriteTo(dst)
+			if err != nil {
+				return "", fmt.Errorf("failed to write to file: %w", err)
+			}
 
-		_, err = object.WriteTo(dst)
-		if err != nil {
-			return "", fmt.Errorf("failed to write to file: %w", err)
-		}
-
-		return path, nil
-	})
-
-	return s
+			return path, nil
+		}),
+	}
 }

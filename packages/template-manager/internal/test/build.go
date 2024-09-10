@@ -9,6 +9,7 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	"go.opentelemetry.io/otel"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/template"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
 )
 
@@ -30,8 +31,10 @@ func Build(templateID, buildID string) {
 
 	var buf bytes.Buffer
 	e := build.Env{
-		BuildID:               buildID,
-		EnvID:                 templateID,
+		TemplateFiles: template.TemplateFiles{
+			BuildID:    buildID,
+			TemplateID: templateID,
+		},
 		VCpuCount:             2,
 		MemoryMB:              256,
 		StartCmd:              "",

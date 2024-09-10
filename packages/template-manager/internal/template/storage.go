@@ -48,10 +48,10 @@ func (t *TemplateStorage) Remove(ctx context.Context, templateID string) error {
 	return nil
 }
 
-func (t *TemplateStorage) NewTemplateBuild(templateID, buildID string) *TemplateBuild {
+func (t *TemplateStorage) NewTemplateBuild(templateFiles *template.TemplateFiles) *TemplateBuild {
 	return &TemplateBuild{
 		bucket: t.bucket,
-		paths:  template.NewTemplateFiles(templateID, buildID),
+		paths:  templateFiles,
 	}
 }
 
@@ -62,7 +62,7 @@ type TemplateBuild struct {
 
 func (t *TemplateBuild) Remove(ctx context.Context) error {
 	objects := t.bucket.Objects(ctx, &storage.Query{
-		Prefix: t.paths.BuildDir() + "/",
+		Prefix: t.paths.StorageDir() + "/",
 	})
 
 	for {
@@ -85,7 +85,7 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 }
 
 func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfile io.Reader) error {
-	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.paths.MemfilePath())
+	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.paths.StorageMemfilePath())
 
 	_, err := object.ReadFrom(memfile)
 	if err != nil {
@@ -96,7 +96,7 @@ func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfile io.Reader) er
 }
 
 func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfs io.Reader) error {
-	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.paths.RootfsPath())
+	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.paths.StorageRootfsPath())
 
 	_, err := object.ReadFrom(rootfs)
 	if err != nil {
@@ -107,7 +107,7 @@ func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfs io.Reader) erro
 }
 
 func (t *TemplateBuild) UploadSnapfile(ctx context.Context, snapfile io.Reader) error {
-	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.paths.SnapfilePath())
+	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.paths.StorageSnapfilePath())
 
 	_, err := object.ReadFrom(snapfile)
 	if err != nil {

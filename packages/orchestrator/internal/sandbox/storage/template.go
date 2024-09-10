@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -19,13 +18,9 @@ const (
 	templateDataExpiration = time.Hour * 25
 	pageSize               = 2 << 11
 	hugepageSize           = 2 << 20
-	// TODO: Extract shared constants.
-	templateCacheDir = "/template/cache"
 )
 
 type TemplateData struct {
-	paths *template.TemplateFiles
-
 	Memfile  *blockStorage.BlockStorage
 	Snapfile *SimpleFile
 
@@ -37,35 +32,25 @@ func (t *TemplateData) Close() error {
 }
 
 func newTemplateData(ctx context.Context, bucket *storage.BucketHandle, templateId, buildId string, hugePages bool) *TemplateData {
-	h := &TemplateData{
-		paths: template.NewTemplateFiles(templateId, buildId),
-	}
+	h := &TemplateData{}
 
 	h.ensureOpen = sync.OnceValues(func() (*TemplateData, error) {
-		dirKey := filepath.Join(templateId, buildId)
-		dirPath := filepath.Join(templateCacheDir, dirKey)
+		paths := template.NewTemplateFiles(templateId, buildId)
 
-		err := os.MkdirAll(dirPath, os.ModePerm)
+		err := os.MkdirAll(paths.CacheDir(), os.ModePerm)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create directory %s: %w", dirPath, err)
+			return nil, fmt.Errorf("failed to create directory %s: %w", paths.CacheDir(), err)
 		}
 
-		snapfileKey := filepath.Join(dirKey, template.SnapfileName)
-		snapfilePath := filepath.Join(templateCacheDir, snapfileKey)
-
-		h.Snapfile = NewSimpleFile(ctx, bucket, snapfileKey, snapfilePath)
+		h.Snapfile = NewSimpleFile(ctx, bucket, paths.StorageSnapfilePath(), paths.CacheSnapfilePath())
 
 		go h.Snapfile.Ensure()
-
-		memfileKey := filepath.Join(dirKey, template.MemfileName)
 
 		memfileObject := blockStorage.NewBucketObject(
 			ctx,
 			bucket,
-			memfileKey,
+			paths.StorageMemfilePath(),
 		)
-
-		memfileCachePath := filepath.Join(dirPath, template.MemfileName)
 
 		var blockSize int64
 		if hugePages {
@@ -77,7 +62,7 @@ func newTemplateData(ctx context.Context, bucket *storage.BucketHandle, template
 		memfileStorage, err := blockStorage.New(
 			ctx,
 			memfileObject,
-			memfileCachePath,
+			paths.CacheMemfilePath(),
 			blockSize,
 		)
 

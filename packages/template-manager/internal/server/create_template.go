@@ -14,15 +14,18 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	templateShared "github.com/e2b-dev/infra/packages/shared/pkg/template"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 )
 
+const cleanupTimeout = time.Second * 10
+
 func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateCreateRequest, stream template_manager.TemplateService_TemplateCreateServer) error {
 	ctx := stream.Context()
+
 	childCtx, childSpan := s.tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
@@ -41,25 +44,27 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 
 	logsWriter := writer.New(stream)
 	template := &build.Env{
-		EnvID:                 config.TemplateID,
-		BuildID:               config.BuildID,
+		TemplateFiles: templateShared.TemplateFiles{
+			TemplateID: config.TemplateID,
+			BuildID:    config.BuildID,
+		},
 		VCpuCount:             int64(config.VCpuCount),
 		MemoryMB:              int64(config.MemoryMB),
 		StartCmd:              config.StartCommand,
 		DiskSizeMB:            int64(config.DiskSizeMB),
 		HugePages:             config.HugePages,
 		KernelVersion:         config.KernelVersion,
-		FirecrackerBinaryPath: filepath.Join(consts.FirecrackerVersionsDir, config.FirecrackerVersion, consts.FirecrackerBinaryName),
+		FirecrackerBinaryPath: filepath.Join(templateShared.FirecrackerVersionsDir, config.FirecrackerVersion, templateShared.FirecrackerBinaryName),
 		BuildLogsWriter:       logsWriter,
 	}
 
-	buildStorage := s.templateStorage.NewTemplateBuild(config.TemplateID, config.BuildID)
+	buildStorage := s.templateStorage.NewTemplateBuild(&template.TemplateFiles)
 
 	var err error
 
 	// Remove local template files if build fails
 	defer func() {
-		removeCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 		defer cancel()
 
 		removeErr := template.Remove(removeCtx, s.tracer)
@@ -80,7 +85,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 	// Remove build files if build fails or times out
 	defer func() {
 		if err != nil {
-			removeCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+			removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 			defer cancel()
 
 			removeErr := buildStorage.Remove(removeCtx)
@@ -93,7 +98,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 	var uploadWg errgroup.Group
 
 	uploadWg.Go(func() error {
-		memfile, err := os.Open(template.MemfilePath())
+		memfile, err := os.Open(template.BuildMemfilePath())
 		if err != nil {
 			return err
 		}
@@ -102,7 +107,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 	})
 
 	uploadWg.Go(func() error {
-		rootfs, err := os.Open(template.RootfsPath())
+		rootfs, err := os.Open(template.BuildRootfsPath())
 		if err != nil {
 			return err
 		}
@@ -111,7 +116,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 	})
 
 	uploadWg.Go(func() error {
-		snapfile, err := os.Open(template.SnapfilePath())
+		snapfile, err := os.Open(template.BuildSnapfilePath())
 		if err != nil {
 			return err
 		}
@@ -119,7 +124,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		return buildStorage.UploadSnapfile(ctx, snapfile)
 	})
 
-	cmd := exec.Command(consts.HostEnvdPath, "-version")
+	cmd := exec.Command(templateShared.HostEnvdPath, "-version")
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -138,8 +143,8 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 
 	version := strings.TrimSpace(string(out))
 	trailerMetadata := metadata.Pairs(
-		consts.RootfsSizeKey, strconv.FormatInt(template.RootfsSizeMB(), 10),
-		consts.EnvdVersionKey, version,
+		templateShared.RootfsSizeKey, strconv.FormatInt(template.RootfsSizeMB(), 10),
+		templateShared.EnvdVersionKey, version,
 	)
 
 	stream.SetTrailer(trailerMetadata)
