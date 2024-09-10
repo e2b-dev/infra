@@ -21,12 +21,12 @@ const (
 	backoffMultiplier = 2
 )
 
-type GCSObject struct {
+type StorageObject struct {
 	object *storage.ObjectHandle
 	ctx    context.Context
 }
 
-func NewGCSObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, objectPath string) *GCSObject {
+func NewGCSObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, objectPath string) *StorageObject {
 	obj := bucket.Object(objectPath).Retryer(
 		storage.WithBackoff(gax.Backoff{
 			Initial:    initialBackoff,
@@ -36,21 +36,21 @@ func NewGCSObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, o
 		storage.WithPolicy(storage.RetryAlways),
 	)
 
-	return &GCSObject{
+	return &StorageObject{
 		object: obj,
 		ctx:    ctx,
 	}
 }
 
-func NewGCSObject(ctx context.Context, client *storage.Client, bucket, objectPath string) *GCSObject {
+func NewGCSObject(ctx context.Context, client *storage.Client, bucket, objectPath string) *StorageObject {
 	return NewGCSObjectFromBucket(ctx, client.Bucket(bucket), objectPath)
 }
 
-func (g *GCSObject) WriteTo(dst io.Writer) (int64, error) {
-	ctx, cancel := context.WithTimeout(g.ctx, readTimeout)
+func (o *StorageObject) WriteTo(dst io.Writer) (int64, error) {
+	ctx, cancel := context.WithTimeout(o.ctx, readTimeout)
 	defer cancel()
 
-	reader, err := g.object.NewReader(ctx)
+	reader, err := o.object.NewReader(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create GCS reader: %w", err)
 	}
@@ -72,8 +72,8 @@ func (g *GCSObject) WriteTo(dst io.Writer) (int64, error) {
 	return n, nil
 }
 
-func (g *GCSObject) ReadFrom(src io.Reader) (int64, error) {
-	w := g.object.NewWriter(g.ctx)
+func (o *StorageObject) ReadFrom(src io.Reader) (int64, error) {
+	w := o.object.NewWriter(o.ctx)
 
 	b := make([]byte, bufferSize)
 
@@ -90,12 +90,12 @@ func (g *GCSObject) ReadFrom(src io.Reader) (int64, error) {
 	return n, nil
 }
 
-func (g *GCSObject) ReadAt(b []byte, off int64) (n int, err error) {
-	ctx, cancel := context.WithTimeout(g.ctx, readTimeout)
+func (o *StorageObject) ReadAt(b []byte, off int64) (n int, err error) {
+	ctx, cancel := context.WithTimeout(o.ctx, readTimeout)
 	defer cancel()
 
 	// The file should not be gzip compressed
-	reader, err := g.object.NewRangeReader(ctx, off, int64(len(b)))
+	reader, err := o.object.NewRangeReader(ctx, off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to create GCS reader: %w", err)
 	}
@@ -120,11 +120,11 @@ func (g *GCSObject) ReadAt(b []byte, off int64) (n int, err error) {
 	return n, nil
 }
 
-func (g *GCSObject) Size() (int64, error) {
-	ctx, cancel := context.WithTimeout(g.ctx, operationTimeout)
+func (o *StorageObject) Size() (int64, error) {
+	ctx, cancel := context.WithTimeout(o.ctx, operationTimeout)
 	defer cancel()
 
-	attrs, err := g.object.Attrs(ctx)
+	attrs, err := o.object.Attrs(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get GCS object attributes: %w", err)
 	}
