@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
+	"cloud.google.com/go/storage"
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
@@ -18,9 +20,11 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
+	templateShared "github.com/e2b-dev/infra/packages/shared/pkg/template"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
 type serverStore struct {
@@ -30,6 +34,7 @@ type serverStore struct {
 	dockerClient       *client.Client
 	legacyDockerClient *docker.Client
 	artifactRegistry   *artifactregistry.Client
+	templateStorage    *template.TemplateStorage
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -60,11 +65,20 @@ func New(logger *zap.Logger) *grpc.Server {
 		panic(err)
 	}
 
+	client, err := storage.NewClient(ctx, storage.WithJSONReads())
+	if err != nil {
+		errMsg := fmt.Errorf("failed to create GCS client: %v", err)
+		panic(errMsg)
+	}
+
+	templateStorage := template.NewTemplateStorage(ctx, client, templateShared.BucketName)
+
 	template_manager.RegisterTemplateServiceServer(s, &serverStore{
 		tracer:             otel.Tracer(constants.ServiceName),
 		dockerClient:       dockerClient,
 		legacyDockerClient: legacyClient,
 		artifactRegistry:   artifactRegistry,
+		templateStorage:    templateStorage,
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())
