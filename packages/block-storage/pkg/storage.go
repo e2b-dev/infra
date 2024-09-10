@@ -26,11 +26,10 @@ type StorageObject interface {
 
 func NewBucketObject(
 	ctx context.Context,
-	client *storage.Client,
-	bucket string,
+	bucket *storage.BucketHandle,
 	bucketObjectPath string,
 ) StorageObject {
-	return source.NewGCSObject(ctx, client, bucket, bucketObjectPath)
+	return source.NewGCSObjectFromBucket(ctx, bucket, bucketObjectPath)
 }
 
 func New(

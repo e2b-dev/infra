@@ -134,7 +134,7 @@ func newSandboxFiles(
 	}, nil
 }
 
-func (f *SandboxFiles) Ensure(ctx context.Context) error {
+func (f *SandboxFiles) Init(ctx context.Context) error {
 	err := os.MkdirAll(f.EnvInstancePath, 0o777)
 	if err != nil {
 		telemetry.ReportError(ctx, err)

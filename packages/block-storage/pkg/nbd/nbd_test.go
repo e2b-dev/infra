@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNbd(t *testing.T) {
+func TestNbdRead(t *testing.T) {
 	ctx := context.Background()
 
 	content := "Hello, World!"

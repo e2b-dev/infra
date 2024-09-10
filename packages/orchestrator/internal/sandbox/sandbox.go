@@ -142,7 +142,7 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "assembled env files info")
 
-	err = fsEnv.Ensure(childCtx)
+	err = fsEnv.Init(childCtx)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create env for FC: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -195,6 +195,7 @@ func NewSandbox(
 			TraceID:    traceID,
 			TeamID:     config.TeamID,
 		},
+		templateData.Snapfile,
 		pollReady,
 	)
 

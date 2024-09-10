@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -16,11 +15,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/template"
 )
 
 const (
@@ -37,6 +36,7 @@ type MmdsMetadata struct {
 
 type fc struct {
 	pollReady chan struct{}
+	snapfile  *storage.SimpleFile
 
 	ctx context.Context
 
@@ -82,6 +82,7 @@ func (fc *fc) loadSnapshot(
 	envPath string,
 	metadata interface{},
 	uffdSocketPath string,
+	snapfile *storage.SimpleFile,
 	pollReady chan struct{},
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
@@ -94,8 +95,6 @@ func (fc *fc) loadSnapshot(
 
 	telemetry.ReportEvent(childCtx, "created FC socket client")
 
-	snapfilePath := filepath.Join(envPath, template.SnapfileName)
-
 	var backend *models.MemoryBackend
 
 	err := waitForSocket(uffdSocketPath, socketWaitTimeout)
@@ -105,6 +104,11 @@ func (fc *fc) loadSnapshot(
 		return err
 	} else {
 		telemetry.ReportEvent(childCtx, "uffd socket ready")
+	}
+
+	snapfilePath, err := snapfile.Ensure()
+	if err != nil {
+		return fmt.Errorf("error ensuring snapfile: %w", err)
 	}
 
 	backendType := models.MemoryBackendBackendTypeUffd
@@ -185,6 +189,7 @@ func newFC(
 	slot IPSlot,
 	fsEnv *SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
+	snapfile *storage.SimpleFile,
 	pollReady chan struct{},
 ) *fc {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
@@ -249,6 +254,7 @@ func newFC(
 		envPath:        fsEnv.EnvPath,
 		metadata:       mmdsMetadata,
 		uffdSocketPath: fsEnv.UFFDSocketPath,
+		snapfile:       snapfile,
 	}
 }
 
@@ -348,6 +354,7 @@ func (fc *fc) start(
 		fc.envPath,
 		fc.metadata,
 		fc.uffdSocketPath,
+		fc.snapfile,
 		fc.pollReady,
 	); loadErr != nil {
 		fcErr := fc.stop()

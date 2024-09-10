@@ -80,3 +80,7 @@ func (m *MockDevice) WriteAt(p []byte, off int64) (n int, err error) {
 func (m *MockDevice) Sync() error {
 	return nil
 }
+
+func (m *MockDevice) Size() int64 {
+	return int64(len(m.data))
+}

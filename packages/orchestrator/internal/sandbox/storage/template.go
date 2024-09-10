@@ -26,7 +26,8 @@ const (
 type TemplateData struct {
 	paths *template.TemplateFiles
 
-	Memfile *blockStorage.BlockStorage
+	Memfile  *blockStorage.BlockStorage
+	Snapfile *SimpleFile
 
 	ensureOpen func() (*TemplateData, error)
 }
@@ -35,22 +36,13 @@ func (t *TemplateData) Close() error {
 	return t.Memfile.Close()
 }
 
-func newTemplateData(ctx context.Context, client *storage.Client, bucket, templateId, buildId string, hugePages bool) *TemplateData {
+func newTemplateData(ctx context.Context, bucket *storage.BucketHandle, templateId, buildId string, hugePages bool) *TemplateData {
 	h := &TemplateData{
 		paths: template.NewTemplateFiles(templateId, buildId),
 	}
 
 	h.ensureOpen = sync.OnceValues(func() (*TemplateData, error) {
 		dirKey := filepath.Join(templateId, buildId)
-		fileKey := filepath.Join(dirKey, template.MemfileName)
-
-		memfileObject := blockStorage.NewBucketObject(
-			ctx,
-			client,
-			bucket,
-			fileKey,
-		)
-
 		dirPath := filepath.Join(templateCacheDir, dirKey)
 
 		err := os.MkdirAll(dirPath, os.ModePerm)
@@ -58,7 +50,22 @@ func newTemplateData(ctx context.Context, client *storage.Client, bucket, templa
 			return nil, fmt.Errorf("failed to create directory %s: %w", dirPath, err)
 		}
 
-		cachePath := filepath.Join(dirPath, template.MemfileName)
+		snapfileKey := filepath.Join(dirKey, template.SnapfileName)
+		snapfilePath := filepath.Join(templateCacheDir, snapfileKey)
+
+		h.Snapfile = NewSimpleFile(ctx, bucket, snapfileKey, snapfilePath)
+
+		go h.Snapfile.Ensure()
+
+		memfileKey := filepath.Join(dirKey, template.MemfileName)
+
+		memfileObject := blockStorage.NewBucketObject(
+			ctx,
+			bucket,
+			memfileKey,
+		)
+
+		memfileCachePath := filepath.Join(dirPath, template.MemfileName)
 
 		var blockSize int64
 		if hugePages {
@@ -70,7 +77,7 @@ func newTemplateData(ctx context.Context, client *storage.Client, bucket, templa
 		memfileStorage, err := blockStorage.New(
 			ctx,
 			memfileObject,
-			cachePath,
+			memfileCachePath,
 			blockSize,
 		)
 
@@ -83,10 +90,9 @@ func newTemplateData(ctx context.Context, client *storage.Client, bucket, templa
 }
 
 type TemplateDataCache struct {
-	cache         *ttlcache.Cache[string, *TemplateData]
-	storageClient *storage.Client
-	ctx           context.Context
-	bucket        string
+	cache  *ttlcache.Cache[string, *TemplateData]
+	bucket *storage.BucketHandle
+	ctx    context.Context
 }
 
 func (t *TemplateDataCache) GetTemplateData(templateID, buildID string, hugePages bool) (*TemplateData, error) {
@@ -94,7 +100,7 @@ func (t *TemplateDataCache) GetTemplateData(templateID, buildID string, hugePage
 
 	templateData, _ := t.cache.GetOrSet(
 		id,
-		newTemplateData(t.ctx, t.storageClient, t.bucket, templateID, buildID, hugePages),
+		newTemplateData(t.ctx, t.bucket, templateID, buildID, hugePages),
 		ttlcache.WithTTL[string, *TemplateData](templateDataExpiration),
 	)
 
@@ -109,6 +115,8 @@ func (t *TemplateDataCache) GetTemplateData(templateID, buildID string, hugePage
 }
 
 func NewTemplateDataCache(ctx context.Context, client *storage.Client, bucket string) *TemplateDataCache {
+	b := client.Bucket(bucket)
+
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, *TemplateData](templateDataExpiration),
 	)
@@ -125,9 +133,8 @@ func NewTemplateDataCache(ctx context.Context, client *storage.Client, bucket st
 	go cache.Start()
 
 	return &TemplateDataCache{
-		bucket:        bucket,
-		cache:         cache,
-		storageClient: client,
-		ctx:           ctx,
+		bucket: b,
+		cache:  cache,
+		ctx:    ctx,
 	}
 }

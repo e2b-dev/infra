@@ -57,3 +57,7 @@ func (o *Overlay) ReadAt(b []byte, off int64) (int, error) {
 func (o *Overlay) Sync() error {
 	return o.cache.Sync()
 }
+
+func (o *Overlay) Size() int64 {
+	return o.cache.Size()
+}
