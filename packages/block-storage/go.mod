@@ -9,6 +9,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.12.2
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/sync v0.7.0
+	github.com/pmorjan/kmod v1.1.1
 )
 
 require (

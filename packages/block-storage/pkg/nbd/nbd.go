@@ -4,14 +4,22 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 
 	"github.com/samalba/buse-go/buse"
 )
 
+const (
+	nbdDeviceAcquireTimeout = 10 * time.Second
+	nbdDeviceAcquireDelay   = 10 * time.Millisecond
+)
+
 type Nbd struct {
 	storage *NbdStorage
+	device  *buse.BuseDevice
+	module  *NbdModule
 	Path    string
 }
 
@@ -45,24 +53,60 @@ func (n *NbdStorage) Trim(off uint, length uint) error {
 	return nil
 }
 
-func NewNbd(ctx context.Context, s block.Device) (*Nbd, error) {
+func NewNbd(ctx context.Context, s block.Device, module *NbdModule) (*Nbd, error) {
 	nbd := &Nbd{
 		storage: &NbdStorage{storage: s},
+		module:  module,
 	}
 
-	nbdDev := "/dev/nbd0"
+	nbdCtx, cancel := context.WithTimeout(ctx, nbdDeviceAcquireTimeout)
+	defer cancel()
 
-	device, err := buse.CreateDevice(nbdDev, nbd.storage.Size(), nbd.storage)
+nbdLoop:
+	for {
+		select {
+		case <-nbdCtx.Done():
+			return nil, nbdCtx.Err()
+		default:
+			nbdDev, err := module.GetDevice()
+			if err != nil {
+				errMsg := fmt.Sprintf("failed to get nbd device, retrying: %s", err)
+				fmt.Fprintf(os.Stderr, errMsg)
+
+				time.Sleep(nbdDeviceAcquireDelay)
+
+				continue
+			}
+
+			nbd.Path = nbdDev
+
+			break nbdLoop
+		}
+	}
+
+	var err error
+
+	defer func() {
+		if err != nil {
+			module.ReleaseDevice(nbd.Path)
+		}
+	}()
+
+	device, err := buse.CreateDevice(nbd.Path, nbd.storage.Size(), nbd.storage)
 	if err != nil {
-		fmt.Printf("Cannot create device: %s\n", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("failed to create nbd device: %w", err)
 	}
 
-	nbd.Path = nbdDev
+	nbd.device = device
 
 	return nbd, nil
 }
 
-func (n *Nbd) Stop(ctx context.Context) error {
-	return nil
+func (n *Nbd) Run(ctx context.Context) error {
+	return n.device.Connect()
+}
+
+func (n *Nbd) Stop(ctx context.Context) {
+	n.device.Disconnect()
+	n.module.ReleaseDevice(n.Path)
 }
