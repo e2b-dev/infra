@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	templateStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/template"
 
 	"cloud.google.com/go/storage"
 )
@@ -26,7 +26,7 @@ func Run(envID, buildID, instanceID string, keepAlive, count *int) {
 		panic(errMsg)
 	}
 
-	templateCache := templateStorage.NewTemplateDataCache(ctx, client, constants.BucketName)
+	templateCache := templateStorage.NewTemplateDataCache(ctx, client, template.BucketName)
 
 	sandbox.MockInstance(envID, buildID, instanceID, dns, templateCache, time.Duration(*keepAlive)*time.Second)
 	sandbox.MockInstance(envID, buildID, "is-2", dns, templateCache, time.Duration(*keepAlive)*time.Second)

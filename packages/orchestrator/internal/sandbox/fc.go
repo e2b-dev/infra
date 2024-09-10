@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/template"
 )
 
 const (
@@ -93,7 +94,7 @@ func (fc *fc) loadSnapshot(
 
 	telemetry.ReportEvent(childCtx, "created FC socket client")
 
-	snapfilePath := filepath.Join(envPath, SnapfileName)
+	snapfilePath := filepath.Join(envPath, template.SnapfileName)
 
 	var backend *models.MemoryBackend
 

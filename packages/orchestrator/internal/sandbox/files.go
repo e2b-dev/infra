@@ -12,12 +12,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/template"
 )
 
 const (
-	RootfsName   = "rootfs.ext4"
-	SnapfileName = "snapfile"
-	envsDisk     = "/mnt/disks/fc-envs/v1"
+	envsDisk = "/mnt/disks/fc-envs/v1"
 
 	BuildDirName        = "builds"
 	EnvInstancesDirName = "env-instances"
@@ -147,8 +146,8 @@ func (f *SandboxFiles) Ensure(ctx context.Context) error {
 	}
 
 	err = reflink.Always(
-		filepath.Join(f.EnvPath, RootfsName),
-		filepath.Join(f.EnvInstancePath, RootfsName),
+		filepath.Join(f.EnvPath, template.RootfsName),
+		filepath.Join(f.EnvInstancePath, template.RootfsName),
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating reflinked rootfs: %w", err)

@@ -18,7 +18,6 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -26,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/template"
 )
 
 const (
@@ -40,7 +40,7 @@ type server struct {
 	tracer        trace.Tracer
 	consul        *consulapi.Client
 	networkPool   chan sandbox.IPSlot
-	snapshotCache *snapshotStorage.TemplateDataCache
+	templateCache *snapshotStorage.TemplateDataCache
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -74,7 +74,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		panic(errMsg)
 	}
 
-	snapshotCache := snapshotStorage.NewTemplateDataCache(ctx, client, constants.BucketName)
+	templateCache := snapshotStorage.NewTemplateDataCache(ctx, client, template.BucketName)
 
 	// Sandboxes waiting for the network slot can be passed and reschedulede
 	// so we should include a FIFO system for waiting.
@@ -113,7 +113,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		dns:           dns,
 		sandboxes:     smap.New[*sandbox.Sandbox](),
 		networkPool:   networkPool,
-		snapshotCache: snapshotCache,
+		templateCache: templateCache,
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

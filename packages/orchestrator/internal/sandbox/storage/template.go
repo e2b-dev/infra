@@ -9,6 +9,7 @@ import (
 	"time"
 
 	blockStorage "github.com/e2b-dev/infra/packages/block-storage/pkg"
+	"github.com/e2b-dev/infra/packages/shared/pkg/template"
 
 	"cloud.google.com/go/storage"
 	"github.com/jellydator/ttlcache/v3"
@@ -19,12 +20,14 @@ const (
 	pageSize               = 2 << 11
 	hugepageSize           = 2 << 20
 	// TODO: Extract shared constants.
-	memfileName      = "memfile"
 	templateCacheDir = "/template/cache"
 )
 
 type TemplateData struct {
-	Memfile    *blockStorage.BlockStorage
+	paths *template.TemplateFiles
+
+	Memfile *blockStorage.BlockStorage
+
 	ensureOpen func() (*TemplateData, error)
 }
 
@@ -33,11 +36,13 @@ func (t *TemplateData) Close() error {
 }
 
 func newTemplateData(ctx context.Context, client *storage.Client, bucket, templateId, buildId string, hugePages bool) *TemplateData {
-	h := &TemplateData{}
+	h := &TemplateData{
+		paths: template.NewTemplateFiles(templateId, buildId),
+	}
 
 	h.ensureOpen = sync.OnceValues(func() (*TemplateData, error) {
 		dirKey := filepath.Join(templateId, buildId)
-		fileKey := filepath.Join(dirKey, memfileName)
+		fileKey := filepath.Join(dirKey, template.MemfileName)
 
 		memfileObject := blockStorage.NewBucketObject(
 			ctx,
@@ -53,7 +58,7 @@ func newTemplateData(ctx context.Context, client *storage.Client, bucket, templa
 			return nil, fmt.Errorf("failed to create directory %s: %w", dirPath, err)
 		}
 
-		cachePath := filepath.Join(dirPath, memfileName)
+		cachePath := filepath.Join(dirPath, template.MemfileName)
 
 		var blockSize int64
 		if hugePages {
