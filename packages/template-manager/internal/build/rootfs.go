@@ -490,7 +490,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		return errMsg
 	}
 
-	rootfsFile, err := os.Create(r.env.tmpRootfsPath())
+	rootfsFile, err := os.Create(r.env.RootfsPath())
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs file: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -553,7 +553,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	tuneContext, tuneSpan := tracer.Start(childCtx, "tune-rootfs-file-cmd")
 	defer tuneSpan.End()
 
-	cmd := exec.CommandContext(tuneContext, "tune2fs", "-O ^read-only", r.env.tmpRootfsPath())
+	cmd := exec.CommandContext(tuneContext, "tune2fs", "-O ^read-only", r.env.RootfsPath())
 
 	tuneStdoutWriter := telemetry.NewEventWriter(tuneContext, "stdout")
 	cmd.Stdout = tuneStdoutWriter
@@ -599,7 +599,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	resizeContext, resizeSpan := tracer.Start(childCtx, "resize-rootfs-file-cmd")
 	defer resizeSpan.End()
 
-	cmd = exec.CommandContext(resizeContext, "resize2fs", r.env.tmpRootfsPath())
+	cmd = exec.CommandContext(resizeContext, "resize2fs", r.env.RootfsPath())
 
 	resizeStdoutWriter := telemetry.NewEventWriter(resizeContext, "stdout")
 	cmd.Stdout = resizeStdoutWriter

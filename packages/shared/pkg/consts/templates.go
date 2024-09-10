@@ -1,8 +1,6 @@
 package consts
 
 const (
-	EnvsDisk = "/mnt/disks/fc-envs/v1"
-
 	KernelsDir     = "/fc-kernels"
 	KernelMountDir = "/fc-vm"
 	KernelName     = "vmlinux.bin"

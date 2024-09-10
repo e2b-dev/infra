@@ -1,13 +1,17 @@
 package server
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -49,19 +53,87 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		BuildLogsWriter:       logsWriter,
 	}
 
-	err := template.Build(childCtx, s.tracer, s.dockerClient, s.legacyDockerClient)
+	buildStorage := s.templateStorage.NewTemplateBuild(config.TemplateID, config.BuildID)
+
+	var err error
+
+	// Remove local template files if build fails
+	defer func() {
+		removeCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+
+		removeErr := template.Remove(removeCtx, s.tracer)
+		if removeErr != nil {
+			telemetry.ReportError(childCtx, removeErr)
+		}
+	}()
+
+	err = template.Build(childCtx, s.tracer, s.dockerClient, s.legacyDockerClient)
 	if err != nil {
+		_, _ = logsWriter.Write([]byte(fmt.Sprintf("Error building environment: %v", err)))
+
 		telemetry.ReportCriticalError(childCtx, err)
 
-		_, _ = logsWriter.Write([]byte(fmt.Sprintf("Error building environment: %v", err)))
 		return err
 	}
 
+	// Remove build files if build fails or times out
+	defer func() {
+		if err != nil {
+			removeCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+			defer cancel()
+
+			removeErr := buildStorage.Remove(removeCtx)
+			if removeErr != nil {
+				telemetry.ReportError(childCtx, removeErr)
+			}
+		}
+	}()
+
+	var uploadWg errgroup.Group
+
+	uploadWg.Go(func() error {
+		memfile, err := os.Open(template.MemfilePath())
+		if err != nil {
+			return err
+		}
+
+		return buildStorage.UploadMemfile(ctx, memfile)
+	})
+
+	uploadWg.Go(func() error {
+		rootfs, err := os.Open(template.RootfsPath())
+		if err != nil {
+			return err
+		}
+
+		return buildStorage.UploadRootfs(ctx, rootfs)
+	})
+
+	uploadWg.Go(func() error {
+		snapfile, err := os.Open(template.SnapfilePath())
+		if err != nil {
+			return err
+		}
+
+		return buildStorage.UploadSnapfile(ctx, snapfile)
+	})
+
 	cmd := exec.Command(consts.HostEnvdPath, "-version")
+
 	out, err := cmd.Output()
 	if err != nil {
 		_, _ = logsWriter.Write([]byte(fmt.Sprintf("Error while getting envd version: %v", err)))
+
 		return err
+	}
+
+	uploadERr := uploadWg.Wait()
+	if uploadERr != nil {
+		errMsg := fmt.Sprintf("Error while uploading build files: %v", uploadERr)
+		_, _ = logsWriter.Write([]byte(errMsg))
+
+		return uploadERr
 	}
 
 	version := strings.TrimSpace(string(out))

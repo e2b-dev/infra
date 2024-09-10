@@ -2,6 +2,7 @@ package template
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -47,11 +48,11 @@ func (t *TemplateStorage) Remove(ctx context.Context, templateID string) error {
 	return nil
 }
 
-func (t *TemplateStorage) NewTemplateBuild(ctx context.Context, templateID, buildID string) (*TemplateBuild, error) {
+func (t *TemplateStorage) NewTemplateBuild(templateID, buildID string) *TemplateBuild {
 	return &TemplateBuild{
 		bucket: t.bucket,
 		paths:  template.NewTemplateFiles(templateID, buildID),
-	}, nil
+	}
 }
 
 type TemplateBuild struct {
@@ -66,9 +67,10 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 
 	for {
 		object, err := objects.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
+
 		if err != nil {
 			return fmt.Errorf("error when iterating over template build objects: %w", err)
 		}

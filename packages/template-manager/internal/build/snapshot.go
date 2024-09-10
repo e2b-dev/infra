@@ -295,7 +295,7 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 	ioEngine := "Async"
 	isRootDevice := true
 	isReadOnly := false
-	pathOnHost := s.env.tmpRootfsPath()
+	pathOnHost := s.env.RootfsPath()
 	driversConfig := operations.PutGuestDriveByIDParams{
 		Context: childCtx,
 		DriveID: rootfs,
@@ -441,8 +441,8 @@ func (s *Snapshot) snapshotFC(ctx context.Context, tracer trace.Tracer) error {
 	childCtx, childSpan := tracer.Start(ctx, "snapshot-fc")
 	defer childSpan.End()
 
-	memfilePath := s.env.tmpMemfilePath()
-	snapfilePath := s.env.tmpSnapfilePath()
+	memfilePath := s.env.MemfilePath()
+	snapfilePath := s.env.SnapfilePath()
 	snapshotConfig := operations.CreateSnapshotParams{
 		Context: childCtx,
 		Body: &models.SnapshotCreateParams{
