@@ -11,33 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNbdDevice(t *testing.T) {
-	module, err := NewNbdModule(maxNbdDevices)
-	require.NoError(t, err)
-
-	err = module.Init()
-	require.NoError(t, err)
-
-	nbd, err := module.GetDevice()
-	require.NoError(t, err)
-
-	defer module.ReleaseDevice(nbd)
-}
-
 func TestNbdRead(t *testing.T) {
 	ctx := context.Background()
 
-	module, err := NewNbdModule(maxNbdDevices)
-	require.NoError(t, err)
-
-	err = module.Init()
+	pool, err := NewNbdDevicePool()
 	require.NoError(t, err)
 
 	content := "Hello, World!"
 
 	device := block.NewMockDevice([]byte(content), 4096, true)
 
-	nbd, err := NewNbd(ctx, device, module)
+	nbd, err := NewNbd(ctx, device, pool)
 	require.NoError(t, err)
 
 	defer nbd.Stop(ctx)

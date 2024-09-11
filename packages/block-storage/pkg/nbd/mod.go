@@ -10,34 +10,31 @@ import (
 	"sync"
 
 	"github.com/bits-and-blooms/bitset"
-	"github.com/pmorjan/kmod"
 )
 
-const (
-	maxNbdDevices = 4096
-)
-
-type NbdModule struct {
-	kmod            *kmod.Kmod
-	slots           *bitset.BitSet
-	mu              sync.Mutex
-	NumberOfDevices int
+// NbdDevicePool requires the nbd module to be loaded before running.
+// use `sudo modprobe nbd nbds_max=4096` to set the max number of devices to 4096.
+type NbdDevicePool struct {
+	slots *bitset.BitSet
+	mu    sync.Mutex
 }
 
-func NewNbdModule(numberOfDevices int) (*NbdModule, error) {
-	k, err := kmod.New()
+func NewNbdDevicePool() (*NbdDevicePool, error) {
+	maxDevices, err := getMaxNbdDevices()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create kmod: %w", err)
+		return nil, fmt.Errorf("failed to get current max devices: %w", err)
 	}
 
-	return &NbdModule{
-		NumberOfDevices: numberOfDevices,
-		kmod:            k,
-		slots:           bitset.New(uint(numberOfDevices)),
+	if maxDevices == 0 {
+		return nil, fmt.Errorf("nbd module is not loaded or max devices is set to 0")
+	}
+
+	return &NbdDevicePool{
+		slots: bitset.New(uint(maxDevices)),
 	}, nil
 }
 
-func (n *NbdModule) getCurrentMaxDevices() (int, error) {
+func getMaxNbdDevices() (int, error) {
 	data, err := os.ReadFile("/sys/module/nbd/parameters/nbds_max")
 
 	if errors.Is(err, os.ErrNotExist) {
@@ -56,34 +53,9 @@ func (n *NbdModule) getCurrentMaxDevices() (int, error) {
 	return nbdsMax, nil
 }
 
-func (n *NbdModule) Init() error {
-	currentMaxDevices, err := n.getCurrentMaxDevices()
-	if err != nil {
-		return fmt.Errorf("failed to get current max devices: %w", err)
-	}
-
-	if currentMaxDevices == n.NumberOfDevices {
-		return nil
-	}
-
-	if currentMaxDevices != 0 {
-		err = n.kmod.Unload("nbd")
-		if err != nil {
-			return fmt.Errorf("failed to unload nbd module: %w", err)
-		}
-	}
-
-	err = n.kmod.Load("nbd", fmt.Sprintf("nbds_max=%d", n.NumberOfDevices), 0)
-	if err != nil {
-		return fmt.Errorf("failed to load nbd module: %w", err)
-	}
-
-	return nil
-}
-
 var re = regexp.MustCompile(`^/dev/nbd(\d+)$`)
 
-func (n *NbdModule) getSlotFromPath(path string) (int, error) {
+func (n *NbdDevicePool) getDeviceSlot(path string) (int, error) {
 	matches := re.FindStringSubmatch(path)
 	if len(matches) != 2 {
 		return 0, fmt.Errorf("invalid nbd path: %s", path)
@@ -97,11 +69,11 @@ func (n *NbdModule) getSlotFromPath(path string) (int, error) {
 	return int(slot), nil
 }
 
-func (n *NbdModule) getDevicePath(slot uint) string {
+func (n *NbdDevicePool) getDevicePath(slot uint) string {
 	return fmt.Sprintf("/dev/nbd%d", slot)
 }
 
-func (n *NbdModule) GetDevice() (string, error) {
+func (n *NbdDevicePool) GetDevice() (string, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -122,8 +94,8 @@ func (n *NbdModule) GetDevice() (string, error) {
 	return "", fmt.Errorf("device is in use: %s", pidFile)
 }
 
-func (n *NbdModule) ReleaseDevice(path string) error {
-	slot, err := n.getSlotFromPath(path)
+func (n *NbdDevicePool) ReleaseDevice(path string) error {
+	slot, err := n.getDeviceSlot(path)
 	if err != nil {
 		return fmt.Errorf("failed to get slot from path: %w", err)
 	}

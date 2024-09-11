@@ -19,7 +19,7 @@ const (
 type Nbd struct {
 	storage *NbdStorage
 	device  *buse.BuseDevice
-	module  *NbdModule
+	pool    *NbdDevicePool
 	Path    string
 }
 
@@ -53,10 +53,10 @@ func (n *NbdStorage) Trim(off uint, length uint) error {
 	return nil
 }
 
-func NewNbd(ctx context.Context, s block.Device, module *NbdModule) (*Nbd, error) {
+func NewNbd(ctx context.Context, s block.Device, pool *NbdDevicePool) (*Nbd, error) {
 	nbd := &Nbd{
 		storage: &NbdStorage{storage: s},
-		module:  module,
+		pool:    pool,
 	}
 
 	nbdCtx, cancel := context.WithTimeout(ctx, nbdDeviceAcquireTimeout)
@@ -68,7 +68,7 @@ nbdLoop:
 		case <-nbdCtx.Done():
 			return nil, nbdCtx.Err()
 		default:
-			nbdDev, err := module.GetDevice()
+			nbdDev, err := pool.GetDevice()
 			if err != nil {
 				errMsg := fmt.Sprintf("failed to get nbd device, retrying: %s", err)
 				fmt.Fprintf(os.Stderr, errMsg)
@@ -88,7 +88,7 @@ nbdLoop:
 
 	defer func() {
 		if err != nil {
-			module.ReleaseDevice(nbd.Path)
+			pool.ReleaseDevice(nbd.Path)
 		}
 	}()
 
@@ -108,5 +108,5 @@ func (n *Nbd) Run(ctx context.Context) error {
 
 func (n *Nbd) Stop(ctx context.Context) {
 	n.device.Disconnect()
-	n.module.ReleaseDevice(n.Path)
+	n.pool.ReleaseDevice(n.Path)
 }
