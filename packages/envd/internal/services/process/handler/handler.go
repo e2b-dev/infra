@@ -123,12 +123,14 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 
 			for {
 				n, readErr := tty.Read(buf)
+				chunk := make([]byte, n)
+				copy(chunk, buf[:n])
 
 				if n > 0 {
 					outMultiplex.Source <- rpc.ProcessEvent_Data{
 						Data: &rpc.ProcessEvent_DataEvent{
 							Output: &rpc.ProcessEvent_DataEvent_Pty{
-								Pty: buf[:n],
+								Pty: chunk,
 							},
 						},
 					}
