@@ -7,7 +7,6 @@ require (
 	github.com/bits-and-blooms/bitset v1.13.0
 	github.com/edsrzf/mmap-go v1.1.0
 	github.com/googleapis/gax-go/v2 v2.12.2
-	github.com/samalba/buse-go v0.0.0-20171001000303-9289eeeb8c7f
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/sync v0.7.0
 )

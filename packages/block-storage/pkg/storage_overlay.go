@@ -39,14 +39,14 @@ func (o *BlockStorageOverlay) WriteAt(p []byte, off int64) (n int, err error) {
 	return o.overlay.WriteAt(p, off)
 }
 
-func (d *BlockStorageOverlay) Size() int64 {
-	return d.size
+func (o *BlockStorageOverlay) Size() int64 {
+	return o.size
 }
 
-func (d *BlockStorageOverlay) Sync() error {
-	return d.overlay.Sync()
+func (o *BlockStorageOverlay) Sync() error {
+	return o.overlay.Sync()
 }
 
-func (d *BlockStorageOverlay) Close() error {
-	return d.cache.Close()
+func (o *BlockStorageOverlay) Close() error {
+	return o.cache.Close()
 }

@@ -27,12 +27,13 @@ func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
 	}
 	defer f.Close()
 
+	// This should create a sparse file on Linux.
 	err = f.Truncate(size)
 	if err != nil {
 		return nil, fmt.Errorf("error allocating file: %w", err)
 	}
 
-	mm, err := mmap.Map(f, mmap.RDWR, 0)
+	mm, err := mmap.Map(f, mmap.COPY, 0)
 	if err != nil {
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}

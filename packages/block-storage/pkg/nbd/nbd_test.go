@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 
@@ -27,6 +28,8 @@ func TestNbdRead(t *testing.T) {
 	defer nbd.Stop(ctx)
 
 	go nbd.Run(ctx)
+
+	time.Sleep(1 * time.Second)
 
 	data, err := os.ReadFile(nbd.Path)
 	require.NoError(t, err)

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -18,17 +19,23 @@ const (
 	templateDataExpiration = time.Hour * 25
 	pageSize               = 2 << 11
 	hugepageSize           = 2 << 20
+	rootfsBlockSize        = 4096
 )
 
 type TemplateData struct {
 	Memfile  *blockStorage.BlockStorage
 	Snapfile *SimpleFile
+	Rootfs   *blockStorage.BlockStorage
 
 	ensureOpen func() (*TemplateData, error)
 }
 
 func (t *TemplateData) Close() error {
-	return t.Memfile.Close()
+	memfileErr := t.Memfile.Close()
+
+	rootfsErr := t.Rootfs.Close()
+
+	return errors.Join(memfileErr, rootfsErr)
 }
 
 func newTemplateData(ctx context.Context, bucket *storage.BucketHandle, templateId, buildId string, hugePages bool) *TemplateData {
@@ -52,23 +59,44 @@ func newTemplateData(ctx context.Context, bucket *storage.BucketHandle, template
 			paths.StorageMemfilePath(),
 		)
 
-		var blockSize int64
+		var memfileBlockSize int64
 		if hugePages {
-			blockSize = hugepageSize
+			memfileBlockSize = hugepageSize
 		} else {
-			blockSize = pageSize
+			memfileBlockSize = pageSize
 		}
 
 		memfileStorage, err := blockStorage.New(
 			ctx,
 			memfileObject,
 			paths.CacheMemfilePath(),
-			blockSize,
+			memfileBlockSize,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create memfile storage: %w", err)
+		}
 
 		h.Memfile = memfileStorage
 
-		return h, err
+		rootfsObject := blockStorage.NewBucketObject(
+			ctx,
+			bucket,
+			paths.StorageRootfsPath(),
+		)
+
+		rootfsStorage, err := blockStorage.New(
+			ctx,
+			rootfsObject,
+			paths.CacheRootfsPath(),
+			rootfsBlockSize,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create rootfs storage: %w", err)
+		}
+
+		h.Rootfs = rootfsStorage
+
+		return h, nil
 	})
 
 	return h

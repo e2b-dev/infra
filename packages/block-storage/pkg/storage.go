@@ -17,6 +17,8 @@ type BlockStorage struct {
 	cache     *cache.MmapCache
 	size      int64
 	blockSize int64
+
+	cancel context.CancelFunc
 }
 
 type StorageObject interface {
@@ -48,9 +50,11 @@ func New(
 		return nil, fmt.Errorf("failed to create bucket cache: %w", err)
 	}
 
-	chunker := source.NewChunker(ctx, object, cache)
+	storageCtx, cancel := context.WithCancel(ctx)
 
-	prefetcher := source.NewPrefetcher(ctx, chunker, size)
+	chunker := source.NewChunker(storageCtx, object, cache)
+
+	prefetcher := source.NewPrefetcher(storageCtx, chunker, size)
 	go func() {
 		prefetchErr := prefetcher.Start()
 		if prefetchErr != nil {
@@ -59,6 +63,7 @@ func New(
 	}()
 
 	return &BlockStorage{
+		cancel:    cancel,
 		size:      size,
 		blockSize: blockSize,
 		source:    chunker,
@@ -89,6 +94,8 @@ func (d *BlockStorage) Size() int64 {
 }
 
 func (d *BlockStorage) Close() error {
+	d.cancel()
+
 	return d.cache.Close()
 }
 

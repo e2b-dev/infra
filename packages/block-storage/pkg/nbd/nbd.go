@@ -7,8 +7,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
-
-	"github.com/samalba/buse-go/buse"
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/nbd/buse"
 )
 
 const (
@@ -96,6 +95,8 @@ nbdLoop:
 	if err != nil {
 		return nil, fmt.Errorf("failed to create nbd device: %w", err)
 	}
+
+	fmt.Printf("created device\n")
 
 	nbd.device = device
 

@@ -1,6 +1,9 @@
 package block
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 type MockDevice struct {
 	blockSize int64
@@ -39,6 +42,8 @@ func (m *MockDevice) ReadRaw(off, length int64) ([]byte, func(), error) {
 }
 
 func (m *MockDevice) ReadAt(p []byte, off int64) (n int, err error) {
+	fmt.Printf("ReadAt: off=%d, length=%d\n", off, len(p))
+
 	length := int64(len(p))
 	if length+off > int64(len(m.data)) {
 		length = int64(len(m.data)) - off

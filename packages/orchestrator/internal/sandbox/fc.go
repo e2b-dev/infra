@@ -204,9 +204,10 @@ func newFC(
 	)
 
 	rootfsMountCmd := fmt.Sprintf(
-		"mount --bind %s %s && ",
-		fsEnv.EnvInstancePath,
-		fsEnv.BuildDirPath,
+		"touch %s && mount -o bind %s %s && ",
+		fsEnv.BuildDirPath+"/rootfs.ext4",
+		fsEnv.EnvInstancePath+"/rootfs.ext4",
+		fsEnv.BuildDirPath+"/rootfs.ext4",
 	)
 
 	kernelMountCmd := fmt.Sprintf(
