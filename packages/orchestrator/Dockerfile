@@ -7,6 +7,13 @@ RUN go mod download
 
 COPY .shared/pkg pkg
 
+WORKDIR /build/block-storage
+
+COPY .block-storage/go.mod .block-storage/go.sum ./
+RUN go mod download
+
+COPY .block-storage/pkg pkg
+
 WORKDIR /build/orchestrator
 
 COPY go.mod go.sum ./

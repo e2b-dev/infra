@@ -5,3 +5,4 @@ plugin
 orchestrator
 bin
 .shared
+.block-storage
