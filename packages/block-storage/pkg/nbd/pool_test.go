@@ -7,7 +7,7 @@ import (
 )
 
 func TestNbdDevicePool(t *testing.T) {
-	pool, err := NewNbdDevicePool()
+	pool, err := newNbdDevicePool()
 	require.NoError(t, err)
 
 	nbd0, err := pool.GetDevice()

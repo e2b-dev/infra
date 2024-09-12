@@ -15,7 +15,7 @@ import (
 func TestNbdRead(t *testing.T) {
 	ctx := context.Background()
 
-	pool, err := NewNbdDevicePool()
+	pool, err := newNbdDevicePool()
 	require.NoError(t, err)
 
 	content := "Hello, World!"
