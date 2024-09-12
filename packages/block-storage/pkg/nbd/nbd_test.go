@@ -25,9 +25,7 @@ func TestNbdRead(t *testing.T) {
 	nbd, err := NewNbd(ctx, device, pool)
 	require.NoError(t, err)
 
-	defer nbd.Stop(ctx)
-
-	go nbd.Run(ctx)
+	defer nbd.Close()
 
 	time.Sleep(1 * time.Second)
 

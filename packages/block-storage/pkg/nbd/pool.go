@@ -1,6 +1,7 @@
 package nbd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bits-and-blooms/bitset"
 )
@@ -73,7 +75,28 @@ func (n *NbdDevicePool) getDevicePath(slot uint) string {
 	return fmt.Sprintf("/dev/nbd%d", slot)
 }
 
-func (n *NbdDevicePool) GetDevice() (string, error) {
+func (n *NbdDevicePool) GetDevice(ctx context.Context) (string, error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+			nbdDev, err := n.getDevice(ctx)
+			if err != nil {
+				errMsg := fmt.Sprintf("failed to get nbd device, retrying: %s", err)
+				fmt.Fprintf(os.Stderr, errMsg)
+
+				time.Sleep(nbdDeviceAcquireDelay)
+
+				continue
+			}
+
+			return nbdDev, nil
+		}
+	}
+}
+
+func (n *NbdDevicePool) getDevice(ctx context.Context) (string, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -91,10 +114,13 @@ func (n *NbdDevicePool) GetDevice() (string, error) {
 		return n.getDevicePath(slot), nil
 	}
 
-	return "", fmt.Errorf("device is in use: %s", pidFile)
+	return "", fmt.Errorf("device in use: %s", pidFile)
 }
 
 func (n *NbdDevicePool) ReleaseDevice(path string) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
 	slot, err := n.getDeviceSlot(path)
 	if err != nil {
 		return fmt.Errorf("failed to get slot from path: %w", err)

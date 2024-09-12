@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	cloud.google.com/go/storage v1.39.0
+	github.com/akmistry/go-nbd v0.0.0-20240123100654-96f47ebf0866
 	github.com/bits-and-blooms/bitset v1.13.0
 	github.com/edsrzf/mmap-go v1.1.0
 	github.com/googleapis/gax-go/v2 v2.12.2
@@ -21,9 +22,14 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
+	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
+	github.com/josharian/native v1.1.0 // indirect
+	github.com/mdlayher/genetlink v1.3.2 // indirect
+	github.com/mdlayher/netlink v1.7.2 // indirect
+	github.com/mdlayher/socket v0.5.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.48.0 // indirect

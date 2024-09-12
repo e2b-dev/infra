@@ -111,3 +111,7 @@ func (m *MmapCache) ReadRaw(off, length int64) ([]byte, func(), error) {
 		m.mu.RUnlock()
 	}, nil
 }
+
+func (m *MmapCache) BlockSize() int64 {
+	return m.blockSize
+}

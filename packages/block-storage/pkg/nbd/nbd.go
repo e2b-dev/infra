@@ -2,12 +2,14 @@ package nbd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
-	"github.com/e2b-dev/infra/packages/block-storage/pkg/nbd/buse"
+
+	gnbd "github.com/akmistry/go-nbd"
 )
 
 const (
@@ -16,98 +18,61 @@ const (
 )
 
 type Nbd struct {
-	storage *NbdStorage
-	device  *buse.BuseDevice
-	pool    *NbdDevicePool
-	Path    string
+	device *gnbd.NbdServer
+	Path   string
+	pool   *NbdDevicePool
 }
 
-type NbdStorage struct {
-	storage block.Device
-}
+func (n *Nbd) Close() error {
+	disconnectErr := n.device.Disconnect()
 
-func (n *NbdStorage) ReadAt(b []byte, off uint) error {
-	_, err := n.storage.ReadAt(b, int64(off))
+	releaseErr := n.pool.ReleaseDevice(n.Path)
 
-	return err
-}
-
-func (n *NbdStorage) WriteAt(b []byte, off uint) error {
-	_, err := n.storage.WriteAt(b, int64(off))
-
-	return err
-}
-
-func (n *NbdStorage) Size() uint {
-	return uint(n.storage.Size())
-}
-
-func (n *NbdStorage) Disconnect() {}
-
-func (n *NbdStorage) Flush() error {
-	return n.storage.Sync()
-}
-
-func (n *NbdStorage) Trim(off uint, length uint) error {
-	return nil
+	return errors.Join(disconnectErr, releaseErr)
 }
 
 func NewNbd(ctx context.Context, s block.Device, pool *NbdDevicePool) (*Nbd, error) {
-	nbd := &Nbd{
-		storage: &NbdStorage{storage: s},
-		pool:    pool,
-	}
-
 	nbdCtx, cancel := context.WithTimeout(ctx, nbdDeviceAcquireTimeout)
 	defer cancel()
 
-nbdLoop:
-	for {
-		select {
-		case <-nbdCtx.Done():
-			return nil, nbdCtx.Err()
-		default:
-			nbdDev, err := pool.GetDevice()
-			if err != nil {
-				errMsg := fmt.Sprintf("failed to get nbd device, retrying: %s", err)
-				fmt.Fprintf(os.Stderr, errMsg)
-
-				time.Sleep(nbdDeviceAcquireDelay)
-
-				continue
-			}
-
-			nbd.Path = nbdDev
-
-			break nbdLoop
-		}
+	nbdDev, err := pool.GetDevice(nbdCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nbd device: %w", err)
 	}
-
-	var err error
 
 	defer func() {
 		if err != nil {
-			pool.ReleaseDevice(nbd.Path)
+			pool.ReleaseDevice(nbdDev)
 		}
 	}()
 
-	device, err := buse.CreateDevice(nbd.Path, nbd.storage.Size(), nbd.storage)
+	nbd := &Nbd{
+		Path: nbdDev,
+		pool: pool,
+	}
+
+	opts := gnbd.BlockDeviceOptions{
+		BlockSize: int(s.BlockSize()),
+	}
+
+	// Round up to the nearest block size
+	size := (s.Size() + s.BlockSize() - 1) / s.BlockSize() * s.BlockSize()
+
+	nbdDevice, err := gnbd.NewServer(nbd.Path, s, size, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create nbd device: %w", err)
 	}
 
-	fmt.Printf("created device\n")
+	nbd.device = nbdDevice
 
-	nbd.device = device
+	go func() {
+		defer nbd.Close()
+
+		err = nbdDevice.Run()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error running nbd device: %s\n", err)
+		}
+	}()
 
 	return nbd, nil
-}
-
-func (n *Nbd) Run(ctx context.Context) error {
-	return n.device.Connect()
-}
-
-func (n *Nbd) Stop(ctx context.Context) {
-	n.device.Disconnect()
-	n.pool.ReleaseDevice(n.Path)
 }

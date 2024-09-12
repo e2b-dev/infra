@@ -18,4 +18,5 @@ type Device interface {
 	Sync() error
 	Size() int64
 	ReadRaw(off, length int64) ([]byte, func(), error)
+	BlockSize() int64
 }
