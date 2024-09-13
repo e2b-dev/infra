@@ -15,7 +15,7 @@ import (
 func Run(envID, buildID, instanceID string, keepAlive, count *int) {
 	ctx := context.Background()
 
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(*keepAlive)*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*40)
 	defer cancel()
 
 	// Start of mock build for testing
@@ -30,6 +30,6 @@ func Run(envID, buildID, instanceID string, keepAlive, count *int) {
 
 	templateCache := sandboxStorage.NewTemplateDataCache(ctx, client, templateStorage.BucketName)
 
-	MockInstance(envID, buildID, instanceID, dns, templateCache, time.Duration(*keepAlive)*time.Second)
+	MockInstance(ctx, envID, buildID, instanceID, dns, templateCache, time.Duration(*keepAlive)*time.Second)
 	// MockInstance(envID, buildID, "is-2", dns, templateCache, time.Duration(*keepAlive)*time.Second)
 }

@@ -11,12 +11,12 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	snapshotStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 
 	"go.opentelemetry.io/otel"
 )
 
 func MockInstance(
+	ctx context.Context,
 	envID,
 	buildID,
 	instanceID string,
@@ -24,9 +24,6 @@ func MockInstance(
 	templateCache *snapshotStorage.TemplateDataCache,
 	keepAlive time.Duration,
 ) {
-	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), telemetry.DebugID, instanceID), time.Second*400)
-	defer cancel()
-
 	tracer := otel.Tracer(fmt.Sprintf("instance-%s", instanceID))
 	childCtx, _ := tracer.Start(ctx, "mock-instance")
 
