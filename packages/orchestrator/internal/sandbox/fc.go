@@ -124,6 +124,7 @@ func (fc *fc) loadSnapshot(
 			return childCtx.Err()
 		case <-uffdReady:
 			telemetry.ReportEvent(childCtx, "uffd polling ready")
+
 			break
 		}
 	}
@@ -193,7 +194,7 @@ func NewFC(
 	)
 
 	kernelMountCmd := fmt.Sprintf(
-		"mkdir -p %s && touch %s && mount -o bind %s %s && ",
+		"mkdir -p %s && touch %s && mount -o bind,ro %s %s && ",
 		files.BuildKernelDir(),
 		files.BuildKernelPath(),
 		files.CacheKernelPath(),
@@ -319,8 +320,6 @@ func (fc *fc) start(
 	}
 
 	telemetry.ReportEvent(childCtx, "started fc process")
-
-	fmt.Printf(">>>>> fc.firecrackerSocketPath: %s\n", fc.firecrackerSocketPath)
 
 	// Wait for the FC process to start so we can use FC API
 	err = waitForSocket(childCtx, fc.firecrackerSocketPath)
