@@ -30,6 +30,6 @@ func Run(envID, buildID, instanceID string, keepAlive, count *int) {
 
 	templateCache := sandboxStorage.NewTemplateDataCache(ctx, client, templateStorage.BucketName)
 
-	MockInstance(ctx, envID, buildID, instanceID, dns, templateCache, time.Duration(*keepAlive)*time.Second)
-	// MockInstance(envID, buildID, "is-2", dns, templateCache, time.Duration(*keepAlive)*time.Second)
+	MockInstance(ctx, envID, buildID, instanceID+"-1", dns, templateCache, time.Duration(*keepAlive)*time.Second)
+	MockInstance(ctx, envID, buildID, instanceID+"-2", dns, templateCache, time.Duration(*keepAlive)*time.Second)
 }

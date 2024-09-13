@@ -158,8 +158,8 @@ func NewSandbox(
 	}()
 
 	go func() {
-		err = rootfs.Run()
-		if err != nil {
+		runErr := rootfs.Run()
+		if runErr != nil {
 			errMsg := fmt.Errorf("failed to run rootfs: %w", err)
 			fmt.Fprintf(os.Stderr, errMsg.Error())
 		}
@@ -266,9 +266,7 @@ func NewSandbox(
 		} else {
 			telemetry.ReportEvent(ctx, "clock synced")
 		}
-
 	} else {
-		// TODO: Missing new /sync clock sync
 		go func() {
 			backgroundCtx := context.Background()
 
