@@ -132,9 +132,10 @@ func NewSandbox(
 	defer func() {
 		if err != nil {
 			cacheRmErr := os.RemoveAll(sandboxFiles.SandboxCacheDir())
-			socketCacheRmErr := os.RemoveAll(sandboxFiles.SandboxSocketDir())
+			firecrackerSocketCacheRmErr := os.RemoveAll(sandboxFiles.SandboxFirecrackerSocketPath())
+			uffdSocketCacheRmErr := os.RemoveAll(sandboxFiles.SandboxUffdSocketPath())
 
-			err = errors.Join(cacheRmErr, socketCacheRmErr, err)
+			err = errors.Join(cacheRmErr, firecrackerSocketCacheRmErr, uffdSocketCacheRmErr, err)
 
 			telemetry.ReportError(childCtx, fmt.Errorf("removing sandbox cache dir: %w", err))
 		}
@@ -408,12 +409,20 @@ func (s *Sandbox) CleanupAfterFCStop(
 		telemetry.ReportEvent(childCtx, "deleted sandbox cache dir")
 	}
 
-	err = os.RemoveAll(s.files.SandboxSocketDir())
+	err = os.RemoveAll(s.files.SandboxFirecrackerSocketPath())
 	if err != nil {
-		errMsg := fmt.Errorf("failed to delete sandbox socket cache dir: %w", err)
+		errMsg := fmt.Errorf("failed to delete sandbox firecracker socket: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 	} else {
-		telemetry.ReportEvent(childCtx, "deleted sandbox socket cache dir")
+		telemetry.ReportEvent(childCtx, "deleted sandbox firecracker socket")
+	}
+
+	err = os.RemoveAll(s.files.SandboxUffdSocketPath())
+	if err != nil {
+		errMsg := fmt.Errorf("failed to delete sandbox uffd socket: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+	} else {
+		telemetry.ReportEvent(childCtx, "deleted sandbox uffd socket")
 	}
 
 	err = s.slot.Release(childCtx, tracer, consul)
