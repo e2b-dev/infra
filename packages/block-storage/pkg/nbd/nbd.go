@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
@@ -19,8 +18,8 @@ const (
 
 type Nbd struct {
 	device *gnbd.NbdServer
-	Path   string
 	pool   *NbdDevicePool
+	Path   string
 }
 
 func (n *Nbd) Close() error {
@@ -32,10 +31,7 @@ func (n *Nbd) Close() error {
 }
 
 func NewNbd(ctx context.Context, s block.Device, pool *NbdDevicePool) (*Nbd, error) {
-	nbdCtx, cancel := context.WithTimeout(ctx, nbdDeviceAcquireTimeout)
-	defer cancel()
-
-	nbdDev, err := pool.GetDevice(nbdCtx)
+	nbdDev, err := pool.GetDevice(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get nbd device: %w", err)
 	}
@@ -52,7 +48,8 @@ func NewNbd(ctx context.Context, s block.Device, pool *NbdDevicePool) (*Nbd, err
 	}
 
 	opts := gnbd.BlockDeviceOptions{
-		BlockSize: int(s.BlockSize()),
+		BlockSize:     int(s.BlockSize()),
+		ConcurrentOps: 1,
 	}
 
 	// Round up to the nearest block size
@@ -65,14 +62,9 @@ func NewNbd(ctx context.Context, s block.Device, pool *NbdDevicePool) (*Nbd, err
 
 	nbd.device = nbdDevice
 
-	go func() {
-		defer nbd.Close()
-
-		err = nbdDevice.Run()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error running nbd device: %s\n", err)
-		}
-	}()
-
 	return nbd, nil
+}
+
+func (n *Nbd) Run() error {
+	return n.device.Run()
 }

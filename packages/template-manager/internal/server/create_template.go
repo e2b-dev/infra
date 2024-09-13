@@ -15,8 +15,8 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	templateShared "github.com/e2b-dev/infra/packages/shared/pkg/template"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 )
@@ -44,9 +44,9 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 
 	logsWriter := writer.New(stream)
 	template := &build.Env{
-		TemplateFiles: templateShared.TemplateFiles{
-			TemplateID: config.TemplateID,
-			BuildID:    config.BuildID,
+		TemplateFiles: templateStorage.TemplateFiles{
+			TemplateId: config.TemplateID,
+			BuildId:    config.BuildID,
 		},
 		VCpuCount:             int64(config.VCpuCount),
 		MemoryMB:              int64(config.MemoryMB),
@@ -54,7 +54,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		DiskSizeMB:            int64(config.DiskSizeMB),
 		HugePages:             config.HugePages,
 		KernelVersion:         config.KernelVersion,
-		FirecrackerBinaryPath: filepath.Join(templateShared.FirecrackerVersionsDir, config.FirecrackerVersion, templateShared.FirecrackerBinaryName),
+		FirecrackerBinaryPath: filepath.Join(templateStorage.FirecrackerVersionsDir, config.FirecrackerVersion, templateStorage.FirecrackerBinaryName),
 		BuildLogsWriter:       logsWriter,
 	}
 
@@ -124,7 +124,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		return buildStorage.UploadSnapfile(ctx, snapfile)
 	})
 
-	cmd := exec.Command(templateShared.HostEnvdPath, "-version")
+	cmd := exec.Command(templateStorage.HostEnvdPath, "-version")
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -143,8 +143,8 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 
 	version := strings.TrimSpace(string(out))
 	trailerMetadata := metadata.Pairs(
-		templateShared.RootfsSizeKey, strconv.FormatInt(template.RootfsSizeMB(), 10),
-		templateShared.EnvdVersionKey, version,
+		templateStorage.RootfsSizeKey, strconv.FormatInt(template.RootfsSizeMB(), 10),
+		templateStorage.EnvdVersionKey, version,
 	)
 
 	stream.SetTrailer(trailerMetadata)

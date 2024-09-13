@@ -6,15 +6,17 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	templateStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/template"
+	sandboxStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 
 	"cloud.google.com/go/storage"
 )
 
 func Run(envID, buildID, instanceID string, keepAlive, count *int) {
 	ctx := context.Background()
+
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(*keepAlive)*time.Second)
+	defer cancel()
 
 	// Start of mock build for testing
 	dns := dns.New()
@@ -26,8 +28,8 @@ func Run(envID, buildID, instanceID string, keepAlive, count *int) {
 		panic(errMsg)
 	}
 
-	templateCache := templateStorage.NewTemplateDataCache(ctx, client, template.BucketName)
+	templateCache := sandboxStorage.NewTemplateDataCache(ctx, client, templateStorage.BucketName)
 
-	sandbox.MockInstance(envID, buildID, instanceID, dns, templateCache, time.Duration(*keepAlive)*time.Second)
-	sandbox.MockInstance(envID, buildID, "is-2", dns, templateCache, time.Duration(*keepAlive)*time.Second)
+	MockInstance(envID, buildID, instanceID, dns, templateCache, time.Duration(*keepAlive)*time.Second)
+	// MockInstance(envID, buildID, "is-2", dns, templateCache, time.Duration(*keepAlive)*time.Second)
 }

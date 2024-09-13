@@ -22,7 +22,7 @@ import (
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
-	templateShared "github.com/e2b-dev/infra/packages/shared/pkg/template"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
@@ -71,7 +71,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		panic(errMsg)
 	}
 
-	templateStorage := template.NewTemplateStorage(ctx, client, templateShared.BucketName)
+	templateStorage := template.NewTemplateStorage(ctx, client, templateStorage.BucketName)
 
 	template_manager.RegisterTemplateServiceServer(s, &serverStore{
 		tracer:             otel.Tracer(constants.ServiceName),

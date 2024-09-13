@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	templateShared "github.com/e2b-dev/infra/packages/shared/pkg/template"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
@@ -30,7 +30,7 @@ func Delete(templateID string) {
 		panic(errMsg)
 	}
 
-	templateStorage := template.NewTemplateStorage(ctx, client, templateShared.BucketName)
+	templateStorage := template.NewTemplateStorage(ctx, client, templateStorage.BucketName)
 
 	err = template.Delete(ctx, tracer, artifactRegistry, templateStorage, templateID)
 	if err != nil {

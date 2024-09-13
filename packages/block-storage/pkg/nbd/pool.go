@@ -21,7 +21,7 @@ type NbdDevicePool struct {
 	mu    sync.Mutex
 }
 
-func newNbdDevicePool() (*NbdDevicePool, error) {
+func NewNbdDevicePool() (*NbdDevicePool, error) {
 	maxDevices, err := getMaxNbdDevices()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current max devices: %w", err)

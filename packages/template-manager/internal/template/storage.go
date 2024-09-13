@@ -7,7 +7,7 @@ import (
 	"io"
 
 	blockStorage "github.com/e2b-dev/infra/packages/block-storage/pkg/source"
-	"github.com/e2b-dev/infra/packages/shared/pkg/template"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
@@ -35,6 +35,7 @@ func (t *TemplateStorage) Remove(ctx context.Context, templateID string) error {
 		if err == iterator.Done {
 			break
 		}
+
 		if err != nil {
 			return fmt.Errorf("error when iterating over template objects: %w", err)
 		}
@@ -48,21 +49,21 @@ func (t *TemplateStorage) Remove(ctx context.Context, templateID string) error {
 	return nil
 }
 
-func (t *TemplateStorage) NewTemplateBuild(templateFiles *template.TemplateFiles) *TemplateBuild {
+func (t *TemplateStorage) NewTemplateBuild(templateFiles *templateStorage.TemplateFiles) *TemplateBuild {
 	return &TemplateBuild{
 		bucket: t.bucket,
-		paths:  templateFiles,
+		files:  templateFiles,
 	}
 }
 
 type TemplateBuild struct {
 	bucket *storage.BucketHandle
-	paths  *template.TemplateFiles
+	files  *templateStorage.TemplateFiles
 }
 
 func (t *TemplateBuild) Remove(ctx context.Context) error {
 	objects := t.bucket.Objects(ctx, &storage.Query{
-		Prefix: t.paths.StorageDir() + "/",
+		Prefix: t.files.StorageDir() + "/",
 	})
 
 	for {
@@ -85,7 +86,7 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 }
 
 func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfile io.Reader) error {
-	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.paths.StorageMemfilePath())
+	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageMemfilePath())
 
 	_, err := object.ReadFrom(memfile)
 	if err != nil {
@@ -96,7 +97,7 @@ func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfile io.Reader) er
 }
 
 func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfs io.Reader) error {
-	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.paths.StorageRootfsPath())
+	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageRootfsPath())
 
 	_, err := object.ReadFrom(rootfs)
 	if err != nil {
@@ -107,7 +108,7 @@ func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfs io.Reader) erro
 }
 
 func (t *TemplateBuild) UploadSnapfile(ctx context.Context, snapfile io.Reader) error {
-	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.paths.StorageSnapfilePath())
+	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageSnapfilePath())
 
 	_, err := object.ReadFrom(snapfile)
 	if err != nil {

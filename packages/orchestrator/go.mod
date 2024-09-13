@@ -4,7 +4,6 @@ go 1.21
 
 require (
 	cloud.google.com/go/storage v1.39.0
-	github.com/KarpelesLab/reflink v1.0.1
 	github.com/coreos/go-iptables v0.7.0
 	github.com/e2b-dev/infra/packages/block-storage v0.0.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
@@ -32,6 +31,7 @@ require (
 	cloud.google.com/go v0.112.1 // indirect
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	cloud.google.com/go/iam v1.1.6 // indirect
+	github.com/akmistry/go-nbd v0.0.0-20240123100654-96f47ebf0866 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/bits-and-blooms/bitset v1.13.0 // indirect
@@ -55,6 +55,7 @@ require (
 	github.com/go-openapi/validate v0.22.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
+	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
@@ -69,9 +70,13 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/serf v0.10.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
+	github.com/josharian/native v1.1.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/mdlayher/genetlink v1.3.2 // indirect
+	github.com/mdlayher/netlink v1.7.2 // indirect
+	github.com/mdlayher/socket v0.5.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.1-0.20220423185008-bf980b35cac4 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect

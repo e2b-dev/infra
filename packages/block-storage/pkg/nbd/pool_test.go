@@ -9,7 +9,7 @@ import (
 )
 
 func TestNbdDevicePool(t *testing.T) {
-	pool, err := newNbdDevicePool()
+	pool, err := NewNbdDevicePool()
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

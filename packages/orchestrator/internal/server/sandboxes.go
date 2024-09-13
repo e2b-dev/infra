@@ -36,6 +36,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.dns,
 		s.networkPool,
 		s.templateCache,
+		s.nbdPool,
 		req.Sandbox,
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),

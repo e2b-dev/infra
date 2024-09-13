@@ -26,8 +26,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/template"
 )
 
 const (
@@ -157,7 +157,7 @@ func (r *Rootfs) cleanupDockerImage(ctx context.Context, tracer trace.Tracer) {
 }
 
 func (r *Rootfs) dockerTag() string {
-	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.env.TemplateID, r.env.BuildID)
+	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.env.TemplateId, r.env.BuildId)
 }
 
 func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) error {
@@ -223,8 +223,8 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		MemoryLimit int
 	}{
 		FcAddress:   fcAddr,
-		EnvID:       r.env.TemplateID,
-		BuildID:     r.env.BuildID,
+		EnvID:       r.env.TemplateId,
+		BuildID:     r.env.BuildId,
 		StartCmd:    strings.ReplaceAll(r.env.StartCmd, "'", "\\'"),
 		MemoryLimit: int(math.Min(float64(r.env.MemoryMB)/2, 512)),
 	})
@@ -334,12 +334,12 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 
 	filesToTar := []fileToTar{
 		{
-			localPath: template.HostOldEnvdPath,
-			tarPath:   template.GuestOldEnvdPath,
+			localPath: templateStorage.HostOldEnvdPath,
+			tarPath:   templateStorage.GuestOldEnvdPath,
 		},
 		{
-			localPath: template.HostEnvdPath,
-			tarPath:   template.GuestEnvdPath,
+			localPath: templateStorage.HostEnvdPath,
+			tarPath:   templateStorage.GuestEnvdPath,
 		},
 	}
 

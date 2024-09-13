@@ -1,40 +1,27 @@
 package sandbox
 
 import (
-	"fmt"
+	"context"
 	"os"
-	"path/filepath"
-	"strings"
+	"time"
 )
 
-func getSocketPath(instanceID string) (string, error) {
-	filename := strings.Join([]string{
-		"firecracker-",
-		instanceID,
-		".socket",
-	}, "")
+// waitForSocket waits for the given file to exist.
+func waitForSocket(ctx context.Context, socketPath string) error {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
 
-	var dir string
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if _, err := os.Stat(socketPath); err != nil {
+				continue
+			}
 
-	if checkExistsAndDir(os.TempDir()) {
-		dir = os.TempDir()
-	} else {
-		errMsg := fmt.Errorf("unable to find a location for firecracker socket")
-
-		return "", errMsg
+			// TODO: Send test HTTP request to make sure socket is available
+			return nil
+		}
 	}
-
-	return filepath.Join(dir, filename), nil
-}
-
-func checkExistsAndDir(path string) bool {
-	if path == "" {
-		return false
-	}
-
-	if info, err := os.Stat(path); err == nil {
-		return info.IsDir()
-	}
-
-	return false
 }

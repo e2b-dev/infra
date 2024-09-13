@@ -18,8 +18,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/template"
 )
 
 const (
@@ -87,7 +87,7 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 	childCtx, childSpan := tracer.Start(ctx, "new-snapshot")
 	defer childSpan.End()
 
-	socketFileName := fmt.Sprintf("fc-sock-%s.sock", env.BuildID)
+	socketFileName := fmt.Sprintf("fc-sock-%s.sock", env.BuildId)
 	socketPath := filepath.Join(tmpDirPath, socketFileName)
 
 	client := newFirecrackerClient(socketPath)
@@ -108,7 +108,7 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 		tracer,
 		env.FirecrackerBinaryPath,
 		network.namespaceID,
-		template.KernelMountDir,
+		storage.KernelMountDir,
 		env.KernelDirPath(),
 	)
 	if err != nil {

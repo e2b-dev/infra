@@ -9,17 +9,18 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
 	"golang.org/x/mod/semver"
 
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
-	snapshotStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 
 	consul "github.com/hashicorp/consul/api"
@@ -28,12 +29,6 @@ import (
 )
 
 const (
-	fcVersionsDir  = "/fc-versions"
-	kernelsDir     = "/fc-kernels"
-	kernelMountDir = "/fc-vm"
-	kernelName     = "vmlinux.bin"
-	fcBinaryName   = "firecracker"
-
 	fcOperationTimeout = 10 * time.Second
 )
 
@@ -44,11 +39,12 @@ var httpClient = http.Client{
 }
 
 type Sandbox struct {
-	files    *SandboxFiles
+	files    *templateStorage.SandboxFiles
 	stopOnce func() error
 
-	fc   *fc
-	uffd *uffd.Uffd
+	fc     *fc
+	uffd   *uffd.Uffd
+	rootfs *storage.OverlayFile
 
 	Sandbox   *orchestrator.SandboxConfig
 	StartedAt time.Time
@@ -58,17 +54,14 @@ type Sandbox struct {
 	slot IPSlot
 }
 
-func fcBinaryPath(fcVersion string) string {
-	return filepath.Join(fcVersionsDir, fcVersion, fcBinaryName)
-}
-
 func NewSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
 	consul *consul.Client,
 	dns *dns.DNS,
 	networkPool chan IPSlot,
-	templateCache *snapshotStorage.TemplateDataCache,
+	templateCache *storage.TemplateDataCache,
+	nbdPool *nbd.NbdDevicePool,
 	config *orchestrator.SandboxConfig,
 	traceID string,
 	startedAt time.Time,
@@ -77,7 +70,13 @@ func NewSandbox(
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
-	templateData, err := templateCache.GetTemplateData(config.TemplateID, config.BuildID, config.HugePages)
+	templateData, err := templateCache.GetTemplateData(
+		config.TemplateID,
+		config.BuildID,
+		config.KernelVersion,
+		config.FirecrackerVersion,
+		config.HugePages,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
@@ -85,8 +84,8 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "got template snapshot data")
 
 	_, networkSpan := tracer.Start(childCtx, "get-network-slot")
-	// Get slot from Consul KV
 
+	// Get slot from Consul KV
 	var ips IPSlot
 	select {
 	case ips = <-networkPool:
@@ -121,50 +120,53 @@ func NewSandbox(
 		}
 	}()
 
-	fsEnv, err := newSandboxFiles(
-		childCtx,
-		tracer,
-		config.SandboxID,
-		config.TemplateID,
-		config.BuildID,
-		config.KernelVersion,
-		kernelsDir,
-		kernelMountDir,
-		kernelName,
-		fcBinaryPath(config.FirecrackerVersion),
-	)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to assemble env files info for FC: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+	sandboxFiles := templateStorage.NewSandboxFiles(templateData.Files, config.SandboxID)
 
-		return nil, errMsg
+	err = os.MkdirAll(sandboxFiles.SandboxCacheDir(), 0o755)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sandbox cache dir: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "assembled env files info")
-
-	err = fsEnv.Init(childCtx)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create env for FC: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return nil, errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "created env for FC")
+	telemetry.ReportEvent(childCtx, "created sandbox cache dir")
 
 	defer func() {
 		if err != nil {
-			envErr := fsEnv.Cleanup(childCtx, tracer)
-			if envErr != nil {
-				errMsg := fmt.Errorf("error deleting env after failed fc start: %w", err)
-				telemetry.ReportCriticalError(childCtx, errMsg)
-			} else {
-				telemetry.ReportEvent(childCtx, "deleted env")
+			cacheRmErr := os.RemoveAll(sandboxFiles.SandboxCacheDir())
+			socketCacheRmErr := os.RemoveAll(sandboxFiles.SandboxSocketDir())
+
+			err = errors.Join(cacheRmErr, socketCacheRmErr, err)
+
+			telemetry.ReportError(childCtx, fmt.Errorf("removing sandbox cache dir: %w", err))
+		}
+	}()
+
+	rootfs, err := storage.NewOverlayFile(childCtx, templateData.Rootfs, sandboxFiles.SandboxCacheRootfsPath(), nbdPool)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create overlay file: %w", err)
+	}
+
+	telemetry.ReportEvent(childCtx, "created overlay file")
+
+	defer func() {
+		if err != nil {
+			rootfsErr := rootfs.Close()
+			if rootfsErr != nil {
+				telemetry.ReportError(childCtx, fmt.Errorf("failed to close rootfs: %w", rootfsErr))
 			}
 		}
 	}()
 
-	fcUffd, err := uffd.New(templateData.Memfile, fsEnv.UFFDSocketPath)
+	go func() {
+		err = rootfs.Run()
+		if err != nil {
+			errMsg := fmt.Errorf("failed to run rootfs: %w", err)
+			fmt.Fprintf(os.Stderr, errMsg.Error())
+		}
+	}()
+
+	telemetry.ReportEvent(childCtx, "started rootfs overlay for sandbox")
+
+	fcUffd, err := uffd.New(templateData.Memfile, sandboxFiles.SandboxUffdSocketPath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", err)
 	}
@@ -181,13 +183,11 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "started uffd")
 
-	pollReady := fcUffd.PollReady
-
-	fc := newFC(
+	fc := NewFC(
 		childCtx,
 		tracer,
 		ips,
-		fsEnv,
+		sandboxFiles,
 		&MmdsMetadata{
 			InstanceID: config.SandboxID,
 			EnvID:      config.TemplateID,
@@ -196,7 +196,7 @@ func NewSandbox(
 			TeamID:     config.TeamID,
 		},
 		templateData.Snapfile,
-		pollReady,
+		fcUffd.PollReady,
 	)
 
 	err = fc.start(childCtx, tracer)
@@ -215,13 +215,14 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
 	instance := &Sandbox{
-		files:     fsEnv,
+		files:     sandboxFiles,
 		slot:      ips,
 		fc:        fc,
 		uffd:      fcUffd,
 		Sandbox:   config,
 		StartedAt: startedAt,
 		EndAt:     endAt,
+		rootfs:    rootfs,
 		stopOnce: sync.OnceValue(func() error {
 			var uffdErr error
 			if fcUffd != nil {
@@ -247,13 +248,26 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
 
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
+		go func() {
+			backgroundCtx := context.Background()
+
+			clockErr := instance.EnsureClockSync(backgroundCtx, consts.DefaultEnvdServerPort)
+			if clockErr != nil {
+				telemetry.ReportError(backgroundCtx, fmt.Errorf("failed to sync clock (new envd): %w", clockErr))
+			} else {
+				telemetry.ReportEvent(backgroundCtx, "clock synced (new envd)")
+			}
+		}()
+
 		clockErr := instance.initRequest(ctx, consts.DefaultEnvdServerPort, config.EnvVars)
 		if clockErr != nil {
 			telemetry.ReportError(ctx, fmt.Errorf("failed to sync clock: %w", clockErr))
 		} else {
 			telemetry.ReportEvent(ctx, "clock synced")
 		}
+
 	} else {
+		// TODO: Missing new /sync clock sync
 		go func() {
 			backgroundCtx := context.Background()
 
@@ -368,7 +382,7 @@ func (s *Sandbox) CleanupAfterFCStop(
 	defer childSpan.End()
 
 	dns.Remove(sandboxID)
-	telemetry.ReportEvent(childCtx, "removed env instance to etc hosts")
+	telemetry.ReportEvent(childCtx, "removed env instance in dns")
 
 	err := s.slot.RemoveNetwork(childCtx, tracer)
 	if err != nil {
@@ -378,12 +392,28 @@ func (s *Sandbox) CleanupAfterFCStop(
 		telemetry.ReportEvent(childCtx, "removed network")
 	}
 
-	err = s.files.Cleanup(childCtx, tracer)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to delete instance files: %w", err)
+	rootfsErr := s.rootfs.Close()
+	if rootfsErr != nil {
+		errMsg := fmt.Errorf("failed to close rootfs: %w", rootfsErr)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 	} else {
-		telemetry.ReportEvent(childCtx, "deleted instance files")
+		telemetry.ReportEvent(childCtx, "closed rootfs overlay for sandbox")
+	}
+
+	err = os.RemoveAll(s.files.SandboxCacheDir())
+	if err != nil {
+		errMsg := fmt.Errorf("failed to delete sandbox cache dir: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+	} else {
+		telemetry.ReportEvent(childCtx, "deleted sandbox cache dir")
+	}
+
+	err = os.RemoveAll(s.files.SandboxSocketDir())
+	if err != nil {
+		errMsg := fmt.Errorf("failed to delete sandbox socket cache dir: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+	} else {
+		telemetry.ReportEvent(childCtx, "deleted sandbox socket cache dir")
 	}
 
 	err = s.slot.Release(childCtx, tracer, consul)
@@ -443,8 +473,4 @@ func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) error {
 
 func (s *Sandbox) SlotIdx() int {
 	return s.slot.SlotIdx
-}
-
-func (s *Sandbox) FcPid() int {
-	return s.fc.pid
 }

@@ -40,4 +40,4 @@ build-and-upload: build upload
 
 .PHONY: test
 test:
-	sudo TEMPLATE_BUCKET_NAME="e2b-dev-envs-docker-context" NODE_ID="test-client-22" CONSUL_TOKEN=$(CONSUL_TOKEN) go run -race -gcflags=all="-N -l" main.go -env zli4m3wxr03ma3i99w8h -instance testinstance -build "212c1098-9bb5-442d-9460-387e3da47688" -alive 30 -count 1
+	sudo TEMPLATE_BUCKET_NAME="e2b-dev-envs-docker-context" NODE_ID="test-client-22" CONSUL_TOKEN=$(CONSUL_TOKEN) go run -race -gcflags=all="-N -l" main.go -env zli4m3wxr03ma3i99w8h -instance testinstance -build "212c1098-9bb5-442d-9460-387e3da47688" -alive 5 -count 1

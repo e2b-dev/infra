@@ -43,10 +43,18 @@ func (o *BlockStorageOverlay) Size() int64 {
 	return o.size
 }
 
+func (o *BlockStorageOverlay) BlockSize() int64 {
+	return o.blockSize
+}
+
 func (o *BlockStorageOverlay) Sync() error {
 	return o.overlay.Sync()
 }
 
 func (o *BlockStorageOverlay) Close() error {
 	return o.cache.Close()
+}
+
+func (o *BlockStorageOverlay) ReadRaw(offset, length int64) ([]byte, func(), error) {
+	return o.overlay.ReadRaw(offset, length)
 }

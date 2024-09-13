@@ -61,3 +61,7 @@ func (o *Overlay) Sync() error {
 func (o *Overlay) Size() int64 {
 	return o.cache.Size()
 }
+
+func (o *Overlay) ReadRaw(offset, length int64) ([]byte, func(), error) {
+	return o.cache.ReadRaw(offset, length)
+}

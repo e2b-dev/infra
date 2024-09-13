@@ -1,4 +1,4 @@
-package template
+package storage
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 
 const (
 	EnvsDisk         = "/mnt/disks/fc-envs/v1"
-	templateCacheDir = "/template/cache"
+	templateCacheDir = "/orchestrator/cache/template"
 
 	KernelsDir     = "/fc-kernels"
 	KernelMountDir = "/fc-vm"
@@ -35,19 +35,39 @@ const (
 var BucketName = os.Getenv("TEMPLATE_BUCKET_NAME")
 
 type TemplateFiles struct {
-	TemplateID string
-	BuildID    string
+	TemplateId         string
+	BuildId            string
+	KernelVersion      string
+	FirecrackerVersion string
 }
 
-func NewTemplateFiles(templateID, buildID string) *TemplateFiles {
+func NewTemplateFiles(templateId, buildId, kernelVersion, firecrackerVersion string) *TemplateFiles {
 	return &TemplateFiles{
-		TemplateID: templateID,
-		BuildID:    buildID,
+		TemplateId:         templateId,
+		BuildId:            buildId,
+		KernelVersion:      kernelVersion,
+		FirecrackerVersion: firecrackerVersion,
 	}
 }
 
+func (t *TemplateFiles) BuildKernelPath() string {
+	return filepath.Join(t.BuildKernelDir(), KernelName)
+}
+
+func (t *TemplateFiles) BuildKernelDir() string {
+	return filepath.Join(KernelMountDir, t.KernelVersion)
+}
+
+func (t *TemplateFiles) CacheKernelPath() string {
+	return filepath.Join(KernelsDir, t.KernelVersion, KernelName)
+}
+
+func (t *TemplateFiles) FirecrackerPath() string {
+	return filepath.Join(FirecrackerVersionsDir, t.FirecrackerVersion, FirecrackerBinaryName)
+}
+
 func (t *TemplateFiles) StorageDir() string {
-	return fmt.Sprintf("%s/%s", t.TemplateID, t.BuildID)
+	return fmt.Sprintf("%s/%s", t.TemplateId, t.BuildId)
 }
 
 func (t *TemplateFiles) StorageMemfilePath() string {
@@ -63,7 +83,7 @@ func (t *TemplateFiles) StorageSnapfilePath() string {
 }
 
 func (t *TemplateFiles) BuildDir() string {
-	return filepath.Join(EnvsDisk, t.TemplateID, buildDirName, t.BuildID)
+	return filepath.Join(EnvsDisk, t.TemplateId, buildDirName, t.BuildId)
 }
 
 func (t *TemplateFiles) BuildMemfilePath() string {
@@ -79,7 +99,7 @@ func (t *TemplateFiles) BuildSnapfilePath() string {
 }
 
 func (t *TemplateFiles) CacheDir() string {
-	return filepath.Join(templateCacheDir, t.TemplateID, t.BuildID)
+	return filepath.Join(templateCacheDir, t.TemplateId, t.BuildId)
 }
 
 func (t *TemplateFiles) CacheMemfilePath() string {

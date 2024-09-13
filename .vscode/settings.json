@@ -8,6 +8,8 @@
     ".terraform/**": true,
     ".vscode/**": true,
     ".git/**": true,
+    "packages/orchestrator/.shared/**": true,
+    "packages/orchestrator/.block-storage/**": true,
   },
   "files.watcherExclude": {
     "**/.git": true,

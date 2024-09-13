@@ -1,12 +1,14 @@
-package sandbox
+package test
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	nbd "github.com/e2b-dev/infra/packages/block-storage/pkg/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	snapshotStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -28,15 +30,20 @@ func MockInstance(
 	tracer := otel.Tracer(fmt.Sprintf("instance-%s", instanceID))
 	childCtx, _ := tracer.Start(ctx, "mock-instance")
 
+	nbdDevicePool, err := nbd.NewNbdDevicePool()
+	if err != nil {
+		panic(err)
+	}
+
 	consulClient, err := consul.New(childCtx)
 
-	networkPool := make(chan IPSlot, 1)
+	networkPool := make(chan sandbox.IPSlot, 1)
 
 	select {
 	case <-ctx.Done():
 		return
 	default:
-		ips, err := NewSlot(ctx, tracer, consulClient)
+		ips, err := sandbox.NewSlot(ctx, tracer, consulClient)
 		if err != nil {
 			fmt.Printf("failed to create network: %v\n", err)
 
@@ -57,13 +64,14 @@ func MockInstance(
 
 	start := time.Now()
 
-	instance, err := NewSandbox(
+	instance, err := sandbox.NewSandbox(
 		childCtx,
 		tracer,
 		consulClient,
 		dns,
 		networkPool,
 		templateCache,
+		nbdDevicePool,
 		&orchestrator.SandboxConfig{
 			TemplateID:         envID,
 			FirecrackerVersion: "v1.9.0_fake-2476009",

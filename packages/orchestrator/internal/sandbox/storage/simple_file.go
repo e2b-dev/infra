@@ -5,15 +5,10 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"time"
 
 	"cloud.google.com/go/storage"
 
 	blockStorage "github.com/e2b-dev/infra/packages/block-storage/pkg/source"
-)
-
-const (
-	downloadTimeout = time.Second * 10
 )
 
 type SimpleFile struct {
@@ -28,10 +23,7 @@ func NewSimpleFile(
 ) *SimpleFile {
 	return &SimpleFile{
 		Ensure: sync.OnceValues(func() (string, error) {
-			fileCtx, fileCancel := context.WithTimeout(ctx, downloadTimeout)
-			defer fileCancel()
-
-			object := blockStorage.NewGCSObjectFromBucket(fileCtx, bucket, bucketPath)
+			object := blockStorage.NewGCSObjectFromBucket(ctx, bucket, bucketPath)
 
 			dst, err := os.Create(path)
 			if err != nil {
