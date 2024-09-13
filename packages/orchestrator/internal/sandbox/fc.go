@@ -211,7 +211,7 @@ func NewFC(
 
 	cmd := exec.Command(
 		"unshare",
-		"-pfm",
+		"-pfmiC",
 		"--kill-child",
 		"--",
 		"bash",
