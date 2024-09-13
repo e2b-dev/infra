@@ -35,6 +35,7 @@ start-docker:
 	-p 2345:2345 \
 	-p 9999:9999 \
 	-p 8000:8000 \
+	-p 8001:8001 \
 	--rm \
 	-it envd-debug \
 	/bin/bash -l -i
