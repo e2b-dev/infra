@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	snapshotStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 
 	"go.opentelemetry.io/otel"
 )
@@ -84,7 +85,9 @@ func MockInstance(
 		time.Now(),
 	)
 	if err != nil {
-		panic(err)
+		errMsg := fmt.Errorf("failed to create sandbox: %v", err)
+		telemetry.ReportError(ctx, errMsg)
+		return
 	}
 
 	duration := time.Since(start)
