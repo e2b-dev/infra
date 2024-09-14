@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
@@ -15,7 +16,7 @@ import (
 func Run(envID, buildID, instanceID string, keepAlive, count *int) {
 	ctx := context.Background()
 
-	ctx, cancel := context.WithTimeout(ctx, time.Second*40)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*60)
 	defer cancel()
 
 	// Start of mock build for testing
@@ -30,6 +31,7 @@ func Run(envID, buildID, instanceID string, keepAlive, count *int) {
 
 	templateCache := sandboxStorage.NewTemplateDataCache(ctx, client, templateStorage.BucketName)
 
-	MockInstance(ctx, envID, buildID, instanceID+"-1", dns, templateCache, time.Duration(*keepAlive)*time.Second)
-	MockInstance(ctx, envID, buildID, instanceID+"-2", dns, templateCache, time.Duration(*keepAlive)*time.Second)
+	for i := 0; i < *count; i++ {
+		MockInstance(ctx, envID, buildID, instanceID+"-"+strconv.Itoa(i), dns, templateCache, time.Duration(*keepAlive)*time.Second)
+	}
 }
