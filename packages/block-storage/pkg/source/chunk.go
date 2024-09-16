@@ -16,7 +16,7 @@ const (
 	// Chunks must always be bigger or equal to the block size.
 	ChunkSize = 2 * 1024 * 1024 // 2 MB
 
-	concurrentFetches = 16
+	concurrentFetches = 18
 )
 
 var chunkPool = newSlicePool(ChunkSize)

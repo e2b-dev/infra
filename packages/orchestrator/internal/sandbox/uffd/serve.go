@@ -84,55 +84,59 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
-		msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
-		if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
-			return ErrUnexpectedEventType
-		}
-
-		arg := constants.GetMsgArg(&msg)
-		pagefault := (*(*constants.UffdPagefault)(unsafe.Pointer(&arg[0])))
-
-		addr := constants.GetPagefaultAddress(&pagefault)
-
-		mapping, err := getMapping(uintptr(addr), mappings)
-		if err != nil {
-			return fmt.Errorf("failed to map: %w", err)
-		}
-
-		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
-		pagesize := uint64(mapping.PageSize)
-
-		b, close, err := src.ReadRaw(int64(offset), int64(pagesize))
-		if err != nil {
-			close()
-
-			return fmt.Errorf("failed to read from source: %w", err)
-		}
-
-		cpy := constants.NewUffdioCopy(
-			b,
-			addr&^constants.CULong(pagesize-1),
-			constants.CULong(pagesize),
-			0,
-			0,
-		)
-
-		if _, _, errno := syscall.Syscall(
-			syscall.SYS_IOCTL,
-			uintptr(uffd),
-			constants.UFFDIO_COPY,
-			uintptr(unsafe.Pointer(&cpy)),
-		); errno != 0 {
-			close()
-
-			if errno == unix.EEXIST {
-				// Page is already mapped
-				continue
+		go func() error {
+			msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
+			if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
+				return ErrUnexpectedEventType
 			}
 
-			return fmt.Errorf("failed uffdio copy %w", errno)
-		}
+			arg := constants.GetMsgArg(&msg)
+			pagefault := (*(*constants.UffdPagefault)(unsafe.Pointer(&arg[0])))
 
-		close()
+			addr := constants.GetPagefaultAddress(&pagefault)
+
+			mapping, err := getMapping(uintptr(addr), mappings)
+			if err != nil {
+				return fmt.Errorf("failed to map: %w", err)
+			}
+
+			offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
+			pagesize := uint64(mapping.PageSize)
+
+			b, close, err := src.ReadRaw(int64(offset), int64(pagesize))
+			if err != nil {
+				close()
+
+				return fmt.Errorf("failed to read from source: %w", err)
+			}
+
+			cpy := constants.NewUffdioCopy(
+				b,
+				addr&^constants.CULong(pagesize-1),
+				constants.CULong(pagesize),
+				0,
+				0,
+			)
+
+			if _, _, errno := syscall.Syscall(
+				syscall.SYS_IOCTL,
+				uintptr(uffd),
+				constants.UFFDIO_COPY,
+				uintptr(unsafe.Pointer(&cpy)),
+			); errno != 0 {
+				close()
+
+				if errno == unix.EEXIST {
+					// Page is already mapped
+					return nil
+				}
+
+				return fmt.Errorf("failed uffdio copy %w", errno)
+			}
+
+			close()
+
+			return nil
+		}()
 	}
 }

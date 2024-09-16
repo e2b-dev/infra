@@ -249,17 +249,6 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
 
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
-		go func() {
-			backgroundCtx := context.Background()
-
-			clockErr := instance.EnsureClockSync(backgroundCtx, consts.DefaultEnvdServerPort)
-			if clockErr != nil {
-				telemetry.ReportError(backgroundCtx, fmt.Errorf("failed to sync clock (new envd): %w", clockErr))
-			} else {
-				telemetry.ReportEvent(backgroundCtx, "clock synced (new envd)")
-			}
-		}()
-
 		clockErr := instance.initRequest(ctx, consts.DefaultEnvdServerPort, config.EnvVars)
 		if clockErr != nil {
 			telemetry.ReportError(ctx, fmt.Errorf("failed to sync clock: %w", clockErr))
@@ -268,13 +257,13 @@ func NewSandbox(
 		}
 	} else {
 		go func() {
-			backgroundCtx := context.Background()
+			ctx := context.Background()
 
-			clockErr := instance.EnsureClockSync(backgroundCtx, consts.OldEnvdServerPort)
+			clockErr := instance.EnsureClockSync(ctx, consts.OldEnvdServerPort)
 			if clockErr != nil {
-				telemetry.ReportError(backgroundCtx, fmt.Errorf("failed to sync clock (old envd): %w", clockErr))
+				telemetry.ReportError(ctx, fmt.Errorf("failed to sync clock (old envd): %w", clockErr))
 			} else {
-				telemetry.ReportEvent(backgroundCtx, "clock synced (old envd)")
+				telemetry.ReportEvent(ctx, "clock synced (old envd)")
 			}
 		}()
 	}
@@ -352,7 +341,6 @@ func (s *Sandbox) EnsureClockSync(ctx context.Context, port int64) error {
 syncLoop:
 	for {
 		select {
-		case <-time.After(10 * time.Second):
 		case <-ctx.Done():
 			return ctx.Err()
 		default:

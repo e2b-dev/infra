@@ -49,7 +49,7 @@ func NewNbd(ctx context.Context, s block.Device, pool *NbdDevicePool) (*Nbd, err
 
 	opts := gnbd.BlockDeviceOptions{
 		BlockSize:     int(s.BlockSize()),
-		ConcurrentOps: 1,
+		ConcurrentOps: 12,
 	}
 
 	// Round up to the nearest block size
