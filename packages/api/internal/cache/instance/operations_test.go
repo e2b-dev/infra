@@ -57,7 +57,7 @@ func TestTimeInPastForNewSandbox(t *testing.T) {
 	cache := NewCache(nil, nil, nil, nil, nil)
 
 	// times in past
-	endTimeInPast := InstanceInfo{Instance: &api.Sandbox{SandboxID: sandboxID, TemplateID: "Unknown", ClientID: "Unknown"}, StartTime: beginningOfHour.Add(-2 * time.Hour), EndTime: beginningOfHour.Add(-time.Hour), TeamID: &teamID, MaxInstanceLength: 4 * time.Hour}
+	endTimeInPast := InstanceInfo{Instance: &api.Sandbox{SandboxID: sandboxID, TemplateID: "Unknown", ClientID: "Unknown"}, StartTime: beginningOfHour.Add(-time.Minute), EndTime: beginningOfHour.Add(30 * -time.Second), TeamID: &teamID, MaxInstanceLength: maxInstanceLength}
 	err := cache.Add(endTimeInPast, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -68,8 +68,28 @@ func TestTimeInPastForNewSandbox(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	if instance.ExpiresAt().Sub(time.Now()).Round(time.Second) != 30*time.Second {
+		t.Fatalf("expected to respect the timeout and expire in 30 seconds, got %v", instance.ExpiresAt().Sub(time.Now()))
+	}
+}
+
+func TestLoadAlreadyCreatedSandbox(t *testing.T) {
+	cache := NewCache(nil, nil, nil, nil, nil)
+
+	// times in past
+	endTimeInPast := InstanceInfo{Instance: &api.Sandbox{SandboxID: sandboxID, TemplateID: "Unknown", ClientID: "Unknown"}, StartTime: beginningOfHour.Add(-2 * time.Hour), EndTime: beginningOfHour.Add(time.Hour), TeamID: &teamID, MaxInstanceLength: 4 * time.Hour}
+	err := cache.Add(endTimeInPast, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	instance, err := cache.Get(sandboxID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
 	if instance.ExpiresAt().Sub(time.Now()).Round(time.Second) != time.Hour {
-		t.Fatalf("expected to respect the timeout and expire in 1 hour, got %v", instance.ExpiresAt().Sub(time.Now()))
+		t.Fatalf("expected to expire in 1 hour, got %v", instance.ExpiresAt().Sub(time.Now()))
 	}
 }
 
