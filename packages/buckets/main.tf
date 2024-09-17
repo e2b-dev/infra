@@ -83,6 +83,10 @@ resource "google_storage_bucket" "fc_template_bucket" {
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
 
+  autoclass {
+    enabled = true
+  }
+
   labels = var.labels
 }
 
