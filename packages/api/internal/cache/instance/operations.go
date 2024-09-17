@@ -72,6 +72,10 @@ func (c *InstanceCache) Add(instance InstanceInfo) error {
 		return fmt.Errorf("instance %+v (%+v) is missing team ID, instance ID, client ID, or env ID ", instance, instance.Instance)
 	}
 
+	if instance.EndTime.Sub(instance.StartTime) > instance.MaxInstanceLength {
+		instance.EndTime = instance.StartTime.Add(instance.MaxInstanceLength)
+	}
+
 	c.cache.Set(instance.Instance.SandboxID, instance, instance.EndTime.Sub(instance.StartTime))
 	c.UpdateCounter(instance, 1)
 

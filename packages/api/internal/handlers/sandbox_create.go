@@ -145,7 +145,14 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	timeout := instance.InstanceExpiration
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
+
+		if timeout > time.Duration(teamInfo.Tier.MaxLengthHours)*time.Hour {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Tier.MaxLengthHours))
+
+			return
+		}
 	}
+
 	endTime := startTime.Add(timeout)
 
 	sandbox, instanceErr := a.orchestrator.CreateSandbox(a.Tracer, ctx, sandboxID, env.TemplateID, alias, team.ID.String(), build, teamInfo.Tier.MaxLengthHours, metadata, envVars, build.KernelVersion, build.FirecrackerVersion, *build.EnvdVersion, startTime, endTime)

@@ -10,8 +10,8 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 )
 
-func getMaxAllowedTTL(startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
-	runningTime := time.Since(startTime)
+func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
+	runningTime := now.Sub(startTime)
 	timeLeft := maxInstanceLength - runningTime
 
 	if timeLeft <= 0 {
@@ -30,8 +30,9 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 		return nil, err
 	}
 
+	now := time.Now()
 	instance := item.Value()
-	if !allowShorter && item.ExpiresAt().After(time.Now().Add(duration)) {
+	if !allowShorter && instance.EndTime.After(now.Add(duration)) {
 		return &instance, nil
 	}
 
@@ -40,9 +41,9 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 
 		return nil, fmt.Errorf("instance \"%s\" reached maximal allowed uptime", instanceID)
 	} else {
-		maxAllowedTTL := getMaxAllowedTTL(instance.StartTime, duration, instance.MaxInstanceLength)
+		maxAllowedTTL := getMaxAllowedTTL(now, instance.StartTime, duration, instance.MaxInstanceLength)
 
-		newEndTime := item.ExpiresAt().Add(maxAllowedTTL)
+		newEndTime := now.Add(maxAllowedTTL)
 		instance.EndTime = newEndTime
 
 		item = c.cache.Set(instanceID, instance, maxAllowedTTL)
@@ -86,8 +87,10 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo) {
 		instanceIds[i] = instance.Instance.SandboxID
 	}
 
-	_, err := c.analytics.RunningInstances(context.Background(), &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
-	if err != nil {
-		c.logger.Errorf("Error sending running instances event to analytics\n: %v", err)
+	if c.analytics != nil {
+		_, err := (*c.analytics).RunningInstances(context.Background(), &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
+		if err != nil {
+			c.logger.Errorf("Error sending running instances event to analytics\n: %v", err)
+		}
 	}
 }
