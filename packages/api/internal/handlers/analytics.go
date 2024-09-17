@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -29,7 +30,7 @@ func NewPosthogClient(logger *zap.SugaredLogger) (*PosthogClient, error) {
 	posthogAPIKey := os.Getenv("POSTHOG_API_KEY")
 	posthogLogger := posthog.StdLogger(log.New(os.Stderr, "posthog ", log.LstdFlags))
 
-	if posthogAPIKey == "" {
+	if strings.TrimSpace(posthogAPIKey) == "" {
 		logger.Info("No Posthog API key provided, silencing logs")
 
 		writer := &utils.NoOpWriter{}

@@ -71,7 +71,6 @@ func NewAPIStore() *APIStore {
 	logger.Info("Initialized Supabase client")
 
 	posthogClient, posthogErr := NewPosthogClient(logger)
-
 	if posthogErr != nil {
 		logger.Errorf("Error initializing Posthog client\n: %v", posthogErr)
 		panic(posthogErr)

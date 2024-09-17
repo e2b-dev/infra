@@ -22,8 +22,8 @@ Check if you can use config for terraform state management
 11. Run `make apply-without-jobs`
 12. Fill in following secrets:
     - postgres (required)
-    - If you don't want to use, fill in random strings for following:
-      - posthog (if you don't want to use posthog, fill in random string)
+    - If you don't want to use, keep as it is:
+      - posthog (if you don't want to use posthog)
       - grafana (if you want traces / logging)
 13. Run `make apply`
 14. Provisioning of the certificates can take some time, you can check the status in the Google Cloud Console

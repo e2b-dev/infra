@@ -8,7 +8,7 @@ terraform {
 }
 
 data "google_secret_manager_secret_version" "cloudflare_api_token" {
-  secret = "${var.prefix}cloudflare-api-token"
+  secret = var.cloudflare_api_token_secret_name
 }
 
 provider "cloudflare" {
@@ -252,11 +252,6 @@ resource "google_compute_global_forwarding_rule" "https" {
   name                  = "${var.prefix}forwarding-rule-https"
   target                = google_compute_target_https_proxy.default.self_link
   load_balancing_scheme = "EXTERNAL_MANAGED"
-
-  timeouts {
-    create = "value"
-  }
-
   port_range = "443"
   labels     = var.labels
 }

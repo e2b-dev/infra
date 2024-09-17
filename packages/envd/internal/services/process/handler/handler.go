@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -21,8 +22,9 @@ import (
 
 const (
 	defaultOomScore  = 100
-	DefaultChunkSize = 2 << 15
 	outputBufferSize = 64
+	stdChunkSize     = 2 << 14
+	ptyChunkSize     = 2 << 13
 )
 
 type ProcessExit struct {
@@ -119,9 +121,9 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 		go func() {
 			defer outWg.Done()
 
-			buf := make([]byte, DefaultChunkSize)
-
 			for {
+				buf := make([]byte, ptyChunkSize)
+
 				n, readErr := tty.Read(buf)
 
 				if n > 0 {
@@ -134,7 +136,13 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 					}
 				}
 
+				if errors.Is(readErr, io.EOF) {
+					break
+				}
+
 				if readErr != nil {
+					fmt.Fprintf(os.Stderr, "error reading from pty: %s\n", readErr)
+
 					break
 				}
 			}
@@ -166,8 +174,6 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 	go func() {
 		defer outWg.Done()
 
-		buf := make([]byte, DefaultChunkSize)
-
 		stdoutLogs := make(chan []byte, outputBufferSize)
 		defer close(stdoutLogs)
 
@@ -176,6 +182,8 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 		go logs.LogBufferedDataEvents(stdoutLogs, &stdoutLogger, "data")
 
 		for {
+			buf := make([]byte, stdChunkSize)
+
 			n, readErr := stdout.Read(buf)
 
 			if n > 0 {
@@ -190,7 +198,13 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 				stdoutLogs <- buf[:n]
 			}
 
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+
 			if readErr != nil {
+				fmt.Fprintf(os.Stderr, "error reading from stdout: %s\n", readErr)
+
 				break
 			}
 		}
@@ -205,8 +219,6 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 	go func() {
 		defer outWg.Done()
 
-		buf := make([]byte, DefaultChunkSize)
-
 		stderrLogs := make(chan []byte, outputBufferSize)
 		defer close(stderrLogs)
 
@@ -215,6 +227,8 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 		go logs.LogBufferedDataEvents(stderrLogs, &stderrLogger, "data")
 
 		for {
+			buf := make([]byte, stdChunkSize)
+
 			n, readErr := stderr.Read(buf)
 
 			if n > 0 {
@@ -229,7 +243,13 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 				stderrLogs <- buf[:n]
 			}
 
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+
 			if readErr != nil {
+				fmt.Fprintf(os.Stderr, "error reading from stderr: %s\n", readErr)
+
 				break
 			}
 		}
