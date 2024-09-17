@@ -2,6 +2,8 @@ package instance
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 )
@@ -88,11 +90,28 @@ func (c *InstanceCache) Add(instance InstanceInfo, new bool) error {
 		return fmt.Errorf("instance %s is missing env ID", instance.Instance.TemplateID)
 	}
 
+	if instance.StartTime.IsZero() || instance.EndTime.IsZero() || instance.StartTime.After(instance.EndTime) {
+		return fmt.Errorf("instance %s has invalid start(%s)/end(%s) times", instance.Instance.SandboxID, instance.StartTime, instance.EndTime)
+	}
+
 	if instance.EndTime.Sub(instance.StartTime) > instance.MaxInstanceLength {
 		instance.EndTime = instance.StartTime.Add(instance.MaxInstanceLength)
 	}
 
-	c.cache.Set(instance.Instance.SandboxID, instance, instance.EndTime.Sub(instance.StartTime))
+	// Get actual TTL for the instance
+	var ttl time.Duration
+	if new {
+		// This is to compensate for the time it takes to start the instance
+		// Otherwise it could cause the instance to expire before user has a chance to use it
+		ttl = instance.EndTime.Sub(instance.StartTime)
+	} else {
+		ttl = instance.EndTime.Sub(time.Now())
+		if ttl <= 0 {
+			return fmt.Errorf("instance \"%s\" has already expired", instance.Instance.SandboxID)
+		}
+	}
+
+	c.cache.Set(instance.Instance.SandboxID, instance, ttl)
 	c.UpdateCounter(instance, 1)
 
 	// Release the reservation if it exists

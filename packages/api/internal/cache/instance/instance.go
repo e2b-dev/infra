@@ -92,7 +92,7 @@ func NewCache(analytics *analyticscollector.AnalyticsCollectorClient, logger *za
 	})
 
 	for _, instance := range initialInstances {
-		err := instanceCache.Add(*instance)
+		err := instanceCache.Add(*instance, false)
 		if err != nil {
 			fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
 		}

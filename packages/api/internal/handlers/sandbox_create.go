@@ -181,7 +181,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		TeamID:            &team.ID,
 		Metadata:          metadata,
 		MaxInstanceLength: time.Duration(teamInfo.Tier.MaxLengthHours) * time.Hour,
-	}); cacheErr != nil {
+	}, true); cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 
