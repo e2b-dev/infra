@@ -103,20 +103,13 @@ components:
       maximum: 8192
       description: Memory for the sandbox in MB
 
-    CacheInvalidationRequest:
-      type: object
-      required:
-        - cache
-      properties:
-        cache:
-          type: string
-          enum:
-            - all
-            - auth
-            - builds
-            - sandboxes
-            - templates
-          description: Cache to invalidate
+    CacheType:
+      type: string
+      enum:
+        - auth
+        - builds
+        - sandboxes
+        - templates
 
     SandboxMetadata:
       additionalProperties:
@@ -334,17 +327,22 @@ paths:
         "401":
           $ref: "#/components/responses/401"
 
-  /admin/caches/invalidate:
+  /admin/caches/{cache}/invalidate/{objectID}:
     post:
       description: Invalidate the cache
       tags: [admin]
       security:
         - AdminAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CacheInvalidationRequest"
+      parameters:
+        - in: path
+          name: cache
+          schema:
+            $ref: "#/components/schemas/CacheType"
+        - in: path
+          name: objectID
+          schema:
+            type: string
+            description: Identifier of the object to invalidate
       responses:
         "204":
           description: Cache was invalidated successfully

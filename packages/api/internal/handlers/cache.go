@@ -4,34 +4,19 @@ import (
 	"net/http"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/gin-gonic/gin"
 )
 
-func (a *APIStore) PostAdminCachesInvalidate(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	body, err := utils.ParseBody[api.CacheInvalidationRequest](ctx, c)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Error when parsing request")
-		return
-	}
-
-	// Invalidate cache
-	switch body.Cache {
+func (a *APIStore) PostAdminCachesCacheInvalidateObjectID(c *gin.Context, cache api.CacheType, objectID string) {
+	switch cache {
 	case api.Templates:
-		a.templateCache.InvalidateAll()
+		a.templateCache.Invalidate(objectID)
 	case api.Auth:
-		a.authCache.InvalidateAll()
+		a.authCache.Invalidate(objectID)
 	case api.Sandboxes:
-		a.instanceCache.InvalidateAll()
+		a.instanceCache.Invalidate(objectID)
 	case api.Builds:
-		a.buildCache.InvalidateAll()
-	case api.All:
-		a.templateCache.InvalidateAll()
-		a.authCache.InvalidateAll()
-		a.instanceCache.InvalidateAll()
-		a.buildCache.InvalidateAll()
+		a.buildCache.Invalidate(objectID)
 	}
 
 	c.Status(http.StatusNoContent)
