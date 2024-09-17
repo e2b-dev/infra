@@ -535,6 +535,8 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		}
 	}()
 
+	telemetry.ReportEvent(childCtx, "coverting tar to ext4")
+
 	// This package creates a read-only ext4 filesystem from a tar archive.
 	// We need to use another program to make the filesystem writable.
 	err = tar2ext4.ConvertTarToExt4(pr, rootfsFile, tar2ext4.MaximumDiskSize(maxRootfsSize))

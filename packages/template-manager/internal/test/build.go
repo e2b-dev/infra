@@ -3,14 +3,20 @@ package test
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"os"
 	"time"
 
+	"cloud.google.com/go/storage"
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
+	"golang.org/x/sync/errgroup"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	templateShared "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
+	templateStorage "github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
 func Build(templateID, buildID string) {
@@ -29,9 +35,15 @@ func Build(templateID, buildID string) {
 		panic(err)
 	}
 
+	client, err := storage.NewClient(ctx, storage.WithJSONReads())
+	if err != nil {
+		errMsg := fmt.Errorf("failed to create GCS client: %v", err)
+		panic(errMsg)
+	}
+
 	var buf bytes.Buffer
-	e := build.Env{
-		TemplateFiles: storage.TemplateFiles{
+	template := build.Env{
+		TemplateFiles: templateShared.TemplateFiles{
 			BuildId:    buildID,
 			TemplateId: templateID,
 		},
@@ -45,8 +57,50 @@ func Build(templateID, buildID string) {
 		HugePages:             true,
 	}
 
-	err = e.Build(ctx, tracer, dockerClient, legacyClient)
+	err = template.Build(ctx, tracer, dockerClient, legacyClient)
 	if err != nil {
-		panic(err)
+		errMsg := fmt.Errorf("error building template: %w", err)
+
+		fmt.Fprintln(os.Stderr, errMsg)
+
+		return
+	}
+
+	tempStorage := templateStorage.NewTemplateStorage(ctx, client, templateShared.BucketName)
+
+	buildStorage := tempStorage.NewTemplateBuild(&template.TemplateFiles)
+
+	var uploadWg errgroup.Group
+
+	uploadWg.Go(func() error {
+		memfile, err := os.Open(template.BuildMemfilePath())
+		if err != nil {
+			return err
+		}
+
+		return buildStorage.UploadMemfile(ctx, memfile)
+	})
+
+	uploadWg.Go(func() error {
+		rootfs, err := os.Open(template.BuildRootfsPath())
+		if err != nil {
+			return err
+		}
+
+		return buildStorage.UploadRootfs(ctx, rootfs)
+	})
+
+	uploadWg.Go(func() error {
+		snapfile, err := os.Open(template.BuildSnapfilePath())
+		if err != nil {
+			return err
+		}
+
+		return buildStorage.UploadSnapfile(ctx, snapfile)
+	})
+
+	err = uploadWg.Wait()
+	if err != nil {
+		log.Fatal().Err(err).Msg("error uploading build files")
 	}
 }
