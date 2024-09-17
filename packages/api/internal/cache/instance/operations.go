@@ -67,9 +67,25 @@ func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []InstanceInf
 
 // Add the instance to the cache and start expiration timer.
 // If the instance already exists we do nothing - it was loaded from Orchestrator.
-func (c *InstanceCache) Add(instance InstanceInfo) error {
-	if instance.TeamID == nil || instance.Instance.SandboxID == "" || instance.Instance.ClientID == "" || instance.Instance.TemplateID == "" {
-		return fmt.Errorf("instance %+v (%+v) is missing team ID, instance ID, client ID, or env ID ", instance, instance.Instance)
+func (c *InstanceCache) Add(instance InstanceInfo, new bool) error {
+	if instance.Instance == nil {
+		return fmt.Errorf("instance doesn't contain info about inself")
+	}
+
+	if instance.Instance.SandboxID == "" {
+		return fmt.Errorf("instance is missing sandbox ID")
+	}
+
+	if instance.TeamID == nil {
+		return fmt.Errorf("instance %s is missing team ID", instance.Instance.SandboxID)
+	}
+
+	if instance.Instance.ClientID == "" {
+		return fmt.Errorf("instance %s is missing client ID", instance.Instance.ClientID)
+	}
+
+	if instance.Instance.TemplateID == "" {
+		return fmt.Errorf("instance %s is missing env ID", instance.Instance.TemplateID)
 	}
 
 	if instance.EndTime.Sub(instance.StartTime) > instance.MaxInstanceLength {
