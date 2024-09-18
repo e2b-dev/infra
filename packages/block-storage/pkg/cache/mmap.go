@@ -12,12 +12,12 @@ import (
 )
 
 type MmapCache struct {
-	size      int64
-	blockSize int64
-	filePath  string
 	marker    *block.Marker
 	mmap      mmap.MMap
+	size      int64
+	filePath  string
 	mu        sync.RWMutex
+	blockSize int64
 }
 
 func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
@@ -52,25 +52,25 @@ func (m *MmapCache) ReadAt(b []byte, off int64) (int, error) {
 		return 0, block.ErrBytesNotAvailable{}
 	}
 
-	length := int64(len(b))
-	if length+off > m.size {
-		length = m.size - off
+	end := off + int64(len(b))
+	if end > m.size {
+		end = m.size
 	}
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return copy(b, m.mmap[off:off+length]), nil
+	return copy(b, m.mmap[off:end]), nil
 }
 
 func (m *MmapCache) WriteAt(b []byte, off int64) (int, error) {
-	length := int64(len(b))
-	if length+off > m.size {
-		length = m.size - off
+	end := off + int64(len(b))
+	if end > m.size {
+		end = m.size
 	}
 
 	m.mu.Lock()
-	n := copy(m.mmap[off:off+length], b)
+	n := copy(m.mmap[off:end], b)
 	m.mu.Unlock()
 
 	for i := off; i < off+int64(n); i += m.blockSize {
@@ -101,13 +101,14 @@ func (m *MmapCache) ReadRaw(off, length int64) ([]byte, func(), error) {
 		return nil, nil, block.ErrBytesNotAvailable{}
 	}
 
-	if length+off > m.size {
-		length = m.size - off
+	end := off + length
+	if end > m.size {
+		end = m.size
 	}
 
 	m.mu.RLock()
 
-	return m.mmap[off : off+length], func() {
+	return m.mmap[off:end], func() {
 		m.mu.RUnlock()
 	}, nil
 }
