@@ -20,6 +20,7 @@ func (o *Orchestrator) UpdateSandbox(
 	ctx context.Context,
 	sandboxID string,
 	endTime time.Time,
+	nodeID string,
 ) error {
 	childCtx, childSpan := t.Start(ctx, "update-sandbox",
 		trace.WithAttributes(
@@ -28,7 +29,12 @@ func (o *Orchestrator) UpdateSandbox(
 	)
 	defer childSpan.End()
 
-	_, err := o.grpc.Sandbox.Update(ctx, &orchestrator.SandboxUpdateRequest{
+	client, err := o.GetClient(nodeID)
+	if err != nil {
+		return fmt.Errorf("failed to get client '%s': %w", nodeID, err)
+	}
+
+	_, err = client.Sandbox.Update(ctx, &orchestrator.SandboxUpdateRequest{
 		SandboxID: sandboxID,
 		EndTime:   timestamppb.New(endTime),
 	})

@@ -37,7 +37,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		return
 	}
 
-	if *item.Value().TeamID != teamID {
+	if item.Value().TeamID != teamID {
 		errMsg := fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String())
 		telemetry.ReportCriticalError(ctx, errMsg)
 

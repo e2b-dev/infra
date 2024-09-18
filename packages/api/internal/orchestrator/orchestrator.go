@@ -2,47 +2,61 @@ package orchestrator
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"time"
-
-	"go.opentelemetry.io/otel/trace"
-
+	"errors"
+	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	nomadapi "github.com/hashicorp/nomad/api"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 )
 
 type Orchestrator struct {
-	grpc *GRPCClient
+	nomadClient     *nomadapi.Client
+	instanceCache   *instance.InstanceCache
+	nodes           map[string]*Node
+	tracer          trace.Tracer
+	logger          *zap.SugaredLogger
+	analytics       *analyticscollector.Analytics
+	instanceCounter *metric.Int64UpDownCounter
 }
 
-func New() (*Orchestrator, error) {
-	client, err := NewClient()
+func New(ctx context.Context, tracer trace.Tracer, nomadClient *nomadapi.Client, logger *zap.SugaredLogger, instanceCounter *metric.Int64UpDownCounter, posthogClient *analyticscollector.PosthogClient) (*Orchestrator, error) {
+	analytics, err := analyticscollector.NewAnalytics()
 	if err != nil {
-		return nil, err
+		logger.Errorf("Error initializing Analytics client\n: %v", err)
 	}
 
-	return &Orchestrator{
-		grpc: client,
-	}, nil
+	o := Orchestrator{
+		analytics:       analytics,
+		instanceCounter: instanceCounter,
+		nomadClient:     nomadClient,
+		logger:          logger,
+		tracer:          tracer,
+	}
+
+	cache := instance.NewCache(analytics.Client, logger,
+		o.getInsertInstanceFunction(ctx, logger),
+		o.getDeleteInstanceFunction(ctx, posthogClient, logger), *instanceCounter)
+
+	o.instanceCache = cache
+
+	return &o, nil
 }
 
 func (o *Orchestrator) Close() error {
-	return o.grpc.Close()
-}
-
-// KeepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) KeepInSync(ctx context.Context, tracer trace.Tracer, instanceCache *instance.InstanceCache) {
-	for {
-		time.Sleep(instance.CacheSyncTime)
-
-		childCtx, childSpan := tracer.Start(ctx, "keep-in-sync")
-		activeInstances, err := o.GetInstances(childCtx, tracer)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading current sandboxes\n: %v", err)
-		} else {
-			instanceCache.Sync(activeInstances)
+	var err error
+	for _, node := range o.nodes {
+		closeErr := node.Client.Close()
+		if closeErr != nil {
+			err = errors.Join(err, closeErr)
 		}
-
-		childSpan.End()
 	}
+
+	closeErr := o.analytics.Close()
+	if closeErr != nil {
+		err = errors.Join(err, closeErr)
+	}
+
+	return err
 }

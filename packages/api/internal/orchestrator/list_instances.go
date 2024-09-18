@@ -6,20 +6,23 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/google/uuid"
 )
 
-func (o *Orchestrator) GetInstances(ctx context.Context, tracer trace.Tracer) ([]*instance.InstanceInfo, error) {
-	childCtx, childSpan := tracer.Start(ctx, "list-instances")
+func (o *Orchestrator) getInstances(ctx context.Context, nodeID string) ([]*instance.InstanceInfo, error) {
+	childCtx, childSpan := o.tracer.Start(ctx, "list-instances")
 	defer childSpan.End()
 
-	res, err := o.grpc.Sandbox.List(childCtx, &empty.Empty{})
+	client, err := o.GetClient(nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GRPC client: %w", err)
+	}
+
+	res, err := client.Sandbox.List(childCtx, &empty.Empty{})
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
@@ -48,7 +51,7 @@ func (o *Orchestrator) GetInstances(ctx context.Context, tracer trace.Tracer) ([
 		}
 
 		sandboxesInfo = append(sandboxesInfo, &instance.InstanceInfo{
-			Instance: &api.Sandbox{
+			Instance: api.Sandbox{
 				SandboxID:  config.SandboxID,
 				TemplateID: config.TemplateID,
 				Alias:      config.Alias,
@@ -56,8 +59,10 @@ func (o *Orchestrator) GetInstances(ctx context.Context, tracer trace.Tracer) ([
 			},
 			StartTime:         sbx.StartTime.AsTime(),
 			EndTime:           sbx.EndTime.AsTime(),
-			BuildID:           &buildID,
-			TeamID:            &teamID,
+			VCpu:              config.VCpu,
+			RamMB:             config.RamMB,
+			BuildID:           buildID,
+			TeamID:            teamID,
 			Metadata:          config.Metadata,
 			MaxInstanceLength: time.Duration(config.MaxInstanceLength) * time.Hour,
 		})

@@ -4,17 +4,20 @@ import (
 	"context"
 	"fmt"
 
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (o *Orchestrator) DeleteInstance(ctx context.Context, tracer trace.Tracer, sandboxID string) error {
-	childCtx, childSpan := tracer.Start(ctx, "delete-instance")
+func (o *Orchestrator) DeleteInstance(ctx context.Context, sandboxID string, nodeID string) error {
+	childCtx, childSpan := o.tracer.Start(ctx, "delete-instance")
 	defer childSpan.End()
 
-	_, err := o.grpc.Sandbox.Delete(childCtx, &orchestrator.SandboxRequest{
+	client, err := o.GetClient(nodeID)
+	if err != nil {
+		return fmt.Errorf("failed to get client '%s': %w", nodeID, err)
+	}
+
+	_, err = client.Sandbox.Delete(childCtx, &orchestrator.SandboxRequest{
 		SandboxID: sandboxID,
 	})
 

@@ -3,13 +3,13 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"golang.org/x/sync/semaphore"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -148,7 +148,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 	endTime := startTime.Add(timeout)
 
-	sandbox, instanceErr := a.orchestrator.CreateSandbox(a.Tracer, ctx, sandboxID, env.TemplateID, alias, team.ID.String(), build, teamInfo.Tier.MaxLengthHours, metadata, envVars, build.KernelVersion, build.FirecrackerVersion, *build.EnvdVersion, startTime, endTime)
+	sandbox, instanceErr := a.orchestrator.CreateSandbox(a.Tracer, ctx, sandboxID, env.TemplateID, alias, team.ID, build, teamInfo.Tier.MaxLengthHours, metadata, envVars, build.KernelVersion, build.FirecrackerVersion, *build.EnvdVersion, startTime, endTime)
 	if instanceErr != nil {
 		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -165,35 +165,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
-	_, cacheSpan := a.Tracer.Start(ctx, "add-instance-to-cache")
-	if cacheErr := a.instanceCache.Add(instance.InstanceInfo{
-		StartTime:         startTime,
-		EndTime:           endTime,
-		Instance:          sandbox,
-		BuildID:           &build.ID,
-		TeamID:            &team.ID,
-		Metadata:          metadata,
-		MaxInstanceLength: time.Duration(teamInfo.Tier.MaxLengthHours) * time.Hour,
-	}); cacheErr != nil {
-		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
-		telemetry.ReportError(ctx, errMsg)
-
-		delErr := a.DeleteInstance(sandbox.SandboxID, true)
-		if delErr != nil {
-			delErrMsg := fmt.Errorf("couldn't delete instance that couldn't be added to cache: %w", delErr.Err)
-			telemetry.ReportError(ctx, delErrMsg)
-		} else {
-			telemetry.ReportEvent(ctx, "deleted instance that couldn't be added to cache")
-		}
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Cannot create a sandbox right now")
-
-		return
-	}
-
-	cacheSpan.End()
-
 	c.Set("instanceID", sandbox.SandboxID)
+	c.Set("nodeID", sandbox.ClientID)
 
 	telemetry.ReportEvent(ctx, "Added sandbox to cache")
 

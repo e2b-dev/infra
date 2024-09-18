@@ -50,7 +50,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 		return
 	}
 
-	err = a.orchestrator.UpdateSandbox(a.Tracer, ctx, sandboxID, info.EndTime)
+	err = a.orchestrator.UpdateSandbox(a.Tracer, ctx, sandboxID, info.EndTime, info.Instance.ClientID)
 	if err != nil {
 		errMsg := fmt.Errorf("error when refreshing instance: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)

@@ -4,7 +4,7 @@
 // 	protoc        v4.25.3
 // source: collector.proto
 
-package analyticscollector
+package analytics
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"

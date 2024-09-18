@@ -2,8 +2,6 @@ package orchestrator
 
 import (
 	"fmt"
-	"os"
-
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
@@ -11,14 +9,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-var host = os.Getenv("ORCHESTRATOR_ADDRESS")
-
 type GRPCClient struct {
 	Sandbox    orchestrator.SandboxClient
 	connection e2bgrpc.ClientConnInterface
 }
 
-func NewClient() (*GRPCClient, error) {
+func NewClient(host string) (*GRPCClient, error) {
 	conn, err := e2bgrpc.GetConnection(host, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
@@ -36,4 +32,29 @@ func (a *GRPCClient) Close() error {
 	}
 
 	return nil
+}
+
+func (o *Orchestrator) connectToNode(node *nodeInfo) error {
+	client, err := NewClient(node.Address)
+	if err != nil {
+		return err
+	}
+
+	n := &Node{
+		ID:     node.ID,
+		Client: client,
+	}
+
+	o.nodes[n.ID] = n
+
+	return nil
+}
+
+func (o *Orchestrator) GetClient(nodeID string) (*GRPCClient, error) {
+	node, err := o.GetNode(nodeID)
+	if err != nil {
+		return nil, err
+	}
+
+	return node.Client, nil
 }

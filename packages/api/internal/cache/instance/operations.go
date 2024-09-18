@@ -14,11 +14,7 @@ func (c *InstanceCache) CountForTeam(teamID uuid.UUID) (count uint) {
 	for _, item := range c.cache.Items() {
 		currentTeamID := item.Value().TeamID
 
-		if currentTeamID == nil {
-			continue
-		}
-
-		if *currentTeamID == teamID {
+		if currentTeamID == teamID {
 			count++
 		}
 	}
@@ -57,7 +53,7 @@ func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []InstanceInf
 	for _, item := range c.cache.Items() {
 		currentTeamID := item.Value().TeamID
 
-		if teamID == nil || *currentTeamID == *teamID {
+		if teamID == nil || currentTeamID == *teamID {
 			instances = append(instances, item.Value())
 		}
 	}
@@ -68,15 +64,19 @@ func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []InstanceInf
 // Add the instance to the cache and start expiration timer.
 // If the instance already exists we do nothing - it was loaded from Orchestrator.
 func (c *InstanceCache) Add(instance InstanceInfo) error {
-	if instance.TeamID == nil || instance.Instance.SandboxID == "" || instance.Instance.ClientID == "" || instance.Instance.TemplateID == "" {
-		return fmt.Errorf("instance %+v (%+v) is missing team ID, instance ID, client ID, or env ID ", instance, instance.Instance)
+	// Release the reservation if it exists
+	defer c.reservations.release(instance.Instance.SandboxID)
+
+	if instance.Instance.SandboxID == "" || instance.Instance.ClientID == "" || instance.Instance.TemplateID == "" {
+		return fmt.Errorf("instance %+v (%+v) is missing instance ID, client ID, or env ID ", instance, instance.Instance)
+	}
+
+	if c.Exists(instance.Instance.SandboxID) {
+		return nil
 	}
 
 	c.cache.Set(instance.Instance.SandboxID, instance, instance.EndTime.Sub(instance.StartTime))
 	c.UpdateCounter(instance, 1)
-
-	// Release the reservation if it exists
-	c.reservations.release(instance.Instance.SandboxID)
 
 	return nil
 }
