@@ -121,11 +121,10 @@ resource "google_compute_instance_template" "client" {
   }
 
   disk {
-    source      = var.fc_envs_disk_name
-    auto_delete = false
     boot        = false
     device_name = var.fc_envs_disk_device_name
     mode        = "READ_WRITE"
+    disk_type   = "pd-ssd"
   }
 
   network_interface {
