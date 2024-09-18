@@ -43,6 +43,7 @@ func New(
 		nomadClient:     nomadClient,
 		logger:          logger,
 		tracer:          tracer,
+		nodes:           make(map[string]*Node),
 	}
 
 	cache := instance.NewCache(
