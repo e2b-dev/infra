@@ -110,6 +110,7 @@ components:
         - builds
         - sandboxes
         - templates
+        - aliases
 
     SandboxMetadata:
       additionalProperties:

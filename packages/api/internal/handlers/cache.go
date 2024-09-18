@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,6 +11,8 @@ import (
 )
 
 func (a *APIStore) PostAdminCachesCacheInvalidateObjectID(c *gin.Context, cache api.CacheType, objectID string) {
+	ctx := c.Request.Context()
+
 	switch cache {
 	case api.Templates:
 		a.templateCache.Invalidate(objectID)
@@ -18,7 +22,11 @@ func (a *APIStore) PostAdminCachesCacheInvalidateObjectID(c *gin.Context, cache 
 		a.instanceCache.Invalidate(objectID)
 	case api.Builds:
 		a.buildCache.Invalidate(objectID)
+	case api.Aliases:
+		a.templateCache.InvalidateAlias(objectID)
 	}
+
+	telemetry.ReportEvent(ctx, fmt.Sprintf("Invalidated cache for %s with id %s", cache, objectID))
 
 	c.Status(http.StatusNoContent)
 }

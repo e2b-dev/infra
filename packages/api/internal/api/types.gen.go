@@ -15,6 +15,7 @@ const (
 
 // Defines values for CacheType.
 const (
+	Aliases   CacheType = "aliases"
 	Auth      CacheType = "auth"
 	Builds    CacheType = "builds"
 	Sandboxes CacheType = "sandboxes"
