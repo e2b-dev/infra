@@ -74,6 +74,7 @@ resource "nomad_job" "api" {
       analytics_collector_host      = data.google_secret_manager_secret_version.analytics_collector_host.secret_data
       analytics_collector_api_token = data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data
       otel_tracing_print            = var.otel_tracing_print
+      nomad_token                   = var.nomad_acl_token_secret
     }
   }
 }

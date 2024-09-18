@@ -68,6 +68,11 @@ variable "template_manager_address" {
   default = ""
 }
 
+variable "nomad_token" {
+  type    = string
+  default = ""
+}
+
 job "orchestration-api" {
   datacenters = [var.gcp_zone]
 
@@ -114,6 +119,7 @@ job "orchestration-api" {
         LOKI_ADDRESS                  = var.loki_address
         OTEL_TRACING_PRINT            = var.otel_tracing_print
         LOGS_COLLECTOR_ADDRESS        = var.logs_collector_address
+        NOMAD_TOKEN                   = var.nomad_token
       }
 
       config {
