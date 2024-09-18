@@ -3,8 +3,9 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/gin-gonic/gin"
+
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
 func (a *APIStore) PostAdminCachesCacheInvalidateObjectID(c *gin.Context, cache api.CacheType, objectID string) {

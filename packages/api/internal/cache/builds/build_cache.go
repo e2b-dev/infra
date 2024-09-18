@@ -174,10 +174,11 @@ func (c *BuildCache) Delete(envID string, buildID, teamID uuid.UUID) {
 }
 
 func (c *BuildCache) Invalidate(templateID string) {
-	build := c.cache.Get(templateID)
-	if build == nil {
+	buildItem := c.cache.Get(templateID)
+	if buildItem == nil {
 		return
 	}
 
-	c.Delete(templateID, build.Value().GetBuildID(), build.Value().GetTeamID())
+	build := buildItem.Value()
+	c.Delete(templateID, build.buildID, build.teamID)
 }
