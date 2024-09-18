@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics"
+	"github.com/e2b-dev/infra/packages/api/internal/analytics"
 )
 
 func getMaxAllowedTTL(startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
@@ -88,7 +88,7 @@ func (c *InstanceCache) SendAnalyticsEvent() {
 		instanceIds[i] = sbxID
 	}
 
-	_, err := c.analytics.RunningInstances(context.Background(), &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
+	_, err := c.analytics.RunningInstances(context.Background(), &analytics.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
 	if err != nil {
 		c.logger.Errorf("Error sending running instances event to analytics\n: %v", err)
 	}

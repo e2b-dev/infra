@@ -4,16 +4,16 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/google/uuid"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -22,7 +22,6 @@ import (
 )
 
 func (o *Orchestrator) CreateSandbox(
-	t trace.Tracer,
 	ctx context.Context,
 	sandboxID,
 	templateID,
@@ -38,7 +37,7 @@ func (o *Orchestrator) CreateSandbox(
 	startTime time.Time,
 	endTime time.Time,
 ) (*api.Sandbox, error) {
-	childCtx, childSpan := t.Start(ctx, "create-sandbox",
+	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox",
 		trace.WithAttributes(
 			attribute.String("env.id", templateID),
 		),
@@ -78,14 +77,17 @@ func (o *Orchestrator) CreateSandbox(
 	var node *Node
 	var excludedNodes []string
 	for {
-		node, err = o.getLeastBusyNode(childCtx, t, excludedNodes...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get least busy node: %w", err)
-		}
-
+		node = o.getLeastBusyNode(childCtx, excludedNodes...)
 		telemetry.ReportEvent(childCtx, "Trying to place sandbox on node")
 
+		if node == nil {
+			return nil, fmt.Errorf("failed to find a node to place sandbox on")
+		}
+
 		_, err = node.Client.Sandbox.Create(ctx, sbxRequest)
+		if err == nil {
+			break
+		}
 
 		err = utils.UnwrapGRPCError(err)
 		if err != nil {
@@ -96,8 +98,6 @@ func (o *Orchestrator) CreateSandbox(
 				return nil, fmt.Errorf("failed to create sandbox on node '%s': %w", node.ID, err)
 			}
 		}
-
-		break
 	}
 
 	telemetry.SetAttributes(childCtx, attribute.String("node.id", node.ID))
@@ -142,11 +142,10 @@ func (o *Orchestrator) CreateSandbox(
 	return &sbx, nil
 }
 
-func (o *Orchestrator) getLeastBusyNode(ctx context.Context, tracer trace.Tracer, excludedNodes ...string) (*Node, error) {
-	childCtx, childSpan := tracer.Start(ctx, "get-least-busy-node")
+func (o *Orchestrator) getLeastBusyNode(ctx context.Context, excludedNodes ...string) (leastBusyNode *Node) {
+	childCtx, childSpan := o.tracer.Start(ctx, "get-least-busy-node")
 	defer childSpan.End()
 
-	var leastBusyNode *Node
 	for _, node := range o.nodes {
 		if leastBusyNode == nil || node.CPUUsage < leastBusyNode.CPUUsage {
 			for _, excludedNode := range excludedNodes {
@@ -159,5 +158,5 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, tracer trace.Tracer
 	}
 
 	telemetry.ReportEvent(childCtx, "Found least busy node")
-	return leastBusyNode, nil
+	return leastBusyNode
 }

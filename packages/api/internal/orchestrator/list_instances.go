@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/google/uuid"
 )
 
 func (o *Orchestrator) getInstances(ctx context.Context, nodeID string) ([]*instance.InstanceInfo, error) {

@@ -2,8 +2,10 @@ package orchestrator
 
 import (
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+
 	nomadapi "github.com/hashicorp/nomad/api"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 type Node struct {

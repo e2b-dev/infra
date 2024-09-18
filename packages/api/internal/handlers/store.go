@@ -3,11 +3,19 @@ package handlers
 import (
 	"context"
 	"fmt"
-	nomadapi "github.com/hashicorp/nomad/api"
 	"net/http"
 	"os"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	loki "github.com/grafana/loki/pkg/logcli/client"
+	nomadapi "github.com/hashicorp/nomad/api"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/api/internal/analytics"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
@@ -18,19 +26,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	loki "github.com/grafana/loki/pkg/logcli/client"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 )
 
 type APIStore struct {
 	Ctx             context.Context
-	analytics       *analyticscollector.Analytics
-	posthog         *analyticscollector.PosthogClient
+	analytics       *analytics.Analytics
+	posthog         *analytics.PosthogClient
 	Tracer          trace.Tracer
 	instanceCache   *instance.InstanceCache
 	orchestrator    *orchestrator.Orchestrator
@@ -67,7 +68,7 @@ func NewAPIStore() *APIStore {
 
 	logger.Info("Initialized Supabase client")
 
-	posthogClient, posthogErr := analyticscollector.NewPosthogClient(logger)
+	posthogClient, posthogErr := analytics.NewPosthogClient(logger)
 	if posthogErr != nil {
 		logger.Errorf("Error initializing Posthog client\n: %v", posthogErr)
 		panic(posthogErr)

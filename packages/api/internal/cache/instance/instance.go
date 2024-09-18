@@ -5,12 +5,13 @@ import (
 	"sync"
 	"time"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics"
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/api/internal/analytics"
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
 const (
@@ -38,15 +39,18 @@ type InstanceCache struct {
 	logger *zap.SugaredLogger
 
 	counter   metric.Int64UpDownCounter
-	analytics analyticscollector.AnalyticsCollectorClient
+	analytics analytics.AnalyticsCollectorClient
 
 	mu sync.Mutex
 }
 
-func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap.SugaredLogger,
+func NewCache(
+	analytics analytics.AnalyticsCollectorClient,
+	logger *zap.SugaredLogger,
 	insertInstance func(data InstanceInfo) error,
 	deleteInstance func(data InstanceInfo) error,
-	counter metric.Int64UpDownCounter) *InstanceCache {
+	counter metric.Int64UpDownCounter,
+) *InstanceCache {
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
 	cache := ttlcache.New(

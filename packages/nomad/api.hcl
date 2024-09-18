@@ -58,7 +58,7 @@ variable "loki_address" {
   default = ""
 }
 
-variable "orchestrator_address" {
+variable "orchestrator_port" {
   type    = string
   default = ""
 }
@@ -104,7 +104,7 @@ job "orchestration-api" {
       }
 
       env {
-        ORCHESTRATOR_ADDRESS          = var.orchestrator_address
+        ORCHESTRATOR_PORT             = var.orchestrator_port
         TEMPLATE_MANAGER_ADDRESS      = var.template_manager_address
         POSTGRES_CONNECTION_STRING    = var.postgres_connection_string
         ENVIRONMENT                   = var.environment

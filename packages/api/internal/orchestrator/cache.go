@@ -3,18 +3,20 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"time"
+
 	"github.com/posthog/posthog-go"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"time"
+
+	"github.com/e2b-dev/infra/packages/api/internal/analytics"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// KeepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) KeepInSync(ctx context.Context, instanceCache *instance.InstanceCache) {
+// keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
+func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache) {
 	for {
 		childCtx, childSpan := o.tracer.Start(ctx, "keep-in-sync")
 		nodes, err := o.listNomadNodes()
@@ -58,11 +60,11 @@ func (o *Orchestrator) KeepInSync(ctx context.Context, instanceCache *instance.I
 	}
 }
 
-func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogClient *analyticscollector.PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
+func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogClient *analytics.PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
 		duration := time.Since(info.StartTime).Seconds()
 
-		_, err := o.analytics.Client.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
+		_, err := o.analytics.Client.InstanceStopped(ctx, &analytics.InstanceStoppedEvent{
 			TeamId:        info.TeamID.String(),
 			EnvironmentId: info.Instance.TemplateID,
 			InstanceId:    info.Instance.SandboxID,
@@ -109,7 +111,7 @@ func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *za
 		node.CPUUsage += info.VCpu
 		node.RamUsage += info.RamMB
 
-		_, err = o.analytics.Client.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
+		_, err = o.analytics.Client.InstanceStarted(ctx, &analytics.InstanceStartedEvent{
 			InstanceId:    info.Instance.SandboxID,
 			EnvironmentId: info.Instance.TemplateID,
 			BuildId:       info.BuildID.String(),
