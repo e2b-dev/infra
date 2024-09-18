@@ -171,7 +171,7 @@ func (u *Uffd) handle(memfile *blockStorage.BlockStorage) (err error) {
 
 	u.PollReady <- struct{}{}
 
-	err = Serve(int(uffd), setup.Mappings, memfile, u.exitReader.Fd())
+	err = Serve(int(uffd), setup.Mappings, memfile, u.exitReader.Fd(), u.Stop)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}

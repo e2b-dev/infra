@@ -6,8 +6,8 @@ import (
 	"log"
 	"net"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/mock"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/test"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -30,7 +30,7 @@ func main() {
 
 	// If we're running a test, we don't need to start the server
 	if *envID != "" && *instanceID != "" {
-		test.Run(*envID, *buildID, *instanceID, keepAlive, count)
+		mock.Run(*envID, *buildID, *instanceID, keepAlive, count)
 
 		return
 	}

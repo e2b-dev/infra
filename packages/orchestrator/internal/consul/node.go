@@ -1,4 +1,4 @@
-package constants
+package consul
 
 import "os"
 

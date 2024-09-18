@@ -6,9 +6,13 @@ import (
 	"time"
 )
 
+const (
+	waitForSocketInterval = 10 * time.Millisecond
+)
+
 // waitForSocket waits for the given file to exist.
 func waitForSocket(ctx context.Context, socketPath string) error {
-	ticker := time.NewTicker(10 * time.Millisecond)
+	ticker := time.NewTicker(waitForSocketInterval)
 	defer ticker.Stop()
 
 	for {
@@ -20,7 +24,6 @@ func waitForSocket(ctx context.Context, socketPath string) error {
 				continue
 			}
 
-			// TODO: Send test HTTP request to make sure socket is available
 			return nil
 		}
 	}

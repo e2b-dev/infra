@@ -9,6 +9,7 @@ import (
 	blockStorage "github.com/e2b-dev/infra/packages/block-storage/pkg"
 
 	"github.com/loopholelabs/userfaultfd-go/pkg/constants"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 )
 
@@ -38,11 +39,13 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 	return nil, fmt.Errorf("address %d not found in any mapping", addr)
 }
 
-func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockStorage, fd uintptr) error {
+func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockStorage, fd uintptr, stop func() error) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: int32(fd), Events: unix.POLLIN},
 	}
+
+	var eg errgroup.Group
 
 	for {
 		if _, err := unix.Poll(
@@ -58,6 +61,11 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 
 		exitFd := pollFds[1]
 		if exitFd.Revents&unix.POLLIN != 0 {
+			errMsg := eg.Wait()
+			if errMsg != nil {
+				return fmt.Errorf("failed to handle uffd: %w", errMsg)
+			}
+
 			return nil
 		}
 
@@ -84,9 +92,11 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
-		go func() error {
+		eg.Go(func() error {
 			msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
 			if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
+				stop()
+
 				return ErrUnexpectedEventType
 			}
 
@@ -97,6 +107,8 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 
 			mapping, err := getMapping(uintptr(addr), mappings)
 			if err != nil {
+				stop()
+
 				return fmt.Errorf("failed to map: %w", err)
 			}
 
@@ -105,10 +117,11 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 
 			b, close, err := src.ReadRaw(int64(offset), int64(pagesize))
 			if err != nil {
-				close()
+				stop()
 
 				return fmt.Errorf("failed to read from source: %w", err)
 			}
+			defer close()
 
 			cpy := constants.NewUffdioCopy(
 				b,
@@ -124,19 +137,17 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 				constants.UFFDIO_COPY,
 				uintptr(unsafe.Pointer(&cpy)),
 			); errno != 0 {
-				close()
-
 				if errno == unix.EEXIST {
 					// Page is already mapped
 					return nil
 				}
 
+				stop()
+
 				return fmt.Errorf("failed uffdio copy %w", errno)
 			}
 
-			close()
-
 			return nil
-		}()
+		})
 	}
 }

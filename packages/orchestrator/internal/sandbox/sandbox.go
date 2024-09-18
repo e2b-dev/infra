@@ -28,15 +28,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const (
-	fcOperationTimeout = 10 * time.Second
+var (
+	logsProxyAddress = os.Getenv("LOGS_PROXY_ADDRESS")
+
+	httpClient = http.Client{}
 )
-
-var logsProxyAddress = os.Getenv("LOGS_PROXY_ADDRESS")
-
-var httpClient = http.Client{
-	Timeout: fcOperationTimeout,
-}
 
 type Sandbox struct {
 	files    *templateStorage.SandboxFiles
@@ -328,8 +324,8 @@ func (s *Sandbox) initRequest(ctx context.Context, port int64, envVars map[strin
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
 
-	if _, err := io.Copy(io.Discard, response.Body); err != nil {
-		return err
+	if _, copyErr := io.Copy(io.Discard, response.Body); copyErr != nil {
+		return copyErr
 	}
 
 	defer response.Body.Close()
@@ -387,28 +383,18 @@ func (s *Sandbox) CleanupAfterFCStop(
 		telemetry.ReportEvent(childCtx, "closed rootfs overlay for sandbox")
 	}
 
-	err = os.RemoveAll(s.files.SandboxCacheDir())
-	if err != nil {
-		errMsg := fmt.Errorf("failed to delete sandbox cache dir: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "deleted sandbox cache dir")
-	}
-
-	err = os.RemoveAll(s.files.SandboxFirecrackerSocketPath())
-	if err != nil {
-		errMsg := fmt.Errorf("failed to delete sandbox firecracker socket: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "deleted sandbox firecracker socket")
-	}
-
-	err = os.RemoveAll(s.files.SandboxUffdSocketPath())
-	if err != nil {
-		errMsg := fmt.Errorf("failed to delete sandbox uffd socket: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "deleted sandbox uffd socket")
+	for _, file := range []string{
+		s.files.SandboxCacheDir(),
+		s.files.SandboxFirecrackerSocketPath(),
+		s.files.SandboxUffdSocketPath(),
+	} {
+		err = os.RemoveAll(file)
+		if err != nil {
+			errMsg := fmt.Errorf("failed to delete %s: %w", file, err)
+			telemetry.ReportCriticalError(childCtx, errMsg)
+		} else {
+			telemetry.ReportEvent(childCtx, fmt.Sprintf("deleted %s", file))
+		}
 	}
 
 	err = s.slot.Release(childCtx, tracer, consul)
