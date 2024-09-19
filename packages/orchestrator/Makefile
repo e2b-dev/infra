@@ -20,8 +20,9 @@ generate:
 .PHONY: build
 build:
 	@cp -r ../shared .shared/
+	@cp -r ../block-storage .block-storage/
 	@docker build --platform linux/amd64 --output=bin .
-	@rm -rf .shared/
+	@rm -rf .shared/ .block-storage/
 
 .PHONY: build-local
 build-local:
