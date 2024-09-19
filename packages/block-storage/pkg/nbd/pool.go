@@ -21,6 +21,10 @@ type NbdDevicePool struct {
 	mu    sync.Mutex
 }
 
+const (
+	nbdDeviceReleaseTimeout = 10 * time.Second
+)
+
 func NewNbdDevicePool() (*NbdDevicePool, error) {
 	maxDevices, err := getMaxNbdDevices()
 	if err != nil {
@@ -118,7 +122,7 @@ func (n *NbdDevicePool) getDevice(ctx context.Context) (string, error) {
 }
 
 // TODO: Prevent possible leaks if the device is not yet freed — we should keep trying to release it in the background after.
-func (n *NbdDevicePool) ReleaseDevice(path string) error {
+func (n *NbdDevicePool) releaseDevice(path string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -130,4 +134,28 @@ func (n *NbdDevicePool) ReleaseDevice(path string) error {
 	n.slots.Clear(uint(slot))
 
 	return nil
+}
+
+func (n *NbdDevicePool) ReleaseDevice(path string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), nbdDeviceReleaseTimeout)
+	defer cancel()
+
+	ticker := time.NewTicker(nbdDeviceAcquireDelay)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			err := n.releaseDevice(path)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to release device: %s, retrying: %s", path, err)
+
+				continue
+			}
+
+			return nil
+		}
+	}
 }
