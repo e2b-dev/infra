@@ -14,7 +14,7 @@ TEMPLATE_BUCKET_NAME=$2
 
 echo "Uploading envs from ${TARGET_DIR_NAME} to GCS"
 
-COMMAND="gcloud storage cp --verbosity error"
+COMMAND="gcloud storage cp --verbosity error -n"
 
 # Initialize counter for uploaded envs
 uploaded_env_count=0
