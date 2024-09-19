@@ -24,6 +24,22 @@ resource "google_secret_manager_secret_version" "consul_gossip_encryption_key" {
   secret_data = random_id.consul_gossip_encryption_key.b64_std
 }
 
+resource "google_secret_manager_secret" "consul_dns_request_token" {
+  secret_id = "${var.prefix}consul-dns-request-token"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "random_uuid" "consul_dns_request_token" {
+}
+
+resource "google_secret_manager_secret_version" "consul_dns_request_token" {
+  secret      = google_secret_manager_secret.consul_dns_request_token.name
+  secret_data = random_uuid.consul_dns_request_token.result
+}
+
 resource "google_project_iam_member" "network_viewer" {
   project = var.gcp_project_id
   member  = "serviceAccount:${var.google_service_account_email}"
@@ -106,6 +122,7 @@ module "client_cluster" {
     RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
+    CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
   })
 
   cluster_name     = "${var.prefix}${var.client_cluster_name}"
