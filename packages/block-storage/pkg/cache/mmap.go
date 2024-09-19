@@ -9,6 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 
 	"github.com/edsrzf/mmap-go"
+	"golang.org/x/sys/unix"
 )
 
 type MmapCache struct {
@@ -33,7 +34,7 @@ func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
 		return nil, fmt.Errorf("error allocating file: %w", err)
 	}
 
-	mm, err := mmap.Map(f, mmap.RDWR, 0)
+	mm, err := mmap.MapRegion(f, int(size), unix.PROT_READ|unix.PROT_WRITE|unix.PROT_EXEC, mmap.RDWR|mmap.EXEC, 0)
 	if err != nil {
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
