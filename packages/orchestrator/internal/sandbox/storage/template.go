@@ -33,11 +33,17 @@ type TemplateData struct {
 }
 
 func (t *TemplateData) Close() error {
-	memfileErr := t.Memfile.Close()
+	var errs []error
 
-	rootfsErr := t.Rootfs.Close()
+	if t.Memfile != nil {
+		errs = append(errs, t.Memfile.Close())
+	}
 
-	return errors.Join(memfileErr, rootfsErr)
+	if t.Rootfs != nil {
+		errs = append(errs, t.Rootfs.Close())
+	}
+
+	return errors.Join(errs...)
 }
 
 func newTemplateData(

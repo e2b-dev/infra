@@ -117,6 +117,7 @@ func (n *NbdDevicePool) getDevice(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("device in use: %s", pidFile)
 }
 
+// TODO: Prevent possible leaks if the device is not yet freed — we should keep trying to release it in the background after.
 func (n *NbdDevicePool) ReleaseDevice(path string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
