@@ -245,12 +245,16 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
 
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
-		clockErr := instance.initRequest(childCtx, consts.DefaultEnvdServerPort, config.EnvVars)
+		envdInitCtx, envdInitSpan := tracer.Start(childCtx, "envd-init")
+
+		clockErr := instance.initRequest(envdInitCtx, consts.DefaultEnvdServerPort, config.EnvVars)
 		if clockErr != nil {
-			telemetry.ReportError(childCtx, fmt.Errorf("failed to sync clock: %w", clockErr))
+			telemetry.ReportCriticalError(envdInitCtx, fmt.Errorf("failed to sync clock: %w", clockErr))
 		} else {
-			telemetry.ReportEvent(childCtx, "clock synced")
+			telemetry.ReportEvent(envdInitCtx, "clock synced")
 		}
+
+		envdInitSpan.End()
 	} else {
 		go func() {
 			ctx := context.Background()
