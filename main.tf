@@ -24,10 +24,6 @@ terraform {
       source  = "hashicorp/nomad"
       version = "2.1.0"
     }
-    consul = {
-      source  = "hashicorp/consul"
-      version = "2.20.0"
-    }
     github = {
       source  = "integrations/github"
       version = "5.42.0"

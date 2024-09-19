@@ -50,11 +50,6 @@ provider "nomad" {
   consul_token = var.consul_acl_token_secret
 }
 
-provider "consul" {
-  address = "https://consul.${var.domain_name}"
-  token   = var.consul_acl_token_secret
-}
-
 resource "nomad_job" "api" {
   jobspec = file("${path.module}/api.hcl")
 
