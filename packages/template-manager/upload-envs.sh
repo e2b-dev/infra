@@ -2,13 +2,15 @@
 
 set -euo pipefail
 
+# -------------------------------------------------------------------------------------------------
 # Upload envs from disk to GCS
-
-# Get first argument as target dir name
+# -------------------------------------------------------------------------------------------------
+# First argument is target dir name
 TARGET_DIR_NAME=$1
 
-# Get second argument as template name
+# Second argument is template bucket name
 TEMPLATE_BUCKET_NAME=$2
+# -------------------------------------------------------------------------------------------------
 
 echo "Uploading envs from ${TARGET_DIR_NAME} to GCS"
 
