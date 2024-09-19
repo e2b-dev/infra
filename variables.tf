@@ -154,13 +154,6 @@ variable "github_repository" {
   default = "infra"
 }
 
-
-variable "fc_envs_disk_size" {
-  type        = number
-  description = "The size of the disk for storing built fc envs"
-  default     = 50
-}
-
 variable "domain_name" {
   type        = string
   description = "The domain name where e2b will run"

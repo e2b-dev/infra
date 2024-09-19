@@ -79,16 +79,6 @@ module "buckets" {
   labels = var.labels
 }
 
-module "fc_envs_disk" {
-  source = "./packages/fc-envs-disk"
-
-  gcp_zone          = var.gcp_zone
-  fc_envs_disk_size = var.fc_envs_disk_size
-
-  labels = var.labels
-  prefix = var.prefix
-}
-
 module "github_tf" {
   source = "./github-tf"
 
@@ -133,7 +123,6 @@ module "cluster" {
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
 
-  fc_envs_disk_name           = module.fc_envs_disk.disk_name
   docker_contexts_bucket_name = module.buckets.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.buckets.cluster_setup_bucket_name
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name

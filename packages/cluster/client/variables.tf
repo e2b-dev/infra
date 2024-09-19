@@ -198,13 +198,3 @@ variable "logs_health_proxy_port" {
     health_path = string
   })
 }
-
-variable "fc_envs_disk_name" {
-  type        = string
-  description = "The name of the disk for storing built fc envs"
-}
-
-variable "fc_envs_disk_device_name" {
-  type        = string
-  description = "The name of the device for storing built fc envs"
-}
