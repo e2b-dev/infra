@@ -73,7 +73,7 @@ variable "nomad_token" {
   default = ""
 }
 
-job "orchestration-api" {
+job "api" {
   datacenters = [var.gcp_zone]
 
   priority = 90
