@@ -60,11 +60,6 @@ mkdir -p $fc_versions_dir
 cp -r /mnt/disks/fc-versions/* $fc_versions_dir
 chmod +x -R /fc-versions
 
-# TODO: Temporary solution to copy the template from the bucket
-# Copy the template
-mkdir /mnt/disks/fc-envs/v1
-cp -r /mnt/disks/fc-kernels/ik169uqclk6yss8fi5cf/ /mnt/disks/fc-envs/v1
-
 # These variables are passed in via Terraform template interpolation
 
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh
