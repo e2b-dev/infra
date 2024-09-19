@@ -181,10 +181,6 @@ EOF
       cat <<EOF
 client {
   enabled = true
-  host_volume "fc-envs" {
-    path = "/mnt/disks/fc-envs"
-    read_only = false
-  }
 }
 
 plugin "raw_exec" {

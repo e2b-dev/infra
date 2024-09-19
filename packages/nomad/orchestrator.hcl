@@ -88,11 +88,11 @@ job "orchestrator" {
       }
 
       env {
-        NODE_ID            = "${node.unique.id}"
-        CONSUL_TOKEN       = var.consul_token
-        OTEL_TRACING_PRINT = var.otel_tracing_print
-        LOGS_PROXY_ADDRESS = var.logs_proxy_address
-        ENVIRONMENT        = var.environment
+        NODE_ID              = "${node.unique.id}"
+        CONSUL_TOKEN         = var.consul_token
+        OTEL_TRACING_PRINT   = var.otel_tracing_print
+        LOGS_PROXY_ADDRESS   = var.logs_proxy_address
+        ENVIRONMENT          = var.environment
         TEMPLATE_BUCKET_NAME = var.template_bucket_name
       }
 

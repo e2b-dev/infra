@@ -16,21 +16,6 @@ export GOMAXPROCS='nproc'
 # Load the nbd module with 4096 devices
 sudo modprobe nbd nbds_max=4096
 
-# --- Mount the persistent disk with Firecracker environments.
-# See https://cloud.google.com/compute/docs/disks/add-persistent-disk#create_disk
-
-mount_path="/mnt/disks/${DISK_DEVICE_NAME}"
-
-mkdir -p "$mount_path"
-
-# Format the disk if it is not already formatted.
-if [[ $(lsblk -no FSTYPE "/dev/disk/by-id/google-${DISK_DEVICE_NAME}") != "xfs" ]]; then
-    mkfs.xfs "/dev/disk/by-id/google-${DISK_DEVICE_NAME}"
-fi
-
-mount "/dev/disk/by-id/google-${DISK_DEVICE_NAME}" "$mount_path"
-chmod a+w "$mount_path"
-
 # Mount env buckets
 mkdir -p /mnt/disks/envs-pipeline
 gcsfuse -o=allow_other --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" /mnt/disks/envs-pipeline
@@ -164,8 +149,7 @@ echo "- Allocating $overcommitment_hugepages huge pages ($overcommitment_hugepag
 echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
 
 # These variables are passed in via Terraform template interpolation
-/opt/consul/bin/run-consul.sh \
-  --client \
+/opt/consul/bin/run-consul.sh --client \
   --consul-token "${CONSUL_TOKEN}" \
   --cluster-tag-name "${CLUSTER_TAG_NAME}" \
   --enable-gossip-encryption \

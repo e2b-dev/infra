@@ -114,7 +114,6 @@ module "client_cluster" {
     FC_VERSIONS_BUCKET_NAME      = var.fc_versions_bucket_name
     FC_ENV_PIPELINE_BUCKET_NAME  = var.fc_env_pipeline_bucket_name
     DOCKER_CONTEXTS_BUCKET_NAME  = var.docker_contexts_bucket_name
-    DISK_DEVICE_NAME             = var.fc_envs_disk_device_name
     GCP_REGION                   = var.gcp_region
     GOOGLE_SERVICE_ACCOUNT_KEY   = var.google_service_account_key
     NOMAD_TOKEN                  = var.nomad_acl_token_secret

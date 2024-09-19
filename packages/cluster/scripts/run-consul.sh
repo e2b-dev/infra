@@ -404,7 +404,7 @@ function setup_dns_resolving {
     sleep 1
   done
 
-  if (($(consul acl policy read -name="dns-request-policy" -token="${consul_token}" | jq '.ID' | wc -l) > 0)); then
+  if (($(consul acl policy read -name="dns-request-policy" -token="${consul_token}" -format=json | jq '.ID' | wc -l) > 0)); then
     log_info "DNS Request Policy already exists"
     return
   else
