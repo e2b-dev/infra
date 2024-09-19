@@ -1,9 +1,9 @@
 {
   "recommendations": [
-    "GitHub.vscode-pull-request-github",
     "golang.go",
     "hashicorp.hcl",
     "42Crunch.vscode-openapi",
+    "hashicorp.terraform",
     "foxundermoon.shell-format",
     "ms-vscode.makefile-tools",
     "hashicorp.terraform",

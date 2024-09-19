@@ -50,6 +50,11 @@ variable "bucket_name" {
   default = ""
 }
 
+variable "template_bucket_name" {
+  type    = string
+  default = ""
+}
+
 job "template-manager" {
   type = "system"
   datacenters = [var.gcp_zone]
@@ -93,6 +98,7 @@ job "template-manager" {
         API_SECRET                    = var.api_secret
         OTEL_TRACING_PRINT            = var.otel_tracing_print
         ENVIRONMENT                   = var.environment
+        TEMPLATE_BUCKET_NAME          = var.template_bucket_name
       }
 
       config {

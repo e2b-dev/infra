@@ -16,12 +16,13 @@ func New(ctx context.Context) (*consul.Client, error) {
 	config := consul.DefaultConfig()
 	config.Token = consulToken
 
-	consulClient, err := consul.NewClient(config)
+	client, err := consul.NewClient(config)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to initialize Consul client: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
 
 		return nil, errMsg
 	}
-	return consulClient, nil
+
+	return client, nil
 }

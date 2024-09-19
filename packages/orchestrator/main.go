@@ -6,9 +6,8 @@ import (
 	"log"
 	"net"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/mock"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/test"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -20,6 +19,7 @@ const (
 
 func main() {
 	envID := flag.String("env", "", "env id")
+	buildID := flag.String("build", "", "build id")
 	instanceID := flag.String("instance", "", "instance id")
 	keepAlive := flag.Int("alive", 0, "keep alive")
 	count := flag.Int("count", 1, "number of spawned instances")
@@ -30,12 +30,13 @@ func main() {
 
 	// If we're running a test, we don't need to start the server
 	if *envID != "" && *instanceID != "" {
-		test.Run(*envID, *instanceID, keepAlive, count)
+		mock.Run(*envID, *buildID, *instanceID, keepAlive, count)
+
 		return
 	}
 
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(constants.ServiceName, "no")
+		shutdown := telemetry.InitOTLPExporter(server.ServiceName, "no")
 		defer shutdown()
 	}
 

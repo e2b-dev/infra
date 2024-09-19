@@ -40,4 +40,4 @@ build-and-upload: build upload
 
 .PHONY: test
 test:
-	sudo NODE_ID="test-client-22" CONSUL_TOKEN=$(CONSUL_TOKEN) go run -race -gcflags=all="-N -l" main.go -env zli4m3wxr03ma3i99w8h -instance test-instance-1 -alive 1 -count 1
+	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) NODE_ID="test-client-22" CONSUL_TOKEN=$(CONSUL_TOKEN) go run -race -gcflags=all="-N -l" main.go -env zli4m3wxr03ma3i99w8h -instance testinstance -build "212c1098-9bb5-442d-9460-387e3da47688" -alive 7 -count 2

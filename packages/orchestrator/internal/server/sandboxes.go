@@ -11,7 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -25,7 +25,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		attribute.String("env.id", req.Sandbox.TemplateID),
 		attribute.String("env.kernel.version", req.Sandbox.KernelVersion),
 		attribute.String("instance.id", req.Sandbox.SandboxID),
-		attribute.String("client.id", constants.ClientID),
+		attribute.String("client.id", consul.ClientID),
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
@@ -35,6 +35,8 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.consul,
 		s.dns,
 		s.networkPool,
+		s.templateCache,
+		s.nbdPool,
 		req.Sandbox,
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
@@ -67,7 +69,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
-		ClientID: constants.ClientID,
+		ClientID: consul.ClientID,
 	}, nil
 }
 
@@ -107,7 +109,7 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
 			Config:    sbx.Sandbox,
-			ClientID:  constants.ClientID,
+			ClientID:  consul.ClientID,
 			StartTime: timestamppb.New(sbx.StartedAt),
 			EndTime:   timestamppb.New(sbx.EndAt),
 		})
@@ -123,7 +125,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 	defer childSpan.End()
 	childSpan.SetAttributes(
 		attribute.String("instance.id", in.SandboxID),
-		attribute.String("client.id", constants.ClientID),
+		attribute.String("client.id", consul.ClientID),
 	)
 
 	sbx, ok := s.sandboxes.Get(in.SandboxID)

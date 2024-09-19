@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log"
 
+	"cloud.google.com/go/storage"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	consulapi "github.com/hashicorp/consul/api"
@@ -16,26 +18,31 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	snapshotStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const (
+	ServiceName    = "orchestrator"
 	ipSlotPoolSize = 32
 )
 
 type server struct {
 	orchestrator.UnimplementedSandboxServer
-	sandboxes   *smap.Map[*sandbox.Sandbox]
-	dns         *dns.DNS
-	tracer      trace.Tracer
-	consul      *consulapi.Client
-	networkPool chan sandbox.IPSlot
+	sandboxes     *smap.Map[*sandbox.Sandbox]
+	dns           *dns.DNS
+	tracer        trace.Tracer
+	consul        *consulapi.Client
+	networkPool   chan sandbox.IPSlot
+	nbdPool       *nbd.NbdDevicePool
+	templateCache *snapshotStorage.TemplateDataCache
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -56,11 +63,25 @@ func New(logger *zap.Logger) *grpc.Server {
 	dns := dns.New()
 	go dns.Start("127.0.0.1:53")
 
-	tracer := otel.Tracer(constants.ServiceName)
+	tracer := otel.Tracer(ServiceName)
 
 	consulClient, err := consul.New(ctx)
 	if err != nil {
 		panic(err)
+	}
+
+	client, err := storage.NewClient(ctx, storage.WithJSONReads())
+	if err != nil {
+		errMsg := fmt.Errorf("failed to create GCS client: %v", err)
+		panic(errMsg)
+	}
+
+	templateCache := snapshotStorage.NewTemplateDataCache(ctx, client, templateStorage.BucketName)
+
+	nbdPool, err := nbd.NewNbdDevicePool()
+	if err != nil {
+		errMsg := fmt.Errorf("failed to create NBD pool: %v", err)
+		panic(errMsg)
 	}
 
 	// Sandboxes waiting for the network slot can be passed and reschedulede
@@ -95,11 +116,13 @@ func New(logger *zap.Logger) *grpc.Server {
 	}()
 
 	orchestrator.RegisterSandboxServer(s, &server{
-		tracer:      tracer,
-		consul:      consulClient,
-		dns:         dns,
-		sandboxes:   smap.New[*sandbox.Sandbox](),
-		networkPool: networkPool,
+		tracer:        tracer,
+		consul:        consulClient,
+		dns:           dns,
+		sandboxes:     smap.New[*sandbox.Sandbox](),
+		networkPool:   networkPool,
+		nbdPool:       nbdPool,
+		templateCache: templateCache,
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

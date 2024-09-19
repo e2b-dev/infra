@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
+	client "github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -164,7 +164,7 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 		// This is a fallback for the case when all slots are taken.
 		// There is no Consul lock so it's possible that multiple instances will try to acquire the same slot.
 		// In this case, only one of them will succeed and other will try with different slots.
-		reservedKeys, _, keysErr := kv.Keys(constants.ClientID+"/", "", nil)
+		reservedKeys, _, keysErr := kv.Keys(client.ClientID+"/", "", nil)
 		if keysErr != nil {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
@@ -201,7 +201,7 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 	telemetry.SetAttributes(
 		childCtx,
 		attribute.String("instance.slot.kv.key", slot.KVKey),
-		attribute.String("instance.slot.node.short_id", constants.ClientID),
+		attribute.String("instance.slot.node.short_id", client.ClientID),
 	)
 
 	return slot, nil
@@ -211,7 +211,7 @@ func (ips *IPSlot) Release(ctx context.Context, tracer trace.Tracer, consulClien
 	childCtx, childSpan := tracer.Start(ctx, "release-ip-slot",
 		trace.WithAttributes(
 			attribute.String("instance.slot.kv.key", ips.KVKey),
-			attribute.String("instance.slot.node.short_id", constants.ClientID),
+			attribute.String("instance.slot.node.short_id", client.ClientID),
 		),
 	)
 	defer childSpan.End()
@@ -258,5 +258,5 @@ func (ips *IPSlot) Release(ctx context.Context, tracer trace.Tracer, consulClien
 }
 
 func getKVKey(slotIdx int) string {
-	return fmt.Sprintf("%s/%d", constants.ClientID, slotIdx)
+	return fmt.Sprintf("%s/%d", client.ClientID, slotIdx)
 }

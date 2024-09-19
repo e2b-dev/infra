@@ -8,6 +8,8 @@
     ".terraform/**": true,
     ".vscode/**": true,
     ".git/**": true,
+    "packages/orchestrator/.shared/**": true,
+    "packages/orchestrator/.block-storage/**": true,
   },
   "files.watcherExclude": {
     "**/.git": true,
@@ -25,6 +27,9 @@
   "editor.formatOnSave": true,
   "[terraform]": {
     "editor.tabSize": 2
+  },
+  "go.delveConfig": {
+    "debuggerMode": "native",
   },
   "[go]": {
     "editor.formatOnSave": true,
@@ -55,6 +60,7 @@
   "go.autocompleteUnimportedPackages": true,
   "go.toolsManagement.autoUpdate": true,
   "go.testOnSave": false,
+  "go.testTimeout": "20s",
   "go.inlayHints.assignVariableTypes": true,
   "go.inlayHints.compositeLiteralFields": true,
   "go.inlayHints.compositeLiteralTypes": true,

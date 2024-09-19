@@ -13,6 +13,9 @@ exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&
 ulimit -n 65536
 export GOMAXPROCS='nproc'
 
+# Load the nbd module with 4096 devices
+sudo modprobe nbd nbds_max=4096
+
 # --- Mount the persistent disk with Firecracker environments.
 # See https://cloud.google.com/compute/docs/disks/add-persistent-disk#create_disk
 

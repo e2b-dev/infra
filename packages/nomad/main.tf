@@ -211,6 +211,7 @@ resource "nomad_job" "orchestrator" {
       orchestrator_checksum = data.external.orchestrator_checksum.result.hex
       logs_proxy_address    = var.logs_proxy_address
       otel_tracing_print    = var.otel_tracing_print
+      template_bucket_name  = var.template_bucket_name
     }
   }
 }
@@ -246,6 +247,7 @@ resource "nomad_job" "template_manager" {
       google_service_account_key = var.google_service_account_key
       template_manager_checksum  = data.external.template_manager.result.hex
       otel_tracing_print         = var.otel_tracing_print
+      template_bucket_name       = var.template_bucket_name
     }
   }
 }
