@@ -52,6 +52,11 @@ variable "template_bucket_name" {
   default = ""
 }
 
+variable "otel_collector_grpc_endpoint" {
+  type    = string
+  default = ""
+}
+
 job "orchestrator" {
   type = "system"
   datacenters = [var.gcp_zone]
@@ -94,6 +99,7 @@ job "orchestrator" {
         LOGS_PROXY_ADDRESS   = var.logs_proxy_address
         ENVIRONMENT          = var.environment
         TEMPLATE_BUCKET_NAME = var.template_bucket_name
+        OTEL_COLLECTOR_GRPC_ENDPOINT = var.otel_collector_grpc_endpoint
       }
 
       config {

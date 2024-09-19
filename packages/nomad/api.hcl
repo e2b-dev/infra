@@ -73,6 +73,11 @@ variable "nomad_token" {
   default = ""
 }
 
+variable "otel_collector_grpc_endpoint" {
+  type    = string
+  default = ""
+}
+
 job "api" {
   datacenters = [var.gcp_zone]
 
@@ -120,6 +125,7 @@ job "api" {
         OTEL_TRACING_PRINT            = var.otel_tracing_print
         LOGS_COLLECTOR_ADDRESS        = var.logs_collector_address
         NOMAD_TOKEN                   = var.nomad_token
+        OTEL_COLLECTOR_GRPC_ENDPOINT  = var.otel_collector_grpc_endpoint
       }
 
       config {
