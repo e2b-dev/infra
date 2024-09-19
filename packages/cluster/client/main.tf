@@ -120,13 +120,6 @@ resource "google_compute_instance_template" "client" {
     disk_type    = var.root_volume_disk_type
   }
 
-  disk {
-    boot        = false
-    device_name = var.fc_envs_disk_device_name
-    mode        = "READ_WRITE"
-    disk_type   = "pd-ssd"
-  }
-
   network_interface {
     network = var.network_name
 
