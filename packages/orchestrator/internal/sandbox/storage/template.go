@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	templateDataExpiration = time.Hour * 25
+	templateDataExpiration = time.Hour * 72
 	pageSize               = 2 << 11
 	hugepageSize           = 2 << 20
 	rootfsBlockSize        = 4096
