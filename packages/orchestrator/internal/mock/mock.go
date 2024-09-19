@@ -14,9 +14,7 @@ import (
 )
 
 func Run(envID, buildID, instanceID string, keepAlive, count *int) {
-	ctx := context.Background()
-
-	ctx, cancel := context.WithTimeout(ctx, time.Second*60)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(*keepAlive)+time.Second*60)
 	defer cancel()
 
 	// Start of mock build for testing
