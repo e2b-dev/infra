@@ -22,7 +22,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "list running instances")
 
-	instanceInfo := a.instanceCache.GetInstances(&team.ID)
+	instanceInfo := a.orchestrator.GetInstances(ctx, &team.ID)
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)

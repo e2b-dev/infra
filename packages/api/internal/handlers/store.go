@@ -19,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -30,10 +29,8 @@ import (
 
 type APIStore struct {
 	Ctx             context.Context
-	analytics       *analytics.Analytics
 	posthog         *analytics.PosthogClient
 	Tracer          trace.Tracer
-	instanceCache   *instance.InstanceCache
 	orchestrator    *orchestrator.Orchestrator
 	templateManager *template_manager.TemplateManager
 	buildCache      *builds.BuildCache
@@ -162,12 +159,7 @@ func NewAPIStore() *APIStore {
 func (a *APIStore) Close() {
 	a.db.Close()
 
-	err := a.analytics.Close()
-	if err != nil {
-		a.logger.Errorf("Error closing Analytics\n: %v", err)
-	}
-
-	err = a.posthog.Close()
+	err := a.posthog.Close()
 	if err != nil {
 		a.logger.Errorf("Error closing Posthog client\n: %v", err)
 	}

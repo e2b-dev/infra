@@ -36,6 +36,7 @@ func (o *Orchestrator) CreateSandbox(
 	envdVersion string,
 	startTime time.Time,
 	endTime time.Time,
+	maxInstancesPerTeam int64,
 ) (*api.Sandbox, error) {
 	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox",
 		trace.WithAttributes(
@@ -43,6 +44,19 @@ func (o *Orchestrator) CreateSandbox(
 		),
 	)
 	defer childSpan.End()
+
+	// Check if team has reached max instances
+	err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, teamID, maxInstancesPerTeam)
+	if err != nil {
+		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", teamID, maxInstancesPerTeam)
+		telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
+
+		return nil, fmt.Errorf(
+			"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
+				"please contact us at 'https://e2b.dev/docs/getting-help'", maxInstancesPerTeam)
+	}
+
+	defer releaseTeamSandboxReservation()
 
 	features, err := sandbox.NewVersionInfo(firecrackerVersion)
 	if err != nil {
@@ -126,7 +140,7 @@ func (o *Orchestrator) CreateSandbox(
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 
-		delErr := o.DeleteInstance(childCtx, sbx.SandboxID, node.ID)
+		delErr := o.DeleteInstance(childCtx, sbx.SandboxID)
 		if delErr != nil {
 			delErrMsg := fmt.Errorf("couldn't delete instance that couldn't be added to cache: %w", delErr)
 			telemetry.ReportError(ctx, delErrMsg)

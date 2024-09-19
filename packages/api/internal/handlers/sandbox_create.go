@@ -112,24 +112,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	defer postSandboxParallelLimit.Release(1)
 	telemetry.ReportEvent(ctx, "create sandbox parallel limit semaphore slot acquired")
 
-	// Check if team has reached max instances
-	maxInstancesPerTeam := teamInfo.Tier.ConcurrentInstances
-	err, releaseTeamSandboxReservation := a.instanceCache.Reserve(sandboxID, team.ID, maxInstancesPerTeam)
-	if err != nil {
-		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, teamInfo.Tier.ConcurrentInstances)
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
-
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf(
-			"You have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-				"please contact us at 'https://e2b.dev/docs/getting-help'", maxInstancesPerTeam))
-
-		return
-	}
-
 	rateSpan.End()
 	telemetry.ReportEvent(ctx, "Reserved team sandbox slot")
-
-	defer releaseTeamSandboxReservation()
 
 	var metadata map[string]string
 	if body.Metadata != nil {
@@ -148,7 +132,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 	endTime := startTime.Add(timeout)
 
-	sandbox, instanceErr := a.orchestrator.CreateSandbox(ctx, sandboxID, env.TemplateID, alias, team.ID, build, teamInfo.Tier.MaxLengthHours, metadata, envVars, build.KernelVersion, build.FirecrackerVersion, *build.EnvdVersion, startTime, endTime)
+	sandbox, instanceErr := a.orchestrator.CreateSandbox(ctx, sandboxID, env.TemplateID, alias, team.ID, build, teamInfo.Tier.MaxLengthHours, metadata, envVars, build.KernelVersion, build.FirecrackerVersion, *build.EnvdVersion, startTime, endTime, teamInfo.Tier.ConcurrentInstances)
 	if instanceErr != nil {
 		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
 		telemetry.ReportCriticalError(ctx, errMsg)

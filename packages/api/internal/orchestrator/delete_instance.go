@@ -8,10 +8,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (o *Orchestrator) DeleteInstance(ctx context.Context, sandboxID string, nodeID string) error {
+func (o *Orchestrator) DeleteInstance(ctx context.Context, sandboxID string) error {
 	childCtx, childSpan := o.tracer.Start(ctx, "delete-instance")
 	defer childSpan.End()
 
+	instance, err := o.instanceCache.GetInstance(sandboxID)
+	if err != nil {
+		return fmt.Errorf("failed to get instance '%s': %w", sandboxID, err)
+	}
+
+	nodeID := instance.Instance.ClientID
 	client, err := o.GetClient(nodeID)
 	if err != nil {
 		return fmt.Errorf("failed to get client '%s': %w", nodeID, err)

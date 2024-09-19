@@ -27,7 +27,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		attribute.String("team.id", teamID.String()),
 	)
 
-	item, err := a.instanceCache.Get(sandboxID)
+	err := a.orchestrator.DeleteInstance(ctx, sandboxID)
 	if err != nil {
 		errMsg := fmt.Errorf("error when getting sandbox: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -36,17 +36,6 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 		return
 	}
-
-	if item.Value().TeamID != teamID {
-		errMsg := fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String())
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		a.sendAPIStoreError(c, http.StatusUnauthorized, fmt.Sprintf("Error killing sandbox - sandbox '%s' does not belong to your team '%s'", sandboxID, teamID.String()))
-
-		return
-	}
-
-	a.instanceCache.Kill(sandboxID)
 
 	c.Status(http.StatusNoContent)
 }

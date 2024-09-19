@@ -71,3 +71,11 @@ func (o *Orchestrator) getInstances(ctx context.Context, nodeID string) ([]*inst
 
 	return sandboxesInfo, nil
 }
+
+// GetInstances returns all instances for a given node.
+func (o *Orchestrator) GetInstances(ctx context.Context, teamID *uuid.UUID) []instance.InstanceInfo {
+	_, childSpan := o.tracer.Start(ctx, "get-instances")
+	defer childSpan.End()
+
+	return o.instanceCache.GetInstances(teamID)
+}
