@@ -11,16 +11,12 @@ import (
 )
 
 func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
-	runningTime := now.Sub(startTime)
-	timeLeft := maxInstanceLength - runningTime
-
+	timeLeft := maxInstanceLength - now.Sub(startTime)
 	if timeLeft <= 0 {
 		return 0
-	} else if duration < timeLeft {
-		return duration
-	} else {
-		return timeLeft
 	}
+
+	return min(timeLeft, duration)
 }
 
 // KeepAliveFor the instance's expiration timer.
