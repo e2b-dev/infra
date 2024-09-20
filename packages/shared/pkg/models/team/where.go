@@ -62,11 +62,6 @@ func CreatedAt(v time.Time) predicate.Team {
 	return predicate.Team(sql.FieldEQ(FieldCreatedAt, v))
 }
 
-// IsDefault applies equality check predicate on the "is_default" field. It's identical to IsDefaultEQ.
-func IsDefault(v bool) predicate.Team {
-	return predicate.Team(sql.FieldEQ(FieldIsDefault, v))
-}
-
 // IsBanned applies equality check predicate on the "is_banned" field. It's identical to IsBannedEQ.
 func IsBanned(v bool) predicate.Team {
 	return predicate.Team(sql.FieldEQ(FieldIsBanned, v))
@@ -135,16 +130,6 @@ func CreatedAtLT(v time.Time) predicate.Team {
 // CreatedAtLTE applies the LTE predicate on the "created_at" field.
 func CreatedAtLTE(v time.Time) predicate.Team {
 	return predicate.Team(sql.FieldLTE(FieldCreatedAt, v))
-}
-
-// IsDefaultEQ applies the EQ predicate on the "is_default" field.
-func IsDefaultEQ(v bool) predicate.Team {
-	return predicate.Team(sql.FieldEQ(FieldIsDefault, v))
-}
-
-// IsDefaultNEQ applies the NEQ predicate on the "is_default" field.
-func IsDefaultNEQ(v bool) predicate.Team {
-	return predicate.Team(sql.FieldNEQ(FieldIsDefault, v))
 }
 
 // IsBannedEQ applies the EQ predicate on the "is_banned" field.

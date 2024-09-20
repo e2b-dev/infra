@@ -68,7 +68,7 @@ func init() {
 	// team.DefaultCreatedAt holds the default value on creation for the created_at field.
 	team.DefaultCreatedAt = teamDescCreatedAt.Default.(func() time.Time)
 	// teamDescEmail is the schema descriptor for email field.
-	teamDescEmail := teamFields[8].Descriptor()
+	teamDescEmail := teamFields[7].Descriptor()
 	// team.EmailValidator is a validator for the "email" field. It is called by the builders before save.
 	team.EmailValidator = teamDescEmail.Validators[0].(func(string) error)
 	teamapikeyFields := schema.TeamAPIKey{}.Fields()

@@ -3241,7 +3241,6 @@ type TeamMutation struct {
 	typ                  string
 	id                   *uuid.UUID
 	created_at           *time.Time
-	is_default           *bool
 	is_banned            *bool
 	is_blocked           *bool
 	blocked_reason       *string
@@ -3405,42 +3404,6 @@ func (m *TeamMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error
 // ResetCreatedAt resets all changes to the "created_at" field.
 func (m *TeamMutation) ResetCreatedAt() {
 	m.created_at = nil
-}
-
-// SetIsDefault sets the "is_default" field.
-func (m *TeamMutation) SetIsDefault(b bool) {
-	m.is_default = &b
-}
-
-// IsDefault returns the value of the "is_default" field in the mutation.
-func (m *TeamMutation) IsDefault() (r bool, exists bool) {
-	v := m.is_default
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldIsDefault returns the old "is_default" field's value of the Team entity.
-// If the Team object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TeamMutation) OldIsDefault(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldIsDefault is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldIsDefault requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldIsDefault: %w", err)
-	}
-	return oldValue.IsDefault, nil
-}
-
-// ResetIsDefault resets all changes to the "is_default" field.
-func (m *TeamMutation) ResetIsDefault() {
-	m.is_default = nil
 }
 
 // SetIsBanned sets the "is_banned" field.
@@ -3962,12 +3925,9 @@ func (m *TeamMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TeamMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 7)
 	if m.created_at != nil {
 		fields = append(fields, team.FieldCreatedAt)
-	}
-	if m.is_default != nil {
-		fields = append(fields, team.FieldIsDefault)
 	}
 	if m.is_banned != nil {
 		fields = append(fields, team.FieldIsBanned)
@@ -3997,8 +3957,6 @@ func (m *TeamMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case team.FieldCreatedAt:
 		return m.CreatedAt()
-	case team.FieldIsDefault:
-		return m.IsDefault()
 	case team.FieldIsBanned:
 		return m.IsBanned()
 	case team.FieldIsBlocked:
@@ -4022,8 +3980,6 @@ func (m *TeamMutation) OldField(ctx context.Context, name string) (ent.Value, er
 	switch name {
 	case team.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
-	case team.FieldIsDefault:
-		return m.OldIsDefault(ctx)
 	case team.FieldIsBanned:
 		return m.OldIsBanned(ctx)
 	case team.FieldIsBlocked:
@@ -4051,13 +4007,6 @@ func (m *TeamMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
-		return nil
-	case team.FieldIsDefault:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetIsDefault(v)
 		return nil
 	case team.FieldIsBanned:
 		v, ok := value.(bool)
@@ -4161,9 +4110,6 @@ func (m *TeamMutation) ResetField(name string) error {
 	switch name {
 	case team.FieldCreatedAt:
 		m.ResetCreatedAt()
-		return nil
-	case team.FieldIsDefault:
-		m.ResetIsDefault()
 		return nil
 	case team.FieldIsBanned:
 		m.ResetIsBanned()

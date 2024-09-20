@@ -35,20 +35,6 @@ func (tu *TeamUpdate) Where(ps ...predicate.Team) *TeamUpdate {
 	return tu
 }
 
-// SetIsDefault sets the "is_default" field.
-func (tu *TeamUpdate) SetIsDefault(b bool) *TeamUpdate {
-	tu.mutation.SetIsDefault(b)
-	return tu
-}
-
-// SetNillableIsDefault sets the "is_default" field if the given value is not nil.
-func (tu *TeamUpdate) SetNillableIsDefault(b *bool) *TeamUpdate {
-	if b != nil {
-		tu.SetIsDefault(*b)
-	}
-	return tu
-}
-
 // SetIsBanned sets the "is_banned" field.
 func (tu *TeamUpdate) SetIsBanned(b bool) *TeamUpdate {
 	tu.mutation.SetIsBanned(b)
@@ -363,9 +349,6 @@ func (tu *TeamUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			}
 		}
 	}
-	if value, ok := tu.mutation.IsDefault(); ok {
-		_spec.SetField(team.FieldIsDefault, field.TypeBool, value)
-	}
 	if value, ok := tu.mutation.IsBanned(); ok {
 		_spec.SetField(team.FieldIsBanned, field.TypeBool, value)
 	}
@@ -641,20 +624,6 @@ type TeamUpdateOne struct {
 	hooks     []Hook
 	mutation  *TeamMutation
 	modifiers []func(*sql.UpdateBuilder)
-}
-
-// SetIsDefault sets the "is_default" field.
-func (tuo *TeamUpdateOne) SetIsDefault(b bool) *TeamUpdateOne {
-	tuo.mutation.SetIsDefault(b)
-	return tuo
-}
-
-// SetNillableIsDefault sets the "is_default" field if the given value is not nil.
-func (tuo *TeamUpdateOne) SetNillableIsDefault(b *bool) *TeamUpdateOne {
-	if b != nil {
-		tuo.SetIsDefault(*b)
-	}
-	return tuo
 }
 
 // SetIsBanned sets the "is_banned" field.
@@ -1000,9 +969,6 @@ func (tuo *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) 
 				ps[i](selector)
 			}
 		}
-	}
-	if value, ok := tuo.mutation.IsDefault(); ok {
-		_spec.SetField(team.FieldIsDefault, field.TypeBool, value)
 	}
 	if value, ok := tuo.mutation.IsBanned(); ok {
 		_spec.SetField(team.FieldIsBanned, field.TypeBool, value)
