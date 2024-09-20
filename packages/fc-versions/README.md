@@ -5,7 +5,6 @@ Scripts in this directory are used to build Firecracker and several other binari
 It builds the following binaries:
 
 - Firecracker for each specified version
-- UFFD for each specified version
 
 ## How to add a new version
 
