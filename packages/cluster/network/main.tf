@@ -190,13 +190,6 @@ resource "google_compute_url_map" "orch_map" {
 
   host_rule {
     hosts = [
-      "consul.${var.domain_name}",
-    ]
-    path_matcher = "consul-paths"
-  }
-
-  host_rule {
-    hosts = [
       "*.${var.domain_name}",
     ]
     path_matcher = "session-paths"
@@ -231,11 +224,6 @@ resource "google_compute_url_map" "orch_map" {
         }
       }
     }
-  }
-
-  path_matcher {
-    name            = "consul-paths"
-    default_service = google_compute_backend_service.default["consul"].self_link
   }
 }
 

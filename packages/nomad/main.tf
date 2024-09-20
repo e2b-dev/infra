@@ -50,11 +50,6 @@ provider "nomad" {
   consul_token = var.consul_acl_token_secret
 }
 
-provider "consul" {
-  address = "https://consul.${var.domain_name}"
-  token   = var.consul_acl_token_secret
-}
-
 resource "nomad_job" "api" {
   jobspec = file("${path.module}/api.hcl")
 
@@ -62,7 +57,7 @@ resource "nomad_job" "api" {
     vars = {
       orchestrator_port             = var.orchestrator_port
       template_manager_address      = "http://localhost:${var.template_manager_port}"
-      otel_collector_grpc_endpoint = "otel-collector.service.consul:4317"
+      otel_collector_grpc_endpoint  = "otel-collector.service.consul:4317"
       loki_address                  = "http://loki.service.consul:${var.loki_service_port.port}"
       logs_collector_address        = "http://logs-collector.service.consul:${var.logs_proxy_port.port}"
       gcp_zone                      = var.gcp_zone
@@ -208,11 +203,11 @@ resource "nomad_job" "orchestrator" {
       cpu_mhz      = floor(data.google_compute_machine_types.client.machine_types[0].guest_cpus * 1.5) * 1000
       memory_mb    = floor(data.google_compute_machine_types.client.machine_types[0].memory_mb * 0.8 / 1024) * 1024
 
-      bucket_name           = var.fc_env_pipeline_bucket_name
-      orchestrator_checksum = data.external.orchestrator_checksum.result.hex
-      logs_proxy_address    = var.logs_proxy_address
-      otel_tracing_print    = var.otel_tracing_print
-      template_bucket_name  = var.template_bucket_name
+      bucket_name                  = var.fc_env_pipeline_bucket_name
+      orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
+      logs_proxy_address           = var.logs_proxy_address
+      otel_tracing_print           = var.otel_tracing_print
+      template_bucket_name         = var.template_bucket_name
       otel_collector_grpc_endpoint = "otel-collector.service.consul:4317"
     }
   }
@@ -243,13 +238,13 @@ resource "nomad_job" "template_manager" {
       port        = var.template_manager_port
       environment = var.environment
 
-      api_secret                 = var.api_secret
-      bucket_name                = var.fc_env_pipeline_bucket_name
-      docker_registry            = var.custom_envs_repository_name
-      google_service_account_key = var.google_service_account_key
-      template_manager_checksum  = data.external.template_manager.result.hex
-      otel_tracing_print         = var.otel_tracing_print
-      template_bucket_name       = var.template_bucket_name
+      api_secret                   = var.api_secret
+      bucket_name                  = var.fc_env_pipeline_bucket_name
+      docker_registry              = var.custom_envs_repository_name
+      google_service_account_key   = var.google_service_account_key
+      template_manager_checksum    = data.external.template_manager.result.hex
+      otel_tracing_print           = var.otel_tracing_print
+      template_bucket_name         = var.template_bucket_name
       otel_collector_grpc_endpoint = "otel-collector.service.consul:4317"
     }
   }

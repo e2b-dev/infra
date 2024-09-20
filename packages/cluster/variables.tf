@@ -120,11 +120,6 @@ variable "google_service_account_key" {
   type = string
 }
 
-variable "fc_envs_disk_name" {
-  type        = string
-  description = "The name of the disk that will be created to store the envs"
-}
-
 variable "docker_contexts_bucket_name" {
   type = string
 }
@@ -163,11 +158,6 @@ variable "nomad_acl_token_secret" {
 
 variable "nomad_port" {
   type = number
-}
-
-variable "fc_envs_disk_device_name" {
-  type    = string
-  default = "fc-envs"
 }
 
 variable "labels" {
