@@ -10,6 +10,9 @@
     ".git/**": true,
     "packages/orchestrator/.shared/**": true,
     "packages/orchestrator/.block-storage/**": true,
+    "packages/fc-kernels/linux/**": true,
+    "packages/fc-versions/firecracker/**": true,
+    "packages/fc-versions/builds/**": true,
   },
   "files.watcherExclude": {
     "**/.git": true,
@@ -20,6 +23,9 @@
     ".terraform/**": true,
     ".vscode/**": true,
     ".git/**": true,
+    "packages/fc-kernels/linux/**": true,
+    "packages/fc-versions/firecracker/**": true,
+    "packages/fc-versions/builds/**": true,
   },
   "editor.quickSuggestions": {
     "strings": true
