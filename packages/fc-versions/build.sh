@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+rm -rf firecracker
+
 function build_version {
   local version=$1
   echo "Starting build for Firecracker commit: $version"
