@@ -99,8 +99,8 @@ func (c *InstanceCache) Add(instance InstanceInfo) error {
 	}
 
 	ttl := instance.EndTime.Sub(time.Now())
-	if ttl < 0 {
-		ttl = 0
+	if ttl <= 0 {
+		ttl = time.Nanosecond
 		// TODO: It would be probably better to return error here, but in that case we need to make sure that sbxs in orchestrator are killed
 		//return fmt.Errorf("instance \"%s\" has already expired", instance.Instance.SandboxID)
 	}
