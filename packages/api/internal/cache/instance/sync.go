@@ -70,7 +70,7 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo) {
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
 		if !c.Exists(instance.Instance.SandboxID) {
-			err := c.Add(*instance, false)
+			err := c.Add(*instance)
 			if err != nil {
 				fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
 			}

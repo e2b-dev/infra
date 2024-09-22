@@ -172,8 +172,10 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
-	_, cacheSpan := a.Tracer.Start(ctx, "add-instance-to-cache")
-	if cacheErr := a.instanceCache.Add(instance.InstanceInfo{
+	// This is to compensate for the time it takes to start the instance
+	// Otherwise it could cause the instance to expire before user has a chance to use it
+	endTime = time.Now().Add(timeout)
+	instanceInfo := instance.InstanceInfo{
 		StartTime:         startTime,
 		EndTime:           endTime,
 		Instance:          sandbox,
@@ -181,7 +183,10 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		TeamID:            &team.ID,
 		Metadata:          metadata,
 		MaxInstanceLength: time.Duration(teamInfo.Tier.MaxLengthHours) * time.Hour,
-	}, true); cacheErr != nil {
+	}
+
+	_, cacheSpan := a.Tracer.Start(ctx, "add-instance-to-cache")
+	if cacheErr := a.instanceCache.Add(instanceInfo); cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 
