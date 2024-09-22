@@ -10,17 +10,13 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 )
 
-func getMaxAllowedTTL(startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
-	runningTime := time.Since(startTime)
-	timeLeft := maxInstanceLength - runningTime
-
+func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
+	timeLeft := maxInstanceLength - now.Sub(startTime)
 	if timeLeft <= 0 {
 		return 0
-	} else if duration < timeLeft {
-		return duration
-	} else {
-		return timeLeft
 	}
+
+	return min(timeLeft, duration)
 }
 
 // KeepAliveFor the instance's expiration timer.
@@ -30,8 +26,9 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 		return nil, err
 	}
 
+	now := time.Now()
 	instance := item.Value()
-	if !allowShorter && item.ExpiresAt().After(time.Now().Add(duration)) {
+	if !allowShorter && instance.EndTime.After(now.Add(duration)) {
 		return &instance, nil
 	}
 
@@ -40,9 +37,9 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 
 		return nil, fmt.Errorf("instance \"%s\" reached maximal allowed uptime", instanceID)
 	} else {
-		maxAllowedTTL := getMaxAllowedTTL(instance.StartTime, duration, instance.MaxInstanceLength)
+		maxAllowedTTL := getMaxAllowedTTL(now, instance.StartTime, duration, instance.MaxInstanceLength)
 
-		newEndTime := item.ExpiresAt().Add(maxAllowedTTL)
+		newEndTime := now.Add(maxAllowedTTL)
 		instance.EndTime = newEndTime
 
 		item = c.cache.Set(instanceID, instance, maxAllowedTTL)

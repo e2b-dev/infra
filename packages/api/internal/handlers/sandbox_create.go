@@ -145,7 +145,14 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	timeout := instance.InstanceExpiration
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
+
+		if timeout > time.Duration(teamInfo.Tier.MaxLengthHours)*time.Hour {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Tier.MaxLengthHours))
+
+			return
+		}
 	}
+
 	endTime := startTime.Add(timeout)
 
 	sandbox, instanceErr := a.orchestrator.CreateSandbox(a.Tracer, ctx, sandboxID, env.TemplateID, alias, team.ID.String(), build, teamInfo.Tier.MaxLengthHours, metadata, envVars, build.KernelVersion, build.FirecrackerVersion, *build.EnvdVersion, startTime, endTime)
@@ -165,8 +172,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
-	_, cacheSpan := a.Tracer.Start(ctx, "add-instance-to-cache")
-	if cacheErr := a.instanceCache.Add(instance.InstanceInfo{
+	// This is to compensate for the time it takes to start the instance
+	// Otherwise it could cause the instance to expire before user has a chance to use it
+	startTime = time.Now()
+	endTime = startTime.Add(timeout)
+	instanceInfo := instance.InstanceInfo{
 		StartTime:         startTime,
 		EndTime:           endTime,
 		Instance:          sandbox,
@@ -174,7 +184,10 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		TeamID:            &team.ID,
 		Metadata:          metadata,
 		MaxInstanceLength: time.Duration(teamInfo.Tier.MaxLengthHours) * time.Hour,
-	}); cacheErr != nil {
+	}
+
+	_, cacheSpan := a.Tracer.Start(ctx, "add-instance-to-cache")
+	if cacheErr := a.instanceCache.Add(instanceInfo); cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 

@@ -75,6 +75,7 @@ func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap
 			telemetry.ReportCriticalError(ctx, errMsg)
 		}
 	})
+
 	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, InstanceInfo]) {
 		if er == ttlcache.EvictionReasonExpired || er == ttlcache.EvictionReasonDeleted {
 			err := deleteInstance(i.Value(), true)
