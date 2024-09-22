@@ -148,5 +148,5 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 	// Ideally we would rely only on the goroutine defer.
 	s.sandboxes.Remove(in.SandboxID)
 
-	return nil, nil
+	return &emptypb.Empty{}, nil
 }
