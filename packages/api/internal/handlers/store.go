@@ -122,7 +122,7 @@ func NewAPIStore() *APIStore {
 
 	logger.Info("Initialized Analytics client")
 
-	instanceCache := instance.NewCache(&analytics.Client, logger, getDeleteInstanceFunction(ctx, tracer, orch, analytics, posthogClient, logger), initialInstances, &instancesCounter)
+	instanceCache := instance.NewCache(analytics.Client, logger, getDeleteInstanceFunction(ctx, tracer, orch, analytics, posthogClient, logger), initialInstances, instancesCounter)
 
 	logger.Info("Initialized instance cache")
 
