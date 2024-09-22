@@ -174,7 +174,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	// This is to compensate for the time it takes to start the instance
 	// Otherwise it could cause the instance to expire before user has a chance to use it
-	endTime = time.Now().Add(timeout)
+	startTime = time.Now()
+	endTime = startTime.Add(timeout)
 	instanceInfo := instance.InstanceInfo{
 		StartTime:         startTime,
 		EndTime:           endTime,
