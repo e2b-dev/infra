@@ -22,7 +22,7 @@ mkdir -p $fuse_cache
 
 fuse_config="/fuse/config.yaml"
 
-cat > $fuse_config <<'endmsg'
+cat >$fuse_config <<EOF
 file-cache:
   max-size-mb: -1
   cache-file-for-range-read: false
@@ -31,24 +31,22 @@ metadata-cache:
   ttl-secs: -1
 
 cache-dir: $fuse_cache
-endmsg
-
-# TODO: Ensure the binaries have proper executable permissions if they need to be executed
+EOF
 
 # Mount envd buckets
 envd_dir="/fc-vm"
 mkdir -p $envd_dir
-gcsfuse -o=allow_other,ro --config $fuse_config --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" $envd_dir
+gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" $envd_dir
 
 # Mount kernels
 kernels_dir="/fc-kernels"
 mkdir -p $kernels_dir
-gcsfuse -o=allow_other,ro --config $fuse_config --implicit-dirs "${FC_KERNELS_BUCKET_NAME}" $kernels_dir
+gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_KERNELS_BUCKET_NAME}" $kernels_dir
 
 # Mount FC versions
 fc_versions_dir="/fc-versions"
 mkdir -p $fc_versions_dir
-gcsfuse -o=allow_other,ro --config $fuse_config --implicit-dirs "${FC_VERSIONS_BUCKET_NAME}" $fc_versions_dir
+gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_VERSIONS_BUCKET_NAME}" $fc_versions_dir
 
 # These variables are passed in via Terraform template interpolation
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh
@@ -154,8 +152,8 @@ echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
 
 # These variables are passed in via Terraform template interpolation
 /opt/consul/bin/run-consul.sh --client \
-  --consul-token "${CONSUL_TOKEN}" \
-  --cluster-tag-name "${CLUSTER_TAG_NAME}" \
-  --enable-gossip-encryption \
-  --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" &
+    --consul-token "${CONSUL_TOKEN}" \
+    --cluster-tag-name "${CLUSTER_TAG_NAME}" \
+    --enable-gossip-encryption \
+    --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" &
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" &
