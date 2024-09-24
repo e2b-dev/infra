@@ -195,7 +195,8 @@ func NewFC(
 	)
 
 	kernelMountCmd := fmt.Sprintf(
-		"touch %s && mount -o bind,ro %s %s && ",
+		"mkdir -p %s && touch %s && mount -o bind %s %s && ",
+		files.BuildKernelDir(),
 		files.BuildKernelPath(),
 		files.CacheKernelPath(),
 		files.BuildKernelPath(),
