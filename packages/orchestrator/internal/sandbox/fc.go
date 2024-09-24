@@ -172,6 +172,7 @@ func NewFC(
 	files *templateStorage.SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
 	snapfile *storage.SimpleFile,
+	rootfs *storage.OverlayFile,
 	uffdReady chan struct{},
 ) *fc {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
@@ -189,13 +190,12 @@ func NewFC(
 		"mkdir -p %s && touch %s && mount -o bind %s %s && ",
 		files.BuildDir(),
 		files.BuildRootfsPath(),
-		files.SandboxCacheRootfsPath(),
+		rootfs.Path(),
 		files.BuildRootfsPath(),
 	)
 
 	kernelMountCmd := fmt.Sprintf(
-		"mkdir -p %s && touch %s && mount -o bind,ro %s %s && ",
-		files.BuildKernelDir(),
+		"touch %s && mount -o bind,ro %s %s && ",
 		files.BuildKernelPath(),
 		files.CacheKernelPath(),
 		files.BuildKernelPath(),

@@ -55,3 +55,7 @@ func (o *OverlayFile) Close() error {
 
 	return errors.Join(err, overlayErr)
 }
+
+func (o *OverlayFile) Path() string {
+	return o.nbd.Path
+}

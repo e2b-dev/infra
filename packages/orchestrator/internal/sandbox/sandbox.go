@@ -193,6 +193,7 @@ func NewSandbox(
 			TeamID:     config.TeamID,
 		},
 		templateData.Snapfile,
+		rootfs,
 		fcUffd.PollReady,
 	)
 
