@@ -16,6 +16,9 @@ export GOMAXPROCS='nproc'
 # Load the nbd module with 4096 devices
 sudo modprobe nbd nbds_max=4096
 
+# Create the directory for the fc mounts
+mkdir -p /fc-vm
+
 # Create the config file for gcsfuse
 fuse_cache="/fuse/cache"
 mkdir -p $fuse_cache
@@ -34,7 +37,7 @@ cache-dir: $fuse_cache
 EOF
 
 # Mount envd buckets
-envd_dir="/fc-vm"
+envd_dir="/fc-envd"
 mkdir -p $envd_dir
 gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" $envd_dir
 
