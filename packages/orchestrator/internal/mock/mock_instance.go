@@ -72,8 +72,8 @@ func MockInstance(
 		nbdDevicePool,
 		&orchestrator.SandboxConfig{
 			TemplateID:         envID,
-			FirecrackerVersion: "v1.9.0_fake-2476009",
-			KernelVersion:      "vmlinux-6.1.99",
+			FirecrackerVersion: "v1.7.0-dev_8bb88311",
+			KernelVersion:      "vmlinux-5.10.186",
 			TeamID:             "test-team",
 			BuildID:            buildID,
 			HugePages:          true,
