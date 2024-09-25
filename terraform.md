@@ -18,12 +18,13 @@ Check if you can use config for terraform state management
 7. Run `make init`
 8. Run `make build-cluster-disk-image`
 9. Fill in cloudflare API key with access to your domain
-10. Run `make build-and-upload-all`
-11. Run `make apply-without-jobs`
-12. Fill in following secrets:
+10. Run `make build-and-upload-docker-images`
+11. Run `make build-and-upload-fc-components` Note: This needs to be done on a Linux machine due to case-sensitive requirements for the file system. Kernel and versions could alternatively be sourced elsewhere
+12. Run `make apply-without-jobs`
+13. Fill in following secrets:
     - postgres (required)
     - If you don't want to use, keep as it is:
       - posthog (if you don't want to use posthog)
       - grafana (if you want traces / logging)
-13. Run `make apply`
-14. Provisioning of the certificates can take some time, you can check the status in the Google Cloud Console
+14. Run `make apply`
+15. Provisioning of the certificates can take some time, you can check the status in the Google Cloud Console
