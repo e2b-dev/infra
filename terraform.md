@@ -16,7 +16,7 @@ Check if you can use config for terraform state management
    - [Stackdriver Logging API](https://console.cloud.google.com/apis/library/logging.googleapis.com)
 6. You will need domain on cloudflare
 7. Run `make init`
-8. build cluster disk image [here](./packages/cluster-disk-image)
+8. Run `make build-cluster-disk-image`
 9. Fill in cloudflare API key with access to your domain
 10. Run `make build-and-upload-all`
 11. Run `make apply-without-jobs`

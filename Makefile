@@ -112,6 +112,10 @@ build-all:
 	$(MAKE) -C packages/fc-kernels build
 	$(MAKE) -C packages/fc-versions build
 
+.PHONY: build-cluster-disk-image
+build-cluster-disk-image:
+	$(MAKE) -C packages/cluster-disk-image build
+
 .PHONY: build-and-upload-all
 build-and-upload-all:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) make update-api
