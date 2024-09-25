@@ -95,7 +95,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		}
 	}()
 
-	var uploadWg errgroup.Group
+	uploadWg, ctx := errgroup.WithContext(childCtx)
 
 	uploadWg.Go(func() error {
 		memfile, err := os.Open(template.BuildMemfilePath())

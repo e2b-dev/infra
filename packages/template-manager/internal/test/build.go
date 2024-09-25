@@ -70,7 +70,7 @@ func Build(templateID, buildID string) {
 
 	buildStorage := tempStorage.NewTemplateBuild(&template.TemplateFiles)
 
-	var uploadWg errgroup.Group
+	uploadWg, ctx := errgroup.WithContext(ctx)
 
 	uploadWg.Go(func() error {
 		memfile, err := os.Open(template.BuildMemfilePath())
