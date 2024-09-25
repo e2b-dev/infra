@@ -47,8 +47,8 @@ The main components are:
 
 1. [API server](./packages/api/)
 1. [Daemon running inside instances (sandboxes)](./packages/envd/)
-1. [Nomad driver for managing instances (sandboxes)](/packages/env-instance-task-driver/)
-1. [Nomad driver for building environments (templates)](/packages/env-build-task-driver/)
+1. [Service for managing instances (sandboxes)](./packages/orchestrator/)
+1. [Service for building environments (templates)](./packages/template-manager/)
 
 The following diagram shows the architecture of the whole project:
 ![E2B infrastructure diagram](./readme-assets/architecture.jpeg)
