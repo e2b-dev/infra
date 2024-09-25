@@ -15,7 +15,9 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_prefix=$(PREFIX) \
 	TF_VAR_terraform_state_bucket=$(TERRAFORM_STATE_BUCKET) \
 	TF_VAR_otel_tracing_print=$(OTEL_TRACING_PRINT) \
-	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT)
+	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
+	TF_VAR_gcp_project_id=$(GCP_PROJECT_ID) \
+	TF_VAR_cloudflare_api_token=$(CLOUDFLARE_API_TOKEN)
 
 ifeq ($(EXCLUDE_GITHUB),1)
 	ALL_MODULES := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | grep -v -e "github_tf")
