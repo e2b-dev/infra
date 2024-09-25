@@ -106,13 +106,16 @@ build-all:
 build-cluster-disk-image:
 	$(MAKE) -C packages/cluster-disk-image build
 
-.PHONY: build-and-upload-all
+.PHONY: build-and-upload-docker-images
 build-and-upload-all:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) make update-api
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/docker-reverse-proxy build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/template-manager build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/envd build-and-upload
+
+.PHONY: build-and-upload-fc-components
+build-and-upload-fc-components:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/fc-kernels build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/fc-versions build-and-upload
 
