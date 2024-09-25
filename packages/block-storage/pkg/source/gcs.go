@@ -17,7 +17,7 @@ import (
 const (
 	readTimeout       = 10 * time.Second
 	operationTimeout  = 5 * time.Second
-	bufferSize        = 8 * 2 << 20
+	bufferSize        = 16 * 2 << 20
 	initialBackoff    = 10 * time.Millisecond
 	maxBackoff        = 10 * time.Second
 	backoffMultiplier = 2
