@@ -85,10 +85,10 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 	return nil
 }
 
-func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfile io.Reader) error {
+func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfilePath string) error {
 	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageMemfilePath())
 
-	_, err := object.ReadFrom(memfile)
+	err := object.CompositeUpload(ctx, memfilePath)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
 	}
@@ -96,10 +96,10 @@ func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfile io.Reader) er
 	return nil
 }
 
-func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfs io.Reader) error {
+func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfsPath string) error {
 	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageRootfsPath())
 
-	_, err := object.ReadFrom(rootfs)
+	err := object.CompositeUpload(ctx, rootfsPath)
 	if err != nil {
 		return fmt.Errorf("error when uploading rootfs: %w", err)
 	}
@@ -107,6 +107,7 @@ func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfs io.Reader) erro
 	return nil
 }
 
+// Snapfile is small enough so we dont use composite upload.
 func (t *TemplateBuild) UploadSnapfile(ctx context.Context, snapfile io.Reader) error {
 	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageSnapfilePath())
 

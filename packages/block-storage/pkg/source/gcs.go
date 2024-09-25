@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -19,11 +21,14 @@ const (
 	initialBackoff    = 10 * time.Millisecond
 	maxBackoff        = 10 * time.Second
 	backoffMultiplier = 2
+	compositeParts    = 16
 )
 
 type StorageObject struct {
-	object *storage.ObjectHandle
-	ctx    context.Context
+	object     *storage.ObjectHandle
+	ctx        context.Context
+	bucket     *storage.BucketHandle
+	objectPath string
 }
 
 func NewGCSObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, objectPath string) *StorageObject {
@@ -37,8 +42,10 @@ func NewGCSObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, o
 	)
 
 	return &StorageObject{
-		object: obj,
-		ctx:    ctx,
+		object:     obj,
+		ctx:        ctx,
+		bucket:     bucket,
+		objectPath: objectPath,
 	}
 }
 
@@ -90,6 +97,71 @@ func (o *StorageObject) ReadFrom(src io.Reader) (int64, error) {
 	return n, nil
 }
 
+func (o *StorageObject) CompositeUpload(ctx context.Context, path string) error {
+	eg, groupCtx := errgroup.WithContext(ctx)
+
+	file, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("failed to get file size: %w", err)
+	}
+
+	size := file.Size()
+
+	parts := make([]*storage.ObjectHandle, compositeParts)
+	partSize := size / compositeParts
+
+	for i := 0; i < compositeParts; i++ {
+		part := NewGCSObjectFromBucket(groupCtx, o.bucket, fmt.Sprintf("_composite/%s-%d", path, i))
+		defer part.Delete()
+
+		parts[i] = part.object
+
+		eg.Go(func() error {
+			f, err := os.Open(path)
+			if err != nil {
+				return fmt.Errorf("failed to open file: %w", err)
+			}
+
+			defer f.Close()
+
+			_, err = f.Seek(int64(i)*partSize, io.SeekStart)
+			if err != nil {
+				return fmt.Errorf("failed to seek file: %w", err)
+			}
+
+			var reader io.Reader = f
+
+			// If last part, read the remaining bytes
+			if i != compositeParts-1 {
+				reader = io.LimitReader(f, partSize)
+			}
+
+			_, err = part.ReadFrom(reader)
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+
+				return fmt.Errorf("failed to read from file: %w", err)
+			}
+
+			return nil
+		})
+	}
+
+	err = eg.Wait()
+	if err != nil {
+		return fmt.Errorf("failed to upload composite object: %w", err)
+	}
+
+	_, err = o.object.ComposerFrom(parts...).Run(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to compose object: %w", err)
+	}
+
+	return nil
+}
+
 func (o *StorageObject) ReadAt(b []byte, off int64) (n int, err error) {
 	ctx, cancel := context.WithTimeout(o.ctx, readTimeout)
 	defer cancel()
@@ -130,4 +202,11 @@ func (o *StorageObject) Size() (int64, error) {
 	}
 
 	return attrs.Size, nil
+}
+
+func (o *StorageObject) Delete() error {
+	ctx, cancel := context.WithTimeout(o.ctx, operationTimeout)
+	defer cancel()
+
+	return o.object.Delete(ctx)
 }
