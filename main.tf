@@ -239,3 +239,59 @@ module "nomad" {
   # Template manager
   template_manager_port = var.template_manager_port
 }
+
+# Enable Secrets Manager API
+resource "google_project_service" "secrets_manager_api" {
+  project = var.gcp_project_id
+  service = "secretmanager.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+# Enable Certificate Manager API
+resource "google_project_service" "certificate_manager_api" {
+  project = var.gcp_project_id
+  service = "certificatemanager.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+# Enable Compute Engine API
+resource "google_project_service" "compute_engine_api" {
+  project = var.gcp_project_id
+  service = "compute.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+# Enable Artifact Registry API
+resource "google_project_service" "artifact_registry_api" {
+  project = var.gcp_project_id
+  service = "artifactregistry.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+# Enable OS Config API
+resource "google_project_service" "os_config_api" {
+  project = var.gcp_project_id
+  service = "osconfig.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+# Enable Stackdriver Monitoring API
+resource "google_project_service" "monitoring_api" {
+  project = var.gcp_project_id
+  service = "monitoring.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+# Enable Stackdriver Logging API
+resource "google_project_service" "logging_api" {
+  project = var.gcp_project_id
+  service = "logging.googleapis.com"
+
+  disable_on_destroy = false
+}
