@@ -55,6 +55,6 @@ The following diagram shows the architecture of the whole project:
 
 ## Deployment
 
-The infrastructure is deployed using [Terraform](https://www.terraform.io/) and right now it is deployable on GCP only.
+The infrastructure is deployed using [Terraform](./terraform.md) and right now it is deployable on GCP only.
 
 Setting the infrastructure up can be a little rough right now, but we plan to improve it in the future.
