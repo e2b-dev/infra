@@ -129,6 +129,10 @@ build-and-upload-fc-components:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/fc-kernels build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/fc-versions build-and-upload
 
+.PHONY: migrate
+migrate:
+    GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/shared migrate
+
 .PHONY: update-api
 update-api:
 	docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
