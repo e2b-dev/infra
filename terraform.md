@@ -1,5 +1,20 @@
 # Terraform deployment
 
+### Prerequisites
+You will need the following installed:
+- packer
+- terraform (v1.5 > version < 1.6)
+- atlas
+- golang
+- gcloud cli
+
+You will also need:
+- a domain
+- a Cloudflare account
+- GCP account + project
+- PostgreSQL database--Supabase preferred
+
+
 Check if you can use config for terraform state management
 
 1. Create bucket in Google Cloud
