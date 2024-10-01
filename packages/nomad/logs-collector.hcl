@@ -144,6 +144,7 @@ encoding.codec = "json"
 auth.strategy = "basic"
 auth.user = "${var.grafana_logs_username}"
 auth.password = "${var.grafana_api_key}"
+request.rate_limit_num = 20
 
 [sinks.grafana.labels]
 source = "logs-collector"
