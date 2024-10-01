@@ -77,6 +77,13 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 
 	fmt.Printf("[Sandbox is running] - started in %dms (without network)\n", duration.Milliseconds())
 
+	stats, err := instance.Stats()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("[Sandbox stats] - %#v\n", stats)
+
 	time.Sleep(keepAlive)
 
 	defer instance.CleanupAfterFCStop(childCtx, tracer, consulClient, dns, instanceID)
