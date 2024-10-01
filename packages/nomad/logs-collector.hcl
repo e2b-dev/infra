@@ -123,36 +123,35 @@ if !exists(.envID) {
 }
 """
 
-# Disabling user logs for now to see if it helps with flooding
-# [sinks.local_loki_logs]
-# type = "loki"
-# inputs = [ "add_source_envd" ]
-# endpoint = "http://0.0.0.0:${var.loki_service_port_number}"
-# encoding.codec = "json"
-
-# [sinks.local_loki_logs.labels]
-# source = "logs-collector"
-# service = "{{ service }}"
-# teamID = "{{ teamID }}"
-# envID = "{{ envID }}"
-# sandboxID = "{{ sandboxID }}"
-
-[sinks.grafana]
+[sinks.local_loki_logs]
 type = "loki"
 inputs = [ "add_source_envd" ]
-endpoint = "${var.grafana_logs_endpoint}"
+endpoint = "http://0.0.0.0:${var.loki_service_port_number}"
 encoding.codec = "json"
-auth.strategy = "basic"
-auth.user = "${var.grafana_logs_username}"
-auth.password = "${var.grafana_api_key}"
-request.rate_limit_num = 20
 
-[sinks.grafana.labels]
+[sinks.local_loki_logs.labels]
 source = "logs-collector"
 service = "{{ service }}"
 teamID = "{{ teamID }}"
 envID = "{{ envID }}"
 sandboxID = "{{ sandboxID }}"
+
+# [sinks.grafana]
+# type = "loki"
+# inputs = [ "add_source_envd" ]
+# endpoint = "${var.grafana_logs_endpoint}"
+# encoding.codec = "json"
+# auth.strategy = "basic"
+# auth.user = "${var.grafana_logs_username}"
+# auth.password = "${var.grafana_api_key}"
+# request.rate_limit_num = 20
+# 
+# [sinks.grafana.labels]
+# source = "logs-collector"
+# service = "{{ service }}"
+# teamID = "{{ teamID }}"
+# envID = "{{ envID }}"
+# sandboxID = "{{ sandboxID }}"
 
         EOH
       }
