@@ -345,6 +345,8 @@ func (fc *fc) start(
 
 	telemetry.ReportEvent(childCtx, "started fc process")
 
+	fc.pid = fc.cmd.Process.Pid
+
 	// Wait for the FC process to start so we can use FC API
 	err = waitForSocket(fc.socketPath, socketWaitTimeout)
 	if err != nil {
