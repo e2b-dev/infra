@@ -79,6 +79,8 @@ common:
 storage_config:
   gcs:
     bucket_name: "${var.loki_bucket_name}"
+    chunk_buffer_size: 2097152  # 2MB
+
   tsdb_shipper:
     active_index_directory: /loki/tsdb-shipper-active
     cache_location: /loki/tsdb-shipper-cache
@@ -91,12 +93,6 @@ chunk_store_config:
       enabled: true
       max_size_mb: 512
       ttl: 1h
-
-# Attempting to reduce number of chunks to prevent GCS from throttling
-chunk_target_size: 10485760  # 20MB
-
-# This is specific to GCS for backend, attempting to reduce the number of chunks
-chunk_buffer_size: 20971520  # 20MB
 
 query_range:
   align_queries_with_step: true
@@ -117,6 +113,7 @@ ingester_client:
 ingester:
   chunk_idle_period: 30m
   chunk_encoding: snappy
+  chunk_target_size: 1048576  # 1MB 
   wal:
     dir: /loki/wal
     flush_on_shutdown: true
