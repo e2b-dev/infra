@@ -123,18 +123,19 @@ if !exists(.envID) {
 }
 """
 
-[sinks.local_loki_logs]
-type = "loki"
-inputs = [ "add_source_envd" ]
-endpoint = "http://0.0.0.0:${var.loki_service_port_number}"
-encoding.codec = "json"
+# Disabling user logs for now to see if it helps with flooding
+# [sinks.local_loki_logs]
+# type = "loki"
+# inputs = [ "add_source_envd" ]
+# endpoint = "http://0.0.0.0:${var.loki_service_port_number}"
+# encoding.codec = "json"
 
-[sinks.local_loki_logs.labels]
-source = "logs-collector"
-service = "{{ service }}"
-teamID = "{{ teamID }}"
-envID = "{{ envID }}"
-sandboxID = "{{ sandboxID }}"
+# [sinks.local_loki_logs.labels]
+# source = "logs-collector"
+# service = "{{ service }}"
+# teamID = "{{ teamID }}"
+# envID = "{{ envID }}"
+# sandboxID = "{{ sandboxID }}"
 
 [sinks.grafana]
 type = "loki"
