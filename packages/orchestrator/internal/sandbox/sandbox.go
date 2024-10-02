@@ -23,7 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 
 	consul "github.com/hashicorp/consul/api"
-	"github.com/shirou/gopsutil/v4/process"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -479,34 +478,14 @@ type SandboxStats struct {
 	MemoryRSS  uint64  `json:"memory_rss"`
 }
 
-func (s *Sandbox) Stats() (SandboxStats, error) {
-	stats := SandboxStats{
-		CPUPercent: 0,
-		MemoryRSS:  0,
-		MemoryVMS:  0,
-	}
 
-	proc, err := process.NewProcess(int32(s.fc.pid))
+func (s *Sandbox) Stats() ([]ProcStats, error) {
+	stats := []ProcStats{}
+
+	err := getProcStats(int32(s.fc.pid), &stats)
 	if err != nil {
-		return stats, fmt.Errorf("failed to create new a new Process instance: %w", err)
+		return nil, fmt.Errorf("failed to get process stats: %w", err)
 	}
-
-	cpuPercent, err := proc.CPUPercent()
-	if err != nil {
-		return stats, fmt.Errorf("failed to get CPU percent: %w", err)
-	}
-
-	stats.CPUPercent = cpuPercent
-
-	memory, err := proc.MemoryInfo()
-	if err != nil {
-		return stats, fmt.Errorf("failed to get memory info: %w", err)
-	}
-
-	// RSS (Resident Set Size) is the closest available metric.
-	stats.MemoryRSS = memory.RSS
-	// VMS (Virtual Memory Size) is the total size of the process's virtual address space.
-	stats.MemoryVMS = memory.VMS
 
 	return stats, nil
 }
