@@ -1,7 +1,6 @@
 
 # Enable Secrets Manager API
 resource "google_project_service" "secrets_manager_api" {
-  #project = var.gcp_project_id
   service = "secretmanager.googleapis.com"
 
   disable_on_destroy = false
@@ -58,7 +57,7 @@ resource "google_project_service" "logging_api" {
 resource "time_sleep" "secrets_api_wait_60_seconds" {
   depends_on = [google_project_service.secrets_manager_api]
 
-  create_duration = "60s"
+  create_duration = "20s"
 }
 
 resource "google_service_account" "infra_instances_service_account" {
@@ -311,7 +310,7 @@ resource "google_artifact_registry_repository" "orchestration_repository" {
 }
 
 resource "time_sleep" "artifact_registry_api_wait_60_seconds" {
-  depends_on = [google_project_service.artifact_registry_api ]
+  depends_on = [google_project_service.artifact_registry_api]
 
   create_duration = "60s"
 }
