@@ -107,7 +107,7 @@ build-cluster-disk-image:
 	$(MAKE) -C packages/cluster-disk-image build
 
 .PHONY: build-and-upload-docker-images
-build-and-upload-all:
+build-and-upload-docker-images:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) make update-api
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/docker-reverse-proxy build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload
