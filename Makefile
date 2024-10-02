@@ -121,7 +121,7 @@ build-and-upload-fc-components:
 
 .PHONY: migrate
 migrate:
-    GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/shared migrate
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/shared migrate
 
 .PHONY: update-api
 update-api:
