@@ -155,9 +155,9 @@ echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" &
 
 # Add alias for ssh-ing to sbx
-echo "_sbx_ssh() {
+echo '_sbx_ssh() {
   local address=$(dig @localhost $1. A +short 2>/dev/null)
   ssh -o StrictHostKeyChecking=accept-new "root@$address"
 }
 
-alias sbx-ssh=_sbx_ssh" >> /etc/profile
+alias sbx-ssh=_sbx_ssh' >> /etc/profile
