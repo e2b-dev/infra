@@ -49,7 +49,6 @@ CREATE TABLE  atlas_schema_revisions.atlas_schema_revisions (LIKE public.atlas_s
                         /template-manager
 
 <prefix>-fc-kernels/vmlinux-5.10.186/vmlinux.bin
-                   /vmlinux-6.1.99/vmlinux.bin
 
 <prefix>-fc-versions/v1.7.0-dev_8bb88311/firecracker
                                         /uffd
