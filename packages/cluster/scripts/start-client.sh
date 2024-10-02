@@ -153,3 +153,11 @@ echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
 # These variables are passed in via Terraform template interpolation
 /opt/consul/bin/run-consul.sh --client --consul-token "${CONSUL_TOKEN}" --cluster-tag-name "${CLUSTER_TAG_NAME}" --enable-gossip-encryption --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" &
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" &
+
+# Add alias for ssh-ing to sbx
+echo '_sbx_ssh() {
+  local address=$(dig @localhost $1. A +short 2>/dev/null)
+  ssh -o StrictHostKeyChecking=accept-new "root@$address"
+}
+
+alias sbx-ssh=_sbx_ssh' >> /etc/profile
