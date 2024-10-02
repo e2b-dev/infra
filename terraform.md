@@ -52,11 +52,6 @@ CREATE TABLE  atlas_schema_revisions.atlas_schema_revisions (LIKE public.atlas_s
 
 <prefix>-fc-versions/v1.7.0-dev_8bb88311/firecracker
                                         /uffd
-                    /v1.8.0-hugepages-state_4778a02/firecracker
-                    /v1.8.0-hugepages-state_9e0b47a/firecracker
-                    /v1.8.0-main_43ff620/firecracker
-                    /v1.9.0_fake-2476009/firecracker
-                                        /uffd
 
 ```
 10. Run `make apply-without-jobs`
