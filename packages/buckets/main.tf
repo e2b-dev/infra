@@ -131,3 +131,9 @@ resource "google_storage_bucket_iam_member" "fc_template_bucket_iam" {
   role   = "roles/storage.objectUser"
   member = "serviceAccount:${var.gcp_service_account_email}"
 }
+
+resource "google_storage_bucket_iam_member" "fc_template_bucket_iam_reader" {
+  bucket = google_storage_bucket.fc_template_bucket.name
+  role   = "roles/storage.legacyBucketReader"
+  member = "serviceAccount:${var.gcp_service_account_email}"
+}
