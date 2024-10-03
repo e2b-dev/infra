@@ -6,18 +6,17 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
+	"os/exec"
 	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
 	readTimeout       = 10 * time.Second
 	operationTimeout  = 5 * time.Second
-	bufferSize        = 16 * 2 << 20
+	bufferSize        = 2 << 21
 	initialBackoff    = 10 * time.Millisecond
 	maxBackoff        = 10 * time.Second
 	backoffMultiplier = 2
@@ -25,10 +24,8 @@ const (
 )
 
 type StorageObject struct {
-	object     *storage.ObjectHandle
-	ctx        context.Context
-	bucket     *storage.BucketHandle
-	objectPath string
+	object *storage.ObjectHandle
+	ctx    context.Context
 }
 
 func NewGCSObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, objectPath string) *StorageObject {
@@ -42,10 +39,8 @@ func NewGCSObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, o
 	)
 
 	return &StorageObject{
-		object:     obj,
-		ctx:        ctx,
-		bucket:     bucket,
-		objectPath: objectPath,
+		object: obj,
+		ctx:    ctx,
 	}
 }
 
@@ -82,9 +77,7 @@ func (o *StorageObject) WriteTo(dst io.Writer) (int64, error) {
 func (o *StorageObject) ReadFrom(src io.Reader) (int64, error) {
 	w := o.object.NewWriter(o.ctx)
 
-	b := make([]byte, bufferSize)
-
-	n, err := io.CopyBuffer(w, src, b)
+	n, err := io.Copy(w, src)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, fmt.Errorf("failed to copy buffer to storage: %w", err)
 	}
@@ -97,66 +90,21 @@ func (o *StorageObject) ReadFrom(src io.Reader) (int64, error) {
 	return n, nil
 }
 
-func (o *StorageObject) CompositeUpload(ctx context.Context, path string) error {
-	eg, groupCtx := errgroup.WithContext(ctx)
+func (o *StorageObject) UploadWithCli(ctx context.Context, path string) error {
+	cmd := exec.CommandContext(
+		ctx,
+		"gcloud",
+		"storage",
+		"cp",
+		"--verbosity",
+		"error",
+		path,
+		fmt.Sprintf("gs://%s/%s", o.object.BucketName(), o.object.ObjectName()),
+	)
 
-	file, err := os.Stat(path)
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to get file size: %w", err)
-	}
-
-	size := file.Size()
-
-	parts := make([]*storage.ObjectHandle, compositeParts)
-	partSize := size / compositeParts
-
-	for i := 0; i < compositeParts; i++ {
-		part := NewGCSObjectFromBucket(groupCtx, o.bucket, fmt.Sprintf("_composite/%s-%d", path, i))
-		defer part.Delete()
-
-		parts[i] = part.object
-
-		eg.Go(func() error {
-			f, err := os.Open(path)
-			if err != nil {
-				return fmt.Errorf("failed to open file: %w", err)
-			}
-
-			defer f.Close()
-
-			_, err = f.Seek(int64(i)*partSize, io.SeekStart)
-			if err != nil {
-				return fmt.Errorf("failed to seek file: %w", err)
-			}
-
-			var reader io.Reader = f
-
-			// If last part, read the remaining bytes
-			if i != compositeParts-1 {
-				reader = io.LimitReader(f, partSize)
-			}
-
-			_, err = part.ReadFrom(reader)
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					return nil
-				}
-
-				return fmt.Errorf("failed to read from file: %w", err)
-			}
-
-			return nil
-		})
-	}
-
-	err = eg.Wait()
-	if err != nil {
-		return fmt.Errorf("failed to upload composite object: %w", err)
-	}
-
-	_, err = o.object.ComposerFrom(parts...).Run(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to compose object: %w", err)
+		return fmt.Errorf("failed to upload file to GCS: %w\n%s", err, string(output))
 	}
 
 	return nil

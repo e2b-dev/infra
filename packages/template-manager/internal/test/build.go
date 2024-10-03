@@ -73,21 +73,11 @@ func Build(templateID, buildID string) {
 	uploadWg, ctx := errgroup.WithContext(ctx)
 
 	uploadWg.Go(func() error {
-		memfile, err := os.Open(template.BuildMemfilePath())
-		if err != nil {
-			return err
-		}
-
-		return buildStorage.UploadMemfile(ctx, memfile)
+		return buildStorage.UploadMemfile(ctx, template.BuildMemfilePath())
 	})
 
 	uploadWg.Go(func() error {
-		rootfs, err := os.Open(template.BuildRootfsPath())
-		if err != nil {
-			return err
-		}
-
-		return buildStorage.UploadRootfs(ctx, rootfs)
+		return buildStorage.UploadRootfs(ctx, template.BuildRootfsPath())
 	})
 
 	uploadWg.Go(func() error {

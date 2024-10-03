@@ -88,7 +88,7 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfilePath string) error {
 	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageMemfilePath())
 
-	err := object.CompositeUpload(ctx, memfilePath)
+	err := object.UploadWithCli(ctx, memfilePath)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
 	}
@@ -99,7 +99,7 @@ func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfilePath string) e
 func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfsPath string) error {
 	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageRootfsPath())
 
-	err := object.CompositeUpload(ctx, rootfsPath)
+	err := object.UploadWithCli(ctx, rootfsPath)
 	if err != nil {
 		return fmt.Errorf("error when uploading rootfs: %w", err)
 	}
@@ -111,9 +111,9 @@ func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfsPath string) err
 func (t *TemplateBuild) UploadSnapfile(ctx context.Context, snapfile io.Reader) error {
 	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageSnapfilePath())
 
-	_, err := object.ReadFrom(snapfile)
+	n, err := object.ReadFrom(snapfile)
 	if err != nil {
-		return fmt.Errorf("error when uploading snapfile: %w", err)
+		return fmt.Errorf("error when uploading snapfile (%d bytes): %w", n, err)
 	}
 
 	return nil
