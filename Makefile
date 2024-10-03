@@ -64,7 +64,7 @@ apply:
 	-parallelism=20 $(ALL_MODULES_ARGS)
 
 .PHONY: debug-apply
-apply:
+debug-apply:
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
 	$(tf_vars) \
@@ -72,7 +72,7 @@ apply:
 	-auto-approve \
 	-input=false \
 	-compact-warnings \
-	-parallelism=20 $(ALL_MODULES_ARGS)
+	-parallelism=20 $(DEBUG_ALL_MODULES_ARGS)
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
