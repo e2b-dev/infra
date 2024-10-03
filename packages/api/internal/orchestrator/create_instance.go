@@ -79,7 +79,7 @@ func (o *Orchestrator) CreateSandbox(
 			EnvdVersion:        envdVersion,
 			Metadata:           metadata,
 			EnvVars:            envVars,
-			MaxSandboxLength:  maxInstanceLengthHours,
+			MaxSandboxLength:   maxInstanceLengthHours,
 			HugePages:          features.HasHugePages(),
 			RamMb:              build.RAMMB,
 			Vcpu:               build.Vcpu,
@@ -89,7 +89,9 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	var node *Node
+
 	var excludedNodes []string
+
 	for {
 		node = o.getLeastBusyNode(childCtx, excludedNodes...)
 		telemetry.ReportEvent(childCtx, "Trying to place sandbox on node")
@@ -126,6 +128,7 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	_, cacheSpan := o.tracer.Start(ctx, "add-instance-to-cache")
+
 	if cacheErr := o.instanceCache.Add(instance.InstanceInfo{
 		StartTime:         startTime,
 		EndTime:           endTime,
@@ -167,10 +170,12 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, excludedNodes ...st
 					continue
 				}
 			}
+
 			leastBusyNode = node
 		}
 	}
 
-	telemetry.ReportEvent(childCtx, "Found least busy node")
+	telemetry.ReportEvent(childCtx, "found the least busy node")
+
 	return leastBusyNode
 }
