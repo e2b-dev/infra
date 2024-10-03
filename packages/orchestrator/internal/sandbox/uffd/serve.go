@@ -13,10 +13,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const (
-	maxEagainAttempts = 32
-	maxPageSize       = 2 << 20
-)
+const maxEagainAttempts = 32
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 

@@ -13,9 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const (
-	defaultPort = 5008
-)
+const defaultPort = 5008
 
 func main() {
 	templateId := flag.String("template", "", "template id")

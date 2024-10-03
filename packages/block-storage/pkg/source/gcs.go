@@ -20,7 +20,6 @@ const (
 	initialBackoff    = 10 * time.Millisecond
 	maxBackoff        = 10 * time.Second
 	backoffMultiplier = 2
-	compositeParts    = 16
 )
 
 type StorageObject struct {
