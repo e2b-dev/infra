@@ -7,17 +7,16 @@ import (
 )
 
 type ProcStats struct {
-	PID        int32   `json:"pid"`
-	Name       string  `json:"name"`
-	CPUPercent float64 `json:"cpu_pct"`
-	VMS        uint64  `json:"vms"`
-	RSS        uint64  `json:"rss"`
+	PID        int32                   `json:"pid"`
+	Name       string                  `json:"name"`
+	CPUPercent float64                 `json:"cpu_pct"`
+	MemoryInfo *process.MemoryInfoStat `json:"memory_info"`
 }
 
 func (p *ProcStats) String() string {
 	return fmt.Sprintf(
-		"[PID: %d] [Name: %s] CPU (%%): %.2f | VMS (MB): %.2f | RSS (MB): %.2f",
-		p.PID, p.Name, p.CPUPercent, float64(p.VMS)/1024/1024, float64(p.RSS)/1024/1024,
+		"[PID: %d] [Name: %s] CPU (%%): %.2f | VMS (MB): %.2f | RSS (MB): %.2f | Swap (MB): %.2f | Stack: %.2f",
+		p.PID, p.Name, p.CPUPercent, float64(p.MemoryInfo.VMS)/1024/1024, float64(p.MemoryInfo.RSS)/1024/1024, float64(p.MemoryInfo.Swap)/1024/1024, float64(p.MemoryInfo.Stack/1024/1024),
 	)
 }
 
@@ -29,13 +28,6 @@ func getProcStats(pid int32, procStats *[]ProcStats) error {
 
 	procChildren, _ := proc.Children()
 	for _, procChild := range procChildren {
-		childName, err := procChild.Name()
-		if err != nil {
-			return fmt.Errorf("failed to get child process name: %w", err)
-		}
-
-		fmt.Println("child PID:", procChild.Pid, "name:", childName)
-
 		err = getProcStats(int32(procChild.Pid), procStats)
 		if err != nil {
 			return fmt.Errorf("failed to get child process stats: %w", err)
@@ -47,12 +39,16 @@ func getProcStats(pid int32, procStats *[]ProcStats) error {
 		return fmt.Errorf("failed to get process name: %w", err)
 	}
 
+	if procName == "unshare" { // unshare is not relevant to us
+		return nil
+	}
+
 	cpuPercent, err := proc.CPUPercent()
 	if err != nil {
 		return fmt.Errorf("failed to get CPU percent: %w", err)
 	}
 
-	memory, err := proc.MemoryInfo()
+	memoryInfo, err := proc.MemoryInfo()
 	if err != nil {
 		return fmt.Errorf("failed to get memory info: %w", err)
 	}
@@ -62,10 +58,7 @@ func getProcStats(pid int32, procStats *[]ProcStats) error {
 		Name: procName,
 
 		CPUPercent: cpuPercent,
-		// RSS (Resident Set Size) is the closest available metric.
-		RSS: memory.RSS,
-		// VMS (Virtual Memory Size) is the total size of the process's virtual address space.
-		VMS: memory.VMS,
+		MemoryInfo: memoryInfo,
 	}
 
 	*procStats = append(*procStats, procStat)

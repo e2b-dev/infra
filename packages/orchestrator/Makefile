@@ -41,3 +41,7 @@ build-and-upload: build upload
 .PHONY: test
 test:
 	sudo NODE_ID="test-client-22" CONSUL_TOKEN=$(CONSUL_TOKEN) go run -race -gcflags=all="-N -l" main.go -env iovqkypv4uoqvto9y0j2 -instance test-instance-1 -alive 5 -count 4
+
+.PHONY: stress
+stress:
+	sudo NODE_ID="test-client-22" CONSUL_TOKEN=$(CONSUL_TOKEN) go run -gcflags=all="-N -l" main.go -env dbu8udi3vardc8tk2bwt -instance test-instance-1 -alive 120 -count 1 -stress
