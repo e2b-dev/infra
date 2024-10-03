@@ -41,31 +41,31 @@ func (o *Orchestrator) getInstances(ctx context.Context, nodeID string) ([]*inst
 			return nil, fmt.Errorf("sandbox config is nil when listing sandboxes: %#v", sbx)
 		}
 
-		teamID, parseErr := uuid.Parse(config.TeamID)
+		teamID, parseErr := uuid.Parse(config.TeamId)
 		if parseErr != nil {
-			return nil, fmt.Errorf("failed to parse team ID '%s' for job: %w", config.TeamID, parseErr)
+			return nil, fmt.Errorf("failed to parse team ID '%s' for job: %w", config.TeamId, parseErr)
 		}
 
-		buildID, parseErr := uuid.Parse(config.BuildID)
+		buildID, parseErr := uuid.Parse(config.BuildId)
 		if parseErr != nil {
-			return nil, fmt.Errorf("failed to parse build ID '%s' for job: %w", config.BuildID, err)
+			return nil, fmt.Errorf("failed to parse build ID '%s' for job: %w", config.BuildId, err)
 		}
 
 		sandboxesInfo = append(sandboxesInfo, &instance.InstanceInfo{
 			Instance: api.Sandbox{
-				SandboxID:  config.SandboxID,
-				TemplateID: config.TemplateID,
+				SandboxID:  config.SandboxId,
+				TemplateID: config.TemplateId,
 				Alias:      config.Alias,
-				ClientID:   sbx.ClientID,
+				ClientID:   sbx.ClientId,
 			},
 			StartTime:         sbx.StartTime.AsTime(),
 			EndTime:           sbx.EndTime.AsTime(),
-			VCpu:              config.VCpu,
-			RamMB:             config.RamMB,
+			VCpu:              config.Vcpu,
+			RamMB:             config.RamMb,
 			BuildID:           buildID,
 			TeamID:            teamID,
 			Metadata:          config.Metadata,
-			MaxInstanceLength: time.Duration(config.MaxInstanceLength) * time.Hour,
+			MaxInstanceLength: time.Duration(config.MaxSandboxLength) * time.Hour,
 		})
 	}
 

@@ -35,7 +35,7 @@ const (
 )
 
 type server struct {
-	orchestrator.UnimplementedSandboxServer
+	orchestrator.UnimplementedSandboxServiceServer
 	sandboxes     *smap.Map[*sandbox.Sandbox]
 	dns           *dns.DNS
 	tracer        trace.Tracer
@@ -115,7 +115,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		}
 	}()
 
-	orchestrator.RegisterSandboxServer(s, &server{
+	orchestrator.RegisterSandboxServiceServer(s, &server{
 		tracer:        tracer,
 		consul:        consulClient,
 		dns:           dns,

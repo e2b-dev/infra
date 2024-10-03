@@ -35,7 +35,7 @@ func (o *Orchestrator) UpdateSandbox(
 	}
 
 	_, err = client.Sandbox.Update(ctx, &orchestrator.SandboxUpdateRequest{
-		SandboxID: sandboxID,
+		SandboxId: sandboxID,
 		EndTime:   timestamppb.New(endTime),
 	})
 

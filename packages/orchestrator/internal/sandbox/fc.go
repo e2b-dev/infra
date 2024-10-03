@@ -23,12 +23,13 @@ import (
 	"github.com/go-openapi/strfmt"
 )
 
+// The metadata serialization should not be changed — it is different from the field names we use here!
 type MmdsMetadata struct {
-	InstanceID string `json:"instanceID"`
-	EnvID      string `json:"envID"`
-	Address    string `json:"address"`
-	TraceID    string `json:"traceID"`
-	TeamID     string `json:"teamID"`
+	SandboxId            string `json:"instanceID"`
+	TemplateId           string `json:"envID"`
+	LogsCollectorAddress string `json:"address"`
+	TraceId              string `json:"traceID"`
+	TeamId               string `json:"teamID"`
 }
 
 type fc struct {
@@ -60,19 +61,19 @@ func (fc *fc) wait() error {
 func (fc *fc) loadSnapshot(
 	ctx context.Context,
 	tracer trace.Tracer,
-	firecrakcerSocketPath,
+	firecrackerSocketPath,
 	uffdSocketPath string,
 	metadata interface{},
 	snapfile *storage.SimpleFile,
 	uffdReady chan struct{},
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
-		attribute.String("instance.socket.path", firecrakcerSocketPath),
+		attribute.String("sandbox.socket.path", firecrackerSocketPath),
 	))
 	defer childSpan.End()
 
 	client := client.NewHTTPClient(strfmt.NewFormats())
-	transport := firecracker.NewUnixSocketTransport(firecrakcerSocketPath, nil, false)
+	transport := firecracker.NewUnixSocketTransport(firecrackerSocketPath, nil, false)
 	client.SetTransport(transport)
 
 	telemetry.ReportEvent(childCtx, "created FC socket client")
@@ -176,8 +177,8 @@ func NewFC(
 	uffdReady chan struct{},
 ) *fc {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
-		attribute.String("instance.id", mmdsMetadata.InstanceID),
-		attribute.Int("instance.slot.index", slot.SlotIdx),
+		attribute.String("sandbox.id", mmdsMetadata.SandboxId),
+		attribute.Int("sandbox.slot.index", slot.SlotIdx),
 	))
 	defer childSpan.End()
 
@@ -206,8 +207,8 @@ func NewFC(
 	inNetNSCmd := fmt.Sprintf("ip netns exec %s ", slot.NamespaceID())
 
 	telemetry.SetAttributes(childCtx,
-		attribute.String("instance.firecracker.command", fcCmd),
-		attribute.String("instance.netns.command", inNetNSCmd),
+		attribute.String("sandbox.fc.cmd", fcCmd),
+		attribute.String("sandbox.netns.cmd", inNetNSCmd),
 	)
 
 	cmd := exec.Command(
@@ -274,7 +275,7 @@ func (fc *fc) start(
 		if readerErr != nil {
 			errMsg := fmt.Errorf("error reading vmm stdout: %w", readerErr)
 			telemetry.ReportError(fc.ctx, errMsg)
-			fmt.Fprintf(os.Stderr, "[firecracker stdout error]: %s — %v\n", fc.metadata.InstanceID, errMsg)
+			fmt.Fprintf(os.Stderr, "[firecracker stdout error]: %s — %v\n", fc.metadata.SandboxId, errMsg)
 		} else {
 			telemetry.ReportEvent(fc.ctx, "vmm stdout reader closed")
 		}
@@ -299,14 +300,14 @@ func (fc *fc) start(
 				attribute.String("message", line),
 			)
 
-			fmt.Fprintf(os.Stderr, "[firecracker stderr]: %s — %v\n", fc.metadata.InstanceID, line)
+			fmt.Fprintf(os.Stderr, "[firecracker stderr]: %s — %v\n", fc.metadata.SandboxId, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
 			errMsg := fmt.Errorf("error closing vmm stderr reader: %w", readerErr)
 			telemetry.ReportError(fc.ctx, errMsg)
-			fmt.Fprintf(os.Stderr, "[firecracker stderr error]: %s — %v\n", fc.metadata.InstanceID, errMsg)
+			fmt.Fprintf(os.Stderr, "[firecracker stderr error]: %s — %v\n", fc.metadata.SandboxId, errMsg)
 		} else {
 			telemetry.ReportEvent(fc.ctx, "vmm stderr reader closed")
 		}
@@ -364,11 +365,9 @@ func (fc *fc) start(
 
 	telemetry.SetAttributes(
 		childCtx,
-		attribute.String("instance.socket.path", fc.firecrackerSocketPath),
-		attribute.String("instance.env.id", fc.metadata.EnvID),
-		attribute.String("instance.cmd", fc.cmd.String()),
-		attribute.String("instance.cmd.dir", fc.cmd.Dir),
-		attribute.String("instance.cmd.path", fc.cmd.Path),
+		attribute.String("sandbox.cmd", fc.cmd.String()),
+		attribute.String("sandbox.cmd.dir", fc.cmd.Dir),
+		attribute.String("sandbox.cmd.path", fc.cmd.Path),
 	)
 
 	return nil

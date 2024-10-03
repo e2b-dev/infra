@@ -16,17 +16,17 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-func MockInstance(
+func MockSandbox(
 	ctx context.Context,
-	envID,
-	buildID,
-	instanceID string,
+	templateId,
+	buildId,
+	sandboxId string,
 	dns *dns.DNS,
 	templateCache *snapshotStorage.TemplateDataCache,
 	keepAlive time.Duration,
 ) {
-	tracer := otel.Tracer(fmt.Sprintf("instance-%s", instanceID))
-	childCtx, _ := tracer.Start(ctx, "mock-instance")
+	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
+	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
 
 	nbdDevicePool, err := nbd.NewNbdDevicePool()
 	if err != nil {
@@ -62,7 +62,7 @@ func MockInstance(
 
 	start := time.Now()
 
-	instance, err := sandbox.NewSandbox(
+	sbx, err := sandbox.NewSandbox(
 		childCtx,
 		tracer,
 		consulClient,
@@ -71,14 +71,14 @@ func MockInstance(
 		templateCache,
 		nbdDevicePool,
 		&orchestrator.SandboxConfig{
-			TemplateID:         envID,
+			TemplateId:         templateId,
 			FirecrackerVersion: "v1.7.0-dev_8bb88311",
 			KernelVersion:      "vmlinux-5.10.186",
-			TeamID:             "test-team",
-			BuildID:            buildID,
+			TeamId:             "test-team",
+			BuildId:            buildId,
 			HugePages:          true,
-			MaxInstanceLength:  1,
-			SandboxID:          instanceID,
+			MaxSandboxLength:   1,
+			SandboxId:          sandboxId,
 		},
 		"trace-test-1",
 		time.Now(),
@@ -96,7 +96,7 @@ func MockInstance(
 
 	time.Sleep(keepAlive)
 
-	defer instance.CleanupAfterFCStop(childCtx, tracer, consulClient, dns, instanceID)
+	defer sbx.CleanupAfterFCStop(childCtx, tracer, consulClient, dns, sandboxId)
 
-	instance.Stop(childCtx, tracer)
+	sbx.Stop(childCtx, tracer)
 }

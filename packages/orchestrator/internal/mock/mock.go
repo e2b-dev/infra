@@ -13,7 +13,7 @@ import (
 	"cloud.google.com/go/storage"
 )
 
-func Run(envID, buildID, instanceID string, keepAlive, count *int) {
+func Run(templateId, buildId, sandboxId string, keepAlive, count *int) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(*keepAlive)+time.Second*20)
 	defer cancel()
 
@@ -30,6 +30,6 @@ func Run(envID, buildID, instanceID string, keepAlive, count *int) {
 	templateCache := sandboxStorage.NewTemplateDataCache(ctx, client, templateStorage.BucketName)
 
 	for i := 0; i < *count; i++ {
-		MockInstance(ctx, envID, buildID, instanceID+"-"+strconv.Itoa(i), dns, templateCache, time.Duration(*keepAlive)*time.Second)
+		MockSandbox(ctx, templateId, buildId, sandboxId+"-"+strconv.Itoa(i), dns, templateCache, time.Duration(*keepAlive)*time.Second)
 	}
 }

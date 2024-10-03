@@ -22,11 +22,11 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	defer childSpan.End()
 	childSpan.SetAttributes(
-		attribute.String("env.id", req.Sandbox.TemplateID),
-		attribute.String("env.kernel.version", req.Sandbox.KernelVersion),
-		attribute.String("instance.id", req.Sandbox.SandboxID),
+		attribute.String("sandbox.template.id", req.Sandbox.TemplateId),
+		attribute.String("sandbox.kernel.version", req.Sandbox.KernelVersion),
+		attribute.String("sandbox.id", req.Sandbox.SandboxId),
 		attribute.String("client.id", consul.ClientID),
-		attribute.String("envd.version", req.Sandbox.EnvdVersion),
+		attribute.String("sandbox.envd.version", req.Sandbox.EnvdVersion),
 	)
 
 	sbx, err := sandbox.NewSandbox(
@@ -49,27 +49,27 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, status.New(codes.Internal, errMsg.Error()).Err()
 	}
 
-	s.sandboxes.Insert(req.Sandbox.SandboxID, sbx)
+	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
 
 	go func() {
 		tracer := otel.Tracer("close")
 		closeCtx, _ := tracer.Start(ctx, "close-sandbox")
 
 		defer telemetry.ReportEvent(closeCtx, "sandbox closed")
-		defer s.sandboxes.Remove(req.Sandbox.SandboxID)
-		defer sbx.CleanupAfterFCStop(context.Background(), tracer, s.consul, s.dns, req.Sandbox.SandboxID)
+		defer s.sandboxes.Remove(req.Sandbox.SandboxId)
+		defer sbx.CleanupAfterFCStop(context.Background(), tracer, s.consul, s.dns, req.Sandbox.SandboxId)
 
 		waitErr := sbx.Wait(context.Background(), tracer)
 		if waitErr != nil {
 			errMsg := fmt.Errorf("failed to wait for Sandbox: %w", waitErr)
 			fmt.Println(errMsg)
 		} else {
-			fmt.Printf("Sandbox %s wait finished\n", req.Sandbox.SandboxID)
+			fmt.Printf("Sandbox %s wait finished\n", req.Sandbox.SandboxId)
 		}
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
-		ClientID: consul.ClientID,
+		ClientId: consul.ClientID,
 	}, nil
 }
 
@@ -77,7 +77,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	_, childSpan := s.tracer.Start(ctx, "sandbox-update")
 	defer childSpan.End()
 
-	item, ok := s.sandboxes.Get(req.SandboxID)
+	item, ok := s.sandboxes.Get(req.SandboxId)
 	if !ok {
 		errMsg := fmt.Errorf("sandbox not found")
 		telemetry.ReportError(ctx, errMsg)
@@ -103,13 +103,13 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			continue
 		}
 
-		if sbx.Sandbox == nil {
+		if sbx.Config == nil {
 			continue
 		}
 
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
-			Config:    sbx.Sandbox,
-			ClientID:  consul.ClientID,
+			Config:    sbx.Config,
+			ClientId:  consul.ClientID,
 			StartTime: timestamppb.New(sbx.StartedAt),
 			EndTime:   timestamppb.New(sbx.EndAt),
 		})
@@ -120,15 +120,15 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 	}, nil
 }
 
-func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*emptypb.Empty, error) {
+func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteRequest) (*emptypb.Empty, error) {
 	_, childSpan := s.tracer.Start(ctx, "sandbox-delete")
 	defer childSpan.End()
 	childSpan.SetAttributes(
-		attribute.String("instance.id", in.SandboxID),
+		attribute.String("sandbox.id", in.SandboxId),
 		attribute.String("client.id", consul.ClientID),
 	)
 
-	sbx, ok := s.sandboxes.Get(in.SandboxID)
+	sbx, ok := s.sandboxes.Get(in.SandboxId)
 	if !ok {
 		errMsg := fmt.Errorf("sandbox not found")
 		telemetry.ReportError(ctx, errMsg)
@@ -137,18 +137,18 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 	}
 
 	childSpan.SetAttributes(
-		attribute.String("env.id", sbx.Sandbox.TemplateID),
-		attribute.String("env.kernel.version", sbx.Sandbox.KernelVersion),
+		attribute.String("sandbox.template.id", sbx.Config.TemplateId),
+		attribute.String("sandbox.kernel.version", sbx.Config.KernelVersion),
 	)
 
 	// Don't allow connecting to the sandbox anymore.
-	s.dns.Remove(in.SandboxID)
+	s.dns.Remove(in.SandboxId)
 
 	sbx.Stop(ctx, s.tracer)
 
 	// Ensure the sandbox is removed from cache.
 	// Ideally we would rely only on the goroutine defer.
-	s.sandboxes.Remove(in.SandboxID)
+	s.sandboxes.Remove(in.SandboxId)
 
 	return nil, nil
 }

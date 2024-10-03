@@ -162,7 +162,7 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 
 	if slot == nil {
 		// This is a fallback for the case when all slots are taken.
-		// There is no Consul lock so it's possible that multiple instances will try to acquire the same slot.
+		// There is no Consul lock so it's possible that multiple sandboxes will try to acquire the same slot.
 		// In this case, only one of them will succeed and other will try with different slots.
 		reservedKeys, _, keysErr := kv.Keys(client.ClientID+"/", "", nil)
 		if keysErr != nil {
@@ -200,8 +200,8 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 
 	telemetry.SetAttributes(
 		childCtx,
-		attribute.String("instance.slot.kv.key", slot.KVKey),
-		attribute.String("instance.slot.node.short_id", client.ClientID),
+		attribute.String("sandbox.slot.kv.key", slot.KVKey),
+		attribute.String("sandbox.slot.node.short_id", client.ClientID),
 	)
 
 	return slot, nil
@@ -210,8 +210,8 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 func (ips *IPSlot) Release(ctx context.Context, tracer trace.Tracer, consulClient *consul.Client) error {
 	childCtx, childSpan := tracer.Start(ctx, "release-ip-slot",
 		trace.WithAttributes(
-			attribute.String("instance.slot.kv.key", ips.KVKey),
-			attribute.String("instance.slot.node.short_id", client.ClientID),
+			attribute.String("sandbox.slot.kv.key", ips.KVKey),
+			attribute.String("sandbox.slot.node.short_id", client.ClientID),
 		),
 	)
 	defer childSpan.End()

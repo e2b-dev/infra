@@ -91,7 +91,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 		node.CPUUsage -= info.VCpu
 		node.RamUsage -= info.RamMB
 
-		_, err = node.Client.Sandbox.Delete(ctx, &orchestrator.SandboxRequest{SandboxID: info.Instance.SandboxID})
+		_, err = node.Client.Sandbox.Delete(ctx, &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID})
 		if err != nil {
 			return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
 		}

@@ -18,19 +18,19 @@ const (
 )
 
 func main() {
-	envID := flag.String("env", "", "env id")
-	buildID := flag.String("build", "", "build id")
-	instanceID := flag.String("instance", "", "instance id")
+	templateId := flag.String("template", "", "template id")
+	buildId := flag.String("build", "", "build id")
+	sandboxId := flag.String("sandbox", "", "sandbox id")
 	keepAlive := flag.Int("alive", 0, "keep alive")
-	count := flag.Int("count", 1, "number of spawned instances")
+	count := flag.Int("count", 1, "number of serially spawned sandboxes")
 
 	port := flag.Int("port", defaultPort, "Port for test HTTP server")
 
 	flag.Parse()
 
 	// If we're running a test, we don't need to start the server
-	if *envID != "" && *instanceID != "" {
-		mock.Run(*envID, *buildID, *instanceID, keepAlive, count)
+	if *templateId != "" && *buildId != "" && *sandboxId != "" {
+		mock.Run(*templateId, *buildId, *sandboxId, keepAlive, count)
 
 		return
 	}

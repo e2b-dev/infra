@@ -42,7 +42,7 @@ type Sandbox struct {
 	uffd   *uffd.Uffd
 	rootfs *storage.OverlayFile
 
-	Sandbox   *orchestrator.SandboxConfig
+	Config    *orchestrator.SandboxConfig
 	StartedAt time.Time
 	EndAt     time.Time
 	TraceID   string
@@ -67,8 +67,8 @@ func NewSandbox(
 	defer childSpan.End()
 
 	templateData, err := templateCache.GetTemplateData(
-		config.TemplateID,
-		config.BuildID,
+		config.TemplateId,
+		config.BuildId,
 		config.KernelVersion,
 		config.FirecrackerVersion,
 		config.HugePages,
@@ -96,7 +96,7 @@ func NewSandbox(
 		if err != nil {
 			slotErr := ips.Release(childCtx, tracer, consul)
 			if slotErr != nil {
-				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", slotErr)
+				errMsg := fmt.Errorf("error removing network namespace after failed sandbox start: %w", slotErr)
 				telemetry.ReportError(childCtx, errMsg)
 			} else {
 				telemetry.ReportEvent(childCtx, "released ip slot")
@@ -108,7 +108,7 @@ func NewSandbox(
 		if err != nil {
 			ntErr := ips.RemoveNetwork(childCtx, tracer)
 			if ntErr != nil {
-				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", ntErr)
+				errMsg := fmt.Errorf("error removing network namespace after failed sandbox start: %w", ntErr)
 				telemetry.ReportError(childCtx, errMsg)
 			} else {
 				telemetry.ReportEvent(childCtx, "removed network namespace")
@@ -116,7 +116,7 @@ func NewSandbox(
 		}
 	}()
 
-	sandboxFiles := templateStorage.NewSandboxFiles(templateData.Files, config.SandboxID)
+	sandboxFiles := templateStorage.NewSandboxFiles(templateData.Files, config.SandboxId)
 
 	err = os.MkdirAll(sandboxFiles.SandboxCacheDir(), 0o755)
 	if err != nil {
@@ -186,11 +186,11 @@ func NewSandbox(
 		ips,
 		sandboxFiles,
 		&MmdsMetadata{
-			InstanceID: config.SandboxID,
-			EnvID:      config.TemplateID,
-			Address:    logsProxyAddress,
-			TraceID:    traceID,
-			TeamID:     config.TeamID,
+			SandboxId:            config.SandboxId,
+			TemplateId:           config.TemplateId,
+			LogsCollectorAddress: logsProxyAddress,
+			TraceId:              traceID,
+			TeamId:               config.TeamId,
 		},
 		templateData.Snapfile,
 		rootfs,
@@ -212,12 +212,12 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
-	instance := &Sandbox{
+	sbx := &Sandbox{
 		files:     sandboxFiles,
 		slot:      ips,
 		fc:        fc,
 		uffd:      fcUffd,
-		Sandbox:   config,
+		Config:    config,
 		StartedAt: startedAt,
 		EndAt:     endAt,
 		rootfs:    rootfs,
@@ -248,7 +248,7 @@ func NewSandbox(
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
 		envdInitCtx, envdInitSpan := tracer.Start(childCtx, "envd-init")
 
-		clockErr := instance.initRequest(envdInitCtx, consts.DefaultEnvdServerPort, config.EnvVars)
+		clockErr := sbx.initRequest(envdInitCtx, consts.DefaultEnvdServerPort, config.EnvVars)
 		if clockErr != nil {
 			telemetry.ReportCriticalError(envdInitCtx, fmt.Errorf("failed to sync clock: %w", clockErr))
 		} else {
@@ -260,7 +260,7 @@ func NewSandbox(
 		go func() {
 			ctx := context.Background()
 
-			clockErr := instance.EnsureClockSync(ctx, consts.OldEnvdServerPort)
+			clockErr := sbx.EnsureClockSync(ctx, consts.OldEnvdServerPort)
 			if clockErr != nil {
 				telemetry.ReportError(ctx, fmt.Errorf("failed to sync clock (old envd): %w", clockErr))
 			} else {
@@ -269,12 +269,12 @@ func NewSandbox(
 		}()
 	}
 
-	instance.StartedAt = time.Now()
+	sbx.StartedAt = time.Now()
 
-	dns.Add(config.SandboxID, ips.HostIP())
-	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxID))
+	dns.Add(config.SandboxId, ips.HostIP())
+	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
 
-	return instance, nil
+	return sbx, nil
 }
 
 func (s *Sandbox) syncClock(ctx context.Context, port int64) error {
@@ -366,11 +366,11 @@ func (s *Sandbox) CleanupAfterFCStop(
 	dns *dns.DNS,
 	sandboxID string,
 ) {
-	childCtx, childSpan := tracer.Start(ctx, "delete-instance")
+	childCtx, childSpan := tracer.Start(ctx, "delete-sandbox")
 	defer childSpan.End()
 
 	dns.Remove(sandboxID)
-	telemetry.ReportEvent(childCtx, "removed env instance in dns")
+	telemetry.ReportEvent(childCtx, "removed sandbox from dns")
 
 	err := s.slot.RemoveNetwork(childCtx, tracer)
 	if err != nil {

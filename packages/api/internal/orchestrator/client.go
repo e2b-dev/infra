@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
@@ -10,7 +11,7 @@ import (
 )
 
 type GRPCClient struct {
-	Sandbox    orchestrator.SandboxClient
+	Sandbox    orchestrator.SandboxServiceClient
 	connection e2bgrpc.ClientConnInterface
 }
 
@@ -20,7 +21,7 @@ func NewClient(host string) (*GRPCClient, error) {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
 
-	client := orchestrator.NewSandboxClient(conn)
+	client := orchestrator.NewSandboxServiceClient(conn)
 
 	return &GRPCClient{Sandbox: client, connection: conn}, nil
 }
