@@ -56,14 +56,24 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 			continue
 		}
 
+		// Fallback if the env build was deleted, we don't have the information about the resources anymore,
+		// so we set them to -1.
+		memoryMB := int32(-1)
+		cpuCount := int32(-1)
+
+		if build, ok := buildsMap[*info.BuildID]; ok {
+			memoryMB = int32(build.RAMMB)
+			cpuCount = int32(build.Vcpu)
+		}
+
 		instance := api.RunningSandbox{
 			ClientID:   info.Instance.ClientID,
 			TemplateID: info.Instance.TemplateID,
 			Alias:      info.Instance.Alias,
 			SandboxID:  info.Instance.SandboxID,
 			StartedAt:  info.StartTime,
-			CpuCount:   int32(buildsMap[*info.BuildID].Vcpu),
-			MemoryMB:   int32(buildsMap[*info.BuildID].RAMMB),
+			CpuCount:   cpuCount,
+			MemoryMB:   memoryMB,
 			EndAt:      info.EndTime,
 		}
 
