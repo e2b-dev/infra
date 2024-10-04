@@ -110,7 +110,7 @@ func processFile(r *http.Request, path string, part *multipart.Part, user *user.
 func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, params PostFilesParams) (string, error) {
 	var pathToResolve string
 
-	if params.Path != nil {
+	if params.Path != nil && *params.Path != "" {
 		pathToResolve = *params.Path
 	} else {
 		pathToResolve = part.FileName()
@@ -142,6 +142,7 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, param
 
 	return filePath, nil
 }
+
 func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
 	defer r.Body.Close()
 
