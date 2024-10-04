@@ -68,8 +68,8 @@ debug-apply:
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
 	$(tf_vars) \
-	terraform plan \
-
+	terraform apply \
+	-auto-approve \
 	-input=false \
 	-compact-warnings \
 	-parallelism=20 $(DEBUG_ALL_MODULES_ARGS)
