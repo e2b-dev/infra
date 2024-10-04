@@ -10,7 +10,7 @@ set -euo pipefail
 # Inspired by https://alestic.com/2010/12/ec2-user-data-output/
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
-ulimit -n 65536
+ulimit -n 1048576
 export GOMAXPROCS='nproc'
 
 # Load the nbd module with 4096 devices
@@ -160,3 +160,11 @@ echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
     --enable-gossip-encryption \
     --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" &
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" &
+
+# Add alias for ssh-ing to sbx
+echo '_sbx_ssh() {
+  local address=$(dig @localhost $1. A +short 2>/dev/null)
+  ssh -o StrictHostKeyChecking=accept-new "root@$address"
+}
+
+alias sbx-ssh=_sbx_ssh' >> /etc/profile

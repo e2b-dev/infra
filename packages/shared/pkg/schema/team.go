@@ -21,7 +21,6 @@ func (Team) Fields() []ent.Field {
 		field.Time("created_at").Immutable().Default(time.Now).Annotations(
 			entsql.Default("CURRENT_TIMESTAMP"),
 		),
-		field.Bool("is_default"),
 		field.Bool("is_banned").Annotations(entsql.Default("false")),
 		field.Bool("is_blocked").Annotations(entsql.Default("false")),
 		field.String("blocked_reason").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "text"}),

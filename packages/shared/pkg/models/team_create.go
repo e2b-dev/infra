@@ -43,12 +43,6 @@ func (tc *TeamCreate) SetNillableCreatedAt(t *time.Time) *TeamCreate {
 	return tc
 }
 
-// SetIsDefault sets the "is_default" field.
-func (tc *TeamCreate) SetIsDefault(b bool) *TeamCreate {
-	tc.mutation.SetIsDefault(b)
-	return tc
-}
-
 // SetIsBanned sets the "is_banned" field.
 func (tc *TeamCreate) SetIsBanned(b bool) *TeamCreate {
 	tc.mutation.SetIsBanned(b)
@@ -216,9 +210,6 @@ func (tc *TeamCreate) check() error {
 	if _, ok := tc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`models: missing required field "Team.created_at"`)}
 	}
-	if _, ok := tc.mutation.IsDefault(); !ok {
-		return &ValidationError{Name: "is_default", err: errors.New(`models: missing required field "Team.is_default"`)}
-	}
 	if _, ok := tc.mutation.IsBanned(); !ok {
 		return &ValidationError{Name: "is_banned", err: errors.New(`models: missing required field "Team.is_banned"`)}
 	}
@@ -282,10 +273,6 @@ func (tc *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 	if value, ok := tc.mutation.CreatedAt(); ok {
 		_spec.SetField(team.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
-	}
-	if value, ok := tc.mutation.IsDefault(); ok {
-		_spec.SetField(team.FieldIsDefault, field.TypeBool, value)
-		_node.IsDefault = value
 	}
 	if value, ok := tc.mutation.IsBanned(); ok {
 		_spec.SetField(team.FieldIsBanned, field.TypeBool, value)
@@ -449,18 +436,6 @@ type (
 	}
 )
 
-// SetIsDefault sets the "is_default" field.
-func (u *TeamUpsert) SetIsDefault(v bool) *TeamUpsert {
-	u.Set(team.FieldIsDefault, v)
-	return u
-}
-
-// UpdateIsDefault sets the "is_default" field to the value that was provided on create.
-func (u *TeamUpsert) UpdateIsDefault() *TeamUpsert {
-	u.SetExcluded(team.FieldIsDefault)
-	return u
-}
-
 // SetIsBanned sets the "is_banned" field.
 func (u *TeamUpsert) SetIsBanned(v bool) *TeamUpsert {
 	u.Set(team.FieldIsBanned, v)
@@ -588,20 +563,6 @@ func (u *TeamUpsertOne) Update(set func(*TeamUpsert)) *TeamUpsertOne {
 		set(&TeamUpsert{UpdateSet: update})
 	}))
 	return u
-}
-
-// SetIsDefault sets the "is_default" field.
-func (u *TeamUpsertOne) SetIsDefault(v bool) *TeamUpsertOne {
-	return u.Update(func(s *TeamUpsert) {
-		s.SetIsDefault(v)
-	})
-}
-
-// UpdateIsDefault sets the "is_default" field to the value that was provided on create.
-func (u *TeamUpsertOne) UpdateIsDefault() *TeamUpsertOne {
-	return u.Update(func(s *TeamUpsert) {
-		s.UpdateIsDefault()
-	})
 }
 
 // SetIsBanned sets the "is_banned" field.
@@ -911,20 +872,6 @@ func (u *TeamUpsertBulk) Update(set func(*TeamUpsert)) *TeamUpsertBulk {
 		set(&TeamUpsert{UpdateSet: update})
 	}))
 	return u
-}
-
-// SetIsDefault sets the "is_default" field.
-func (u *TeamUpsertBulk) SetIsDefault(v bool) *TeamUpsertBulk {
-	return u.Update(func(s *TeamUpsert) {
-		s.SetIsDefault(v)
-	})
-}
-
-// UpdateIsDefault sets the "is_default" field to the value that was provided on create.
-func (u *TeamUpsertBulk) UpdateIsDefault() *TeamUpsertBulk {
-	return u.Update(func(s *TeamUpsert) {
-		s.UpdateIsDefault()
-	})
 }
 
 // SetIsBanned sets the "is_banned" field.

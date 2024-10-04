@@ -110,7 +110,6 @@ var (
 	TeamsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
 		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
-		{Name: "is_default", Type: field.TypeBool},
 		{Name: "is_banned", Type: field.TypeBool, Default: "false"},
 		{Name: "is_blocked", Type: field.TypeBool, Default: "false"},
 		{Name: "blocked_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
@@ -126,7 +125,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "teams_tiers_teams",
-				Columns:    []*schema.Column{TeamsColumns[8]},
+				Columns:    []*schema.Column{TeamsColumns[7]},
 				RefColumns: []*schema.Column{TiersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},

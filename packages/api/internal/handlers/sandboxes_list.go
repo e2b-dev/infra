@@ -30,11 +30,15 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 
 	buildIDs := make([]uuid.UUID, 0)
 	for _, info := range instanceInfo {
-		if info.TeamID != team.ID {
+		if info.TeamID == nil {
 			continue
 		}
 
-		buildIDs = append(buildIDs, info.BuildID)
+		if *info.TeamID != team.ID {
+			continue
+		}
+
+		buildIDs = append(buildIDs, *info.BuildID)
 	}
 
 	builds, err := a.db.Client.EnvBuild.Query().Where(envbuild.IDIn(buildIDs...)).All(ctx)
@@ -52,7 +56,15 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 	sandboxes := make([]api.RunningSandbox, 0)
 
 	for _, info := range instanceInfo {
-		if info.TeamID != team.ID {
+		if info.TeamID == nil {
+			continue
+		}
+
+		if *info.TeamID != team.ID {
+			continue
+		}
+
+		if info.BuildID == nil {
 			continue
 		}
 
@@ -62,8 +74,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 			Alias:      info.Instance.Alias,
 			SandboxID:  info.Instance.SandboxID,
 			StartedAt:  info.StartTime,
-			CpuCount:   int32(buildsMap[info.BuildID].Vcpu),
-			MemoryMB:   int32(buildsMap[info.BuildID].RAMMB),
+			CpuCount:   int32(buildsMap[*info.BuildID].Vcpu),
+			MemoryMB:   int32(buildsMap[*info.BuildID].RAMMB),
 			EndAt:      info.EndTime,
 		}
 

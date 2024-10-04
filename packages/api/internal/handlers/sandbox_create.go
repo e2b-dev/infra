@@ -3,9 +3,10 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"golang.org/x/sync/semaphore"
 	"net/http"
 	"time"
+
+	"golang.org/x/sync/semaphore"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
@@ -129,10 +130,34 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	timeout := instance.InstanceExpiration
 	if body.Timeout != nil {
 		timeout = time.Duration(*body.Timeout) * time.Second
+
+		if timeout > time.Duration(teamInfo.Tier.MaxLengthHours)*time.Hour {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Tier.MaxLengthHours))
+
+			return
+		}
 	}
+
 	endTime := startTime.Add(timeout)
 
-	sandbox, instanceErr := a.orchestrator.CreateSandbox(ctx, sandboxID, env.TemplateID, alias, team.ID, build, teamInfo.Tier.MaxLengthHours, metadata, envVars, build.KernelVersion, build.FirecrackerVersion, *build.EnvdVersion, startTime, endTime, teamInfo.Tier.ConcurrentInstances)
+	sandbox, instanceErr := a.orchestrator.CreateSandbox(
+		ctx,
+		sandboxID,
+		env.TemplateID,
+		alias,
+		team.ID,
+		build,
+		teamInfo.Tier.MaxLengthHours,
+		metadata,
+		envVars,
+		build.KernelVersion,
+		build.FirecrackerVersion,
+		*build.EnvdVersion,
+		startTime,
+		endTime,
+		teamInfo.Tier.ConcurrentInstances,
+		timeout,
+	)
 	if instanceErr != nil {
 		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
 		telemetry.ReportCriticalError(ctx, errMsg)

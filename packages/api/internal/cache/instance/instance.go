@@ -20,9 +20,9 @@ const (
 )
 
 type InstanceInfo struct {
-	Instance          api.Sandbox
-	TeamID            uuid.UUID
-	BuildID           uuid.UUID
+	Instance          *api.Sandbox
+	TeamID            *uuid.UUID
+	BuildID           *uuid.UUID
 	Metadata          map[string]string
 	MaxInstanceLength time.Duration
 	StartTime         time.Time

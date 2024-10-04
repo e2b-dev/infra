@@ -8,6 +8,10 @@ resource "google_storage_bucket" "loki_storage_bucket" {
 
   labels = var.labels
 
+  soft_delete_policy {
+    retention_duration_seconds = 0
+  }
+
   lifecycle_rule {
     condition {
       age = 8

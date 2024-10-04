@@ -16,8 +16,6 @@ const (
 	FieldID = "id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
-	// FieldIsDefault holds the string denoting the is_default field in the database.
-	FieldIsDefault = "is_default"
 	// FieldIsBanned holds the string denoting the is_banned field in the database.
 	FieldIsBanned = "is_banned"
 	// FieldIsBlocked holds the string denoting the is_blocked field in the database.
@@ -83,7 +81,6 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldCreatedAt,
-	FieldIsDefault,
 	FieldIsBanned,
 	FieldIsBlocked,
 	FieldBlockedReason,
@@ -126,11 +123,6 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
-}
-
-// ByIsDefault orders the results by the is_default field.
-func ByIsDefault(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldIsDefault, opts...).ToFunc()
 }
 
 // ByIsBanned orders the results by the is_banned field.

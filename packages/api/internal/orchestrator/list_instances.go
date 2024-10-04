@@ -52,7 +52,7 @@ func (o *Orchestrator) getInstances(ctx context.Context, nodeID string) ([]*inst
 		}
 
 		sandboxesInfo = append(sandboxesInfo, &instance.InstanceInfo{
-			Instance: api.Sandbox{
+			Instance: &api.Sandbox{
 				SandboxID:  config.SandboxId,
 				TemplateID: config.TemplateId,
 				Alias:      config.Alias,
@@ -62,8 +62,8 @@ func (o *Orchestrator) getInstances(ctx context.Context, nodeID string) ([]*inst
 			EndTime:           sbx.EndTime.AsTime(),
 			VCpu:              config.Vcpu,
 			RamMB:             config.RamMb,
-			BuildID:           buildID,
-			TeamID:            teamID,
+			BuildID:           &buildID,
+			TeamID:            &teamID,
 			Metadata:          config.Metadata,
 			MaxInstanceLength: time.Duration(config.MaxSandboxLength) * time.Hour,
 		})

@@ -5,7 +5,7 @@ Check if you can use config for terraform state management
 1. Create bucket in Google Cloud
 2. Create `.env.prod` from `.env.template` and fill in the values
 3. Run `make switch-env ENV=prod`
-4. Create DB and apply Migrations (./packages/shared) and run `make migrate`
+4. Create DB and apply Migrations (./packages/shared) and run `make migrate` (there bug in atlas, it will fail, you will need to create atlas_schema_revisions.atlas_schema_revisions, the table definition will be in public.atlas_schema_revisions)
 5. Enable APIs
    - [Secret Manager API](https://console.cloud.google.com/apis/library/secretmanager.googleapis.com)
    - [Certificate Manager API](https://console.cloud.google.com/apis/library/certificatemanager.googleapis.com)

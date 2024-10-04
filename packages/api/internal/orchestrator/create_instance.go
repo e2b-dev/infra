@@ -37,6 +37,7 @@ func (o *Orchestrator) CreateSandbox(
 	startTime time.Time,
 	endTime time.Time,
 	maxInstancesPerTeam int64,
+	timeout time.Duration,
 ) (*api.Sandbox, error) {
 	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox",
 		trace.WithAttributes(
@@ -127,14 +128,17 @@ func (o *Orchestrator) CreateSandbox(
 		EnvdVersion: *build.EnvdVersion,
 	}
 
-	_, cacheSpan := o.tracer.Start(ctx, "add-instance-to-cache")
+	// This is to compensate for the time it takes to start the instance
+	// Otherwise it could cause the instance to expire before user has a chance to use it
+	startTime = time.Now()
+	endTime = startTime.Add(timeout)
 
 	if cacheErr := o.instanceCache.Add(instance.InstanceInfo{
 		StartTime:         startTime,
 		EndTime:           endTime,
-		Instance:          sbx,
-		BuildID:           build.ID,
-		TeamID:            teamID,
+		Instance:          &sbx,
+		BuildID:           &build.ID,
+		TeamID:            &teamID,
 		Metadata:          metadata,
 		VCpu:              build.Vcpu,
 		RamMB:             build.RAMMB,
@@ -153,8 +157,6 @@ func (o *Orchestrator) CreateSandbox(
 
 		return nil, errMsg
 	}
-
-	cacheSpan.End()
 
 	return &sbx, nil
 }
