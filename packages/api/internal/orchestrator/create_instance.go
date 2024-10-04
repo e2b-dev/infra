@@ -147,12 +147,9 @@ func (o *Orchestrator) CreateSandbox(
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 
-		delErr := o.DeleteInstance(childCtx, sbx.SandboxID)
-		if delErr != nil {
-			delErrMsg := fmt.Errorf("couldn't delete instance that couldn't be added to cache: %w", delErr)
-			telemetry.ReportError(ctx, delErrMsg)
-		} else {
-			telemetry.ReportEvent(ctx, "deleted instance that couldn't be added to cache")
+		deleted := o.DeleteInstance(childCtx, sbx.SandboxID)
+		if !deleted {
+			telemetry.ReportEvent(ctx, "instance wasn't found in cache when deleting")
 		}
 
 		return nil, errMsg

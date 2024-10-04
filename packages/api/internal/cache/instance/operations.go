@@ -115,6 +115,8 @@ func (c *InstanceCache) Add(instance InstanceInfo) error {
 }
 
 // Kill the instance and remove it from the cache.
-func (c *InstanceCache) Kill(instanceID string) {
-	c.cache.Delete(instanceID)
+func (c *InstanceCache) Kill(instanceID string) bool {
+	_, found := c.cache.GetAndDelete(instanceID, ttlcache.WithDisableTouchOnHit[string, InstanceInfo]())
+
+	return found
 }

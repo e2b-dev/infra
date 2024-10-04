@@ -4,11 +4,9 @@ import (
 	"context"
 )
 
-func (o *Orchestrator) DeleteInstance(ctx context.Context, sandboxID string) error {
+func (o *Orchestrator) DeleteInstance(ctx context.Context, sandboxID string) bool {
 	_, childSpan := o.tracer.Start(ctx, "delete-instance")
 	defer childSpan.End()
 
-	o.instanceCache.Kill(sandboxID)
-
-	return nil
+	return o.instanceCache.Kill(sandboxID)
 }

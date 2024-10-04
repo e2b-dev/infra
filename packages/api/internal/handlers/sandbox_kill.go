@@ -27,11 +27,8 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		attribute.String("team.id", teamID.String()),
 	)
 
-	err := a.orchestrator.DeleteInstance(ctx, sandboxID)
-	if err != nil {
-		errMsg := fmt.Errorf("error when getting sandbox: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
+	found := a.orchestrator.DeleteInstance(ctx, sandboxID)
+	if !found {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error killing sandbox - sandbox '%s' was not found", sandboxID))
 
 		return
