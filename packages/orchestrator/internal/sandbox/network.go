@@ -87,17 +87,17 @@ func (ips *IPSlot) CreateNetwork(
 	tracer trace.Tracer,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-network", trace.WithAttributes(
-		attribute.Int("instance.slot.index", ips.SlotIdx),
-		attribute.String("instance.slot.veth.cidr", ips.VethCIDR()),
-		attribute.String("instance.slot.vpeer.cidr", ips.VpeerCIDR()),
-		attribute.String("instance.slot.tap.cidr", ips.TapCIDR()),
-		attribute.String("instance.slot.host_snapshot.cidr", ips.HostSnapshotCIDR()),
-		attribute.String("instance.slot.namespaces_snapshot.ip", ips.NamespaceSnapshotIP()),
-		attribute.String("instance.slot.tap.ip", ips.TapIP()),
-		attribute.String("instance.slot.tap.name", ips.TapName()),
-		attribute.String("instance.slot.veth.name", ips.VethName()),
-		attribute.String("instance.slot.vpeer.name", ips.VpeerName()),
-		attribute.String("instance.slot.namespace.id", ips.NamespaceID()),
+		attribute.Int("sandbox.slot.index", ips.SlotIdx),
+		attribute.String("sandbox.slot.veth.cidr", ips.VethCIDR()),
+		attribute.String("sandbox.slot.vpeer.cidr", ips.VpeerCIDR()),
+		attribute.String("sandbox.slot.tap.cidr", ips.TapCIDR()),
+		attribute.String("sandbox.slot.host_snapshot.cidr", ips.HostSnapshotCIDR()),
+		attribute.String("sandbox.slot.namespaces_snapshot.ip", ips.NamespaceSnapshotIP()),
+		attribute.String("sandbox.slot.tap.ip", ips.TapIP()),
+		attribute.String("sandbox.slot.tap.name", ips.TapName()),
+		attribute.String("sandbox.slot.veth.name", ips.VethName()),
+		attribute.String("sandbox.slot.vpeer.name", ips.VpeerName()),
+		attribute.String("sandbox.slot.namespace.id", ips.NamespaceID()),
 	))
 	defer childSpan.End()
 
@@ -134,7 +134,7 @@ func (ips *IPSlot) CreateNetwork(
 		}
 	}()
 
-	// Create NS for the env instance
+	// Create NS for the sandbox
 	ns, err := netns.NewNamed(ips.NamespaceID())
 	if err != nil {
 		errMsg := fmt.Errorf("cannot create new namespace: %w", err)

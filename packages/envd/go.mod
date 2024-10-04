@@ -3,6 +3,7 @@ module github.com/e2b-dev/infra/packages/envd
 go 1.21
 
 require (
+	connectrpc.com/authn v0.1.0
 	connectrpc.com/connect v1.16.2
 	connectrpc.com/cors v0.1.0
 	github.com/creack/pty v1.1.18
@@ -16,7 +17,6 @@ require (
 )
 
 require (
-	connectrpc.com/authn v0.1.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/getkin/kin-openapi v0.123.0 // indirect
 	github.com/go-openapi/jsonpointer v0.20.2 // indirect

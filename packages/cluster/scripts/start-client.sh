@@ -13,52 +13,45 @@ exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&
 ulimit -n 1048576
 export GOMAXPROCS='nproc'
 
-# --- Mount the persistent disk with Firecracker environments.
-# See https://cloud.google.com/compute/docs/disks/add-persistent-disk#create_disk
+# Load the nbd module with 4096 devices
+sudo modprobe nbd nbds_max=4096
 
-mount_path="/mnt/disks/${DISK_DEVICE_NAME}"
+# Create the directory for the fc mounts
+mkdir -p /fc-vm
 
-mkdir -p "$mount_path"
+# Create the config file for gcsfuse
+fuse_cache="/fuse/cache"
+mkdir -p $fuse_cache
 
-# Format the disk if it is not already formatted.
-if [[ $(lsblk -no FSTYPE "/dev/disk/by-id/google-${DISK_DEVICE_NAME}") != "xfs" ]]; then
-    mkfs.xfs "/dev/disk/by-id/google-${DISK_DEVICE_NAME}"
-fi
+fuse_config="/fuse/config.yaml"
 
-mount "/dev/disk/by-id/google-${DISK_DEVICE_NAME}" "$mount_path"
-chmod a+w "$mount_path"
+cat >$fuse_config <<EOF
+file-cache:
+  max-size-mb: -1
+  cache-file-for-range-read: false
 
-# Mount env buckets
-mkdir -p /mnt/disks/envs-pipeline
-gcsfuse -o=allow_other --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" /mnt/disks/envs-pipeline
+metadata-cache:
+  ttl-secs: -1
 
-# Copy the envd
-env_pipeline_local_dir="/fc-vm"
-mkdir -p $env_pipeline_local_dir
-sudo cp /mnt/disks/envs-pipeline/envd $env_pipeline_local_dir/envd
-sudo chmod +x $env_pipeline_local_dir/envd
+cache-dir: $fuse_cache
+EOF
 
-# Copy the envd-v0.0.1
-sudo cp /mnt/disks/envs-pipeline/envd-v0.0.1 $env_pipeline_local_dir/envd-v0.0.1
-sudo chmod +x $env_pipeline_local_dir/envd-v0.0.1
+# Mount envd buckets
+envd_dir="/fc-envd"
+mkdir -p $envd_dir
+gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" $envd_dir
 
-# Copy kernels
-mkdir -p /mnt/disks/fc-kernels
-gcsfuse -o=allow_other --implicit-dirs "${FC_KERNELS_BUCKET_NAME}" /mnt/disks/fc-kernels
+# Mount kernels
 kernels_dir="/fc-kernels"
 mkdir -p $kernels_dir
-cp -r /mnt/disks/fc-kernels/* $kernels_dir
+gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_KERNELS_BUCKET_NAME}" $kernels_dir
 
-# Copy FC versions
-mkdir -p /mnt/disks/fc-versions
-gcsfuse -o=allow_other --implicit-dirs "${FC_VERSIONS_BUCKET_NAME}" /mnt/disks/fc-versions
+# Mount FC versions
 fc_versions_dir="/fc-versions"
 mkdir -p $fc_versions_dir
-cp -r /mnt/disks/fc-versions/* $fc_versions_dir
-chmod +x -R /fc-versions
+gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_VERSIONS_BUCKET_NAME}" $fc_versions_dir
 
 # These variables are passed in via Terraform template interpolation
-
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-nomad-${RUN_NOMAD_FILE_HASH}.sh" /opt/nomad/bin/run-nomad.sh
 
@@ -77,6 +70,16 @@ cat <<EOF >/root/docker/config.json
     }
 }
 EOF
+
+mkdir -p /etc/systemd/resolved.conf.d/
+touch /etc/systemd/resolved.conf.d/consul.conf
+cat <<EOF >/etc/systemd/resolved.conf.d/consul.conf
+[Resolve]
+DNS=127.0.0.1:8600
+DNSSEC=false
+Domains=~consul
+EOF
+systemctl restart systemd-resolved
 
 # Set up huge pages
 # We are not enabling Transparent Huge Pages for now, as they are not swappable and may result in slowdowns + we are not using swap right now.
@@ -151,7 +154,11 @@ echo "- Allocating $overcommitment_hugepages huge pages ($overcommitment_hugepag
 echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
 
 # These variables are passed in via Terraform template interpolation
-/opt/consul/bin/run-consul.sh --client --consul-token "${CONSUL_TOKEN}" --cluster-tag-name "${CLUSTER_TAG_NAME}" --enable-gossip-encryption --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" &
+/opt/consul/bin/run-consul.sh --client \
+    --consul-token "${CONSUL_TOKEN}" \
+    --cluster-tag-name "${CLUSTER_TAG_NAME}" \
+    --enable-gossip-encryption \
+    --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" &
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" &
 
 # Add alias for ssh-ing to sbx

@@ -24,6 +24,22 @@ resource "google_secret_manager_secret_version" "consul_gossip_encryption_key" {
   secret_data = random_id.consul_gossip_encryption_key.b64_std
 }
 
+resource "google_secret_manager_secret" "consul_dns_request_token" {
+  secret_id = "${var.prefix}consul-dns-request-token"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "random_uuid" "consul_dns_request_token" {
+}
+
+resource "google_secret_manager_secret_version" "consul_dns_request_token" {
+  secret      = google_secret_manager_secret.consul_dns_request_token.name
+  secret_data = random_uuid.consul_dns_request_token.result
+}
+
 resource "google_project_iam_member" "network_viewer" {
   project = var.gcp_project_id
   member  = "serviceAccount:${var.google_service_account_email}"
@@ -98,7 +114,6 @@ module "client_cluster" {
     FC_VERSIONS_BUCKET_NAME      = var.fc_versions_bucket_name
     FC_ENV_PIPELINE_BUCKET_NAME  = var.fc_env_pipeline_bucket_name
     DOCKER_CONTEXTS_BUCKET_NAME  = var.docker_contexts_bucket_name
-    DISK_DEVICE_NAME             = var.fc_envs_disk_device_name
     GCP_REGION                   = var.gcp_region
     GOOGLE_SERVICE_ACCOUNT_KEY   = var.google_service_account_key
     NOMAD_TOKEN                  = var.nomad_acl_token_secret
@@ -106,6 +121,7 @@ module "client_cluster" {
     RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
+    CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
   })
 
   cluster_name     = "${var.prefix}${var.client_cluster_name}"
@@ -129,9 +145,6 @@ module "client_cluster" {
   nomad_port                = var.nomad_port
 
   service_account_email = var.google_service_account_email
-
-  fc_envs_disk_name        = var.fc_envs_disk_name
-  fc_envs_disk_device_name = var.fc_envs_disk_device_name
 
   labels     = var.labels
   depends_on = [google_storage_bucket_object.setup_config_objects]

@@ -53,6 +53,7 @@ function print_usage {
   echo -e "  --user\t\tThe user to run Consul as. Optional. Default is to use the owner of --config-dir."
   echo -e "  --enable-gossip-encryption\t\tEnable encryption of gossip traffic between nodes. Optional. Must also specify --gossip-encryption-key."
   echo -e "  --gossip-encryption-key\t\tThe key to use for encrypting gossip traffic. Optional. Must be specified with --enable-gossip-encryption."
+  echo -e "  --dns-request-token\t\tThe token to use for DNS requests."
   echo -e "  --enable-rpc-encryption\t\tEnable encryption of RPC traffic between nodes. Optional. Must also specify --ca-file-path, --cert-file-path and --key-file-path."
   echo -e "  --ca-path\t\tPath to the directory of CA files used to verify outgoing connections. Optional. Must be specified with --enable-rpc-encryption."
   echo -e "  --cert-file-path\tPath to the certificate file used to verify incoming connections. Optional. Must be specified with --enable-rpc-encryption and --key-file-path."
@@ -393,6 +394,41 @@ function bootstrap {
   done
 }
 
+function setup_dns_resolving {
+  local consul_token="$1"
+  local dns_request_token="$2"
+
+  until consul info -token="${consul_token}" > /dev/null 2>&1;
+  do
+    log_info "Waiting for Consul to start"
+    sleep 1
+  done
+
+  if (($(consul acl policy read -name="dns-request-policy" -token="${consul_token}" -format=json | jq '.ID' | wc -l) > 0)); then
+    log_info "DNS Request Policy already exists"
+    return
+  else
+    # Based on https://developer.hashicorp.com/consul/tutorials/security/access-control-setup-production#token-for-dns
+    # Token is created on the leader node, so there's no problem with duplication
+    touch dns-request-policy.hcl
+    cat <<EOF >dns-request-policy.hcl
+node_prefix "" {
+  policy = "read"
+}
+service_prefix "" {
+  policy = "read"
+}
+EOF
+      consul acl policy create -name "dns-request-policy" -rules @dns-request-policy.hcl -token="${consul_token}"
+      consul acl token create -secret "${dns_request_token}" -description "DNS Request Token" -policy-name "dns-request-policy" -token="${consul_token}" > /tmp/dns-request-token
+      rm dns-request-policy.hcl
+  fi
+
+
+  consul acl set-agent-token -token="${consul_token}" default "${dns_request_token}"
+  log_info "DNS Request Token set"
+}
+
 # Based on: http://unix.stackexchange.com/a/7732/215969
 function get_owner_of_path {
   local -r path="$1"
@@ -539,6 +575,11 @@ function run {
       gossip_encryption_key="$2"
       shift
       ;;
+    --dns-request-token)
+      assert_not_empty "$key" "$2"
+      dns_request_token="$2"
+      shift
+      ;;
     --enable-rpc-encryption)
       enable_rpc_encryption="true"
       ;;
@@ -656,6 +697,10 @@ function run {
 
   generate_systemd_config "$SYSTEMD_CONFIG_PATH" "$config_dir" "$data_dir" "$systemd_stdout" "$systemd_stderr" "$bin_dir" "$user" "${environment[@]}"
   start_consul
+
+  if [[ "$client" == "true" ]]; then
+    setup_dns_resolving "$consul_token" "$dns_request_token"
+  fi
 
   if [[ "$server" == "true" ]]; then
     bootstrap "$consul_token"

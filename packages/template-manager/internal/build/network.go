@@ -31,7 +31,7 @@ func NewFCNetwork(ctx context.Context, tracer trace.Tracer, env *Env) (*FCNetwor
 	defer childSpan.End()
 
 	network := &FCNetwork{
-		namespaceID: namespaceNamePrefix + env.BuildID,
+		namespaceID: namespaceNamePrefix + env.BuildId,
 	}
 
 	err := network.setup(childCtx, tracer)

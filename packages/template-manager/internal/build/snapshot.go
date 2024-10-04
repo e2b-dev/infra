@@ -15,10 +15,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -87,7 +87,7 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 	childCtx, childSpan := tracer.Start(ctx, "new-snapshot")
 	defer childSpan.End()
 
-	socketFileName := fmt.Sprintf("fc-sock-%s.sock", env.BuildID)
+	socketFileName := fmt.Sprintf("fc-sock-%s.sock", env.BuildId)
 	socketPath := filepath.Join(tmpDirPath, socketFileName)
 
 	client := newFirecrackerClient(socketPath)
@@ -108,7 +108,7 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 		tracer,
 		env.FirecrackerBinaryPath,
 		network.namespaceID,
-		consts.KernelMountDir,
+		storage.KernelMountDir,
 		env.KernelDirPath(),
 	)
 	if err != nil {
@@ -295,7 +295,7 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 	ioEngine := "Async"
 	isRootDevice := true
 	isReadOnly := false
-	pathOnHost := s.env.tmpRootfsPath()
+	pathOnHost := s.env.BuildRootfsPath()
 	driversConfig := operations.PutGuestDriveByIDParams{
 		Context: childCtx,
 		DriveID: rootfs,
@@ -441,8 +441,8 @@ func (s *Snapshot) snapshotFC(ctx context.Context, tracer trace.Tracer) error {
 	childCtx, childSpan := tracer.Start(ctx, "snapshot-fc")
 	defer childSpan.End()
 
-	memfilePath := s.env.tmpMemfilePath()
-	snapfilePath := s.env.tmpSnapfilePath()
+	memfilePath := s.env.BuildMemfilePath()
+	snapfilePath := s.env.BuildSnapfilePath()
 	snapshotConfig := operations.CreateSnapshotParams{
 		Context: childCtx,
 		Body: &models.SnapshotCreateParams{

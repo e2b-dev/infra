@@ -78,6 +78,9 @@ func (c *InstanceCache) Add(instance InstanceInfo) error {
 		return fmt.Errorf("instance is missing sandbox ID")
 	}
 
+	// Release the reservation if it exists
+	defer c.reservations.release(instance.Instance.SandboxID)
+
 	if instance.TeamID == nil {
 		return fmt.Errorf("instance %s is missing team ID", instance.Instance.SandboxID)
 	}
@@ -102,19 +105,18 @@ func (c *InstanceCache) Add(instance InstanceInfo) error {
 	if ttl <= 0 {
 		ttl = time.Nanosecond
 		// TODO: It would be probably better to return error here, but in that case we need to make sure that sbxs in orchestrator are killed
-		//return fmt.Errorf("instance \"%s\" has already expired", instance.Instance.SandboxID)
+		// return fmt.Errorf("instance \"%s\" has already expired", instance.Instance.SandboxID)
 	}
 
 	c.cache.Set(instance.Instance.SandboxID, instance, ttl)
 	c.UpdateCounter(instance, 1)
 
-	// Release the reservation if it exists
-	c.reservations.release(instance.Instance.SandboxID)
-
 	return nil
 }
 
 // Kill the instance and remove it from the cache.
-func (c *InstanceCache) Kill(instanceID string) {
-	c.cache.Delete(instanceID)
+func (c *InstanceCache) Kill(instanceID string) bool {
+	_, found := c.cache.GetAndDelete(instanceID, ttlcache.WithDisableTouchOnHit[string, InstanceInfo]())
+
+	return found
 }

@@ -6,10 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	"golang.org/x/sync/semaphore"
+
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -112,24 +113,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	defer postSandboxParallelLimit.Release(1)
 	telemetry.ReportEvent(ctx, "create sandbox parallel limit semaphore slot acquired")
 
-	// Check if team has reached max instances
-	maxInstancesPerTeam := teamInfo.Tier.ConcurrentInstances
-	err, releaseTeamSandboxReservation := a.instanceCache.Reserve(sandboxID, team.ID, maxInstancesPerTeam)
-	if err != nil {
-		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, teamInfo.Tier.ConcurrentInstances)
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
-
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf(
-			"You have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-				"please contact us at 'https://e2b.dev/docs/getting-help'", maxInstancesPerTeam))
-
-		return
-	}
-
 	rateSpan.End()
 	telemetry.ReportEvent(ctx, "Reserved team sandbox slot")
-
-	defer releaseTeamSandboxReservation()
 
 	var metadata map[string]string
 	if body.Metadata != nil {
@@ -155,7 +140,24 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	endTime := startTime.Add(timeout)
 
-	sandbox, instanceErr := a.orchestrator.CreateSandbox(a.Tracer, ctx, sandboxID, env.TemplateID, alias, team.ID.String(), build, teamInfo.Tier.MaxLengthHours, metadata, envVars, build.KernelVersion, build.FirecrackerVersion, *build.EnvdVersion, startTime, endTime)
+	sandbox, instanceErr := a.orchestrator.CreateSandbox(
+		ctx,
+		sandboxID,
+		env.TemplateID,
+		alias,
+		team.ID,
+		build,
+		teamInfo.Tier.MaxLengthHours,
+		metadata,
+		envVars,
+		build.KernelVersion,
+		build.FirecrackerVersion,
+		*build.EnvdVersion,
+		startTime,
+		endTime,
+		teamInfo.Tier.ConcurrentInstances,
+		timeout,
+	)
 	if instanceErr != nil {
 		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -172,41 +174,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
-	// This is to compensate for the time it takes to start the instance
-	// Otherwise it could cause the instance to expire before user has a chance to use it
-	startTime = time.Now()
-	endTime = startTime.Add(timeout)
-	instanceInfo := instance.InstanceInfo{
-		StartTime:         startTime,
-		EndTime:           endTime,
-		Instance:          sandbox,
-		BuildID:           &build.ID,
-		TeamID:            &team.ID,
-		Metadata:          metadata,
-		MaxInstanceLength: time.Duration(teamInfo.Tier.MaxLengthHours) * time.Hour,
-	}
-
-	_, cacheSpan := a.Tracer.Start(ctx, "add-instance-to-cache")
-	if cacheErr := a.instanceCache.Add(instanceInfo); cacheErr != nil {
-		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
-		telemetry.ReportError(ctx, errMsg)
-
-		delErr := a.DeleteInstance(sandbox.SandboxID, true)
-		if delErr != nil {
-			delErrMsg := fmt.Errorf("couldn't delete instance that couldn't be added to cache: %w", delErr.Err)
-			telemetry.ReportError(ctx, delErrMsg)
-		} else {
-			telemetry.ReportEvent(ctx, "deleted instance that couldn't be added to cache")
-		}
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Cannot create a sandbox right now")
-
-		return
-	}
-
-	cacheSpan.End()
-
 	c.Set("instanceID", sandbox.SandboxID)
+	c.Set("nodeID", sandbox.ClientID)
 
 	telemetry.ReportEvent(ctx, "Added sandbox to cache")
 

@@ -20,8 +20,9 @@ generate:
 .PHONY: build
 build:
 	@cp -r ../shared .shared/
+	@cp -r ../block-storage .block-storage/
 	@docker build --platform linux/amd64 --output=bin .
-	@rm -rf .shared/
+	@rm -rf .shared/ .block-storage/
 
 .PHONY: build-local
 build-local:
@@ -38,6 +39,6 @@ upload:
 .PHONY: build-and-upload
 build-and-upload: build upload
 
-.PHONY: test
-test:
-	sudo NODE_ID="test-client-22" CONSUL_TOKEN=$(CONSUL_TOKEN) go run -race -gcflags=all="-N -l" main.go -env zli4m3wxr03ma3i99w8h -instance test-instance-1 -alive 1 -count 1
+.PHONY: mock
+mock:
+	sudo TEMPLATE_BUCKET_NAME="e2b-dev-fc-templates" NODE_ID="test-client-22" CONSUL_TOKEN=$(CONSUL_TOKEN) go run -race -gcflags=all="-N -l" main.go -template 0x5brrleaeg0pxeon4uh -sandbox testinstance -build "9dc30023-c2e5-4cb7-8f4d-5ae196627abd" -alive 7 -count 1

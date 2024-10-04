@@ -182,6 +182,10 @@ variable "docker_reverse_proxy_port" {
   })
 }
 
+variable "template_bucket_name" {
+  type = string
+}
+
 variable "docker_reverse_proxy_service_account_key" {
   type = string
 }

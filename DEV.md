@@ -12,22 +12,6 @@ Then push to `main` to deploy these changes. Changed packages will be automatica
 If you are not developing env-instance-task-driver module on a unix machine you won't be able to complile the module because you will miss constants like "netlink.SCOPE_UNIVERSE".
 Use the ubuntu devcontainer to develop this module.
 
-### Resizing fc-envs disk (XFS)
-
-After modifying [`fc-envs` disk](https://console.cloud.google.com/compute/disksDetail/zones/us-central1-a/disks/fc-envs) size in the dashboard you need to resize the partition by running the `xfs_growfs -d /dev/sdb`.
-
-### Creating XFS filesystem
-
-```sh
-mkfs.xfs  /dev/sdb
-```
-
-> You need to remount the fs after formatting it.
-
-### Convert disk to XFS
-
-- https://access.redhat.com/discussions/6134431
-
 ### FC API Client
 
 For generating the FC client use go swagger (https://goswagger.io/install.html).

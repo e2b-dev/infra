@@ -1,0 +1,6 @@
+bin
+bin/**
+test/**
+__debug_bin*
+test_mmap.dat
+.test

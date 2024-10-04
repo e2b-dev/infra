@@ -90,10 +90,10 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 
 	deleteJobErr := a.templateManager.DeleteInstance(ctx, template.ID)
 	if deleteJobErr != nil {
-		errMsg := fmt.Errorf("error when deleting env files from fc-envs disk: %w", deleteJobErr)
+		errMsg := fmt.Errorf("error when deleting env files from storage: %w", deleteJobErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
 	} else {
-		telemetry.ReportEvent(ctx, "deleted env from fc-envs disk")
+		telemetry.ReportEvent(ctx, "deleted env from storage")
 	}
 
 	dbErr := a.db.DeleteEnv(ctx, template.ID)

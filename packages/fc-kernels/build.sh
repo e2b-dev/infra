@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+rm -rf linux
+
 function build_version {
   local version=$1
   echo "Starting build for kernel version: $version"

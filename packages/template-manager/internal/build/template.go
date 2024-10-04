@@ -13,24 +13,12 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const (
-	buildIDName  = "build_id"
-	rootfsName   = "rootfs.ext4"
-	snapfileName = "snapfile"
-	memfileName  = "memfile"
-
-	buildDirName = "builds"
-)
-
 type Env struct {
-	// Unique ID of the env.
-	EnvID string
-	// Unique ID of the build - this is used to distinguish builds of the same env that can start simultaneously.
-	BuildID string
+	templateStorage.TemplateFiles
 
 	// Command to run when building the env.
 	StartCmd string
@@ -66,7 +54,7 @@ var EnvInstanceTemplate = template.Must(template.New("provisioning-script").Pars
 
 // Path to the directory where the kernel is stored.
 func (e *Env) KernelDirPath() string {
-	return filepath.Join(consts.KernelsDir, e.KernelVersion)
+	return filepath.Join(templateStorage.KernelsDir, e.KernelVersion)
 }
 
 // Real size in MB of rootfs after building the env
@@ -76,69 +64,24 @@ func (e *Env) RootfsSizeMB() int64 {
 
 // Path to the directory where the kernel can be accessed inside when the dirs are mounted.
 func (e *Env) KernelMountedPath() string {
-	return filepath.Join(consts.KernelMountDir, consts.KernelName)
-}
-
-// Path to the directory where the temporary files for the build are stored.
-func (e *Env) tmpBuildDirPath() string {
-	return filepath.Join(e.envDirPath(), buildDirName, e.BuildID)
-}
-
-// Path to the file where the build ID is stored. This is used for setting up the namespaces when starting the FC snapshot for this build/env.
-func (e *Env) tmpBuildIDFilePath() string {
-	return filepath.Join(e.tmpBuildDirPath(), buildIDName)
-}
-
-func (e *Env) tmpRootfsPath() string {
-	return filepath.Join(e.tmpBuildDirPath(), rootfsName)
-}
-
-func (e *Env) tmpMemfilePath() string {
-	return filepath.Join(e.tmpBuildDirPath(), memfileName)
-}
-
-func (e *Env) tmpSnapfilePath() string {
-	return filepath.Join(e.tmpBuildDirPath(), snapfileName)
-}
-
-// Path to the directory where the env is stored.
-func (e *Env) envDirPath() string {
-	return filepath.Join(consts.EnvsDisk, e.EnvID)
-}
-
-func (e *Env) envBuildIDFilePath() string {
-	return filepath.Join(e.envDirPath(), buildIDName)
-}
-
-func (e *Env) envRootfsPath() string {
-	return filepath.Join(e.envDirPath(), rootfsName)
-}
-
-func (e *Env) envMemfilePath() string {
-	return filepath.Join(e.envDirPath(), memfileName)
-}
-
-func (e *Env) envSnapfilePath() string {
-	return filepath.Join(e.envDirPath(), snapfileName)
+	return filepath.Join(templateStorage.KernelMountDir, templateStorage.KernelName)
 }
 
 func (e *Env) Build(ctx context.Context, tracer trace.Tracer, docker *client.Client, legacyDocker *docker.Client) error {
 	childCtx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
-	err := e.initialize(childCtx, tracer)
+	err := os.MkdirAll(e.BuildDir(), 0o777)
 	if err != nil {
-		errMsg := fmt.Errorf("error initializing directories for building env '%s' during build '%s': %w", e.EnvID, e.BuildID, err)
+		errMsg := fmt.Errorf("error initializing directories for building env '%s' during build '%s': %w", e.TemplateId, e.BuildId, err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg
 	}
 
-	defer e.Cleanup(childCtx, tracer)
-
 	rootfs, err := NewRootfs(childCtx, tracer, e, docker, legacyDocker)
 	if err != nil {
-		errMsg := fmt.Errorf("error creating rootfs for env '%s' during build '%s': %w", e.EnvID, e.BuildID, err)
+		errMsg := fmt.Errorf("error creating rootfs for env '%s' during build '%s': %w", e.TemplateId, e.BuildId, err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg
@@ -146,7 +89,7 @@ func (e *Env) Build(ctx context.Context, tracer trace.Tracer, docker *client.Cli
 
 	network, err := NewFCNetwork(childCtx, tracer, e)
 	if err != nil {
-		errMsg := fmt.Errorf("error network setup for FC while building env '%s' during build '%s': %w", e.EnvID, e.BuildID, err)
+		errMsg := fmt.Errorf("error network setup for FC while building env '%s' during build '%s': %w", e.TemplateId, e.BuildId, err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg
@@ -156,15 +99,7 @@ func (e *Env) Build(ctx context.Context, tracer trace.Tracer, docker *client.Cli
 
 	_, err = NewSnapshot(childCtx, tracer, e, network, rootfs)
 	if err != nil {
-		errMsg := fmt.Errorf("error snapshot for env '%s' during build '%s': %w", e.EnvID, e.BuildID, err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	err = e.MoveToEnvDir(childCtx, tracer)
-	if err != nil {
-		errMsg := fmt.Errorf("error moving env files to their final destination during while building env '%s' during build '%s': %w", e.EnvID, e.BuildID, err)
+		errMsg := fmt.Errorf("error snapshot for env '%s' during build '%s': %w", e.TemplateId, e.BuildId, err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg
@@ -173,96 +108,19 @@ func (e *Env) Build(ctx context.Context, tracer trace.Tracer, docker *client.Cli
 	return nil
 }
 
-func (e *Env) initialize(ctx context.Context, tracer trace.Tracer) error {
-	childCtx, childSpan := tracer.Start(ctx, "initialize")
-	defer childSpan.End()
-
-	var err error
-	defer func() {
-		if err != nil {
-			e.Cleanup(childCtx, tracer)
-		}
-	}()
-
-	err = os.MkdirAll(e.tmpBuildDirPath(), 0o777)
-	if err != nil {
-		errMsg := fmt.Errorf("error creating tmp build dir: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "created tmp build dir")
-
-	err = os.WriteFile(e.tmpBuildIDFilePath(), []byte(e.BuildID), 0o644)
-	if err != nil {
-		errMsg := fmt.Errorf("error writing build ID file: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "wrote build ID")
-
-	return nil
-}
-
-func (e *Env) MoveToEnvDir(ctx context.Context, tracer trace.Tracer) error {
+func (e *Env) Remove(ctx context.Context, tracer trace.Tracer) error {
 	childCtx, childSpan := tracer.Start(ctx, "move-to-env-dir")
 	defer childSpan.End()
 
-	err := os.Rename(e.tmpSnapfilePath(), e.envSnapfilePath())
+	err := os.RemoveAll(e.BuildDir())
 	if err != nil {
-		errMsg := fmt.Errorf("error moving snapshot file: %w", err)
+		errMsg := fmt.Errorf("error removing build dir: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return errMsg
 	}
 
-	telemetry.ReportEvent(childCtx, "moved snapshot file")
-
-	err = os.Rename(e.tmpMemfilePath(), e.envMemfilePath())
-	if err != nil {
-		errMsg := fmt.Errorf("error moving memfile: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "moved memfile")
-
-	err = os.Rename(e.tmpRootfsPath(), e.envRootfsPath())
-	if err != nil {
-		errMsg := fmt.Errorf("error moving rootfs: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "moved rootfs")
-
-	err = os.Rename(e.tmpBuildIDFilePath(), e.envBuildIDFilePath())
-	if err != nil {
-		errMsg := fmt.Errorf("error moving build ID: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "moved build ID")
+	telemetry.ReportEvent(childCtx, "removed build dir")
 
 	return nil
-}
-
-func (e *Env) Cleanup(ctx context.Context, tracer trace.Tracer) {
-	childCtx, childSpan := tracer.Start(ctx, "cleanup")
-	defer childSpan.End()
-
-	err := os.RemoveAll(e.tmpBuildDirPath())
-	if err != nil {
-		errMsg := fmt.Errorf("error cleaning up env files: %w", err)
-		telemetry.ReportError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "cleaned up env files")
-	}
 }

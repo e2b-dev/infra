@@ -6,36 +6,35 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
-	"path/filepath"
 	"syscall"
-	"time"
 
-	"github.com/firecracker-microvm/firecracker-go-sdk"
-	"github.com/go-openapi/strfmt"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/firecracker-microvm/firecracker-go-sdk"
+	"github.com/go-openapi/strfmt"
 )
 
-const (
-	uffdPollingTimeout = 10 * time.Second
-)
-
+// The metadata serialization should not be changed — it is different from the field names we use here!
 type MmdsMetadata struct {
-	InstanceID string `json:"instanceID"`
-	EnvID      string `json:"envID"`
-	Address    string `json:"address"`
-	TraceID    string `json:"traceID"`
-	TeamID     string `json:"teamID"`
+	SandboxId            string `json:"instanceID"`
+	TemplateId           string `json:"envID"`
+	LogsCollectorAddress string `json:"address"`
+	TraceId              string `json:"traceID"`
+	TeamId               string `json:"teamID"`
 }
 
 type fc struct {
-	pollReady chan struct{}
+	uffdReady chan struct{}
+	snapfile  *storage.SimpleFile
 
 	ctx context.Context
 
@@ -46,14 +45,8 @@ type fc struct {
 
 	metadata *MmdsMetadata
 
-	uffdSocketPath *string
-
-	id string
-
-	socketPath string
-	envPath    string
-
-	pid int
+	uffdSocketPath        string
+	firecrackerSocketPath string
 }
 
 func (fc *fc) wait() error {
@@ -65,66 +58,46 @@ func (fc *fc) wait() error {
 	return nil
 }
 
-func newFirecrackerClient(socketPath string) *client.Firecracker {
-	httpClient := client.NewHTTPClient(strfmt.NewFormats())
-
-	transport := firecracker.NewUnixSocketTransport(socketPath, nil, false)
-	httpClient.SetTransport(transport)
-
-	return httpClient
-}
-
 func (fc *fc) loadSnapshot(
 	ctx context.Context,
 	tracer trace.Tracer,
-	socketPath,
-	envPath string,
+	firecrackerSocketPath,
+	uffdSocketPath string,
 	metadata interface{},
-	uffdSocketPath *string,
-	pollReady chan struct{},
+	snapfile *storage.SimpleFile,
+	uffdReady chan struct{},
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
-		attribute.String("instance.socket.path", socketPath),
-		attribute.String("instance.snapshot.root_path", envPath),
+		attribute.String("sandbox.socket.path", firecrackerSocketPath),
 	))
 	defer childSpan.End()
 
-	httpClient := newFirecrackerClient(socketPath)
+	client := client.NewHTTPClient(strfmt.NewFormats())
+	transport := firecracker.NewUnixSocketTransport(firecrackerSocketPath, nil, false)
+	client.SetTransport(transport)
 
 	telemetry.ReportEvent(childCtx, "created FC socket client")
 
-	memfilePath := filepath.Join(envPath, MemfileName)
-	snapfilePath := filepath.Join(envPath, SnapfileName)
-
-	telemetry.SetAttributes(
-		childCtx,
-		attribute.String("instance.memfile.path", memfilePath),
-		attribute.String("instance.snapfile.path", snapfilePath),
-	)
-
 	var backend *models.MemoryBackend
 
-	if uffdSocketPath != nil {
-		err := waitForSocket(*uffdSocketPath, socketWaitTimeout)
-		if err != nil {
-			telemetry.ReportCriticalError(childCtx, err)
+	err := waitForSocket(childCtx, uffdSocketPath)
+	if err != nil {
+		telemetry.ReportCriticalError(childCtx, err)
 
-			return err
-		} else {
-			telemetry.ReportEvent(childCtx, "uffd socket ready")
-		}
+		return err
+	}
 
-		backendType := models.MemoryBackendBackendTypeUffd
-		backend = &models.MemoryBackend{
-			BackendPath: uffdSocketPath,
-			BackendType: &backendType,
-		}
-	} else {
-		backendType := models.MemoryBackendBackendTypeFile
-		backend = &models.MemoryBackend{
-			BackendPath: &memfilePath,
-			BackendType: &backendType,
-		}
+	telemetry.ReportEvent(childCtx, "uffd socket ready")
+
+	snapfilePath, err := snapfile.Ensure()
+	if err != nil {
+		return fmt.Errorf("error ensuring snapfile: %w", err)
+	}
+
+	backendType := models.MemoryBackendBackendTypeUffd
+	backend = &models.MemoryBackend{
+		BackendPath: &uffdSocketPath,
+		BackendType: &backendType,
 	}
 
 	snapshotConfig := operations.LoadSnapshotParams{
@@ -137,7 +110,7 @@ func (fc *fc) loadSnapshot(
 		},
 	}
 
-	_, err := httpClient.Operations.LoadSnapshot(&snapshotConfig)
+	_, err = client.Operations.LoadSnapshot(&snapshotConfig)
 	if err != nil {
 		errMsg := fmt.Errorf("error loading snapshot: %w", err)
 
@@ -146,14 +119,14 @@ func (fc *fc) loadSnapshot(
 		return errMsg
 	}
 
-	if pollReady != nil {
+	if uffdReady != nil {
 		select {
-		case <-pollReady:
+		case <-childCtx.Done():
+			return childCtx.Err()
+		case <-uffdReady:
 			telemetry.ReportEvent(childCtx, "uffd polling ready")
 
 			break
-		case <-time.After(uffdPollingTimeout):
-			return fmt.Errorf("timeout waiting for the uffd polling to be ready")
 		}
 	}
 
@@ -165,7 +138,7 @@ func (fc *fc) loadSnapshot(
 		},
 	}
 
-	_, err = httpClient.Operations.PatchVM(&pauseConfig)
+	_, err = client.Operations.PatchVM(&pauseConfig)
 	if err != nil {
 		errMsg := fmt.Errorf("error pausing vm: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -180,7 +153,7 @@ func (fc *fc) loadSnapshot(
 		Body:    metadata,
 	}
 
-	_, err = httpClient.Operations.PutMmds(&mmdsConfig)
+	_, err = client.Operations.PutMmds(&mmdsConfig)
 	if err != nil {
 		errMsg := fmt.Errorf("error setting mmds data: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -193,17 +166,19 @@ func (fc *fc) loadSnapshot(
 	return nil
 }
 
-func newFC(
+func NewFC(
 	ctx context.Context,
 	tracer trace.Tracer,
 	slot IPSlot,
-	fsEnv *SandboxFiles,
+	files *templateStorage.SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
-	pollReady chan struct{},
+	snapfile *storage.SimpleFile,
+	rootfs *storage.OverlayFile,
+	uffdReady chan struct{},
 ) *fc {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
-		attribute.String("instance.id", mmdsMetadata.InstanceID),
-		attribute.Int("instance.slot.index", slot.SlotIdx),
+		attribute.String("sandbox.id", mmdsMetadata.SandboxId),
+		attribute.Int("sandbox.slot.index", slot.SlotIdx),
 	))
 	defer childSpan.End()
 
@@ -213,28 +188,32 @@ func newFC(
 	)
 
 	rootfsMountCmd := fmt.Sprintf(
-		"mount --bind %s %s && ",
-		fsEnv.EnvInstancePath,
-		fsEnv.BuildDirPath,
+		"mkdir -p %s && touch %s && mount -o bind %s %s && ",
+		files.BuildDir(),
+		files.BuildRootfsPath(),
+		rootfs.Path(),
+		files.BuildRootfsPath(),
 	)
 
 	kernelMountCmd := fmt.Sprintf(
-		"mount --bind %s %s && ",
-		fsEnv.KernelDirPath,
-		fsEnv.KernelMountDirPath,
+		"mkdir -p %s && touch %s && mount -o bind %s %s && ",
+		files.BuildKernelDir(),
+		files.BuildKernelPath(),
+		files.CacheKernelPath(),
+		files.BuildKernelPath(),
 	)
 
-	fcCmd := fmt.Sprintf("%s --api-sock %s", fsEnv.FirecrackerBinaryPath, fsEnv.SocketPath)
+	fcCmd := fmt.Sprintf("%s --api-sock %s", files.FirecrackerPath(), files.SandboxFirecrackerSocketPath())
 	inNetNSCmd := fmt.Sprintf("ip netns exec %s ", slot.NamespaceID())
 
 	telemetry.SetAttributes(childCtx,
-		attribute.String("instance.firecracker.command", fcCmd),
-		attribute.String("instance.netns.command", inNetNSCmd),
+		attribute.String("sandbox.fc.cmd", fcCmd),
+		attribute.String("sandbox.netns.cmd", inNetNSCmd),
 	)
 
 	cmd := exec.Command(
 		"unshare",
-		"-pfm",
+		"-pfmiC",
 		"--kill-child",
 		"--",
 		"bash",
@@ -253,16 +232,15 @@ func newFC(
 	cmd.Stdout = cmdStderrWriter
 
 	return &fc{
-		pollReady:      pollReady,
-		id:             mmdsMetadata.InstanceID,
-		cmd:            cmd,
-		stdout:         cmdStdoutReader,
-		stderr:         cmdStderrReader,
-		ctx:            vmmCtx,
-		socketPath:     fsEnv.SocketPath,
-		envPath:        fsEnv.EnvPath,
-		metadata:       mmdsMetadata,
-		uffdSocketPath: fsEnv.UFFDSocketPath,
+		uffdReady:             uffdReady,
+		cmd:                   cmd,
+		stdout:                cmdStdoutReader,
+		stderr:                cmdStderrReader,
+		ctx:                   vmmCtx,
+		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
+		metadata:              mmdsMetadata,
+		uffdSocketPath:        files.SandboxUffdSocketPath(),
+		snapfile:              snapfile,
 	}
 }
 
@@ -291,14 +269,13 @@ func (fc *fc) start(
 				attribute.String("type", "stdout"),
 				attribute.String("message", line),
 			)
-			fmt.Printf("[firecracker stdout]: %s — %s\n", fc.id, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
 			errMsg := fmt.Errorf("error reading vmm stdout: %w", readerErr)
 			telemetry.ReportError(fc.ctx, errMsg)
-			fmt.Printf("[firecracker stdout error]: %s — %v\n", fc.id, errMsg)
+			fmt.Fprintf(os.Stderr, "[firecracker stdout error]: %s — %v\n", fc.metadata.SandboxId, errMsg)
 		} else {
 			telemetry.ReportEvent(fc.ctx, "vmm stdout reader closed")
 		}
@@ -322,14 +299,15 @@ func (fc *fc) start(
 				attribute.String("type", "stderr"),
 				attribute.String("message", line),
 			)
-			fmt.Printf("[firecracker stderr]: %s — %v\n", fc.id, line)
+
+			fmt.Fprintf(os.Stderr, "[firecracker stderr]: %s — %v\n", fc.metadata.SandboxId, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
 			errMsg := fmt.Errorf("error closing vmm stderr reader: %w", readerErr)
 			telemetry.ReportError(fc.ctx, errMsg)
-			fmt.Printf("[firecracker stderr error]: %s — %v\n", fc.id, errMsg)
+			fmt.Fprintf(os.Stderr, "[firecracker stderr error]: %s — %v\n", fc.metadata.SandboxId, errMsg)
 		} else {
 			telemetry.ReportEvent(fc.ctx, "vmm stderr reader closed")
 		}
@@ -346,7 +324,7 @@ func (fc *fc) start(
 	telemetry.ReportEvent(childCtx, "started fc process")
 
 	// Wait for the FC process to start so we can use FC API
-	err = waitForSocket(fc.socketPath, socketWaitTimeout)
+	err = waitForSocket(childCtx, fc.firecrackerSocketPath)
 	if err != nil {
 		errMsg := fmt.Errorf("error waiting for fc socket: %w", err)
 
@@ -358,11 +336,11 @@ func (fc *fc) start(
 	if loadErr := fc.loadSnapshot(
 		childCtx,
 		tracer,
-		fc.socketPath,
-		fc.envPath,
-		fc.metadata,
+		fc.firecrackerSocketPath,
 		fc.uffdSocketPath,
-		fc.pollReady,
+		fc.metadata,
+		fc.snapfile,
+		fc.uffdReady,
 	); loadErr != nil {
 		fcErr := fc.stop()
 
@@ -387,12 +365,9 @@ func (fc *fc) start(
 
 	telemetry.SetAttributes(
 		childCtx,
-		attribute.String("instance.socket.path", fc.socketPath),
-		attribute.String("instance.env.id", fc.metadata.EnvID),
-		attribute.String("instance.env.path", fc.envPath),
-		attribute.String("instance.cmd", fc.cmd.String()),
-		attribute.String("instance.cmd.dir", fc.cmd.Dir),
-		attribute.String("instance.cmd.path", fc.cmd.Path),
+		attribute.String("sandbox.cmd", fc.cmd.String()),
+		attribute.String("sandbox.cmd.dir", fc.cmd.Dir),
+		attribute.String("sandbox.cmd.path", fc.cmd.Path),
 	)
 
 	return nil

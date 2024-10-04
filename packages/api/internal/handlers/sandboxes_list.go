@@ -22,7 +22,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "list running instances")
 
-	instanceInfo := a.instanceCache.GetInstances(&team.ID)
+	instanceInfo := a.orchestrator.GetInstances(ctx, &team.ID)
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
@@ -30,6 +30,10 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 
 	buildIDs := make([]uuid.UUID, 0)
 	for _, info := range instanceInfo {
+		if info.TeamID == nil {
+			continue
+		}
+
 		if *info.TeamID != team.ID {
 			continue
 		}
@@ -52,7 +56,15 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 	sandboxes := make([]api.RunningSandbox, 0)
 
 	for _, info := range instanceInfo {
+		if info.TeamID == nil {
+			continue
+		}
+
 		if *info.TeamID != team.ID {
+			continue
+		}
+
+		if info.BuildID == nil {
 			continue
 		}
 

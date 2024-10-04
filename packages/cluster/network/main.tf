@@ -190,13 +190,6 @@ resource "google_compute_url_map" "orch_map" {
 
   host_rule {
     hosts = [
-      "consul.${var.domain_name}",
-    ]
-    path_matcher = "consul-paths"
-  }
-
-  host_rule {
-    hosts = [
       "*.${var.domain_name}",
     ]
     path_matcher = "session-paths"
@@ -232,11 +225,6 @@ resource "google_compute_url_map" "orch_map" {
       }
     }
   }
-
-  path_matcher {
-    name            = "consul-paths"
-    default_service = google_compute_backend_service.default["consul"].self_link
-  }
 }
 
 ### IPv4 block ###
@@ -252,8 +240,8 @@ resource "google_compute_global_forwarding_rule" "https" {
   name                  = "${var.prefix}forwarding-rule-https"
   target                = google_compute_target_https_proxy.default.self_link
   load_balancing_scheme = "EXTERNAL_MANAGED"
-  port_range = "443"
-  labels     = var.labels
+  port_range            = "443"
+  labels                = var.labels
 }
 
 

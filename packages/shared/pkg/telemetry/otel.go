@@ -21,10 +21,9 @@ import (
 	"google.golang.org/grpc/encoding/gzip"
 )
 
-const (
-	otelCollectorGRPCEndpoint = "0.0.0.0:4317"
-	metricExportPeriod        = 60 * time.Second
-)
+const metricExportPeriod = 60 * time.Second
+
+var otelCollectorGRPCEndpoint = os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 
 type client struct {
 	tracerProvider *sdktrace.TracerProvider

@@ -25,16 +25,16 @@ endif
 
 WITHOUT_JOBS := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs)
 ALL_MODULES_ARGS := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | awk '{print "-target=module." $$0 ""}' | xargs)
-DESTROY_TARGETS := $(shell terraform state list | grep module | cut -d'.' -f1,2 | grep -v -e "fc_envs_disk" -e "buckets" | uniq | awk '{print "-target=" $$0 ""}' | xargs)
+DESTROY_TARGETS := $(shell terraform state list | grep module | cut -d'.' -f1,2 | grep -v -e "buckets" | uniq | awk '{print "-target=" $$0 ""}' | xargs)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
 .PHONY: login-gcloud
 login-gcloud:
-	gcloud auth login
+	gcloud --quiet auth login
 	gcloud config set project "$(GCP_PROJECT_ID)"
 	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
-	gcloud auth application-default login
+	gcloud --quiet auth application-default login
 
 .PHONY: init
 init:

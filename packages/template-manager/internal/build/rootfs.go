@@ -26,6 +26,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -156,7 +157,7 @@ func (r *Rootfs) cleanupDockerImage(ctx context.Context, tracer trace.Tracer) {
 }
 
 func (r *Rootfs) dockerTag() string {
-	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.env.EnvID, r.env.BuildID)
+	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.env.TemplateId, r.env.BuildId)
 }
 
 func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) error {
@@ -222,8 +223,8 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		MemoryLimit int
 	}{
 		FcAddress:   fcAddr,
-		EnvID:       r.env.EnvID,
-		BuildID:     r.env.BuildID,
+		EnvID:       r.env.TemplateId,
+		BuildID:     r.env.BuildId,
 		StartCmd:    strings.ReplaceAll(r.env.StartCmd, "'", "\\'"),
 		MemoryLimit: int(math.Min(float64(r.env.MemoryMB)/2, 512)),
 	})
@@ -333,12 +334,12 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 
 	filesToTar := []fileToTar{
 		{
-			localPath: consts.HostOldEnvdPath,
-			tarPath:   consts.GuestOldEnvdPath,
+			localPath: templateStorage.HostOldEnvdPath,
+			tarPath:   templateStorage.GuestOldEnvdPath,
 		},
 		{
-			localPath: consts.HostEnvdPath,
-			tarPath:   consts.GuestEnvdPath,
+			localPath: templateStorage.HostEnvdPath,
+			tarPath:   templateStorage.GuestEnvdPath,
 		},
 	}
 
@@ -490,7 +491,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		return errMsg
 	}
 
-	rootfsFile, err := os.Create(r.env.tmpRootfsPath())
+	rootfsFile, err := os.Create(r.env.BuildRootfsPath())
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs file: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -534,6 +535,8 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		}
 	}()
 
+	telemetry.ReportEvent(childCtx, "coverting tar to ext4")
+
 	// This package creates a read-only ext4 filesystem from a tar archive.
 	// We need to use another program to make the filesystem writable.
 	err = tar2ext4.ConvertTarToExt4(pr, rootfsFile, tar2ext4.MaximumDiskSize(maxRootfsSize))
@@ -553,7 +556,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	tuneContext, tuneSpan := tracer.Start(childCtx, "tune-rootfs-file-cmd")
 	defer tuneSpan.End()
 
-	cmd := exec.CommandContext(tuneContext, "tune2fs", "-O ^read-only", r.env.tmpRootfsPath())
+	cmd := exec.CommandContext(tuneContext, "tune2fs", "-O ^read-only", r.env.BuildRootfsPath())
 
 	tuneStdoutWriter := telemetry.NewEventWriter(tuneContext, "stdout")
 	cmd.Stdout = tuneStdoutWriter
@@ -599,7 +602,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	resizeContext, resizeSpan := tracer.Start(childCtx, "resize-rootfs-file-cmd")
 	defer resizeSpan.End()
 
-	cmd = exec.CommandContext(resizeContext, "resize2fs", r.env.tmpRootfsPath())
+	cmd = exec.CommandContext(resizeContext, "resize2fs", r.env.BuildRootfsPath())
 
 	resizeStdoutWriter := telemetry.NewEventWriter(resizeContext, "stdout")
 	cmd.Stdout = resizeStdoutWriter
