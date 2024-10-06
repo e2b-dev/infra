@@ -172,3 +172,13 @@ func (c *BuildCache) Delete(envID string, buildID, teamID uuid.UUID) {
 	c.cache.Delete(envID)
 	c.updateCounter(envID, buildID, teamID, -1)
 }
+
+func (c *BuildCache) Invalidate(templateID string) {
+	buildItem := c.cache.Get(templateID)
+	if buildItem == nil {
+		return
+	}
+
+	build := buildItem.Value()
+	c.Delete(templateID, build.buildID, build.teamID)
+}

@@ -14,6 +14,9 @@ import (
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
+	// (POST /admin/caches/{cache}/invalidate/{objectID})
+	PostAdminCachesCacheInvalidateObjectID(c *gin.Context, cache CacheType, objectID string)
+
 	// (GET /health)
 	GetHealth(c *gin.Context)
 
@@ -65,6 +68,41 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(c *gin.Context)
+
+// PostAdminCachesCacheInvalidateObjectID operation middleware
+func (siw *ServerInterfaceWrapper) PostAdminCachesCacheInvalidateObjectID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "cache" -------------
+	var cache CacheType
+
+	err = runtime.BindStyledParameter("simple", false, "cache", c.Param("cache"), &cache)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cache: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "objectID" -------------
+	var objectID string
+
+	err = runtime.BindStyledParameter("simple", false, "objectID", c.Param("objectID"), &objectID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter objectID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(AdminAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostAdminCachesCacheInvalidateObjectID(c, cache, objectID)
+}
 
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(c *gin.Context) {
@@ -450,6 +488,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
+	router.POST(options.BaseURL+"/admin/caches/:cache/invalidate/:objectID", wrapper.PostAdminCachesCacheInvalidateObjectID)
 	router.GET(options.BaseURL+"/health", wrapper.GetHealth)
 	router.GET(options.BaseURL+"/sandboxes", wrapper.GetSandboxes)
 	router.POST(options.BaseURL+"/sandboxes", wrapper.PostSandboxes)

@@ -193,7 +193,7 @@ module "nomad" {
   docker_contexts_bucket_name               = module.buckets.envs_docker_context_bucket_name
   google_service_account_key                = module.init.google_service_account_key
   api_docker_image_digest                   = module.api.api_docker_image_digest
-  api_secret                                = module.api.api_secret
+  api_admin_key                             = module.api.api_admin_key
   custom_envs_repository_name               = module.api.custom_envs_repository_name
   postgres_connection_string_secret_name    = module.api.postgres_connection_string_secret_name
   posthog_api_key_secret_name               = module.api.posthog_api_key_secret_name

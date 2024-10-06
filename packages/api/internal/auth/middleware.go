@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -18,7 +19,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const (
+	adminSecuritySchemeName = "AdminAuth"
+	adminHeaderKey          = "X-Admin-Key"
+)
+
 var (
+	adminApiKey          = os.Getenv("API_ADMIN_KEY")
 	ErrNoAuthHeader      = errors.New("authorization header is missing")
 	ErrInvalidAuthHeader = errors.New("authorization header is malformed")
 )
@@ -83,7 +90,11 @@ func (a *authenticator[T]) Authenticate(ctx context.Context, input *openapi3filt
 	return nil
 }
 
-func CreateAuthenticationFunc(tracer trace.Tracer, teamValidationFunction func(context.Context, string) (authcache.AuthTeamInfo, *api.APIError), userValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError)) func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
+func CreateAuthenticationFunc(
+	tracer trace.Tracer,
+	teamValidationFunction func(context.Context, string) (authcache.AuthTeamInfo, *api.APIError),
+	userValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError),
+) func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 	apiKeyValidator := authenticator[authcache.AuthTeamInfo]{
 		securitySchemeName: "ApiKeyAuth",
 		headerKey:          "X-API-Key",
@@ -115,6 +126,15 @@ func CreateAuthenticationFunc(tracer trace.Tracer, teamValidationFunction func(c
 
 		if input.SecuritySchemeName == accessTokenValidator.securitySchemeName {
 			return accessTokenValidator.Authenticate(ctx, input)
+		}
+
+		if input.SecuritySchemeName == adminSecuritySchemeName {
+			apiKey := input.RequestValidationInput.Request.Header.Get(adminHeaderKey)
+			if apiKey != adminApiKey {
+				return fmt.Errorf("invalid admin key")
+			}
+
+			return nil
 		}
 
 		return fmt.Errorf("invalid security scheme name '%s'", input.SecuritySchemeName)

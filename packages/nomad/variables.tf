@@ -19,6 +19,10 @@ variable "otel_tracing_print" {
 }
 
 # API
+variable "api_admin_key" {
+  type = string
+}
+
 variable "api_docker_image_digest" {
   type = string
 }
@@ -29,10 +33,6 @@ variable "api_port" {
     port        = number
     health_path = string
   })
-}
-
-variable "api_secret" {
-  type = string
 }
 
 variable "logs_proxy_address" {
