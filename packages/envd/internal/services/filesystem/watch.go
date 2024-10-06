@@ -3,8 +3,10 @@ package filesystem
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
@@ -13,6 +15,14 @@ import (
 	"connectrpc.com/connect"
 	"github.com/fsnotify/fsnotify"
 )
+
+// When performing a recursive directory traversal we want to exclude the following directories from being watched for a few reasons:
+// - Performance: Watching the entire filesystem recursively can be extremely resource-intensive
+// - Permissions: Even with sudo, some parts of the filesystem might not be accessible due to mount options or other restrictions.
+// - Spamming: this could generate a lot of output very quickly.
+// - Security implications: Running this command as root could potentially expose sensitive information.
+// - Filter out non-regular files such as device and character files ("/dev"), virtual files ("/proc"), sockets, etc.
+var doNotWatchDirsRegex = regexp.MustCompile("^/($|proc|sys|dev|usr)")
 
 func (s Service) WatchDir(ctx context.Context, req *connect.Request[rpc.WatchDirRequest], stream *connect.ServerStream[rpc.WatchDirResponse]) error {
 	return logs.LogServerStreamWithoutEvents(ctx, s.logger, req, stream, s.watchHandler)
@@ -29,7 +39,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	info, err := os.Stat(watchPath)
+	info, err := os.Lstat(watchPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return connect.NewError(connect.CodeNotFound, fmt.Errorf("path %s not found: %w", watchPath, err))
@@ -49,6 +59,26 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 	defer w.Close()
 
 	err = w.Add(watchPath)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("error adding path %s to watcher: %w", watchPath, err))
+	}
+
+	// Perform a recursive directory traversal to watch nested directories
+	err = filepath.WalkDir(watchPath, func(path string, d fs.DirEntry, err error) error {
+		if doNotWatchDirsRegex.MatchString(path) {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			return w.Add(path)
+		}
+
+		return nil
+	})
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("error adding path %s to watcher: %w", watchPath, err))
 	}
@@ -94,6 +124,9 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 
 			if fsnotify.Create.Has(e.Op) {
 				ops = append(ops, rpc.EventType_EVENT_TYPE_CREATE)
+				if err := determineWatch(w, e.Name); err != nil {
+					return err
+				}
 			}
 
 			if fsnotify.Rename.Has(e.Op) {
@@ -113,14 +146,11 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 			}
 
 			for _, op := range ops {
-				name, nameErr := filepath.Rel(watchPath, e.Name)
-				if nameErr != nil {
-					return connect.NewError(connect.CodeInternal, fmt.Errorf("error getting relative path: %w", nameErr))
-				}
+				path := filepath.Clean(e.Name)
 
 				filesystemEvent := &rpc.WatchDirResponse_Filesystem{
 					Filesystem: &rpc.WatchDirResponse_FilesystemEvent{
-						Name: name,
+						Name: path,
 						Type: op,
 					},
 				}
@@ -146,4 +176,28 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 			}
 		}
 	}
+}
+
+func determineWatch(w *fsnotify.Watcher, path string) error {
+	cleanPath := filepath.Clean(path)
+
+	info, err := os.Lstat(cleanPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return connect.NewError(connect.CodeNotFound, fmt.Errorf("path %s not found: %w", cleanPath, err))
+		}
+
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("error statting path %s: %w", cleanPath, err))
+	}
+
+	// When a new directory is created, add it to the watch list
+	if info.IsDir() && !doNotWatchDirsRegex.MatchString(cleanPath) {
+		// TODO when /a/b is created, only /a is added to watch list
+		err := w.Add(cleanPath)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("error adding path %s to watcher: %w", cleanPath, err))
+		}
+	}
+
+	return nil
 }
