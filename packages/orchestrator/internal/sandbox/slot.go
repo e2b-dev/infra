@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// We are using a more debuggable IP address allocation for now that only covers 255 addresses.
 const (
 	octetSize = 256
 	octetMax  = octetSize - 1
