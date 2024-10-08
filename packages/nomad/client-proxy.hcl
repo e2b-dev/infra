@@ -36,6 +36,7 @@ variable "nginx_conf" {
 
 job "client-proxy" {
   datacenters = [var.gcp_zone]
+  type = "system"
 
   priority = 80
 
