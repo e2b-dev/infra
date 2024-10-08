@@ -369,14 +369,14 @@ func getCPUAndRAM(tierID string, cpuCount, memoryMB *int32) (int64, int64, *api.
 	cpu := constants.DefaultTemplateCPU
 	ramMB := constants.DefaultTemplateMemory
 
-	// Check if team can customize the resources
-	if (cpuCount != nil || memoryMB != nil) && tierID == constants.BaseTierID {
-		return 0, 0, &api.APIError{
-			Err:       fmt.Errorf("team with tier %s can't customize resources", tierID),
-			ClientMsg: "Team with this tier can't customize resources, don't specify cpu count or memory",
-			Code:      http.StatusBadRequest,
-		}
-	}
+	// // Check if team can customize the resources
+	// if (cpuCount != nil || memoryMB != nil) && tierID == constants.BaseTierID {
+	// 	return 0, 0, &api.APIError{
+	// 		Err:       fmt.Errorf("team with tier %s can't customize resources", tierID),
+	// 		ClientMsg: "Team with this tier can't customize resources, don't specify cpu count or memory",
+	// 		Code:      http.StatusBadRequest,
+	// 	}
+	// }
 
 	if cpuCount != nil {
 		if *cpuCount < constants.MinTemplateCPU || *cpuCount > constants.MaxTemplateCPU {

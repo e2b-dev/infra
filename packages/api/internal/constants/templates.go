@@ -6,5 +6,5 @@ const (
 	MaxTemplateCPU        = int32(8)
 	MaxTemplateMemory     = int32(8192)
 	DefaultTemplateCPU    = int32(2)
-	DefaultTemplateMemory = int32(512)
+	DefaultTemplateMemory = int32(1024)
 )
