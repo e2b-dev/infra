@@ -111,7 +111,7 @@ func processFile(r *http.Request, path string, part *multipart.Part, user *user.
 func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, params PostFilesParams) (string, error) {
 	var pathToResolve string
 
-	if params.Path != nil && *params.Path != "" {
+	if params.Path != nil {
 		pathToResolve = *params.Path
 	} else {
 		var err error
