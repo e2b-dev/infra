@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
@@ -38,7 +39,10 @@ func NewNbd(ctx context.Context, s block.Device, pool *NbdDevicePool) (*Nbd, err
 
 	defer func() {
 		if err != nil {
-			pool.ReleaseDevice(nbdDev)
+			releaseErr := pool.ReleaseDevice(nbdDev)
+			if releaseErr != nil {
+				fmt.Fprintf(os.Stderr, "failed to release device: %s, %v", nbdDev, releaseErr)
+			}
 		}
 	}()
 
