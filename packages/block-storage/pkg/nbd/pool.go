@@ -88,7 +88,8 @@ func (n *NbdDevicePool) GetDevice(ctx context.Context) (string, error) {
 			nbdDev, err := n.getDevice(ctx)
 			if err != nil {
 				errMsg := fmt.Sprintf("failed to get nbd device, retrying: %s", err)
-				fmt.Fprintf(os.Stderr, errMsg)
+
+				fmt.Fprintln(os.Stderr, errMsg)
 
 				time.Sleep(nbdDeviceAcquireDelay)
 
@@ -150,7 +151,7 @@ func (n *NbdDevicePool) ReleaseDevice(path string) error {
 		case <-ticker.C:
 			err := n.releaseDevice(path)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to release device: %s, retrying: %s", path, err)
+				fmt.Fprintf(os.Stderr, "failed to release device: %s, retrying: %s\n", path, err)
 
 				continue
 			}

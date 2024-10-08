@@ -165,7 +165,7 @@ func (u *Uffd) handle(memfile *blockStorage.BlockStorage) (err error) {
 	defer func() {
 		closeErr := syscall.Close(int(uffd))
 		if closeErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to close uffd: %v", closeErr)
+			fmt.Fprintf(os.Stderr, "failed to close uffd: %v\n", closeErr)
 		}
 	}()
 
