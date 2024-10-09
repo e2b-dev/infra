@@ -84,6 +84,7 @@ func withCORS(h http.Handler) http.Handler {
 			connectcors.AllowedHeaders(),
 			"Origin",
 			"Accept",
+			"Authorization",
 			"Content-Type",
 			"Cache-Control",
 			"X-Requested-With",
@@ -92,6 +93,7 @@ func withCORS(h http.Handler) http.Handler {
 			"Access-Control-Request-Headers",
 			"Access-Control-Request-Private-Network",
 			"Access-Control-Expose-Headers",
+			"Keepalive-Ping-Interval", // for gRPC
 		),
 		ExposedHeaders: append(
 			connectcors.ExposedHeaders(),
