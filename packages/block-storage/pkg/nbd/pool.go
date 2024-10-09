@@ -87,7 +87,7 @@ func (n *NbdDevicePool) GetDevice(ctx context.Context) (string, error) {
 		default:
 			nbdDev, err := n.getDevice(ctx)
 			if err != nil {
-				errMsg := fmt.Sprintf("failed to get nbd device, retrying: %s", err)
+				errMsg := fmt.Sprintf("failed to get nbd device, retrying: %s\n", err)
 
 				fmt.Fprintln(os.Stderr, errMsg)
 
