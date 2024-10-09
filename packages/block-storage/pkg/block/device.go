@@ -16,7 +16,7 @@ type Device interface {
 	io.ReaderAt
 	io.WriterAt
 	Sync() error
-	Size() int64
+	Size() (int64, error)
 	ReadRaw(off, length int64) ([]byte, func(), error)
 	BlockSize() int64
 }

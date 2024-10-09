@@ -87,8 +87,8 @@ func (m *MockDevice) Sync() error {
 	return nil
 }
 
-func (m *MockDevice) Size() int64 {
-	return int64(len(m.data))
+func (m *MockDevice) Size() (int64, error) {
+	return int64(len(m.data)), nil
 }
 
 func (m *MockDevice) BlockSize() int64 {

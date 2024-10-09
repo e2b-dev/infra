@@ -8,6 +8,9 @@ import (
 
 	block_storage "github.com/e2b-dev/infra/packages/block-storage/pkg"
 	nbd "github.com/e2b-dev/infra/packages/block-storage/pkg/nbd"
+
+	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -19,7 +22,12 @@ type OverlayFile struct {
 	nbd     *nbd.Nbd
 }
 
-func NewOverlayFile(ctx context.Context, storage *block_storage.BlockStorage, cachePath string, pool *nbd.NbdDevicePool) (*OverlayFile, error) {
+func NewOverlayFile(
+	ctx context.Context,
+	storage *block_storage.BlockStorage,
+	cachePath string,
+	pool *nbd.NbdDevicePool,
+) (*OverlayFile, error) {
 	overlay, err := storage.CreateOverlay(cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating overlay: %w", err)
@@ -28,7 +36,9 @@ func NewOverlayFile(ctx context.Context, storage *block_storage.BlockStorage, ca
 	ctx, cancel := context.WithTimeout(ctx, overlayFileTimeout)
 	defer cancel()
 
-	n, err := nbd.NewNbd(ctx, overlay, pool)
+	nbdSocketPath := fmt.Sprintf("/tmp/nbd-file-%s.sock", uuid.New().String())
+
+	n, err := nbd.NewNbd(ctx, overlay, pool, nbdSocketPath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating nbd: %w", err)
 	}
@@ -40,7 +50,19 @@ func NewOverlayFile(ctx context.Context, storage *block_storage.BlockStorage, ca
 }
 
 func (o *OverlayFile) Run() error {
-	err := o.nbd.Run()
+	e := errgroup.Group{}
+
+	e.Go(func() error {
+		return o.nbd.StartServer()
+	})
+
+	time.Sleep(2 * time.Millisecond)
+
+	e.Go(func() error {
+		return o.nbd.StartClient()
+	})
+
+	err := e.Wait()
 	if err != nil {
 		return fmt.Errorf("error running nbd: %w", err)
 	}

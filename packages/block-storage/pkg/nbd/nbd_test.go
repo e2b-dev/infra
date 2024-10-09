@@ -22,7 +22,13 @@ func TestNbdRead(t *testing.T) {
 
 	device := block.NewMockDevice([]byte(content), 4096, true)
 
-	nbd, err := NewNbd(ctx, device, pool)
+	f, err := os.CreateTemp(os.TempDir(), "test-nbd.sock")
+	require.NoError(t, err)
+
+	nbdSocketPath := f.Name()
+	defer os.Remove(nbdSocketPath)
+
+	nbd, err := NewNbd(ctx, device, pool, nbdSocketPath)
 	require.NoError(t, err)
 
 	defer nbd.Close()

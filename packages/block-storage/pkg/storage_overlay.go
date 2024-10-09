@@ -39,8 +39,8 @@ func (o *BlockStorageOverlay) WriteAt(p []byte, off int64) (n int, err error) {
 	return o.overlay.WriteAt(p, off)
 }
 
-func (o *BlockStorageOverlay) Size() int64 {
-	return o.size
+func (o *BlockStorageOverlay) Size() (int64, error) {
+	return o.size, nil
 }
 
 func (o *BlockStorageOverlay) BlockSize() int64 {

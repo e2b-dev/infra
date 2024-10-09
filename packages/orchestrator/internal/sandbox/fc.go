@@ -263,12 +263,13 @@ func (fc *fc) start(
 		scanner := bufio.NewScanner(fc.stdout)
 
 		for scanner.Scan() {
-			line := scanner.Text()
+			// line := scanner.Text()
 
-			telemetry.ReportEvent(fc.ctx, "vmm log",
-				attribute.String("type", "stdout"),
-				attribute.String("message", line),
-			)
+			// msg := fmt.Sprintf("[firecracker stdout]: %s — %v", fc.metadata.SandboxId, line)
+
+			// telemetry.ReportEvent(fc.ctx, msg,
+			// 	attribute.String("type", "stdout"),
+			// )
 		}
 
 		readerErr := scanner.Err()
@@ -295,12 +296,13 @@ func (fc *fc) start(
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			telemetry.ReportEvent(fc.ctx, "vmm log",
-				attribute.String("type", "stderr"),
-				attribute.String("message", line),
-			)
+			msg := fmt.Sprintf("[firecracker stderr]: %s — %v", fc.metadata.SandboxId, line)
 
-			fmt.Fprintf(os.Stderr, "[firecracker stderr]: %s — %v\n", fc.metadata.SandboxId, line)
+			// telemetry.ReportEvent(fc.ctx, msg,
+			// 	attribute.String("type", "stderr"),
+			// )
+
+			fmt.Fprintln(os.Stderr, msg)
 		}
 
 		readerErr := scanner.Err()

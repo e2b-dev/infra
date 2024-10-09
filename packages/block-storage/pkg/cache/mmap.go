@@ -93,8 +93,8 @@ func (m *MmapCache) Sync() error {
 	return m.mmap.Flush()
 }
 
-func (m *MmapCache) Size() int64 {
-	return m.size
+func (m *MmapCache) Size() (int64, error) {
+	return m.size, nil
 }
 
 func (m *MmapCache) ReadRaw(off, length int64) ([]byte, func(), error) {

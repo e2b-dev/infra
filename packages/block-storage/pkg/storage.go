@@ -89,8 +89,8 @@ func (d *BlockStorage) CreateOverlay(cachePath string) (*BlockStorageOverlay, er
 	return overlay, nil
 }
 
-func (d *BlockStorage) Size() int64 {
-	return d.size
+func (d *BlockStorage) Size() (int64, error) {
+	return d.size, nil
 }
 
 func (d *BlockStorage) Close() error {

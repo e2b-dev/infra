@@ -58,7 +58,7 @@ func (o *Overlay) Sync() error {
 	return o.cache.Sync()
 }
 
-func (o *Overlay) Size() int64 {
+func (o *Overlay) Size() (int64, error) {
 	return o.cache.Size()
 }
 
