@@ -142,6 +142,7 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, param
 
 	return filePath, nil
 }
+
 func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFilesParams) {
 	defer r.Body.Close()
 
