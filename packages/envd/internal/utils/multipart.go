@@ -12,8 +12,8 @@ type CustomPart struct {
 }
 
 // FileNameWithPath returns the filename parameter of the Part's Content-Disposition header.
-// This method overrides the original FileNameWithPath method to return the full filename
-// without using filepath.Base.
+// This method borrows from the original FileName method implementation but returns the full
+// filename without using `filepath.Base`.
 func (p *CustomPart) FileNameWithPath() (string, error) {
 	dispositionParams, err := p.parseContentDisposition()
 	if err != nil {
