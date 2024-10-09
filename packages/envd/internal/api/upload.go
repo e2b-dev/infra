@@ -116,7 +116,7 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, param
 	} else {
 		var err error
 		customPart := utils.NewCustomPart(part)
-		pathToResolve, err = customPart.FileName()
+		pathToResolve, err = customPart.FileNameWithPath()
 		if err != nil {
 			return "", fmt.Errorf("error getting multipart custom part file name: %w", err)
 		}

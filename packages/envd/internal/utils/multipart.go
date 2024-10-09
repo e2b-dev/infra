@@ -11,10 +11,10 @@ type CustomPart struct {
 	*multipart.Part
 }
 
-// FileName returns the filename parameter of the Part's Content-Disposition header.
-// This method overrides the original FileName method to return the full filename
+// FileNameWithPath returns the filename parameter of the Part's Content-Disposition header.
+// This method overrides the original FileNameWithPath method to return the full filename
 // without using filepath.Base.
-func (p *CustomPart) FileName() (string, error) {
+func (p *CustomPart) FileNameWithPath() (string, error) {
 	dispositionParams, err := p.parseContentDisposition()
 	if err != nil {
 		return "", err
