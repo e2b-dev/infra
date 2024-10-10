@@ -129,7 +129,7 @@ resource "nomad_job" "session_proxy" {
   }
 }
 
-resource "nomad_job" "otel-collector" {
+resource "nomad_job" "otel_collector" {
   jobspec = file("${path.module}/otel-collector.hcl")
 
   hcl2 {
@@ -151,7 +151,7 @@ resource "nomad_job" "otel-collector" {
   }
 }
 
-resource "nomad_job" "logs-collector" {
+resource "nomad_job" "logs_collector" {
   jobspec = file("${path.module}/logs-collector.hcl")
 
   hcl2 {
