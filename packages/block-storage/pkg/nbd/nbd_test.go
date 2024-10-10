@@ -1,45 +1,14 @@
 package nbd
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 
 	"github.com/stretchr/testify/require"
 )
-
-func TestNbdRead(t *testing.T) {
-	ctx := context.Background()
-
-	pool, err := NewNbdDevicePool()
-	require.NoError(t, err)
-
-	content := "Hello, World!"
-
-	device := block.NewMockDevice([]byte(content), 4096, true)
-
-	f, err := os.CreateTemp(os.TempDir(), "test-nbd.sock")
-	require.NoError(t, err)
-
-	nbdSocketPath := f.Name()
-	defer os.Remove(nbdSocketPath)
-
-	nbd, err := NewNbd(ctx, device, pool, nbdSocketPath)
-	require.NoError(t, err)
-
-	defer nbd.Close()
-
-	time.Sleep(1 * time.Second)
-
-	data, err := os.ReadFile(nbd.Path)
-	require.NoError(t, err)
-
-	require.Equal(t, content, string(data))
-}
 
 func TestNdbReference(t *testing.T) {
 	content := "Hello, World!"

@@ -2,12 +2,10 @@ package nbd
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
-	"time"
+	"sync"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 
@@ -15,89 +13,97 @@ import (
 	"github.com/pojntfx/go-nbd/pkg/server"
 )
 
-const (
-	nbdDeviceAcquireTimeout = 10 * time.Second
-	nbdDeviceAcquireDelay   = 10 * time.Millisecond
-)
-
-type Nbd struct {
-	pool       *NbdDevicePool
-	Path       string
-	SocketPath string
-	backend    block.Device
+type NbdServer struct {
+	socketPath      string
+	getStorage      func() (block.Device, error)
+	closeOnce       func() error
+	ready           chan error
+	EnsureListening func() error
 }
 
-func (n *Nbd) Close() error {
-	releaseErr := n.pool.ReleaseDevice(n.Path)
-
-	return errors.Join(releaseErr)
-}
-
-func NewNbd(ctx context.Context, s block.Device, pool *NbdDevicePool, socketPath string) (*Nbd, error) {
-	nbdDev, err := pool.GetDevice(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get nbd device: %w", err)
+func (n *NbdServer) Close() error {
+	listeningErr := n.EnsureListening()
+	if listeningErr != nil {
+		return fmt.Errorf("error ensuring server is listening: %w", listeningErr)
 	}
 
-	defer func() {
-		if err != nil {
-			releaseErr := pool.ReleaseDevice(nbdDev)
-			if releaseErr != nil {
-				fmt.Fprintf(os.Stderr, "failed to release device: %s, %v", nbdDev, releaseErr)
-			}
-		}
-	}()
+	closeErr := n.closeOnce()
+	if closeErr != nil {
+		return fmt.Errorf("error closing server: %w", closeErr)
+	}
 
-	return &Nbd{
-		pool:       pool,
-		Path:       nbdDev,
-		backend:    s,
-		SocketPath: socketPath,
+	return nil
+}
+
+func NewNbdServer(
+	ctx context.Context,
+	getStorage func() (block.Device, error),
+	socketPath string,
+) (*NbdServer, error) {
+	ready := make(chan error)
+
+	return &NbdServer{
+		getStorage: getStorage,
+		socketPath: socketPath,
+		ready:      ready,
+		EnsureListening: sync.OnceValue(func() error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case err := <-ready:
+				return err
+			}
+		}),
 	}, nil
 }
 
-func (n *Nbd) StartServer() error {
-	l, err := net.Listen("unix", n.SocketPath)
+func (n *NbdServer) Start() error {
+	l, err := net.Listen("unix", n.socketPath)
 	if err != nil {
-		return err
+		errMsg := fmt.Errorf("failed to listen on socket: %w", err)
+
+		n.ready <- errMsg
+
+		return errMsg
 	}
-	defer l.Close()
 
-	log.Println("Listening on", l.Addr())
+	n.closeOnce = sync.OnceValue(func() error {
+		return l.Close()
+	})
 
-	clients := 0
+	defer n.closeOnce()
+
+	n.ready <- nil
+
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Println("Could not accept connection, continuing:", err)
-
 			continue
 		}
-
-		clients++
-
-		log.Printf("%v clients connected", clients)
 
 		go func() {
 			defer func() {
 				_ = conn.Close()
 
-				clients--
-
 				if err := recover(); err != nil {
-					log.Printf("Client disconnected with error: %v", err)
+					fmt.Printf("Client disconnected with error: %v", err)
 				}
-
-				log.Printf("%v clients connected", clients)
 			}()
 
-			if err := server.Handle(
+			storage, err := n.getStorage()
+			if err != nil {
+				fmt.Printf("Could not get storage: %v", err)
+
+				return
+			}
+
+			err = server.Handle(
 				conn,
 				[]*server.Export{
 					{
 						Name:        "default",
 						Description: "The default export",
-						Backend:     n.backend,
+						Backend:     storage,
 					},
 				},
 				&server.Options{
@@ -106,34 +112,122 @@ func (n *Nbd) StartServer() error {
 					PreferredBlockSize: uint32(4096),
 					MaximumBlockSize:   uint32(0xffffffff),
 					SupportsMultiConn:  true,
-				}); err != nil {
-				panic(err)
+				})
+			if err != nil {
+				fmt.Printf("Client disconnected with error: %v", err)
+
+				return
 			}
 		}()
 	}
 }
 
-func (n *Nbd) StartClient() error {
-	conn, err := net.Dial("unix", n.SocketPath)
-	if err != nil {
-		log.Println("Could not connect to server:", err)
-		return err
+func (n *NbdServer) CreateClient(pool *NbdDevicePool) *NbdClient {
+	ready := make(chan error)
+
+	return &NbdClient{
+		ready:                 ready,
+		socketPath:            n.socketPath,
+		pool:                  pool,
+		ensureServerListening: n.EnsureListening,
+		getPath: sync.OnceValue(func() (string, error) {
+			return n.GetPath(ctx)
+		}),
 	}
+}
+
+type NbdClient struct {
+	ready                 chan error
+	socketPath            string
+	path                  string
+	f                     *os.File
+	pool                  *NbdDevicePool
+	ensureServerListening func() error
+}
+
+// This method can only be called once.
+func (n *NbdClient) GetPath(ctx context.Context) (string, error) {
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case err := <-n.ready:
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return n.path, nil
+}
+
+func (n *NbdClient) Close() error {
+	<-n.ready
+	// TODO: Make this so it can be called multiple times (getPath)
+
+	if n.f != nil {
+		err := client.Disconnect(n.f)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (n *NbdClient) Start(ctx context.Context) error {
+	var err error
+
+	defer func() {
+		if err != nil {
+			n.ready <- err
+		}
+
+		close(n.ready)
+	}()
+
+	nbdPath, err := n.pool.GetDevice(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get nbd device: %w", err)
+	}
+
+	defer func() {
+		releaseErr := n.pool.ReleaseDevice(nbdPath)
+		if releaseErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to release device: %s, %v\n", nbdPath, releaseErr)
+		}
+	}()
+
+	n.path = nbdPath
+
+	err = n.ensureServerListening()
+	if err != nil {
+		return fmt.Errorf("failed to ensure server is listening: %w", err)
+	}
+
+	conn, err := net.Dial("unix", n.socketPath)
+	if err != nil {
+		return fmt.Errorf("failed to connect to server: %w", err)
+	}
+
 	defer conn.Close()
 
-	log.Println("Connected to", conn.RemoteAddr())
-
-	f, err := os.OpenFile(n.Path, os.O_RDWR, 0o644)
+	f, err := os.OpenFile(nbdPath, os.O_RDWR, 0o644)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open file: %w", err)
 	}
+
 	defer f.Close()
 
-	if err := client.Connect(conn, f, &client.Options{
+	n.f = f
+
+	err = client.Connect(conn, f, &client.Options{
 		ExportName: "default",
 		BlockSize:  uint32(4096),
-	}); err != nil {
-		return err
+		OnConnected: func() {
+			n.ready <- nil
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect to server: %w", err)
 	}
 
 	return nil

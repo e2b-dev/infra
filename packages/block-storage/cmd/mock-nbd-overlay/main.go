@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/nbd"
 	"golang.org/x/sync/errgroup"
 )
@@ -64,7 +65,7 @@ func (t *testDevice) Sync() error {
 func NewTestDevice(path string) (*testDevice, error) {
 	f, err := os.OpenFile(path, os.O_RDWR, 0o666)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error opening file: %w", err)
 	}
 
 	return &testDevice{f: f}, nil
@@ -76,6 +77,7 @@ func main() {
 	pool, err := nbd.NewNbdDevicePool()
 	if err != nil {
 		fmt.Println("error creating nbd device pool", err)
+
 		return
 	}
 
@@ -86,6 +88,7 @@ func main() {
 	device, err := NewTestDevice(".test/test.ext4")
 	if err != nil {
 		fmt.Println("error creating test device", err)
+
 		return
 	}
 
@@ -101,31 +104,36 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	n, err := nbd.NewNbd(ctx, device, pool, socketPath)
+	n, err := nbd.NewNbdServer(ctx, func() (block.Device, error) {
+		return device, nil
+	}, socketPath)
 	if err != nil {
 		fmt.Println("error creating nbd", err)
+
 		return
 	}
 
-	e, ctx := errgroup.WithContext(ctx)
+	e := errgroup.Group{}
 
 	e.Go(func() error {
 		fmt.Println("starting server")
-		err := n.StartServer()
+
+		err := n.Start()
 		if err != nil {
-			return err
+			return fmt.Errorf("error starting server: %w", err)
 		}
 
 		return nil
 	})
 
-	time.Sleep(1 * time.Second)
+	nbdClient := n.CreateClient(pool)
 
 	e.Go(func() error {
 		fmt.Println("starting client")
-		err := n.StartClient()
+
+		err := nbdClient.Start(ctx)
 		if err != nil {
-			return err
+			return fmt.Errorf("error starting client: %w", err)
 		}
 
 		return nil
@@ -133,7 +141,14 @@ func main() {
 
 	defer n.Close()
 
-	fmt.Printf("nbd path: %s\n", n.Path)
+	nbdPath, err := nbdClient.GetPath(ctx)
+	if err != nil {
+		fmt.Println("error getting path", err)
+
+		return
+	}
+
+	fmt.Printf("nbd path: %s\n", nbdPath)
 
 	if err := e.Wait(); err != nil {
 		fmt.Println("error waiting for server and client", err)

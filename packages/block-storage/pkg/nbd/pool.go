@@ -24,7 +24,7 @@ type NbdDevicePool struct {
 const (
 	nbdDeviceReleaseTimeout = 10 * time.Second
 	nbdDeviceAcquireTimeout = 10 * time.Second
-	nbdDeviceAcquireDelay   = 10 * time.Millisecond
+	nbdDeviceAcquireDelay   = 1 * time.Millisecond
 )
 
 func NewNbdDevicePool() (*NbdDevicePool, error) {
@@ -89,9 +89,7 @@ func (n *NbdDevicePool) GetDevice(ctx context.Context) (string, error) {
 		default:
 			nbdDev, err := n.getDevice(ctx)
 			if err != nil {
-				errMsg := fmt.Sprintf("failed to get nbd device, retrying: %s\n", err)
-
-				fmt.Fprintln(os.Stderr, errMsg)
+				fmt.Fprintf(os.Stderr, "failed to get nbd device, retrying: %s", err)
 
 				time.Sleep(nbdDeviceAcquireDelay)
 

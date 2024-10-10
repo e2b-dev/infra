@@ -19,7 +19,7 @@ const (
 
 type OverlayFile struct {
 	overlay *block_storage.BlockStorageOverlay
-	nbd     *nbd.Nbd
+	nbd     *nbd.NbdServer
 }
 
 func NewOverlayFile(
@@ -38,7 +38,7 @@ func NewOverlayFile(
 
 	nbdSocketPath := fmt.Sprintf("/tmp/nbd-file-%s.sock", uuid.New().String())
 
-	n, err := nbd.NewNbd(ctx, overlay, pool, nbdSocketPath)
+	n, err := nbd.NewNbdServer(ctx, overlay, pool, nbdSocketPath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating nbd: %w", err)
 	}
