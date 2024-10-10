@@ -113,6 +113,8 @@ func main() {
 		return
 	}
 
+	defer n.Close()
+
 	e := errgroup.Group{}
 
 	e.Go(func() error {
@@ -126,12 +128,14 @@ func main() {
 		return nil
 	})
 
-	nbdClient := n.CreateClient(pool)
+	nbdClient := n.CreateClient(ctx, pool)
+
+	defer nbdClient.Close()
 
 	e.Go(func() error {
 		fmt.Println("starting client")
 
-		err := nbdClient.Start(ctx)
+		err := nbdClient.Start()
 		if err != nil {
 			return fmt.Errorf("error starting client: %w", err)
 		}
@@ -139,9 +143,7 @@ func main() {
 		return nil
 	})
 
-	defer n.Close()
-
-	nbdPath, err := nbdClient.GetPath(ctx)
+	nbdPath, err := nbdClient.GetPath()
 	if err != nil {
 		fmt.Println("error getting path", err)
 

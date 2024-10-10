@@ -2,6 +2,7 @@ package nbd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -14,15 +15,15 @@ import (
 )
 
 type NbdServer struct {
-	socketPath      string
 	getStorage      func() (block.Device, error)
 	closeOnce       func() error
 	ready           chan error
-	EnsureListening func() error
+	ensureListening func() error
+	socketPath      string
 }
 
 func (n *NbdServer) Close() error {
-	listeningErr := n.EnsureListening()
+	listeningErr := n.ensureListening()
 	if listeningErr != nil {
 		return fmt.Errorf("error ensuring server is listening: %w", listeningErr)
 	}
@@ -46,7 +47,7 @@ func NewNbdServer(
 		getStorage: getStorage,
 		socketPath: socketPath,
 		ready:      ready,
-		EnsureListening: sync.OnceValue(func() error {
+		ensureListening: sync.OnceValue(func() error {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -58,6 +59,8 @@ func NewNbdServer(
 }
 
 func (n *NbdServer) Start() error {
+	defer close(n.ready)
+
 	l, err := net.Listen("unix", n.socketPath)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to listen on socket: %w", err)
@@ -78,6 +81,8 @@ func (n *NbdServer) Start() error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to accept connection: %v\n", err)
+
 			continue
 		}
 
@@ -86,35 +91,37 @@ func (n *NbdServer) Start() error {
 				_ = conn.Close()
 
 				if err := recover(); err != nil {
-					fmt.Printf("Client disconnected with error: %v", err)
+					fmt.Fprintf(os.Stderr, "Client disconnected with error: %v\n", err)
 				}
 			}()
 
 			storage, err := n.getStorage()
 			if err != nil {
-				fmt.Printf("Could not get storage: %v", err)
+				fmt.Fprintf(os.Stderr, "Could not get storage: %v\n", err)
 
 				return
 			}
+
+			blockSize := uint32(storage.BlockSize())
 
 			err = server.Handle(
 				conn,
 				[]*server.Export{
 					{
 						Name:        "default",
-						Description: "The default export",
+						Description: "",
 						Backend:     storage,
 					},
 				},
 				&server.Options{
 					ReadOnly:           false,
-					MinimumBlockSize:   uint32(1),
-					PreferredBlockSize: uint32(4096),
-					MaximumBlockSize:   uint32(0xffffffff),
+					MinimumBlockSize:   blockSize,
+					PreferredBlockSize: blockSize,
+					MaximumBlockSize:   blockSize,
 					SupportsMultiConn:  true,
 				})
 			if err != nil {
-				fmt.Printf("Client disconnected with error: %v", err)
+				fmt.Fprintf(os.Stderr, "Client disconnected with error: %v\n", err)
 
 				return
 			}
@@ -122,69 +129,76 @@ func (n *NbdServer) Start() error {
 	}
 }
 
-func (n *NbdServer) CreateClient(pool *NbdDevicePool) *NbdClient {
-	ready := make(chan error)
+type NbdClient struct {
+	ready                 chan clientResult
+	f                     *os.File
+	pool                  *NbdDevicePool
+	ensureServerListening func() error
+	GetPath               func() (string, error)
+	socketPath            string
+	path                  string
+	ctx                   context.Context
+}
+
+type clientResult struct {
+	err  error
+	path string
+}
+
+func (n *NbdServer) CreateClient(ctx context.Context, pool *NbdDevicePool) *NbdClient {
+	ready := make(chan clientResult)
 
 	return &NbdClient{
 		ready:                 ready,
 		socketPath:            n.socketPath,
 		pool:                  pool,
-		ensureServerListening: n.EnsureListening,
-		getPath: sync.OnceValue(func() (string, error) {
-			return n.GetPath(ctx)
+		ctx:                   ctx,
+		ensureServerListening: n.ensureListening,
+		GetPath: sync.OnceValues(func() (string, error) {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case result := <-ready:
+				if result.err != nil {
+					return "", result.err
+				}
+
+				return result.path, nil
+			}
 		}),
 	}
 }
 
-type NbdClient struct {
-	ready                 chan error
-	socketPath            string
-	path                  string
-	f                     *os.File
-	pool                  *NbdDevicePool
-	ensureServerListening func() error
-}
-
-// This method can only be called once.
-func (n *NbdClient) GetPath(ctx context.Context) (string, error) {
-	select {
-	case <-ctx.Done():
-		return "", ctx.Err()
-	case err := <-n.ready:
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return n.path, nil
-}
-
 func (n *NbdClient) Close() error {
-	<-n.ready
-	// TODO: Make this so it can be called multiple times (getPath)
+	var errs []error
 
 	if n.f != nil {
 		err := client.Disconnect(n.f)
 		if err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
 
-	return nil
+	err := n.pool.ReleaseDevice(n.path)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
 }
 
-func (n *NbdClient) Start(ctx context.Context) error {
+func (n *NbdClient) Start() error {
+	defer close(n.ready)
+
 	var err error
 
 	defer func() {
 		if err != nil {
-			n.ready <- err
+			n.ready <- clientResult{err: err}
 		}
-
-		close(n.ready)
 	}()
 
-	nbdPath, err := n.pool.GetDevice(ctx)
+	nbdPath, err := n.pool.GetDevice(n.ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get nbd device: %w", err)
 	}
@@ -221,9 +235,10 @@ func (n *NbdClient) Start(ctx context.Context) error {
 
 	err = client.Connect(conn, f, &client.Options{
 		ExportName: "default",
-		BlockSize:  uint32(4096),
+		// 0 means the server will choose the preferred block size
+		BlockSize: uint32(0),
 		OnConnected: func() {
-			n.ready <- nil
+			n.ready <- clientResult{path: n.path}
 		},
 	})
 	if err != nil {
