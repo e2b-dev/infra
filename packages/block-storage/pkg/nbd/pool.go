@@ -23,6 +23,8 @@ type NbdDevicePool struct {
 
 const (
 	nbdDeviceReleaseTimeout = 10 * time.Second
+	nbdDeviceAcquireTimeout = 10 * time.Second
+	nbdDeviceAcquireDelay   = 10 * time.Millisecond
 )
 
 func NewNbdDevicePool() (*NbdDevicePool, error) {
