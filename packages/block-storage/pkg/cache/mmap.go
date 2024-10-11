@@ -82,6 +82,9 @@ func (m *MmapCache) WriteAt(b []byte, off int64) (int, error) {
 }
 
 func (m *MmapCache) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	mmapErr := m.mmap.Unmap()
 
 	removeErr := os.Remove(m.filePath)
@@ -90,7 +93,15 @@ func (m *MmapCache) Close() error {
 }
 
 func (m *MmapCache) Sync() error {
-	return m.mmap.Flush()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	err := m.mmap.Flush()
+	if err != nil {
+		return fmt.Errorf("error flushing mmap: %w", err)
+	}
+
+	return nil
 }
 
 func (m *MmapCache) Size() (int64, error) {
