@@ -82,7 +82,7 @@ func (n *NbdServer) Start() error {
 		conn, err := l.Accept()
 		if err != nil {
 			// TODO: Fix failure to accept after close
-			fmt.Fprintf(os.Stderr, "Failed to accept connection: %v\n", err)
+			// fmt.Fprintf(os.Stderr, "Failed to accept connection: %v\n", err)
 
 			continue
 		}
@@ -179,6 +179,11 @@ func (n *NbdClient) Close() error {
 		if err != nil {
 			errs = append(errs, err)
 		}
+
+		err = n.f.Close()
+		if err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	return errors.Join(errs...)
@@ -225,8 +230,6 @@ func (n *NbdClient) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
-
-	defer f.Close()
 
 	n.f = f
 
