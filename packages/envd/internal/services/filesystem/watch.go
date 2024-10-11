@@ -119,7 +119,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 				}
 
 				filesystemEvent := &rpc.WatchDirResponse_Filesystem{
-					Filesystem: &rpc.WatchDirResponse_FilesystemEvent{
+					Filesystem: &rpc.FilesystemEvent{
 						Name: name,
 						Type: op,
 					},
