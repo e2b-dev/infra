@@ -137,7 +137,13 @@ func NewSandbox(
 		}
 	}()
 
-	rootfs, err := storage.NewOverlayFile(childCtx, templateData.Rootfs, sandboxFiles.SandboxCacheRootfsPath(), nbdPool)
+	rootfs, err := storage.NewOverlayFile(
+		childCtx,
+		templateData.Rootfs,
+		sandboxFiles.SandboxCacheRootfsPath(),
+		nbdPool,
+		sandboxFiles.SandboxNbdSocketPath(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create overlay file: %w", err)
 	}
@@ -180,7 +186,7 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "started uffd")
 
-	fc := NewFC(
+	fc, err := NewFC(
 		childCtx,
 		tracer,
 		ips,
@@ -196,6 +202,9 @@ func NewSandbox(
 		rootfs,
 		fcUffd.PollReady,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create FC: %w", err)
+	}
 
 	err = fc.start(childCtx, tracer)
 	if err != nil {

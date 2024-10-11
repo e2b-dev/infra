@@ -6,10 +6,6 @@ import (
 	"path/filepath"
 )
 
-const (
-	sandboxSocketDir = "/sandbox"
-)
-
 type SandboxFiles struct {
 	*TemplateFiles
 	SandboxID string
@@ -36,4 +32,8 @@ func (t *SandboxFiles) SandboxFirecrackerSocketPath() string {
 
 func (t *SandboxFiles) SandboxUffdSocketPath() string {
 	return filepath.Join(os.TempDir(), fmt.Sprintf("uffd-%s.sock", t.SandboxID))
+}
+
+func (t *SandboxFiles) SandboxNbdSocketPath() string {
+	return filepath.Join(os.TempDir(), fmt.Sprintf("nbd-file-%s.sock", t.SandboxID))
 }

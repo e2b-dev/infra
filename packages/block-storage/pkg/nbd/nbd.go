@@ -95,6 +95,7 @@ func (n *NbdServer) Start() error {
 				}
 			}()
 
+			// TODO: Use the remote/local address to identify the client so we can save the cache storage to specific file.
 			storage, err := n.getStorage()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Could not get storage: %v\n", err)
@@ -135,9 +136,9 @@ type NbdClient struct {
 	pool                  *NbdDevicePool
 	ensureServerListening func() error
 	GetPath               func() (string, error)
+	ctx                   context.Context
 	socketPath            string
 	path                  string
-	ctx                   context.Context
 }
 
 type clientResult struct {

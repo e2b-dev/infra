@@ -175,7 +175,7 @@ func NewFC(
 	snapfile *storage.SimpleFile,
 	rootfs *storage.OverlayFile,
 	uffdReady chan struct{},
-) *fc {
+) (*fc, error) {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.String("sandbox.id", mmdsMetadata.SandboxId),
 		attribute.Int("sandbox.slot.index", slot.SlotIdx),
@@ -187,11 +187,16 @@ func NewFC(
 		"fc-vmm",
 	)
 
+	rootfsPath, err := rootfs.Path()
+	if err != nil {
+		return nil, fmt.Errorf("error getting rootfs path: %w", err)
+	}
+
 	rootfsMountCmd := fmt.Sprintf(
 		"mkdir -p %s && touch %s && mount -o bind %s %s && ",
 		files.BuildDir(),
 		files.BuildRootfsPath(),
-		rootfs.Path(),
+		rootfsPath,
 		files.BuildRootfsPath(),
 	)
 
@@ -241,7 +246,7 @@ func NewFC(
 		metadata:              mmdsMetadata,
 		uffdSocketPath:        files.SandboxUffdSocketPath(),
 		snapfile:              snapfile,
-	}
+	}, nil
 }
 
 func (fc *fc) start(

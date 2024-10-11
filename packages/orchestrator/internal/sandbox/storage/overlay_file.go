@@ -4,22 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	block_storage "github.com/e2b-dev/infra/packages/block-storage/pkg"
+	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 	nbd "github.com/e2b-dev/infra/packages/block-storage/pkg/nbd"
-
-	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 )
 
-const (
-	overlayFileTimeout = 5 * time.Second
-)
-
 type OverlayFile struct {
-	overlay *block_storage.BlockStorageOverlay
-	nbd     *nbd.NbdServer
+	device *block_storage.BlockStorageOverlay
+	server *nbd.NbdServer
+	client *nbd.NbdClient
 }
 
 func NewOverlayFile(
@@ -27,57 +22,79 @@ func NewOverlayFile(
 	storage *block_storage.BlockStorage,
 	cachePath string,
 	pool *nbd.NbdDevicePool,
+	socketPath string,
 ) (*OverlayFile, error) {
-	overlay, err := storage.CreateOverlay(cachePath)
+	device, err := storage.CreateOverlay(cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating overlay: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, overlayFileTimeout)
-	defer cancel()
-
-	nbdSocketPath := fmt.Sprintf("/tmp/nbd-file-%s.sock", uuid.New().String())
-
-	n, err := nbd.NewNbdServer(ctx, overlay, pool, nbdSocketPath)
+	server, err := nbd.NewNbdServer(ctx, func() (block.Device, error) {
+		return device, nil
+	}, socketPath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating nbd: %w", err)
 	}
 
+	client := server.CreateClient(ctx, pool)
+
 	return &OverlayFile{
-		overlay: overlay,
-		nbd:     n,
+		device: device,
+		server: server,
+		client: client,
 	}, nil
 }
 
 func (o *OverlayFile) Run() error {
-	e := errgroup.Group{}
+	eg := errgroup.Group{}
 
-	e.Go(func() error {
-		return o.nbd.StartServer()
+	eg.Go(func() error {
+		err := o.server.Start()
+		if err != nil {
+			return fmt.Errorf("error starting nbd server: %w", err)
+		}
+
+		return nil
 	})
 
-	time.Sleep(2 * time.Millisecond)
+	eg.Go(func() error {
+		err := o.client.Start()
+		if err != nil {
+			return fmt.Errorf("error starting nbd client: %w", err)
+		}
 
-	e.Go(func() error {
-		return o.nbd.StartClient()
+		return nil
 	})
 
-	err := e.Wait()
+	err := eg.Wait()
 	if err != nil {
-		return fmt.Errorf("error running nbd: %w", err)
+		return fmt.Errorf("error starting overlay file: %w", err)
 	}
 
 	return nil
 }
 
 func (o *OverlayFile) Close() error {
-	err := o.nbd.Close()
+	var errs []error
 
-	overlayErr := o.overlay.Close()
+	err := o.client.Close()
+	if err != nil {
+		errs = append(errs, err)
+	}
 
-	return errors.Join(err, overlayErr)
+	err = o.server.Close()
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	err = o.device.Close()
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
 }
 
-func (o *OverlayFile) Path() string {
-	return o.nbd.Path
+func (o *OverlayFile) Path() (string, error) {
+	return o.client.GetPath()
 }
