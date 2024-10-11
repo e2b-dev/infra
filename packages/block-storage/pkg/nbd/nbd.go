@@ -81,6 +81,7 @@ func (n *NbdServer) Start() error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
+			// TODO: Fix failure to accept after close
 			fmt.Fprintf(os.Stderr, "Failed to accept connection: %v\n", err)
 
 			continue
@@ -178,11 +179,6 @@ func (n *NbdClient) Close() error {
 		if err != nil {
 			errs = append(errs, err)
 		}
-	}
-
-	err := n.pool.ReleaseDevice(n.path)
-	if err != nil {
-		errs = append(errs, err)
 	}
 
 	return errors.Join(errs...)
