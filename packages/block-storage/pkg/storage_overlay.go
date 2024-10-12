@@ -48,7 +48,9 @@ func (o *BlockStorageOverlay) BlockSize() int64 {
 }
 
 func (o *BlockStorageOverlay) Sync() error {
-	return o.overlay.Sync()
+	// We don't sync overlay cache because we are not using it for anything.
+	// We might add this later, but right now it's not needed.
+	return nil
 }
 
 func (o *BlockStorageOverlay) Close() error {
