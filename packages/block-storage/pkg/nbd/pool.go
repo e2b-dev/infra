@@ -88,7 +88,7 @@ func (n *NbdDevicePool) GetDevice(ctx context.Context) (string, error) {
 		default:
 			nbdDev, err := n.getDevice()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to get nbd device, retrying: %s", err)
+				fmt.Fprintf(os.Stderr, "failed to get nbd device, retrying: %s\n", err)
 
 				time.Sleep(nbdDeviceAcquireDelay)
 
@@ -151,7 +151,7 @@ func (n *NbdDevicePool) ReleaseDevice(ctx context.Context, path string) error {
 
 	err := n.umountDevice(ctx, path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to umount device: %s: %s\n", path, err)
+		fmt.Fprintf(os.Stderr, "failed to umount device: %s: %s", path, err)
 	}
 
 	for {
