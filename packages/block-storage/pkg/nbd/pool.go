@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -137,9 +138,23 @@ func (n *NbdDevicePool) releaseDevice(path string) error {
 	return nil
 }
 
+func (n *NbdDevicePool) umountDevice(ctx context.Context, path string) error {
+	out, err := exec.CommandContext(ctx, "umount", "--all-targets", path).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to umount device: %w: %s", err, string(out))
+	}
+
+	return nil
+}
+
 func (n *NbdDevicePool) ReleaseDevice(ctx context.Context, path string) error {
 	ticker := time.NewTicker(nbdDeviceAcquireDelay)
 	defer ticker.Stop()
+
+	err := n.umountDevice(ctx, path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to umount device: %s: %s\n", path, err)
+	}
 
 	for {
 		select {

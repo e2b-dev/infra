@@ -16,7 +16,7 @@ func TestNbdDevicePool(t *testing.T) {
 	defer cancel()
 
 	nbd0, err := pool.GetDevice(ctx)
-	defer pool.ReleaseDevice(nbd0)
+	defer pool.ReleaseDevice(ctx, nbd0)
 
 	require.NoError(t, err)
 
@@ -26,7 +26,7 @@ func TestNbdDevicePool(t *testing.T) {
 	defer cancel()
 
 	nbd1, err := pool.GetDevice(ctx)
-	defer pool.ReleaseDevice(nbd1)
+	defer pool.ReleaseDevice(ctx, nbd1)
 
 	require.NoError(t, err)
 
