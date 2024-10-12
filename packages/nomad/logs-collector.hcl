@@ -136,22 +136,6 @@ teamID = "{{ teamID }}"
 envID = "{{ envID }}"
 sandboxID = "{{ sandboxID }}"
 
-[sinks.grafana]
-type = "loki"
-inputs = [ "add_source_envd" ]
-endpoint = "${var.grafana_logs_endpoint}"
-encoding.codec = "json"
-auth.strategy = "basic"
-auth.user = "${var.grafana_logs_username}"
-auth.password = "${var.grafana_api_key}"
-
-[sinks.grafana.labels]
-source = "logs-collector"
-service = "{{ service }}"
-teamID = "{{ teamID }}"
-envID = "{{ envID }}"
-sandboxID = "{{ sandboxID }}"
-
         EOH
       }
     }
