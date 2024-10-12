@@ -116,3 +116,8 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 func (c *TemplateCache) Invalidate(templateID string) {
 	c.cache.Delete(templateID)
 }
+
+// InvalidateAlias invalidates the alias from Alias cache for the given alias
+func (c *TemplateCache) InvalidateAlias(alias string) {
+	c.aliasCache.cache.Delete(alias)
+}

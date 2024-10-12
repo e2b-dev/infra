@@ -8,6 +8,11 @@ variable "image_name" {
   default = ""
 }
 
+variable "admin_api_key" {
+  type    = string
+  default = ""
+}
+
 variable "api_port_name" {
   type    = string
   default = ""
@@ -104,6 +109,7 @@ job "orchestration-api" {
       }
 
       env {
+        API_ADMIN_KEY                 = var.api_admin_key
         ORCHESTRATOR_ADDRESS          = var.orchestrator_address
         TEMPLATE_MANAGER_ADDRESS      = var.template_manager_address
         POSTGRES_CONNECTION_STRING    = var.postgres_connection_string
