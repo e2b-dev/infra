@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 
@@ -20,6 +21,7 @@ type NbdServer struct {
 	ready           chan error
 	ensureListening func() error
 	socketPath      string
+	closed          atomic.Bool
 }
 
 func (n *NbdServer) Close() error {
@@ -71,6 +73,7 @@ func (n *NbdServer) Start() error {
 	}
 
 	n.closeOnce = sync.OnceValue(func() error {
+		n.closed.Store(true)
 		return l.Close()
 	})
 
@@ -81,8 +84,13 @@ func (n *NbdServer) Start() error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
+
+			if n.closed.Load() {
+				return nil
+			}
+
 			// TODO: Fix failure to accept after close
-			// fmt.Fprintf(os.Stderr, "Failed to accept connection: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to accept connection: %v\n", err)
 
 			continue
 		}
@@ -206,7 +214,7 @@ func (n *NbdClient) Start() error {
 	}
 
 	defer func() {
-		releaseErr := n.pool.ReleaseDevice(nbdPath)
+		releaseErr := n.pool.ReleaseDevice(n.ctx, nbdPath)
 		if releaseErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to release device: %s, %v\n", nbdPath, releaseErr)
 		}

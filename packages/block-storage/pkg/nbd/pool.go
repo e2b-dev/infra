@@ -87,7 +87,7 @@ func (n *NbdDevicePool) GetDevice(ctx context.Context) (string, error) {
 		case <-ctx.Done():
 			return "", ctx.Err()
 		default:
-			nbdDev, err := n.getDevice(ctx)
+			nbdDev, err := n.getDevice()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "failed to get nbd device, retrying: %s", err)
 
@@ -101,7 +101,7 @@ func (n *NbdDevicePool) GetDevice(ctx context.Context) (string, error) {
 	}
 }
 
-func (n *NbdDevicePool) getDevice(ctx context.Context) (string, error) {
+func (n *NbdDevicePool) getDevice() (string, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -137,10 +137,7 @@ func (n *NbdDevicePool) releaseDevice(path string) error {
 	return nil
 }
 
-func (n *NbdDevicePool) ReleaseDevice(path string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), nbdDeviceReleaseTimeout)
-	defer cancel()
-
+func (n *NbdDevicePool) ReleaseDevice(ctx context.Context, path string) error {
 	ticker := time.NewTicker(nbdDeviceAcquireDelay)
 	defer ticker.Stop()
 
