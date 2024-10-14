@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"connectrpc.com/connect"
 	"github.com/fsnotify/fsnotify"
@@ -21,6 +22,8 @@ type FileWatcher struct {
 	Events  []*rpc.FilesystemEvent
 	ctx     context.Context
 	Error   error
+
+	Lock sync.Mutex
 }
 
 func CreateFileWatcher(watchPath, operationID string, logger *zerolog.Logger) (*FileWatcher, error) {
@@ -101,10 +104,12 @@ func CreateFileWatcher(watchPath, operationID string, logger *zerolog.Logger) (*
 						Event: filesystemEvent,
 					}
 
+					fw.Lock.Lock()
 					fw.Events = append(fw.Events, &rpc.FilesystemEvent{
 						Name: name,
 						Type: op,
 					})
+					fw.Lock.Unlock()
 
 					logger.
 						Debug().
@@ -171,12 +176,10 @@ func (s Service) WatchDirGet(_ context.Context, req *connect.Request[rpc.WatchDi
 		return nil, w.Error
 	}
 
+	w.Lock.Lock()
+	defer w.Lock.Unlock()
 	events := w.Events
-	if int(req.Msg.Offset) >= len(w.Events) {
-		events = []*rpc.FilesystemEvent{}
-	} else {
-		events = w.Events[req.Msg.Offset:]
-	}
+	w.Events = []*rpc.FilesystemEvent{}
 
 	return connect.NewResponse(&rpc.WatchDirGetResponse{
 		Events: events,
