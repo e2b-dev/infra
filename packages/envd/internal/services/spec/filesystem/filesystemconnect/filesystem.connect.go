@@ -48,8 +48,8 @@ const (
 	// FilesystemWatchDirStartProcedure is the fully-qualified name of the Filesystem's WatchDirStart
 	// RPC.
 	FilesystemWatchDirStartProcedure = "/filesystem.Filesystem/WatchDirStart"
-	// FilesystemWatchDirPollProcedure is the fully-qualified name of the Filesystem's WatchDirPoll RPC.
-	FilesystemWatchDirPollProcedure = "/filesystem.Filesystem/WatchDirPoll"
+	// FilesystemWatchDirGetProcedure is the fully-qualified name of the Filesystem's WatchDirGet RPC.
+	FilesystemWatchDirGetProcedure = "/filesystem.Filesystem/WatchDirGet"
 	// FilesystemWatchDirStopProcedure is the fully-qualified name of the Filesystem's WatchDirStop RPC.
 	FilesystemWatchDirStopProcedure = "/filesystem.Filesystem/WatchDirStop"
 )
@@ -64,7 +64,7 @@ var (
 	filesystemRemoveMethodDescriptor        = filesystemServiceDescriptor.Methods().ByName("Remove")
 	filesystemWatchDirMethodDescriptor      = filesystemServiceDescriptor.Methods().ByName("WatchDir")
 	filesystemWatchDirStartMethodDescriptor = filesystemServiceDescriptor.Methods().ByName("WatchDirStart")
-	filesystemWatchDirPollMethodDescriptor  = filesystemServiceDescriptor.Methods().ByName("WatchDirPoll")
+	filesystemWatchDirGetMethodDescriptor   = filesystemServiceDescriptor.Methods().ByName("WatchDirGet")
 	filesystemWatchDirStopMethodDescriptor  = filesystemServiceDescriptor.Methods().ByName("WatchDirStop")
 )
 
@@ -78,7 +78,7 @@ type FilesystemClient interface {
 	WatchDir(context.Context, *connect.Request[filesystem.WatchDirRequest]) (*connect.ServerStreamForClient[filesystem.WatchDirResponse], error)
 	// Non-streaming versions of WatchDir
 	WatchDirStart(context.Context, *connect.Request[filesystem.WatchDirRequest]) (*connect.Response[filesystem.WatchDirStartResponse], error)
-	WatchDirPoll(context.Context, *connect.Request[filesystem.WatchDirPollRequest]) (*connect.Response[filesystem.WatchDirPollResponse], error)
+	WatchDirGet(context.Context, *connect.Request[filesystem.WatchDirGetRequest]) (*connect.Response[filesystem.WatchDirGetResponse], error)
 	WatchDirStop(context.Context, *connect.Request[filesystem.WatchDirStopRequest]) (*connect.Response[filesystem.WatchDirStopResponse], error)
 }
 
@@ -134,10 +134,10 @@ func NewFilesystemClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			connect.WithSchema(filesystemWatchDirStartMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
-		watchDirPoll: connect.NewClient[filesystem.WatchDirPollRequest, filesystem.WatchDirPollResponse](
+		watchDirGet: connect.NewClient[filesystem.WatchDirGetRequest, filesystem.WatchDirGetResponse](
 			httpClient,
-			baseURL+FilesystemWatchDirPollProcedure,
-			connect.WithSchema(filesystemWatchDirPollMethodDescriptor),
+			baseURL+FilesystemWatchDirGetProcedure,
+			connect.WithSchema(filesystemWatchDirGetMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		watchDirStop: connect.NewClient[filesystem.WatchDirStopRequest, filesystem.WatchDirStopResponse](
@@ -158,7 +158,7 @@ type filesystemClient struct {
 	remove        *connect.Client[filesystem.RemoveRequest, filesystem.RemoveResponse]
 	watchDir      *connect.Client[filesystem.WatchDirRequest, filesystem.WatchDirResponse]
 	watchDirStart *connect.Client[filesystem.WatchDirRequest, filesystem.WatchDirStartResponse]
-	watchDirPoll  *connect.Client[filesystem.WatchDirPollRequest, filesystem.WatchDirPollResponse]
+	watchDirGet   *connect.Client[filesystem.WatchDirGetRequest, filesystem.WatchDirGetResponse]
 	watchDirStop  *connect.Client[filesystem.WatchDirStopRequest, filesystem.WatchDirStopResponse]
 }
 
@@ -197,9 +197,9 @@ func (c *filesystemClient) WatchDirStart(ctx context.Context, req *connect.Reque
 	return c.watchDirStart.CallUnary(ctx, req)
 }
 
-// WatchDirPoll calls filesystem.Filesystem.WatchDirPoll.
-func (c *filesystemClient) WatchDirPoll(ctx context.Context, req *connect.Request[filesystem.WatchDirPollRequest]) (*connect.Response[filesystem.WatchDirPollResponse], error) {
-	return c.watchDirPoll.CallUnary(ctx, req)
+// WatchDirGet calls filesystem.Filesystem.WatchDirGet.
+func (c *filesystemClient) WatchDirGet(ctx context.Context, req *connect.Request[filesystem.WatchDirGetRequest]) (*connect.Response[filesystem.WatchDirGetResponse], error) {
+	return c.watchDirGet.CallUnary(ctx, req)
 }
 
 // WatchDirStop calls filesystem.Filesystem.WatchDirStop.
@@ -217,7 +217,7 @@ type FilesystemHandler interface {
 	WatchDir(context.Context, *connect.Request[filesystem.WatchDirRequest], *connect.ServerStream[filesystem.WatchDirResponse]) error
 	// Non-streaming versions of WatchDir
 	WatchDirStart(context.Context, *connect.Request[filesystem.WatchDirRequest]) (*connect.Response[filesystem.WatchDirStartResponse], error)
-	WatchDirPoll(context.Context, *connect.Request[filesystem.WatchDirPollRequest]) (*connect.Response[filesystem.WatchDirPollResponse], error)
+	WatchDirGet(context.Context, *connect.Request[filesystem.WatchDirGetRequest]) (*connect.Response[filesystem.WatchDirGetResponse], error)
 	WatchDirStop(context.Context, *connect.Request[filesystem.WatchDirStopRequest]) (*connect.Response[filesystem.WatchDirStopResponse], error)
 }
 
@@ -269,10 +269,10 @@ func NewFilesystemHandler(svc FilesystemHandler, opts ...connect.HandlerOption) 
 		connect.WithSchema(filesystemWatchDirStartMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
-	filesystemWatchDirPollHandler := connect.NewUnaryHandler(
-		FilesystemWatchDirPollProcedure,
-		svc.WatchDirPoll,
-		connect.WithSchema(filesystemWatchDirPollMethodDescriptor),
+	filesystemWatchDirGetHandler := connect.NewUnaryHandler(
+		FilesystemWatchDirGetProcedure,
+		svc.WatchDirGet,
+		connect.WithSchema(filesystemWatchDirGetMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	filesystemWatchDirStopHandler := connect.NewUnaryHandler(
@@ -297,8 +297,8 @@ func NewFilesystemHandler(svc FilesystemHandler, opts ...connect.HandlerOption) 
 			filesystemWatchDirHandler.ServeHTTP(w, r)
 		case FilesystemWatchDirStartProcedure:
 			filesystemWatchDirStartHandler.ServeHTTP(w, r)
-		case FilesystemWatchDirPollProcedure:
-			filesystemWatchDirPollHandler.ServeHTTP(w, r)
+		case FilesystemWatchDirGetProcedure:
+			filesystemWatchDirGetHandler.ServeHTTP(w, r)
 		case FilesystemWatchDirStopProcedure:
 			filesystemWatchDirStopHandler.ServeHTTP(w, r)
 		default:
@@ -338,8 +338,8 @@ func (UnimplementedFilesystemHandler) WatchDirStart(context.Context, *connect.Re
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("filesystem.Filesystem.WatchDirStart is not implemented"))
 }
 
-func (UnimplementedFilesystemHandler) WatchDirPoll(context.Context, *connect.Request[filesystem.WatchDirPollRequest]) (*connect.Response[filesystem.WatchDirPollResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("filesystem.Filesystem.WatchDirPoll is not implemented"))
+func (UnimplementedFilesystemHandler) WatchDirGet(context.Context, *connect.Request[filesystem.WatchDirGetRequest]) (*connect.Response[filesystem.WatchDirGetResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("filesystem.Filesystem.WatchDirGet is not implemented"))
 }
 
 func (UnimplementedFilesystemHandler) WatchDirStop(context.Context, *connect.Request[filesystem.WatchDirStopRequest]) (*connect.Response[filesystem.WatchDirStopResponse], error) {

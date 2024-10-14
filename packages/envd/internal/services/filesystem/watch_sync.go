@@ -159,7 +159,7 @@ func (s Service) WatchDirStart(ctx context.Context, req *connect.Request[rpc.Wat
 	}), nil
 }
 
-func (s Service) WatchDirPoll(_ context.Context, req *connect.Request[rpc.WatchDirPollRequest]) (*connect.Response[rpc.WatchDirPollResponse], error) {
+func (s Service) WatchDirGet(_ context.Context, req *connect.Request[rpc.WatchDirGetRequest]) (*connect.Response[rpc.WatchDirGetResponse], error) {
 	watcherId := req.Msg.GetWatcherId()
 
 	w, ok := s.watchers.Load(watcherId)
@@ -178,7 +178,7 @@ func (s Service) WatchDirPoll(_ context.Context, req *connect.Request[rpc.WatchD
 		events = w.Events[req.Msg.Offset:]
 	}
 
-	return connect.NewResponse(&rpc.WatchDirPollResponse{
+	return connect.NewResponse(&rpc.WatchDirGetResponse{
 		Events: events,
 	}), nil
 }
