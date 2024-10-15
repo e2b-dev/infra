@@ -443,3 +443,14 @@ func (s *Sandbox) SlotIdx() int {
 func (s *Sandbox) FcPid() int {
 	return s.fc.pid
 }
+
+func (s *Sandbox) Stats() ([]ProcStats, error) {
+	stats := []ProcStats{}
+
+	err := getProcStats(int32(s.fc.pid), &stats)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process stats: %w", err)
+	}
+
+	return stats, nil
+}
