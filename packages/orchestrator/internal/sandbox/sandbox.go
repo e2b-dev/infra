@@ -14,7 +14,6 @@ import (
 
 	"golang.org/x/mod/semver"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -189,7 +188,7 @@ func NewSandbox(
 		&MmdsMetadata{
 			InstanceID: config.SandboxID,
 			EnvID:      config.TemplateID,
-			Address:    constants.LogsProxyAddress,
+			Address:    consts.LogsProxyAddress,
 			TraceID:    traceID,
 			TeamID:     config.TeamID,
 		},
@@ -477,7 +476,6 @@ type SandboxStats struct {
 	MemoryVMS  uint64  `json:"memory_vms"`
 	MemoryRSS  uint64  `json:"memory_rss"`
 }
-
 
 func (s *Sandbox) Stats() ([]ProcStats, error) {
 	stats := []ProcStats{}

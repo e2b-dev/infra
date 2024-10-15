@@ -39,9 +39,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
-	sandboxLogger := a.sandboxLogger.With("instanceID", sandboxID, "teamID", team.ID.String(), "traceID", traceID)
-	sandboxLogger.Info("Started creating sandbox")
-
 	telemetry.ReportEvent(ctx, "Parsed body")
 
 	body, err := utils.ParseBody[api.PostSandboxesJSONRequestBody](ctx, c)
@@ -79,6 +76,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 	templateSpan.End()
 
+	sandboxLogger := a.sbxLogExporter.CreateSandboxLogger(sandboxID, env.TemplateID, team.ID.String(), int32(build.Vcpu), int32(build.RAMMB))
+	sandboxLogger.Eventf("Started creating sandbox")
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	var alias string
@@ -178,6 +177,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
 	instanceInfo := instance.InstanceInfo{
+		Logger:            sandboxLogger,
 		StartTime:         startTime,
 		EndTime:           endTime,
 		Instance:          sandbox,
@@ -235,7 +235,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		attribute.String("instance.id", sandbox.SandboxID),
 	)
 
-	sandboxLogger.With("envID", env.TemplateID).Info("Sandbox created")
+	sandboxLogger.Eventf("Sandbox created")
 
 	c.JSON(http.StatusCreated, &sandbox)
 }

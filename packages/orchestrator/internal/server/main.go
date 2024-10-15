@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
@@ -102,7 +103,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		dns:         dns,
 		sandboxes:   smap.New[*sandbox.Sandbox](),
 		networkPool: networkPool,
-		sandboxLogs: logs.NewSandboxLogExporter(ctx, false, constants.LogsProxyAddress),
+		sandboxLogs: logs.NewSandboxLogExporter(ctx, false, consts.LogsProxyAddress),
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

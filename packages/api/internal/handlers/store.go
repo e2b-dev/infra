@@ -25,9 +25,11 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 type APIStore struct {
@@ -42,7 +44,7 @@ type APIStore struct {
 	db              *db.DB
 	lokiClient      *loki.DefaultClient
 	logger          *zap.SugaredLogger
-	sandboxLogger   *zap.SugaredLogger
+	sbxLogExporter  *logs.SandboxLogExporter
 	templateCache   *templatecache.TemplateCache
 	authCache       *authcache.TeamAuthCache
 }
@@ -155,11 +157,7 @@ func NewAPIStore() *APIStore {
 
 	buildCache := builds.NewBuildCache(buildCounter)
 
-	sandboxLogger, err := logging.NewCollectorLogger()
-	if err != nil {
-		logger.Errorf("Error initializing sandbox logger\n: %v", err)
-		panic(err)
-	}
+	sbxLogExporter := logs.NewSandboxLogExporter(ctx, false, consts.LogsProxyAddress)
 
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)
@@ -176,7 +174,7 @@ func NewAPIStore() *APIStore {
 		buildCache:      buildCache,
 		logger:          logger,
 		lokiClient:      lokiClient,
-		sandboxLogger:   sandboxLogger,
+		sbxLogExporter:  sbxLogExporter,
 		templateCache:   templateCache,
 		authCache:       authCache,
 	}

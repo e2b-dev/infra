@@ -15,12 +15,14 @@ require (
 	github.com/jellydator/ttlcache/v3 v3.2.0
 	github.com/loopholelabs/userfaultfd-go v0.1.2
 	github.com/miekg/dns v1.1.50
+	github.com/shirou/gopsutil/v4 v4.24.8
 	github.com/vishvananda/netlink v1.2.1-beta.2
 	github.com/vishvananda/netns v0.0.4
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.48.0
 	go.opentelemetry.io/otel v1.23.0
 	go.opentelemetry.io/otel/trace v1.23.0
 	go.uber.org/zap v1.18.1
+	golang.org/x/mod v0.17.0
 	golang.org/x/sys v0.24.0
 	google.golang.org/grpc v1.61.1
 	google.golang.org/protobuf v1.33.0
@@ -69,7 +71,7 @@ require (
 	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
-	github.com/shirou/gopsutil/v4 v4.24.8 // indirect
+	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
@@ -87,7 +89,6 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
-	golang.org/x/mod v0.17.0 // indirect
 	golang.org/x/net v0.26.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/text v0.16.0 // indirect

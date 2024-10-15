@@ -45,6 +45,7 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 
 		return
 	}
+	info.Logger.Eventf("sandbox refreshed - new end time: %s", info.EndTime.Format(time.RFC822Z))
 
 	err = a.orchestrator.UpdateSandbox(a.Tracer, ctx, sandboxID, info.EndTime)
 	if err != nil {
