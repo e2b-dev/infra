@@ -8,14 +8,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"golang.org/x/mod/semver"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/logs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -34,8 +35,6 @@ const (
 	fcBinaryName   = "firecracker"
 )
 
-var logsProxyAddress = os.Getenv("LOGS_PROXY_ADDRESS")
-
 var httpClient = http.Client{
 	Timeout: 5 * time.Second,
 }
@@ -52,7 +51,8 @@ type Sandbox struct {
 	EndAt     time.Time
 	TraceID   string
 
-	slot IPSlot
+	slot   IPSlot
+	Logger *logs.SandboxLogger
 }
 
 func fcBinaryPath(fcVersion string) string {
@@ -69,6 +69,7 @@ func NewSandbox(
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
+	logger *logs.SandboxLogger,
 ) (*Sandbox, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -188,7 +189,7 @@ func NewSandbox(
 		&MmdsMetadata{
 			InstanceID: config.SandboxID,
 			EnvID:      config.TemplateID,
-			Address:    logsProxyAddress,
+			Address:    constants.LogsProxyAddress,
 			TraceID:    traceID,
 			TeamID:     config.TeamID,
 		},
@@ -218,6 +219,7 @@ func NewSandbox(
 		Sandbox:   config,
 		StartedAt: startedAt,
 		EndAt:     endAt,
+		Logger:    logger,
 		stopOnce: sync.OnceValue(func() error {
 			var uffdErr error
 			if fcUffd != nil {
@@ -442,4 +444,30 @@ func (s *Sandbox) SlotIdx() int {
 
 func (s *Sandbox) FcPid() int {
 	return s.fc.pid
+}
+
+func (s *Sandbox) healthcheck(ctx context.Context) error {
+	address := fmt.Sprintf("http://%s:%d/health", s.slot.HostSnapshotIP(), consts.DefaultEnvdServerPort)
+
+	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
+	if err != nil {
+		return err
+	}
+
+	response, err := httpClient.Do(request)
+	if err != nil {
+		return err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
+	}
+
+	if _, err := io.Copy(io.Discard, response.Body); err != nil {
+		return err
+	}
+
+	defer response.Body.Close()
+
+	return nil
 }

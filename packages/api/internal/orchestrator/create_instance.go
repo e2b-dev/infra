@@ -65,6 +65,8 @@ func (o *Orchestrator) CreateSandbox(
 			EnvVars:            envVars,
 			MaxInstanceLength:  maxInstanceLengthHours,
 			HugePages:          features.HasHugePages(),
+			MemoryMB:           build.MemoryMB,
+			VCPUCount:          build.VCPUCount,
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
