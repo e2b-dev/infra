@@ -16,10 +16,10 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/logs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 
 	consul "github.com/hashicorp/consul/api"

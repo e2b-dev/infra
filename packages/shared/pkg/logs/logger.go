@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/logs/exporter"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs/exporter"
 
 	"github.com/rs/zerolog"
 )
