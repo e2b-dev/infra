@@ -2,11 +2,9 @@ package handlers
 
 import (
 	"fmt"
-	"net/http"
-	"time"
-
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
+	"net/http"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
@@ -39,7 +37,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	}
 
 	info := item.Value()
-	info.Logger.Eventf("sandbox refreshed - new end time: %s", info.EndTime.Format(time.RFC822Z))
+	info.Logger.Eventf("sandbox killed")
 
 	if *item.Value().TeamID != teamID {
 		errMsg := fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String())
