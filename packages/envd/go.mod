@@ -8,7 +8,7 @@ require (
 	connectrpc.com/cors v0.1.0
 	github.com/creack/pty v1.1.18
 	github.com/deepmap/oapi-codegen/v2 v2.1.1-0.20240519200907-da9077bb5ffe
-	github.com/e2b-dev/infra/packages/shared v0.0.0-20241015025027-b0fe391546f5
+	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/go-chi/chi/v5 v5.0.12
 	github.com/oapi-codegen/runtime v1.1.1
@@ -38,3 +38,5 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
