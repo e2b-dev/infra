@@ -33,7 +33,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		req.Sandbox.SandboxID,
 		req.Sandbox.TemplateID,
 		req.Sandbox.TeamID,
-		req.Sandbox.VCPUCount,
+		req.Sandbox.VCpuCount,
 		req.Sandbox.MemoryMB,
 	)
 
