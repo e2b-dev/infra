@@ -130,7 +130,7 @@ func (fw *FileWatcher) Close() {
 	fw.ctx.Done()
 }
 
-func (s Service) WatchDirStart(ctx context.Context, req *connect.Request[rpc.WatchDirRequest]) (*connect.Response[rpc.WatchDirStartResponse], error) {
+func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.CreateWatcherRequest]) (*connect.Response[rpc.CreateWatcherResponse], error) {
 	u, err := permissions.GetAuthUser(ctx)
 	if err != nil {
 		return nil, err
@@ -159,12 +159,12 @@ func (s Service) WatchDirStart(ctx context.Context, req *connect.Request[rpc.Wat
 	w, err := CreateFileWatcher(watchPath, watcherId, s.logger)
 	s.watchers.Store(watcherId, w)
 
-	return connect.NewResponse(&rpc.WatchDirStartResponse{
+	return connect.NewResponse(&rpc.CreateWatcherResponse{
 		WatcherId: watcherId,
 	}), nil
 }
 
-func (s Service) WatchDirGet(_ context.Context, req *connect.Request[rpc.WatchDirGetRequest]) (*connect.Response[rpc.WatchDirGetResponse], error) {
+func (s Service) GetWatcherEvents(_ context.Context, req *connect.Request[rpc.GetWatcherEventsRequest]) (*connect.Response[rpc.GetWatcherEventsResponse], error) {
 	watcherId := req.Msg.GetWatcherId()
 
 	w, ok := s.watchers.Load(watcherId)
@@ -181,12 +181,12 @@ func (s Service) WatchDirGet(_ context.Context, req *connect.Request[rpc.WatchDi
 	events := w.Events
 	w.Events = []*rpc.FilesystemEvent{}
 
-	return connect.NewResponse(&rpc.WatchDirGetResponse{
+	return connect.NewResponse(&rpc.GetWatcherEventsResponse{
 		Events: events,
 	}), nil
 }
 
-func (s Service) WatchDirStop(_ context.Context, req *connect.Request[rpc.WatchDirStopRequest]) (*connect.Response[rpc.WatchDirStopResponse], error) {
+func (s Service) RemoveWatcher(_ context.Context, req *connect.Request[rpc.RemoveWatcherRequest]) (*connect.Response[rpc.RemoveWatcherResponse], error) {
 	watcherId := req.Msg.GetWatcherId()
 
 	w, ok := s.watchers.Load(watcherId)
@@ -197,5 +197,5 @@ func (s Service) WatchDirStop(_ context.Context, req *connect.Request[rpc.WatchD
 	w.Close()
 	s.watchers.Delete(watcherId)
 
-	return connect.NewResponse(&rpc.WatchDirStopResponse{}), nil
+	return connect.NewResponse(&rpc.RemoveWatcherResponse{}), nil
 }
