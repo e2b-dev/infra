@@ -7,6 +7,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 
@@ -23,6 +24,10 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 	consulClient, err := consul.New(childCtx)
 
 	networkPool := make(chan IPSlot, 1)
+
+	exporter := logs.NewSandboxLogExporter(childCtx, true, "")
+
+	logger := exporter.CreateSandboxLogger(instanceID, envID, "test-team", 2, 512)
 
 	select {
 	case <-ctx.Done():
@@ -68,6 +73,7 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 		"trace-test-1",
 		time.Now(),
 		time.Now(),
+		logger,
 	)
 	if err != nil {
 		panic(err)
