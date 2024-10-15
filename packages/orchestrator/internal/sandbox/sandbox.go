@@ -210,6 +210,7 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
+	stopped := make(chan struct{})
 	instance := &Sandbox{
 		files:     fsEnv,
 		slot:      ips,
@@ -237,6 +238,7 @@ func NewSandbox(
 				return errors.Join(fcErr, uffdErr)
 			}
 
+			stopped <- struct{}{}
 			return nil
 		}),
 	}
@@ -267,6 +269,10 @@ func NewSandbox(
 
 	dns.Add(config.SandboxID, ips.HostIP())
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxID))
+
+	go func() {
+		instance.logHeathAndUsage(stopped)
+	}()
 
 	return instance, nil
 }
@@ -445,6 +451,36 @@ func (s *Sandbox) FcPid() int {
 	return s.fc.pid
 }
 
+func (s *Sandbox) logHeathAndUsage(exited chan struct{}) {
+	ctx := context.Background()
+	for {
+		select {
+		case <-time.After(10 * time.Second):
+			childCtx, cancel := context.WithTimeout(ctx, time.Second)
+			err := s.healthcheck(childCtx)
+			cancel()
+
+			s.Logger.Healthcheck(err == nil)
+
+			stats, err := s.Stats()
+			if err != nil {
+				s.Logger.Eventf("failed to get stats: %s", err)
+			} else {
+				cpu := float64(0)
+				ram := float64(0)
+				for _, stat := range stats {
+					cpu += stat.CPUPercent
+					ram += float64(stat.MemoryInfo.VMS)
+				}
+				s.Logger.CPUUsage(cpu)
+				s.Logger.MemoryUsage(ram)
+			}
+		case <-exited:
+			return
+		}
+	}
+}
+
 func (s *Sandbox) healthcheck(ctx context.Context) error {
 	address := fmt.Sprintf("http://%s:%d/health", s.slot.HostSnapshotIP(), consts.DefaultEnvdServerPort)
 
@@ -478,7 +514,7 @@ type SandboxStats struct {
 }
 
 func (s *Sandbox) Stats() ([]ProcStats, error) {
-	stats := []ProcStats{}
+	var stats []ProcStats
 
 	err := getProcStats(int32(s.fc.pid), &stats)
 	if err != nil {
