@@ -82,8 +82,8 @@ func (l *SandboxLogger) Eventf(
 }
 
 func (l *SandboxLogger) CPUUsage(cpu float64) {
-	// Round to 3 decimal places
-	cpu = math.Max(float64(int(cpu*1000))/1000, float64(l.cpuMax))
+	// Round to 3 decimal places and cap at cpuMax
+	cpu = math.Min(float64(int(cpu*1000))/1000, float64(l.cpuMax))
 	if cpu > cpuUsageThreshold*float64(l.cpuMax) {
 		l.cpuWasAboveTreshold.Store(true)
 
@@ -107,7 +107,8 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 }
 
 func (l *SandboxLogger) MemoryUsage(memory float64) {
-	memory = math.Max(memory, float64(l.memoryMax))
+	// Cap at memoryMax
+	memory = math.Min(memory, float64(l.memoryMax))
 	if memory > memoryUsageThreshold*float64(l.memoryMax) && int32(memory) > l.memoryWasAbove.Load() {
 		l.memoryWasAbove.Store(int32(memory))
 
