@@ -467,11 +467,7 @@ func (s *Sandbox) logHeathAndUsage(exited chan struct{}) {
 			childCtx, cancel := context.WithTimeout(ctx, time.Second)
 			err := s.healthcheck(childCtx)
 			cancel()
-
 			s.Logger.Healthcheck(err == nil)
-			if err != nil {
-				s.Logger.Eventf("failed to healthcheck: %s", err)
-			}
 
 			stats, err := s.stats.GetStats()
 			if err != nil {

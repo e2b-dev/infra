@@ -13,7 +13,7 @@ import (
 
 type SandboxStats struct {
 	pid       int32
-	timestamp int64
+	timestamp time.Time
 	cpuLast   float64
 }
 
@@ -35,7 +35,7 @@ func NewSandboxStats(pid int32) (*SandboxStats, error) {
 
 	return &SandboxStats{
 		pid:       pid,
-		timestamp: time.Now().Unix(),
+		timestamp: time.Now(),
 		cpuLast:   currentStats.CPUTotal,
 	}, nil
 }
@@ -46,17 +46,23 @@ func (s *SandboxStats) GetStats() (*CurrentStats, error) {
 		return nil, fmt.Errorf("failed to get current stats: %w", err)
 	}
 
-	cpuUsage := currentStats.CPUTotal - s.cpuLast
+	now := time.Now()
+	cpuTotalUsage := currentStats.CPUTotal - s.cpuLast
 	s.cpuLast = currentStats.CPUTotal
+	cpuUsage := cpuTotalUsage / time.Since(s.timestamp).Seconds()
+	s.timestamp = now
 
 	return &CurrentStats{
 		CPUCount: cpuUsage,
-		MemoryMB: currentStats.MemoryKB / 1024,
+		MemoryMB: currentStats.MemoryKB / 1000,
 	}, nil
 }
 
 func getCurrentStats(pid int32) (*processStats, error) {
-	totalStats := processStats{}
+	totalStats := &processStats{
+		CPUTotal: 0,
+		MemoryKB: 0,
+	}
 	proc, err := process.NewProcess(pid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new a new Process instance: %w", err)
@@ -79,7 +85,7 @@ func getCurrentStats(pid int32) (*processStats, error) {
 	}
 
 	if procName == "unshare" { // unshare is not relevant to us
-		return &processStats{}, nil
+		return totalStats, nil
 	}
 
 	cpu, err := proc.Times()
@@ -94,7 +100,7 @@ func getCurrentStats(pid int32) (*processStats, error) {
 	totalStats.CPUTotal += cpu.User + cpu.System + cpu.Nice
 	totalStats.MemoryKB += float64(memoryKB)
 
-	return &totalStats, nil
+	return totalStats, nil
 }
 
 func getMemoryUsage(pid int32) (int32, error) {
