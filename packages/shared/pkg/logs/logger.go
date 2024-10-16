@@ -3,6 +3,7 @@ package logs
 import (
 	"context"
 	"io"
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -82,8 +83,7 @@ func (l *SandboxLogger) Eventf(
 
 func (l *SandboxLogger) CPUUsage(cpu float64) {
 	// Round to 3 decimal places
-	cpu = float64(int(cpu*1000)) / 1000
-
+	cpu = math.Max(float64(int(cpu*1000))/1000, float64(l.cpuMax))
 	if cpu > cpuUsageThreshold*float64(l.cpuMax) {
 		l.cpuWasAboveTreshold.Store(true)
 
@@ -93,7 +93,7 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 			Str("teamID", l.teamID).
 			Float64("cpu", cpu).
 			Int32("cpuMax", l.cpuMax).
-			Msgf("cpu usage exceeded %d %% of total cpu", int(cpuUsageThreshold*100))
+			Msgf("cpu usage reached %d %% of total cpu", int(cpu/float64(l.cpuMax)*100))
 	} else if l.cpuWasAboveTreshold.Load() && cpu <= cpuUsageThreshold*float64(l.cpuMax) {
 		l.cpuWasAboveTreshold.Store(false)
 		l.exporter.logger.Warn().
@@ -107,6 +107,7 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 }
 
 func (l *SandboxLogger) MemoryUsage(memory float64) {
+	memory = math.Max(memory, float64(l.memoryMax))
 	if memory > memoryUsageThreshold*float64(l.memoryMax) && int32(memory) > l.memoryWasAbove.Load() {
 		l.memoryWasAbove.Store(int32(memory))
 
@@ -116,7 +117,7 @@ func (l *SandboxLogger) MemoryUsage(memory float64) {
 			Str("teamID", l.teamID).
 			Float64("memory", memory).
 			Int32("memoryMax", l.memoryMax).
-			Msgf("memory usage exceeded %d %% of memory", int(memoryUsageThreshold*100))
+			Msgf("memory usage reached %d %% of memory", int(memory/float64(l.memoryMax)*100))
 		return
 	}
 }
