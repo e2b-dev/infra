@@ -25,7 +25,6 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
@@ -90,12 +89,13 @@ func NewAPIStore() *APIStore {
 		panic(err)
 	}
 
+	sbxLogExporter := logs.NewSandboxLogExporter(logs.OrchestratorServiceName)
 	var initialInstances []*instance.InstanceInfo
 
 	if env.IsLocal() {
 		logger.Info("Skipping loading sandboxes, running locally")
 	} else {
-		instances, instancesErr := orch.GetInstances(ctx, tracer)
+		instances, instancesErr := orch.GetInstances(ctx, tracer, sbxLogExporter)
 		if instancesErr != nil {
 			logger.Errorf("Error loading current sandboxes\n: %w", instancesErr)
 		}
@@ -131,7 +131,7 @@ func NewAPIStore() *APIStore {
 	if env.IsLocal() {
 		logger.Info("Skipping syncing sandboxes, running locally")
 	} else {
-		go orch.KeepInSync(ctx, tracer, instanceCache)
+		go orch.KeepInSync(ctx, tracer, instanceCache, sbxLogExporter)
 	}
 
 	var lokiClient *loki.DefaultClient
@@ -156,8 +156,6 @@ func NewAPIStore() *APIStore {
 	}
 
 	buildCache := builds.NewBuildCache(buildCounter)
-
-	sbxLogExporter := logs.NewSandboxLogExporter(ctx, false, logs.OrchestratorServiceName, consts.LogsProxyAddress)
 
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)

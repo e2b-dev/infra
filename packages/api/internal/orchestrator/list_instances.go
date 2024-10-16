@@ -13,9 +13,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
-func (o *Orchestrator) GetInstances(ctx context.Context, tracer trace.Tracer) ([]*instance.InstanceInfo, error) {
+func (o *Orchestrator) GetInstances(ctx context.Context, tracer trace.Tracer, sbxLogExporter *logs.SandboxLogExporter) ([]*instance.InstanceInfo, error) {
 	childCtx, childSpan := tracer.Start(ctx, "list-instances")
 	defer childSpan.End()
 
@@ -48,6 +49,7 @@ func (o *Orchestrator) GetInstances(ctx context.Context, tracer trace.Tracer) ([
 		}
 
 		sandboxesInfo = append(sandboxesInfo, &instance.InstanceInfo{
+			Logger: sbxLogExporter.CreateSandboxLogger(config.SandboxID, config.TemplateID, teamID.String(), config.VCpuCount, config.MemoryMB),
 			Instance: &api.Sandbox{
 				SandboxID:  config.SandboxID,
 				TemplateID: config.TemplateID,

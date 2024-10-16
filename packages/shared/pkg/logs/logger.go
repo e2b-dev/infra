@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/exporter"
 )
 
@@ -22,11 +23,12 @@ type SandboxLogExporter struct {
 	logger *zerolog.Logger
 }
 
-func NewSandboxLogExporter(ctx context.Context, debug bool, serviceName, address string) *SandboxLogExporter {
+func NewSandboxLogExporter(serviceName string) *SandboxLogExporter {
 	zerolog.TimestampFieldName = "timestamp"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
-	exporters := []io.Writer{exporter.NewHTTPLogsExporter(ctx, debug, address)}
+	ctx := context.Background()
+	exporters := []io.Writer{exporter.NewHTTPLogsExporter(ctx, consts.LogsProxyAddress)}
 
 	l := zerolog.
 		New(io.MultiWriter(exporters...)).
@@ -48,7 +50,7 @@ type SandboxLogger struct {
 	teamID                string
 	cpuMax                int32
 	cpuWasAboveTreshold   atomic.Bool
-	memoryMax             int32
+	memoryMBMax           int32
 	memoryWasAbove        atomic.Int32
 	healthCheckWasFailing atomic.Bool
 }
@@ -61,12 +63,12 @@ func (l *SandboxLogExporter) CreateSandboxLogger(
 	memoryMax int32,
 ) *SandboxLogger {
 	return &SandboxLogger{
-		exporter:   l,
-		instanceID: instanceID,
-		envID:      envID,
-		teamID:     teamID,
-		cpuMax:     cpuMax,
-		memoryMax:  memoryMax,
+		exporter:    l,
+		instanceID:  instanceID,
+		envID:       envID,
+		teamID:      teamID,
+		cpuMax:      cpuMax,
+		memoryMBMax: memoryMax,
 	}
 }
 
@@ -106,19 +108,18 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 	}
 }
 
-func (l *SandboxLogger) MemoryUsage(memory float64) {
-	// Cap at memoryMax
-	memory = math.Min(memory, float64(l.memoryMax))
-	if memory > memoryUsageThreshold*float64(l.memoryMax) && int32(memory) > l.memoryWasAbove.Load() {
-		l.memoryWasAbove.Store(int32(memory))
-
+func (l *SandboxLogger) MemoryUsage(memoryMB float64) {
+	// Cap at memoryMBMax
+	memoryMB = math.Min(memoryMB, float64(l.memoryMBMax))
+	if memoryMB > memoryUsageThreshold*float64(l.memoryMBMax) && int32(memoryMB) > l.memoryWasAbove.Load() {
+		l.memoryWasAbove.Store(int32(memoryMB))
 		l.exporter.logger.Warn().
 			Str("instanceID", l.instanceID).
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
-			Float64("memory", memory).
-			Int32("memoryMax", l.memoryMax).
-			Msgf("memory usage reached %d %% of memory", int(memory/float64(l.memoryMax)*100))
+			Float64("memoryMB", memoryMB).
+			Int32("memoryMBMax", l.memoryMBMax).
+			Msgf("memoryMB usage reached %d %% of memoryMB", int(memoryMB/float64(l.memoryMBMax)*100))
 		return
 	}
 }
