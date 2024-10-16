@@ -32,7 +32,8 @@ func NewSandboxLogExporter(ctx context.Context, debug bool, serviceName, address
 		With().
 		Timestamp().
 		Logger().
-		Level(zerolog.DebugLevel).With().Str("logger", serviceName).Logger()
+		Level(zerolog.DebugLevel).
+		With().Str("logger", serviceName).Logger()
 
 	return &SandboxLogExporter{
 		logger: &l,
