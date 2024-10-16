@@ -8,6 +8,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
 type HTTPExporter struct {
@@ -19,13 +21,13 @@ type HTTPExporter struct {
 	address  string
 }
 
-func NewHTTPLogsExporter(ctx context.Context, debug bool, address string) *HTTPExporter {
+func NewHTTPLogsExporter(ctx context.Context, address string) *HTTPExporter {
 	exporter := &HTTPExporter{
 		client: http.Client{
 			Timeout: 2 * time.Second,
 		},
 		logQueue: make(chan []byte, 128),
-		debug:    debug,
+		debug:    env.IsLocal(),
 		ctx:      ctx,
 		address:  address,
 	}
