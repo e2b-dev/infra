@@ -106,13 +106,11 @@ func runStressTest(instance *Sandbox, keepAlive time.Duration, start time.Time) 
 
 	for time.Since(start) < keepAlive {
 		time.Sleep(2 * time.Second)
-		procStats, err := instance.Stats()
+		procStats, err := instance.stats.GetStats()
 		if err != nil {
 			panic(err)
 		}
 
-		for _, procStat := range procStats {
-			fmt.Printf("[%s] %s\n", time.Now().Format("15:04:05"), procStat.String())
-		}
+		fmt.Printf("[%s] CPU:%.2f Memery:%.2f \n", time.Now().Format("15:04:05"), procStats.CPUCount, procStats.MemoryMB)
 	}
 }

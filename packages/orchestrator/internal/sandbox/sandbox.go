@@ -52,6 +52,7 @@ type Sandbox struct {
 
 	slot   IPSlot
 	Logger *logs.SandboxLogger
+	stats  *SandboxStats
 }
 
 func fcBinaryPath(fcVersion string) string {
@@ -210,7 +211,13 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
+	stats, err := NewSandboxStats(int32(fc.pid))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stats: %w", err)
+	}
+
 	stopped := make(chan struct{})
+
 	instance := &Sandbox{
 		files:     fsEnv,
 		slot:      ips,
@@ -220,6 +227,7 @@ func NewSandbox(
 		StartedAt: startedAt,
 		EndAt:     endAt,
 		Logger:    logger,
+		stats:     stats,
 		stopOnce: sync.OnceValue(func() error {
 			var uffdErr error
 			if fcUffd != nil {
@@ -461,19 +469,16 @@ func (s *Sandbox) logHeathAndUsage(exited chan struct{}) {
 			cancel()
 
 			s.Logger.Healthcheck(err == nil)
+			if err != nil {
+				s.Logger.Eventf("failed to healthcheck: %s", err)
+			}
 
-			stats, err := s.Stats()
+			stats, err := s.stats.GetStats()
 			if err != nil {
 				s.Logger.Eventf("failed to get stats: %s", err)
 			} else {
-				cpu := float64(0)
-				ram := float64(0)
-				for _, stat := range stats {
-					cpu += stat.CPUPercent
-					ram += float64(stat.MemoryInfo.VMS)
-				}
-				s.Logger.CPUUsage(cpu)
-				s.Logger.MemoryUsage(ram)
+				s.Logger.CPUUsage(stats.CPUCount)
+				s.Logger.MemoryUsage(stats.MemoryMB)
 			}
 		case <-exited:
 			return
@@ -494,7 +499,7 @@ func (s *Sandbox) healthcheck(ctx context.Context) error {
 		return err
 	}
 
-	if response.StatusCode != http.StatusOK {
+	if response.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
 
@@ -505,21 +510,4 @@ func (s *Sandbox) healthcheck(ctx context.Context) error {
 	defer response.Body.Close()
 
 	return nil
-}
-
-type SandboxStats struct {
-	CPUPercent float64 `json:"cpu_percent"`
-	MemoryVMS  uint64  `json:"memory_vms"`
-	MemoryRSS  uint64  `json:"memory_rss"`
-}
-
-func (s *Sandbox) Stats() ([]ProcStats, error) {
-	var stats []ProcStats
-
-	err := getProcStats(int32(s.fc.pid), &stats)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get process stats: %w", err)
-	}
-
-	return stats, nil
 }
