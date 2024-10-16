@@ -103,7 +103,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		dns:         dns,
 		sandboxes:   smap.New[*sandbox.Sandbox](),
 		networkPool: networkPool,
-		sandboxLogs: logs.NewSandboxLogExporter(ctx, false, consts.LogsProxyAddress),
+		sandboxLogs: logs.NewSandboxLogExporter(ctx, false, logs.OrchestratorServiceName, consts.LogsProxyAddress),
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

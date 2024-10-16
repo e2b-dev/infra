@@ -157,7 +157,7 @@ func NewAPIStore() *APIStore {
 
 	buildCache := builds.NewBuildCache(buildCounter)
 
-	sbxLogExporter := logs.NewSandboxLogExporter(ctx, false, consts.LogsProxyAddress)
+	sbxLogExporter := logs.NewSandboxLogExporter(ctx, false, logs.OrchestratorServiceName, consts.LogsProxyAddress)
 
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)

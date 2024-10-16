@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-
-	"go.opentelemetry.io/otel"
 )
 
 func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duration, stressTest bool) {
@@ -25,7 +25,7 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 
 	networkPool := make(chan IPSlot, 1)
 
-	exporter := logs.NewSandboxLogExporter(childCtx, true, "")
+	exporter := logs.NewSandboxLogExporter(childCtx, true, logs.OrchestratorServiceName, "")
 
 	logger := exporter.CreateSandboxLogger(instanceID, envID, "test-team", 2, 512)
 

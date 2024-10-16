@@ -3,42 +3,36 @@ package logs
 import (
 	"context"
 	"io"
-	"os"
 	"sync/atomic"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs/exporter"
-
 	"github.com/rs/zerolog"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs/exporter"
 )
 
 const (
-	cpuUsageThreshold    = 0.85
-	memoryUsageThreshold = 0.85
+	OrchestratorServiceName = "orchestrator"
+	cpuUsageThreshold       = 0.85
+	memoryUsageThreshold    = 0.85
 )
 
 type SandboxLogExporter struct {
 	logger *zerolog.Logger
 }
 
-func NewSandboxLogExporter(ctx context.Context, debug bool, address string) *SandboxLogExporter {
+func NewSandboxLogExporter(ctx context.Context, debug bool, serviceName, address string) *SandboxLogExporter {
 	zerolog.TimestampFieldName = "timestamp"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
-	exporters := []io.Writer{}
-
-	if debug {
-		exporters = append(exporters, os.Stdout)
-	} else {
-		exporters = append(exporters, exporter.NewHTTPLogsExporter(ctx, false, address), os.Stdout)
-	}
+	exporters := []io.Writer{exporter.NewHTTPLogsExporter(ctx, debug, address)}
 
 	l := zerolog.
 		New(io.MultiWriter(exporters...)).
 		With().
 		Timestamp().
 		Logger().
-		Level(zerolog.DebugLevel)
+		Level(zerolog.DebugLevel).With().Str("logger", serviceName).Logger()
 
 	return &SandboxLogExporter{
 		logger: &l,
