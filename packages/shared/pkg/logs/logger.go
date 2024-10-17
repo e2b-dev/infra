@@ -45,6 +45,7 @@ func NewSandboxLogExporter(serviceName string) *SandboxLogExporter {
 
 type SandboxLogger struct {
 	exporter              *SandboxLogExporter
+	internal              bool
 	instanceID            string
 	envID                 string
 	teamID                string
@@ -61,10 +62,12 @@ func (l *SandboxLogExporter) CreateSandboxLogger(
 	teamID string,
 	cpuMax int32,
 	memoryMax int32,
+	internal bool,
 ) *SandboxLogger {
 	return &SandboxLogger{
 		exporter:    l,
 		instanceID:  instanceID,
+		internal:    internal,
 		envID:       envID,
 		teamID:      teamID,
 		cpuMax:      cpuMax,
@@ -72,15 +75,48 @@ func (l *SandboxLogExporter) CreateSandboxLogger(
 	}
 }
 
-func (l *SandboxLogger) Eventf(
-	format string,
-	v ...interface{},
-) {
-	l.exporter.logger.Debug().
+func (l *SandboxLogger) sendEvent(logger *zerolog.Event, format string, v ...interface{}) {
+	logger.
 		Str("instanceID", l.instanceID).
 		Str("envID", l.envID).
 		Str("teamID", l.teamID).
+		Bool("internal", l.internal).
 		Msgf(format, v...)
+}
+
+func (l *SandboxLogger) GetInternalLogger() *SandboxLogger {
+	if l.internal {
+		return l
+	}
+
+	return l.exporter.CreateSandboxLogger(l.instanceID, l.envID, l.teamID, l.cpuMax, l.memoryMBMax, true)
+}
+
+func (l *SandboxLogger) Errorf(
+	format string,
+	v ...interface{},
+) {
+	l.sendEvent(l.exporter.logger.Error(), format, v...)
+}
+
+func (l *SandboxLogger) Warnf(
+	format string,
+	v ...interface{},
+) {
+	l.sendEvent(l.exporter.logger.Warn(), format, v...)
+}
+
+func (l *SandboxLogger) Infof(
+	format string,
+	v ...interface{},
+) {
+	l.sendEvent(l.exporter.logger.Info(), format, v...)
+}
+func (l *SandboxLogger) Debugf(
+	format string,
+	v ...interface{},
+) {
+	l.sendEvent(l.exporter.logger.Debug(), format, v...)
 }
 
 func (l *SandboxLogger) CPUUsage(cpu float64) {

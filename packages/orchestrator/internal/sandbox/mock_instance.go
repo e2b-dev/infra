@@ -27,7 +27,7 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 
 	exporter := logs.NewSandboxLogExporter(logs.OrchestratorServiceName)
 
-	logger := exporter.CreateSandboxLogger(instanceID, envID, "test-team", 2, 512)
+	logger := exporter.CreateSandboxLogger(instanceID, envID, "test-team", 2, 512, false)
 
 	select {
 	case <-ctx.Done():

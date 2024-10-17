@@ -76,8 +76,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 	templateSpan.End()
 
-	sandboxLogger := a.sbxLogExporter.CreateSandboxLogger(sandboxID, env.TemplateID, team.ID.String(), int32(build.Vcpu), int32(build.RAMMB))
-	sandboxLogger.Eventf("Started creating sandbox")
+	sandboxLogger := a.sbxLogExporter.CreateSandboxLogger(sandboxID, env.TemplateID, team.ID.String(), int32(build.Vcpu), int32(build.RAMMB), false)
+	sandboxLogger.Debugf("Started creating sandbox")
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	var alias string
@@ -235,7 +235,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		attribute.String("instance.id", sandbox.SandboxID),
 	)
 
-	sandboxLogger.Eventf("Sandbox created")
+	sandboxLogger.Infof("Sandbox created with - end time: %s", endTime.Format("2006-01-02 15:04:05 -07:00"))
 
 	c.JSON(http.StatusCreated, &sandbox)
 }

@@ -49,7 +49,7 @@ func (o *Orchestrator) GetInstances(ctx context.Context, tracer trace.Tracer, sb
 		}
 
 		sandboxesInfo = append(sandboxesInfo, &instance.InstanceInfo{
-			Logger: sbxLogExporter.CreateSandboxLogger(config.SandboxID, config.TemplateID, teamID.String(), config.VCpuCount, config.MemoryMB),
+			Logger: sbxLogExporter.CreateSandboxLogger(config.SandboxID, config.TemplateID, teamID.String(), config.VCpuCount, config.MemoryMB, false),
 			Instance: &api.Sandbox{
 				SandboxID:  config.SandboxID,
 				TemplateID: config.TemplateID,

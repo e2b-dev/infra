@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -269,16 +270,17 @@ func newFC(
 func (fc *fc) start(
 	ctx context.Context,
 	tracer trace.Tracer,
+	logger *logs.SandboxLogger,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
 
+	logger = logger.GetInternalLogger()
 	go func() {
 		defer func() {
 			readerErr := fc.stdout.Close()
 			if readerErr != nil {
-				errMsg := fmt.Errorf("error closing vmm stdout reader: %w", readerErr)
-				telemetry.ReportError(fc.ctx, errMsg)
+				logger.Warnf("Error closing firecracker stdout reader: %v", readerErr)
 			}
 		}()
 
@@ -286,12 +288,7 @@ func (fc *fc) start(
 
 		for scanner.Scan() {
 			line := scanner.Text()
-
-			telemetry.ReportEvent(fc.ctx, "vmm log",
-				attribute.String("type", "stdout"),
-				attribute.String("message", line),
-			)
-			fmt.Printf("[firecracker stdout]: %s — %s\n", fc.id, line)
+			logger.Debugf("[firecracker stdout]: %s — %s\n", fc.id, line)
 		}
 
 		readerErr := scanner.Err()
@@ -308,8 +305,7 @@ func (fc *fc) start(
 		defer func() {
 			readerErr := fc.stderr.Close()
 			if readerErr != nil {
-				errMsg := fmt.Errorf("error closing vmm stdout reader: %w", readerErr)
-				telemetry.ReportError(fc.ctx, errMsg)
+				logger.Errorf("Error closing firecracker stderr reader: %v", readerErr)
 			}
 		}()
 
@@ -317,21 +313,14 @@ func (fc *fc) start(
 
 		for scanner.Scan() {
 			line := scanner.Text()
-
-			telemetry.ReportEvent(fc.ctx, "vmm log",
-				attribute.String("type", "stderr"),
-				attribute.String("message", line),
-			)
-			fmt.Printf("[firecracker stderr]: %s — %v\n", fc.id, line)
+			logger.Warnf("Firecracker stderr: %s", line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			errMsg := fmt.Errorf("error closing vmm stderr reader: %w", readerErr)
-			telemetry.ReportError(fc.ctx, errMsg)
-			fmt.Printf("[firecracker stderr error]: %s — %v\n", fc.id, errMsg)
+			logger.Errorf("Error reading firecracker stderr: %v", readerErr)
 		} else {
-			telemetry.ReportEvent(fc.ctx, "vmm stderr reader closed")
+			logger.Debugf("Firecracker stderr reader closed")
 		}
 	}()
 
