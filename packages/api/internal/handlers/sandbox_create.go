@@ -21,11 +21,13 @@ import (
 )
 
 const (
-	defaultRequestLimit = 24
-	InstanceIDPrefix    = "i"
+	secondaryRequestLimit = 50
+	defaultRequestLimit   = 20
+	InstanceIDPrefix      = "i"
 )
 
 var postSandboxParallelLimit = semaphore.NewWeighted(defaultRequestLimit)
+var secondaryParallelLimit = semaphore.NewWeighted(secondaryRequestLimit)
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -99,6 +101,16 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "waiting for create sandbox parallel limit semaphore slot")
 
+	success := secondaryParallelLimit.TryAcquire(1)
+	if !success {
+		errMsg := fmt.Errorf("error when acquiring secondary parallel lock")
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		a.sendAPIStoreError(c, http.StatusTooManyRequests, "Request canceled or timed out.")
+
+		return
+	}
+	defer secondaryParallelLimit.Release(1)
 	_, rateSpan := a.Tracer.Start(ctx, "rate-limit")
 	limitErr := postSandboxParallelLimit.Acquire(ctx, 1)
 	if limitErr != nil {
