@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	defaultRequestLimit = 16
+	defaultRequestLimit = 24
 	InstanceIDPrefix    = "i"
 )
 
