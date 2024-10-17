@@ -28,6 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 type APIStore struct {
@@ -42,7 +43,7 @@ type APIStore struct {
 	db              *db.DB
 	lokiClient      *loki.DefaultClient
 	logger          *zap.SugaredLogger
-	sandboxLogger   *zap.SugaredLogger
+	sbxLogExporter  *logs.SandboxLogExporter
 	templateCache   *templatecache.TemplateCache
 	authCache       *authcache.TeamAuthCache
 }
@@ -88,12 +89,13 @@ func NewAPIStore() *APIStore {
 		panic(err)
 	}
 
+	sbxLogExporter := logs.NewSandboxLogExporter(logs.OrchestratorServiceName)
 	var initialInstances []*instance.InstanceInfo
 
 	if env.IsLocal() {
 		logger.Info("Skipping loading sandboxes, running locally")
 	} else {
-		instances, instancesErr := orch.GetInstances(ctx, tracer)
+		instances, instancesErr := orch.GetInstances(ctx, tracer, sbxLogExporter)
 		if instancesErr != nil {
 			logger.Errorf("Error loading current sandboxes\n: %w", instancesErr)
 		}
@@ -129,7 +131,7 @@ func NewAPIStore() *APIStore {
 	if env.IsLocal() {
 		logger.Info("Skipping syncing sandboxes, running locally")
 	} else {
-		go orch.KeepInSync(ctx, tracer, instanceCache)
+		go orch.KeepInSync(ctx, tracer, instanceCache, sbxLogExporter)
 	}
 
 	var lokiClient *loki.DefaultClient
@@ -155,12 +157,6 @@ func NewAPIStore() *APIStore {
 
 	buildCache := builds.NewBuildCache(buildCounter)
 
-	sandboxLogger, err := logging.NewCollectorLogger()
-	if err != nil {
-		logger.Errorf("Error initializing sandbox logger\n: %v", err)
-		panic(err)
-	}
-
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)
 
@@ -176,7 +172,7 @@ func NewAPIStore() *APIStore {
 		buildCache:      buildCache,
 		logger:          logger,
 		lokiClient:      lokiClient,
-		sandboxLogger:   sandboxLogger,
+		sbxLogExporter:  sbxLogExporter,
 		templateCache:   templateCache,
 		authCache:       authCache,
 	}

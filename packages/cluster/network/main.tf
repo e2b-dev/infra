@@ -252,8 +252,8 @@ resource "google_compute_global_forwarding_rule" "https" {
   name                  = "${var.prefix}forwarding-rule-https"
   target                = google_compute_target_https_proxy.default.self_link
   load_balancing_scheme = "EXTERNAL_MANAGED"
-  port_range = "443"
-  labels     = var.labels
+  port_range            = "443"
+  labels                = var.labels
 }
 
 

@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -36,6 +37,7 @@ type server struct {
 	tracer      trace.Tracer
 	consul      *consulapi.Client
 	networkPool chan sandbox.IPSlot
+	sandboxLogs *logs.SandboxLogExporter
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -100,6 +102,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		dns:         dns,
 		sandboxes:   smap.New[*sandbox.Sandbox](),
 		networkPool: networkPool,
+		sandboxLogs: logs.NewSandboxLogExporter(logs.OrchestratorServiceName),
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

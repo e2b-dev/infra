@@ -29,6 +29,15 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
+	logger := s.sandboxLogs.CreateSandboxLogger(
+		req.Sandbox.SandboxID,
+		req.Sandbox.TemplateID,
+		req.Sandbox.TeamID,
+		req.Sandbox.VCpuCount,
+		req.Sandbox.MemoryMB,
+		false,
+	)
+
 	sbx, err := sandbox.NewSandbox(
 		childCtx,
 		s.tracer,
@@ -39,6 +48,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
+		logger,
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create sandbox: %w", err)
@@ -60,8 +70,11 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		waitErr := sbx.Wait(context.Background(), tracer)
 		if waitErr != nil {
 			errMsg := fmt.Errorf("failed to wait for Sandbox: %w", waitErr)
+			logger.Debugf("Sandbox closed: %s", errMsg)
 			fmt.Println(errMsg)
 		} else {
+			logger.Debugf("Sandbox closed")
+
 			fmt.Printf("Sandbox %s wait finished\n", req.Sandbox.SandboxID)
 		}
 	}()
@@ -134,6 +147,8 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
 
+	sbx.Logger.Debugf("Deleting sandbox")
+
 	childSpan.SetAttributes(
 		attribute.String("env.id", sbx.Sandbox.TemplateID),
 		attribute.String("env.kernel.version", sbx.Sandbox.KernelVersion),
@@ -147,6 +162,8 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 	// Ensure the sandbox is removed from cache.
 	// Ideally we would rely only on the goroutine defer.
 	s.sandboxes.Remove(in.SandboxID)
+
+	sbx.Logger.Debugf("Sandbox deleted")
 
 	return &emptypb.Empty{}, nil
 }

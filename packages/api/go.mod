@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
-	github.com/dchest/uniuri v1.2.0
+	github.com/dchest/uniuri v1.2.0 // indirect
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/getkin/kin-openapi v0.122.0
 	github.com/gin-contrib/cors v1.5.0
@@ -133,6 +133,7 @@ require (
 	github.com/prometheus/exporter-toolkit v0.10.1-0.20230714054209-2f4150c63f97 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852 // indirect
+	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver/v5 v5.1.1 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect

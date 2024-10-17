@@ -20,7 +20,7 @@ func New(l *zerolog.Logger, envVars *utils.Map[string, string]) *API {
 func (a *API) GetHealth(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	a.logger.Debug().Msg("Health check")
+	a.logger.Trace().Msg("Health check")
 
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "")

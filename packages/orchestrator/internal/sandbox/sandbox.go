@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 
 	consul "github.com/hashicorp/consul/api"
@@ -33,8 +33,6 @@ const (
 	kernelName     = "vmlinux.bin"
 	fcBinaryName   = "firecracker"
 )
-
-var logsProxyAddress = os.Getenv("LOGS_PROXY_ADDRESS")
 
 var httpClient = http.Client{
 	Timeout: 5 * time.Second,
@@ -52,7 +50,9 @@ type Sandbox struct {
 	EndAt     time.Time
 	TraceID   string
 
-	slot IPSlot
+	slot   IPSlot
+	Logger *logs.SandboxLogger
+	stats  *SandboxStats
 }
 
 func fcBinaryPath(fcVersion string) string {
@@ -69,6 +69,7 @@ func NewSandbox(
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
+	logger *logs.SandboxLogger,
 ) (*Sandbox, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -188,14 +189,14 @@ func NewSandbox(
 		&MmdsMetadata{
 			InstanceID: config.SandboxID,
 			EnvID:      config.TemplateID,
-			Address:    logsProxyAddress,
+			Address:    consts.LogsProxyAddress,
 			TraceID:    traceID,
 			TeamID:     config.TeamID,
 		},
 		pollReady,
 	)
 
-	err = fc.start(childCtx, tracer)
+	err = fc.start(childCtx, tracer, logger)
 	if err != nil {
 		var fcUffdErr error
 		if fcUffd != nil {
@@ -210,6 +211,13 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
+	stats, err := NewSandboxStats(int32(fc.pid))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stats: %w", err)
+	}
+
+	stopped := make(chan struct{})
+
 	instance := &Sandbox{
 		files:     fsEnv,
 		slot:      ips,
@@ -218,6 +226,8 @@ func NewSandbox(
 		Sandbox:   config,
 		StartedAt: startedAt,
 		EndAt:     endAt,
+		Logger:    logger,
+		stats:     stats,
 		stopOnce: sync.OnceValue(func() error {
 			var uffdErr error
 			if fcUffd != nil {
@@ -236,6 +246,7 @@ func NewSandbox(
 				return errors.Join(fcErr, uffdErr)
 			}
 
+			stopped <- struct{}{}
 			return nil
 		}),
 	}
@@ -266,6 +277,10 @@ func NewSandbox(
 
 	dns.Add(config.SandboxID, ips.HostIP())
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxID))
+
+	go func() {
+		instance.logHeathAndUsage(stopped)
+	}()
 
 	return instance, nil
 }
@@ -442,4 +457,53 @@ func (s *Sandbox) SlotIdx() int {
 
 func (s *Sandbox) FcPid() int {
 	return s.fc.pid
+}
+
+func (s *Sandbox) logHeathAndUsage(exited chan struct{}) {
+	ctx := context.Background()
+	for {
+		select {
+		case <-time.After(10 * time.Second):
+			childCtx, cancel := context.WithTimeout(ctx, time.Second)
+			err := s.healthcheck(childCtx)
+			cancel()
+			s.Logger.Healthcheck(err == nil)
+
+			stats, err := s.stats.GetStats()
+			if err != nil {
+				s.Logger.Warnf("failed to get stats: %s", err)
+			} else {
+				s.Logger.CPUUsage(stats.CPUCount)
+				s.Logger.MemoryUsage(stats.MemoryMB)
+			}
+		case <-exited:
+			return
+		}
+	}
+}
+
+func (s *Sandbox) healthcheck(ctx context.Context) error {
+	address := fmt.Sprintf("http://%s:%d/health", s.slot.HostSnapshotIP(), consts.DefaultEnvdServerPort)
+
+	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
+	if err != nil {
+		return err
+	}
+
+	response, err := httpClient.Do(request)
+	if err != nil {
+		return err
+	}
+
+	if response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
+	}
+
+	if _, err := io.Copy(io.Discard, response.Body); err != nil {
+		return err
+	}
+
+	defer response.Body.Close()
+
+	return nil
 }

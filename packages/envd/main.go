@@ -122,6 +122,7 @@ func main() {
 
 	m := chi.NewRouter()
 
+	envLogger := l.With().Str("logger", "envd").Logger()
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
 	filesystemRpc.Handle(m, &fsLogger)
 
@@ -130,7 +131,7 @@ func main() {
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, envVars)
 
-	handler := api.HandlerFromMux(api.New(&fsLogger, envVars), m)
+	handler := api.HandlerFromMux(api.New(&envLogger, envVars), m)
 
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 

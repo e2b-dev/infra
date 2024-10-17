@@ -34,7 +34,7 @@ build-and-upload: build upload
 
 .PHONY: test-build
 test-build:
-	sudo go run -race -gcflags=all="-N -l" main.go -test build -template 0v0c9frk1etrhpxr5ljw -build 3351eada-8633-4e77-a757-6f869abd17c2
+	sudo GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) GCP_REGION=$(GCP_REGION) GCP_PROJECT_ID=$(GCP_PROJECT_ID) GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) go run main.go -test build -template iovqkypv4uoqvto9y0j2 -build 995fc04e-f260-4950-8619-3a72973c55d5
 
 .PHONY: test-delete
 test-delete:
