@@ -133,3 +133,10 @@ switch-env:
 	@ echo $(ENV) > .last_used_env
 	@ . .env.${ENV}
 	terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+
+# Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
+.PHONY: tf-import
+tf-import:
+	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	./scripts/confirm.sh $(ENV)
+	$(tf_vars) terraform import $(TARGET) $(ID)
