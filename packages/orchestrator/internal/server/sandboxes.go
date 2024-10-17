@@ -35,9 +35,8 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		req.Sandbox.TeamID,
 		req.Sandbox.VCpuCount,
 		req.Sandbox.MemoryMB,
+		false,
 	)
-
-	logger.Eventf("creating sandbox")
 
 	sbx, err := sandbox.NewSandbox(
 		childCtx,
@@ -55,14 +54,10 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		errMsg := fmt.Errorf("failed to create sandbox: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
 
-		logger.Eventf("failed to create sandbox: %s", errMsg)
-
 		return nil, status.New(codes.Internal, errMsg.Error()).Err()
 	}
 
 	s.sandboxes.Insert(req.Sandbox.SandboxID, sbx)
-
-	logger.Eventf("sandbox created")
 
 	go func() {
 		tracer := otel.Tracer("close")
@@ -75,12 +70,10 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		waitErr := sbx.Wait(context.Background(), tracer)
 		if waitErr != nil {
 			errMsg := fmt.Errorf("failed to wait for Sandbox: %w", waitErr)
-
-			logger.Eventf("sandbox closed: %s", errMsg)
-
+			logger.Debugf("Sandbox closed: %s", errMsg)
 			fmt.Println(errMsg)
 		} else {
-			logger.Eventf("sandbox closed")
+			logger.Debugf("Sandbox closed")
 
 			fmt.Printf("Sandbox %s wait finished\n", req.Sandbox.SandboxID)
 		}
@@ -154,7 +147,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
 
-	sbx.Logger.Eventf("deleting sandbox")
+	sbx.Logger.Debugf("Deleting sandbox")
 
 	childSpan.SetAttributes(
 		attribute.String("env.id", sbx.Sandbox.TemplateID),
@@ -170,7 +163,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 	// Ideally we would rely only on the goroutine defer.
 	s.sandboxes.Remove(in.SandboxID)
 
-	sbx.Logger.Eventf("sandbox deleted")
+	sbx.Logger.Debugf("Sandbox deleted")
 
 	return &emptypb.Empty{}, nil
 }

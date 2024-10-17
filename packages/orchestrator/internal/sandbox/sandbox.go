@@ -196,7 +196,7 @@ func NewSandbox(
 		pollReady,
 	)
 
-	err = fc.start(childCtx, tracer)
+	err = fc.start(childCtx, tracer, logger)
 	if err != nil {
 		var fcUffdErr error
 		if fcUffd != nil {
@@ -471,7 +471,7 @@ func (s *Sandbox) logHeathAndUsage(exited chan struct{}) {
 
 			stats, err := s.stats.GetStats()
 			if err != nil {
-				s.Logger.Eventf("failed to get stats: %s", err)
+				s.Logger.Warnf("failed to get stats: %s", err)
 			} else {
 				s.Logger.CPUUsage(stats.CPUCount)
 				s.Logger.MemoryUsage(stats.MemoryMB)
