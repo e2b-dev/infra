@@ -111,11 +111,13 @@ address = "0.0.0.0:${var.logs_health_port_number}"
 type = "http_server"
 address = "0.0.0.0:${var.logs_port_number}"
 encoding = "json"
+path_key = "_path"
 
 [transforms.add_source_envd]
 type = "remap"
 inputs = ["envd"]
 source = """
+del(."_path")
 .service = "envd"
 .sandboxID = .instanceID
 if !exists(.envID) {
