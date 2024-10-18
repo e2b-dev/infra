@@ -146,8 +146,9 @@ func NewSandbox(
 	go func() {
 		runErr := rootfs.Run()
 		if runErr != nil {
-			errMsg := fmt.Errorf("failed to run rootfs: %w\n", runErr)
-			fmt.Fprintf(os.Stderr, errMsg.Error())
+			errMsg := fmt.Errorf("failed to run rootfs: %w", runErr)
+
+			fmt.Fprintln(os.Stderr, errMsg.Error())
 		}
 	}()
 
