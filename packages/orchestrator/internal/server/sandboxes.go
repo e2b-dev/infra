@@ -70,13 +70,11 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		waitErr := sbx.Wait(context.Background(), tracer)
 		if waitErr != nil {
 			errMsg := fmt.Errorf("failed to wait for Sandbox: %w", waitErr)
-			logger.Debugf("Sandbox closed: %s", errMsg)
 			fmt.Println(errMsg)
 		} else {
-			logger.Debugf("Sandbox closed")
-
 			fmt.Printf("Sandbox %s wait finished\n", req.Sandbox.SandboxID)
 		}
+		logger.Infof("Sandbox killed")
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
@@ -147,7 +145,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
 
-	sbx.Logger.Debugf("Deleting sandbox")
+	sbx.Healthcheck(ctx, true)
 
 	childSpan.SetAttributes(
 		attribute.String("env.id", sbx.Sandbox.TemplateID),
@@ -162,8 +160,6 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 	// Ensure the sandbox is removed from cache.
 	// Ideally we would rely only on the goroutine defer.
 	s.sandboxes.Remove(in.SandboxID)
-
-	sbx.Logger.Debugf("Sandbox deleted")
 
 	return &emptypb.Empty{}, nil
 }
