@@ -22,24 +22,7 @@ type NbdDevicePool struct {
 	mu    sync.Mutex
 }
 
-const (
-	nbdDeviceAcquireDelay = 1 * time.Millisecond
-)
-
-func NewNbdDevicePool() (*NbdDevicePool, error) {
-	maxDevices, err := getMaxNbdDevices()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current max devices: %w", err)
-	}
-
-	if maxDevices == 0 {
-		return nil, fmt.Errorf("nbd module is not loaded or max devices is set to 0")
-	}
-
-	return &NbdDevicePool{
-		slots: bitset.New(uint(maxDevices)),
-	}, nil
-}
+const nbdDeviceAcquireDelay = 1 * time.Millisecond
 
 func getMaxNbdDevices() (int, error) {
 	data, err := os.ReadFile("/sys/module/nbd/parameters/nbds_max")
@@ -58,6 +41,21 @@ func getMaxNbdDevices() (int, error) {
 	}
 
 	return nbdsMax, nil
+}
+
+func NewNbdDevicePool() (*NbdDevicePool, error) {
+	maxDevices, err := getMaxNbdDevices()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current max devices: %w", err)
+	}
+
+	if maxDevices == 0 {
+		return nil, fmt.Errorf("nbd module is not loaded or max devices is set to 0")
+	}
+
+	return &NbdDevicePool{
+		slots: bitset.New(uint(maxDevices)),
+	}, nil
 }
 
 var re = regexp.MustCompile(`^/dev/nbd(\d+)$`)

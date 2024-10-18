@@ -77,6 +77,7 @@ func (n *NbdServer) Start() error {
 
 	n.closeOnce = sync.OnceValue(func() error {
 		n.closed.Store(true)
+
 		return l.Close()
 	})
 
@@ -201,13 +202,13 @@ func (n *NbdClient) Close() error {
 }
 
 func (n *NbdClient) Start() error {
-	defer close(n.ready)
-
 	var err error
 
 	defer func() {
 		if err != nil {
 			n.ready <- clientResult{err: err}
+		} else {
+			n.ready <- clientResult{err: errors.New("closing NBD client")}
 		}
 	}()
 
@@ -252,7 +253,13 @@ func (n *NbdClient) Start() error {
 		// 0 means the server will choose the preferred block size
 		BlockSize: uint32(0),
 		OnConnected: func() {
-			n.ready <- clientResult{path: n.path}
+			select {
+			case n.ready <- clientResult{path: n.path}:
+			case <-n.ctx.Done():
+				return
+			default:
+				return
+			}
 		},
 	})
 	if err != nil {
