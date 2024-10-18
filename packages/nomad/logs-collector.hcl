@@ -128,12 +128,11 @@ type = "route"
 inputs = [ "add_source_envd" ]
 
 [transforms.internal_routing.route]
-app = '.internal == false'
 internal = '.internal == true'
 
 [transforms.remove_internal]
 type = "remap"
-inputs = [ "internal_routing.app", "internal_routing._unmatched" ]
+inputs = [ "internal_routing._unmatched" ]
 source = '''
 del(.internal)
 '''
