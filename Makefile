@@ -49,7 +49,7 @@ init:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	terraform fmt -recursive
-	$(tf_vars) terraform plan -compact-warnings -detailed-exitcode $(ALL_MODULES_ARGS)
+	$(tf_vars) terraform plan -out=.tfplan -compact-warnings -detailed-exitcode $(ALL_MODULES_ARGS)
 
 .PHONY: apply
 apply:
@@ -60,7 +60,9 @@ apply:
 	-auto-approve \
 	-input=false \
 	-compact-warnings \
-	-parallelism=20 $(ALL_MODULES_ARGS)
+	-parallelism=20 \
+	.tfplan
+	@ rm .tfplan
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
