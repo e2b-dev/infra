@@ -16,6 +16,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: access_token
+    AdminAuth:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
 
   parameters:
     templateID:
@@ -98,6 +102,15 @@ components:
       minimum: 128
       maximum: 8192
       description: Memory for the sandbox in MB
+
+    CacheType:
+      type: string
+      enum:
+        - auth
+        - builds
+        - sandboxes
+        - templates
+        - aliases
 
     SandboxMetadata:
       additionalProperties:
@@ -303,6 +316,7 @@ tags:
   - name: templates
   - name: sandboxes
   - name: auth
+  - name: admin
 
 paths:
   /health:
@@ -313,6 +327,30 @@ paths:
           description: Request was successful
         "401":
           $ref: "#/components/responses/401"
+
+  /admin/caches/{cache}/invalidate/{objectID}:
+    post:
+      description: Invalidate the cache
+      tags: [admin]
+      security:
+        - AdminAuth: []
+      parameters:
+        - in: path
+          name: cache
+          schema:
+            $ref: "#/components/schemas/CacheType"
+        - in: path
+          name: objectID
+          schema:
+            type: string
+            description: Identifier of the object to invalidate
+      responses:
+        "204":
+          description: Cache was invalidated successfully
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
 
   /teams:
     get:

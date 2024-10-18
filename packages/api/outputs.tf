@@ -2,8 +2,8 @@ output "api_docker_image_digest" {
   value = docker_image.api_image.repo_digest
 }
 
-output "api_secret" {
-  value = random_password.api_secret.result
+output "api_admin_key" {
+  value = random_password.api_admin_key.result
 }
 
 output "postgres_connection_string_secret_name" {

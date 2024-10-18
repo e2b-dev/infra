@@ -64,6 +64,7 @@ resource "nomad_job" "api" {
       template_manager_address      = "http://localhost:${var.template_manager_port}"
       loki_address                  = "http://localhost:${var.loki_service_port.port}"
       logs_collector_address        = "http://localhost:${var.logs_proxy_port.port}"
+      admin_api_key                 = var.api_admin_key
       gcp_zone                      = var.gcp_zone
       api_port_name                 = var.api_port.name
       api_port_number               = var.api_port.port
@@ -239,7 +240,6 @@ resource "nomad_job" "template_manager" {
       port        = var.template_manager_port
       environment = var.environment
 
-      api_secret                 = var.api_secret
       bucket_name                = var.fc_env_pipeline_bucket_name
       docker_registry            = var.custom_envs_repository_name
       google_service_account_key = var.google_service_account_key

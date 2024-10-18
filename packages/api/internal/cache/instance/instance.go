@@ -98,3 +98,7 @@ func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap
 
 	return instanceCache
 }
+
+func (c *InstanceCache) Invalidate(sandboxID string) {
+	c.cache.Delete(sandboxID)
+}

@@ -9,7 +9,17 @@ import (
 
 const (
 	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
+	AdminAuthScopes       = "AdminAuth.Scopes"
 	ApiKeyAuthScopes      = "ApiKeyAuth.Scopes"
+)
+
+// Defines values for CacheType.
+const (
+	Aliases   CacheType = "aliases"
+	Auth      CacheType = "auth"
+	Builds    CacheType = "builds"
+	Sandboxes CacheType = "sandboxes"
+	Templates CacheType = "templates"
 )
 
 // Defines values for TemplateBuildStatus.
@@ -21,6 +31,9 @@ const (
 
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
+
+// CacheType defines model for CacheType.
+type CacheType string
 
 // EnvVars defines model for EnvVars.
 type EnvVars map[string]string
