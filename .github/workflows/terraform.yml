@@ -71,6 +71,23 @@ jobs:
           DOMAIN_NAME: ${{ secrets.domain_name }}
           TERRAFORM_ENVIRONMENT: prod
 
+      - name: Plan deploy
+        run: make plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLIENT_MACHINE_TYPE: ${{ secrets.client_machine_type }}
+          CLIENT_CLUSTER_SIZE: ${{ secrets.client_cluster_size }}
+          SERVER_MACHINE_TYPE: ${{ secrets.server_machine_type }}
+          SERVER_CLUSTER_SIZE: ${{ secrets.server_cluster_size }}
+          GCP_REGION: ${{ secrets.gcp_region }}
+          GCP_ZONE: ${{ secrets.gcp_zone }}
+          GCP_PROJECT_ID: ${{ secrets.gcp_project_id }}
+          EXCLUDE_GITHUB: 0
+          TERRAFORM_STATE_BUCKET: ${{ secrets.terraform_state_bucket }}
+          PREFIX: ${{ secrets.terraform_prefix }}
+          DOMAIN_NAME: ${{ secrets.domain_name }}
+          TERRAFORM_ENVIRONMENT: prod
+
       - name: Deploy Terraform
         run: make apply
         env:
