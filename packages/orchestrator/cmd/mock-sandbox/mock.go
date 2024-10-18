@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -15,13 +16,14 @@ import (
 	snapshotStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	consulapi "github.com/hashicorp/consul/api"
 
 	"cloud.google.com/go/storage"
 	"go.opentelemetry.io/otel"
 )
 
 func main() {
+	tracer := otel.Tracer("mock-sandbox")
 	templateId := flag.String("template", "", "template id")
 	buildId := flag.String("build", "", "build id")
 	sandboxId := flag.String("sandbox", "", "sandbox id")
@@ -30,7 +32,10 @@ func main() {
 
 	flag.Parse()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(*keepAlive)+time.Second*20)
+	timeout := time.Second*time.Duration(*keepAlive) + time.Second*50
+	fmt.Printf("timeout: %d\n", timeout)
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	// Start of mock build for testing
@@ -39,14 +44,49 @@ func main() {
 
 	client, err := storage.NewClient(ctx, storage.WithJSONReads())
 	if err != nil {
-		errMsg := fmt.Errorf("failed to create GCS client: %v", err)
-		panic(errMsg)
+		fmt.Fprintf(os.Stderr, "failed to create GCS client: %v\n", err)
+
+		return
 	}
 
+	consulClient, err := consul.New(context.Background())
 	templateCache := sandboxStorage.NewTemplateDataCache(ctx, client, templateStorage.BucketName)
 
+	networkPool := sandbox.NewNetworkSlotPool(*count)
+
+	go func() {
+		poolErr := networkPool.Start(ctx, tracer, consulClient)
+		if poolErr != nil {
+			fmt.Fprintf(os.Stderr, "network pool error: %v\n", poolErr)
+		}
+
+		closeErr := networkPool.Close(ctx, tracer, consulClient)
+		if closeErr != nil {
+			fmt.Fprintf(os.Stderr, "network pool close error: %v\n", closeErr)
+		}
+	}()
+
+	nbdDevicePool, err := nbd.NewNbdDevicePool()
+	if err != nil {
+		fmt.Printf("failed to create NBD device pool: %v\n", err)
+
+		return
+	}
+
 	for i := 0; i < *count; i++ {
-		mockSandbox(ctx, *templateId, *buildId, *sandboxId+"-"+strconv.Itoa(i), dns, templateCache, time.Duration(*keepAlive)*time.Second)
+		fmt.Printf("Starting sandbox %d\n", i)
+		mockSandbox(
+			ctx,
+			*templateId,
+			*buildId,
+			*sandboxId+"-"+strconv.Itoa(i),
+			dns,
+			templateCache,
+			time.Duration(*keepAlive)*time.Second,
+			nbdDevicePool,
+			networkPool,
+			consulClient,
+		)
 	}
 }
 
@@ -58,41 +98,12 @@ func mockSandbox(
 	dns *dns.DNS,
 	templateCache *snapshotStorage.TemplateDataCache,
 	keepAlive time.Duration,
+	nbdDevicePool *nbd.NbdDevicePool,
+	networkPool *sandbox.NetworkSlotPool,
+	consulClient *consulapi.Client,
 ) {
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
-
-	nbdDevicePool, err := nbd.NewNbdDevicePool()
-	if err != nil {
-		panic(err)
-	}
-
-	consulClient, err := consul.New(childCtx)
-
-	networkPool := make(chan sandbox.IPSlot, 1)
-
-	select {
-	case <-ctx.Done():
-		return
-	default:
-		ips, err := sandbox.NewSlot(ctx, tracer, consulClient)
-		if err != nil {
-			fmt.Printf("failed to create network: %v\n", err)
-
-			return
-		}
-
-		err = ips.CreateNetwork(ctx, tracer)
-		if err != nil {
-			ips.Release(ctx, tracer, consulClient)
-
-			fmt.Printf("failed to create network: %v\n", err)
-
-			return
-		}
-
-		networkPool <- *ips
-	}
 
 	start := time.Now()
 
@@ -119,8 +130,8 @@ func mockSandbox(
 		time.Now(),
 	)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to create sandbox: %v", err)
-		telemetry.ReportError(ctx, errMsg)
+		fmt.Fprintf(os.Stderr, "failed to create sandbox: %v\n", err)
+
 		return
 	}
 

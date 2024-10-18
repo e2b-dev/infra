@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	"cloud.google.com/go/storage"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
@@ -40,7 +41,7 @@ type server struct {
 	dns           *dns.DNS
 	tracer        trace.Tracer
 	consul        *consulapi.Client
-	networkPool   chan sandbox.IPSlot
+	networkPool   *sandbox.NetworkSlotPool
 	nbdPool       *nbd.NbdDevicePool
 	templateCache *snapshotStorage.TemplateDataCache
 }
@@ -84,34 +85,12 @@ func New(logger *zap.Logger) *grpc.Server {
 		panic(errMsg)
 	}
 
-	// Sandboxes waiting for the network slot can be passed and reschedulede
-	// so we should include a FIFO system for waiting.
-	networkPool := make(chan sandbox.IPSlot, ipSlotPoolSize)
+	networkPool := sandbox.NewNetworkSlotPool(ipSlotPoolSize)
 
 	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				ips, err := sandbox.NewSlot(ctx, tracer, consulClient)
-				if err != nil {
-					logger.Error("failed to create network", zap.Error(err))
-
-					continue
-				}
-
-				err = ips.CreateNetwork(ctx, tracer)
-				if err != nil {
-					ips.Release(ctx, tracer, consulClient)
-
-					logger.Error("failed to create network", zap.Error(err))
-
-					continue
-				}
-
-				networkPool <- *ips
-			}
+		poolErr := networkPool.Start(ctx, tracer, consulClient)
+		if poolErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to start network pool: %v\n", poolErr)
 		}
 	}()
 

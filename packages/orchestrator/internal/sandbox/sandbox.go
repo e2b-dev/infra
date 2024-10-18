@@ -47,7 +47,8 @@ type Sandbox struct {
 	EndAt     time.Time
 	TraceID   string
 
-	slot IPSlot
+	slot        IPSlot
+	networkPool *NetworkSlotPool
 }
 
 func NewSandbox(
@@ -55,7 +56,7 @@ func NewSandbox(
 	tracer trace.Tracer,
 	consul *consul.Client,
 	dns *dns.DNS,
-	networkPool chan IPSlot,
+	networkPool *NetworkSlotPool,
 	templateCache *storage.TemplateDataCache,
 	nbdPool *nbd.NbdDevicePool,
 	config *orchestrator.SandboxConfig,
@@ -81,37 +82,20 @@ func NewSandbox(
 
 	_, networkSpan := tracer.Start(childCtx, "get-network-slot")
 
-	// Get slot from Consul KV
-	var ips IPSlot
-	select {
-	case ips = <-networkPool:
-		telemetry.ReportEvent(childCtx, "reserved ip slot")
-	case <-childCtx.Done():
-		return nil, childCtx.Err()
+	ips, err := networkPool.Get(childCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
 
 	networkSpan.End()
 
 	defer func() {
 		if err != nil {
-			slotErr := ips.Release(childCtx, tracer, consul)
-			if slotErr != nil {
-				errMsg := fmt.Errorf("error removing network namespace after failed sandbox start: %w", slotErr)
+			errMsg := networkPool.Release(ctx, tracer, consul, ips)
+			if errMsg != nil {
 				telemetry.ReportError(childCtx, errMsg)
 			} else {
-				telemetry.ReportEvent(childCtx, "released ip slot")
-			}
-		}
-	}()
-
-	defer func() {
-		if err != nil {
-			ntErr := ips.RemoveNetwork(childCtx, tracer)
-			if ntErr != nil {
-				errMsg := fmt.Errorf("error removing network namespace after failed sandbox start: %w", ntErr)
-				telemetry.ReportError(childCtx, errMsg)
-			} else {
-				telemetry.ReportEvent(childCtx, "removed network namespace")
+				telemetry.ReportEvent(childCtx, "released slot and removed network")
 			}
 		}
 	}()
@@ -162,7 +146,7 @@ func NewSandbox(
 	go func() {
 		runErr := rootfs.Run()
 		if runErr != nil {
-			errMsg := fmt.Errorf("failed to run rootfs: %w\n", err)
+			errMsg := fmt.Errorf("failed to run rootfs: %w\n", runErr)
 			fmt.Fprintf(os.Stderr, errMsg.Error())
 		}
 	}()
@@ -222,20 +206,18 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
 	sbx := &Sandbox{
-		files:     sandboxFiles,
-		slot:      ips,
-		fc:        fc,
-		uffd:      fcUffd,
-		Config:    config,
-		StartedAt: startedAt,
-		EndAt:     endAt,
-		rootfs:    rootfs,
+		files:       sandboxFiles,
+		slot:        ips,
+		fc:          fc,
+		uffd:        fcUffd,
+		Config:      config,
+		StartedAt:   startedAt,
+		EndAt:       endAt,
+		rootfs:      rootfs,
+		networkPool: networkPool,
 		stopOnce: sync.OnceValue(func() error {
 			var uffdErr error
 			if fcUffd != nil {
-				// Wait until we stop uffd if it exists
-				time.Sleep(1 * time.Second)
-
 				uffdErr = fcUffd.Stop()
 				if uffdErr != nil {
 					uffdErr = fmt.Errorf("failed to stop uffd: %w", err)
@@ -381,14 +363,6 @@ func (s *Sandbox) CleanupAfterFCStop(
 	dns.Remove(sandboxID)
 	telemetry.ReportEvent(childCtx, "removed sandbox from dns")
 
-	err := s.slot.RemoveNetwork(childCtx, tracer)
-	if err != nil {
-		errMsg := fmt.Errorf("cannot remove network when destroying task: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "removed network")
-	}
-
 	rootfsErr := s.rootfs.Close()
 	if rootfsErr != nil {
 		errMsg := fmt.Errorf("failed to close rootfs: %w", rootfsErr)
@@ -402,7 +376,7 @@ func (s *Sandbox) CleanupAfterFCStop(
 		s.files.SandboxFirecrackerSocketPath(),
 		s.files.SandboxUffdSocketPath(),
 	} {
-		err = os.RemoveAll(file)
+		err := os.RemoveAll(file)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to delete %s: %w", file, err)
 			telemetry.ReportCriticalError(childCtx, errMsg)
@@ -411,12 +385,11 @@ func (s *Sandbox) CleanupAfterFCStop(
 		}
 	}
 
-	err = s.slot.Release(childCtx, tracer, consul)
+	err := s.networkPool.Release(childCtx, tracer, consul, s.slot)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to release slot: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, fmt.Errorf("failed to release slot: %w", err))
 	} else {
-		telemetry.ReportEvent(childCtx, "released slot")
+		telemetry.ReportEvent(childCtx, "released slot and removed network")
 	}
 }
 

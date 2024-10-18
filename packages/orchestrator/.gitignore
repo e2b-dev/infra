@@ -6,3 +6,4 @@ orchestrator
 bin
 .shared
 .block-storage
+mock.log
