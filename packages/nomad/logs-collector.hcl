@@ -111,11 +111,13 @@ address = "0.0.0.0:${var.logs_health_port_number}"
 type = "http_server"
 address = "0.0.0.0:${var.logs_port_number}"
 encoding = "json"
+path_key = "_path"
 
 [transforms.add_source_envd]
 type = "remap"
 inputs = ["envd"]
 source = """
+del(."_path")
 .service = "envd"
 .sandboxID = .instanceID
 if !exists(.envID) {
@@ -123,9 +125,23 @@ if !exists(.envID) {
 }
 """
 
+[transforms.internal_routing]
+type = "route"
+inputs = [ "add_source_envd" ]
+
+[transforms.internal_routing.route]
+internal = '.internal == true'
+
+[transforms.remove_internal]
+type = "remap"
+inputs = [ "internal_routing._unmatched" ]
+source = '''
+del(.internal)
+'''
+
 [sinks.local_loki_logs]
 type = "loki"
-inputs = [ "add_source_envd" ]
+inputs = [ "remove_internal" ]
 endpoint = "http://0.0.0.0:${var.loki_service_port_number}"
 encoding.codec = "json"
 
@@ -138,7 +154,7 @@ sandboxID = "{{ sandboxID }}"
 
 [sinks.grafana]
 type = "loki"
-inputs = [ "add_source_envd" ]
+inputs = [ "internal_routing.internal" ]
 endpoint = "${var.grafana_logs_endpoint}"
 encoding.codec = "json"
 auth.strategy = "basic"

@@ -99,7 +99,7 @@ func LogServerStreamWithoutEvents[T any, R any](
 ) error {
 	ctx = AddRequestIDToContext(ctx)
 
-	l := logger.Info().
+	l := logger.Debug().
 		Str("method", DefaultHTTPMethod+" "+req.Spec().Procedure).
 		Str(string(OperationIDKey), ctx.Value(OperationIDKey).(string))
 
@@ -111,17 +111,17 @@ func LogServerStreamWithoutEvents[T any, R any](
 
 	err := handler(ctx, req, stream)
 
-	errL := logger.Err(err).
+	logEvent := getErrDebugLogEvent(logger, err).
 		Str("method", DefaultHTTPMethod+" "+req.Spec().Procedure).
 		Str(string(OperationIDKey), ctx.Value(OperationIDKey).(string))
 
 	if err != nil {
-		errL = errL.Int("error_code", int(connect.CodeOf(err)))
+		logEvent = logEvent.Int("error_code", int(connect.CodeOf(err)))
 	} else {
-		errL = errL.Interface("response", nil)
+		logEvent = logEvent.Interface("response", nil)
 	}
 
-	errL.Msg(fmt.Sprintf("%s (server stream end)", formatMethod(req.Spec().Procedure)))
+	logEvent.Msg(fmt.Sprintf("%s (server stream end)", formatMethod(req.Spec().Procedure)))
 
 	return err
 }
@@ -134,30 +134,39 @@ func LogClientStreamWithoutEvents[T any, R any](
 ) (*connect.Response[R], error) {
 	ctx = AddRequestIDToContext(ctx)
 
-	logger.Info().
+	logger.Debug().
 		Str("method", DefaultHTTPMethod+" "+stream.Spec().Procedure).
 		Str(string(OperationIDKey), ctx.Value(OperationIDKey).(string)).
 		Msg(fmt.Sprintf("%s (client stream start)", formatMethod(stream.Spec().Procedure)))
 
 	res, err := handler(ctx, stream)
 
-	l := logger.Err(err).
+	logEvent := getErrDebugLogEvent(logger, err).
 		Str("method", DefaultHTTPMethod+" "+stream.Spec().Procedure).
 		Str(string(OperationIDKey), ctx.Value(OperationIDKey).(string))
 
 	if err != nil {
-		l = l.Int("error_code", int(connect.CodeOf(err)))
+		logEvent = logEvent.Int("error_code", int(connect.CodeOf(err)))
 	}
 
 	if res != nil && err == nil {
-		l = l.Interface("response", res.Any())
+		logEvent = logEvent.Interface("response", res.Any())
 	}
 
 	if res == nil && err == nil {
-		l = l.Interface("response", nil)
+		logEvent = logEvent.Interface("response", nil)
 	}
 
-	l.Msg(fmt.Sprintf("%s (client stream end)", formatMethod(stream.Spec().Procedure)))
+	logEvent.Msg(fmt.Sprintf("%s (client stream end)", formatMethod(stream.Spec().Procedure)))
 
 	return res, err
+}
+
+// Return logger with error level if err is not nil, otherwise return logger with debug level
+func getErrDebugLogEvent(logger *zerolog.Logger, err error) *zerolog.Event {
+	if err != nil {
+		return logger.Error().Err(err)
+	}
+
+	return logger.Debug()
 }

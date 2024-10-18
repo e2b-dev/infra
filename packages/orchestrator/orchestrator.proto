@@ -23,6 +23,9 @@ message SandboxConfig {
 
   string envdVersion = 11;
   map<string, string> envVars = 12;
+
+  int32 memoryMB = 13;
+  int32 vCpuCount = 14;
 }
 
 

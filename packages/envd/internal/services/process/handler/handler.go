@@ -327,6 +327,7 @@ func (p *Handler) Start() (uint32, error) {
 		Info().
 		Str("event_type", "process_start").
 		Int("pid", p.cmd.Process.Pid).
+		Str("command", p.cmd.String()).
 		Send()
 
 	return uint32(p.cmd.Process.Pid), nil

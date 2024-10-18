@@ -38,7 +38,7 @@ variable "analytics_collector_host" {
   default = ""
 }
 
-variable "logs_collector_address" {
+variable "logs_proxy_address" {
   type    = string
   default = ""
 }
@@ -113,7 +113,7 @@ job "orchestration-api" {
         ANALYTICS_COLLECTOR_API_TOKEN = var.analytics_collector_api_token
         LOKI_ADDRESS                  = var.loki_address
         OTEL_TRACING_PRINT            = var.otel_tracing_print
-        LOGS_COLLECTOR_ADDRESS        = var.logs_collector_address
+        LOGS_PROXY_ADDRESS            = var.logs_proxy_address
       }
 
       config {

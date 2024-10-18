@@ -2,10 +2,9 @@ package handlers
 
 import (
 	"fmt"
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
+	"net/http"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
@@ -36,6 +35,9 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 		return
 	}
+
+	info := item.Value()
+	info.Logger.Debugf("Sandbox kill request received")
 
 	if *item.Value().TeamID != teamID {
 		errMsg := fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String())

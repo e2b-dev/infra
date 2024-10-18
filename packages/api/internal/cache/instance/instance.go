@@ -14,6 +14,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -23,6 +24,7 @@ const (
 )
 
 type InstanceInfo struct {
+	Logger            *logs.SandboxLogger
 	Instance          *api.Sandbox
 	TeamID            *uuid.UUID
 	BuildID           *uuid.UUID
