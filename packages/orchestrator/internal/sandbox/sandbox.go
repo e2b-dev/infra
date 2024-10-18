@@ -217,21 +217,21 @@ func NewSandbox(
 		rootfs:      rootfs,
 		networkPool: networkPool,
 		stopOnce: sync.OnceValue(func() error {
-			var uffdErr error
+			var errs []error
+
 			if fcUffd != nil {
-				uffdErr = fcUffd.Stop()
+				uffdErr := fcUffd.Stop()
 				if uffdErr != nil {
-					uffdErr = fmt.Errorf("failed to stop uffd: %w", err)
+					errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdErr))
 				}
 			}
 
 			fcErr := fc.stop()
-
-			if fcErr != nil || uffdErr != nil {
-				return errors.Join(fcErr, uffdErr)
+			if fcErr != nil {
+				errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcErr))
 			}
 
-			return nil
+			return errors.Join(errs...)
 		}),
 	}
 
