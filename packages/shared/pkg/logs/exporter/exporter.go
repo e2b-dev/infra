@@ -8,9 +8,9 @@ import (
 	"os"
 	"sync"
 	"time"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
+
+var debugLogs = os.Getenv("DEBUG_LOGS") == "true"
 
 type HTTPExporter struct {
 	sync.Mutex
@@ -27,9 +27,17 @@ func NewHTTPLogsExporter(ctx context.Context, address string) *HTTPExporter {
 			Timeout: 2 * time.Second,
 		},
 		logQueue: make(chan []byte, 128),
-		debug:    env.IsLocal(),
+		debug:    debugLogs,
 		ctx:      ctx,
 		address:  address,
+	}
+
+	if address == "" {
+		fmt.Println("no address provided for logs exporter, logs will not be sent")
+	}
+
+	if debugLogs {
+		fmt.Println("debug logs enabled")
 	}
 
 	go exporter.start()
@@ -38,6 +46,10 @@ func NewHTTPLogsExporter(ctx context.Context, address string) *HTTPExporter {
 }
 
 func (w *HTTPExporter) sendInstanceLogs(logs []byte) error {
+	if w.address == "" {
+		return nil
+	}
+
 	request, err := http.NewRequestWithContext(w.ctx, http.MethodPost, w.address, bytes.NewBuffer(logs))
 	if err != nil {
 		return err
@@ -58,12 +70,12 @@ func (w *HTTPExporter) sendInstanceLogs(logs []byte) error {
 func (w *HTTPExporter) start() {
 	for log := range w.logQueue {
 		if w.debug {
-			fmt.Fprintf(os.Stdout, "%v\n", string(log))
-		} else {
-			err := w.sendInstanceLogs(log)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, fmt.Sprintf("error sending instance logs: %+v\n", err))
-			}
+			fmt.Print(string(log))
+		}
+
+		err := w.sendInstanceLogs(log)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, fmt.Sprintf("error sending instance logs: %+v\n", err))
 		}
 	}
 }
