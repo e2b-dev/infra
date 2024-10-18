@@ -160,7 +160,7 @@ func (l *SandboxLogger) MemoryUsage(memoryMB float64) {
 	}
 }
 
-func (l *SandboxLogger) Healthcheck(ok bool) {
+func (l *SandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
 	if !ok && !l.healthCheckWasFailing.Load() {
 		l.healthCheckWasFailing.Store(true)
 
@@ -169,8 +169,10 @@ func (l *SandboxLogger) Healthcheck(ok bool) {
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
 			Bool("healthcheck", ok).
-			Msg("sandbox healthcheck started failing")
-	} else if ok && l.healthCheckWasFailing.Load() {
+			Msg("Sandbox healthcheck started failing")
+		return
+	}
+	if ok && l.healthCheckWasFailing.Load() {
 		l.healthCheckWasFailing.Store(false)
 
 		l.exporter.logger.Warn().
@@ -178,6 +180,25 @@ func (l *SandboxLogger) Healthcheck(ok bool) {
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
 			Bool("healthcheck", ok).
-			Msg("sandbox healthcheck recovered")
+			Msg("Sandbox healthcheck recovered")
+
+		return
 	}
+
+	if alwaysReport {
+		var msg string
+		if ok {
+			msg = "Control sandbox healthcheck was successful"
+		} else {
+			msg = "Control sandbox healthcheck failed"
+		}
+
+		l.exporter.logger.Info().
+			Str("instanceID", l.instanceID).
+			Str("envID", l.envID).
+			Str("teamID", l.teamID).
+			Bool("healthcheck", ok).
+			Msg(msg)
+	}
+
 }

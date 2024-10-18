@@ -111,17 +111,24 @@ func LogServerStreamWithoutEvents[T any, R any](
 
 	err := handler(ctx, req, stream)
 
-	errL := logger.Err(err).
+	var logEvent *zerolog.Event
+	if err != nil {
+		logEvent = logger.Error().Err(err)
+	} else {
+		logEvent = logger.Debug()
+	}
+
+	logEvent = logEvent.
 		Str("method", DefaultHTTPMethod+" "+req.Spec().Procedure).
 		Str(string(OperationIDKey), ctx.Value(OperationIDKey).(string))
 
 	if err != nil {
-		errL = errL.Int("error_code", int(connect.CodeOf(err)))
+		logEvent = logEvent.Int("error_code", int(connect.CodeOf(err)))
 	} else {
-		errL = errL.Interface("response", nil)
+		logEvent = logEvent.Interface("response", nil)
 	}
 
-	errL.Msg(fmt.Sprintf("%s (server stream end)", formatMethod(req.Spec().Procedure)))
+	logEvent.Msg(fmt.Sprintf("%s (server stream end)", formatMethod(req.Spec().Procedure)))
 
 	return err
 }
@@ -134,7 +141,7 @@ func LogClientStreamWithoutEvents[T any, R any](
 ) (*connect.Response[R], error) {
 	ctx = AddRequestIDToContext(ctx)
 
-	logger.Info().
+	logger.Debug().
 		Str("method", DefaultHTTPMethod+" "+stream.Spec().Procedure).
 		Str(string(OperationIDKey), ctx.Value(OperationIDKey).(string)).
 		Msg(fmt.Sprintf("%s (client stream start)", formatMethod(stream.Spec().Procedure)))

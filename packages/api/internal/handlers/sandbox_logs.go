@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -50,13 +51,13 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(
 	// Sanitize ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	id := strings.ReplaceAll(sandboxID, "`", "")
-	query := fmt.Sprintf("{source=\"logs-collector\", service=\"envd\", teamID=`%s`, sandboxID=`%s`}", teamID.String(), id)
+	query := fmt.Sprintf("{source=\"logs-collector\", service=\"envd\", teamID=`%s`, sandboxID=`%s`, internal!=`true`}", teamID.String(), id)
 
 	res, err := a.lokiClient.QueryRange(query, int(*params.Limit), start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
 	if err != nil {
 		errMsg := fmt.Errorf("error when returning logs for sandbox: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error returning logs for sandbox '%s", sandboxID))
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error returning logs for sandbox '%s'", sandboxID))
 
 		return
 	}
@@ -75,6 +76,11 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(
 				})
 			}
 		}
+
+		// Sort logs by timestamp (they are returned by the time they arrived in Loki)
+		sort.Slice(logs, func(i, j int) bool {
+			return logs[i].Timestamp.Before(logs[j].Timestamp)
+		})
 
 		c.JSON(http.StatusOK, &api.SandboxLogs{
 			Logs: logs,

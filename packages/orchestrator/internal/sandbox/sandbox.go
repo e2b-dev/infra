@@ -465,9 +465,8 @@ func (s *Sandbox) logHeathAndUsage(exited chan struct{}) {
 		select {
 		case <-time.After(10 * time.Second):
 			childCtx, cancel := context.WithTimeout(ctx, time.Second)
-			err := s.healthcheck(childCtx)
+			s.Healthcheck(childCtx, false)
 			cancel()
-			s.Logger.Healthcheck(err == nil)
 
 			stats, err := s.stats.GetStats()
 			if err != nil {
@@ -482,28 +481,31 @@ func (s *Sandbox) logHeathAndUsage(exited chan struct{}) {
 	}
 }
 
-func (s *Sandbox) healthcheck(ctx context.Context) error {
+func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
+	var err error
+	// Report healthcheck status
+	defer s.Logger.Healthcheck(err == nil, alwaysReport)
+
 	address := fmt.Sprintf("http://%s:%d/health", s.slot.HostSnapshotIP(), consts.DefaultEnvdServerPort)
 
 	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
 	if err != nil {
-		return err
+		return
 	}
 
 	response, err := httpClient.Do(request)
 	if err != nil {
-		return err
+		return
 	}
-
-	if response.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
-	}
-
-	if _, err := io.Copy(io.Discard, response.Body); err != nil {
-		return err
-	}
-
 	defer response.Body.Close()
 
-	return nil
+	if response.StatusCode != http.StatusNoContent {
+		err = fmt.Errorf("unexpected status code: %d", response.StatusCode)
+		return
+	}
+
+	_, err = io.Copy(io.Discard, response.Body)
+	if err != nil {
+		return
+	}
 }
