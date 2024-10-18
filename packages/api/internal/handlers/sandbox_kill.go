@@ -37,7 +37,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	}
 
 	info := item.Value()
-	info.Logger.Debugf("Srarted sandbox killing")
+	info.Logger.Debugf("Sandbox kill request received")
 
 	if *item.Value().TeamID != teamID {
 		errMsg := fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String())
