@@ -90,7 +90,7 @@ func New(logger *zap.Logger) *grpc.Server {
 	go func() {
 		poolErr := networkPool.Start(ctx, tracer, consulClient)
 		if poolErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to start network pool: %v\n", poolErr)
+			fmt.Fprintf(os.Stderr, "network pool error: %v\n", poolErr)
 		}
 	}()
 

@@ -281,6 +281,7 @@ func (fc *fc) start(
 		if readerErr != nil {
 			errMsg := fmt.Errorf("error reading vmm stdout: %w", readerErr)
 			telemetry.ReportError(fc.ctx, errMsg)
+
 			fmt.Fprintf(os.Stderr, "[firecracker stdout error]: %s — %v\n", fc.metadata.SandboxId, errMsg)
 		} else {
 			telemetry.ReportEvent(fc.ctx, "vmm stdout reader closed")

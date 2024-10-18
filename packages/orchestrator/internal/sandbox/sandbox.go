@@ -31,7 +31,9 @@ import (
 var (
 	logsProxyAddress = os.Getenv("LOGS_PROXY_ADDRESS")
 
-	httpClient = http.Client{}
+	httpClient = http.Client{
+		Timeout: 10 * time.Second,
+	}
 )
 
 type Sandbox struct {
@@ -148,7 +150,7 @@ func NewSandbox(
 		if runErr != nil {
 			errMsg := fmt.Errorf("failed to run rootfs: %w", runErr)
 
-			fmt.Fprintln(os.Stderr, errMsg.Error())
+			fmt.Fprintf(os.Stderr, "rootfs overlay error for sandbox %s: %v\n", config.SandboxId, errMsg)
 		}
 	}()
 
@@ -240,23 +242,23 @@ func NewSandbox(
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
 		envdInitCtx, envdInitSpan := tracer.Start(childCtx, "envd-init")
 
-		clockErr := sbx.initRequest(envdInitCtx, consts.DefaultEnvdServerPort, config.EnvVars)
-		if clockErr != nil {
-			telemetry.ReportCriticalError(envdInitCtx, fmt.Errorf("failed to sync clock: %w", clockErr))
+		initErr := sbx.initEnvd(envdInitCtx, config.EnvVars)
+		if initErr != nil {
+			telemetry.ReportCriticalError(envdInitCtx, fmt.Errorf("failed to init new envd: %w", initErr))
+
+			return nil, fmt.Errorf("failed to init new envd: %w", initErr)
 		} else {
-			telemetry.ReportEvent(envdInitCtx, "clock synced")
+			telemetry.ReportEvent(envdInitCtx, "new envd initialized")
 		}
 
 		envdInitSpan.End()
 	} else {
 		go func() {
-			ctx := context.Background()
-
-			clockErr := sbx.EnsureClockSync(ctx, consts.OldEnvdServerPort)
-			if clockErr != nil {
-				telemetry.ReportError(ctx, fmt.Errorf("failed to sync clock (old envd): %w", clockErr))
+			syncErr := sbx.syncOldEnvd(ctx)
+			if syncErr != nil {
+				telemetry.ReportError(ctx, fmt.Errorf("failed to sync old envd: %w", syncErr))
 			} else {
-				telemetry.ReportEvent(ctx, "clock synced (old envd)")
+				telemetry.ReportEvent(ctx, "old envd synced")
 			}
 		}()
 	}
@@ -269,8 +271,8 @@ func NewSandbox(
 	return sbx, nil
 }
 
-func (s *Sandbox) syncClock(ctx context.Context, port int64) error {
-	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostSnapshotIP(), port)
+func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
+	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostSnapshotIP(), consts.OldEnvdServerPort)
 
 	request, err := http.NewRequestWithContext(ctx, "POST", address, nil)
 	if err != nil {
@@ -295,8 +297,8 @@ type PostInitJSONBody struct {
 	EnvVars *map[string]string `json:"envVars"`
 }
 
-func (s *Sandbox) initRequest(ctx context.Context, port int64, envVars map[string]string) error {
-	address := fmt.Sprintf("http://%s:%d/init", s.slot.HostSnapshotIP(), port)
+func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string) error {
+	address := fmt.Sprintf("http://%s:%d/init", s.slot.HostSnapshotIP(), consts.DefaultEnvdServerPort)
 
 	jsonBody := &PostInitJSONBody{
 		EnvVars: &envVars,
@@ -326,27 +328,6 @@ func (s *Sandbox) initRequest(ctx context.Context, port int64, envVars map[strin
 	}
 
 	defer response.Body.Close()
-
-	return nil
-}
-
-func (s *Sandbox) EnsureClockSync(ctx context.Context, port int64) error {
-syncLoop:
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			err := s.syncClock(ctx, port)
-			if err != nil {
-				telemetry.ReportError(ctx, fmt.Errorf("error syncing clock: %w", err))
-
-				continue
-			}
-
-			break syncLoop
-		}
-	}
 
 	return nil
 }
