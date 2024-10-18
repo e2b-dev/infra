@@ -92,7 +92,6 @@ destroy:
 	./scripts/confirm.sh $(ENV)
 	$(tf_vars) \
 	terraform destroy \
-	-input=false \
 	-compact-warnings \
 	-parallelism=20 \
 	$(DESTROY_TARGETS)
