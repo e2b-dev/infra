@@ -147,7 +147,7 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 			Str("teamID", l.teamID).
 			Float64("cpu", cpu).
 			Int32("cpuMax", l.cpuMax).
-			Msgf("cpu usage reached %d %% of total cpu", int(cpu/float64(l.cpuMax)*100))
+			Msgf("Sandbox is using %d %% of total CPU", int(cpu/float64(l.cpuMax)*100))
 	} else if l.cpuWasAboveTreshold.Load() && cpu <= cpuUsageThreshold*float64(l.cpuMax) {
 		l.cpuWasAboveTreshold.Store(false)
 		l.exporter.logger.Warn().
@@ -156,7 +156,7 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 			Str("teamID", l.teamID).
 			Float64("cpu", cpu).
 			Int32("cpuMax", l.cpuMax).
-			Msgf("cpu usage fell below %d %% of total cpu", int(cpuUsageThreshold*100))
+			Msgf("Sandbox usage fell below %d %% of total cpu", int(cpuUsageThreshold*100))
 	}
 }
 
@@ -171,7 +171,7 @@ func (l *SandboxLogger) MemoryUsage(memoryMB float64) {
 			Str("teamID", l.teamID).
 			Float64("memoryMB", memoryMB).
 			Int32("memoryMBMax", l.memoryMBMax).
-			Msgf("memoryMB usage reached %d %% of memoryMB", int(memoryMB/float64(l.memoryMBMax)*100))
+			Msgf("Sandbox memory used %d %% of RAM", int(memoryMB/float64(l.memoryMBMax)*100))
 		return
 	}
 }
