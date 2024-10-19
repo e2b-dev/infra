@@ -80,35 +80,9 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 	duration := time.Since(start)
 	fmt.Printf("[Sandbox is running] - started in %dms (without network)\n", duration.Milliseconds())
 
-	if stressTest {
-		fmt.Println("[Sandbox is about to be stressed]")
-		runStressTest(instance, keepAlive, start)
-	} else {
-		time.Sleep(keepAlive)
-	}
+	time.Sleep(keepAlive)
 
 	defer instance.CleanupAfterFCStop(childCtx, tracer, consulClient, dns, instanceID)
-	defer KillAllFirecrackerProcesses()
 
 	instance.Stop(childCtx, tracer)
-}
-
-func runStressTest(instance *Sandbox, keepAlive time.Duration, start time.Time) {
-	go func() {
-		output, err := Stress(instance.fc.id)
-		if err != nil {
-			fmt.Printf("[Stress Test][ERROR] error:%s\noutput:%s\n", err, output)
-			panic(err)
-		}
-	}()
-
-	for time.Since(start) < keepAlive {
-		time.Sleep(2 * time.Second)
-		procStats, err := instance.stats.GetStats()
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Printf("[%s] CPU:%.2f Memery:%.2f \n", time.Now().Format("15:04:05"), procStats.CPUCount, procStats.MemoryMB)
-	}
 }

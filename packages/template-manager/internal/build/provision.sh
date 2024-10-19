@@ -18,6 +18,13 @@ ExecStart=
 ExecStart=-/sbin/agetty --noissue --autologin root %I 115200,38400,9600 vt102
 EOF
 
+# Add swapfile — we enable it in the preexec for envd
+mkdir /swap
+fallocate -l 128M /swap/swapfile
+chmod 600 /swap/swapfile
+mkswap /swap/swapfile
+
+
 # Set up envd service.
 mkdir -p /etc/systemd/system
 cat <<EOF >/etc/systemd/system/envd-v0.0.1.service
@@ -35,6 +42,8 @@ ExecStart=/bin/bash -l -c "/usr/bin/envd-v0.0.1"
 OOMPolicy=continue
 OOMScoreAdjust=-1000
 Environment="GOMEMLIMIT={{ .MemoryLimit }}MiB"
+
+ExecStartPre=/bin/bash -c 'echo 0 > /proc/sys/vm/swappiness && swapon /swap/swapfile'
 
 [Install]
 WantedBy=multi-user.target
@@ -64,7 +73,7 @@ EOF
 # Set up chrony.
 mkdir -p /etc/chrony
 cat <<EOF >/etc/chrony/chrony.conf
-refclock PHC /dev/ptp0 poll 1 dpoll 1 offset 0 trust prefer
+refclock PHC /dev/ptp0 poll -1 dpoll -1 offset 0 trust prefer
 makestep 1 -1
 EOF
 
