@@ -22,6 +22,7 @@ func main() {
 	envID := flag.String("env", "", "env id")
 	instanceID := flag.String("instance", "", "instance id")
 	keepAlive := flag.Int("alive", 0, "keep alive")
+	stressTest := flag.Bool("stress", false, "stress test (instance id required)")
 	count := flag.Int("count", 1, "number of spawned instances")
 
 	port := flag.Int("port", defaultPort, "Port for test HTTP server")
@@ -30,7 +31,7 @@ func main() {
 
 	// If we're running a test, we don't need to start the server
 	if *envID != "" && *instanceID != "" {
-		test.Run(*envID, *instanceID, keepAlive, count)
+		test.Run(*envID, *instanceID, keepAlive, count, *stressTest)
 		return
 	}
 
