@@ -27,7 +27,7 @@ type processStats struct {
 	MemoryKB float64
 }
 
-func NewSandboxStats(pid int32) (*SandboxStats, error) {
+func newSandboxStats(pid int32) (*SandboxStats, error) {
 	currentStats, err := getCurrentStats(pid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current stats: %w", err)
@@ -40,7 +40,7 @@ func NewSandboxStats(pid int32) (*SandboxStats, error) {
 	}, nil
 }
 
-func (s *SandboxStats) GetStats() (*CurrentStats, error) {
+func (s *SandboxStats) getStats() (*CurrentStats, error) {
 	currentStats, err := getCurrentStats(s.pid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current stats: %w", err)
@@ -92,12 +92,12 @@ func getCurrentStats(pid int32) (*processStats, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get CPU percent: %w", err)
 	}
+	totalStats.CPUTotal += cpu.User + cpu.System + cpu.Nice
+
 	memoryKB, err := getMemoryUsage(proc.Pid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memory usage: %w", err)
 	}
-
-	totalStats.CPUTotal += cpu.User + cpu.System + cpu.Nice
 	totalStats.MemoryKB += float64(memoryKB)
 
 	return totalStats, nil
@@ -114,11 +114,16 @@ func getMemoryUsage(pid int32) (int32, error) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
+		// This is format of the line we are looking for:
+		// HugetlbPages:    1572864 kB
 		if strings.HasPrefix(line, "HugetlbPages:") {
 			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				return parseInt(strings.TrimSpace(strings.TrimSuffix(fields[1], "kB")))
+			if len(fields) < 2 {
+				return 0, fmt.Errorf("failed to parse memory usage")
 			}
+
+			// We are interested in the second field
+			return parseInt(fields[1])
 		}
 	}
 

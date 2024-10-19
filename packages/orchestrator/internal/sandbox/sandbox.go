@@ -218,7 +218,7 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
-	stats, err := NewSandboxStats(int32(fc.pid))
+	stats, err := newSandboxStats(int32(fc.pid))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stats: %w", err)
 	}
@@ -476,7 +476,7 @@ func (s *Sandbox) logHeathAndUsage(exited chan struct{}) {
 			s.Healthcheck(childCtx, false)
 			cancel()
 
-			stats, err := s.stats.GetStats()
+			stats, err := s.stats.getStats()
 			if err != nil {
 				s.Logger.Warnf("failed to get stats: %s", err)
 			} else {
