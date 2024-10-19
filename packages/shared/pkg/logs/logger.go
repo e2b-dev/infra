@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -23,7 +24,7 @@ type SandboxLogExporter struct {
 	logger *zerolog.Logger
 }
 
-func NewSandboxLogExporter(serviceName string) *SandboxLogExporter {
+func newSandboxLogExporter(serviceName string) *SandboxLogExporter {
 	zerolog.TimestampFieldName = "timestamp"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
@@ -43,6 +44,20 @@ func NewSandboxLogExporter(serviceName string) *SandboxLogExporter {
 	}
 }
 
+var sandboxLogExporter *SandboxLogExporter
+var sandboxLogExporterMU = sync.Mutex{}
+
+func getSandboxLogExporter() *SandboxLogExporter {
+	sandboxLogExporterMU.Lock()
+	defer sandboxLogExporterMU.Unlock()
+
+	if sandboxLogExporter == nil {
+		sandboxLogExporter = newSandboxLogExporter(OrchestratorServiceName)
+	}
+
+	return sandboxLogExporter
+}
+
 type SandboxLogger struct {
 	exporter              *SandboxLogExporter
 	internal              bool
@@ -56,7 +71,7 @@ type SandboxLogger struct {
 	healthCheckWasFailing atomic.Bool
 }
 
-func (l *SandboxLogExporter) CreateSandboxLogger(
+func NewSandboxLogger(
 	instanceID string,
 	envID string,
 	teamID string,
@@ -64,8 +79,9 @@ func (l *SandboxLogExporter) CreateSandboxLogger(
 	memoryMax int32,
 	internal bool,
 ) *SandboxLogger {
+	logsExporter := getSandboxLogExporter()
 	return &SandboxLogger{
-		exporter:    l,
+		exporter:    logsExporter,
 		instanceID:  instanceID,
 		internal:    internal,
 		envID:       envID,
@@ -89,7 +105,7 @@ func (l *SandboxLogger) GetInternalLogger() *SandboxLogger {
 		return l
 	}
 
-	return l.exporter.CreateSandboxLogger(l.instanceID, l.envID, l.teamID, l.cpuMax, l.memoryMBMax, true)
+	return NewSandboxLogger(l.instanceID, l.envID, l.teamID, l.cpuMax, l.memoryMBMax, true)
 }
 
 func (l *SandboxLogger) Errorf(

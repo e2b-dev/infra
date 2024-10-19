@@ -275,7 +275,6 @@ func (fc *fc) start(
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
 
-	logger = logger.GetInternalLogger()
 	go func() {
 		defer func() {
 			readerErr := fc.stdout.Close()

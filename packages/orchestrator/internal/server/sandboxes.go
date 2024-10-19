@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -29,7 +30,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
-	logger := s.sandboxLogs.CreateSandboxLogger(
+	logger := logs.NewSandboxLogger(
 		req.Sandbox.SandboxID,
 		req.Sandbox.TemplateID,
 		req.Sandbox.TeamID,

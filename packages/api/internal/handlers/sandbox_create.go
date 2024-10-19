@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -76,7 +77,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 	templateSpan.End()
 
-	sandboxLogger := a.sbxLogExporter.CreateSandboxLogger(sandboxID, env.TemplateID, team.ID.String(), int32(build.Vcpu), int32(build.RAMMB), false)
+	sandboxLogger := logs.NewSandboxLogger(sandboxID, env.TemplateID, team.ID.String(), int32(build.Vcpu), int32(build.RAMMB), false)
 	sandboxLogger.Debugf("Started creating sandbox")
 	telemetry.ReportEvent(ctx, "Checked team access")
 

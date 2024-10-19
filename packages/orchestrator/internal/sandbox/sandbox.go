@@ -196,7 +196,8 @@ func NewSandbox(
 		pollReady,
 	)
 
-	err = fc.start(childCtx, tracer, logger)
+	internalLogger := logs.NewSandboxLogger(config.SandboxID, config.TemplateID, config.TeamID, config.VCpuCount, config.MemoryMB, true)
+	err = fc.start(childCtx, tracer, internalLogger)
 	if err != nil {
 		var fcUffdErr error
 		if fcUffd != nil {

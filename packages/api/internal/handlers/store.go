@@ -28,7 +28,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 type APIStore struct {
@@ -43,7 +42,6 @@ type APIStore struct {
 	db              *db.DB
 	lokiClient      *loki.DefaultClient
 	logger          *zap.SugaredLogger
-	sbxLogExporter  *logs.SandboxLogExporter
 	templateCache   *templatecache.TemplateCache
 	authCache       *authcache.TeamAuthCache
 }
@@ -89,13 +87,12 @@ func NewAPIStore() *APIStore {
 		panic(err)
 	}
 
-	sbxLogExporter := logs.NewSandboxLogExporter(logs.OrchestratorServiceName)
 	var initialInstances []*instance.InstanceInfo
 
 	if env.IsLocal() {
 		logger.Info("Skipping loading sandboxes, running locally")
 	} else {
-		instances, instancesErr := orch.GetInstances(ctx, tracer, sbxLogExporter)
+		instances, instancesErr := orch.GetInstances(ctx, tracer)
 		if instancesErr != nil {
 			logger.Errorf("Error loading current sandboxes\n: %w", instancesErr)
 		}
@@ -131,7 +128,7 @@ func NewAPIStore() *APIStore {
 	if env.IsLocal() {
 		logger.Info("Skipping syncing sandboxes, running locally")
 	} else {
-		go orch.KeepInSync(ctx, tracer, instanceCache, sbxLogExporter)
+		go orch.KeepInSync(ctx, tracer, instanceCache)
 	}
 
 	var lokiClient *loki.DefaultClient
@@ -172,7 +169,6 @@ func NewAPIStore() *APIStore {
 		buildCache:      buildCache,
 		logger:          logger,
 		lokiClient:      lokiClient,
-		sbxLogExporter:  sbxLogExporter,
 		templateCache:   templateCache,
 		authCache:       authCache,
 	}
