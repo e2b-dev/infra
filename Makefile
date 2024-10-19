@@ -49,7 +49,7 @@ init:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	terraform fmt -recursive
-	$(tf_vars) terraform plan -out=.tfplan -compact-warnings -detailed-exitcode $(ALL_MODULES_ARGS)
+	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode $(ALL_MODULES_ARGS)
 
 .PHONY: apply
 apply:
@@ -61,26 +61,15 @@ apply:
 	-input=false \
 	-compact-warnings \
 	-parallelism=20 \
-	.tfplan
-	@ rm .tfplan
+	.tfplan.$(ENV)
+	@ rm .tfplan.$(ENV)
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(tf_vars) \
 	terraform plan \
-	-input=false \
-	-compact-warnings \
-	-parallelism=20 \
-  	$(WITHOUT_JOBS)
-
-.PHONY: apply-without-jobs
-apply-without-jobs:
-	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
-	$(tf_vars) \
-	terraform apply \
-	-auto-approve \
+	-out=.tfplan.$(ENV) \
 	-input=false \
 	-compact-warnings \
 	-parallelism=20 \
