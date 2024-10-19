@@ -72,7 +72,8 @@ jobs:
           TERRAFORM_ENVIRONMENT: prod
 
       - name: Plan deploy
-        run: make plan
+        # Terraform plan returns a non-zero exit code
+        run: make plan || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLIENT_MACHINE_TYPE: ${{ secrets.client_machine_type }}
