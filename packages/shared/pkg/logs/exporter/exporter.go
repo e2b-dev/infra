@@ -26,7 +26,7 @@ func NewHTTPLogsExporter(ctx context.Context, address string) *HTTPExporter {
 		client: http.Client{
 			Timeout: 2 * time.Second,
 		},
-		logQueue: make(chan []byte, 128),
+		logQueue: make(chan []byte, 2048),
 		debug:    debugLogs,
 		ctx:      ctx,
 		address:  address,

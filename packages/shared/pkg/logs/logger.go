@@ -79,9 +79,9 @@ func NewSandboxLogger(
 	memoryMax int32,
 	internal bool,
 ) *SandboxLogger {
-	logsExporter := getSandboxLogExporter()
+	sbxLogExporter := getSandboxLogExporter()
 	return &SandboxLogger{
-		exporter:    logsExporter,
+		exporter:    sbxLogExporter,
 		instanceID:  instanceID,
 		internal:    internal,
 		envID:       envID,
