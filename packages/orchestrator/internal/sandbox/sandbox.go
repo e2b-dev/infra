@@ -223,7 +223,7 @@ func NewSandbox(
 		return nil, fmt.Errorf("failed to create stats: %w", err)
 	}
 
-	stopped := make(chan struct{})
+	stoppedCtx, cancel := context.WithCancel(context.Background())
 
 	instance := &Sandbox{
 		files:     fsEnv,
@@ -253,7 +253,7 @@ func NewSandbox(
 				return errors.Join(fcErr, uffdErr)
 			}
 
-			stopped <- struct{}{}
+			cancel()
 			return nil
 		}),
 	}
@@ -287,7 +287,7 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxID))
 
 	go func() {
-		instance.logHeathAndUsage(context.Background(), stopped)
+		instance.logHeathAndUsage(stoppedCtx)
 	}()
 
 	return instance, nil

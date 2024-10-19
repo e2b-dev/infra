@@ -10,7 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-func (s *Sandbox) logHeathAndUsage(ctx context.Context, exited chan struct{}) {
+func (s *Sandbox) logHeathAndUsage(ctx context.Context) {
 	for {
 		select {
 		case <-time.After(10 * time.Second):
@@ -25,7 +25,7 @@ func (s *Sandbox) logHeathAndUsage(ctx context.Context, exited chan struct{}) {
 				s.Logger.CPUUsage(stats.CPUCount)
 				s.Logger.MemoryUsage(stats.MemoryMB)
 			}
-		case <-exited:
+		case <-ctx.Done():
 			return
 		}
 	}
