@@ -33,8 +33,9 @@ func (s *Sandbox) logHeathAndUsage(ctx context.Context, exited chan struct{}) {
 
 func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 	var err error
-	// Report healthcheck status
-	defer s.Logger.Healthcheck(err == nil, alwaysReport)
+	defer func() {
+		s.Logger.Healthcheck(err == nil, alwaysReport)
+	}()
 
 	address := fmt.Sprintf("http://%s:%d/health", s.slot.HostSnapshotIP(), consts.DefaultEnvdServerPort)
 
