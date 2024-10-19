@@ -287,7 +287,7 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxID))
 
 	go func() {
-		instance.logHeathAndUsage(stopped)
+		instance.logHeathAndUsage(context.Background(), stopped)
 	}()
 
 	return instance, nil

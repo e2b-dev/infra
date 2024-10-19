@@ -10,8 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-func (s *Sandbox) logHeathAndUsage(exited chan struct{}) {
-	ctx := context.Background()
+func (s *Sandbox) logHeathAndUsage(ctx context.Context, exited chan struct{}) {
 	for {
 		select {
 		case <-time.After(10 * time.Second):
