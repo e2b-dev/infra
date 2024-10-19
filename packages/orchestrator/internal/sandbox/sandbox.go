@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	consul "github.com/hashicorp/consul/api"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
@@ -20,10 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-
-	consul "github.com/hashicorp/consul/api"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -223,7 +223,7 @@ func NewSandbox(
 		return nil, fmt.Errorf("failed to create stats: %w", err)
 	}
 
-	stoppedCtx, cancel := context.WithCancel(context.Background())
+	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	instance := &Sandbox{
 		files:     fsEnv,
@@ -247,13 +247,16 @@ func NewSandbox(
 				}
 			}
 
+			healthcheckCtx.Lock()
+			healthcheckCtx.Cancel()
+			healthcheckCtx.Unlock()
+
 			fcErr := fc.stop()
 
 			if fcErr != nil || uffdErr != nil {
 				return errors.Join(fcErr, uffdErr)
 			}
 
-			cancel()
 			return nil
 		}),
 	}
@@ -287,7 +290,7 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxID))
 
 	go func() {
-		instance.logHeathAndUsage(stoppedCtx)
+		instance.logHeathAndUsage(healthcheckCtx)
 	}()
 
 	return instance, nil

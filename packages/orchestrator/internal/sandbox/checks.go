@@ -8,14 +8,17 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-func (s *Sandbox) logHeathAndUsage(ctx context.Context) {
+func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	for {
 		select {
 		case <-time.After(10 * time.Second):
+			ctx.Lock()
 			childCtx, cancel := context.WithTimeout(ctx, time.Second)
 			s.Healthcheck(childCtx, false)
+			ctx.Unlock()
 			cancel()
 
 			stats, err := s.stats.getStats()
