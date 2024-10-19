@@ -20,11 +20,11 @@ const (
 	memoryUsageThreshold    = 0.85
 )
 
-type SandboxLogExporter struct {
+type sandboxLogExporter struct {
 	logger *zerolog.Logger
 }
 
-func newSandboxLogExporter(serviceName string) *SandboxLogExporter {
+func newSandboxLogExporter(serviceName string) *sandboxLogExporter {
 	zerolog.TimestampFieldName = "timestamp"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
@@ -39,27 +39,27 @@ func newSandboxLogExporter(serviceName string) *SandboxLogExporter {
 		Level(zerolog.DebugLevel).
 		With().Str("logger", serviceName).Logger()
 
-	return &SandboxLogExporter{
+	return &sandboxLogExporter{
 		logger: &l,
 	}
 }
 
-var sandboxLogExporter *SandboxLogExporter
-var sandboxLogExporterMU = sync.Mutex{}
+var logsExporter *sandboxLogExporter
+var logsExporterMU = sync.Mutex{}
 
-func getSandboxLogExporter() *SandboxLogExporter {
-	sandboxLogExporterMU.Lock()
-	defer sandboxLogExporterMU.Unlock()
+func getSandboxLogExporter() *sandboxLogExporter {
+	logsExporterMU.Lock()
+	defer logsExporterMU.Unlock()
 
-	if sandboxLogExporter == nil {
-		sandboxLogExporter = newSandboxLogExporter(OrchestratorServiceName)
+	if logsExporter == nil {
+		logsExporter = newSandboxLogExporter(OrchestratorServiceName)
 	}
 
-	return sandboxLogExporter
+	return logsExporter
 }
 
 type SandboxLogger struct {
-	exporter              *SandboxLogExporter
+	exporter              *sandboxLogExporter
 	internal              bool
 	instanceID            string
 	envID                 string

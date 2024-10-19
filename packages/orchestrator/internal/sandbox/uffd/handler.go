@@ -11,9 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -81,11 +83,12 @@ type Uffd struct {
 func (u *Uffd) Start(
 	ctx context.Context,
 	tracer trace.Tracer,
+	logger *logs.SandboxLogger,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-uffd")
 	defer childSpan.End()
 
-	mf, err := memfileCache.GetMmapfile(u.memfilePath, fmt.Sprintf("%s-%s", u.envID, u.buildID))
+	mf, err := memfileCache.GetMmapfile(logger, u.memfilePath, fmt.Sprintf("%s-%s", u.envID, u.buildID))
 	if err != nil {
 		return fmt.Errorf("failed to get mmapfile: %w", err)
 	}
@@ -109,7 +112,7 @@ func (u *Uffd) Start(
 	telemetry.ReportEvent(childCtx, "set socket permissions")
 
 	go func() {
-		u.exitChan <- u.handle(mf)
+		u.exitChan <- u.handle(logger, mf)
 		close(u.exitChan)
 	}()
 
@@ -170,7 +173,7 @@ func (u *Uffd) receiveSetup() (*UffdSetup, error) {
 	}, nil
 }
 
-func (u *Uffd) handle(memory *cache.Mmapfile) (err error) {
+func (u *Uffd) handle(logger *logs.SandboxLogger, memory *cache.Mmapfile) (err error) {
 	setup, err := u.receiveSetup()
 	if err != nil {
 		return fmt.Errorf("failed to receive setup message from firecracker: %w", err)
@@ -180,7 +183,7 @@ func (u *Uffd) handle(memory *cache.Mmapfile) (err error) {
 	defer func() {
 		closeErr := syscall.Close(int(uffd))
 		if closeErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to close uffd: %v", closeErr)
+			logger.Errorf("failed to close uffd: %v", closeErr)
 		}
 	}()
 

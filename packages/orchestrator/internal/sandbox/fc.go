@@ -38,8 +38,6 @@ type MmdsMetadata struct {
 type fc struct {
 	pollReady chan struct{}
 
-	ctx context.Context
-
 	cmd *exec.Cmd
 
 	stdout *io.PipeReader
@@ -208,11 +206,6 @@ func newFC(
 	))
 	defer childSpan.End()
 
-	vmmCtx, _ := tracer.Start(
-		trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
-		"fc-vmm",
-	)
-
 	rootfsMountCmd := fmt.Sprintf(
 		"mount --bind %s %s && ",
 		fsEnv.EnvInstancePath,
@@ -259,7 +252,6 @@ func newFC(
 		cmd:            cmd,
 		stdout:         cmdStdoutReader,
 		stderr:         cmdStderrReader,
-		ctx:            vmmCtx,
 		socketPath:     fsEnv.SocketPath,
 		envPath:        fsEnv.EnvPath,
 		metadata:       mmdsMetadata,
@@ -287,16 +279,15 @@ func (fc *fc) start(
 
 		for scanner.Scan() {
 			line := scanner.Text()
-			logger.Debugf("[firecracker stdout]: %s — %s\n", fc.id, line)
+			logger.Infof("[firecracker stdout]: %s — %s\n", fc.id, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
 			errMsg := fmt.Errorf("error reading vmm stdout: %w", readerErr)
-			telemetry.ReportError(fc.ctx, errMsg)
-			fmt.Printf("[firecracker stdout error]: %s — %v\n", fc.id, errMsg)
+			logger.Errorf("[firecracker stdout error]: %s — %v\n", fc.id, errMsg)
 		} else {
-			telemetry.ReportEvent(fc.ctx, "vmm stdout reader closed")
+			logger.Debugf("[firecracker stdout reader closed]: %s\n", fc.id)
 		}
 	}()
 

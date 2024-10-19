@@ -88,6 +88,7 @@ func NewSandbox(
 	networkSpan.End()
 
 	var err error
+	internalLogger := logs.NewSandboxLogger(config.SandboxID, config.TemplateID, config.TeamID, config.VCpuCount, config.MemoryMB, true)
 
 	defer func() {
 		if err != nil {
@@ -95,8 +96,10 @@ func NewSandbox(
 			if slotErr != nil {
 				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", slotErr)
 				telemetry.ReportError(childCtx, errMsg)
+				internalLogger.Errorf("error removing network namespace after failed instance start: %s", slotErr)
 			} else {
 				telemetry.ReportEvent(childCtx, "released ip slot")
+				internalLogger.Debugf("released ip slot")
 			}
 		}
 	}()
@@ -107,8 +110,10 @@ func NewSandbox(
 			if ntErr != nil {
 				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", ntErr)
 				telemetry.ReportError(childCtx, errMsg)
+				internalLogger.Errorf("error removing network namespace after failed instance start: %s", ntErr)
 			} else {
 				telemetry.ReportEvent(childCtx, "removed network namespace")
+				internalLogger.Debugf("removed network namespace")
 			}
 		}
 	}()
@@ -150,8 +155,10 @@ func NewSandbox(
 			if envErr != nil {
 				errMsg := fmt.Errorf("error deleting env after failed fc start: %w", err)
 				telemetry.ReportCriticalError(childCtx, errMsg)
+				internalLogger.Errorf("error deleting env after failed fc start: %s", err)
 			} else {
 				telemetry.ReportEvent(childCtx, "deleted env")
+				internalLogger.Debugf("deleted env")
 			}
 		}
 	}()
@@ -165,7 +172,7 @@ func NewSandbox(
 
 		telemetry.ReportEvent(childCtx, "created uffd")
 
-		uffdErr := fcUffd.Start(childCtx, tracer)
+		uffdErr := fcUffd.Start(childCtx, tracer, logger)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
 			telemetry.ReportCriticalError(childCtx, errMsg)
@@ -196,7 +203,6 @@ func NewSandbox(
 		pollReady,
 	)
 
-	internalLogger := logs.NewSandboxLogger(config.SandboxID, config.TemplateID, config.TeamID, config.VCpuCount, config.MemoryMB, true)
 	err = fc.start(childCtx, tracer, internalLogger)
 	if err != nil {
 		var fcUffdErr error
@@ -268,6 +274,7 @@ func NewSandbox(
 			clockErr := instance.EnsureClockSync(backgroundCtx, consts.OldEnvdServerPort)
 			if clockErr != nil {
 				telemetry.ReportError(backgroundCtx, fmt.Errorf("failed to sync clock (old envd): %w", clockErr))
+				internalLogger.Errorf("failed to sync clock (old envd): %s", clockErr)
 			} else {
 				telemetry.ReportEvent(backgroundCtx, "clock synced (old envd)")
 			}
