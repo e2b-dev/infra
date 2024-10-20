@@ -4,4 +4,4 @@
 .env*
 !.env.template
 .last_used_env
-.tfplan
+.tfplan.*

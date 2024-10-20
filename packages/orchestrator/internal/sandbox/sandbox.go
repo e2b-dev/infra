@@ -8,22 +8,22 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
+	consul "github.com/hashicorp/consul/api"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-
-	consul "github.com/hashicorp/consul/api"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -33,8 +33,6 @@ const (
 	kernelName     = "vmlinux.bin"
 	fcBinaryName   = "firecracker"
 )
-
-var logsProxyAddress = os.Getenv("LOGS_PROXY_ADDRESS")
 
 var httpClient = http.Client{
 	Timeout: 5 * time.Second,
@@ -52,7 +50,9 @@ type Sandbox struct {
 	EndAt     time.Time
 	TraceID   string
 
-	slot IPSlot
+	slot   IPSlot
+	Logger *logs.SandboxLogger
+	stats  *SandboxStats
 }
 
 func fcBinaryPath(fcVersion string) string {
@@ -69,6 +69,7 @@ func NewSandbox(
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
+	logger *logs.SandboxLogger,
 ) (*Sandbox, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -87,6 +88,7 @@ func NewSandbox(
 	networkSpan.End()
 
 	var err error
+	internalLogger := logs.NewSandboxLogger(config.SandboxID, config.TemplateID, config.TeamID, config.VCpuCount, config.MemoryMB, true)
 
 	defer func() {
 		if err != nil {
@@ -94,8 +96,10 @@ func NewSandbox(
 			if slotErr != nil {
 				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", slotErr)
 				telemetry.ReportError(childCtx, errMsg)
+				internalLogger.Errorf("error removing network namespace after failed instance start: %s", slotErr)
 			} else {
 				telemetry.ReportEvent(childCtx, "released ip slot")
+				internalLogger.Debugf("released ip slot")
 			}
 		}
 	}()
@@ -106,8 +110,10 @@ func NewSandbox(
 			if ntErr != nil {
 				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", ntErr)
 				telemetry.ReportError(childCtx, errMsg)
+				internalLogger.Errorf("error removing network namespace after failed instance start: %s", ntErr)
 			} else {
 				telemetry.ReportEvent(childCtx, "removed network namespace")
+				internalLogger.Debugf("removed network namespace")
 			}
 		}
 	}()
@@ -149,8 +155,10 @@ func NewSandbox(
 			if envErr != nil {
 				errMsg := fmt.Errorf("error deleting env after failed fc start: %w", err)
 				telemetry.ReportCriticalError(childCtx, errMsg)
+				internalLogger.Errorf("error deleting env after failed fc start: %s", err)
 			} else {
 				telemetry.ReportEvent(childCtx, "deleted env")
+				internalLogger.Debugf("deleted env")
 			}
 		}
 	}()
@@ -164,7 +172,7 @@ func NewSandbox(
 
 		telemetry.ReportEvent(childCtx, "created uffd")
 
-		uffdErr := fcUffd.Start(childCtx, tracer)
+		uffdErr := fcUffd.Start(childCtx, tracer, logger)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
 			telemetry.ReportCriticalError(childCtx, errMsg)
@@ -188,14 +196,14 @@ func NewSandbox(
 		&MmdsMetadata{
 			InstanceID: config.SandboxID,
 			EnvID:      config.TemplateID,
-			Address:    logsProxyAddress,
+			Address:    consts.LogsProxyAddress,
 			TraceID:    traceID,
 			TeamID:     config.TeamID,
 		},
 		pollReady,
 	)
 
-	err = fc.start(childCtx, tracer)
+	err = fc.start(childCtx, tracer, internalLogger)
 	if err != nil {
 		var fcUffdErr error
 		if fcUffd != nil {
@@ -210,6 +218,13 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
+	stats, err := newSandboxStats(int32(fc.pid))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stats: %w", err)
+	}
+
+	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
+
 	instance := &Sandbox{
 		files:     fsEnv,
 		slot:      ips,
@@ -218,6 +233,8 @@ func NewSandbox(
 		Sandbox:   config,
 		StartedAt: startedAt,
 		EndAt:     endAt,
+		Logger:    logger,
+		stats:     stats,
 		stopOnce: sync.OnceValue(func() error {
 			var uffdErr error
 			if fcUffd != nil {
@@ -229,6 +246,10 @@ func NewSandbox(
 					uffdErr = fmt.Errorf("failed to stop uffd: %w", err)
 				}
 			}
+
+			healthcheckCtx.Lock()
+			healthcheckCtx.Cancel()
+			healthcheckCtx.Unlock()
 
 			fcErr := fc.stop()
 
@@ -256,6 +277,7 @@ func NewSandbox(
 			clockErr := instance.EnsureClockSync(backgroundCtx, consts.OldEnvdServerPort)
 			if clockErr != nil {
 				telemetry.ReportError(backgroundCtx, fmt.Errorf("failed to sync clock (old envd): %w", clockErr))
+				internalLogger.Errorf("failed to sync clock (old envd): %s", clockErr)
 			} else {
 				telemetry.ReportEvent(backgroundCtx, "clock synced (old envd)")
 			}
@@ -266,6 +288,10 @@ func NewSandbox(
 
 	dns.Add(config.SandboxID, ips.HostIP())
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxID))
+
+	go func() {
+		instance.logHeathAndUsage(healthcheckCtx)
+	}()
 
 	return instance, nil
 }

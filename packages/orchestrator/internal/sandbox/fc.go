@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -36,8 +37,6 @@ type MmdsMetadata struct {
 
 type fc struct {
 	pollReady chan struct{}
-
-	ctx context.Context
 
 	cmd *exec.Cmd
 
@@ -207,11 +206,6 @@ func newFC(
 	))
 	defer childSpan.End()
 
-	vmmCtx, _ := tracer.Start(
-		trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
-		"fc-vmm",
-	)
-
 	rootfsMountCmd := fmt.Sprintf(
 		"mount --bind %s %s && ",
 		fsEnv.EnvInstancePath,
@@ -258,7 +252,6 @@ func newFC(
 		cmd:            cmd,
 		stdout:         cmdStdoutReader,
 		stderr:         cmdStderrReader,
-		ctx:            vmmCtx,
 		socketPath:     fsEnv.SocketPath,
 		envPath:        fsEnv.EnvPath,
 		metadata:       mmdsMetadata,
@@ -269,6 +262,7 @@ func newFC(
 func (fc *fc) start(
 	ctx context.Context,
 	tracer trace.Tracer,
+	logger *logs.SandboxLogger,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
@@ -277,8 +271,7 @@ func (fc *fc) start(
 		defer func() {
 			readerErr := fc.stdout.Close()
 			if readerErr != nil {
-				errMsg := fmt.Errorf("error closing vmm stdout reader: %w", readerErr)
-				telemetry.ReportError(fc.ctx, errMsg)
+				logger.Warnf("Error closing firecracker stdout reader: %v", readerErr)
 			}
 		}()
 
@@ -286,21 +279,15 @@ func (fc *fc) start(
 
 		for scanner.Scan() {
 			line := scanner.Text()
-
-			telemetry.ReportEvent(fc.ctx, "vmm log",
-				attribute.String("type", "stdout"),
-				attribute.String("message", line),
-			)
-			fmt.Printf("[firecracker stdout]: %s — %s\n", fc.id, line)
+			logger.Infof("[firecracker stdout]: %s — %s\n", fc.id, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
 			errMsg := fmt.Errorf("error reading vmm stdout: %w", readerErr)
-			telemetry.ReportError(fc.ctx, errMsg)
-			fmt.Printf("[firecracker stdout error]: %s — %v\n", fc.id, errMsg)
+			logger.Errorf("[firecracker stdout error]: %s — %v\n", fc.id, errMsg)
 		} else {
-			telemetry.ReportEvent(fc.ctx, "vmm stdout reader closed")
+			logger.Debugf("[firecracker stdout reader closed]: %s\n", fc.id)
 		}
 	}()
 
@@ -308,8 +295,7 @@ func (fc *fc) start(
 		defer func() {
 			readerErr := fc.stderr.Close()
 			if readerErr != nil {
-				errMsg := fmt.Errorf("error closing vmm stdout reader: %w", readerErr)
-				telemetry.ReportError(fc.ctx, errMsg)
+				logger.Errorf("Error closing firecracker stderr reader: %v", readerErr)
 			}
 		}()
 
@@ -317,21 +303,14 @@ func (fc *fc) start(
 
 		for scanner.Scan() {
 			line := scanner.Text()
-
-			telemetry.ReportEvent(fc.ctx, "vmm log",
-				attribute.String("type", "stderr"),
-				attribute.String("message", line),
-			)
-			fmt.Printf("[firecracker stderr]: %s — %v\n", fc.id, line)
+			logger.Warnf("Firecracker stderr: %s", line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			errMsg := fmt.Errorf("error closing vmm stderr reader: %w", readerErr)
-			telemetry.ReportError(fc.ctx, errMsg)
-			fmt.Printf("[firecracker stderr error]: %s — %v\n", fc.id, errMsg)
+			logger.Errorf("Error reading firecracker stderr: %v", readerErr)
 		} else {
-			telemetry.ReportEvent(fc.ctx, "vmm stderr reader closed")
+			logger.Debugf("Firecracker stderr reader closed")
 		}
 	}()
 
@@ -344,6 +323,8 @@ func (fc *fc) start(
 	}
 
 	telemetry.ReportEvent(childCtx, "started fc process")
+
+	fc.pid = fc.cmd.Process.Pid
 
 	// Wait for the FC process to start so we can use FC API
 	err = waitForSocket(fc.socketPath, socketWaitTimeout)

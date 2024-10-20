@@ -42,7 +42,6 @@ type APIStore struct {
 	db              *db.DB
 	lokiClient      *loki.DefaultClient
 	logger          *zap.SugaredLogger
-	sandboxLogger   *zap.SugaredLogger
 	templateCache   *templatecache.TemplateCache
 	authCache       *authcache.TeamAuthCache
 }
@@ -155,12 +154,6 @@ func NewAPIStore() *APIStore {
 
 	buildCache := builds.NewBuildCache(buildCounter)
 
-	sandboxLogger, err := logging.NewCollectorLogger()
-	if err != nil {
-		logger.Errorf("Error initializing sandbox logger\n: %v", err)
-		panic(err)
-	}
-
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)
 
@@ -176,7 +169,6 @@ func NewAPIStore() *APIStore {
 		buildCache:      buildCache,
 		logger:          logger,
 		lokiClient:      lokiClient,
-		sandboxLogger:   sandboxLogger,
 		templateCache:   templateCache,
 		authCache:       authCache,
 	}

@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-
-	"go.opentelemetry.io/otel"
 )
 
 func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duration) {
@@ -23,6 +24,8 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 	consulClient, err := consul.New(childCtx)
 
 	networkPool := make(chan IPSlot, 1)
+
+	logger := logs.NewSandboxLogger(instanceID, envID, "test-team", 2, 512, false)
 
 	select {
 	case <-ctx.Done():
@@ -57,8 +60,8 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 		networkPool,
 		&orchestrator.SandboxConfig{
 			TemplateID:         envID,
-			FirecrackerVersion: "v1.9.0_fake-2476009",
-			KernelVersion:      "vmlinux-6.1.99",
+			FirecrackerVersion: "v1.9.1_3370eaf8",
+			KernelVersion:      "vmlinux-6.1.102",
 			TeamID:             "test-team",
 			BuildID:            "id",
 			HugePages:          true,
@@ -68,13 +71,13 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 		"trace-test-1",
 		time.Now(),
 		time.Now(),
+		logger,
 	)
 	if err != nil {
 		panic(err)
 	}
 
 	duration := time.Since(start)
-
 	fmt.Printf("[Sandbox is running] - started in %dms (without network)\n", duration.Milliseconds())
 
 	time.Sleep(keepAlive)

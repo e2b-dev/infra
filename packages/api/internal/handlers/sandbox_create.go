@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -38,9 +39,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	span := trace.SpanFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
-
-	sandboxLogger := a.sandboxLogger.With("instanceID", sandboxID, "teamID", team.ID.String(), "traceID", traceID)
-	sandboxLogger.Info("Started creating sandbox")
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
@@ -79,6 +77,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 	templateSpan.End()
 
+	sandboxLogger := logs.NewSandboxLogger(sandboxID, env.TemplateID, team.ID.String(), int32(build.Vcpu), int32(build.RAMMB), false)
+	sandboxLogger.Debugf("Started creating sandbox")
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	var alias string
@@ -178,6 +178,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
 	instanceInfo := instance.InstanceInfo{
+		Logger:            sandboxLogger,
 		StartTime:         startTime,
 		EndTime:           endTime,
 		Instance:          sandbox,
@@ -235,7 +236,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		attribute.String("instance.id", sandbox.SandboxID),
 	)
 
-	sandboxLogger.With("envID", env.TemplateID).Info("Sandbox created")
+	sandboxLogger.Infof("Sandbox created with - end time: %s", endTime.Format("2006-01-02 15:04:05 -07:00"))
 
 	c.JSON(http.StatusCreated, &sandbox)
 }
