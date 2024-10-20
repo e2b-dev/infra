@@ -15,10 +15,12 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	for {
 		select {
 		case <-time.After(10 * time.Second):
-			ctx.Lock()
 			childCtx, cancel := context.WithTimeout(ctx, time.Second)
+
+			ctx.Lock()
 			s.Healthcheck(childCtx, false)
 			ctx.Unlock()
+
 			cancel()
 
 			stats, err := s.stats.getStats()
