@@ -203,18 +203,20 @@ func (l *SandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
 
 	if alwaysReport {
 		var msg string
+		var logEvent *zerolog.Event
 		if ok {
 			msg = "Control sandbox healthcheck was successful"
+			logEvent = l.exporter.logger.Info()
 		} else {
 			msg = "Control sandbox healthcheck failed"
+			logEvent = l.exporter.logger.Error()
 		}
 
-		l.exporter.logger.Info().
+		logEvent.
 			Str("instanceID", l.instanceID).
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
 			Bool("healthcheck", ok).
 			Msg(msg)
 	}
-
 }
