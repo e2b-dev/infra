@@ -13,6 +13,7 @@ import (
 
 type SimpleFile struct {
 	Ensure func() (string, error)
+	path   string
 }
 
 func NewSimpleFile(
@@ -22,6 +23,7 @@ func NewSimpleFile(
 	path string,
 ) *SimpleFile {
 	return &SimpleFile{
+		path: path,
 		Ensure: sync.OnceValues(func() (string, error) {
 			object := blockStorage.NewGCSObjectFromBucket(ctx, bucket, bucketPath)
 
@@ -39,4 +41,8 @@ func NewSimpleFile(
 			return path, nil
 		}),
 	}
+}
+
+func (f *SimpleFile) Remove() error {
+	return os.Remove(f.path)
 }

@@ -139,7 +139,6 @@ isFree:
 	for {
 		select {
 		case <-ctx.Done():
-
 			// We want to ensure that we are not accumulating slots.
 			// We won't be getting slots that are not free though.
 			break isFree

@@ -98,7 +98,6 @@ func (n *NbdServer) Start() error {
 				return nil
 			}
 
-			// TODO: Fix failure to accept after close
 			fmt.Fprintf(os.Stderr, "failed to accept connection: %v\n", err)
 
 			continue
@@ -113,7 +112,6 @@ func (n *NbdServer) Start() error {
 				}
 			}()
 
-			// TODO: Use the remote/local address to identify the client so we can save the cache storage to specific file.
 			storage, err := n.getStorage()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "could not get storage: %v\n", err)

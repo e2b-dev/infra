@@ -19,7 +19,7 @@ const (
 	templateDataExpiration = time.Hour * 72
 	pageSize               = 2 << 11
 	hugepageSize           = 2 << 20
-	rootfsBlockSize        = 4096
+	rootfsBlockSize        = 2 << 11
 )
 
 type TemplateData struct {
@@ -41,6 +41,10 @@ func (t *TemplateData) Close() error {
 
 	if t.Rootfs != nil {
 		errs = append(errs, t.Rootfs.Close())
+	}
+
+	if t.Snapfile != nil {
+		errs = append(errs, t.Snapfile.Remove())
 	}
 
 	return errors.Join(errs...)
