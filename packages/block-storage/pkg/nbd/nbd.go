@@ -28,17 +28,19 @@ type NbdServer struct {
 }
 
 func (n *NbdServer) Close() error {
+	var errs []error
+
 	listeningErr := n.ensureListening()
 	if listeningErr != nil {
-		return fmt.Errorf("error ensuring server is listening: %w", listeningErr)
+		errs = append(errs, fmt.Errorf("error ensuring server is listening: %w", listeningErr))
 	}
 
 	closeErr := n.closeOnce()
 	if closeErr != nil {
-		return fmt.Errorf("error closing server: %w", closeErr)
+		errs = append(errs, fmt.Errorf("error closing server: %w", closeErr))
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func NewNbdServer(
@@ -94,7 +96,7 @@ func (n *NbdServer) Start() error {
 			}
 
 			// TODO: Fix failure to accept after close
-			fmt.Fprintf(os.Stderr, "Failed to accept connection: %v\n", err)
+			fmt.Fprintf(os.Stderr, "failed to accept connection: %v\n", err)
 
 			continue
 		}
@@ -104,14 +106,14 @@ func (n *NbdServer) Start() error {
 				_ = conn.Close()
 
 				if err := recover(); err != nil {
-					fmt.Fprintf(os.Stderr, "Client disconnected with error: %v\n", err)
+					fmt.Fprintf(os.Stderr, "recovering from panic: %v\n", err)
 				}
 			}()
 
 			// TODO: Use the remote/local address to identify the client so we can save the cache storage to specific file.
 			storage, err := n.getStorage()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Could not get storage: %v\n", err)
+				fmt.Fprintf(os.Stderr, "could not get storage: %v\n", err)
 
 				return
 			}
@@ -122,9 +124,8 @@ func (n *NbdServer) Start() error {
 				conn,
 				[]*server.Export{
 					{
-						Name:        "default",
-						Description: "",
-						Backend:     storage,
+						Backend: storage,
+						Name:    "default",
 					},
 				},
 				&server.Options{
@@ -135,7 +136,7 @@ func (n *NbdServer) Start() error {
 					SupportsMultiConn:  true,
 				})
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Client disconnected with error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "client disconnected with error: %v\n", err)
 
 				return
 			}
@@ -189,12 +190,12 @@ func (n *NbdClient) Close() error {
 	if n.f != nil {
 		err := client.Disconnect(n.f)
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("failed to disconnect from server: %w", err))
 		}
 
 		err = n.f.Close()
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("failed to close file: %w", err))
 		}
 	}
 
@@ -212,7 +213,7 @@ func (n *NbdClient) Start() error {
 		}
 	}()
 
-	nbdPath, err := n.pool.GetDevice(n.ctx)
+	nbdPath, err := n.pool.GetDevice()
 	if err != nil {
 		return fmt.Errorf("failed to get nbd device: %w", err)
 	}

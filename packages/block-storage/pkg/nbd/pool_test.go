@@ -15,7 +15,7 @@ func TestNbdDevicePool(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	nbd0, err := pool.GetDevice(ctx)
+	nbd0, err := pool.GetDevice()
 	defer pool.ReleaseDevice(ctx, nbd0)
 
 	require.NoError(t, err)
@@ -25,7 +25,7 @@ func TestNbdDevicePool(t *testing.T) {
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	nbd1, err := pool.GetDevice(ctx)
+	nbd1, err := pool.GetDevice()
 	defer pool.ReleaseDevice(ctx, nbd1)
 
 	require.NoError(t, err)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -39,8 +40,6 @@ func (t *testDevice) Size() (int64, error) {
 }
 
 func (t *testDevice) Close() error {
-	fmt.Println("closing")
-
 	return t.f.Close()
 }
 
@@ -57,8 +56,6 @@ func (t *testDevice) WriteAt(b []byte, off int64) (int, error) {
 }
 
 func (t *testDevice) Sync() error {
-	fmt.Println("syncing")
-
 	return t.f.Sync()
 }
 
@@ -94,23 +91,64 @@ func main() {
 
 	defer device.Close()
 
-	fmt.Println("creating temp file")
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
 
-	socketPath := "/tmp/nbd.sock"
+	for i := 0; i < 10; i++ {
+		td, err := createTestDevice(ctx, pool, device, fmt.Sprintf("test-%d", i))
+		if err != nil {
+			fmt.Printf("error creating test device %d: %s\n", i, err)
+		}
+
+		time.Sleep(2 * time.Second)
+
+		err = td.Close()
+		if err != nil {
+			fmt.Printf("error closing test device %d: %s\n", i, err)
+		}
+	}
+}
+
+type testNbd struct {
+	end       chan struct{}
+	nbdClient *nbd.NbdClient
+	nbdServer *nbd.NbdServer
+}
+
+func (t *testNbd) Close() error {
+	var errs []error
+
+	if t.nbdClient != nil {
+		
+		errs = append(errs, t.nbdClient.Close())
+	}
+
+	if t.nbdServer != nil {
+		errs = append(errs, t.nbdServer.Close())
+	}
+
+	// if t != nil {
+	// 	<-t.end
+	// }
+
+	return errors.Join(errs...)
+}
+
+func createTestDevice(ctx context.Context, pool *nbd.NbdDevicePool, device block.Device, id string) (*testNbd, error) {
+	fmt.Printf("creating temp file %s\n", id)
+
+	socketPath := fmt.Sprintf("/tmp/nbd-%s.sock", id)
 	defer os.Remove(socketPath)
 
-	fmt.Println("creating nbd")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	fmt.Printf("creating nbd %s\n", id)
 
 	n, err := nbd.NewNbdServer(ctx, func() (block.Device, error) {
 		return device, nil
 	}, socketPath)
 	if err != nil {
-		fmt.Println("error creating nbd", err)
+		fmt.Printf("error creating nbd %s: %s\n", id, err)
 
-		return
+		return &testNbd{}, err
 	}
 
 	defer n.Close()
@@ -118,11 +156,11 @@ func main() {
 	e := errgroup.Group{}
 
 	e.Go(func() error {
-		fmt.Println("starting server")
+		fmt.Printf("starting server %s\n", id)
 
-		err := n.Start()
-		if err != nil {
-			return fmt.Errorf("error starting server: %w", err)
+		serverErr := n.Start()
+		if serverErr != nil {
+			return fmt.Errorf("error starting server %s: %w", id, serverErr)
 		}
 
 		return nil
@@ -133,11 +171,11 @@ func main() {
 	defer nbdClient.Close()
 
 	e.Go(func() error {
-		fmt.Println("starting client")
+		fmt.Printf("starting client %s\n", id)
 
-		err := nbdClient.Start()
-		if err != nil {
-			return fmt.Errorf("error starting client: %w", err)
+		clientErr := nbdClient.Start()
+		if clientErr != nil {
+			return fmt.Errorf("error starting client %s: %w", id, clientErr)
 		}
 
 		return nil
@@ -145,14 +183,28 @@ func main() {
 
 	nbdPath, err := nbdClient.GetPath()
 	if err != nil {
-		fmt.Println("error getting path", err)
+		fmt.Printf("error getting path %s: %s\n", id, err)
 
-		return
+		return &testNbd{
+			nbdServer: n,
+		}, err
 	}
 
-	fmt.Printf("nbd path: %s\n", nbdPath)
+	fmt.Printf("nbd path %s: %s\n", id, nbdPath)
 
-	if err := e.Wait(); err != nil {
-		fmt.Println("error waiting for server and client", err)
-	}
+	end := make(chan struct{})
+
+	go func() {
+		defer close(end)
+
+		if waitErr := e.Wait(); waitErr != nil {
+			fmt.Printf("error waiting for server and client %s: %s\n", id, waitErr)
+		}
+	}()
+
+	return &testNbd{
+		end:       end,
+		nbdClient: nbdClient,
+		nbdServer: n,
+	}, nil
 }
