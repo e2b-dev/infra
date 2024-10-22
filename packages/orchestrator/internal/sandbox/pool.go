@@ -32,9 +32,7 @@ func (p *NetworkSlotPool) Get(ctx context.Context) (IPSlot, error) {
 }
 
 func (p *NetworkSlotPool) Start(ctx context.Context, tracer trace.Tracer, consulClient *consul.Client) error {
-	defer func() {
-		close(p.newSlots)
-	}()
+	defer close(p.newSlots)
 
 	for {
 		select {

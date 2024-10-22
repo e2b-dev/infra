@@ -66,7 +66,10 @@ func NewNbdServer(
 }
 
 func (n *NbdServer) Start() error {
-	defer close(n.ready)
+	defer func() {
+		n.ready <- nil
+		close(n.ready)
+	}()
 
 	l, err := net.Listen("unix", n.socketPath)
 	if err != nil {

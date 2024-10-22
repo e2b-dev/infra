@@ -118,6 +118,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 
 				return fmt.Errorf("failed to read from source: %w", err)
 			}
+
 			defer close()
 
 			cpy := constants.NewUffdioCopy(
