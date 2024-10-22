@@ -119,7 +119,10 @@ func (n *NbdDevicePool) ReleaseDevice(ctx context.Context, path string) error {
 
 	out, err := exec.CommandContext(ctx, "umount", "--all-targets", path).CombinedOutput()
 	if err != nil {
-		errs = append(errs, fmt.Errorf("failed to umount device: %w: %s", err, string(out)))
+		// Suppres unmount errors if the device is not mounted.
+		if !strings.HasSuffix(string(out), "not mounted\n") {
+			errs = append(errs, fmt.Errorf("failed to umount device: %w: %s", err, string(out)))
+		}
 	}
 
 	slot, err := n.getDeviceSlot(path)
@@ -136,7 +139,10 @@ isFree:
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+
+			// We want to ensure that we are not accumulating slots.
+			// We won't be getting slots that are not free though.
+			break isFree
 		case <-ticker.C:
 			free, freeErr := n.isDeviceFree(slot)
 			if freeErr != nil {
