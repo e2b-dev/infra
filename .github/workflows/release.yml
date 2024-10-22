@@ -91,7 +91,7 @@ jobs:
     name: Orchestrator
     needs: changes
     if: |
-      always() &&
+      !cancelled() &&
       needs.changes.outputs.version == 'true' &&
       needs.changes.outputs.orchestrator == 'true'
     uses: ./.github/workflows/orchestrator.yml
@@ -104,7 +104,7 @@ jobs:
     name: Template delete task driver
     needs: changes
     if: |
-      always() &&
+      !cancelled() &&
       needs.changes.outputs.version == 'true' &&
       needs.changes.outputs.template-manager == 'true'
     uses: ./.github/workflows/template-manager.yml
@@ -117,7 +117,7 @@ jobs:
     name: Cluster disk image
     needs: changes
     if: |
-      always() &&
+      !cancelled() &&
       needs.changes.outputs.version == 'true' &&
       needs.changes.outputs.cluster-disk-image == 'true'
     uses: ./.github/workflows/cluster-disk-image.yml
@@ -129,7 +129,7 @@ jobs:
     name: Env Daemon
     needs: changes
     if: |
-      always() &&
+      !cancelled() &&
       needs.changes.outputs.version == 'true' &&
       needs.changes.outputs.envd == 'true'
     uses: ./.github/workflows/envd.yml
@@ -143,7 +143,7 @@ jobs:
     name: API image
     needs: changes
     if: |
-      always() &&
+      !cancelled() &&
       needs.changes.outputs.version == 'true' &&
       needs.changes.outputs.api == 'true'
     uses: ./.github/workflows/api.yml
@@ -157,7 +157,7 @@ jobs:
     name: Docker reverse proxy image
     needs: changes
     if: |
-      always() &&
+      !cancelled() &&
       needs.changes.outputs.version == 'true' &&
       needs.changes.outputs.docker-reverse-proxy == 'true'
     uses: ./.github/workflows/docker-reverse-proxy.yml
@@ -171,7 +171,7 @@ jobs:
     name: FC Kernels
     needs: changes
     if: |
-      always() &&
+      !cancelled() &&
       needs.changes.outputs.version == 'true' &&
       needs.changes.outputs.fc-kernels == 'true'
     uses: ./.github/workflows/fc-kernels.yml
@@ -184,7 +184,7 @@ jobs:
     name: FC Versions
     needs: changes
     if: |
-      always() &&
+      !cancelled() &&
       needs.changes.outputs.version == 'true' &&
       needs.changes.outputs.fc-versions == 'true'
     uses: ./.github/workflows/fc-versions.yml
@@ -208,7 +208,7 @@ jobs:
         template-manager,
       ]
     if: |
-      always() &&
+      !cancelled() &&
       needs.changes.outputs.version == 'true' &&
       needs.changes.result == 'success' &&
       (needs.cluster-disk-image.result == 'success' || needs.cluster-disk-image.result == 'skipped') &&
@@ -239,7 +239,7 @@ jobs:
     name: Release
     needs: [changes, terraform]
     if: |
-      always() &&
+      !cancelled() &&
       needs.terraform.result == 'success' &&
       needs.changes.outputs.version == 'true'
     runs-on: ubuntu-22.04
