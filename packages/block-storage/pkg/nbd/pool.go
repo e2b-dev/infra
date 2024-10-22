@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/bits-and-blooms/bitset"
@@ -21,22 +22,22 @@ type NbdDevicePool struct {
 }
 
 func getMaxNbdDevices() (int, error) {
-	// data, err := os.ReadFile("/sys/module/nbd/parameters/nbds_max")
+	data, err := os.ReadFile("/sys/module/nbd/parameters/nbds_max")
 
-	// if errors.Is(err, os.ErrNotExist) {
-	// 	return 0, nil
-	// }
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
 
-	// if err != nil {
-	// 	return 0, fmt.Errorf("failed to read nbds_max: %w", err)
-	// }
+	if err != nil {
+		return 0, fmt.Errorf("failed to read nbds_max: %w", err)
+	}
 
-	// nbdsMax, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	// if err != nil {
-	// 	return 0, fmt.Errorf("failed to parse nbds_max: %w", err)
-	// }
+	nbdsMax, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse nbds_max: %w", err)
+	}
 
-	return 1, nil
+	return nbdsMax, nil
 }
 
 func NewNbdDevicePool() (*NbdDevicePool, error) {
