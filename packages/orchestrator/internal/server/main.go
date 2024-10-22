@@ -42,7 +42,7 @@ type server struct {
 	tracer        trace.Tracer
 	consul        *consulapi.Client
 	networkPool   *sandbox.NetworkSlotPool
-	nbdPool       *nbd.NbdDevicePool
+	nbdPool       *nbd.DevicePool
 	templateCache *snapshotStorage.TemplateDataCache
 }
 
@@ -79,7 +79,7 @@ func New(logger *zap.Logger) *grpc.Server {
 
 	templateCache := snapshotStorage.NewTemplateDataCache(ctx, client, templateStorage.BucketName)
 
-	nbdPool, err := nbd.NewNbdDevicePool()
+	nbdPool, err := nbd.NewDevicePool()
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create NBD pool: %v", err)
 		panic(errMsg)

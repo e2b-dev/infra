@@ -1,32 +1,28 @@
 package nbd
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestNbdDevicePool(t *testing.T) {
-	pool, err := NewNbdDevicePool()
+	pool, err := NewDevicePool()
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
 	nbd0, err := pool.GetDevice()
-	defer pool.ReleaseDevice(ctx, nbd0)
+	defer func() {
+		require.NoError(t, pool.ReleaseDevice(nbd0))
+	}()
 
 	require.NoError(t, err)
 
 	require.Equal(t, nbd0, "/dev/nbd0")
 
-	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
 	nbd1, err := pool.GetDevice()
-	defer pool.ReleaseDevice(ctx, nbd1)
+	defer func() {
+		require.NoError(t, pool.ReleaseDevice(nbd1))
+	}()
 
 	require.NoError(t, err)
 

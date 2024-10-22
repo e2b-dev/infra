@@ -8,15 +8,12 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 
 	"github.com/pojntfx/go-nbd/pkg/client"
 	"github.com/pojntfx/go-nbd/pkg/server"
 )
-
-const releaseTimeout = 10 * time.Second
 
 type NbdServer struct {
 	getStorage      func() (block.Device, error)
@@ -93,7 +90,6 @@ func (n *NbdServer) Start() error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-
 			if n.closed.Load() {
 				return nil
 			}
@@ -148,7 +144,7 @@ func (n *NbdServer) Start() error {
 type NbdClient struct {
 	ready                 chan clientResult
 	f                     *os.File
-	pool                  *NbdDevicePool
+	pool                  *DevicePool
 	ensureServerListening func() error
 	GetPath               func() (string, error)
 	ctx                   context.Context
@@ -161,7 +157,7 @@ type clientResult struct {
 	path string
 }
 
-func (n *NbdServer) CreateClient(ctx context.Context, pool *NbdDevicePool) *NbdClient {
+func (n *NbdServer) CreateClient(ctx context.Context, pool *DevicePool) *NbdClient {
 	ready := make(chan clientResult)
 
 	return &NbdClient{
@@ -220,10 +216,7 @@ func (n *NbdClient) Start() error {
 	}
 
 	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), releaseTimeout)
-		defer cancel()
-
-		releaseErr := n.pool.ReleaseDevice(ctx, nbdPath)
+		releaseErr := n.pool.ReleaseDevice(nbdPath)
 		if releaseErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to release device: %s, %v\n", nbdPath, releaseErr)
 		}

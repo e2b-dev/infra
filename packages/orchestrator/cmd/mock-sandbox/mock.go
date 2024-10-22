@@ -66,7 +66,7 @@ func main() {
 		}
 	}()
 
-	nbdDevicePool, err := nbd.NewNbdDevicePool()
+	nbdDevicePool, err := nbd.NewDevicePool()
 	if err != nil {
 		fmt.Printf("failed to create NBD device pool: %v\n", err)
 
@@ -98,7 +98,7 @@ func mockSandbox(
 	dns *dns.DNS,
 	templateCache *snapshotStorage.TemplateDataCache,
 	keepAlive time.Duration,
-	nbdDevicePool *nbd.NbdDevicePool,
+	nbdDevicePool *nbd.DevicePool,
 	networkPool *sandbox.NetworkSlotPool,
 	consulClient *consulapi.Client,
 ) {

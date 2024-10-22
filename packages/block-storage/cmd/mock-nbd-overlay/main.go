@@ -71,7 +71,7 @@ func NewTestDevice(path string) (*testDevice, error) {
 func main() {
 	fmt.Println("creating nbd device pool")
 
-	pool, err := nbd.NewNbdDevicePool()
+	pool, err := nbd.NewDevicePool()
 	if err != nil {
 		fmt.Println("error creating nbd device pool", err)
 
@@ -119,7 +119,6 @@ func (t *testNbd) Close() error {
 	var errs []error
 
 	if t.nbdClient != nil {
-		
 		errs = append(errs, t.nbdClient.Close())
 	}
 
@@ -127,14 +126,14 @@ func (t *testNbd) Close() error {
 		errs = append(errs, t.nbdServer.Close())
 	}
 
-	// if t != nil {
-	// 	<-t.end
-	// }
+	if t != nil {
+		<-t.end
+	}
 
 	return errors.Join(errs...)
 }
 
-func createTestDevice(ctx context.Context, pool *nbd.NbdDevicePool, device block.Device, id string) (*testNbd, error) {
+func createTestDevice(ctx context.Context, pool *nbd.DevicePool, device block.Device, id string) (*testNbd, error) {
 	fmt.Printf("creating temp file %s\n", id)
 
 	socketPath := fmt.Sprintf("/tmp/nbd-%s.sock", id)
@@ -195,7 +194,7 @@ func createTestDevice(ctx context.Context, pool *nbd.NbdDevicePool, device block
 	end := make(chan struct{})
 
 	go func() {
-		defer close(end)
+		end <- struct{}{}
 
 		if waitErr := e.Wait(); waitErr != nil {
 			fmt.Printf("error waiting for server and client %s: %s\n", id, waitErr)

@@ -21,7 +21,7 @@ func NewOverlayFile(
 	ctx context.Context,
 	storage *block_storage.BlockStorage,
 	cachePath string,
-	pool *nbd.NbdDevicePool,
+	pool *nbd.DevicePool,
 	socketPath string,
 ) (*OverlayFile, error) {
 	device, err := storage.CreateOverlay(cachePath)

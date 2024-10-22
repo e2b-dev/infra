@@ -1,7 +1,6 @@
 package nbd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,19 +9,36 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/bits-and-blooms/bitset"
 )
 
-// NbdDevicePool requires the nbd module to be loaded before running.
-// use `sudo modprobe nbd nbds_max=4096` to set the max number of devices to 4096, which is a good default for now.
-type NbdDevicePool struct {
+var (
+	// ErrNoFreeSlots is returned when there are no free slots.
+	// You can retry the request after some time.
+	ErrNoFreeSlots = errors.New("no free slots")
+	// ErrDeviceInUse is returned when the device that you wanted to release is still in use.
+	// You can retry the request after ensuring that the device is not in use anymore.
+	ErrDeviceInUse = errors.New("device in use")
+)
+
+type (
+	// DevicePath is the path to the nbd device.
+	DevicePath = string
+	// DeviceSlot is the slot number of the nbd device.
+	DeviceSlot = uint
+)
+
+// DevicePool requires the nbd module to be loaded before running.
+//
+// Use `sudo modprobe nbd nbds_max=4096` to set the max number of devices to 4096, which is a good default for now.
+type DevicePool struct {
+	// We use the bitset to speedup the free device lookup.
 	slots *bitset.BitSet
 	mu    sync.Mutex
 }
 
-func getMaxNbdDevices() (uint, error) {
+func getMaxDevices() (uint, error) {
 	data, err := os.ReadFile("/sys/module/nbd/parameters/nbds_max")
 
 	if errors.Is(err, os.ErrNotExist) {
@@ -33,16 +49,16 @@ func getMaxNbdDevices() (uint, error) {
 		return 0, fmt.Errorf("failed to read nbds_max: %w", err)
 	}
 
-	nbdsMax, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 0)
+	maxDevices, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 0)
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse nbds_max: %w", err)
 	}
 
-	return uint(nbdsMax), nil
+	return uint(maxDevices), nil
 }
 
-func NewNbdDevicePool() (*NbdDevicePool, error) {
-	maxDevices, err := getMaxNbdDevices()
+func NewDevicePool() (*DevicePool, error) {
+	maxDevices, err := getMaxDevices()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current max devices: %w", err)
 	}
@@ -51,15 +67,15 @@ func NewNbdDevicePool() (*NbdDevicePool, error) {
 		return nil, fmt.Errorf("nbd module is not loaded or max devices is set to 0")
 	}
 
-	return &NbdDevicePool{
+	return &DevicePool{
 		slots: bitset.New(maxDevices),
 	}, nil
 }
 
-var re = regexp.MustCompile(`^/dev/nbd(\d+)$`)
+var reSlot = regexp.MustCompile(`^/dev/nbd(\d+)$`)
 
-func (n *NbdDevicePool) getDeviceSlot(path string) (uint, error) {
-	matches := re.FindStringSubmatch(path)
+func (n *DevicePool) getDeviceSlot(path DevicePath) (DeviceSlot, error) {
+	matches := reSlot.FindStringSubmatch(path)
 	if len(matches) != 2 {
 		return 0, fmt.Errorf("invalid nbd path: %s", path)
 	}
@@ -69,14 +85,14 @@ func (n *NbdDevicePool) getDeviceSlot(path string) (uint, error) {
 		return 0, fmt.Errorf("failed to parse slot from path: %w", err)
 	}
 
-	return uint(slot), nil
+	return DeviceSlot(slot), nil
 }
 
-func (n *NbdDevicePool) getDevicePath(slot uint) string {
+func (n *DevicePool) getDevicePath(slot DeviceSlot) DevicePath {
 	return fmt.Sprintf("/dev/nbd%d", slot)
 }
 
-func (n *NbdDevicePool) isDeviceFree(slot uint) (bool, error) {
+func (n *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
 	pidFile := fmt.Sprintf("/sys/block/nbd%d/pid", slot)
 
 	_, err := os.Stat(pidFile)
@@ -91,74 +107,62 @@ func (n *NbdDevicePool) isDeviceFree(slot uint) (bool, error) {
 	return false, nil
 }
 
-func (n *NbdDevicePool) GetDevice() (string, error) {
+// Get device slot if there is one available.
+func (n *DevicePool) GetDevice() (DevicePath, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	slot, ok := n.slots.NextClear(0)
-	if !ok {
-		return "", fmt.Errorf("no free slots")
+	for slot, ok := n.slots.NextClear(0); ok; slot, ok = n.slots.NextClear(slot + 1) {
+		n.slots.Set(slot)
+
+		free, err := n.isDeviceFree(slot)
+		if err != nil {
+			n.slots.Clear(slot)
+
+			return "", fmt.Errorf("failed to check if device is free: %w", err)
+		}
+
+		if free {
+			return n.getDevicePath(slot), nil
+		}
+
+		// We clear the slot even though it is not free to prevent accidental accumulation of slots.
+		n.slots.Clear(slot)
 	}
 
-	n.slots.Set(slot)
-
-	free, err := n.isDeviceFree(slot)
-	if err != nil {
-		return "", fmt.Errorf("failed to check if device is free: %w", err)
-	}
-
-	if !free {
-		return "", fmt.Errorf("device in use: %s", n.getDevicePath(slot))
-	}
-
-	return n.getDevicePath(slot), nil
+	return "", ErrNoFreeSlots
 }
 
-func (n *NbdDevicePool) ReleaseDevice(ctx context.Context, path string) error {
-	var errs []error
-
-	out, err := exec.CommandContext(ctx, "umount", "--all-targets", path).CombinedOutput()
+// ReleaseDevice will unmount the device from all targets and release the slot.
+// It will return an error if the device is not free and not release the slot — you can retry.
+func (n *DevicePool) ReleaseDevice(path DevicePath) error {
+	// Preventively unmount the device from all targets.
+	out, err := exec.Command("umount", "--all-targets", path).CombinedOutput()
 	if err != nil {
 		// Suppres unmount errors if the device is not mounted.
 		if !strings.HasSuffix(string(out), "not mounted\n") {
-			errs = append(errs, fmt.Errorf("failed to umount device: %w: %s", err, string(out)))
+			return fmt.Errorf("failed to umount device: %w: %s", err, string(out))
 		}
 	}
 
 	slot, err := n.getDeviceSlot(path)
 	if err != nil {
-		errs = append(errs, fmt.Errorf("failed to get slot from path: %w", err))
-
-		return errors.Join(errs...)
-	}
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-
-isFree:
-	for {
-		select {
-		case <-ctx.Done():
-			// We want to ensure that we are not accumulating slots.
-			// We won't be getting slots that are not free though.
-			break isFree
-		case <-ticker.C:
-			free, freeErr := n.isDeviceFree(slot)
-			if freeErr != nil {
-				errs = append(errs, fmt.Errorf("failed to check if device is free: %w", freeErr))
-
-				return errors.Join(errs...)
-			}
-
-			if free {
-				break isFree
-			}
-		}
+		return fmt.Errorf("failed to get slot from path: %w", err)
 	}
 
 	n.mu.Lock()
-	n.slots.Clear(slot)
-	n.mu.Unlock()
+	defer n.mu.Unlock()
 
-	return errors.Join(errs...)
+	free, err := n.isDeviceFree(slot)
+	if err != nil {
+		return fmt.Errorf("failed to check if device is free: %w", err)
+	}
+
+	if !free {
+		return ErrDeviceInUse
+	}
+
+	n.slots.Clear(slot)
+
+	return nil
 }

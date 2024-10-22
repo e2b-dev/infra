@@ -60,7 +60,7 @@ func NewSandbox(
 	dns *dns.DNS,
 	networkPool *NetworkSlotPool,
 	templateCache *storage.TemplateDataCache,
-	nbdPool *nbd.NbdDevicePool,
+	nbdPool *nbd.DevicePool,
 	config *orchestrator.SandboxConfig,
 	traceID string,
 	startedAt time.Time,
