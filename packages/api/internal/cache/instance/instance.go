@@ -8,19 +8,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
-	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
-	InstanceExpiration = time.Second * 15
-	CacheSyncTime      = time.Minute * 3
+	InstanceExpiration      = time.Second * 15
+	CacheSyncTime           = time.Minute * 3
+	instanceCountMeterName  = "api.env.instance.running"
+	instanceCreateMeterName = "api.env.instance.started"
 )
 
 type InstanceInfo struct {
@@ -41,13 +43,28 @@ type InstanceCache struct {
 
 	logger *zap.SugaredLogger
 
-	counter   metric.Int64UpDownCounter
 	analytics analyticscollector.AnalyticsCollectorClient
 
 	mu sync.Mutex
 }
 
-func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap.SugaredLogger, deleteInstance func(data InstanceInfo, purge bool) *api.APIError, initialInstances []*InstanceInfo, counter metric.Int64UpDownCounter) *InstanceCache {
+func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap.SugaredLogger, deleteInstance func(data InstanceInfo, purge bool) *api.APIError, initialInstances []*InstanceInfo) *InstanceCache {
+	err := meters.CreateCounter(
+		"api.env.instance.started",
+		"Counter of started instances.",
+		"{instance}")
+	if err != nil {
+		panic(fmt.Errorf("error creating counter: %w", err))
+	}
+
+	err = meters.CreateUpDownCounter(
+		"api.env.instance.running",
+		"Number of running instances.",
+		"{instance}")
+	if err != nil {
+		panic(fmt.Errorf("error creating counter: %w", err))
+	}
+
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
 	cache := ttlcache.New(
@@ -56,7 +73,6 @@ func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap
 
 	instanceCache := &InstanceCache{
 		cache:     cache,
-		counter:   counter,
 		logger:    logger,
 		analytics: analytics,
 
@@ -85,12 +101,12 @@ func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap
 				logger.Errorf("Error deleting instance (%v)\n: %v", er, err.Err)
 			}
 
-			instanceCache.UpdateCounter(i.Value(), -1)
+			instanceCache.UpdateCounter(i.Value(), -1, false)
 		}
 	})
 
 	for _, instance := range initialInstances {
-		err := instanceCache.Add(*instance)
+		err := instanceCache.Add(*instance, true)
 		if err != nil {
 			fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
 		}

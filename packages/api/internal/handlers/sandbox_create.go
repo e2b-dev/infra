@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/api/internal/meters"
 	"net/http"
 	"time"
 
@@ -22,8 +23,9 @@ import (
 )
 
 const (
-	defaultRequestLimit = 16
-	InstanceIDPrefix    = "i"
+	defaultRequestLimit      = 16
+	InstanceIDPrefix         = "i"
+	createRateLimitMeterName = "api.sandbox.create.parallel_limit"
 )
 
 var postSandboxParallelLimit = semaphore.NewWeighted(defaultRequestLimit)
@@ -100,7 +102,13 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "waiting for create sandbox parallel limit semaphore slot")
 
 	_, rateSpan := a.Tracer.Start(ctx, "rate-limit")
+	counter, err := meters.GetUpDownCounter(createRateLimitMeterName)
+	if err != nil {
+		a.logger.Errorf("error getting counter: %s", err)
+	}
+	counter.Add(ctx, 1)
 	limitErr := postSandboxParallelLimit.Acquire(ctx, 1)
+	counter.Add(ctx, -1)
 	if limitErr != nil {
 		errMsg := fmt.Errorf("error when acquiring parallel lock: %w", limitErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -189,7 +197,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	_, cacheSpan := a.Tracer.Start(ctx, "add-instance-to-cache")
-	if cacheErr := a.instanceCache.Add(instanceInfo); cacheErr != nil {
+	if cacheErr := a.instanceCache.Add(instanceInfo, false); cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 

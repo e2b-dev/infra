@@ -12,10 +12,12 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/meters"
 )
 
 const (
-	buildInfoExpiration = time.Minute * 5 // 5 minutes
+	buildInfoExpiration   = time.Minute * 5 // 5 minutes
+	buildCounterMeterName = "api.env.build.running"
 )
 
 type BuildInfo struct {
@@ -76,14 +78,21 @@ type BuildCache struct {
 	mu sync.Mutex
 }
 
-func NewBuildCache(counter metric.Int64UpDownCounter) *BuildCache {
+func NewBuildCache() *BuildCache {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
+	err := meters.CreateUpDownCounter(
+		"api.env.build.running",
+		"Number of running builds.",
+		"{build}",
+	)
+	if err != nil {
+		fmt.Printf("error creating counter: %s", err)
+	}
 
 	go cache.Start()
 
 	return &BuildCache{
-		cache:   cache,
-		counter: counter,
+		cache: cache,
 	}
 }
 
@@ -161,7 +170,12 @@ func (c *BuildCache) SetDone(envID string, buildID uuid.UUID, status api.Templat
 }
 
 func (c *BuildCache) updateCounter(envID string, buildID, teamID uuid.UUID, value int64) {
-	c.counter.Add(context.Background(), value,
+	counter, err := meters.GetUpDownCounter(buildCounterMeterName)
+	if err != nil {
+		fmt.Printf("error getting counter: %s", err)
+	}
+
+	counter.Add(context.Background(), value,
 		metric.WithAttributes(attribute.String("env_id", envID)),
 		metric.WithAttributes(attribute.String("build_id", buildID.String())),
 		metric.WithAttributes(attribute.String("team_id", teamID.String())),
