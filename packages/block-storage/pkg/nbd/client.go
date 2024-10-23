@@ -77,25 +77,22 @@ func (n *Client) Run(ctx context.Context) error {
 		}
 	}()
 
-	fmt.Printf("client connecting\n")
-
 	err = client.Connect(conn, device, &client.Options{
 		ExportName: "default",
 		// 0 means the server will choose the preferred block size
 		BlockSize: uint32(0),
 		OnConnected: func() {
+			defer close(n.Ready)
+
 			select {
 			case n.Ready <- nil:
 			case <-ctx.Done():
 				n.Ready <- ctx.Err()
 			}
-			fmt.Printf("client connected\n")
 		},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to connect to server: %w", err)
-	} else {
-		fmt.Printf("client connected\n")
 	}
 
 	return nil
