@@ -166,7 +166,7 @@ func NewTemplateDataCache(ctx context.Context, client *storage.Client, bucket st
 
 		err := data.Close()
 		if err != nil {
-			fmt.Printf("failed to cleanup template data for item %s: %v", item.Key(), err)
+			fmt.Printf("[template data cache]: failed to cleanup template data for item %s: %v\n", item.Key(), err)
 		}
 	})
 

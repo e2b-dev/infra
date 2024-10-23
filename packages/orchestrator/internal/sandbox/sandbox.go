@@ -119,13 +119,7 @@ func NewSandbox(
 		}
 	}()
 
-	vmmCtx, _ := tracer.Start(
-		trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
-		"fc-vmm",
-	)
-
 	rootfs, err := storage.NewOverlayFile(
-		vmmCtx,
 		templateData.Rootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 		nbdPool,
@@ -150,9 +144,7 @@ func NewSandbox(
 		// TODO: Handle cleanup if failed.
 		runErr := rootfs.Run()
 		if runErr != nil {
-			errMsg := fmt.Errorf("failed to run rootfs: %w", runErr)
-
-			fmt.Fprintf(os.Stderr, "rootfs overlay error for sandbox %s: %v\n", config.SandboxId, errMsg)
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: rootfs overlay error: %v\n", config.SandboxId, runErr)
 		}
 	}()
 
@@ -165,7 +157,7 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "created uffd")
 
-	uffdErr := fcUffd.Start(childCtx, tracer)
+	uffdErr := fcUffd.Start(childCtx, tracer, config.SandboxId)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -177,7 +169,6 @@ func NewSandbox(
 
 	fc, err := NewFC(
 		childCtx,
-		vmmCtx,
 		tracer,
 		ips,
 		sandboxFiles,

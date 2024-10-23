@@ -36,8 +36,6 @@ type fc struct {
 	uffdReady chan struct{}
 	snapfile  *storage.SimpleFile
 
-	ctx context.Context
-
 	cmd *exec.Cmd
 
 	stdout *io.PipeReader
@@ -168,7 +166,6 @@ func (fc *fc) loadSnapshot(
 
 func NewFC(
 	ctx context.Context,
-	vmmCtx context.Context,
 	tracer trace.Tracer,
 	slot IPSlot,
 	files *templateStorage.SandboxFiles,
@@ -237,7 +234,6 @@ func NewFC(
 		cmd:                   cmd,
 		stdout:                cmdStdoutReader,
 		stderr:                cmdStderrReader,
-		ctx:                   vmmCtx,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		metadata:              mmdsMetadata,
 		uffdSocketPath:        files.SandboxUffdSocketPath(),
@@ -256,31 +252,21 @@ func (fc *fc) start(
 		defer func() {
 			readerErr := fc.stdout.Close()
 			if readerErr != nil {
-				errMsg := fmt.Errorf("error closing vmm stdout reader: %w", readerErr)
-				telemetry.ReportError(fc.ctx, errMsg)
+				fmt.Fprintf(os.Stderr, "[sandbox %s]: error closing fc stdout reader: %v\n", fc.metadata.SandboxId, readerErr)
 			}
 		}()
 
 		scanner := bufio.NewScanner(fc.stdout)
 
 		for scanner.Scan() {
-			// line := scanner.Text()
+			line := scanner.Text()
 
-			// msg := fmt.Sprintf("[firecracker stdout]: %s — %v", fc.metadata.SandboxId, line)
-
-			// telemetry.ReportEvent(fc.ctx, msg,
-			// 	attribute.String("type", "stdout"),
-			// )
+			fmt.Fprintf(os.Stdout, "[sandbox %s]: stdout: %s\n", fc.metadata.SandboxId, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			errMsg := fmt.Errorf("error reading vmm stdout: %w", readerErr)
-			telemetry.ReportError(fc.ctx, errMsg)
-
-			fmt.Fprintf(os.Stderr, "[firecracker stdout error]: %s — %v\n", fc.metadata.SandboxId, errMsg)
-		} else {
-			telemetry.ReportEvent(fc.ctx, "vmm stdout reader closed")
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: error reading fc stdout: %v\n", fc.metadata.SandboxId, readerErr)
 		}
 	}()
 
@@ -288,8 +274,7 @@ func (fc *fc) start(
 		defer func() {
 			readerErr := fc.stderr.Close()
 			if readerErr != nil {
-				errMsg := fmt.Errorf("error closing vmm stdout reader: %w", readerErr)
-				telemetry.ReportError(fc.ctx, errMsg)
+				fmt.Fprintf(os.Stderr, "[sandbox %s]: error closing fc stderr reader: %v\n", fc.metadata.SandboxId, readerErr)
 			}
 		}()
 
@@ -298,22 +283,12 @@ func (fc *fc) start(
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			msg := fmt.Sprintf("[firecracker stderr]: %s — %v", fc.metadata.SandboxId, line)
-
-			// telemetry.ReportEvent(fc.ctx, msg,
-			// 	attribute.String("type", "stderr"),
-			// )
-
-			fmt.Fprintln(os.Stderr, msg)
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: stderr: %s\n", fc.metadata.SandboxId, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			errMsg := fmt.Errorf("error closing vmm stderr reader: %w", readerErr)
-			telemetry.ReportError(fc.ctx, errMsg)
-			fmt.Fprintf(os.Stderr, "[firecracker stderr error]: %s — %v\n", fc.metadata.SandboxId, errMsg)
-		} else {
-			telemetry.ReportEvent(fc.ctx, "vmm stderr reader closed")
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: error reading fc stderr: %v\n", fc.metadata.SandboxId, readerErr)
 		}
 	}()
 
@@ -358,9 +333,9 @@ func (fc *fc) start(
 
 	defer func() {
 		if err != nil {
-			err := fc.stop()
-			if err != nil {
-				errMsg := fmt.Errorf("error stopping FC process: %w", err)
+			stopErr := fc.stop()
+			if stopErr != nil {
+				errMsg := fmt.Errorf("error stopping FC process: %w", stopErr)
 
 				telemetry.ReportError(childCtx, errMsg)
 			}

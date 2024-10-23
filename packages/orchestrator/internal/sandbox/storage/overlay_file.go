@@ -20,7 +20,6 @@ type OverlayFile struct {
 }
 
 func NewOverlayFile(
-	ctx context.Context,
 	storage *block_storage.BlockStorage,
 	cachePath string,
 	pool *nbd.DevicePool,
@@ -40,7 +39,7 @@ func NewOverlayFile(
 		return nil, fmt.Errorf("error creating nbd client: %w", err)
 	}
 
-	ctx, cancelCtx := context.WithCancel(ctx)
+	ctx, cancelCtx := context.WithCancel(context.Background())
 
 	return &OverlayFile{
 		device:    device,

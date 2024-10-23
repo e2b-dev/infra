@@ -73,6 +73,7 @@ type Uffd struct {
 func (u *Uffd) Start(
 	ctx context.Context,
 	tracer trace.Tracer,
+	sandboxId string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-uffd")
 	defer childSpan.End()
@@ -94,7 +95,7 @@ func (u *Uffd) Start(
 	telemetry.ReportEvent(childCtx, "set socket permissions")
 
 	go func() {
-		u.exitChan <- u.handle(u.memfile)
+		u.exitChan <- u.handle(u.memfile, sandboxId)
 		close(u.exitChan)
 	}()
 
@@ -155,7 +156,7 @@ func (u *Uffd) receiveSetup() (*UffdSetup, error) {
 	}, nil
 }
 
-func (u *Uffd) handle(memfile *blockStorage.BlockStorage) (err error) {
+func (u *Uffd) handle(memfile *blockStorage.BlockStorage, sandboxId string) (err error) {
 	setup, err := u.receiveSetup()
 	if err != nil {
 		return fmt.Errorf("failed to receive setup message from firecracker: %w", err)
@@ -165,13 +166,13 @@ func (u *Uffd) handle(memfile *blockStorage.BlockStorage) (err error) {
 	defer func() {
 		closeErr := syscall.Close(int(uffd))
 		if closeErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to close uffd at path %s: %v\n", u.socketPath, closeErr)
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: failed to close uffd at path %s: %v\n", sandboxId, u.socketPath, closeErr)
 		}
 	}()
 
 	u.PollReady <- struct{}{}
 
-	err = Serve(int(uffd), setup.Mappings, memfile, u.exitReader.Fd(), u.Stop)
+	err = Serve(int(uffd), setup.Mappings, memfile, u.exitReader.Fd(), u.Stop, sandboxId)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}

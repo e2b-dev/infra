@@ -26,14 +26,14 @@ func main() {
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to listen: %v", err)
+		fmt.Fprintf(os.Stderr, "[orchestrator]: failed to listen: %v\n", err)
 
 		return
 	}
 
 	logger, err := logging.New(env.IsLocal())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error initializing logging\n: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[orchestrator]: error initializing logging\n: %v\n", err)
 
 		return
 	}
@@ -41,10 +41,10 @@ func main() {
 	// Create an instance of our handler which satisfies the generated interface
 	s := server.New(logger.Desugar())
 
-	fmt.Fprintf(os.Stderr, "Starting server on port %d\n", *port)
+	fmt.Fprintf(os.Stdout, "[orchestrator]: starting server on port %d\n", *port)
 
-	if err := s.Serve(lis); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to serve: %v", err)
+	if serverErr := s.Serve(lis); serverErr != nil {
+		fmt.Fprintf(os.Stderr, "[orchestrator]: failed to serve: %v\n", serverErr)
 
 		return
 	}

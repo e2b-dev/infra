@@ -41,7 +41,7 @@ func (p *NetworkSlotPool) Start(ctx context.Context, tracer trace.Tracer, consul
 		default:
 			ips, err := NewSlot(ctx, tracer, consulClient)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to create network: %v\n", err)
+				fmt.Fprintf(os.Stderr, "[network slot pool]: failed to create network: %v\n", err)
 
 				continue
 			}
@@ -50,7 +50,7 @@ func (p *NetworkSlotPool) Start(ctx context.Context, tracer trace.Tracer, consul
 			if err != nil {
 				ips.Release(ctx, tracer, consulClient)
 
-				fmt.Fprintf(os.Stderr, "failed to create network: %v\n", err)
+				fmt.Fprintf(os.Stderr, "[network slot pool]: failed to create network: %v\n", err)
 
 				continue
 			}

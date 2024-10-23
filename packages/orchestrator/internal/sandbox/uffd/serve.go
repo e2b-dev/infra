@@ -36,7 +36,7 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 	return nil, fmt.Errorf("address %d not found in any mapping", addr)
 }
 
-func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockStorage, fd uintptr, stop func() error) error {
+func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockStorage, fd uintptr, stop func() error, sandboxId string) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: int32(fd), Events: unix.POLLIN},
@@ -92,7 +92,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {
-					fmt.Printf("recovered from panic in uffd serve: %v\n", r)
+					fmt.Printf("[sandbox %s]: recovered from panic in uffd serve: %v\n", sandboxId, r)
 				}
 			}()
 
