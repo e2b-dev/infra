@@ -69,7 +69,7 @@ func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
 	}
 }
 
-func (d *DNS) Start(address string) {
+func (d *DNS) Start(address string) error {
 	mux := resolver.NewServeMux()
 
 	mux.HandleFunc(".", d.handleDNSRequest)
@@ -80,6 +80,8 @@ func (d *DNS) Start(address string) {
 
 	err := server.ListenAndServe()
 	if err != nil {
-		log.Fatalf("Failed to start server: %s\n", err.Error())
+		return fmt.Errorf("failed to start server: %w", err)
 	}
+
+	return nil
 }

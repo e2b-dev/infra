@@ -2,9 +2,7 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"os"
 
 	"cloud.google.com/go/storage"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
@@ -62,27 +60,30 @@ func New(logger *zap.Logger) *grpc.Server {
 	ctx := context.Background()
 
 	dns := dns.New()
-	go dns.Start("127.0.0.1:53")
+	go func() {
+		err := dns.Start("127.0.0.1:53")
+		if err != nil {
+			log.Fatalf("DNS server error: %v\n", err)
+		}
+	}()
 
 	tracer := otel.Tracer(ServiceName)
 
 	consulClient, err := consul.New(ctx)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to create consul client: %v", err)
 	}
 
 	client, err := storage.NewClient(ctx, storage.WithJSONReads())
 	if err != nil {
-		errMsg := fmt.Errorf("failed to create GCS client: %v", err)
-		panic(errMsg)
+		log.Fatalf("failed to create GCS client: %v", err)
 	}
 
 	templateCache := snapshotStorage.NewTemplateDataCache(ctx, client, templateStorage.BucketName)
 
 	nbdPool, err := nbd.NewDevicePool()
 	if err != nil {
-		errMsg := fmt.Errorf("failed to create NBD pool: %v", err)
-		panic(errMsg)
+		log.Fatalf("failed to create NBD pool: %v", err)
 	}
 
 	networkPool := sandbox.NewNetworkSlotPool(ipSlotPoolSize)
@@ -90,7 +91,7 @@ func New(logger *zap.Logger) *grpc.Server {
 	go func() {
 		poolErr := networkPool.Start(ctx, tracer, consulClient)
 		if poolErr != nil {
-			fmt.Fprintf(os.Stderr, "network pool error: %v\n", poolErr)
+			log.Fatalf("network pool error: %v\n", poolErr)
 		}
 	}()
 
