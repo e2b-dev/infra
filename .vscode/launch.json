@@ -26,7 +26,7 @@
       "type": "go",
       "request": "launch",
       "mode": "debug",
-      "buildFlags": "-race -gcflags=all=\"-N -l\"",
+      "buildFlags": "-race",
       "program": "${workspaceFolder}/packages/block-storage/cmd/mock-nbd-overlay/main.go",
       "console": "integratedTerminal",
       "asRoot": true,
@@ -40,7 +40,7 @@
       "type": "go",
       "request": "launch",
       "mode": "debug",
-      "buildFlags": "-race -gcflags=all=\"-N -l\"",
+      "buildFlags": "-race",
       "program": "${workspaceFolder}/packages/orchestrator/cmd/mock-sandbox/mock.go",
       "env": {
         "NODE_ID": "test-client-22",
@@ -68,7 +68,7 @@
       "type": "go",
       "request": "launch",
       "mode": "debug",
-      "buildFlags": "-race -gcflags=all=\"-N -l\"",
+      "buildFlags": "-race",
       "program": "${workspaceFolder}/packages/api/main.go",
       "args": [
         "--port",
