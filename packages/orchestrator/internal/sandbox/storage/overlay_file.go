@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	block_storage "github.com/e2b-dev/infra/packages/block-storage/pkg"
@@ -13,8 +12,11 @@ import (
 
 type OverlayFile struct {
 	device *block_storage.BlockStorageOverlay
-	server *nbd.NbdServer
-	client *nbd.NbdClient
+	server *nbd.Server
+	client *nbd.Client
+
+	ctx       context.Context
+	cancelCtx context.CancelFunc
 }
 
 func NewOverlayFile(
@@ -24,32 +26,36 @@ func NewOverlayFile(
 	pool *nbd.DevicePool,
 	socketPath string,
 ) (*OverlayFile, error) {
-	device, err := storage.CreateOverlay(cachePath)
+	device, err := storage.NewOverlay(cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating overlay: %w", err)
 	}
 
-	server, err := nbd.NewNbdServer(ctx, func() (block.Device, error) {
+	server := nbd.NewServer(socketPath, func() (block.Device, error) {
 		return device, nil
-	}, socketPath)
+	})
+
+	client, err := server.NewClient(pool)
 	if err != nil {
-		return nil, fmt.Errorf("error creating nbd: %w", err)
+		return nil, fmt.Errorf("error creating nbd client: %w", err)
 	}
 
-	client := server.CreateClient(ctx, pool)
+	ctx, cancelCtx := context.WithCancel(ctx)
 
 	return &OverlayFile{
-		device: device,
-		server: server,
-		client: client,
+		device:    device,
+		server:    server,
+		client:    client,
+		ctx:       ctx,
+		cancelCtx: cancelCtx,
 	}, nil
 }
 
 func (o *OverlayFile) Run() error {
-	eg := errgroup.Group{}
+	eg, ctx := errgroup.WithContext(o.ctx)
 
 	eg.Go(func() error {
-		err := o.server.Start()
+		err := o.server.Run(ctx)
 		if err != nil {
 			return fmt.Errorf("error starting nbd server: %w", err)
 		}
@@ -58,7 +64,7 @@ func (o *OverlayFile) Run() error {
 	})
 
 	eg.Go(func() error {
-		err := o.client.Start()
+		err := o.client.Run(ctx)
 		if err != nil {
 			return fmt.Errorf("error starting nbd client: %w", err)
 		}
@@ -75,26 +81,24 @@ func (o *OverlayFile) Run() error {
 }
 
 func (o *OverlayFile) Close() error {
-	var errs []error
+	o.cancelCtx()
 
-	err := o.client.Close()
+	// TODO: We should wait for the client and server to close before closing the device.
+
+	err := o.device.Close()
 	if err != nil {
-		errs = append(errs, err)
+		return fmt.Errorf("error closing overlay file: %w", err)
 	}
 
-	err = o.server.Close()
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	err = o.device.Close()
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	return errors.Join(errs...)
+	return nil
 }
 
+// Path can only be called once.
 func (o *OverlayFile) Path() (string, error) {
-	return o.client.GetPath()
+	err := <-o.client.Ready
+	if err != nil {
+		return "", fmt.Errorf("error getting nbd path: %w", err)
+	}
+
+	return o.client.DevicePath, nil
 }

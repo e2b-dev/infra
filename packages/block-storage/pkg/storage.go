@@ -80,14 +80,6 @@ func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
 	return n, nil
 }
 
-func (d *BlockStorage) CreateOverlay(cachePath string) (*BlockStorageOverlay, error) {
-	overlay, err := newBlockStorageOverlay(d.source, cachePath, d.size, d.blockSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create bucket overlay: %w", err)
-	}
-
-	return overlay, nil
-}
 
 func (d *BlockStorage) Size() (int64, error) {
 	return d.size, nil

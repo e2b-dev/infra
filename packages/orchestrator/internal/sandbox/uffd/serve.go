@@ -90,6 +90,12 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 		}
 
 		eg.Go(func() error {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("recovered from panic in uffd serve: %v\n", r)
+				}
+			}()
+
 			msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
 			if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
 				stop()

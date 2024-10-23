@@ -1,0 +1,102 @@
+package nbd
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"os"
+
+	"github.com/pojntfx/go-nbd/pkg/client"
+)
+
+type Client struct {
+	serverReady chan struct{}
+	// This channel will only output once, either an error or nil.
+	// Is is not closed.
+	Ready chan error
+
+	device *os.File
+	pool   *DevicePool
+
+	socketPath string
+	DevicePath string
+}
+
+func (n *Server) NewClient(pool *DevicePool) (*Client, error) {
+	path, err := pool.GetDevice()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nbd device: %w", err)
+	}
+
+	return &Client{
+		serverReady: n.ready,
+		Ready:       make(chan error),
+		socketPath:  n.socketPath,
+		pool:        pool,
+		DevicePath:  path,
+	}, nil
+}
+
+func (n *Client) Run(ctx context.Context) error {
+	defer func() {
+		// TODO: Ensure the device is free.
+		releaseErr := n.pool.ReleaseDevice(n.DevicePath)
+		if releaseErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to release device: %s, %v\n", n.DevicePath, releaseErr)
+		}
+	}()
+
+	select {
+	case <-n.serverReady:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	d := &net.Dialer{}
+
+	conn, err := d.DialContext(ctx, "unix", n.socketPath)
+	if err != nil {
+		return fmt.Errorf("failed to connect to server: %w", err)
+	}
+
+	defer conn.Close()
+
+	device, err := os.OpenFile(n.DevicePath, os.O_RDWR, 0o644)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+
+	defer device.Close()
+
+	go func() {
+		<-ctx.Done()
+
+		disconnectErr := client.Disconnect(n.device)
+		if disconnectErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to disconnect from server: %v\n", disconnectErr)
+		}
+	}()
+
+	fmt.Printf("client connecting\n")
+
+	err = client.Connect(conn, device, &client.Options{
+		ExportName: "default",
+		// 0 means the server will choose the preferred block size
+		BlockSize: uint32(0),
+		OnConnected: func() {
+			select {
+			case n.Ready <- nil:
+			case <-ctx.Done():
+				n.Ready <- ctx.Err()
+			}
+			fmt.Printf("client connected\n")
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect to server: %w", err)
+	} else {
+		fmt.Printf("client connected\n")
+	}
+
+	return nil
+}

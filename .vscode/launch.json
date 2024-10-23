@@ -22,12 +22,26 @@
   ],
   "configurations": [
     {
+      "name": "Debug NBD test",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "buildFlags": "-race -gcflags=all=\"-N -l\"",
+      "program": "${workspaceFolder}/packages/block-storage/cmd/mock-nbd-overlay/main.go",
+      "console": "integratedTerminal",
+      "asRoot": true,
+      "args": [
+        "-file",
+        "${workspaceFolder}/packages/block-storage/.test/test.ext4"
+      ],
+    },
+    {
       "name": "Debug orchestrastor test",
       "type": "go",
       "request": "launch",
       "mode": "debug",
       "buildFlags": "-race -gcflags=all=\"-N -l\"",
-      "program": "${workspaceFolder}/packages/orchestrator/main.go",
+      "program": "${workspaceFolder}/packages/orchestrator/cmd/mock-sandbox/mock.go",
       "env": {
         "NODE_ID": "test-client-22",
         "CONSUL_TOKEN": "${env:CONSUL_TOKEN}",

@@ -15,6 +15,15 @@ type BlockStorageOverlay struct {
 	blockSize int64
 }
 
+func (d *BlockStorage) NewOverlay(cachePath string) (*BlockStorageOverlay, error) {
+	overlay, err := newBlockStorageOverlay(d.source, cachePath, d.size, d.blockSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create bucket overlay: %w", err)
+	}
+
+	return overlay, nil
+}
+
 func newBlockStorageOverlay(base io.ReaderAt, cachePath string, size, blockSize int64) (*BlockStorageOverlay, error) {
 	cache, err := cache.NewMmapCache(size, blockSize, cachePath)
 	if err != nil {
