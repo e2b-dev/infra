@@ -12,7 +12,7 @@ import (
 )
 
 func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
-	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostSnapshotIP(), consts.OldEnvdServerPort)
+	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostIP(), consts.OldEnvdServerPort)
 
 	request, err := http.NewRequestWithContext(ctx, "POST", address, nil)
 	if err != nil {
@@ -38,7 +38,7 @@ type PostInitJSONBody struct {
 }
 
 func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string) error {
-	address := fmt.Sprintf("http://%s:%d/init", s.slot.HostSnapshotIP(), consts.DefaultEnvdServerPort)
+	address := fmt.Sprintf("http://%s:%d/init", s.slot.HostIP(), consts.DefaultEnvdServerPort)
 
 	jsonBody := &PostInitJSONBody{
 		EnvVars: &envVars,

@@ -19,11 +19,11 @@ const (
 	octetSize = 256
 	octetMax  = octetSize - 1
 	// This is the maximum number of IP addresses that can be allocated.
-	IPSlotsSize = octetSize * octetSize
+	ipSlotsSize = octetSize * octetSize
 
-	HostSnapshotMask = 32
-	VMask            = 30
-	TapMask          = 30
+	hostMask = 32
+	vMask    = 30
+	tapMask  = 30
 )
 
 type IPSlot struct {
@@ -44,10 +44,6 @@ func (ips *IPSlot) getOctets() (int, int) {
 	return octet, rem
 }
 
-func (ips *IPSlot) HostIP() string {
-	return ips.HostSnapshotIP()
-}
-
 func (ips *IPSlot) VpeerIP() string {
 	firstOctet, secondOctet := ips.getOctets()
 
@@ -61,7 +57,7 @@ func (ips *IPSlot) VethIP() string {
 }
 
 func (ips *IPSlot) VMask() int {
-	return VMask
+	return vMask
 }
 
 func (ips *IPSlot) VethName() string {
@@ -76,21 +72,23 @@ func (ips *IPSlot) VpeerCIDR() string {
 	return fmt.Sprintf("%s/%d", ips.VpeerIP(), ips.VMask())
 }
 
-func (ips *IPSlot) HostSnapshotCIDR() string {
-	return fmt.Sprintf("%s/%d", ips.HostSnapshotIP(), ips.HostSnapshotMask())
+func (ips *IPSlot) HostCIDR() string {
+	return fmt.Sprintf("%s/%d", ips.HostIP(), ips.HostMask())
 }
 
-func (ips *IPSlot) HostSnapshotMask() int {
-	return HostSnapshotMask
+func (ips *IPSlot) HostMask() int {
+	return hostMask
 }
 
-func (ips *IPSlot) HostSnapshotIP() string {
+// IP address for the sandbox from the host machine.
+// You can use it to make requests to the sandbox.
+func (ips *IPSlot) HostIP() string {
 	firstOctet, secondOctet := ips.getOctets()
 
 	return fmt.Sprintf("192.168.%d.%d", firstOctet, secondOctet)
 }
 
-func (ips *IPSlot) NamespaceSnapshotIP() string {
+func (ips *IPSlot) NamespaceIP() string {
 	return "169.254.0.21"
 }
 
@@ -107,7 +105,7 @@ func (ips *IPSlot) TapIP() string {
 }
 
 func (ips *IPSlot) TapMask() int {
-	return TapMask
+	return tapMask
 }
 
 func (ips *IPSlot) TapCIDR() string {
@@ -145,7 +143,7 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 	}
 
 	for randomTry := 1; randomTry <= 10; randomTry++ {
-		slotIdx := rand.Intn(IPSlotsSize)
+		slotIdx := rand.Intn(ipSlotsSize)
 		key := getKVKey(slotIdx)
 
 		maybeSlot, err := trySlot(slotIdx, key)
@@ -169,7 +167,7 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
 
-		for slotIdx := 0; slotIdx < IPSlotsSize; slotIdx++ {
+		for slotIdx := 0; slotIdx < ipSlotsSize; slotIdx++ {
 			key := getKVKey(slotIdx)
 
 			if slices.Contains(reservedKeys, key) {

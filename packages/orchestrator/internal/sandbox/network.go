@@ -91,8 +91,8 @@ func (ips *IPSlot) CreateNetwork(
 		attribute.String("sandbox.slot.veth.cidr", ips.VethCIDR()),
 		attribute.String("sandbox.slot.vpeer.cidr", ips.VpeerCIDR()),
 		attribute.String("sandbox.slot.tap.cidr", ips.TapCIDR()),
-		attribute.String("sandbox.slot.host_snapshot.cidr", ips.HostSnapshotCIDR()),
-		attribute.String("sandbox.slot.namespaces_snapshot.ip", ips.NamespaceSnapshotIP()),
+		attribute.String("sandbox.slot.host_snapshot.cidr", ips.HostCIDR()),
+		attribute.String("sandbox.slot.namespaces_snapshot.ip", ips.NamespaceIP()),
 		attribute.String("sandbox.slot.tap.ip", ips.TapIP()),
 		attribute.String("sandbox.slot.tap.name", ips.TapName()),
 		attribute.String("sandbox.slot.veth.name", ips.VethName()),
@@ -380,7 +380,7 @@ func (ips *IPSlot) CreateNetwork(
 	telemetry.ReportEvent(childCtx, "Initialized iptables")
 
 	// Add NAT routing rules to NS
-	err = tables.Append("nat", "POSTROUTING", "-o", ips.VpeerName(), "-s", ips.NamespaceSnapshotIP(), "-j", "SNAT", "--to", ips.HostSnapshotIP())
+	err = tables.Append("nat", "POSTROUTING", "-o", ips.VpeerName(), "-s", ips.NamespaceIP(), "-j", "SNAT", "--to", ips.HostIP())
 	if err != nil {
 		errMsg := fmt.Errorf("error creating postrouting rule to vpeer: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -390,7 +390,7 @@ func (ips *IPSlot) CreateNetwork(
 
 	telemetry.ReportEvent(childCtx, "Created postrouting rule to vpeer")
 
-	err = tables.Append("nat", "PREROUTING", "-i", ips.VpeerName(), "-d", ips.HostSnapshotIP(), "-j", "DNAT", "--to", ips.NamespaceSnapshotIP())
+	err = tables.Append("nat", "PREROUTING", "-i", ips.VpeerName(), "-d", ips.HostIP(), "-j", "DNAT", "--to", ips.NamespaceIP())
 	if err != nil {
 		errMsg := fmt.Errorf("error creating postrouting rule from vpeer: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -422,7 +422,7 @@ func (ips *IPSlot) CreateNetwork(
 	telemetry.ReportEvent(childCtx, "Set network namespace back")
 
 	// Add routing from host to FC namespace
-	_, ipNet, err = net.ParseCIDR(ips.HostSnapshotCIDR())
+	_, ipNet, err = net.ParseCIDR(ips.HostCIDR())
 	if err != nil {
 		errMsg := fmt.Errorf("error parsing host snapshot CIDR: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -467,7 +467,7 @@ func (ips *IPSlot) CreateNetwork(
 	telemetry.ReportEvent(childCtx, "Created forwarding rule from default gateway")
 
 	// Add host postrouting rules
-	err = tables.Append("nat", "POSTROUTING", "-s", ips.HostSnapshotCIDR(), "-o", hostDefaultGateway, "-j", "MASQUERADE")
+	err = tables.Append("nat", "POSTROUTING", "-s", ips.HostCIDR(), "-o", hostDefaultGateway, "-j", "MASQUERADE")
 	if err != nil {
 		errMsg := fmt.Errorf("error creating postrouting rule: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -509,7 +509,7 @@ func (ipSlot *IPSlot) RemoveNetwork(ctx context.Context, tracer trace.Tracer) er
 		}
 
 		// Delete host postrouting rules
-		err = tables.Delete("nat", "POSTROUTING", "-s", ipSlot.HostSnapshotCIDR(), "-o", hostDefaultGateway, "-j", "MASQUERADE")
+		err = tables.Delete("nat", "POSTROUTING", "-s", ipSlot.HostCIDR(), "-o", hostDefaultGateway, "-j", "MASQUERADE")
 		if err != nil {
 			errMsg := fmt.Errorf("error deleting host postrouting rule: %w", err)
 			telemetry.ReportCriticalError(childCtx, errMsg)
@@ -519,7 +519,7 @@ func (ipSlot *IPSlot) RemoveNetwork(ctx context.Context, tracer trace.Tracer) er
 	}
 
 	// Delete routing from host to FC namespace
-	_, ipNet, err := net.ParseCIDR(ipSlot.HostSnapshotCIDR())
+	_, ipNet, err := net.ParseCIDR(ipSlot.HostCIDR())
 	if err != nil {
 		errMsg := fmt.Errorf("error parsing host snapshot CIDR: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
