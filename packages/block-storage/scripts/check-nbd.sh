@@ -2,15 +2,13 @@
 
 set -euo pipefail
 
-output=""
+count=0
 
 for dev in /dev/nbd*; do
     if [ -f "/sys/block/${dev##*/}/pid" ]; then
-        output="$output\n$dev"
+        count=$((count + 1))
         echo "$dev is in use"
     fi
 done
 
-count=$(echo "$output" | wc -l)
-
-echo "Number of NBD devices in use: $((count - 1))"
+echo "Number of NBD devices in use: $count"
