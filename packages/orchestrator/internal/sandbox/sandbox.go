@@ -89,11 +89,9 @@ func NewSandbox(
 
 	defer func() {
 		if err != nil {
-			errMsg := networkPool.Release(ctx, tracer, consul, ips)
+			errMsg := networkPool.Release(consul, ips)
 			if errMsg != nil {
 				telemetry.ReportError(childCtx, errMsg)
-			} else {
-				telemetry.ReportEvent(childCtx, "released slot and removed network")
 			}
 		}
 	}()
@@ -131,20 +129,20 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "created overlay file")
 
+	go func() {
+		// TODO: Handle cleanup if failed.
+		runErr := rootfs.Run()
+		if runErr != nil {
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: rootfs overlay error: %v\n", config.SandboxId, runErr)
+		}
+	}()
+
 	defer func() {
 		if err != nil {
 			rootfsErr := rootfs.Close()
 			if rootfsErr != nil {
 				telemetry.ReportError(childCtx, fmt.Errorf("failed to close rootfs: %w", rootfsErr))
 			}
-		}
-	}()
-
-	go func() {
-		// TODO: Handle cleanup if failed.
-		runErr := rootfs.Run()
-		if runErr != nil {
-			fmt.Fprintf(os.Stderr, "[sandbox %s]: rootfs overlay error: %v\n", config.SandboxId, runErr)
 		}
 	}()
 
@@ -158,7 +156,7 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "created uffd")
 
 	uffdErr := fcUffd.Start(childCtx, tracer, config.SandboxId)
-	if err != nil {
+	if uffdErr != nil {
 		errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
@@ -181,7 +179,7 @@ func NewSandbox(
 		},
 		templateData.Snapfile,
 		rootfs,
-		fcUffd.PollReady,
+		fcUffd.Ready,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", err)
@@ -189,10 +187,7 @@ func NewSandbox(
 
 	err = fc.start(childCtx, tracer)
 	if err != nil {
-		var fcUffdErr error
-		if fcUffd != nil {
-			fcUffdErr = fcUffd.Stop()
-		}
+		fcUffdErr := fcUffd.Stop()
 
 		errMsg := fmt.Errorf("failed to start FC: %w", err)
 		telemetry.ReportCriticalError(childCtx, errors.Join(errMsg, fcUffdErr))
@@ -215,11 +210,9 @@ func NewSandbox(
 		stopOnce: sync.OnceValue(func() error {
 			var errs []error
 
-			if fcUffd != nil {
-				uffdErr := fcUffd.Stop()
-				if uffdErr != nil {
-					errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdErr))
-				}
+			uffdErr := fcUffd.Stop()
+			if uffdErr != nil {
+				errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdErr))
 			}
 
 			fcErr := fc.stop()
@@ -266,24 +259,17 @@ func NewSandbox(
 }
 
 func (s *Sandbox) CleanupAfterFCStop(
-	ctx context.Context,
-	tracer trace.Tracer,
 	consul *consul.Client,
 	dns *dns.DNS,
 	sandboxID string,
-) {
-	childCtx, childSpan := tracer.Start(ctx, "delete-sandbox")
-	defer childSpan.End()
+) error {
+	var errs []error
 
 	dns.Remove(sandboxID)
-	telemetry.ReportEvent(childCtx, "removed sandbox from dns")
 
 	rootfsErr := s.rootfs.Close()
 	if rootfsErr != nil {
-		errMsg := fmt.Errorf("failed to close rootfs: %w", rootfsErr)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "closed rootfs overlay for sandbox")
+		errs = append(errs, fmt.Errorf("failed to close rootfs: %w", rootfsErr))
 	}
 
 	for _, file := range []string{
@@ -293,22 +279,19 @@ func (s *Sandbox) CleanupAfterFCStop(
 	} {
 		err := os.RemoveAll(file)
 		if err != nil {
-			errMsg := fmt.Errorf("failed to delete %s: %w", file, err)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-		} else {
-			telemetry.ReportEvent(childCtx, fmt.Sprintf("deleted %s", file))
+			errs = append(errs, fmt.Errorf("failed to delete %s: %w", file, err))
 		}
 	}
 
-	err := s.networkPool.Release(childCtx, tracer, consul, s.slot)
+	err := s.networkPool.Release(consul, s.slot)
 	if err != nil {
-		telemetry.ReportCriticalError(childCtx, fmt.Errorf("failed to release slot: %w", err))
-	} else {
-		telemetry.ReportEvent(childCtx, "released slot and removed network")
+		errs = append(errs, fmt.Errorf("failed to release slot: %w", err))
 	}
+
+	return errors.Join(errs...)
 }
 
-func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) error {
+func (s *Sandbox) Wait() error {
 	uffdExit := make(chan error)
 	fcExit := make(chan error)
 
@@ -326,30 +309,23 @@ func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) error {
 
 	select {
 	case fcErr := <-fcExit:
-		stopErr := s.Stop(ctx, tracer)
+		stopErr := s.Stop()
 		uffdErr := <-uffdExit
 
 		return errors.Join(fcErr, stopErr, uffdErr)
 	case uffdErr := <-uffdExit:
-		stopErr := s.Stop(ctx, tracer)
+		stopErr := s.Stop()
 		fcErr := <-fcExit
 
 		return errors.Join(uffdErr, stopErr, fcErr)
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 }
 
-func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) error {
-	childCtx, childSpan := tracer.Start(ctx, "stop-sandbox", trace.WithAttributes())
-	defer childSpan.End()
-
+func (s *Sandbox) Stop() error {
 	err := s.stopOnce()
 	if err != nil {
 		return fmt.Errorf("failed to stop sandbox: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "stopped sandbox")
 
 	return nil
 }

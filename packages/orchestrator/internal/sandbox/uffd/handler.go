@@ -39,7 +39,7 @@ func New(
 
 	return &Uffd{
 		exitChan:   make(chan error, 1),
-		PollReady:  make(chan struct{}, 1),
+		Ready:      make(chan struct{}, 1),
 		exitReader: pRead,
 		exitWriter: pWrite,
 		memfile:    memfile,
@@ -56,8 +56,8 @@ func New(
 }
 
 type Uffd struct {
-	exitChan  chan error
-	PollReady chan struct{}
+	exitChan chan error
+	Ready    chan struct{}
 
 	exitReader *os.File
 	exitWriter *os.File
@@ -170,7 +170,7 @@ func (u *Uffd) handle(memfile *blockStorage.BlockStorage, sandboxId string) (err
 		}
 	}()
 
-	u.PollReady <- struct{}{}
+	u.Ready <- struct{}{}
 
 	err = Serve(int(uffd), setup.Mappings, memfile, u.exitReader.Fd(), u.Stop, sandboxId)
 	if err != nil {
@@ -183,7 +183,7 @@ func (u *Uffd) handle(memfile *blockStorage.BlockStorage, sandboxId string) (err
 func (u *Uffd) Wait() error {
 	handleErr := <-u.exitChan
 
-	close(u.PollReady)
+	close(u.Ready)
 
 	closeErr := u.lis.Close()
 	writerErr := u.exitWriter.Close()

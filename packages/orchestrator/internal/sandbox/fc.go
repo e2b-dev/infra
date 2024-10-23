@@ -117,15 +117,10 @@ func (fc *fc) loadSnapshot(
 		return errMsg
 	}
 
-	if uffdReady != nil {
-		select {
-		case <-childCtx.Done():
-			return childCtx.Err()
-		case <-uffdReady:
-			telemetry.ReportEvent(childCtx, "uffd polling ready")
-
-			break
-		}
+	select {
+	case <-childCtx.Done():
+		return fmt.Errorf("context canceled while waiting for uffd ready: %w", childCtx.Err())
+	case <-uffdReady:
 	}
 
 	state := models.VMStateResumed

@@ -57,8 +57,6 @@ func New(logger *zap.Logger) *grpc.Server {
 		),
 	)
 
-	log.Println("Initializing orchestrator server")
-
 	ctx := context.Background()
 
 	dns := dns.New()
@@ -90,8 +88,9 @@ func New(logger *zap.Logger) *grpc.Server {
 
 	networkPool := sandbox.NewNetworkSlotPool(ipSlotPoolSize)
 
+	// We start the pool last to avoid allocation network slots if the other components fail to initialize.
 	go func() {
-		poolErr := networkPool.Start(ctx, tracer, consulClient)
+		poolErr := networkPool.Start(ctx, consulClient)
 		if poolErr != nil {
 			log.Fatalf("network pool error: %v\n", poolErr)
 		}

@@ -24,7 +24,8 @@ func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
 		return err
 	}
 
-	if _, err := io.Copy(io.Discard, response.Body); err != nil {
+	_, err = io.Copy(io.Discard, response.Body)
+	if err != nil {
 		return err
 	}
 
@@ -63,8 +64,9 @@ func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string) error
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
 
-	if _, copyErr := io.Copy(io.Discard, response.Body); copyErr != nil {
-		return copyErr
+	_, err = io.Copy(io.Discard, response.Body)
+	if err != nil {
+		return err
 	}
 
 	defer response.Body.Close()

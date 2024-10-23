@@ -7,7 +7,6 @@ import (
 	"os"
 
 	consul "github.com/hashicorp/consul/api"
-	"go.opentelemetry.io/otel/trace"
 )
 
 type NetworkSlotPool struct {
@@ -31,7 +30,7 @@ func (p *NetworkSlotPool) Get(ctx context.Context) (IPSlot, error) {
 	}
 }
 
-func (p *NetworkSlotPool) Start(ctx context.Context, tracer trace.Tracer, consulClient *consul.Client) error {
+func (p *NetworkSlotPool) Start(ctx context.Context, consulClient *consul.Client) error {
 	defer close(p.newSlots)
 
 	for {
@@ -39,16 +38,16 @@ func (p *NetworkSlotPool) Start(ctx context.Context, tracer trace.Tracer, consul
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			ips, err := NewSlot(ctx, tracer, consulClient)
+			ips, err := NewSlot(consulClient)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "[network slot pool]: failed to create network: %v\n", err)
 
 				continue
 			}
 
-			err = ips.CreateNetwork(ctx, tracer)
+			err = ips.CreateNetwork()
 			if err != nil {
-				ips.Release(ctx, tracer, consulClient)
+				ips.Release(consulClient)
 
 				fmt.Fprintf(os.Stderr, "[network slot pool]: failed to create network: %v\n", err)
 
@@ -60,15 +59,15 @@ func (p *NetworkSlotPool) Start(ctx context.Context, tracer trace.Tracer, consul
 	}
 }
 
-func cleanupSlot(ctx context.Context, tracer trace.Tracer, consul *consul.Client, slot IPSlot) error {
+func cleanupSlot(consul *consul.Client, slot IPSlot) error {
 	var errs []error
 
-	err := slot.RemoveNetwork(ctx, tracer)
+	err := slot.RemoveNetwork()
 	if err != nil {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.SlotIdx, err))
 	}
 
-	err = slot.Release(ctx, tracer, consul)
+	err = slot.Release(consul)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.SlotIdx, err))
 	}
@@ -76,15 +75,15 @@ func cleanupSlot(ctx context.Context, tracer trace.Tracer, consul *consul.Client
 	return errors.Join(errs...)
 }
 
-func (p *NetworkSlotPool) Release(ctx context.Context, tracer trace.Tracer, consul *consul.Client, slot IPSlot) error {
-	return cleanupSlot(ctx, tracer, consul, slot)
+func (p *NetworkSlotPool) Release(consul *consul.Client, slot IPSlot) error {
+	return cleanupSlot(consul, slot)
 }
 
-func (p *NetworkSlotPool) Close(ctx context.Context, tracer trace.Tracer, consul *consul.Client) error {
+func (p *NetworkSlotPool) Close(consul *consul.Client) error {
 	var errs []error
 
 	for slot := range p.newSlots {
-		err := cleanupSlot(ctx, tracer, consul, slot)
+		err := cleanupSlot(consul, slot)
 		if err != nil {
 			errs = append(errs, err)
 		}

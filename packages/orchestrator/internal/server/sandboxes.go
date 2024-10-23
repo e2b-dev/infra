@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -53,14 +52,10 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
 
 	go func() {
-		tracer := otel.Tracer("close")
-		closeCtx, _ := tracer.Start(ctx, "close-sandbox")
-
-		defer telemetry.ReportEvent(closeCtx, "sandbox closed")
 		defer s.sandboxes.Remove(req.Sandbox.SandboxId)
-		defer sbx.CleanupAfterFCStop(context.Background(), tracer, s.consul, s.dns, req.Sandbox.SandboxId)
+		defer sbx.CleanupAfterFCStop(s.consul, s.dns, req.Sandbox.SandboxId)
 
-		waitErr := sbx.Wait(context.Background(), tracer)
+		waitErr := sbx.Wait()
 		if waitErr != nil {
 			fmt.Fprintf(os.Stderr, "[sandbox %s]: failed to wait for Sandbox: %v\n", req.Sandbox.SandboxId, waitErr)
 		}
@@ -142,7 +137,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	// Don't allow connecting to the sandbox anymore.
 	s.dns.Remove(in.SandboxId)
 
-	sbx.Stop(ctx, s.tracer)
+	sbx.Stop()
 
 	// Ensure the sandbox is removed from cache.
 	// Ideally we would rely only on the goroutine defer.

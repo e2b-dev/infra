@@ -23,7 +23,6 @@ import (
 )
 
 func main() {
-	tracer := otel.Tracer("mock-sandbox")
 	templateId := flag.String("template", "", "template id")
 	buildId := flag.String("build", "", "build id")
 	sandboxId := flag.String("sandbox", "", "sandbox id")
@@ -55,12 +54,12 @@ func main() {
 	networkPool := sandbox.NewNetworkSlotPool(*count)
 
 	go func() {
-		poolErr := networkPool.Start(ctx, tracer, consulClient)
+		poolErr := networkPool.Start(ctx, consulClient)
 		if poolErr != nil {
 			fmt.Fprintf(os.Stderr, "network pool error: %v\n", poolErr)
 		}
 
-		closeErr := networkPool.Close(ctx, tracer, consulClient)
+		closeErr := networkPool.Close(consulClient)
 		if closeErr != nil {
 			fmt.Fprintf(os.Stderr, "network pool close error: %v\n", closeErr)
 		}
@@ -141,7 +140,7 @@ func mockSandbox(
 
 	time.Sleep(keepAlive)
 
-	defer sbx.CleanupAfterFCStop(childCtx, tracer, consulClient, dns, sandboxId)
+	defer sbx.CleanupAfterFCStop(consulClient, dns, sandboxId)
 
-	sbx.Stop(childCtx, tracer)
+	sbx.Stop()
 }
