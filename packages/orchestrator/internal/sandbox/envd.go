@@ -1,0 +1,73 @@
+package sandbox
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+)
+
+func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
+	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostSnapshotIP(), consts.OldEnvdServerPort)
+
+	request, err := http.NewRequestWithContext(ctx, "POST", address, nil)
+	if err != nil {
+		return err
+	}
+
+	response, err := httpClient.Do(request)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(io.Discard, response.Body); err != nil {
+		return err
+	}
+
+	defer response.Body.Close()
+
+	return nil
+}
+
+type PostInitJSONBody struct {
+	EnvVars *map[string]string `json:"envVars"`
+}
+
+func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string) error {
+	address := fmt.Sprintf("http://%s:%d/init", s.slot.HostSnapshotIP(), consts.DefaultEnvdServerPort)
+
+	jsonBody := &PostInitJSONBody{
+		EnvVars: &envVars,
+	}
+
+	envVarsJSON, err := json.Marshal(jsonBody)
+	if err != nil {
+		return err
+	}
+
+	request, err := http.NewRequestWithContext(ctx, "POST", address, bytes.NewReader(envVarsJSON))
+	if err != nil {
+		return err
+	}
+
+	response, err := httpClient.Do(request)
+	if err != nil {
+		return err
+	}
+
+	if response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
+	}
+
+	if _, copyErr := io.Copy(io.Discard, response.Body); copyErr != nil {
+		return copyErr
+	}
+
+	defer response.Body.Close()
+
+	return nil
+}

@@ -66,8 +66,8 @@ type Uffd struct {
 
 	lis *net.UnixListener
 
-	socketPath string
 	memfile    *blockStorage.BlockStorage
+	socketPath string
 }
 
 func (u *Uffd) Start(

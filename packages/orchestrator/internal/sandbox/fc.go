@@ -168,6 +168,7 @@ func (fc *fc) loadSnapshot(
 
 func NewFC(
 	ctx context.Context,
+	vmmCtx context.Context,
 	tracer trace.Tracer,
 	slot IPSlot,
 	files *templateStorage.SandboxFiles,
@@ -181,11 +182,6 @@ func NewFC(
 		attribute.Int("sandbox.slot.index", slot.SlotIdx),
 	))
 	defer childSpan.End()
-
-	vmmCtx, _ := tracer.Start(
-		trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
-		"fc-vmm",
-	)
 
 	rootfsPath, err := rootfs.Path()
 	if err != nil {

@@ -95,9 +95,13 @@ func (o *OverlayFile) Close() error {
 
 // Path can only be called once.
 func (o *OverlayFile) Path() (string, error) {
-	err := <-o.client.Ready
+	err, ok := <-o.client.Ready
 	if err != nil {
 		return "", fmt.Errorf("error getting nbd path: %w", err)
+	}
+
+	if !ok {
+		return "", fmt.Errorf("Path method was not called only once")
 	}
 
 	return o.client.DevicePath, nil

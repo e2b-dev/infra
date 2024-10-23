@@ -1,12 +1,9 @@
 package sandbox
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"sync"
@@ -18,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -47,10 +43,10 @@ type Sandbox struct {
 	Config    *orchestrator.SandboxConfig
 	StartedAt time.Time
 	EndAt     time.Time
-	TraceID   string
 
-	slot        IPSlot
 	networkPool *NetworkSlotPool
+	TraceID     string
+	slot        IPSlot
 }
 
 func NewSandbox(
@@ -123,8 +119,13 @@ func NewSandbox(
 		}
 	}()
 
+	vmmCtx, _ := tracer.Start(
+		trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
+		"fc-vmm",
+	)
+
 	rootfs, err := storage.NewOverlayFile(
-		childCtx,
+		vmmCtx,
 		templateData.Rootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 		nbdPool,
@@ -146,6 +147,7 @@ func NewSandbox(
 	}()
 
 	go func() {
+		// TODO: Handle cleanup if failed.
 		runErr := rootfs.Run()
 		if runErr != nil {
 			errMsg := fmt.Errorf("failed to run rootfs: %w", runErr)
@@ -175,6 +177,7 @@ func NewSandbox(
 
 	fc, err := NewFC(
 		childCtx,
+		vmmCtx,
 		tracer,
 		ips,
 		sandboxFiles,
@@ -269,67 +272,6 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
 
 	return sbx, nil
-}
-
-func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
-	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostSnapshotIP(), consts.OldEnvdServerPort)
-
-	request, err := http.NewRequestWithContext(ctx, "POST", address, nil)
-	if err != nil {
-		return err
-	}
-
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return err
-	}
-
-	if _, err := io.Copy(io.Discard, response.Body); err != nil {
-		return err
-	}
-
-	defer response.Body.Close()
-
-	return nil
-}
-
-type PostInitJSONBody struct {
-	EnvVars *map[string]string `json:"envVars"`
-}
-
-func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string) error {
-	address := fmt.Sprintf("http://%s:%d/init", s.slot.HostSnapshotIP(), consts.DefaultEnvdServerPort)
-
-	jsonBody := &PostInitJSONBody{
-		EnvVars: &envVars,
-	}
-
-	envVarsJSON, err := json.Marshal(jsonBody)
-	if err != nil {
-		return err
-	}
-
-	request, err := http.NewRequestWithContext(ctx, "POST", address, bytes.NewReader(envVarsJSON))
-	if err != nil {
-		return err
-	}
-
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return err
-	}
-
-	if response.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
-	}
-
-	if _, copyErr := io.Copy(io.Discard, response.Body); copyErr != nil {
-		return copyErr
-	}
-
-	defer response.Body.Close()
-
-	return nil
 }
 
 func (s *Sandbox) CleanupAfterFCStop(
