@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
@@ -16,24 +17,16 @@ func main() {
 	filePath := flag.String("file", "", "file path")
 	flag.Parse()
 
-	fmt.Println("creating nbd device pool")
-
 	pool, err := nbd.NewDevicePool()
 	if err != nil {
-		fmt.Println("error creating nbd device pool", err)
-
-		return
+		log.Fatalf("error creating nbd device pool: %v", err)
 	}
-
-	fmt.Println("creating test device")
 
 	// dd if=/dev/zero of=test.ext4 bs=4096K count=500
 	// mkfs.ext4 test.ext4
 	device, err := block.NewFileDevice(*filePath)
 	if err != nil {
-		fmt.Println("error creating test device", err)
-
-		return
+		log.Fatalf("error creating test device: %v", err)
 	}
 
 	defer device.Close()
@@ -43,13 +36,11 @@ func main() {
 
 	err = createTestDevice(ctx, pool, device, "default")
 	if err != nil {
-		fmt.Printf("error creating test device: %s\n", err)
+		log.Fatalf("error creating test device: %v", err)
 	}
 }
 
 func createTestDevice(ctx context.Context, pool *nbd.DevicePool, device block.Device, id string) error {
-	fmt.Printf("creating temp file %s\n", id)
-
 	socketPath := fmt.Sprintf("/tmp/nbd-%s.sock", id)
 
 	err := os.Remove(socketPath)
@@ -58,8 +49,6 @@ func createTestDevice(ctx context.Context, pool *nbd.DevicePool, device block.De
 	}
 
 	defer os.Remove(socketPath)
-
-	fmt.Printf("creating nbd %s\n", id)
 
 	server := nbd.NewServer(
 		socketPath,
@@ -73,9 +62,7 @@ func createTestDevice(ctx context.Context, pool *nbd.DevicePool, device block.De
 	e.Go(func() error {
 		serverErr := server.Run(ctx)
 		if serverErr != nil {
-			fmt.Printf("error running server %s: %v\n", id, serverErr)
-		} else {
-			fmt.Printf("server closed %s\n", id)
+			return fmt.Errorf("error running server %s: %w", id, serverErr)
 		}
 
 		return nil
@@ -83,30 +70,23 @@ func createTestDevice(ctx context.Context, pool *nbd.DevicePool, device block.De
 
 	client, err := server.NewClient(pool)
 	if err != nil {
-		return fmt.Errorf("error creating client %s: %v", id, err)
+		return fmt.Errorf("error creating client %s: %w", id, err)
 	}
 
 	e.Go(func() error {
 		clientErr := client.Run(ctx)
 		if clientErr != nil {
-			fmt.Printf("error running client %s: %v\n", id, clientErr)
-		} else {
-			fmt.Printf("client closed %s\n", id)
+			return fmt.Errorf("error running client %s: %w", id, clientErr)
 		}
 
 		return nil
 	})
 
-	fmt.Printf("waiting for client ready %s\n", id)
-
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-client.Ready:
-		fmt.Printf("client ready")
 	}
-
-	fmt.Printf("nbd path %s: %s\n", id, client.DevicePath)
 
 	if waitErr := e.Wait(); waitErr != nil {
 		return fmt.Errorf("error waiting for server and client %s: %w", id, waitErr)
