@@ -45,7 +45,9 @@ type server struct {
 }
 
 func New(logger *zap.Logger) *grpc.Server {
-	opts := []grpc_zap.Option{logging.WithoutHealthCheck()}
+	opts := []grpc_zap.Option{
+		logging.WithoutHealthCheck(),
+	}
 
 	s := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithInterceptorFilter(filters.Not(filters.HealthCheck())))),

@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"os"
 
@@ -42,7 +41,7 @@ func main() {
 	// Create an instance of our handler which satisfies the generated interface
 	s := server.New(logger.Desugar())
 
-	log.Printf("Starting server on port %d", *port)
+	fmt.Fprintf(os.Stderr, "Starting server on port %d\n", *port)
 
 	if err := s.Serve(lis); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to serve: %v", err)

@@ -12,8 +12,8 @@ import (
 )
 
 type SimpleFile struct {
-	Ensure func() (string, error)
-	path   string
+	GetPath func() (string, error)
+	path    string
 }
 
 func NewSimpleFile(
@@ -24,7 +24,7 @@ func NewSimpleFile(
 ) *SimpleFile {
 	return &SimpleFile{
 		path: path,
-		Ensure: sync.OnceValues(func() (string, error) {
+		GetPath: sync.OnceValues(func() (string, error) {
 			object := blockStorage.NewGCSObjectFromBucket(ctx, bucket, bucketPath)
 
 			dst, err := os.Create(path)

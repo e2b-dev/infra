@@ -89,7 +89,7 @@ func (fc *fc) loadSnapshot(
 
 	telemetry.ReportEvent(childCtx, "uffd socket ready")
 
-	snapfilePath, err := snapfile.Ensure()
+	snapfilePath, err := snapfile.GetPath()
 	if err != nil {
 		return fmt.Errorf("error ensuring snapfile: %w", err)
 	}

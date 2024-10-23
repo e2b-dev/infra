@@ -71,7 +71,8 @@ func newTemplateData(
 
 		h.Snapfile = NewSimpleFile(ctx, bucket, h.Files.StorageSnapfilePath(), h.Files.CacheSnapfilePath())
 
-		go h.Snapfile.Ensure()
+		// Asynchronously start the file download.
+		go h.Snapfile.GetPath()
 
 		memfileObject := blockStorage.NewBucketObject(
 			ctx,
