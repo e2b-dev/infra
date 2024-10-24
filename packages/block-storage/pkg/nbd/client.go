@@ -65,9 +65,8 @@ func (n *Client) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 
-	defer device.Close()
-
 	go func() {
+		defer device.Close()
 		<-ctx.Done()
 
 		disconnectErr := client.Disconnect(device)
