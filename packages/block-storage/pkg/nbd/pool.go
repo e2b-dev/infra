@@ -13,14 +13,21 @@ import (
 	"github.com/bits-and-blooms/bitset"
 )
 
-var (
-	// ErrNoFreeSlots is returned when there are no free slots.
-	// You can retry the request after some time.
-	ErrNoFreeSlots = errors.New("no free slots")
-	// ErrDeviceInUse is returned when the device that you wanted to release is still in use.
-	// You can retry the request after ensuring that the device is not in use anymore.
-	ErrDeviceInUse = errors.New("device in use")
-)
+// ErrNoFreeSlots is returned when there are no free slots.
+// You can retry the request after some time.
+type ErrNoFreeSlots struct{}
+
+func (ErrNoFreeSlots) Error() string {
+	return "no free slots"
+}
+
+// ErrDeviceInUse is returned when the device that you wanted to release is still in use.
+// You can retry the request after ensuring that the device is not in use anymore.
+type ErrDeviceInUse struct{}
+
+func (ErrDeviceInUse) Error() string {
+	return "device in use"
+}
 
 type (
 	// DevicePath is the path to the nbd device.
@@ -130,7 +137,7 @@ func (n *DevicePool) GetDevice() (DevicePath, error) {
 		n.slots.Clear(slot)
 	}
 
-	return "", ErrNoFreeSlots
+	return "", ErrNoFreeSlots{}
 }
 
 // ReleaseDevice will unmount the device from all targets and release the slot.
@@ -159,7 +166,7 @@ func (n *DevicePool) ReleaseDevice(path DevicePath) error {
 	}
 
 	if !free {
-		return ErrDeviceInUse
+		return ErrDeviceInUse{}
 	}
 
 	n.slots.Clear(slot)
