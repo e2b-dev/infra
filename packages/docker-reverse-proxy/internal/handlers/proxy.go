@@ -42,7 +42,7 @@ func (a *APIStore) Proxy(w http.ResponseWriter, req *http.Request) {
 
 	token, err := a.AuthCache.Get(e2bToken)
 	if err != nil {
-		log.Printf("Error while getting token for %s: %s\n", path, err)
+		log.Printf("Error while getting token for %s: %s, header: %s\n", path, err, authHeader)
 		w.WriteHeader(http.StatusUnauthorized)
 
 		return

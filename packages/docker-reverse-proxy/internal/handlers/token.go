@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/auth"
-	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
@@ -103,11 +102,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("error while getting docker token: %s", err)
 	}
 
-	// Create a new e2b token for the user and store it in the cache
-	userToken := utils.GenerateRandomString(128)
-	jsonResponse := fmt.Sprintf(`{"token": "%s", "expires_in": %d}`, userToken, dockerToken.ExpiresIn)
-
-	a.AuthCache.Create(userToken, templateID, dockerToken.Token)
+	jsonResponse := a.AuthCache.Create(templateID, dockerToken.Token, dockerToken.ExpiresIn)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(jsonResponse))
