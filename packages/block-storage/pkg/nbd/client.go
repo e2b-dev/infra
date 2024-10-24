@@ -65,14 +65,26 @@ func (n *Client) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 
+	afterDisconnect := make(chan struct{})
+
+	defer func() {
+		<-afterDisconnect
+
+		closeErr := device.Close()
+		if closeErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to close device: %s, %v\n", n.DevicePath, closeErr)
+		}
+	}()
+
 	go func() {
-		defer device.Close()
 		<-ctx.Done()
 
 		disconnectErr := client.Disconnect(device)
 		if disconnectErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to disconnect from server for device %s: %v\n", n.DevicePath, disconnectErr)
 		}
+
+		close(afterDisconnect)
 	}()
 
 	err = client.Connect(conn, device, &client.Options{
