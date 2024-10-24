@@ -2,8 +2,8 @@ package dns
 
 import (
 	"fmt"
-	"log"
 	"net"
+	"os"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 
@@ -65,7 +65,7 @@ func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
 
 	err := w.WriteMsg(m)
 	if err != nil {
-		log.Printf("Failed to write message: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "failed to write message: %s\n", err.Error())
 	}
 }
 
@@ -76,7 +76,7 @@ func (d *DNS) Start(address string) error {
 
 	server := resolver.Server{Addr: address, Net: "udp", Handler: mux}
 
-	log.Printf("Starting DNS server at %s\n", server.Addr)
+	fmt.Printf("Starting DNS server at %s\n", server.Addr)
 
 	err := server.ListenAndServe()
 	if err != nil {
