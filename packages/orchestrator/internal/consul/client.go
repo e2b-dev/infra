@@ -6,8 +6,6 @@ import (
 	"os"
 
 	consul "github.com/hashicorp/consul/api"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 var consulToken = os.Getenv("CONSUL_TOKEN")
@@ -18,10 +16,7 @@ func New(ctx context.Context) (*consul.Client, error) {
 
 	client, err := consul.NewClient(config)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to initialize Consul client: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return nil, errMsg
+		return nil, fmt.Errorf("failed to initialize Consul client: %w", err)
 	}
 
 	return client, nil

@@ -73,7 +73,7 @@ func (n *Client) Run(ctx context.Context) error {
 
 		disconnectErr := client.Disconnect(n.device)
 		if disconnectErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to disconnect from server: %v\n", disconnectErr)
+			fmt.Fprintf(os.Stderr, "failed to disconnect from server for device %s: %v\n", n.DevicePath, disconnectErr)
 		}
 	}()
 

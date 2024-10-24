@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
@@ -38,7 +39,10 @@ type PostInitJSONBody struct {
 	EnvVars *map[string]string `json:"envVars"`
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string) error {
+func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map[string]string) error {
+	childCtx, childSpan := tracer.Start(ctx, "envd-init")
+	defer childSpan.End()
+
 	address := fmt.Sprintf("http://%s:%d/init", s.slot.HostIP(), consts.DefaultEnvdServerPort)
 
 	jsonBody := &PostInitJSONBody{
@@ -50,7 +54,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, envVars map[string]string) error
 		return err
 	}
 
-	request, err := http.NewRequestWithContext(ctx, "POST", address, bytes.NewReader(envVarsJSON))
+	request, err := http.NewRequestWithContext(childCtx, "POST", address, bytes.NewReader(envVarsJSON))
 	if err != nil {
 		return err
 	}

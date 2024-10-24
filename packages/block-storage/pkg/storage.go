@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"os"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/cache"
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/source"
@@ -58,7 +58,7 @@ func New(
 	go func() {
 		prefetchErr := prefetcher.Start()
 		if prefetchErr != nil {
-			log.Printf("error prefetching chunks: %v", prefetchErr)
+			fmt.Fprintf(os.Stderr, "error prefetching chunks: %v\n", prefetchErr)
 		}
 	}()
 
@@ -79,7 +79,6 @@ func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
 
 	return n, nil
 }
-
 
 func (d *BlockStorage) Size() (int64, error) {
 	return d.size, nil

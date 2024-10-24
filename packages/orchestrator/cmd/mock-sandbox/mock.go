@@ -140,7 +140,7 @@ func mockSandbox(
 
 	time.Sleep(keepAlive)
 
-	defer sbx.CleanupAfterFCStop(consulClient, dns, sandboxId)
+	defer sbx.Cleanup(consulClient, dns, sandboxId)
 
 	sbx.Stop()
 }

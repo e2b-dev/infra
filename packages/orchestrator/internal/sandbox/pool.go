@@ -7,6 +7,7 @@ import (
 	"os"
 
 	consul "github.com/hashicorp/consul/api"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type NetworkSlotPool struct {
@@ -21,10 +22,13 @@ func NewNetworkSlotPool(size int) *NetworkSlotPool {
 	}
 }
 
-func (p *NetworkSlotPool) Get(ctx context.Context) (IPSlot, error) {
+func (p *NetworkSlotPool) Get(ctx context.Context, tracer trace.Tracer) (IPSlot, error) {
+	childCtx, networkSpan := tracer.Start(ctx, "get-network-slot")
+	defer networkSpan.End()
+
 	select {
-	case <-ctx.Done():
-		return IPSlot{}, ctx.Err()
+	case <-childCtx.Done():
+		return IPSlot{}, childCtx.Err()
 	case newSlot := <-p.newSlots:
 		return newSlot, nil
 	}

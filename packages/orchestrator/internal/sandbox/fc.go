@@ -3,7 +3,6 @@ package sandbox
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -74,18 +73,12 @@ func (fc *fc) loadSnapshot(
 	transport := firecracker.NewUnixSocketTransport(firecrackerSocketPath, nil, false)
 	client.SetTransport(transport)
 
-	telemetry.ReportEvent(childCtx, "created FC socket client")
-
 	var backend *models.MemoryBackend
 
 	err := waitForSocket(childCtx, uffdSocketPath)
 	if err != nil {
-		telemetry.ReportCriticalError(childCtx, err)
-
-		return err
+		return fmt.Errorf("error waiting for uffd socket: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "uffd socket ready")
 
 	snapfilePath, err := snapfile.GetPath()
 	if err != nil {
@@ -110,11 +103,7 @@ func (fc *fc) loadSnapshot(
 
 	_, err = client.Operations.LoadSnapshot(&snapshotConfig)
 	if err != nil {
-		errMsg := fmt.Errorf("error loading snapshot: %w", err)
-
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("error loading snapshot: %w", err)
 	}
 
 	select {
@@ -133,13 +122,8 @@ func (fc *fc) loadSnapshot(
 
 	_, err = client.Operations.PatchVM(&pauseConfig)
 	if err != nil {
-		errMsg := fmt.Errorf("error pausing vm: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("error pausing vm: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "snapshot loaded")
 
 	mmdsConfig := operations.PutMmdsParams{
 		Context: childCtx,
@@ -148,13 +132,8 @@ func (fc *fc) loadSnapshot(
 
 	_, err = client.Operations.PutMmds(&mmdsConfig)
 	if err != nil {
-		errMsg := fmt.Errorf("error setting mmds data: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("error setting mmds data: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "mmds data set")
 
 	return nil
 }
@@ -289,25 +268,25 @@ func (fc *fc) start(
 
 	err := fc.cmd.Start()
 	if err != nil {
-		errMsg := fmt.Errorf("error starting fc process: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "started fc process")
+	defer func() {
+		if err != nil {
+			fcErr := fc.stop()
+			if fcErr != nil {
+				telemetry.ReportError(childCtx, fmt.Errorf("failed to stop FC: %w", fcErr))
+			}
+		}
+	}()
 
 	// Wait for the FC process to start so we can use FC API
 	err = waitForSocket(childCtx, fc.firecrackerSocketPath)
 	if err != nil {
-		errMsg := fmt.Errorf("error waiting for fc socket: %w", err)
-
-		return errMsg
+		return fmt.Errorf("error waiting for fc socket: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "fc process created socket")
-
-	if loadErr := fc.loadSnapshot(
+	err = fc.loadSnapshot(
 		childCtx,
 		tracer,
 		fc.firecrackerSocketPath,
@@ -315,27 +294,10 @@ func (fc *fc) start(
 		fc.metadata,
 		fc.snapfile,
 		fc.uffdReady,
-	); loadErr != nil {
-		fcErr := fc.stop()
-
-		errMsg := fmt.Errorf("failed to load snapshot: %w", errors.Join(loadErr, fcErr))
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+	)
+	if err != nil {
+		return fmt.Errorf("failed to load snapshot: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "loaded snapshot")
-
-	defer func() {
-		if err != nil {
-			stopErr := fc.stop()
-			if stopErr != nil {
-				errMsg := fmt.Errorf("error stopping FC process: %w", stopErr)
-
-				telemetry.ReportError(childCtx, errMsg)
-			}
-		}
-	}()
 
 	telemetry.SetAttributes(
 		childCtx,

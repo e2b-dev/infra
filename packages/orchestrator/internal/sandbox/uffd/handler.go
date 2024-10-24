@@ -1,7 +1,6 @@
 package uffd
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,9 +11,6 @@ import (
 	"time"
 
 	blockStorage "github.com/e2b-dev/infra/packages/block-storage/pkg"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-
-	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -70,14 +66,7 @@ type Uffd struct {
 	socketPath string
 }
 
-func (u *Uffd) Start(
-	ctx context.Context,
-	tracer trace.Tracer,
-	sandboxId string,
-) error {
-	childCtx, childSpan := tracer.Start(ctx, "start-uffd")
-	defer childSpan.End()
-
+func (u *Uffd) Start(sandboxId string) error {
 	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: u.socketPath, Net: "unix"})
 	if err != nil {
 		return fmt.Errorf("failed listening on socket: %w", err)
@@ -85,14 +74,10 @@ func (u *Uffd) Start(
 
 	u.lis = lis
 
-	telemetry.ReportEvent(childCtx, "listening on socket")
-
 	err = os.Chmod(u.socketPath, 0o777)
 	if err != nil {
 		return fmt.Errorf("failed setting socket permissions: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "set socket permissions")
 
 	go func() {
 		u.exitChan <- u.handle(u.memfile, sandboxId)

@@ -19,9 +19,10 @@ import (
 
 func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
 	childCtx, childSpan := s.tracer.Start(ctx, "sandbox-create")
-
 	defer childSpan.End()
-	childSpan.SetAttributes(
+
+	telemetry.SetAttributes(
+		childCtx,
 		attribute.String("sandbox.template.id", req.Sandbox.TemplateId),
 		attribute.String("sandbox.kernel.version", req.Sandbox.KernelVersion),
 		attribute.String("sandbox.id", req.Sandbox.SandboxId),
@@ -53,7 +54,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	go func() {
 		defer s.sandboxes.Remove(req.Sandbox.SandboxId)
-		defer sbx.CleanupAfterFCStop(s.consul, s.dns, req.Sandbox.SandboxId)
+		defer sbx.Cleanup(s.consul, s.dns, req.Sandbox.SandboxId)
 
 		waitErr := sbx.Wait()
 		if waitErr != nil {
@@ -73,7 +74,6 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	item, ok := s.sandboxes.Get(req.SandboxId)
 	if !ok {
 		errMsg := fmt.Errorf("sandbox not found")
-		telemetry.ReportError(ctx, errMsg)
 
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
@@ -114,9 +114,11 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 }
 
 func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteRequest) (*emptypb.Empty, error) {
-	_, childSpan := s.tracer.Start(ctx, "sandbox-delete")
+	childCtx, childSpan := s.tracer.Start(ctx, "sandbox-delete")
 	defer childSpan.End()
-	childSpan.SetAttributes(
+
+	telemetry.SetAttributes(
+		childCtx,
 		attribute.String("sandbox.id", in.SandboxId),
 		attribute.String("client.id", consul.ClientID),
 	)
@@ -124,12 +126,12 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
 	if !ok {
 		errMsg := fmt.Errorf("sandbox not found")
-		telemetry.ReportError(ctx, errMsg)
 
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
 
-	childSpan.SetAttributes(
+	telemetry.SetAttributes(
+		childCtx,
 		attribute.String("sandbox.template.id", sbx.Config.TemplateId),
 		attribute.String("sandbox.kernel.version", sbx.Config.KernelVersion),
 	)
