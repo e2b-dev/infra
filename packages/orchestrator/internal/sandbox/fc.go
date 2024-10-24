@@ -179,8 +179,8 @@ func NewFC(
 	inNetNSCmd := fmt.Sprintf("ip netns exec %s ", slot.NamespaceID())
 
 	telemetry.SetAttributes(childCtx,
-		attribute.String("sandbox.fc.cmd", fcCmd),
-		attribute.String("sandbox.netns.cmd", inNetNSCmd),
+		attribute.String("sandbox.cmd.fc", fcCmd),
+		attribute.String("sandbox.cmd.netns", inNetNSCmd),
 	)
 
 	cmd := exec.Command(

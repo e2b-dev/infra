@@ -23,11 +23,11 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	telemetry.SetAttributes(
 		childCtx,
-		attribute.String("sandbox.template.id", req.Sandbox.TemplateId),
-		attribute.String("sandbox.kernel.version", req.Sandbox.KernelVersion),
-		attribute.String("sandbox.id", req.Sandbox.SandboxId),
 		attribute.String("client.id", consul.ClientID),
+		attribute.String("sandbox.id", req.Sandbox.SandboxId),
+		attribute.String("sandbox.template.id", req.Sandbox.TemplateId),
 		attribute.String("sandbox.envd.version", req.Sandbox.EnvdVersion),
+		attribute.String("sandbox.kernel.version", req.Sandbox.KernelVersion),
 	)
 
 	sbx, err := sandbox.NewSandbox(
@@ -119,8 +119,8 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 
 	telemetry.SetAttributes(
 		childCtx,
-		attribute.String("sandbox.id", in.SandboxId),
 		attribute.String("client.id", consul.ClientID),
+		attribute.String("sandbox.id", in.SandboxId),
 	)
 
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
@@ -129,12 +129,6 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
-
-	telemetry.SetAttributes(
-		childCtx,
-		attribute.String("sandbox.template.id", sbx.Config.TemplateId),
-		attribute.String("sandbox.kernel.version", sbx.Config.KernelVersion),
-	)
 
 	// Don't allow connecting to the sandbox anymore.
 	s.dns.Remove(in.SandboxId)
