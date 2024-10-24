@@ -154,7 +154,7 @@ func NewFC(
 	))
 	defer childSpan.End()
 
-	rootfsPath, err := rootfs.Path()
+	rootfsPath, err := rootfs.Path(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs path: %w", err)
 	}
@@ -185,7 +185,7 @@ func NewFC(
 
 	cmd := exec.Command(
 		"unshare",
-		"-pfmiC",
+		"-pfm",
 		"--kill-child",
 		"--",
 		"bash",

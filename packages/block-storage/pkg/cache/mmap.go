@@ -14,11 +14,11 @@ import (
 
 type MmapCache struct {
 	marker    *block.Marker
-	mmap      mmap.MMap
 	size      int64
+	blockSize int64
 	filePath  string
 	mu        sync.RWMutex
-	blockSize int64
+	mmap      mmap.MMap
 }
 
 func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {

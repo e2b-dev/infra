@@ -147,9 +147,9 @@ func NewSandbox(
 
 	defer func() {
 		if err != nil {
-			fcUffdErr := fcUffd.Stop()
-			if fcUffdErr != nil {
-				telemetry.ReportError(childCtx, fmt.Errorf("failed to stop uffd: %w", fcUffdErr))
+			stopErr := fcUffd.Stop()
+			if stopErr != nil {
+				telemetry.ReportError(childCtx, fmt.Errorf("failed to stop uffd: %w", stopErr))
 			}
 		}
 	}()
@@ -201,14 +201,16 @@ func NewSandbox(
 		stopOnce: sync.OnceValue(func() error {
 			var errs []error
 
-			fcErr := fc.stop()
-			if fcErr != nil {
-				errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcErr))
+			time.Sleep(2 * time.Second)
+
+			uffdStopErr := fcUffd.Stop()
+			if uffdStopErr != nil {
+				errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
 			}
 
-			uffdErr := fcUffd.Stop()
-			if uffdErr != nil {
-				errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdErr))
+			fcStopErr := fc.stop()
+			if fcStopErr != nil {
+				errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 			}
 
 			return errors.Join(errs...)
@@ -291,12 +293,10 @@ func (s *Sandbox) Wait() error {
 		close(fcExit)
 	}()
 
-	if s.uffd != nil {
-		go func() {
-			uffdExit <- s.uffd.Wait()
-			close(uffdExit)
-		}()
-	}
+	go func() {
+		uffdExit <- s.uffd.Wait()
+		close(uffdExit)
+	}()
 
 	select {
 	case fcErr := <-fcExit:

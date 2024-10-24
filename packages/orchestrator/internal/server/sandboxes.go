@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/codes"
@@ -53,12 +54,18 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
 
 	go func() {
-		defer s.sandboxes.Remove(req.Sandbox.SandboxId)
-		defer sbx.Cleanup(s.consul, s.dns, req.Sandbox.SandboxId)
-
 		waitErr := sbx.Wait()
 		if waitErr != nil {
 			fmt.Fprintf(os.Stderr, "[sandbox %s]: failed to wait for Sandbox: %v\n", req.Sandbox.SandboxId, waitErr)
+		}
+
+		s.sandboxes.Remove(req.Sandbox.SandboxId)
+
+		time.Sleep(2 * time.Second)
+
+		cleanupErr := sbx.Cleanup(s.consul, s.dns, req.Sandbox.SandboxId)
+		if cleanupErr != nil {
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: failed to cleanup sandbox: %v\n", req.Sandbox.SandboxId, cleanupErr)
 		}
 	}()
 
