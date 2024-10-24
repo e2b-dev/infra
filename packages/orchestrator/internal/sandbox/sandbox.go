@@ -201,16 +201,14 @@ func NewSandbox(
 		stopOnce: sync.OnceValue(func() error {
 			var errs []error
 
-			time.Sleep(2 * time.Second)
+			fcStopErr := fc.stop()
+			if fcStopErr != nil {
+				errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
+			}
 
 			uffdStopErr := fcUffd.Stop()
 			if uffdStopErr != nil {
 				errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
-			}
-
-			fcStopErr := fc.stop()
-			if fcStopErr != nil {
-				errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 			}
 
 			return errors.Join(errs...)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/codes"
@@ -60,8 +59,6 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		}
 
 		s.sandboxes.Remove(req.Sandbox.SandboxId)
-
-		time.Sleep(2 * time.Second)
 
 		cleanupErr := sbx.Cleanup(s.consul, s.dns, req.Sandbox.SandboxId)
 		if cleanupErr != nil {
