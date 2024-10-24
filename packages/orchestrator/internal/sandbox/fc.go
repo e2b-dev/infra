@@ -58,6 +58,13 @@ type fc struct {
 func (fc *fc) wait() error {
 	err := fc.cmd.Wait()
 	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			// Check if the process was killed by a signal
+			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && status.Signal() == syscall.SIGKILL {
+				return nil
+			}
+		}
 		return fmt.Errorf("error waiting for fc process: %w", err)
 	}
 
