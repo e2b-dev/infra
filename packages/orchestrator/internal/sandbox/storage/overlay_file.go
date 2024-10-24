@@ -56,7 +56,7 @@ func (o *OverlayFile) Run() error {
 	eg.Go(func() error {
 		err := o.server.Run(ctx)
 		if err != nil {
-			return fmt.Errorf("error starting nbd server: %w", err)
+			return fmt.Errorf("error running nbd server: %w", err)
 		}
 
 		return nil
@@ -65,7 +65,7 @@ func (o *OverlayFile) Run() error {
 	eg.Go(func() error {
 		err := o.client.Run(ctx)
 		if err != nil {
-			return fmt.Errorf("error starting nbd client: %w", err)
+			return fmt.Errorf("error running nbd client: %w", err)
 		}
 
 		return nil
@@ -73,7 +73,7 @@ func (o *OverlayFile) Run() error {
 
 	err := eg.Wait()
 	if err != nil {
-		return fmt.Errorf("error starting overlay file: %w", err)
+		return fmt.Errorf("error waiting for nbd server and client: %w", err)
 	}
 
 	return nil
