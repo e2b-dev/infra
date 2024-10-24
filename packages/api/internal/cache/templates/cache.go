@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const templateInfoExpiration = 5 * time.Minute
@@ -50,6 +51,7 @@ type TemplateCache struct {
 	cache      *ttlcache.Cache[string, *TemplateInfo]
 	db         *db.DB
 	aliasCache *AliasCache
+	mu         utils.KeyMutex
 }
 
 func NewTemplateCache(db *db.DB) *TemplateCache {
@@ -69,6 +71,9 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 	var item *ttlcache.Item[string, *TemplateInfo]
 	var templateInfo *TemplateInfo
 	var err error
+
+	c.mu.Lock(aliasOrEnvID)
+	defer c.mu.Unlock(aliasOrEnvID)
 
 	templateID, found := c.aliasCache.Get(aliasOrEnvID)
 	if found == true {

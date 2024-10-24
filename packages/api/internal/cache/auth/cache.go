@@ -9,6 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const authInfoExpiration = 5 * time.Minute
@@ -29,6 +30,7 @@ type TeamInfo struct {
 type TeamAuthCache struct {
 	cache *ttlcache.Cache[string, *TeamInfo]
 	db    *db.DB
+	mu    utils.KeyMutex
 }
 
 func NewTeamAuthCache(db *db.DB) *TeamAuthCache {
@@ -44,6 +46,9 @@ func NewTeamAuthCache(db *db.DB) *TeamAuthCache {
 func (c *TeamAuthCache) Get(ctx context.Context, apiKey string) (team *models.Team, tier *models.Tier, err error) {
 	var item *ttlcache.Item[string, *TeamInfo]
 	var templateInfo *TeamInfo
+
+	c.mu.Lock(apiKey)
+	defer c.mu.Unlock(apiKey)
 
 	item = c.cache.Get(apiKey)
 	if item == nil {
