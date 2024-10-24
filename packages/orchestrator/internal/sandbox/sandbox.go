@@ -225,6 +225,8 @@ func NewSandbox(
 			syncErr := sbx.syncOldEnvd(childCtx)
 			if syncErr != nil {
 				telemetry.ReportError(childCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
+			} else {
+				telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxId))
 			}
 		}()
 	}

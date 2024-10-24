@@ -64,7 +64,7 @@ func (n *Server) Run(ctx context.Context) error {
 				_ = conn.Close()
 
 				if err := recover(); err != nil {
-					fmt.Fprintf(os.Stderr, "recovering from panic: %v\n", err)
+					fmt.Fprintf(os.Stderr, "recovering from NBD server panic: %v\n", err)
 				}
 			}()
 
