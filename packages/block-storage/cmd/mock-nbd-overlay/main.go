@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/nbd"
@@ -31,7 +32,7 @@ func main() {
 
 	defer device.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	err = createTestDevice(ctx, pool, device, "default")

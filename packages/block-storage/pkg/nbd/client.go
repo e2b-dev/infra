@@ -15,8 +15,7 @@ type Client struct {
 	// Is is not closed.
 	Ready chan error
 
-	device *os.File
-	pool   *DevicePool
+	pool *DevicePool
 
 	socketPath string
 	DevicePath string
@@ -71,7 +70,7 @@ func (n *Client) Run(ctx context.Context) error {
 	go func() {
 		<-ctx.Done()
 
-		disconnectErr := client.Disconnect(n.device)
+		disconnectErr := client.Disconnect(device)
 		if disconnectErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to disconnect from server for device %s: %v\n", n.DevicePath, disconnectErr)
 		}
