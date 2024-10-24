@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"net/http/httputil"
 	"net/url"
 
@@ -31,6 +32,16 @@ func NewStore(ctx context.Context) *APIStore {
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(targetUrl)
+
+	// Custom ModifyResponse function
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		if resp.StatusCode == http.StatusUnauthorized {
+			log.Printf("Unauthorized request:[%s] %s\n", resp.Request.Method, resp.Request.URL.String())
+		}
+
+		// You can also modify the response here if needed
+		return nil
+	}
 
 	return &APIStore{
 		db:        database,
