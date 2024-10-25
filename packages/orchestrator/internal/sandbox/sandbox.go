@@ -209,7 +209,7 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
-	stats, err := newSandboxStats(int32(fc.pid))
+	stats := newSandboxStats(int32(fc.pid))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stats: %w", err)
 	}
