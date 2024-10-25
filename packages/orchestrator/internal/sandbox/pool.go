@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	consul "github.com/hashicorp/consul/api"
 	"os"
+
+	consul "github.com/hashicorp/consul/api"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type NetworkSlotPool struct {
@@ -73,15 +76,14 @@ func cleanupSlot(consul *consul.Client, slot IPSlot) error {
 func (p *NetworkSlotPool) Get(ctx context.Context) (IPSlot, error) {
 	select {
 	case slot := <-p.reusedSlots:
-		fmt.Printf("[network slot pool]: getting reused slot %d\n", slot.SlotIdx)
+		telemetry.ReportEvent(ctx, "getting reused slot")
 		return slot, nil
 	default:
 		select {
 		case <-ctx.Done():
 			return IPSlot{}, ctx.Err()
 		case slot := <-p.newSlots:
-			// Take element from the second channel
-			fmt.Printf("[network slot pool]: getting new slot %d\n", slot.SlotIdx)
+			telemetry.ReportEvent(ctx, "getting new slot")
 			return slot, nil
 		}
 	}
