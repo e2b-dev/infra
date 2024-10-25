@@ -27,17 +27,25 @@ type processStats struct {
 	MemoryKB float64
 }
 
-func newSandboxStats(pid int32) (*SandboxStats, error) {
-	currentStats, err := getCurrentStats(pid)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current stats: %w", err)
-	}
-
-	return &SandboxStats{
+func newSandboxStats(pid int32) *SandboxStats {
+	stats := SandboxStats{
 		pid:       pid,
 		timestamp: time.Now(),
-		cpuLast:   currentStats.CPUTotal,
-	}, nil
+		cpuLast:   0,
+	}
+
+	go func() {
+		currentStats, err := getCurrentStats(pid)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to get current stats: %v\n", err)
+			return
+		}
+
+		stats.cpuLast = currentStats.CPUTotal
+		stats.timestamp = time.Now()
+	}()
+
+	return &stats
 }
 
 func (s *SandboxStats) getStats() (*CurrentStats, error) {
