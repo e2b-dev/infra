@@ -3,7 +3,6 @@ package instance
 import (
 	"context"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/api/internal/meters"
 	"go.opentelemetry.io/otel/metric"
 	"sync"
 	"time"
@@ -16,6 +15,7 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 

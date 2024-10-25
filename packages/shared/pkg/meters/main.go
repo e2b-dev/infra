@@ -16,9 +16,11 @@ const (
 type UpDownCounterType string
 
 const (
-	SandboxCountMeterName    UpDownCounterType = "api.env.instance.running"
-	BuildCounterMeterName                      = "api.env.build.running"
-	CreateRateLimitMeterName                   = "api.sandbox.create.parallel_limit"
+	SandboxCountMeterName                  UpDownCounterType = "api.env.instance.running"
+	BuildCounterMeterName                                    = "api.env.build.running"
+	RateLimitCounterMeterName                                = "api.sandbox.create.parallel_limit"
+	NewNetworkSlotSPoolCounterMeterName                      = "orchestrator.network.slots_pool.new"
+	ReusedNetworkSlotSPoolCounterMeterName                   = "orchestrator.network.slots_pool.reused"
 )
 
 var meter = otel.GetMeterProvider().Meter("nomad")
@@ -35,15 +37,15 @@ var counterUnits = map[CounterType]string{
 }
 
 var upDownCounterDesc = map[UpDownCounterType]string{
-	SandboxCountMeterName:    "Counter of started instances.",
-	BuildCounterMeterName:    "Counter of running builds.",
-	CreateRateLimitMeterName: "Number of currently waiting requests to create a new sandbox.",
+	SandboxCountMeterName:     "Counter of started instances.",
+	BuildCounterMeterName:     "Counter of running builds.",
+	RateLimitCounterMeterName: "Number of currently waiting requests to create a new sandbox.",
 }
 
 var upDownCounterUnits = map[UpDownCounterType]string{
-	SandboxCountMeterName:    "{sandbox}",
-	BuildCounterMeterName:    "{build}",
-	CreateRateLimitMeterName: "{sandbox}",
+	SandboxCountMeterName:     "{sandbox}",
+	BuildCounterMeterName:     "{build}",
+	RateLimitCounterMeterName: "{sandbox}",
 }
 
 func GetCounter(name CounterType) (metric.Int64Counter, error) {
