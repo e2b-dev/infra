@@ -10,13 +10,13 @@ import (
 type CounterType string
 
 const (
-	InstanceCreateMeterName CounterType = "api.env.instance.started"
+	SandboxCreateMeterName CounterType = "api.env.instance.started"
 )
 
 type UpDownCounterType string
 
 const (
-	InstanceCountMeterName   UpDownCounterType = "api.env.instance.running"
+	SandboxCountMeterName    UpDownCounterType = "api.env.instance.running"
 	BuildCounterMeterName                      = "api.env.build.running"
 	CreateRateLimitMeterName                   = "api.sandbox.create.parallel_limit"
 )
@@ -27,21 +27,21 @@ var counters = make(map[CounterType]metric.Int64Counter)
 var upDownCounters = make(map[UpDownCounterType]metric.Int64UpDownCounter)
 
 var counterDesc = map[CounterType]string{
-	InstanceCreateMeterName: "Number of currently waiting requests to create a new sandbox",
+	SandboxCreateMeterName: "Number of currently waiting requests to create a new sandbox",
 }
 
 var counterUnits = map[CounterType]string{
-	InstanceCreateMeterName: "{sandbox}",
+	SandboxCreateMeterName: "{sandbox}",
 }
 
 var upDownCounterDesc = map[UpDownCounterType]string{
-	InstanceCountMeterName:   "Counter of started instances.",
+	SandboxCountMeterName:    "Counter of started instances.",
 	BuildCounterMeterName:    "Counter of running builds.",
 	CreateRateLimitMeterName: "Number of currently waiting requests to create a new sandbox.",
 }
 
 var upDownCounterUnits = map[UpDownCounterType]string{
-	InstanceCountMeterName:   "{sandbox}",
+	SandboxCountMeterName:    "{sandbox}",
 	BuildCounterMeterName:    "{build}",
 	CreateRateLimitMeterName: "{sandbox}",
 }

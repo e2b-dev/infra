@@ -3,6 +3,8 @@ package instance
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/api/internal/meters"
+	"go.opentelemetry.io/otel/metric"
 	"sync"
 	"time"
 
@@ -40,7 +42,9 @@ type InstanceCache struct {
 
 	logger *zap.SugaredLogger
 
-	analytics analyticscollector.AnalyticsCollectorClient
+	sandboxCounter metric.Int64UpDownCounter
+	createdCounter metric.Int64Counter
+	analytics      analyticscollector.AnalyticsCollectorClient
 
 	mu sync.Mutex
 }
@@ -52,12 +56,23 @@ func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap
 		ttlcache.WithTTL[string, InstanceInfo](InstanceExpiration),
 	)
 
-	instanceCache := &InstanceCache{
-		cache:     cache,
-		logger:    logger,
-		analytics: analytics,
+	sandboxCounter, err := meters.GetUpDownCounter(meters.SandboxCountMeterName)
+	if err != nil {
+		logger.Errorw("error getting counter", "error", err)
+	}
 
-		reservations: NewReservationCache(),
+	createdCounter, err := meters.GetCounter(meters.SandboxCreateMeterName)
+	if err != nil {
+		logger.Errorw("error getting counter", "error", err)
+	}
+
+	instanceCache := &InstanceCache{
+		cache:          cache,
+		logger:         logger,
+		analytics:      analytics,
+		sandboxCounter: sandboxCounter,
+		createdCounter: createdCounter,
+		reservations:   NewReservationCache(),
 	}
 
 	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, InstanceInfo]) {
