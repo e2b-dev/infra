@@ -2,9 +2,12 @@ package cache
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+
+	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/utils"
 )
 
 const (
@@ -40,11 +43,19 @@ func (c *AuthCache) Get(e2bToken string) (*AccessTokenData, error) {
 }
 
 // Create creates a new auth token for the given templateID and accessToken and returns e2bToken
-func (c *AuthCache) Create(userAccessToken, templateID, encodedDockerRegistryAccessToken string) {
+func (c *AuthCache) Create(templateID, token string, expiresIn int) string {
+	// Get docker token from the actual registry for the scope
+	// Create a new e2b token for the user and store it in the cache
+	userToken := utils.GenerateRandomString(128)
+	jsonResponse := fmt.Sprintf(`{"token": "%s", "expires_in": %d}`, userToken, expiresIn)
+
 	data := &AccessTokenData{
-		AccessToken: encodedDockerRegistryAccessToken,
+		AccessToken: token,
 		TemplateID:  templateID,
 	}
 
-	c.cache.Set(userAccessToken, data, authInfoExpiration)
+	c.cache.Set(userToken, data, authInfoExpiration)
+
+	log.Printf("Created new auth token for '%s' expiring in '%d'\n", templateID, expiresIn)
+	return jsonResponse
 }

@@ -17,7 +17,7 @@ func (a *APIStore) Login(w http.ResponseWriter, r *http.Request) error {
 		w.Header().Set("Www-Authenticate", fmt.Sprintf("Bearer realm=\"https://docker.%s/v2/token\"", consts.Domain))
 		w.WriteHeader(http.StatusUnauthorized)
 
-		return fmt.Errorf("no authorization header")
+		return nil
 	}
 
 	authHeader := r.Header.Get("Authorization")
