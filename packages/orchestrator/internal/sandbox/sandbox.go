@@ -219,16 +219,16 @@ func NewSandbox(
 		initErr := sbx.initEnvd(childCtx, tracer, config.EnvVars)
 		if initErr != nil {
 			return nil, fmt.Errorf("failed to init new envd: %w", initErr)
+		} else {
+			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxId))
 		}
 	} else {
-		go func() {
-			syncErr := sbx.syncOldEnvd(childCtx)
-			if syncErr != nil {
-				telemetry.ReportError(childCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
-			} else {
-				telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxId))
-			}
-		}()
+		syncErr := sbx.syncOldEnvd(childCtx)
+		if syncErr != nil {
+			telemetry.ReportError(childCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
+		} else {
+			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxId))
+		}
 	}
 
 	sbx.StartedAt = time.Now()
