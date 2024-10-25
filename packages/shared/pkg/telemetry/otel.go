@@ -23,7 +23,7 @@ import (
 
 const (
 	otelCollectorGRPCEndpoint = "0.0.0.0:4317"
-	metricExportPeriod        = 60 * time.Second
+	metricExportPeriod        = 30 * time.Second
 )
 
 type client struct {

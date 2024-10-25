@@ -3,12 +3,13 @@ package instance
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/api/internal/meters"
+	"go.opentelemetry.io/otel/metric"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
-	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -41,26 +42,37 @@ type InstanceCache struct {
 
 	logger *zap.SugaredLogger
 
-	counter   metric.Int64UpDownCounter
-	analytics analyticscollector.AnalyticsCollectorClient
+	sandboxCounter metric.Int64UpDownCounter
+	createdCounter metric.Int64Counter
+	analytics      analyticscollector.AnalyticsCollectorClient
 
 	mu sync.Mutex
 }
 
-func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap.SugaredLogger, deleteInstance func(data InstanceInfo, purge bool) *api.APIError, initialInstances []*InstanceInfo, counter metric.Int64UpDownCounter) *InstanceCache {
+func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap.SugaredLogger, deleteInstance func(data InstanceInfo, purge bool) *api.APIError, initialInstances []*InstanceInfo) *InstanceCache {
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, InstanceInfo](InstanceExpiration),
 	)
 
-	instanceCache := &InstanceCache{
-		cache:     cache,
-		counter:   counter,
-		logger:    logger,
-		analytics: analytics,
+	sandboxCounter, err := meters.GetUpDownCounter(meters.SandboxCountMeterName)
+	if err != nil {
+		logger.Errorw("error getting counter", "error", err)
+	}
 
-		reservations: NewReservationCache(),
+	createdCounter, err := meters.GetCounter(meters.SandboxCreateMeterName)
+	if err != nil {
+		logger.Errorw("error getting counter", "error", err)
+	}
+
+	instanceCache := &InstanceCache{
+		cache:          cache,
+		logger:         logger,
+		analytics:      analytics,
+		sandboxCounter: sandboxCounter,
+		createdCounter: createdCounter,
+		reservations:   NewReservationCache(),
 	}
 
 	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, InstanceInfo]) {
@@ -85,12 +97,12 @@ func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap
 				logger.Errorf("Error deleting instance (%v)\n: %v", er, err.Err)
 			}
 
-			instanceCache.UpdateCounter(i.Value(), -1)
+			instanceCache.UpdateCounters(i.Value(), -1, false)
 		}
 	})
 
 	for _, instance := range initialInstances {
-		err := instanceCache.Add(*instance)
+		err := instanceCache.Add(*instance, false)
 		if err != nil {
 			fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
 		}

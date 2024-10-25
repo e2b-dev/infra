@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/meters"
 )
 
 const (
@@ -76,8 +77,12 @@ type BuildCache struct {
 	mu sync.Mutex
 }
 
-func NewBuildCache(counter metric.Int64UpDownCounter) *BuildCache {
+func NewBuildCache() *BuildCache {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
+	counter, err := meters.GetUpDownCounter(meters.BuildCounterMeterName)
+	if err != nil {
+		fmt.Printf("error creating counter: %s", err)
+	}
 
 	go cache.Start()
 

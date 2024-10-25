@@ -12,7 +12,6 @@ import (
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -100,20 +99,6 @@ func NewAPIStore() *APIStore {
 		initialInstances = instances
 	}
 
-	// TODO: rename later
-	meter := otel.GetMeterProvider().Meter("nomad")
-
-	instancesCounter, err := meter.Int64UpDownCounter(
-		"api.env.instance.running",
-		metric.WithDescription(
-			"Number of running instances.",
-		),
-		metric.WithUnit("{instance}"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
 	analytics, err := analyticscollector.NewAnalytics()
 	if err != nil {
 		logger.Errorf("Error initializing Analytics client\n: %v", err)
@@ -121,7 +106,7 @@ func NewAPIStore() *APIStore {
 
 	logger.Info("Initialized Analytics client")
 
-	instanceCache := instance.NewCache(analytics.Client, logger, getDeleteInstanceFunction(ctx, tracer, orch, analytics, posthogClient, logger), initialInstances, instancesCounter)
+	instanceCache := instance.NewCache(analytics.Client, logger, getDeleteInstanceFunction(ctx, tracer, orch, analytics, posthogClient, logger), initialInstances)
 
 	logger.Info("Initialized instance cache")
 
@@ -141,18 +126,7 @@ func NewAPIStore() *APIStore {
 		logger.Warn("LOKI_ADDRESS not set, disabling Loki client")
 	}
 
-	buildCounter, err := meter.Int64UpDownCounter(
-		"api.env.build.running",
-		metric.WithDescription(
-			"Number of running builds.",
-		),
-		metric.WithUnit("{build}"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	buildCache := builds.NewBuildCache(buildCounter)
+	buildCache := builds.NewBuildCache()
 
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)
