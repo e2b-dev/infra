@@ -69,7 +69,7 @@ func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []InstanceInf
 
 // Add the instance to the cache and start expiration timer.
 // If the instance already exists we do nothing - it was loaded from Orchestrator.
-func (c *InstanceCache) Add(instance InstanceInfo, sync bool) error {
+func (c *InstanceCache) Add(instance InstanceInfo, newlyCreated bool) error {
 	if instance.Instance == nil {
 		return fmt.Errorf("instance doesn't contain info about inself")
 	}
@@ -106,7 +106,7 @@ func (c *InstanceCache) Add(instance InstanceInfo, sync bool) error {
 	}
 
 	c.cache.Set(instance.Instance.SandboxID, instance, ttl)
-	c.UpdateCounter(instance, 1, sync)
+	c.UpdateCounters(instance, 1, newlyCreated)
 
 	// Release the reservation if it exists
 	c.reservations.release(instance.Instance.SandboxID)

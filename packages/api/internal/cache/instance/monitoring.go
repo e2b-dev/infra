@@ -9,13 +9,13 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/meters"
 )
 
-func (c *InstanceCache) UpdateCounter(instance InstanceInfo, value int64, sync bool) {
+func (c *InstanceCache) UpdateCounters(instance InstanceInfo, value int64, newlyCreated bool) {
 	attributes := []attribute.KeyValue{
 		attribute.String("team_id", instance.TeamID.String()),
 	}
 
-	if value > 0 && !sync {
-		createdCounter, err := meters.GetCounter(instanceCreateMeterName)
+	if value > 0 && newlyCreated {
+		createdCounter, err := meters.GetCounter(meters.InstanceCreateMeterName)
 		if err != nil {
 			c.logger.Errorw("error getting counter", "error", err)
 			return
@@ -24,7 +24,7 @@ func (c *InstanceCache) UpdateCounter(instance InstanceInfo, value int64, sync b
 		}
 	}
 
-	instanceCountCounter, err := meters.GetUpDownCounter(instanceCountMeterName)
+	instanceCountCounter, err := meters.GetUpDownCounter(meters.InstanceCountMeterName)
 	if err != nil {
 		c.logger.Errorw("error getting counter", "error", err)
 		return

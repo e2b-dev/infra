@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	buildInfoExpiration   = time.Minute * 5 // 5 minutes
-	buildCounterMeterName = "api.env.build.running"
+	buildInfoExpiration = time.Minute * 5 // 5 minutes
 )
 
 type BuildInfo struct {
@@ -80,11 +79,7 @@ type BuildCache struct {
 
 func NewBuildCache() *BuildCache {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
-	err := meters.CreateUpDownCounter(
-		"api.env.build.running",
-		"Number of running builds.",
-		"{build}",
-	)
+	counter, err := meters.GetUpDownCounter(meters.BuildCounterMeterName)
 	if err != nil {
 		fmt.Printf("error creating counter: %s", err)
 	}
@@ -92,7 +87,8 @@ func NewBuildCache() *BuildCache {
 	go cache.Start()
 
 	return &BuildCache{
-		cache: cache,
+		cache:   cache,
+		counter: counter,
 	}
 }
 
@@ -170,12 +166,7 @@ func (c *BuildCache) SetDone(envID string, buildID uuid.UUID, status api.Templat
 }
 
 func (c *BuildCache) updateCounter(envID string, buildID, teamID uuid.UUID, value int64) {
-	counter, err := meters.GetUpDownCounter(buildCounterMeterName)
-	if err != nil {
-		fmt.Printf("error getting counter: %s", err)
-	}
-
-	counter.Add(context.Background(), value,
+	c.counter.Add(context.Background(), value,
 		metric.WithAttributes(attribute.String("env_id", envID)),
 		metric.WithAttributes(attribute.String("build_id", buildID.String())),
 		metric.WithAttributes(attribute.String("team_id", teamID.String())),

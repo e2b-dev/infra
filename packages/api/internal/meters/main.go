@@ -1,36 +1,52 @@
 package meters
 
 import (
-	"fmt"
 	"sync"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 )
 
+type CounterType string
+
+const (
+	InstanceCreateMeterName CounterType = "api.env.instance.started"
+)
+
+type UpDownCounterType string
+
+const (
+	InstanceCountMeterName   UpDownCounterType = "api.env.instance.running"
+	BuildCounterMeterName                      = "api.env.build.running"
+	CreateRateLimitMeterName                   = "api.sandbox.create.parallel_limit"
+)
+
 var meter = otel.GetMeterProvider().Meter("nomad")
 var meterLock = sync.Mutex{}
-var counters = make(map[string]metric.Int64Counter)
-var upDownCounters = make(map[string]metric.Int64UpDownCounter)
+var counters = make(map[CounterType]metric.Int64Counter)
+var upDownCounters = make(map[UpDownCounterType]metric.Int64UpDownCounter)
 
-func CreateCounter(name, desc, unit string) error {
-	meterLock.Lock()
-	defer meterLock.Unlock()
-
-	if _, exists := counters[name]; exists {
-		return fmt.Errorf("counter %s already exists", name)
-	}
-
-	counter, err := meter.Int64Counter(name, metric.WithDescription(desc), metric.WithUnit(unit))
-	if err != nil {
-		return err
-	}
-
-	counters[name] = counter
-	return nil
+var counterDesc = map[CounterType]string{
+	InstanceCreateMeterName: "Number of currently waiting requests to create a new sandbox",
 }
 
-func GetCounter(name string) (metric.Int64Counter, error) {
+var counterUnits = map[CounterType]string{
+	InstanceCreateMeterName: "{sandbox}",
+}
+
+var upDownCounterDesc = map[UpDownCounterType]string{
+	InstanceCountMeterName:   "Counter of started instances.",
+	BuildCounterMeterName:    "Counter of running builds.",
+	CreateRateLimitMeterName: "Number of currently waiting requests to create a new sandbox.",
+}
+
+var upDownCounterUnits = map[UpDownCounterType]string{
+	InstanceCountMeterName:   "{sandbox}",
+	BuildCounterMeterName:    "{build}",
+	CreateRateLimitMeterName: "{sandbox}",
+}
+
+func GetCounter(name CounterType) (metric.Int64Counter, error) {
 	meterLock.Lock()
 	defer meterLock.Unlock()
 
@@ -38,27 +54,17 @@ func GetCounter(name string) (metric.Int64Counter, error) {
 		return counter, nil
 	}
 
-	return nil, fmt.Errorf("counter %s does not exist", name)
-}
-
-func CreateUpDownCounter(name, desc, unit string) error {
-	meterLock.Lock()
-	defer meterLock.Unlock()
-
-	if _, exists := upDownCounters[name]; exists {
-		return fmt.Errorf("counter %s already exists", name)
-	}
-
-	counter, err := meter.Int64UpDownCounter(name, metric.WithDescription(desc), metric.WithUnit(unit))
+	counter, err := meter.Int64Counter(string(name), metric.WithDescription(counterDesc[name]), metric.WithUnit(counterUnits[name]))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	upDownCounters[name] = counter
-	return nil
+	counters[name] = counter
+
+	return counter, nil
 }
 
-func GetUpDownCounter(name string) (metric.Int64UpDownCounter, error) {
+func GetUpDownCounter(name UpDownCounterType) (metric.Int64UpDownCounter, error) {
 	meterLock.Lock()
 	defer meterLock.Unlock()
 
@@ -66,5 +72,12 @@ func GetUpDownCounter(name string) (metric.Int64UpDownCounter, error) {
 		return counter, nil
 	}
 
-	return nil, fmt.Errorf("counter %s does not exist", name)
+	counter, err := meter.Int64UpDownCounter(string(name), metric.WithDescription(upDownCounterDesc[name]), metric.WithUnit(upDownCounterUnits[name]))
+	if err != nil {
+		return nil, err
+	}
+
+	upDownCounters[name] = counter
+
+	return counter, nil
 }

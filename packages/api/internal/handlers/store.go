@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/api/internal/meters"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	loki "github.com/grafana/loki/pkg/logcli/client"
@@ -131,8 +130,6 @@ func NewAPIStore() *APIStore {
 
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)
-
-	err = meters.CreateUpDownCounter(createRateLimitMeterName, "Number of currently waiting requests to create a new sandbox", "{instance}")
 
 	return &APIStore{
 		Ctx:             ctx,
