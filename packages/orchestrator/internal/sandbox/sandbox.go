@@ -255,12 +255,13 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
 
+	clockSyncSpan, initSpan := tracer.Start(childCtx, "ensure-clock-sync")
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
-		clockErr := instance.initRequest(ctx, consts.DefaultEnvdServerPort, config.EnvVars)
+		clockErr := instance.initRequest(clockSyncSpan, consts.DefaultEnvdServerPort, config.EnvVars)
 		if clockErr != nil {
-			telemetry.ReportError(ctx, fmt.Errorf("failed to sync clock: %w", clockErr))
+			telemetry.ReportError(clockSyncSpan, fmt.Errorf("failed to sync clock: %w", clockErr))
 		} else {
-			telemetry.ReportEvent(ctx, "clock synced")
+			telemetry.ReportEvent(clockSyncSpan, "clock synced")
 		}
 	} else {
 		go func() {
@@ -275,6 +276,7 @@ func NewSandbox(
 			}
 		}()
 	}
+	initSpan.End()
 
 	instance.StartedAt = time.Now()
 
