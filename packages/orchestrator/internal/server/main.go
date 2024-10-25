@@ -26,7 +26,8 @@ import (
 )
 
 const (
-	ipSlotPoolSize = 32
+	ipSlotPoolSize       = 32
+	reusedIpSlotPoolSize = 64
 )
 
 type server struct {
@@ -35,7 +36,7 @@ type server struct {
 	dns         *dns.DNS
 	tracer      trace.Tracer
 	consul      *consulapi.Client
-	networkPool chan sandbox.IPSlot
+	networkPool *sandbox.NetworkSlotPool
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -44,7 +45,6 @@ func New(logger *zap.Logger) *grpc.Server {
 	s := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithInterceptorFilter(filters.Not(filters.HealthCheck())))),
 		grpc.ChainUnaryInterceptor(
-			grpc_zap.UnaryServerInterceptor(logger, opts...),
 			recovery.UnaryServerInterceptor(),
 		),
 	)
@@ -53,8 +53,8 @@ func New(logger *zap.Logger) *grpc.Server {
 
 	ctx := context.Background()
 
-	dns := dns.New()
-	go dns.Start("127.0.0.1:53")
+	dnsServer := dns.New()
+	go dnsServer.Start("127.0.0.1:53")
 
 	tracer := otel.Tracer(constants.ServiceName)
 
@@ -63,41 +63,20 @@ func New(logger *zap.Logger) *grpc.Server {
 		panic(err)
 	}
 
-	// Sandboxes waiting for the network slot can be passed and reschedulede
-	// so we should include a FIFO system for waiting.
-	networkPool := make(chan sandbox.IPSlot, ipSlotPoolSize)
+	networkPool := sandbox.NewNetworkSlotPool(ipSlotPoolSize, reusedIpSlotPoolSize)
 
+	// We start the pool last to avoid allocation network slots if the other components fail to initialize.
 	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				ips, err := sandbox.NewSlot(ctx, tracer, consulClient)
-				if err != nil {
-					logger.Error("failed to create network", zap.Error(err))
-
-					continue
-				}
-
-				err = ips.CreateNetwork(ctx, tracer)
-				if err != nil {
-					ips.Release(ctx, tracer, consulClient)
-
-					logger.Error("failed to create network", zap.Error(err))
-
-					continue
-				}
-
-				networkPool <- *ips
-			}
+		poolErr := networkPool.Start(ctx, consulClient)
+		if poolErr != nil {
+			log.Fatalf("network pool error: %v\n", poolErr)
 		}
 	}()
 
 	orchestrator.RegisterSandboxServer(s, &server{
 		tracer:      tracer,
 		consul:      consulClient,
-		dns:         dns,
+		dns:         dnsServer,
 		sandboxes:   smap.New[*sandbox.Sandbox](),
 		networkPool: networkPool,
 	})

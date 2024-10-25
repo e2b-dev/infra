@@ -1,28 +1,24 @@
 package sandbox
 
 import (
-	"context"
 	"fmt"
 	"math/rand"
 	"slices"
 
-	consul "github.com/hashicorp/consul/api"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	consul "github.com/hashicorp/consul/api"
 )
 
+// We are using a more debuggable IP address allocation for now that only covers 255 addresses.
 const (
 	octetSize = 256
 	octetMax  = octetSize - 1
 	// This is the maximum number of IP addresses that can be allocated.
-	IPSlotsSize = octetSize * octetSize
+	ipSlotsSize = octetSize * octetSize
 
-	HostSnapshotMask = 32
-	VMask            = 30
-	TapMask          = 30
+	hostMask = 32
+	vMask    = 30
+	tapMask  = 30
 )
 
 type IPSlot struct {
@@ -43,10 +39,6 @@ func (ips *IPSlot) getOctets() (int, int) {
 	return octet, rem
 }
 
-func (ips *IPSlot) HostIP() string {
-	return ips.HostSnapshotIP()
-}
-
 func (ips *IPSlot) VpeerIP() string {
 	firstOctet, secondOctet := ips.getOctets()
 
@@ -60,7 +52,7 @@ func (ips *IPSlot) VethIP() string {
 }
 
 func (ips *IPSlot) VMask() int {
-	return VMask
+	return vMask
 }
 
 func (ips *IPSlot) VethName() string {
@@ -75,21 +67,23 @@ func (ips *IPSlot) VpeerCIDR() string {
 	return fmt.Sprintf("%s/%d", ips.VpeerIP(), ips.VMask())
 }
 
-func (ips *IPSlot) HostSnapshotCIDR() string {
-	return fmt.Sprintf("%s/%d", ips.HostSnapshotIP(), ips.HostSnapshotMask())
+func (ips *IPSlot) HostCIDR() string {
+	return fmt.Sprintf("%s/%d", ips.HostIP(), ips.HostMask())
 }
 
-func (ips *IPSlot) HostSnapshotMask() int {
-	return HostSnapshotMask
+func (ips *IPSlot) HostMask() int {
+	return hostMask
 }
 
-func (ips *IPSlot) HostSnapshotIP() string {
+// IP address for the sandbox from the host machine.
+// You can use it to make requests to the sandbox.
+func (ips *IPSlot) HostIP() string {
 	firstOctet, secondOctet := ips.getOctets()
 
 	return fmt.Sprintf("192.168.%d.%d", firstOctet, secondOctet)
 }
 
-func (ips *IPSlot) NamespaceSnapshotIP() string {
+func (ips *IPSlot) NamespaceIP() string {
 	return "169.254.0.21"
 }
 
@@ -106,17 +100,14 @@ func (ips *IPSlot) TapIP() string {
 }
 
 func (ips *IPSlot) TapMask() int {
-	return TapMask
+	return tapMask
 }
 
 func (ips *IPSlot) TapCIDR() string {
 	return fmt.Sprintf("%s/%d", ips.TapIP(), ips.TapMask())
 }
 
-func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Client) (*IPSlot, error) {
-	childCtx, childSpan := tracer.Start(ctx, "reserve-ip-slot")
-	defer childSpan.End()
-
+func NewSlot(consulClient *consul.Client) (*IPSlot, error) {
 	kv := consulClient.KV()
 
 	var slot *IPSlot
@@ -127,10 +118,7 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 			ModifyIndex: 0,
 		}, nil)
 		if err != nil {
-			errMsg := fmt.Errorf("failed to write to Consul KV: %w", err)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-
-			return nil, errMsg
+			return nil, fmt.Errorf("failed to write to Consul KV: %w", err)
 		}
 
 		if status {
@@ -144,7 +132,7 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 	}
 
 	for randomTry := 1; randomTry <= 10; randomTry++ {
-		slotIdx := rand.Intn(IPSlotsSize)
+		slotIdx := rand.Intn(ipSlotsSize)
 		key := getKVKey(slotIdx)
 
 		maybeSlot, err := trySlot(slotIdx, key)
@@ -161,14 +149,14 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 
 	if slot == nil {
 		// This is a fallback for the case when all slots are taken.
-		// There is no Consul lock so it's possible that multiple instances will try to acquire the same slot.
+		// There is no Consul lock so it's possible that multiple sandboxes will try to acquire the same slot.
 		// In this case, only one of them will succeed and other will try with different slots.
 		reservedKeys, _, keysErr := kv.Keys(constants.ClientID+"/", "", nil)
 		if keysErr != nil {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
 
-		for slotIdx := 0; slotIdx < IPSlotsSize; slotIdx++ {
+		for slotIdx := 0; slotIdx < ipSlotsSize; slotIdx++ {
 			key := getKVKey(slotIdx)
 
 			if slices.Contains(reservedKeys, key) {
@@ -189,48 +177,22 @@ func NewSlot(ctx context.Context, tracer trace.Tracer, consulClient *consul.Clie
 	}
 
 	if slot == nil {
-		errMsg := fmt.Errorf("failed to acquire IP slot: no empty slots found")
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return nil, errMsg
+		return nil, fmt.Errorf("failed to acquire IP slot: no empty slots found")
 	}
-
-	telemetry.ReportEvent(childCtx, "ip slot reserved")
-
-	telemetry.SetAttributes(
-		childCtx,
-		attribute.String("instance.slot.kv.key", slot.KVKey),
-		attribute.String("instance.slot.node.short_id", constants.ClientID),
-	)
 
 	return slot, nil
 }
 
-func (ips *IPSlot) Release(ctx context.Context, tracer trace.Tracer, consulClient *consul.Client) error {
-	childCtx, childSpan := tracer.Start(ctx, "release-ip-slot",
-		trace.WithAttributes(
-			attribute.String("instance.slot.kv.key", ips.KVKey),
-			attribute.String("instance.slot.node.short_id", constants.ClientID),
-		),
-	)
-	defer childSpan.End()
-
+func (ips *IPSlot) Release(consulClient *consul.Client) error {
 	kv := consulClient.KV()
 
 	pair, _, err := kv.Get(ips.KVKey, nil)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to release IPSlot: Failed to read Consul KV: %w", err)
-
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("failed to release IPSlot: Failed to read Consul KV: %w", err)
 	}
 
 	if pair == nil {
-		errMsg := fmt.Errorf("IP slot %d was already released", ips.SlotIdx)
-		telemetry.ReportError(childCtx, errMsg)
-
-		return nil
+		return fmt.Errorf("IP slot %d was already released", ips.SlotIdx)
 	}
 
 	status, _, err := kv.DeleteCAS(&consul.KVPair{
@@ -238,20 +200,12 @@ func (ips *IPSlot) Release(ctx context.Context, tracer trace.Tracer, consulClien
 		ModifyIndex: pair.ModifyIndex,
 	}, nil)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to release IPSlot: Failed to delete slot from Consul KV: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("failed to release IPSlot: Failed to delete slot from Consul KV: %w", err)
 	}
 
 	if !status {
-		errMsg := fmt.Errorf("IP slot %d for was already realocated", ips.SlotIdx)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("IP slot '%d' for was already realocated", ips.SlotIdx)
 	}
-
-	telemetry.ReportEvent(childCtx, "ip slot released")
 
 	return nil
 }

@@ -42,7 +42,7 @@ func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 		s.Logger.Healthcheck(err == nil, alwaysReport)
 	}()
 
-	address := fmt.Sprintf("http://%s:%d/health", s.slot.HostSnapshotIP(), consts.DefaultEnvdServerPort)
+	address := fmt.Sprintf("http://%s:%d/health", s.slot.HostIP(), consts.DefaultEnvdServerPort)
 
 	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
 	if err != nil {

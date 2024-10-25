@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -23,32 +24,21 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 
 	consulClient, err := consul.New(childCtx)
 
-	networkPool := make(chan IPSlot, 1)
-
 	logger := logs.NewSandboxLogger(instanceID, envID, "test-team", 2, 512, false)
 
-	select {
-	case <-ctx.Done():
-		return
-	default:
-		ips, err := NewSlot(ctx, tracer, consulClient)
-		if err != nil {
-			fmt.Printf("failed to create network: %v\n", err)
+	networkPool := NewNetworkSlotPool(1, 0)
 
-			return
+	go func() {
+		poolErr := networkPool.Start(ctx, consulClient)
+		if poolErr != nil {
+			fmt.Fprintf(os.Stderr, "network pool error: %v\n", poolErr)
 		}
 
-		err = ips.CreateNetwork(ctx, tracer)
-		if err != nil {
-			ips.Release(ctx, tracer, consulClient)
-
-			fmt.Printf("failed to create network: %v\n", err)
-
-			return
+		closeErr := networkPool.Close(consulClient)
+		if closeErr != nil {
+			fmt.Fprintf(os.Stderr, "network pool close error: %v\n", closeErr)
 		}
-
-		networkPool <- *ips
-	}
+	}()
 
 	start := time.Now()
 
