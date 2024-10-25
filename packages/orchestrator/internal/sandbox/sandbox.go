@@ -50,6 +50,8 @@ type Sandbox struct {
 	EndAt     time.Time
 	TraceID   string
 
+	networkPool *NetworkSlotPool
+
 	slot   IPSlot
 	Logger *logs.SandboxLogger
 	stats  *SandboxStats
@@ -64,7 +66,7 @@ func NewSandbox(
 	tracer trace.Tracer,
 	consul *consul.Client,
 	dns *dns.DNS,
-	networkPool chan IPSlot,
+	networkPool *NetworkSlotPool,
 	config *orchestrator.SandboxConfig,
 	traceID string,
 	startedAt time.Time,
@@ -77,36 +79,25 @@ func NewSandbox(
 	_, networkSpan := tracer.Start(childCtx, "get-network-slot")
 	// Get slot from Consul KV
 
-	var ips IPSlot
-	select {
-	case ips = <-networkPool:
-		telemetry.ReportEvent(childCtx, "reserved ip slot")
-	case <-childCtx.Done():
-		return nil, childCtx.Err()
+	ips, err := networkPool.Get(childCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
 
 	networkSpan.End()
 
-	var err error
 	internalLogger := logs.NewSandboxLogger(config.SandboxID, config.TemplateID, config.TeamID, config.VCpuCount, config.MemoryMB, true)
 
 	defer func() {
 		if err != nil {
-			slotErr := ips.Release(childCtx, tracer, consul)
-			if slotErr != nil {
-				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", slotErr)
-				telemetry.ReportError(childCtx, errMsg)
-				internalLogger.Errorf("error removing network namespace after failed instance start: %s", slotErr)
-			} else {
-				telemetry.ReportEvent(childCtx, "released ip slot")
-				internalLogger.Debugf("released ip slot")
-			}
+			networkPool.Return(consul, ips)
+			internalLogger.Debugf("returned ip slot")
 		}
 	}()
 
 	defer func() {
 		if err != nil {
-			ntErr := ips.RemoveNetwork(childCtx, tracer)
+			ntErr := ips.RemoveNetwork()
 			if ntErr != nil {
 				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", ntErr)
 				telemetry.ReportError(childCtx, errMsg)
@@ -226,15 +217,16 @@ func NewSandbox(
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	instance := &Sandbox{
-		files:     fsEnv,
-		slot:      ips,
-		fc:        fc,
-		uffd:      fcUffd,
-		Sandbox:   config,
-		StartedAt: startedAt,
-		EndAt:     endAt,
-		Logger:    logger,
-		stats:     stats,
+		files:       fsEnv,
+		slot:        ips,
+		fc:          fc,
+		uffd:        fcUffd,
+		Sandbox:     config,
+		StartedAt:   startedAt,
+		networkPool: networkPool,
+		EndAt:       endAt,
+		Logger:      logger,
+		stats:       stats,
 		stopOnce: sync.OnceValue(func() error {
 			var uffdErr error
 			if fcUffd != nil {
@@ -297,7 +289,7 @@ func NewSandbox(
 }
 
 func (s *Sandbox) syncClock(ctx context.Context, port int64) error {
-	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostSnapshotIP(), port)
+	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostIP(), port)
 
 	request, err := http.NewRequestWithContext(ctx, "POST", address, nil)
 	if err != nil {
@@ -323,7 +315,7 @@ type PostInitJSONBody struct {
 }
 
 func (s *Sandbox) initRequest(ctx context.Context, port int64, envVars map[string]string) error {
-	address := fmt.Sprintf("http://%s:%d/init", s.slot.HostSnapshotIP(), port)
+	address := fmt.Sprintf("http://%s:%d/init", s.slot.HostIP(), port)
 
 	jsonBody := &PostInitJSONBody{
 		EnvVars: &envVars,
@@ -391,28 +383,13 @@ func (s *Sandbox) CleanupAfterFCStop(
 	dns.Remove(sandboxID)
 	telemetry.ReportEvent(childCtx, "removed env instance to etc hosts")
 
-	err := s.slot.RemoveNetwork(childCtx, tracer)
-	if err != nil {
-		errMsg := fmt.Errorf("cannot remove network when destroying task: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "removed network")
-	}
-
-	err = s.files.Cleanup(childCtx, tracer)
+	s.networkPool.Return(consul, s.slot)
+	err := s.files.Cleanup(childCtx, tracer)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to delete instance files: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 	} else {
 		telemetry.ReportEvent(childCtx, "deleted instance files")
-	}
-
-	err = s.slot.Release(childCtx, tracer, consul)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to release slot: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "released slot")
 	}
 }
 
