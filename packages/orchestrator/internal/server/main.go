@@ -4,14 +4,12 @@ import (
 	"context"
 	"log"
 
-	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	consulapi "github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -21,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -39,9 +36,7 @@ type server struct {
 	networkPool *sandbox.NetworkSlotPool
 }
 
-func New(logger *zap.Logger) *grpc.Server {
-	opts := []grpc_zap.Option{logging.WithoutHealthCheck()}
-
+func New() *grpc.Server {
 	s := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithInterceptorFilter(filters.Not(filters.HealthCheck())))),
 		grpc.ChainUnaryInterceptor(
