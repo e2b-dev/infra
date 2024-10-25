@@ -10,7 +10,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/test"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -44,12 +43,7 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	logger, err := logging.New(env.IsLocal())
-	if err != nil {
-		log.Fatalf("Error initializing logging\n: %v\n", err)
-	}
-	// Create an instance of our handler which satisfies the generated interface
-	s := server.New(logger.Desugar())
+	s := server.New()
 
 	log.Printf("Starting server on port %d", *port)
 	if err := s.Serve(lis); err != nil {
