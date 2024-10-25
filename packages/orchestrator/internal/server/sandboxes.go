@@ -72,9 +72,8 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		if waitErr != nil {
 			errMsg := fmt.Errorf("failed to wait for Sandbox: %w", waitErr)
 			fmt.Println(errMsg)
-		} else {
-			fmt.Printf("Sandbox %s wait finished\n", req.Sandbox.SandboxID)
 		}
+
 		logger.Infof("Sandbox killed")
 	}()
 
