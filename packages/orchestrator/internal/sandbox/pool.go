@@ -69,7 +69,6 @@ func (p *NetworkSlotPool) Start(ctx context.Context, consulClient *consul.Client
 				continue
 			}
 
-			fmt.Printf("[network slot pool]: created new slot %d\n", ips.SlotIdx)
 			p.newCounter.Add(ctx, 1)
 			p.newSlots <- *ips
 		}
@@ -138,10 +137,8 @@ func (p *NetworkSlotPool) Return(consul *consul.Client, slot IPSlot) {
 	select {
 	case p.reusedSlots <- slot:
 		p.reusedCounter.Add(context.Background(), 1)
-		fmt.Printf("[network slot pool]: slot %d returned\n", slot.SlotIdx)
 	default:
 		{
-			fmt.Printf("[network slot pool]: slot pool is full, cleaning up slot %d\n", slot.SlotIdx)
 			err := cleanupSlot(consul, slot)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "[network slot pool]: failed to return slot '%d': %v\n", slot.SlotIdx, err)
