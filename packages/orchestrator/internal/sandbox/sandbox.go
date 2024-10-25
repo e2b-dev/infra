@@ -76,10 +76,10 @@ func NewSandbox(
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
-	_, networkSpan := tracer.Start(childCtx, "get-network-slot")
+	networkCtx, networkSpan := tracer.Start(childCtx, "get-network-slot")
 	// Get slot from Consul KV
 
-	ips, err := networkPool.Get(childCtx)
+	ips, err := networkPool.Get(networkCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get network slot: %w", err)
 	}
