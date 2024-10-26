@@ -46,6 +46,7 @@ type fc struct {
 
 	uffdSocketPath        string
 	firecrackerSocketPath string
+	rootfsPath            string
 
 	fcExit chan error
 }
@@ -68,6 +69,7 @@ func (fc *fc) loadSnapshot(
 	metadata interface{},
 	snapfile *storage.SimpleFile,
 	uffdReady chan struct{},
+	rootfsPath string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
 		attribute.String("sandbox.socket.path", firecrackerSocketPath),
@@ -111,6 +113,25 @@ func (fc *fc) loadSnapshot(
 		return fmt.Errorf("error loading snapshot: %w", err)
 	}
 
+	rootfs := "rootfs"
+	pathOnHost := rootfsPath
+	driversConfig := operations.PatchGuestDriveByIDParams{
+		Context: childCtx,
+		DriveID: rootfs,
+		Body: &models.PartialDrive{
+			DriveID:    &rootfs,
+			PathOnHost: pathOnHost,
+		},
+	}
+
+	_, err = client.Operations.PatchGuestDriveByID(&driversConfig)
+	if err != nil {
+		errMsg := fmt.Errorf("error setting fc drivers config: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return errMsg
+	}
+
 	select {
 	case <-childCtx.Done():
 		return fmt.Errorf("context canceled while waiting for uffd ready: %w", childCtx.Err())
@@ -148,7 +169,7 @@ const fcStartScript = `mount --make-rprivate / &&
 mount -t tmpfs tmpfs {{ .buildDir }} -o X-mount.mkdir &&
 mount -t tmpfs tmpfs {{ .buildKernelDir }} -o X-mount.mkdir &&
 
-ln -s {{ .rootfsPath }} {{ .buildRootfsPath }} &&
+touch {{ .buildRootfsPath }} &&
 ln -s {{ .kernelPath }} {{ .buildKernelPath }} &&
 
 ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
@@ -222,6 +243,7 @@ func NewFC(
 	return &fc{
 		fcExit:                make(chan error, 1),
 		uffdReady:             uffdReady,
+		rootfsPath:            rootfsPath,
 		cmd:                   cmd,
 		stdout:                cmdStdoutReader,
 		stderr:                cmdStderrReader,
@@ -322,6 +344,7 @@ func (fc *fc) start(
 		fc.metadata,
 		fc.snapfile,
 		fc.uffdReady,
+		fc.rootfsPath,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to load snapshot: %w", err)
