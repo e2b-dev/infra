@@ -120,7 +120,7 @@ func NewSandbox(
 
 	go func() {
 		// TODO: Handle cleanup if failed.
-		runErr := rootfs.Run()
+		runErr := rootfs.Run(config.SandboxId)
 		if runErr != nil {
 			fmt.Fprintf(os.Stderr, "[sandbox %s]: rootfs overlay error: %v\n", config.SandboxId, runErr)
 		}
