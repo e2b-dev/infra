@@ -54,6 +54,8 @@ func (o *OverlayFile) Run() error {
 	eg, ctx := errgroup.WithContext(o.ctx)
 
 	eg.Go(func() error {
+		defer o.cancelCtx()
+
 		err := o.server.Run(ctx)
 		if err != nil {
 			return fmt.Errorf("error running nbd server: %w", err)
@@ -63,6 +65,8 @@ func (o *OverlayFile) Run() error {
 	})
 
 	eg.Go(func() error {
+		defer o.cancelCtx()
+
 		err := o.client.Run(ctx)
 		if err != nil {
 			return fmt.Errorf("error running nbd client: %w", err)
@@ -92,13 +96,15 @@ func (o *OverlayFile) Close() error {
 	return nil
 }
 
-// Path can only be called once.
-func (o *OverlayFile) Path(ctx context.Context) (string, error) {
+// NbdPath can only be called once.
+func (o *OverlayFile) NbdPath(ctx context.Context) (string, error) {
 	select {
 	case err := <-o.client.Ready:
 		if err != nil {
 			return "", fmt.Errorf("error getting nbd path: %w", err)
 		}
+	case <-o.ctx.Done():
+		return "", o.ctx.Err()
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}

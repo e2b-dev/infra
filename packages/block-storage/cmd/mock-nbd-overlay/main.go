@@ -89,6 +89,8 @@ func createTestDevice(ctx context.Context, pool *nbd.DevicePool, device block.De
 	case <-client.Ready:
 	}
 
+	fmt.Printf("ndb ready %s\n", client.DevicePath)
+
 	if waitErr := e.Wait(); waitErr != nil {
 		return fmt.Errorf("error waiting for server and client %s: %w", id, waitErr)
 	}

@@ -2,12 +2,14 @@ package sandbox
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"syscall"
+	"text/template"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -138,6 +140,16 @@ func (fc *fc) loadSnapshot(
 	return nil
 }
 
+const fcStartScript = `touch {{ .buildRootfsPath }} &&
+mount -o bind {{ .rootfsPath }} {{ .buildRootfsPath }} &&
+
+touch {{ .buildKernelPath }} &&
+mount -o bind {{ .kernelPath }} {{ .buildKernelPath }} &&
+
+ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
+
+var fcStartScriptTemplate = template.Must(template.New("fc-start").Parse(fcStartScript))
+
 func NewFC(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -154,33 +166,38 @@ func NewFC(
 	))
 	defer childSpan.End()
 
-	rootfsPath, err := rootfs.Path(childCtx)
+	rootfsPath, err := rootfs.NbdPath(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs path: %w", err)
 	}
 
-	rootfsMountCmd := fmt.Sprintf(
-		"mkdir -p %s && touch %s && mount -o bind %s %s && ",
-		files.BuildDir(),
-		files.BuildRootfsPath(),
-		rootfsPath,
-		files.BuildRootfsPath(),
-	)
+	err = os.MkdirAll(files.BuildDir(), 0o755)
+	if err != nil {
+		return nil, fmt.Errorf("error creating build dir: %w", err)
+	}
 
-	kernelMountCmd := fmt.Sprintf(
-		"mkdir -p %s && touch %s && mount -o bind %s %s && ",
-		files.BuildKernelDir(),
-		files.BuildKernelPath(),
-		files.CacheKernelPath(),
-		files.BuildKernelPath(),
-	)
+	err = os.MkdirAll(files.BuildKernelDir(), 0o755)
+	if err != nil {
+		return nil, fmt.Errorf("error creating build kernel dir: %w", err)
+	}
 
-	fcCmd := fmt.Sprintf("%s --api-sock %s", files.FirecrackerPath(), files.SandboxFirecrackerSocketPath())
-	inNetNSCmd := fmt.Sprintf("ip netns exec %s ", slot.NamespaceID())
+	var fcStartScript bytes.Buffer
+
+	err = fcStartScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
+		"rootfsPath":        rootfsPath,
+		"kernelPath":        files.CacheKernelPath(),
+		"buildRootfsPath":   files.BuildRootfsPath(),
+		"buildKernelPath":   files.BuildKernelPath(),
+		"namespaceID":       slot.NamespaceID(),
+		"firecrackerPath":   files.FirecrackerPath(),
+		"firecrackerSocket": files.SandboxFirecrackerSocketPath(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error executing fc start script template: %w", err)
+	}
 
 	telemetry.SetAttributes(childCtx,
-		attribute.String("sandbox.cmd.fc", fcCmd),
-		attribute.String("sandbox.cmd.netns", inNetNSCmd),
+		attribute.String("sandbox.cmd", fcStartScript.String()),
 	)
 
 	cmd := exec.Command(
@@ -190,7 +207,7 @@ func NewFC(
 		"--",
 		"bash",
 		"-c",
-		rootfsMountCmd+kernelMountCmd+inNetNSCmd+fcCmd,
+		fcStartScript.String(),
 	)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -301,7 +318,6 @@ func (fc *fc) start(
 
 	telemetry.SetAttributes(
 		childCtx,
-		attribute.String("sandbox.cmd", fc.cmd.String()),
 		attribute.String("sandbox.cmd.dir", fc.cmd.Dir),
 		attribute.String("sandbox.cmd.path", fc.cmd.Path),
 	)
