@@ -50,7 +50,7 @@ func NewOverlayFile(
 	}, nil
 }
 
-func (o *OverlayFile) Run() error {
+func (o *OverlayFile) Run(sandboxID string) error {
 	eg, ctx := errgroup.WithContext(o.ctx)
 
 	eg.Go(func() error {
@@ -99,7 +99,11 @@ func (o *OverlayFile) Close() error {
 // NbdPath can only be called once.
 func (o *OverlayFile) NbdPath(ctx context.Context) (string, error) {
 	select {
-	case err := <-o.client.Ready:
+	case err, ok := <-o.client.Ready:
+		if !ok {
+			return "", fmt.Errorf("nbd client closed or getting path called multiple times")
+		}
+
 		if err != nil {
 			return "", fmt.Errorf("error getting nbd path: %w", err)
 		}
