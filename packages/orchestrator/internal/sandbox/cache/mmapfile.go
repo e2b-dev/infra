@@ -105,7 +105,7 @@ func NewMmapfileCache() *MmapfileCache {
 	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *Mmapfile]) {
 		err := item.Value().Close()
 		if err != nil {
-			fmt.Printf("failed to close mmapfile: %v", err)
+			fmt.Fprintf(os.Stderr, "failed to close mmapfile: %v", err)
 		}
 	})
 
