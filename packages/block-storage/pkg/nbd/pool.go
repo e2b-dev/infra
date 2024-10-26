@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -140,18 +139,8 @@ func (n *DevicePool) GetDevice() (DevicePath, error) {
 	return "", ErrNoFreeSlots{}
 }
 
-// ReleaseDevice will unmount the device from all targets and release the slot.
-// It will return an error if the device is not free and not release the slot — you can retry.
+// ReleaseDevice will return an error if the device is not free and not release the slot — you can retry.
 func (n *DevicePool) ReleaseDevice(path DevicePath) error {
-	// Preventively unmount the device from all targets.
-	out, err := exec.Command("umount", "--all-targets", path).CombinedOutput()
-	if err != nil {
-		// Suppres unmount errors if the device is not mounted.
-		if !strings.HasSuffix(string(out), "not mounted\n") {
-			return fmt.Errorf("failed to umount device: %w: %s", err, string(out))
-		}
-	}
-
 	slot, err := n.getDeviceSlot(path)
 	if err != nil {
 		return fmt.Errorf("failed to get slot from path: %w", err)

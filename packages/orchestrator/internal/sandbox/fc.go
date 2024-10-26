@@ -49,6 +49,7 @@ type fc struct {
 }
 
 func (fc *fc) wait() error {
+	// TODO: The wait is not called right after the FC process because we are first starting the uffd.
 	err := fc.cmd.Wait()
 	if err != nil {
 		return fmt.Errorf("error waiting for fc process: %w", err)
@@ -140,10 +141,10 @@ func (fc *fc) loadSnapshot(
 	return nil
 }
 
-const fcStartScript = `
-mount --make-rprivate / &&
-mount -t tmpfs tmpfs {{ .buildDir }} &&
-mount -t tmpfs tmpfs {{ .buildKernelDir }} &&
+const fcStartScript = `mount --make-rprivate / &&
+
+mount -t tmpfs tmpfs {{ .buildDir }} -o X-mount.mkdir &&
+mount -t tmpfs tmpfs {{ .buildKernelDir }} -o X-mount.mkdir &&
 
 ln -s {{ .rootfsPath }} {{ .buildRootfsPath }} &&
 ln -s {{ .kernelPath }} {{ .buildKernelPath }} &&
@@ -171,16 +172,6 @@ func NewFC(
 	rootfsPath, err := rootfs.NbdPath(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs path: %w", err)
-	}
-
-	err = os.MkdirAll(files.BuildDir(), 0o755)
-	if err != nil {
-		return nil, fmt.Errorf("error creating build dir: %w", err)
-	}
-
-	err = os.MkdirAll(files.BuildKernelDir(), 0o755)
-	if err != nil {
-		return nil, fmt.Errorf("error creating build kernel dir: %w", err)
 	}
 
 	var fcStartScript bytes.Buffer
