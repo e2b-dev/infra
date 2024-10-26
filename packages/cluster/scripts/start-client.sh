@@ -16,9 +16,6 @@ export GOMAXPROCS='nproc'
 # Load the nbd module with 4096 devices
 sudo modprobe nbd nbds_max=4096
 
-# Create the directory for the fc mounts
-mkdir -p /fc-vm
-
 # Create the config file for gcsfuse
 fuse_cache="/fuse/cache"
 mkdir -p $fuse_cache
@@ -41,8 +38,8 @@ envd_dir="/fc-envd"
 mkdir -p $envd_dir
 gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" $envd_dir
 
-# Mount kernels
-kernels_dir="/fc-kernels"
+# Mount kernels to the expected fc-vm directory
+kernels_dir="/fc-vm"
 mkdir -p $kernels_dir
 gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_KERNELS_BUCKET_NAME}" $kernels_dir
 
@@ -167,4 +164,4 @@ echo '_sbx_ssh() {
   ssh -o StrictHostKeyChecking=accept-new "root@$address"
 }
 
-alias sbx-ssh=_sbx_ssh' >> /etc/profile
+alias sbx-ssh=_sbx_ssh' >>/etc/profile

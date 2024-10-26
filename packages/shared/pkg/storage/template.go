@@ -10,8 +10,7 @@ const (
 	EnvsDisk         = "/mnt/disks/fc-envs/v1"
 	templateCacheDir = "/orchestrator/cache/template"
 
-	KernelsDir     = "/fc-kernels"
-	KernelMountDir = "/fc-vm"
+	KernelsDir     = "/fc-vm"
 	KernelName     = "vmlinux.bin"
 
 	HostOldEnvdPath  = "/fc-envd/envd-v0.0.1"
@@ -50,15 +49,7 @@ func NewTemplateFiles(templateId, buildId, kernelVersion, firecrackerVersion str
 	}
 }
 
-func (t *TemplateFiles) BuildKernelPath() string {
-	return filepath.Join(t.BuildKernelDir(), KernelName)
-}
-
-func (t *TemplateFiles) BuildKernelDir() string {
-	return filepath.Join(KernelMountDir, t.KernelVersion)
-}
-
-func (t *TemplateFiles) CacheKernelPath() string {
+func (t *TemplateFiles) KernelPath() string {
 	return filepath.Join(KernelsDir, t.KernelVersion, KernelName)
 }
 

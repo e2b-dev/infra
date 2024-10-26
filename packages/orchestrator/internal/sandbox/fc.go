@@ -167,10 +167,8 @@ func (fc *fc) loadSnapshot(
 const fcStartScript = `mount --make-rprivate / &&
 
 mount -t tmpfs tmpfs {{ .buildDir }} -o X-mount.mkdir &&
-mount -t tmpfs tmpfs {{ .buildKernelDir }} -o X-mount.mkdir &&
 
 touch {{ .buildRootfsPath }} &&
-ln -s {{ .kernelPath }} {{ .buildKernelPath }} &&
 
 ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
 
@@ -201,11 +199,8 @@ func NewFC(
 
 	err = fcStartScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
 		"rootfsPath":        rootfsPath,
-		"kernelPath":        files.CacheKernelPath(),
 		"buildDir":          files.BuildDir(),
 		"buildRootfsPath":   files.BuildRootfsPath(),
-		"buildKernelPath":   files.BuildKernelPath(),
-		"buildKernelDir":    files.BuildKernelDir(),
 		"namespaceID":       slot.NamespaceID(),
 		"firecrackerPath":   files.FirecrackerPath(),
 		"firecrackerSocket": files.SandboxFirecrackerSocketPath(),
@@ -221,8 +216,6 @@ func NewFC(
 	cmd := exec.Command(
 		"unshare",
 		"-pfm",
-		"--propagation",
-		"private",
 		"--kill-child",
 		"--",
 		"bash",

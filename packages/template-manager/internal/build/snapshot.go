@@ -18,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -108,8 +107,6 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 		tracer,
 		env.FirecrackerBinaryPath,
 		network.namespaceID,
-		storage.KernelMountDir,
-		env.KernelDirPath(),
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("error starting fc process: %w", err)
@@ -159,23 +156,15 @@ func (s *Snapshot) startFCProcess(
 	ctx context.Context,
 	tracer trace.Tracer,
 	fcBinaryPath,
-	networkNamespaceID,
-	kernelMountDir,
-	kernelDirPath string,
+	networkNamespaceID string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-fc-process")
 	defer childSpan.End()
 
-	kernelMountCmd := fmt.Sprintf(
-		"mount --bind %s %s && ",
-		kernelDirPath,
-		kernelMountDir,
-	)
-
 	inNetNSCmd := fmt.Sprintf("ip netns exec %s ", networkNamespaceID)
 	fcCmd := fmt.Sprintf("%s --api-sock %s", fcBinaryPath, s.socketPath)
 
-	s.fc = exec.CommandContext(childCtx, "unshare", "-pm", "--kill-child", "--", "bash", "-c", kernelMountCmd+inNetNSCmd+fcCmd)
+	s.fc = exec.CommandContext(childCtx, "unshare", "-pm", "--kill-child", "--", "bash", "-c", inNetNSCmd+fcCmd)
 
 	fcVMStdoutWriter := telemetry.NewEventWriter(childCtx, "stdout")
 	fcVMStderrWriter := telemetry.NewEventWriter(childCtx, "stderr")
@@ -272,7 +261,7 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 
 	ip := fmt.Sprintf("%s::%s:%s:instance:eth0:off:8.8.8.8", fcAddr, fcTapAddress, fcMaskLong)
 	kernelArgs := fmt.Sprintf("quiet loglevel=1 ip=%s reboot=k panic=1 pci=off nomodules i8042.nokbd i8042.noaux ipv6.disable=1 random.trust_cpu=on", ip)
-	kernelImagePath := s.env.KernelMountedPath()
+	kernelImagePath := s.env.TemplateFiles.KernelPath()
 	bootSourceConfig := operations.PutGuestBootSourceParams{
 		Context: childCtx,
 		Body: &models.BootSource{
