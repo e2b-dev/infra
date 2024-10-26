@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -70,11 +71,9 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 		waitErr := sbx.Wait(context.Background(), tracer)
 		if waitErr != nil {
-			errMsg := fmt.Errorf("failed to wait for Sandbox: %w", waitErr)
-			fmt.Println(errMsg)
-		} else {
-			fmt.Printf("Sandbox %s wait finished\n", req.Sandbox.SandboxID)
+			fmt.Fprintf(os.Stderr, "failed to wait for Sandbox: %w", waitErr)
 		}
+
 		logger.Infof("Sandbox killed")
 	}()
 

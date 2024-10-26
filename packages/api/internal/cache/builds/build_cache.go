@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/meters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 )
 
 const (
