@@ -98,6 +98,11 @@ func (n *DevicePool) getDevicePath(slot DeviceSlot) DevicePath {
 	return fmt.Sprintf("/dev/nbd%d", slot)
 }
 
+// /sys/devices/virtual/block/nbdX/pid
+// nbd-client -c
+// https://unix.stackexchange.com/questions/33508/check-which-network-block-devices-are-in-use
+// https://superuser.com/questions/919895/how-to-get-a-list-of-connected-nbd-devices-on-ubuntu
+// TODO: Properly check if the device is free.
 func (n *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
 	pidFile := fmt.Sprintf("/sys/block/nbd%d/pid", slot)
 

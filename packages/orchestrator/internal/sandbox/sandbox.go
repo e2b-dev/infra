@@ -46,6 +46,8 @@ type Sandbox struct {
 	networkPool *NetworkSlotPool
 	TraceID     string
 	slot        IPSlot
+
+	uffdExit chan error
 }
 
 func NewSandbox(
@@ -145,6 +147,15 @@ func NewSandbox(
 		return nil, fmt.Errorf("failed to start uffd: %w", err)
 	}
 
+	uffdExit := make(chan error, 1)
+	childCtx, cancelFcUffd := context.WithCancel(childCtx)
+
+	go func() {
+		uffdExit <- fcUffd.Wait()
+		close(uffdExit)
+		cancelFcUffd()
+	}()
+
 	defer func() {
 		if err != nil {
 			stopErr := fcUffd.Stop()
@@ -189,6 +200,7 @@ func NewSandbox(
 	}()
 
 	sbx := &Sandbox{
+		uffdExit:    uffdExit,
 		files:       sandboxFiles,
 		slot:        ips,
 		fc:          fc,
@@ -283,28 +295,15 @@ func (s *Sandbox) Cleanup(
 }
 
 func (s *Sandbox) Wait() error {
-	uffdExit := make(chan error)
-	fcExit := make(chan error)
-
-	go func() {
-		fcExit <- s.fc.wait()
-		close(fcExit)
-	}()
-
-	go func() {
-		uffdExit <- s.uffd.Wait()
-		close(uffdExit)
-	}()
-
 	select {
-	case fcErr := <-fcExit:
+	case fcErr := <-s.fc.fcExit:
 		stopErr := s.Stop()
-		uffdErr := <-uffdExit
+		uffdErr := <-s.uffdExit
 
 		return errors.Join(fcErr, stopErr, uffdErr)
-	case uffdErr := <-uffdExit:
+	case uffdErr := <-s.uffdExit:
 		stopErr := s.Stop()
-		fcErr := <-fcExit
+		fcErr := <-s.fc.fcExit
 
 		return errors.Join(uffdErr, stopErr, fcErr)
 	}

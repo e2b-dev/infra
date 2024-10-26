@@ -46,6 +46,8 @@ type fc struct {
 
 	uffdSocketPath        string
 	firecrackerSocketPath string
+
+	fcExit chan error
 }
 
 func (fc *fc) wait() error {
@@ -218,6 +220,7 @@ func NewFC(
 	cmd.Stdout = cmdStderrWriter
 
 	return &fc{
+		fcExit:                make(chan error, 1),
 		uffdReady:             uffdReady,
 		cmd:                   cmd,
 		stdout:                cmdStdoutReader,
@@ -235,6 +238,9 @@ func (fc *fc) start(
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
+
+	childCtx, cancelFcCmd := context.WithCancel(childCtx)
+	defer cancelFcCmd()
 
 	go func() {
 		defer func() {
@@ -284,6 +290,14 @@ func (fc *fc) start(
 	if err != nil {
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
+
+	go func() {
+		fmt.Printf("[sandbox %s]: waiting for fc process\n", fc.metadata.SandboxId)
+		fc.fcExit <- fc.wait()
+		fmt.Printf("[sandbox %s]: fc process exited\n", fc.metadata.SandboxId)
+		close(fc.fcExit)
+		cancelFcCmd()
+	}()
 
 	defer func() {
 		if err != nil {
