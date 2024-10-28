@@ -148,7 +148,7 @@ func (fc *fc) loadSnapshot(
 
 	_, err = client.Operations.PatchVM(&pauseConfig)
 	if err != nil {
-		return fmt.Errorf("error pausing vm: %w", err)
+		return fmt.Errorf("error resuming vm: %w", err)
 	}
 
 	mmdsConfig := operations.PutMmdsParams{
