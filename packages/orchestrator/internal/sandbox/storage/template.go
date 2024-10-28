@@ -72,7 +72,6 @@ func (t *TemplateCache) newTemplate(
 		Snapfile: sync.OnceValues(func() (*PrefetchedFile, error) {
 			result := <-snapfileResult
 
-			fmt.Printf(">>>> [][] snapfile: %s\n", result.value.Path)
 			return result.value, result.err
 		}),
 	}

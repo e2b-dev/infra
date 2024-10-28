@@ -35,12 +35,10 @@ func (f *PrefetchedFile) fetch() error {
 
 	defer dst.Close()
 
-	n, err := f.object.WriteTo(dst)
+	_, err = f.object.WriteTo(dst)
 	if err != nil {
 		return fmt.Errorf("failed to write to file: %w", err)
 	}
-
-	fmt.Printf(">>>> wrote %d bytes to %s\n", n, f.Path)
 
 	return nil
 }
