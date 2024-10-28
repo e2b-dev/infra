@@ -141,7 +141,10 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	// Don't allow connecting to the sandbox anymore.
 	s.dns.Remove(in.SandboxId)
 
-	sbx.Stop()
+	stopErr := sbx.Stop()
+	if stopErr != nil {
+		fmt.Fprintf(os.Stderr, "[sandbox %s]: failed to stop sandbox: %v\n", in.SandboxId, stopErr)
+	}
 
 	// Ensure the sandbox is removed from cache.
 	// Ideally we would rely only on the goroutine defer.
