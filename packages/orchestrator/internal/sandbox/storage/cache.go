@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"cloud.google.com/go/storage"
+	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 
 	nbd "github.com/e2b-dev/infra/packages/block-storage/pkg/nbd"
@@ -27,8 +28,6 @@ func NewTemplateCache(ctx context.Context, client *storage.Client, bucket string
 	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *Template]) {
 		template := item.Value()
 
-		// TODO: Ensure that when the template is being closed we are not adding it to the cache so the newly created cache files are not deleted.
-		// We can improve this by locking by the key.
 		err := template.Close()
 		if err != nil {
 			fmt.Printf("[template data cache]: failed to cleanup template data for item %s: %v\n", item.Key(), err)
@@ -54,9 +53,21 @@ func (t *TemplateCache) GetTemplate(
 ) (*Template, error) {
 	key := fmt.Sprintf("%s-%s", templateId, buildId)
 
+	identifier, err := uuid.NewRandom()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate identifier: %w", err)
+	}
+
 	item, found := t.cache.GetOrSet(
 		key,
-		t.newTemplate(templateId, buildId, kernelVersion, firecrackerVersion, hugePages),
+		t.newTemplate(
+			identifier.String(),
+			templateId,
+			buildId,
+			kernelVersion,
+			firecrackerVersion,
+			hugePages,
+		),
 		ttlcache.WithTTL[string, *Template](templateDataExpiration),
 	)
 

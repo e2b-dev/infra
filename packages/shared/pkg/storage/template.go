@@ -8,7 +8,6 @@ import (
 
 const (
 	EnvsDisk         = "/mnt/disks/fc-envs/v1"
-	templateCacheDir = "/orchestrator/cache/template"
 
 	KernelsDir     = "/fc-vm"
 	KernelName     = "vmlinux.bin"
@@ -87,20 +86,4 @@ func (t *TemplateFiles) BuildRootfsPath() string {
 
 func (t *TemplateFiles) BuildSnapfilePath() string {
 	return filepath.Join(t.BuildDir(), SnapfileName)
-}
-
-func (t *TemplateFiles) CacheDir() string {
-	return filepath.Join(templateCacheDir, t.TemplateId, t.BuildId)
-}
-
-func (t *TemplateFiles) CacheMemfilePath() string {
-	return filepath.Join(t.CacheDir(), MemfileName)
-}
-
-func (t *TemplateFiles) CacheRootfsPath() string {
-	return filepath.Join(t.CacheDir(), RootfsName)
-}
-
-func (t *TemplateFiles) CacheSnapfilePath() string {
-	return filepath.Join(t.CacheDir(), SnapfileName)
 }

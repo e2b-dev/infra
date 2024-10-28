@@ -7,14 +7,14 @@ import (
 )
 
 type SandboxFiles struct {
-	*TemplateFiles
+	*TemplateCacheFiles
 	SandboxID string
 }
 
-func NewSandboxFiles(templateFiles *TemplateFiles, sandboxID string) *SandboxFiles {
+func NewSandboxFiles(templateCacheFiles *TemplateCacheFiles, sandboxID string) *SandboxFiles {
 	return &SandboxFiles{
-		TemplateFiles: templateFiles,
-		SandboxID:     sandboxID,
+		TemplateCacheFiles: templateCacheFiles,
+		SandboxID:          sandboxID,
 	}
 }
 

@@ -22,7 +22,7 @@ const (
 )
 
 type Template struct {
-	Files   *templateStorage.TemplateFiles
+	Files   *templateStorage.TemplateCacheFiles
 	nbdPool *nbd.DevicePool
 
 	Memfile  func() (*blockStorage.BlockStorage, error)
@@ -42,6 +42,7 @@ type valueWithErr[T any] struct {
 }
 
 func (t *TemplateCache) newTemplate(
+	cacheIdentifier,
 	templateId,
 	buildId,
 	kernelVersion,
@@ -57,8 +58,16 @@ func (t *TemplateCache) newTemplate(
 		memfileResult:  memfileResult,
 		snapfileResult: snapfileResult,
 		hugePages:      hugePages,
-		Files:          templateStorage.NewTemplateFiles(templateId, buildId, kernelVersion, firecrackerVersion),
-		nbdPool:        t.nbdPool,
+		Files: templateStorage.NewTemplateCacheFiles(
+			templateStorage.NewTemplateFiles(
+				templateId,
+				buildId,
+				kernelVersion,
+				firecrackerVersion,
+			),
+			cacheIdentifier,
+		),
+		nbdPool: t.nbdPool,
 		Memfile: sync.OnceValues(func() (*blockStorage.BlockStorage, error) {
 			result := <-memfileResult
 
