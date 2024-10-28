@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	block_storage "github.com/e2b-dev/infra/packages/block-storage/pkg"
@@ -10,7 +11,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type OverlayFile struct {
+type RootfsOverlay struct {
 	device *block_storage.BlockStorageOverlay
 	server *nbd.Server
 	client *nbd.Client
@@ -19,13 +20,13 @@ type OverlayFile struct {
 	cancelCtx context.CancelCauseFunc
 }
 
-func NewOverlayFile(
-	storage *block_storage.BlockStorage,
-	cachePath string,
-	pool *nbd.DevicePool,
-	socketPath string,
-) (*OverlayFile, error) {
-	device, err := storage.NewOverlay(cachePath)
+func (t *Template) NewRootfsOverlay(cachePath, socketPath string) (*RootfsOverlay, error) {
+	rootfs, err := t.Rootfs()
+	if err != nil {
+		return nil, fmt.Errorf("error getting rootfs: %w", err)
+	}
+
+	device, err := rootfs.NewOverlay(cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating overlay: %w", err)
 	}
@@ -34,14 +35,14 @@ func NewOverlayFile(
 		return device, nil
 	})
 
-	client, err := server.NewClient(pool)
+	client, err := server.NewClient(t.nbdPool)
 	if err != nil {
 		return nil, fmt.Errorf("error creating nbd client: %w", err)
 	}
 
 	ctx, cancelCtx := context.WithCancelCause(context.Background())
 
-	return &OverlayFile{
+	return &RootfsOverlay{
 		device:    device,
 		server:    server,
 		client:    client,
@@ -50,7 +51,7 @@ func NewOverlayFile(
 	}, nil
 }
 
-func (o *OverlayFile) Run(sandboxID string) error {
+func (o *RootfsOverlay) Run(sandboxID string) error {
 	eg, ctx := errgroup.WithContext(o.ctx)
 
 	eg.Go(func() error {
@@ -62,7 +63,7 @@ func (o *OverlayFile) Run(sandboxID string) error {
 			return err
 		}
 
-		o.cancelCtx(nil)
+		o.cancelCtx(fmt.Errorf("nbd server exited"))
 
 		return nil
 	})
@@ -76,7 +77,7 @@ func (o *OverlayFile) Run(sandboxID string) error {
 			return err
 		}
 
-		o.cancelCtx(nil)
+		o.cancelCtx(fmt.Errorf("nbd client exited"))
 
 		return nil
 	})
@@ -89,7 +90,7 @@ func (o *OverlayFile) Run(sandboxID string) error {
 	return nil
 }
 
-func (o *OverlayFile) Close() error {
+func (o *RootfsOverlay) Close() error {
 	o.cancelCtx(fmt.Errorf("closing overlay file"))
 
 	// TODO: We should wait for the client and server to close before closing the device.
@@ -102,8 +103,8 @@ func (o *OverlayFile) Close() error {
 	return nil
 }
 
-// NbdPath can only be called once.
-func (o *OverlayFile) NbdPath(ctx context.Context) (string, error) {
+// Path can only be called once.
+func (o *RootfsOverlay) Path(ctx context.Context) (string, error) {
 	select {
 	case err, ok := <-o.client.Ready:
 		if !ok {
@@ -114,9 +115,9 @@ func (o *OverlayFile) NbdPath(ctx context.Context) (string, error) {
 			return "", fmt.Errorf("error getting nbd path: %w", err)
 		}
 	case <-o.ctx.Done():
-		return "", o.ctx.Err()
+		return "", fmt.Errorf("overlay context closed: %w", errors.Join(o.ctx.Err(), context.Cause(o.ctx)))
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return "", fmt.Errorf("context done: %w", errors.Join(ctx.Err(), context.Cause(ctx)))
 	}
 
 	return o.client.DevicePath, nil

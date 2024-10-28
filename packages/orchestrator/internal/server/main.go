@@ -7,7 +7,6 @@ import (
 	"cloud.google.com/go/storage"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
-	consulapi "github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
 	"go.opentelemetry.io/otel"
@@ -21,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	snapshotStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
@@ -35,13 +35,11 @@ const (
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
+	tracer        trace.Tracer
 	sandboxes     *smap.Map[*sandbox.Sandbox]
 	dns           *dns.DNS
-	tracer        trace.Tracer
-	consul        *consulapi.Client
-	networkPool   *sandbox.NetworkSlotPool
-	nbdPool       *nbd.DevicePool
-	templateCache *snapshotStorage.TemplateDataCache
+	networkPool   *network.SlotPool
+	templateCache *snapshotStorage.TemplateCache
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -79,18 +77,23 @@ func New(logger *zap.Logger) *grpc.Server {
 		log.Fatalf("failed to create GCS client: %v", err)
 	}
 
-	templateCache := snapshotStorage.NewTemplateDataCache(ctx, client, templateStorage.BucketName)
-
 	nbdPool, err := nbd.NewDevicePool()
 	if err != nil {
 		log.Fatalf("failed to create NBD pool: %v", err)
 	}
 
-	networkPool := sandbox.NewNetworkSlotPool(ipSlotPoolSize)
+	templateCache := snapshotStorage.NewTemplateCache(
+		ctx,
+		client,
+		templateStorage.BucketName,
+		nbdPool,
+	)
+
+	networkPool := network.NewSlotPool(ipSlotPoolSize, consulClient)
 
 	// We start the pool last to avoid allocation network slots if the other components fail to initialize.
 	go func() {
-		poolErr := networkPool.Start(ctx, consulClient)
+		poolErr := networkPool.Populate(ctx)
 		if poolErr != nil {
 			log.Fatalf("network pool error: %v\n", poolErr)
 		}
@@ -98,11 +101,9 @@ func New(logger *zap.Logger) *grpc.Server {
 
 	orchestrator.RegisterSandboxServiceServer(s, &server{
 		tracer:        tracer,
-		consul:        consulClient,
 		dns:           dns,
 		sandboxes:     smap.New[*sandbox.Sandbox](),
 		networkPool:   networkPool,
-		nbdPool:       nbdPool,
 		templateCache: templateCache,
 	})
 

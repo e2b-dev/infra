@@ -1,9 +1,10 @@
-package sandbox
+package fc
 
 import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,17 +12,20 @@ import (
 	"syscall"
 	"text/template"
 
+	"github.com/firecracker-microvm/firecracker-go-sdk"
+	"github.com/go-openapi/strfmt"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/firecracker-microvm/firecracker-go-sdk"
-	"github.com/go-openapi/strfmt"
 )
 
 // The metadata serialization should not be changed — it is different from the field names we use here!
@@ -33,9 +37,9 @@ type MmdsMetadata struct {
 	TeamId               string `json:"teamID"`
 }
 
-type fc struct {
+type Process struct {
 	uffdReady chan struct{}
-	snapfile  *storage.SimpleFile
+	snapfile  *storage.PrefetchedFile
 
 	cmd *exec.Cmd
 
@@ -48,12 +52,12 @@ type fc struct {
 	firecrackerSocketPath string
 	rootfsPath            string
 
-	fcExit chan error
+	Exit chan error
 }
 
-func (fc *fc) wait() error {
+func (p *Process) Wait() error {
 	// TODO: The wait is not called right after the FC process because we are first starting the uffd.
-	err := fc.cmd.Wait()
+	err := p.cmd.Wait()
 	if err != nil {
 		return fmt.Errorf("error waiting for fc process: %w", err)
 	}
@@ -61,13 +65,13 @@ func (fc *fc) wait() error {
 	return nil
 }
 
-func (fc *fc) loadSnapshot(
+func (p *Process) loadSnapshot(
 	ctx context.Context,
 	tracer trace.Tracer,
 	firecrackerSocketPath,
 	uffdSocketPath string,
 	metadata interface{},
-	snapfile *storage.SimpleFile,
+	snapfile *storage.PrefetchedFile,
 	uffdReady chan struct{},
 	rootfsPath string,
 ) error {
@@ -82,14 +86,9 @@ func (fc *fc) loadSnapshot(
 
 	var backend *models.MemoryBackend
 
-	err := waitForSocket(childCtx, uffdSocketPath)
+	err := socket.Wait(childCtx, uffdSocketPath)
 	if err != nil {
 		return fmt.Errorf("error waiting for uffd socket: %w", err)
-	}
-
-	snapfilePath, err := snapfile.GetPath()
-	if err != nil {
-		return fmt.Errorf("error ensuring snapfile: %w", err)
 	}
 
 	backendType := models.MemoryBackendBackendTypeUffd
@@ -104,7 +103,7 @@ func (fc *fc) loadSnapshot(
 			ResumeVM:            false,
 			EnableDiffSnapshots: false,
 			MemBackend:          backend,
-			SnapshotPath:        &snapfilePath,
+			SnapshotPath:        &snapfile.Path,
 		},
 	}
 
@@ -113,28 +112,9 @@ func (fc *fc) loadSnapshot(
 		return fmt.Errorf("error loading snapshot: %w", err)
 	}
 
-	rootfs := "rootfs"
-	pathOnHost := rootfsPath
-	driversConfig := operations.PatchGuestDriveByIDParams{
-		Context: childCtx,
-		DriveID: rootfs,
-		Body: &models.PartialDrive{
-			DriveID:    &rootfs,
-			PathOnHost: pathOnHost,
-		},
-	}
-
-	_, err = client.Operations.PatchGuestDriveByID(&driversConfig)
-	if err != nil {
-		errMsg := fmt.Errorf("error setting fc drivers config: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-
 	select {
 	case <-childCtx.Done():
-		return fmt.Errorf("context canceled while waiting for uffd ready: %w", childCtx.Err())
+		return fmt.Errorf("context canceled while waiting for uffd ready: %w", errors.Join(childCtx.Err(), context.Cause(childCtx)))
 	case <-uffdReady:
 	}
 
@@ -148,7 +128,7 @@ func (fc *fc) loadSnapshot(
 
 	_, err = client.Operations.PatchVM(&pauseConfig)
 	if err != nil {
-		return fmt.Errorf("error resuming vm: %w", err)
+		return fmt.Errorf("error resuming vm: %w", errors.Join(err, context.Cause(childCtx)))
 	}
 
 	mmdsConfig := operations.PutMmdsParams{
@@ -164,35 +144,35 @@ func (fc *fc) loadSnapshot(
 	return nil
 }
 
-const fcStartScript = `mount --make-rprivate / &&
+const fcStartScript = `mount --make-rprivate {{ .buildDir }} &&
 
 mount -t tmpfs tmpfs {{ .buildDir }} -o X-mount.mkdir &&
 
-touch {{ .buildRootfsPath }} &&
+ln -s {{ .rootfsPath }} {{ .buildRootfsPath }} &&
 
 ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
 
 var fcStartScriptTemplate = template.Must(template.New("fc-start").Parse(fcStartScript))
 
-func NewFC(
+func NewProcess(
 	ctx context.Context,
 	tracer trace.Tracer,
-	slot IPSlot,
+	slot network.IPSlot,
 	files *templateStorage.SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
-	snapfile *storage.SimpleFile,
-	rootfs *storage.OverlayFile,
+	snapfile *storage.PrefetchedFile,
+	rootfs *storage.RootfsOverlay,
 	uffdReady chan struct{},
-) (*fc, error) {
+) (*Process, error) {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.String("sandbox.id", mmdsMetadata.SandboxId),
 		attribute.Int("sandbox.slot.index", slot.SlotIdx),
 	))
 	defer childSpan.End()
 
-	rootfsPath, err := rootfs.NbdPath(childCtx)
+	rootfsPath, err := rootfs.Path(childCtx)
 	if err != nil {
-		return nil, fmt.Errorf("error getting rootfs path: %w", err)
+		fmt.Errorf("error getting rootfs path: %w", err)
 	}
 
 	var fcStartScript bytes.Buffer
@@ -233,8 +213,8 @@ func NewFC(
 	cmd.Stderr = cmdStdoutWriter
 	cmd.Stdout = cmdStderrWriter
 
-	return &fc{
-		fcExit:                make(chan error, 1),
+	return &Process{
+		Exit:                  make(chan error, 1),
 		uffdReady:             uffdReady,
 		rootfsPath:            rootfsPath,
 		cmd:                   cmd,
@@ -247,7 +227,7 @@ func NewFC(
 	}, nil
 }
 
-func (fc *fc) start(
+func (p *Process) Start(
 	ctx context.Context,
 	tracer trace.Tracer,
 ) error {
@@ -255,68 +235,64 @@ func (fc *fc) start(
 	defer childSpan.End()
 
 	childCtx, cancelFcCmd := context.WithCancelCause(childCtx)
-	defer cancelFcCmd(nil)
 
 	go func() {
 		defer func() {
-			readerErr := fc.stdout.Close()
+			readerErr := p.stdout.Close()
 			if readerErr != nil {
-				fmt.Fprintf(os.Stderr, "[sandbox %s]: error closing fc stdout reader: %v\n", fc.metadata.SandboxId, readerErr)
+				fmt.Fprintf(os.Stderr, "[sandbox %s]: error closing fc stdout reader: %v\n", p.metadata.SandboxId, readerErr)
 			}
 		}()
 
-		scanner := bufio.NewScanner(fc.stdout)
+		scanner := bufio.NewScanner(p.stdout)
 
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			fmt.Fprintf(os.Stdout, "[sandbox %s]: stdout: %s\n", fc.metadata.SandboxId, line)
+			fmt.Fprintf(os.Stdout, "[sandbox %s]: stdout: %s\n", p.metadata.SandboxId, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			fmt.Fprintf(os.Stderr, "[sandbox %s]: error reading fc stdout: %v\n", fc.metadata.SandboxId, readerErr)
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: error reading fc stdout: %v\n", p.metadata.SandboxId, readerErr)
 		}
 	}()
 
 	go func() {
 		defer func() {
-			readerErr := fc.stderr.Close()
+			readerErr := p.stderr.Close()
 			if readerErr != nil {
-				fmt.Fprintf(os.Stderr, "[sandbox %s]: error closing fc stderr reader: %v\n", fc.metadata.SandboxId, readerErr)
+				fmt.Fprintf(os.Stderr, "[sandbox %s]: error closing fc stderr reader: %v\n", p.metadata.SandboxId, readerErr)
 			}
 		}()
 
-		scanner := bufio.NewScanner(fc.stderr)
+		scanner := bufio.NewScanner(p.stderr)
 
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			fmt.Fprintf(os.Stderr, "[sandbox %s]: stderr: %s\n", fc.metadata.SandboxId, line)
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: stderr: %s\n", p.metadata.SandboxId, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			fmt.Fprintf(os.Stderr, "[sandbox %s]: error reading fc stderr: %v\n", fc.metadata.SandboxId, readerErr)
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: error reading fc stderr: %v\n", p.metadata.SandboxId, readerErr)
 		}
 	}()
 
-	err := fc.cmd.Start()
+	err := p.cmd.Start()
 	if err != nil {
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
 	go func() {
-		fmt.Printf("[sandbox %s]: waiting for fc process\n", fc.metadata.SandboxId)
-		fc.fcExit <- fc.wait()
-		fmt.Printf("[sandbox %s]: fc process exited\n", fc.metadata.SandboxId)
-		close(fc.fcExit)
+		p.Exit <- p.Wait()
 		cancelFcCmd(fmt.Errorf("fc process exited"))
 	}()
 
 	defer func() {
 		if err != nil {
-			fcErr := fc.stop()
+			fcErr := p.Stop()
 			if fcErr != nil {
 				telemetry.ReportError(childCtx, fmt.Errorf("failed to stop FC: %w", fcErr))
 			}
@@ -324,20 +300,20 @@ func (fc *fc) start(
 	}()
 
 	// Wait for the FC process to start so we can use FC API
-	err = waitForSocket(childCtx, fc.firecrackerSocketPath)
+	err = socket.Wait(childCtx, p.firecrackerSocketPath)
 	if err != nil {
 		return fmt.Errorf("error waiting for fc socket: %w", err)
 	}
 
-	err = fc.loadSnapshot(
+	err = p.loadSnapshot(
 		childCtx,
 		tracer,
-		fc.firecrackerSocketPath,
-		fc.uffdSocketPath,
-		fc.metadata,
-		fc.snapfile,
-		fc.uffdReady,
-		fc.rootfsPath,
+		p.firecrackerSocketPath,
+		p.uffdSocketPath,
+		p.metadata,
+		p.snapfile,
+		p.uffdReady,
+		p.rootfsPath,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to load snapshot: %w", err)
@@ -345,15 +321,15 @@ func (fc *fc) start(
 
 	telemetry.SetAttributes(
 		childCtx,
-		attribute.String("sandbox.cmd.dir", fc.cmd.Dir),
-		attribute.String("sandbox.cmd.path", fc.cmd.Path),
+		attribute.String("sandbox.cmd.dir", p.cmd.Dir),
+		attribute.String("sandbox.cmd.path", p.cmd.Path),
 	)
 
 	return nil
 }
 
-func (fc *fc) stop() error {
-	err := fc.cmd.Process.Kill()
+func (p *Process) Stop() error {
+	err := p.cmd.Process.Kill()
 	if err != nil {
 		return fmt.Errorf("failed to send KILL to FC process: %w", err)
 	}

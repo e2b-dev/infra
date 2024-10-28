@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	uffdMsgListenerTimeout = 5 * time.Second
+	uffdMsgListenerTimeout = 10 * time.Second
 	fdSize                 = 4
 	mappingsSize           = 1024
 )
@@ -34,7 +34,7 @@ func New(
 	}
 
 	return &Uffd{
-		exitChan:   make(chan error, 1),
+		exit:       make(chan error, 1),
 		Ready:      make(chan struct{}, 1),
 		exitReader: pRead,
 		exitWriter: pWrite,
@@ -52,8 +52,8 @@ func New(
 }
 
 type Uffd struct {
-	exitChan chan error
-	Ready    chan struct{}
+	exit  chan error
+	Ready chan struct{}
 
 	exitReader *os.File
 	exitWriter *os.File
@@ -80,8 +80,8 @@ func (u *Uffd) Start(sandboxId string) error {
 	}
 
 	go func() {
-		u.exitChan <- u.handle(u.memfile, sandboxId)
-		close(u.exitChan)
+		u.exit <- u.handle(u.memfile, sandboxId)
+		close(u.exit)
 	}()
 
 	return nil
@@ -166,7 +166,7 @@ func (u *Uffd) handle(memfile *blockStorage.BlockStorage, sandboxId string) (err
 }
 
 func (u *Uffd) Wait() error {
-	handleErr := <-u.exitChan
+	handleErr := <-u.exit
 
 	close(u.Ready)
 

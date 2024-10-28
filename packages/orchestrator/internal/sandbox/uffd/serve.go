@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"syscall"
+	"time"
 	"unsafe"
 
 	blockStorage "github.com/e2b-dev/infra/packages/block-storage/pkg"
@@ -13,7 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const maxEagainAttempts = 32
+const maxEagainAttempts = 64
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
@@ -82,6 +83,8 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 				}
 
 				i++
+
+				time.Sleep(1 * time.Millisecond)
 
 				continue
 			}

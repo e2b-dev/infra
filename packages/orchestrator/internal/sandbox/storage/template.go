@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,10 +8,8 @@ import (
 	"time"
 
 	blockStorage "github.com/e2b-dev/infra/packages/block-storage/pkg"
+	nbd "github.com/e2b-dev/infra/packages/block-storage/pkg/nbd"
 	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
-
-	"cloud.google.com/go/storage"
-	"github.com/jellydator/ttlcache/v3"
 )
 
 const (
@@ -22,159 +19,168 @@ const (
 	rootfsBlockSize        = 2 << 11
 )
 
-type TemplateData struct {
-	Memfile  *blockStorage.BlockStorage
-	Snapfile *SimpleFile
-	Rootfs   *blockStorage.BlockStorage
+type Template struct {
+	Files   *templateStorage.TemplateFiles
+	nbdPool *nbd.DevicePool
 
-	ensureOpen func() (*TemplateData, error)
-
-	Files *templateStorage.TemplateFiles
+	Memfile  func() (*blockStorage.BlockStorage, error)
+	Rootfs   func() (*blockStorage.BlockStorage, error)
+	Snapfile func() (*PrefetchedFile, error)
 }
 
-func (t *TemplateData) Close() error {
-	var errs []error
-
-	if t.Memfile != nil {
-		errs = append(errs, t.Memfile.Close())
-	}
-
-	if t.Rootfs != nil {
-		errs = append(errs, t.Rootfs.Close())
-	}
-
-	if t.Snapfile != nil {
-		errs = append(errs, t.Snapfile.Remove())
-	}
-
-	return errors.Join(errs...)
+type valueWithErr[T any] struct {
+	value T
+	err   error
 }
 
-func newTemplateData(
-	ctx context.Context,
-	bucket *storage.BucketHandle,
+func (t *TemplateCache) newTemplate(
 	templateId,
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
 	hugePages bool,
-) *TemplateData {
-	h := &TemplateData{
-		Files: templateStorage.NewTemplateFiles(templateId, buildId, kernelVersion, firecrackerVersion),
+) *Template {
+	rootfsResult := make(chan valueWithErr[*blockStorage.BlockStorage], 1)
+	memfileResult := make(chan valueWithErr[*blockStorage.BlockStorage], 1)
+	snapfileResult := make(chan valueWithErr[*PrefetchedFile], 1)
+
+	h := &Template{
+		Files:   templateStorage.NewTemplateFiles(templateId, buildId, kernelVersion, firecrackerVersion),
+		nbdPool: t.nbdPool,
+		Memfile: sync.OnceValues(func() (*blockStorage.BlockStorage, error) {
+			result := <-memfileResult
+
+			return result.value, result.err
+		}),
+		Rootfs: sync.OnceValues(func() (*blockStorage.BlockStorage, error) {
+			result := <-rootfsResult
+
+			return result.value, result.err
+		}),
+		Snapfile: sync.OnceValues(func() (*PrefetchedFile, error) {
+			result := <-snapfileResult
+
+			return result.value, result.err
+		}),
 	}
 
-	h.ensureOpen = sync.OnceValues(func() (*TemplateData, error) {
+	go func() {
 		err := os.MkdirAll(h.Files.CacheDir(), os.ModePerm)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create directory %s: %w", h.Files.CacheDir(), err)
+			errMsg := fmt.Errorf("failed to create directory %s: %w", h.Files.CacheDir(), err)
+
+			memfileResult <- valueWithErr[*blockStorage.BlockStorage]{
+				err: errMsg,
+			}
+
+			rootfsResult <- valueWithErr[*blockStorage.BlockStorage]{
+				err: errMsg,
+			}
+
+			snapfileResult <- valueWithErr[*PrefetchedFile]{
+				err: errMsg,
+			}
+
+			return
 		}
 
-		h.Snapfile = NewSimpleFile(ctx, bucket, h.Files.StorageSnapfilePath(), h.Files.CacheSnapfilePath())
+		go func() {
+			snapfile := newPrefetchedFile(t.ctx, t.bucket, h.Files.StorageSnapfilePath(), h.Files.CacheSnapfilePath())
 
-		// Asynchronously start the file download.
-		go h.Snapfile.GetPath()
+			err := snapfile.fetch()
+			if err != nil {
+				snapfileResult <- valueWithErr[*PrefetchedFile]{
+					err: fmt.Errorf("failed to fetch snapfile: %w", err),
+				}
 
-		memfileObject := blockStorage.NewBucketObject(
-			ctx,
-			bucket,
-			h.Files.StorageMemfilePath(),
-		)
+				return
+			}
 
-		var memfileBlockSize int64
-		if hugePages {
-			memfileBlockSize = hugepageSize
-		} else {
-			memfileBlockSize = pageSize
-		}
+			snapfileResult <- valueWithErr[*PrefetchedFile]{
+				value: snapfile,
+			}
+		}()
 
-		memfileStorage, err := blockStorage.New(
-			ctx,
-			memfileObject,
-			h.Files.CacheMemfilePath(),
-			memfileBlockSize,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create memfile storage: %w", err)
-		}
+		go func() {
+			memfileObject := blockStorage.NewBucketObject(
+				t.ctx,
+				t.bucket,
+				h.Files.StorageMemfilePath(),
+			)
 
-		h.Memfile = memfileStorage
+			var memfileBlockSize int64
+			if hugePages {
+				memfileBlockSize = hugepageSize
+			} else {
+				memfileBlockSize = pageSize
+			}
 
-		rootfsObject := blockStorage.NewBucketObject(
-			ctx,
-			bucket,
-			h.Files.StorageRootfsPath(),
-		)
+			memfileStorage, err := blockStorage.New(
+				t.ctx,
+				memfileObject,
+				h.Files.CacheMemfilePath(),
+				memfileBlockSize,
+			)
+			if err != nil {
+				memfileResult <- valueWithErr[*blockStorage.BlockStorage]{
+					err: fmt.Errorf("failed to create memfile storage: %w", err),
+				}
 
-		rootfsStorage, err := blockStorage.New(
-			ctx,
-			rootfsObject,
-			h.Files.CacheRootfsPath(),
-			rootfsBlockSize,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create rootfs storage: %w", err)
-		}
+				return
+			}
 
-		h.Rootfs = rootfsStorage
+			memfileResult <- valueWithErr[*blockStorage.BlockStorage]{
+				value: memfileStorage,
+			}
+		}()
 
-		return h, nil
-	})
+		go func() {
+			rootfsObject := blockStorage.NewBucketObject(
+				t.ctx,
+				t.bucket,
+				h.Files.StorageRootfsPath(),
+			)
+
+			rootfsStorage, err := blockStorage.New(
+				t.ctx,
+				rootfsObject,
+				h.Files.CacheRootfsPath(),
+				rootfsBlockSize,
+			)
+			if err != nil {
+				rootfsResult <- valueWithErr[*blockStorage.BlockStorage]{
+					err: fmt.Errorf("failed to create rootfs storage: %w", err),
+				}
+
+				return
+			}
+
+			rootfsResult <- valueWithErr[*blockStorage.BlockStorage]{
+				value: rootfsStorage,
+			}
+		}()
+	}()
 
 	return h
 }
 
-type TemplateDataCache struct {
-	cache  *ttlcache.Cache[string, *TemplateData]
-	bucket *storage.BucketHandle
-	ctx    context.Context
-}
+func (t *Template) Close() error {
+	var errs []error
 
-func (t *TemplateDataCache) GetTemplateData(
-	templateId,
-	buildId,
-	kernelVersion,
-	firecrackerVersion string,
-	hugePages bool,
-) (*TemplateData, error) {
-	id := fmt.Sprintf("%s-%s", templateId, buildId)
-
-	templateData, _ := t.cache.GetOrSet(
-		id,
-		newTemplateData(t.ctx, t.bucket, templateId, buildId, kernelVersion, firecrackerVersion, hugePages),
-		ttlcache.WithTTL[string, *TemplateData](templateDataExpiration),
-	)
-
-	mp, err := templateData.Value().ensureOpen()
-	if err != nil {
-		t.cache.Delete(id)
-
-		return nil, fmt.Errorf("failed to create template data cache %s: %w", id, err)
+	memfile, err := t.Memfile()
+	if err == nil {
+		errs = append(errs, memfile.Close())
 	}
 
-	return mp, nil
-}
-
-func NewTemplateDataCache(ctx context.Context, client *storage.Client, bucket string) *TemplateDataCache {
-	b := client.Bucket(bucket)
-
-	cache := ttlcache.New(
-		ttlcache.WithTTL[string, *TemplateData](templateDataExpiration),
-	)
-
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *TemplateData]) {
-		data := item.Value()
-
-		err := data.Close()
-		if err != nil {
-			fmt.Printf("[template data cache]: failed to cleanup template data for item %s: %v\n", item.Key(), err)
-		}
-	})
-
-	go cache.Start()
-
-	return &TemplateDataCache{
-		bucket: b,
-		cache:  cache,
-		ctx:    ctx,
+	rootfs, err := t.Rootfs()
+	if err == nil {
+		errs = append(errs, rootfs.Close())
 	}
+
+	snapfile, err := t.Snapfile()
+	if err == nil {
+		errs = append(errs, snapfile.Close())
+	}
+
+	return errors.Join(errs...)
 }

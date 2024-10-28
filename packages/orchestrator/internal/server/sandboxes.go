@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -30,21 +31,24 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		attribute.String("sandbox.kernel.version", req.Sandbox.KernelVersion),
 	)
 
-	sbx, err := sandbox.NewSandbox(
-		childCtx,
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(fmt.Errorf("sandbox create ended"))
+
+	sbx, cleanup, err := sandbox.NewSandbox(
+		ctx,
 		s.tracer,
-		s.consul,
 		s.dns,
 		s.networkPool,
 		s.templateCache,
-		s.nbdPool,
 		req.Sandbox,
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
 	)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to create sandbox: %w", err)
+		cleanupErr := sandbox.HandleCleanup(cleanup)
+
+		errMsg := fmt.Errorf("failed to create sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
 		telemetry.ReportCriticalError(ctx, errMsg)
 
 		return nil, status.New(codes.Internal, errMsg.Error()).Err()
@@ -60,7 +64,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 		s.sandboxes.Remove(req.Sandbox.SandboxId)
 
-		cleanupErr := sbx.Cleanup(s.consul, s.dns, req.Sandbox.SandboxId)
+		cleanupErr := sandbox.HandleCleanup(cleanup)
 		if cleanupErr != nil {
 			fmt.Fprintf(os.Stderr, "[sandbox %s]: failed to cleanup sandbox: %v\n", req.Sandbox.SandboxId, cleanupErr)
 		}

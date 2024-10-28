@@ -1,4 +1,4 @@
-package sandbox
+package network
 
 import (
 	"errors"

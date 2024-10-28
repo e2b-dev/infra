@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	sandboxStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	snapshotStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -49,17 +51,16 @@ func main() {
 	}
 
 	consulClient, err := consul.New(context.Background())
-	templateCache := sandboxStorage.NewTemplateDataCache(ctx, client, templateStorage.BucketName)
 
-	networkPool := sandbox.NewNetworkSlotPool(*count)
+	networkPool := network.NewSlotPool(*count, consulClient)
 
 	go func() {
-		poolErr := networkPool.Start(ctx, consulClient)
+		poolErr := networkPool.Populate(ctx)
 		if poolErr != nil {
 			fmt.Fprintf(os.Stderr, "network pool error: %v\n", poolErr)
 		}
 
-		closeErr := networkPool.Close(consulClient)
+		closeErr := networkPool.Close()
 		if closeErr != nil {
 			fmt.Fprintf(os.Stderr, "network pool close error: %v\n", closeErr)
 		}
@@ -71,6 +72,8 @@ func main() {
 
 		return
 	}
+
+	templateCache := sandboxStorage.NewTemplateCache(ctx, client, templateStorage.BucketName, nbdDevicePool)
 
 	for i := 0; i < *count; i++ {
 		fmt.Printf("Starting sandbox %d\n", i)
@@ -95,10 +98,10 @@ func mockSandbox(
 	buildId,
 	sandboxId string,
 	dns *dns.DNS,
-	templateCache *snapshotStorage.TemplateDataCache,
+	templateCache *snapshotStorage.TemplateCache,
 	keepAlive time.Duration,
 	nbdDevicePool *nbd.DevicePool,
-	networkPool *sandbox.NetworkSlotPool,
+	networkPool *network.SlotPool,
 	consulClient *consulapi.Client,
 ) {
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
@@ -106,14 +109,12 @@ func mockSandbox(
 
 	start := time.Now()
 
-	sbx, err := sandbox.NewSandbox(
+	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
 		tracer,
-		consulClient,
 		dns,
 		networkPool,
 		templateCache,
-		nbdDevicePool,
 		&orchestrator.SandboxConfig{
 			TemplateId:         templateId,
 			FirecrackerVersion: "v1.7.0-dev_8bb88311",
@@ -129,7 +130,9 @@ func mockSandbox(
 		time.Now(),
 	)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create sandbox: %v\n", err)
+		cleanupErr := sandbox.HandleCleanup(cleanup)
+
+		fmt.Fprintf(os.Stderr, "failed to create sandbox: %v\n", errors.Join(err, cleanupErr))
 
 		return
 	}
@@ -140,7 +143,11 @@ func mockSandbox(
 
 	time.Sleep(keepAlive)
 
-	defer sbx.Cleanup(consulClient, dns, sandboxId)
+	defer func() {
+		cleanupErr := sandbox.HandleCleanup(cleanup)
+
+		fmt.Fprintf(os.Stderr, "failed to cleanup sandbox: %v\n", cleanupErr)
+	}()
 
 	sbx.Stop()
 }
