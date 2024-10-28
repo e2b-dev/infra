@@ -118,27 +118,44 @@ func (n *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
 	return false, nil
 }
 
-// Get device slot if there is one available.
-func (n *DevicePool) GetDevice() (DevicePath, error) {
+func (n *DevicePool) getMaybeEmptySlot(start DeviceSlot) (DeviceSlot, func(), bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	for slot, ok := n.slots.NextClear(0); ok; slot, ok = n.slots.NextClear(slot + 1) {
-		n.slots.Set(slot)
+	slot, ok := n.slots.NextClear(start)
 
+	if !ok {
+		return 0, func() {}, false
+	}
+
+	n.slots.Set(slot)
+
+	return slot, func() {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+
+		n.slots.Clear(slot)
+	}, true
+}
+
+// Get device slot if there is one available.
+func (n *DevicePool) GetDevice() (DevicePath, error) {
+	for slot, cleanSlot, ok := n.getMaybeEmptySlot(0); ok; slot, cleanSlot, ok = n.getMaybeEmptySlot(slot + 1) {
 		free, err := n.isDeviceFree(slot)
 		if err != nil {
-			n.slots.Clear(slot)
+			cleanSlot()
 
 			return "", fmt.Errorf("failed to check if device is free: %w", err)
 		}
 
-		if free {
-			return n.getDevicePath(slot), nil
+		if !free {
+			// We clear the slot even though it is not free to prevent accidental accumulation of slots.
+			cleanSlot()
+
+			continue
 		}
 
-		// We clear the slot even though it is not free to prevent accidental accumulation of slots.
-		n.slots.Clear(slot)
+		return n.getDevicePath(slot), nil
 	}
 
 	return "", ErrNoFreeSlots{}
