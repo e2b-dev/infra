@@ -27,6 +27,8 @@ func NewTemplateCache(ctx context.Context, client *storage.Client, bucket string
 	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *Template]) {
 		template := item.Value()
 
+		// TODO: Ensure that when the template is being closed we are not adding it to the cache so the newly created cache files are not deleted.
+		// We can improve this by locking by the key.
 		err := template.Close()
 		if err != nil {
 			fmt.Printf("[template data cache]: failed to cleanup template data for item %s: %v\n", item.Key(), err)
