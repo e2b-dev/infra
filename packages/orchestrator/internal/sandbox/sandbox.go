@@ -105,7 +105,7 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create sandbox cache dir: %w", err)
 	}
 
-	rootfs, err := template.NewRootfsOverlay(
+	rootfsOverlay, err := template.NewRootfsOverlay(
 		sandboxFiles.SandboxCacheRootfsPath(),
 		sandboxFiles.SandboxNbdSocketPath(),
 	)
@@ -114,7 +114,7 @@ func NewSandbox(
 	}
 
 	cleanup = append(cleanup, func() error {
-		rootfsErr := rootfs.Close()
+		rootfsErr := rootfsOverlay.Close()
 		if rootfsErr != nil {
 			return fmt.Errorf("failed to close rootfs: %w", rootfsErr)
 		}
@@ -124,7 +124,7 @@ func NewSandbox(
 
 	go func() {
 		// TODO: Handle cleanup if failed.
-		runErr := rootfs.Run(config.SandboxId)
+		runErr := rootfsOverlay.Run(config.SandboxId)
 		if runErr != nil {
 			fmt.Fprintf(os.Stderr, "[sandbox %s]: rootfs overlay error: %v\n", config.SandboxId, runErr)
 		}
@@ -182,7 +182,7 @@ func NewSandbox(
 			TeamId:               config.TeamId,
 		},
 		snapfile,
-		rootfs,
+		rootfsOverlay,
 		fcUffd.Ready,
 	)
 	if fcErr != nil {
@@ -212,7 +212,7 @@ func NewSandbox(
 		Config:    config,
 		StartedAt: startedAt,
 		EndAt:     endAt,
-		rootfs:    rootfs,
+		rootfs:    rootfsOverlay,
 		stopOnce: sync.OnceValue(func() error {
 			var errs []error
 

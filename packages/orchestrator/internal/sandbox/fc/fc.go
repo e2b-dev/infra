@@ -144,7 +144,7 @@ func (p *Process) loadSnapshot(
 	return nil
 }
 
-const fcStartScript = `mount --make-rprivate {{ .buildDir }} &&
+const fcStartScript = `mount --make-rprivate / &&
 
 mount -t tmpfs tmpfs {{ .buildDir }} -o X-mount.mkdir &&
 
@@ -172,7 +172,7 @@ func NewProcess(
 
 	rootfsPath, err := rootfs.Path(childCtx)
 	if err != nil {
-		fmt.Errorf("error getting rootfs path: %w", err)
+		return nil, fmt.Errorf("error getting rootfs path: %w", err)
 	}
 
 	var fcStartScript bytes.Buffer

@@ -51,7 +51,7 @@ func (t *TemplateCache) GetTemplate(
 ) (*Template, error) {
 	key := fmt.Sprintf("%s-%s", templateId, buildId)
 
-	item, _ := t.cache.GetOrSet(
+	item, found := t.cache.GetOrSet(
 		key,
 		t.newTemplate(templateId, buildId, kernelVersion, firecrackerVersion, hugePages),
 		ttlcache.WithTTL[string, *Template](templateDataExpiration),
@@ -62,6 +62,10 @@ func (t *TemplateCache) GetTemplate(
 		t.cache.Delete(key)
 
 		return nil, fmt.Errorf("failed to create template data cache %s", key)
+	}
+
+	if !found {
+		go template.Fetch(t.ctx, t.bucket)
 	}
 
 	return template, nil

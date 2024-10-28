@@ -1,12 +1,14 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"sync"
 	"time"
 
+	"cloud.google.com/go/storage"
 	blockStorage "github.com/e2b-dev/infra/packages/block-storage/pkg"
 	nbd "github.com/e2b-dev/infra/packages/block-storage/pkg/nbd"
 	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -26,6 +28,12 @@ type Template struct {
 	Memfile  func() (*blockStorage.BlockStorage, error)
 	Rootfs   func() (*blockStorage.BlockStorage, error)
 	Snapfile func() (*PrefetchedFile, error)
+
+	rootfsResult   chan valueWithErr[*blockStorage.BlockStorage]
+	memfileResult  chan valueWithErr[*blockStorage.BlockStorage]
+	snapfileResult chan valueWithErr[*PrefetchedFile]
+
+	hugePages bool
 }
 
 type valueWithErr[T any] struct {
@@ -45,8 +53,12 @@ func (t *TemplateCache) newTemplate(
 	snapfileResult := make(chan valueWithErr[*PrefetchedFile], 1)
 
 	h := &Template{
-		Files:   templateStorage.NewTemplateFiles(templateId, buildId, kernelVersion, firecrackerVersion),
-		nbdPool: t.nbdPool,
+		rootfsResult:   rootfsResult,
+		memfileResult:  memfileResult,
+		snapfileResult: snapfileResult,
+		hugePages:      hugePages,
+		Files:          templateStorage.NewTemplateFiles(templateId, buildId, kernelVersion, firecrackerVersion),
+		nbdPool:        t.nbdPool,
 		Memfile: sync.OnceValues(func() (*blockStorage.BlockStorage, error) {
 			result := <-memfileResult
 
@@ -60,108 +72,109 @@ func (t *TemplateCache) newTemplate(
 		Snapfile: sync.OnceValues(func() (*PrefetchedFile, error) {
 			result := <-snapfileResult
 
+			fmt.Printf(">>>> [][] snapfile: %s\n", result.value.Path)
 			return result.value, result.err
 		}),
 	}
 
+	return h
+}
+
+func (t *Template) Fetch(ctx context.Context, bucket *storage.BucketHandle) {
+	err := os.MkdirAll(t.Files.CacheDir(), os.ModePerm)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to create directory %s: %w", t.Files.CacheDir(), err)
+
+		t.memfileResult <- valueWithErr[*blockStorage.BlockStorage]{
+			err: errMsg,
+		}
+
+		t.rootfsResult <- valueWithErr[*blockStorage.BlockStorage]{
+			err: errMsg,
+		}
+
+		t.snapfileResult <- valueWithErr[*PrefetchedFile]{
+			err: errMsg,
+		}
+
+		return
+	}
+
 	go func() {
-		err := os.MkdirAll(h.Files.CacheDir(), os.ModePerm)
-		if err != nil {
-			errMsg := fmt.Errorf("failed to create directory %s: %w", h.Files.CacheDir(), err)
+		snapfile := newPrefetchedFile(ctx, bucket, t.Files.StorageSnapfilePath(), t.Files.CacheSnapfilePath())
 
-			memfileResult <- valueWithErr[*blockStorage.BlockStorage]{
-				err: errMsg,
-			}
-
-			rootfsResult <- valueWithErr[*blockStorage.BlockStorage]{
-				err: errMsg,
-			}
-
-			snapfileResult <- valueWithErr[*PrefetchedFile]{
-				err: errMsg,
+		snapfileErr := snapfile.fetch()
+		if snapfileErr != nil {
+			t.snapfileResult <- valueWithErr[*PrefetchedFile]{
+				err: fmt.Errorf("failed to fetch snapfile: %w", snapfileErr),
 			}
 
 			return
 		}
 
-		go func() {
-			snapfile := newPrefetchedFile(t.ctx, t.bucket, h.Files.StorageSnapfilePath(), h.Files.CacheSnapfilePath())
-
-			err := snapfile.fetch()
-			if err != nil {
-				snapfileResult <- valueWithErr[*PrefetchedFile]{
-					err: fmt.Errorf("failed to fetch snapfile: %w", err),
-				}
-
-				return
-			}
-
-			snapfileResult <- valueWithErr[*PrefetchedFile]{
-				value: snapfile,
-			}
-		}()
-
-		go func() {
-			memfileObject := blockStorage.NewBucketObject(
-				t.ctx,
-				t.bucket,
-				h.Files.StorageMemfilePath(),
-			)
-
-			var memfileBlockSize int64
-			if hugePages {
-				memfileBlockSize = hugepageSize
-			} else {
-				memfileBlockSize = pageSize
-			}
-
-			memfileStorage, err := blockStorage.New(
-				t.ctx,
-				memfileObject,
-				h.Files.CacheMemfilePath(),
-				memfileBlockSize,
-			)
-			if err != nil {
-				memfileResult <- valueWithErr[*blockStorage.BlockStorage]{
-					err: fmt.Errorf("failed to create memfile storage: %w", err),
-				}
-
-				return
-			}
-
-			memfileResult <- valueWithErr[*blockStorage.BlockStorage]{
-				value: memfileStorage,
-			}
-		}()
-
-		go func() {
-			rootfsObject := blockStorage.NewBucketObject(
-				t.ctx,
-				t.bucket,
-				h.Files.StorageRootfsPath(),
-			)
-
-			rootfsStorage, err := blockStorage.New(
-				t.ctx,
-				rootfsObject,
-				h.Files.CacheRootfsPath(),
-				rootfsBlockSize,
-			)
-			if err != nil {
-				rootfsResult <- valueWithErr[*blockStorage.BlockStorage]{
-					err: fmt.Errorf("failed to create rootfs storage: %w", err),
-				}
-
-				return
-			}
-
-			rootfsResult <- valueWithErr[*blockStorage.BlockStorage]{
-				value: rootfsStorage,
-			}
-		}()
+		t.snapfileResult <- valueWithErr[*PrefetchedFile]{
+			value: snapfile,
+		}
 	}()
 
-	return h
+	go func() {
+		memfileObject := blockStorage.NewBucketObject(
+			ctx,
+			bucket,
+			t.Files.StorageMemfilePath(),
+		)
+
+		var memfileBlockSize int64
+		if t.hugePages {
+			memfileBlockSize = hugepageSize
+		} else {
+			memfileBlockSize = pageSize
+		}
+
+		memfileStorage, memfileErr := blockStorage.New(
+			ctx,
+			memfileObject,
+			t.Files.CacheMemfilePath(),
+			memfileBlockSize,
+		)
+		if memfileErr != nil {
+			t.memfileResult <- valueWithErr[*blockStorage.BlockStorage]{
+				err: fmt.Errorf("failed to create memfile storage: %w", memfileErr),
+			}
+
+			return
+		}
+
+		t.memfileResult <- valueWithErr[*blockStorage.BlockStorage]{
+			value: memfileStorage,
+		}
+	}()
+
+	go func() {
+		rootfsObject := blockStorage.NewBucketObject(
+			ctx,
+			bucket,
+			t.Files.StorageRootfsPath(),
+		)
+
+		rootfsStorage, rootfsErr := blockStorage.New(
+			ctx,
+			rootfsObject,
+			t.Files.CacheRootfsPath(),
+			rootfsBlockSize,
+		)
+		if rootfsErr != nil {
+			t.rootfsResult <- valueWithErr[*blockStorage.BlockStorage]{
+				err: fmt.Errorf("failed to create rootfs storage: %w", rootfsErr),
+			}
+
+			return
+		}
+
+		t.rootfsResult <- valueWithErr[*blockStorage.BlockStorage]{
+			value: rootfsStorage,
+		}
+	}()
 }
 
 func (t *Template) Close() error {
