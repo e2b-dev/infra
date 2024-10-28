@@ -16,7 +16,7 @@ type OverlayFile struct {
 	client *nbd.Client
 
 	ctx       context.Context
-	cancelCtx context.CancelFunc
+	cancelCtx context.CancelCauseFunc
 }
 
 func NewOverlayFile(
@@ -39,7 +39,7 @@ func NewOverlayFile(
 		return nil, fmt.Errorf("error creating nbd client: %w", err)
 	}
 
-	ctx, cancelCtx := context.WithCancel(context.Background())
+	ctx, cancelCtx := context.WithCancelCause(context.Background())
 
 	return &OverlayFile{
 		device:    device,
@@ -54,23 +54,29 @@ func (o *OverlayFile) Run(sandboxID string) error {
 	eg, ctx := errgroup.WithContext(o.ctx)
 
 	eg.Go(func() error {
-		defer o.cancelCtx()
-
 		err := o.server.Run(ctx)
 		if err != nil {
-			return fmt.Errorf("error running nbd server: %w", err)
+			errMsg := fmt.Errorf("error running nbd server: %w", err)
+			o.cancelCtx(errMsg)
+
+			return err
 		}
+
+		o.cancelCtx(nil)
 
 		return nil
 	})
 
 	eg.Go(func() error {
-		defer o.cancelCtx()
-
 		err := o.client.Run(ctx)
 		if err != nil {
-			return fmt.Errorf("error running nbd client: %w", err)
+			errMsg := fmt.Errorf("error running nbd client: %w", err)
+			o.cancelCtx(errMsg)
+
+			return err
 		}
+
+		o.cancelCtx(nil)
 
 		return nil
 	})
@@ -84,7 +90,7 @@ func (o *OverlayFile) Run(sandboxID string) error {
 }
 
 func (o *OverlayFile) Close() error {
-	o.cancelCtx()
+	o.cancelCtx(fmt.Errorf("closing overlay file"))
 
 	// TODO: We should wait for the client and server to close before closing the device.
 

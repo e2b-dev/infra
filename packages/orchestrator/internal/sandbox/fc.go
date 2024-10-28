@@ -254,8 +254,8 @@ func (fc *fc) start(
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
 
-	childCtx, cancelFcCmd := context.WithCancel(childCtx)
-	defer cancelFcCmd()
+	childCtx, cancelFcCmd := context.WithCancelCause(childCtx)
+	defer cancelFcCmd(nil)
 
 	go func() {
 		defer func() {
@@ -311,7 +311,7 @@ func (fc *fc) start(
 		fc.fcExit <- fc.wait()
 		fmt.Printf("[sandbox %s]: fc process exited\n", fc.metadata.SandboxId)
 		close(fc.fcExit)
-		cancelFcCmd()
+		cancelFcCmd(fmt.Errorf("fc process exited"))
 	}()
 
 	defer func() {
