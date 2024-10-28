@@ -55,16 +55,6 @@ type Process struct {
 	Exit chan error
 }
 
-func (p *Process) Wait() error {
-	// TODO: The wait is not called right after the FC process because we are first starting the uffd.
-	err := p.cmd.Wait()
-	if err != nil {
-		return fmt.Errorf("error waiting for fc process: %w", err)
-	}
-
-	return nil
-}
-
 func (p *Process) loadSnapshot(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -73,7 +63,6 @@ func (p *Process) loadSnapshot(
 	metadata interface{},
 	snapfile *storage.PrefetchedFile,
 	uffdReady chan struct{},
-	rootfsPath string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
 		attribute.String("sandbox.socket.path", firecrackerSocketPath),
@@ -145,11 +134,8 @@ func (p *Process) loadSnapshot(
 }
 
 const fcStartScript = `mount --make-rprivate / &&
-
 mount -t tmpfs tmpfs {{ .buildDir }} -o X-mount.mkdir &&
-
 ln -s {{ .rootfsPath }} {{ .buildRootfsPath }} &&
-
 ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
 
 var fcStartScriptTemplate = template.Must(template.New("fc-start").Parse(fcStartScript))
@@ -234,8 +220,6 @@ func (p *Process) Start(
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
 
-	childCtx, cancelFcCmd := context.WithCancelCause(childCtx)
-
 	go func() {
 		defer func() {
 			readerErr := p.stdout.Close()
@@ -285,38 +269,49 @@ func (p *Process) Start(
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
-	go func() {
-		p.Exit <- p.Wait()
-		cancelFcCmd(fmt.Errorf("fc process exited"))
-	}()
+	fcStartCtx, cancelFcStart := context.WithCancelCause(childCtx)
+	defer cancelFcStart(fmt.Errorf("fc finished starting"))
 
-	defer func() {
-		if err != nil {
-			fcErr := p.Stop()
-			if fcErr != nil {
-				telemetry.ReportError(childCtx, fmt.Errorf("failed to stop FC: %w", fcErr))
-			}
+	go func() {
+		waitErr := p.cmd.Wait()
+		if waitErr != nil {
+			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
+
+			p.Exit <- errMsg
+
+			cancelFcStart(errMsg)
+
+			return
 		}
+
+		p.Exit <- nil
 	}()
 
 	// Wait for the FC process to start so we can use FC API
-	err = socket.Wait(childCtx, p.firecrackerSocketPath)
+	err = socket.Wait(fcStartCtx, p.firecrackerSocketPath)
 	if err != nil {
-		return fmt.Errorf("error waiting for fc socket: %w", err)
+		errMsg := fmt.Errorf("error waiting for fc socket: %w", err)
+
+		fcStopErr := p.Stop()
+
+		return errors.Join(errMsg, fcStopErr)
 	}
 
 	err = p.loadSnapshot(
-		childCtx,
+		fcStartCtx,
 		tracer,
 		p.firecrackerSocketPath,
 		p.uffdSocketPath,
 		p.metadata,
 		p.snapfile,
 		p.uffdReady,
-		p.rootfsPath,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to load snapshot: %w", err)
+		errMsg := fmt.Errorf("failed to load snapshot: %w", err)
+
+		fcStopErr := p.Stop()
+
+		return errors.Join(errMsg, fcStopErr)
 	}
 
 	telemetry.SetAttributes(

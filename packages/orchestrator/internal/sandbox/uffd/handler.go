@@ -24,6 +24,21 @@ type UffdSetup struct {
 	Fd       uintptr
 }
 
+type Uffd struct {
+	Exit  chan error
+	Ready chan struct{}
+
+	exitReader *os.File
+	exitWriter *os.File
+
+	Stop func() error
+
+	lis *net.UnixListener
+
+	memfile    *blockStorage.BlockStorage
+	socketPath string
+}
+
 func New(
 	memfile *blockStorage.BlockStorage,
 	socketPath string,
@@ -34,7 +49,7 @@ func New(
 	}
 
 	return &Uffd{
-		exit:       make(chan error, 1),
+		Exit:       make(chan error, 1),
 		Ready:      make(chan struct{}, 1),
 		exitReader: pRead,
 		exitWriter: pWrite,
@@ -51,21 +66,6 @@ func New(
 	}, nil
 }
 
-type Uffd struct {
-	exit  chan error
-	Ready chan struct{}
-
-	exitReader *os.File
-	exitWriter *os.File
-
-	Stop func() error
-
-	lis *net.UnixListener
-
-	memfile    *blockStorage.BlockStorage
-	socketPath string
-}
-
 func (u *Uffd) Start(sandboxId string) error {
 	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: u.socketPath, Net: "unix"})
 	if err != nil {
@@ -80,8 +80,14 @@ func (u *Uffd) Start(sandboxId string) error {
 	}
 
 	go func() {
-		u.exit <- u.handle(u.memfile, sandboxId)
-		close(u.exit)
+		handleErr := u.handle(u.memfile, sandboxId)
+		closeErr := u.lis.Close()
+		writerErr := u.exitWriter.Close()
+
+		u.Exit <- errors.Join(handleErr, closeErr, writerErr)
+
+		close(u.Ready)
+		close(u.Exit)
 	}()
 
 	return nil
@@ -163,15 +169,4 @@ func (u *Uffd) handle(memfile *blockStorage.BlockStorage, sandboxId string) (err
 	}
 
 	return nil
-}
-
-func (u *Uffd) Wait() error {
-	handleErr := <-u.exit
-
-	close(u.Ready)
-
-	closeErr := u.lis.Close()
-	writerErr := u.exitWriter.Close()
-
-	return errors.Join(handleErr, closeErr, writerErr)
 }

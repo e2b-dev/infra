@@ -61,7 +61,7 @@ func NewSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 ) (sbx *Sandbox, cleanup []func() error, err error) {
-	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
+	uffdStartCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
 	template, err := templateCache.GetTemplate(
@@ -75,7 +75,7 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
-	ips, poolErr := networkPool.Get(childCtx, tracer)
+	ips, poolErr := networkPool.Get(uffdStartCtx, tracer)
 	if poolErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", poolErr)
 	}
@@ -123,7 +123,6 @@ func NewSandbox(
 	})
 
 	go func() {
-		// TODO: Handle cleanup if failed.
 		runErr := rootfsOverlay.Run(config.SandboxId)
 		if runErr != nil {
 			fmt.Fprintf(os.Stderr, "[sandbox %s]: rootfs overlay error: %v\n", config.SandboxId, runErr)
@@ -155,13 +154,15 @@ func NewSandbox(
 	})
 
 	uffdExit := make(chan error, 1)
-	childCtx, cancelFcUffd := context.WithCancelCause(childCtx)
+
+	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(uffdStartCtx)
+	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
 
 	go func() {
-		uffdWaitErr := fcUffd.Wait()
+		uffdWaitErr := <-fcUffd.Exit
 		uffdExit <- uffdWaitErr
-		close(uffdExit)
-		cancelFcUffd(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(childCtx))))
+
+		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
 
 	snapfile, err := template.Snapfile()
@@ -170,7 +171,7 @@ func NewSandbox(
 	}
 
 	fcHandle, fcErr := fc.NewProcess(
-		childCtx,
+		uffdStartCtx,
 		tracer,
 		ips,
 		sandboxFiles,
@@ -189,7 +190,7 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
-	fcStartErr := fcHandle.Start(childCtx, tracer)
+	fcStartErr := fcHandle.Start(uffdStartCtx, tracer)
 	if fcStartErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
@@ -230,19 +231,20 @@ func NewSandbox(
 		}),
 	}
 
+	// Sync envds.
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
-		initErr := sbx.initEnvd(childCtx, tracer, config.EnvVars)
+		initErr := sbx.initEnvd(uffdStartCtx, tracer, config.EnvVars)
 		if initErr != nil {
 			return nil, cleanup, fmt.Errorf("failed to init new envd: %w", initErr)
 		} else {
-			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxId))
+			telemetry.ReportEvent(uffdStartCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxId))
 		}
 	} else {
-		syncErr := sbx.syncOldEnvd(childCtx)
+		syncErr := sbx.syncOldEnvd(uffdStartCtx)
 		if syncErr != nil {
-			telemetry.ReportError(childCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
+			telemetry.ReportError(uffdStartCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
 		} else {
-			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxId))
+			telemetry.ReportEvent(uffdStartCtx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxId))
 		}
 	}
 
