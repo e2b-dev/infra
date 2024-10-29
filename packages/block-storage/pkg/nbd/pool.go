@@ -123,8 +123,10 @@ func (n *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
 	defer syscall.Close(fd)
 
 	_, err = os.Stat(pidFile)
-	if !errors.Is(err, os.ErrNotExist) {
-		return false, fmt.Errorf("failed to check if device process exits: %w", err)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return false, fmt.Errorf("failed to check if device process exits: %w", err)
+		}
 	}
 
 	sizeFile := fmt.Sprintf("/sys/block/nbd%d/size", slot)
