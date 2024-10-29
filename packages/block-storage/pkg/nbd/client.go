@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 
 	"github.com/pojntfx/go-nbd/pkg/client"
 )
@@ -36,19 +37,37 @@ func (n *Server) NewClient(pool *DevicePool) (*Client, error) {
 	}, nil
 }
 
-func (n *Client) Run(ctx context.Context) error {
-	defer func() {
-		// TODO: Ensure the device is free.
+func (n *Client) ReleaseDevice(ctx context.Context) error {
+	ticker := time.NewTicker(400 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+
 		releaseErr := n.pool.ReleaseDevice(n.DevicePath)
 		if releaseErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to release device: %s, %v\n", n.DevicePath, releaseErr)
+
+			continue
 		}
+
+		return nil
+	}
+}
+
+func (n *Client) Run(ctx context.Context) error {
+	defer func() {
+		go n.ReleaseDevice(context.Background())
 	}()
 
 	select {
-	case <-n.serverReady:
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-n.serverReady:
 	}
 
 	d := &net.Dialer{}

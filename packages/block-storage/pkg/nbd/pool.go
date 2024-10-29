@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/bits-and-blooms/bitset"
 )
@@ -99,14 +100,28 @@ func (n *DevicePool) getDevicePath(slot DeviceSlot) DevicePath {
 }
 
 // /sys/devices/virtual/block/nbdX/pid
+// /sys/block/nbdX/pid
 // nbd-client -c
 // https://unix.stackexchange.com/questions/33508/check-which-network-block-devices-are-in-use
 // https://superuser.com/questions/919895/how-to-get-a-list-of-connected-nbd-devices-on-ubuntu
-// TODO: Properly check if the device is free.
+// https://github.com/NetworkBlockDevice/nbd/blob/17043b068f4323078637314258158aebbfff0a6c/nbd-client.c#L254
 func (n *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
 	pidFile := fmt.Sprintf("/sys/block/nbd%d/pid", slot)
 
-	_, err := os.Stat(pidFile)
+	devicePath := n.getDevicePath(slot)
+
+	fd, err := syscall.Open(devicePath, syscall.O_EXCL|syscall.O_RDONLY, 0o644)
+	if err != nil {
+		if errors.Is(err, syscall.EBUSY) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("failed to open device: %w", err)
+	}
+
+	defer syscall.Close(fd)
+
+	_, err = os.Stat(pidFile)
 	if errors.Is(err, os.ErrNotExist) {
 		return true, nil
 	}
@@ -168,9 +183,6 @@ func (n *DevicePool) ReleaseDevice(path DevicePath) error {
 		return fmt.Errorf("failed to get slot from path: %w", err)
 	}
 
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
 	free, err := n.isDeviceFree(slot)
 	if err != nil {
 		return fmt.Errorf("failed to check if device is free: %w", err)
@@ -180,7 +192,9 @@ func (n *DevicePool) ReleaseDevice(path DevicePath) error {
 		return ErrDeviceInUse{}
 	}
 
+	n.mu.Lock()
 	n.slots.Clear(slot)
+	n.mu.Unlock()
 
 	return nil
 }
