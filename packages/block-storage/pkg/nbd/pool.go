@@ -111,7 +111,7 @@ func (n *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
 
 	devicePath := n.getDevicePath(slot)
 
-	fd, err := syscall.Open(devicePath, syscall.O_EXCL|syscall.O_RDONLY, 0o644)
+	fd, err := syscall.Open(devicePath, syscall.O_EXCL, 0o644)
 	if err != nil {
 		if errors.Is(err, syscall.EBUSY) {
 			return false, nil
