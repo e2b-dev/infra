@@ -101,6 +101,7 @@ func (n *DevicePool) getDevicePath(slot DeviceSlot) DevicePath {
 
 // /sys/devices/virtual/block/nbdX/pid
 // /sys/block/nbdX/pid
+// /sys/block/nbdX/size
 // nbd-client -c
 // https://unix.stackexchange.com/questions/33508/check-which-network-block-devices-are-in-use
 // https://superuser.com/questions/919895/how-to-get-a-list-of-connected-nbd-devices-on-ubuntu
@@ -122,15 +123,30 @@ func (n *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
 	defer syscall.Close(fd)
 
 	_, err = os.Stat(pidFile)
-	if errors.Is(err, os.ErrNotExist) {
-		return true, nil
+	if !errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("failed to check if device process exits: %w", err)
 	}
 
+	sizeFile := fmt.Sprintf("/sys/block/nbd%d/size", slot)
+
+	data, err := os.ReadFile(sizeFile)
 	if err != nil {
-		return false, fmt.Errorf("failed to check if device is busy: %w", err)
+		if errors.Is(err, os.ErrNotExist) {
+			// Device does not exist, consider it free
+			return true, nil
+		}
+
+		return false, fmt.Errorf("failed to read size file: %w", err)
 	}
 
-	return false, nil
+	sizeStr := strings.TrimSpace(string(data))
+
+	size, err := strconv.ParseUint(sizeStr, 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse size: %w", err)
+	}
+
+	return size == 0, nil
 }
 
 func (n *DevicePool) getMaybeEmptySlot(start DeviceSlot) (DeviceSlot, func(), bool) {
