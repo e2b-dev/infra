@@ -62,6 +62,6 @@ func (t *FileDevice) Sync() error {
 	return t.f.Sync()
 }
 
-func (t *FileDevice) IsMarked(offset int64) bool {
+func (t *FileDevice) IsMarked(off, len int64) bool {
 	return true
 }
