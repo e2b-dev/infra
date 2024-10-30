@@ -60,6 +60,7 @@ func (c *TeamAuthCache) Get(ctx context.Context, apiKey string) (team *models.Te
 
 	templateInfo = item.Value()
 	if time.Since(templateInfo.lastRefresh) > refreshInterval {
+		// Maybe we should use singleflight here.
 		go c.Refresh(apiKey)
 	}
 

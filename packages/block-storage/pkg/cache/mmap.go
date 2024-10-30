@@ -49,7 +49,7 @@ func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
 }
 
 func (m *MmapCache) ReadAt(b []byte, off int64) (int, error) {
-	if !m.marker.IsMarked(off / m.blockSize) {
+	if !m.IsMarked(off) {
 		return 0, block.ErrBytesNotAvailable{}
 	}
 
@@ -75,7 +75,7 @@ func (m *MmapCache) WriteAt(b []byte, off int64) (int, error) {
 	m.mu.Unlock()
 
 	for i := off; i < off+int64(n); i += m.blockSize {
-		m.marker.Mark(i / m.blockSize)
+		m.Mark(i)
 	}
 
 	return n, nil
@@ -109,7 +109,7 @@ func (m *MmapCache) Size() (int64, error) {
 }
 
 func (m *MmapCache) ReadRaw(off, length int64) ([]byte, func(), error) {
-	if !m.marker.IsMarked(off / m.blockSize) {
+	if !m.IsMarked(off) {
 		return nil, nil, block.ErrBytesNotAvailable{}
 	}
 
@@ -127,4 +127,12 @@ func (m *MmapCache) ReadRaw(off, length int64) ([]byte, func(), error) {
 
 func (m *MmapCache) BlockSize() int64 {
 	return m.blockSize
+}
+
+func (m *MmapCache) IsMarked(offset int64) bool {
+	return m.marker.IsMarked(offset / m.blockSize)
+}
+
+func (m *MmapCache) Mark(offset int64) {
+	m.marker.Mark(offset / m.blockSize)
 }

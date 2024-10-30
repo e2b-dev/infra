@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sync"
+	"strconv"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 
 	"golang.org/x/sync/semaphore"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -19,12 +20,8 @@ const (
 	concurrentFetches = 18
 )
 
-var chunkPool = newSlicePool(ChunkSize)
-
 type Chunker struct {
 	ctx context.Context
-
-	chunksInProgress map[int64]chan error
 
 	base  io.ReaderAt
 	cache block.Device
@@ -32,85 +29,66 @@ type Chunker struct {
 	// Semaphore to limit the number of concurrent fetches.
 	fetchSemaphore *semaphore.Weighted
 
-	chunksInProgressLock sync.Mutex
+	fetchGroup singleflight.Group
 }
 
 func NewChunker(ctx context.Context, base io.ReaderAt, cache block.Device) *Chunker {
 	return &Chunker{
-		ctx:              ctx,
-		base:             base,
-		cache:            cache,
-		chunksInProgress: make(map[int64]chan error),
-		fetchSemaphore:   semaphore.NewWeighted(int64(concurrentFetches)),
+		ctx:            ctx,
+		base:           base,
+		cache:          cache,
+		fetchSemaphore: semaphore.NewWeighted(concurrentFetches),
+		fetchGroup:     singleflight.Group{},
 	}
 }
 
-func (c *Chunker) ensureChunk(chunk int64) chan error {
-	c.chunksInProgressLock.Lock()
-	ch, ok := c.chunksInProgress[chunk]
-
-	if ok {
-		c.chunksInProgressLock.Unlock()
-
-		return ch
-	}
-
-	ch = make(chan error)
-	c.chunksInProgress[chunk] = ch
-	c.chunksInProgressLock.Unlock()
-
-	err := c.fetchSemaphore.Acquire(c.ctx, 1)
-	if err != nil {
-		ch <- fmt.Errorf("failed to acquire semaphore: %w", err)
-		close(ch)
-
-		return ch
-	}
-
-	go func(s *semaphore.Weighted, chunk int64) {
-		defer s.Release(1)
-		defer close(ch)
-
-		select {
-		case <-c.ctx.Done():
-			ch <- c.ctx.Err()
-		default:
-			fetchErr := c.fetchChunk(chunk)
-			if fetchErr != nil {
-				ch <- fmt.Errorf("failed to fetch chunk %d: %w", chunk, fetchErr)
-			}
+func (c *Chunker) ensureChunk(chunk int64) error {
+	_, err, _ := c.fetchGroup.Do(strconv.FormatInt(chunk, 10), func() (interface{}, error) {
+		if c.cache.IsMarked(chunk * ChunkSize) {
+			return nil, nil
 		}
-	}(c.fetchSemaphore, chunk)
 
-	return ch
+		err := c.fetchSemaphore.Acquire(c.ctx, 1)
+		if err != nil {
+			return nil, fmt.Errorf("failed to acquire semaphore: %w", err)
+		}
+		defer c.fetchSemaphore.Release(1)
+
+		fetchErr := c.fetchChunk(chunk)
+		if fetchErr != nil {
+			return fetchErr, nil
+		}
+
+		return nil, nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to fetch chunk %d: %w", chunk, err)
+	}
+
+	return nil
 }
 
 func (c *Chunker) ReadRaw(off, length int64) ([]byte, func(), error) {
 	m, close, err := c.cache.ReadRaw(off, length)
-	if errors.As(err, &block.ErrBytesNotAvailable{}) {
-		chunkIdx := off / ChunkSize
-
-		chunkCh := c.ensureChunk(chunkIdx)
-
-		select {
-		case chunkErr := <-chunkCh:
-			if chunkErr != nil {
-				return nil, func() {}, fmt.Errorf("failed to ensure chunk %d: %w", chunkIdx, chunkErr)
-			}
-		case <-c.ctx.Done():
-			return nil, func() {}, c.ctx.Err()
-		}
-
-		m, close, cacheErr := c.cache.ReadRaw(off, length)
-		if cacheErr != nil {
-			return nil, func() {}, fmt.Errorf("failed to read from cache after ensuring chunk %d: %w", chunkIdx, cacheErr)
-		}
-
+	if err == nil {
 		return m, close, nil
 	}
 
-	if err != nil {
-		return nil, func() {}, fmt.Errorf("failed read from cache %d: %w", off, err)
+	if !errors.As(err, &block.ErrBytesNotAvailable{}) {
+		return nil, func() {}, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
+	}
+
+	chunkIdx := off / ChunkSize
+
+	chunkErr := c.ensureChunk(chunkIdx)
+	if chunkErr != nil {
+		return nil, func() {}, fmt.Errorf("failed to ensure chunk %d: %w", chunkIdx, chunkErr)
+	}
+
+	m, close, cacheErr := c.cache.ReadRaw(off, length)
+	if cacheErr != nil {
+		return nil, func() {}, fmt.Errorf("failed to read from cache after ensuring chunk %d: %w", chunkIdx, cacheErr)
 	}
 
 	return m, close, nil
@@ -119,40 +97,40 @@ func (c *Chunker) ReadRaw(off, length int64) ([]byte, func(), error) {
 // Reads with zero length are threated as prefetches.
 func (c *Chunker) ReadAt(b []byte, off int64) (int, error) {
 	n, err := c.cache.ReadAt(b, off)
-	if errors.As(err, &block.ErrBytesNotAvailable{}) {
-		chunkIdx := off / ChunkSize
-
-		chunkCh := c.ensureChunk(chunkIdx)
-
-		select {
-		case chunkErr := <-chunkCh:
-			if chunkErr != nil {
-				return 0, fmt.Errorf("failed to ensure chunk %d: %w", chunkIdx, chunkErr)
-			}
-		case <-c.ctx.Done():
-			return 0, c.ctx.Err()
-		}
-
-		cacheN, cacheErr := c.cache.ReadAt(b, off)
-		if cacheErr != nil {
-			return 0, fmt.Errorf("failed to read from cache after ensuring chunk %d: %w", chunkIdx, cacheErr)
-		}
-
-		return cacheN, nil
+	if err == nil {
+		return n, nil
 	}
 
-	if err != nil {
-		return 0, fmt.Errorf("failed read from cache %d: %w", off, err)
+	if !errors.As(err, &block.ErrBytesNotAvailable{}) {
+		return 0, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
+	}
+
+	chunkIdx := off / ChunkSize
+
+	chunkErr := c.ensureChunk(chunkIdx)
+	if chunkErr != nil {
+		return 0, fmt.Errorf("failed to ensure chunk %d: %w", chunkIdx, chunkErr)
+	}
+
+	n, cacheErr := c.cache.ReadAt(b, off)
+	if cacheErr != nil {
+		return 0, fmt.Errorf("failed to read from cache after ensuring chunk %d: %w", chunkIdx, cacheErr)
 	}
 
 	return n, nil
 }
 
 func (c *Chunker) fetchChunk(idx int64) error {
+	select {
+	case <-c.ctx.Done():
+		return fmt.Errorf("fetch chunk %d: %w", idx, c.ctx.Err())
+	default:
+	}
+
 	off := idx * ChunkSize
 
-	b := chunkPool.get()
-	defer chunkPool.put(b)
+	// The number of byte slices used at the same time won't be bigger than the number of concurrent fetches, so we could preallocate and reuse them.
+	b := make([]byte, ChunkSize)
 
 	_, err := c.base.ReadAt(b, off)
 	if err != nil && !errors.Is(err, io.EOF) {

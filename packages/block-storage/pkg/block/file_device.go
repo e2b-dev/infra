@@ -61,3 +61,7 @@ func (t *FileDevice) WriteAt(b []byte, off int64) (int, error) {
 func (t *FileDevice) Sync() error {
 	return t.f.Sync()
 }
+
+func (t *FileDevice) IsMarked(offset int64) bool {
+	return true
+}

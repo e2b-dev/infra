@@ -5,13 +5,9 @@ import (
 	"fmt"
 	"io"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 )
 
-const (
-	prefetchInterval = 125 * time.Millisecond
-)
+const prefetchInterval = 100 * time.Millisecond
 
 type Prefetcher struct {
 	base io.ReaderAt
@@ -40,45 +36,19 @@ func (p *Prefetcher) Start() error {
 	start := int64(0)
 	end := p.size / ChunkSize
 
-	middle := (end - start) / 2
-
-	g, ctx := errgroup.WithContext(p.ctx)
-
-	g.Go(func() error {
-		for chunkIdx := start; chunkIdx < middle; chunkIdx++ {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-				err := p.prefetch(chunkIdx * ChunkSize)
-				if err != nil {
-					return err
-				}
-
-				time.Sleep(prefetchInterval)
+	for chunkIdx := start; chunkIdx < end; chunkIdx++ {
+		select {
+		case <-p.ctx.Done():
+			return p.ctx.Err()
+		default:
+			err := p.prefetch(chunkIdx * ChunkSize)
+			if err != nil {
+				return err
 			}
+
+			time.Sleep(prefetchInterval)
 		}
+	}
 
-		return nil
-	})
-
-	g.Go(func() error {
-		for chunkIdx := end - 1; chunkIdx >= middle; chunkIdx-- {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-				err := p.prefetch(chunkIdx * ChunkSize)
-				if err != nil {
-					return err
-				}
-
-				time.Sleep(prefetchInterval)
-			}
-		}
-
-		return nil
-	})
-
-	return g.Wait()
+	return nil
 }

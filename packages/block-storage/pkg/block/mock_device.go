@@ -94,3 +94,7 @@ func (m *MockDevice) Size() (int64, error) {
 func (m *MockDevice) BlockSize() int64 {
 	return m.blockSize
 }
+
+func (m *MockDevice) IsMarked(offset int64) bool {
+	return m.marker.IsMarked(offset / m.blockSize)
+}
