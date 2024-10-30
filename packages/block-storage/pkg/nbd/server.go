@@ -66,6 +66,7 @@ func (n *Server) Run(ctx context.Context) error {
 				if err := recover(); err != nil {
 					fmt.Fprintf(os.Stderr, "recovering from NBD server panic: %v\n", err)
 				}
+				// TODO: We should close the server on this panic.
 			}()
 
 			storage, err := n.getStorage()

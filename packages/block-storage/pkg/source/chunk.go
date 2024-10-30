@@ -48,7 +48,6 @@ func (c *Chunker) ensureData(off, len int64) error {
 
 	// TODO: Prefetch with nil buffer does not work because the loop is not executed.
 	for i := off; i < off+len; i += ChunkSize {
-		// TODO: Is this correctly captured by the closure in eg.Go?
 		chunkIdx := i / ChunkSize
 
 		eg.Go(func() error {
