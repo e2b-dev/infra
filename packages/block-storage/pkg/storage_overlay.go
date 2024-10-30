@@ -70,6 +70,6 @@ func (o *BlockStorageOverlay) ReadRaw(offset, length int64) ([]byte, func(), err
 	return o.overlay.ReadRaw(offset, length)
 }
 
-func (o *BlockStorageOverlay) IsMarked(offset int64) bool {
-	return o.cache.IsMarked(offset)
+func (o *BlockStorageOverlay) IsMarked(offset, length int64) bool {
+	return o.cache.IsMarked(offset, length)
 }

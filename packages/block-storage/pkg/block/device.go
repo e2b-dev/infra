@@ -22,5 +22,5 @@ type Device interface {
 	ReadRaw(off, length int64) ([]byte, func(), error)
 	BlockSize() int64
 	// IsMarked returns true if the offset is marked as dirty in the cache
-	IsMarked(offset int64) bool
+	IsMarked(off, length int64) bool
 }

@@ -15,20 +15,17 @@ type MockDevice struct {
 // NewMockDevice creates a new MockDevice instance with the given data.
 // It cannot be resized.
 func NewMockDevice(data []byte, blockSize int64, fillMarker bool) *MockDevice {
-	marker := NewMarker(uint(len(data) / int(blockSize)))
-
-	if fillMarker {
-		// For every block in the data, we need to mark the marker.
-		for i := int64(0); i < int64(len(data)); i += blockSize {
-			marker.Mark(i / blockSize)
-		}
-	}
-
-	return &MockDevice{
+	device := &MockDevice{
 		blockSize: blockSize,
 		data:      data,
-		marker:    marker,
+		marker:    NewMarker(uint(len(data) / int(blockSize))),
 	}
+
+	if fillMarker {
+		device.Mark(0, int64(len(data)))
+	}
+
+	return device
 }
 
 func (m *MockDevice) ReadRaw(off, length int64) ([]byte, func(), error) {
@@ -53,7 +50,7 @@ func (m *MockDevice) ReadAt(p []byte, off int64) (n int, err error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	if m.marker != nil && !m.marker.IsMarked(off/m.blockSize) {
+	if !m.IsMarked(off, length) {
 		return 0, ErrBytesNotAvailable{}
 	}
 
@@ -74,11 +71,7 @@ func (m *MockDevice) WriteAt(p []byte, off int64) (n int, err error) {
 
 	n = copy(m.data[off:off+length], p)
 
-	if m.marker != nil {
-		for i := off; i < off+int64(n); i += m.blockSize {
-			m.marker.Mark(i / m.blockSize)
-		}
-	}
+	m.Mark(off, int64(n))
 
 	return n, nil
 }
@@ -95,6 +88,18 @@ func (m *MockDevice) BlockSize() int64 {
 	return m.blockSize
 }
 
-func (m *MockDevice) IsMarked(offset int64) bool {
-	return m.marker.IsMarked(offset / m.blockSize)
+func (m *MockDevice) IsMarked(off, length int64) bool {
+	for i := off; i < off+length; i += m.blockSize {
+		if !m.marker.IsMarked(i / m.blockSize) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (m *MockDevice) Mark(off, length int64) {
+	for i := off; i < off+length; i += m.blockSize {
+		m.marker.Mark(i / m.blockSize)
+	}
 }

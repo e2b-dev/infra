@@ -14,11 +14,11 @@ import (
 
 type MmapCache struct {
 	marker    *block.Marker
+	filePath  string
 	size      int64
 	blockSize int64
-	filePath  string
-	mu        sync.RWMutex
 	mmap      mmap.MMap
+	mu        sync.RWMutex
 }
 
 func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
@@ -49,7 +49,7 @@ func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
 }
 
 func (m *MmapCache) ReadAt(b []byte, off int64) (int, error) {
-	if !m.IsMarked(off) {
+	if !m.IsMarked(off, int64(len(b))) {
 		return 0, block.ErrBytesNotAvailable{}
 	}
 
@@ -74,9 +74,7 @@ func (m *MmapCache) WriteAt(b []byte, off int64) (int, error) {
 	n := copy(m.mmap[off:end], b)
 	m.mu.Unlock()
 
-	for i := off; i < off+int64(n); i += m.blockSize {
-		m.Mark(i)
-	}
+	m.Mark(off, int64(n))
 
 	return n, nil
 }
@@ -109,7 +107,7 @@ func (m *MmapCache) Size() (int64, error) {
 }
 
 func (m *MmapCache) ReadRaw(off, length int64) ([]byte, func(), error) {
-	if !m.IsMarked(off) {
+	if !m.IsMarked(off, length) {
 		return nil, nil, block.ErrBytesNotAvailable{}
 	}
 
@@ -129,10 +127,18 @@ func (m *MmapCache) BlockSize() int64 {
 	return m.blockSize
 }
 
-func (m *MmapCache) IsMarked(offset int64) bool {
-	return m.marker.IsMarked(offset / m.blockSize)
+func (m *MmapCache) IsMarked(off, length int64) bool {
+	for i := off; i < off+length; i += m.blockSize {
+		if !m.marker.IsMarked(i / m.blockSize) {
+			return false
+		}
+	}
+
+	return true
 }
 
-func (m *MmapCache) Mark(offset int64) {
-	m.marker.Mark(offset / m.blockSize)
+func (m *MmapCache) Mark(off, length int64) {
+	for i := off; i < off+length; i += m.blockSize {
+		m.marker.Mark(i / m.blockSize)
+	}
 }

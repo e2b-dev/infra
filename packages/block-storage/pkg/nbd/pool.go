@@ -99,6 +99,7 @@ func (n *DevicePool) getDevicePath(slot DeviceSlot) DevicePath {
 	return fmt.Sprintf("/dev/nbd%d", slot)
 }
 
+// The following files and resources are useful for checking if the device is free:
 // /sys/devices/virtual/block/nbdX/pid
 // /sys/block/nbdX/pid
 // /sys/block/nbdX/size

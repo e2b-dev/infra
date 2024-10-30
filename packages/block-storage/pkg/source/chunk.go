@@ -9,6 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/block"
 
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/sync/singleflight"
 )
@@ -42,28 +43,45 @@ func NewChunker(ctx context.Context, base io.ReaderAt, cache block.Device) *Chun
 	}
 }
 
-func (c *Chunker) ensureChunk(chunk int64) error {
-	_, err, _ := c.fetchGroup.Do(strconv.FormatInt(chunk, 10), func() (interface{}, error) {
-		if c.cache.IsMarked(chunk * ChunkSize) {
-			return nil, nil
-		}
+func (c *Chunker) ensureData(off, len int64) error {
+	var eg errgroup.Group
 
-		err := c.fetchSemaphore.Acquire(c.ctx, 1)
-		if err != nil {
-			return nil, fmt.Errorf("failed to acquire semaphore: %w", err)
-		}
-		defer c.fetchSemaphore.Release(1)
+	// TODO: Prefetch with nil buffer does not work because the loop is not executed.
+	for i := off; i < off+len; i += ChunkSize {
+		// TODO: Is this correctly captured by the closure in eg.Go?
+		chunkIdx := i / ChunkSize
 
-		fetchErr := c.fetchChunk(chunk)
-		if fetchErr != nil {
-			return fetchErr, nil
-		}
+		eg.Go(func() error {
+			_, err, _ := c.fetchGroup.Do(strconv.FormatInt(chunkIdx, 10), func() (interface{}, error) {
+				if c.cache.IsMarked(chunkIdx*ChunkSize, ChunkSize) {
+					return nil, nil
+				}
 
-		return nil, nil
-	})
+				err := c.fetchSemaphore.Acquire(c.ctx, 1)
+				if err != nil {
+					return nil, fmt.Errorf("failed to acquire semaphore: %w", err)
+				}
 
+				defer c.fetchSemaphore.Release(1)
+
+				fetchErr := c.fetchChunk(chunkIdx)
+				if fetchErr != nil {
+					return nil, fmt.Errorf("failed to fetch chunk %d: %w", chunkIdx, fetchErr)
+				}
+
+				return nil, nil
+			})
+			if err != nil {
+				return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+len, err)
+			}
+
+			return nil
+		})
+	}
+
+	err := eg.Wait()
 	if err != nil {
-		return fmt.Errorf("failed to fetch chunk %d: %w", chunk, err)
+		return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+len, err)
 	}
 
 	return nil
@@ -79,16 +97,14 @@ func (c *Chunker) ReadRaw(off, length int64) ([]byte, func(), error) {
 		return nil, func() {}, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
-	chunkIdx := off / ChunkSize
-
-	chunkErr := c.ensureChunk(chunkIdx)
+	chunkErr := c.ensureData(off, length)
 	if chunkErr != nil {
-		return nil, func() {}, fmt.Errorf("failed to ensure chunk %d: %w", chunkIdx, chunkErr)
+		return nil, func() {}, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
 
 	m, close, cacheErr := c.cache.ReadRaw(off, length)
 	if cacheErr != nil {
-		return nil, func() {}, fmt.Errorf("failed to read from cache after ensuring chunk %d: %w", chunkIdx, cacheErr)
+		return nil, func() {}, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
 	return m, close, nil
@@ -105,16 +121,14 @@ func (c *Chunker) ReadAt(b []byte, off int64) (int, error) {
 		return 0, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
-	chunkIdx := off / ChunkSize
-
-	chunkErr := c.ensureChunk(chunkIdx)
+	chunkErr := c.ensureData(off, int64(len(b)))
 	if chunkErr != nil {
-		return 0, fmt.Errorf("failed to ensure chunk %d: %w", chunkIdx, chunkErr)
+		return 0, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+int64(len(b)), chunkErr)
 	}
 
 	n, cacheErr := c.cache.ReadAt(b, off)
 	if cacheErr != nil {
-		return 0, fmt.Errorf("failed to read from cache after ensuring chunk %d: %w", chunkIdx, cacheErr)
+		return 0, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+int64(len(b)), cacheErr)
 	}
 
 	return n, nil
