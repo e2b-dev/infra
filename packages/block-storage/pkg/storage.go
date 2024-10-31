@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/cache"
 	"github.com/e2b-dev/infra/packages/block-storage/pkg/source"
@@ -53,14 +52,6 @@ func New(
 	storageCtx, cancel := context.WithCancel(ctx)
 
 	chunker := source.NewChunker(storageCtx, object, cache)
-
-	prefetcher := source.NewPrefetcher(storageCtx, chunker, size)
-	go func() {
-		prefetchErr := prefetcher.Start()
-		if prefetchErr != nil {
-			fmt.Fprintf(os.Stderr, "error prefetching chunks: %v\n", prefetchErr)
-		}
-	}()
 
 	return &BlockStorage{
 		cancel:    cancel,
