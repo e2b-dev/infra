@@ -30,7 +30,7 @@ func newBlockStorageOverlay(base io.ReaderAt, cachePath string, size, blockSize 
 		return nil, fmt.Errorf("error creating cache: %w", err)
 	}
 
-	overlay := overlay.New(base, cache, true)
+	overlay := overlay.New(base, cache)
 
 	return &BlockStorageOverlay{
 		blockSize: blockSize,

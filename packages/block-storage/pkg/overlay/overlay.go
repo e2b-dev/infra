@@ -9,16 +9,14 @@ import (
 )
 
 type Overlay struct {
-	base         io.ReaderAt
-	cache        block.Device
-	writeToCache bool
+	base  io.ReaderAt
+	cache block.Device
 }
 
-func New(base io.ReaderAt, cache block.Device, writeToCache bool) *Overlay {
+func New(base io.ReaderAt, cache block.Device) *Overlay {
 	return &Overlay{
-		base:         base,
-		cache:        cache,
-		writeToCache: writeToCache,
+		base:  base,
+		cache: cache,
 	}
 }
 
@@ -33,22 +31,22 @@ func (o *Overlay) WriteAt(p []byte, off int64) (int, error) {
 
 func (o *Overlay) ReadAt(b []byte, off int64) (int, error) {
 	n, err := o.cache.ReadAt(b, off)
-	if errors.As(err, &block.ErrBytesNotAvailable{}) {
-		n, err = o.base.ReadAt(b, off)
-		if err != nil {
-			return n, fmt.Errorf("error reading from base: %w", err)
-		}
-
-		if o.writeToCache {
-			_, cacheErr := o.cache.WriteAt(b[:n], off)
-			if cacheErr != nil {
-				return n, fmt.Errorf("error writing to cache: %w", cacheErr)
-			}
-		}
+	if err == nil {
+		return n, nil
 	}
 
+	if !errors.As(err, &block.ErrBytesNotAvailable{}) {
+		return 0, fmt.Errorf("error reading cache: %w", err)
+	}
+
+	n, err = o.base.ReadAt(b, off)
 	if err != nil {
-		return n, fmt.Errorf("error reading from cache: %w", err)
+		return n, fmt.Errorf("error reading from base: %w", err)
+	}
+
+	_, cacheErr := o.cache.WriteAt(b[:n], off)
+	if cacheErr != nil {
+		return n, fmt.Errorf("error writing to cache: %w", cacheErr)
 	}
 
 	return n, nil
