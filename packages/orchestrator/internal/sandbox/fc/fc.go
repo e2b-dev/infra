@@ -135,7 +135,9 @@ func (p *Process) loadSnapshot(
 
 const fcStartScript = `mount --make-rprivate / &&
 mount -t tmpfs tmpfs {{ .buildDir }} -o X-mount.mkdir &&
+mount -t tmpfs tmpfs {{ .buildKernelDir }} -o X-mount.mkdir &&
 ln -s {{ .rootfsPath }} {{ .buildRootfsPath }} &&
+ln -s {{ .kernelPath }} {{ .buildKernelPath }} &&
 ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
 
 var fcStartScriptTemplate = template.Must(template.New("fc-start").Parse(fcStartScript))
@@ -165,8 +167,11 @@ func NewProcess(
 
 	err = fcStartScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
 		"rootfsPath":        rootfsPath,
+		"kernelPath":        files.CacheKernelPath(),
 		"buildDir":          files.BuildDir(),
 		"buildRootfsPath":   files.BuildRootfsPath(),
+		"buildKernelPath":   files.BuildKernelPath(),
+		"buildKernelDir":    files.BuildKernelDir(),
 		"namespaceID":       slot.NamespaceID(),
 		"firecrackerPath":   files.FirecrackerPath(),
 		"firecrackerSocket": files.SandboxFirecrackerSocketPath(),

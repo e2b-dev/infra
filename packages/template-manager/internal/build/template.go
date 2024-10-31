@@ -62,6 +62,11 @@ func (e *Env) RootfsSizeMB() int64 {
 	return e.rootfsSize >> 20
 }
 
+// Path to the directory where the kernel can be accessed inside when the dirs are mounted.
+func (e *Env) KernelMountedPath() string {
+	return filepath.Join(templateStorage.KernelMountDir, templateStorage.KernelName)
+}
+
 func (e *Env) Build(ctx context.Context, tracer trace.Tracer, docker *client.Client, legacyDocker *docker.Client) error {
 	childCtx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
