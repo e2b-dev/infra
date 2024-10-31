@@ -31,7 +31,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		attribute.String("sandbox.kernel.version", req.Sandbox.KernelVersion),
 	)
 
-	ctx, cancel := context.WithCancelCause(context.Background())
+	ctx, cancel := context.WithCancelCause(childCtx)
 	defer cancel(fmt.Errorf("sandbox create ended"))
 
 	sbx, cleanup, err := sandbox.NewSandbox(
