@@ -41,4 +41,4 @@ build-and-upload: build upload
 
 .PHONY: mock
 mock:
-	sudo TEMPLATE_BUCKET_NAME="e2b-dev-fc-templates" NODE_ID="test-client" go run -race -gcflags=all="-N -l" cmd/mock-sandbox/mock.go -template 5wzg6c91u51yaebviysf -sandbox testinstance -build "6ca85a1e-8aed-48e2-979b-e3ed635c64f7" -alive 5 -count 1
+	sudo TEMPLATE_BUCKET_NAME="e2b-dev-fc-templates" NODE_ID="test-client" go run -race -gcflags=all="-N -l" cmd/mock-sandbox/mock.go -template 5wzg6c91u51yaebviysf -sandbox testinstance -build "6ca85a1e-8aed-48e2-979b-e3ed635c64f7" -alive 5 -count 2
