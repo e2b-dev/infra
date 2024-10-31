@@ -19,9 +19,7 @@ exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&
 ulimit -n 1048576
 export GOMAXPROCS='nproc'
 
-# Disable snap automatic import
-sudo systemctl mask snapd.autoimport.service
-
+# TODO: Turn off automatic NBD scanning from systemd udev
 # Load the nbd module with 4096 devices
 sudo modprobe nbd nbds_max=4096
 
