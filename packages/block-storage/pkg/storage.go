@@ -80,7 +80,3 @@ func (d *BlockStorage) Close() error {
 
 	return d.cache.Close()
 }
-
-func (d *BlockStorage) ReadRaw(offset, length int64) ([]byte, func(), error) {
-	return d.source.ReadRaw(offset, length)
-}

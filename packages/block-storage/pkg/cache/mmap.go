@@ -106,23 +106,6 @@ func (m *MmapCache) Size() (int64, error) {
 	return m.size, nil
 }
 
-func (m *MmapCache) ReadRaw(off, length int64) ([]byte, func(), error) {
-	if !m.IsMarked(off, length) {
-		return nil, nil, block.ErrBytesNotAvailable{}
-	}
-
-	end := off + length
-	if end > m.size {
-		end = m.size
-	}
-
-	m.mu.RLock()
-
-	return m.mmap[off:end], func() {
-		m.mu.RUnlock()
-	}, nil
-}
-
 func (m *MmapCache) BlockSize() int64 {
 	return m.blockSize
 }

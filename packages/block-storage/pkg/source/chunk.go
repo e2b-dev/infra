@@ -71,7 +71,7 @@ func (c *Chunker) ensureData(off, len int64) error {
 				return nil, nil
 			})
 			if err != nil {
-				return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+len, err)
+				return fmt.Errorf("failed to ensure data at %d: %w", chunkIdx, err)
 			}
 
 			return nil
@@ -84,29 +84,6 @@ func (c *Chunker) ensureData(off, len int64) error {
 	}
 
 	return nil
-}
-
-func (c *Chunker) ReadRaw(off, length int64) ([]byte, func(), error) {
-	m, close, err := c.cache.ReadRaw(off, length)
-	if err == nil {
-		return m, close, nil
-	}
-
-	if !errors.As(err, &block.ErrBytesNotAvailable{}) {
-		return nil, func() {}, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
-	}
-
-	chunkErr := c.ensureData(off, length)
-	if chunkErr != nil {
-		return nil, func() {}, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
-	}
-
-	m, close, cacheErr := c.cache.ReadRaw(off, length)
-	if cacheErr != nil {
-		return nil, func() {}, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
-	}
-
-	return m, close, nil
 }
 
 // Reads with zero length are threated as prefetches.

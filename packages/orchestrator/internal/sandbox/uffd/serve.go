@@ -92,6 +92,28 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
+		msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
+		if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
+			stop()
+
+			return ErrUnexpectedEventType
+		}
+
+		arg := constants.GetMsgArg(&msg)
+		pagefault := (*(*constants.UffdPagefault)(unsafe.Pointer(&arg[0])))
+
+		addr := constants.GetPagefaultAddress(&pagefault)
+
+		mapping, err := getMapping(uintptr(addr), mappings)
+		if err != nil {
+			stop()
+
+			return fmt.Errorf("failed to map: %w", err)
+		}
+
+		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
+		pagesize := uint64(mapping.PageSize)
+
 		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {
@@ -99,36 +121,12 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *blockStorage.BlockS
 				}
 			}()
 
-			msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
-			if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
-				stop()
+			b := make([]byte, pagesize)
 
-				return ErrUnexpectedEventType
-			}
-
-			arg := constants.GetMsgArg(&msg)
-			pagefault := (*(*constants.UffdPagefault)(unsafe.Pointer(&arg[0])))
-
-			addr := constants.GetPagefaultAddress(&pagefault)
-
-			mapping, err := getMapping(uintptr(addr), mappings)
+			_, err := src.ReadAt(b, int64(offset))
 			if err != nil {
-				stop()
-
-				return fmt.Errorf("failed to map: %w", err)
-			}
-
-			offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
-			pagesize := uint64(mapping.PageSize)
-
-			b, close, err := src.ReadRaw(int64(offset), int64(pagesize))
-			if err != nil {
-				stop()
-
 				return fmt.Errorf("failed to read from source: %w", err)
 			}
-
-			defer close()
 
 			cpy := constants.NewUffdioCopy(
 				b,

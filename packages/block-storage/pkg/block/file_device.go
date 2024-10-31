@@ -23,14 +23,6 @@ func (t *FileDevice) BlockSize() int64 {
 	return 4096
 }
 
-func (t *FileDevice) ReadRaw(off int64, size int64) ([]byte, func(), error) {
-	b := make([]byte, size)
-
-	n, err := t.f.ReadAt(b, off)
-
-	return b[:n], func() {}, err
-}
-
 func (t *FileDevice) Size() (int64, error) {
 	fi, err := t.f.Stat()
 	if err != nil {
