@@ -72,7 +72,7 @@ func NewSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	logger *logs.SandboxLogger,
-) (*Sandbox, error) {
+) (sbx *Sandbox, cleanup []func() error, err error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
@@ -87,16 +87,31 @@ func NewSandbox(
 		config.HugePages,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
+		return nil, cleanup, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
+
+	cleanup = append(cleanup, func() error {
+		templateErr := tmpl.Close()
+		if templateErr != nil {
+			return fmt.Errorf("failed to close template files for sandbox: %w", templateErr)
+		}
+
+		return nil
+	})
 
 	networkCtx, networkSpan := tracer.Start(childCtx, "get-network-slot")
 	// Get slot from Consul KV
 
 	ips, err := networkPool.Get(networkCtx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get network slot: %w", err)
+		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
 	}
+
+	cleanup = append(cleanup, func() error {
+		networkPool.Return(consul, ips)
+
+		return nil
+	})
 
 	networkSpan.End()
 
@@ -139,7 +154,7 @@ func NewSandbox(
 		errMsg := fmt.Errorf("failed to assemble env files info for FC: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
-		return nil, errMsg
+		return nil, cleanup, errMsg
 	}
 
 	telemetry.ReportEvent(childCtx, "assembled env files info")
@@ -149,7 +164,7 @@ func NewSandbox(
 		errMsg := fmt.Errorf("failed to create env for FC: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
-		return nil, errMsg
+		return nil, cleanup, errMsg
 	}
 
 	telemetry.ReportEvent(childCtx, "created env for FC")
@@ -172,7 +187,7 @@ func NewSandbox(
 	if fsEnv.UFFDSocketPath != nil {
 		fcUffd, err = uffd.New(tmpl.Memfile, *fsEnv.UFFDSocketPath, config.TemplateID, config.BuildID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create uffd: %w", err)
+			return nil, cleanup, fmt.Errorf("failed to create uffd: %w", err)
 		}
 
 		telemetry.ReportEvent(childCtx, "created uffd")
@@ -182,7 +197,7 @@ func NewSandbox(
 			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
 			telemetry.ReportCriticalError(childCtx, errMsg)
 
-			return nil, errMsg
+			return nil, cleanup, errMsg
 		}
 
 		telemetry.ReportEvent(childCtx, "started uffd")
@@ -218,19 +233,19 @@ func NewSandbox(
 		errMsg := fmt.Errorf("failed to start FC: %w", err)
 		telemetry.ReportCriticalError(childCtx, errors.Join(errMsg, fcUffdErr))
 
-		return nil, errMsg
+		return nil, cleanup, errMsg
 	}
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
 	stats := newSandboxStats(int32(fc.pid))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create stats: %w", err)
+		return nil, cleanup, fmt.Errorf("failed to create stats: %w", err)
 	}
 
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
-	instance := &Sandbox{
+	sbx = &Sandbox{
 		files:       fsEnv,
 		slot:        ips,
 		fc:          fc,
@@ -267,38 +282,38 @@ func NewSandbox(
 		}),
 	}
 
-	telemetry.ReportEvent(childCtx, "ensuring clock sync")
-
-	uffdStartCtx, initSpan := tracer.Start(childCtx, "ensure-clock-sync")
-
 	// Sync envds.
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
-		initErr := instance.initEnvd(uffdStartCtx, tracer, config.EnvVars)
+		initErr := sbx.initEnvd(childCtx, tracer, config.EnvVars)
 		if initErr != nil {
-			return nil, fmt.Errorf("failed to init new envd: %w", initErr)
+			return nil, cleanup, fmt.Errorf("failed to init new envd: %w", initErr)
 		} else {
-			telemetry.ReportEvent(uffdStartCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxID))
+			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxID))
 		}
 	} else {
-		syncErr := instance.syncOldEnvd(uffdStartCtx)
+		syncErr := sbx.syncOldEnvd(childCtx)
 		if syncErr != nil {
-			telemetry.ReportError(uffdStartCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
+			telemetry.ReportError(childCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
 		} else {
-			telemetry.ReportEvent(uffdStartCtx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxID))
+			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxID))
 		}
 	}
-	initSpan.End()
 
-	instance.StartedAt = time.Now()
+	sbx.StartedAt = time.Now()
 
 	dns.Add(config.SandboxID, ips.HostIP())
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxID))
+	cleanup = append(cleanup, func() error {
+		dns.Remove(config.SandboxID)
+
+		return nil
+	})
 
 	go func() {
-		instance.logHeathAndUsage(healthcheckCtx)
+		sbx.logHeathAndUsage(healthcheckCtx)
 	}()
 
-	return instance, nil
+	return sbx, cleanup, nil
 }
 
 func (s *Sandbox) CleanupAfterFCStop(

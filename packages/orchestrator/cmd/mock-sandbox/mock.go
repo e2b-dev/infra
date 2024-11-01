@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -121,7 +122,7 @@ func mockSandbox(
 	start := time.Now()
 	logger := logs.NewSandboxLogger(sandboxId, templateId, "test-team", 2, 512, false)
 
-	sbx, err := sandbox.NewSandbox(
+	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
 		tracer,
 		consulClient,
@@ -145,7 +146,11 @@ func mockSandbox(
 		logger,
 	)
 	if err != nil {
-		panic(err)
+		cleanupErr := sandbox.HandleCleanup(cleanup)
+
+		fmt.Fprintf(os.Stderr, "failed to create sandbox: %v\n", errors.Join(err, cleanupErr))
+
+		return
 	}
 
 	duration := time.Since(start)
@@ -155,6 +160,13 @@ func mockSandbox(
 	time.Sleep(keepAlive)
 
 	defer sbx.CleanupAfterFCStop(childCtx, tracer, consulClient, dns, sandboxId)
+
+	defer func() {
+		cleanupErr := sandbox.HandleCleanup(cleanup)
+		if cleanupErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to cleanup sandbox: %v\n", cleanupErr)
+		}
+	}()
 
 	sbx.Stop(childCtx, tracer)
 }

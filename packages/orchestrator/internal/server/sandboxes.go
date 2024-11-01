@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -40,7 +41,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		false,
 	)
 
-	sbx, err := sandbox.NewSandbox(
+	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
 		s.tracer,
 		s.consul,
@@ -54,7 +55,9 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		logger,
 	)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to create sandbox: %w", err)
+		cleanupErr := sandbox.HandleCleanup(cleanup)
+
+		errMsg := fmt.Errorf("failed to create sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
 		telemetry.ReportCriticalError(ctx, errMsg)
 
 		return nil, status.New(codes.Internal, errMsg.Error()).Err()
