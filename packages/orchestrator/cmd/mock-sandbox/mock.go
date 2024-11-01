@@ -128,6 +128,7 @@ func mockSandbox(
 			HugePages:          true,
 			MaxInstanceLength:  1,
 			SandboxID:          sandboxId,
+			EnvdVersion:        "0.1.1",
 		},
 		"trace-test-1",
 		time.Now(),
