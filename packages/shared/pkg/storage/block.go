@@ -27,12 +27,10 @@ func NewBlockStorage(
 }
 
 func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
-	fmt.Printf("Reading %d bytes at offset %d\n", len(p), off)
 	n, err = d.source.ReadAt(p, off)
 	if err != nil {
 		return n, fmt.Errorf("failed to read %d: %w", off, err)
 	}
-	fmt.Printf("Read %d bytes at offset %d\n", n, off)
 	return n, nil
 }
 

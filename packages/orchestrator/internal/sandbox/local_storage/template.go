@@ -58,8 +58,6 @@ func NewTemplate(
 		memfileBlockSize = pageSize
 	}
 
-	fmt.Printf("bucket: %v\n", template.BucketName)
-	fmt.Printf("files.StorageMemfilePath(): %s\n", files.StorageMemfilePath())
 	memfile := template.NewBlockStorage(
 		ctx,
 		bucket,
