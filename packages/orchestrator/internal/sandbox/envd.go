@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"go.opentelemetry.io/otel/trace"
@@ -54,26 +55,39 @@ func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map
 		return err
 	}
 
-	request, err := http.NewRequestWithContext(childCtx, "POST", address, bytes.NewReader(envVarsJSON))
-	if err != nil {
-		return err
+	for i := 0; i < 10; i++ {
+		time.Sleep(10 * time.Millisecond)
+		request, err := http.NewRequestWithContext(childCtx, "POST", address, bytes.NewReader(envVarsJSON))
+		if err != nil {
+			fmt.Printf("failed to create request: %v\n", err)
+			continue
+		}
+
+		response, err := httpClient.Do(request)
+		if err != nil {
+			fmt.Printf("failed to send request: %v\n", err)
+			continue
+		}
+
+		if response.StatusCode != http.StatusNoContent {
+			fmt.Printf("unexpected status code: %d\n", response.StatusCode)
+			continue
+		}
+
+		_, err = io.Copy(io.Discard, response.Body)
+		if err != nil {
+			fmt.Printf("failed to read response body: %v\n", err)
+			continue
+		}
+
+		err = response.Body.Close()
+		if err != nil {
+			fmt.Printf("failed to close response body: %v\n", err)
+			continue
+		}
+
+		return nil
 	}
 
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return err
-	}
-
-	if response.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
-	}
-
-	_, err = io.Copy(io.Discard, response.Body)
-	if err != nil {
-		return err
-	}
-
-	defer response.Body.Close()
-
-	return nil
+	return fmt.Errorf("failed to init envd")
 }
