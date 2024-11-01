@@ -1,7 +1,9 @@
 package server
 
 import (
+	"cloud.google.com/go/storage"
 	"context"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"log"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
@@ -29,11 +31,12 @@ const (
 
 type server struct {
 	orchestrator.UnimplementedSandboxServer
-	sandboxes   *smap.Map[*sandbox.Sandbox]
-	dns         *dns.DNS
-	tracer      trace.Tracer
-	consul      *consulapi.Client
-	networkPool *sandbox.NetworkSlotPool
+	sandboxes     *smap.Map[*sandbox.Sandbox]
+	dns           *dns.DNS
+	tracer        trace.Tracer
+	consul        *consulapi.Client
+	networkPool   *sandbox.NetworkSlotPool
+	storageBucket *storage.BucketHandle
 }
 
 func New() *grpc.Server {
@@ -58,6 +61,11 @@ func New() *grpc.Server {
 		panic(err)
 	}
 
+	client, err := storage.NewClient(ctx, storage.WithJSONReads())
+	if err != nil {
+		log.Fatalf("failed to create GCS client: %v", err)
+	}
+
 	networkPool := sandbox.NewNetworkSlotPool(ipSlotPoolSize, reusedIpSlotPoolSize)
 
 	// We start the pool last to avoid allocation network slots if the other components fail to initialize.
@@ -69,11 +77,12 @@ func New() *grpc.Server {
 	}()
 
 	orchestrator.RegisterSandboxServer(s, &server{
-		tracer:      tracer,
-		consul:      consulClient,
-		dns:         dnsServer,
-		sandboxes:   smap.New[*sandbox.Sandbox](),
-		networkPool: networkPool,
+		tracer:        tracer,
+		consul:        consulClient,
+		dns:           dnsServer,
+		sandboxes:     smap.New[*sandbox.Sandbox](),
+		networkPool:   networkPool,
+		storageBucket: client.Bucket(templateStorage.BucketName),
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

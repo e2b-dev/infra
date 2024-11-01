@@ -24,7 +24,7 @@ const (
 	BuildDirName        = "builds"
 	EnvInstancesDirName = "env-instances"
 
-	socketWaitTimeout = 2 * time.Second
+	socketWaitTimeout = 10 * time.Second
 )
 
 type SandboxFiles struct {

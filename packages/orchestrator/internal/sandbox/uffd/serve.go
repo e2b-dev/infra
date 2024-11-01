@@ -3,13 +3,12 @@ package uffd
 import (
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"syscall"
 	"unsafe"
 
 	"github.com/loopholelabs/userfaultfd-go/pkg/constants"
 	"golang.org/x/sys/unix"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 )
 
 const (

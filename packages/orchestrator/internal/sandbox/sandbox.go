@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"cloud.google.com/go/storage"
 	"context"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	localStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -65,6 +67,7 @@ func NewSandbox(
 	consul *consul.Client,
 	dns *dns.DNS,
 	networkPool *NetworkSlotPool,
+	storageBucket *storage.BucketHandle,
 	config *orchestrator.SandboxConfig,
 	traceID string,
 	startedAt time.Time,
@@ -73,6 +76,20 @@ func NewSandbox(
 ) (*Sandbox, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
+
+	_, err := localStorage.NewTemplate(
+		context.Background(),
+		storageBucket,
+		config.SandboxID,
+		config.TemplateID,
+		config.BuildID,
+		config.KernelVersion,
+		config.FirecrackerVersion,
+		config.HugePages,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
+	}
 
 	networkCtx, networkSpan := tracer.Start(childCtx, "get-network-slot")
 	// Get slot from Consul KV

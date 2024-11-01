@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"net"
 	"os"
 	"sync"
@@ -13,13 +14,12 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
-	uffdMsgListenerTimeout = 5 * time.Second
+	uffdMsgListenerTimeout = 15 * time.Second
 	fdSize                 = 4
 	mappingsSize           = 1024
 )

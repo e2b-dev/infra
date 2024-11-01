@@ -210,6 +210,7 @@ resource "nomad_job" "orchestrator" {
       orchestrator_checksum = data.external.orchestrator_checksum.result.hex
       logs_proxy_address    = var.logs_proxy_address
       otel_tracing_print    = var.otel_tracing_print
+      template_bucket_name  = "e2b-staging-kuba-fc-templates"
     }
   }
 }

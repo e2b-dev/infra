@@ -10,8 +10,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -23,8 +21,11 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 	childCtx, _ := tracer.Start(ctx, "mock-instance")
 
 	consulClient, err := consul.New(childCtx)
+	if err != nil {
+		panic(err)
+	}
 
-	logger := logs.NewSandboxLogger(instanceID, envID, "test-team", 2, 512, false)
+	//logger := logs.NewSandboxLogger(instanceID, envID, "test-team", 2, 512, false)
 
 	networkPool := NewNetworkSlotPool(1, 0)
 
@@ -42,37 +43,37 @@ func MockInstance(envID, instanceID string, dns *dns.DNS, keepAlive time.Duratio
 
 	start := time.Now()
 
-	instance, err := NewSandbox(
-		childCtx,
-		tracer,
-		consulClient,
-		dns,
-		networkPool,
-		&orchestrator.SandboxConfig{
-			TemplateID:         envID,
-			FirecrackerVersion: "v1.9.1_3370eaf8",
-			KernelVersion:      "vmlinux-6.1.102",
-			TeamID:             "test-team",
-			BuildID:            "id",
-			HugePages:          true,
-			MaxInstanceLength:  1,
-			SandboxID:          instanceID,
-		},
-		"trace-test-1",
-		time.Now(),
-		time.Now(),
-		logger,
-	)
-	if err != nil {
-		panic(err)
-	}
+	//instance, err := NewSandbox(
+	//	childCtx,
+	//	tracer,
+	//	consulClient,
+	//	dns,
+	//	networkPool,
+	//	&orchestrator.SandboxConfig{
+	//		TemplateID:         envID,
+	//		FirecrackerVersion: "v1.9.1_3370eaf8",
+	//		KernelVersion:      "vmlinux-6.1.102",
+	//		TeamID:             "test-team",
+	//		BuildID:            "id",
+	//		HugePages:          true,
+	//		MaxInstanceLength:  1,
+	//		SandboxID:          instanceID,
+	//	},
+	//	"trace-test-1",
+	//	time.Now(),
+	//	time.Now(),
+	//	logger,
+	//)
+	//if err != nil {
+	//	panic(err)
+	//}
 
 	duration := time.Since(start)
 	fmt.Printf("[Sandbox is running] - started in %dms (without network)\n", duration.Milliseconds())
 
 	time.Sleep(keepAlive)
 
-	defer instance.CleanupAfterFCStop(childCtx, tracer, consulClient, dns, instanceID)
-
-	instance.Stop(childCtx, tracer)
+	//defer instance.CleanupAfterFCStop(childCtx, tracer, consulClient, dns, instanceID)
+	//
+	//instance.Stop(childCtx, tracer)
 }

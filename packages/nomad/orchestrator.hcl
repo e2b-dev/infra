@@ -47,6 +47,11 @@ variable "orchestrator_checksum" {
   default = ""
 }
 
+variable "template_bucket_name" {
+  type    = string
+  default = ""
+}
+
 job "orchestrator" {
   type = "system"
   datacenters = [var.gcp_zone]
@@ -89,6 +94,7 @@ job "orchestrator" {
         LOGS_PROXY_ADDRESS = var.logs_proxy_address
         ENVIRONMENT        = var.environment
         RUST_BACKTRACE     = 1
+        TEMPLATE_BUCKET_NAME = var.template_bucket_name
       }
 
       config {
