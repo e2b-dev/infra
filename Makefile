@@ -141,3 +141,10 @@ import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
 	$(tf_vars) terraform import $(TARGET) $(ID)
+
+.PHONY: setup-ssh
+setup-ssh:
+	@ printf "Setting up SSH for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n"
+	@ gcloud compute config-ssh --remove
+	@ gcloud compute config-ssh --project $(GCP_PROJECT_ID) --quiet
+	@ printf "SSH setup complete\n"
