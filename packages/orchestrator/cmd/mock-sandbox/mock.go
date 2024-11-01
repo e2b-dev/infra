@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strconv"
 	"time"
 
@@ -34,9 +35,17 @@ func main() {
 	timeout := time.Second*time.Duration(*keepAlive) + time.Second*50
 	fmt.Printf("timeout: %d\n", timeout)
 
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
+
+	go func() {
+		<-done
+
+		cancel()
+	}()
 
 	// Start of mock build for testing
 	dns := dns.New()
