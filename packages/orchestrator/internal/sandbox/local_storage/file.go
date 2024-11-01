@@ -1,4 +1,4 @@
-package template
+package local_storage
 
 import (
 	"context"

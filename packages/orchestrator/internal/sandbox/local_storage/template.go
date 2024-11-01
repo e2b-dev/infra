@@ -1,7 +1,8 @@
-package template
+package local_storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -19,9 +20,8 @@ const (
 type Template struct {
 	Files *template.TemplateCacheFiles
 
-	Memfile *template.BlockStorage
-	//Rootfs   *template.BlockStorage
-	//Snapfile *File
+	Memfile  *template.BlockStorage
+	Snapfile *File
 
 	hugePages bool
 }
@@ -64,23 +64,15 @@ func NewTemplate(
 		files.StorageMemfilePath(),
 		memfileBlockSize,
 	)
-	//
-	//rootfs := template.NewBlockStorage(
-	//	ctx,
-	//	bucket,
-	//	files.StorageRootfsPath(),
-	//	rootfsBlockSize,
-	//)
-	//
-	//snapfile, err := NewFile(ctx, bucket, files.StorageSnapfilePath(), files.CacheSnapfilePath())
-	//if err != nil {
-	//	return nil, fmt.Errorf("failed to fetch snapfile: %w", err)
-	//}
+
+	snapfile, err := NewFile(ctx, bucket, files.StorageSnapfilePath(), files.CacheSnapfilePath())
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch snapfile: %w", err)
+	}
 
 	return &Template{
-		Memfile: memfile,
-		//Rootfs:    rootfs,
-		//Snapfile:  snapfile,
+		Memfile:   memfile,
+		Snapfile:  snapfile,
 		hugePages: hugePages,
 		Files:     files,
 	}, nil
@@ -89,10 +81,7 @@ func NewTemplate(
 func (t *Template) Close() error {
 	memfileErr := t.Memfile.Close()
 
-	//rootfsErr := t.Rootfs.Close()
-	//
-	//snapfileErr := t.Snapfile.Close()
+	snapfileErr := t.Snapfile.Close()
 
-	//return errors.Join(memfileErr, rootfsErr, snapfileErr)
-	return memfileErr
+	return errors.Join(memfileErr, snapfileErr)
 }

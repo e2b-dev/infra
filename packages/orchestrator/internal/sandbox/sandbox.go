@@ -208,7 +208,7 @@ func NewSandbox(
 		pollReady,
 	)
 
-	err = fc.start(childCtx, tracer, internalLogger)
+	err = fc.start(childCtx, tracer, internalLogger, tmpl.Snapfile)
 	if err != nil {
 		var fcUffdErr error
 		if fcUffd != nil {

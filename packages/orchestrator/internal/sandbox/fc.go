@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
@@ -88,6 +89,7 @@ func (fc *fc) loadSnapshot(
 	metadata interface{},
 	uffdSocketPath *string,
 	pollReady chan struct{},
+	snapfile *local_storage.File,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
 		attribute.String("instance.socket.path", socketPath),
@@ -100,12 +102,10 @@ func (fc *fc) loadSnapshot(
 	telemetry.ReportEvent(childCtx, "created FC socket client")
 
 	memfilePath := filepath.Join(envPath, MemfileName)
-	snapfilePath := filepath.Join(envPath, SnapfileName)
 
 	telemetry.SetAttributes(
 		childCtx,
 		attribute.String("instance.memfile.path", memfilePath),
-		attribute.String("instance.snapfile.path", snapfilePath),
 	)
 
 	var backend *models.MemoryBackend
@@ -139,7 +139,7 @@ func (fc *fc) loadSnapshot(
 			ResumeVM:            false,
 			EnableDiffSnapshots: false,
 			MemBackend:          backend,
-			SnapshotPath:        &snapfilePath,
+			SnapshotPath:        &snapfile.Path,
 		},
 	}
 
@@ -270,6 +270,7 @@ func (fc *fc) start(
 	ctx context.Context,
 	tracer trace.Tracer,
 	logger *logs.SandboxLogger,
+	snapfile *local_storage.File,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
@@ -351,6 +352,7 @@ func (fc *fc) start(
 		fc.metadata,
 		fc.uffdSocketPath,
 		fc.pollReady,
+		snapfile,
 	); loadErr != nil {
 		fcErr := fc.stop()
 
