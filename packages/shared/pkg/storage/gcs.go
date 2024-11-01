@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/googleapis/gax-go/v2"
 )
 
 const (
@@ -19,6 +20,7 @@ const (
 	initialBackoff    = 10 * time.Millisecond
 	maxBackoff        = 10 * time.Second
 	backoffMultiplier = 2
+	maxAttempts       = 10
 )
 
 type GCSObject struct {
@@ -27,7 +29,15 @@ type GCSObject struct {
 }
 
 func NewGCSObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, objectPath string) *GCSObject {
-	obj := bucket.Object(objectPath)
+	obj := bucket.Object(objectPath).Retryer(
+		storage.WithMaxAttempts(maxAttempts),
+		storage.WithBackoff(gax.Backoff{
+			Initial:    initialBackoff,
+			Max:        maxBackoff,
+			Multiplier: backoffMultiplier,
+		}),
+		storage.WithPolicy(storage.RetryAlways),
+	)
 
 	return &GCSObject{
 		object: obj,
