@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -302,28 +301,6 @@ func NewSandbox(
 	}()
 
 	return instance, nil
-}
-
-func (s *Sandbox) syncClock(ctx context.Context, port int64) error {
-	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostIP(), port)
-
-	request, err := http.NewRequestWithContext(ctx, "POST", address, nil)
-	if err != nil {
-		return err
-	}
-
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return err
-	}
-
-	if _, err := io.Copy(io.Discard, response.Body); err != nil {
-		return err
-	}
-
-	defer response.Body.Close()
-
-	return nil
 }
 
 func (s *Sandbox) CleanupAfterFCStop(
