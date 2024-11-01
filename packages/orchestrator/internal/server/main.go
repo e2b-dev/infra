@@ -76,6 +76,11 @@ func New() *grpc.Server {
 		}
 	}()
 
+	if templateStorage.BucketName == "" {
+		// TODO: Add helper method with something like Mustk
+		log.Fatalf("template storage bucket name is empty")
+	}
+
 	orchestrator.RegisterSandboxServer(s, &server{
 		tracer:        tracer,
 		consul:        consulClient,
