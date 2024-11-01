@@ -3,10 +3,10 @@ package uffd
 import (
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"syscall"
 	"unsafe"
 
+	template "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/loopholelabs/userfaultfd-go/pkg/constants"
 	"golang.org/x/sys/unix"
 )
@@ -36,7 +36,7 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 	return nil, fmt.Errorf("address %d not found in any mapping", addr)
 }
 
-func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd uintptr) error {
+func Serve(uffd int, mappings []GuestRegionUffdMapping, src *template.BlockStorage, fd uintptr) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: int32(fd), Events: unix.POLLIN},
@@ -100,11 +100,12 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
 		pagesize := uint64(mapping.PageSize)
 
-		if offset+pagesize > uint64(len(*src.Map)) {
-			return fmt.Errorf("offset %v is out of bounds", offset)
-		}
+		b := make([]byte, pagesize)
 
-		b := (*src.Map)[offset : offset+pagesize]
+		_, err = src.ReadAt(b, int64(offset))
+		if err != nil {
+			return fmt.Errorf("failed to read from source: %w", err)
+		}
 
 		cpy := constants.NewUffdioCopy(
 			b,

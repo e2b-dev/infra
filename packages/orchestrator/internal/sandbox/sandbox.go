@@ -77,7 +77,7 @@ func NewSandbox(
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
-	_, err := localStorage.NewTemplate(
+	tmpl, err := localStorage.NewTemplate(
 		context.Background(),
 		storageBucket,
 		config.SandboxID,
@@ -171,7 +171,7 @@ func NewSandbox(
 
 	var fcUffd *uffd.Uffd
 	if fsEnv.UFFDSocketPath != nil {
-		fcUffd, err = uffd.New(fsEnv.MemfilePath(), *fsEnv.UFFDSocketPath, config.TemplateID, config.BuildID)
+		fcUffd, err = uffd.New(tmpl.Memfile, *fsEnv.UFFDSocketPath, config.TemplateID, config.BuildID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create uffd: %w", err)
 		}
