@@ -1,9 +1,7 @@
 package sandbox
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -255,26 +253,23 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
 
-	clockSyncSpan, initSpan := tracer.Start(childCtx, "ensure-clock-sync")
+	uffdStartCtx, initSpan := tracer.Start(childCtx, "ensure-clock-sync")
+
+	// Sync envds.
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
-		clockErr := instance.initRequest(clockSyncSpan, consts.DefaultEnvdServerPort, config.EnvVars)
-		if clockErr != nil {
-			telemetry.ReportError(clockSyncSpan, fmt.Errorf("failed to sync clock: %w", clockErr))
+		initErr := instance.initEnvd(uffdStartCtx, tracer, config.EnvVars)
+		if initErr != nil {
+			return nil, fmt.Errorf("failed to init new envd: %w", initErr)
 		} else {
-			telemetry.ReportEvent(clockSyncSpan, "clock synced")
+			telemetry.ReportEvent(uffdStartCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxID))
 		}
 	} else {
-		go func() {
-			backgroundCtx := context.Background()
-
-			clockErr := instance.EnsureClockSync(backgroundCtx, consts.OldEnvdServerPort)
-			if clockErr != nil {
-				telemetry.ReportError(backgroundCtx, fmt.Errorf("failed to sync clock (old envd): %w", clockErr))
-				internalLogger.Errorf("failed to sync clock (old envd): %s", clockErr)
-			} else {
-				telemetry.ReportEvent(backgroundCtx, "clock synced (old envd)")
-			}
-		}()
+		syncErr := instance.syncOldEnvd(uffdStartCtx)
+		if syncErr != nil {
+			telemetry.ReportError(uffdStartCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
+		} else {
+			telemetry.ReportEvent(uffdStartCtx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxID))
+		}
 	}
 	initSpan.End()
 
@@ -308,66 +303,6 @@ func (s *Sandbox) syncClock(ctx context.Context, port int64) error {
 	}
 
 	defer response.Body.Close()
-
-	return nil
-}
-
-type PostInitJSONBody struct {
-	EnvVars *map[string]string `json:"envVars"`
-}
-
-func (s *Sandbox) initRequest(ctx context.Context, port int64, envVars map[string]string) error {
-	address := fmt.Sprintf("http://%s:%d/init", s.slot.HostIP(), port)
-
-	jsonBody := &PostInitJSONBody{
-		EnvVars: &envVars,
-	}
-	envVarsJSON, err := json.Marshal(jsonBody)
-	if err != nil {
-		return err
-	}
-
-	request, err := http.NewRequestWithContext(ctx, "POST", address, bytes.NewReader(envVarsJSON))
-	if err != nil {
-		return err
-	}
-
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return err
-	}
-
-	if response.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
-	}
-
-	if _, err := io.Copy(io.Discard, response.Body); err != nil {
-		return err
-	}
-
-	defer response.Body.Close()
-
-	return nil
-}
-
-func (s *Sandbox) EnsureClockSync(ctx context.Context, port int64) error {
-syncLoop:
-	for {
-		select {
-		case <-time.After(10 * time.Second):
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			err := s.syncClock(ctx, port)
-			if err != nil {
-				telemetry.ReportError(ctx, fmt.Errorf("error syncing clock: %w", err))
-
-				continue
-			}
-
-			break syncLoop
-		}
-	}
 
 	return nil
 }

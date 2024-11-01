@@ -4,15 +4,17 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"golang.org/x/sync/errgroup"
 	"os"
 	"strconv"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	consulapi "github.com/hashicorp/consul/api"
 
 	"go.opentelemetry.io/otel"
@@ -30,7 +32,8 @@ func main() {
 	timeout := time.Second*time.Duration(*keepAlive) + time.Second*50
 	fmt.Printf("timeout: %d\n", timeout)
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	// Start of mock build for testing
@@ -42,7 +45,7 @@ func main() {
 		panic(err)
 	}
 
-	networkPool := sandbox.NewNetworkSlotPool(1, 1)
+	networkPool := sandbox.NewNetworkSlotPool(10, 0)
 
 	go func() {
 		poolErr := networkPool.Start(ctx, consulClient)
@@ -78,6 +81,10 @@ func main() {
 
 	}
 
+	err = eg.Wait()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start sandboxes: %v\n", err)
+	}
 }
 
 func mockSandbox(
@@ -94,6 +101,7 @@ func mockSandbox(
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
 
 	start := time.Now()
+	logger := logs.NewSandboxLogger(sandboxId, templateId, "test-team", 2, 512, false)
 
 	sbx, err := sandbox.NewSandbox(
 		childCtx,
@@ -114,7 +122,7 @@ func mockSandbox(
 		"trace-test-1",
 		time.Now(),
 		time.Now(),
-		nil,
+		logger,
 	)
 	if err != nil {
 		panic(err)

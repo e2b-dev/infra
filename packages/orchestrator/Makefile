@@ -40,4 +40,4 @@ build-and-upload: build upload
 
 .PHONY: mock
 mock:
-	sudo NODE_ID="test-client" go run -race -gcflags=all="-N -l" cmd/mock-sandbox/mock.go -template 5wzg6c91u51yaebviysf -sandbox idnrwvs3vrde6hknozc0 -build "0f426192-e298-49d1-a779-2fecf990a522" -alive 10 -count 10
+	sudo CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="test-client" go run -race -gcflags=all="-N -l" cmd/mock-sandbox/mock.go -template idnrwvs3vrde6hknozc0 -sandbox idnrwvs3vrde6hknozc0 -build "0f426192-e298-49d1-a779-2fecf990a522" -alive 20 -count 10
