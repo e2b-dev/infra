@@ -276,7 +276,9 @@ func NewSandbox(
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
 		initErr := instance.initEnvd(uffdStartCtx, tracer, config.EnvVars)
 		if initErr != nil {
-			return nil, fmt.Errorf("failed to init new envd: %w", initErr)
+			// TODO: Wait for envd to be ready
+			telemetry.ReportError(uffdStartCtx, fmt.Errorf("failed to init new envd: %w", initErr))
+			//return nil, fmt.Errorf("failed to init new envd: %w", initErr)
 		} else {
 			telemetry.ReportEvent(uffdStartCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxID))
 		}

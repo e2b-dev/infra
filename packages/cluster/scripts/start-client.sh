@@ -27,37 +27,42 @@ fi
 mount "/dev/disk/by-id/google-${DISK_DEVICE_NAME}" "$mount_path"
 chmod a+w "$mount_path"
 
-# Mount env buckets
-mkdir -p /mnt/disks/envs-pipeline
-gcsfuse -o=allow_other --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" /mnt/disks/envs-pipeline
+# Create the directory for the fc mounts
+mkdir -p /fc-vm
 
-# Copy the envd
-env_pipeline_local_dir="/fc-vm"
-mkdir -p $env_pipeline_local_dir
-sudo cp /mnt/disks/envs-pipeline/envd $env_pipeline_local_dir/envd
-sudo chmod +x $env_pipeline_local_dir/envd
+# Create the config file for gcsfuse
+fuse_cache="/fuse/cache"
+mkdir -p $fuse_cache
 
-# Copy the envd-v0.0.1
-sudo cp /mnt/disks/envs-pipeline/envd-v0.0.1 $env_pipeline_local_dir/envd-v0.0.1
-sudo chmod +x $env_pipeline_local_dir/envd-v0.0.1
+fuse_config="/fuse/config.yaml"
 
-# Copy kernels
-mkdir -p /mnt/disks/fc-kernels
-gcsfuse -o=allow_other --implicit-dirs "${FC_KERNELS_BUCKET_NAME}" /mnt/disks/fc-kernels
+cat >$fuse_config <<EOF
+file-cache:
+  max-size-mb: -1
+  cache-file-for-range-read: false
+
+metadata-cache:
+  ttl-secs: -1
+
+cache-dir: $fuse_cache
+EOF
+
+# Mount envd buckets
+envd_dir="/fc-envd"
+mkdir -p $envd_dir
+gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" $envd_dir
+
+# Mount kernels
 kernels_dir="/fc-kernels"
 mkdir -p $kernels_dir
-cp -r /mnt/disks/fc-kernels/* $kernels_dir
+gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_KERNELS_BUCKET_NAME}" $kernels_dir
 
-# Copy FC versions
-mkdir -p /mnt/disks/fc-versions
-gcsfuse -o=allow_other --implicit-dirs "${FC_VERSIONS_BUCKET_NAME}" /mnt/disks/fc-versions
+# Mount FC versions
 fc_versions_dir="/fc-versions"
 mkdir -p $fc_versions_dir
-cp -r /mnt/disks/fc-versions/* $fc_versions_dir
-chmod +x -R /fc-versions
+gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_VERSIONS_BUCKET_NAME}" $fc_versions_dir
 
 # These variables are passed in via Terraform template interpolation
-
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-nomad-${RUN_NOMAD_FILE_HASH}.sh" /opt/nomad/bin/run-nomad.sh
 
