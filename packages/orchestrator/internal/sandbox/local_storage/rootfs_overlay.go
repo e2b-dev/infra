@@ -32,16 +32,19 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 
 	f, err := os.Create(cachePath)
 	if err != nil {
+		cancel()
 		return nil, fmt.Errorf("error creating overlay file: %w", err)
 	}
 
 	size, err := t.Rootfs.Size()
 	if err != nil {
+		cancel()
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
 	}
 
 	err = f.Truncate(size)
 	if err != nil {
+		cancel()
 		return nil, fmt.Errorf("error truncating overlay file: %w", err)
 	}
 
