@@ -158,6 +158,18 @@ func NewSandbox(
 		return nil, cleanup, errMsg
 	}
 
+	cleanup = append(cleanup, func() error {
+		err = fsEnv.Cleanup(childCtx, tracer)
+		if err != nil {
+			errMsg := fmt.Errorf("failed to delete instance files: %w", err)
+			telemetry.ReportCriticalError(childCtx, errMsg)
+		} else {
+			telemetry.ReportEvent(childCtx, "deleted instance files")
+		}
+
+		return nil
+	})
+
 	telemetry.ReportEvent(childCtx, "assembled env files info")
 
 	err = fsEnv.Ensure(childCtx)
@@ -315,29 +327,6 @@ func NewSandbox(
 	}()
 
 	return sbx, cleanup, nil
-}
-
-func (s *Sandbox) CleanupAfterFCStop(
-	ctx context.Context,
-	tracer trace.Tracer,
-	consul *consul.Client,
-	dns *dns.DNS,
-	sandboxID string,
-) {
-	childCtx, childSpan := tracer.Start(ctx, "delete-instance")
-	defer childSpan.End()
-
-	dns.Remove(sandboxID)
-	telemetry.ReportEvent(childCtx, "removed env instance to etc hosts")
-
-	s.networkPool.Return(consul, s.slot)
-	err := s.files.Cleanup(childCtx, tracer)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to delete instance files: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "deleted instance files")
-	}
 }
 
 func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) error {

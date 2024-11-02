@@ -71,7 +71,6 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 		defer telemetry.ReportEvent(closeCtx, "sandbox closed")
 		defer s.sandboxes.Remove(req.Sandbox.SandboxID)
-		defer sbx.CleanupAfterFCStop(context.Background(), tracer, s.consul, s.dns, req.Sandbox.SandboxID)
 
 		waitErr := sbx.Wait(context.Background(), tracer)
 		if waitErr != nil {

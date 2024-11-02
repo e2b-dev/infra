@@ -159,8 +159,6 @@ func mockSandbox(
 
 	time.Sleep(keepAlive)
 
-	defer sbx.CleanupAfterFCStop(childCtx, tracer, consulClient, dns, sandboxId)
-
 	defer func() {
 		cleanupErr := sandbox.HandleCleanup(cleanup)
 		if cleanupErr != nil {
