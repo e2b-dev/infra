@@ -216,7 +216,7 @@ func newFC(
 	rootfsMountCmd := fmt.Sprintf(
 		`mount --make-rprivate / &&
 			mount -t tmpfs tmpfs %s -o X-mount.mkdir &&
-			ln -s %s/rootfs.ext4 %s/rootfs.ext4 &&`,
+			ln -s %s %s &&`,
 		fsEnv.BuildDirPath,
 		filepath.Join(fsEnv.EnvInstancePath, RootfsName),
 		filepath.Join(fsEnv.EnvPath, RootfsName),
