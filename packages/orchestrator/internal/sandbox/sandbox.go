@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -199,6 +200,45 @@ func NewSandbox(
 		pollReady = fcUffd.PollReady
 	}
 
+	cacheFile, err := os.CreateTemp("", "")
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to create cache file: %w", err)
+	}
+
+	cleanup = append(cleanup, func() error {
+		err := os.Remove(cacheFile.Name())
+		if err != nil {
+			return fmt.Errorf("failed to remove cache file: %w", err)
+		}
+
+		return nil
+	})
+
+	fsOverlay, err := tmpl.NewRootfsOverlay(cacheFile.Name())
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
+	}
+
+	cleanup = append(cleanup, func() error {
+		fsOverlay.Close()
+
+		return nil
+	})
+
+	go func() {
+		overlayErr := fsOverlay.Run(config.SandboxID)
+		if overlayErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to run overlay: %v\n", overlayErr)
+		}
+	}()
+
+	overlayPath, err := fsOverlay.Path(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error getting overlay path: %v\n", err)
+
+		return nil, cleanup, err
+	}
+
 	fc := newFC(
 		childCtx,
 		tracer,
@@ -212,6 +252,7 @@ func NewSandbox(
 			TeamID:     config.TeamID,
 		},
 		pollReady,
+		overlayPath,
 	)
 
 	err = fc.start(childCtx, tracer, internalLogger, tmpl.Snapfile)

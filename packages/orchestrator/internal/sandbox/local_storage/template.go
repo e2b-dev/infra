@@ -21,6 +21,7 @@ type Template struct {
 	Files *template.TemplateCacheFiles
 
 	Memfile  *template.BlockStorage
+	Rootfs   *template.BlockStorage
 	Snapfile *File
 
 	hugePages bool
@@ -65,6 +66,13 @@ func NewTemplate(
 		memfileBlockSize,
 	)
 
+	rootfs := template.NewBlockStorage(
+		ctx,
+		bucket,
+		files.StorageRootfsPath(),
+		rootfsBlockSize,
+	)
+
 	snapfile, err := NewFile(ctx, bucket, files.StorageSnapfilePath(), files.CacheSnapfilePath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch snapfile: %w", err)
@@ -72,6 +80,7 @@ func NewTemplate(
 
 	return &Template{
 		Memfile:   memfile,
+		Rootfs:    rootfs,
 		Snapfile:  snapfile,
 		hugePages: hugePages,
 		Files:     files,
@@ -81,7 +90,9 @@ func NewTemplate(
 func (t *Template) Close() error {
 	memfileErr := t.Memfile.Close()
 
+	rootfsErr := t.Rootfs.Close()
+
 	snapfileErr := t.Snapfile.Close()
 
-	return errors.Join(memfileErr, snapfileErr)
+	return errors.Join(memfileErr, rootfsErr, snapfileErr)
 }

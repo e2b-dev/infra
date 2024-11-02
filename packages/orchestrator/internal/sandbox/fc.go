@@ -206,6 +206,7 @@ func newFC(
 	fsEnv *SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
 	pollReady chan struct{},
+	overlayPath string,
 ) *fc {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.String("instance.id", mmdsMetadata.InstanceID),
@@ -218,7 +219,7 @@ func newFC(
 			mount -t tmpfs tmpfs %s -o X-mount.mkdir &&
 			ln -s %s %s &&`,
 		fsEnv.BuildDirPath,
-		filepath.Join(fsEnv.EnvInstancePath, RootfsName),
+		overlayPath,
 		filepath.Join(fsEnv.BuildDirPath, RootfsName),
 	)
 
