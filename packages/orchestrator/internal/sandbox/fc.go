@@ -214,9 +214,12 @@ func newFC(
 	defer childSpan.End()
 
 	rootfsMountCmd := fmt.Sprintf(
-		"mount --bind %s %s && ",
-		fsEnv.EnvInstancePath,
+		`mount --make-rprivate / &&
+			mount -t tmpfs tmpfs %s -o X-mount.mkdir &&
+			ln -s %s/rootfs.ext4 %s/rootfs.ext4 &&`,
 		fsEnv.BuildDirPath,
+		filepath.Join(fsEnv.EnvInstancePath, RootfsName),
+		filepath.Join(fsEnv.EnvPath, RootfsName),
 	)
 
 	kernelMountCmd := fmt.Sprintf(
