@@ -219,7 +219,7 @@ func newFC(
 			ln -s %s %s &&`,
 		fsEnv.BuildDirPath,
 		filepath.Join(fsEnv.EnvInstancePath, RootfsName),
-		filepath.Join(fsEnv.EnvPath, RootfsName),
+		filepath.Join(fsEnv.BuildDirPath, RootfsName),
 	)
 
 	kernelMountCmd := fmt.Sprintf(
