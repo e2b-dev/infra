@@ -118,27 +118,6 @@ func NewSandbox(
 
 	internalLogger := logs.NewSandboxLogger(config.SandboxID, config.TemplateID, config.TeamID, config.VCpuCount, config.MemoryMB, true)
 
-	defer func() {
-		if err != nil {
-			networkPool.Return(consul, ips)
-			internalLogger.Debugf("returned ip slot")
-		}
-	}()
-
-	defer func() {
-		if err != nil {
-			ntErr := ips.RemoveNetwork()
-			if ntErr != nil {
-				errMsg := fmt.Errorf("error removing network namespace after failed instance start: %w", ntErr)
-				telemetry.ReportError(childCtx, errMsg)
-				internalLogger.Errorf("error removing network namespace after failed instance start: %s", ntErr)
-			} else {
-				telemetry.ReportEvent(childCtx, "removed network namespace")
-				internalLogger.Debugf("removed network namespace")
-			}
-		}
-	}()
-
 	fsEnv, err := newSandboxFiles(
 		childCtx,
 		tracer,
