@@ -53,7 +53,7 @@ The main components are:
 The following diagram shows the architecture of the whole project:
 ![E2B infrastructure diagram](./readme-assets/architecture.jpeg)
 
-## Deployment
+## Self-hosting
 
 The infrastructure is deployed using [Terraform](./terraform.md) and right now it is deployable on GCP only.
 
