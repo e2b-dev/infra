@@ -221,7 +221,7 @@ func NewSandbox(
 	})
 
 	go func() {
-		overlayErr := fsOverlay.Run(config.SandboxID)
+		overlayErr := fsOverlay.Run()
 		if overlayErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to run overlay: %v\n", overlayErr)
 		}
