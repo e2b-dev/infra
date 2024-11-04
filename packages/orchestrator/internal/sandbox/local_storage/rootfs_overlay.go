@@ -133,6 +133,8 @@ func (o *RootfsOverlay) Run() error {
 		}
 	}()
 
+	o.ready <- file
+
 	wg.Wait()
 
 	return o.mnt.Wait()
