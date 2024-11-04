@@ -3,28 +3,39 @@ package local_storage
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"sync"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage/nbd"
 	template "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"github.com/pojntfx/go-nbd/pkg/client"
 	"github.com/pojntfx/go-nbd/pkg/server"
-	"github.com/pojntfx/r3map/pkg/mount"
 )
 
 const ChunkSize = 2 * 1024 * 1024 // 2MiB
 
 type RootfsOverlay struct {
 	storage    *template.BlockStorage
-	mnt        *mount.ManagedPathMount
+	mnt        *nbd.ManagedPathMount
 	localCache *os.File
 
 	ctx       context.Context
 	cancelCtx context.CancelFunc
 
 	ready chan string
+}
+
+func createPriorityFunction(size int64) func(off int64) int64 {
+	middleCeiling := int(math.Ceil(float64(size) / 2))
+
+	return func(off int64) int64 {
+		distanceFromMiddle := int64(math.Abs(float64(off - int64(middleCeiling))))
+
+		return distanceFromMiddle
+	}
 }
 
 func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
@@ -48,13 +59,17 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 		return nil, fmt.Errorf("error truncating overlay file: %w", err)
 	}
 
-	mnt := mount.NewManagedPathMount(
+	priorityFunction := createPriorityFunction(size)
+
+	mnt := nbd.NewManagedPathMount(
 		ctx,
 		t.Rootfs,
 		backend.NewFileBackend(f),
-		&mount.ManagedMountOptions{
-			ChunkSize: ChunkSize,
-			Verbose:   true,
+		&nbd.ManagedMountOptions{
+			ChunkSize:    ChunkSize,
+			Verbose:      true,
+			PullWorkers:  12,
+			PullPriority: priorityFunction,
 		},
 		nil,
 		&server.Options{
@@ -87,6 +102,11 @@ func (o *RootfsOverlay) Run(sandboxID string) error {
 
 	wg.Add(1)
 
+	file, _, err := o.mnt.Open()
+	if err != nil {
+		return fmt.Errorf("error opening overlay file: %w", err)
+	}
+
 	go func() {
 		defer wg.Done()
 
@@ -95,14 +115,9 @@ func (o *RootfsOverlay) Run(sandboxID string) error {
 		o.mnt.Close()
 
 		o.localCache.Close()
+
+		nbd.Pool.ReleaseDevice(file)
 	}()
-
-	file, _, err := o.mnt.Open()
-	if err != nil {
-		return fmt.Errorf("error opening overlay file: %w", err)
-	}
-
-	o.ready <- file
 
 	wg.Wait()
 
