@@ -94,7 +94,7 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 	}, nil
 }
 
-func (o *RootfsOverlay) Run(sandboxID string) error {
+func (o *RootfsOverlay) Run() error {
 	defer close(o.ready)
 	defer o.cancelCtx()
 
@@ -112,11 +112,25 @@ func (o *RootfsOverlay) Run(sandboxID string) error {
 
 		<-o.ctx.Done()
 
-		o.mnt.Close()
+		err := o.mnt.Close()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error closing overlay mount: %v\n", err)
+		}
 
-		o.localCache.Close()
+		err = o.localCache.Close()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error closing overlay file: %v\n", err)
+		}
 
-		nbd.Pool.ReleaseDevice(file)
+		for {
+			err := nbd.Pool.ReleaseDevice(file)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error releasing overlay device: %v\n", err)
+				continue
+			}
+
+			break
+		}
 	}()
 
 	wg.Wait()
