@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
-
 	consul "github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -162,20 +161,6 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "created env for FC")
 
-	defer func() {
-		if err != nil {
-			envErr := fsEnv.Cleanup(childCtx, tracer)
-			if envErr != nil {
-				errMsg := fmt.Errorf("error deleting env after failed fc start: %w", err)
-				telemetry.ReportCriticalError(childCtx, errMsg)
-				internalLogger.Errorf("error deleting env after failed fc start: %s", err)
-			} else {
-				telemetry.ReportEvent(childCtx, "deleted env")
-				internalLogger.Debugf("deleted env")
-			}
-		}
-	}()
-
 	var fcUffd *uffd.Uffd
 	if fsEnv.UFFDSocketPath != nil {
 		fcUffd, err = uffd.New(tmpl.Memfile, *fsEnv.UFFDSocketPath, config.TemplateID, config.BuildID)
@@ -200,6 +185,15 @@ func NewSandbox(
 	if fcUffd != nil {
 		pollReady = fcUffd.PollReady
 	}
+
+	cleanup = append(cleanup, func() error {
+		stopErr := fcUffd.Stop()
+		if stopErr != nil {
+			return fmt.Errorf("failed to stop uffd: %w", stopErr)
+		}
+
+		return nil
+	})
 
 	cacheFile, err := os.CreateTemp("", "")
 	if err != nil {
@@ -258,13 +252,7 @@ func NewSandbox(
 
 	err = fc.start(childCtx, tracer, internalLogger, tmpl.Snapfile)
 	if err != nil {
-		var fcUffdErr error
-		if fcUffd != nil {
-			fcUffdErr = fcUffd.Stop()
-		}
-
 		errMsg := fmt.Errorf("failed to start FC: %w", err)
-		telemetry.ReportCriticalError(childCtx, errors.Join(errMsg, fcUffdErr))
 
 		return nil, cleanup, errMsg
 	}
