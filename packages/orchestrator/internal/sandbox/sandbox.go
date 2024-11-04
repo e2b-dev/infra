@@ -1,7 +1,6 @@
 package sandbox
 
 import (
-	"cloud.google.com/go/storage"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"cloud.google.com/go/storage"
 
 	consul "github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/otel/attribute"
@@ -314,16 +315,20 @@ func NewSandbox(
 		}),
 	}
 
+	// Ensure the syncing takes at most 10 seconds.
+	syncCtx, syncCancel := context.WithTimeout(childCtx, 10*time.Second)
+	defer syncCancel()
+
 	// Sync envds.
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
-		initErr := sbx.initEnvd(childCtx, tracer, config.EnvVars)
+		initErr := sbx.initEnvd(syncCtx, tracer, config.EnvVars)
 		if initErr != nil {
 			return nil, cleanup, fmt.Errorf("failed to init new envd: %w", initErr)
 		} else {
 			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxID))
 		}
 	} else {
-		syncErr := sbx.syncOldEnvd(childCtx)
+		syncErr := sbx.syncOldEnvd(syncCtx)
 		if syncErr != nil {
 			telemetry.ReportError(childCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
 		} else {
