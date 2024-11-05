@@ -235,6 +235,7 @@ module "nomad" {
   # Orchestrator
   orchestrator_port           = var.orchestrator_port
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name
+  template_bucket_name        = module.buckets.fc_template_bucket_name
 
   # Template manager
   template_manager_port = var.template_manager_port

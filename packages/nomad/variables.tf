@@ -6,6 +6,10 @@ variable "consul_acl_token_secret" {
   type = string
 }
 
+variable "template_bucket_name" {
+  type = string
+}
+
 variable "nomad_acl_token_secret" {
   type = string
 }
