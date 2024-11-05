@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage/nbd"
 	template "github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -59,17 +60,17 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 		return nil, fmt.Errorf("error truncating overlay file: %w", err)
 	}
 
-	priorityFunction := createPriorityFunction(size)
+	//priorityFunction := createPriorityFunction(size)
 
 	mnt := nbd.NewManagedPathMount(
 		ctx,
 		t.Rootfs,
 		backend.NewFileBackend(f),
 		&nbd.ManagedMountOptions{
-			ChunkSize:    ChunkSize,
-			Verbose:      true,
-			PullWorkers:  12,
-			PullPriority: priorityFunction,
+			ChunkSize: ChunkSize,
+			Verbose:   true,
+			//PullWorkers:  12,
+			//PullPriority: priorityFunction,
 		},
 		nil,
 		&server.Options{
@@ -112,6 +113,7 @@ func (o *RootfsOverlay) Run() error {
 
 		<-o.ctx.Done()
 
+		fmt.Printf("[%s] Closing overlay\n", time.Now().Format(time.RFC3339))
 		err := o.mnt.Close()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error closing overlay mount: %v\n", err)

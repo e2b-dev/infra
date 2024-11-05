@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -62,15 +63,15 @@ func main() {
 	consulClient, err := consul.New(context.Background())
 	storageBucket := client.Bucket(templateStorage.BucketName)
 
-	networkPool := sandbox.NewNetworkSlotPool(10, 0)
+	networkPool := network.NewSlotPool(10, consulClient)
 
 	go func() {
-		poolErr := networkPool.Start(ctx, consulClient)
+		poolErr := networkPool.Populate(ctx)
 		if poolErr != nil {
 			fmt.Fprintf(os.Stderr, "network pool error: %v\n", poolErr)
 		}
 
-		closeErr := networkPool.Close(consulClient)
+		closeErr := networkPool.Close()
 		if closeErr != nil {
 			fmt.Fprintf(os.Stderr, "network pool close error: %v\n", closeErr)
 		}
@@ -112,7 +113,7 @@ func mockSandbox(
 	sandboxId string,
 	dns *dns.DNS,
 	keepAlive time.Duration,
-	networkPool *sandbox.NetworkSlotPool,
+	networkPool *network.SlotPool,
 	consulClient *consulapi.Client,
 	storageBucket *storage.BucketHandle,
 ) {

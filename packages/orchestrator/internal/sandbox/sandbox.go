@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -50,9 +51,9 @@ type Sandbox struct {
 	EndAt     time.Time
 	TraceID   string
 
-	networkPool *NetworkSlotPool
+	networkPool *network.SlotPool
 
-	slot   IPSlot
+	slot   network.IPSlot
 	Logger *logs.SandboxLogger
 	stats  *SandboxStats
 }
@@ -66,7 +67,7 @@ func NewSandbox(
 	tracer trace.Tracer,
 	consul *consul.Client,
 	dns *dns.DNS,
-	networkPool *NetworkSlotPool,
+	networkPool *network.SlotPool,
 	storageBucket *storage.BucketHandle,
 	config *orchestrator.SandboxConfig,
 	traceID string,
@@ -103,13 +104,13 @@ func NewSandbox(
 	networkCtx, networkSpan := tracer.Start(childCtx, "get-network-slot")
 	// Get slot from Consul KV
 
-	ips, err := networkPool.Get(networkCtx)
+	ips, err := networkPool.Get(networkCtx, tracer)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
 	}
 
 	cleanup = append(cleanup, func() error {
-		networkPool.Return(consul, ips)
+		networkPool.Release(ips)
 
 		return nil
 	})

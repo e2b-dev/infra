@@ -3,7 +3,6 @@ package server
 import (
 	"cloud.google.com/go/storage"
 	"context"
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"log"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
@@ -20,8 +19,10 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const (
@@ -35,7 +36,7 @@ type server struct {
 	dns           *dns.DNS
 	tracer        trace.Tracer
 	consul        *consulapi.Client
-	networkPool   *sandbox.NetworkSlotPool
+	networkPool   *network.SlotPool
 	storageBucket *storage.BucketHandle
 }
 
@@ -66,11 +67,11 @@ func New() *grpc.Server {
 		log.Fatalf("failed to create GCS client: %v", err)
 	}
 
-	networkPool := sandbox.NewNetworkSlotPool(ipSlotPoolSize, reusedIpSlotPoolSize)
+	networkPool := network.NewSlotPool(ipSlotPoolSize, consulClient)
 
 	// We start the pool last to avoid allocation network slots if the other components fail to initialize.
 	go func() {
-		poolErr := networkPool.Start(ctx, consulClient)
+		poolErr := networkPool.Populate(ctx)
 		if poolErr != nil {
 			log.Fatalf("network pool error: %v\n", poolErr)
 		}

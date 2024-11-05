@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"io"
 	"os/exec"
 	"path/filepath"
@@ -202,7 +203,7 @@ func (fc *fc) loadSnapshot(
 func newFC(
 	ctx context.Context,
 	tracer trace.Tracer,
-	slot IPSlot,
+	slot network.IPSlot,
 	fsEnv *SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
 	pollReady chan struct{},
