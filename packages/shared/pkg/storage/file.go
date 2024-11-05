@@ -86,5 +86,9 @@ func (b *FileCache) Sync() error {
 }
 
 func (b *FileCache) Close() error {
-	return b.file.Close()
+	closeErr := b.file.Close()
+
+	removeErr := os.Remove(b.file.Name())
+
+	return errors.Join(closeErr, removeErr)
 }
