@@ -3,12 +3,13 @@ package local_storage
 import (
 	"context"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage/nbd"
-	template "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"log"
 	"math"
 	"os"
 	"sync"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage/nbd"
+	template "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"github.com/pojntfx/go-nbd/pkg/client"
@@ -74,7 +75,6 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 		backend.NewFileBackend(f),
 		&nbd.ManagedMountOptions{
 			ChunkSize: ChunkSize,
-			Verbose:   true,
 		},
 		nil,
 		&server.Options{

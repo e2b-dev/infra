@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -49,21 +50,28 @@ func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
 	log.Printf("[%s] Reading %d at %d\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
 
 	n, err = d.cache.ReadAt(p, off)
-	if err == nil {
+	if err == nil || errors.Is(err, io.EOF) {
 		log.Printf("[%s] Read %d at %d\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
+
 		return n, nil
 	}
 
-	if errors.As(err, &ErrBytesNotAvailable{}) {
-		n, err = d.source.ReadAt(p, off)
-		if err != nil {
-			return n, fmt.Errorf("failed to read %d: %w", off, err)
-		}
+	if !errors.As(err, &ErrBytesNotAvailable{}) {
+		return n, fmt.Errorf("failed to read %d: %w", off, err)
+	}
 
-		_, err = d.cache.WriteAt(p, off)
-		if err != nil {
-			return n, fmt.Errorf("failed to write %d: %w", off, err)
-		}
+	log.Printf("[%s] Reading %d at %d from source\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
+
+	n, err = d.source.ReadAt(p, off)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return n, fmt.Errorf("failed to read from source %d: %w", off, err)
+	}
+
+	log.Printf("[%s] Writing %d at %d to cache\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
+
+	_, err = d.cache.WriteAt(p, off)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return n, fmt.Errorf("failed to write to cache %d: %w", off, err)
 	}
 
 	log.Printf("[%s] Read %d at %d\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
