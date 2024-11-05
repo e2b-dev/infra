@@ -59,19 +59,25 @@ func NewTemplate(
 		memfileBlockSize = pageSize
 	}
 
-	memfile := template.NewBlockStorage(
+	memfile, err := template.NewBlockStorage(
 		ctx,
 		bucket,
 		files.StorageMemfilePath(),
 		memfileBlockSize,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create memfile: %w", err)
+	}
 
-	rootfs := template.NewBlockStorage(
+	rootfs, err := template.NewBlockStorage(
 		ctx,
 		bucket,
 		files.StorageRootfsPath(),
 		rootfsBlockSize,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rootfs: %w", err)
+	}
 
 	snapfile, err := NewFile(ctx, bucket, files.StorageSnapfilePath(), files.CacheSnapfilePath())
 	if err != nil {
