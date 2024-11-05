@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -70,6 +71,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map
 	if err != nil {
 		return err
 	}
+	counter := 0
 
 	for {
 		select {
@@ -85,9 +87,13 @@ func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map
 
 		response, err := httpClient.Do(request)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to send sync request to new envd: %v\n, retrying...\n", err)
+			if counter%10 == 0 {
+				log.Printf("[%dth try] failed to send sync request to new envd: %v\n, retrying...\n", counter+1, err)
+			}
 
-			time.Sleep(10 * time.Millisecond)
+			counter = counter + 1
+
+			time.Sleep(100 * time.Millisecond)
 
 			continue
 		}

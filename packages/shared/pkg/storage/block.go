@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
+	"strings"
 
 	"cloud.google.com/go/storage"
 )
@@ -44,8 +46,11 @@ func NewBlockStorage(
 }
 
 func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
+	log.Printf("[%s] Reading %d at %d\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
+
 	n, err = d.cache.ReadAt(p, off)
 	if err == nil {
+		log.Printf("[%s] Read %d at %d\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
 		return n, nil
 	}
 
@@ -60,6 +65,8 @@ func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
 			return n, fmt.Errorf("failed to write %d: %w", off, err)
 		}
 	}
+
+	log.Printf("[%s] Read %d at %d\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
 
 	return n, nil
 }
