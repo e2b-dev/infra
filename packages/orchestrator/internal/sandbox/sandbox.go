@@ -89,15 +89,6 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
-	cleanup = append(cleanup, func() error {
-		templateErr := tmpl.Close()
-		if templateErr != nil {
-			return fmt.Errorf("failed to close template files for sandbox: %w", templateErr)
-		}
-
-		return nil
-	})
-
 	networkCtx, networkSpan := tracer.Start(childCtx, "get-network-slot")
 	// Get slot from Consul KV
 
