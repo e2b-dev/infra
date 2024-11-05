@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/KarpelesLab/reflink"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -77,6 +76,7 @@ func newSandboxFiles(
 	tracer trace.Tracer,
 	sandboxID,
 	envID,
+	buildID,
 	kernelVersion,
 	kernelsDir,
 	kernelMountDir,
@@ -95,15 +95,6 @@ func newSandboxFiles(
 	envPath := filepath.Join(envsDisk, envID)
 	envInstancePath := filepath.Join(envPath, EnvInstancesDirName, sandboxID)
 
-	// Mount overlay
-	buildIDPath := filepath.Join(envPath, BuildIDName)
-
-	data, err := os.ReadFile(buildIDPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed reading build id for the env %s: %w", envID, err)
-	}
-
-	buildID := string(data)
 	buildDirPath := filepath.Join(envPath, BuildDirName, buildID)
 
 	// Assemble socket path
@@ -165,17 +156,6 @@ func (f *SandboxFiles) Ensure(ctx context.Context) error {
 	mkdirErr := os.MkdirAll(f.BuildDirPath, 0o777)
 	if mkdirErr != nil {
 		telemetry.ReportError(ctx, err)
-	}
-
-	err = reflink.Always(
-		filepath.Join(f.EnvPath, RootfsName),
-		filepath.Join(f.EnvInstancePath, RootfsName),
-	)
-	if err != nil {
-		errMsg := fmt.Errorf("error creating reflinked rootfs: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return errMsg
 	}
 
 	return nil
