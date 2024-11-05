@@ -60,7 +60,7 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 		return nil, fmt.Errorf("error truncating overlay file: %w", err)
 	}
 
-	//priorityFunction := createPriorityFunction(size)
+	// priorityFunction := createPriorityFunction(size)
 
 	mnt := nbd.NewManagedPathMount(
 		ctx,
@@ -69,8 +69,8 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 		&nbd.ManagedMountOptions{
 			ChunkSize: ChunkSize,
 			Verbose:   true,
-			//PullWorkers:  12,
-			//PullPriority: priorityFunction,
+			// PullWorkers:  12,
+			// PullPriority: priorityFunction,
 		},
 		nil,
 		&server.Options{
@@ -124,12 +124,19 @@ func (o *RootfsOverlay) Run() error {
 			fmt.Fprintf(os.Stderr, "error closing overlay file: %v\n", err)
 		}
 
+		err = os.Remove(o.localCache.Name())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error removing overlay file: %v\n", err)
+		}
+
 		for {
 			err := nbd.Pool.ReleaseDevice(file)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error releasing overlay device: %v\n", err)
 				continue
 			}
+
+			fmt.Fprintf(os.Stderr, "released overlay device\n")
 
 			break
 		}

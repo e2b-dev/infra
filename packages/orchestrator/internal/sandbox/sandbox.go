@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 
 	"cloud.google.com/go/storage"
 	consul "github.com/hashicorp/consul/api"
@@ -197,21 +198,7 @@ func NewSandbox(
 		return nil
 	})
 
-	cacheFile, err := os.CreateTemp("", "")
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to create cache file: %w", err)
-	}
-
-	cleanup = append(cleanup, func() error {
-		err := os.Remove(cacheFile.Name())
-		if err != nil {
-			return fmt.Errorf("failed to remove cache file: %w", err)
-		}
-
-		return nil
-	})
-
-	fsOverlay, err := tmpl.NewRootfsOverlay(cacheFile.Name())
+	fsOverlay, err := tmpl.NewRootfsOverlay(filepath.Join(os.TempDir(), fmt.Sprintf("rootfs-%s-overlay.img", config.SandboxID)))
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
