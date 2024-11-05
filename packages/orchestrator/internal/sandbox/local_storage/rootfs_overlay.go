@@ -60,8 +60,6 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 		return nil, fmt.Errorf("error truncating overlay file: %w", err)
 	}
 
-	// priorityFunction := createPriorityFunction(size)
-
 	mnt := nbd.NewManagedPathMount(
 		ctx,
 		t.Rootfs,
@@ -69,8 +67,6 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 		&nbd.ManagedMountOptions{
 			ChunkSize: ChunkSize,
 			Verbose:   true,
-			// PullWorkers:  12,
-			// PullPriority: priorityFunction,
 		},
 		nil,
 		&server.Options{
@@ -103,7 +99,7 @@ func (o *RootfsOverlay) Run() error {
 
 	wg.Add(1)
 
-	file, _, err := o.mnt.Open()
+	file, _, err := o.mnt.Open(o.ctx)
 	if err != nil {
 		return fmt.Errorf("error opening overlay file: %w", err)
 	}

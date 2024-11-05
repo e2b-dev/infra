@@ -1,6 +1,7 @@
 package nbd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -119,8 +120,6 @@ func (n *DevicePool) getDevicePath(slot DeviceSlot) DevicePath {
 // https://superuser.com/questions/919895/how-to-get-a-list-of-connected-nbd-devices-on-ubuntu
 // https://github.com/NetworkBlockDevice/nbd/blob/17043b068f4323078637314258158aebbfff0a6c/nbd-client.c#L254
 func (n *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
-	pidFile := fmt.Sprintf("/sys/block/nbd%d/pid", slot)
-
 	devicePath := n.getDevicePath(slot)
 
 	fd, err := syscall.Open(devicePath, syscall.O_EXCL, 0o644)
@@ -134,6 +133,7 @@ func (n *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
 
 	defer syscall.Close(fd)
 
+	pidFile := fmt.Sprintf("/sys/block/nbd%d/pid", slot)
 	_, err = os.Stat(pidFile)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -184,26 +184,43 @@ func (n *DevicePool) getMaybeEmptySlot(start DeviceSlot) (DeviceSlot, func(), bo
 }
 
 // Get device slot if there is one available.
-func (n *DevicePool) GetDevice() (DevicePath, error) {
-	for slot, cleanSlot, ok := n.getMaybeEmptySlot(0); ok; slot, cleanSlot, ok = n.getMaybeEmptySlot(slot + 1) {
+func (n *DevicePool) GetDevice(ctx context.Context) (DevicePath, error) {
+	start := uint(0)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+
+		slot, cleanup, ok := n.getMaybeEmptySlot(start)
+
+		if !ok {
+			cleanup()
+
+			return "", ErrNoFreeSlots{}
+		}
+
 		free, err := n.isDeviceFree(slot)
 		if err != nil {
-			cleanSlot()
+			cleanup()
 
 			return "", fmt.Errorf("failed to check if device is free: %w", err)
 		}
 
 		if !free {
 			// We clear the slot even though it is not free to prevent accidental accumulation of slots.
-			cleanSlot()
+			cleanup()
+
+			// We increment the start to avoid infinite loops.
+			start++
 
 			continue
 		}
 
 		return n.getDevicePath(slot), nil
 	}
-
-	return "", ErrNoFreeSlots{}
 }
 
 // ReleaseDevice will return an error if the device is not free and not release the slot — you can retry.

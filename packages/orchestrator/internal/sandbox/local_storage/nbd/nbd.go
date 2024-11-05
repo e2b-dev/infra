@@ -128,14 +128,14 @@ func (m *ManagedPathMount) Wait() error {
 	return nil
 }
 
-func (m *ManagedPathMount) Open() (string, int64, error) {
+func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 	size, err := m.remote.Size()
 	if err != nil {
 		return "", 0, err
 	}
 	chunkCount := size / m.options.ChunkSize
 
-	devicePath, err := Pool.GetDevice()
+	devicePath, err := Pool.GetDevice(ctx)
 	if err != nil {
 		return "", 0, err
 	}
