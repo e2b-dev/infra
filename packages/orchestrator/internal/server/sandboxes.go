@@ -77,6 +77,11 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			fmt.Fprintf(os.Stderr, "failed to wait for Sandbox: %w", waitErr)
 		}
 
+		cleanupErr := sandbox.HandleCleanup(cleanup)
+		if cleanupErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to cleanup Sandbox: %w", cleanupErr)
+		}
+
 		logger.Infof("Sandbox killed")
 	}()
 
