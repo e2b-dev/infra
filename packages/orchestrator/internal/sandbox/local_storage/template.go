@@ -131,7 +131,6 @@ func (t *Template) Fetch(ctx context.Context, bucket *storage.BucketHandle) {
 			bucket,
 			t.Files.StorageMemfilePath(),
 			memfileBlockSize,
-			t.Files.CacheMemfilePath(),
 		)
 		if memfileErr != nil {
 			t.memfileResult <- valueWithErr[*templateStorage.BlockStorage]{
@@ -152,7 +151,6 @@ func (t *Template) Fetch(ctx context.Context, bucket *storage.BucketHandle) {
 			bucket,
 			t.Files.StorageRootfsPath(),
 			rootfsBlockSize,
-			t.Files.CacheRootfsPath(),
 		)
 		if rootfsErr != nil {
 			t.rootfsResult <- valueWithErr[*templateStorage.BlockStorage]{
