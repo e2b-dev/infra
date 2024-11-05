@@ -69,6 +69,13 @@ func New() *grpc.Server {
 		log.Fatalf("failed to create GCS client: %v", err)
 	}
 
+	if templateStorage.BucketName == "" {
+		// TODO: Add helper method with something like Mustk
+		log.Fatalf("template storage bucket name is empty")
+	}
+
+	templateCache := localStorage.NewTemplateCache(ctx, client, templateStorage.BucketName)
+
 	networkPool := network.NewSlotPool(ipSlotPoolSize, consulClient)
 
 	// We start the pool last to avoid allocation network slots if the other components fail to initialize.
@@ -78,13 +85,6 @@ func New() *grpc.Server {
 			log.Fatalf("network pool error: %v\n", poolErr)
 		}
 	}()
-
-	if templateStorage.BucketName == "" {
-		// TODO: Add helper method with something like Mustk
-		log.Fatalf("template storage bucket name is empty")
-	}
-
-	templateCache := localStorage.NewTemplateCache(ctx, client, templateStorage.BucketName)
 
 	orchestrator.RegisterSandboxServer(s, &server{
 		tracer:        tracer,
