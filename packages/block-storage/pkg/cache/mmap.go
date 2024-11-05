@@ -39,11 +39,13 @@ func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
+	blocks := (size + blockSize - 1) / blockSize
+
 	return &MmapCache{
 		mmap:      mm,
 		filePath:  filePath,
 		size:      size,
-		marker:    block.NewMarker(uint(size / blockSize)),
+		marker:    block.NewMarker(uint(blocks)),
 		blockSize: blockSize,
 	}, nil
 }

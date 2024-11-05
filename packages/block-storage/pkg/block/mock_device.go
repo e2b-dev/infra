@@ -15,10 +15,12 @@ type MockDevice struct {
 // NewMockDevice creates a new MockDevice instance with the given data.
 // It cannot be resized.
 func NewMockDevice(data []byte, blockSize int64, fillMarker bool) *MockDevice {
+	blocks := (int64(len(data)) + blockSize - 1) / blockSize
+
 	device := &MockDevice{
 		blockSize: blockSize,
 		data:      data,
-		marker:    NewMarker(uint(len(data) / int(blockSize))),
+		marker:    NewMarker(uint(blocks)),
 	}
 
 	if fillMarker {
