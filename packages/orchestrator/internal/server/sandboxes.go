@@ -47,7 +47,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.consul,
 		s.dns,
 		s.networkPool,
-		s.storageBucket,
+		s.templateCache,
 		req.Sandbox,
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
@@ -74,12 +74,12 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 		waitErr := sbx.Wait(context.Background(), tracer)
 		if waitErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to wait for Sandbox: %w", waitErr)
+			fmt.Fprintf(os.Stderr, "failed to wait for Sandbox: %v", waitErr)
 		}
 
 		cleanupErr := sandbox.HandleCleanup(cleanup)
 		if cleanupErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to cleanup Sandbox: %w", cleanupErr)
+			fmt.Fprintf(os.Stderr, "failed to cleanup Sandbox: %v", cleanupErr)
 		}
 
 		logger.Infof("Sandbox killed")

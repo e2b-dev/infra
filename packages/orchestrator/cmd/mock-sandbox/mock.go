@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	localStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
@@ -61,7 +62,8 @@ func main() {
 	}
 
 	consulClient, err := consul.New(context.Background())
-	storageBucket := client.Bucket(templateStorage.BucketName)
+
+	templateCache := localStorage.NewTemplateCache(ctx, client, templateStorage.BucketName)
 
 	networkPool := network.NewSlotPool(10, consulClient)
 
@@ -82,17 +84,19 @@ func main() {
 	for i := 0; i < *count; i++ {
 		fmt.Printf("Starting sandbox %d\n", i)
 
+		v := i
+
 		eg.Go(func() error {
 			mockSandbox(
 				ctx,
 				*templateId,
 				*buildId,
-				*sandboxId+"-"+strconv.Itoa(i),
+				*sandboxId+"-"+strconv.Itoa(v),
 				dns,
 				time.Duration(*keepAlive)*time.Second,
 				networkPool,
 				consulClient,
-				storageBucket,
+				templateCache,
 			)
 
 			return nil
@@ -115,7 +119,7 @@ func mockSandbox(
 	keepAlive time.Duration,
 	networkPool *network.SlotPool,
 	consulClient *consulapi.Client,
-	storageBucket *storage.BucketHandle,
+	templateCache *localStorage.TemplateCache,
 ) {
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
@@ -129,7 +133,7 @@ func mockSandbox(
 		consulClient,
 		dns,
 		networkPool,
-		storageBucket,
+		templateCache,
 		&orchestrator.SandboxConfig{
 			TemplateID:         templateId,
 			FirecrackerVersion: "v1.7.0-dev_8bb88311",

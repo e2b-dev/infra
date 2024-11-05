@@ -12,7 +12,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 
-	"cloud.google.com/go/storage"
 	consul "github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -69,7 +68,7 @@ func NewSandbox(
 	consul *consul.Client,
 	dns *dns.DNS,
 	networkPool *network.SlotPool,
-	storageBucket *storage.BucketHandle,
+	templateCache *localStorage.TemplateCache,
 	config *orchestrator.SandboxConfig,
 	traceID string,
 	startedAt time.Time,
@@ -79,10 +78,7 @@ func NewSandbox(
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
-	tmpl, err := localStorage.NewTemplate(
-		context.Background(),
-		storageBucket,
-		config.SandboxID,
+	tmpl, err := templateCache.GetTemplate(
 		config.TemplateID,
 		config.BuildID,
 		config.KernelVersion,
@@ -164,9 +160,14 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "created env for FC")
 
+	memfile, err := tmpl.Memfile()
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to get memfile: %w", err)
+	}
+
 	var fcUffd *uffd.Uffd
 	if fsEnv.UFFDSocketPath != nil {
-		fcUffd, err = uffd.New(tmpl.Memfile, *fsEnv.UFFDSocketPath, config.TemplateID, config.BuildID)
+		fcUffd, err = uffd.New(memfile, *fsEnv.UFFDSocketPath, config.TemplateID, config.BuildID)
 		if err != nil {
 			return nil, cleanup, fmt.Errorf("failed to create uffd: %w", err)
 		}
@@ -239,7 +240,12 @@ func NewSandbox(
 		overlayPath,
 	)
 
-	err = fc.start(childCtx, tracer, internalLogger, tmpl.Snapfile)
+	snapfile, err := tmpl.Snapfile()
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to get snapfile: %w", err)
+	}
+
+	err = fc.start(childCtx, tracer, internalLogger, snapfile)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to start FC: %w", err)
 

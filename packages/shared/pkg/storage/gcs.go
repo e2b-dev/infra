@@ -147,7 +147,7 @@ func (o *GCSObject) Size() (int64, error) {
 
 	attrs, err := o.object.Attrs(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get GCS object attributes: %w", err)
+		return 0, fmt.Errorf("failed to get GCS object (%s) attributes: %w", o.object.ObjectName(), err)
 	}
 
 	return attrs.Size, nil

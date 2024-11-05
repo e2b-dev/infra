@@ -42,13 +42,19 @@ func createPriorityFunction(size int64) func(off int64) int64 {
 func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	rootfs, err := t.Rootfs()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("error getting rootfs: %w", err)
+	}
+
 	f, err := os.Create(cachePath)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("error creating overlay file: %w", err)
 	}
 
-	size, err := t.Rootfs.Size()
+	size, err := rootfs.Size()
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
@@ -62,7 +68,7 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 
 	mnt := nbd.NewManagedPathMount(
 		ctx,
-		t.Rootfs,
+		rootfs,
 		backend.NewFileBackend(f),
 		&nbd.ManagedMountOptions{
 			ChunkSize: ChunkSize,
@@ -85,7 +91,7 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 		ready:      ready,
 		mnt:        mnt,
 		localCache: f,
-		storage:    t.Rootfs,
+		storage:    rootfs,
 		ctx:        ctx,
 		cancelCtx:  cancel,
 	}, nil
