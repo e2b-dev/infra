@@ -18,7 +18,7 @@ import (
 const blockSize = 4096
 
 func main() {
-	data := make([]byte, blockSize*10)
+	data := make([]byte, blockSize*1)
 	rand.Read(data)
 
 	device := backend.NewMemoryBackend(data)
@@ -76,6 +76,8 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 		for {
 			err = nbd.Pool.ReleaseDevice(devicePath)
 			if err != nil {
+				fmt.Printf("[%d] failed to release device: %v\n", index, err)
+
 				continue
 			}
 
