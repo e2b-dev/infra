@@ -92,3 +92,10 @@ func (b *FileCache) Close() error {
 
 	return errors.Join(closeErr, removeErr)
 }
+
+func (b *FileCache) IsCached(off int64) bool {
+	b.lock.RLock()
+	defer b.lock.RUnlock()
+
+	return b.marker.Test(uint(off / b.blockSize))
+}

@@ -7,16 +7,19 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"cloud.google.com/go/storage"
+	"golang.org/x/sync/singleflight"
 )
 
 type BlockStorage struct {
-	source    *GCSObject
-	cache     *FileCache
-	blockSize int64
-	size      int64
+	source     *GCSObject
+	cache      *FileCache
+	blockSize  int64
+	size       int64
+	fetchGroup singleflight.Group
 }
 
 func NewBlockStorage(
@@ -46,12 +49,13 @@ func NewBlockStorage(
 	}, nil
 }
 
+// TODO: Ensure that the maximum size of the buffer is the block size or handle if it is bigger.
 func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
 	log.Printf("[%s] Reading %d at %d\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
 
 	n, err = d.cache.ReadAt(p, off)
 	if err == nil || errors.Is(err, io.EOF) {
-		log.Printf("[%s] Read %d at %d\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
+		log.Printf("[%s] Read %d at %d from cache\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
 
 		return n, nil
 	}
@@ -60,23 +64,38 @@ func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
 		return n, fmt.Errorf("failed to read %d: %w", off, err)
 	}
 
-	log.Printf("[%s] Reading %d at %d from source\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
+	_, err, _ = d.fetchGroup.Do(strconv.FormatUint(uint64(off), 10), func() (interface{}, error) {
+		if d.cache.IsCached(off) {
+			return nil, nil
+		}
 
-	n, err = d.source.ReadAt(p, off)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return n, fmt.Errorf("failed to read from source %d: %w", off, err)
+		buf := make([]byte, d.blockSize)
+
+		log.Printf("[%s] Reading %d at %d from source\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(buf), off)
+
+		n, err = d.source.ReadAt(buf, off)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("failed to read from source %d: %w", off, err)
+		}
+
+		log.Printf("[%s] Writing %d at %d to cache\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(buf), off)
+
+		_, err = d.cache.WriteAt(buf, off)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("failed to write to cache %d: %w", off, err)
+		}
+
+		return nil, nil
+	})
+
+	n, err = d.cache.ReadAt(p, off)
+	if err == nil || errors.Is(err, io.EOF) {
+		log.Printf("[%s] Read %d at %d from cache\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
+
+		return n, nil
 	}
 
-	log.Printf("[%s] Writing %d at %d to cache\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
-
-	_, err = d.cache.WriteAt(p, off)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return n, fmt.Errorf("failed to write to cache %d: %w", off, err)
-	}
-
-	log.Printf("[%s] Read %d at %d\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
-
-	return n, nil
+	return 0, err
 }
 
 func (d *BlockStorage) Size() (int64, error) {
