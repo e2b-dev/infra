@@ -2,16 +2,15 @@ package nbd
 
 import (
 	"context"
+	"log"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"github.com/pojntfx/go-nbd/pkg/client"
-	"github.com/pojntfx/go-nbd/pkg/server"
 	bbackend "github.com/pojntfx/r3map/pkg/backend"
 	"github.com/pojntfx/r3map/pkg/chunks"
-	"github.com/pojntfx/r3map/pkg/mount"
 )
 
 type ManagedMountOptions struct {
@@ -45,19 +44,24 @@ type ManagedPathMount struct {
 	options *ManagedMountOptions
 	hooks   *ManagedMountHooks
 
-	serverOptions *server.Options
+	serverOptions *Options
 	clientOptions *client.Options
 
 	serverFile *os.File
 	pusher     *chunks.Pusher
 	puller     *chunks.Puller
-	dev        *mount.DirectPathMount
+	dev        *DirectPathMount
 
 	wg sync.WaitGroup
 
 	closeLock sync.Mutex
 
 	errs chan error
+}
+
+func (m *ManagedPathMount) Set(nbdSlot string) {
+	// TODO: Remove, this is just a hack how to propagate the NBD slot to the bucket reader
+	m.remote.WriteAt([]byte(nbdSlot), 0)
 }
 
 func NewManagedPathMount(
@@ -69,7 +73,7 @@ func NewManagedPathMount(
 	options *ManagedMountOptions,
 	hooks *ManagedMountHooks,
 
-	serverOptions *server.Options,
+	serverOptions *Options,
 	clientOptions *client.Options,
 ) *ManagedPathMount {
 	if options == nil {
@@ -140,6 +144,8 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 		return "", 0, err
 	}
 
+	log.Printf("[%s] Opening...\n", devicePath)
+
 	m.serverFile, err = os.Open(devicePath)
 	if err != nil {
 		return "", 0, err
@@ -175,6 +181,7 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 		local = m.local
 	}
 
+	log.Printf("[%s] Opened local storage\n", devicePath)
 	syncedReadWriter := chunks.NewSyncedReadWriterAt(m.remote, local, func(off int64) error {
 		if m.options.PushWorkers > 0 {
 			if err := local.(*chunks.Pusher).MarkOffsetPushable(off); err != nil {
@@ -190,6 +197,8 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 
 		return nil
 	})
+
+	log.Printf("[%s] Opened synced read writer\n", devicePath)
 
 	if m.options.PullWorkers > 0 {
 		m.puller = chunks.NewPuller(
@@ -228,8 +237,10 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 		}
 	}
 
+	log.Printf("[%s] Opened puller\n", devicePath)
 	arbitraryReadWriter := chunks.NewArbitraryReadWriterAt(syncedReadWriter, m.options.ChunkSize)
 
+	log.Printf("[%s] Opened arbitrary read writer\n", devicePath)
 	m.syncer = bbackend.NewReaderAtBackend(
 		arbitraryReadWriter,
 		func() (int64, error) {
@@ -255,7 +266,9 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 		m.options.Verbose,
 	)
 
-	m.dev = mount.NewDirectPathMount(
+	log.Printf("[%s] Opened syncer\n", devicePath)
+
+	m.dev = NewDirectPathMount(
 		m.syncer,
 		m.serverFile,
 
@@ -274,9 +287,13 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 		}
 	}()
 
+	log.Printf("[%s] Opened device\n", devicePath)
+
 	if err := m.dev.Open(); err != nil {
 		return "", 0, err
 	}
+
+	log.Printf("[%s] Opened\n", devicePath)
 
 	return devicePath, size, nil
 }

@@ -32,7 +32,7 @@ func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
 
 		response, err := httpClient.Do(request)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to send sync request to old envd: %v\n, retrying...\n", err)
+			fmt.Fprintf(os.Stderr, "failed to send sync request to old envd: %v\n", err)
 
 			time.Sleep(10 * time.Millisecond)
 
@@ -57,7 +57,7 @@ type PostInitJSONBody struct {
 	EnvVars *map[string]string `json:"envVars"`
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map[string]string) error {
+func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map[string]string, nbdSlot string) error {
 	childCtx, childSpan := tracer.Start(ctx, "envd-init")
 	defer childSpan.End()
 
@@ -88,7 +88,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map
 		response, err := httpClient.Do(request)
 		if err != nil {
 			if counter%10 == 0 {
-				log.Printf("[%dth try] failed to send sync request to new envd: %v\n, retrying...\n", counter+1, err)
+				log.Printf("[%dth try] failed to send sync request to new envd: %v\n", counter+1, err)
 			}
 
 			counter = counter + 1

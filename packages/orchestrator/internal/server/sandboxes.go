@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 
 	"go.opentelemetry.io/otel"
@@ -55,6 +56,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		logger,
 	)
 	if err != nil {
+		log.Printf("failed to create sandbox -> clean up: %v", err)
 		cleanupErr := sandbox.HandleCleanup(cleanup)
 
 		errMsg := fmt.Errorf("failed to create sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))

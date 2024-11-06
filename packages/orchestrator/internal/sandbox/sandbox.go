@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -77,6 +78,12 @@ func NewSandbox(
 ) (sbx *Sandbox, cleanup []func() error, err error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
+
+	cleanup = append(cleanup, func() error {
+		log.Printf("sandbox %s: cleaning up\n", config.SandboxID)
+
+		return nil
+	})
 
 	tmpl, err := templateCache.GetTemplate(
 		config.TemplateID,
@@ -190,6 +197,7 @@ func NewSandbox(
 		return nil
 	})
 
+	log.Printf("sandbox %s: starting rootfs overlay\n", config.SandboxID)
 	fsOverlay, err := tmpl.NewRootfsOverlay(filepath.Join(os.TempDir(), fmt.Sprintf("rootfs-%s-overlay.img", config.SandboxID)))
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
@@ -295,7 +303,7 @@ func NewSandbox(
 
 	// Sync envds.
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
-		initErr := sbx.initEnvd(syncCtx, tracer, config.EnvVars)
+		initErr := sbx.initEnvd(syncCtx, tracer, config.EnvVars, overlayPath)
 		if initErr != nil {
 			return nil, cleanup, fmt.Errorf("failed to init new envd: %w", initErr)
 		} else {
