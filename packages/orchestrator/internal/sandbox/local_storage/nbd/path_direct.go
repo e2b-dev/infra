@@ -1,6 +1,7 @@
 package nbd
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -73,6 +74,8 @@ func (d *DirectPathMount) Open() error {
 
 		c, err := net.FileConn(d.sf)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create server file: %v\n", err)
+
 			d.errs <- err
 
 			return
@@ -88,6 +91,8 @@ func (d *DirectPathMount) Open() error {
 		); err != nil {
 			log.Printf("Error handling server: %v\n", err)
 			if !utils.IsClosedErr(err) {
+				fmt.Fprintf(os.Stderr, "Failed to handle server: %v\n", err)
+
 				d.errs <- err
 			}
 
@@ -102,6 +107,8 @@ func (d *DirectPathMount) Open() error {
 
 		c, err := net.FileConn(d.cf)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create client file: %v\n", err)
+
 			d.errs <- err
 
 			return
@@ -122,6 +129,8 @@ func (d *DirectPathMount) Open() error {
 		if err := client.Connect(d.cc, d.f, d.clientOptions); err != nil {
 			log.Printf("Error connecting client: %v\n", err)
 			if !utils.IsClosedErr(err) {
+				fmt.Fprintf(os.Stderr, "Failed to connect client: %v\n", err)
+
 				d.errs <- err
 			}
 

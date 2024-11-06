@@ -12,7 +12,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage/nbd"
 	"github.com/pojntfx/go-nbd/pkg/backend"
-	"github.com/pojntfx/r3map/pkg/mount"
 )
 
 const blockSize = 4096
@@ -92,7 +91,7 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 		return nil, fmt.Errorf("failed to open device: %w", err)
 	}
 
-	mnt := mount.NewDirectPathMount(device, deviceFile, nil, nil)
+	mnt := nbd.NewDirectPathMount(device, deviceFile, nil, nil)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
