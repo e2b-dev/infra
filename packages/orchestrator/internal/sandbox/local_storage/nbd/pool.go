@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"regexp"
 	"strconv"
@@ -220,7 +219,8 @@ func (n *DevicePool) GetDevice(ctx context.Context) (DevicePath, error) {
 			continue
 		}
 
-		log.Printf("got device slot: %d\n", slot)
+		// log.Printf("got device slot: %d\n", slot)
+
 		return n.getDevicePath(slot), nil
 	}
 }
@@ -241,7 +241,7 @@ func (n *DevicePool) ReleaseDevice(path DevicePath) error {
 		return ErrDeviceInUse{}
 	}
 
-	log.Printf("released device slot: %d\n", slot)
+	// log.Printf("released device slot: %d\n", slot)
 	n.mu.Lock()
 	n.slots.Clear(slot)
 	n.mu.Unlock()

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"sync"
 
@@ -13,7 +12,6 @@ import (
 
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"github.com/pojntfx/go-nbd/pkg/client"
-	"github.com/pojntfx/go-nbd/pkg/server"
 )
 
 const ChunkSize = 2 * 1024 * 1024 // 2MiB
@@ -30,16 +28,6 @@ type RootfsOverlay struct {
 	cancelCtx context.CancelFunc
 
 	ready chan string
-}
-
-func createPriorityFunction(size int64) func(off int64) int64 {
-	middleCeiling := int(math.Ceil(float64(size) / 2))
-
-	return func(off int64) int64 {
-		distanceFromMiddle := int64(math.Abs(float64(off - int64(middleCeiling))))
-
-		return distanceFromMiddle
-	}
 }
 
 func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
@@ -77,7 +65,7 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 			ChunkSize: ChunkSize,
 		},
 		nil,
-		&server.Options{
+		&nbd.Options{
 			MinimumBlockSize:   rootfsBlockSize,
 			MaximumBlockSize:   rootfsBlockSize,
 			PreferredBlockSize: rootfsBlockSize,
