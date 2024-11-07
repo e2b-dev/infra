@@ -45,3 +45,7 @@ mock:
 .PHONY: mock-nbd
 mock-nbd:
 	sudo go run -gcflags=all="-N -l" cmd/mock-nbd/mock.go
+
+.PHONY: mock-nbd-custom
+mock-nbd-custom:
+	sudo go run -gcflags=all="-N -l" cmd/mock-nbd-custom/mock.go
