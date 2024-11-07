@@ -123,36 +123,37 @@ func (n *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
 	devicePath := n.getDevicePath(slot)
 
 	fd, err := syscall.Open(devicePath, syscall.O_EXCL, 0o644)
-	if err != nil {
-		if errors.Is(err, syscall.EBUSY) {
-			return false, nil
-		}
+	if errors.Is(err, syscall.EBUSY) {
+		return false, nil
+	}
 
+	if err != nil {
 		return false, fmt.Errorf("failed to open device: %w", err)
 	}
 
-	defer syscall.Close(fd)
+	err = syscall.Close(fd)
+	if err != nil {
+		return false, fmt.Errorf("failed to close device: %w", err)
+	}
 
 	// Continue only if the file doesn't exist.
 	pidFile := fmt.Sprintf("/sys/block/nbd%d/pid", slot)
+
 	_, err = os.Stat(pidFile)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return false, fmt.Errorf("failed to stat pid file: %w", err)
-		}
-	} else {
+	if err == nil {
+		// File is present, therefore the device is in use.
 		return false, nil
+	}
+
+	if !os.IsNotExist(err) {
+		// Some other error occurred.
+		return false, fmt.Errorf("failed to stat pid file: %w", err)
 	}
 
 	sizeFile := fmt.Sprintf("/sys/block/nbd%d/size", slot)
 
 	data, err := os.ReadFile(sizeFile)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			// Device does not exist, consider it free
-			return true, nil
-		}
-
 		return false, fmt.Errorf("failed to read size file: %w", err)
 	}
 
