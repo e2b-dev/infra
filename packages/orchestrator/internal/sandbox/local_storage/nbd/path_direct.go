@@ -2,7 +2,6 @@ package nbd
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"sync"
@@ -18,7 +17,7 @@ type DirectPathMount struct {
 	f *os.File
 
 	serverOptions *Options
-	clientOptions *client.Options
+	clientOptions *ClientOptions
 
 	sf *os.File
 	sc *net.UnixConn
@@ -36,7 +35,7 @@ func NewDirectPathMount(
 	f *os.File,
 
 	serverOptions *Options,
-	clientOptions *client.Options,
+	clientOptions *ClientOptions,
 ) *DirectPathMount {
 	return &DirectPathMount{
 		e: &Export{
@@ -68,7 +67,6 @@ func (d *DirectPathMount) Open() error {
 		return err
 	}
 
-	log.Printf("Socketpair: %v\n", fds)
 	go func() {
 		d.sf = os.NewFile(uintptr(fds[0]), "server")
 
@@ -83,13 +81,12 @@ func (d *DirectPathMount) Open() error {
 
 		d.sc = c.(*net.UnixConn)
 
-		log.Printf("Starting the NBD server\n")
 		if err := Handle(
 			d.sc,
 			[]*Export{d.e},
 			d.serverOptions,
 		); err != nil {
-			log.Printf("Error handling server: %v\n", err)
+			fmt.Printf("Error handling server: %v\n", err)
 			if !utils.IsClosedErr(err) {
 				fmt.Fprintf(os.Stderr, "Failed to handle server: %v\n", err)
 
@@ -117,17 +114,16 @@ func (d *DirectPathMount) Open() error {
 		d.cc = c.(*net.UnixConn)
 
 		if d.clientOptions == nil {
-			d.clientOptions = &client.Options{}
+			d.clientOptions = &ClientOptions{}
 		}
 
 		d.clientOptions.OnConnected = func() {
-			log.Printf("Connected to server\n")
+			fmt.Printf("Connected to server\n")
 			ready <- struct{}{}
 		}
 
-		log.Printf("Starting the NBD client\n")
-		if err := client.Connect(d.cc, d.f, d.clientOptions); err != nil {
-			log.Printf("Error connecting client: %v\n", err)
+		if err := Connect(d.cc, d.f, d.clientOptions); err != nil {
+			fmt.Printf("Error connecting client: %v\n", err)
 			if !utils.IsClosedErr(err) {
 				fmt.Fprintf(os.Stderr, "Failed to connect client: %v\n", err)
 
@@ -138,7 +134,7 @@ func (d *DirectPathMount) Open() error {
 		}
 	}()
 
-	log.Printf("Waiting for the client to connect\n")
+	fmt.Printf("Waiting for the client to connect\n")
 	<-ready
 
 	return nil
