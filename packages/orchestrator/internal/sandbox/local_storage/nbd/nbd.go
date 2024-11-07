@@ -45,7 +45,7 @@ type ManagedPathMount struct {
 	hooks   *ManagedMountHooks
 
 	serverOptions *Options
-	clientOptions *client.Options
+	clientOptions *ClientOptions
 
 	serverFile *os.File
 	pusher     *chunks.Pusher
@@ -74,7 +74,7 @@ func NewManagedPathMount(
 	hooks *ManagedMountHooks,
 
 	serverOptions *Options,
-	clientOptions *client.Options,
+	clientOptions *ClientOptions,
 ) *ManagedPathMount {
 	if options == nil {
 		options = &ManagedMountOptions{}
