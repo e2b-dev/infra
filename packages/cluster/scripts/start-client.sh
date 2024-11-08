@@ -12,6 +12,16 @@ exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&
 
 export GOMAXPROCS='nproc'
 
+echo "Disabling inotify for NBD devices"
+# https://lore.kernel.org/lkml/20220422054224.19527-1-matthew.ruffell@canonical.com/
+cat <<EOH > /etc/udev/rules.d/97-nbd-device.rules
+# Disable inotify watching of change events for NBD devices
+ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
+EOH
+
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
 # Load the nbd module with 4096 devices
 sudo modprobe nbd nbds_max=4096
 
