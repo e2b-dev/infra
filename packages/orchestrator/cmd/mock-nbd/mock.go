@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -40,7 +39,7 @@ func main() {
 			return
 		default:
 		}
-
+		fmt.Printf("----------------------------------------\n")
 		fmt.Printf("[%d] starting mock nbd server\n", i)
 
 		readData, err := MockNbd(ctx, device, i)
@@ -107,11 +106,10 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 	go func() {
 		<-ctx.Done()
 
-		mntCloseErr := mnt.Close()
+		mnt.Close()
 
-		deviceCloseErr := deviceFile.Close()
+		err = deviceFile.Close()
 
-		err = errors.Join(mntCloseErr, deviceCloseErr)
 		if err != nil {
 			fmt.Printf("[%d] Closed nbd errors: %v\n", index, err)
 		} else {
@@ -134,8 +132,6 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 	}
 
 	fmt.Printf("[%d] Read %d bytes from nbd\n", index, len(data))
-
-	cancel()
 
 	wg.Wait()
 
