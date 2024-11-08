@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -15,6 +16,8 @@ import (
 )
 
 type DirectPathMount struct {
+	devPath string
+
 	e *server.Export
 	f *os.File
 
@@ -34,7 +37,7 @@ type DirectPathMount struct {
 
 func NewDirectPathMount(
 	b backend.Backend,
-	f *os.File,
+	devPath string,
 
 	serverOptions *server.Options,
 	clientOptions *client.Options,
@@ -44,7 +47,7 @@ func NewDirectPathMount(
 			Name:    "default",
 			Backend: b,
 		},
-		f: f,
+		devPath: devPath,
 
 		serverOptions: serverOptions,
 		clientOptions: clientOptions,
@@ -64,19 +67,36 @@ func (d *DirectPathMount) Wait() error {
 }
 
 func (d *DirectPathMount) Open() error {
+	errs := make(chan error)
+	counter := 0
+	wg := sync.WaitGroup{}
+
 openLoop:
 	for {
+		f, err := os.Open(d.devPath)
+		if err != nil {
+			return err
+		}
+		d.f = f
+
+		wg.Wait()
+		counter++
+		fmt.Printf("[%d] Opening\n", counter)
+
 		fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 		if err != nil {
 			return err
 		}
 
 		go func() {
+			wg.Add(1)
+			defer wg.Done()
+
 			d.sf = os.NewFile(uintptr(fds[0]), "server")
 
 			c, err := net.FileConn(d.sf)
 			if err != nil {
-				d.errs <- err
+				errs <- err
 
 				return
 			}
@@ -90,7 +110,7 @@ openLoop:
 			); err != nil {
 				fmt.Printf("Handle server error: %v\n", err)
 				if !utils.IsClosedErr(err) {
-					d.errs <- err
+					errs <- err
 				}
 
 				return
@@ -100,11 +120,14 @@ openLoop:
 		ready := make(chan struct{})
 
 		go func() {
+			wg.Add(1)
+			defer wg.Done()
+
 			d.cf = os.NewFile(uintptr(fds[1]), "client")
 
 			c, err := net.FileConn(d.cf)
 			if err != nil {
-				d.errs <- err
+				errs <- err
 
 				return
 			}
@@ -121,7 +144,7 @@ openLoop:
 
 			if err := client.Connect(d.cc, d.f, d.clientOptions); err != nil {
 				if !utils.IsClosedErr(err) {
-					d.errs <- err
+					errs <- err
 				}
 
 				return
@@ -129,7 +152,7 @@ openLoop:
 		}()
 
 		select {
-		case err := <-d.errs:
+		case err := <-errs:
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
 				d.Close()
@@ -140,6 +163,7 @@ openLoop:
 			break openLoop
 		}
 
+		os.Remove(fmt.Sprintf("/sys/block/nbd%s/pid", strings.TrimPrefix(d.devPath, "/dev/nbd")))
 		time.Sleep(50 * time.Millisecond)
 	}
 
@@ -168,6 +192,10 @@ func (d *DirectPathMount) Close() {
 		_ = d.sf.Close()
 	}
 
+	if d.f != nil {
+		_ = d.f.Close()
+	}
+
 	if d.errs != nil {
 		close(d.errs)
 
@@ -175,6 +203,17 @@ func (d *DirectPathMount) Close() {
 	}
 
 	return
+}
+
+func (d *DirectPathMount) ReadAt(offset int64, size int) ([]byte, error) {
+	buf := make([]byte, size)
+
+	n, err := d.f.ReadAt(buf, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from device: %w", err)
+	}
+
+	return buf[:n], nil
 }
 
 func (d *DirectPathMount) Sync() error {

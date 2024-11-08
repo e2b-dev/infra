@@ -3,6 +3,7 @@ package local_storage
 import (
 	"context"
 	"fmt"
+	"github.com/pojntfx/go-nbd/pkg/server"
 	"log"
 	"os"
 	"sync"
@@ -65,7 +66,7 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 			ChunkSize: ChunkSize,
 		},
 		nil,
-		&nbd.Options{
+		&server.Options{
 			MinimumBlockSize:   rootfsBlockSize,
 			MaximumBlockSize:   rootfsBlockSize,
 			PreferredBlockSize: rootfsBlockSize,

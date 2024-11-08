@@ -139,11 +139,6 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 		return "", 0, err
 	}
 
-	m.serverFile, err = os.Open(devicePath)
-	if err != nil {
-		return "", 0, err
-	}
-
 	var local chunks.ReadWriterAt
 	if m.options.PushWorkers > 0 {
 		m.pusher = chunks.NewPusher(
@@ -256,11 +251,12 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 
 	m.dev = NewDirectPathMount(
 		m.syncer,
-		m.serverFile,
+		devicePath,
 
 		m.serverOptions,
 		m.clientOptions,
 	)
+	m.serverFile = m.dev.f
 
 	m.wg.Add(1)
 	go func() {
