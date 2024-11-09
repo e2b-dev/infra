@@ -75,16 +75,12 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 		counter := 0
 		for {
 			counter += 1
-			if counter > 100 {
-				// TODO: Fix this later
-				fmt.Printf("[%d] failed to release device: %v\n", index, err)
-				return
-			}
 			err = nbd.Pool.ReleaseDevice(devicePath)
 			if err != nil {
 				if counter%10 == 0 {
 					fmt.Printf("[%d] failed to release device: %v\n", index, err)
 				}
+
 				if mnt != nil {
 					mnt.Close()
 				}
