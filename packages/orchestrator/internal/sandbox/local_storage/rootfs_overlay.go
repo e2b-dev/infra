@@ -11,7 +11,6 @@ import (
 	template "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 
 	"github.com/pojntfx/go-nbd/pkg/backend"
-	"github.com/pojntfx/go-nbd/pkg/client"
 )
 
 const ChunkSize = 2 * 1024 * 1024 // 2MiB
@@ -61,18 +60,7 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 		ctx,
 		rootfs,
 		backend.NewFileBackend(f),
-		&nbd.ManagedMountOptions{
-			ChunkSize: ChunkSize,
-		},
-		nil,
-		&nbd.Options{
-			MinimumBlockSize:   rootfsBlockSize,
-			MaximumBlockSize:   rootfsBlockSize,
-			PreferredBlockSize: rootfsBlockSize,
-		},
-		&client.Options{
-			BlockSize: rootfsBlockSize,
-		},
+		ChunkSize,
 	)
 
 	ready := make(chan string, 1)

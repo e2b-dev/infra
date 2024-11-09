@@ -8,31 +8,15 @@ import (
 	"time"
 
 	"github.com/pojntfx/go-nbd/pkg/backend"
-	"github.com/pojntfx/go-nbd/pkg/client"
 	bbackend "github.com/pojntfx/r3map/pkg/backend"
 	"github.com/pojntfx/r3map/pkg/chunks"
 )
 
-type ManagedMountOptions struct {
-	ChunkSize int64
-
-	PullWorkers  int64
-	PullPriority func(off int64) int64
-	PullFirst    bool
-
-	PushWorkers  int64
-	PushInterval time.Duration
-
-	Verbose bool
-}
-
-type ManagedMountHooks struct {
-	OnBeforeSync func() error
-
-	OnBeforeClose func() error
-
-	OnChunkIsLocal func(off int64) error
-}
+const (
+	pushWorkers  = 512
+	pullWorkers  = 512
+	pushInterval = time.Second * 20
+)
 
 type ManagedPathMount struct {
 	ctx context.Context
@@ -41,11 +25,7 @@ type ManagedPathMount struct {
 	local,
 	syncer backend.Backend
 
-	options *ManagedMountOptions
-	hooks   *ManagedMountHooks
-
-	serverOptions *Options
-	clientOptions *client.Options
+	chunkSize int64
 
 	serverFile *os.File
 	pusher     *chunks.Pusher
@@ -64,54 +44,15 @@ func NewManagedPathMount(
 
 	remote backend.Backend,
 	local backend.Backend,
-
-	options *ManagedMountOptions,
-	hooks *ManagedMountHooks,
-
-	serverOptions *Options,
-	clientOptions *client.Options,
+	chunkSize int64,
 ) *ManagedPathMount {
-	if options == nil {
-		options = &ManagedMountOptions{}
-	}
-
-	if options.ChunkSize <= 0 {
-		options.ChunkSize = client.MaximumBlockSize
-	}
-
-	if options.PullWorkers < 0 {
-		options.PullWorkers = 512
-	}
-
-	if options.PullPriority == nil {
-		options.PullPriority = func(off int64) int64 {
-			return 1
-		}
-	}
-
-	if options.PushWorkers < 0 {
-		options.PushWorkers = 512
-	}
-
-	if options.PushInterval == 0 {
-		options.PushInterval = time.Second * 20
-	}
-
-	if hooks == nil {
-		hooks = &ManagedMountHooks{}
-	}
-
 	return &ManagedPathMount{
 		ctx: ctx,
 
 		remote: remote,
 		local:  local,
 
-		options: options,
-		hooks:   hooks,
-
-		serverOptions: serverOptions,
-		clientOptions: clientOptions,
+		chunkSize: chunkSize,
 
 		errs: make(chan error),
 	}
@@ -132,97 +73,74 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	chunkCount := size / m.options.ChunkSize
+	chunkCount := size / m.chunkSize
 
-	deviceIndex, err := Pool.GetDevice(ctx)
+	deviceIndex, err := Pool.GetDeviceIndex(ctx)
 	if err != nil {
 		return "", 0, err
 	}
 
-	var local chunks.ReadWriterAt
-	if m.options.PushWorkers > 0 {
-		m.pusher = chunks.NewPusher(
-			m.ctx,
-			m.local,
-			m.remote,
-			m.options.ChunkSize,
-			m.options.PushInterval,
-		)
+	m.pusher = chunks.NewPusher(
+		m.ctx,
+		m.local,
+		m.remote,
+		m.chunkSize,
+		pushInterval,
+	)
 
-		m.wg.Add(1)
-		go func() {
-			defer m.wg.Done()
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
 
-			if err := m.pusher.Wait(); err != nil {
-				m.errs <- err
+		if err := m.pusher.Wait(); err != nil {
+			m.errs <- err
 
-				return
-			}
-		}()
-
-		if err := m.pusher.Open(m.options.PushWorkers); err != nil {
-			return "", 0, err
+			return
 		}
+	}()
 
-		local = m.pusher
-	} else {
-		local = m.local
+	if err := m.pusher.Open(pushWorkers); err != nil {
+		return "", 0, err
 	}
 
-	syncedReadWriter := chunks.NewSyncedReadWriterAt(m.remote, local, func(off int64) error {
-		if m.options.PushWorkers > 0 {
-			if err := local.(*chunks.Pusher).MarkOffsetPushable(off); err != nil {
-				return err
-			}
+	local := m.pusher
 
-			if hook := m.hooks.OnChunkIsLocal; hook != nil {
-				if err := hook(off); err != nil {
-					return err
-				}
-			}
+	syncedReadWriter := chunks.NewSyncedReadWriterAt(m.remote, local, func(off int64) error {
+		if err := local.MarkOffsetPushable(off); err != nil {
+			return err
 		}
 
 		return nil
 	})
 
-	if m.options.PullWorkers > 0 {
-		m.puller = chunks.NewPuller(
-			m.ctx,
-			syncedReadWriter,
-			m.options.ChunkSize,
-			chunkCount,
-			func(off int64) int64 {
-				return m.options.PullPriority(off)
-			},
-		)
+	m.puller = chunks.NewPuller(
+		m.ctx,
+		syncedReadWriter,
+		m.chunkSize,
+		chunkCount,
+		func(off int64) int64 {
+			return 1
+		},
+	)
 
-		if !m.options.PullFirst {
-			m.wg.Add(1)
-			go func() {
-				defer m.wg.Done()
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
 
-				if err := m.puller.Wait(); err != nil {
-					m.errs <- err
+		if err := m.puller.Wait(); err != nil {
+			m.errs <- err
 
-					return
-				}
-			}()
+			return
 		}
+	}()
 
-		if err := m.puller.Open(m.options.PullWorkers); err != nil {
-			return "", 0, err
-		}
-
-		m.puller.Finalize([]int64{})
-
-		if m.options.PullFirst {
-			if err := m.puller.Wait(); err != nil {
-				return "", 0, err
-			}
-		}
+	if err := m.puller.Open(pullWorkers); err != nil {
+		return "", 0, err
 	}
 
-	arbitraryReadWriter := chunks.NewArbitraryReadWriterAt(syncedReadWriter, m.options.ChunkSize)
+	m.puller.Finalize([]int64{})
+
+	arbitraryReadWriter := chunks.NewArbitraryReadWriterAt(syncedReadWriter, m.chunkSize)
 
 	m.syncer = bbackend.NewReaderAtBackend(
 		arbitraryReadWriter,
@@ -230,23 +148,15 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 			return size, nil
 		},
 		func() error {
-			if hook := m.hooks.OnBeforeSync; hook != nil {
-				if err := hook(); err != nil {
-					return err
-				}
-			}
-
 			// We only ever touch the remote if we want to push
-			if m.options.PushWorkers > 0 {
-				_, err := local.(*chunks.Pusher).Sync()
-				if err != nil {
-					return err
-				}
+			_, err := local.Sync()
+			if err != nil {
+				return err
 			}
 
 			return nil
 		},
-		m.options.Verbose,
+		false,
 	)
 
 	m.dev = NewDirectPathMount(
@@ -267,14 +177,6 @@ func (m *ManagedPathMount) Close() error {
 
 	if m.syncer != nil {
 		_ = m.syncer.Sync()
-	}
-
-	if hook := m.hooks.OnBeforeClose; hook != nil {
-		if err := hook(); err != nil {
-			return err
-		}
-
-		m.hooks.OnBeforeClose = nil // Don't call close hook multiple times
 	}
 
 	if m.dev != nil {

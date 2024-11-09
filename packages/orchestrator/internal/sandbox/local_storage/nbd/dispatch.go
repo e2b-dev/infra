@@ -9,24 +9,13 @@ import (
 	"context"
 )
 
-const dispatchBufferSize = 4 * 1024 * 1024
+type Provider interface {
+	io.ReaderAt
+	io.WriterAt
+	Size() (int64, error)
+}
 
-/**
- * Exposes a storage provider as an nbd device
- *
- */
-const NBDCommand = 0xab00
-const NBDSetSock = 0 | NBDCommand
-const NBDSetBlksize = 1 | NBDCommand
-const NBDSetSize = 2 | NBDCommand
-const NBDDoIt = 3 | NBDCommand
-const NBDClearSock = 4 | NBDCommand
-const NBDClearQue = 5 | NBDCommand
-const NBDPrintDebug = 6 | NBDCommand
-const NBDSetSizeBlocks = 7 | NBDCommand
-const NBDDisconnect = 8 | NBDCommand
-const NBDSetTimeout = 9 | NBDCommand
-const NBDSetFlags = 10 | NBDCommand
+const dispatchBufferSize = 4 * 1024 * 1024
 
 // NBD Commands
 const NBDCmdRead = 0
@@ -34,12 +23,6 @@ const NBDCmdWrite = 1
 const NBDCmdDisconnect = 2
 const NBDCmdFlush = 3
 const NBDCmdTrim = 4
-
-// NBD Flags
-const NBDFlagHasFlags = (1 << 0)
-const NBDFlagReadOnly = (1 << 1)
-const NBDFlagSendFlush = (1 << 2)
-const NBDFlagSendTrim = (1 << 5)
 
 const NBDRequestMagic = 0x25609513
 const NBDResponseMagic = 0x67446698
@@ -62,23 +45,17 @@ type Response struct {
 
 type Dispatch struct {
 	ctx              context.Context
-	asyncReads       bool
-	asyncWrites      bool
 	fp               io.ReadWriteCloser
 	responseHeader   []byte
 	writeLock        sync.Mutex
 	prov             Provider
 	fatal            chan error
 	pendingResponses sync.WaitGroup
-	metricPacketsIn  uint64
-	metricPacketsOut uint64
 }
 
 func NewDispatch(ctx context.Context, fp io.ReadWriteCloser, prov Provider) *Dispatch {
 
 	d := &Dispatch{
-		asyncWrites:    true,
-		asyncReads:     true,
 		responseHeader: make([]byte, 16),
 		fatal:          make(chan error, 8),
 		fp:             fp,
@@ -119,7 +96,6 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
 		}
 	}
 
-	d.metricPacketsOut++
 	return nil
 }
 
@@ -174,7 +150,6 @@ func (d *Dispatch) Handle() error {
 					return fmt.Errorf("not supported: Flush")
 				case NBDCmdRead:
 					rp += 28
-					d.metricPacketsIn++
 					err := d.cmdRead(request.Handle, request.From, request.Length)
 					if err != nil {
 						return err
@@ -185,17 +160,15 @@ func (d *Dispatch) Handle() error {
 						rp -= 28
 						break process // We don't have enough data yet... Wait for next read
 					}
-					d.metricPacketsIn++
 					data := make([]byte, request.Length)
 					copy(data, buffer[rp:rp+int(request.Length)])
 					rp += int(request.Length)
-					err := d.cmdWrite(request.Handle, request.From, request.Length, data)
+					err := d.cmdWrite(request.Handle, request.From, data)
 					if err != nil {
 						return err
 					}
 				case NBDCmdTrim:
 					rp += 28
-					d.metricPacketsIn++
 					err = d.cmdTrim(request.Handle, request.From, request.Length)
 					if err != nil {
 						return err
@@ -247,21 +220,15 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 		return d.writeResponse(errorValue, handle, data)
 	}
 
-	if d.asyncReads {
-		d.pendingResponses.Add(1)
-		go func() {
-			err := performRead(cmdHandle, cmdFrom, cmdLength)
-			if err != nil {
-				d.fatal <- err
-			}
-			d.pendingResponses.Done()
-		}()
-	} else {
-		d.pendingResponses.Add(1)
+	d.pendingResponses.Add(1)
+	go func() {
 		err := performRead(cmdHandle, cmdFrom, cmdLength)
+		if err != nil {
+			d.fatal <- err
+		}
 		d.pendingResponses.Done()
-		return err
-	}
+	}()
+
 	return nil
 }
 
@@ -269,11 +236,12 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
  * cmdWrite
  *
  */
-func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdLength uint32, cmdData []byte) error {
-	performWrite := func(handle uint64, from uint64, _ uint32, data []byte) error {
+func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
+	d.pendingResponses.Add(1)
+	go func() {
 		errchan := make(chan error)
 		go func() {
-			_, e := d.prov.WriteAt(data, int64(from))
+			_, e := d.prov.WriteAt(cmdData, int64(cmdFrom))
 			errchan <- e
 		}()
 
@@ -289,24 +257,13 @@ func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdLength uint32, 
 		if e != nil {
 			errorValue = 1
 		}
-		return d.writeResponse(errorValue, handle, []byte{})
-	}
-
-	if d.asyncWrites {
-		d.pendingResponses.Add(1)
-		go func() {
-			err := performWrite(cmdHandle, cmdFrom, cmdLength, cmdData)
-			if err != nil {
-				d.fatal <- err
-			}
-			d.pendingResponses.Done()
-		}()
-	} else {
-		d.pendingResponses.Add(1)
-		err := performWrite(cmdHandle, cmdFrom, cmdLength, cmdData)
+		err := d.writeResponse(errorValue, cmdHandle, []byte{})
+		if err != nil {
+			d.fatal <- err
+		}
 		d.pendingResponses.Done()
-		return err
-	}
+	}()
+
 	return nil
 }
 

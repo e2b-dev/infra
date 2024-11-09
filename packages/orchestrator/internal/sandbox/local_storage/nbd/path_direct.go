@@ -16,7 +16,7 @@ type DirectPathMount struct {
 	Backend     backend.Backend
 	ctx         context.Context
 	dispatcher  *Dispatch
-	socks       []net.Conn
+	conn        net.Conn
 	deviceIndex uint32
 	blockSize   uint64
 	cancelfn    context.CancelFunc
@@ -54,20 +54,17 @@ func (d *DirectPathMount) Open() error {
 
 		client := os.NewFile(uintptr(sockPair[0]), "client")
 		server := os.NewFile(uintptr(sockPair[1]), "server")
-		serverc, err := net.FileConn(server)
+		d.conn, err = net.FileConn(server)
 		if err != nil {
 			return err
 		}
 		server.Close()
 
-		dis := NewDispatch(d.ctx, serverc, d.Backend)
-		dis.asyncReads = true
-		dis.asyncWrites = true
+		dis := NewDispatch(d.ctx, d.conn, d.Backend)
 		// Start reading commands on the socket and dispatching them to our provider
 		go func() {
 			_ = dis.Handle()
 		}()
-		d.socks = append(d.socks, serverc)
 		socks = append(socks, client)
 		d.dispatcher = dis
 
@@ -123,11 +120,9 @@ func (d *DirectPathMount) Close() error {
 	}
 
 	// Close all the socket pairs...
-	for _, v := range d.socks {
-		err = v.Close()
-		if err != nil {
-			return err
-		}
+	err = d.conn.Close()
+	if err != nil {
+		return err
 	}
 
 	// Wait until it's completely disconnected...

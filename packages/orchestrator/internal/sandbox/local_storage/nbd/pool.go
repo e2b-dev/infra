@@ -188,7 +188,7 @@ func (n *DevicePool) getMaybeEmptySlot(start DeviceSlot) (DeviceSlot, func(), bo
 }
 
 // Get device slot if there is one available.
-func (n *DevicePool) GetDevice(ctx context.Context) (uint, error) {
+func (n *DevicePool) GetDeviceIndex(ctx context.Context) (uint, error) {
 	start := uint(0)
 
 	for {
