@@ -88,7 +88,7 @@ loop:
 
 			c, err := net.FileConn(d.sf)
 			if err != nil {
-				errs <- err
+				d.errs <- err
 
 				return
 			}
@@ -115,7 +115,7 @@ loop:
 
 			c, err := net.FileConn(d.cf)
 			if err != nil {
-				errs <- err
+				d.errs <- err
 
 				return
 			}
@@ -143,6 +143,7 @@ loop:
 					return fmt.Errorf("failed to open device %s after %d retries", d.devPath, retryCounter)
 				}
 
+				fmt.Printf("Error while opening network block device %s: %v\n", d.devPath, err)
 				break
 			}
 		case <-ready:
