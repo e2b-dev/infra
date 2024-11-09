@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 
-	blockStorage "github.com/e2b-dev/infra/packages/block-storage/pkg/source"
 	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 
 	"cloud.google.com/go/storage"
@@ -86,7 +85,7 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 }
 
 func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfilePath string) error {
-	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageMemfilePath())
+	object := templateStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageMemfilePath())
 
 	err := object.UploadWithCli(ctx, memfilePath)
 	if err != nil {
@@ -97,7 +96,7 @@ func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfilePath string) e
 }
 
 func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfsPath string) error {
-	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageRootfsPath())
+	object := templateStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageRootfsPath())
 
 	err := object.UploadWithCli(ctx, rootfsPath)
 	if err != nil {
@@ -109,7 +108,7 @@ func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfsPath string) err
 
 // Snapfile is small enough so we dont use composite upload.
 func (t *TemplateBuild) UploadSnapfile(ctx context.Context, snapfile io.Reader) error {
-	object := blockStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageSnapfilePath())
+	object := templateStorage.NewGCSObjectFromBucket(ctx, t.bucket, t.files.StorageSnapfilePath())
 
 	n, err := object.ReadFrom(snapfile)
 	if err != nil {

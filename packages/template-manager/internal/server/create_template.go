@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/metadata"
 
-	templateManager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
@@ -23,7 +23,7 @@ import (
 
 const cleanupTimeout = time.Second * 10
 
-func (s *serverStore) TemplateCreate(templateRequest *templateManager.TemplateCreateRequest, stream templateManager.TemplateService_TemplateCreateServer) error {
+func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateCreateRequest, stream template_manager.TemplateService_TemplateCreateServer) error {
 	ctx := stream.Context()
 
 	childCtx, childSpan := s.tracer.Start(ctx, "template-create")
