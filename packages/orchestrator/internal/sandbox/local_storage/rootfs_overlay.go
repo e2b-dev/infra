@@ -3,7 +3,6 @@ package local_storage
 import (
 	"context"
 	"fmt"
-	"github.com/pojntfx/go-nbd/pkg/server"
 	"log"
 	"os"
 	"sync"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"github.com/pojntfx/go-nbd/pkg/client"
+	"github.com/pojntfx/go-nbd/pkg/server"
 )
 
 const ChunkSize = 2 * 1024 * 1024 // 2MiB

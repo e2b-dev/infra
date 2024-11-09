@@ -69,31 +69,29 @@ var eofCounter = 0
 
 func (d *DirectPathMount) Open() error {
 	errs := make(chan error)
-	counter := 0
+	retryCounter := 0
 	wg := sync.WaitGroup{}
-
 openLoop:
 	for {
+		if retryCounter > 5 {
+			return fmt.Errorf("failed to open device %s after %d retries", d.devPath, retryCounter)
+		}
+
 		if eofCounter > 0 {
 			fmt.Printf("EOF counter: %d\n", eofCounter)
 		}
 
+		wg.Wait()
+		retryCounter++
 		f, err := os.Open(d.devPath)
 		if err != nil {
 			return err
 		}
-		d.f = f
 
-		wg.Wait()
-		counter++
+		d.f = f
 
 		fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 		if err != nil {
-			fileErr := f.Close()
-			if fileErr != nil {
-				fmt.Printf("Error: %v\n", fileErr)
-			}
-
 			return err
 		}
 
@@ -184,44 +182,26 @@ func (d *DirectPathMount) Close() {
 	d.closeLock.Lock()
 	defer d.closeLock.Unlock()
 
-	err := client.Disconnect(d.f)
-	if err != nil {
-		fmt.Printf("Error while disconnecting: %v\n", err)
-	}
+	client.Disconnect(d.f)
 
 	if d.cc != nil {
-		err = d.cc.Close()
-		if err != nil {
-			fmt.Printf("Error while closing client connection: %v\n", err)
-		}
+		d.cc.Close()
 	}
 
 	if d.cf != nil {
-		err = d.cf.Close()
-		if err != nil {
-			fmt.Printf("Error while closing client file: %v\n", err)
-		}
+		d.cf.Close()
 	}
 
 	if d.sc != nil {
-		err = d.sc.Close()
-		if err != nil {
-			fmt.Printf("Error while closing server connection: %v\n", err)
-		}
+		d.sc.Close()
 	}
 
 	if d.sf != nil {
-		err = d.sf.Close()
-		if err != nil {
-			fmt.Printf("Error while closing server file: %v\n", err)
-		}
+		d.sf.Close()
 	}
 
 	if d.f != nil {
-		err = d.f.Close()
-		if err != nil {
-			fmt.Printf("Error while closing device file: %v\n", err)
-		}
+		d.f.Close()
 	}
 
 	if d.errs != nil {
