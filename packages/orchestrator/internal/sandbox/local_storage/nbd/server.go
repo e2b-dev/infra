@@ -330,6 +330,7 @@ n:
 	}
 
 	// Transmission
+	first := true
 	b := []byte{}
 	for {
 		var requestHeader protocol.TransmissionRequestHeader
@@ -337,7 +338,10 @@ n:
 			return err
 		}
 
-		ready <- struct{}{}
+		if first {
+			first = false
+			ready <- struct{}{}
+		}
 
 		if requestHeader.RequestMagic != protocol.TRANSMISSION_MAGIC_REQUEST {
 			return ErrInvalidMagic
