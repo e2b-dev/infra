@@ -15,7 +15,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
@@ -87,7 +86,7 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 	childCtx, childSpan := tracer.Start(ctx, "new-snapshot")
 	defer childSpan.End()
 
-	socketFileName := fmt.Sprintf("fc-sock-%s.sock", env.BuildID)
+	socketFileName := fmt.Sprintf("fc-sock-%s.sock", env.BuildId)
 	socketPath := filepath.Join(tmpDirPath, socketFileName)
 
 	client := newFirecrackerClient(socketPath)
@@ -108,8 +107,6 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 		tracer,
 		env.FirecrackerBinaryPath,
 		network.namespaceID,
-		consts.KernelMountDir,
-		env.KernelDirPath(),
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("error starting fc process: %w", err)
@@ -159,23 +156,15 @@ func (s *Snapshot) startFCProcess(
 	ctx context.Context,
 	tracer trace.Tracer,
 	fcBinaryPath,
-	networkNamespaceID,
-	kernelMountDir,
-	kernelDirPath string,
+	networkNamespaceID string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-fc-process")
 	defer childSpan.End()
 
-	kernelMountCmd := fmt.Sprintf(
-		"mount --bind %s %s && ",
-		kernelDirPath,
-		kernelMountDir,
-	)
-
 	inNetNSCmd := fmt.Sprintf("ip netns exec %s ", networkNamespaceID)
 	fcCmd := fmt.Sprintf("%s --api-sock %s", fcBinaryPath, s.socketPath)
 
-	s.fc = exec.CommandContext(childCtx, "unshare", "-pm", "--kill-child", "--", "bash", "-c", kernelMountCmd+inNetNSCmd+fcCmd)
+	s.fc = exec.CommandContext(childCtx, "unshare", "-pm", "--kill-child", "--", "bash", "-c", inNetNSCmd+fcCmd)
 
 	fcVMStdoutWriter := telemetry.NewEventWriter(childCtx, "stdout")
 	fcVMStderrWriter := telemetry.NewEventWriter(childCtx, "stderr")
@@ -272,7 +261,7 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 
 	ip := fmt.Sprintf("%s::%s:%s:instance:eth0:off:8.8.8.8", fcAddr, fcTapAddress, fcMaskLong)
 	kernelArgs := fmt.Sprintf("quiet loglevel=1 ip=%s reboot=k panic=1 pci=off nomodules i8042.nokbd i8042.noaux ipv6.disable=1 random.trust_cpu=on", ip)
-	kernelImagePath := s.env.KernelMountedPath()
+	kernelImagePath := s.env.TemplateFiles.KernelPath()
 	bootSourceConfig := operations.PutGuestBootSourceParams{
 		Context: childCtx,
 		Body: &models.BootSource{
@@ -295,7 +284,7 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 	ioEngine := "Async"
 	isRootDevice := true
 	isReadOnly := false
-	pathOnHost := s.env.tmpRootfsPath()
+	pathOnHost := s.env.BuildRootfsPath()
 	driversConfig := operations.PutGuestDriveByIDParams{
 		Context: childCtx,
 		DriveID: rootfs,
@@ -441,8 +430,8 @@ func (s *Snapshot) snapshotFC(ctx context.Context, tracer trace.Tracer) error {
 	childCtx, childSpan := tracer.Start(ctx, "snapshot-fc")
 	defer childSpan.End()
 
-	memfilePath := s.env.tmpMemfilePath()
-	snapfilePath := s.env.tmpSnapfilePath()
+	memfilePath := s.env.BuildMemfilePath()
+	snapfilePath := s.env.BuildSnapfilePath()
 	snapshotConfig := operations.CreateSnapshotParams{
 		Context: childCtx,
 		Body: &models.SnapshotCreateParams{

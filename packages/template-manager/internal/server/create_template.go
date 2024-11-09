@@ -1,24 +1,31 @@
 package server
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	templateManager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 )
 
-func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateCreateRequest, stream template_manager.TemplateService_TemplateCreateServer) error {
+const cleanupTimeout = time.Second * 10
+
+func (s *serverStore) TemplateCreate(templateRequest *templateManager.TemplateCreateRequest, stream templateManager.TemplateService_TemplateCreateServer) error {
 	ctx := stream.Context()
+
 	childCtx, childSpan := s.tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
@@ -37,37 +44,99 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 
 	logsWriter := writer.New(stream)
 	template := &build.Env{
-		EnvID:                 config.TemplateID,
-		BuildID:               config.BuildID,
+		TemplateFiles: templateStorage.TemplateFiles{
+			TemplateId: config.TemplateID,
+			BuildId:    config.BuildID,
+		},
 		VCpuCount:             int64(config.VCpuCount),
 		MemoryMB:              int64(config.MemoryMB),
 		StartCmd:              config.StartCommand,
 		DiskSizeMB:            int64(config.DiskSizeMB),
 		HugePages:             config.HugePages,
 		KernelVersion:         config.KernelVersion,
-		FirecrackerBinaryPath: filepath.Join(consts.FirecrackerVersionsDir, config.FirecrackerVersion, consts.FirecrackerBinaryName),
+		FirecrackerBinaryPath: filepath.Join(templateStorage.FirecrackerVersionsDir, config.FirecrackerVersion, templateStorage.FirecrackerBinaryName),
 		BuildLogsWriter:       logsWriter,
 	}
 
-	err := template.Build(childCtx, s.tracer, s.dockerClient, s.legacyDockerClient)
+	buildStorage := s.templateStorage.NewTemplateBuild(&template.TemplateFiles)
+
+	var err error
+
+	// Remove local template files if build fails
+	defer func() {
+		removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+
+		removeErr := template.Remove(removeCtx, s.tracer)
+		if removeErr != nil {
+			telemetry.ReportError(childCtx, removeErr)
+		}
+	}()
+
+	err = template.Build(childCtx, s.tracer, s.dockerClient, s.legacyDockerClient)
 	if err != nil {
+		_, _ = logsWriter.Write([]byte(fmt.Sprintf("Error building environment: %v", err)))
+
 		telemetry.ReportCriticalError(childCtx, err)
 
-		_, _ = logsWriter.Write([]byte(fmt.Sprintf("Error building environment: %v", err)))
 		return err
 	}
 
-	cmd := exec.Command(consts.HostEnvdPath, "-version")
+	// Remove build files if build fails or times out
+	defer func() {
+		if err != nil {
+			removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+			defer cancel()
+
+			removeErr := buildStorage.Remove(removeCtx)
+			if removeErr != nil {
+				telemetry.ReportError(childCtx, removeErr)
+			}
+		}
+	}()
+
+	uploadWg, ctx := errgroup.WithContext(childCtx)
+
+	uploadWg.Go(func() error {
+		return buildStorage.UploadMemfile(ctx, template.BuildMemfilePath())
+	})
+
+	uploadWg.Go(func() error {
+		return buildStorage.UploadRootfs(ctx, template.BuildRootfsPath())
+	})
+
+	uploadWg.Go(func() error {
+		snapfile, err := os.Open(template.BuildSnapfilePath())
+		if err != nil {
+			return err
+		}
+
+		defer snapfile.Close()
+
+		return buildStorage.UploadSnapfile(ctx, snapfile)
+	})
+
+	cmd := exec.Command(templateStorage.HostEnvdPath, "-version")
+
 	out, err := cmd.Output()
 	if err != nil {
 		_, _ = logsWriter.Write([]byte(fmt.Sprintf("Error while getting envd version: %v", err)))
+
 		return err
+	}
+
+	uploadERr := uploadWg.Wait()
+	if uploadERr != nil {
+		errMsg := fmt.Sprintf("Error while uploading build files: %v", uploadERr)
+		_, _ = logsWriter.Write([]byte(errMsg))
+
+		return uploadERr
 	}
 
 	version := strings.TrimSpace(string(out))
 	trailerMetadata := metadata.Pairs(
-		consts.RootfsSizeKey, strconv.FormatInt(template.RootfsSizeMB(), 10),
-		consts.EnvdVersionKey, version,
+		templateStorage.RootfsSizeKey, strconv.FormatInt(template.RootfsSizeMB(), 10),
+		templateStorage.EnvdVersionKey, version,
 	)
 
 	stream.SetTrailer(trailerMetadata)
