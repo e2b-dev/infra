@@ -188,13 +188,13 @@ func (n *DevicePool) getMaybeEmptySlot(start DeviceSlot) (DeviceSlot, func(), bo
 }
 
 // Get device slot if there is one available.
-func (n *DevicePool) GetDevice(ctx context.Context) (DevicePath, error) {
+func (n *DevicePool) GetDevice(ctx context.Context) (uint, error) {
 	start := uint(0)
 
 	for {
 		select {
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return 0, ctx.Err()
 		default:
 		}
 
@@ -203,14 +203,14 @@ func (n *DevicePool) GetDevice(ctx context.Context) (DevicePath, error) {
 		if !ok {
 			cleanup()
 
-			return "", ErrNoFreeSlots{}
+			return 0, ErrNoFreeSlots{}
 		}
 
 		free, err := n.isDeviceFree(slot)
 		if err != nil {
 			cleanup()
 
-			return "", fmt.Errorf("failed to check if device is free: %w", err)
+			return 0, fmt.Errorf("failed to check if device is free: %w", err)
 		}
 
 		if !free {
@@ -225,7 +225,7 @@ func (n *DevicePool) GetDevice(ctx context.Context) (DevicePath, error) {
 
 		// log.Printf("got device slot: %d\n", slot)
 
-		return n.getDevicePath(slot), nil
+		return slot, nil
 	}
 }
 

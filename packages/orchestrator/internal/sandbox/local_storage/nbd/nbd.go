@@ -2,6 +2,7 @@ package nbd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -133,7 +134,7 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 	}
 	chunkCount := size / m.options.ChunkSize
 
-	devicePath, err := Pool.GetDevice(ctx)
+	deviceIndex, err := Pool.GetDevice(ctx)
 	if err != nil {
 		return "", 0, err
 	}
@@ -250,28 +251,14 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 
 	m.dev = NewDirectPathMount(
 		m.syncer,
-		devicePath,
-
-		m.serverOptions,
-		m.clientOptions,
+		uint32(deviceIndex),
 	)
-
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
-
-		if err := m.dev.Wait(); err != nil {
-			m.errs <- err
-
-			return
-		}
-	}()
 
 	if err := m.dev.Open(); err != nil {
 		return "", 0, err
 	}
 
-	return devicePath, size, nil
+	return fmt.Sprintf("/dev/nbd%d", deviceIndex), size, nil
 }
 
 func (m *ManagedPathMount) Close() error {

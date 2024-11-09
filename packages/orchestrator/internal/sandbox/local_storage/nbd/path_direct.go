@@ -1,206 +1,152 @@
 package nbd
 
 import (
-	"fmt"
+	"context"
 	"net"
 	"os"
-	"sync"
+	"strings"
 	"syscall"
+	"time"
 
+	"github.com/Merovius/nbd/nbdnl"
 	"github.com/pojntfx/go-nbd/pkg/backend"
-	"github.com/pojntfx/go-nbd/pkg/client"
-	"github.com/pojntfx/r3map/pkg/utils"
 )
 
 type DirectPathMount struct {
-	devPath string
-
-	e *Export
-	f *os.File
-
-	serverOptions *Options
-	clientOptions *client.Options
-
-	sf *os.File
-	sc *net.UnixConn
-
-	cf *os.File
-	cc *net.UnixConn
-
-	closeLock sync.Mutex
-
-	errs chan error
+	Backend     backend.Backend
+	ctx         context.Context
+	dispatcher  *Dispatch
+	socks       []net.Conn
+	deviceIndex uint32
+	blockSize   uint64
+	cancelfn    context.CancelFunc
 }
 
 func NewDirectPathMount(
 	b backend.Backend,
-	devPath string,
-
-	serverOptions *Options,
-	clientOptions *client.Options,
+	deviceIndex uint32,
 ) *DirectPathMount {
+	ctx, cancelfn := context.WithCancel(context.Background())
 	return &DirectPathMount{
-		e: &Export{
-			Name:    "default",
-			Backend: b,
-		},
-		devPath: devPath,
-
-		serverOptions: serverOptions,
-		clientOptions: clientOptions,
-
-		errs: make(chan error),
+		Backend:     b,
+		ctx:         ctx,
+		cancelfn:    cancelfn,
+		deviceIndex: deviceIndex,
+		blockSize:   4096,
 	}
-}
-
-func (d *DirectPathMount) Wait() error {
-	for err := range d.errs {
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (d *DirectPathMount) Open() error {
-	errs := make(chan error)
-	retryCounter := 0
+	size, err := d.Backend.Size()
+	if err != nil {
+		return err
+	}
 
-loop:
 	for {
-		f, err := os.Open(d.devPath)
+
+		socks := make([]*os.File, 0)
+
+		// Create the socket pairs
+		sockPair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 		if err != nil {
 			return err
 		}
 
-		d.f = f
-
-		fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+		client := os.NewFile(uintptr(sockPair[0]), "client")
+		server := os.NewFile(uintptr(sockPair[1]), "server")
+		serverc, err := net.FileConn(server)
 		if err != nil {
 			return err
 		}
+		server.Close()
 
-		ready := make(chan struct{})
-
+		dis := NewDispatch(d.ctx, serverc, d.Backend)
+		dis.asyncReads = true
+		dis.asyncWrites = true
+		// Start reading commands on the socket and dispatching them to our provider
 		go func() {
-			d.sf = os.NewFile(uintptr(fds[0]), "server")
-
-			c, err := net.FileConn(d.sf)
-			if err != nil {
-				d.errs <- err
-
-				return
-			}
-
-			d.sc = c.(*net.UnixConn)
-
-			if err := Handle(
-				d.sc,
-				[]*Export{d.e},
-				d.serverOptions,
-				ready,
-			); err != nil {
-				fmt.Printf("Handle server error: %v\n", err)
-				if !utils.IsClosedErr(err) {
-					errs <- err
-				}
-
-				return
-			}
+			_ = dis.Handle()
 		}()
+		d.socks = append(d.socks, serverc)
+		socks = append(socks, client)
+		d.dispatcher = dis
 
-		go func() {
-			d.cf = os.NewFile(uintptr(fds[1]), "client")
+		var opts []nbdnl.ConnectOption
+		opts = append(opts, nbdnl.WithBlockSize(d.blockSize))
+		opts = append(opts, nbdnl.WithTimeout(5*time.Second))
+		opts = append(opts, nbdnl.WithDeadconnTimeout(5*time.Second))
 
-			c, err := net.FileConn(d.cf)
-			if err != nil {
-				d.errs <- err
+		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn
 
-				return
-			}
-
-			d.cc = c.(*net.UnixConn)
-
-			if d.clientOptions == nil {
-				d.clientOptions = &client.Options{}
-			}
-
-			if err := client.Connect(d.cc, d.f, d.clientOptions); err != nil {
-				if !utils.IsClosedErr(err) {
-					errs <- err
-				}
-
-				return
-			}
-		}()
-
-		select {
-		case err := <-errs:
-			if err != nil {
-				if retryCounter > 5 {
-					d.errs <- err
-					return fmt.Errorf("failed to open device %s after %d retries", d.devPath, retryCounter)
-				}
-
-				d.Close()
-				fmt.Printf("Error while opening network block device %s: %v\n", d.devPath, err)
-				break
-			}
-		case <-ready:
-			break loop
+		idx, err := nbdnl.Connect(d.deviceIndex, socks, uint64(size), 0, serverFlags, opts...)
+		if err == nil {
+			d.deviceIndex = idx
+			break
 		}
 
-		retryCounter++
+		// Sometimes (rare), there seems to be a BADF error here. Lets just retry for now...
+		// Close things down and try again...
+		for _, s := range socks {
+			s.Close()
+		}
+
+		if strings.Contains(err.Error(), "invalid argument") {
+			return err
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Wait until it's connected...
+	for {
+		s, err := nbdnl.Status(uint32(d.deviceIndex))
+		if err == nil && s.Connected {
+			break
+		}
+		time.Sleep(100 * time.Nanosecond)
 	}
 
 	return nil
 }
 
-func (d *DirectPathMount) Close() {
-	d.closeLock.Lock()
-	defer d.closeLock.Unlock()
+func (d *DirectPathMount) Close() error {
+	// First cancel the context, which will stop waiting on pending readAt/writeAt...
+	d.ctx.Done()
 
-	client.Disconnect(d.f)
+	// Now wait for any pending responses to be sent
+	d.dispatcher.Wait()
 
-	if d.cc != nil {
-		d.cc.Close()
+	// Now ask to disconnect
+	err := nbdnl.Disconnect(uint32(d.deviceIndex))
+	if err != nil {
+		return err
 	}
 
-	if d.cf != nil {
-		d.cf.Close()
+	// Close all the socket pairs...
+	for _, v := range d.socks {
+		err = v.Close()
+		if err != nil {
+			return err
+		}
 	}
 
-	if d.sc != nil {
-		d.sc.Close()
+	// Wait until it's completely disconnected...
+	for {
+		s, err := nbdnl.Status(uint32(d.deviceIndex))
+		if err == nil && !s.Connected {
+			break
+		}
+		time.Sleep(100 * time.Nanosecond)
 	}
 
-	if d.sf != nil {
-		d.sf.Close()
-	}
-
-	if d.f != nil {
-		d.f.Close()
-	}
-
-	if d.errs != nil {
-		close(d.errs)
-
-		d.errs = nil
-	}
-
-	return
+	return nil
 }
 
 // TODO: remove, only for mock
 func (d *DirectPathMount) ReadAt(data []byte, offset int64) (int, error) {
-	return d.f.ReadAt(data, offset)
+	return d.Backend.ReadAt(data, offset)
 }
 
 func (d *DirectPathMount) Sync() error {
 	return nil
-}
-
-func (d *DirectPathMount) SwapBackend(b backend.Backend) {
-	d.e.Backend = b
 }
