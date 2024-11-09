@@ -16,7 +16,7 @@ import (
 const blockSize = 4096
 
 func main() {
-	data := make([]byte, blockSize*1)
+	data := make([]byte, blockSize*8)
 	rand.Read(data)
 
 	device := backend.NewMemoryBackend(data)
