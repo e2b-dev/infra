@@ -70,6 +70,11 @@ func New(logger *zap.Logger) *grpc.Server {
 		panic(errMsg)
 	}
 
+	if templateStorage.BucketName == "" {
+		// TODO: Add helper method with something like Mustk
+		log.Fatalf("template storage bucket name is empty")
+	}
+
 	templateStorage := template.NewTemplateStorage(ctx, client, templateStorage.BucketName)
 
 	template_manager.RegisterTemplateServiceServer(s, &serverStore{
