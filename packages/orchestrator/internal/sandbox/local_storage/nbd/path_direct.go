@@ -6,7 +6,6 @@ import (
 	"os"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"github.com/pojntfx/go-nbd/pkg/client"
@@ -64,23 +63,15 @@ func (d *DirectPathMount) Wait() error {
 	return nil
 }
 
-var eofCounter = 0
-
 func (d *DirectPathMount) Open() error {
 	errs := make(chan error)
 	retryCounter := 0
-	wg := sync.WaitGroup{}
 openLoop:
 	for {
 		if retryCounter > 5 {
 			return fmt.Errorf("failed to open device %s after %d retries", d.devPath, retryCounter)
 		}
 
-		if eofCounter > 0 {
-			fmt.Printf("EOF counter: %d\n", eofCounter)
-		}
-
-		wg.Wait()
 		retryCounter++
 		f, err := os.Open(d.devPath)
 		if err != nil {
@@ -97,9 +88,6 @@ openLoop:
 		ready := make(chan struct{})
 
 		go func() {
-			wg.Add(1)
-			defer wg.Done()
-
 			d.sf = os.NewFile(uintptr(fds[0]), "server")
 
 			c, err := net.FileConn(d.sf)
@@ -127,9 +115,6 @@ openLoop:
 		}()
 
 		go func() {
-			wg.Add(1)
-			defer wg.Done()
-
 			d.cf = os.NewFile(uintptr(fds[1]), "client")
 
 			c, err := net.FileConn(d.cf)
@@ -157,16 +142,12 @@ openLoop:
 		select {
 		case err := <-errs:
 			if err != nil {
-				fmt.Printf("Error: %v\n", err)
 				d.Close()
 				break
 			}
 		case <-ready:
 			break openLoop
 		}
-
-		eofCounter++
-		time.Sleep(50 * time.Millisecond)
 	}
 
 	return nil
