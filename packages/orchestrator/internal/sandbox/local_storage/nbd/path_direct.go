@@ -143,6 +143,7 @@ loop:
 					return fmt.Errorf("failed to open device %s after %d retries", d.devPath, retryCounter)
 				}
 
+				d.Close()
 				fmt.Printf("Error while opening network block device %s: %v\n", d.devPath, err)
 				break
 			}
