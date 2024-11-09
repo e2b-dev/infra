@@ -49,6 +49,14 @@ func NewBlockStorage(
 	}, nil
 }
 
+//
+// -> read request that is multiple of block size
+// -> return if cow cache has it (use file or mmap cache)
+// -> check if the local cache has it (use file or mmap cache, try exposing readRaw for uffd performance, also try to not lock the whole files)
+// -> if not read from source but read in Chunk size and deduplicate the request from the source by chunks
+// -> after returning from source, write to local cache
+//
+
 // TODO: Ensure that the maximum size of the buffer is the block size or handle if it is bigger.
 func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
 	log.Printf("[%s] Reading %d at %d\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
