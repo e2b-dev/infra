@@ -189,10 +189,6 @@ func (d *Dispatch) Handle() error {
 	}
 }
 
-/**
- * cmdRead
- *
- */
 func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
 
 	performRead := func(handle uint64, from uint64, length uint32) error {
@@ -232,10 +228,6 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 	return nil
 }
 
-/**
- * cmdWrite
- *
- */
 func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
 	d.pendingResponses.Add(1)
 	go func() {
