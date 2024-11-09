@@ -94,11 +94,6 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 		}
 	}()
 
-	deviceFile, err := os.Open(devicePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open device: %w", err)
-	}
-
 	mnt := nbd.NewDirectPathMount(device, devicePath, nil, nil)
 
 	var wg sync.WaitGroup
@@ -116,21 +111,15 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 		<-ctx.Done()
 
 		mnt.Close()
-
-		err = deviceFile.Close()
-		if err != nil {
-			fmt.Printf("[%d] Closed nbd errors: %v\n", index, err)
-		}
 	}()
 
-	defer mnt.Close()
 	err = mnt.Open()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open: %w", err)
 	}
 
 	data := make([]byte, size)
-	_, err = deviceFile.ReadAt(data, 0)
+	_, err = mnt.ReadAt(data, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read: %w", err)
 	}

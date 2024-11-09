@@ -65,6 +65,8 @@ func (d *DirectPathMount) Wait() error {
 	return nil
 }
 
+var eofCounter = 0
+
 func (d *DirectPathMount) Open() error {
 	errs := make(chan error)
 	counter := 0
@@ -72,6 +74,10 @@ func (d *DirectPathMount) Open() error {
 
 openLoop:
 	for {
+		if eofCounter > 0 {
+			fmt.Printf("EOF counter: %d\n", eofCounter)
+		}
+
 		f, err := os.Open(d.devPath)
 		if err != nil {
 			return err
@@ -80,7 +86,6 @@ openLoop:
 
 		wg.Wait()
 		counter++
-		fmt.Printf("[%d] Opening\n", counter)
 
 		fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 		if err != nil {
@@ -143,6 +148,7 @@ openLoop:
 			}
 
 			d.clientOptions.OnConnected = func() {
+				time.Sleep(10 * time.Millisecond)
 				ready <- struct{}{}
 			}
 
@@ -167,11 +173,7 @@ openLoop:
 			break openLoop
 		}
 
-		err = f.Close()
-		if err != nil {
-			return err
-		}
-
+		eofCounter++
 		time.Sleep(50 * time.Millisecond)
 	}
 
@@ -182,26 +184,44 @@ func (d *DirectPathMount) Close() {
 	d.closeLock.Lock()
 	defer d.closeLock.Unlock()
 
-	_ = client.Disconnect(d.f)
+	err := client.Disconnect(d.f)
+	if err != nil {
+		fmt.Printf("Error while disconnecting: %v\n", err)
+	}
 
 	if d.cc != nil {
-		_ = d.cc.Close()
+		err = d.cc.Close()
+		if err != nil {
+			fmt.Printf("Error while closing client connection: %v\n", err)
+		}
 	}
 
 	if d.cf != nil {
-		_ = d.cf.Close()
+		err = d.cf.Close()
+		if err != nil {
+			fmt.Printf("Error while closing client file: %v\n", err)
+		}
 	}
 
 	if d.sc != nil {
-		_ = d.sc.Close()
+		err = d.sc.Close()
+		if err != nil {
+			fmt.Printf("Error while closing server connection: %v\n", err)
+		}
 	}
 
 	if d.sf != nil {
-		_ = d.sf.Close()
+		err = d.sf.Close()
+		if err != nil {
+			fmt.Printf("Error while closing server file: %v\n", err)
+		}
 	}
 
 	if d.f != nil {
-		_ = d.f.Close()
+		err = d.f.Close()
+		if err != nil {
+			fmt.Printf("Error while closing device file: %v\n", err)
+		}
 	}
 
 	if d.errs != nil {
@@ -213,15 +233,8 @@ func (d *DirectPathMount) Close() {
 	return
 }
 
-func (d *DirectPathMount) ReadAt(offset int64, size int) ([]byte, error) {
-	buf := make([]byte, size)
-
-	n, err := d.f.ReadAt(buf, offset)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read from device: %w", err)
-	}
-
-	return buf[:n], nil
+func (d *DirectPathMount) ReadAt(data []byte, offset int64) (int, error) {
+	return d.f.ReadAt(data, offset)
 }
 
 func (d *DirectPathMount) Sync() error {
