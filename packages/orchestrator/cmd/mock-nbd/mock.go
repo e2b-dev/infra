@@ -70,6 +70,7 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to get device: %w", err)
 	}
+	var mnt *nbd.DirectPathMount
 	defer func() {
 		counter := 0
 		for {
@@ -84,6 +85,9 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 				if counter%10 == 0 {
 					fmt.Printf("[%d] failed to release device: %v\n", index, err)
 				}
+				if mnt != nil {
+					mnt.Close()
+				}
 
 				continue
 			}
@@ -94,7 +98,7 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 		}
 	}()
 
-	mnt := nbd.NewDirectPathMount(device, devicePath, nil, nil)
+	mnt = nbd.NewDirectPathMount(device, devicePath, nil, nil)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
