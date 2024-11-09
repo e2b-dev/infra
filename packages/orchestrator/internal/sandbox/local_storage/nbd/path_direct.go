@@ -66,13 +66,9 @@ func (d *DirectPathMount) Wait() error {
 func (d *DirectPathMount) Open() error {
 	errs := make(chan error)
 	retryCounter := 0
-openLoop:
-	for {
-		if retryCounter > 5 {
-			return fmt.Errorf("failed to open device %s after %d retries", d.devPath, retryCounter)
-		}
 
-		retryCounter++
+loop:
+	for {
 		f, err := os.Open(d.devPath)
 		if err != nil {
 			return err
@@ -142,12 +138,18 @@ openLoop:
 		select {
 		case err := <-errs:
 			if err != nil {
-				d.Close()
+				if retryCounter > 5 {
+					d.errs <- err
+					return fmt.Errorf("failed to open device %s after %d retries", d.devPath, retryCounter)
+				}
+
 				break
 			}
 		case <-ready:
-			break openLoop
+			break loop
 		}
+
+		retryCounter++
 	}
 
 	return nil
@@ -188,6 +190,7 @@ func (d *DirectPathMount) Close() {
 	return
 }
 
+// TODO: remove, only for mock
 func (d *DirectPathMount) ReadAt(data []byte, offset int64) (int, error) {
 	return d.f.ReadAt(data, offset)
 }
