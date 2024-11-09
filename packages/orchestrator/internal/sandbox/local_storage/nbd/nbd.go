@@ -8,7 +8,6 @@ import (
 
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"github.com/pojntfx/go-nbd/pkg/client"
-	"github.com/pojntfx/go-nbd/pkg/server"
 	bbackend "github.com/pojntfx/r3map/pkg/backend"
 	"github.com/pojntfx/r3map/pkg/chunks"
 )
@@ -44,7 +43,7 @@ type ManagedPathMount struct {
 	options *ManagedMountOptions
 	hooks   *ManagedMountHooks
 
-	serverOptions *server.Options
+	serverOptions *Options
 	clientOptions *client.Options
 
 	serverFile *os.File
@@ -68,7 +67,7 @@ func NewManagedPathMount(
 	options *ManagedMountOptions,
 	hooks *ManagedMountHooks,
 
-	serverOptions *server.Options,
+	serverOptions *Options,
 	clientOptions *client.Options,
 ) *ManagedPathMount {
 	if options == nil {
@@ -256,7 +255,6 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 		m.serverOptions,
 		m.clientOptions,
 	)
-	m.serverFile = m.dev.f
 
 	m.wg.Add(1)
 	go func() {

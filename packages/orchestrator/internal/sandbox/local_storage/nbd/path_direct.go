@@ -10,17 +10,16 @@ import (
 
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"github.com/pojntfx/go-nbd/pkg/client"
-	"github.com/pojntfx/go-nbd/pkg/server"
 	"github.com/pojntfx/r3map/pkg/utils"
 )
 
 type DirectPathMount struct {
 	devPath string
 
-	e *server.Export
+	e *Export
 	f *os.File
 
-	serverOptions *server.Options
+	serverOptions *Options
 	clientOptions *client.Options
 
 	sf *os.File
@@ -38,11 +37,11 @@ func NewDirectPathMount(
 	b backend.Backend,
 	devPath string,
 
-	serverOptions *server.Options,
+	serverOptions *Options,
 	clientOptions *client.Options,
 ) *DirectPathMount {
 	return &DirectPathMount{
-		e: &server.Export{
+		e: &Export{
 			Name:    "default",
 			Backend: b,
 		},
@@ -95,6 +94,8 @@ openLoop:
 			return err
 		}
 
+		ready := make(chan struct{})
+
 		go func() {
 			wg.Add(1)
 			defer wg.Done()
@@ -110,10 +111,11 @@ openLoop:
 
 			d.sc = c.(*net.UnixConn)
 
-			if err := server.Handle(
+			if err := Handle(
 				d.sc,
-				[]*server.Export{d.e},
+				[]*Export{d.e},
 				d.serverOptions,
+				ready,
 			); err != nil {
 				fmt.Printf("Handle server error: %v\n", err)
 				if !utils.IsClosedErr(err) {
@@ -123,8 +125,6 @@ openLoop:
 				return
 			}
 		}()
-
-		ready := make(chan struct{})
 
 		go func() {
 			wg.Add(1)
@@ -145,11 +145,6 @@ openLoop:
 				d.clientOptions = &client.Options{}
 			}
 
-			d.clientOptions.OnConnected = func() {
-				time.Sleep(10 * time.Millisecond)
-				ready <- struct{}{}
-			}
-
 			if err := client.Connect(d.cc, d.f, d.clientOptions); err != nil {
 				if !utils.IsClosedErr(err) {
 					errs <- err
@@ -167,7 +162,6 @@ openLoop:
 				break
 			}
 		case <-ready:
-			fmt.Printf("Ready\n")
 			break openLoop
 		}
 
