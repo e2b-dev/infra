@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -85,6 +84,11 @@ openLoop:
 
 		fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 		if err != nil {
+			fileErr := f.Close()
+			if fileErr != nil {
+				fmt.Printf("Error: %v\n", fileErr)
+			}
+
 			return err
 		}
 
@@ -163,7 +167,11 @@ openLoop:
 			break openLoop
 		}
 
-		os.Remove(fmt.Sprintf("/sys/block/nbd%s/pid", strings.TrimPrefix(d.devPath, "/dev/nbd")))
+		err = f.Close()
+		if err != nil {
+			return err
+		}
+
 		time.Sleep(50 * time.Millisecond)
 	}
 
