@@ -1,4 +1,4 @@
-package analyticscollector
+package analytics
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ type Analytics struct {
 }
 
 func NewAnalytics() (*Analytics, error) {
-	conn, err := e2bgrpc.GetConnection(host, grpc.WithPerRPCCredentials(&gRPCApiKey{}))
+	conn, err := e2bgrpc.GetConnection(host, true, grpc.WithPerRPCCredentials(&gRPCApiKey{}))
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}

@@ -26,26 +26,25 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	defer childSpan.End()
 	childSpan.SetAttributes(
-		attribute.String("env.id", req.Sandbox.TemplateID),
+		attribute.String("env.id", req.Sandbox.TemplateId),
 		attribute.String("env.kernel.version", req.Sandbox.KernelVersion),
-		attribute.String("instance.id", req.Sandbox.SandboxID),
+		attribute.String("instance.id", req.Sandbox.SandboxId),
 		attribute.String("client.id", constants.ClientID),
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
 	logger := logs.NewSandboxLogger(
-		req.Sandbox.SandboxID,
-		req.Sandbox.TemplateID,
-		req.Sandbox.TeamID,
-		req.Sandbox.VCpuCount,
-		req.Sandbox.MemoryMB,
+		req.Sandbox.SandboxId,
+		req.Sandbox.TemplateId,
+		req.Sandbox.TeamId,
+		req.Sandbox.Vcpu,
+		req.Sandbox.RamMb,
 		false,
 	)
 
 	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
 		s.tracer,
-		s.consul,
 		s.dns,
 		s.networkPool,
 		s.templateCache,
@@ -65,14 +64,14 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, status.New(codes.Internal, errMsg.Error()).Err()
 	}
 
-	s.sandboxes.Insert(req.Sandbox.SandboxID, sbx)
+	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
 
 	go func() {
 		tracer := otel.Tracer("close")
 		closeCtx, _ := tracer.Start(ctx, "close-sandbox")
 
 		defer telemetry.ReportEvent(closeCtx, "sandbox closed")
-		defer s.sandboxes.Remove(req.Sandbox.SandboxID)
+		defer s.sandboxes.Remove(req.Sandbox.SandboxId)
 
 		waitErr := sbx.Wait(context.Background(), tracer)
 		if waitErr != nil {
@@ -88,7 +87,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
-		ClientID: constants.ClientID,
+		ClientId: constants.ClientID,
 	}, nil
 }
 
@@ -96,7 +95,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	_, childSpan := s.tracer.Start(ctx, "sandbox-update")
 	defer childSpan.End()
 
-	item, ok := s.sandboxes.Get(req.SandboxID)
+	item, ok := s.sandboxes.Get(req.SandboxId)
 	if !ok {
 		errMsg := fmt.Errorf("sandbox not found")
 		telemetry.ReportError(ctx, errMsg)
@@ -128,7 +127,7 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
 			Config:    sbx.Sandbox,
-			ClientID:  constants.ClientID,
+			ClientId:  constants.ClientID,
 			StartTime: timestamppb.New(sbx.StartedAt),
 			EndTime:   timestamppb.New(sbx.EndAt),
 		})
@@ -139,15 +138,15 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 	}, nil
 }
 
-func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*emptypb.Empty, error) {
+func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteRequest) (*emptypb.Empty, error) {
 	_, childSpan := s.tracer.Start(ctx, "sandbox-delete")
 	defer childSpan.End()
 	childSpan.SetAttributes(
-		attribute.String("instance.id", in.SandboxID),
+		attribute.String("instance.id", in.SandboxId),
 		attribute.String("client.id", constants.ClientID),
 	)
 
-	sbx, ok := s.sandboxes.Get(in.SandboxID)
+	sbx, ok := s.sandboxes.Get(in.SandboxId)
 	if !ok {
 		errMsg := fmt.Errorf("sandbox not found")
 		telemetry.ReportError(ctx, errMsg)
@@ -158,18 +157,18 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 	sbx.Healthcheck(ctx, true)
 
 	childSpan.SetAttributes(
-		attribute.String("env.id", sbx.Sandbox.TemplateID),
+		attribute.String("env.id", sbx.Sandbox.TemplateId),
 		attribute.String("env.kernel.version", sbx.Sandbox.KernelVersion),
 	)
 
 	// Don't allow connecting to the sandbox anymore.
-	s.dns.Remove(in.SandboxID)
+	s.dns.Remove(in.SandboxId)
 
 	sbx.Stop(ctx, s.tracer)
 
 	// Ensure the sandbox is removed from cache.
 	// Ideally we would rely only on the goroutine defer.
-	s.sandboxes.Remove(in.SandboxID)
+	s.sandboxes.Remove(in.SandboxId)
 
 	return &emptypb.Empty{}, nil
 }

@@ -24,10 +24,6 @@ terraform {
       source  = "hashicorp/nomad"
       version = "2.1.0"
     }
-    consul = {
-      source  = "hashicorp/consul"
-      version = "2.20.0"
-    }
     github = {
       source  = "integrations/github"
       version = "5.42.0"
@@ -79,16 +75,6 @@ module "buckets" {
   labels = var.labels
 }
 
-module "fc_envs_disk" {
-  source = "./packages/fc-envs-disk"
-
-  gcp_zone          = var.gcp_zone
-  fc_envs_disk_size = var.fc_envs_disk_size
-
-  labels = var.labels
-  prefix = var.prefix
-}
-
 module "github_tf" {
   source = "./github-tf"
 
@@ -133,7 +119,6 @@ module "cluster" {
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
 
-  fc_envs_disk_name           = module.fc_envs_disk.disk_name
   docker_contexts_bucket_name = module.buckets.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.buckets.cluster_setup_bucket_name
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name
@@ -235,8 +220,8 @@ module "nomad" {
   # Orchestrator
   orchestrator_port           = var.orchestrator_port
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name
-  template_bucket_name        = module.buckets.fc_template_bucket_name
 
   # Template manager
   template_manager_port = var.template_manager_port
+  template_bucket_name  = module.buckets.fc_template_bucket_name
 }

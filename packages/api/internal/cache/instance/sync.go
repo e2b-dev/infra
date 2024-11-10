@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
+	"github.com/e2b-dev/infra/packages/api/internal/analytics"
 )
 
 func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
@@ -51,7 +51,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 	return &instance, nil
 }
 
-func (c *InstanceCache) Sync(instances []*InstanceInfo) {
+func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 	instanceMap := make(map[string]*InstanceInfo)
 
 	// Use map for faster lookup
@@ -61,29 +61,31 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo) {
 
 	// Delete instances that are not in Orchestrator anymore
 	for _, item := range c.cache.Items() {
-		_, found := instanceMap[item.Key()]
-		if !found {
-			c.cache.Delete(item.Key())
+		if item.Value().Instance.ClientID == nodeID {
+			_, found := instanceMap[item.Key()]
+			if !found {
+				c.cache.Delete(item.Key())
+			}
 		}
 	}
 
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
-		if !c.Exists(instance.Instance.SandboxID) {
-			err := c.Add(*instance, false)
-			if err != nil {
-				fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
-			}
+		err := c.Add(*instance)
+		if err != nil {
+			fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
 		}
 	}
+}
 
+func (c *InstanceCache) SendAnalyticsEvent() {
 	// Send running instances event to analytics
-	instanceIds := make([]string, len(instances))
-	for i, instance := range instances {
-		instanceIds[i] = instance.Instance.SandboxID
+	instanceIds := make([]string, c.cache.Len())
+	for i, sbxID := range c.cache.Keys() {
+		instanceIds[i] = sbxID
 	}
 
-	_, err := c.analytics.RunningInstances(context.Background(), &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
+	_, err := c.analytics.RunningInstances(context.Background(), &analytics.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
 	if err != nil {
 		c.logger.Errorf("Error sending running instances event to analytics\n: %v", err)
 	}

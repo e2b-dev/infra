@@ -1,4 +1,4 @@
-package id
+package utils
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 
 var caseInsensitiveAlphabet = []byte("abcdefghijklmnopqrstuvwxyz1234567890")
 
-func Generate() string {
+func GenerateID() string {
 	return uniuri.NewLenChars(uniuri.UUIDLen, caseInsensitiveAlphabet)
 }
 

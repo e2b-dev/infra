@@ -7,14 +7,11 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-func (c *InstanceCache) UpdateCounters(instance InstanceInfo, value int64, newlyCreated bool) {
+func (c *InstanceCache) UpdateCounter(instance InstanceInfo, value int64) {
 	attributes := []attribute.KeyValue{
+		attribute.String("env_id", instance.Instance.TemplateID),
 		attribute.String("team_id", instance.TeamID.String()),
 	}
 
-	if value > 0 && newlyCreated {
-		c.createdCounter.Add(context.Background(), value, metric.WithAttributes(attributes...))
-	}
-
-	c.sandboxCounter.Add(context.Background(), value, metric.WithAttributes(attributes...))
+	c.counter.Add(context.Background(), value, metric.WithAttributes(attributes...))
 }

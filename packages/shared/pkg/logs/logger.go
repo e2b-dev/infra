@@ -4,13 +4,13 @@ import (
 	"context"
 	"io"
 	"math"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/exporter"
 )
 
@@ -24,12 +24,14 @@ type sandboxLogExporter struct {
 	logger *zerolog.Logger
 }
 
+var LogsCollectorAddress = os.Getenv("LOGS_COLLECTOR_ADDRESS")
+
 func newSandboxLogExporter(serviceName string) *sandboxLogExporter {
 	zerolog.TimestampFieldName = "timestamp"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
 	ctx := context.Background()
-	exporters := []io.Writer{exporter.NewHTTPLogsExporter(ctx, consts.LogsProxyAddress)}
+	exporters := []io.Writer{exporter.NewHTTPLogsExporter(ctx, LogsCollectorAddress)}
 
 	l := zerolog.
 		New(io.MultiWriter(exporters...)).
@@ -64,9 +66,9 @@ type SandboxLogger struct {
 	instanceID            string
 	envID                 string
 	teamID                string
-	cpuMax                int32
+	cpuMax                int64
 	cpuWasAboveTreshold   atomic.Bool
-	memoryMBMax           int32
+	memoryMBMax           int64
 	memoryWasAbove        atomic.Int32
 	healthCheckWasFailing atomic.Bool
 }
@@ -75,8 +77,8 @@ func NewSandboxLogger(
 	instanceID string,
 	envID string,
 	teamID string,
-	cpuMax int32,
-	memoryMax int32,
+	cpuMax int64,
+	memoryMax int64,
 	internal bool,
 ) *SandboxLogger {
 	sbxLogExporter := getSandboxLogExporter()
@@ -146,7 +148,7 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
 			Float64("cpuUsage", cpu).
-			Int32("cpuCount", l.cpuMax).
+			Int64("cpuCount", l.cpuMax).
 			Msgf("Sandbox is using %d %% of total CPU", int(cpu/float64(l.cpuMax)*100))
 	} else if l.cpuWasAboveTreshold.Load() && cpu <= cpuUsageThreshold*float64(l.cpuMax) {
 		l.cpuWasAboveTreshold.Store(false)
@@ -155,7 +157,7 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
 			Float64("cpuUsage", cpu).
-			Int32("cpuCount", l.cpuMax).
+			Int64("cpuCount", l.cpuMax).
 			Msgf("Sandbox usage fell below %d %% of total cpu", int(cpuUsageThreshold*100))
 	}
 }
@@ -170,7 +172,7 @@ func (l *SandboxLogger) MemoryUsage(memoryMB float64) {
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
 			Float64("memoryMBUsed", memoryMB).
-			Int32("memoryMBTotal", l.memoryMBMax).
+			Int64("memoryMBTotal", l.memoryMBMax).
 			Msgf("Sandbox memory used %d %% of RAM", int(memoryMB/float64(l.memoryMBMax)*100))
 		return
 	}

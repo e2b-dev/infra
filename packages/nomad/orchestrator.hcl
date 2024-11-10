@@ -52,6 +52,11 @@ variable "template_bucket_name" {
   default = ""
 }
 
+variable "otel_collector_grpc_endpoint" {
+  type    = string
+  default = ""
+}
+
 job "orchestrator" {
   type = "system"
   datacenters = [var.gcp_zone]
@@ -88,13 +93,13 @@ job "orchestrator" {
       }
 
       env {
-        NODE_ID            = "${node.unique.id}"
-        CONSUL_TOKEN       = var.consul_token
-        OTEL_TRACING_PRINT = var.otel_tracing_print
-        LOGS_PROXY_ADDRESS = var.logs_proxy_address
-        ENVIRONMENT        = var.environment
-        RUST_BACKTRACE     = 1
-        TEMPLATE_BUCKET_NAME = var.template_bucket_name
+        NODE_ID                      = "${node.unique.id}"
+        CONSUL_TOKEN                 = var.consul_token
+        OTEL_TRACING_PRINT           = var.otel_tracing_print
+        LOGS_COLLECTOR_ADDRESS       = var.logs_proxy_address
+        ENVIRONMENT                  = var.environment
+        TEMPLATE_BUCKET_NAME         = var.template_bucket_name
+        OTEL_COLLECTOR_GRPC_ENDPOINT = var.otel_collector_grpc_endpoint
       }
 
       config {

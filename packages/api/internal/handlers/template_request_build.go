@@ -12,7 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/constants"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
@@ -23,7 +22,7 @@ import (
 
 func (a *APIStore) PostTemplates(c *gin.Context) {
 	ctx := c.Request.Context()
-	envID := id.Generate()
+	envID := utils.GenerateID()
 
 	telemetry.ReportEvent(ctx, "started creating new environment")
 
@@ -34,7 +33,7 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 }
 
 func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, templateID api.TemplateID) {
-	cleanedTemplateID, err := id.CleanEnvID(templateID)
+	cleanedTemplateID, err := utils.CleanEnvID(templateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", cleanedTemplateID))
 
@@ -174,7 +173,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 
 	var alias string
 	if body.Alias != nil {
-		alias, err = id.CleanEnvID(*body.Alias)
+		alias, err = utils.CleanEnvID(*body.Alias)
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid alias: %s", alias))
 
@@ -370,14 +369,14 @@ func getCPUAndRAM(tierID string, cpuCount, memoryMB *int32) (int64, int64, *api.
 	cpu := constants.DefaultTemplateCPU
 	ramMB := constants.DefaultTemplateMemory
 
-	// // Check if team can customize the resources
-	// if (cpuCount != nil || memoryMB != nil) && tierID == constants.BaseTierID {
-	// 	return 0, 0, &api.APIError{
-	// 		Err:       fmt.Errorf("team with tier %s can't customize resources", tierID),
-	// 		ClientMsg: "Team with this tier can't customize resources, don't specify cpu count or memory",
-	// 		Code:      http.StatusBadRequest,
-	// 	}
-	// }
+	// Check if team can customize the resources
+	if (cpuCount != nil || memoryMB != nil) && tierID == constants.BaseTierID {
+		return 0, 0, &api.APIError{
+			Err:       fmt.Errorf("team with tier %s can't customize resources", tierID),
+			ClientMsg: "Team with this tier can't customize resources, don't specify cpu count or memory",
+			Code:      http.StatusBadRequest,
+		}
+	}
 
 	if cpuCount != nil {
 		if *cpuCount < constants.MinTemplateCPU || *cpuCount > constants.MaxTemplateCPU {

@@ -6,10 +6,17 @@
 
 set -euo pipefail
 
+
+# Set timestamp format
+PS4='[\D{%Y-%m-%d %H:%M:%S}] '
+# Enable command tracing
+set -x
+
 # Send the log output from this script to user-data.log, syslog, and the console
 # Inspired by https://alestic.com/2010/12/ec2-user-data-output/
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
+ulimit -n 1048576
 export GOMAXPROCS='nproc'
 
 echo "Disabling inotify for NBD devices"
@@ -24,21 +31,6 @@ sudo udevadm trigger
 
 # Load the nbd module with 4096 devices
 sudo modprobe nbd nbds_max=4096
-
-# --- Mount the persistent disk with Firecracker environments.
-# See https://cloud.google.com/compute/docs/disks/add-persistent-disk#create_disk
-
-mount_path="/mnt/disks/${DISK_DEVICE_NAME}"
-
-mkdir -p "$mount_path"
-
-# Format the disk if it is not already formatted.
-if [[ $(lsblk -no FSTYPE "/dev/disk/by-id/google-${DISK_DEVICE_NAME}") != "xfs" ]]; then
-    mkfs.xfs "/dev/disk/by-id/google-${DISK_DEVICE_NAME}"
-fi
-
-mount "/dev/disk/by-id/google-${DISK_DEVICE_NAME}" "$mount_path"
-chmod a+w "$mount_path"
 
 # Create the directory for the fc mounts
 mkdir -p /fc-vm
@@ -94,6 +86,16 @@ cat <<EOF >/root/docker/config.json
     }
 }
 EOF
+
+mkdir -p /etc/systemd/resolved.conf.d/
+touch /etc/systemd/resolved.conf.d/consul.conf
+cat <<EOF >/etc/systemd/resolved.conf.d/consul.conf
+[Resolve]
+DNS=127.0.0.1:8600
+DNSSEC=false
+Domains=~consul
+EOF
+systemctl restart systemd-resolved
 
 # Set up huge pages
 # We are not enabling Transparent Huge Pages for now, as they are not swappable and may result in slowdowns + we are not using swap right now.
@@ -155,7 +157,7 @@ echo "- Huge page size: $hugepage_size_in_mib MiB"
 hugepages=$(($hugepages_ram / $hugepage_size_in_mib))
 
 # This percentage will be permanently allocated for huge pages and in monitoring it will be shown as used.
-base_hugepages_percentage=0
+base_hugepages_percentage=20
 base_hugepages=$(($hugepages * $base_hugepages_percentage / 100))
 base_hugepages=$(remove_decimal $base_hugepages)
 echo "- Allocating $base_hugepages huge pages ($base_hugepages_percentage%) for base usage"
@@ -168,7 +170,11 @@ echo "- Allocating $overcommitment_hugepages huge pages ($overcommitment_hugepag
 echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
 
 # These variables are passed in via Terraform template interpolation
-/opt/consul/bin/run-consul.sh --client --consul-token "${CONSUL_TOKEN}" --cluster-tag-name "${CLUSTER_TAG_NAME}" --enable-gossip-encryption --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" &
+/opt/consul/bin/run-consul.sh --client \
+    --consul-token "${CONSUL_TOKEN}" \
+    --cluster-tag-name "${CLUSTER_TAG_NAME}" \
+    --enable-gossip-encryption \
+    --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" &
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" &
 
 # Add alias for ssh-ing to sbx

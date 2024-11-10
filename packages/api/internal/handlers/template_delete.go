@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
@@ -19,7 +19,7 @@ import (
 func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
 	ctx := c.Request.Context()
 
-	cleanedAliasOrEnvID, err := id.CleanEnvID(aliasOrTemplateID)
+	cleanedAliasOrEnvID, err := utils.CleanEnvID(aliasOrTemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid env ID: %s", aliasOrTemplateID))
 
@@ -90,10 +90,10 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 
 	deleteJobErr := a.templateManager.DeleteInstance(ctx, template.ID)
 	if deleteJobErr != nil {
-		errMsg := fmt.Errorf("error when deleting env files from fc-envs disk: %w", deleteJobErr)
+		errMsg := fmt.Errorf("error when deleting env files from storage: %w", deleteJobErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
 	} else {
-		telemetry.ReportEvent(ctx, "deleted env from fc-envs disk")
+		telemetry.ReportEvent(ctx, "deleted env from storage")
 	}
 
 	dbErr := a.db.DeleteEnv(ctx, template.ID)

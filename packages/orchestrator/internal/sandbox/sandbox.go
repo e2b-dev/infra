@@ -11,17 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
-
-	consul "github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	localStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -66,7 +63,6 @@ func fcBinaryPath(fcVersion string) string {
 func NewSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
-	consul *consul.Client,
 	dns *dns.DNS,
 	networkPool *network.SlotPool,
 	templateCache *localStorage.TemplateCache,
@@ -80,14 +76,14 @@ func NewSandbox(
 	defer childSpan.End()
 
 	cleanup = append(cleanup, func() error {
-		log.Printf("sandbox %s: cleaning up\n", config.SandboxID)
+		log.Printf("sandbox %s: cleaning up\n", config.SandboxId)
 
 		return nil
 	})
 
 	tmpl, err := templateCache.GetTemplate(
-		config.TemplateID,
-		config.BuildID,
+		config.TemplateId,
+		config.BuildId,
 		config.KernelVersion,
 		config.FirecrackerVersion,
 		config.HugePages,
@@ -112,14 +108,14 @@ func NewSandbox(
 
 	networkSpan.End()
 
-	internalLogger := logs.NewSandboxLogger(config.SandboxID, config.TemplateID, config.TeamID, config.VCpuCount, config.MemoryMB, true)
+	internalLogger := logs.NewSandboxLogger(config.SandboxId, config.TemplateId, config.TeamId, config.Vcpu, config.RamMb, true)
 
 	fsEnv, err := newSandboxFiles(
 		childCtx,
 		tracer,
-		config.SandboxID,
-		config.TemplateID,
-		config.BuildID,
+		config.SandboxId,
+		config.TemplateId,
+		config.BuildId,
 		config.KernelVersion,
 		kernelsDir,
 		kernelMountDir,
@@ -165,7 +161,7 @@ func NewSandbox(
 
 	var fcUffd *uffd.Uffd
 	if fsEnv.UFFDSocketPath != nil {
-		fcUffd, err = uffd.New(memfile, *fsEnv.UFFDSocketPath, config.TemplateID, config.BuildID)
+		fcUffd, err = uffd.New(memfile, *fsEnv.UFFDSocketPath, config.TemplateId, config.BuildId)
 		if err != nil {
 			return nil, cleanup, fmt.Errorf("failed to create uffd: %w", err)
 		}
@@ -197,8 +193,8 @@ func NewSandbox(
 		return nil
 	})
 
-	log.Printf("sandbox %s: starting rootfs overlay\n", config.SandboxID)
-	fsOverlay, err := tmpl.NewRootfsOverlay(filepath.Join(os.TempDir(), fmt.Sprintf("rootfs-%s-overlay.img", config.SandboxID)))
+	log.Printf("sandbox %s: starting rootfs overlay\n", config.SandboxId)
+	fsOverlay, err := tmpl.NewRootfsOverlay(filepath.Join(os.TempDir(), fmt.Sprintf("rootfs-%s-overlay.img", config.SandboxId)))
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
@@ -229,11 +225,11 @@ func NewSandbox(
 		ips,
 		fsEnv,
 		&MmdsMetadata{
-			InstanceID: config.SandboxID,
-			EnvID:      config.TemplateID,
-			Address:    consts.LogsProxyAddress,
+			InstanceID: config.SandboxId,
+			EnvID:      config.TemplateId,
+			Address:    logs.LogsCollectorAddress,
 			TraceID:    traceID,
-			TeamID:     config.TeamID,
+			TeamID:     config.TeamId,
 		},
 		pollReady,
 		overlayPath,
@@ -307,23 +303,23 @@ func NewSandbox(
 		if initErr != nil {
 			return nil, cleanup, fmt.Errorf("failed to init new envd: %w", initErr)
 		} else {
-			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxID))
+			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxId))
 		}
 	} else {
 		syncErr := sbx.syncOldEnvd(syncCtx)
 		if syncErr != nil {
 			telemetry.ReportError(childCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
 		} else {
-			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxID))
+			telemetry.ReportEvent(childCtx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxId))
 		}
 	}
 
 	sbx.StartedAt = time.Now()
 
-	dns.Add(config.SandboxID, ips.HostIP())
-	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxID))
+	dns.Add(config.SandboxId, ips.HostIP())
+	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
 	cleanup = append(cleanup, func() error {
-		dns.Remove(config.SandboxID)
+		dns.Remove(config.SandboxId)
 
 		return nil
 	})

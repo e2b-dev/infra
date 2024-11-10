@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -19,12 +22,11 @@ import (
 )
 
 func (o *Orchestrator) CreateSandbox(
-	t trace.Tracer,
 	ctx context.Context,
 	sandboxID,
 	templateID,
-	alias,
-	teamID string,
+	alias string,
+	teamID uuid.UUID,
 	build *models.EnvBuild,
 	maxInstanceLengthHours int64,
 	metadata,
@@ -34,13 +36,28 @@ func (o *Orchestrator) CreateSandbox(
 	envdVersion string,
 	startTime time.Time,
 	endTime time.Time,
+	maxInstancesPerTeam int64,
+	timeout time.Duration,
 ) (*api.Sandbox, error) {
-	childCtx, childSpan := t.Start(ctx, "create-sandbox",
+	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox",
 		trace.WithAttributes(
 			attribute.String("env.id", templateID),
 		),
 	)
 	defer childSpan.End()
+
+	// Check if team has reached max instances
+	err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, teamID, maxInstancesPerTeam)
+	if err != nil {
+		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", teamID, maxInstancesPerTeam)
+		telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
+
+		return nil, fmt.Errorf(
+			"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
+				"please contact us at 'https://e2b.dev/docs/getting-help'", maxInstancesPerTeam)
+	}
+
+	defer releaseTeamSandboxReservation()
 
 	features, err := sandbox.NewVersionInfo(firecrackerVersion)
 	if err != nil {
@@ -51,39 +68,113 @@ func (o *Orchestrator) CreateSandbox(
 
 	telemetry.ReportEvent(childCtx, "Got FC version info")
 
-	res, err := o.grpc.Sandbox.Create(ctx, &orchestrator.SandboxCreateRequest{
+	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
-			TemplateID:         templateID,
+			TemplateId:         templateID,
 			Alias:              &alias,
-			TeamID:             teamID,
-			BuildID:            build.ID.String(),
-			SandboxID:          sandboxID,
+			TeamId:             teamID.String(),
+			BuildId:            build.ID.String(),
+			SandboxId:          sandboxID,
 			KernelVersion:      kernelVersion,
 			FirecrackerVersion: firecrackerVersion,
 			EnvdVersion:        envdVersion,
 			Metadata:           metadata,
 			EnvVars:            envVars,
-			MaxInstanceLength:  maxInstanceLengthHours,
+			MaxSandboxLength:   maxInstanceLengthHours,
 			HugePages:          features.HasHugePages(),
-			MemoryMB:           int32(build.RAMMB),
-			VCpuCount:          int32(build.Vcpu),
+			RamMb:              build.RAMMB,
+			Vcpu:               build.Vcpu,
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
-	})
-
-	err = utils.UnwrapGRPCError(err)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create sandbox '%s': %w", templateID, err)
 	}
 
+	var node *Node
+
+	var excludedNodes []string
+
+	for {
+		node = o.getLeastBusyNode(childCtx, excludedNodes...)
+		telemetry.ReportEvent(childCtx, "Trying to place sandbox on node")
+
+		if node == nil {
+			return nil, fmt.Errorf("failed to find a node to place sandbox on")
+		}
+
+		_, err = node.Client.Sandbox.Create(ctx, sbxRequest)
+		if err == nil {
+			break
+		}
+
+		err = utils.UnwrapGRPCError(err)
+		if err != nil {
+			if node.Client.connection.GetState() != connectivity.Ready {
+				telemetry.ReportEvent(childCtx, "Placing sandbox on node failed, node not ready", attribute.String("node.id", node.ID))
+				excludedNodes = append(excludedNodes, node.ID)
+			} else {
+				return nil, fmt.Errorf("failed to create sandbox on node '%s': %w", node.ID, err)
+			}
+		}
+	}
+
+	telemetry.SetAttributes(childCtx, attribute.String("node.id", node.ID))
 	telemetry.ReportEvent(childCtx, "Created sandbox")
 
-	return &api.Sandbox{
-		ClientID:    res.ClientID,
+	sbx := api.Sandbox{
+		ClientID:    node.ID,
 		SandboxID:   sandboxID,
 		TemplateID:  templateID,
 		Alias:       &alias,
 		EnvdVersion: *build.EnvdVersion,
-	}, nil
+	}
+
+	// This is to compensate for the time it takes to start the instance
+	// Otherwise it could cause the instance to expire before user has a chance to use it
+	startTime = time.Now()
+	endTime = startTime.Add(timeout)
+
+	if cacheErr := o.instanceCache.Add(instance.InstanceInfo{
+		StartTime:         startTime,
+		EndTime:           endTime,
+		Instance:          &sbx,
+		BuildID:           &build.ID,
+		TeamID:            &teamID,
+		Metadata:          metadata,
+		VCpu:              build.Vcpu,
+		RamMB:             build.RAMMB,
+		MaxInstanceLength: time.Duration(maxInstanceLengthHours) * time.Hour,
+	}); cacheErr != nil {
+		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
+		telemetry.ReportError(ctx, errMsg)
+
+		deleted := o.DeleteInstance(childCtx, sbx.SandboxID)
+		if !deleted {
+			telemetry.ReportEvent(ctx, "instance wasn't found in cache when deleting")
+		}
+
+		return nil, errMsg
+	}
+
+	return &sbx, nil
+}
+
+func (o *Orchestrator) getLeastBusyNode(ctx context.Context, excludedNodes ...string) (leastBusyNode *Node) {
+	childCtx, childSpan := o.tracer.Start(ctx, "get-least-busy-node")
+	defer childSpan.End()
+
+	for _, node := range o.nodes {
+		if leastBusyNode == nil || node.CPUUsage < leastBusyNode.CPUUsage {
+			for _, excludedNode := range excludedNodes {
+				if node.ID == excludedNode {
+					continue
+				}
+			}
+
+			leastBusyNode = node
+		}
+	}
+
+	telemetry.ReportEvent(childCtx, "found the least busy node")
+
+	return leastBusyNode
 }

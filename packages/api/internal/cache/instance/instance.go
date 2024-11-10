@@ -2,30 +2,24 @@ package instance
 
 import (
 	"context"
-	"fmt"
-	"go.opentelemetry.io/otel/metric"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
+	"github.com/e2b-dev/infra/packages/api/internal/analytics"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
 	InstanceExpiration = time.Second * 15
-	CacheSyncTime      = time.Minute * 3
+	CacheSyncTime      = time.Minute
 )
 
 type InstanceInfo struct {
-	Logger            *logs.SandboxLogger
 	Instance          *api.Sandbox
 	TeamID            *uuid.UUID
 	BuildID           *uuid.UUID
@@ -33,6 +27,8 @@ type InstanceInfo struct {
 	MaxInstanceLength time.Duration
 	StartTime         time.Time
 	EndTime           time.Time
+	VCpu              int64
+	RamMB             int64
 }
 
 type InstanceCache struct {
@@ -42,71 +38,55 @@ type InstanceCache struct {
 
 	logger *zap.SugaredLogger
 
-	sandboxCounter metric.Int64UpDownCounter
-	createdCounter metric.Int64Counter
-	analytics      analyticscollector.AnalyticsCollectorClient
+	counter   metric.Int64UpDownCounter
+	analytics analytics.AnalyticsCollectorClient
 
 	mu sync.Mutex
 }
 
-func NewCache(analytics analyticscollector.AnalyticsCollectorClient, logger *zap.SugaredLogger, deleteInstance func(data InstanceInfo, purge bool) *api.APIError, initialInstances []*InstanceInfo) *InstanceCache {
+func NewCache(
+	analytics analytics.AnalyticsCollectorClient,
+	logger *zap.SugaredLogger,
+	insertInstance func(data InstanceInfo) error,
+	deleteInstance func(data InstanceInfo) error,
+	counter metric.Int64UpDownCounter,
+) *InstanceCache {
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, InstanceInfo](InstanceExpiration),
 	)
 
-	sandboxCounter, err := meters.GetUpDownCounter(meters.SandboxCountMeterName)
-	if err != nil {
-		logger.Errorw("error getting counter", "error", err)
-	}
-
-	createdCounter, err := meters.GetCounter(meters.SandboxCreateMeterName)
-	if err != nil {
-		logger.Errorw("error getting counter", "error", err)
-	}
-
 	instanceCache := &InstanceCache{
-		cache:          cache,
-		logger:         logger,
-		analytics:      analytics,
-		sandboxCounter: sandboxCounter,
-		createdCounter: createdCounter,
-		reservations:   NewReservationCache(),
+		cache:     cache,
+		counter:   counter,
+		logger:    logger,
+		analytics: analytics,
+
+		reservations: NewReservationCache(),
 	}
 
 	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, InstanceInfo]) {
 		instanceInfo := i.Value()
-		_, err := analytics.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
-			InstanceId:    instanceInfo.Instance.SandboxID,
-			EnvironmentId: instanceInfo.Instance.TemplateID,
-			BuildId:       instanceInfo.BuildID.String(),
-			TeamId:        instanceInfo.TeamID.String(),
-			Timestamp:     timestamppb.Now(),
-		})
+		err := insertInstance(instanceInfo)
 		if err != nil {
-			errMsg := fmt.Errorf("error when sending analytics event: %w", err)
-			telemetry.ReportCriticalError(ctx, errMsg)
+			logger.Errorf("Error inserting instance: %v", err)
 		}
+
+		instanceCache.UpdateCounter(instanceInfo, 1)
 	})
 
 	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, InstanceInfo]) {
 		if er == ttlcache.EvictionReasonExpired || er == ttlcache.EvictionReasonDeleted {
-			err := deleteInstance(i.Value(), true)
+			instanceInfo := i.Value()
+			err := deleteInstance(instanceInfo)
 			if err != nil {
-				logger.Errorf("Error deleting instance (%v)\n: %v", er, err.Err)
+				logger.Errorf("Error deleting instance (%v)\n: %v", er, err)
 			}
 
-			instanceCache.UpdateCounters(i.Value(), -1, false)
+			instanceCache.UpdateCounter(instanceInfo, -1)
 		}
 	})
-
-	for _, instance := range initialInstances {
-		err := instanceCache.Add(*instance, false)
-		if err != nil {
-			fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
-		}
-	}
 
 	go cache.Start()
 
