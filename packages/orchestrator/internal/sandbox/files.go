@@ -163,44 +163,23 @@ func (f *SandboxFiles) Ensure(ctx context.Context) error {
 
 func (f *SandboxFiles) Cleanup(
 	ctx context.Context,
-	tracer trace.Tracer,
 ) error {
-	childCtx, childSpan := tracer.Start(ctx, "cleanup-env-instance",
-		trace.WithAttributes(
-			attribute.String("instance.env_instance_path", f.EnvInstancePath),
-			attribute.String("instance.build_dir_path", f.BuildDirPath),
-			attribute.String("instance.env_path", f.EnvPath),
-		),
-	)
-	defer childSpan.End()
-
 	err := os.RemoveAll(f.EnvInstancePath)
 	if err != nil {
 		errMsg := fmt.Errorf("error deleting env instance files: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(ctx, errMsg)
 	} else {
 		// TODO: Check the socket?
-		telemetry.ReportEvent(childCtx, "removed all env instance files")
+		telemetry.ReportEvent(ctx, "removed all env instance files")
 	}
 
 	// Remove socket
 	err = os.Remove(f.SocketPath)
 	if err != nil {
 		errMsg := fmt.Errorf("error deleting socket: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(ctx, errMsg)
 	} else {
-		telemetry.ReportEvent(childCtx, "removed socket")
-	}
-
-	// Remove UFFD socket
-	if f.UFFDSocketPath != nil {
-		err = os.Remove(*f.UFFDSocketPath)
-		if err != nil {
-			errMsg := fmt.Errorf("error deleting socket for UFFD: %w", err)
-			telemetry.ReportError(childCtx, errMsg)
-		} else {
-			telemetry.ReportEvent(childCtx, "removed UFFD socket")
-		}
+		telemetry.ReportEvent(ctx, "removed socket")
 	}
 
 	return nil
