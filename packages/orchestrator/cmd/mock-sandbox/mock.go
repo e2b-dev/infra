@@ -21,8 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	consulapi "github.com/hashicorp/consul/api"
-
 	"go.opentelemetry.io/otel"
 )
 
@@ -95,7 +93,6 @@ func main() {
 				dns,
 				time.Duration(*keepAlive)*time.Second,
 				networkPool,
-				consulClient,
 				templateCache,
 			)
 
@@ -118,7 +115,6 @@ func mockSandbox(
 	dns *dns.DNS,
 	keepAlive time.Duration,
 	networkPool *network.SlotPool,
-	consulClient *consulapi.Client,
 	templateCache *localStorage.TemplateCache,
 ) {
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
@@ -130,20 +126,21 @@ func mockSandbox(
 	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
 		tracer,
-		consulClient,
 		dns,
 		networkPool,
 		templateCache,
 		&orchestrator.SandboxConfig{
-			TemplateID:         templateId,
+			TemplateId:         templateId,
 			FirecrackerVersion: "v1.7.0-dev_8bb88311",
 			KernelVersion:      "vmlinux-5.10.186",
-			TeamID:             "test-team",
-			BuildID:            buildId,
+			TeamId:             "test-team",
+			BuildId:            buildId,
 			HugePages:          true,
-			MaxInstanceLength:  1,
-			SandboxID:          sandboxId,
+			MaxSandboxLength:   1,
+			SandboxId:          sandboxId,
 			EnvdVersion:        "0.1.1",
+			RamMb:              512,
+			Vcpu:               2,
 		},
 		"trace-test-1",
 		time.Now(),
