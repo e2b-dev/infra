@@ -59,12 +59,8 @@ func NewBlockStorage(
 
 // TODO: Ensure that the maximum size of the buffer is the block size or handle if it is bigger.
 func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
-	log.Printf("[%s] Reading %d at %d\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
-
 	n, err = d.cache.ReadAt(p, off)
 	if err == nil || errors.Is(err, io.EOF) {
-		log.Printf("[%s] Read %d at %d from cache\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
-
 		return n, nil
 	}
 
@@ -79,14 +75,10 @@ func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
 
 		buf := make([]byte, d.blockSize)
 
-		log.Printf("[%s] Reading %d at %d from source\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(buf), off)
-
 		n, err = d.source.ReadAt(buf, off)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, fmt.Errorf("failed to read from source %d: %w", off, err)
 		}
-
-		log.Printf("[%s] Writing %d at %d to cache\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(buf), off)
 
 		_, err = d.cache.WriteAt(buf, off)
 		if err != nil && !errors.Is(err, io.EOF) {
@@ -98,8 +90,6 @@ func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
 
 	n, err = d.cache.ReadAt(p, off)
 	if err == nil || errors.Is(err, io.EOF) {
-		log.Printf("[%s] Read %d at %d from cache\n", strings.Split(d.source.object.ObjectName(), "/")[2], len(p), off)
-
 		return n, nil
 	}
 

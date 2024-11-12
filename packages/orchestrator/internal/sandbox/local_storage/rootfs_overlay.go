@@ -94,7 +94,6 @@ func (o *RootfsOverlay) Run() error {
 
 		<-o.ctx.Done()
 
-		log.Printf("[%s] Closing overlay\n", o.cachePath)
 		err := o.mnt.Close()
 		if err != nil {
 			log.Printf("error closing overlay mount: %v\n", err)
@@ -110,14 +109,17 @@ func (o *RootfsOverlay) Run() error {
 			log.Printf("[%s] error removing overlay file: %v\n", o.cachePath, err)
 		}
 
+		counter := 0
 		for {
+			counter++
 			err := nbd.Pool.ReleaseDevice(file)
 			if err != nil {
-				log.Printf("[%s] error releasing overlay device: %v\n", o.cachePath, err)
+				if counter%100 == 0 {
+					log.Printf("[%s - %dth try] error releasing overlay device: %v\n", o.cachePath, counter, err)
+				}
+
 				continue
 			}
-
-			log.Printf("[%s] released overlay device\n", o.cachePath)
 
 			break
 		}

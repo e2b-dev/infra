@@ -87,13 +87,12 @@ func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map
 
 		response, err := httpClient.Do(request)
 		if err != nil {
+			counter++
 			if counter%10 == 0 {
 				log.Printf("[%dth try] failed to send sync request to new envd: %v\n", counter+1, err)
 			}
 
-			counter = counter + 1
-
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 
 			continue
 		}
