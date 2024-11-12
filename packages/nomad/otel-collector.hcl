@@ -40,7 +40,7 @@ variables {
 
 job "otel-collector" {
   datacenters = [var.gcp_zone]
-  type        = "service"
+  type        = "system"
 
   priority = 95
 
