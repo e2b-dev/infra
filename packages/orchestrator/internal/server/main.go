@@ -76,7 +76,7 @@ func New() *grpc.Server {
 
 	templateCache := localStorage.NewTemplateCache(ctx, client, templateStorage.BucketName)
 
-	networkPool := network.NewSlotPool(ipSlotPoolSize, consulClient)
+	networkPool := network.NewSlotPool(ipSlotPoolSize, reusedIpSlotPoolSize, consulClient)
 
 	// We start the pool last to avoid allocation network slots if the other components fail to initialize.
 	go func() {

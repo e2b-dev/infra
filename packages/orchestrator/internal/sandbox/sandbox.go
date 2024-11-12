@@ -95,13 +95,13 @@ func NewSandbox(
 	networkCtx, networkSpan := tracer.Start(childCtx, "get-network-slot")
 	// Get slot from Consul KV
 
-	ips, err := networkPool.Get(networkCtx, tracer)
+	ips, err := networkPool.Get(networkCtx)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
 	}
 
 	cleanup = append(cleanup, func() error {
-		networkPool.Release(ips)
+		networkPool.Return(ips)
 
 		return nil
 	})
@@ -131,7 +131,7 @@ func NewSandbox(
 	}
 
 	cleanup = append(cleanup, func() error {
-		err = fsEnv.Cleanup(childCtx, tracer)
+		err = fsEnv.Cleanup(childCtx)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to delete instance files: %w", err)
 			telemetry.ReportCriticalError(childCtx, errMsg)

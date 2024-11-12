@@ -65,7 +65,7 @@ func main() {
 
 	templateCache := localStorage.NewTemplateCache(ctx, client, templateStorage.BucketName)
 
-	networkPool := network.NewSlotPool(10, consulClient)
+	networkPool := network.NewSlotPool(10, 0, consulClient)
 
 	go func() {
 		poolErr := networkPool.Populate(ctx)
