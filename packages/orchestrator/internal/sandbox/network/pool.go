@@ -126,3 +126,26 @@ func (p *SlotPool) Return(slot IPSlot) {
 		}
 	}
 }
+
+func (p *SlotPool) Close() error {
+	var errs []error
+
+	close(p.reusedSlots)
+	close(p.newSlots)
+
+	for slot := range p.reusedSlots {
+		err := cleanupSlot(p.consul, slot)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	for slot := range p.newSlots {
+		err := cleanupSlot(p.consul, slot)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
+}
