@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -28,6 +27,7 @@ import (
 )
 
 const (
+	ServiceName          = "orchestrator"
 	ipSlotPoolSize       = 32
 	reusedIpSlotPoolSize = 64
 )
@@ -57,7 +57,7 @@ func New() *grpc.Server {
 	dnsServer := dns.New()
 	go dnsServer.Start("127.0.0.1:53")
 
-	tracer := otel.Tracer(constants.ServiceName)
+	tracer := otel.Tracer(ServiceName)
 
 	consulClient, err := consul.New(ctx)
 	if err != nil {
