@@ -5,8 +5,9 @@ import (
 	"math/rand"
 	"slices"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
-	consul "github.com/hashicorp/consul/api"
+	consulApi "github.com/hashicorp/consul/api"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 )
 
 // We are using a more debuggable IP address allocation for now that only covers 255 addresses.
@@ -107,13 +108,13 @@ func (ips *IPSlot) TapCIDR() string {
 	return fmt.Sprintf("%s/%d", ips.TapIP(), ips.TapMask())
 }
 
-func NewSlot(consulClient *consul.Client) (*IPSlot, error) {
+func NewSlot(consulClient *consulApi.Client) (*IPSlot, error) {
 	kv := consulClient.KV()
 
 	var slot *IPSlot
 
 	trySlot := func(slotIdx int, key string) (*IPSlot, error) {
-		status, _, err := kv.CAS(&consul.KVPair{
+		status, _, err := kv.CAS(&consulApi.KVPair{
 			Key:         key,
 			ModifyIndex: 0,
 		}, nil)
@@ -151,7 +152,7 @@ func NewSlot(consulClient *consul.Client) (*IPSlot, error) {
 		// This is a fallback for the case when all slots are taken.
 		// There is no Consul lock so it's possible that multiple sandboxes will try to acquire the same slot.
 		// In this case, only one of them will succeed and other will try with different slots.
-		reservedKeys, _, keysErr := kv.Keys(constants.ClientID+"/", "", nil)
+		reservedKeys, _, keysErr := kv.Keys(consul.ClientID+"/", "", nil)
 		if keysErr != nil {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
@@ -183,7 +184,7 @@ func NewSlot(consulClient *consul.Client) (*IPSlot, error) {
 	return slot, nil
 }
 
-func (ips *IPSlot) Release(consulClient *consul.Client) error {
+func (ips *IPSlot) Release(consulClient *consulApi.Client) error {
 	kv := consulClient.KV()
 
 	pair, _, err := kv.Get(ips.KVKey, nil)
@@ -195,7 +196,7 @@ func (ips *IPSlot) Release(consulClient *consul.Client) error {
 		return fmt.Errorf("IP slot %d was already released", ips.SlotIdx)
 	}
 
-	status, _, err := kv.DeleteCAS(&consul.KVPair{
+	status, _, err := kv.DeleteCAS(&consulApi.KVPair{
 		Key:         ips.KVKey,
 		ModifyIndex: pair.ModifyIndex,
 	}, nil)
@@ -211,5 +212,5 @@ func (ips *IPSlot) Release(consulClient *consul.Client) error {
 }
 
 func getKVKey(slotIdx int) string {
-	return fmt.Sprintf("%s/%d", constants.ClientID, slotIdx)
+	return fmt.Sprintf("%s/%d", consul.ClientID, slotIdx)
 }
