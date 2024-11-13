@@ -186,6 +186,7 @@ func NewSandbox(
 		return nil
 	})
 
+	overlayCtx, overlaySpan := tracer.Start(childCtx, "create-rootfs-overlay")
 	fsOverlay, err := tmpl.NewRootfsOverlay(filepath.Join(os.TempDir(), fmt.Sprintf("rootfs-%s-overlay.img", config.SandboxId)))
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
@@ -204,12 +205,13 @@ func NewSandbox(
 		}
 	}()
 
-	overlayPath, err := fsOverlay.Path(ctx)
+	overlayPath, err := fsOverlay.Path(overlayCtx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error getting overlay path: %v\n", err)
 
 		return nil, cleanup, err
 	}
+	overlaySpan.End()
 
 	fc := newFC(
 		childCtx,
