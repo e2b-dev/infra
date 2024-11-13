@@ -17,6 +17,7 @@ import (
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -29,7 +30,7 @@ var postSandboxParallelLimit = semaphore.NewWeighted(defaultRequestLimit)
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
-	sandboxID := InstanceIDPrefix + utils.GenerateID()
+	sandboxID := InstanceIDPrefix + id.Generate()
 
 	// Get team from context, use TeamContextKey
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
@@ -54,7 +55,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 
-	cleanedAliasOrEnvID, err := utils.CleanEnvID(body.TemplateID)
+	cleanedAliasOrEnvID, err := id.CleanEnvID(body.TemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid environment ID: %s", err))
 

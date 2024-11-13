@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/constants"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
@@ -22,7 +23,7 @@ import (
 
 func (a *APIStore) PostTemplates(c *gin.Context) {
 	ctx := c.Request.Context()
-	envID := utils.GenerateID()
+	envID := id.Generate()
 
 	telemetry.ReportEvent(ctx, "started creating new environment")
 
@@ -33,7 +34,7 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 }
 
 func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, templateID api.TemplateID) {
-	cleanedTemplateID, err := utils.CleanEnvID(templateID)
+	cleanedTemplateID, err := id.CleanEnvID(templateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template ID: %s", cleanedTemplateID))
 
@@ -173,7 +174,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 
 	var alias string
 	if body.Alias != nil {
-		alias, err = utils.CleanEnvID(*body.Alias)
+		alias, err = id.CleanEnvID(*body.Alias)
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid alias: %s", alias))
 
