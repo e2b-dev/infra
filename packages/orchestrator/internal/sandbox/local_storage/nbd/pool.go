@@ -12,7 +12,13 @@ import (
 	"syscall"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.opentelemetry.io/otel/metric"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 )
+
+// maxSlotsReady is the number of slots that are ready to be used.
+const maxSlotsReady = 64
 
 // ErrNoFreeSlots is returned when there are no free slots.
 // You can retry the request after some time.
@@ -41,18 +47,46 @@ type (
 //
 // Use `sudo modprobe nbd nbds_max=4096` to set the max number of devices to 4096, which is a good default for now.
 type DevicePool struct {
+	ctx context.Context
 	// We use the bitset to speedup the free device lookup.
-	slots *bitset.BitSet
-	mu    sync.Mutex
+	usedSlots *bitset.BitSet
+	mu        sync.Mutex
+
+	slots chan DeviceSlot
+
+	slotCounter metric.Int64UpDownCounter
 }
 
 var Pool *DevicePool
 
 func init() {
-	pool, err := NewDevicePool()
+	maxDevices, err := getMaxDevices()
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to get current max devices: %w", err))
 	}
+
+	if maxDevices == 0 {
+		panic(fmt.Errorf("nbd module is not loaded or max devices is set to 0"))
+	}
+
+	counter, err := meters.GetUpDownCounter(meters.NBDkSlotSReadyPoolCounterMeterName)
+	if err != nil {
+		panic(fmt.Errorf("failed to get nbd slot pool counter: %w", err))
+	}
+
+	pool := &DevicePool{
+		ctx:         context.Background(),
+		usedSlots:   bitset.New(maxDevices),
+		slots:       make(chan DeviceSlot, maxSlotsReady),
+		slotCounter: counter,
+	}
+
+	go func() {
+		err = pool.Populate()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed during populating device pool: %v\n", err)
+		}
+	}()
 
 	Pool = pool
 }
@@ -76,24 +110,30 @@ func getMaxDevices() (uint, error) {
 	return uint(maxDevices), nil
 }
 
-func NewDevicePool() (*DevicePool, error) {
-	maxDevices, err := getMaxDevices()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current max devices: %w", err)
-	}
+func (d *DevicePool) Populate() error {
+	defer close(d.slots)
 
-	if maxDevices == 0 {
-		return nil, fmt.Errorf("nbd module is not loaded or max devices is set to 0")
-	}
+	for {
+		select {
+		case <-d.ctx.Done():
+			return d.ctx.Err()
+		default:
+			device, err := d.getFreeDeviceSlot()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[network slot pool]: failed to create network: %v\n", err)
 
-	return &DevicePool{
-		slots: bitset.New(maxDevices),
-	}, nil
+				continue
+			}
+
+			d.slotCounter.Add(d.ctx, 1)
+			d.slots <- *device
+		}
+	}
 }
 
 var reSlot = regexp.MustCompile(`^/dev/nbd(\d+)$`)
 
-func (n *DevicePool) getDeviceSlot(path DevicePath) (DeviceSlot, error) {
+func (d *DevicePool) getDeviceSlot(path DevicePath) (DeviceSlot, error) {
 	matches := reSlot.FindStringSubmatch(path)
 	if len(matches) != 2 {
 		return 0, fmt.Errorf("invalid nbd path: %s", path)
@@ -107,7 +147,7 @@ func (n *DevicePool) getDeviceSlot(path DevicePath) (DeviceSlot, error) {
 	return DeviceSlot(slot), nil
 }
 
-func (n *DevicePool) getDevicePath(slot DeviceSlot) DevicePath {
+func (d *DevicePool) getDevicePath(slot DeviceSlot) DevicePath {
 	return fmt.Sprintf("/dev/nbd%d", slot)
 }
 
@@ -119,8 +159,8 @@ func (n *DevicePool) getDevicePath(slot DeviceSlot) DevicePath {
 // https://unix.stackexchange.com/questions/33508/check-which-network-block-devices-are-in-use
 // https://superuser.com/questions/919895/how-to-get-a-list-of-connected-nbd-devices-on-ubuntu
 // https://github.com/NetworkBlockDevice/nbd/blob/17043b068f4323078637314258158aebbfff0a6c/nbd-client.c#L254
-func (n *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
-	devicePath := n.getDevicePath(slot)
+func (d *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
+	devicePath := d.getDevicePath(slot)
 
 	fd, err := syscall.Open(devicePath, syscall.O_EXCL, 0o644)
 	if errors.Is(err, syscall.EBUSY) {
@@ -167,50 +207,43 @@ func (n *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
 	return size == 0, nil
 }
 
-func (n *DevicePool) getMaybeEmptySlot(start DeviceSlot) (DeviceSlot, func(), bool) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
+func (d *DevicePool) getMaybeEmptySlot(start DeviceSlot) (DeviceSlot, func(), bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	slot, ok := n.slots.NextClear(start)
+	slot, ok := d.usedSlots.NextClear(start)
 
 	if !ok {
 		return 0, func() {}, false
 	}
 
-	n.slots.Set(slot)
+	d.usedSlots.Set(slot)
 
 	return slot, func() {
-		n.mu.Lock()
-		defer n.mu.Unlock()
+		d.mu.Lock()
+		defer d.mu.Unlock()
 
-		n.slots.Clear(slot)
+		d.usedSlots.Clear(slot)
 	}, true
 }
 
-// Get device slot if there is one available.
-func (n *DevicePool) GetDeviceIndex(ctx context.Context) (uint, error) {
+// Get a free device slot.
+func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 	start := uint(0)
-
 	for {
-		select {
-		case <-ctx.Done():
-			return 0, ctx.Err()
-		default:
-		}
-
-		slot, cleanup, ok := n.getMaybeEmptySlot(start)
+		slot, cleanup, ok := d.getMaybeEmptySlot(start)
 
 		if !ok {
 			cleanup()
 
-			return 0, ErrNoFreeSlots{}
+			return nil, ErrNoFreeSlots{}
 		}
 
-		free, err := n.isDeviceFree(slot)
+		free, err := d.isDeviceFree(slot)
 		if err != nil {
 			cleanup()
 
-			return 0, fmt.Errorf("failed to check if device is free: %w", err)
+			return nil, fmt.Errorf("failed to check if device is free: %w", err)
 		}
 
 		if !free {
@@ -223,20 +256,33 @@ func (n *DevicePool) GetDeviceIndex(ctx context.Context) (uint, error) {
 			continue
 		}
 
-		// log.Printf("got device slot: %d\n", slot)
+		return &slot, nil
+	}
+}
 
+// Get device slot if there is one available.
+func (d *DevicePool) GetDeviceIndex(ctx context.Context) (uint, error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		default:
+		}
+
+		slot := <-d.slots
+		d.slotCounter.Add(d.ctx, -1)
 		return slot, nil
 	}
 }
 
 // ReleaseDevice will return an error if the device is not free and not release the slot — you can retry.
-func (n *DevicePool) ReleaseDevice(path DevicePath) error {
-	slot, err := n.getDeviceSlot(path)
+func (d *DevicePool) ReleaseDevice(path DevicePath) error {
+	slot, err := d.getDeviceSlot(path)
 	if err != nil {
 		return fmt.Errorf("failed to get slot from path: %w", err)
 	}
 
-	free, err := n.isDeviceFree(slot)
+	free, err := d.isDeviceFree(slot)
 	if err != nil {
 		return fmt.Errorf("failed to check if device is free: %w", err)
 	}
@@ -246,9 +292,9 @@ func (n *DevicePool) ReleaseDevice(path DevicePath) error {
 	}
 
 	// log.Printf("released device slot: %d\n", slot)
-	n.mu.Lock()
-	n.slots.Clear(slot)
-	n.mu.Unlock()
+	d.mu.Lock()
+	d.usedSlots.Clear(slot)
+	d.mu.Unlock()
 
 	return nil
 }

@@ -43,9 +43,6 @@ func (d *DirectPathMount) Open() error {
 	}
 
 	for {
-
-		socks := make([]*os.File, 0)
-
 		// Create the socket pairs
 		sockPair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 		if err != nil {
@@ -65,7 +62,6 @@ func (d *DirectPathMount) Open() error {
 		go func() {
 			_ = dis.Handle()
 		}()
-		socks = append(socks, client)
 		d.dispatcher = dis
 
 		var opts []nbdnl.ConnectOption
@@ -75,7 +71,7 @@ func (d *DirectPathMount) Open() error {
 
 		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn
 
-		idx, err := nbdnl.Connect(d.deviceIndex, socks, uint64(size), 0, serverFlags, opts...)
+		idx, err := nbdnl.Connect(d.deviceIndex, []*os.File{client}, uint64(size), 0, serverFlags, opts...)
 		if err == nil {
 			d.deviceIndex = idx
 			break
@@ -83,9 +79,7 @@ func (d *DirectPathMount) Open() error {
 
 		// Sometimes (rare), there seems to be a BADF error here. Lets just retry for now...
 		// Close things down and try again...
-		for _, s := range socks {
-			s.Close()
-		}
+		client.Close()
 
 		if strings.Contains(err.Error(), "invalid argument") {
 			return err
