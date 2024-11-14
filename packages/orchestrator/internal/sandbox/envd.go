@@ -11,8 +11,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
@@ -57,7 +58,7 @@ type PostInitJSONBody struct {
 	EnvVars *map[string]string `json:"envVars"`
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map[string]string, nbdSlot string) error {
+func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map[string]string) error {
 	childCtx, childSpan := tracer.Start(ctx, "envd-init")
 	defer childSpan.End()
 

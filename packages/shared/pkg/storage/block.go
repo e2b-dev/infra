@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strconv"
-	"strings"
 
 	"cloud.google.com/go/storage"
 	"golang.org/x/sync/singleflight"

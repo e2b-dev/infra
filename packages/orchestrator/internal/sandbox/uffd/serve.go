@@ -13,7 +13,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const maxEagainAttempts = 32
+const maxEagainAttempts = 64
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
@@ -36,7 +36,7 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 	return nil, fmt.Errorf("address %d not found in any mapping", addr)
 }
 
-func Serve(uffd int, mappings []GuestRegionUffdMapping, src *template.BlockStorage, fd uintptr) error {
+func Serve(uffd int, mappings []GuestRegionUffdMapping, src *template.BlockStorage, fd uintptr, stop func() error, sandboxId string) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: int32(fd), Events: unix.POLLIN},
@@ -89,30 +89,34 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *template.BlockStora
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
+		msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
+		if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
+			stop()
+
+			return ErrUnexpectedEventType
+		}
+
+		arg := constants.GetMsgArg(&msg)
+		pagefault := (*(*constants.UffdPagefault)(unsafe.Pointer(&arg[0])))
+
+		addr := constants.GetPagefaultAddress(&pagefault)
+
+		mapping, err := getMapping(uintptr(addr), mappings)
+		if err != nil {
+			stop()
+
+			return fmt.Errorf("failed to map: %w", err)
+		}
+
+		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
+		pagesize := uint64(mapping.PageSize)
+
 		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {
-					fmt.Printf("recovered from panic in uffd serve: %v\n", r)
+					fmt.Printf("[sandbox %s]: recovered from panic in uffd serve: %v\n", sandboxId, r)
 				}
 			}()
-
-			msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
-			if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
-				return ErrUnexpectedEventType
-			}
-
-			arg := constants.GetMsgArg(&msg)
-			pagefault := (*(*constants.UffdPagefault)(unsafe.Pointer(&arg[0])))
-
-			addr := constants.GetPagefaultAddress(&pagefault)
-
-			mapping, err := getMapping(uintptr(addr), mappings)
-			if err != nil {
-				return fmt.Errorf("failed to map: %w", err)
-			}
-
-			offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
-			pagesize := uint64(mapping.PageSize)
 
 			b := make([]byte, pagesize)
 
@@ -139,6 +143,8 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *template.BlockStora
 					// Page is already mapped
 					return nil
 				}
+
+				stop()
 
 				return fmt.Errorf("failed uffdio copy %w", errno)
 			}

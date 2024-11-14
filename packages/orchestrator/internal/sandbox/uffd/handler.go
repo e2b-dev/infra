@@ -1,7 +1,6 @@
 package uffd
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,15 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	template "github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
-	uffdMsgListenerTimeout = 15 * time.Second
+	uffdMsgListenerTimeout = 10 * time.Second
 	fdSize                 = 4
 	mappingsSize           = 1024
 )
@@ -29,11 +24,24 @@ type UffdSetup struct {
 	Fd       uintptr
 }
 
+type Uffd struct {
+	Exit  chan error
+	Ready chan struct{}
+
+	exitReader *os.File
+	exitWriter *os.File
+
+	Stop func() error
+
+	lis *net.UnixListener
+
+	memfile    *template.BlockStorage
+	socketPath string
+}
+
 func New(
 	memfile *template.BlockStorage,
-	socketPath,
-	envID,
-	buildID string,
+	socketPath string,
 ) (*Uffd, error) {
 	pRead, pWrite, err := os.Pipe()
 	if err != nil {
@@ -41,12 +49,10 @@ func New(
 	}
 
 	return &Uffd{
-		exitChan:   make(chan error, 1),
-		PollReady:  make(chan struct{}, 1),
+		Exit:       make(chan error, 1),
+		Ready:      make(chan struct{}, 1),
 		exitReader: pRead,
 		exitWriter: pWrite,
-		envID:      envID,
-		buildID:    buildID,
 		memfile:    memfile,
 		socketPath: socketPath,
 		Stop: sync.OnceValue(func() error {
@@ -60,32 +66,7 @@ func New(
 	}, nil
 }
 
-type Uffd struct {
-	exitChan  chan error
-	PollReady chan struct{}
-
-	exitReader *os.File
-	exitWriter *os.File
-
-	Stop func() error
-
-	lis *net.UnixListener
-
-	socketPath string
-	memfile    *template.BlockStorage
-
-	envID   string
-	buildID string
-}
-
-func (u *Uffd) Start(
-	ctx context.Context,
-	tracer trace.Tracer,
-	logger *logs.SandboxLogger,
-) error {
-	childCtx, childSpan := tracer.Start(ctx, "start-uffd")
-	defer childSpan.End()
-
+func (u *Uffd) Start(sandboxId string) error {
 	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: u.socketPath, Net: "unix"})
 	if err != nil {
 		return fmt.Errorf("failed listening on socket: %w", err)
@@ -93,18 +74,20 @@ func (u *Uffd) Start(
 
 	u.lis = lis
 
-	telemetry.ReportEvent(childCtx, "listening on socket")
-
 	err = os.Chmod(u.socketPath, 0o777)
 	if err != nil {
 		return fmt.Errorf("failed setting socket permissions: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "set socket permissions")
-
 	go func() {
-		u.exitChan <- u.handle(logger)
-		close(u.exitChan)
+		handleErr := u.handle(u.memfile, sandboxId)
+		closeErr := u.lis.Close()
+		writerErr := u.exitWriter.Close()
+
+		u.Exit <- errors.Join(handleErr, closeErr, writerErr)
+
+		close(u.Ready)
+		close(u.Exit)
 	}()
 
 	return nil
@@ -164,7 +147,7 @@ func (u *Uffd) receiveSetup() (*UffdSetup, error) {
 	}, nil
 }
 
-func (u *Uffd) handle(logger *logs.SandboxLogger) (err error) {
+func (u *Uffd) handle(memfile *template.BlockStorage, sandboxId string) (err error) {
 	setup, err := u.receiveSetup()
 	if err != nil {
 		return fmt.Errorf("failed to receive setup message from firecracker: %w", err)
@@ -174,27 +157,16 @@ func (u *Uffd) handle(logger *logs.SandboxLogger) (err error) {
 	defer func() {
 		closeErr := syscall.Close(int(uffd))
 		if closeErr != nil {
-			logger.Errorf("failed to close uffd: %v", closeErr)
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: failed to close uffd at path %s: %v\n", sandboxId, u.socketPath, closeErr)
 		}
 	}()
 
-	u.PollReady <- struct{}{}
+	u.Ready <- struct{}{}
 
-	err = Serve(int(uffd), setup.Mappings, u.memfile, u.exitReader.Fd())
+	err = Serve(int(uffd), setup.Mappings, memfile, u.exitReader.Fd(), u.Stop, sandboxId)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}
 
 	return nil
-}
-
-func (u *Uffd) Wait() error {
-	handleErr := <-u.exitChan
-
-	close(u.PollReady)
-
-	closeErr := u.lis.Close()
-	writerErr := u.exitWriter.Close()
-
-	return errors.Join(handleErr, closeErr, writerErr)
 }

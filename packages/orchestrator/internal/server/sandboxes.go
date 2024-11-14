@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"log"
 	"os"
 
@@ -15,6 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
@@ -73,7 +73,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		defer telemetry.ReportEvent(closeCtx, "sandbox closed")
 		defer s.sandboxes.Remove(req.Sandbox.SandboxId)
 
-		waitErr := sbx.Wait(context.Background(), tracer)
+		waitErr := sbx.Wait()
 		if waitErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to wait for Sandbox: %v", waitErr)
 		}
@@ -121,12 +121,12 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			continue
 		}
 
-		if sbx.Sandbox == nil {
+		if sbx.Config == nil {
 			continue
 		}
 
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
-			Config:    sbx.Sandbox,
+			Config:    sbx.Config,
 			ClientId:  consul.ClientID,
 			StartTime: timestamppb.New(sbx.StartedAt),
 			EndTime:   timestamppb.New(sbx.EndAt),
@@ -157,14 +157,14 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	sbx.Healthcheck(ctx, true)
 
 	childSpan.SetAttributes(
-		attribute.String("env.id", sbx.Sandbox.TemplateId),
-		attribute.String("env.kernel.version", sbx.Sandbox.KernelVersion),
+		attribute.String("env.id", sbx.Config.TemplateId),
+		attribute.String("env.kernel.version", sbx.Config.KernelVersion),
 	)
 
 	// Don't allow connecting to the sandbox anymore.
 	s.dns.Remove(in.SandboxId)
 
-	err := sbx.Stop(ctx, s.tracer)
+	err := sbx.Stop()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sandbox '%s' stopped: %v\n", in.SandboxId, err)
 	}

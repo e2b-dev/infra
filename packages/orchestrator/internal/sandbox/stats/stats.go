@@ -1,4 +1,4 @@
-package sandbox
+package stats
 
 import (
 	"bufio"
@@ -27,7 +27,7 @@ type processStats struct {
 	MemoryKB float64
 }
 
-func newSandboxStats(pid int32) *SandboxStats {
+func NewSandboxStats(pid int32) *SandboxStats {
 	stats := SandboxStats{
 		pid:       pid,
 		timestamp: time.Now(),
@@ -48,7 +48,7 @@ func newSandboxStats(pid int32) *SandboxStats {
 	return &stats
 }
 
-func (s *SandboxStats) getStats() (*CurrentStats, error) {
+func (s *SandboxStats) GetStats() (*CurrentStats, error) {
 	currentStats, err := getCurrentStats(s.pid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current stats: %w", err)

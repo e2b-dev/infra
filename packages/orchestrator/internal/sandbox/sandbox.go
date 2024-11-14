@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -15,35 +14,31 @@ import (
 	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	localStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const (
-	fcVersionsDir  = "/fc-versions"
-	kernelsDir     = "/fc-kernels"
-	kernelMountDir = "/fc-vm"
-	kernelName     = "vmlinux.bin"
-	fcBinaryName   = "firecracker"
-)
-
 var httpClient = http.Client{
-	Timeout: 5 * time.Second,
+	Timeout: 10 * time.Second,
 }
 
 type Sandbox struct {
-	files    *SandboxFiles
+	files    *templateStorage.SandboxFiles
 	stopOnce func() error
 
-	fc   *fc
-	uffd *uffd.Uffd
+	process *fc.Process
+	uffd    *uffd.Uffd
+	rootfs  *localStorage.RootfsOverlay
 
-	Sandbox   *orchestrator.SandboxConfig
+	Config    *orchestrator.SandboxConfig
 	StartedAt time.Time
 	EndAt     time.Time
 	TraceID   string
@@ -52,13 +47,12 @@ type Sandbox struct {
 
 	slot   network.IPSlot
 	Logger *logs.SandboxLogger
-	stats  *SandboxStats
+	stats  *stats.SandboxStats
+
+	uffdExit chan error
 }
 
-func fcBinaryPath(fcVersion string) string {
-	return filepath.Join(fcVersionsDir, fcVersion, fcBinaryName)
-}
-
+// Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
 func NewSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -74,7 +68,7 @@ func NewSandbox(
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
-	tmpl, err := templateCache.GetTemplate(
+	template, err := templateCache.GetTemplate(
 		config.TemplateId,
 		config.BuildId,
 		config.KernelVersion,
@@ -101,80 +95,57 @@ func NewSandbox(
 
 	networkSpan.End()
 
-	internalLogger := logs.NewSandboxLogger(config.SandboxId, config.TemplateId, config.TeamId, config.Vcpu, config.RamMb, true)
-
-	fsEnv, err := newSandboxFiles(
-		childCtx,
-		tracer,
-		config.SandboxId,
-		config.TemplateId,
-		config.BuildId,
-		config.KernelVersion,
-		kernelsDir,
-		kernelMountDir,
-		kernelName,
-		fcBinaryPath(config.FirecrackerVersion),
-		config.HugePages,
-	)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to assemble env files info for FC: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return nil, cleanup, errMsg
-	}
+	sandboxFiles := templateStorage.NewSandboxFiles(template.Files, config.SandboxId)
 
 	cleanup = append(cleanup, func() error {
-		err = fsEnv.Cleanup(childCtx)
-		if err != nil {
-			errMsg := fmt.Errorf("failed to delete instance files: %w", err)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-		} else {
-			telemetry.ReportEvent(childCtx, "deleted instance files")
+		filesErr := cleanupFiles(sandboxFiles)
+		if filesErr != nil {
+			return fmt.Errorf("failed to cleanup files: %w", filesErr)
 		}
 
 		return nil
 	})
 
-	telemetry.ReportEvent(childCtx, "assembled env files info")
-
-	err = fsEnv.Ensure(childCtx)
+	err = os.MkdirAll(sandboxFiles.SandboxCacheDir(), 0o755)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to create env for FC: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return nil, cleanup, errMsg
+		return nil, cleanup, fmt.Errorf("failed to create sandbox cache dir: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "created env for FC")
+	_, overlaySpan := tracer.Start(childCtx, "create-rootfs-overlay")
+	rootfsOverlay, err := template.NewRootfsOverlay(
+		sandboxFiles.SandboxCacheRootfsPath(),
+	)
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to create overlay file: %w", err)
+	}
 
-	memfile, err := tmpl.Memfile()
+	cleanup = append(cleanup, func() error {
+		rootfsOverlay.Close()
+
+		return nil
+	})
+
+	go func() {
+		runErr := rootfsOverlay.Run()
+		if runErr != nil {
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: rootfs overlay error: %v\n", config.SandboxId, runErr)
+		}
+	}()
+
+	memfile, err := template.Memfile()
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get memfile: %w", err)
 	}
+	overlaySpan.End()
 
-	var fcUffd *uffd.Uffd
-	if fsEnv.UFFDSocketPath != nil {
-		fcUffd, err = uffd.New(memfile, *fsEnv.UFFDSocketPath, config.TemplateId, config.BuildId)
-		if err != nil {
-			return nil, cleanup, fmt.Errorf("failed to create uffd: %w", err)
-		}
-
-		telemetry.ReportEvent(childCtx, "created uffd")
-
-		uffdErr := fcUffd.Start(childCtx, tracer, logger)
-		if err != nil {
-			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-
-			return nil, cleanup, errMsg
-		}
-
-		telemetry.ReportEvent(childCtx, "started uffd")
+	fcUffd, uffdErr := uffd.New(memfile, sandboxFiles.SandboxUffdSocketPath())
+	if uffdErr != nil {
+		return nil, cleanup, fmt.Errorf("failed to create uffd: %w", uffdErr)
 	}
 
-	var pollReady chan struct{}
-	if fcUffd != nil {
-		pollReady = fcUffd.PollReady
+	uffdStartErr := fcUffd.Start(config.SandboxId)
+	if uffdStartErr != nil {
+		return nil, cleanup, fmt.Errorf("failed to start uffd: %w", uffdStartErr)
 	}
 
 	cleanup = append(cleanup, func() error {
@@ -186,104 +157,99 @@ func NewSandbox(
 		return nil
 	})
 
-	overlayCtx, overlaySpan := tracer.Start(childCtx, "create-rootfs-overlay")
-	fsOverlay, err := tmpl.NewRootfsOverlay(filepath.Join(os.TempDir(), fmt.Sprintf("rootfs-%s-overlay.img", config.SandboxId)))
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
-	}
+	uffdExit := make(chan error, 1)
 
-	cleanup = append(cleanup, func() error {
-		fsOverlay.Close()
-
-		return nil
-	})
+	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(childCtx)
+	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
 
 	go func() {
-		overlayErr := fsOverlay.Run()
-		if overlayErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to run overlay: %v\n", overlayErr)
-		}
+		uffdWaitErr := <-fcUffd.Exit
+		uffdExit <- uffdWaitErr
+
+		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
 
-	overlayPath, err := fsOverlay.Path(overlayCtx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error getting overlay path: %v\n", err)
-
-		return nil, cleanup, err
-	}
-	overlaySpan.End()
-
-	fc := newFC(
-		childCtx,
-		tracer,
-		ips,
-		fsEnv,
-		&MmdsMetadata{
-			InstanceID: config.SandboxId,
-			EnvID:      config.TemplateId,
-			Address:    logs.LogsCollectorAddress,
-			TraceID:    traceID,
-			TeamID:     config.TeamId,
-		},
-		pollReady,
-		overlayPath,
-	)
-
-	snapfile, err := tmpl.Snapfile()
+	snapfile, err := template.Snapfile()
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get snapfile: %w", err)
 	}
 
-	err = fc.start(childCtx, tracer, internalLogger, snapfile)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to start FC: %w", err)
-
-		return nil, cleanup, errMsg
+	fcHandle, fcErr := fc.NewProcess(
+		uffdStartCtx,
+		tracer,
+		ips,
+		sandboxFiles,
+		&fc.MmdsMetadata{
+			SandboxId:            config.SandboxId,
+			TemplateId:           config.TemplateId,
+			LogsCollectorAddress: logs.LogsCollectorAddress,
+			TraceId:              traceID,
+			TeamId:               config.TeamId,
+		},
+		snapfile,
+		rootfsOverlay,
+		fcUffd.Ready,
+	)
+	if fcErr != nil {
+		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
+
+	internalLogger := logger.GetInternalLogger()
+	fcStartErr := fcHandle.Start(uffdStartCtx, tracer, internalLogger)
+	if fcStartErr != nil {
+		return nil, cleanup, fmt.Errorf("failed to start FC: %w", fcStartErr)
+	}
+
+	cleanup = append(cleanup, func() error {
+		stopErr := fcHandle.Stop()
+		if stopErr != nil {
+			return fmt.Errorf("failed to stop FC: %w", stopErr)
+		}
+
+		return nil
+	})
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
-	stats := newSandboxStats(int32(fc.pid))
+	pid, err := fcHandle.Pid()
 	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to create stats: %w", err)
+		return nil, cleanup, fmt.Errorf("failed to get FC PID: %w", err)
 	}
+
+	sandboxStats := stats.NewSandboxStats(int32(pid))
 
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	sbx = &Sandbox{
-		files:       fsEnv,
-		slot:        ips,
-		fc:          fc,
-		uffd:        fcUffd,
-		Sandbox:     config,
-		StartedAt:   startedAt,
-		networkPool: networkPool,
-		EndAt:       endAt,
-		Logger:      logger,
-		stats:       stats,
+		uffdExit:  uffdExit,
+		files:     sandboxFiles,
+		slot:      ips,
+		process:   fcHandle,
+		uffd:      fcUffd,
+		Config:    config,
+		StartedAt: startedAt,
+		EndAt:     endAt,
+		rootfs:    rootfsOverlay,
+		stats:     sandboxStats,
+		Logger:    logger,
 		stopOnce: sync.OnceValue(func() error {
-			var uffdErr error
-			if fcUffd != nil {
-				// Wait until we stop uffd if it exists
-				time.Sleep(1 * time.Second)
+			var errs []error
 
-				uffdErr = fcUffd.Stop()
-				if uffdErr != nil {
-					uffdErr = fmt.Errorf("failed to stop uffd: %w", err)
-				}
+			fcStopErr := fcHandle.Stop()
+			if fcStopErr != nil {
+				errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
+			}
+
+			uffdStopErr := fcUffd.Stop()
+			if uffdStopErr != nil {
+				errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
 			}
 
 			healthcheckCtx.Lock()
 			healthcheckCtx.Cancel()
 			healthcheckCtx.Unlock()
 
-			fcErr := fc.stop()
-
-			if fcErr != nil || uffdErr != nil {
-				return errors.Join(fcErr, uffdErr)
-			}
-
-			return nil
+			return errors.Join(errs...)
 		}),
 	}
 
@@ -293,7 +259,7 @@ func NewSandbox(
 
 	// Sync envds.
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
-		initErr := sbx.initEnvd(syncCtx, tracer, config.EnvVars, overlayPath)
+		initErr := sbx.initEnvd(syncCtx, tracer, config.EnvVars)
 		if initErr != nil {
 			return nil, cleanup, fmt.Errorf("failed to init new envd: %w", initErr)
 		} else {
@@ -325,56 +291,26 @@ func NewSandbox(
 	return sbx, cleanup, nil
 }
 
-func (s *Sandbox) Wait(ctx context.Context, tracer trace.Tracer) error {
-	uffdExit := make(chan error)
-	fcExit := make(chan error)
-
-	go func() {
-		fcExit <- s.fc.wait()
-		close(fcExit)
-	}()
-
-	if s.uffd != nil {
-		go func() {
-			uffdExit <- s.uffd.Wait()
-			close(uffdExit)
-		}()
-	}
-
+func (s *Sandbox) Wait() error {
 	select {
-	case fcErr := <-fcExit:
-		stopErr := s.Stop(ctx, tracer)
-		uffdErr := <-uffdExit
+	case fcErr := <-s.process.Exit:
+		stopErr := s.Stop()
+		uffdErr := <-s.uffdExit
 
 		return errors.Join(fcErr, stopErr, uffdErr)
-	case uffdErr := <-uffdExit:
-		stopErr := s.Stop(ctx, tracer)
-		fcErr := <-fcExit
+	case uffdErr := <-s.uffdExit:
+		stopErr := s.Stop()
+		fcErr := <-s.process.Exit
 
 		return errors.Join(uffdErr, stopErr, fcErr)
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 }
 
-func (s *Sandbox) Stop(ctx context.Context, tracer trace.Tracer) error {
-	childCtx, childSpan := tracer.Start(ctx, "stop-sandbox", trace.WithAttributes())
-	defer childSpan.End()
-
+func (s *Sandbox) Stop() error {
 	err := s.stopOnce()
 	if err != nil {
 		return fmt.Errorf("failed to stop sandbox: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "stopped sandbox")
-
 	return nil
-}
-
-func (s *Sandbox) SlotIdx() int {
-	return s.slot.SlotIdx
-}
-
-func (s *Sandbox) FcPid() int {
-	return s.fc.pid
 }
