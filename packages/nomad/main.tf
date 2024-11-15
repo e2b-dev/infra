@@ -55,6 +55,7 @@ resource "nomad_job" "api" {
 
   hcl2 {
     vars = {
+      session_proxy_port            = var.session_proxy_port.port
       orchestrator_port             = var.orchestrator_port
       template_manager_address      = "http://localhost:${var.template_manager_port}"
       otel_collector_grpc_endpoint  = "otel-collector.service.consul:4317"
