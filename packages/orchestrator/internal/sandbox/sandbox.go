@@ -200,15 +200,6 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
 
-	cleanup = append(cleanup, func() error {
-		stopErr := fcHandle.Stop()
-		if stopErr != nil {
-			return fmt.Errorf("failed to stop FC: %w", stopErr)
-		}
-
-		return nil
-	})
-
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
 	pid, err := fcHandle.Pid()
@@ -252,6 +243,15 @@ func NewSandbox(
 			return errors.Join(errs...)
 		}),
 	}
+
+	cleanup = append(cleanup, func() error {
+		stopErr := sbx.stopOnce()
+		if stopErr != nil {
+			return fmt.Errorf("failed to stop FC: %w", stopErr)
+		}
+
+		return nil
+	})
 
 	// Ensure the syncing takes at most 10 seconds.
 	syncCtx, syncCancel := context.WithTimeout(childCtx, 10*time.Second)

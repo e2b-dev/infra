@@ -280,6 +280,16 @@ func (p *Process) Start(
 	go func() {
 		waitErr := p.cmd.Wait()
 		if waitErr != nil {
+			var exitErr *exec.ExitError
+			if errors.As(waitErr, &exitErr) {
+				// Check if the process was killed by a signal
+				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && status.Signal() == syscall.SIGKILL {
+					p.Exit <- nil
+
+					return
+				}
+			}
+
 			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
 
 			p.Exit <- errMsg
@@ -330,7 +340,7 @@ func (p *Process) Start(
 
 func (p *Process) Pid() (int, error) {
 	if p.cmd.Process == nil {
-		return 0, fmt.Errorf("fc process not	started")
+		return 0, fmt.Errorf("fc process not started")
 	}
 
 	return p.cmd.Process.Pid, nil

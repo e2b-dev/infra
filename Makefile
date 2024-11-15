@@ -35,6 +35,7 @@ login-gcloud:
 	gcloud config set project "$(GCP_PROJECT_ID)"
 	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
 	gcloud --quiet auth application-default login
+	gcloud auth configure-docker "us-west-1-docker.pkg.dev"
 
 .PHONY: init
 init:

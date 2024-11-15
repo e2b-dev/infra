@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
@@ -21,7 +22,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"go.opentelemetry.io/otel"
 )
 
 func main() {
@@ -168,5 +168,5 @@ func mockSandbox(
 		}
 	}()
 
-	sbx.Stop(childCtx, tracer)
+	sbx.Stop()
 }
