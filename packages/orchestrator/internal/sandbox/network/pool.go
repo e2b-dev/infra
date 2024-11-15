@@ -13,6 +13,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const (
+	ipSlotPoolSize       = 32
+	reusedIpSlotPoolSize = 64
+)
+
 type SlotPool struct {
 	newSlots    chan IPSlot
 	reusedSlots chan IPSlot
@@ -23,9 +28,9 @@ type SlotPool struct {
 	newCounter    metric.Int64UpDownCounter
 }
 
-func NewSlotPool(size, returnedSize int, consul *consul.Client) *SlotPool {
-	newSlots := make(chan IPSlot, size-1)
-	reusedSlots := make(chan IPSlot, returnedSize)
+func NewSlotPool(consul *consul.Client) *SlotPool {
+	newSlots := make(chan IPSlot, ipSlotPoolSize-1)
+	reusedSlots := make(chan IPSlot, reusedIpSlotPoolSize)
 
 	newCounter, err := meters.GetUpDownCounter(meters.NewNetworkSlotSPoolCounterMeterName)
 	if err != nil {
@@ -49,8 +54,6 @@ func NewSlotPool(size, returnedSize int, consul *consul.Client) *SlotPool {
 }
 
 func (p *SlotPool) Populate(ctx context.Context) error {
-	defer close(p.newSlots)
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -125,27 +128,4 @@ func (p *SlotPool) Return(slot IPSlot) {
 			}
 		}
 	}
-}
-
-func (p *SlotPool) Close() error {
-	var errs []error
-
-	close(p.reusedSlots)
-	close(p.newSlots)
-
-	for slot := range p.reusedSlots {
-		err := cleanupSlot(p.consul, slot)
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	for slot := range p.newSlots {
-		err := cleanupSlot(p.consul, slot)
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	return errors.Join(errs...)
 }

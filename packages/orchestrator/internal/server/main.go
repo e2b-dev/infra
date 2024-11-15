@@ -27,9 +27,7 @@ import (
 )
 
 const (
-	ServiceName          = "orchestrator"
-	ipSlotPoolSize       = 32
-	reusedIpSlotPoolSize = 64
+	ServiceName = "orchestrator"
 )
 
 type server struct {
@@ -43,6 +41,8 @@ type server struct {
 }
 
 func New() *grpc.Server {
+	log.Println("Initializing orchestrator")
+
 	s := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithInterceptorFilter(filters.Not(filters.HealthCheck())))),
 		grpc.ChainUnaryInterceptor(
@@ -50,19 +50,12 @@ func New() *grpc.Server {
 		),
 	)
 
-	log.Println("Initializing orchestrator server")
-
 	ctx := context.Background()
 
 	dnsServer := dns.New()
 	go dnsServer.Start("127.0.0.1:53")
 
 	tracer := otel.Tracer(ServiceName)
-
-	consulClient, err := consul.New(ctx)
-	if err != nil {
-		log.Fatalf("failed to create Consul client: %v", err)
-	}
 
 	client, err := storage.NewClient(ctx, storage.WithJSONReads())
 	if err != nil {
@@ -74,7 +67,12 @@ func New() *grpc.Server {
 		client.Bucket(templateStorage.BucketName),
 	)
 
-	networkPool := network.NewSlotPool(ipSlotPoolSize, reusedIpSlotPoolSize, consulClient)
+	consulClient, err := consul.New(ctx)
+	if err != nil {
+		log.Fatalf("failed to create Consul client: %v", err)
+	}
+
+	networkPool := network.NewSlotPool(consulClient)
 
 	// We start the pool last to avoid allocation network slots if the other components fail to initialize.
 	go func() {
