@@ -2,8 +2,9 @@ package storage
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -31,7 +32,7 @@ const (
 	SnapfileName = "snapfile"
 )
 
-var BucketName = os.Getenv("TEMPLATE_BUCKET_NAME")
+var BucketName = utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "bucket for storing template files")
 
 type TemplateFiles struct {
 	TemplateId         string
