@@ -64,7 +64,9 @@ func NewSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	logger *logs.SandboxLogger,
-) (sbx *Sandbox, cleanup []func() error, err error) {
+) (*Sandbox, []func() error, error) {
+	var cleanup []func() error
+
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
@@ -211,7 +213,7 @@ func NewSandbox(
 
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
-	sbx = &Sandbox{
+	sbx := &Sandbox{
 		uffdExit:  uffdExit,
 		files:     sandboxFiles,
 		slot:      ips,
