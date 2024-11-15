@@ -50,7 +50,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 		for _, node := range o.nodes {
 			found := false
 			for _, activeNode := range nodes {
-				if node.ID == activeNode.ID {
+				if node.Info.ID == activeNode.Info.ID {
 					found = true
 					break
 				}
@@ -69,7 +69,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 				continue
 			}
 
-			activeInstances, instancesErr := o.getInstances(childCtx, node.ID)
+			activeInstances, instancesErr := o.getInstances(childCtx, node.Info)
 			if instancesErr != nil {
 				o.logger.Errorf("Error getting instances\n: %v", instancesErr)
 				continue
