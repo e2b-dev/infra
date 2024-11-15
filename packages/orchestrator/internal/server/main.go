@@ -61,7 +61,7 @@ func New() *grpc.Server {
 
 	consulClient, err := consul.New(ctx)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to create Consul client: %v", err)
 	}
 
 	client, err := storage.NewClient(ctx, storage.WithJSONReads())
@@ -69,12 +69,10 @@ func New() *grpc.Server {
 		log.Fatalf("failed to create GCS client: %v", err)
 	}
 
-	if templateStorage.BucketName == "" {
-		// TODO: Add helper method with something like Mustk
-		log.Fatalf("template storage bucket name is empty")
-	}
-
-	templateCache := localStorage.NewTemplateCache(ctx, client, templateStorage.BucketName)
+	templateCache := localStorage.NewTemplateCache(
+		ctx,
+		client.Bucket(templateStorage.BucketName),
+	)
 
 	networkPool := network.NewSlotPool(ipSlotPoolSize, reusedIpSlotPoolSize, consulClient)
 

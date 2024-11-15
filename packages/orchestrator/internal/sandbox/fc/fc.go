@@ -85,13 +85,15 @@ func (p *Process) loadSnapshot(
 		BackendType: &backendType,
 	}
 
+	snapfilePath := snapfile.Path()
+
 	snapshotConfig := operations.LoadSnapshotParams{
 		Context: childCtx,
 		Body: &models.SnapshotLoadParams{
 			ResumeVM:            false,
 			EnableDiffSnapshots: false,
 			MemBackend:          backend,
-			SnapshotPath:        &snapfile.Path,
+			SnapshotPath:        &snapfilePath,
 		},
 	}
 

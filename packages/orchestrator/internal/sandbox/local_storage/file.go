@@ -11,7 +11,7 @@ import (
 )
 
 type File struct {
-	Path string
+	path string
 }
 
 func NewFile(
@@ -35,10 +35,14 @@ func NewFile(
 	}
 
 	return &File{
-		Path: path,
+		path: path,
 	}, nil
 }
 
+func (f *File) Path() string {
+	return f.path
+}
+
 func (f *File) Close() error {
-	return os.Remove(f.Path)
+	return os.Remove(f.path)
 }

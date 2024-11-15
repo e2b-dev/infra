@@ -11,9 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const (
-	defaultPort = 5008
-)
+const defaultPort = 5008
 
 func main() {
 	port := flag.Int("port", defaultPort, "Port for test HTTP server")

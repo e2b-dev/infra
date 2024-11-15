@@ -18,9 +18,7 @@ type TemplateCache struct {
 	ctx    context.Context
 }
 
-func NewTemplateCache(ctx context.Context, client *storage.Client, bucket string) *TemplateCache {
-	b := client.Bucket(bucket)
-
+func NewTemplateCache(ctx context.Context, bucket *storage.BucketHandle) *TemplateCache {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, *Template](templateDataExpiration),
 	)
@@ -37,7 +35,7 @@ func NewTemplateCache(ctx context.Context, client *storage.Client, bucket string
 	go cache.Start()
 
 	return &TemplateCache{
-		bucket: b,
+		bucket: bucket,
 		cache:  cache,
 		ctx:    ctx,
 	}

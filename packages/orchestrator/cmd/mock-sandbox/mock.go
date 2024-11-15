@@ -61,7 +61,7 @@ func main() {
 
 	consulClient, err := consul.New(context.Background())
 
-	templateCache := localStorage.NewTemplateCache(ctx, client, templateStorage.BucketName)
+	templateCache := localStorage.NewTemplateCache(ctx, client.Bucket(templateStorage.BucketName))
 
 	networkPool := network.NewSlotPool(10, 0, consulClient)
 
