@@ -88,6 +88,10 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 		pushInterval,
 	)
 
+	if err := m.pusher.Open(pushWorkers); err != nil {
+		return "", 0, err
+	}
+
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
@@ -98,10 +102,6 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 			return
 		}
 	}()
-
-	if err := m.pusher.Open(pushWorkers); err != nil {
-		return "", 0, err
-	}
 
 	local := m.pusher
 
@@ -123,7 +123,11 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 		},
 	)
 
+	if err := m.puller.Open(pullWorkers); err != nil {
+		return "", 0, err
+	}
 	m.wg.Add(1)
+
 	go func() {
 		defer m.wg.Done()
 
@@ -133,10 +137,6 @@ func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
 			return
 		}
 	}()
-
-	if err := m.puller.Open(pullWorkers); err != nil {
-		return "", 0, err
-	}
 
 	m.puller.Finalize([]int64{})
 
