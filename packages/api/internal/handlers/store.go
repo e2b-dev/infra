@@ -18,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -32,7 +31,6 @@ type APIStore struct {
 	analytics       *analyticscollector.Analytics
 	posthog         *analyticscollector.PosthogClient
 	Tracer          trace.Tracer
-	instanceCache   *instance.InstanceCache
 	orchestrator    *orchestrator.Orchestrator
 	templateManager *template_manager.TemplateManager
 	buildCache      *builds.BuildCache
