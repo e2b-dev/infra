@@ -5,6 +5,7 @@ import (
 
 	nomadapi "github.com/hashicorp/nomad/api"
 
+	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
@@ -13,26 +14,24 @@ type Node struct {
 	CPUUsage int64
 	RamUsage int64
 	Client   *GRPCClient
+	Info     *node.NodeInfo
 }
 
-type nodeInfo struct {
-	ID      string
-	Address string
-}
-
-func (o *Orchestrator) listNomadNodes() ([]*nodeInfo, error) {
+func (o *Orchestrator) listNomadNodes() ([]*node.NodeInfo, error) {
 	nomadNodes, _, err := o.nomadClient.Nodes().List(&nomadapi.QueryOptions{Filter: "Status == \"ready\""})
 	if err != nil {
 		return nil, err
 	}
 
-	nodes := make([]*nodeInfo, 0, len(nomadNodes))
-	for _, node := range nomadNodes {
-		nodes = append(nodes, &nodeInfo{
-			ID:      node.ID[:consts.NodeIDLength],
-			Address: fmt.Sprintf("%s:%s", node.Address, consts.OrchestratorPort),
+	nodes := make([]*node.NodeInfo, 0, len(nomadNodes))
+	for _, n := range nomadNodes {
+		nodes = append(nodes, &node.NodeInfo{
+			ID:                  n.ID[:consts.NodeIDLength],
+			OrchestratorAddress: fmt.Sprintf("%s:%s", n.Address, consts.OrchestratorPort),
+			ProxyAddress:        fmt.Sprintf("%s:%s", n.Address, consts.SessionProxyPort),
 		})
 	}
+
 	return nodes, nil
 }
 

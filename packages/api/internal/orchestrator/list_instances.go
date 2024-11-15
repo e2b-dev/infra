@@ -11,15 +11,16 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
-func (o *Orchestrator) getInstances(ctx context.Context, nodeID string) ([]*instance.InstanceInfo, error) {
+func (o *Orchestrator) getInstances(ctx context.Context, node *node.NodeInfo) ([]*instance.InstanceInfo, error) {
 	childCtx, childSpan := o.tracer.Start(ctx, "list-instances")
 	defer childSpan.End()
 
-	client, err := o.GetClient(nodeID)
+	client, err := o.GetClient(node.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GRPC client: %w", err)
 	}
@@ -68,6 +69,7 @@ func (o *Orchestrator) getInstances(ctx context.Context, nodeID string) ([]*inst
 			TeamID:            &teamID,
 			Metadata:          config.Metadata,
 			MaxInstanceLength: time.Duration(config.MaxSandboxLength) * time.Hour,
+			Node:              node,
 		})
 	}
 

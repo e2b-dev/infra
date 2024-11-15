@@ -6,6 +6,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
+	"github.com/e2b-dev/infra/packages/api/internal/node"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -35,8 +36,8 @@ func (a *GRPCClient) Close() error {
 	return nil
 }
 
-func (o *Orchestrator) connectToNode(node *nodeInfo) error {
-	client, err := NewClient(node.Address)
+func (o *Orchestrator) connectToNode(node *node.NodeInfo) error {
+	client, err := NewClient(node.OrchestratorAddress)
 	if err != nil {
 		return err
 	}
@@ -44,6 +45,7 @@ func (o *Orchestrator) connectToNode(node *nodeInfo) error {
 	n := &Node{
 		ID:     node.ID,
 		Client: client,
+		Info:   node,
 	}
 
 	o.nodes[n.ID] = n

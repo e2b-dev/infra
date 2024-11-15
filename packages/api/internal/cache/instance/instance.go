@@ -14,6 +14,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 )
@@ -34,6 +35,7 @@ type InstanceInfo struct {
 	EndTime           time.Time
 	VCpu              int64
 	RamMB             int64
+	Node              *node.NodeInfo
 }
 
 type InstanceCache struct {
