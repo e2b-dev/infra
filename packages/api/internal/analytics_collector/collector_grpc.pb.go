@@ -4,7 +4,7 @@
 // - protoc             v4.25.3
 // source: collector.proto
 
-package analytics
+package analyticscollector
 
 import (
 	context "context"

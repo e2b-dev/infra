@@ -1,9 +1,10 @@
-package analytics
+package analyticscollector
 
 import (
 	"fmt"
-	"google.golang.org/grpc"
 	"os"
+
+	"google.golang.org/grpc"
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 )

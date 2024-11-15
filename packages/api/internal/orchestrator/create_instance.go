@@ -133,7 +133,7 @@ func (o *Orchestrator) CreateSandbox(
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
 
-	if cacheErr := o.instanceCache.Add(instance.InstanceInfo{
+	instanceInfo := instance.InstanceInfo{
 		StartTime:         startTime,
 		EndTime:           endTime,
 		Instance:          &sbx,
@@ -143,7 +143,8 @@ func (o *Orchestrator) CreateSandbox(
 		VCpu:              build.Vcpu,
 		RamMB:             build.RAMMB,
 		MaxInstanceLength: time.Duration(maxInstanceLengthHours) * time.Hour,
-	}); cacheErr != nil {
+	}
+	if cacheErr := o.instanceCache.Add(instanceInfo, true); cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 

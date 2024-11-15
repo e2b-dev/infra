@@ -6,11 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"golang.org/x/sync/semaphore"
-
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -18,6 +17,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -39,9 +40,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	span := trace.SpanFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
-
-	sandboxLogger := a.sandboxLogger.With("instanceID", sandboxID, "teamID", team.ID.String(), "traceID", traceID)
-	sandboxLogger.Info("Started creating sandbox")
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
@@ -80,6 +78,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 	templateSpan.End()
 
+	sandboxLogger := logs.NewSandboxLogger(sandboxID, env.TemplateID, team.ID.String(), build.Vcpu, build.RAMMB, false)
+	sandboxLogger.Debugf("Started creating sandbox")
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	var alias string
@@ -101,7 +101,14 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "waiting for create sandbox parallel limit semaphore slot")
 
 	_, rateSpan := a.Tracer.Start(ctx, "rate-limit")
+	counter, err := meters.GetUpDownCounter(meters.RateLimitCounterMeterName)
+	if err != nil {
+		a.logger.Errorf("error getting counter: %s", err)
+	}
+
+	counter.Add(ctx, 1)
 	limitErr := postSandboxParallelLimit.Acquire(ctx, 1)
+	counter.Add(ctx, -1)
 	if limitErr != nil {
 		errMsg := fmt.Errorf("error when acquiring parallel lock: %w", limitErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -204,7 +211,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		attribute.String("instance.id", sandbox.SandboxID),
 	)
 
-	sandboxLogger.With("envID", env.TemplateID).Info("Sandbox created")
+	sandboxLogger.Infof("Sandbox created with - end time: %s", endTime.Format("2006-01-02 15:04:05 -07:00"))
 
 	c.JSON(http.StatusCreated, &sandbox)
 }

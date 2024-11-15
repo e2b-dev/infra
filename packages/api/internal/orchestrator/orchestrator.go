@@ -5,23 +5,21 @@ import (
 	"errors"
 
 	nomadapi "github.com/hashicorp/nomad/api"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/analytics"
+	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
 type Orchestrator struct {
-	nomadClient     *nomadapi.Client
-	instanceCache   *instance.InstanceCache
-	nodes           map[string]*Node
-	tracer          trace.Tracer
-	logger          *zap.SugaredLogger
-	analytics       *analytics.Analytics
-	instanceCounter *metric.Int64UpDownCounter
+	nomadClient   *nomadapi.Client
+	instanceCache *instance.InstanceCache
+	nodes         map[string]*Node
+	tracer        trace.Tracer
+	logger        *zap.SugaredLogger
+	analytics     *analyticscollector.Analytics
 }
 
 func New(
@@ -29,21 +27,19 @@ func New(
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
 	logger *zap.SugaredLogger,
-	instanceCounter *metric.Int64UpDownCounter,
-	posthogClient *analytics.PosthogClient,
+	posthogClient *analyticscollector.PosthogClient,
 ) (*Orchestrator, error) {
-	analyticsInstance, err := analytics.NewAnalytics()
+	analyticsInstance, err := analyticscollector.NewAnalytics()
 	if err != nil {
 		logger.Errorf("Error initializing Analytics client\n: %v", err)
 	}
 
 	o := Orchestrator{
-		analytics:       analyticsInstance,
-		instanceCounter: instanceCounter,
-		nomadClient:     nomadClient,
-		logger:          logger,
-		tracer:          tracer,
-		nodes:           make(map[string]*Node),
+		analytics:   analyticsInstance,
+		nomadClient: nomadClient,
+		logger:      logger,
+		tracer:      tracer,
+		nodes:       make(map[string]*Node),
 	}
 
 	cache := instance.NewCache(
@@ -51,7 +47,6 @@ func New(
 		logger,
 		o.getInsertInstanceFunction(ctx, logger),
 		o.getDeleteInstanceFunction(ctx, posthogClient, logger),
-		*instanceCounter,
 	)
 
 	o.instanceCache = cache

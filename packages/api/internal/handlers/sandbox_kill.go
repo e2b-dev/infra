@@ -27,6 +27,26 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		attribute.String("team.id", teamID.String()),
 	)
 
+	sbx, err := a.orchestrator.GetSandbox(sandboxID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error killing sandbox - sandbox '%s' was not found", sandboxID))
+
+		return
+	}
+
+	sbx.Logger.Debugf("Sandbox kill request received")
+
+	if *sbx.TeamID != teamID {
+		errMsg := fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String())
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		a.sendAPIStoreError(c, http.StatusUnauthorized, fmt.Sprintf("Error killing sandbox - sandbox '%s' does not belong to your team '%s'", sandboxID, teamID.String()))
+
+		return
+	}
+
+	a.instanceCache.Kill(sandboxID)
+
 	found := a.orchestrator.DeleteInstance(ctx, sandboxID)
 	if !found {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error killing sandbox - sandbox '%s' was not found", sandboxID))

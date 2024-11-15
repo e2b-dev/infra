@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/e2b-dev/infra/packages/api/internal/analytics"
+	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 )
 
 func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
@@ -71,21 +71,21 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
-		err := c.Add(*instance)
-		if err != nil {
-			fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
+		if !c.Exists(instance.Instance.SandboxID) {
+			err := c.Add(*instance, false)
+			if err != nil {
+				fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
+			}
 		}
 	}
-}
 
-func (c *InstanceCache) SendAnalyticsEvent() {
 	// Send running instances event to analytics
-	instanceIds := make([]string, c.cache.Len())
-	for i, sbxID := range c.cache.Keys() {
-		instanceIds[i] = sbxID
+	instanceIds := make([]string, len(instances))
+	for i, instance := range instances {
+		instanceIds[i] = instance.Instance.SandboxID
 	}
 
-	_, err := c.analytics.RunningInstances(context.Background(), &analytics.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
+	_, err := c.analytics.RunningInstances(context.Background(), &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
 	if err != nil {
 		c.logger.Errorf("Error sending running instances event to analytics\n: %v", err)
 	}

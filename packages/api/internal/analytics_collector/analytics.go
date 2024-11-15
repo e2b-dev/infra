@@ -1,4 +1,4 @@
-package analytics
+package analyticscollector
 
 import (
 	"log"
@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/posthog/posthog-go"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 )
 
 const (

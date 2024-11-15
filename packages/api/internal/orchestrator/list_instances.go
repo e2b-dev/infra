@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 func (o *Orchestrator) getInstances(ctx context.Context, nodeID string) ([]*instance.InstanceInfo, error) {
@@ -52,6 +53,7 @@ func (o *Orchestrator) getInstances(ctx context.Context, nodeID string) ([]*inst
 		}
 
 		sandboxesInfo = append(sandboxesInfo, &instance.InstanceInfo{
+			Logger: logs.NewSandboxLogger(config.SandboxId, config.TemplateId, teamID.String(), config.Vcpu, config.RamMb, false),
 			Instance: &api.Sandbox{
 				SandboxID:  config.SandboxId,
 				TemplateID: config.TemplateId,
