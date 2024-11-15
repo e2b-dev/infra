@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -38,6 +39,7 @@ func (o *Orchestrator) CreateSandbox(
 	endTime time.Time,
 	maxInstancesPerTeam int64,
 	timeout time.Duration,
+	logger *logs.SandboxLogger,
 ) (*api.Sandbox, error) {
 	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox",
 		trace.WithAttributes(
@@ -134,6 +136,7 @@ func (o *Orchestrator) CreateSandbox(
 	endTime = startTime.Add(timeout)
 
 	instanceInfo := instance.InstanceInfo{
+		Logger:            logger,
 		StartTime:         startTime,
 		EndTime:           endTime,
 		Instance:          &sbx,

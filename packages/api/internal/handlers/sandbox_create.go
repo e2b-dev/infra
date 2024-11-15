@@ -165,6 +165,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		endTime,
 		teamInfo.Tier.ConcurrentInstances,
 		timeout,
+		sandboxLogger,
 	)
 	if instanceErr != nil {
 		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
