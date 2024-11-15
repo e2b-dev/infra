@@ -167,8 +167,11 @@ func (o *Orchestrator) CreateSandbox(
 		VCpu:              build.Vcpu,
 		RamMB:             build.RAMMB,
 		MaxInstanceLength: time.Duration(maxInstanceLengthHours) * time.Hour,
+		Node:              node.Info,
 	}
-	if cacheErr := o.instanceCache.Add(instanceInfo, true); cacheErr != nil {
+
+	cacheErr := o.instanceCache.Add(instanceInfo, true)
+	if cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 
