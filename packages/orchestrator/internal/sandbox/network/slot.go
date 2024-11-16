@@ -22,6 +22,8 @@ const (
 	tapMask  = 30
 )
 
+var kv = consul.Client.KV()
+
 type IPSlot struct {
 	KVKey   string
 	SlotIdx int
@@ -107,8 +109,6 @@ func (ips *IPSlot) TapCIDR() string {
 }
 
 func NewSlot() (*IPSlot, error) {
-	kv := consul.Client.KV()
-
 	var slot *IPSlot
 
 	trySlot := func(slotIdx int, key string) (*IPSlot, error) {
@@ -183,8 +183,6 @@ func NewSlot() (*IPSlot, error) {
 }
 
 func (ips *IPSlot) Release() error {
-	kv := consul.Client.KV()
-
 	pair, _, err := kv.Get(ips.KVKey, nil)
 	if err != nil {
 		return fmt.Errorf("failed to release IPSlot: Failed to read Consul KV: %w", err)
