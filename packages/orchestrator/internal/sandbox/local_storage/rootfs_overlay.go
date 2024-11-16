@@ -16,9 +16,6 @@ import (
 const ChunkSize = 2 * 1024 * 1024 // 2MiB
 
 type RootfsOverlay struct {
-	// TODO: Remove - Only for debugging
-	cachePath string
-
 	storage    *template.BlockStorage
 	mnt        *nbd.ManagedPathMount
 	localCache *os.File
@@ -66,7 +63,6 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 	ready := make(chan string, 1)
 
 	return &RootfsOverlay{
-		cachePath:  cachePath,
 		ready:      ready,
 		mnt:        mnt,
 		localCache: f,
@@ -101,12 +97,12 @@ func (o *RootfsOverlay) Run() error {
 
 		err = o.localCache.Close()
 		if err != nil {
-			log.Printf("[%s] error closing overlay file: %v\n", o.cachePath, err)
+			log.Printf("error closing overlay file: %v\n", err)
 		}
 
 		err = os.Remove(o.localCache.Name())
-		if err != nil {
-			log.Printf("[%s] error removing overlay file: %v\n", o.cachePath, err)
+		if err != nil && !os.IsNotExist(err) {
+			log.Printf("error removing overlay file: %v\n", err)
 		}
 
 		counter := 0
@@ -115,7 +111,7 @@ func (o *RootfsOverlay) Run() error {
 			err := nbd.Pool.ReleaseDevice(file)
 			if err != nil {
 				if counter%100 == 0 {
-					log.Printf("[%s - %dth try] error releasing overlay device: %v\n", o.cachePath, counter, err)
+					log.Printf("[%dth try] error releasing overlay device: %v\n", counter, err)
 				}
 
 				continue
