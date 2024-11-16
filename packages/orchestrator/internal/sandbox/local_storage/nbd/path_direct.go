@@ -2,6 +2,7 @@ package nbd
 
 import (
 	"context"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -60,7 +61,10 @@ func (d *DirectPathMount) Open() error {
 		dis := NewDispatch(d.ctx, d.conn, d.Backend)
 		// Start reading commands on the socket and dispatching them to our provider
 		go func() {
-			_ = dis.Handle()
+			handleErr := dis.Handle()
+			if handleErr != nil {
+				log.Printf("Error handling NBD commands: %v", handleErr)
+			}
 		}()
 		d.dispatcher = dis
 
