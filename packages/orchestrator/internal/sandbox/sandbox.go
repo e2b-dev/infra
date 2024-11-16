@@ -43,9 +43,9 @@ type Sandbox struct {
 	EndAt     time.Time
 	TraceID   string
 
-	networkPool *network.SlotPool
+	networkPool *network.Pool
 
-	slot   network.IPSlot
+	slot   network.Slot
 	Logger *logs.SandboxLogger
 	stats  *stats.SandboxStats
 
@@ -57,7 +57,7 @@ func NewSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
 	dns *dns.DNS,
-	networkPool *network.SlotPool,
+	networkPool *network.Pool,
 	templateCache *localStorage.TemplateCache,
 	config *orchestrator.SandboxConfig,
 	traceID string,
@@ -90,7 +90,10 @@ func NewSandbox(
 	}
 
 	cleanup = append(cleanup, func() error {
-		networkPool.Return(ips)
+		returnErr := networkPool.Return(ips)
+		if returnErr != nil {
+			return fmt.Errorf("failed to return network slot: %w", returnErr)
+		}
 
 		return nil
 	})

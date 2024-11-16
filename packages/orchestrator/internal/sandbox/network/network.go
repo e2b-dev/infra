@@ -7,6 +7,8 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
@@ -14,15 +16,7 @@ import (
 
 const loNS = "lo"
 
-var hostDefaultGateway = must(getDefaultGateway())
-
-func must[T any](obj T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-
-	return obj
-}
+var hostDefaultGateway = utils.Must(getDefaultGateway())
 
 var blockedRanges = []string{
 	"10.0.0.0/8",
@@ -31,17 +25,17 @@ var blockedRanges = []string{
 	"172.16.0.0/12",
 }
 
-func getBlockingRule(ips *IPSlot, ipRange string) []string {
-	return []string{"-p", "all", "-i", ips.TapName(), "-d", ipRange, "-j", "DROP"}
+func getBlockingRule(slot *Slot, ipRange string) []string {
+	return []string{"-p", "all", "-i", slot.TapName(), "-d", ipRange, "-j", "DROP"}
 }
 
-func getAllowRule(ips *IPSlot) []string {
-	return []string{"-p", "tcp", "-i", ips.TapName(), "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"}
+func getAllowRule(slot *Slot) []string {
+	return []string{"-p", "tcp", "-i", slot.TapName(), "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"}
 }
 
-func (ips *IPSlot) addBlockingRules(tables *iptables.IPTables) error {
+func (s *Slot) addBlockingRules(tables *iptables.IPTables) error {
 	for _, ipRange := range blockedRanges {
-		rule := getBlockingRule(ips, ipRange)
+		rule := getBlockingRule(s, ipRange)
 
 		err := tables.Append("filter", "FORWARD", rule...)
 		if err != nil {
@@ -49,7 +43,7 @@ func (ips *IPSlot) addBlockingRules(tables *iptables.IPTables) error {
 		}
 	}
 
-	allowRule := getAllowRule(ips)
+	allowRule := getAllowRule(s)
 
 	err := tables.Insert("filter", "FORWARD", 1, allowRule...)
 	if err != nil {
@@ -79,7 +73,7 @@ func getDefaultGateway() (string, error) {
 	return "", fmt.Errorf("cannot find default gateway")
 }
 
-func (ips *IPSlot) CreateNetwork() error {
+func (s *Slot) CreateNetwork() error {
 	// Prevent thread changes so we can safely manipulate with namespaces
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -103,7 +97,7 @@ func (ips *IPSlot) CreateNetwork() error {
 	}()
 
 	// Create NS for the sandbox
-	ns, err := netns.NewNamed(ips.NamespaceID())
+	ns, err := netns.NewNamed(s.NamespaceID())
 	if err != nil {
 		return fmt.Errorf("cannot create new namespace: %w", err)
 	}
@@ -112,10 +106,10 @@ func (ips *IPSlot) CreateNetwork() error {
 
 	// Create the Veth and Vpeer
 	vethAttrs := netlink.NewLinkAttrs()
-	vethAttrs.Name = ips.VethName()
+	vethAttrs.Name = s.VethName()
 	veth := &netlink.Veth{
 		LinkAttrs: vethAttrs,
-		PeerName:  ips.VpeerName(),
+		PeerName:  s.VpeerName(),
 	}
 
 	err = netlink.LinkAdd(veth)
@@ -123,7 +117,7 @@ func (ips *IPSlot) CreateNetwork() error {
 		return fmt.Errorf("error creating veth device: %w", err)
 	}
 
-	vpeer, err := netlink.LinkByName(ips.VpeerName())
+	vpeer, err := netlink.LinkByName(s.VpeerName())
 	if err != nil {
 		return fmt.Errorf("error finding vpeer: %w", err)
 	}
@@ -133,7 +127,7 @@ func (ips *IPSlot) CreateNetwork() error {
 		return fmt.Errorf("error setting vpeer device up: %w", err)
 	}
 
-	ip, ipNet, err := net.ParseCIDR(ips.VpeerCIDR())
+	ip, ipNet, err := net.ParseCIDR(s.VpeerCIDR())
 	if err != nil {
 		return fmt.Errorf("error parsing vpeer CIDR: %w", err)
 	}
@@ -159,7 +153,7 @@ func (ips *IPSlot) CreateNetwork() error {
 		return fmt.Errorf("error setting network namespace: %w", err)
 	}
 
-	vethInHost, err := netlink.LinkByName(ips.VethName())
+	vethInHost, err := netlink.LinkByName(s.VethName())
 	if err != nil {
 		return fmt.Errorf("error finding veth: %w", err)
 	}
@@ -169,7 +163,7 @@ func (ips *IPSlot) CreateNetwork() error {
 		return fmt.Errorf("error setting veth device up: %w", err)
 	}
 
-	ip, ipNet, err = net.ParseCIDR(ips.VethCIDR())
+	ip, ipNet, err = net.ParseCIDR(s.VethCIDR())
 	if err != nil {
 		return fmt.Errorf("error parsing veth CIDR: %w", err)
 	}
@@ -191,7 +185,7 @@ func (ips *IPSlot) CreateNetwork() error {
 
 	// Create Tap device for FC in NS
 	tapAttrs := netlink.NewLinkAttrs()
-	tapAttrs.Name = ips.TapName()
+	tapAttrs.Name = s.TapName()
 	tapAttrs.Namespace = ns
 	tap := &netlink.Tuntap{
 		Mode:      netlink.TUNTAP_MODE_TAP,
@@ -208,7 +202,7 @@ func (ips *IPSlot) CreateNetwork() error {
 		return fmt.Errorf("error setting tap device up: %w", err)
 	}
 
-	ip, ipNet, err = net.ParseCIDR(ips.TapCIDR())
+	ip, ipNet, err = net.ParseCIDR(s.TapCIDR())
 	if err != nil {
 		return fmt.Errorf("error parsing tap CIDR: %w", err)
 	}
@@ -237,7 +231,7 @@ func (ips *IPSlot) CreateNetwork() error {
 	// Add NS default route
 	err = netlink.RouteAdd(&netlink.Route{
 		Scope: netlink.SCOPE_UNIVERSE,
-		Gw:    net.ParseIP(ips.VethIP()),
+		Gw:    net.ParseIP(s.VethIP()),
 	})
 	if err != nil {
 		return fmt.Errorf("error adding default NS route: %w", err)
@@ -249,17 +243,17 @@ func (ips *IPSlot) CreateNetwork() error {
 	}
 
 	// Add NAT routing rules to NS
-	err = tables.Append("nat", "POSTROUTING", "-o", ips.VpeerName(), "-s", ips.NamespaceIP(), "-j", "SNAT", "--to", ips.HostIP())
+	err = tables.Append("nat", "POSTROUTING", "-o", s.VpeerName(), "-s", s.NamespaceIP(), "-j", "SNAT", "--to", s.HostIP())
 	if err != nil {
 		return fmt.Errorf("error creating postrouting rule to vpeer: %w", err)
 	}
 
-	err = tables.Append("nat", "PREROUTING", "-i", ips.VpeerName(), "-d", ips.HostIP(), "-j", "DNAT", "--to", ips.NamespaceIP())
+	err = tables.Append("nat", "PREROUTING", "-i", s.VpeerName(), "-d", s.HostIP(), "-j", "DNAT", "--to", s.NamespaceIP())
 	if err != nil {
 		return fmt.Errorf("error creating postrouting rule from vpeer: %w", err)
 	}
 
-	err = ips.addBlockingRules(tables)
+	err = s.addBlockingRules(tables)
 	if err != nil {
 		return fmt.Errorf("error adding blocking rules: %w", err)
 	}
@@ -271,13 +265,13 @@ func (ips *IPSlot) CreateNetwork() error {
 	}
 
 	// Add routing from host to FC namespace
-	_, ipNet, err = net.ParseCIDR(ips.HostCIDR())
+	_, ipNet, err = net.ParseCIDR(s.HostCIDR())
 	if err != nil {
 		return fmt.Errorf("error parsing host snapshot CIDR: %w", err)
 	}
 
 	err = netlink.RouteAdd(&netlink.Route{
-		Gw:  net.ParseIP(ips.VpeerIP()),
+		Gw:  net.ParseIP(s.VpeerIP()),
 		Dst: ipNet,
 	})
 	if err != nil {
@@ -285,18 +279,18 @@ func (ips *IPSlot) CreateNetwork() error {
 	}
 
 	// Add host forwarding rules
-	err = tables.Append("filter", "FORWARD", "-i", ips.VethName(), "-o", hostDefaultGateway, "-j", "ACCEPT")
+	err = tables.Append("filter", "FORWARD", "-i", s.VethName(), "-o", hostDefaultGateway, "-j", "ACCEPT")
 	if err != nil {
 		return fmt.Errorf("error creating forwarding rule to default gateway: %w", err)
 	}
 
-	err = tables.Append("filter", "FORWARD", "-i", hostDefaultGateway, "-o", ips.VethName(), "-j", "ACCEPT")
+	err = tables.Append("filter", "FORWARD", "-i", hostDefaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
 	if err != nil {
 		return fmt.Errorf("error creating forwarding rule from default gateway: %w", err)
 	}
 
 	// Add host postrouting rules
-	err = tables.Append("nat", "POSTROUTING", "-s", ips.HostCIDR(), "-o", hostDefaultGateway, "-j", "MASQUERADE")
+	err = tables.Append("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", hostDefaultGateway, "-j", "MASQUERADE")
 	if err != nil {
 		return fmt.Errorf("error creating postrouting rule: %w", err)
 	}
@@ -304,7 +298,7 @@ func (ips *IPSlot) CreateNetwork() error {
 	return nil
 }
 
-func (ipSlot *IPSlot) RemoveNetwork() error {
+func (s *Slot) RemoveNetwork() error {
 	var errs []error
 
 	tables, err := iptables.New()
@@ -312,30 +306,30 @@ func (ipSlot *IPSlot) RemoveNetwork() error {
 		errs = append(errs, fmt.Errorf("error initializing iptables: %w", err))
 	} else {
 		// Delete host forwarding rules
-		err = tables.Delete("filter", "FORWARD", "-i", ipSlot.VethName(), "-o", hostDefaultGateway, "-j", "ACCEPT")
+		err = tables.Delete("filter", "FORWARD", "-i", s.VethName(), "-o", hostDefaultGateway, "-j", "ACCEPT")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting host forwarding rule to default gateway: %w", err))
 		}
 
-		err = tables.Delete("filter", "FORWARD", "-i", hostDefaultGateway, "-o", ipSlot.VethName(), "-j", "ACCEPT")
+		err = tables.Delete("filter", "FORWARD", "-i", hostDefaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting host forwarding rule from default gateway: %w", err))
 		}
 
 		// Delete host postrouting rules
-		err = tables.Delete("nat", "POSTROUTING", "-s", ipSlot.HostCIDR(), "-o", hostDefaultGateway, "-j", "MASQUERADE")
+		err = tables.Delete("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", hostDefaultGateway, "-j", "MASQUERADE")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting host postrouting rule: %w", err))
 		}
 	}
 
 	// Delete routing from host to FC namespace
-	_, ipNet, err := net.ParseCIDR(ipSlot.HostCIDR())
+	_, ipNet, err := net.ParseCIDR(s.HostCIDR())
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error parsing host snapshot CIDR: %w", err))
 	} else {
 		err = netlink.RouteDel(&netlink.Route{
-			Gw:  net.ParseIP(ipSlot.VpeerIP()),
+			Gw:  net.ParseIP(s.VpeerIP()),
 			Dst: ipNet,
 		})
 		if err != nil {
@@ -347,7 +341,7 @@ func (ipSlot *IPSlot) RemoveNetwork() error {
 	// We explicitly delete the veth device from the host namespace because even though deleting
 	// is deleting the device there may be a race condition when creating a new veth device with
 	// the same name immediately after deleting the namespace.
-	veth, err := netlink.LinkByName(ipSlot.VethName())
+	veth, err := netlink.LinkByName(s.VethName())
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error finding veth: %w", err))
 	} else {
@@ -357,7 +351,7 @@ func (ipSlot *IPSlot) RemoveNetwork() error {
 		}
 	}
 
-	err = netns.DeleteNamed(ipSlot.NamespaceID())
+	err = netns.DeleteNamed(s.NamespaceID())
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error deleting namespace: %w", err))
 	}

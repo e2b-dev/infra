@@ -5,15 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 
 	"cloud.google.com/go/storage"
 	"golang.org/x/sync/singleflight"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
 type BlockStorage struct {
-	source     *GCSObject
+	source     *gcs.Object
 	cache      *FileCache
 	blockSize  int64
 	size       int64
@@ -27,7 +28,7 @@ func NewBlockStorage(
 	blockSize int64,
 	cachePath string,
 ) (*BlockStorage, error) {
-	object := NewGCSObjectFromBucket(ctx, bucket, bucketObjectPath)
+	object := gcs.NewObjectFromBucket(ctx, bucket, bucketObjectPath)
 
 	size, err := object.Size()
 	if err != nil {
@@ -113,8 +114,6 @@ func (d *BlockStorage) Sync() error {
 
 // Not supported
 func (d *BlockStorage) WriteAt(p []byte, off int64) (n int, err error) {
-	fmt.Fprintf(os.Stderr, "block storage write at not supported %s\n", d.source.object.ObjectName())
-
 	return 0, nil
 }
 

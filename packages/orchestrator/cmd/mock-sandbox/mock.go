@@ -5,12 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"strconv"
 	"time"
 
-	"cloud.google.com/go/storage"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
@@ -20,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 func main() {
@@ -31,9 +30,6 @@ func main() {
 	count := flag.Int("count", 1, "number of serially spawned sandboxes")
 
 	flag.Parse()
-
-	timeout := time.Second*time.Duration(*keepAlive) + time.Second*50
-	fmt.Printf("timeout: %d\n", timeout)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -47,29 +43,26 @@ func main() {
 		cancel()
 	}()
 
-	// Start of mock build for testing
-	dns := dns.New()
-	go dns.Start("127.0.0.4:53")
+	dnsServer := dns.New()
+	go func() {
+		log.Printf("Starting DNS server")
 
-	client, err := storage.NewClient(ctx, storage.WithJSONReads())
+		err := dnsServer.Start("127.0.0.4:53")
+		if err != nil {
+			log.Fatalf("Failed running DNS server: %s\n", err.Error())
+		}
+	}()
+
+	templateCache := localStorage.NewTemplateCache(ctx)
+
+	networkPool, err := network.NewPool(ctx, 1, 1)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create GCS client: %v\n", err)
+		fmt.Fprintf(os.Stderr, "failed to create network pool: %v\n", err)
 
 		return
 	}
 
-	templateCache := localStorage.NewTemplateCache(ctx, client.Bucket(templateStorage.BucketName))
-
-	networkPool := network.NewSlotPool()
-
 	eg, ctx := errgroup.WithContext(ctx)
-
-	go func() {
-		poolErr := networkPool.Populate(ctx)
-		if poolErr != nil {
-			fmt.Fprintf(os.Stderr, "network pool error: %v\n", poolErr)
-		}
-	}()
 
 	for i := 0; i < *count; i++ {
 		fmt.Printf("Starting sandbox %d\n", i)
@@ -106,7 +99,7 @@ func mockSandbox(
 	sandboxId string,
 	dns *dns.DNS,
 	keepAlive time.Duration,
-	networkPool *network.SlotPool,
+	networkPool *network.Pool,
 	templateCache *localStorage.TemplateCache,
 ) {
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))

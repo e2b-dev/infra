@@ -2,9 +2,8 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log"
-
-	"cloud.google.com/go/storage"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -21,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const ServiceName = "orchestrator"
@@ -31,12 +29,29 @@ type server struct {
 	sandboxes     *smap.Map[*sandbox.Sandbox]
 	dns           *dns.DNS
 	tracer        trace.Tracer
-	networkPool   *network.SlotPool
+	networkPool   *network.Pool
 	templateCache *localStorage.TemplateCache
 }
 
-func New() *grpc.Server {
-	log.Println("Initializing orchestrator")
+func New() (*grpc.Server, error) {
+	ctx := context.Background()
+
+	dnsServer := dns.New()
+	go func() {
+		log.Printf("Starting DNS server")
+
+		err := dnsServer.Start("127.0.0.1:53")
+		if err != nil {
+			log.Fatalf("Failed running DNS server: %s\n", err.Error())
+		}
+	}()
+
+	templateCache := localStorage.NewTemplateCache(ctx)
+
+	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create network pool: %w", err)
+	}
 
 	s := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithInterceptorFilter(filters.Not(filters.HealthCheck())))),
@@ -45,35 +60,8 @@ func New() *grpc.Server {
 		),
 	)
 
-	ctx := context.Background()
-
-	dnsServer := dns.New()
-	go dnsServer.Start("127.0.0.1:53")
-
-	tracer := otel.Tracer(ServiceName)
-
-	client, err := storage.NewClient(ctx, storage.WithJSONReads())
-	if err != nil {
-		log.Fatalf("failed to create GCS client: %v", err)
-	}
-
-	templateCache := localStorage.NewTemplateCache(
-		ctx,
-		client.Bucket(templateStorage.BucketName),
-	)
-
-	networkPool := network.NewSlotPool()
-
-	// We start the pool last to avoid allocation network slots if the other components fail to initialize.
-	go func() {
-		poolErr := networkPool.Populate(ctx)
-		if poolErr != nil {
-			log.Fatalf("network pool error: %v\n", poolErr)
-		}
-	}()
-
 	orchestrator.RegisterSandboxServiceServer(s, &server{
-		tracer:        tracer,
+		tracer:        otel.Tracer(ServiceName),
 		dns:           dnsServer,
 		sandboxes:     smap.New[*sandbox.Sandbox](),
 		networkPool:   networkPool,
@@ -82,5 +70,5 @@ func New() *grpc.Server {
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())
 
-	return s
+	return s, nil
 }

@@ -146,7 +146,7 @@ var fcStartScriptTemplate = template.Must(template.New("fc-start").Parse(fcStart
 func NewProcess(
 	ctx context.Context,
 	tracer trace.Tracer,
-	slot network.IPSlot,
+	slot network.Slot,
 	files *templateStorage.SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
 	snapfile *localStorage.File,
@@ -155,7 +155,7 @@ func NewProcess(
 ) (*Process, error) {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.String("sandbox.id", mmdsMetadata.SandboxId),
-		attribute.Int("sandbox.slot.index", slot.SlotIdx),
+		attribute.Int("sandbox.slot.index", slot.Idx),
 	))
 	defer childSpan.End()
 

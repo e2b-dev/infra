@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+
 	"cloud.google.com/go/storage"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
@@ -18,7 +20,7 @@ type TemplateCache struct {
 	ctx    context.Context
 }
 
-func NewTemplateCache(ctx context.Context, bucket *storage.BucketHandle) *TemplateCache {
+func NewTemplateCache(ctx context.Context) *TemplateCache {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, *Template](templateDataExpiration),
 	)
@@ -35,7 +37,7 @@ func NewTemplateCache(ctx context.Context, bucket *storage.BucketHandle) *Templa
 	go cache.Start()
 
 	return &TemplateCache{
-		bucket: bucket,
+		bucket: templateStorage.TemplateBucket,
 		cache:  cache,
 		ctx:    ctx,
 	}

@@ -1,4 +1,4 @@
-package storage
+package gcs
 
 import (
 	"context"
@@ -23,12 +23,12 @@ const (
 	maxAttempts       = 10
 )
 
-type GCSObject struct {
+type Object struct {
 	object *storage.ObjectHandle
 	ctx    context.Context
 }
 
-func NewGCSObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, objectPath string) *GCSObject {
+func NewObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, objectPath string) *Object {
 	obj := bucket.Object(objectPath).Retryer(
 		storage.WithMaxAttempts(maxAttempts),
 		storage.WithBackoff(gax.Backoff{
@@ -39,17 +39,17 @@ func NewGCSObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, o
 		storage.WithPolicy(storage.RetryAlways),
 	)
 
-	return &GCSObject{
+	return &Object{
 		object: obj,
 		ctx:    ctx,
 	}
 }
 
-func NewGCSObject(ctx context.Context, client *storage.Client, bucket, objectPath string) *GCSObject {
-	return NewGCSObjectFromBucket(ctx, client.Bucket(bucket), objectPath)
+func NewObject(ctx context.Context, bucket, objectPath string) *Object {
+	return NewObjectFromBucket(ctx, client.Bucket(bucket), objectPath)
 }
 
-func (o *GCSObject) WriteTo(dst io.Writer) (int64, error) {
+func (o *Object) WriteTo(dst io.Writer) (int64, error) {
 	ctx, cancel := context.WithTimeout(o.ctx, readTimeout)
 	defer cancel()
 
@@ -75,7 +75,7 @@ func (o *GCSObject) WriteTo(dst io.Writer) (int64, error) {
 	return n, nil
 }
 
-func (o *GCSObject) ReadFrom(src io.Reader) (int64, error) {
+func (o *Object) ReadFrom(src io.Reader) (int64, error) {
 	w := o.object.NewWriter(o.ctx)
 
 	n, err := io.Copy(w, src)
@@ -91,7 +91,7 @@ func (o *GCSObject) ReadFrom(src io.Reader) (int64, error) {
 	return n, nil
 }
 
-func (o *GCSObject) UploadWithCli(ctx context.Context, path string) error {
+func (o *Object) UploadWithCli(ctx context.Context, path string) error {
 	cmd := exec.CommandContext(
 		ctx,
 		"gcloud",
@@ -111,7 +111,7 @@ func (o *GCSObject) UploadWithCli(ctx context.Context, path string) error {
 	return nil
 }
 
-func (o *GCSObject) ReadAt(b []byte, off int64) (n int, err error) {
+func (o *Object) ReadAt(b []byte, off int64) (n int, err error) {
 	ctx, cancel := context.WithTimeout(o.ctx, readTimeout)
 	defer cancel()
 
@@ -141,7 +141,7 @@ func (o *GCSObject) ReadAt(b []byte, off int64) (n int, err error) {
 	return n, nil
 }
 
-func (o *GCSObject) Size() (int64, error) {
+func (o *Object) Size() (int64, error) {
 	ctx, cancel := context.WithTimeout(o.ctx, operationTimeout)
 	defer cancel()
 
@@ -153,7 +153,7 @@ func (o *GCSObject) Size() (int64, error) {
 	return attrs.Size, nil
 }
 
-func (o *GCSObject) Delete() error {
+func (o *Object) Delete() error {
 	ctx, cancel := context.WithTimeout(o.ctx, operationTimeout)
 	defer cancel()
 

@@ -14,12 +14,13 @@ import (
 const defaultPort = 5008
 
 func main() {
-	port := flag.Int("port", defaultPort, "Port for test HTTP server")
+	port := flag.Int("port", defaultPort, "orchestrator server port")
 
 	flag.Parse()
 
 	if !env.IsLocal() {
 		shutdown := telemetry.InitOTLPExporter(server.ServiceName, "no")
+
 		defer shutdown()
 	}
 
@@ -28,9 +29,13 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	s := server.New()
+	s, err := server.New()
+	if err != nil {
+		log.Fatalf("failed to create server: %v", err)
+	}
 
-	log.Printf("Starting server on port %d", *port)
+	log.Printf("starting server on port %d", *port)
+
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}

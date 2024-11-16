@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -32,7 +33,11 @@ const (
 	SnapfileName = "snapfile"
 )
 
-var BucketName = utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "bucket for storing template files")
+var (
+	templateBucketName = utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "bucket for storing template files")
+
+	TemplateBucket = gcs.Bucket(templateBucketName)
+)
 
 type TemplateFiles struct {
 	TemplateId         string

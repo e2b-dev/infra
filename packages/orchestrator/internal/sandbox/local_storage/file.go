@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	source "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 
 	"cloud.google.com/go/storage"
 )
@@ -27,7 +27,7 @@ func NewFile(
 
 	defer dst.Close()
 
-	object := source.NewGCSObjectFromBucket(ctx, bucket, bucketObjectPath)
+	object := gcs.NewObjectFromBucket(ctx, bucket, bucketObjectPath)
 
 	_, err = object.WriteTo(dst)
 	if err != nil {

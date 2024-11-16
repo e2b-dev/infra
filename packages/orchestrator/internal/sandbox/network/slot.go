@@ -15,103 +15,103 @@ const (
 	octetSize = 256
 	octetMax  = octetSize - 1
 	// This is the maximum number of IP addresses that can be allocated.
-	ipSlotsSize = octetSize * octetSize
+	slotsSize = octetSize * octetSize
 
 	hostMask = 32
 	vMask    = 30
 	tapMask  = 30
 )
 
-var kv = consul.Client.KV()
-
-type IPSlot struct {
-	KVKey   string
-	SlotIdx int
+type Slot struct {
+	Key string
+	Idx int
 }
 
-func (ips *IPSlot) VpeerName() string {
+func (s *Slot) VpeerName() string {
 	return "eth0"
 }
 
-func (ips *IPSlot) getOctets() (int, int) {
-	rem := ips.SlotIdx % octetSize
-	octet := (ips.SlotIdx - rem) / octetSize
+func (s *Slot) getOctets() (int, int) {
+	rem := s.Idx % octetSize
+	octet := (s.Idx - rem) / octetSize
 
 	return octet, rem
 }
 
-func (ips *IPSlot) VpeerIP() string {
-	firstOctet, secondOctet := ips.getOctets()
+func (s *Slot) VpeerIP() string {
+	firstOctet, secondOctet := s.getOctets()
 
 	return fmt.Sprintf("10.%d.%d.2", firstOctet, secondOctet)
 }
 
-func (ips *IPSlot) VethIP() string {
-	firstOctet, secondOctet := ips.getOctets()
+func (s *Slot) VethIP() string {
+	firstOctet, secondOctet := s.getOctets()
 
 	return fmt.Sprintf("10.%d.%d.1", firstOctet, secondOctet)
 }
 
-func (ips *IPSlot) VMask() int {
+func (s *Slot) VMask() int {
 	return vMask
 }
 
-func (ips *IPSlot) VethName() string {
-	return fmt.Sprintf("veth-%d", ips.SlotIdx)
+func (s *Slot) VethName() string {
+	return fmt.Sprintf("veth-%d", s.Idx)
 }
 
-func (ips *IPSlot) VethCIDR() string {
-	return fmt.Sprintf("%s/%d", ips.VethIP(), ips.VMask())
+func (s *Slot) VethCIDR() string {
+	return fmt.Sprintf("%s/%d", s.VethIP(), s.VMask())
 }
 
-func (ips *IPSlot) VpeerCIDR() string {
-	return fmt.Sprintf("%s/%d", ips.VpeerIP(), ips.VMask())
+func (s *Slot) VpeerCIDR() string {
+	return fmt.Sprintf("%s/%d", s.VpeerIP(), s.VMask())
 }
 
-func (ips *IPSlot) HostCIDR() string {
-	return fmt.Sprintf("%s/%d", ips.HostIP(), ips.HostMask())
+func (s *Slot) HostCIDR() string {
+	return fmt.Sprintf("%s/%d", s.HostIP(), s.HostMask())
 }
 
-func (ips *IPSlot) HostMask() int {
+func (s *Slot) HostMask() int {
 	return hostMask
 }
 
 // IP address for the sandbox from the host machine.
 // You can use it to make requests to the sandbox.
-func (ips *IPSlot) HostIP() string {
-	firstOctet, secondOctet := ips.getOctets()
+func (s *Slot) HostIP() string {
+	firstOctet, secondOctet := s.getOctets()
 
 	return fmt.Sprintf("192.168.%d.%d", firstOctet, secondOctet)
 }
 
-func (ips *IPSlot) NamespaceIP() string {
+func (s *Slot) NamespaceIP() string {
 	return "169.254.0.21"
 }
 
-func (ips *IPSlot) NamespaceID() string {
-	return fmt.Sprintf("ns-%d", ips.SlotIdx)
+func (s *Slot) NamespaceID() string {
+	return fmt.Sprintf("ns-%d", s.Idx)
 }
 
-func (ips *IPSlot) TapName() string {
+func (s *Slot) TapName() string {
 	return "tap0"
 }
 
-func (ips *IPSlot) TapIP() string {
+func (s *Slot) TapIP() string {
 	return "169.254.0.22"
 }
 
-func (ips *IPSlot) TapMask() int {
+func (s *Slot) TapMask() int {
 	return tapMask
 }
 
-func (ips *IPSlot) TapCIDR() string {
-	return fmt.Sprintf("%s/%d", ips.TapIP(), ips.TapMask())
+func (s *Slot) TapCIDR() string {
+	return fmt.Sprintf("%s/%d", s.TapIP(), s.TapMask())
 }
 
-func NewSlot() (*IPSlot, error) {
-	var slot *IPSlot
+func NewSlot() (*Slot, error) {
+	kv := consul.Client.KV()
 
-	trySlot := func(slotIdx int, key string) (*IPSlot, error) {
+	var slot *Slot
+
+	trySlot := func(slotIdx int, key string) (*Slot, error) {
 		status, _, err := kv.CAS(&consulApi.KVPair{
 			Key:         key,
 			ModifyIndex: 0,
@@ -121,9 +121,9 @@ func NewSlot() (*IPSlot, error) {
 		}
 
 		if status {
-			return &IPSlot{
-				SlotIdx: slotIdx,
-				KVKey:   key,
+			return &Slot{
+				Idx: slotIdx,
+				Key: key,
 			}, nil
 		}
 
@@ -131,7 +131,7 @@ func NewSlot() (*IPSlot, error) {
 	}
 
 	for randomTry := 1; randomTry <= 10; randomTry++ {
-		slotIdx := rand.Intn(ipSlotsSize)
+		slotIdx := rand.Intn(slotsSize)
 		key := getKVKey(slotIdx)
 
 		maybeSlot, err := trySlot(slotIdx, key)
@@ -155,7 +155,7 @@ func NewSlot() (*IPSlot, error) {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
 
-		for slotIdx := 0; slotIdx < ipSlotsSize; slotIdx++ {
+		for slotIdx := 0; slotIdx < slotsSize; slotIdx++ {
 			key := getKVKey(slotIdx)
 
 			if slices.Contains(reservedKeys, key) {
@@ -182,18 +182,20 @@ func NewSlot() (*IPSlot, error) {
 	return slot, nil
 }
 
-func (ips *IPSlot) Release() error {
-	pair, _, err := kv.Get(ips.KVKey, nil)
+func (ips *Slot) Release() error {
+	kv := consul.Client.KV()
+
+	pair, _, err := kv.Get(ips.Key, nil)
 	if err != nil {
 		return fmt.Errorf("failed to release IPSlot: Failed to read Consul KV: %w", err)
 	}
 
 	if pair == nil {
-		return fmt.Errorf("IP slot %d was already released", ips.SlotIdx)
+		return fmt.Errorf("IP slot %d was already released", ips.Idx)
 	}
 
 	status, _, err := kv.DeleteCAS(&consulApi.KVPair{
-		Key:         ips.KVKey,
+		Key:         ips.Key,
 		ModifyIndex: pair.ModifyIndex,
 	}, nil)
 	if err != nil {
@@ -201,7 +203,7 @@ func (ips *IPSlot) Release() error {
 	}
 
 	if !status {
-		return fmt.Errorf("IP slot '%d' for was already realocated", ips.SlotIdx)
+		return fmt.Errorf("IP slot '%d' for was already realocated", ips.Idx)
 	}
 
 	return nil
