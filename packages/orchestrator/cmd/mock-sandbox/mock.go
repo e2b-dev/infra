@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -55,7 +54,7 @@ func main() {
 
 	templateCache := localStorage.NewTemplateCache(ctx)
 
-	networkPool, err := network.NewPool(ctx, 1, 1)
+	networkPool, err := network.NewPool(ctx, *count, 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create network pool: %v\n", err)
 
@@ -83,7 +82,6 @@ func main() {
 
 			return nil
 		})
-
 	}
 
 	err = eg.Wait()
@@ -105,8 +103,9 @@ func mockSandbox(
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
 
-	start := time.Now()
 	logger := logs.NewSandboxLogger(sandboxId, templateId, "test-team", 2, 512, false)
+
+	start := time.Now()
 
 	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
@@ -132,20 +131,6 @@ func mockSandbox(
 		time.Now(),
 		logger,
 	)
-	if err != nil {
-		cleanupErr := sandbox.HandleCleanup(cleanup)
-
-		fmt.Fprintf(os.Stderr, "failed to create sandbox: %v\n", errors.Join(err, cleanupErr))
-
-		return
-	}
-
-	duration := time.Since(start)
-
-	fmt.Printf("[Sandbox is running] - started in %dms (without network)\n", duration.Milliseconds())
-
-	time.Sleep(keepAlive)
-
 	defer func() {
 		cleanupErr := sandbox.HandleCleanup(cleanup)
 		if cleanupErr != nil {
@@ -153,5 +138,22 @@ func mockSandbox(
 		}
 	}()
 
-	sbx.Stop()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create sandbox: %v\n", err)
+
+		return
+	}
+
+	duration := time.Since(start)
+
+	fmt.Printf("[Sandbox is running] - started in %dms \n", duration.Milliseconds())
+
+	time.Sleep(keepAlive)
+
+	err = sbx.Stop()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to stop sandbox: %v\n", err)
+
+		return
+	}
 }
