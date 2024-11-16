@@ -62,14 +62,14 @@ func main() {
 
 	networkPool := network.NewSlotPool()
 
+	eg, ctx := errgroup.WithContext(ctx)
+
 	go func() {
 		poolErr := networkPool.Populate(ctx)
 		if poolErr != nil {
 			fmt.Fprintf(os.Stderr, "network pool error: %v\n", poolErr)
 		}
 	}()
-
-	eg, ctx := errgroup.WithContext(ctx)
 
 	for i := 0; i < *count; i++ {
 		fmt.Printf("Starting sandbox %d\n", i)
