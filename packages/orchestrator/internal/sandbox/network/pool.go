@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 
-	consul "github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
@@ -22,13 +21,11 @@ type SlotPool struct {
 	newSlots    chan IPSlot
 	reusedSlots chan IPSlot
 
-	consul *consul.Client
-
 	reusedCounter metric.Int64UpDownCounter
 	newCounter    metric.Int64UpDownCounter
 }
 
-func NewSlotPool(consul *consul.Client) *SlotPool {
+func NewSlotPool() *SlotPool {
 	newSlots := make(chan IPSlot, ipSlotPoolSize-1)
 	reusedSlots := make(chan IPSlot, reusedIpSlotPoolSize)
 
@@ -43,11 +40,8 @@ func NewSlotPool(consul *consul.Client) *SlotPool {
 	}
 
 	return &SlotPool{
-		newSlots:    newSlots,
-		reusedSlots: reusedSlots,
-
-		consul: consul,
-
+		newSlots:      newSlots,
+		reusedSlots:   reusedSlots,
 		newCounter:    newCounter,
 		reusedCounter: returnedSizeCounter,
 	}
@@ -59,7 +53,7 @@ func (p *SlotPool) Populate(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			ips, err := NewSlot(p.consul)
+			ips, err := NewSlot()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "[network slot pool]: failed to create network: %v\n", err)
 
@@ -68,7 +62,7 @@ func (p *SlotPool) Populate(ctx context.Context) error {
 
 			err = ips.CreateNetwork()
 			if err != nil {
-				releaseErr := ips.Release(p.consul)
+				releaseErr := ips.Release()
 				err = errors.Join(err, releaseErr)
 
 				fmt.Fprintf(os.Stderr, "[network slot pool]: failed to create network: %v\n", err)
@@ -82,7 +76,7 @@ func (p *SlotPool) Populate(ctx context.Context) error {
 	}
 }
 
-func cleanupSlot(consul *consul.Client, slot IPSlot) error {
+func cleanupSlot(slot IPSlot) error {
 	var errs []error
 
 	err := slot.RemoveNetwork()
@@ -90,7 +84,7 @@ func cleanupSlot(consul *consul.Client, slot IPSlot) error {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.SlotIdx, err))
 	}
 
-	err = slot.Release(consul)
+	err = slot.Release()
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.SlotIdx, err))
 	}
@@ -122,7 +116,7 @@ func (p *SlotPool) Return(slot IPSlot) {
 		p.reusedCounter.Add(context.Background(), 1)
 	default:
 		{
-			err := cleanupSlot(p.consul, slot)
+			err := cleanupSlot(slot)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "[network slot pool]: failed to return slot '%d': %v\n", slot.SlotIdx, err)
 			}

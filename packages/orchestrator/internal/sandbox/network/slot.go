@@ -108,8 +108,8 @@ func (ips *IPSlot) TapCIDR() string {
 	return fmt.Sprintf("%s/%d", ips.TapIP(), ips.TapMask())
 }
 
-func NewSlot(consulClient *consulApi.Client) (*IPSlot, error) {
-	kv := consulClient.KV()
+func NewSlot() (*IPSlot, error) {
+	kv := consul.Client.KV()
 
 	var slot *IPSlot
 
@@ -184,8 +184,8 @@ func NewSlot(consulClient *consulApi.Client) (*IPSlot, error) {
 	return slot, nil
 }
 
-func (ips *IPSlot) Release(consulClient *consulApi.Client) error {
-	kv := consulClient.KV()
+func (ips *IPSlot) Release() error {
+	kv := consul.Client.KV()
 
 	pair, _, err := kv.Get(ips.KVKey, nil)
 	if err != nil {

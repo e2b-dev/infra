@@ -7,7 +7,6 @@ import (
 	"cloud.google.com/go/storage"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
-	consulapi "github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
 	"go.opentelemetry.io/otel"
@@ -16,7 +15,6 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	localStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage"
@@ -26,16 +24,13 @@ import (
 	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-const (
-	ServiceName = "orchestrator"
-)
+const ServiceName = "orchestrator"
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	sandboxes     *smap.Map[*sandbox.Sandbox]
 	dns           *dns.DNS
 	tracer        trace.Tracer
-	consul        *consulapi.Client
 	networkPool   *network.SlotPool
 	templateCache *localStorage.TemplateCache
 }
@@ -67,12 +62,7 @@ func New() *grpc.Server {
 		client.Bucket(templateStorage.BucketName),
 	)
 
-	consulClient, err := consul.New(ctx)
-	if err != nil {
-		log.Fatalf("failed to create Consul client: %v", err)
-	}
-
-	networkPool := network.NewSlotPool(consulClient)
+	networkPool := network.NewSlotPool()
 
 	// We start the pool last to avoid allocation network slots if the other components fail to initialize.
 	go func() {
@@ -84,7 +74,6 @@ func New() *grpc.Server {
 
 	orchestrator.RegisterSandboxServiceServer(s, &server{
 		tracer:        tracer,
-		consul:        consulClient,
 		dns:           dnsServer,
 		sandboxes:     smap.New[*sandbox.Sandbox](),
 		networkPool:   networkPool,

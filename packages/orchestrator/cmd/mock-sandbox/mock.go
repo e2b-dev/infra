@@ -14,7 +14,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	localStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage"
@@ -59,11 +58,9 @@ func main() {
 		return
 	}
 
-	consulClient, err := consul.New(context.Background())
-
 	templateCache := localStorage.NewTemplateCache(ctx, client.Bucket(templateStorage.BucketName))
 
-	networkPool := network.NewSlotPool(consulClient)
+	networkPool := network.NewSlotPool()
 
 	go func() {
 		poolErr := networkPool.Populate(ctx)
