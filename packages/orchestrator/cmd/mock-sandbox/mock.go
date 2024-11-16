@@ -63,17 +63,12 @@ func main() {
 
 	templateCache := localStorage.NewTemplateCache(ctx, client.Bucket(templateStorage.BucketName))
 
-	networkPool := network.NewSlotPool(10, 0, consulClient)
+	networkPool := network.NewSlotPool(consulClient)
 
 	go func() {
 		poolErr := networkPool.Populate(ctx)
 		if poolErr != nil {
 			fmt.Fprintf(os.Stderr, "network pool error: %v\n", poolErr)
-		}
-
-		closeErr := networkPool.Close()
-		if closeErr != nil {
-			fmt.Fprintf(os.Stderr, "network pool close error: %v\n", closeErr)
 		}
 	}()
 
