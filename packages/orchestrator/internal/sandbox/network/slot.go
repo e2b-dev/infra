@@ -23,8 +23,6 @@ const (
 )
 
 type IPSlot struct {
-	ConsulToken string
-
 	KVKey   string
 	SlotIdx int
 }
