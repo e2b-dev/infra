@@ -75,7 +75,7 @@ func main() {
 				*templateId,
 				*buildId,
 				*sandboxId+"-"+strconv.Itoa(v),
-				dns,
+				dnsServer,
 				time.Duration(*keepAlive)*time.Second,
 				networkPool,
 				templateCache,
