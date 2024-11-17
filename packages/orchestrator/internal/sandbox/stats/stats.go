@@ -138,6 +138,7 @@ func getMemoryUsage(pid int32) (int32, error) {
 	return 0, err
 }
 
+// TODO: Can't we use strconv.ParseInt?
 func parseInt(s string) (int32, error) {
 	number, err := strconv.Atoi(s)
 	if err != nil {

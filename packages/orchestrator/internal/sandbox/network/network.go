@@ -157,7 +157,7 @@ func (s *Slot) CreateNetwork() error {
 	}
 
 	// Set NS lo device up
-	lo, err := netlink.LinkByName(loNS)
+	lo, err := netlink.LinkByName(loopbackInterface)
 	if err != nil {
 		return fmt.Errorf("error finding lo: %w", err)
 	}

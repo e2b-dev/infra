@@ -3,11 +3,13 @@ package network
 import (
 	"fmt"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/vishvananda/netlink"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const loNS = "lo"
+// Loopback interface name
+const loopbackInterface = "lo"
 
 var hostDefaultGateway = utils.Must(getDefaultGateway())
 
