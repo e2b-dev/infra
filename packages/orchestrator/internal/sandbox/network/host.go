@@ -8,10 +8,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// Loopback interface name
+// Host loopback interface name
 const loopbackInterface = "lo"
 
-var hostDefaultGateway = utils.Must(getDefaultGateway())
+// Host default gateway name
+var defaultGateway = utils.Must(getDefaultGateway())
 
 func getDefaultGateway() (string, error) {
 	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)

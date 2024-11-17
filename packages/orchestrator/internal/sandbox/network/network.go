@@ -218,18 +218,18 @@ func (s *Slot) CreateNetwork() error {
 	}
 
 	// Add host forwarding rules
-	err = tables.Append("filter", "FORWARD", "-i", s.VethName(), "-o", hostDefaultGateway, "-j", "ACCEPT")
+	err = tables.Append("filter", "FORWARD", "-i", s.VethName(), "-o", defaultGateway, "-j", "ACCEPT")
 	if err != nil {
 		return fmt.Errorf("error creating forwarding rule to default gateway: %w", err)
 	}
 
-	err = tables.Append("filter", "FORWARD", "-i", hostDefaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
+	err = tables.Append("filter", "FORWARD", "-i", defaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
 	if err != nil {
 		return fmt.Errorf("error creating forwarding rule from default gateway: %w", err)
 	}
 
 	// Add host postrouting rules
-	err = tables.Append("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", hostDefaultGateway, "-j", "MASQUERADE")
+	err = tables.Append("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
 	if err != nil {
 		return fmt.Errorf("error creating postrouting rule: %w", err)
 	}
@@ -245,18 +245,18 @@ func (s *Slot) RemoveNetwork() error {
 		errs = append(errs, fmt.Errorf("error initializing iptables: %w", err))
 	} else {
 		// Delete host forwarding rules
-		err = tables.Delete("filter", "FORWARD", "-i", s.VethName(), "-o", hostDefaultGateway, "-j", "ACCEPT")
+		err = tables.Delete("filter", "FORWARD", "-i", s.VethName(), "-o", defaultGateway, "-j", "ACCEPT")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting host forwarding rule to default gateway: %w", err))
 		}
 
-		err = tables.Delete("filter", "FORWARD", "-i", hostDefaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
+		err = tables.Delete("filter", "FORWARD", "-i", defaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting host forwarding rule from default gateway: %w", err))
 		}
 
 		// Delete host postrouting rules
-		err = tables.Delete("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", hostDefaultGateway, "-j", "MASQUERADE")
+		err = tables.Delete("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting host postrouting rule: %w", err))
 		}
