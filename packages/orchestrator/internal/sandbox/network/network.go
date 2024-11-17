@@ -7,71 +7,10 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
-
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
-
-const loNS = "lo"
-
-var hostDefaultGateway = utils.Must(getDefaultGateway())
-
-var blockedRanges = []string{
-	"10.0.0.0/8",
-	"169.254.0.0/16",
-	"192.168.0.0/16",
-	"172.16.0.0/12",
-}
-
-func getBlockingRule(slot *Slot, ipRange string) []string {
-	return []string{"-p", "all", "-i", slot.TapName(), "-d", ipRange, "-j", "DROP"}
-}
-
-func getAllowRule(slot *Slot) []string {
-	return []string{"-p", "tcp", "-i", slot.TapName(), "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"}
-}
-
-func (s *Slot) addBlockingRules(tables *iptables.IPTables) error {
-	for _, ipRange := range blockedRanges {
-		rule := getBlockingRule(s, ipRange)
-
-		err := tables.Append("filter", "FORWARD", rule...)
-		if err != nil {
-			return fmt.Errorf("error adding blocking rule: %w", err)
-		}
-	}
-
-	allowRule := getAllowRule(s)
-
-	err := tables.Insert("filter", "FORWARD", 1, allowRule...)
-	if err != nil {
-		return fmt.Errorf("error adding response rule: %w", err)
-	}
-
-	return nil
-}
-
-func getDefaultGateway() (string, error) {
-	routes, err := netlink.RouteList(nil, netlink.FAMILY_ALL)
-	if err != nil {
-		return "", fmt.Errorf("error fetching routes: %w", err)
-	}
-
-	for _, route := range routes {
-		if route.Dst == nil && route.Gw != nil {
-			link, linkErr := netlink.LinkByIndex(route.LinkIndex)
-			if linkErr != nil {
-				return "", fmt.Errorf("error fetching interface for default gateway: %w", linkErr)
-			}
-
-			return link.Attrs().Name, nil
-		}
-	}
-
-	return "", fmt.Errorf("cannot find default gateway")
-}
 
 func (s *Slot) CreateNetwork() error {
 	// Prevent thread changes so we can safely manipulate with namespaces

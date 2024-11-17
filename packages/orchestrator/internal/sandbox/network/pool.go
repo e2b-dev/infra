@@ -92,22 +92,6 @@ func (p *Pool) populate(ctx context.Context) error {
 	}
 }
 
-func cleanup(slot Slot) error {
-	var errs []error
-
-	err := slot.RemoveNetwork()
-	if err != nil {
-		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
-	}
-
-	err = slot.Release()
-	if err != nil {
-		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.Idx, err))
-	}
-
-	return errors.Join(errs...)
-}
-
 func (p *Pool) Get(ctx context.Context) (Slot, error) {
 	select {
 	case slot := <-p.reusedSlots:
@@ -140,4 +124,20 @@ func (p *Pool) Return(slot Slot) error {
 	}
 
 	return nil
+}
+
+func cleanup(slot Slot) error {
+	var errs []error
+
+	err := slot.RemoveNetwork()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
+	}
+
+	err = slot.Release()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.Idx, err))
+	}
+
+	return errors.Join(errs...)
 }
