@@ -5,9 +5,9 @@ import (
 	"log"
 	"net"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
-
 	resolver "github.com/miekg/dns"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 const ttl = 0
