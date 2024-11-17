@@ -19,6 +19,7 @@ generate:
 
 .PHONY: build
 build:
+	@rm -rf .shared/
 	@cp -r ../shared .shared/
 	@docker build --platform linux/amd64 --output=bin .
 	@rm -rf .shared/
