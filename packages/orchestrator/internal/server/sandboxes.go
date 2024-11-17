@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,12 +22,12 @@ import (
 
 func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
 	childCtx, childSpan := s.tracer.Start(ctx, "sandbox-create")
-
 	defer childSpan.End()
+
 	childSpan.SetAttributes(
-		attribute.String("env.id", req.Sandbox.TemplateId),
-		attribute.String("env.kernel.version", req.Sandbox.KernelVersion),
-		attribute.String("instance.id", req.Sandbox.SandboxId),
+		attribute.String("template.id", req.Sandbox.TemplateId),
+		attribute.String("kernel.version", req.Sandbox.KernelVersion),
+		attribute.String("sandbox.id", req.Sandbox.SandboxId),
 		attribute.String("client.id", consul.ClientID),
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
@@ -67,12 +66,6 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
 
 	go func() {
-		tracer := otel.Tracer("close")
-		closeCtx, _ := tracer.Start(ctx, "close-sandbox")
-
-		defer telemetry.ReportEvent(closeCtx, "sandbox closed")
-		defer s.sandboxes.Remove(req.Sandbox.SandboxId)
-
 		waitErr := sbx.Wait()
 		if waitErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to wait for Sandbox: %v", waitErr)
@@ -82,6 +75,8 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		if cleanupErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to cleanup Sandbox: %v", cleanupErr)
 		}
+
+		s.sandboxes.Remove(req.Sandbox.SandboxId)
 
 		logger.Infof("Sandbox killed")
 	}()
@@ -94,6 +89,11 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {
 	_, childSpan := s.tracer.Start(ctx, "sandbox-update")
 	defer childSpan.End()
+
+	childSpan.SetAttributes(
+		attribute.String("sandbox.id", req.SandboxId),
+		attribute.String("client.id", consul.ClientID),
+	)
 
 	item, ok := s.sandboxes.Get(req.SandboxId)
 	if !ok {
@@ -141,8 +141,9 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteRequest) (*emptypb.Empty, error) {
 	_, childSpan := s.tracer.Start(ctx, "sandbox-delete")
 	defer childSpan.End()
+
 	childSpan.SetAttributes(
-		attribute.String("instance.id", in.SandboxId),
+		attribute.String("sandbox.id", in.SandboxId),
 		attribute.String("client.id", consul.ClientID),
 	)
 
@@ -156,17 +157,12 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 
 	sbx.Healthcheck(ctx, true)
 
-	childSpan.SetAttributes(
-		attribute.String("env.id", sbx.Config.TemplateId),
-		attribute.String("env.kernel.version", sbx.Config.KernelVersion),
-	)
-
 	// Don't allow connecting to the sandbox anymore.
 	s.dns.Remove(in.SandboxId)
 
 	err := sbx.Stop()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "sandbox '%s' stopped: %v\n", in.SandboxId, err)
+		fmt.Fprintf(os.Stderr, "error stopping sandbox '%s': %v\n", in.SandboxId, err)
 	}
 
 	// Ensure the sandbox is removed from cache.
