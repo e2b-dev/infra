@@ -2,22 +2,22 @@ package socket
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"os"
 	"time"
 )
 
-const waitForSocketInterval = 10 * time.Millisecond
+const waitInterval = 10 * time.Millisecond
 
 // Wait waits for the given file to exist.
 func Wait(ctx context.Context, socketPath string) error {
-	ticker := time.NewTicker(waitForSocketInterval)
+	ticker := time.NewTicker(waitInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return errors.Join(ctx.Err(), context.Cause(ctx))
+			return fmt.Errorf("cancelled wait for socket %s: %w", socketPath, ctx.Err())
 		case <-ticker.C:
 			if _, err := os.Stat(socketPath); err != nil {
 				continue
