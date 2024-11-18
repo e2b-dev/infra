@@ -47,7 +47,7 @@ type Sandbox struct {
 
 	slot   network.Slot
 	Logger *logs.SandboxLogger
-	stats  *stats.SandboxStats
+	stats  *stats.Handle
 
 	uffdExit chan error
 }
@@ -212,7 +212,7 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get FC PID: %w", err)
 	}
 
-	sandboxStats := stats.NewSandboxStats(int32(pid))
+	sandboxStats := stats.NewHandle(int32(pid))
 
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
@@ -289,9 +289,7 @@ func NewSandbox(
 		return nil
 	})
 
-	go func() {
-		sbx.logHeathAndUsage(healthcheckCtx)
-	}()
+	go sbx.logHeathAndUsage(healthcheckCtx)
 
 	return sbx, cleanup, nil
 }

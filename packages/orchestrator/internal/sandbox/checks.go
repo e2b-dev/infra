@@ -23,7 +23,7 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 
 			cancel()
 
-			stats, err := s.stats.GetStats()
+			stats, err := s.stats.Stats()
 			if err != nil {
 				s.Logger.Warnf("failed to get stats: %s", err)
 			} else {

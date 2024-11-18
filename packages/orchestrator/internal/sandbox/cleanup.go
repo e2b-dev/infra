@@ -23,14 +23,14 @@ func HandleCleanup(cleanup []func() error) error {
 func cleanupFiles(files *templateStorage.SandboxFiles) error {
 	var errs []error
 
-	for _, file := range []string{
+	for _, p := range []string{
 		files.SandboxCacheDir(),
 		files.SandboxFirecrackerSocketPath(),
 		files.SandboxUffdSocketPath(),
 	} {
-		err := os.RemoveAll(file)
+		err := os.RemoveAll(p)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("failed to delete %s: %w", file, err))
+			errs = append(errs, fmt.Errorf("failed to delete '%s': %w", p, err))
 		}
 	}
 
