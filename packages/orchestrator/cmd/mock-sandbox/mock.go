@@ -15,7 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	localStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
@@ -52,7 +52,7 @@ func main() {
 		}
 	}()
 
-	templateCache := localStorage.NewTemplateCache(ctx)
+	templateCache := cache.NewTemplateCache(ctx)
 
 	networkPool, err := network.NewPool(ctx, *count, 0)
 	if err != nil {
@@ -68,20 +68,17 @@ func main() {
 
 		v := i
 
-		eg.Go(func() error {
-			mockSandbox(
-				ctx,
-				*templateId,
-				*buildId,
-				*sandboxId+"-"+strconv.Itoa(v),
-				dnsServer,
-				time.Duration(*keepAlive)*time.Second,
-				networkPool,
-				templateCache,
-			)
+		mockSandbox(
+			ctx,
+			*templateId,
+			*buildId,
+			*sandboxId+"-"+strconv.Itoa(v),
+			dnsServer,
+			time.Duration(*keepAlive)*time.Second,
+			networkPool,
+			templateCache,
+		)
 
-			return nil
-		})
 	}
 
 	err = eg.Wait()
@@ -98,7 +95,7 @@ func mockSandbox(
 	dns *dns.DNS,
 	keepAlive time.Duration,
 	networkPool *network.Pool,
-	templateCache *localStorage.TemplateCache,
+	templateCache *cache.TemplateCache,
 ) {
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")

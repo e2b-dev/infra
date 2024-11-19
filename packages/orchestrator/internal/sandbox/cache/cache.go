@@ -1,15 +1,15 @@
-package local_storage
+package cache
 
 import (
 	"context"
 	"fmt"
 	"time"
 
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
-
 	"cloud.google.com/go/storage"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
+
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const templateDataExpiration = time.Hour * 48

@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	template "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/block"
 )
 
 const (
@@ -35,14 +35,11 @@ type Uffd struct {
 
 	lis *net.UnixListener
 
-	memfile    *template.BlockStorage
+	memfile    block.ReadonlyDevice
 	socketPath string
 }
 
-func New(
-	memfile *template.BlockStorage,
-	socketPath string,
-) (*Uffd, error) {
+func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
 	pRead, pWrite, err := os.Pipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exit fd: %w", err)
@@ -80,7 +77,7 @@ func (u *Uffd) Start(sandboxId string) error {
 	}
 
 	go func() {
-		handleErr := u.handle(u.memfile, sandboxId)
+		handleErr := u.handle(sandboxId)
 		closeErr := u.lis.Close()
 		writerErr := u.exitWriter.Close()
 
@@ -147,7 +144,7 @@ func (u *Uffd) receiveSetup() (*UffdSetup, error) {
 	}, nil
 }
 
-func (u *Uffd) handle(memfile *template.BlockStorage, sandboxId string) (err error) {
+func (u *Uffd) handle(sandboxId string) (err error) {
 	setup, err := u.receiveSetup()
 	if err != nil {
 		return fmt.Errorf("failed to receive setup message from firecracker: %w", err)
@@ -163,7 +160,7 @@ func (u *Uffd) handle(memfile *template.BlockStorage, sandboxId string) (err err
 
 	u.Ready <- struct{}{}
 
-	err = Serve(int(uffd), setup.Mappings, memfile, u.exitReader.Fd(), u.Stop, sandboxId)
+	err = Serve(int(uffd), setup.Mappings, u.memfile, u.exitReader.Fd(), u.Stop, sandboxId)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}

@@ -5,10 +5,12 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage/nbd"
-	"github.com/pojntfx/go-nbd/pkg/backend"
 	"os"
 	"os/signal"
+
+	"github.com/pojntfx/go-nbd/pkg/backend"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 )
 
 const blockSize = 4096
@@ -106,7 +108,7 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 	}
 
 	data := make([]byte, size)
-	_, err = mnt.ReadAt(data, 0)
+	_, err = mnt.Backend.ReadAt(data, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read: %w", err)
 	}

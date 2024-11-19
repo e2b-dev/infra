@@ -1,24 +1,20 @@
-package local_storage
+package cache
 
 import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"sync"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage/nbd"
-	template "github.com/e2b-dev/infra/packages/shared/pkg/storage"
-
-	"github.com/pojntfx/go-nbd/pkg/backend"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/block"
 )
 
 const ChunkSize = 2 * 1024 * 1024 // 2MiB
 
 type RootfsOverlay struct {
-	storage    *template.BlockStorage
-	mnt        *nbd.ManagedPathMount
-	localCache *os.File
+	overlay block.Device
+	mnt     *nbd.ManagedPathMount
 
 	ctx       context.Context
 	cancelCtx context.CancelFunc
@@ -32,43 +28,31 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 	rootfs, err := t.Rootfs()
 	if err != nil {
 		cancel()
+
 		return nil, fmt.Errorf("error getting rootfs: %w", err)
 	}
 
-	f, err := os.Create(cachePath)
+	overlay, err := block.NewStorageOverlay(rootfs, cachePath)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("error creating overlay file: %w", err)
-	}
 
-	size, err := rootfs.Size()
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("error getting rootfs size: %w", err)
-	}
-
-	err = f.Truncate(size)
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("error truncating overlay file: %w", err)
+		return nil, fmt.Errorf("error creating overlay: %w", err)
 	}
 
 	mnt := nbd.NewManagedPathMount(
 		ctx,
-		rootfs,
-		backend.NewFileBackend(f),
+		overlay,
 		ChunkSize,
 	)
 
 	ready := make(chan string, 1)
 
 	return &RootfsOverlay{
-		ready:      ready,
-		mnt:        mnt,
-		localCache: f,
-		storage:    rootfs,
-		ctx:        ctx,
-		cancelCtx:  cancel,
+		ready:     ready,
+		mnt:       mnt,
+		overlay:   overlay,
+		ctx:       ctx,
+		cancelCtx: cancel,
 	}, nil
 }
 
@@ -95,14 +79,9 @@ func (o *RootfsOverlay) Run() error {
 			log.Printf("error closing overlay mount: %v\n", err)
 		}
 
-		err = o.localCache.Close()
+		err = o.overlay.Close()
 		if err != nil {
-			log.Printf("error closing overlay file: %v\n", err)
-		}
-
-		err = os.Remove(o.localCache.Name())
-		if err != nil && !os.IsNotExist(err) {
-			log.Printf("error removing overlay file: %v\n", err)
+			log.Printf("error closing overlay cache: %v\n", err)
 		}
 
 		counter := 0

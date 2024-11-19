@@ -16,7 +16,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	localStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -30,7 +30,7 @@ type server struct {
 	dns           *dns.DNS
 	tracer        trace.Tracer
 	networkPool   *network.Pool
-	templateCache *localStorage.TemplateCache
+	templateCache *cache.TemplateCache
 }
 
 func New() (*grpc.Server, error) {
@@ -46,7 +46,7 @@ func New() (*grpc.Server, error) {
 		}
 	}()
 
-	templateCache := localStorage.NewTemplateCache(ctx)
+	templateCache := cache.NewTemplateCache(ctx)
 
 	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize)
 	if err != nil {

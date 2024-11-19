@@ -16,14 +16,14 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	localStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -38,7 +38,7 @@ type MmdsMetadata struct {
 
 type Process struct {
 	uffdReady chan struct{}
-	snapfile  *localStorage.File
+	snapfile  *cache.File
 
 	cmd *exec.Cmd
 
@@ -60,7 +60,7 @@ func (p *Process) loadSnapshot(
 	firecrackerSocketPath,
 	uffdSocketPath string,
 	metadata interface{},
-	snapfile *localStorage.File,
+	snapfile *cache.File,
 	uffdReady chan struct{},
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
@@ -149,8 +149,8 @@ func NewProcess(
 	slot network.Slot,
 	files *templateStorage.SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
-	snapfile *localStorage.File,
-	rootfs *localStorage.RootfsOverlay,
+	snapfile *cache.File,
+	rootfs *cache.RootfsOverlay,
 	uffdReady chan struct{},
 ) (*Process, error) {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(

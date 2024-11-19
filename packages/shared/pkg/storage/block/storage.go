@@ -1,11 +1,10 @@
-package storage
+package block
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 
 	"cloud.google.com/go/storage"
 	"golang.org/x/sync/singleflight"
@@ -13,36 +12,39 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
-type BlockStorage struct {
-	source     *gcs.Object
-	cache      *FileCache
+type Storage struct {
+	source     *Chunker
+	cache      *MmapCache
 	blockSize  int64
 	size       int64
 	fetchGroup singleflight.Group
 }
 
-func NewBlockStorage(
+func NewStorage(
 	ctx context.Context,
 	bucket *storage.BucketHandle,
 	bucketObjectPath string,
 	blockSize int64,
 	cachePath string,
-) (*BlockStorage, error) {
+) (*Storage, error) {
 	object := gcs.NewObjectFromBucket(ctx, bucket, bucketObjectPath)
 
 	size, err := object.Size()
 	if err != nil {
+		
 		return nil, fmt.Errorf("failed to get object size: %w", err)
 	}
 
-	cache, err := NewFileCache(size, blockSize, cachePath)
+	cache, err := NewMmapCache(size, blockSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
 
-	return &BlockStorage{
+	chunker := NewChunker(ctx, size, object, cache)
+
+	return &Storage{
 		blockSize: blockSize,
-		source:    object,
+		source:    chunker,
 		size:      size,
 		cache:     cache,
 	}, nil
@@ -57,37 +59,9 @@ func NewBlockStorage(
 //
 
 // TODO: Ensure that the maximum size of the buffer is the block size or handle if it is bigger.
-func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
-	n, err = d.cache.ReadAt(p, off)
-	if err == nil || errors.Is(err, io.EOF) {
-		return n, nil
-	}
+func (d *Storage) ReadAt(p []byte, off int64) (n int, err error) {
+	n, err = d.source.ReadAt(p, off)
 
-	if !errors.As(err, &ErrBytesNotAvailable{}) {
-		return n, fmt.Errorf("failed to read %d: %w", off, err)
-	}
-
-	_, err, _ = d.fetchGroup.Do(strconv.FormatUint(uint64(off), 10), func() (interface{}, error) {
-		if d.cache.IsCached(off) {
-			return nil, nil
-		}
-
-		buf := make([]byte, d.blockSize)
-
-		n, err = d.source.ReadAt(buf, off)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("failed to read from source %d: %w", off, err)
-		}
-
-		_, err = d.cache.WriteAt(buf, off)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("failed to write to cache %d: %w", off, err)
-		}
-
-		return nil, nil
-	})
-
-	n, err = d.cache.ReadAt(p, off)
 	if err == nil || errors.Is(err, io.EOF) {
 		return n, nil
 	}
@@ -95,11 +69,11 @@ func (d *BlockStorage) ReadAt(p []byte, off int64) (n int, err error) {
 	return 0, err
 }
 
-func (d *BlockStorage) Size() (int64, error) {
+func (d *Storage) Size() (int64, error) {
 	return d.size, nil
 }
 
-func (d *BlockStorage) Close() error {
+func (d *Storage) Close() error {
 	err := d.cache.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close cache file: %w", err)
@@ -108,15 +82,14 @@ func (d *BlockStorage) Close() error {
 	return nil
 }
 
-func (d *BlockStorage) Sync() error {
+func (d *Storage) Sync() error {
 	return d.cache.Sync()
 }
 
-// Not supported
-func (d *BlockStorage) WriteAt(p []byte, off int64) (n int, err error) {
-	return 0, nil
+func (d *Storage) BlockSize() int64 {
+	return d.blockSize
 }
 
-func (d *BlockStorage) BlockSize() int64 {
-	return d.blockSize
+func (d *Storage) Slice(off, length int64) ([]byte, error) {
+	return d.source.Slice(off, length)
 }

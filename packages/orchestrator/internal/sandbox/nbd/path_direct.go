@@ -23,10 +23,7 @@ type DirectPathMount struct {
 	cancelfn    context.CancelFunc
 }
 
-func NewDirectPathMount(
-	b backend.Backend,
-	deviceIndex uint32,
-) *DirectPathMount {
+func NewDirectPathMount(b backend.Backend, deviceIndex uint32) *DirectPathMount {
 	ctx, cancelfn := context.WithCancel(context.Background())
 	return &DirectPathMount{
 		Backend:     b,
@@ -98,6 +95,7 @@ func (d *DirectPathMount) Open() error {
 		if err == nil && s.Connected {
 			break
 		}
+
 		time.Sleep(100 * time.Nanosecond)
 	}
 
@@ -129,15 +127,11 @@ func (d *DirectPathMount) Close() error {
 		if err == nil && !s.Connected {
 			break
 		}
+
 		time.Sleep(100 * time.Nanosecond)
 	}
 
 	return nil
-}
-
-// TODO: remove, only for mock
-func (d *DirectPathMount) ReadAt(data []byte, offset int64) (int, error) {
-	return d.Backend.ReadAt(data, offset)
 }
 
 func (d *DirectPathMount) Sync() error {

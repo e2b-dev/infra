@@ -4,16 +4,20 @@ import (
 	"errors"
 	"fmt"
 	"syscall"
+	"time"
 	"unsafe"
-
-	template "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 
 	"github.com/loopholelabs/userfaultfd-go/pkg/constants"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/block"
 )
 
-const maxEagainAttempts = 64
+const (
+	maxEagainAttempts = 64
+	eagainDelay       = 50 * time.Microsecond
+)
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
@@ -36,7 +40,7 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 	return nil, fmt.Errorf("address %d not found in any mapping", addr)
 }
 
-func Serve(uffd int, mappings []GuestRegionUffdMapping, src *template.BlockStorage, fd uintptr, stop func() error, sandboxId string) error {
+func Serve(uffd int, mappings []GuestRegionUffdMapping, src block.ReadonlyDevice, fd uintptr, stop func() error, sandboxId string) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: int32(fd), Events: unix.POLLIN},
@@ -83,6 +87,8 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *template.BlockStora
 
 				i++
 
+				time.Sleep(eagainDelay)
+
 				continue
 			}
 
@@ -108,8 +114,8 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *template.BlockStora
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
-		pagesize := uint64(mapping.PageSize)
+		offset := int64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
+		pagesize := int64(mapping.PageSize)
 
 		eg.Go(func() error {
 			defer func() {
@@ -118,9 +124,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *template.BlockStora
 				}
 			}()
 
-			b := make([]byte, pagesize)
-
-			_, err = src.ReadAt(b, int64(offset))
+			b, err := src.Slice(offset, pagesize)
 			if err != nil {
 				return fmt.Errorf("failed to read from source: %w", err)
 			}

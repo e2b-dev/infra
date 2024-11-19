@@ -1,12 +1,11 @@
 package nbd
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"sync"
-
-	"context"
 )
 
 type Provider interface {
@@ -18,14 +17,18 @@ type Provider interface {
 const dispatchBufferSize = 4 * 1024 * 1024
 
 // NBD Commands
-const NBDCmdRead = 0
-const NBDCmdWrite = 1
-const NBDCmdDisconnect = 2
-const NBDCmdFlush = 3
-const NBDCmdTrim = 4
+const (
+	NBDCmdRead       = 0
+	NBDCmdWrite      = 1
+	NBDCmdDisconnect = 2
+	NBDCmdFlush      = 3
+	NBDCmdTrim       = 4
+)
 
-const NBDRequestMagic = 0x25609513
-const NBDResponseMagic = 0x67446698
+const (
+	NBDRequestMagic  = 0x25609513
+	NBDResponseMagic = 0x67446698
+)
 
 // NBD Request packet
 type Request struct {
@@ -54,7 +57,6 @@ type Dispatch struct {
 }
 
 func NewDispatch(ctx context.Context, fp io.ReadWriteCloser, prov Provider) *Dispatch {
-
 	d := &Dispatch{
 		responseHeader: make([]byte, 16),
 		fatal:          make(chan error, 8),
@@ -190,7 +192,6 @@ func (d *Dispatch) Handle() error {
 }
 
 func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
-
 	performRead := func(handle uint64, from uint64, length uint32) error {
 		errchan := make(chan error)
 		data := make([]byte, length)

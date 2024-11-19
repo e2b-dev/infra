@@ -1,4 +1,4 @@
-package local_storage
+package cache
 
 import (
 	"context"
@@ -7,9 +7,10 @@ import (
 	"os"
 	"sync"
 
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
-
 	"cloud.google.com/go/storage"
+
+	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/block"
 )
 
 const (
@@ -19,14 +20,14 @@ const (
 )
 
 type Template struct {
-	Files *templateStorage.TemplateCacheFiles
+	files *templateStorage.TemplateCacheFiles
 
-	Memfile  func() (*templateStorage.BlockStorage, error)
-	Rootfs   func() (*templateStorage.BlockStorage, error)
-	Snapfile func() (*File, error)
+	memfile  func() (block.ReadonlyDevice, error)
+	rootfs   func() (block.ReadonlyDevice, error)
+	snapfile func() (*File, error)
 
-	rootfsResult   chan valueWithErr[*templateStorage.BlockStorage]
-	memfileResult  chan valueWithErr[*templateStorage.BlockStorage]
+	rootfsResult   chan valueWithErr[block.ReadonlyDevice]
+	memfileResult  chan valueWithErr[block.ReadonlyDevice]
 	snapfileResult chan valueWithErr[*File]
 
 	hugePages bool
@@ -45,8 +46,8 @@ func (t *TemplateCache) newTemplate(
 	firecrackerVersion string,
 	hugePages bool,
 ) *Template {
-	rootfsResult := make(chan valueWithErr[*templateStorage.BlockStorage], 1)
-	memfileResult := make(chan valueWithErr[*templateStorage.BlockStorage], 1)
+	rootfsResult := make(chan valueWithErr[block.ReadonlyDevice], 1)
+	memfileResult := make(chan valueWithErr[block.ReadonlyDevice], 1)
 	snapfileResult := make(chan valueWithErr[*File], 1)
 
 	h := &Template{
@@ -54,7 +55,7 @@ func (t *TemplateCache) newTemplate(
 		memfileResult:  memfileResult,
 		snapfileResult: snapfileResult,
 		hugePages:      hugePages,
-		Files: templateStorage.NewTemplateCacheFiles(
+		files: templateStorage.NewTemplateCacheFiles(
 			templateStorage.NewTemplateFiles(
 				templateId,
 				buildId,
@@ -63,17 +64,17 @@ func (t *TemplateCache) newTemplate(
 			),
 			cacheIdentifier,
 		),
-		Memfile: sync.OnceValues(func() (*templateStorage.BlockStorage, error) {
+		memfile: sync.OnceValues(func() (block.ReadonlyDevice, error) {
 			result := <-memfileResult
 
 			return result.value, result.err
 		}),
-		Rootfs: sync.OnceValues(func() (*templateStorage.BlockStorage, error) {
+		rootfs: sync.OnceValues(func() (block.ReadonlyDevice, error) {
 			result := <-rootfsResult
 
 			return result.value, result.err
 		}),
-		Snapfile: sync.OnceValues(func() (*File, error) {
+		snapfile: sync.OnceValues(func() (*File, error) {
 			result := <-snapfileResult
 
 			return result.value, result.err
@@ -84,15 +85,15 @@ func (t *TemplateCache) newTemplate(
 }
 
 func (t *Template) Fetch(ctx context.Context, bucket *storage.BucketHandle) {
-	err := os.MkdirAll(t.Files.CacheDir(), os.ModePerm)
+	err := os.MkdirAll(t.files.CacheDir(), os.ModePerm)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to create directory %s: %w", t.Files.CacheDir(), err)
+		errMsg := fmt.Errorf("failed to create directory %s: %w", t.files.CacheDir(), err)
 
-		t.memfileResult <- valueWithErr[*templateStorage.BlockStorage]{
+		t.memfileResult <- valueWithErr[block.ReadonlyDevice]{
 			err: errMsg,
 		}
 
-		t.rootfsResult <- valueWithErr[*templateStorage.BlockStorage]{
+		t.rootfsResult <- valueWithErr[block.ReadonlyDevice]{
 			err: errMsg,
 		}
 
@@ -104,7 +105,7 @@ func (t *Template) Fetch(ctx context.Context, bucket *storage.BucketHandle) {
 	}
 
 	go func() {
-		snapfile, snapfileErr := NewFile(ctx, bucket, t.Files.StorageSnapfilePath(), t.Files.CacheSnapfilePath())
+		snapfile, snapfileErr := NewFile(ctx, bucket, t.files.StorageSnapfilePath(), t.files.CacheSnapfilePath())
 		if snapfileErr != nil {
 			t.snapfileResult <- valueWithErr[*File]{
 				err: fmt.Errorf("failed to fetch snapfile: %w", snapfileErr),
@@ -126,44 +127,44 @@ func (t *Template) Fetch(ctx context.Context, bucket *storage.BucketHandle) {
 			memfileBlockSize = pageSize
 		}
 
-		memfileStorage, memfileErr := templateStorage.NewBlockStorage(
+		memfileStorage, memfileErr := block.NewStorage(
 			ctx,
 			bucket,
-			t.Files.StorageMemfilePath(),
+			t.files.StorageMemfilePath(),
 			memfileBlockSize,
-			t.Files.CacheMemfilePath(),
+			t.files.CacheMemfilePath(),
 		)
 		if memfileErr != nil {
-			t.memfileResult <- valueWithErr[*templateStorage.BlockStorage]{
+			t.memfileResult <- valueWithErr[block.ReadonlyDevice]{
 				err: fmt.Errorf("failed to create memfile storage: %w", memfileErr),
 			}
 
 			return
 		}
 
-		t.memfileResult <- valueWithErr[*templateStorage.BlockStorage]{
+		t.memfileResult <- valueWithErr[block.ReadonlyDevice]{
 			value: memfileStorage,
 		}
 	}()
 
 	go func() {
-		rootfsStorage, rootfsErr := templateStorage.NewBlockStorage(
+		rootfsStorage, rootfsErr := block.NewStorage(
 			ctx,
 			bucket,
-			t.Files.StorageRootfsPath(),
+			t.files.StorageRootfsPath(),
 			// TODO: This should ideally be the blockSize (4096), but we would need to implement more complex dirty block caching in cache there.
 			ChunkSize,
-			t.Files.CacheRootfsPath(),
+			t.files.CacheRootfsPath(),
 		)
 		if rootfsErr != nil {
-			t.rootfsResult <- valueWithErr[*templateStorage.BlockStorage]{
+			t.rootfsResult <- valueWithErr[block.ReadonlyDevice]{
 				err: fmt.Errorf("failed to create rootfs storage: %w", rootfsErr),
 			}
 
 			return
 		}
 
-		t.rootfsResult <- valueWithErr[*templateStorage.BlockStorage]{
+		t.rootfsResult <- valueWithErr[block.ReadonlyDevice]{
 			value: rootfsStorage,
 		}
 	}()
@@ -172,20 +173,36 @@ func (t *Template) Fetch(ctx context.Context, bucket *storage.BucketHandle) {
 func (t *Template) Close() error {
 	var errs []error
 
-	memfile, err := t.Memfile()
+	memfile, err := t.memfile()
 	if err == nil {
 		errs = append(errs, memfile.Close())
 	}
 
-	rootfs, err := t.Rootfs()
+	rootfs, err := t.rootfs()
 	if err == nil {
 		errs = append(errs, rootfs.Close())
 	}
 
-	snapfile, err := t.Snapfile()
+	snapfile, err := t.snapfile()
 	if err == nil {
 		errs = append(errs, snapfile.Close())
 	}
 
 	return errors.Join(errs...)
+}
+
+func (t *Template) Files() *templateStorage.TemplateCacheFiles {
+	return t.files
+}
+
+func (t *Template) Memfile() (block.ReadonlyDevice, error) {
+	return t.memfile()
+}
+
+func (t *Template) Rootfs() (block.ReadonlyDevice, error) {
+	return t.rootfs()
+}
+
+func (t *Template) Snapfile() (*File, error) {
+	return t.snapfile()
 }

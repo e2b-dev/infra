@@ -14,8 +14,8 @@ import (
 	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
-	localStorage "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/local_storage"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
@@ -36,7 +36,7 @@ type Sandbox struct {
 
 	process *fc.Process
 	uffd    *uffd.Uffd
-	rootfs  *localStorage.RootfsOverlay
+	rootfs  *cache.RootfsOverlay
 
 	Config    *orchestrator.SandboxConfig
 	StartedAt time.Time
@@ -58,17 +58,17 @@ func NewSandbox(
 	tracer trace.Tracer,
 	dns *dns.DNS,
 	networkPool *network.Pool,
-	templateCache *localStorage.TemplateCache,
+	templateCache *cache.TemplateCache,
 	config *orchestrator.SandboxConfig,
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
 	logger *logs.SandboxLogger,
 ) (*Sandbox, []func() error, error) {
-	var cleanup []func() error
-
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
+
+	var cleanup []func() error
 
 	template, err := templateCache.GetTemplate(
 		config.TemplateId,
@@ -82,7 +82,6 @@ func NewSandbox(
 	}
 
 	networkCtx, networkSpan := tracer.Start(childCtx, "get-network-slot")
-	// Get slot from Consul KV
 
 	ips, err := networkPool.Get(networkCtx)
 	if err != nil {
@@ -100,7 +99,7 @@ func NewSandbox(
 
 	networkSpan.End()
 
-	sandboxFiles := templateStorage.NewSandboxFiles(template.Files, config.SandboxId)
+	sandboxFiles := templateStorage.NewSandboxFiles(template.Files(), config.SandboxId)
 
 	cleanup = append(cleanup, func() error {
 		filesErr := cleanupFiles(sandboxFiles)

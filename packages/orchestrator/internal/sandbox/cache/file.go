@@ -1,13 +1,14 @@
-package local_storage
+package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
-
 	"cloud.google.com/go/storage"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
 type File struct {
@@ -20,18 +21,20 @@ func NewFile(
 	bucketObjectPath string,
 	path string,
 ) (*File, error) {
-	dst, err := os.Create(path)
+	f, err := os.Create(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file: %w", err)
 	}
 
-	defer dst.Close()
+	defer f.Close()
 
 	object := gcs.NewObjectFromBucket(ctx, bucket, bucketObjectPath)
 
-	_, err = object.WriteTo(dst)
+	_, err = object.WriteTo(f)
 	if err != nil {
-		return nil, fmt.Errorf("failed to write to file: %w", err)
+		cleanupErr := os.Remove(path)
+
+		return nil, fmt.Errorf("failed to write to file: %w", errors.Join(err, cleanupErr))
 	}
 
 	return &File{
@@ -44,5 +47,5 @@ func (f *File) Path() string {
 }
 
 func (f *File) Close() error {
-	return os.Remove(f.path)
+	return os.RemoveAll(f.path)
 }

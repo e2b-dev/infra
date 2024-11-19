@@ -271,6 +271,7 @@ func (d *DevicePool) GetDeviceIndex(ctx context.Context) (uint, error) {
 
 		slot := <-d.slots
 		d.slotCounter.Add(d.ctx, -1)
+
 		return slot, nil
 	}
 }
@@ -291,7 +292,6 @@ func (d *DevicePool) ReleaseDevice(path DevicePath) error {
 		return ErrDeviceInUse{}
 	}
 
-	// log.Printf("released device slot: %d\n", slot)
 	d.mu.Lock()
 	d.usedSlots.Clear(slot)
 	d.mu.Unlock()
