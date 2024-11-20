@@ -14,18 +14,20 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/google/uuid"
 )
 
 // TeamAPIKeyQuery is the builder for querying TeamAPIKey entities.
 type TeamAPIKeyQuery struct {
 	config
-	ctx        *QueryContext
-	order      []teamapikey.OrderOption
-	inters     []Interceptor
-	predicates []predicate.TeamAPIKey
-	withTeam   *TeamQuery
-	modifiers  []func(*sql.Selector)
+	ctx         *QueryContext
+	order       []teamapikey.OrderOption
+	inters      []Interceptor
+	predicates  []predicate.TeamAPIKey
+	withTeam    *TeamQuery
+	withCreator *UserQuery
+	modifiers   []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -80,6 +82,31 @@ func (takq *TeamAPIKeyQuery) QueryTeam() *TeamQuery {
 		)
 		schemaConfig := takq.schemaConfig
 		step.To.Schema = schemaConfig.Team
+		step.Edge.Schema = schemaConfig.TeamAPIKey
+		fromU = sqlgraph.SetNeighbors(takq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCreator chains the current query on the "creator" edge.
+func (takq *TeamAPIKeyQuery) QueryCreator() *UserQuery {
+	query := (&UserClient{config: takq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := takq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := takq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamapikey.Table, teamapikey.FieldID, selector),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, teamapikey.CreatorTable, teamapikey.CreatorColumn),
+		)
+		schemaConfig := takq.schemaConfig
+		step.To.Schema = schemaConfig.User
 		step.Edge.Schema = schemaConfig.TeamAPIKey
 		fromU = sqlgraph.SetNeighbors(takq.driver.Dialect(), step)
 		return fromU, nil
@@ -274,12 +301,13 @@ func (takq *TeamAPIKeyQuery) Clone() *TeamAPIKeyQuery {
 		return nil
 	}
 	return &TeamAPIKeyQuery{
-		config:     takq.config,
-		ctx:        takq.ctx.Clone(),
-		order:      append([]teamapikey.OrderOption{}, takq.order...),
-		inters:     append([]Interceptor{}, takq.inters...),
-		predicates: append([]predicate.TeamAPIKey{}, takq.predicates...),
-		withTeam:   takq.withTeam.Clone(),
+		config:      takq.config,
+		ctx:         takq.ctx.Clone(),
+		order:       append([]teamapikey.OrderOption{}, takq.order...),
+		inters:      append([]Interceptor{}, takq.inters...),
+		predicates:  append([]predicate.TeamAPIKey{}, takq.predicates...),
+		withTeam:    takq.withTeam.Clone(),
+		withCreator: takq.withCreator.Clone(),
 		// clone intermediate query.
 		sql:  takq.sql.Clone(),
 		path: takq.path,
@@ -294,6 +322,17 @@ func (takq *TeamAPIKeyQuery) WithTeam(opts ...func(*TeamQuery)) *TeamAPIKeyQuery
 		opt(query)
 	}
 	takq.withTeam = query
+	return takq
+}
+
+// WithCreator tells the query-builder to eager-load the nodes that are connected to
+// the "creator" edge. The optional arguments are used to configure the query builder of the edge.
+func (takq *TeamAPIKeyQuery) WithCreator(opts ...func(*UserQuery)) *TeamAPIKeyQuery {
+	query := (&UserClient{config: takq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	takq.withCreator = query
 	return takq
 }
 
@@ -375,8 +414,9 @@ func (takq *TeamAPIKeyQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	var (
 		nodes       = []*TeamAPIKey{}
 		_spec       = takq.querySpec()
-		loadedTypes = [1]bool{
+		loadedTypes = [2]bool{
 			takq.withTeam != nil,
+			takq.withCreator != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -408,6 +448,12 @@ func (takq *TeamAPIKeyQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 			return nil, err
 		}
 	}
+	if query := takq.withCreator; query != nil {
+		if err := takq.loadCreator(ctx, query, nodes, nil,
+			func(n *TeamAPIKey, e *User) { n.Edges.Creator = e }); err != nil {
+			return nil, err
+		}
+	}
 	return nodes, nil
 }
 
@@ -433,6 +479,38 @@ func (takq *TeamAPIKeyQuery) loadTeam(ctx context.Context, query *TeamQuery, nod
 		nodes, ok := nodeids[n.ID]
 		if !ok {
 			return fmt.Errorf(`unexpected foreign-key "team_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
+func (takq *TeamAPIKeyQuery) loadCreator(ctx context.Context, query *UserQuery, nodes []*TeamAPIKey, init func(*TeamAPIKey), assign func(*TeamAPIKey, *User)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*TeamAPIKey)
+	for i := range nodes {
+		if nodes[i].CreatedBy == nil {
+			continue
+		}
+		fk := *nodes[i].CreatedBy
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(user.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "created_by" returned %v`, n.ID)
 		}
 		for i := range nodes {
 			assign(nodes[i], n)
@@ -473,6 +551,9 @@ func (takq *TeamAPIKeyQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if takq.withTeam != nil {
 			_spec.Node.AddColumnOnce(teamapikey.FieldTeamID)
+		}
+		if takq.withCreator != nil {
+			_spec.Node.AddColumnOnce(teamapikey.FieldCreatedBy)
 		}
 	}
 	if ps := takq.predicates; len(ps) > 0 {

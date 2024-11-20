@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 	"github.com/google/uuid"
@@ -77,6 +78,21 @@ func (uu *UserUpdate) AddAccessTokens(a ...*AccessToken) *UserUpdate {
 	return uu.AddAccessTokenIDs(ids...)
 }
 
+// AddCreatedAPIKeyIDs adds the "created_api_keys" edge to the TeamAPIKey entity by IDs.
+func (uu *UserUpdate) AddCreatedAPIKeyIDs(ids ...string) *UserUpdate {
+	uu.mutation.AddCreatedAPIKeyIDs(ids...)
+	return uu
+}
+
+// AddCreatedAPIKeys adds the "created_api_keys" edges to the TeamAPIKey entity.
+func (uu *UserUpdate) AddCreatedAPIKeys(t ...*TeamAPIKey) *UserUpdate {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return uu.AddCreatedAPIKeyIDs(ids...)
+}
+
 // AddUsersTeamIDs adds the "users_teams" edge to the UsersTeams entity by IDs.
 func (uu *UserUpdate) AddUsersTeamIDs(ids ...int) *UserUpdate {
 	uu.mutation.AddUsersTeamIDs(ids...)
@@ -137,6 +153,27 @@ func (uu *UserUpdate) RemoveAccessTokens(a ...*AccessToken) *UserUpdate {
 		ids[i] = a[i].ID
 	}
 	return uu.RemoveAccessTokenIDs(ids...)
+}
+
+// ClearCreatedAPIKeys clears all "created_api_keys" edges to the TeamAPIKey entity.
+func (uu *UserUpdate) ClearCreatedAPIKeys() *UserUpdate {
+	uu.mutation.ClearCreatedAPIKeys()
+	return uu
+}
+
+// RemoveCreatedAPIKeyIDs removes the "created_api_keys" edge to TeamAPIKey entities by IDs.
+func (uu *UserUpdate) RemoveCreatedAPIKeyIDs(ids ...string) *UserUpdate {
+	uu.mutation.RemoveCreatedAPIKeyIDs(ids...)
+	return uu
+}
+
+// RemoveCreatedAPIKeys removes "created_api_keys" edges to TeamAPIKey entities.
+func (uu *UserUpdate) RemoveCreatedAPIKeys(t ...*TeamAPIKey) *UserUpdate {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return uu.RemoveCreatedAPIKeyIDs(ids...)
 }
 
 // ClearUsersTeams clears all "users_teams" edges to the UsersTeams entity.
@@ -326,6 +363,54 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if uu.mutation.CreatedAPIKeysCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedAPIKeysTable,
+			Columns: []string{user.CreatedAPIKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uu.schemaConfig.TeamAPIKey
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.RemovedCreatedAPIKeysIDs(); len(nodes) > 0 && !uu.mutation.CreatedAPIKeysCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedAPIKeysTable,
+			Columns: []string{user.CreatedAPIKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uu.schemaConfig.TeamAPIKey
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.CreatedAPIKeysIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedAPIKeysTable,
+			Columns: []string{user.CreatedAPIKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uu.schemaConfig.TeamAPIKey
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if uu.mutation.UsersTeamsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -442,6 +527,21 @@ func (uuo *UserUpdateOne) AddAccessTokens(a ...*AccessToken) *UserUpdateOne {
 	return uuo.AddAccessTokenIDs(ids...)
 }
 
+// AddCreatedAPIKeyIDs adds the "created_api_keys" edge to the TeamAPIKey entity by IDs.
+func (uuo *UserUpdateOne) AddCreatedAPIKeyIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.AddCreatedAPIKeyIDs(ids...)
+	return uuo
+}
+
+// AddCreatedAPIKeys adds the "created_api_keys" edges to the TeamAPIKey entity.
+func (uuo *UserUpdateOne) AddCreatedAPIKeys(t ...*TeamAPIKey) *UserUpdateOne {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return uuo.AddCreatedAPIKeyIDs(ids...)
+}
+
 // AddUsersTeamIDs adds the "users_teams" edge to the UsersTeams entity by IDs.
 func (uuo *UserUpdateOne) AddUsersTeamIDs(ids ...int) *UserUpdateOne {
 	uuo.mutation.AddUsersTeamIDs(ids...)
@@ -502,6 +602,27 @@ func (uuo *UserUpdateOne) RemoveAccessTokens(a ...*AccessToken) *UserUpdateOne {
 		ids[i] = a[i].ID
 	}
 	return uuo.RemoveAccessTokenIDs(ids...)
+}
+
+// ClearCreatedAPIKeys clears all "created_api_keys" edges to the TeamAPIKey entity.
+func (uuo *UserUpdateOne) ClearCreatedAPIKeys() *UserUpdateOne {
+	uuo.mutation.ClearCreatedAPIKeys()
+	return uuo
+}
+
+// RemoveCreatedAPIKeyIDs removes the "created_api_keys" edge to TeamAPIKey entities by IDs.
+func (uuo *UserUpdateOne) RemoveCreatedAPIKeyIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.RemoveCreatedAPIKeyIDs(ids...)
+	return uuo
+}
+
+// RemoveCreatedAPIKeys removes "created_api_keys" edges to TeamAPIKey entities.
+func (uuo *UserUpdateOne) RemoveCreatedAPIKeys(t ...*TeamAPIKey) *UserUpdateOne {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return uuo.RemoveCreatedAPIKeyIDs(ids...)
 }
 
 // ClearUsersTeams clears all "users_teams" edges to the UsersTeams entity.
@@ -716,6 +837,54 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 			},
 		}
 		edge.Schema = uuo.schemaConfig.AccessToken
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if uuo.mutation.CreatedAPIKeysCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedAPIKeysTable,
+			Columns: []string{user.CreatedAPIKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uuo.schemaConfig.TeamAPIKey
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.RemovedCreatedAPIKeysIDs(); len(nodes) > 0 && !uuo.mutation.CreatedAPIKeysCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedAPIKeysTable,
+			Columns: []string{user.CreatedAPIKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uuo.schemaConfig.TeamAPIKey
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.CreatedAPIKeysIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedAPIKeysTable,
+			Columns: []string{user.CreatedAPIKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uuo.schemaConfig.TeamAPIKey
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}

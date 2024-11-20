@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/google/uuid"
 )
 
@@ -39,9 +40,65 @@ func (takc *TeamAPIKeyCreate) SetNillableCreatedAt(t *time.Time) *TeamAPIKeyCrea
 	return takc
 }
 
+// SetUpdatedAt sets the "updated_at" field.
+func (takc *TeamAPIKeyCreate) SetUpdatedAt(t time.Time) *TeamAPIKeyCreate {
+	takc.mutation.SetUpdatedAt(t)
+	return takc
+}
+
+// SetNillableUpdatedAt sets the "updated_at" field if the given value is not nil.
+func (takc *TeamAPIKeyCreate) SetNillableUpdatedAt(t *time.Time) *TeamAPIKeyCreate {
+	if t != nil {
+		takc.SetUpdatedAt(*t)
+	}
+	return takc
+}
+
 // SetTeamID sets the "team_id" field.
 func (takc *TeamAPIKeyCreate) SetTeamID(u uuid.UUID) *TeamAPIKeyCreate {
 	takc.mutation.SetTeamID(u)
+	return takc
+}
+
+// SetName sets the "name" field.
+func (takc *TeamAPIKeyCreate) SetName(s string) *TeamAPIKeyCreate {
+	takc.mutation.SetName(s)
+	return takc
+}
+
+// SetNillableName sets the "name" field if the given value is not nil.
+func (takc *TeamAPIKeyCreate) SetNillableName(s *string) *TeamAPIKeyCreate {
+	if s != nil {
+		takc.SetName(*s)
+	}
+	return takc
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (takc *TeamAPIKeyCreate) SetCreatedBy(u uuid.UUID) *TeamAPIKeyCreate {
+	takc.mutation.SetCreatedBy(u)
+	return takc
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (takc *TeamAPIKeyCreate) SetNillableCreatedBy(u *uuid.UUID) *TeamAPIKeyCreate {
+	if u != nil {
+		takc.SetCreatedBy(*u)
+	}
+	return takc
+}
+
+// SetLastUsed sets the "last_used" field.
+func (takc *TeamAPIKeyCreate) SetLastUsed(t time.Time) *TeamAPIKeyCreate {
+	takc.mutation.SetLastUsed(t)
+	return takc
+}
+
+// SetNillableLastUsed sets the "last_used" field if the given value is not nil.
+func (takc *TeamAPIKeyCreate) SetNillableLastUsed(t *time.Time) *TeamAPIKeyCreate {
+	if t != nil {
+		takc.SetLastUsed(*t)
+	}
 	return takc
 }
 
@@ -54,6 +111,25 @@ func (takc *TeamAPIKeyCreate) SetID(s string) *TeamAPIKeyCreate {
 // SetTeam sets the "team" edge to the Team entity.
 func (takc *TeamAPIKeyCreate) SetTeam(t *Team) *TeamAPIKeyCreate {
 	return takc.SetTeamID(t.ID)
+}
+
+// SetCreatorID sets the "creator" edge to the User entity by ID.
+func (takc *TeamAPIKeyCreate) SetCreatorID(id uuid.UUID) *TeamAPIKeyCreate {
+	takc.mutation.SetCreatorID(id)
+	return takc
+}
+
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (takc *TeamAPIKeyCreate) SetNillableCreatorID(id *uuid.UUID) *TeamAPIKeyCreate {
+	if id != nil {
+		takc = takc.SetCreatorID(*id)
+	}
+	return takc
+}
+
+// SetCreator sets the "creator" edge to the User entity.
+func (takc *TeamAPIKeyCreate) SetCreator(u *User) *TeamAPIKeyCreate {
+	return takc.SetCreatorID(u.ID)
 }
 
 // Mutation returns the TeamAPIKeyMutation object of the builder.
@@ -95,6 +171,10 @@ func (takc *TeamAPIKeyCreate) defaults() {
 		v := teamapikey.DefaultCreatedAt()
 		takc.mutation.SetCreatedAt(v)
 	}
+	if _, ok := takc.mutation.Name(); !ok {
+		v := teamapikey.DefaultName
+		takc.mutation.SetName(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -104,6 +184,9 @@ func (takc *TeamAPIKeyCreate) check() error {
 	}
 	if _, ok := takc.mutation.TeamID(); !ok {
 		return &ValidationError{Name: "team_id", err: errors.New(`models: missing required field "TeamAPIKey.team_id"`)}
+	}
+	if _, ok := takc.mutation.Name(); !ok {
+		return &ValidationError{Name: "name", err: errors.New(`models: missing required field "TeamAPIKey.name"`)}
 	}
 	if _, ok := takc.mutation.TeamID(); !ok {
 		return &ValidationError{Name: "team", err: errors.New(`models: missing required edge "TeamAPIKey.team"`)}
@@ -149,6 +232,18 @@ func (takc *TeamAPIKeyCreate) createSpec() (*TeamAPIKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(teamapikey.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
 	}
+	if value, ok := takc.mutation.UpdatedAt(); ok {
+		_spec.SetField(teamapikey.FieldUpdatedAt, field.TypeTime, value)
+		_node.UpdatedAt = &value
+	}
+	if value, ok := takc.mutation.Name(); ok {
+		_spec.SetField(teamapikey.FieldName, field.TypeString, value)
+		_node.Name = value
+	}
+	if value, ok := takc.mutation.LastUsed(); ok {
+		_spec.SetField(teamapikey.FieldLastUsed, field.TypeTime, value)
+		_node.LastUsed = &value
+	}
 	if nodes := takc.mutation.TeamIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
@@ -165,6 +260,24 @@ func (takc *TeamAPIKeyCreate) createSpec() (*TeamAPIKey, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.TeamID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := takc.mutation.CreatorIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   teamapikey.CreatorTable,
+			Columns: []string{teamapikey.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = takc.schemaConfig.TeamAPIKey
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.CreatedBy = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -219,6 +332,24 @@ type (
 	}
 )
 
+// SetUpdatedAt sets the "updated_at" field.
+func (u *TeamAPIKeyUpsert) SetUpdatedAt(v time.Time) *TeamAPIKeyUpsert {
+	u.Set(teamapikey.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsert) UpdateUpdatedAt() *TeamAPIKeyUpsert {
+	u.SetExcluded(teamapikey.FieldUpdatedAt)
+	return u
+}
+
+// ClearUpdatedAt clears the value of the "updated_at" field.
+func (u *TeamAPIKeyUpsert) ClearUpdatedAt() *TeamAPIKeyUpsert {
+	u.SetNull(teamapikey.FieldUpdatedAt)
+	return u
+}
+
 // SetTeamID sets the "team_id" field.
 func (u *TeamAPIKeyUpsert) SetTeamID(v uuid.UUID) *TeamAPIKeyUpsert {
 	u.Set(teamapikey.FieldTeamID, v)
@@ -228,6 +359,54 @@ func (u *TeamAPIKeyUpsert) SetTeamID(v uuid.UUID) *TeamAPIKeyUpsert {
 // UpdateTeamID sets the "team_id" field to the value that was provided on create.
 func (u *TeamAPIKeyUpsert) UpdateTeamID() *TeamAPIKeyUpsert {
 	u.SetExcluded(teamapikey.FieldTeamID)
+	return u
+}
+
+// SetName sets the "name" field.
+func (u *TeamAPIKeyUpsert) SetName(v string) *TeamAPIKeyUpsert {
+	u.Set(teamapikey.FieldName, v)
+	return u
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsert) UpdateName() *TeamAPIKeyUpsert {
+	u.SetExcluded(teamapikey.FieldName)
+	return u
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (u *TeamAPIKeyUpsert) SetCreatedBy(v uuid.UUID) *TeamAPIKeyUpsert {
+	u.Set(teamapikey.FieldCreatedBy, v)
+	return u
+}
+
+// UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsert) UpdateCreatedBy() *TeamAPIKeyUpsert {
+	u.SetExcluded(teamapikey.FieldCreatedBy)
+	return u
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *TeamAPIKeyUpsert) ClearCreatedBy() *TeamAPIKeyUpsert {
+	u.SetNull(teamapikey.FieldCreatedBy)
+	return u
+}
+
+// SetLastUsed sets the "last_used" field.
+func (u *TeamAPIKeyUpsert) SetLastUsed(v time.Time) *TeamAPIKeyUpsert {
+	u.Set(teamapikey.FieldLastUsed, v)
+	return u
+}
+
+// UpdateLastUsed sets the "last_used" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsert) UpdateLastUsed() *TeamAPIKeyUpsert {
+	u.SetExcluded(teamapikey.FieldLastUsed)
+	return u
+}
+
+// ClearLastUsed clears the value of the "last_used" field.
+func (u *TeamAPIKeyUpsert) ClearLastUsed() *TeamAPIKeyUpsert {
+	u.SetNull(teamapikey.FieldLastUsed)
 	return u
 }
 
@@ -282,6 +461,27 @@ func (u *TeamAPIKeyUpsertOne) Update(set func(*TeamAPIKeyUpsert)) *TeamAPIKeyUps
 	return u
 }
 
+// SetUpdatedAt sets the "updated_at" field.
+func (u *TeamAPIKeyUpsertOne) SetUpdatedAt(v time.Time) *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertOne) UpdateUpdatedAt() *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// ClearUpdatedAt clears the value of the "updated_at" field.
+func (u *TeamAPIKeyUpsertOne) ClearUpdatedAt() *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.ClearUpdatedAt()
+	})
+}
+
 // SetTeamID sets the "team_id" field.
 func (u *TeamAPIKeyUpsertOne) SetTeamID(v uuid.UUID) *TeamAPIKeyUpsertOne {
 	return u.Update(func(s *TeamAPIKeyUpsert) {
@@ -293,6 +493,62 @@ func (u *TeamAPIKeyUpsertOne) SetTeamID(v uuid.UUID) *TeamAPIKeyUpsertOne {
 func (u *TeamAPIKeyUpsertOne) UpdateTeamID() *TeamAPIKeyUpsertOne {
 	return u.Update(func(s *TeamAPIKeyUpsert) {
 		s.UpdateTeamID()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *TeamAPIKeyUpsertOne) SetName(v string) *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertOne) UpdateName() *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (u *TeamAPIKeyUpsertOne) SetCreatedBy(v uuid.UUID) *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetCreatedBy(v)
+	})
+}
+
+// UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertOne) UpdateCreatedBy() *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateCreatedBy()
+	})
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *TeamAPIKeyUpsertOne) ClearCreatedBy() *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.ClearCreatedBy()
+	})
+}
+
+// SetLastUsed sets the "last_used" field.
+func (u *TeamAPIKeyUpsertOne) SetLastUsed(v time.Time) *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetLastUsed(v)
+	})
+}
+
+// UpdateLastUsed sets the "last_used" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertOne) UpdateLastUsed() *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateLastUsed()
+	})
+}
+
+// ClearLastUsed clears the value of the "last_used" field.
+func (u *TeamAPIKeyUpsertOne) ClearLastUsed() *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.ClearLastUsed()
 	})
 }
 
@@ -514,6 +770,27 @@ func (u *TeamAPIKeyUpsertBulk) Update(set func(*TeamAPIKeyUpsert)) *TeamAPIKeyUp
 	return u
 }
 
+// SetUpdatedAt sets the "updated_at" field.
+func (u *TeamAPIKeyUpsertBulk) SetUpdatedAt(v time.Time) *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertBulk) UpdateUpdatedAt() *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// ClearUpdatedAt clears the value of the "updated_at" field.
+func (u *TeamAPIKeyUpsertBulk) ClearUpdatedAt() *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.ClearUpdatedAt()
+	})
+}
+
 // SetTeamID sets the "team_id" field.
 func (u *TeamAPIKeyUpsertBulk) SetTeamID(v uuid.UUID) *TeamAPIKeyUpsertBulk {
 	return u.Update(func(s *TeamAPIKeyUpsert) {
@@ -525,6 +802,62 @@ func (u *TeamAPIKeyUpsertBulk) SetTeamID(v uuid.UUID) *TeamAPIKeyUpsertBulk {
 func (u *TeamAPIKeyUpsertBulk) UpdateTeamID() *TeamAPIKeyUpsertBulk {
 	return u.Update(func(s *TeamAPIKeyUpsert) {
 		s.UpdateTeamID()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *TeamAPIKeyUpsertBulk) SetName(v string) *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertBulk) UpdateName() *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (u *TeamAPIKeyUpsertBulk) SetCreatedBy(v uuid.UUID) *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetCreatedBy(v)
+	})
+}
+
+// UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertBulk) UpdateCreatedBy() *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateCreatedBy()
+	})
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *TeamAPIKeyUpsertBulk) ClearCreatedBy() *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.ClearCreatedBy()
+	})
+}
+
+// SetLastUsed sets the "last_used" field.
+func (u *TeamAPIKeyUpsertBulk) SetLastUsed(v time.Time) *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetLastUsed(v)
+	})
+}
+
+// UpdateLastUsed sets the "last_used" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertBulk) UpdateLastUsed() *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateLastUsed()
+	})
+}
+
+// ClearLastUsed clears the value of the "last_used" field.
+func (u *TeamAPIKeyUpsertBulk) ClearLastUsed() *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.ClearLastUsed()
 	})
 }
 

@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/google/uuid"
 )
 
@@ -21,8 +22,16 @@ type TeamAPIKey struct {
 	ID string `json:"id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
+	// UpdatedAt holds the value of the "updated_at" field.
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 	// TeamID holds the value of the "team_id" field.
 	TeamID uuid.UUID `json:"team_id,omitempty"`
+	// Name holds the value of the "name" field.
+	Name string `json:"name,omitempty"`
+	// CreatedBy holds the value of the "created_by" field.
+	CreatedBy *uuid.UUID `json:"created_by,omitempty"`
+	// LastUsed holds the value of the "last_used" field.
+	LastUsed *time.Time `json:"last_used,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the TeamAPIKeyQuery when eager-loading is set.
 	Edges        TeamAPIKeyEdges `json:"edges"`
@@ -33,9 +42,11 @@ type TeamAPIKey struct {
 type TeamAPIKeyEdges struct {
 	// Team holds the value of the team edge.
 	Team *Team `json:"team,omitempty"`
+	// Creator holds the value of the creator edge.
+	Creator *User `json:"creator,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [2]bool
 }
 
 // TeamOrErr returns the Team value or an error if the edge
@@ -51,14 +62,29 @@ func (e TeamAPIKeyEdges) TeamOrErr() (*Team, error) {
 	return nil, &NotLoadedError{edge: "team"}
 }
 
+// CreatorOrErr returns the Creator value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e TeamAPIKeyEdges) CreatorOrErr() (*User, error) {
+	if e.loadedTypes[1] {
+		if e.Creator == nil {
+			// Edge was loaded but was not found.
+			return nil, &NotFoundError{label: user.Label}
+		}
+		return e.Creator, nil
+	}
+	return nil, &NotLoadedError{edge: "creator"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*TeamAPIKey) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case teamapikey.FieldID:
+		case teamapikey.FieldCreatedBy:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
+		case teamapikey.FieldID, teamapikey.FieldName:
 			values[i] = new(sql.NullString)
-		case teamapikey.FieldCreatedAt:
+		case teamapikey.FieldCreatedAt, teamapikey.FieldUpdatedAt, teamapikey.FieldLastUsed:
 			values[i] = new(sql.NullTime)
 		case teamapikey.FieldTeamID:
 			values[i] = new(uuid.UUID)
@@ -89,11 +115,38 @@ func (tak *TeamAPIKey) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				tak.CreatedAt = value.Time
 			}
+		case teamapikey.FieldUpdatedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
+			} else if value.Valid {
+				tak.UpdatedAt = new(time.Time)
+				*tak.UpdatedAt = value.Time
+			}
 		case teamapikey.FieldTeamID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
 				return fmt.Errorf("unexpected type %T for field team_id", values[i])
 			} else if value != nil {
 				tak.TeamID = *value
+			}
+		case teamapikey.FieldName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field name", values[i])
+			} else if value.Valid {
+				tak.Name = value.String
+			}
+		case teamapikey.FieldCreatedBy:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field created_by", values[i])
+			} else if value.Valid {
+				tak.CreatedBy = new(uuid.UUID)
+				*tak.CreatedBy = *value.S.(*uuid.UUID)
+			}
+		case teamapikey.FieldLastUsed:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field last_used", values[i])
+			} else if value.Valid {
+				tak.LastUsed = new(time.Time)
+				*tak.LastUsed = value.Time
 			}
 		default:
 			tak.selectValues.Set(columns[i], values[i])
@@ -111,6 +164,11 @@ func (tak *TeamAPIKey) Value(name string) (ent.Value, error) {
 // QueryTeam queries the "team" edge of the TeamAPIKey entity.
 func (tak *TeamAPIKey) QueryTeam() *TeamQuery {
 	return NewTeamAPIKeyClient(tak.config).QueryTeam(tak)
+}
+
+// QueryCreator queries the "creator" edge of the TeamAPIKey entity.
+func (tak *TeamAPIKey) QueryCreator() *UserQuery {
+	return NewTeamAPIKeyClient(tak.config).QueryCreator(tak)
 }
 
 // Update returns a builder for updating this TeamAPIKey.
@@ -139,8 +197,26 @@ func (tak *TeamAPIKey) String() string {
 	builder.WriteString("created_at=")
 	builder.WriteString(tak.CreatedAt.Format(time.ANSIC))
 	builder.WriteString(", ")
+	if v := tak.UpdatedAt; v != nil {
+		builder.WriteString("updated_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
 	builder.WriteString("team_id=")
 	builder.WriteString(fmt.Sprintf("%v", tak.TeamID))
+	builder.WriteString(", ")
+	builder.WriteString("name=")
+	builder.WriteString(tak.Name)
+	builder.WriteString(", ")
+	if v := tak.CreatedBy; v != nil {
+		builder.WriteString("created_by=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := tak.LastUsed; v != nil {
+		builder.WriteString("last_used=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

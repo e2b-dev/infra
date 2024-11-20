@@ -1278,6 +1278,25 @@ func (c *TeamAPIKeyClient) QueryTeam(tak *TeamAPIKey) *TeamQuery {
 	return query
 }
 
+// QueryCreator queries the creator edge of a TeamAPIKey.
+func (c *TeamAPIKeyClient) QueryCreator(tak *TeamAPIKey) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := tak.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamapikey.Table, teamapikey.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, teamapikey.CreatorTable, teamapikey.CreatorColumn),
+		)
+		schemaConfig := tak.schemaConfig
+		step.To.Schema = schemaConfig.User
+		step.Edge.Schema = schemaConfig.TeamAPIKey
+		fromV = sqlgraph.Neighbors(tak.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *TeamAPIKeyClient) Hooks() []Hook {
 	return c.hooks.TeamAPIKey
@@ -1595,6 +1614,25 @@ func (c *UserClient) QueryAccessTokens(u *User) *AccessTokenQuery {
 		schemaConfig := u.schemaConfig
 		step.To.Schema = schemaConfig.AccessToken
 		step.Edge.Schema = schemaConfig.AccessToken
+		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryCreatedAPIKeys queries the created_api_keys edge of a User.
+func (c *UserClient) QueryCreatedAPIKeys(u *User) *TeamAPIKeyQuery {
+	query := (&TeamAPIKeyClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := u.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(teamapikey.Table, teamapikey.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.CreatedAPIKeysTable, user.CreatedAPIKeysColumn),
+		)
+		schemaConfig := u.schemaConfig
+		step.To.Schema = schemaConfig.TeamAPIKey
+		step.Edge.Schema = schemaConfig.TeamAPIKey
 		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
 		return fromV, nil
 	}

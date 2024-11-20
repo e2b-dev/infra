@@ -135,7 +135,11 @@ var (
 	TeamAPIKeysColumns = []*schema.Column{
 		{Name: "api_key", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "character varying(44)"}},
 		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
+		{Name: "updated_at", Type: field.TypeTime, Nullable: true},
+		{Name: "name", Type: field.TypeString, Default: "Unnamed API Key", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "last_used", Type: field.TypeTime, Nullable: true},
 		{Name: "team_id", Type: field.TypeUUID},
+		{Name: "created_by", Type: field.TypeUUID, Nullable: true},
 	}
 	// TeamAPIKeysTable holds the schema information for the "team_api_keys" table.
 	TeamAPIKeysTable = &schema.Table{
@@ -145,9 +149,15 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "team_api_keys_teams_team_api_keys",
-				Columns:    []*schema.Column{TeamAPIKeysColumns[2]},
+				Columns:    []*schema.Column{TeamAPIKeysColumns[5]},
 				RefColumns: []*schema.Column{TeamsColumns[0]},
 				OnDelete:   schema.Cascade,
+			},
+			{
+				Symbol:     "team_api_keys_users_created_api_keys",
+				Columns:    []*schema.Column{TeamAPIKeysColumns[6]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.SetNull,
 			},
 		},
 	}
@@ -238,6 +248,7 @@ func init() {
 	TeamsTable.ForeignKeys[0].RefTable = TiersTable
 	TeamsTable.Annotation = &entsql.Annotation{}
 	TeamAPIKeysTable.ForeignKeys[0].RefTable = TeamsTable
+	TeamAPIKeysTable.ForeignKeys[1].RefTable = UsersTable
 	TeamAPIKeysTable.Annotation = &entsql.Annotation{}
 	TiersTable.Annotation = &entsql.Annotation{}
 	TiersTable.Annotation.Checks = map[string]string{

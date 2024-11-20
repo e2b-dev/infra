@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 	"github.com/google/uuid"
@@ -23,14 +24,15 @@ import (
 // UserQuery is the builder for querying User entities.
 type UserQuery struct {
 	config
-	ctx              *QueryContext
-	order            []user.OrderOption
-	inters           []Interceptor
-	predicates       []predicate.User
-	withTeams        *TeamQuery
-	withAccessTokens *AccessTokenQuery
-	withUsersTeams   *UsersTeamsQuery
-	modifiers        []func(*sql.Selector)
+	ctx                *QueryContext
+	order              []user.OrderOption
+	inters             []Interceptor
+	predicates         []predicate.User
+	withTeams          *TeamQuery
+	withAccessTokens   *AccessTokenQuery
+	withCreatedAPIKeys *TeamAPIKeyQuery
+	withUsersTeams     *UsersTeamsQuery
+	modifiers          []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -111,6 +113,31 @@ func (uq *UserQuery) QueryAccessTokens() *AccessTokenQuery {
 		schemaConfig := uq.schemaConfig
 		step.To.Schema = schemaConfig.AccessToken
 		step.Edge.Schema = schemaConfig.AccessToken
+		fromU = sqlgraph.SetNeighbors(uq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCreatedAPIKeys chains the current query on the "created_api_keys" edge.
+func (uq *UserQuery) QueryCreatedAPIKeys() *TeamAPIKeyQuery {
+	query := (&TeamAPIKeyClient{config: uq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := uq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := uq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(teamapikey.Table, teamapikey.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.CreatedAPIKeysTable, user.CreatedAPIKeysColumn),
+		)
+		schemaConfig := uq.schemaConfig
+		step.To.Schema = schemaConfig.TeamAPIKey
+		step.Edge.Schema = schemaConfig.TeamAPIKey
 		fromU = sqlgraph.SetNeighbors(uq.driver.Dialect(), step)
 		return fromU, nil
 	}
@@ -329,14 +356,15 @@ func (uq *UserQuery) Clone() *UserQuery {
 		return nil
 	}
 	return &UserQuery{
-		config:           uq.config,
-		ctx:              uq.ctx.Clone(),
-		order:            append([]user.OrderOption{}, uq.order...),
-		inters:           append([]Interceptor{}, uq.inters...),
-		predicates:       append([]predicate.User{}, uq.predicates...),
-		withTeams:        uq.withTeams.Clone(),
-		withAccessTokens: uq.withAccessTokens.Clone(),
-		withUsersTeams:   uq.withUsersTeams.Clone(),
+		config:             uq.config,
+		ctx:                uq.ctx.Clone(),
+		order:              append([]user.OrderOption{}, uq.order...),
+		inters:             append([]Interceptor{}, uq.inters...),
+		predicates:         append([]predicate.User{}, uq.predicates...),
+		withTeams:          uq.withTeams.Clone(),
+		withAccessTokens:   uq.withAccessTokens.Clone(),
+		withCreatedAPIKeys: uq.withCreatedAPIKeys.Clone(),
+		withUsersTeams:     uq.withUsersTeams.Clone(),
 		// clone intermediate query.
 		sql:  uq.sql.Clone(),
 		path: uq.path,
@@ -362,6 +390,17 @@ func (uq *UserQuery) WithAccessTokens(opts ...func(*AccessTokenQuery)) *UserQuer
 		opt(query)
 	}
 	uq.withAccessTokens = query
+	return uq
+}
+
+// WithCreatedAPIKeys tells the query-builder to eager-load the nodes that are connected to
+// the "created_api_keys" edge. The optional arguments are used to configure the query builder of the edge.
+func (uq *UserQuery) WithCreatedAPIKeys(opts ...func(*TeamAPIKeyQuery)) *UserQuery {
+	query := (&TeamAPIKeyClient{config: uq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	uq.withCreatedAPIKeys = query
 	return uq
 }
 
@@ -454,9 +493,10 @@ func (uq *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = uq.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [4]bool{
 			uq.withTeams != nil,
 			uq.withAccessTokens != nil,
+			uq.withCreatedAPIKeys != nil,
 			uq.withUsersTeams != nil,
 		}
 	)
@@ -494,6 +534,13 @@ func (uq *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := uq.loadAccessTokens(ctx, query, nodes,
 			func(n *User) { n.Edges.AccessTokens = []*AccessToken{} },
 			func(n *User, e *AccessToken) { n.Edges.AccessTokens = append(n.Edges.AccessTokens, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := uq.withCreatedAPIKeys; query != nil {
+		if err := uq.loadCreatedAPIKeys(ctx, query, nodes,
+			func(n *User) { n.Edges.CreatedAPIKeys = []*TeamAPIKey{} },
+			func(n *User, e *TeamAPIKey) { n.Edges.CreatedAPIKeys = append(n.Edges.CreatedAPIKeys, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -594,6 +641,39 @@ func (uq *UserQuery) loadAccessTokens(ctx context.Context, query *AccessTokenQue
 		node, ok := nodeids[fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (uq *UserQuery) loadCreatedAPIKeys(ctx context.Context, query *TeamAPIKeyQuery, nodes []*User, init func(*User), assign func(*User, *TeamAPIKey)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(teamapikey.FieldCreatedBy)
+	}
+	query.Where(predicate.TeamAPIKey(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.CreatedAPIKeysColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.CreatedBy
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "created_by" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "created_by" returned %v for node %v`, *fk, n.ID)
 		}
 		assign(node, n)
 	}

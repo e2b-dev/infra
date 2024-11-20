@@ -72,9 +72,29 @@ func CreatedAt(v time.Time) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldEQ(FieldCreatedAt, v))
 }
 
+// UpdatedAt applies equality check predicate on the "updated_at" field. It's identical to UpdatedAtEQ.
+func UpdatedAt(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldUpdatedAt, v))
+}
+
 // TeamID applies equality check predicate on the "team_id" field. It's identical to TeamIDEQ.
 func TeamID(v uuid.UUID) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldEQ(FieldTeamID, v))
+}
+
+// Name applies equality check predicate on the "name" field. It's identical to NameEQ.
+func Name(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldName, v))
+}
+
+// CreatedBy applies equality check predicate on the "created_by" field. It's identical to CreatedByEQ.
+func CreatedBy(v uuid.UUID) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldCreatedBy, v))
+}
+
+// LastUsed applies equality check predicate on the "last_used" field. It's identical to LastUsedEQ.
+func LastUsed(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldLastUsed, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
@@ -117,6 +137,56 @@ func CreatedAtLTE(v time.Time) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldLTE(FieldCreatedAt, v))
 }
 
+// UpdatedAtEQ applies the EQ predicate on the "updated_at" field.
+func UpdatedAtEQ(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldUpdatedAt, v))
+}
+
+// UpdatedAtNEQ applies the NEQ predicate on the "updated_at" field.
+func UpdatedAtNEQ(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNEQ(FieldUpdatedAt, v))
+}
+
+// UpdatedAtIn applies the In predicate on the "updated_at" field.
+func UpdatedAtIn(vs ...time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIn(FieldUpdatedAt, vs...))
+}
+
+// UpdatedAtNotIn applies the NotIn predicate on the "updated_at" field.
+func UpdatedAtNotIn(vs ...time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotIn(FieldUpdatedAt, vs...))
+}
+
+// UpdatedAtGT applies the GT predicate on the "updated_at" field.
+func UpdatedAtGT(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGT(FieldUpdatedAt, v))
+}
+
+// UpdatedAtGTE applies the GTE predicate on the "updated_at" field.
+func UpdatedAtGTE(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGTE(FieldUpdatedAt, v))
+}
+
+// UpdatedAtLT applies the LT predicate on the "updated_at" field.
+func UpdatedAtLT(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLT(FieldUpdatedAt, v))
+}
+
+// UpdatedAtLTE applies the LTE predicate on the "updated_at" field.
+func UpdatedAtLTE(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLTE(FieldUpdatedAt, v))
+}
+
+// UpdatedAtIsNil applies the IsNil predicate on the "updated_at" field.
+func UpdatedAtIsNil() predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIsNull(FieldUpdatedAt))
+}
+
+// UpdatedAtNotNil applies the NotNil predicate on the "updated_at" field.
+func UpdatedAtNotNil() predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotNull(FieldUpdatedAt))
+}
+
 // TeamIDEQ applies the EQ predicate on the "team_id" field.
 func TeamIDEQ(v uuid.UUID) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldEQ(FieldTeamID, v))
@@ -135,6 +205,151 @@ func TeamIDIn(vs ...uuid.UUID) predicate.TeamAPIKey {
 // TeamIDNotIn applies the NotIn predicate on the "team_id" field.
 func TeamIDNotIn(vs ...uuid.UUID) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldNotIn(FieldTeamID, vs...))
+}
+
+// NameEQ applies the EQ predicate on the "name" field.
+func NameEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldName, v))
+}
+
+// NameNEQ applies the NEQ predicate on the "name" field.
+func NameNEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNEQ(FieldName, v))
+}
+
+// NameIn applies the In predicate on the "name" field.
+func NameIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIn(FieldName, vs...))
+}
+
+// NameNotIn applies the NotIn predicate on the "name" field.
+func NameNotIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotIn(FieldName, vs...))
+}
+
+// NameGT applies the GT predicate on the "name" field.
+func NameGT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGT(FieldName, v))
+}
+
+// NameGTE applies the GTE predicate on the "name" field.
+func NameGTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGTE(FieldName, v))
+}
+
+// NameLT applies the LT predicate on the "name" field.
+func NameLT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLT(FieldName, v))
+}
+
+// NameLTE applies the LTE predicate on the "name" field.
+func NameLTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLTE(FieldName, v))
+}
+
+// NameContains applies the Contains predicate on the "name" field.
+func NameContains(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContains(FieldName, v))
+}
+
+// NameHasPrefix applies the HasPrefix predicate on the "name" field.
+func NameHasPrefix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasPrefix(FieldName, v))
+}
+
+// NameHasSuffix applies the HasSuffix predicate on the "name" field.
+func NameHasSuffix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasSuffix(FieldName, v))
+}
+
+// NameEqualFold applies the EqualFold predicate on the "name" field.
+func NameEqualFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEqualFold(FieldName, v))
+}
+
+// NameContainsFold applies the ContainsFold predicate on the "name" field.
+func NameContainsFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContainsFold(FieldName, v))
+}
+
+// CreatedByEQ applies the EQ predicate on the "created_by" field.
+func CreatedByEQ(v uuid.UUID) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldCreatedBy, v))
+}
+
+// CreatedByNEQ applies the NEQ predicate on the "created_by" field.
+func CreatedByNEQ(v uuid.UUID) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNEQ(FieldCreatedBy, v))
+}
+
+// CreatedByIn applies the In predicate on the "created_by" field.
+func CreatedByIn(vs ...uuid.UUID) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIn(FieldCreatedBy, vs...))
+}
+
+// CreatedByNotIn applies the NotIn predicate on the "created_by" field.
+func CreatedByNotIn(vs ...uuid.UUID) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotIn(FieldCreatedBy, vs...))
+}
+
+// CreatedByIsNil applies the IsNil predicate on the "created_by" field.
+func CreatedByIsNil() predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIsNull(FieldCreatedBy))
+}
+
+// CreatedByNotNil applies the NotNil predicate on the "created_by" field.
+func CreatedByNotNil() predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotNull(FieldCreatedBy))
+}
+
+// LastUsedEQ applies the EQ predicate on the "last_used" field.
+func LastUsedEQ(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldLastUsed, v))
+}
+
+// LastUsedNEQ applies the NEQ predicate on the "last_used" field.
+func LastUsedNEQ(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNEQ(FieldLastUsed, v))
+}
+
+// LastUsedIn applies the In predicate on the "last_used" field.
+func LastUsedIn(vs ...time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIn(FieldLastUsed, vs...))
+}
+
+// LastUsedNotIn applies the NotIn predicate on the "last_used" field.
+func LastUsedNotIn(vs ...time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotIn(FieldLastUsed, vs...))
+}
+
+// LastUsedGT applies the GT predicate on the "last_used" field.
+func LastUsedGT(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGT(FieldLastUsed, v))
+}
+
+// LastUsedGTE applies the GTE predicate on the "last_used" field.
+func LastUsedGTE(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGTE(FieldLastUsed, v))
+}
+
+// LastUsedLT applies the LT predicate on the "last_used" field.
+func LastUsedLT(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLT(FieldLastUsed, v))
+}
+
+// LastUsedLTE applies the LTE predicate on the "last_used" field.
+func LastUsedLTE(v time.Time) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLTE(FieldLastUsed, v))
+}
+
+// LastUsedIsNil applies the IsNil predicate on the "last_used" field.
+func LastUsedIsNil() predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIsNull(FieldLastUsed))
+}
+
+// LastUsedNotNil applies the NotNil predicate on the "last_used" field.
+func LastUsedNotNil() predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotNull(FieldLastUsed))
 }
 
 // HasTeam applies the HasEdge predicate on the "team" edge.
@@ -157,6 +372,35 @@ func HasTeamWith(preds ...predicate.Team) predicate.TeamAPIKey {
 		step := newTeamStep()
 		schemaConfig := internal.SchemaConfigFromContext(s.Context())
 		step.To.Schema = schemaConfig.Team
+		step.Edge.Schema = schemaConfig.TeamAPIKey
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasCreator applies the HasEdge predicate on the "creator" edge.
+func HasCreator() predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, CreatorTable, CreatorColumn),
+		)
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.User
+		step.Edge.Schema = schemaConfig.TeamAPIKey
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCreatorWith applies the HasEdge predicate on the "creator" edge with a given conditions (other predicates).
+func HasCreatorWith(preds ...predicate.User) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(func(s *sql.Selector) {
+		step := newCreatorStep()
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.User
 		step.Edge.Schema = schemaConfig.TeamAPIKey
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {

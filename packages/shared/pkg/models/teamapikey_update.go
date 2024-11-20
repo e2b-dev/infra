@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
@@ -14,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/google/uuid"
 )
 
@@ -31,6 +33,26 @@ func (taku *TeamAPIKeyUpdate) Where(ps ...predicate.TeamAPIKey) *TeamAPIKeyUpdat
 	return taku
 }
 
+// SetUpdatedAt sets the "updated_at" field.
+func (taku *TeamAPIKeyUpdate) SetUpdatedAt(t time.Time) *TeamAPIKeyUpdate {
+	taku.mutation.SetUpdatedAt(t)
+	return taku
+}
+
+// SetNillableUpdatedAt sets the "updated_at" field if the given value is not nil.
+func (taku *TeamAPIKeyUpdate) SetNillableUpdatedAt(t *time.Time) *TeamAPIKeyUpdate {
+	if t != nil {
+		taku.SetUpdatedAt(*t)
+	}
+	return taku
+}
+
+// ClearUpdatedAt clears the value of the "updated_at" field.
+func (taku *TeamAPIKeyUpdate) ClearUpdatedAt() *TeamAPIKeyUpdate {
+	taku.mutation.ClearUpdatedAt()
+	return taku
+}
+
 // SetTeamID sets the "team_id" field.
 func (taku *TeamAPIKeyUpdate) SetTeamID(u uuid.UUID) *TeamAPIKeyUpdate {
 	taku.mutation.SetTeamID(u)
@@ -45,9 +67,82 @@ func (taku *TeamAPIKeyUpdate) SetNillableTeamID(u *uuid.UUID) *TeamAPIKeyUpdate 
 	return taku
 }
 
+// SetName sets the "name" field.
+func (taku *TeamAPIKeyUpdate) SetName(s string) *TeamAPIKeyUpdate {
+	taku.mutation.SetName(s)
+	return taku
+}
+
+// SetNillableName sets the "name" field if the given value is not nil.
+func (taku *TeamAPIKeyUpdate) SetNillableName(s *string) *TeamAPIKeyUpdate {
+	if s != nil {
+		taku.SetName(*s)
+	}
+	return taku
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (taku *TeamAPIKeyUpdate) SetCreatedBy(u uuid.UUID) *TeamAPIKeyUpdate {
+	taku.mutation.SetCreatedBy(u)
+	return taku
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (taku *TeamAPIKeyUpdate) SetNillableCreatedBy(u *uuid.UUID) *TeamAPIKeyUpdate {
+	if u != nil {
+		taku.SetCreatedBy(*u)
+	}
+	return taku
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (taku *TeamAPIKeyUpdate) ClearCreatedBy() *TeamAPIKeyUpdate {
+	taku.mutation.ClearCreatedBy()
+	return taku
+}
+
+// SetLastUsed sets the "last_used" field.
+func (taku *TeamAPIKeyUpdate) SetLastUsed(t time.Time) *TeamAPIKeyUpdate {
+	taku.mutation.SetLastUsed(t)
+	return taku
+}
+
+// SetNillableLastUsed sets the "last_used" field if the given value is not nil.
+func (taku *TeamAPIKeyUpdate) SetNillableLastUsed(t *time.Time) *TeamAPIKeyUpdate {
+	if t != nil {
+		taku.SetLastUsed(*t)
+	}
+	return taku
+}
+
+// ClearLastUsed clears the value of the "last_used" field.
+func (taku *TeamAPIKeyUpdate) ClearLastUsed() *TeamAPIKeyUpdate {
+	taku.mutation.ClearLastUsed()
+	return taku
+}
+
 // SetTeam sets the "team" edge to the Team entity.
 func (taku *TeamAPIKeyUpdate) SetTeam(t *Team) *TeamAPIKeyUpdate {
 	return taku.SetTeamID(t.ID)
+}
+
+// SetCreatorID sets the "creator" edge to the User entity by ID.
+func (taku *TeamAPIKeyUpdate) SetCreatorID(id uuid.UUID) *TeamAPIKeyUpdate {
+	taku.mutation.SetCreatorID(id)
+	return taku
+}
+
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (taku *TeamAPIKeyUpdate) SetNillableCreatorID(id *uuid.UUID) *TeamAPIKeyUpdate {
+	if id != nil {
+		taku = taku.SetCreatorID(*id)
+	}
+	return taku
+}
+
+// SetCreator sets the "creator" edge to the User entity.
+func (taku *TeamAPIKeyUpdate) SetCreator(u *User) *TeamAPIKeyUpdate {
+	return taku.SetCreatorID(u.ID)
 }
 
 // Mutation returns the TeamAPIKeyMutation object of the builder.
@@ -58,6 +153,12 @@ func (taku *TeamAPIKeyUpdate) Mutation() *TeamAPIKeyMutation {
 // ClearTeam clears the "team" edge to the Team entity.
 func (taku *TeamAPIKeyUpdate) ClearTeam() *TeamAPIKeyUpdate {
 	taku.mutation.ClearTeam()
+	return taku
+}
+
+// ClearCreator clears the "creator" edge to the User entity.
+func (taku *TeamAPIKeyUpdate) ClearCreator() *TeamAPIKeyUpdate {
+	taku.mutation.ClearCreator()
 	return taku
 }
 
@@ -114,6 +215,21 @@ func (taku *TeamAPIKeyUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			}
 		}
 	}
+	if value, ok := taku.mutation.UpdatedAt(); ok {
+		_spec.SetField(teamapikey.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if taku.mutation.UpdatedAtCleared() {
+		_spec.ClearField(teamapikey.FieldUpdatedAt, field.TypeTime)
+	}
+	if value, ok := taku.mutation.Name(); ok {
+		_spec.SetField(teamapikey.FieldName, field.TypeString, value)
+	}
+	if value, ok := taku.mutation.LastUsed(); ok {
+		_spec.SetField(teamapikey.FieldLastUsed, field.TypeTime, value)
+	}
+	if taku.mutation.LastUsedCleared() {
+		_spec.ClearField(teamapikey.FieldLastUsed, field.TypeTime)
+	}
 	if taku.mutation.TeamCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
@@ -137,6 +253,37 @@ func (taku *TeamAPIKeyUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(team.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = taku.schemaConfig.TeamAPIKey
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if taku.mutation.CreatorCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   teamapikey.CreatorTable,
+			Columns: []string{teamapikey.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = taku.schemaConfig.TeamAPIKey
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := taku.mutation.CreatorIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   teamapikey.CreatorTable,
+			Columns: []string{teamapikey.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = taku.schemaConfig.TeamAPIKey
@@ -169,6 +316,26 @@ type TeamAPIKeyUpdateOne struct {
 	modifiers []func(*sql.UpdateBuilder)
 }
 
+// SetUpdatedAt sets the "updated_at" field.
+func (takuo *TeamAPIKeyUpdateOne) SetUpdatedAt(t time.Time) *TeamAPIKeyUpdateOne {
+	takuo.mutation.SetUpdatedAt(t)
+	return takuo
+}
+
+// SetNillableUpdatedAt sets the "updated_at" field if the given value is not nil.
+func (takuo *TeamAPIKeyUpdateOne) SetNillableUpdatedAt(t *time.Time) *TeamAPIKeyUpdateOne {
+	if t != nil {
+		takuo.SetUpdatedAt(*t)
+	}
+	return takuo
+}
+
+// ClearUpdatedAt clears the value of the "updated_at" field.
+func (takuo *TeamAPIKeyUpdateOne) ClearUpdatedAt() *TeamAPIKeyUpdateOne {
+	takuo.mutation.ClearUpdatedAt()
+	return takuo
+}
+
 // SetTeamID sets the "team_id" field.
 func (takuo *TeamAPIKeyUpdateOne) SetTeamID(u uuid.UUID) *TeamAPIKeyUpdateOne {
 	takuo.mutation.SetTeamID(u)
@@ -183,9 +350,82 @@ func (takuo *TeamAPIKeyUpdateOne) SetNillableTeamID(u *uuid.UUID) *TeamAPIKeyUpd
 	return takuo
 }
 
+// SetName sets the "name" field.
+func (takuo *TeamAPIKeyUpdateOne) SetName(s string) *TeamAPIKeyUpdateOne {
+	takuo.mutation.SetName(s)
+	return takuo
+}
+
+// SetNillableName sets the "name" field if the given value is not nil.
+func (takuo *TeamAPIKeyUpdateOne) SetNillableName(s *string) *TeamAPIKeyUpdateOne {
+	if s != nil {
+		takuo.SetName(*s)
+	}
+	return takuo
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (takuo *TeamAPIKeyUpdateOne) SetCreatedBy(u uuid.UUID) *TeamAPIKeyUpdateOne {
+	takuo.mutation.SetCreatedBy(u)
+	return takuo
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (takuo *TeamAPIKeyUpdateOne) SetNillableCreatedBy(u *uuid.UUID) *TeamAPIKeyUpdateOne {
+	if u != nil {
+		takuo.SetCreatedBy(*u)
+	}
+	return takuo
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (takuo *TeamAPIKeyUpdateOne) ClearCreatedBy() *TeamAPIKeyUpdateOne {
+	takuo.mutation.ClearCreatedBy()
+	return takuo
+}
+
+// SetLastUsed sets the "last_used" field.
+func (takuo *TeamAPIKeyUpdateOne) SetLastUsed(t time.Time) *TeamAPIKeyUpdateOne {
+	takuo.mutation.SetLastUsed(t)
+	return takuo
+}
+
+// SetNillableLastUsed sets the "last_used" field if the given value is not nil.
+func (takuo *TeamAPIKeyUpdateOne) SetNillableLastUsed(t *time.Time) *TeamAPIKeyUpdateOne {
+	if t != nil {
+		takuo.SetLastUsed(*t)
+	}
+	return takuo
+}
+
+// ClearLastUsed clears the value of the "last_used" field.
+func (takuo *TeamAPIKeyUpdateOne) ClearLastUsed() *TeamAPIKeyUpdateOne {
+	takuo.mutation.ClearLastUsed()
+	return takuo
+}
+
 // SetTeam sets the "team" edge to the Team entity.
 func (takuo *TeamAPIKeyUpdateOne) SetTeam(t *Team) *TeamAPIKeyUpdateOne {
 	return takuo.SetTeamID(t.ID)
+}
+
+// SetCreatorID sets the "creator" edge to the User entity by ID.
+func (takuo *TeamAPIKeyUpdateOne) SetCreatorID(id uuid.UUID) *TeamAPIKeyUpdateOne {
+	takuo.mutation.SetCreatorID(id)
+	return takuo
+}
+
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (takuo *TeamAPIKeyUpdateOne) SetNillableCreatorID(id *uuid.UUID) *TeamAPIKeyUpdateOne {
+	if id != nil {
+		takuo = takuo.SetCreatorID(*id)
+	}
+	return takuo
+}
+
+// SetCreator sets the "creator" edge to the User entity.
+func (takuo *TeamAPIKeyUpdateOne) SetCreator(u *User) *TeamAPIKeyUpdateOne {
+	return takuo.SetCreatorID(u.ID)
 }
 
 // Mutation returns the TeamAPIKeyMutation object of the builder.
@@ -196,6 +436,12 @@ func (takuo *TeamAPIKeyUpdateOne) Mutation() *TeamAPIKeyMutation {
 // ClearTeam clears the "team" edge to the Team entity.
 func (takuo *TeamAPIKeyUpdateOne) ClearTeam() *TeamAPIKeyUpdateOne {
 	takuo.mutation.ClearTeam()
+	return takuo
+}
+
+// ClearCreator clears the "creator" edge to the User entity.
+func (takuo *TeamAPIKeyUpdateOne) ClearCreator() *TeamAPIKeyUpdateOne {
+	takuo.mutation.ClearCreator()
 	return takuo
 }
 
@@ -282,6 +528,21 @@ func (takuo *TeamAPIKeyUpdateOne) sqlSave(ctx context.Context) (_node *TeamAPIKe
 			}
 		}
 	}
+	if value, ok := takuo.mutation.UpdatedAt(); ok {
+		_spec.SetField(teamapikey.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if takuo.mutation.UpdatedAtCleared() {
+		_spec.ClearField(teamapikey.FieldUpdatedAt, field.TypeTime)
+	}
+	if value, ok := takuo.mutation.Name(); ok {
+		_spec.SetField(teamapikey.FieldName, field.TypeString, value)
+	}
+	if value, ok := takuo.mutation.LastUsed(); ok {
+		_spec.SetField(teamapikey.FieldLastUsed, field.TypeTime, value)
+	}
+	if takuo.mutation.LastUsedCleared() {
+		_spec.ClearField(teamapikey.FieldLastUsed, field.TypeTime)
+	}
 	if takuo.mutation.TeamCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
@@ -305,6 +566,37 @@ func (takuo *TeamAPIKeyUpdateOne) sqlSave(ctx context.Context) (_node *TeamAPIKe
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(team.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = takuo.schemaConfig.TeamAPIKey
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if takuo.mutation.CreatorCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   teamapikey.CreatorTable,
+			Columns: []string{teamapikey.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = takuo.schemaConfig.TeamAPIKey
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := takuo.mutation.CreatorIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   teamapikey.CreatorTable,
+			Columns: []string{teamapikey.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = takuo.schemaConfig.TeamAPIKey
