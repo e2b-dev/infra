@@ -120,7 +120,7 @@ func (d *DevicePool) Populate() error {
 		default:
 			device, err := d.getFreeDeviceSlot()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "[network slot pool]: failed to create network: %v\n", err)
+				fmt.Fprintf(os.Stderr, "[nbd pool]: failed to create network: %v\n", err)
 
 				continue
 			}
