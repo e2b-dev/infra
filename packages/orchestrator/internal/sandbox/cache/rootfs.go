@@ -45,10 +45,8 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 		ChunkSize,
 	)
 
-	ready := make(chan string, 1)
-
 	return &RootfsOverlay{
-		ready:     ready,
+		ready:     make(chan string, 1),
 		mnt:       mnt,
 		overlay:   overlay,
 		ctx:       ctx,

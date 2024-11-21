@@ -11,30 +11,25 @@ import (
 	"syscall"
 	"text/template"
 
-	"github.com/firecracker-microvm/firecracker-go-sdk"
-	"github.com/go-openapi/strfmt"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
-	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
-	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
-	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// The metadata serialization should not be changed — it is different from the field names we use here!
-type MmdsMetadata struct {
-	SandboxId            string `json:"instanceID"`
-	TemplateId           string `json:"envID"`
-	LogsCollectorAddress string `json:"address"`
-	TraceId              string `json:"traceID"`
-	TeamId               string `json:"teamID"`
-}
+const startScript = `mount --make-rprivate / &&
+mount -t tmpfs tmpfs {{ .buildDir }} -o X-mount.mkdir &&
+mount -t tmpfs tmpfs {{ .buildKernelDir }} -o X-mount.mkdir &&
+ln -s {{ .rootfsPath }} {{ .buildRootfsPath }} &&
+ln -s {{ .kernelPath }} {{ .buildKernelPath }} &&
+ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
+
+var startScriptTemplate = template.Must(template.New("fc-start").Parse(startScript))
 
 type Process struct {
 	uffdReady chan struct{}
@@ -54,95 +49,6 @@ type Process struct {
 	Exit chan error
 }
 
-func (p *Process) loadSnapshot(
-	ctx context.Context,
-	tracer trace.Tracer,
-	firecrackerSocketPath,
-	uffdSocketPath string,
-	metadata interface{},
-	snapfile *cache.File,
-	uffdReady chan struct{},
-) error {
-	childCtx, childSpan := tracer.Start(ctx, "load-snapshot", trace.WithAttributes(
-		attribute.String("sandbox.socket.path", firecrackerSocketPath),
-	))
-	defer childSpan.End()
-
-	client := client.NewHTTPClient(strfmt.NewFormats())
-	transport := firecracker.NewUnixSocketTransport(firecrackerSocketPath, nil, false)
-	client.SetTransport(transport)
-
-	var backend *models.MemoryBackend
-
-	err := socket.Wait(childCtx, uffdSocketPath)
-	if err != nil {
-		return fmt.Errorf("error waiting for uffd socket: %w", err)
-	}
-
-	backendType := models.MemoryBackendBackendTypeUffd
-	backend = &models.MemoryBackend{
-		BackendPath: &uffdSocketPath,
-		BackendType: &backendType,
-	}
-
-	snapfilePath := snapfile.Path()
-
-	snapshotConfig := operations.LoadSnapshotParams{
-		Context: childCtx,
-		Body: &models.SnapshotLoadParams{
-			ResumeVM:            false,
-			EnableDiffSnapshots: false,
-			MemBackend:          backend,
-			SnapshotPath:        &snapfilePath,
-		},
-	}
-
-	_, err = client.Operations.LoadSnapshot(&snapshotConfig)
-	if err != nil {
-		return fmt.Errorf("error loading snapshot: %w", err)
-	}
-
-	select {
-	case <-childCtx.Done():
-		return fmt.Errorf("context canceled while waiting for uffd ready: %w", errors.Join(childCtx.Err(), context.Cause(childCtx)))
-	case <-uffdReady:
-	}
-
-	state := models.VMStateResumed
-	pauseConfig := operations.PatchVMParams{
-		Context: childCtx,
-		Body: &models.VM{
-			State: &state,
-		},
-	}
-
-	_, err = client.Operations.PatchVM(&pauseConfig)
-	if err != nil {
-		return fmt.Errorf("error resuming vm: %w", errors.Join(err, context.Cause(childCtx)))
-	}
-
-	mmdsConfig := operations.PutMmdsParams{
-		Context: childCtx,
-		Body:    metadata,
-	}
-
-	_, err = client.Operations.PutMmds(&mmdsConfig)
-	if err != nil {
-		return fmt.Errorf("error setting mmds data: %w", err)
-	}
-
-	return nil
-}
-
-const fcStartScript = `mount --make-rprivate / &&
-mount -t tmpfs tmpfs {{ .buildDir }} -o X-mount.mkdir &&
-mount -t tmpfs tmpfs {{ .buildKernelDir }} -o X-mount.mkdir &&
-ln -s {{ .rootfsPath }} {{ .buildRootfsPath }} &&
-ln -s {{ .kernelPath }} {{ .buildKernelPath }} &&
-ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
-
-var fcStartScriptTemplate = template.Must(template.New("fc-start").Parse(fcStartScript))
-
 func NewProcess(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -159,6 +65,7 @@ func NewProcess(
 	))
 	defer childSpan.End()
 
+	// TODO: The rootfs might not be read until we unpause the VM
 	rootfsPath, err := rootfs.Path(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs path: %w", err)
@@ -166,7 +73,7 @@ func NewProcess(
 
 	var fcStartScript bytes.Buffer
 
-	err = fcStartScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
+	err = startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
 		"rootfsPath":        rootfsPath,
 		"kernelPath":        files.CacheKernelPath(),
 		"buildDir":          files.BuildDir(),
@@ -200,10 +107,10 @@ func NewProcess(
 	}
 
 	cmdStdoutReader, cmdStdoutWriter := io.Pipe()
-	cmdStderrReader, cmdStderrWriter := io.Pipe()
+	cmd.Stdout = cmdStdoutWriter
 
-	cmd.Stderr = cmdStdoutWriter
-	cmd.Stdout = cmdStderrWriter
+	cmdStderrReader, cmdStderrWriter := io.Pipe()
+	cmd.Stderr = cmdStderrWriter
 
 	return &Process{
 		Exit:                  make(chan error, 1),
@@ -276,8 +183,8 @@ func (p *Process) Start(
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
-	fcStartCtx, cancelFcStart := context.WithCancelCause(childCtx)
-	defer cancelFcStart(fmt.Errorf("fc finished starting"))
+	startCtx, cancelStart := context.WithCancelCause(childCtx)
+	defer cancelStart(fmt.Errorf("fc finished starting"))
 
 	go func() {
 		waitErr := p.cmd.Wait()
@@ -296,7 +203,7 @@ func (p *Process) Start(
 
 			p.Exit <- errMsg
 
-			cancelFcStart(errMsg)
+			cancelStart(errMsg)
 
 			return
 		}
@@ -305,7 +212,7 @@ func (p *Process) Start(
 	}()
 
 	// Wait for the FC process to start so we can use FC API
-	err = socket.Wait(fcStartCtx, p.firecrackerSocketPath)
+	err = socket.Wait(startCtx, p.firecrackerSocketPath)
 	if err != nil {
 		errMsg := fmt.Errorf("error waiting for fc socket: %w", err)
 
@@ -314,21 +221,27 @@ func (p *Process) Start(
 		return errors.Join(errMsg, fcStopErr)
 	}
 
-	err = p.loadSnapshot(
-		fcStartCtx,
-		tracer,
-		p.firecrackerSocketPath,
-		p.uffdSocketPath,
-		p.metadata,
-		p.snapfile,
-		p.uffdReady,
-	)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to load snapshot: %w", err)
+	client := newApiClient(p.firecrackerSocketPath)
 
+	err = client.loadSnapshot(startCtx, p.uffdSocketPath, p.uffdReady, p.snapfile)
+	if err != nil {
 		fcStopErr := p.Stop()
 
-		return errors.Join(errMsg, fcStopErr)
+		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
+	}
+
+	err = client.resumeVM(startCtx)
+	if err != nil {
+		fcStopErr := p.Stop()
+
+		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
+	}
+
+	err = client.setMmds(startCtx, p.metadata)
+	if err != nil {
+		fcStopErr := p.Stop()
+
+		return errors.Join(fmt.Errorf("error setting mmds: %w", err), fcStopErr)
 	}
 
 	telemetry.SetAttributes(
@@ -349,6 +262,10 @@ func (p *Process) Pid() (int, error) {
 }
 
 func (p *Process) Stop() error {
+	if p.cmd.Process == nil {
+		return fmt.Errorf("fc process not started")
+	}
+
 	err := p.cmd.Process.Kill()
 	if err != nil {
 		return fmt.Errorf("failed to send KILL to FC process: %w", err)
