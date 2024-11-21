@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -21,20 +22,19 @@ const (
 type Template struct {
 	files *storage.TemplateCacheFiles
 
-	memfile  func() (block.ReadonlyDevice, error)
-	rootfs   func() (block.ReadonlyDevice, error)
-	snapfile func() (*File, error)
-
-	rootfsResult   chan valueWithErr[block.ReadonlyDevice]
-	memfileResult  chan valueWithErr[block.ReadonlyDevice]
-	snapfileResult chan valueWithErr[*File]
+	memfile  *utils.SetOnce[block.ReadonlyDevice]
+	rootfs   *utils.SetOnce[block.ReadonlyDevice]
+	snapfile *utils.SetOnce[*File]
 
 	hugePages bool
 }
 
-type valueWithErr[T any] struct {
-	value T
-	err   error
+func (t *Template) PageSize() int64 {
+	if t.hugePages {
+		return hugepageSize
+	}
+
+	return pageSize
 }
 
 func (t *TemplateCache) newTemplate(
@@ -45,42 +45,20 @@ func (t *TemplateCache) newTemplate(
 	firecrackerVersion string,
 	hugePages bool,
 ) *Template {
-	rootfsResult := make(chan valueWithErr[block.ReadonlyDevice], 1)
-	memfileResult := make(chan valueWithErr[block.ReadonlyDevice], 1)
-	snapfileResult := make(chan valueWithErr[*File], 1)
+	files := storage.NewTemplateFiles(
+		templateId,
+		buildId,
+		kernelVersion,
+		firecrackerVersion,
+	).NewTemplateCacheFiles(cacheIdentifier)
 
-	h := &Template{
-		rootfsResult:   rootfsResult,
-		memfileResult:  memfileResult,
-		snapfileResult: snapfileResult,
-		hugePages:      hugePages,
-		files: storage.NewTemplateCacheFiles(
-			storage.NewTemplateFiles(
-				templateId,
-				buildId,
-				kernelVersion,
-				firecrackerVersion,
-			),
-			cacheIdentifier,
-		),
-		memfile: sync.OnceValues(func() (block.ReadonlyDevice, error) {
-			result := <-memfileResult
-
-			return result.value, result.err
-		}),
-		rootfs: sync.OnceValues(func() (block.ReadonlyDevice, error) {
-			result := <-rootfsResult
-
-			return result.value, result.err
-		}),
-		snapfile: sync.OnceValues(func() (*File, error) {
-			result := <-snapfileResult
-
-			return result.value, result.err
-		}),
+	return &Template{
+		hugePages: hugePages,
+		files:     files,
+		memfile:   utils.NewSetOnce[block.ReadonlyDevice](),
+		rootfs:    utils.NewSetOnce[block.ReadonlyDevice](),
+		snapfile:  utils.NewSetOnce[*File](),
 	}
-
-	return h
 }
 
 func (t *Template) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
@@ -88,65 +66,58 @@ func (t *Template) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create directory %s: %w", t.files.CacheDir(), err)
 
-		t.memfileResult <- valueWithErr[block.ReadonlyDevice]{
-			err: errMsg,
-		}
-
-		t.rootfsResult <- valueWithErr[block.ReadonlyDevice]{
-			err: errMsg,
-		}
-
-		t.snapfileResult <- valueWithErr[*File]{
-			err: errMsg,
-		}
+		t.memfile.SetError(errMsg)
+		t.rootfs.SetError(errMsg)
+		t.snapfile.SetError(errMsg)
 
 		return
 	}
 
-	go func() {
-		snapfile, snapfileErr := NewFile(ctx, bucket, t.files.StorageSnapfilePath(), t.files.CacheSnapfilePath())
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() error {
+		defer wg.Done()
+
+		snapfile, snapfileErr := NewFile(
+			ctx,
+			bucket,
+			t.files.StorageSnapfilePath(),
+			t.files.CacheSnapfilePath(),
+		)
 		if snapfileErr != nil {
-			t.snapfileResult <- valueWithErr[*File]{
-				err: fmt.Errorf("failed to fetch snapfile: %w", snapfileErr),
-			}
+			errMsg := fmt.Errorf("failed to fetch snapfile: %w", snapfileErr)
 
-			return
+			return t.snapfile.SetError(errMsg)
 		}
 
-		t.snapfileResult <- valueWithErr[*File]{
-			value: snapfile,
-		}
+		return t.snapfile.SetValue(snapfile)
 	}()
 
-	go func() {
-		var memfileBlockSize int64
-		if t.hugePages {
-			memfileBlockSize = hugepageSize
-		} else {
-			memfileBlockSize = pageSize
-		}
+	wg.Add(1)
+	go func() error {
+		defer wg.Done()
 
 		memfileStorage, memfileErr := block.NewStorage(
 			ctx,
 			bucket,
 			t.files.StorageMemfilePath(),
-			memfileBlockSize,
+			t.PageSize(),
 			t.files.CacheMemfilePath(),
 		)
 		if memfileErr != nil {
-			t.memfileResult <- valueWithErr[block.ReadonlyDevice]{
-				err: fmt.Errorf("failed to create memfile storage: %w", memfileErr),
-			}
+			errMsg := fmt.Errorf("failed to create memfile storage: %w", memfileErr)
 
-			return
+			return t.memfile.SetError(errMsg)
 		}
 
-		t.memfileResult <- valueWithErr[block.ReadonlyDevice]{
-			value: memfileStorage,
-		}
+		return t.memfile.SetValue(memfileStorage)
 	}()
 
-	go func() {
+	wg.Add(1)
+	go func() error {
+		defer wg.Done()
+
 		rootfsStorage, rootfsErr := block.NewStorage(
 			ctx,
 			bucket,
@@ -156,33 +127,31 @@ func (t *Template) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
 			t.files.CacheRootfsPath(),
 		)
 		if rootfsErr != nil {
-			t.rootfsResult <- valueWithErr[block.ReadonlyDevice]{
-				err: fmt.Errorf("failed to create rootfs storage: %w", rootfsErr),
-			}
+			errMsg := fmt.Errorf("failed to create rootfs storage: %w", rootfsErr)
 
-			return
+			return t.rootfs.SetError(errMsg)
 		}
 
-		t.rootfsResult <- valueWithErr[block.ReadonlyDevice]{
-			value: rootfsStorage,
-		}
+		return t.rootfs.SetValue(rootfsStorage)
 	}()
+
+	wg.Wait()
 }
 
 func (t *Template) Close() error {
 	var errs []error
 
-	memfile, err := t.memfile()
+	memfile, err := t.Memfile()
 	if err == nil {
 		errs = append(errs, memfile.Close())
 	}
 
-	rootfs, err := t.rootfs()
+	rootfs, err := t.Rootfs()
 	if err == nil {
 		errs = append(errs, rootfs.Close())
 	}
 
-	snapfile, err := t.snapfile()
+	snapfile, err := t.Snapfile()
 	if err == nil {
 		errs = append(errs, snapfile.Close())
 	}
@@ -195,13 +164,13 @@ func (t *Template) Files() *storage.TemplateCacheFiles {
 }
 
 func (t *Template) Memfile() (block.ReadonlyDevice, error) {
-	return t.memfile()
+	return t.memfile.Wait()
 }
 
 func (t *Template) Rootfs() (block.ReadonlyDevice, error) {
-	return t.rootfs()
+	return t.rootfs.Wait()
 }
 
 func (t *Template) Snapfile() (*File, error) {
-	return t.snapfile()
+	return t.snapfile.Wait()
 }

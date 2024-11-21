@@ -11,7 +11,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
-const templateDataExpiration = time.Hour * 48
+// How long to keep the template in the cache since the last access.
+// Should be longer than the maximum possible sandbox lifetime.
+const templateExpiration = time.Hour * 48
 
 type TemplateCache struct {
 	cache  *ttlcache.Cache[string, *Template]
@@ -21,7 +23,7 @@ type TemplateCache struct {
 
 func NewTemplateCache(ctx context.Context) *TemplateCache {
 	cache := ttlcache.New(
-		ttlcache.WithTTL[string, *Template](templateDataExpiration),
+		ttlcache.WithTTL[string, *Template](templateExpiration),
 	)
 
 	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *Template]) {
@@ -66,15 +68,10 @@ func (c *TemplateCache) GetTemplate(
 			firecrackerVersion,
 			hugePages,
 		),
-		ttlcache.WithTTL[string, *Template](templateDataExpiration),
+		ttlcache.WithTTL[string, *Template](templateExpiration),
 	)
 
 	template := item.Value()
-	if template == nil {
-		c.cache.Delete(key)
-
-		return nil, fmt.Errorf("failed to create template data cache %s", key)
-	}
 
 	if !found {
 		go template.Fetch(c.ctx, c.bucket)
