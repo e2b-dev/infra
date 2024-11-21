@@ -2,6 +2,7 @@ package gcs
 
 import (
 	"cloud.google.com/go/storage"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 

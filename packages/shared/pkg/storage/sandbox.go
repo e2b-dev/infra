@@ -11,25 +11,25 @@ type SandboxFiles struct {
 	SandboxID string
 }
 
-func NewSandboxFiles(templateCacheFiles *TemplateCacheFiles, sandboxID string) *SandboxFiles {
+func (c *TemplateCacheFiles) NewSandboxFiles(sandboxID string) *SandboxFiles {
 	return &SandboxFiles{
-		TemplateCacheFiles: templateCacheFiles,
+		TemplateCacheFiles: c,
 		SandboxID:          sandboxID,
 	}
 }
 
-func (t *SandboxFiles) SandboxCacheDir() string {
-	return filepath.Join(t.CacheDir(), "sandbox", t.SandboxID)
+func (s *SandboxFiles) SandboxCacheDir() string {
+	return filepath.Join(s.CacheDir(), "sandbox", s.SandboxID)
 }
 
-func (t *SandboxFiles) SandboxCacheRootfsPath() string {
-	return filepath.Join(t.SandboxCacheDir(), RootfsName)
+func (s *SandboxFiles) SandboxCacheRootfsPath() string {
+	return filepath.Join(s.SandboxCacheDir(), RootfsName)
 }
 
-func (t *SandboxFiles) SandboxFirecrackerSocketPath() string {
-	return filepath.Join(os.TempDir(), fmt.Sprintf("fc-%s.sock", t.SandboxID))
+func (s *SandboxFiles) SandboxFirecrackerSocketPath() string {
+	return filepath.Join(os.TempDir(), fmt.Sprintf("fc-%s.sock", s.SandboxID))
 }
 
-func (t *SandboxFiles) SandboxUffdSocketPath() string {
-	return filepath.Join(os.TempDir(), fmt.Sprintf("uffd-%s.sock", t.SandboxID))
+func (s *SandboxFiles) SandboxUffdSocketPath() string {
+	return filepath.Join(os.TempDir(), fmt.Sprintf("uffd-%s.sock", s.SandboxID))
 }

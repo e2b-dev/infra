@@ -14,25 +14,25 @@ type TemplateCacheFiles struct {
 	CacheIdentifier string
 }
 
-func NewTemplateCacheFiles(templateCacheFiles *TemplateFiles, prefix string) *TemplateCacheFiles {
+func (f *TemplateFiles) NewTemplateCacheFiles(prefix string) *TemplateCacheFiles {
 	return &TemplateCacheFiles{
-		TemplateFiles:   templateCacheFiles,
+		TemplateFiles:   f,
 		CacheIdentifier: prefix,
 	}
 }
 
-func (t *TemplateCacheFiles) CacheDir() string {
-	return filepath.Join(templateCacheDir, t.TemplateId, t.BuildId, "cache", t.CacheIdentifier)
+func (c *TemplateCacheFiles) CacheDir() string {
+	return filepath.Join(templateCacheDir, c.TemplateId, c.BuildId, "cache", c.CacheIdentifier)
 }
 
-func (t *TemplateCacheFiles) CacheMemfilePath() string {
-	return filepath.Join(t.CacheDir(), MemfileName)
+func (c *TemplateCacheFiles) CacheMemfilePath() string {
+	return filepath.Join(c.CacheDir(), MemfileName)
 }
 
-func (t *TemplateCacheFiles) CacheRootfsPath() string {
-	return filepath.Join(t.CacheDir(), RootfsName)
+func (c *TemplateCacheFiles) CacheRootfsPath() string {
+	return filepath.Join(c.CacheDir(), RootfsName)
 }
 
-func (t *TemplateCacheFiles) CacheSnapfilePath() string {
-	return filepath.Join(t.CacheDir(), SnapfileName)
+func (c *TemplateCacheFiles) CacheSnapfilePath() string {
+	return filepath.Join(c.CacheDir(), SnapfileName)
 }

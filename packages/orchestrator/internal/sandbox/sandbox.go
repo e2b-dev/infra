@@ -99,7 +99,7 @@ func NewSandbox(
 
 	networkSpan.End()
 
-	sandboxFiles := storage.NewSandboxFiles(template.Files(), config.SandboxId)
+	sandboxFiles := template.Files().NewSandboxFiles(config.SandboxId)
 
 	cleanup = append(cleanup, func() error {
 		filesErr := cleanupFiles(sandboxFiles)
