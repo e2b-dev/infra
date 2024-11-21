@@ -7,16 +7,15 @@ import (
 	"os"
 	"time"
 
-	"cloud.google.com/go/storage"
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
-	templateShared "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
-	templateStorage "github.com/e2b-dev/infra/packages/template-manager/internal/template"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
 func Build(templateID, buildID string) {
@@ -35,15 +34,9 @@ func Build(templateID, buildID string) {
 		panic(err)
 	}
 
-	client, err := storage.NewClient(ctx, storage.WithJSONReads())
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create GCS client: %v", err)
-		panic(errMsg)
-	}
-
 	var buf bytes.Buffer
-	template := build.Env{
-		TemplateFiles: templateShared.TemplateFiles{
+	t := build.Env{
+		TemplateFiles: storage.TemplateFiles{
 			BuildId:    buildID,
 			TemplateId: templateID,
 		},
@@ -57,7 +50,7 @@ func Build(templateID, buildID string) {
 		HugePages:             true,
 	}
 
-	err = template.Build(ctx, tracer, dockerClient, legacyClient)
+	err = t.Build(ctx, tracer, dockerClient, legacyClient)
 	if err != nil {
 		errMsg := fmt.Errorf("error building template: %w", err)
 
@@ -66,22 +59,22 @@ func Build(templateID, buildID string) {
 		return
 	}
 
-	tempStorage := templateStorage.NewTemplateStorage(ctx, client, templateShared.BucketName)
+	tempStorage := template.NewTemplateStorage(ctx)
 
-	buildStorage := tempStorage.NewTemplateBuild(&template.TemplateFiles)
+	buildStorage := tempStorage.NewTemplateBuild(&t.TemplateFiles)
 
 	uploadWg, ctx := errgroup.WithContext(ctx)
 
 	uploadWg.Go(func() error {
-		return buildStorage.UploadMemfile(ctx, template.BuildMemfilePath())
+		return buildStorage.UploadMemfile(ctx, t.BuildMemfilePath())
 	})
 
 	uploadWg.Go(func() error {
-		return buildStorage.UploadRootfs(ctx, template.BuildRootfsPath())
+		return buildStorage.UploadRootfs(ctx, t.BuildRootfsPath())
 	})
 
 	uploadWg.Go(func() error {
-		snapfile, err := os.Open(template.BuildSnapfilePath())
+		snapfile, err := os.Open(t.BuildSnapfilePath())
 		if err != nil {
 			return err
 		}

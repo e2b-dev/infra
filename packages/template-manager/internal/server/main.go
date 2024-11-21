@@ -2,11 +2,9 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
-	"cloud.google.com/go/storage"
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
@@ -21,7 +19,6 @@ import (
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
@@ -64,18 +61,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		panic(err)
 	}
 
-	client, err := storage.NewClient(ctx, storage.WithJSONReads())
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create GCS client: %v", err)
-		panic(errMsg)
-	}
-
-	if templateStorage.BucketName == "" {
-		// TODO: Add helper method with something like Mustk
-		log.Fatalf("template storage bucket name is empty")
-	}
-
-	templateStorage := template.NewTemplateStorage(ctx, client, templateStorage.BucketName)
+	templateStorage := template.NewTemplateStorage(ctx)
 
 	template_manager.RegisterTemplateServiceServer(s, &serverStore{
 		tracer:             otel.Tracer(constants.ServiceName),

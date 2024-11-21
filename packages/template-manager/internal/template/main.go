@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
 	"cloud.google.com/go/artifactregistry/apiv1/artifactregistrypb"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func GetDockerImageURL(templateID string) string {

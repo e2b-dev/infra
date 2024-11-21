@@ -2,15 +2,12 @@ package test
 
 import (
 	"context"
-	"fmt"
 	"time"
 
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
-
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
-	"cloud.google.com/go/storage"
 	"go.opentelemetry.io/otel"
+
+	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
 func Delete(templateID string) {
@@ -24,13 +21,7 @@ func Delete(templateID string) {
 		panic(err)
 	}
 
-	client, err := storage.NewClient(ctx, storage.WithJSONReads())
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create GCS client: %v", err)
-		panic(errMsg)
-	}
-
-	templateStorage := template.NewTemplateStorage(ctx, client, templateStorage.BucketName)
+	templateStorage := template.NewTemplateStorage(ctx)
 
 	err = template.Delete(ctx, tracer, artifactRegistry, templateStorage, templateID)
 	if err != nil {

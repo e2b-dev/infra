@@ -2,82 +2,48 @@ package template
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
-
-	"cloud.google.com/go/storage"
-	"google.golang.org/api/iterator"
 )
 
 type TemplateStorage struct {
-	bucket *storage.BucketHandle
+	bucket *gcs.BucketHandle
 }
 
-func NewTemplateStorage(ctx context.Context, client *storage.Client, bucket string) *TemplateStorage {
+func NewTemplateStorage(ctx context.Context) *TemplateStorage {
 	return &TemplateStorage{
-		bucket: gcs.Bucket(bucket),
+		bucket: gcs.TemplateBucket,
 	}
 }
 
 func (t *TemplateStorage) Remove(ctx context.Context, templateID string) error {
-	objects := t.bucket.Objects(ctx, &storage.Query{
-		Prefix: templateID + "/",
-	})
-
-	for {
-		object, err := objects.Next()
-		if err == iterator.Done {
-			break
-		}
-
-		if err != nil {
-			return fmt.Errorf("error when iterating over template objects: %w", err)
-		}
-
-		err = t.bucket.Object(object.Name).Delete(ctx)
-		if err != nil {
-			return fmt.Errorf("error when deleting template object: %w", err)
-		}
+	err := gcs.RemoveDir(ctx, t.bucket, templateID)
+	if err != nil {
+		return fmt.Errorf("error when removing template '%s': %w", templateID, err)
 	}
 
 	return nil
 }
 
-func (t *TemplateStorage) NewTemplateBuild(templateFiles *templateStorage.TemplateFiles) *TemplateBuild {
+func (t *TemplateStorage) NewTemplateBuild(files *storage.TemplateFiles) *TemplateBuild {
 	return &TemplateBuild{
 		bucket: t.bucket,
-		files:  templateFiles,
+		files:  files,
 	}
 }
 
 type TemplateBuild struct {
-	bucket *storage.BucketHandle
-	files  *templateStorage.TemplateFiles
+	bucket *gcs.BucketHandle
+	files  *storage.TemplateFiles
 }
 
 func (t *TemplateBuild) Remove(ctx context.Context) error {
-	objects := t.bucket.Objects(ctx, &storage.Query{
-		Prefix: t.files.StorageDir() + "/",
-	})
-
-	for {
-		object, err := objects.Next()
-		if errors.Is(err, iterator.Done) {
-			break
-		}
-
-		if err != nil {
-			return fmt.Errorf("error when iterating over template build objects: %w", err)
-		}
-
-		err = t.bucket.Object(object.Name).Delete(ctx)
-		if err != nil {
-			return fmt.Errorf("error when deleting template build object: %w", err)
-		}
+	err := gcs.RemoveDir(ctx, t.bucket, t.files.StorageDir())
+	if err != nil {
+		return fmt.Errorf("error when removing template build '%s': %w", t.files.StorageDir(), err)
 	}
 
 	return nil

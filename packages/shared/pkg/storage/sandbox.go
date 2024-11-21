@@ -9,12 +9,14 @@ import (
 type SandboxFiles struct {
 	*TemplateCacheFiles
 	SandboxID string
+	tmpDir    string
 }
 
 func (c *TemplateCacheFiles) NewSandboxFiles(sandboxID string) *SandboxFiles {
 	return &SandboxFiles{
 		TemplateCacheFiles: c,
 		SandboxID:          sandboxID,
+		tmpDir:             os.TempDir(),
 	}
 }
 
@@ -27,9 +29,9 @@ func (s *SandboxFiles) SandboxCacheRootfsPath() string {
 }
 
 func (s *SandboxFiles) SandboxFirecrackerSocketPath() string {
-	return filepath.Join(os.TempDir(), fmt.Sprintf("fc-%s.sock", s.SandboxID))
+	return filepath.Join(s.tmpDir, fmt.Sprintf("fc-%s.sock", s.SandboxID))
 }
 
 func (s *SandboxFiles) SandboxUffdSocketPath() string {
-	return filepath.Join(os.TempDir(), fmt.Sprintf("uffd-%s.sock", s.SandboxID))
+	return filepath.Join(s.tmpDir, fmt.Sprintf("uffd-%s.sock", s.SandboxID))
 }

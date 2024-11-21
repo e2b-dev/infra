@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
@@ -44,7 +44,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 
 	logsWriter := writer.New(stream)
 	template := &build.Env{
-		TemplateFiles: templateStorage.TemplateFiles{
+		TemplateFiles: storage.TemplateFiles{
 			TemplateId: config.TemplateID,
 			BuildId:    config.BuildID,
 		},
@@ -54,7 +54,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		DiskSizeMB:            int64(config.DiskSizeMB),
 		HugePages:             config.HugePages,
 		KernelVersion:         config.KernelVersion,
-		FirecrackerBinaryPath: filepath.Join(templateStorage.FirecrackerVersionsDir, config.FirecrackerVersion, templateStorage.FirecrackerBinaryName),
+		FirecrackerBinaryPath: filepath.Join(storage.FirecrackerVersionsDir, config.FirecrackerVersion, storage.FirecrackerBinaryName),
 		BuildLogsWriter:       logsWriter,
 	}
 
@@ -116,7 +116,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		return buildStorage.UploadSnapfile(ctx, snapfile)
 	})
 
-	cmd := exec.Command(templateStorage.HostEnvdPath, "-version")
+	cmd := exec.Command(storage.HostEnvdPath, "-version")
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -135,8 +135,8 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 
 	version := strings.TrimSpace(string(out))
 	trailerMetadata := metadata.Pairs(
-		templateStorage.RootfsSizeKey, strconv.FormatInt(template.RootfsSizeMB(), 10),
-		templateStorage.EnvdVersionKey, version,
+		storage.RootfsSizeKey, strconv.FormatInt(template.RootfsSizeMB(), 10),
+		storage.EnvdVersionKey, version,
 	)
 
 	stream.SetTrailer(trailerMetadata)

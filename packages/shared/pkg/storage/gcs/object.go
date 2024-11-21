@@ -45,10 +45,6 @@ func NewObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, obje
 	}
 }
 
-func NewObject(ctx context.Context, bucket, objectPath string) *Object {
-	return NewObjectFromBucket(ctx, client.Bucket(bucket), objectPath)
-}
-
 func (o *Object) WriteTo(dst io.Writer) (int64, error) {
 	ctx, cancel := context.WithTimeout(o.ctx, readTimeout)
 	defer cancel()

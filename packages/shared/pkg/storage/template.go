@@ -37,7 +37,12 @@ type TemplateFiles struct {
 	FirecrackerVersion string
 }
 
-func NewTemplateFiles(templateId, buildId, kernelVersion, firecrackerVersion string) *TemplateFiles {
+func NewTemplateFiles(
+	templateId,
+	buildId,
+	kernelVersion,
+	firecrackerVersion string,
+) *TemplateFiles {
 	return &TemplateFiles{
 		TemplateId:         templateId,
 		BuildId:            buildId,
