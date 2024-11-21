@@ -18,7 +18,8 @@ type TeamAPIKey struct {
 
 func (TeamAPIKey) Fields() []ent.Field {
 	return []ent.Field{
-		field.String("id").Unique().StorageKey("api_key").Sensitive().SchemaType(map[string]string{dialect.Postgres: "character varying(44)"}),
+		field.UUID("id", uuid.UUID{}).Immutable().Unique().Annotations(entsql.Default("gen_random_uuid()")),
+		field.String("api_key").Unique().Sensitive().SchemaType(map[string]string{dialect.Postgres: "character varying(44)"}),
 		field.Time("created_at").Immutable().Default(time.Now).Annotations(
 			entsql.Default("CURRENT_TIMESTAMP"),
 		),
