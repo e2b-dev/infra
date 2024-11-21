@@ -33,7 +33,7 @@ func (c *apiClient) loadSnapshot(
 	ctx context.Context,
 	uffdSocketPath string,
 	uffdReady chan struct{},
-	snapfile *cache.File,
+	snapfile cache.File,
 	rootfs *cache.RootfsOverlay,
 ) error {
 	// TODO: Do we need to wait for the socket to be present before loading snapshot?

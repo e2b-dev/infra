@@ -23,10 +23,10 @@ type RootfsOverlay struct {
 	nbdReady        chan error
 }
 
-func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
+func NewRootfsOverlay(template Template, cachePath string) (*RootfsOverlay, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	rootfs, err := t.Rootfs()
+	rootfs, err := template.Rootfs()
 	if err != nil {
 		cancel()
 

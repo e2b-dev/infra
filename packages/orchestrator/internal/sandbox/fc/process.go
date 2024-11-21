@@ -33,7 +33,7 @@ var startScriptTemplate = template.Must(template.New("fc-start").Parse(startScri
 
 type Process struct {
 	uffdReady chan struct{}
-	snapfile  *cache.File
+	snapfile  cache.File
 
 	cmd *exec.Cmd
 
@@ -55,7 +55,7 @@ func NewProcess(
 	slot network.Slot,
 	files *storage.SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
-	snapfile *cache.File,
+	snapfile cache.File,
 	rootfs *cache.RootfsOverlay,
 	uffdReady chan struct{},
 ) (*Process, error) {

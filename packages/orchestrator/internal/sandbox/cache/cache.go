@@ -16,17 +16,17 @@ import (
 const templateExpiration = time.Hour * 48
 
 type TemplateCache struct {
-	cache  *ttlcache.Cache[string, *Template]
+	cache  *ttlcache.Cache[string, Template]
 	bucket *gcs.BucketHandle
 	ctx    context.Context
 }
 
 func NewTemplateCache(ctx context.Context) *TemplateCache {
 	cache := ttlcache.New(
-		ttlcache.WithTTL[string, *Template](templateExpiration),
+		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
 
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *Template]) {
+	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
 		template := item.Value()
 
 		err := template.Close()
@@ -50,7 +50,7 @@ func (c *TemplateCache) GetTemplate(
 	kernelVersion,
 	firecrackerVersion string,
 	hugePages bool,
-) (*Template, error) {
+) (Template, error) {
 	key := fmt.Sprintf("%s-%s", templateId, buildId)
 
 	identifier, err := uuid.NewRandom()
@@ -58,24 +58,24 @@ func (c *TemplateCache) GetTemplate(
 		return nil, fmt.Errorf("failed to generate identifier: %w", err)
 	}
 
-	item, found := c.cache.GetOrSet(
-		key,
-		c.newTemplate(
-			identifier.String(),
-			templateId,
-			buildId,
-			kernelVersion,
-			firecrackerVersion,
-			hugePages,
-		),
-		ttlcache.WithTTL[string, *Template](templateExpiration),
+	storageTemplate := c.newTemplateFromStorage(
+		identifier.String(),
+		templateId,
+		buildId,
+		kernelVersion,
+		firecrackerVersion,
+		hugePages,
 	)
 
-	template := item.Value()
+	t, found := c.cache.GetOrSet(
+		key,
+		storageTemplate,
+		ttlcache.WithTTL[string, Template](templateExpiration),
+	)
 
 	if !found {
-		go template.Fetch(c.ctx, c.bucket)
+		go storageTemplate.Fetch(c.ctx, c.bucket)
 	}
 
-	return template, nil
+	return t.Value(), nil
 }

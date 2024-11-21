@@ -19,17 +19,25 @@ const (
 	rootfsBlockSize = 2 << 11
 )
 
-type Template struct {
+type Template interface {
+	Files() *storage.TemplateCacheFiles
+	Memfile() (block.ReadonlyDevice, error)
+	Rootfs() (block.ReadonlyDevice, error)
+	Snapfile() (File, error)
+	Close() error
+}
+
+type storageTemplate struct {
 	files *storage.TemplateCacheFiles
 
 	memfile  *utils.SetOnce[block.ReadonlyDevice]
 	rootfs   *utils.SetOnce[block.ReadonlyDevice]
-	snapfile *utils.SetOnce[*File]
+	snapfile *utils.SetOnce[*storageFile]
 
 	hugePages bool
 }
 
-func (t *Template) PageSize() int64 {
+func (t *storageTemplate) pageSize() int64 {
 	if t.hugePages {
 		return hugepageSize
 	}
@@ -37,14 +45,14 @@ func (t *Template) PageSize() int64 {
 	return pageSize
 }
 
-func (t *TemplateCache) newTemplate(
+func (t *TemplateCache) newTemplateFromStorage(
 	cacheIdentifier,
 	templateId,
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
 	hugePages bool,
-) *Template {
+) *storageTemplate {
 	files := storage.NewTemplateFiles(
 		templateId,
 		buildId,
@@ -52,16 +60,16 @@ func (t *TemplateCache) newTemplate(
 		firecrackerVersion,
 	).NewTemplateCacheFiles(cacheIdentifier)
 
-	return &Template{
+	return &storageTemplate{
 		hugePages: hugePages,
 		files:     files,
 		memfile:   utils.NewSetOnce[block.ReadonlyDevice](),
 		rootfs:    utils.NewSetOnce[block.ReadonlyDevice](),
-		snapfile:  utils.NewSetOnce[*File](),
+		snapfile:  utils.NewSetOnce[*storageFile](),
 	}
 }
 
-func (t *Template) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
+func (t *storageTemplate) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
 	err := os.MkdirAll(t.files.CacheDir(), os.ModePerm)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create directory %s: %w", t.files.CacheDir(), err)
@@ -79,7 +87,7 @@ func (t *Template) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
 	go func() error {
 		defer wg.Done()
 
-		snapfile, snapfileErr := NewFile(
+		snapfile, snapfileErr := newStorageFile(
 			ctx,
 			bucket,
 			t.files.StorageSnapfilePath(),
@@ -102,7 +110,7 @@ func (t *Template) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
 			ctx,
 			bucket,
 			t.files.StorageMemfilePath(),
-			t.PageSize(),
+			t.pageSize(),
 			t.files.CacheMemfilePath(),
 		)
 		if memfileErr != nil {
@@ -138,7 +146,7 @@ func (t *Template) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
 	wg.Wait()
 }
 
-func (t *Template) Close() error {
+func (t *storageTemplate) Close() error {
 	var errs []error
 
 	memfile, err := t.Memfile()
@@ -159,18 +167,18 @@ func (t *Template) Close() error {
 	return errors.Join(errs...)
 }
 
-func (t *Template) Files() *storage.TemplateCacheFiles {
+func (t *storageTemplate) Files() *storage.TemplateCacheFiles {
 	return t.files
 }
 
-func (t *Template) Memfile() (block.ReadonlyDevice, error) {
+func (t *storageTemplate) Memfile() (block.ReadonlyDevice, error) {
 	return t.memfile.Wait()
 }
 
-func (t *Template) Rootfs() (block.ReadonlyDevice, error) {
+func (t *storageTemplate) Rootfs() (block.ReadonlyDevice, error) {
 	return t.rootfs.Wait()
 }
 
-func (t *Template) Snapfile() (*File, error) {
+func (t *storageTemplate) Snapfile() (File, error) {
 	return t.snapfile.Wait()
 }

@@ -9,16 +9,21 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
-type File struct {
+type File interface {
+	Path() string
+	Close() error
+}
+
+type storageFile struct {
 	path string
 }
 
-func NewFile(
+func newStorageFile(
 	ctx context.Context,
 	bucket *gcs.BucketHandle,
 	bucketObjectPath string,
 	path string,
-) (*File, error) {
+) (*storageFile, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file: %w", err)
@@ -35,15 +40,15 @@ func NewFile(
 		return nil, fmt.Errorf("failed to write to file: %w", errors.Join(err, cleanupErr))
 	}
 
-	return &File{
+	return &storageFile{
 		path: path,
 	}, nil
 }
 
-func (f *File) Path() string {
+func (f *storageFile) Path() string {
 	return f.path
 }
 
-func (f *File) Close() error {
+func (f *storageFile) Close() error {
 	return os.RemoveAll(f.path)
 }

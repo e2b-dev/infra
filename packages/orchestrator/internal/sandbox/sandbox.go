@@ -116,7 +116,9 @@ func NewSandbox(
 	}
 
 	_, overlaySpan := tracer.Start(childCtx, "create-rootfs-overlay")
-	rootfsOverlay, err := template.NewRootfsOverlay(
+
+	rootfsOverlay, err := cache.NewRootfsOverlay(
+		template,
 		sandboxFiles.SandboxCacheRootfsPath(),
 	)
 	if err != nil {
