@@ -36,6 +36,7 @@ func (c *apiClient) loadSnapshot(
 	snapfile *cache.File,
 	rootfs *cache.RootfsOverlay,
 ) error {
+	// TODO: Do we need to wait for the socket to be present before loading snapshot?
 	err := socket.Wait(ctx, uffdSocketPath)
 	if err != nil {
 		return fmt.Errorf("error waiting for uffd socket: %w", err)

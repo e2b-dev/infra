@@ -66,7 +66,7 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 		return nil, fmt.Errorf("failed to get size: %w", err)
 	}
 
-	deviceIndex, err := nbd.Pool.GetDeviceIndex(ctx)
+	deviceIndex, err := nbd.Pool.GetDevice(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get device: %w", err)
 	}
@@ -75,7 +75,7 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 		counter := 0
 		for {
 			counter += 1
-			err = nbd.Pool.ReleaseDevice(fmt.Sprintf("/dev/nbd%d", deviceIndex))
+			err = nbd.Pool.ReleaseDevice(deviceIndex)
 			if err != nil {
 				if counter%10 == 0 {
 					fmt.Printf("[%d] failed to release device: %v\n", index, err)
