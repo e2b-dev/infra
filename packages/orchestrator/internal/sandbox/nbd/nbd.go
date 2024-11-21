@@ -52,13 +52,8 @@ func (m *ManagedPathMount) Wait() error {
 	return nil
 }
 
-func (m *ManagedPathMount) Open(ctx context.Context) (string, int64, error) {
+func (m *ManagedPathMount) Open(ctx context.Context, deviceIndex uint32) (string, int64, error) {
 	size, err := m.overlay.Size()
-	if err != nil {
-		return "", 0, err
-	}
-
-	deviceIndex, err := Pool.GetDeviceIndex(ctx)
 	if err != nil {
 		return "", 0, err
 	}

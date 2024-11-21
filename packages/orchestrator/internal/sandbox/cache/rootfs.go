@@ -2,9 +2,9 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
-	"sync"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/block"
@@ -19,7 +19,8 @@ type RootfsOverlay struct {
 	ctx       context.Context
 	cancelCtx context.CancelFunc
 
-	ready chan string
+	devicePathReady chan string
+	nbdReady        chan error
 }
 
 func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
@@ -46,63 +47,66 @@ func (t *Template) NewRootfsOverlay(cachePath string) (*RootfsOverlay, error) {
 	)
 
 	return &RootfsOverlay{
-		ready:     make(chan string, 1),
-		mnt:       mnt,
-		overlay:   overlay,
-		ctx:       ctx,
-		cancelCtx: cancel,
+		devicePathReady: make(chan string, 1),
+		nbdReady:        make(chan error, 1),
+		mnt:             mnt,
+		overlay:         overlay,
+		ctx:             ctx,
+		cancelCtx:       cancel,
 	}, nil
 }
 
 func (o *RootfsOverlay) Run() error {
-	defer close(o.ready)
+	defer close(o.devicePathReady)
+	defer close(o.nbdReady)
 	defer o.cancelCtx()
 
-	var wg sync.WaitGroup
+	deviceIndex, err := nbd.Pool.GetDevice(o.ctx)
+	if err != nil {
+		return fmt.Errorf("error getting device index: %w", err)
+	}
 
-	wg.Add(1)
+	o.devicePathReady <- nbd.GetDevicePath(deviceIndex)
 
-	file, _, err := o.mnt.Open(o.ctx)
+	_, _, err = o.mnt.Open(o.ctx, deviceIndex)
 	if err != nil {
 		return fmt.Errorf("error opening overlay file: %w", err)
 	}
 
-	go func() {
-		defer wg.Done()
+	o.nbdReady <- nil
 
-		<-o.ctx.Done()
+	<-o.ctx.Done()
 
-		err := o.mnt.Close()
-		if err != nil {
-			log.Printf("error closing overlay mount: %v\n", err)
-		}
+	err = o.mnt.Close()
+	if err != nil {
+		return fmt.Errorf("error closing overlay mount: %w", err)
+	}
 
-		err = o.overlay.Close()
-		if err != nil {
-			log.Printf("error closing overlay cache: %v\n", err)
-		}
+	err = o.overlay.Close()
+	if err != nil {
+		return fmt.Errorf("error closing overlay cache: %w", err)
+	}
 
-		counter := 0
-		for {
-			counter++
-			err := nbd.Pool.ReleaseDevice(file)
-			if err != nil {
-				if counter%100 == 0 {
-					log.Printf("[%dth try] error releasing overlay device: %v\n", counter, err)
-				}
-
-				continue
+	counter := 0
+	for {
+		counter++
+		err := nbd.Pool.ReleaseDevice(deviceIndex)
+		if errors.Is(err, nbd.ErrDeviceInUse{}) {
+			if counter%100 == 0 {
+				log.Printf("[%dth try] error releasing overlay device: %v\n", counter, err)
 			}
 
-			break
+			continue
 		}
-	}()
 
-	o.ready <- file
+		if err != nil {
+			return fmt.Errorf("error releasing overlay device: %w", err)
+		}
 
-	wg.Wait()
+		break
+	}
 
-	return o.mnt.Wait()
+	return nil
 }
 
 func (o *RootfsOverlay) Close() {
@@ -116,11 +120,27 @@ func (o *RootfsOverlay) Path(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("overlay context canceled when getting overlay path: %w", o.ctx.Err())
 	case <-ctx.Done():
 		return "", fmt.Errorf("context canceled when getting overlay path: %w", ctx.Err())
-	case path, ok := <-o.ready:
+	case path, ok := <-o.devicePathReady:
 		if !ok {
 			return "", fmt.Errorf("overlay path channel closed")
 		}
 
 		return path, nil
+	}
+}
+
+// NbdReady can only be called once.
+func (o *RootfsOverlay) NbdReady(ctx context.Context) error {
+	select {
+	case <-o.ctx.Done():
+		return fmt.Errorf("overlay context canceled when getting overlay path: %w", o.ctx.Err())
+	case <-ctx.Done():
+		return fmt.Errorf("context canceled when getting overlay path: %w", ctx.Err())
+	case err, ok := <-o.nbdReady:
+		if !ok {
+			return fmt.Errorf("overlay nbd ready channel closed")
+		}
+
+		return err
 	}
 }

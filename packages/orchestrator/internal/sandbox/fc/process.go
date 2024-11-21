@@ -44,7 +44,7 @@ type Process struct {
 
 	uffdSocketPath        string
 	firecrackerSocketPath string
-	rootfsPath            string
+	rootfs                *cache.RootfsOverlay
 
 	Exit chan error
 }
@@ -65,7 +65,6 @@ func NewProcess(
 	))
 	defer childSpan.End()
 
-	// TODO: The rootfs might not be read until we unpause the VM
 	rootfsPath, err := rootfs.Path(childCtx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs path: %w", err)
@@ -115,7 +114,7 @@ func NewProcess(
 	return &Process{
 		Exit:                  make(chan error, 1),
 		uffdReady:             uffdReady,
-		rootfsPath:            rootfsPath,
+		rootfs:                rootfs,
 		cmd:                   cmd,
 		stdout:                cmdStdoutReader,
 		stderr:                cmdStderrReader,
@@ -223,7 +222,13 @@ func (p *Process) Start(
 
 	client := newApiClient(p.firecrackerSocketPath)
 
-	err = client.loadSnapshot(startCtx, p.uffdSocketPath, p.uffdReady, p.snapfile)
+	err = client.loadSnapshot(
+		startCtx,
+		p.uffdSocketPath,
+		p.uffdReady,
+		p.snapfile,
+		p.rootfs,
+	)
 	if err != nil {
 		fcStopErr := p.Stop()
 

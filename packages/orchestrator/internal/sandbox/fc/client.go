@@ -34,6 +34,7 @@ func (c *apiClient) loadSnapshot(
 	uffdSocketPath string,
 	uffdReady chan struct{},
 	snapfile *cache.File,
+	rootfs *cache.RootfsOverlay,
 ) error {
 	err := socket.Wait(ctx, uffdSocketPath)
 	if err != nil {
@@ -67,6 +68,11 @@ func (c *apiClient) loadSnapshot(
 		return fmt.Errorf("context canceled while waiting for uffd ready: %w", ctx.Err())
 	case <-uffdReady:
 		// Wait for the uffd to be ready to serve requests
+	}
+
+	err = rootfs.NbdReady(ctx)
+	if err != nil {
+		return fmt.Errorf("error waiting for rootfs ready: %w", err)
 	}
 
 	return nil
