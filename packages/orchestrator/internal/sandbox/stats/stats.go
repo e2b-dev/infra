@@ -77,7 +77,7 @@ func getCurrentStats(pid int32) (*processStats, error) {
 
 	proc, err := process.NewProcess(pid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new a new Process instance: %w", err)
+		return nil, fmt.Errorf("failed to get process handler from pid: %w", err)
 	}
 
 	procChildren, _ := proc.Children()

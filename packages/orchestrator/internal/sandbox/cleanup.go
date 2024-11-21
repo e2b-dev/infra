@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 // HandleCleanup calls the cleanup functions in reverse order and returns the the joined error.
@@ -20,7 +20,7 @@ func HandleCleanup(cleanup []func() error) error {
 	return errors.Join(errs...)
 }
 
-func cleanupFiles(files *templateStorage.SandboxFiles) error {
+func cleanupFiles(files *storage.SandboxFiles) error {
 	var errs []error
 
 	for _, p := range []string{

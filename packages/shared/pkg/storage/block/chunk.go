@@ -48,7 +48,7 @@ func NewChunker(
 		fetchGroup:     singleflight.Group{},
 	}
 
-	// go chunker.prefetch(ctx)
+	go chunker.prefetch(ctx)
 
 	return chunker
 }
@@ -81,8 +81,6 @@ func (c *Chunker) ensureData(off, len int64) error {
 				if c.cache.isCached(chunkIdx*ChunkSize, ChunkSize) {
 					return nil, nil
 				}
-
-				fmt.Printf("Ensuring data (chunkIdx %d)\n", chunkIdx)
 
 				err := c.fetchSemaphore.Acquire(c.ctx, 1)
 				if err != nil {
@@ -147,7 +145,6 @@ func (c *Chunker) fetchChunk(idx int64) error {
 
 	off := idx * ChunkSize
 
-	// TODO: The number of byte slices used at the same time won't be bigger than the number of concurrent fetches, so we could preallocate and reuse them.
 	b := make([]byte, ChunkSize)
 
 	_, err := c.base.ReadAt(b, off)

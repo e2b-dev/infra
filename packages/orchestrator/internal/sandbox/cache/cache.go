@@ -5,18 +5,17 @@ import (
 	"fmt"
 	"time"
 
-	"cloud.google.com/go/storage"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
 const templateDataExpiration = time.Hour * 48
 
 type TemplateCache struct {
 	cache  *ttlcache.Cache[string, *Template]
-	bucket *storage.BucketHandle
+	bucket *gcs.BucketHandle
 	ctx    context.Context
 }
 
@@ -37,13 +36,13 @@ func NewTemplateCache(ctx context.Context) *TemplateCache {
 	go cache.Start()
 
 	return &TemplateCache{
-		bucket: templateStorage.TemplateBucket,
+		bucket: gcs.TemplateBucket,
 		cache:  cache,
 		ctx:    ctx,
 	}
 }
 
-func (t *TemplateCache) GetTemplate(
+func (c *TemplateCache) GetTemplate(
 	templateId,
 	buildId,
 	kernelVersion,
@@ -57,9 +56,9 @@ func (t *TemplateCache) GetTemplate(
 		return nil, fmt.Errorf("failed to generate identifier: %w", err)
 	}
 
-	item, found := t.cache.GetOrSet(
+	item, found := c.cache.GetOrSet(
 		key,
-		t.newTemplate(
+		c.newTemplate(
 			identifier.String(),
 			templateId,
 			buildId,
@@ -72,13 +71,13 @@ func (t *TemplateCache) GetTemplate(
 
 	template := item.Value()
 	if template == nil {
-		t.cache.Delete(key)
+		c.cache.Delete(key)
 
 		return nil, fmt.Errorf("failed to create template data cache %s", key)
 	}
 
 	if !found {
-		go template.Fetch(t.ctx, t.bucket)
+		go template.Fetch(c.ctx, c.bucket)
 	}
 
 	return template, nil

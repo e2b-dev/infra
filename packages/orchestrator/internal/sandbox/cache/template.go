@@ -7,10 +7,9 @@ import (
 	"os"
 	"sync"
 
-	"cloud.google.com/go/storage"
-
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
 const (
@@ -20,7 +19,7 @@ const (
 )
 
 type Template struct {
-	files *templateStorage.TemplateCacheFiles
+	files *storage.TemplateCacheFiles
 
 	memfile  func() (block.ReadonlyDevice, error)
 	rootfs   func() (block.ReadonlyDevice, error)
@@ -55,8 +54,8 @@ func (t *TemplateCache) newTemplate(
 		memfileResult:  memfileResult,
 		snapfileResult: snapfileResult,
 		hugePages:      hugePages,
-		files: templateStorage.NewTemplateCacheFiles(
-			templateStorage.NewTemplateFiles(
+		files: storage.NewTemplateCacheFiles(
+			storage.NewTemplateFiles(
 				templateId,
 				buildId,
 				kernelVersion,
@@ -84,7 +83,7 @@ func (t *TemplateCache) newTemplate(
 	return h
 }
 
-func (t *Template) Fetch(ctx context.Context, bucket *storage.BucketHandle) {
+func (t *Template) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
 	err := os.MkdirAll(t.files.CacheDir(), os.ModePerm)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create directory %s: %w", t.files.CacheDir(), err)
@@ -191,7 +190,7 @@ func (t *Template) Close() error {
 	return errors.Join(errs...)
 }
 
-func (t *Template) Files() *templateStorage.TemplateCacheFiles {
+func (t *Template) Files() *storage.TemplateCacheFiles {
 	return t.files
 }
 

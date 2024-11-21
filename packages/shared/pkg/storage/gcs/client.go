@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"cloud.google.com/go/storage"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -17,8 +18,4 @@ func newClient(ctx context.Context) (*storage.Client, error) {
 	}
 
 	return client, nil
-}
-
-func Bucket(bucket string) *storage.BucketHandle {
-	return client.Bucket(bucket)
 }

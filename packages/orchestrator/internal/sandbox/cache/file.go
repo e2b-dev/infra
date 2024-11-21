@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 
-	"cloud.google.com/go/storage"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
@@ -17,7 +15,7 @@ type File struct {
 
 func NewFile(
 	ctx context.Context,
-	bucket *storage.BucketHandle,
+	bucket *gcs.BucketHandle,
 	bucketObjectPath string,
 	path string,
 ) (*File, error) {

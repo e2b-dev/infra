@@ -21,7 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -31,7 +31,7 @@ var httpClient = http.Client{
 }
 
 type Sandbox struct {
-	files    *templateStorage.SandboxFiles
+	files    *storage.SandboxFiles
 	stopOnce func() error
 
 	process *fc.Process
@@ -99,7 +99,7 @@ func NewSandbox(
 
 	networkSpan.End()
 
-	sandboxFiles := templateStorage.NewSandboxFiles(template.Files(), config.SandboxId)
+	sandboxFiles := storage.NewSandboxFiles(template.Files(), config.SandboxId)
 
 	cleanup = append(cleanup, func() error {
 		filesErr := cleanupFiles(sandboxFiles)
@@ -281,7 +281,9 @@ func NewSandbox(
 	sbx.StartedAt = time.Now()
 
 	dns.Add(config.SandboxId, ips.HostIP())
+
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
+
 	cleanup = append(cleanup, func() error {
 		dns.Remove(config.SandboxId)
 

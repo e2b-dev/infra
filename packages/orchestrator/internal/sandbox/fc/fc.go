@@ -19,11 +19,11 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -147,7 +147,7 @@ func NewProcess(
 	ctx context.Context,
 	tracer trace.Tracer,
 	slot network.Slot,
-	files *templateStorage.SandboxFiles,
+	files *storage.SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
 	snapfile *cache.File,
 	rootfs *cache.RootfsOverlay,

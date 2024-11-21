@@ -3,9 +3,6 @@ package storage
 import (
 	"fmt"
 	"path/filepath"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -31,12 +28,6 @@ const (
 	MemfileName  = "memfile"
 	RootfsName   = "rootfs.ext4"
 	SnapfileName = "snapfile"
-)
-
-var (
-	templateBucketName = utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "bucket for storing template files")
-
-	TemplateBucket = gcs.Bucket(templateBucketName)
 )
 
 type TemplateFiles struct {
