@@ -37,7 +37,7 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 		teams[i] = api.Team{
 			TeamID:    teamDB.ID.String(),
 			Name:      teamDB.Name,
-			ApiKey:    teamDB.Edges.TeamAPIKeys[0].ID,
+			ApiKey:    teamDB.Edges.TeamAPIKeys[0].APIKey,
 			IsDefault: teamDB.Edges.UsersTeams[0].IsDefault,
 		}
 	}
