@@ -7,7 +7,6 @@ import (
 type StorageOverlay struct {
 	overlay *Overlay
 	cache   *MmapCache
-	storage ReadonlyDevice
 }
 
 func NewStorageOverlay(device ReadonlyDevice, blockSize int64, cachePath string) (*StorageOverlay, error) {
@@ -26,7 +25,6 @@ func NewStorageOverlay(device ReadonlyDevice, blockSize int64, cachePath string)
 	return &StorageOverlay{
 		overlay: overlay,
 		cache:   cache,
-		storage: device,
 	}, nil
 }
 
@@ -39,7 +37,7 @@ func (o *StorageOverlay) WriteAt(p []byte, off int64) (n int, err error) {
 }
 
 func (o *StorageOverlay) Size() (int64, error) {
-	return o.storage.Size()
+	return o.cache.Size()
 }
 
 func (o *StorageOverlay) Close() error {
