@@ -50,16 +50,12 @@ func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
 }
 
 func (m *MmapCache) ReadAt(b []byte, off int64) (int, error) {
-	if !m.isCached(off, int64(len(b))) {
-		return 0, ErrBytesNotAvailable{}
+	slice, err := m.Slice(off, int64(len(b)))
+	if err != nil {
+		return 0, fmt.Errorf("error slicing mmap: %w", err)
 	}
 
-	end := off + int64(len(b))
-	if end > m.size {
-		end = m.size
-	}
-
-	return copy(b, m.mmap[off:end]), nil
+	return copy(b, slice), nil
 }
 
 func (m *MmapCache) WriteAt(b []byte, off int64) (int, error) {
