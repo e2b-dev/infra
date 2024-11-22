@@ -1,6 +1,8 @@
 package block
 
 import (
+	"context"
+	"errors"
 	"fmt"
 )
 
@@ -60,4 +62,9 @@ func (o *StorageOverlay) Slice(offset, length int64) ([]byte, error) {
 
 func (o *StorageOverlay) isCached(offset, length int64) bool {
 	return o.cache.isCached(offset, length)
+}
+
+func (o *StorageOverlay) Snapshot(ctx context.Context) (ReadonlyDevice, error) {
+	// TODO: implement
+	return nil, errors.New("not implemented")
 }

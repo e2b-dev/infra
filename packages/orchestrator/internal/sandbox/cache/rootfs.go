@@ -144,3 +144,7 @@ func (o *RootfsOverlay) NbdReady(ctx context.Context) error {
 		return err
 	}
 }
+
+func (o *RootfsOverlay) Snapshot(ctx context.Context) (block.ReadonlyDevice, error) {
+	return nil, errors.New("not implemented")
+}
