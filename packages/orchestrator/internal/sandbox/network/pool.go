@@ -19,6 +19,9 @@ const (
 )
 
 type Pool struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	newSlots          chan Slot
 	reusedSlots       chan Slot
 	newSlotCounter    metric.Int64UpDownCounter
@@ -39,11 +42,14 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int) (*P
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
 	pool := &Pool{
 		newSlots:          newSlots,
 		reusedSlots:       reusedSlots,
 		newSlotCounter:    newSlotCounter,
 		reusedSlotCounter: reusedSlotsCounter,
+		ctx:               ctx,
+		cancel:            cancel,
 	}
 
 	go func() {
@@ -143,6 +149,7 @@ func cleanup(slot Slot) error {
 }
 
 func (p *Pool) Close() error {
+	p.cancel()
 	for slot := range p.newSlots {
 		err := cleanup(slot)
 		if err != nil {
