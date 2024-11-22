@@ -49,6 +49,12 @@ type NewSandbox struct {
 	Timeout *int32 `json:"timeout,omitempty"`
 }
 
+// ResumedSandbox defines model for ResumedSandbox.
+type ResumedSandbox struct {
+	// Timeout Time to live for the sandbox in seconds.
+	Timeout *int32 `json:"timeout,omitempty"`
+}
+
 // RunningSandbox defines model for RunningSandbox.
 type RunningSandbox struct {
 	// Alias Alias of the template
@@ -206,6 +212,9 @@ type N401 = Error
 // N404 defines model for 404.
 type N404 = Error
 
+// N409 defines model for 409.
+type N409 = Error
+
 // N500 defines model for 500.
 type N500 = Error
 
@@ -246,6 +255,9 @@ type PostSandboxesJSONRequestBody = NewSandbox
 
 // PostSandboxesSandboxIDRefreshesJSONRequestBody defines body for PostSandboxesSandboxIDRefreshes for application/json ContentType.
 type PostSandboxesSandboxIDRefreshesJSONRequestBody PostSandboxesSandboxIDRefreshesJSONBody
+
+// PostSandboxesSandboxIDResumeJSONRequestBody defines body for PostSandboxesSandboxIDResume for application/json ContentType.
+type PostSandboxesSandboxIDResumeJSONRequestBody = ResumedSandbox
 
 // PostSandboxesSandboxIDTimeoutJSONRequestBody defines body for PostSandboxesSandboxIDTimeout for application/json ContentType.
 type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJSONBody
