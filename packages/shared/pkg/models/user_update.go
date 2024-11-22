@@ -79,14 +79,14 @@ func (uu *UserUpdate) AddAccessTokens(a ...*AccessToken) *UserUpdate {
 }
 
 // AddCreatedAPIKeyIDs adds the "created_api_keys" edge to the TeamAPIKey entity by IDs.
-func (uu *UserUpdate) AddCreatedAPIKeyIDs(ids ...string) *UserUpdate {
+func (uu *UserUpdate) AddCreatedAPIKeyIDs(ids ...uuid.UUID) *UserUpdate {
 	uu.mutation.AddCreatedAPIKeyIDs(ids...)
 	return uu
 }
 
 // AddCreatedAPIKeys adds the "created_api_keys" edges to the TeamAPIKey entity.
 func (uu *UserUpdate) AddCreatedAPIKeys(t ...*TeamAPIKey) *UserUpdate {
-	ids := make([]string, len(t))
+	ids := make([]uuid.UUID, len(t))
 	for i := range t {
 		ids[i] = t[i].ID
 	}
@@ -162,14 +162,14 @@ func (uu *UserUpdate) ClearCreatedAPIKeys() *UserUpdate {
 }
 
 // RemoveCreatedAPIKeyIDs removes the "created_api_keys" edge to TeamAPIKey entities by IDs.
-func (uu *UserUpdate) RemoveCreatedAPIKeyIDs(ids ...string) *UserUpdate {
+func (uu *UserUpdate) RemoveCreatedAPIKeyIDs(ids ...uuid.UUID) *UserUpdate {
 	uu.mutation.RemoveCreatedAPIKeyIDs(ids...)
 	return uu
 }
 
 // RemoveCreatedAPIKeys removes "created_api_keys" edges to TeamAPIKey entities.
 func (uu *UserUpdate) RemoveCreatedAPIKeys(t ...*TeamAPIKey) *UserUpdate {
-	ids := make([]string, len(t))
+	ids := make([]uuid.UUID, len(t))
 	for i := range t {
 		ids[i] = t[i].ID
 	}
@@ -371,7 +371,7 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Columns: []string{user.CreatedAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uu.schemaConfig.TeamAPIKey
@@ -385,7 +385,7 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Columns: []string{user.CreatedAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uu.schemaConfig.TeamAPIKey
@@ -402,7 +402,7 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Columns: []string{user.CreatedAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uu.schemaConfig.TeamAPIKey
@@ -528,14 +528,14 @@ func (uuo *UserUpdateOne) AddAccessTokens(a ...*AccessToken) *UserUpdateOne {
 }
 
 // AddCreatedAPIKeyIDs adds the "created_api_keys" edge to the TeamAPIKey entity by IDs.
-func (uuo *UserUpdateOne) AddCreatedAPIKeyIDs(ids ...string) *UserUpdateOne {
+func (uuo *UserUpdateOne) AddCreatedAPIKeyIDs(ids ...uuid.UUID) *UserUpdateOne {
 	uuo.mutation.AddCreatedAPIKeyIDs(ids...)
 	return uuo
 }
 
 // AddCreatedAPIKeys adds the "created_api_keys" edges to the TeamAPIKey entity.
 func (uuo *UserUpdateOne) AddCreatedAPIKeys(t ...*TeamAPIKey) *UserUpdateOne {
-	ids := make([]string, len(t))
+	ids := make([]uuid.UUID, len(t))
 	for i := range t {
 		ids[i] = t[i].ID
 	}
@@ -611,14 +611,14 @@ func (uuo *UserUpdateOne) ClearCreatedAPIKeys() *UserUpdateOne {
 }
 
 // RemoveCreatedAPIKeyIDs removes the "created_api_keys" edge to TeamAPIKey entities by IDs.
-func (uuo *UserUpdateOne) RemoveCreatedAPIKeyIDs(ids ...string) *UserUpdateOne {
+func (uuo *UserUpdateOne) RemoveCreatedAPIKeyIDs(ids ...uuid.UUID) *UserUpdateOne {
 	uuo.mutation.RemoveCreatedAPIKeyIDs(ids...)
 	return uuo
 }
 
 // RemoveCreatedAPIKeys removes "created_api_keys" edges to TeamAPIKey entities.
 func (uuo *UserUpdateOne) RemoveCreatedAPIKeys(t ...*TeamAPIKey) *UserUpdateOne {
-	ids := make([]string, len(t))
+	ids := make([]uuid.UUID, len(t))
 	for i := range t {
 		ids[i] = t[i].ID
 	}
@@ -850,7 +850,7 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 			Columns: []string{user.CreatedAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uuo.schemaConfig.TeamAPIKey
@@ -864,7 +864,7 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 			Columns: []string{user.CreatedAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uuo.schemaConfig.TeamAPIKey
@@ -881,7 +881,7 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 			Columns: []string{user.CreatedAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uuo.schemaConfig.TeamAPIKey

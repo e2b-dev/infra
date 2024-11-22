@@ -41,7 +41,7 @@ func (takd *TeamAPIKeyDelete) ExecX(ctx context.Context) int {
 }
 
 func (takd *TeamAPIKeyDelete) sqlExec(ctx context.Context) (int, error) {
-	_spec := sqlgraph.NewDeleteSpec(teamapikey.Table, sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString))
+	_spec := sqlgraph.NewDeleteSpec(teamapikey.Table, sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID))
 	_spec.Node.Schema = takd.schemaConfig.TeamAPIKey
 	ctx = internal.NewSchemaConfigContext(ctx, takd.schemaConfig)
 	if ps := takd.mutation.predicates; len(ps) > 0 {

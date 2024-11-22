@@ -24,8 +24,6 @@ const (
 	EdgeUsersTeams = "users_teams"
 	// AccessTokenFieldID holds the string denoting the ID field of the AccessToken.
 	AccessTokenFieldID = "access_token"
-	// TeamAPIKeyFieldID holds the string denoting the ID field of the TeamAPIKey.
-	TeamAPIKeyFieldID = "api_key"
 	// Table holds the table name of the user in the database.
 	Table = "users"
 	// TeamsTable is the table that holds the teams relation/edge. The primary key declared below.
@@ -168,7 +166,7 @@ func newAccessTokensStep() *sqlgraph.Step {
 func newCreatedAPIKeysStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(CreatedAPIKeysInverseTable, TeamAPIKeyFieldID),
+		sqlgraph.To(CreatedAPIKeysInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, CreatedAPIKeysTable, CreatedAPIKeysColumn),
 	)
 }

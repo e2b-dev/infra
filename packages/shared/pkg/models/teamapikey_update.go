@@ -33,6 +33,20 @@ func (taku *TeamAPIKeyUpdate) Where(ps ...predicate.TeamAPIKey) *TeamAPIKeyUpdat
 	return taku
 }
 
+// SetAPIKey sets the "api_key" field.
+func (taku *TeamAPIKeyUpdate) SetAPIKey(s string) *TeamAPIKeyUpdate {
+	taku.mutation.SetAPIKey(s)
+	return taku
+}
+
+// SetNillableAPIKey sets the "api_key" field if the given value is not nil.
+func (taku *TeamAPIKeyUpdate) SetNillableAPIKey(s *string) *TeamAPIKeyUpdate {
+	if s != nil {
+		taku.SetAPIKey(*s)
+	}
+	return taku
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (taku *TeamAPIKeyUpdate) SetUpdatedAt(t time.Time) *TeamAPIKeyUpdate {
 	taku.mutation.SetUpdatedAt(t)
@@ -207,13 +221,16 @@ func (taku *TeamAPIKeyUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if err := taku.check(); err != nil {
 		return n, err
 	}
-	_spec := sqlgraph.NewUpdateSpec(teamapikey.Table, teamapikey.Columns, sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString))
+	_spec := sqlgraph.NewUpdateSpec(teamapikey.Table, teamapikey.Columns, sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID))
 	if ps := taku.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := taku.mutation.APIKey(); ok {
+		_spec.SetField(teamapikey.FieldAPIKey, field.TypeString, value)
 	}
 	if value, ok := taku.mutation.UpdatedAt(); ok {
 		_spec.SetField(teamapikey.FieldUpdatedAt, field.TypeTime, value)
@@ -314,6 +331,20 @@ type TeamAPIKeyUpdateOne struct {
 	hooks     []Hook
 	mutation  *TeamAPIKeyMutation
 	modifiers []func(*sql.UpdateBuilder)
+}
+
+// SetAPIKey sets the "api_key" field.
+func (takuo *TeamAPIKeyUpdateOne) SetAPIKey(s string) *TeamAPIKeyUpdateOne {
+	takuo.mutation.SetAPIKey(s)
+	return takuo
+}
+
+// SetNillableAPIKey sets the "api_key" field if the given value is not nil.
+func (takuo *TeamAPIKeyUpdateOne) SetNillableAPIKey(s *string) *TeamAPIKeyUpdateOne {
+	if s != nil {
+		takuo.SetAPIKey(*s)
+	}
+	return takuo
 }
 
 // SetUpdatedAt sets the "updated_at" field.
@@ -503,7 +534,7 @@ func (takuo *TeamAPIKeyUpdateOne) sqlSave(ctx context.Context) (_node *TeamAPIKe
 	if err := takuo.check(); err != nil {
 		return _node, err
 	}
-	_spec := sqlgraph.NewUpdateSpec(teamapikey.Table, teamapikey.Columns, sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString))
+	_spec := sqlgraph.NewUpdateSpec(teamapikey.Table, teamapikey.Columns, sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID))
 	id, ok := takuo.mutation.ID()
 	if !ok {
 		return nil, &ValidationError{Name: "id", err: errors.New(`models: missing "TeamAPIKey.id" for update`)}
@@ -527,6 +558,9 @@ func (takuo *TeamAPIKeyUpdateOne) sqlSave(ctx context.Context) (_node *TeamAPIKe
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := takuo.mutation.APIKey(); ok {
+		_spec.SetField(teamapikey.FieldAPIKey, field.TypeString, value)
 	}
 	if value, ok := takuo.mutation.UpdatedAt(); ok {
 		_spec.SetField(teamapikey.FieldUpdatedAt, field.TypeTime, value)

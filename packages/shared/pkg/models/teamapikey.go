@@ -19,7 +19,9 @@ import (
 type TeamAPIKey struct {
 	config `json:"-"`
 	// ID of the ent.
-	ID string `json:"id,omitempty"`
+	ID uuid.UUID `json:"id,omitempty"`
+	// APIKey holds the value of the "api_key" field.
+	APIKey string `json:"-"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -82,11 +84,11 @@ func (*TeamAPIKey) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case teamapikey.FieldCreatedBy:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
-		case teamapikey.FieldID, teamapikey.FieldName:
+		case teamapikey.FieldAPIKey, teamapikey.FieldName:
 			values[i] = new(sql.NullString)
 		case teamapikey.FieldCreatedAt, teamapikey.FieldUpdatedAt, teamapikey.FieldLastUsed:
 			values[i] = new(sql.NullTime)
-		case teamapikey.FieldTeamID:
+		case teamapikey.FieldID, teamapikey.FieldTeamID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -104,10 +106,16 @@ func (tak *TeamAPIKey) assignValues(columns []string, values []any) error {
 	for i := range columns {
 		switch columns[i] {
 		case teamapikey.FieldID:
-			if value, ok := values[i].(*sql.NullString); !ok {
+			if value, ok := values[i].(*uuid.UUID); !ok {
 				return fmt.Errorf("unexpected type %T for field id", values[i])
+			} else if value != nil {
+				tak.ID = *value
+			}
+		case teamapikey.FieldAPIKey:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field api_key", values[i])
 			} else if value.Valid {
-				tak.ID = value.String
+				tak.APIKey = value.String
 			}
 		case teamapikey.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -194,6 +202,8 @@ func (tak *TeamAPIKey) String() string {
 	var builder strings.Builder
 	builder.WriteString("TeamAPIKey(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", tak.ID))
+	builder.WriteString("api_key=<sensitive>")
+	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(tak.CreatedAt.Format(time.ANSIC))
 	builder.WriteString(", ")

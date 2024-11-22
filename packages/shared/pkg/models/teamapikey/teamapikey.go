@@ -13,7 +13,9 @@ const (
 	// Label holds the string label denoting the teamapikey type in the database.
 	Label = "team_api_key"
 	// FieldID holds the string denoting the id field in the database.
-	FieldID = "api_key"
+	FieldID = "id"
+	// FieldAPIKey holds the string denoting the api_key field in the database.
+	FieldAPIKey = "api_key"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -30,10 +32,6 @@ const (
 	EdgeTeam = "team"
 	// EdgeCreator holds the string denoting the creator edge name in mutations.
 	EdgeCreator = "creator"
-	// TeamFieldID holds the string denoting the ID field of the Team.
-	TeamFieldID = "id"
-	// UserFieldID holds the string denoting the ID field of the User.
-	UserFieldID = "id"
 	// Table holds the table name of the teamapikey in the database.
 	Table = "team_api_keys"
 	// TeamTable is the table that holds the team relation/edge.
@@ -55,6 +53,7 @@ const (
 // Columns holds all SQL columns for teamapikey fields.
 var Columns = []string{
 	FieldID,
+	FieldAPIKey,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldTeamID,
@@ -86,6 +85,11 @@ type OrderOption func(*sql.Selector)
 // ByID orders the results by the id field.
 func ByID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldID, opts...).ToFunc()
+}
+
+// ByAPIKey orders the results by the api_key field.
+func ByAPIKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPIKey, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.
@@ -134,14 +138,14 @@ func ByCreatorField(field string, opts ...sql.OrderTermOption) OrderOption {
 func newTeamStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(TeamInverseTable, TeamFieldID),
+		sqlgraph.To(TeamInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, TeamTable, TeamColumn),
 	)
 }
 func newCreatorStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(CreatorInverseTable, UserFieldID),
+		sqlgraph.To(CreatorInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, CreatorTable, CreatorColumn),
 	)
 }

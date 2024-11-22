@@ -70,14 +70,14 @@ func (uc *UserCreate) AddAccessTokens(a ...*AccessToken) *UserCreate {
 }
 
 // AddCreatedAPIKeyIDs adds the "created_api_keys" edge to the TeamAPIKey entity by IDs.
-func (uc *UserCreate) AddCreatedAPIKeyIDs(ids ...string) *UserCreate {
+func (uc *UserCreate) AddCreatedAPIKeyIDs(ids ...uuid.UUID) *UserCreate {
 	uc.mutation.AddCreatedAPIKeyIDs(ids...)
 	return uc
 }
 
 // AddCreatedAPIKeys adds the "created_api_keys" edges to the TeamAPIKey entity.
 func (uc *UserCreate) AddCreatedAPIKeys(t ...*TeamAPIKey) *UserCreate {
-	ids := make([]string, len(t))
+	ids := make([]uuid.UUID, len(t))
 	for i := range t {
 		ids[i] = t[i].ID
 	}
@@ -228,7 +228,7 @@ func (uc *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Columns: []string{user.CreatedAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uc.schemaConfig.TeamAPIKey

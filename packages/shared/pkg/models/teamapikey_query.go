@@ -138,8 +138,8 @@ func (takq *TeamAPIKeyQuery) FirstX(ctx context.Context) *TeamAPIKey {
 
 // FirstID returns the first TeamAPIKey ID from the query.
 // Returns a *NotFoundError when no TeamAPIKey ID was found.
-func (takq *TeamAPIKeyQuery) FirstID(ctx context.Context) (id string, err error) {
-	var ids []string
+func (takq *TeamAPIKeyQuery) FirstID(ctx context.Context) (id uuid.UUID, err error) {
+	var ids []uuid.UUID
 	if ids, err = takq.Limit(1).IDs(setContextOp(ctx, takq.ctx, "FirstID")); err != nil {
 		return
 	}
@@ -151,7 +151,7 @@ func (takq *TeamAPIKeyQuery) FirstID(ctx context.Context) (id string, err error)
 }
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (takq *TeamAPIKeyQuery) FirstIDX(ctx context.Context) string {
+func (takq *TeamAPIKeyQuery) FirstIDX(ctx context.Context) uuid.UUID {
 	id, err := takq.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -189,8 +189,8 @@ func (takq *TeamAPIKeyQuery) OnlyX(ctx context.Context) *TeamAPIKey {
 // OnlyID is like Only, but returns the only TeamAPIKey ID in the query.
 // Returns a *NotSingularError when more than one TeamAPIKey ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (takq *TeamAPIKeyQuery) OnlyID(ctx context.Context) (id string, err error) {
-	var ids []string
+func (takq *TeamAPIKeyQuery) OnlyID(ctx context.Context) (id uuid.UUID, err error) {
+	var ids []uuid.UUID
 	if ids, err = takq.Limit(2).IDs(setContextOp(ctx, takq.ctx, "OnlyID")); err != nil {
 		return
 	}
@@ -206,7 +206,7 @@ func (takq *TeamAPIKeyQuery) OnlyID(ctx context.Context) (id string, err error) 
 }
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (takq *TeamAPIKeyQuery) OnlyIDX(ctx context.Context) string {
+func (takq *TeamAPIKeyQuery) OnlyIDX(ctx context.Context) uuid.UUID {
 	id, err := takq.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -234,7 +234,7 @@ func (takq *TeamAPIKeyQuery) AllX(ctx context.Context) []*TeamAPIKey {
 }
 
 // IDs executes the query and returns a list of TeamAPIKey IDs.
-func (takq *TeamAPIKeyQuery) IDs(ctx context.Context) (ids []string, err error) {
+func (takq *TeamAPIKeyQuery) IDs(ctx context.Context) (ids []uuid.UUID, err error) {
 	if takq.ctx.Unique == nil && takq.path != nil {
 		takq.Unique(true)
 	}
@@ -246,7 +246,7 @@ func (takq *TeamAPIKeyQuery) IDs(ctx context.Context) (ids []string, err error) 
 }
 
 // IDsX is like IDs, but panics if an error occurs.
-func (takq *TeamAPIKeyQuery) IDsX(ctx context.Context) []string {
+func (takq *TeamAPIKeyQuery) IDsX(ctx context.Context) []uuid.UUID {
 	ids, err := takq.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -342,12 +342,12 @@ func (takq *TeamAPIKeyQuery) WithCreator(opts ...func(*UserQuery)) *TeamAPIKeyQu
 // Example:
 //
 //	var v []struct {
-//		CreatedAt time.Time `json:"created_at,omitempty"`
+//		APIKey string `json:"api_key,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
 //	client.TeamAPIKey.Query().
-//		GroupBy(teamapikey.FieldCreatedAt).
+//		GroupBy(teamapikey.FieldAPIKey).
 //		Aggregate(models.Count()).
 //		Scan(ctx, &v)
 func (takq *TeamAPIKeyQuery) GroupBy(field string, fields ...string) *TeamAPIKeyGroupBy {
@@ -365,11 +365,11 @@ func (takq *TeamAPIKeyQuery) GroupBy(field string, fields ...string) *TeamAPIKey
 // Example:
 //
 //	var v []struct {
-//		CreatedAt time.Time `json:"created_at,omitempty"`
+//		APIKey string `json:"api_key,omitempty"`
 //	}
 //
 //	client.TeamAPIKey.Query().
-//		Select(teamapikey.FieldCreatedAt).
+//		Select(teamapikey.FieldAPIKey).
 //		Scan(ctx, &v)
 func (takq *TeamAPIKeyQuery) Select(fields ...string) *TeamAPIKeySelect {
 	takq.ctx.Fields = append(takq.ctx.Fields, fields...)
@@ -534,7 +534,7 @@ func (takq *TeamAPIKeyQuery) sqlCount(ctx context.Context) (int, error) {
 }
 
 func (takq *TeamAPIKeyQuery) querySpec() *sqlgraph.QuerySpec {
-	_spec := sqlgraph.NewQuerySpec(teamapikey.Table, teamapikey.Columns, sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString))
+	_spec := sqlgraph.NewQuerySpec(teamapikey.Table, teamapikey.Columns, sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID))
 	_spec.From = takq.sql
 	if unique := takq.ctx.Unique; unique != nil {
 		_spec.Unique = *unique

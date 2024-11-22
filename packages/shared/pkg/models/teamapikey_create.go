@@ -26,6 +26,12 @@ type TeamAPIKeyCreate struct {
 	conflict []sql.ConflictOption
 }
 
+// SetAPIKey sets the "api_key" field.
+func (takc *TeamAPIKeyCreate) SetAPIKey(s string) *TeamAPIKeyCreate {
+	takc.mutation.SetAPIKey(s)
+	return takc
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (takc *TeamAPIKeyCreate) SetCreatedAt(t time.Time) *TeamAPIKeyCreate {
 	takc.mutation.SetCreatedAt(t)
@@ -103,8 +109,8 @@ func (takc *TeamAPIKeyCreate) SetNillableLastUsed(t *time.Time) *TeamAPIKeyCreat
 }
 
 // SetID sets the "id" field.
-func (takc *TeamAPIKeyCreate) SetID(s string) *TeamAPIKeyCreate {
-	takc.mutation.SetID(s)
+func (takc *TeamAPIKeyCreate) SetID(u uuid.UUID) *TeamAPIKeyCreate {
+	takc.mutation.SetID(u)
 	return takc
 }
 
@@ -179,6 +185,9 @@ func (takc *TeamAPIKeyCreate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (takc *TeamAPIKeyCreate) check() error {
+	if _, ok := takc.mutation.APIKey(); !ok {
+		return &ValidationError{Name: "api_key", err: errors.New(`models: missing required field "TeamAPIKey.api_key"`)}
+	}
 	if _, ok := takc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`models: missing required field "TeamAPIKey.created_at"`)}
 	}
@@ -206,10 +215,10 @@ func (takc *TeamAPIKeyCreate) sqlSave(ctx context.Context) (*TeamAPIKey, error) 
 		return nil, err
 	}
 	if _spec.ID.Value != nil {
-		if id, ok := _spec.ID.Value.(string); ok {
-			_node.ID = id
-		} else {
-			return nil, fmt.Errorf("unexpected TeamAPIKey.ID type: %T", _spec.ID.Value)
+		if id, ok := _spec.ID.Value.(*uuid.UUID); ok {
+			_node.ID = *id
+		} else if err := _node.ID.Scan(_spec.ID.Value); err != nil {
+			return nil, err
 		}
 	}
 	takc.mutation.id = &_node.ID
@@ -220,13 +229,17 @@ func (takc *TeamAPIKeyCreate) sqlSave(ctx context.Context) (*TeamAPIKey, error) 
 func (takc *TeamAPIKeyCreate) createSpec() (*TeamAPIKey, *sqlgraph.CreateSpec) {
 	var (
 		_node = &TeamAPIKey{config: takc.config}
-		_spec = sqlgraph.NewCreateSpec(teamapikey.Table, sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString))
+		_spec = sqlgraph.NewCreateSpec(teamapikey.Table, sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID))
 	)
 	_spec.Schema = takc.schemaConfig.TeamAPIKey
 	_spec.OnConflict = takc.conflict
 	if id, ok := takc.mutation.ID(); ok {
 		_node.ID = id
-		_spec.ID.Value = id
+		_spec.ID.Value = &id
+	}
+	if value, ok := takc.mutation.APIKey(); ok {
+		_spec.SetField(teamapikey.FieldAPIKey, field.TypeString, value)
+		_node.APIKey = value
 	}
 	if value, ok := takc.mutation.CreatedAt(); ok {
 		_spec.SetField(teamapikey.FieldCreatedAt, field.TypeTime, value)
@@ -287,7 +300,7 @@ func (takc *TeamAPIKeyCreate) createSpec() (*TeamAPIKey, *sqlgraph.CreateSpec) {
 // of the `INSERT` statement. For example:
 //
 //	client.TeamAPIKey.Create().
-//		SetCreatedAt(v).
+//		SetAPIKey(v).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -296,7 +309,7 @@ func (takc *TeamAPIKeyCreate) createSpec() (*TeamAPIKey, *sqlgraph.CreateSpec) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.TeamAPIKeyUpsert) {
-//			SetCreatedAt(v+v).
+//			SetAPIKey(v+v).
 //		}).
 //		Exec(ctx)
 func (takc *TeamAPIKeyCreate) OnConflict(opts ...sql.ConflictOption) *TeamAPIKeyUpsertOne {
@@ -331,6 +344,18 @@ type (
 		*sql.UpdateSet
 	}
 )
+
+// SetAPIKey sets the "api_key" field.
+func (u *TeamAPIKeyUpsert) SetAPIKey(v string) *TeamAPIKeyUpsert {
+	u.Set(teamapikey.FieldAPIKey, v)
+	return u
+}
+
+// UpdateAPIKey sets the "api_key" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsert) UpdateAPIKey() *TeamAPIKeyUpsert {
+	u.SetExcluded(teamapikey.FieldAPIKey)
+	return u
+}
 
 // SetUpdatedAt sets the "updated_at" field.
 func (u *TeamAPIKeyUpsert) SetUpdatedAt(v time.Time) *TeamAPIKeyUpsert {
@@ -461,6 +486,20 @@ func (u *TeamAPIKeyUpsertOne) Update(set func(*TeamAPIKeyUpsert)) *TeamAPIKeyUps
 	return u
 }
 
+// SetAPIKey sets the "api_key" field.
+func (u *TeamAPIKeyUpsertOne) SetAPIKey(v string) *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetAPIKey(v)
+	})
+}
+
+// UpdateAPIKey sets the "api_key" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertOne) UpdateAPIKey() *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateAPIKey()
+	})
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (u *TeamAPIKeyUpsertOne) SetUpdatedAt(v time.Time) *TeamAPIKeyUpsertOne {
 	return u.Update(func(s *TeamAPIKeyUpsert) {
@@ -568,7 +607,7 @@ func (u *TeamAPIKeyUpsertOne) ExecX(ctx context.Context) {
 }
 
 // Exec executes the UPSERT query and returns the inserted/updated ID.
-func (u *TeamAPIKeyUpsertOne) ID(ctx context.Context) (id string, err error) {
+func (u *TeamAPIKeyUpsertOne) ID(ctx context.Context) (id uuid.UUID, err error) {
 	if u.create.driver.Dialect() == dialect.MySQL {
 		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
 		// fields from the database since MySQL does not support the RETURNING clause.
@@ -582,7 +621,7 @@ func (u *TeamAPIKeyUpsertOne) ID(ctx context.Context) (id string, err error) {
 }
 
 // IDX is like ID, but panics if an error occurs.
-func (u *TeamAPIKeyUpsertOne) IDX(ctx context.Context) string {
+func (u *TeamAPIKeyUpsertOne) IDX(ctx context.Context) uuid.UUID {
 	id, err := u.ID(ctx)
 	if err != nil {
 		panic(err)
@@ -688,7 +727,7 @@ func (takcb *TeamAPIKeyCreateBulk) ExecX(ctx context.Context) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.TeamAPIKeyUpsert) {
-//			SetCreatedAt(v+v).
+//			SetAPIKey(v+v).
 //		}).
 //		Exec(ctx)
 func (takcb *TeamAPIKeyCreateBulk) OnConflict(opts ...sql.ConflictOption) *TeamAPIKeyUpsertBulk {
@@ -768,6 +807,20 @@ func (u *TeamAPIKeyUpsertBulk) Update(set func(*TeamAPIKeyUpsert)) *TeamAPIKeyUp
 		set(&TeamAPIKeyUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetAPIKey sets the "api_key" field.
+func (u *TeamAPIKeyUpsertBulk) SetAPIKey(v string) *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetAPIKey(v)
+	})
+}
+
+// UpdateAPIKey sets the "api_key" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertBulk) UpdateAPIKey() *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateAPIKey()
+	})
 }
 
 // SetUpdatedAt sets the "updated_at" field.

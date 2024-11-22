@@ -17,7 +17,7 @@ func (db *DB) GetTeamAuth(ctx context.Context, apiKey string) (*models.Team, *mo
 		TeamAPIKey.
 		Query().
 		WithTeam().
-		Where(teamapikey.ID(apiKey)).
+		Where(teamapikey.APIKey(apiKey)).
 		QueryTeam().
 		WithTeamTier().
 		Only(ctx)

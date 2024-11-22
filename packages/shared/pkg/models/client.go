@@ -1212,7 +1212,7 @@ func (c *TeamAPIKeyClient) UpdateOne(tak *TeamAPIKey) *TeamAPIKeyUpdateOne {
 }
 
 // UpdateOneID returns an update builder for the given id.
-func (c *TeamAPIKeyClient) UpdateOneID(id string) *TeamAPIKeyUpdateOne {
+func (c *TeamAPIKeyClient) UpdateOneID(id uuid.UUID) *TeamAPIKeyUpdateOne {
 	mutation := newTeamAPIKeyMutation(c.config, OpUpdateOne, withTeamAPIKeyID(id))
 	return &TeamAPIKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
@@ -1229,7 +1229,7 @@ func (c *TeamAPIKeyClient) DeleteOne(tak *TeamAPIKey) *TeamAPIKeyDeleteOne {
 }
 
 // DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *TeamAPIKeyClient) DeleteOneID(id string) *TeamAPIKeyDeleteOne {
+func (c *TeamAPIKeyClient) DeleteOneID(id uuid.UUID) *TeamAPIKeyDeleteOne {
 	builder := c.Delete().Where(teamapikey.ID(id))
 	builder.mutation.id = &id
 	builder.mutation.op = OpDeleteOne
@@ -1246,12 +1246,12 @@ func (c *TeamAPIKeyClient) Query() *TeamAPIKeyQuery {
 }
 
 // Get returns a TeamAPIKey entity by its id.
-func (c *TeamAPIKeyClient) Get(ctx context.Context, id string) (*TeamAPIKey, error) {
+func (c *TeamAPIKeyClient) Get(ctx context.Context, id uuid.UUID) (*TeamAPIKey, error) {
 	return c.Query().Where(teamapikey.ID(id)).Only(ctx)
 }
 
 // GetX is like Get, but panics if an error occurs.
-func (c *TeamAPIKeyClient) GetX(ctx context.Context, id string) *TeamAPIKey {
+func (c *TeamAPIKeyClient) GetX(ctx context.Context, id uuid.UUID) *TeamAPIKey {
 	obj, err := c.Get(ctx, id)
 	if err != nil {
 		panic(err)
