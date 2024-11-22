@@ -52,6 +52,12 @@ message SandboxDeleteRequest {
   string sandbox_id = 1;
 }
 
+message SandboxPauseRequest {
+  string sandbox_id = 1;
+  string template_id = 2;
+  string build_id = 3;
+}
+
 message RunningSandbox {
   SandboxConfig config = 1;
   string client_id = 2;
@@ -69,4 +75,5 @@ service SandboxService {
   rpc Update(SandboxUpdateRequest) returns (google.protobuf.Empty);
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
   rpc Delete(SandboxDeleteRequest) returns (google.protobuf.Empty);
+  rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
 }
