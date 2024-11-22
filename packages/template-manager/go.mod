@@ -1,10 +1,9 @@
 module github.com/e2b-dev/infra/packages/template-manager
 
-go 1.21
+go 1.23
 
 require (
 	cloud.google.com/go/artifactregistry v1.14.9
-	cloud.google.com/go/storage v1.39.1
 	github.com/Microsoft/hcsshim v0.9.10
 	github.com/docker/docker v24.0.7+incompatible
 	github.com/e2b-dev/infra/packages/shared v0.0.0
@@ -22,7 +21,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.24.0
 	go.uber.org/zap v1.18.1
 	golang.org/x/sync v0.7.0
-	google.golang.org/api v0.177.0
 	google.golang.org/grpc v1.63.2
 	google.golang.org/protobuf v1.34.0
 )
@@ -34,10 +32,10 @@ require (
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	cloud.google.com/go/iam v1.1.7 // indirect
 	cloud.google.com/go/longrunning v0.5.6 // indirect
+	cloud.google.com/go/storage v1.39.1 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/bits-and-blooms/bitset v1.2.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/containerd/containerd v1.6.26 // indirect
 	github.com/containerd/fifo v1.0.0 // indirect
@@ -105,6 +103,7 @@ require (
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.14.0 // indirect
+	google.golang.org/api v0.177.0 // indirect
 	google.golang.org/genproto v0.0.0-20240401170217-c3f982113cda // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240429193739-8cf5692501f6 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240429193739-8cf5692501f6 // indirect
