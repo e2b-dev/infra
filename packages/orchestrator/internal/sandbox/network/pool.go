@@ -141,3 +141,21 @@ func cleanup(slot Slot) error {
 
 	return errors.Join(errs...)
 }
+
+func (p *Pool) Close() error {
+	for slot := range p.newSlots {
+		err := cleanup(slot)
+		if err != nil {
+			return fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err)
+		}
+	}
+
+	for slot := range p.reusedSlots {
+		err := cleanup(slot)
+		if err != nil {
+			return fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err)
+		}
+	}
+
+	return nil
+}
