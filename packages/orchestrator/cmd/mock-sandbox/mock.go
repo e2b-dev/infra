@@ -65,6 +65,7 @@ func main() {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	for i := 0; i < *count; i++ {
+		fmt.Println("--------------------------------")
 		fmt.Printf("Starting sandbox %d\n", i)
 
 		v := i
