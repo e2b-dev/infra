@@ -171,3 +171,20 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 
 	return &emptypb.Empty{}, nil
 }
+
+func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
+	// TODO: Implement
+
+	// 1. Remove sandbox from DNS
+	// 2. Pause the sandbox
+	// 3. Create the snapshot dump (memfile, snapfile)
+	// 4. Create the rootfs overlay + rootfs dump (or just cache move? We might be able to use the sandbox data here) <--------- This is the most unclear part
+	//   a. Decide how the rootfs+overlay have to be handled. For the few seconds for upload it might be ok for now to still use the nbd?
+	// 5. Create template cache entry for the snapshot
+	// 6. Remove sandbox from cache
+	// 7. Start proper upload to the storage in the background
+	// 8. Return so the API can correctly create DB entry and can be restored
+	// 9. Update the DB with info that the snapshot is fully uploaded
+
+	return nil, status.New(codes.Unimplemented, "not implemented").Err()
+}
