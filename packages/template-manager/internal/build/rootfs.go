@@ -18,6 +18,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
@@ -26,7 +27,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	templateStorage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -108,7 +109,7 @@ func (r *Rootfs) pullDockerImage(ctx context.Context, tracer trace.Tracer) error
 
 	authConfigBase64 := base64.URLEncoding.EncodeToString(authConfigBytes)
 
-	logs, err := r.client.ImagePull(childCtx, r.dockerTag(), types.ImagePullOptions{
+	logs, err := r.client.ImagePull(childCtx, r.dockerTag(), image.PullOptions{
 		RegistryAuth: authConfigBase64,
 		Platform:     "linux/amd64",
 	})
@@ -144,7 +145,7 @@ func (r *Rootfs) cleanupDockerImage(ctx context.Context, tracer trace.Tracer) {
 	childCtx, childSpan := tracer.Start(ctx, "cleanup-docker-image")
 	defer childSpan.End()
 
-	_, err := r.client.ImageRemove(childCtx, r.dockerTag(), types.ImageRemoveOptions{
+	_, err := r.client.ImageRemove(childCtx, r.dockerTag(), image.RemoveOptions{
 		Force:         false,
 		PruneChildren: false,
 	})
@@ -334,12 +335,12 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 
 	filesToTar := []fileToTar{
 		{
-			localPath: templateStorage.HostOldEnvdPath,
-			tarPath:   templateStorage.GuestOldEnvdPath,
+			localPath: storage.HostOldEnvdPath,
+			tarPath:   storage.GuestOldEnvdPath,
 		},
 		{
-			localPath: templateStorage.HostEnvdPath,
-			tarPath:   templateStorage.GuestEnvdPath,
+			localPath: storage.HostEnvdPath,
+			tarPath:   storage.GuestEnvdPath,
 		},
 	}
 

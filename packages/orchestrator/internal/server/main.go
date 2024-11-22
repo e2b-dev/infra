@@ -7,7 +7,6 @@ import (
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
@@ -54,7 +53,7 @@ func New() (*grpc.Server, error) {
 	}
 
 	s := grpc.NewServer(
-		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithInterceptorFilter(filters.Not(filters.HealthCheck())))),
+		grpc.StatsHandler(NewStatsWrapper(otelgrpc.NewServerHandler())),
 		grpc.ChainUnaryInterceptor(
 			recovery.UnaryServerInterceptor(),
 		),
