@@ -96,6 +96,44 @@ func (c *apiClient) resumeVM(ctx context.Context) error {
 	return nil
 }
 
+func (c *apiClient) pauseVM(ctx context.Context) error {
+	state := models.VMStatePaused
+	pauseConfig := operations.PatchVMParams{
+		Context: ctx,
+		Body: &models.VM{
+			State: &state,
+		},
+	}
+
+	_, err := c.client.Operations.PatchVM(&pauseConfig)
+	if err != nil {
+		return fmt.Errorf("error pausing vm: %w", err)
+	}
+
+	return nil
+}
+
+func (c *apiClient) createSnapshot(
+	ctx context.Context,
+	snapfilePath string,
+	memfilePath string,
+) error {
+	snapshotConfig := operations.CreateSnapshotParams{
+		Context: ctx,
+		Body: &models.SnapshotCreateParams{
+			MemFilePath:  &memfilePath,
+			SnapshotPath: &snapfilePath,
+		},
+	}
+
+	_, err := c.client.Operations.CreateSnapshot(&snapshotConfig)
+	if err != nil {
+		return fmt.Errorf("error loading snapshot: %w", err)
+	}
+
+	return nil
+}
+
 func (c *apiClient) setMmds(ctx context.Context, metadata *MmdsMetadata) error {
 	mmdsConfig := operations.PutMmdsParams{
 		Context: ctx,
