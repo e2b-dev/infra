@@ -73,3 +73,14 @@ func (c *Cache) GetTemplate(
 
 	return t.Value(), nil
 }
+
+func cacheKey(templateId, buildId string) string {
+	return fmt.Sprintf("%s-%s", templateId, buildId)
+}
+
+// refresh extends the expiration time of the template in the cache.
+func (c *TemplateCache) refresh(templateId, buildId string) {
+	key := cacheKey(templateId, buildId)
+
+	c.cache.Touch(key)
+}
