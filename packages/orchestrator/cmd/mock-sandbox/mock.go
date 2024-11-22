@@ -60,6 +60,7 @@ func main() {
 
 		return
 	}
+	defer networkPool.Close()
 
 	eg, ctx := errgroup.WithContext(ctx)
 
@@ -68,7 +69,7 @@ func main() {
 
 		v := i
 
-		mockSandbox(
+		err = mockSandbox(
 			ctx,
 			*templateId,
 			*buildId,
@@ -78,7 +79,10 @@ func main() {
 			networkPool,
 			templateCache,
 		)
-
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to start sandbox: %v\n", err)
+			return
+		}
 	}
 
 	err = eg.Wait()
@@ -96,7 +100,7 @@ func mockSandbox(
 	keepAlive time.Duration,
 	networkPool *network.Pool,
 	templateCache *cache.TemplateCache,
-) {
+) error {
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
 
@@ -138,7 +142,7 @@ func mockSandbox(
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create sandbox: %v\n", err)
 
-		return
+		return err
 	}
 
 	duration := time.Since(start)
@@ -151,6 +155,8 @@ func mockSandbox(
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to stop sandbox: %v\n", err)
 
-		return
+		return err
 	}
+
+	return nil
 }
