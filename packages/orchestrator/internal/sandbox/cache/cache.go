@@ -51,7 +51,7 @@ func (c *TemplateCache) GetTemplate(
 	firecrackerVersion string,
 	hugePages bool,
 ) (Template, error) {
-	key := fmt.Sprintf("%s-%s", templateId, buildId)
+	key := cacheKey(templateId, buildId)
 
 	identifier, err := uuid.NewRandom()
 	if err != nil {
@@ -78,4 +78,15 @@ func (c *TemplateCache) GetTemplate(
 	}
 
 	return t.Value(), nil
+}
+
+func cacheKey(templateId, buildId string) string {
+	return fmt.Sprintf("%s-%s", templateId, buildId)
+}
+
+// refresh extends the expiration time of the template in the cache.
+func (c *TemplateCache) refresh(templateId, buildId string) {
+	key := cacheKey(templateId, buildId)
+
+	c.cache.Touch(key)
 }
