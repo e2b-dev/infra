@@ -10,7 +10,7 @@ import (
 )
 
 type Storage struct {
-	source *Chunker
+	source *chunker
 	size   int64
 }
 
@@ -28,7 +28,7 @@ func NewStorage(
 		return nil, fmt.Errorf("failed to get object size: %w", err)
 	}
 
-	chunker, err := NewChunker(ctx, size, blockSize, object, cachePath)
+	chunker, err := newChunker(ctx, size, blockSize, object, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create chunker: %w", err)
 	}

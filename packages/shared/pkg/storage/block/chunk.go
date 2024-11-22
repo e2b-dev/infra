@@ -19,7 +19,7 @@ const (
 	concurrentFetches = 32
 )
 
-type Chunker struct {
+type chunker struct {
 	ctx context.Context
 
 	base  io.ReaderAt
@@ -33,19 +33,19 @@ type Chunker struct {
 	fetchGroup singleflight.Group
 }
 
-func NewChunker(
+func newChunker(
 	ctx context.Context,
 	size,
 	blockSize int64,
 	base io.ReaderAt,
 	cachePath string,
-) (*Chunker, error) {
+) (*chunker, error) {
 	cache, err := NewMmapCache(size, blockSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
 
-	chunker := &Chunker{
+	chunker := &chunker{
 		ctx:            ctx,
 		size:           size,
 		base:           base,
@@ -59,11 +59,11 @@ func NewChunker(
 	return chunker, nil
 }
 
-func (c *Chunker) Close() error {
+func (c *chunker) Close() error {
 	return c.cache.Close()
 }
 
-func (c *Chunker) prefetch(ctx context.Context) error {
+func (c *chunker) prefetch(ctx context.Context) error {
 	for off := int64(0); off < c.size; off += ChunkSize {
 		select {
 		case <-ctx.Done():
@@ -80,7 +80,7 @@ func (c *Chunker) prefetch(ctx context.Context) error {
 	return nil
 }
 
-func (c *Chunker) ensureData(off, len int64) error {
+func (c *chunker) ensureData(off, len int64) error {
 	var eg errgroup.Group
 
 	for i := off; i < off+len; i += ChunkSize {
@@ -123,30 +123,16 @@ func (c *Chunker) ensureData(off, len int64) error {
 }
 
 // Reads with zero length are threated as prefetches.
-func (c *Chunker) ReadAt(b []byte, off int64) (int, error) {
-	n, err := c.cache.ReadAt(b, off)
-	if err == nil {
-		return n, nil
+func (c *chunker) ReadAt(b []byte, off int64) (int, error) {
+	slice, err := c.Slice(off, int64(len(b)))
+	if err != nil {
+		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
 	}
 
-	if !errors.As(err, &ErrBytesNotAvailable{}) {
-		return 0, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
-	}
-
-	chunkErr := c.ensureData(off, int64(len(b)))
-	if chunkErr != nil {
-		return 0, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+int64(len(b)), chunkErr)
-	}
-
-	n, cacheErr := c.cache.ReadAt(b, off)
-	if cacheErr != nil {
-		return 0, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+int64(len(b)), cacheErr)
-	}
-
-	return n, nil
+	return copy(b, slice), nil
 }
 
-func (c *Chunker) fetchChunk(idx int64) error {
+func (c *chunker) fetchChunk(idx int64) error {
 	select {
 	case <-c.ctx.Done():
 		return fmt.Errorf("fetch chunk %d: %w", idx, c.ctx.Err())
@@ -170,10 +156,10 @@ func (c *Chunker) fetchChunk(idx int64) error {
 	return nil
 }
 
-func (c *Chunker) Slice(off, length int64) ([]byte, error) {
-	n, err := c.cache.Slice(off, length)
+func (c *chunker) Slice(off, length int64) ([]byte, error) {
+	b, err := c.cache.Slice(off, length)
 	if err == nil {
-		return n, nil
+		return b, nil
 	}
 
 	if !errors.As(err, &ErrBytesNotAvailable{}) {
@@ -185,10 +171,10 @@ func (c *Chunker) Slice(off, length int64) ([]byte, error) {
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
 
-	n, cacheErr := c.cache.Slice(off, length)
+	b, cacheErr := c.cache.Slice(off, length)
 	if cacheErr != nil {
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
-	return n, nil
+	return b, nil
 }
