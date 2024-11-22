@@ -81,14 +81,6 @@ func (d *Storage) Close() error {
 	return nil
 }
 
-func (d *Storage) Sync() error {
-	return d.cache.Sync()
-}
-
-func (d *Storage) BlockSize() int64 {
-	return d.blockSize
-}
-
 func (d *Storage) Slice(off, length int64) ([]byte, error) {
 	return d.source.Slice(off, length)
 }

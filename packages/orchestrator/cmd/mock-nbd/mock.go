@@ -15,11 +15,32 @@ import (
 
 const blockSize = 4096
 
+type DeviceWithClose struct {
+	backend.Backend
+}
+
+func (d *DeviceWithClose) Close() error {
+	return nil
+}
+
+func (d *DeviceWithClose) Slice(offset, length int64) ([]byte, error) {
+	b := make([]byte, length)
+
+	_, err := d.Backend.ReadAt(b, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	return b, nil
+}
+
 func main() {
 	data := make([]byte, blockSize*8)
 	rand.Read(data)
 
-	device := backend.NewMemoryBackend(data)
+	device := &DeviceWithClose{
+		Backend: backend.NewMemoryBackend(data),
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -57,7 +78,7 @@ func main() {
 	}
 }
 
-func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, error) {
+func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -88,7 +109,7 @@ func MockNbd(ctx context.Context, device backend.Backend, index int) ([]byte, er
 				continue
 			}
 
-			fmt.Printf("[%d] released device: %s\n", index, deviceIndex)
+			fmt.Printf("[%d] released device: %d\n", index, deviceIndex)
 
 			return
 		}

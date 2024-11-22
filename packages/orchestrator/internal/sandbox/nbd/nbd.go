@@ -92,11 +92,3 @@ func (m *ManagedPathMount) Close() error {
 
 	return nil
 }
-
-func (m *ManagedPathMount) Sync() error {
-	// No need to call `OnBeforeSync` here, the syncer already calls this internally
-
-	m.overlay.Sync()
-
-	return nil
-}

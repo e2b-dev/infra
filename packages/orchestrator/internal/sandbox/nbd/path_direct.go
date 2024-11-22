@@ -10,11 +10,12 @@ import (
 	"time"
 
 	"github.com/Merovius/nbd/nbdnl"
-	"github.com/pojntfx/go-nbd/pkg/backend"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/block"
 )
 
 type DirectPathMount struct {
-	Backend     backend.Backend
+	Backend     block.Device
 	ctx         context.Context
 	dispatcher  *Dispatch
 	conn        net.Conn
@@ -23,7 +24,7 @@ type DirectPathMount struct {
 	cancelfn    context.CancelFunc
 }
 
-func NewDirectPathMount(b backend.Backend, deviceIndex uint32) *DirectPathMount {
+func NewDirectPathMount(b block.Device, deviceIndex uint32) *DirectPathMount {
 	ctx, cancelfn := context.WithCancel(context.Background())
 	return &DirectPathMount{
 		Backend:     b,
@@ -131,9 +132,5 @@ func (d *DirectPathMount) Close() error {
 		time.Sleep(100 * time.Nanosecond)
 	}
 
-	return nil
-}
-
-func (d *DirectPathMount) Sync() error {
 	return nil
 }

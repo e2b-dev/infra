@@ -83,15 +83,6 @@ func (m *MmapCache) Close() error {
 	return errors.Join(mmapErr, removeErr)
 }
 
-func (m *MmapCache) Sync() error {
-	err := m.mmap.Flush()
-	if err != nil {
-		return fmt.Errorf("error flushing mmap: %w", err)
-	}
-
-	return nil
-}
-
 func (m *MmapCache) Size() (int64, error) {
 	return m.size, nil
 }
@@ -109,10 +100,6 @@ func (m *MmapCache) Slice(off, length int64) ([]byte, error) {
 	}
 
 	return m.mmap[off:end], nil
-}
-
-func (m *MmapCache) BlockSize() int64 {
-	return m.blockSize
 }
 
 func (m *MmapCache) isCached(off, length int64) bool {

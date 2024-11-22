@@ -10,13 +10,13 @@ type StorageOverlay struct {
 	storage ReadonlyDevice
 }
 
-func NewStorageOverlay(device ReadonlyDevice, cachePath string) (*StorageOverlay, error) {
+func NewStorageOverlay(device ReadonlyDevice, blockSize int64, cachePath string) (*StorageOverlay, error) {
 	size, err := device.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
 	}
 
-	cache, err := NewMmapCache(size, device.BlockSize(), cachePath)
+	cache, err := NewMmapCache(size, blockSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating cache: %w", err)
 	}
@@ -40,14 +40,6 @@ func (o *StorageOverlay) WriteAt(p []byte, off int64) (n int, err error) {
 
 func (o *StorageOverlay) Size() (int64, error) {
 	return o.storage.Size()
-}
-
-func (o *StorageOverlay) BlockSize() int64 {
-	return o.cache.BlockSize()
-}
-
-func (o *StorageOverlay) Sync() error {
-	return o.cache.Sync()
 }
 
 func (o *StorageOverlay) Close() error {
