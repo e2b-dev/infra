@@ -59,7 +59,3 @@ func (o *Overlay) Size() (int64, error) {
 func (o *Overlay) Close() error {
 	return o.cache.Close()
 }
-
-func (o *Overlay) Slice(offset, length int64) ([]byte, error) {
-	return o.cache.Slice(offset, length)
-}

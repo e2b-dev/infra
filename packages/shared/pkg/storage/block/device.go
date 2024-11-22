@@ -10,12 +10,14 @@ func (ErrBytesNotAvailable) Error() string {
 
 type ReadonlyDevice interface {
 	io.ReaderAt
+	Slice(off, length int64) ([]byte, error)
 	Size() (int64, error)
 	Close() error
-	Slice(off, length int64) ([]byte, error)
 }
 
 type Device interface {
-	ReadonlyDevice
+	io.ReaderAt
 	io.WriterAt
+	Size() (int64, error)
+	Close() error
 }
