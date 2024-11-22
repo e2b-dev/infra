@@ -2,9 +2,7 @@ package block
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 
 	"cloud.google.com/go/storage"
 
@@ -41,14 +39,8 @@ func NewStorage(
 	}, nil
 }
 
-func (d *Storage) ReadAt(p []byte, off int64) (n int, err error) {
-	n, err = d.source.ReadAt(p, off)
-
-	if err == nil || errors.Is(err, io.EOF) {
-		return n, nil
-	}
-
-	return 0, err
+func (d *Storage) ReadAt(p []byte, off int64) (int, error) {
+	return d.source.ReadAt(p, off)
 }
 
 func (d *Storage) Size() (int64, error) {

@@ -33,7 +33,7 @@ func NewRootfsOverlay(template Template, cachePath string) (*RootfsOverlay, erro
 		return nil, fmt.Errorf("error getting rootfs: %w", err)
 	}
 
-	overlay, err := block.NewStorageOverlay(rootfs, rootfsBlockSize, cachePath)
+	overlay, err := block.NewOverlay(rootfs, rootfsBlockSize, cachePath)
 	if err != nil {
 		cancel()
 
