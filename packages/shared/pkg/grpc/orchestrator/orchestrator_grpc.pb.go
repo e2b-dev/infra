@@ -27,6 +27,7 @@ type SandboxServiceClient interface {
 	Update(ctx context.Context, in *SandboxUpdateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	List(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListResponse, error)
 	Delete(ctx context.Context, in *SandboxDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Pause(ctx context.Context, in *SandboxPauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type sandboxServiceClient struct {
@@ -73,6 +74,15 @@ func (c *sandboxServiceClient) Delete(ctx context.Context, in *SandboxDeleteRequ
 	return out, nil
 }
 
+func (c *sandboxServiceClient) Pause(ctx context.Context, in *SandboxPauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/SandboxService/Pause", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SandboxServiceServer is the server API for SandboxService service.
 // All implementations must embed UnimplementedSandboxServiceServer
 // for forward compatibility
@@ -81,6 +91,7 @@ type SandboxServiceServer interface {
 	Update(context.Context, *SandboxUpdateRequest) (*emptypb.Empty, error)
 	List(context.Context, *emptypb.Empty) (*SandboxListResponse, error)
 	Delete(context.Context, *SandboxDeleteRequest) (*emptypb.Empty, error)
+	Pause(context.Context, *SandboxPauseRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedSandboxServiceServer()
 }
 
@@ -99,6 +110,9 @@ func (UnimplementedSandboxServiceServer) List(context.Context, *emptypb.Empty) (
 }
 func (UnimplementedSandboxServiceServer) Delete(context.Context, *SandboxDeleteRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedSandboxServiceServer) Pause(context.Context, *SandboxPauseRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Pause not implemented")
 }
 func (UnimplementedSandboxServiceServer) mustEmbedUnimplementedSandboxServiceServer() {}
 
@@ -185,6 +199,24 @@ func _SandboxService_Delete_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SandboxService_Pause_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxPauseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SandboxServiceServer).Pause(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/SandboxService/Pause",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SandboxServiceServer).Pause(ctx, req.(*SandboxPauseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SandboxService_ServiceDesc is the grpc.ServiceDesc for SandboxService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -207,6 +239,10 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _SandboxService_Delete_Handler,
+		},
+		{
+			MethodName: "Pause",
+			Handler:    _SandboxService_Pause_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
