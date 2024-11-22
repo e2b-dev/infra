@@ -49,7 +49,3 @@ func (o *StorageOverlay) Close() error {
 func (o *StorageOverlay) Slice(offset, length int64) ([]byte, error) {
 	return o.cache.Slice(offset, length)
 }
-
-func (o *StorageOverlay) isCached(offset, length int64) bool {
-	return o.cache.isCached(offset, length)
-}

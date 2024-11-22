@@ -35,10 +35,16 @@ type Chunker struct {
 
 func NewChunker(
 	ctx context.Context,
-	size int64,
+	size,
+	blockSize int64,
 	base io.ReaderAt,
-	cache *MmapCache,
-) *Chunker {
+	cachePath string,
+) (*Chunker, error) {
+	cache, err := NewMmapCache(size, blockSize, cachePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file cache: %w", err)
+	}
+
 	chunker := &Chunker{
 		ctx:            ctx,
 		size:           size,
@@ -50,7 +56,11 @@ func NewChunker(
 
 	go chunker.prefetch(ctx)
 
-	return chunker
+	return chunker, nil
+}
+
+func (c *Chunker) Close() error {
+	return c.cache.Close()
 }
 
 func (c *Chunker) prefetch(ctx context.Context) error {
