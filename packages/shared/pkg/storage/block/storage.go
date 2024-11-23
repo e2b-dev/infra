@@ -10,9 +10,8 @@ import (
 )
 
 type Storage struct {
-	source    *chunker
-	size      int64
-	blockSize int64
+	source *chunker
+	size   int64
 }
 
 func NewStorage(
@@ -35,9 +34,8 @@ func NewStorage(
 	}
 
 	return &Storage{
-		source:    chunker,
-		size:      size,
-		blockSize: blockSize,
+		source: chunker,
+		size:   size,
 	}, nil
 }
 
