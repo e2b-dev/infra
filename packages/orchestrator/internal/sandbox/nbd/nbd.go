@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
 
 type ManagedPathMount struct {

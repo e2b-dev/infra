@@ -11,7 +11,7 @@ import (
 
 	"github.com/Merovius/nbd/nbdnl"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
 
 type DirectPathMount struct {
