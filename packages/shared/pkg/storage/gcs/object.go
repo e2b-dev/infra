@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os/exec"
 	"time"
 
@@ -54,12 +53,7 @@ func (o *Object) WriteTo(dst io.Writer) (int64, error) {
 		return 0, fmt.Errorf("failed to create GCS reader: %w", err)
 	}
 
-	defer func() {
-		closeErr := reader.Close()
-		if closeErr != nil {
-			log.Printf("failed to close GCS reader: %v", closeErr)
-		}
-	}()
+	defer reader.Close()
 
 	b := make([]byte, bufferSize)
 
@@ -117,21 +111,21 @@ func (o *Object) ReadAt(b []byte, off int64) (n int, err error) {
 		return 0, fmt.Errorf("failed to create GCS reader: %w", err)
 	}
 
-	defer func() {
-		closeErr := reader.Close()
-		if closeErr != nil {
-			log.Printf("failed to close GCS reader: %v", closeErr)
-		}
-	}()
+	defer reader.Close()
 
 	for reader.Remain() > 0 {
 		nr, readErr := reader.Read(b[n:])
-
 		n += nr
 
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return n, fmt.Errorf("failed to read from GCS object: %w", readErr)
+		if readErr == nil {
+			continue
 		}
+
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+
+		return n, fmt.Errorf("failed to read from GCS object: %w", readErr)
 	}
 
 	return n, nil
