@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/sync/singleflight"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -24,7 +24,7 @@ type chunker struct {
 
 	size int64
 
-	fetchGroup singleflight.Group
+	fetchers *utils.WaitMap
 }
 
 func newChunker(
@@ -40,11 +40,11 @@ func newChunker(
 	}
 
 	chunker := &chunker{
-		ctx:        ctx,
-		size:       size,
-		base:       base,
-		cache:      cache,
-		fetchGroup: singleflight.Group{},
+		ctx:      ctx,
+		size:     size,
+		base:     base,
+		cache:    cache,
+		fetchers: utils.NewWaitMap(),
 	}
 
 	return chunker, nil
@@ -69,7 +69,7 @@ func (c *chunker) Slice(off, length int64) ([]byte, error) {
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
-	chunkErr := c.ensureData(off, length)
+	chunkErr := c.fetchToCache(off, length)
 	if chunkErr != nil {
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, chunkErr)
 	}
@@ -82,58 +82,44 @@ func (c *chunker) Slice(off, length int64) ([]byte, error) {
 	return b, nil
 }
 
-func (c *chunker) ensureData(off, len int64) error {
+// fetchToCache ensures that the data at the given offset and length is available in the cache.
+func (c *chunker) fetchToCache(off, len int64) error {
 	var eg errgroup.Group
 
 	blocks := listBlocks(off, off+len, chunkSize)
 
 	for _, block := range blocks {
+		start := block.start
+		end := block.end
+
 		eg.Go(func() error {
-			_, err, _ := c.fetchGroup.Do(strconv.FormatInt(block.start, 10), func() (interface{}, error) {
-				if c.cache.isCached(block.start, block.end-block.start) {
-					return nil, nil
+			return c.fetchers.Wait(block.start, func() error {
+				select {
+				case <-c.ctx.Done():
+					return fmt.Errorf("error fetching range %d-%d: %w", start, end, c.ctx.Err())
+				default:
 				}
 
-				fetchErr := c.fetchRange(block.start, block.end)
-				if fetchErr != nil {
-					return nil, fmt.Errorf("failed to fetch range %d-%d: %w", block.start, block.end, fetchErr)
+				b := make([]byte, end-start)
+
+				_, err := c.base.ReadAt(b, start)
+				if err != nil && !errors.Is(err, io.EOF) {
+					return fmt.Errorf("failed to read chunk from base %d: %w", start, err)
 				}
 
-				return nil, nil
+				_, cacheErr := c.cache.WriteAt(b, start)
+				if cacheErr != nil {
+					return fmt.Errorf("failed to write chunk %d to cache: %w", start, cacheErr)
+				}
+
+				return nil
 			})
-			if err != nil {
-				return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+len, err)
-			}
-
-			return nil
 		})
 	}
 
 	err := eg.Wait()
 	if err != nil {
 		return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+len, err)
-	}
-
-	return nil
-}
-
-func (c *chunker) fetchRange(start, end int64) error {
-	select {
-	case <-c.ctx.Done():
-		return fmt.Errorf("error fetching range %d-%d: %w", start, end, c.ctx.Err())
-	default:
-	}
-
-	b := make([]byte, end-start)
-
-	_, err := c.base.ReadAt(b, start)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("failed to read chunk from base %d: %w", start, err)
-	}
-
-	_, cacheErr := c.cache.WriteAt(b, start)
-	if cacheErr != nil {
-		return fmt.Errorf("failed to write chunk %d to cache: %w", start, cacheErr)
 	}
 
 	return nil
