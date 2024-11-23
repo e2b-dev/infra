@@ -19,8 +19,6 @@ type cache struct {
 	dirty     sync.Map
 }
 
-// Ensure that you only write at specific offsets once and only read from these offsets after writing.
-// Use external mutex if you need to ensure this.
 func newCache(size, blockSize int64, filePath string) (*cache, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
@@ -71,17 +69,16 @@ func (m *cache) WriteAt(b []byte, off int64) (int, error) {
 
 	n := copy(m.mmap[off:end], b)
 
-	m.mark(off, int64(n))
+	m.setIsCached(off, end-off)
 
 	return n, nil
 }
 
 func (m *cache) Close() error {
-	mmapErr := m.mmap.Unmap()
-
-	removeErr := os.RemoveAll(m.filePath)
-
-	return errors.Join(mmapErr, removeErr)
+	return errors.Join(
+		m.mmap.Unmap(),
+		os.RemoveAll(m.filePath),
+	)
 }
 
 func (m *cache) Size() (int64, error) {
@@ -89,24 +86,24 @@ func (m *cache) Size() (int64, error) {
 }
 
 // Slice returns a slice of the mmap.
-// This cache is returned only if the data is already present in the cache.
-// It is unsafe to use if the data can be written to the same blocks.
+// When using WriteAt you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
 func (m *cache) Slice(off, length int64) ([]byte, error) {
-	if !m.isCached(off, length) {
-		return nil, ErrBytesNotAvailable{}
+	if m.isCached(off, length) {
+		end := off + length
+		if end > m.size {
+			end = m.size
+		}
+
+		return m.mmap[off:end], nil
 	}
 
-	end := off + length
-	if end > m.size {
-		end = m.size
-	}
-
-	return m.mmap[off:end], nil
+	return nil, ErrBytesNotAvailable{}
 }
 
 func (m *cache) isCached(off, length int64) bool {
-	for i := off; i < off+length; i += m.blockSize {
-		if _, ok := m.dirty.Load(i); !ok {
+	for _, block := range listBlocks(off, off+length, m.blockSize) {
+		_, dirty := m.dirty.Load(block.start)
+		if !dirty {
 			return false
 		}
 	}
@@ -114,8 +111,8 @@ func (m *cache) isCached(off, length int64) bool {
 	return true
 }
 
-func (m *cache) mark(off, length int64) {
-	for i := off; i < off+length; i += m.blockSize {
-		m.dirty.Store(i, struct{}{})
+func (m *cache) setIsCached(off, length int64) {
+	for _, block := range listBlocks(off, off+length, m.blockSize) {
+		m.dirty.Store(block.start, struct{}{})
 	}
 }
