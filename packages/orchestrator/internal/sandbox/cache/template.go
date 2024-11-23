@@ -130,8 +130,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
 			ctx,
 			bucket,
 			t.files.StorageRootfsPath(),
-			// TODO: This should ideally be the blockSize (4096), but we would need to implement more complex dirty block caching in cache there.
-			ChunkSize,
+			rootfsBlockSize,
 			t.files.CacheRootfsPath(),
 		)
 		if rootfsErr != nil {
