@@ -8,14 +8,12 @@ import (
 	"strconv"
 
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/sync/semaphore"
 	"golang.org/x/sync/singleflight"
 )
 
 const (
 	// Chunks must always be bigger or equal to the block size.
-	chunkSize         = 2 * 1024 * 1024 // 2 MB
-	concurrentFetches = 32
+	chunkSize = 2 * 1024 * 1024 // 2 MB
 )
 
 type chunker struct {
@@ -26,8 +24,7 @@ type chunker struct {
 
 	size int64
 
-	fetchSemaphore *semaphore.Weighted
-	fetchGroup     singleflight.Group
+	fetchGroup singleflight.Group
 }
 
 func newChunker(
@@ -43,37 +40,14 @@ func newChunker(
 	}
 
 	chunker := &chunker{
-		ctx:            ctx,
-		size:           size,
-		base:           base,
-		cache:          cache,
-		fetchSemaphore: semaphore.NewWeighted(concurrentFetches),
-		fetchGroup:     singleflight.Group{},
+		ctx:        ctx,
+		size:       size,
+		base:       base,
+		cache:      cache,
+		fetchGroup: singleflight.Group{},
 	}
-
-	go chunker.prefetch(ctx)
 
 	return chunker, nil
-}
-
-
-func (c *chunker) prefetch(ctx context.Context) error {
-	blocks := listBlocks(0, c.size, chunkSize)
-
-	for _, block := range blocks {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		err := c.ensureData(block.start, block.end-block.start)
-		if err != nil {
-			return fmt.Errorf("failed to prefetch chunk %d: %w", block.start, err)
-		}
-	}
-
-	return nil
 }
 
 func (c *chunker) ReadAt(b []byte, off int64) (int, error) {
@@ -119,13 +93,6 @@ func (c *chunker) ensureData(off, len int64) error {
 				if c.cache.isCached(block.start, block.end-block.start) {
 					return nil, nil
 				}
-
-				err := c.fetchSemaphore.Acquire(c.ctx, 1)
-				if err != nil {
-					return nil, fmt.Errorf("failed to acquire semaphore: %w", err)
-				}
-
-				defer c.fetchSemaphore.Release(1)
 
 				fetchErr := c.fetchRange(block.start, block.end)
 				if fetchErr != nil {
