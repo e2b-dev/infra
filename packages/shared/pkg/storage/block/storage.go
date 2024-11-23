@@ -21,7 +21,7 @@ func NewStorage(
 	blockSize int64,
 	cachePath string,
 ) (*Storage, error) {
-	object := gcs.NewObjectFromBucket(ctx, bucket, bucketObjectPath)
+	object := gcs.NewObject(ctx, bucket, bucketObjectPath)
 
 	size, err := object.Size()
 	if err != nil {

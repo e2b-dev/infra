@@ -4,22 +4,24 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/edsrzf/mmap-go"
 	"golang.org/x/sys/unix"
 )
 
-type MmapCache struct {
-	marker    *Marker
+type cache struct {
 	filePath  string
 	size      int64
 	blockSize int64
 	mmap      mmap.MMap
+	mu        sync.RWMutex
+	dirty     sync.Map
 }
 
 // Ensure that you only write at specific offsets once and only read from these offsets after writing.
 // Use external mutex if you need to ensure this.
-func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
+func newCache(size, blockSize int64, filePath string) (*cache, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
@@ -38,18 +40,18 @@ func NewMmapCache(size, blockSize int64, filePath string) (*MmapCache, error) {
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
-	blocks := (size + blockSize - 1) / blockSize
-
-	return &MmapCache{
+	return &cache{
 		mmap:      mm,
 		filePath:  filePath,
 		size:      size,
-		marker:    NewMarker(uint(blocks)),
 		blockSize: blockSize,
 	}, nil
 }
 
-func (m *MmapCache) ReadAt(b []byte, off int64) (int, error) {
+func (m *cache) ReadAt(b []byte, off int64) (int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	slice, err := m.Slice(off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("error slicing mmap: %w", err)
@@ -58,7 +60,10 @@ func (m *MmapCache) ReadAt(b []byte, off int64) (int, error) {
 	return copy(b, slice), nil
 }
 
-func (m *MmapCache) WriteAt(b []byte, off int64) (int, error) {
+func (m *cache) WriteAt(b []byte, off int64) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	end := off + int64(len(b))
 	if end > m.size {
 		end = m.size
@@ -71,7 +76,7 @@ func (m *MmapCache) WriteAt(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
-func (m *MmapCache) Close() error {
+func (m *cache) Close() error {
 	mmapErr := m.mmap.Unmap()
 
 	removeErr := os.RemoveAll(m.filePath)
@@ -79,13 +84,14 @@ func (m *MmapCache) Close() error {
 	return errors.Join(mmapErr, removeErr)
 }
 
-func (m *MmapCache) Size() (int64, error) {
+func (m *cache) Size() (int64, error) {
 	return m.size, nil
 }
 
 // Slice returns a slice of the mmap.
 // This cache is returned only if the data is already present in the cache.
-func (m *MmapCache) Slice(off, length int64) ([]byte, error) {
+// It is unsafe to use if the data can be written to the same blocks.
+func (m *cache) Slice(off, length int64) ([]byte, error) {
 	if !m.isCached(off, length) {
 		return nil, ErrBytesNotAvailable{}
 	}
@@ -98,9 +104,9 @@ func (m *MmapCache) Slice(off, length int64) ([]byte, error) {
 	return m.mmap[off:end], nil
 }
 
-func (m *MmapCache) isCached(off, length int64) bool {
+func (m *cache) isCached(off, length int64) bool {
 	for i := off; i < off+length; i += m.blockSize {
-		if !m.marker.IsMarked(i / m.blockSize) {
+		if _, ok := m.dirty.Load(i); !ok {
 			return false
 		}
 	}
@@ -108,8 +114,8 @@ func (m *MmapCache) isCached(off, length int64) bool {
 	return true
 }
 
-func (m *MmapCache) mark(off, length int64) {
+func (m *cache) mark(off, length int64) {
 	for i := off; i < off+length; i += m.blockSize {
-		m.marker.Mark(i / m.blockSize)
+		m.dirty.Store(i, struct{}{})
 	}
 }

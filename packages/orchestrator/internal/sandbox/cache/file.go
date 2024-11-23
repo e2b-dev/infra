@@ -31,7 +31,7 @@ func newStorageFile(
 
 	defer f.Close()
 
-	object := gcs.NewObjectFromBucket(ctx, bucket, bucketObjectPath)
+	object := gcs.NewObject(ctx, bucket, bucketObjectPath)
 
 	_, err = object.WriteTo(f)
 	if err != nil {

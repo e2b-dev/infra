@@ -50,7 +50,7 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 }
 
 func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfilePath string) error {
-	object := gcs.NewObjectFromBucket(ctx, t.bucket, t.files.StorageMemfilePath())
+	object := gcs.NewObject(ctx, t.bucket, t.files.StorageMemfilePath())
 
 	err := object.UploadWithCli(ctx, memfilePath)
 	if err != nil {
@@ -61,7 +61,7 @@ func (t *TemplateBuild) UploadMemfile(ctx context.Context, memfilePath string) e
 }
 
 func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfsPath string) error {
-	object := gcs.NewObjectFromBucket(ctx, t.bucket, t.files.StorageRootfsPath())
+	object := gcs.NewObject(ctx, t.bucket, t.files.StorageRootfsPath())
 
 	err := object.UploadWithCli(ctx, rootfsPath)
 	if err != nil {
@@ -73,7 +73,7 @@ func (t *TemplateBuild) UploadRootfs(ctx context.Context, rootfsPath string) err
 
 // Snapfile is small enough so we dont use composite upload.
 func (t *TemplateBuild) UploadSnapfile(ctx context.Context, snapfile io.Reader) error {
-	object := gcs.NewObjectFromBucket(ctx, t.bucket, t.files.StorageSnapfilePath())
+	object := gcs.NewObject(ctx, t.bucket, t.files.StorageSnapfilePath())
 
 	n, err := object.ReadFrom(snapfile)
 	if err != nil {

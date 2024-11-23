@@ -7,7 +7,7 @@ import (
 
 type Overlay struct {
 	device ReadonlyDevice
-	cache  *MmapCache
+	cache  *cache
 }
 
 func NewOverlay(device ReadonlyDevice, blockSize int64, cachePath string) (*Overlay, error) {
@@ -16,7 +16,7 @@ func NewOverlay(device ReadonlyDevice, blockSize int64, cachePath string) (*Over
 		return nil, fmt.Errorf("error getting device size: %w", err)
 	}
 
-	cache, err := NewMmapCache(size, blockSize, cachePath)
+	cache, err := newCache(size, blockSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating cache: %w", err)
 	}
@@ -29,20 +29,17 @@ func NewOverlay(device ReadonlyDevice, blockSize int64, cachePath string) (*Over
 
 func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
 	n, err := o.cache.ReadAt(p, off)
-	if errors.As(err, &ErrBytesNotAvailable{}) {
-		n, err = o.device.ReadAt(p, off)
-		if err != nil {
-			return n, fmt.Errorf("error reading from base: %w", err)
-		}
-
-		_, cacheErr := o.cache.WriteAt(p[:n], off)
-		if cacheErr != nil {
-			return n, fmt.Errorf("error writing to cache: %w", cacheErr)
-		}
+	if err == nil {
+		return n, nil
 	}
 
-	if err != nil {
+	if !errors.As(err, &ErrBytesNotAvailable{}) {
 		return n, fmt.Errorf("error reading from cache: %w", err)
+	}
+
+	n, err = o.device.ReadAt(p, off)
+	if err != nil {
+		return n, fmt.Errorf("error reading from device: %w", err)
 	}
 
 	return n, nil

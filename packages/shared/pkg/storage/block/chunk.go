@@ -14,8 +14,7 @@ import (
 
 const (
 	// Chunks must always be bigger or equal to the block size.
-	ChunkSize = 2 * 1024 * 1024 // 2 MB
-
+	chunkSize         = 2 * 1024 * 1024 // 2 MB
 	concurrentFetches = 32
 )
 
@@ -23,14 +22,12 @@ type chunker struct {
 	ctx context.Context
 
 	base  io.ReaderAt
-	cache *MmapCache
+	cache *cache
 
 	size int64
 
-	// Semaphore to limit the number of concurrent fetches.
 	fetchSemaphore *semaphore.Weighted
-
-	fetchGroup singleflight.Group
+	fetchGroup     singleflight.Group
 }
 
 func newChunker(
@@ -40,7 +37,7 @@ func newChunker(
 	base io.ReaderAt,
 	cachePath string,
 ) (*chunker, error) {
-	cache, err := NewMmapCache(size, blockSize, cachePath)
+	cache, err := newCache(size, blockSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
@@ -59,70 +56,26 @@ func newChunker(
 	return chunker, nil
 }
 
-func (c *chunker) Close() error {
-	return c.cache.Close()
-}
 
 func (c *chunker) prefetch(ctx context.Context) error {
-	for off := int64(0); off < c.size; off += ChunkSize {
+	blocks := listBlocks(0, c.size, chunkSize)
+
+	for _, block := range blocks {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
-		err := c.ensureData(off, ChunkSize)
+		err := c.ensureData(block.start, block.end-block.start)
 		if err != nil {
-			return fmt.Errorf("failed to prefetch chunk %d: %w", off, err)
+			return fmt.Errorf("failed to prefetch chunk %d: %w", block.start, err)
 		}
 	}
 
 	return nil
 }
 
-func (c *chunker) ensureData(off, len int64) error {
-	var eg errgroup.Group
-
-	for i := off; i < off+len; i += ChunkSize {
-		chunkIdx := i / ChunkSize
-
-		eg.Go(func() error {
-			_, err, _ := c.fetchGroup.Do(strconv.FormatInt(chunkIdx, 10), func() (interface{}, error) {
-				if c.cache.isCached(chunkIdx*ChunkSize, ChunkSize) {
-					return nil, nil
-				}
-
-				err := c.fetchSemaphore.Acquire(c.ctx, 1)
-				if err != nil {
-					return nil, fmt.Errorf("failed to acquire semaphore: %w", err)
-				}
-
-				defer c.fetchSemaphore.Release(1)
-
-				fetchErr := c.fetchChunk(chunkIdx)
-				if fetchErr != nil {
-					return nil, fmt.Errorf("failed to fetch chunk %d: %w", chunkIdx, fetchErr)
-				}
-
-				return nil, nil
-			})
-			if err != nil {
-				return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+len, err)
-			}
-
-			return nil
-		})
-	}
-
-	err := eg.Wait()
-	if err != nil {
-		return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+len, err)
-	}
-
-	return nil
-}
-
-// Reads with zero length are threated as prefetches.
 func (c *chunker) ReadAt(b []byte, off int64) (int, error) {
 	slice, err := c.Slice(off, int64(len(b)))
 	if err != nil {
@@ -130,30 +83,6 @@ func (c *chunker) ReadAt(b []byte, off int64) (int, error) {
 	}
 
 	return copy(b, slice), nil
-}
-
-func (c *chunker) fetchChunk(idx int64) error {
-	select {
-	case <-c.ctx.Done():
-		return fmt.Errorf("fetch chunk %d: %w", idx, c.ctx.Err())
-	default:
-	}
-
-	off := idx * ChunkSize
-
-	b := make([]byte, ChunkSize)
-
-	_, err := c.base.ReadAt(b, off)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("failed to read chunk from base %d: %w", idx, err)
-	}
-
-	_, cacheErr := c.cache.WriteAt(b, off)
-	if cacheErr != nil {
-		return fmt.Errorf("failed to write chunk %d to cache: %w", idx, cacheErr)
-	}
-
-	return nil
 }
 
 func (c *chunker) Slice(off, length int64) ([]byte, error) {
@@ -177,4 +106,72 @@ func (c *chunker) Slice(off, length int64) ([]byte, error) {
 	}
 
 	return b, nil
+}
+
+func (c *chunker) ensureData(off, len int64) error {
+	var eg errgroup.Group
+
+	blocks := listBlocks(off, off+len, chunkSize)
+
+	for _, block := range blocks {
+		eg.Go(func() error {
+			_, err, _ := c.fetchGroup.Do(strconv.FormatInt(block.start, 10), func() (interface{}, error) {
+				if c.cache.isCached(block.start, block.end-block.start) {
+					return nil, nil
+				}
+
+				err := c.fetchSemaphore.Acquire(c.ctx, 1)
+				if err != nil {
+					return nil, fmt.Errorf("failed to acquire semaphore: %w", err)
+				}
+
+				defer c.fetchSemaphore.Release(1)
+
+				fetchErr := c.fetchRange(block.start, block.end)
+				if fetchErr != nil {
+					return nil, fmt.Errorf("failed to fetch range %d-%d: %w", block.start, block.end, fetchErr)
+				}
+
+				return nil, nil
+			})
+			if err != nil {
+				return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+len, err)
+			}
+
+			return nil
+		})
+	}
+
+	err := eg.Wait()
+	if err != nil {
+		return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+len, err)
+	}
+
+	return nil
+}
+
+func (c *chunker) fetchRange(start, end int64) error {
+	select {
+	case <-c.ctx.Done():
+		return fmt.Errorf("error fetching range %d-%d: %w", start, end, c.ctx.Err())
+	default:
+	}
+
+	b := make([]byte, end-start)
+
+	_, err := c.base.ReadAt(b, start)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("failed to read chunk from base %d: %w", start, err)
+	}
+
+	_, cacheErr := c.cache.WriteAt(b, start)
+	if cacheErr != nil {
+		return fmt.Errorf("failed to write chunk %d to cache: %w", start, cacheErr)
+	}
+
+	return nil
+}
+
+func (c *chunker) Close() error {
+	return c.cache.Close()
 }

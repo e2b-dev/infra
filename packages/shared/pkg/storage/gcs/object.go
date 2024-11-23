@@ -28,7 +28,7 @@ type Object struct {
 	ctx    context.Context
 }
 
-func NewObjectFromBucket(ctx context.Context, bucket *storage.BucketHandle, objectPath string) *Object {
+func NewObject(ctx context.Context, bucket *storage.BucketHandle, objectPath string) *Object {
 	obj := bucket.Object(objectPath).Retryer(
 		storage.WithMaxAttempts(maxAttempts),
 		storage.WithBackoff(gax.Backoff{
