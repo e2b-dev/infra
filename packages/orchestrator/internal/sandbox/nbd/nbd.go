@@ -14,8 +14,6 @@ type ManagedPathMount struct {
 
 	overlay block.Device
 
-	chunkSize int64
-
 	serverFile *os.File
 	dev        *DirectPathMount
 
@@ -29,16 +27,11 @@ type ManagedPathMount struct {
 func NewManagedPathMount(
 	ctx context.Context,
 	overlay block.Device,
-	chunkSize int64,
 ) *ManagedPathMount {
 	return &ManagedPathMount{
-		ctx: ctx,
-
+		ctx:     ctx,
 		overlay: overlay,
-
-		chunkSize: chunkSize,
-
-		errs: make(chan error),
+		errs:    make(chan error),
 	}
 }
 

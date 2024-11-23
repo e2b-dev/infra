@@ -10,8 +10,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 )
 
-const ChunkSize = 2 * 1024 * 1024 // 2MiB
-
 type RootfsOverlay struct {
 	overlay block.Device
 	mnt     *nbd.ManagedPathMount
@@ -43,7 +41,6 @@ func NewRootfsOverlay(template Template, cachePath string) (*RootfsOverlay, erro
 	mnt := nbd.NewManagedPathMount(
 		ctx,
 		overlay,
-		ChunkSize,
 	)
 
 	return &RootfsOverlay{
