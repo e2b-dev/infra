@@ -42,6 +42,12 @@ func (c *apiClient) loadSnapshot(
 		return fmt.Errorf("error waiting for uffd socket: %w", err)
 	}
 
+	// TODO: Do we need to wait for the rootfs to be ready before loading the snapshot?
+	err = rootfs.NbdReady(ctx)
+	if err != nil {
+		return fmt.Errorf("error waiting for rootfs ready: %w", err)
+	}
+
 	backendType := models.MemoryBackendBackendTypeUffd
 	backend := &models.MemoryBackend{
 		BackendPath: &uffdSocketPath,
@@ -69,11 +75,6 @@ func (c *apiClient) loadSnapshot(
 		return fmt.Errorf("context canceled while waiting for uffd ready: %w", ctx.Err())
 	case <-uffdReady:
 		// Wait for the uffd to be ready to serve requests
-	}
-
-	err = rootfs.NbdReady(ctx)
-	if err != nil {
-		return fmt.Errorf("error waiting for rootfs ready: %w", err)
 	}
 
 	return nil
