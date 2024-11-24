@@ -82,7 +82,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src block.ReadonlyDevice
 
 			if err == syscall.EAGAIN {
 				if i > maxEagainAttempts {
-					return fmt.Errorf("too many uffd read attempts, last error: %w", err)
+					return fmt.Errorf("too many uffd read attempts, last error: %w\n", err)
 				}
 
 				i++
