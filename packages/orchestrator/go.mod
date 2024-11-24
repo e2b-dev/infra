@@ -3,10 +3,12 @@ module github.com/e2b-dev/infra/packages/orchestrator
 go 1.23
 
 require (
+	cloud.google.com/go/storage v1.47.0
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
 	github.com/bits-and-blooms/bitset v1.16.0
 	github.com/coreos/go-iptables v0.8.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
+	github.com/edsrzf/mmap-go v1.2.0
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
 	github.com/go-openapi/strfmt v0.23.0
 	github.com/google/uuid v1.6.0
@@ -38,7 +40,6 @@ require (
 	cloud.google.com/go/compute/metadata v0.5.2 // indirect
 	cloud.google.com/go/iam v1.2.2 // indirect
 	cloud.google.com/go/monitoring v1.21.2 // indirect
-	cloud.google.com/go/storage v1.47.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.25.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.49.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.49.0 // indirect
