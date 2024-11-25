@@ -31,8 +31,8 @@ var httpClient = http.Client{
 }
 
 type Sandbox struct {
-	files    *storage.SandboxFiles
-	stopOnce func() error
+	files   *storage.SandboxFiles
+	cleanup *Cleanup
 
 	process *fc.Process
 	uffd    *uffd.Uffd
@@ -64,11 +64,11 @@ func NewSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	logger *logs.SandboxLogger,
-) (*Sandbox, []func() error, error) {
+) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
-	var cleanup []func() error
+	cleanup := NewCleanup()
 
 	template, err := templateCache.GetTemplate(
 		config.TemplateId,
@@ -88,7 +88,7 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
 	}
 
-	cleanup = append(cleanup, func() error {
+	cleanup.Add(func() error {
 		returnErr := networkPool.Return(ips)
 		if returnErr != nil {
 			return fmt.Errorf("failed to return network slot: %w", returnErr)
@@ -101,7 +101,7 @@ func NewSandbox(
 
 	sandboxFiles := template.Files().NewSandboxFiles(config.SandboxId)
 
-	cleanup = append(cleanup, func() error {
+	cleanup.Add(func() error {
 		filesErr := cleanupFiles(sandboxFiles)
 		if filesErr != nil {
 			return fmt.Errorf("failed to cleanup files: %w", filesErr)
@@ -125,7 +125,7 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create overlay file: %w", err)
 	}
 
-	cleanup = append(cleanup, func() error {
+	cleanup.Add(func() error {
 		rootfsOverlay.Close()
 
 		return nil
@@ -154,7 +154,8 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to start uffd: %w", uffdStartErr)
 	}
 
-	cleanup = append(cleanup, func() error {
+	cleanup.Add(func() error {
+		fmt.Printf("[sandbox %s]: stopping uffd\n", config.SandboxId)
 		stopErr := fcUffd.Stop()
 		if stopErr != nil {
 			return fmt.Errorf("failed to stop uffd: %w", stopErr)
@@ -229,34 +230,27 @@ func NewSandbox(
 		rootfs:    rootfsOverlay,
 		stats:     sandboxStats,
 		Logger:    logger,
-		stopOnce: sync.OnceValue(func() error {
-			var errs []error
-
-			fcStopErr := fcHandle.Stop()
-			if fcStopErr != nil {
-				errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
-			}
-
-			uffdStopErr := fcUffd.Stop()
-			if uffdStopErr != nil {
-				errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
-			}
-
-			healthcheckCtx.Lock()
-			healthcheckCtx.Cancel()
-			healthcheckCtx.Unlock()
-
-			return errors.Join(errs...)
-		}),
+		cleanup:   cleanup,
 	}
 
-	cleanup = append(cleanup, func() error {
-		stopErr := sbx.stopOnce()
-		if stopErr != nil {
-			return fmt.Errorf("failed to stop FC: %w", stopErr)
+	cleanup.AddPriority(func() error {
+		var errs []error
+
+		fcStopErr := fcHandle.Stop()
+		if fcStopErr != nil {
+			errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 		}
 
-		return nil
+		uffdStopErr := fcUffd.Stop()
+		if uffdStopErr != nil {
+			errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
+		}
+
+		healthcheckCtx.Lock()
+		healthcheckCtx.Cancel()
+		healthcheckCtx.Unlock()
+
+		return errors.Join(errs...)
 	})
 
 	// Ensure the syncing takes at most 10 seconds.
@@ -286,7 +280,7 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
 
-	cleanup = append(cleanup, func() error {
+	cleanup.Add(func() error {
 		dns.Remove(config.SandboxId)
 
 		return nil
@@ -313,7 +307,7 @@ func (s *Sandbox) Wait() error {
 }
 
 func (s *Sandbox) Stop() error {
-	err := s.stopOnce()
+	err := s.cleanup.Run()
 	if err != nil {
 		return fmt.Errorf("failed to stop sandbox: %w", err)
 	}

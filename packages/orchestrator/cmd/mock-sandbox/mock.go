@@ -134,7 +134,7 @@ func mockSandbox(
 		logger,
 	)
 	defer func() {
-		cleanupErr := sandbox.HandleCleanup(cleanup)
+		cleanupErr := cleanup.Run()
 		if cleanupErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to cleanup sandbox: %v\n", cleanupErr)
 		}

@@ -5,10 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/otel/metric"
-
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 

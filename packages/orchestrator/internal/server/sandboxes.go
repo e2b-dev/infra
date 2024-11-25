@@ -55,7 +55,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	)
 	if err != nil {
 		log.Printf("failed to create sandbox -> clean up: %v", err)
-		cleanupErr := sandbox.HandleCleanup(cleanup)
+		cleanupErr := cleanup.Run()
 
 		errMsg := fmt.Errorf("failed to create sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -71,7 +71,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			fmt.Fprintf(os.Stderr, "failed to wait for Sandbox: %v", waitErr)
 		}
 
-		cleanupErr := sandbox.HandleCleanup(cleanup)
+		cleanupErr := cleanup.Run()
 		if cleanupErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to cleanup Sandbox: %v", cleanupErr)
 		}

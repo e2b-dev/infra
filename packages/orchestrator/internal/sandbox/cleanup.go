@@ -4,20 +4,53 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-// HandleCleanup calls the cleanup functions in reverse order and returns the the joined error.
-func HandleCleanup(cleanup []func() error) error {
-	errs := make([]error, len(cleanup))
+type Cleanup struct {
+	cleanup         []func() error
+	priorityCleanup []func() error
+	once            sync.Once
+	error           error
+}
 
-	for i := len(cleanup) - 1; i >= 0; i-- {
-		cleanupFn := cleanup[i]
-		errs[i] = cleanupFn()
+func NewCleanup() *Cleanup {
+	return &Cleanup{}
+}
+
+func (c *Cleanup) Add(f func() error) {
+	c.cleanup = append(c.cleanup, f)
+}
+
+func (c *Cleanup) AddPriority(f func() error) {
+	c.priorityCleanup = append(c.priorityCleanup, f)
+}
+
+func (c *Cleanup) Run() error {
+	c.once.Do(c.run)
+	return c.error
+}
+
+func (c *Cleanup) run() {
+	var errs []error
+
+	for i := len(c.priorityCleanup) - 1; i >= 0; i-- {
+		err := c.priorityCleanup[i]()
+		if err != nil {
+			errs = append(errs, err)
+		}
 	}
 
-	return errors.Join(errs...)
+	for i := len(c.cleanup) - 1; i >= 0; i-- {
+		err := c.cleanup[i]()
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	c.error = errors.Join(errs...)
 }
 
 func cleanupFiles(files *storage.SandboxFiles) error {
