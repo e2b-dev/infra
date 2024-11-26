@@ -59,6 +59,11 @@ func (t *TemplateFiles) BuildKernelDir() string {
 	return filepath.Join(KernelMountDir, t.KernelVersion)
 }
 
+// Key for the cache. Unique for template-build pair.
+func (t *TemplateFiles) CacheKey() string {
+	return fmt.Sprintf("%s-%s", t.TemplateId, t.BuildId)
+}
+
 func (t *TemplateFiles) CacheKernelPath() string {
 	return filepath.Join(KernelsDir, t.KernelVersion, KernelName)
 }

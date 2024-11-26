@@ -1,6 +1,11 @@
 package storage
 
-import "path/filepath"
+import (
+	"fmt"
+	"path/filepath"
+
+	"github.com/google/uuid"
+)
 
 const (
 	templateCacheDir = "/orchestrator/template"
@@ -14,11 +19,16 @@ type TemplateCacheFiles struct {
 	CacheIdentifier string
 }
 
-func (f *TemplateFiles) NewTemplateCacheFiles(prefix string) *TemplateCacheFiles {
+func (f *TemplateFiles) NewTemplateCacheFiles() (*TemplateCacheFiles, error) {
+	identifier, err := uuid.NewRandom()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate identifier: %w", err)
+	}
+
 	return &TemplateCacheFiles{
 		TemplateFiles:   f,
-		CacheIdentifier: prefix,
-	}
+		CacheIdentifier: identifier.String(),
+	}, nil
 }
 
 func (c *TemplateCacheFiles) CacheDir() string {

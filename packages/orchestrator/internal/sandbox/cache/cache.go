@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
@@ -51,24 +50,19 @@ func (c *TemplateCache) GetTemplate(
 	firecrackerVersion string,
 	hugePages bool,
 ) (Template, error) {
-	key := fmt.Sprintf("%s-%s", templateId, buildId)
-
-	identifier, err := uuid.NewRandom()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate identifier: %w", err)
-	}
-
-	storageTemplate := c.newTemplateFromStorage(
-		identifier.String(),
+	storageTemplate, err := c.newTemplateFromStorage(
 		templateId,
 		buildId,
 		kernelVersion,
 		firecrackerVersion,
 		hugePages,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
+	}
 
 	t, found := c.cache.GetOrSet(
-		key,
+		storageTemplate.Files().CacheKey(),
 		storageTemplate,
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)

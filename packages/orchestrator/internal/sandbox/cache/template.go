@@ -47,19 +47,21 @@ func (t *storageTemplate) pageSize() int64 {
 }
 
 func (t *TemplateCache) newTemplateFromStorage(
-	cacheIdentifier,
 	templateId,
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
 	hugePages bool,
-) *storageTemplate {
-	files := storage.NewTemplateFiles(
+) (*storageTemplate, error) {
+	files, err := storage.NewTemplateFiles(
 		templateId,
 		buildId,
 		kernelVersion,
 		firecrackerVersion,
-	).NewTemplateCacheFiles(cacheIdentifier)
+	).NewTemplateCacheFiles()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create template cache files: %w", err)
+	}
 
 	return &storageTemplate{
 		hugePages: hugePages,
@@ -67,7 +69,7 @@ func (t *TemplateCache) newTemplateFromStorage(
 		memfile:   utils.NewSetOnce[block.ReadonlyDevice](),
 		rootfs:    utils.NewSetOnce[block.ReadonlyDevice](),
 		snapfile:  utils.NewSetOnce[*storageFile](),
-	}
+	}, nil
 }
 
 func (t *storageTemplate) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
