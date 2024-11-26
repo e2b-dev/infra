@@ -13,10 +13,11 @@ import (
 	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
@@ -35,7 +36,7 @@ type Sandbox struct {
 
 	process *fc.Process
 	uffd    *uffd.Uffd
-	rootfs  *cache.RootfsOverlay
+	rootfs  *rootfs.Overlay
 
 	Config    *orchestrator.SandboxConfig
 	StartedAt time.Time
@@ -57,7 +58,7 @@ func NewSandbox(
 	tracer trace.Tracer,
 	dns *dns.DNS,
 	networkPool *network.Pool,
-	templateCache *cache.TemplateCache,
+	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,
 	traceID string,
 	startedAt time.Time,
@@ -69,7 +70,7 @@ func NewSandbox(
 
 	cleanup := NewCleanup()
 
-	template, err := templateCache.GetTemplate(
+	t, err := templateCache.GetTemplate(
 		config.TemplateId,
 		config.BuildId,
 		config.KernelVersion,
@@ -98,7 +99,7 @@ func NewSandbox(
 
 	networkSpan.End()
 
-	sandboxFiles := template.Files().NewSandboxFiles(config.SandboxId)
+	sandboxFiles := t.Files().NewSandboxFiles(config.SandboxId)
 
 	cleanup.Add(func() error {
 		filesErr := cleanupFiles(sandboxFiles)
@@ -116,8 +117,13 @@ func NewSandbox(
 
 	_, overlaySpan := tracer.Start(childCtx, "create-rootfs-overlay")
 
-	rootfsOverlay, err := cache.NewRootfsOverlay(
-		template,
+	rootfsDevice, err := t.Rootfs()
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to get rootfs: %w", err)
+	}
+
+	rootfsOverlay, err := rootfs.NewOverlay(
+		rootfsDevice,
 		sandboxFiles.SandboxCacheRootfsPath(),
 	)
 	if err != nil {
@@ -137,7 +143,7 @@ func NewSandbox(
 		}
 	}()
 
-	memfile, err := template.Memfile()
+	memfile, err := t.Memfile()
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get memfile: %w", err)
 	}
@@ -175,7 +181,7 @@ func NewSandbox(
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
 
-	snapfile, err := template.Snapfile()
+	snapfile, err := t.Snapfile()
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get snapfile: %w", err)
 	}

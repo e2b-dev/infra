@@ -1,4 +1,4 @@
-package cache
+package template
 
 import (
 	"context"
@@ -14,13 +14,13 @@ import (
 // Should be longer than the maximum possible sandbox lifetime.
 const templateExpiration = time.Hour * 48
 
-type TemplateCache struct {
+type Cache struct {
 	cache  *ttlcache.Cache[string, Template]
 	bucket *gcs.BucketHandle
 	ctx    context.Context
 }
 
-func NewTemplateCache(ctx context.Context) *TemplateCache {
+func NewCache(ctx context.Context) *Cache {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
@@ -36,21 +36,21 @@ func NewTemplateCache(ctx context.Context) *TemplateCache {
 
 	go cache.Start()
 
-	return &TemplateCache{
+	return &Cache{
 		bucket: gcs.TemplateBucket,
 		cache:  cache,
 		ctx:    ctx,
 	}
 }
 
-func (c *TemplateCache) GetTemplate(
+func (c *Cache) GetTemplate(
 	templateId,
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
 	hugePages bool,
 ) (Template, error) {
-	storageTemplate, err := c.newTemplateFromStorage(
+	storageTemplate, err := newTemplateFromStorage(
 		templateId,
 		buildId,
 		kernelVersion,

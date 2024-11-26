@@ -1,4 +1,4 @@
-package cache
+package rootfs
 
 import (
 	"context"
@@ -10,7 +10,9 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 )
 
-type RootfsOverlay struct {
+const BlockSize = 2 << 11
+
+type Overlay struct {
 	overlay block.Device
 	mnt     *nbd.ManagedPathMount
 
@@ -20,17 +22,10 @@ type RootfsOverlay struct {
 	devicePathReady chan string
 }
 
-func NewRootfsOverlay(template Template, cachePath string) (*RootfsOverlay, error) {
+func NewOverlay(rootfs block.ReadonlyDevice, cachePath string) (*Overlay, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	rootfs, err := template.Rootfs()
-	if err != nil {
-		cancel()
-
-		return nil, fmt.Errorf("error getting rootfs: %w", err)
-	}
-
-	overlay, err := block.NewOverlay(rootfs, rootfsBlockSize, cachePath)
+	overlay, err := block.NewOverlay(rootfs, BlockSize, cachePath)
 	if err != nil {
 		cancel()
 
@@ -42,7 +37,7 @@ func NewRootfsOverlay(template Template, cachePath string) (*RootfsOverlay, erro
 		overlay,
 	)
 
-	return &RootfsOverlay{
+	return &Overlay{
 		devicePathReady: make(chan string, 1),
 		mnt:             mnt,
 		overlay:         overlay,
@@ -51,7 +46,7 @@ func NewRootfsOverlay(template Template, cachePath string) (*RootfsOverlay, erro
 	}, nil
 }
 
-func (o *RootfsOverlay) Run() error {
+func (o *Overlay) Run() error {
 	defer close(o.devicePathReady)
 	defer o.cancelCtx()
 
@@ -96,12 +91,12 @@ func (o *RootfsOverlay) Run() error {
 	return nil
 }
 
-func (o *RootfsOverlay) Close() {
+func (o *Overlay) Close() {
 	o.cancelCtx()
 }
 
 // Path can only be called once.
-func (o *RootfsOverlay) Path(ctx context.Context) (string, error) {
+func (o *Overlay) Path(ctx context.Context) (string, error) {
 	select {
 	case <-o.ctx.Done():
 		return "", fmt.Errorf("overlay context canceled when getting overlay path: %w", o.ctx.Err())

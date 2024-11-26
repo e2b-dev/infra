@@ -7,8 +7,8 @@ import (
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
@@ -33,7 +33,7 @@ func (c *apiClient) loadSnapshot(
 	ctx context.Context,
 	uffdSocketPath string,
 	uffdReady chan struct{},
-	snapfile cache.File,
+	snapfile template.File,
 ) error {
 	err := socket.Wait(ctx, uffdSocketPath)
 	if err != nil {

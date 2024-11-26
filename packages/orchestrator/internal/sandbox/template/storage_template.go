@@ -1,4 +1,4 @@
-package cache
+package template
 
 import (
 	"context"
@@ -8,25 +8,12 @@ import (
 	"sync"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
-
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
-
-const (
-	pageSize        = 2 << 11
-	hugepageSize    = 2 << 20
-	rootfsBlockSize = 2 << 11
-)
-
-type Template interface {
-	Files() *storage.TemplateCacheFiles
-	Memfile() (block.ReadonlyDevice, error)
-	Rootfs() (block.ReadonlyDevice, error)
-	Snapfile() (File, error)
-	Close() error
-}
 
 type storageTemplate struct {
 	files *storage.TemplateCacheFiles
@@ -40,13 +27,13 @@ type storageTemplate struct {
 
 func (t *storageTemplate) pageSize() int64 {
 	if t.hugePages {
-		return hugepageSize
+		return uffd.HugepageSize
 	}
 
-	return pageSize
+	return uffd.PageSize
 }
 
-func (t *TemplateCache) newTemplateFromStorage(
+func newTemplateFromStorage(
 	templateId,
 	buildId,
 	kernelVersion,
@@ -133,7 +120,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
 			ctx,
 			bucket,
 			t.files.StorageRootfsPath(),
-			rootfsBlockSize,
+			rootfs.BlockSize,
 			t.files.CacheRootfsPath(),
 		)
 		if rootfsErr != nil {
