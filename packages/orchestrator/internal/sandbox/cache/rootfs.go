@@ -18,7 +18,6 @@ type RootfsOverlay struct {
 	cancelCtx context.CancelFunc
 
 	devicePathReady chan string
-	nbdReady        chan error
 }
 
 func NewRootfsOverlay(template Template, cachePath string) (*RootfsOverlay, error) {
@@ -45,7 +44,6 @@ func NewRootfsOverlay(template Template, cachePath string) (*RootfsOverlay, erro
 
 	return &RootfsOverlay{
 		devicePathReady: make(chan string, 1),
-		nbdReady:        make(chan error, 1),
 		mnt:             mnt,
 		overlay:         overlay,
 		ctx:             ctx,
@@ -55,7 +53,6 @@ func NewRootfsOverlay(template Template, cachePath string) (*RootfsOverlay, erro
 
 func (o *RootfsOverlay) Run() error {
 	defer close(o.devicePathReady)
-	defer close(o.nbdReady)
 	defer o.cancelCtx()
 
 	deviceIndex, _, err := o.mnt.Open(o.ctx)
@@ -64,7 +61,6 @@ func (o *RootfsOverlay) Run() error {
 	}
 
 	o.devicePathReady <- nbd.GetDevicePath(deviceIndex)
-	o.nbdReady <- nil
 
 	<-o.ctx.Done()
 
@@ -117,21 +113,5 @@ func (o *RootfsOverlay) Path(ctx context.Context) (string, error) {
 		}
 
 		return path, nil
-	}
-}
-
-// NbdReady can only be called once.
-func (o *RootfsOverlay) NbdReady(ctx context.Context) error {
-	select {
-	case <-o.ctx.Done():
-		return fmt.Errorf("overlay context canceled when getting overlay path: %w", o.ctx.Err())
-	case <-ctx.Done():
-		return fmt.Errorf("context canceled when getting overlay path: %w", ctx.Err())
-	case err, ok := <-o.nbdReady:
-		if !ok {
-			return fmt.Errorf("overlay nbd ready channel closed")
-		}
-
-		return err
 	}
 }

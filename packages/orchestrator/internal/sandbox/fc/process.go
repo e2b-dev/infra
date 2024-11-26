@@ -44,7 +44,6 @@ type Process struct {
 
 	uffdSocketPath        string
 	firecrackerSocketPath string
-	rootfs                *cache.RootfsOverlay
 
 	Exit chan error
 
@@ -116,7 +115,6 @@ func NewProcess(
 	return &Process{
 		Exit:                  make(chan error, 1),
 		uffdReady:             uffdReady,
-		rootfs:                rootfs,
 		cmd:                   cmd,
 		stdout:                cmdStdoutReader,
 		stderr:                cmdStderrReader,
@@ -228,7 +226,6 @@ func (p *Process) Start(
 		p.uffdSocketPath,
 		p.uffdReady,
 		p.snapfile,
-		p.rootfs,
 	)
 	if err != nil {
 		fcStopErr := p.Stop()

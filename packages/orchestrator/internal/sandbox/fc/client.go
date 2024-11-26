@@ -34,18 +34,10 @@ func (c *apiClient) loadSnapshot(
 	uffdSocketPath string,
 	uffdReady chan struct{},
 	snapfile cache.File,
-	rootfs *cache.RootfsOverlay,
 ) error {
-	// TODO: Do we need to wait for the socket to be present before loading snapshot?
 	err := socket.Wait(ctx, uffdSocketPath)
 	if err != nil {
 		return fmt.Errorf("error waiting for uffd socket: %w", err)
-	}
-
-	// TODO: Do we need to wait for the rootfs to be ready before loading the snapshot?
-	err = rootfs.NbdReady(ctx)
-	if err != nil {
-		return fmt.Errorf("error waiting for rootfs ready: %w", err)
 	}
 
 	backendType := models.MemoryBackendBackendTypeUffd
