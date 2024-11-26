@@ -7,12 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"syscall"
 	"text/template"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -45,6 +47,9 @@ type Process struct {
 	uffdSocketPath        string
 	firecrackerSocketPath string
 
+	rootfs *cache.RootfsOverlay
+	files  *storage.SandboxFiles
+
 	Exit chan error
 
 	client *apiClient
@@ -66,15 +71,10 @@ func NewProcess(
 	))
 	defer childSpan.End()
 
-	rootfsPath, err := rootfs.Path(childCtx)
-	if err != nil {
-		return nil, fmt.Errorf("error getting rootfs path: %w", err)
-	}
-
 	var fcStartScript bytes.Buffer
 
-	err = startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
-		"rootfsPath":        rootfsPath,
+	err := startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
+		"rootfsPath":        files.SandboxCacheRootfsLinkPath(),
 		"kernelPath":        files.CacheKernelPath(),
 		"buildDir":          files.BuildDir(),
 		"buildRootfsPath":   files.BuildRootfsPath(),
@@ -123,6 +123,8 @@ func NewProcess(
 		uffdSocketPath:        files.SandboxUffdSocketPath(),
 		snapfile:              snapfile,
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
+		rootfs:                rootfs,
+		files:                 files,
 	}, nil
 }
 
@@ -178,7 +180,12 @@ func (p *Process) Start(
 		}
 	}()
 
-	err := p.cmd.Start()
+	err := os.Symlink("/dev/null", p.files.SandboxCacheRootfsLinkPath())
+	if err != nil {
+		return fmt.Errorf("error symlinking rootfs: %w", err)
+	}
+
+	err = p.cmd.Start()
 	if err != nil {
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
@@ -221,6 +228,27 @@ func (p *Process) Start(
 		return errors.Join(errMsg, fcStopErr)
 	}
 
+	eg, ctx := errgroup.WithContext(startCtx)
+
+	eg.Go(func() error {
+		device, err := p.rootfs.Path(ctx)
+		if err != nil {
+			return fmt.Errorf("error getting rootfs path: %w", err)
+		}
+
+		err = os.Remove(p.files.SandboxCacheRootfsLinkPath())
+		if err != nil {
+			return fmt.Errorf("error removing rootfs symlink: %w", err)
+		}
+
+		err = os.Symlink(device, p.files.SandboxCacheRootfsLinkPath())
+		if err != nil {
+			return fmt.Errorf("error symlinking rootfs: %w", err)
+		}
+
+		return nil
+	})
+
 	err = p.client.loadSnapshot(
 		startCtx,
 		p.uffdSocketPath,
@@ -231,6 +259,13 @@ func (p *Process) Start(
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
+	}
+
+	err = eg.Wait()
+	if err != nil {
+		fcStopErr := p.Stop()
+
+		return errors.Join(fmt.Errorf("error waiting for rootfs symlink: %w", err), fcStopErr)
 	}
 
 	err = p.client.resumeVM(startCtx)

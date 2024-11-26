@@ -60,6 +60,7 @@ func cleanupFiles(files *storage.SandboxFiles) error {
 		files.SandboxCacheDir(),
 		files.SandboxFirecrackerSocketPath(),
 		files.SandboxUffdSocketPath(),
+		files.SandboxCacheRootfsLinkPath(),
 	} {
 		err := os.RemoveAll(p)
 		if err != nil {
