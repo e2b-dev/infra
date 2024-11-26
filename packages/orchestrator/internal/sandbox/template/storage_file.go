@@ -1,4 +1,4 @@
-package cache
+package template
 
 import (
 	"context"
@@ -8,11 +8,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
-
-type File interface {
-	Path() string
-	Close() error
-}
 
 type storageFile struct {
 	path string

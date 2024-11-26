@@ -10,15 +10,16 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
-	"text/template"
+	txtTemplate "text/template"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -31,11 +32,11 @@ ln -s {{ .rootfsPath }} {{ .buildRootfsPath }} &&
 ln -s {{ .kernelPath }} {{ .buildKernelPath }} &&
 ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
 
-var startScriptTemplate = template.Must(template.New("fc-start").Parse(startScript))
+var startScriptTemplate = txtTemplate.Must(txtTemplate.New("fc-start").Parse(startScript))
 
 type Process struct {
 	uffdReady chan struct{}
-	snapfile  cache.File
+	snapfile  template.File
 
 	cmd *exec.Cmd
 
@@ -47,7 +48,7 @@ type Process struct {
 	uffdSocketPath        string
 	firecrackerSocketPath string
 
-	rootfs *cache.RootfsOverlay
+	rootfs *rootfs.Overlay
 	files  *storage.SandboxFiles
 
 	Exit chan error
@@ -61,8 +62,8 @@ func NewProcess(
 	slot network.Slot,
 	files *storage.SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
-	snapfile cache.File,
-	rootfs *cache.RootfsOverlay,
+	snapfile template.File,
+	rootfs *rootfs.Overlay,
 	uffdReady chan struct{},
 ) (*Process, error) {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(

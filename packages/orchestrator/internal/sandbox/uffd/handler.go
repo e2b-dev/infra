@@ -17,6 +17,8 @@ const (
 	uffdMsgListenerTimeout = 10 * time.Second
 	fdSize                 = 4
 	mappingsSize           = 1024
+	PageSize               = 2 << 11
+	HugepageSize           = 2 << 20
 )
 
 type UffdSetup struct {
