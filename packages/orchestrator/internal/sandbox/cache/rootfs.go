@@ -58,18 +58,12 @@ func (o *RootfsOverlay) Run() error {
 	defer close(o.nbdReady)
 	defer o.cancelCtx()
 
-	deviceIndex, err := nbd.Pool.GetDevice(o.ctx)
-	if err != nil {
-		return fmt.Errorf("error getting device index: %w", err)
-	}
-
-	o.devicePathReady <- nbd.GetDevicePath(deviceIndex)
-
-	_, _, err = o.mnt.Open(o.ctx, deviceIndex)
+	deviceIndex, _, err := o.mnt.Open(o.ctx)
 	if err != nil {
 		return fmt.Errorf("error opening overlay file: %w", err)
 	}
 
+	o.devicePathReady <- nbd.GetDevicePath(deviceIndex)
 	o.nbdReady <- nil
 
 	<-o.ctx.Done()

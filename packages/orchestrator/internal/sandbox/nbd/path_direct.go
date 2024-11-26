@@ -2,6 +2,7 @@ package nbd
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -24,35 +25,39 @@ type DirectPathMount struct {
 	cancelfn    context.CancelFunc
 }
 
-func NewDirectPathMount(b block.Device, deviceIndex uint32) *DirectPathMount {
+func NewDirectPathMount(b block.Device) *DirectPathMount {
 	ctx, cancelfn := context.WithCancel(context.Background())
 	return &DirectPathMount{
-		Backend:     b,
-		ctx:         ctx,
-		cancelfn:    cancelfn,
-		deviceIndex: deviceIndex,
-		blockSize:   4096,
+		Backend:   b,
+		ctx:       ctx,
+		cancelfn:  cancelfn,
+		blockSize: 4096,
 	}
 }
 
-func (d *DirectPathMount) Open() error {
+func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 	size, err := d.Backend.Size()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	for {
+		d.deviceIndex, err = Pool.GetDevice(ctx)
+		if err != nil {
+			return 0, err
+		}
+
 		// Create the socket pairs
 		sockPair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		client := os.NewFile(uintptr(sockPair[0]), "client")
 		server := os.NewFile(uintptr(sockPair[1]), "server")
 		d.conn, err = net.FileConn(server)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		server.Close()
 
@@ -81,13 +86,23 @@ func (d *DirectPathMount) Open() error {
 
 		// Sometimes (rare), there seems to be a BADF error here. Lets just retry for now...
 		// Close things down and try again...
-		client.Close()
+		_ = client.Close()
 
-		if strings.Contains(err.Error(), "invalid argument") {
-			return err
+		connErr := d.conn.Close()
+		if connErr != nil {
+			fmt.Printf("Error closing conn: %v\n", connErr)
 		}
 
-		time.Sleep(50 * time.Millisecond)
+		releaseErr := Pool.ReleaseDevice(d.deviceIndex)
+		if releaseErr != nil {
+			fmt.Printf("Error releasing device: %v\n", releaseErr)
+		}
+
+		d.deviceIndex = 0
+
+		if strings.Contains(err.Error(), "invalid argument") {
+			return 0, err
+		}
 	}
 
 	// Wait until it's connected...
@@ -100,7 +115,7 @@ func (d *DirectPathMount) Open() error {
 		time.Sleep(100 * time.Nanosecond)
 	}
 
-	return nil
+	return d.deviceIndex, nil
 }
 
 func (d *DirectPathMount) Close() error {

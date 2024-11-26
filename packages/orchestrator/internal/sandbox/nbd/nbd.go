@@ -2,7 +2,6 @@ package nbd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"sync"
 
@@ -45,22 +44,20 @@ func (m *ManagedPathMount) Wait() error {
 	return nil
 }
 
-func (m *ManagedPathMount) Open(ctx context.Context, deviceIndex uint32) (string, int64, error) {
+func (m *ManagedPathMount) Open(ctx context.Context) (uint32, int64, error) {
 	size, err := m.overlay.Size()
 	if err != nil {
-		return "", 0, err
+		return 0, 0, err
 	}
 
-	m.dev = NewDirectPathMount(
-		m.overlay,
-		uint32(deviceIndex),
-	)
+	m.dev = NewDirectPathMount(m.overlay)
 
-	if err := m.dev.Open(); err != nil {
-		return "", 0, err
+	deviceIndex, err := m.dev.Open(ctx)
+	if err != nil {
+		return 0, 0, err
 	}
 
-	return fmt.Sprintf("/dev/nbd%d", deviceIndex), size, nil
+	return deviceIndex, size, nil
 }
 
 func (m *ManagedPathMount) Close() error {

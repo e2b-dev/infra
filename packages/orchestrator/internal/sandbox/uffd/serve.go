@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	maxEagainAttempts = 64
+	maxEagainAttempts = 4096
 	eagainDelay       = 50 * time.Microsecond
 )
 
