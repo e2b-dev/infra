@@ -115,7 +115,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, e
 		}
 	}()
 
-	mnt = nbd.NewDirectPathMount(device, uint32(deviceIndex))
+	mnt = nbd.NewDirectPathMount(device)
 
 	go func() {
 		<-ctx.Done()
@@ -123,7 +123,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, e
 		mnt.Close()
 	}()
 
-	err = mnt.Open()
+	_, err = mnt.Open(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open: %w", err)
 	}
