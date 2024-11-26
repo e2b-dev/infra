@@ -47,6 +47,8 @@ type Process struct {
 	rootfs                *cache.RootfsOverlay
 
 	Exit chan error
+
+	client *apiClient
 }
 
 func NewProcess(
@@ -122,6 +124,7 @@ func NewProcess(
 		metadata:              mmdsMetadata,
 		uffdSocketPath:        files.SandboxUffdSocketPath(),
 		snapfile:              snapfile,
+		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
 	}, nil
 }
 
@@ -220,9 +223,7 @@ func (p *Process) Start(
 		return errors.Join(errMsg, fcStopErr)
 	}
 
-	client := newApiClient(p.firecrackerSocketPath)
-
-	err = client.loadSnapshot(
+	err = p.client.loadSnapshot(
 		startCtx,
 		p.uffdSocketPath,
 		p.uffdReady,
@@ -235,14 +236,14 @@ func (p *Process) Start(
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
-	err = client.resumeVM(startCtx)
+	err = p.client.resumeVM(startCtx)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
 	}
 
-	err = client.setMmds(startCtx, p.metadata)
+	err = p.client.setMmds(startCtx, p.metadata)
 	if err != nil {
 		fcStopErr := p.Stop()
 
