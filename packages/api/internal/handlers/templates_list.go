@@ -96,12 +96,17 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	templates := make([]*api.Template, 0, len(envs))
 	for _, item := range envs {
 		templates = append(templates, &api.Template{
-			TemplateID: item.TemplateID,
-			BuildID:    item.BuildID,
-			CpuCount:   int32(item.VCPU),
-			MemoryMB:   int32(item.RAMMB),
-			Public:     item.Public,
-			Aliases:    item.Aliases,
+			TemplateID:    item.TemplateID,
+			BuildID:       item.BuildID,
+			CpuCount:      int32(item.VCPU),
+			MemoryMB:      int32(item.RAMMB),
+			Public:        item.Public,
+			Aliases:       item.Aliases,
+			CreatedAt:     item.CreatedAt,
+			UpdatedAt:     item.UpdatedAt,
+			LastSpawnedAt: item.LastSpawnedAt,
+			SpawnCount:    item.SpawnCount,
+			BuildCount:    item.BuildCount,
 		})
 	}
 

@@ -133,11 +133,20 @@ type Template struct {
 	// Aliases Aliases of the template
 	Aliases *[]string `json:"aliases,omitempty"`
 
+	// BuildCount Number of times the template was built
+	BuildCount int32 `json:"buildCount"`
+
 	// BuildID Identifier of the last successful build for given template
 	BuildID string `json:"buildID"`
 
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
+
+	// CreatedAt Time when the template was created
+	CreatedAt time.Time `json:"createdAt"`
+
+	// LastSpawnedAt Time when the template was last used
+	LastSpawnedAt time.Time `json:"lastSpawnedAt"`
 
 	// MemoryMB Memory for the sandbox in MB
 	MemoryMB MemoryMB `json:"memoryMB"`
@@ -145,8 +154,14 @@ type Template struct {
 	// Public Whether the template is public or only accessible by the team
 	Public bool `json:"public"`
 
+	// SpawnCount Number of times the template was used
+	SpawnCount int64 `json:"spawnCount"`
+
 	// TemplateID Identifier of the template
 	TemplateID string `json:"templateID"`
+
+	// UpdatedAt Time when the template was last updated
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // TemplateBuild defines model for TemplateBuild.

@@ -218,6 +218,11 @@ components:
         - cpuCount
         - memoryMB
         - public
+        - createdAt
+        - updatedAt
+        - lastSpawnedAt
+        - spawnCount
+        - buildCount
       properties:
         templateID:
           type: string
@@ -237,6 +242,26 @@ components:
           description: Aliases of the template
           items:
             type: string
+        createdAt:
+          type: string
+          format: date-time
+          description: Time when the template was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: Time when the template was last updated
+        lastSpawnedAt:
+          type: string
+          format: date-time
+          description: Time when the template was last used
+        spawnCount:
+          type: integer
+          format: int64
+          description: Number of times the template was used
+        buildCount:
+          type: integer
+          format: int32
+          description: Number of times the template was built
 
     TemplateBuildRequest:
       required:
