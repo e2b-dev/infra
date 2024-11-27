@@ -29,6 +29,10 @@ type Template struct {
 	BuildCount    int32
 }
 
+type UpdateEnvInput struct {
+	Public bool
+}
+
 func (db *DB) DeleteEnv(ctx context.Context, envID string) error {
 	_, err := db.
 		Client.
@@ -41,6 +45,10 @@ func (db *DB) DeleteEnv(ctx context.Context, envID string) error {
 	}
 
 	return nil
+}
+
+func (db *DB) UpdateEnv(ctx context.Context, envID string, input UpdateEnvInput) error {
+	return db.Client.Env.UpdateOneID(envID).SetPublic(input.Public).Exec(ctx)
 }
 
 func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template, err error) {

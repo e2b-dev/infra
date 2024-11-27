@@ -85,6 +85,12 @@ components:
           type: boolean
           description: Whether the team is the default team
 
+    TemplateUpdateRequest:
+      properties:
+        public:
+          type: boolean
+          description: Whether the template is public or only accessible by the team
+
     CPUCount:
       type: integer
       format: int32
@@ -607,6 +613,28 @@ paths:
       responses:
         "204":
           description: The template was deleted successfully
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+    patch:
+      description: Update template
+      tags: [templates]
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateUpdateRequest"
+      responses:
+        "200":
+          description: The template was updated successfully
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "500":

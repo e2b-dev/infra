@@ -203,6 +203,12 @@ type TemplateBuildRequest struct {
 	TeamID *string `json:"teamID,omitempty"`
 }
 
+// TemplateUpdateRequest defines model for TemplateUpdateRequest.
+type TemplateUpdateRequest struct {
+	// Public Whether the template is public or only accessible by the team
+	Public *bool `json:"public,omitempty"`
+}
+
 // BuildID defines model for buildID.
 type BuildID = string
 
@@ -267,6 +273,9 @@ type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJ
 
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 type PostTemplatesJSONRequestBody = TemplateBuildRequest
+
+// PatchTemplatesTemplateIDJSONRequestBody defines body for PatchTemplatesTemplateID for application/json ContentType.
+type PatchTemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest
 
 // PostTemplatesTemplateIDJSONRequestBody defines body for PostTemplatesTemplateID for application/json ContentType.
 type PostTemplatesTemplateIDJSONRequestBody = TemplateBuildRequest
