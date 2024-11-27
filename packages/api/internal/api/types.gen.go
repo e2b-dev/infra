@@ -5,6 +5,8 @@ package api
 
 import (
 	"time"
+
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 const (
@@ -128,6 +130,15 @@ type Team struct {
 	TeamID string `json:"teamID"`
 }
 
+// TeamUser defines model for TeamUser.
+type TeamUser struct {
+	// Email Email of the user
+	Email string `json:"email"`
+
+	// Id Identifier of the user
+	Id openapi_types.UUID `json:"id"`
+}
+
 // Template defines model for Template.
 type Template struct {
 	// Aliases Aliases of the template
@@ -144,6 +155,7 @@ type Template struct {
 
 	// CreatedAt Time when the template was created
 	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy *TeamUser `json:"createdBy"`
 
 	// LastSpawnedAt Time when the template was last used
 	LastSpawnedAt time.Time `json:"lastSpawnedAt"`

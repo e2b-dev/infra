@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
@@ -29,6 +30,7 @@ type UserQuery struct {
 	inters             []Interceptor
 	predicates         []predicate.User
 	withTeams          *TeamQuery
+	withCreatedEnvs    *EnvQuery
 	withAccessTokens   *AccessTokenQuery
 	withCreatedAPIKeys *TeamAPIKeyQuery
 	withUsersTeams     *UsersTeamsQuery
@@ -88,6 +90,31 @@ func (uq *UserQuery) QueryTeams() *TeamQuery {
 		schemaConfig := uq.schemaConfig
 		step.To.Schema = schemaConfig.Team
 		step.Edge.Schema = schemaConfig.UsersTeams
+		fromU = sqlgraph.SetNeighbors(uq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCreatedEnvs chains the current query on the "created_envs" edge.
+func (uq *UserQuery) QueryCreatedEnvs() *EnvQuery {
+	query := (&EnvClient{config: uq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := uq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := uq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(env.Table, env.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.CreatedEnvsTable, user.CreatedEnvsColumn),
+		)
+		schemaConfig := uq.schemaConfig
+		step.To.Schema = schemaConfig.Env
+		step.Edge.Schema = schemaConfig.Env
 		fromU = sqlgraph.SetNeighbors(uq.driver.Dialect(), step)
 		return fromU, nil
 	}
@@ -362,6 +389,7 @@ func (uq *UserQuery) Clone() *UserQuery {
 		inters:             append([]Interceptor{}, uq.inters...),
 		predicates:         append([]predicate.User{}, uq.predicates...),
 		withTeams:          uq.withTeams.Clone(),
+		withCreatedEnvs:    uq.withCreatedEnvs.Clone(),
 		withAccessTokens:   uq.withAccessTokens.Clone(),
 		withCreatedAPIKeys: uq.withCreatedAPIKeys.Clone(),
 		withUsersTeams:     uq.withUsersTeams.Clone(),
@@ -379,6 +407,17 @@ func (uq *UserQuery) WithTeams(opts ...func(*TeamQuery)) *UserQuery {
 		opt(query)
 	}
 	uq.withTeams = query
+	return uq
+}
+
+// WithCreatedEnvs tells the query-builder to eager-load the nodes that are connected to
+// the "created_envs" edge. The optional arguments are used to configure the query builder of the edge.
+func (uq *UserQuery) WithCreatedEnvs(opts ...func(*EnvQuery)) *UserQuery {
+	query := (&EnvClient{config: uq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	uq.withCreatedEnvs = query
 	return uq
 }
 
@@ -493,8 +532,9 @@ func (uq *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = uq.querySpec()
-		loadedTypes = [4]bool{
+		loadedTypes = [5]bool{
 			uq.withTeams != nil,
+			uq.withCreatedEnvs != nil,
 			uq.withAccessTokens != nil,
 			uq.withCreatedAPIKeys != nil,
 			uq.withUsersTeams != nil,
@@ -527,6 +567,13 @@ func (uq *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := uq.loadTeams(ctx, query, nodes,
 			func(n *User) { n.Edges.Teams = []*Team{} },
 			func(n *User, e *Team) { n.Edges.Teams = append(n.Edges.Teams, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := uq.withCreatedEnvs; query != nil {
+		if err := uq.loadCreatedEnvs(ctx, query, nodes,
+			func(n *User) { n.Edges.CreatedEnvs = []*Env{} },
+			func(n *User, e *Env) { n.Edges.CreatedEnvs = append(n.Edges.CreatedEnvs, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -613,6 +660,39 @@ func (uq *UserQuery) loadTeams(ctx context.Context, query *TeamQuery, nodes []*U
 		for kn := range nodes {
 			assign(kn, n)
 		}
+	}
+	return nil
+}
+func (uq *UserQuery) loadCreatedEnvs(ctx context.Context, query *EnvQuery, nodes []*User, init func(*User), assign func(*User, *Env)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(env.FieldCreatedBy)
+	}
+	query.Where(predicate.Env(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.CreatedEnvsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.CreatedBy
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "created_by" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "created_by" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

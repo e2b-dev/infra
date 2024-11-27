@@ -95,6 +95,14 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 
 	templates := make([]*api.Template, 0, len(envs))
 	for _, item := range envs {
+		var createdBy *api.TeamUser
+		if item.CreatedBy != nil {
+			createdBy = &api.TeamUser{
+				Id:    item.CreatedBy.Id,
+				Email: item.CreatedBy.Email,
+			}
+		}
+
 		templates = append(templates, &api.Template{
 			TemplateID:    item.TemplateID,
 			BuildID:       item.BuildID,
@@ -107,6 +115,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 			LastSpawnedAt: item.LastSpawnedAt,
 			SpawnCount:    item.SpawnCount,
 			BuildCount:    item.BuildCount,
+			CreatedBy:     createdBy,
 		})
 	}
 

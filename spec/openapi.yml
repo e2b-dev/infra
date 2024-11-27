@@ -85,6 +85,19 @@ components:
           type: boolean
           description: Whether the team is the default team
 
+    TeamUser:
+      required:
+        - id
+        - email
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identifier of the user
+        email:
+          type: string
+          description: Email of the user
+
     TemplateUpdateRequest:
       properties:
         public:
@@ -226,6 +239,7 @@ components:
         - public
         - createdAt
         - updatedAt
+        - createdBy
         - lastSpawnedAt
         - spawnCount
         - buildCount
@@ -256,6 +270,10 @@ components:
           type: string
           format: date-time
           description: Time when the template was last updated
+        createdBy:
+          allOf:
+            - $ref: "#/components/schemas/TeamUser"
+          nullable: true
         lastSpawnedAt:
           type: string
           format: date-time

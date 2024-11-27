@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/google/uuid"
 )
 
@@ -25,6 +26,8 @@ type Env struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// TeamID holds the value of the "team_id" field.
 	TeamID uuid.UUID `json:"team_id,omitempty"`
+	// CreatedBy holds the value of the "created_by" field.
+	CreatedBy *uuid.UUID `json:"created_by,omitempty"`
 	// Public holds the value of the "public" field.
 	Public bool `json:"public,omitempty"`
 	// BuildCount holds the value of the "build_count" field.
@@ -43,13 +46,15 @@ type Env struct {
 type EnvEdges struct {
 	// Team holds the value of the team edge.
 	Team *Team `json:"team,omitempty"`
+	// Creator holds the value of the creator edge.
+	Creator *User `json:"creator,omitempty"`
 	// EnvAliases holds the value of the env_aliases edge.
 	EnvAliases []*EnvAlias `json:"env_aliases,omitempty"`
 	// Builds holds the value of the builds edge.
 	Builds []*EnvBuild `json:"builds,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // TeamOrErr returns the Team value or an error if the edge
@@ -65,10 +70,23 @@ func (e EnvEdges) TeamOrErr() (*Team, error) {
 	return nil, &NotLoadedError{edge: "team"}
 }
 
+// CreatorOrErr returns the Creator value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e EnvEdges) CreatorOrErr() (*User, error) {
+	if e.loadedTypes[1] {
+		if e.Creator == nil {
+			// Edge was loaded but was not found.
+			return nil, &NotFoundError{label: user.Label}
+		}
+		return e.Creator, nil
+	}
+	return nil, &NotLoadedError{edge: "creator"}
+}
+
 // EnvAliasesOrErr returns the EnvAliases value or an error if the edge
 // was not loaded in eager-loading.
 func (e EnvEdges) EnvAliasesOrErr() ([]*EnvAlias, error) {
-	if e.loadedTypes[1] {
+	if e.loadedTypes[2] {
 		return e.EnvAliases, nil
 	}
 	return nil, &NotLoadedError{edge: "env_aliases"}
@@ -77,7 +95,7 @@ func (e EnvEdges) EnvAliasesOrErr() ([]*EnvAlias, error) {
 // BuildsOrErr returns the Builds value or an error if the edge
 // was not loaded in eager-loading.
 func (e EnvEdges) BuildsOrErr() ([]*EnvBuild, error) {
-	if e.loadedTypes[2] {
+	if e.loadedTypes[3] {
 		return e.Builds, nil
 	}
 	return nil, &NotLoadedError{edge: "builds"}
@@ -88,6 +106,8 @@ func (*Env) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case env.FieldCreatedBy:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case env.FieldPublic:
 			values[i] = new(sql.NullBool)
 		case env.FieldBuildCount, env.FieldSpawnCount:
@@ -137,6 +157,13 @@ func (e *Env) assignValues(columns []string, values []any) error {
 			} else if value != nil {
 				e.TeamID = *value
 			}
+		case env.FieldCreatedBy:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field created_by", values[i])
+			} else if value.Valid {
+				e.CreatedBy = new(uuid.UUID)
+				*e.CreatedBy = *value.S.(*uuid.UUID)
+			}
 		case env.FieldPublic:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field public", values[i])
@@ -177,6 +204,11 @@ func (e *Env) Value(name string) (ent.Value, error) {
 // QueryTeam queries the "team" edge of the Env entity.
 func (e *Env) QueryTeam() *TeamQuery {
 	return NewEnvClient(e.config).QueryTeam(e)
+}
+
+// QueryCreator queries the "creator" edge of the Env entity.
+func (e *Env) QueryCreator() *UserQuery {
+	return NewEnvClient(e.config).QueryCreator(e)
 }
 
 // QueryEnvAliases queries the "env_aliases" edge of the Env entity.
@@ -220,6 +252,11 @@ func (e *Env) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("team_id=")
 	builder.WriteString(fmt.Sprintf("%v", e.TeamID))
+	builder.WriteString(", ")
+	if v := e.CreatedBy; v != nil {
+		builder.WriteString("created_by=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("public=")
 	builder.WriteString(fmt.Sprintf("%v", e.Public))

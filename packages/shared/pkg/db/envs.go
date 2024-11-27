@@ -13,6 +13,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
 
+type TemplateCreator struct {
+	Email string
+	Id    uuid.UUID
+}
+
 type Template struct {
 	TemplateID    string
 	BuildID       string
@@ -27,6 +32,7 @@ type Template struct {
 	LastSpawnedAt time.Time
 	SpawnCount    int64
 	BuildCount    int32
+	CreatedBy     *TemplateCreator
 }
 
 type UpdateEnvInput struct {
@@ -62,6 +68,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 		).
 		Order(models.Asc(env.FieldCreatedAt)).
 		WithEnvAliases().
+		WithCreator().
 		WithBuilds(func(query *models.EnvBuildQuery) {
 			query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt))
 		}).
@@ -74,6 +81,11 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 		aliases := make([]string, len(item.Edges.EnvAliases))
 		for i, alias := range item.Edges.EnvAliases {
 			aliases[i] = alias.ID
+		}
+
+		var createdBy *TemplateCreator
+		if item.Edges.Creator != nil {
+			createdBy = &TemplateCreator{Id: item.Edges.Creator.ID, Email: item.Edges.Creator.Email}
 		}
 
 		build := item.Edges.Builds[0]
@@ -90,6 +102,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 			LastSpawnedAt: item.LastSpawnedAt,
 			SpawnCount:    item.SpawnCount,
 			BuildCount:    item.BuildCount,
+			CreatedBy:     createdBy,
 		})
 	}
 
