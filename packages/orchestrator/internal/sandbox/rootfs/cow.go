@@ -11,8 +11,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-const BlockSize = 2 << 11
-
 type CowDevice struct {
 	overlay block.Device
 	mnt     *nbd.DirectPathMount
@@ -20,8 +18,8 @@ type CowDevice struct {
 	ready *utils.SetOnce[string]
 }
 
-func NewCowDevice(rootfs block.ReadonlyDevice, cachePath string) (*CowDevice, error) {
-	overlay, err := block.NewOverlay(rootfs, BlockSize, cachePath)
+func NewCowDevice(rootfs block.ReadonlyDevice, cachePath string, blockSize int64) (*CowDevice, error) {
+	overlay, err := block.NewOverlay(rootfs, blockSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating overlay: %w", err)
 	}

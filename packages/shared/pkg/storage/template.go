@@ -28,6 +28,10 @@ const (
 	MemfileName  = "memfile"
 	RootfsName   = "rootfs.ext4"
 	SnapfileName = "snapfile"
+
+	pageSize        = 2 << 11
+	hugepageSize    = 2 << 20
+	rootfsBlockSize = 2 << 11
 )
 
 type TemplateFiles struct {
@@ -35,6 +39,8 @@ type TemplateFiles struct {
 	BuildId            string
 	KernelVersion      string
 	FirecrackerVersion string
+
+	hugePages bool
 }
 
 func NewTemplateFiles(
@@ -42,12 +48,14 @@ func NewTemplateFiles(
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
+	hugePages bool,
 ) *TemplateFiles {
 	return &TemplateFiles{
 		TemplateId:         templateId,
 		BuildId:            buildId,
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
+		hugePages:          hugePages,
 	}
 }
 
@@ -102,4 +110,16 @@ func (t *TemplateFiles) BuildRootfsPath() string {
 
 func (t *TemplateFiles) BuildSnapfilePath() string {
 	return filepath.Join(t.BuildDir(), SnapfileName)
+}
+
+func (t *TemplateFiles) MemfilePageSize() int64 {
+	if t.hugePages {
+		return hugepageSize
+	}
+
+	return pageSize
+}
+
+func (t *TemplateFiles) RootfsBlockSize() int64 {
+	return rootfsBlockSize
 }

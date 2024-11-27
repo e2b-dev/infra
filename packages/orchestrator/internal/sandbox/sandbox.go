@@ -125,6 +125,7 @@ func NewSandbox(
 	rootfsOverlay, err := rootfs.NewCowDevice(
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
+		sandboxFiles.RootfsBlockSize(),
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create overlay file: %w", err)
