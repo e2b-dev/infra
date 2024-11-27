@@ -47,7 +47,22 @@ func newChunker(
 		fetchers: utils.NewWaitMap(),
 	}
 
+	go chunker.prefetch()
+
 	return chunker, nil
+}
+
+func (c *chunker) prefetch() error {
+	blocks := listBlocks(0, c.size, chunkSize)
+
+	for _, block := range blocks {
+		err := c.fetchToCache(block.start, block.end-block.start)
+		if err != nil {
+			return fmt.Errorf("failed to prefetch block %d-%d: %w", block.start, block.end, err)
+		}
+	}
+
+	return nil
 }
 
 func (c *chunker) ReadAt(b []byte, off int64) (int, error) {
