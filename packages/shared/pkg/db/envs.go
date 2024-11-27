@@ -99,6 +99,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 			Public:        item.Public,
 			Aliases:       &aliases,
 			CreatedAt:     item.CreatedAt,
+			UpdatedAt:     item.UpdatedAt,
 			LastSpawnedAt: item.LastSpawnedAt,
 			SpawnCount:    item.SpawnCount,
 			BuildCount:    item.BuildCount,
@@ -140,6 +141,11 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 		aliases[i] = alias.ID
 	}
 
+	var createdBy *TemplateCreator
+	if dbEnv.Edges.Creator != nil {
+		createdBy = &TemplateCreator{Id: dbEnv.Edges.Creator.ID, Email: dbEnv.Edges.Creator.Email}
+	}
+
 	build = dbEnv.Edges.Builds[0]
 	return &Template{
 		TemplateID:    dbEnv.ID,
@@ -155,6 +161,7 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 		LastSpawnedAt: dbEnv.LastSpawnedAt,
 		SpawnCount:    dbEnv.SpawnCount,
 		BuildCount:    dbEnv.BuildCount,
+		CreatedBy:     createdBy,
 	}, build, nil
 }
 
