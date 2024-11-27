@@ -8,8 +8,6 @@ import (
 	"sync"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -21,16 +19,6 @@ type storageTemplate struct {
 	memfile  *utils.SetOnce[block.ReadonlyDevice]
 	rootfs   *utils.SetOnce[block.ReadonlyDevice]
 	snapfile *utils.SetOnce[*storageFile]
-
-	hugePages bool
-}
-
-func (t *storageTemplate) pageSize() int64 {
-	if t.hugePages {
-		return uffd.HugepageSize
-	}
-
-	return uffd.PageSize
 }
 
 func newTemplateFromStorage(
@@ -45,17 +33,17 @@ func newTemplateFromStorage(
 		buildId,
 		kernelVersion,
 		firecrackerVersion,
+		hugePages,
 	).NewTemplateCacheFiles()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache files: %w", err)
 	}
 
 	return &storageTemplate{
-		hugePages: hugePages,
-		files:     files,
-		memfile:   utils.NewSetOnce[block.ReadonlyDevice](),
-		rootfs:    utils.NewSetOnce[block.ReadonlyDevice](),
-		snapfile:  utils.NewSetOnce[*storageFile](),
+		files:    files,
+		memfile:  utils.NewSetOnce[block.ReadonlyDevice](),
+		rootfs:   utils.NewSetOnce[block.ReadonlyDevice](),
+		snapfile: utils.NewSetOnce[*storageFile](),
 	}, nil
 }
 
@@ -100,7 +88,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
 			ctx,
 			bucket,
 			t.files.StorageMemfilePath(),
-			t.pageSize(),
+			t.files.MemfilePageSize(),
 			t.files.CacheMemfilePath(),
 		)
 		if memfileErr != nil {
@@ -120,7 +108,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
 			ctx,
 			bucket,
 			t.files.StorageRootfsPath(),
-			rootfs.BlockSize,
+			t.files.RootfsBlockSize(),
 			t.files.CacheRootfsPath(),
 		)
 		if rootfsErr != nil {
