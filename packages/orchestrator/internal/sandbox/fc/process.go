@@ -58,7 +58,7 @@ func NewProcess(
 	files *storage.SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
 	snapfile template.File,
-	rootfs *rootfs.Overlay,
+	rootfs *rootfs.CowDevice,
 	uffdReady chan struct{},
 ) (*Process, error) {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
@@ -221,6 +221,27 @@ func (p *Process) Start(
 
 		return errors.Join(errMsg, fcStopErr)
 	}
+
+	eg, ctx := errgroup.WithContext(startCtx)
+
+	eg.Go(func() error {
+		device, err := p.rootfs.Path()
+		if err != nil {
+			return fmt.Errorf("error getting rootfs path: %w", err)
+		}
+
+		err = os.Remove(p.files.SandboxCacheRootfsLinkPath())
+		if err != nil {
+			return fmt.Errorf("error removing rootfs symlink: %w", err)
+		}
+
+		err = os.Symlink(device, p.files.SandboxCacheRootfsLinkPath())
+		if err != nil {
+			return fmt.Errorf("error symlinking rootfs: %w", err)
+		}
+
+		return nil
+	})
 
 	err = p.client.loadSnapshot(
 		startCtx,

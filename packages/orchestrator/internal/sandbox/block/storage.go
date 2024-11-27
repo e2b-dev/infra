@@ -40,7 +40,6 @@ func NewStorage(
 }
 
 func (d *Storage) ReadAt(p []byte, off int64) (int, error) {
-	// fmt.Printf("[rootfs ] %d -> %d (%d: %f, %f)\n", len(p), off, d.blockSize, float64(off)/float64(d.blockSize), float64(len(p))/float64(d.blockSize))
 	return d.source.ReadAt(p, off)
 }
 
@@ -53,6 +52,5 @@ func (d *Storage) Close() error {
 }
 
 func (d *Storage) Slice(off, length int64) ([]byte, error) {
-	// fmt.Printf("[memfile] %d -> %d (%d: %f, %f)\n", length, off, d.blockSize, float64(off)/float64(d.blockSize), float64(length)/float64(d.blockSize))
 	return d.source.Slice(off, length)
 }
