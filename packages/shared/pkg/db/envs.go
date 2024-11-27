@@ -99,6 +99,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 			Public:        item.Public,
 			Aliases:       &aliases,
 			CreatedAt:     item.CreatedAt,
+			UpdatedAt:     item.UpdatedAt,
 			LastSpawnedAt: item.LastSpawnedAt,
 			SpawnCount:    item.SpawnCount,
 			BuildCount:    item.BuildCount,
