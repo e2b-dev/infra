@@ -29,7 +29,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	// Prepare info for rebuilding env
+	// Prepare info for deleting env
 	userID, teams, err := a.GetUserAndTeams(c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
