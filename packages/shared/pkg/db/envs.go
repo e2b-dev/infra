@@ -125,7 +125,6 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 		WithEnvAliases(func(query *models.EnvAliasQuery) {
 			query.Order(models.Asc(envalias.FieldID)) // TODO: remove once we have only 1 alias per env
 		}).
-		WithCreator().
 		WithBuilds(func(query *models.EnvBuildQuery) {
 			query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt)).Limit(1)
 		}).Only(ctx)
@@ -140,11 +139,6 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 	aliases := make([]string, len(dbEnv.Edges.EnvAliases))
 	for i, alias := range dbEnv.Edges.EnvAliases {
 		aliases[i] = alias.ID
-	}
-
-	var createdBy *TemplateCreator
-	if dbEnv.Edges.Creator != nil {
-		createdBy = &TemplateCreator{Id: dbEnv.Edges.Creator.ID, Email: dbEnv.Edges.Creator.Email}
 	}
 
 	build = dbEnv.Edges.Builds[0]
@@ -162,7 +156,6 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 		LastSpawnedAt: dbEnv.LastSpawnedAt,
 		SpawnCount:    dbEnv.SpawnCount,
 		BuildCount:    dbEnv.BuildCount,
-		CreatedBy:     createdBy,
 	}, build, nil
 }
 
