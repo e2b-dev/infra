@@ -501,6 +501,8 @@ type EnvMutation struct {
 	clearedFields      map[string]struct{}
 	team               *uuid.UUID
 	clearedteam        bool
+	creator            *uuid.UUID
+	clearedcreator     bool
 	env_aliases        map[string]struct{}
 	removedenv_aliases map[string]struct{}
 	clearedenv_aliases bool
@@ -722,6 +724,42 @@ func (m *EnvMutation) OldTeamID(ctx context.Context) (v uuid.UUID, err error) {
 // ResetTeamID resets all changes to the "team_id" field.
 func (m *EnvMutation) ResetTeamID() {
 	m.team = nil
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (m *EnvMutation) SetCreatedBy(u uuid.UUID) {
+	m.creator = &u
+}
+
+// CreatedBy returns the value of the "created_by" field in the mutation.
+func (m *EnvMutation) CreatedBy() (r uuid.UUID, exists bool) {
+	v := m.creator
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedBy returns the old "created_by" field's value of the Env entity.
+// If the Env object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnvMutation) OldCreatedBy(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedBy: %w", err)
+	}
+	return oldValue.CreatedBy, nil
+}
+
+// ResetCreatedBy resets all changes to the "created_by" field.
+func (m *EnvMutation) ResetCreatedBy() {
+	m.creator = nil
 }
 
 // SetPublic sets the "public" field.
@@ -948,6 +986,46 @@ func (m *EnvMutation) ResetTeam() {
 	m.clearedteam = false
 }
 
+// SetCreatorID sets the "creator" edge to the User entity by id.
+func (m *EnvMutation) SetCreatorID(id uuid.UUID) {
+	m.creator = &id
+}
+
+// ClearCreator clears the "creator" edge to the User entity.
+func (m *EnvMutation) ClearCreator() {
+	m.clearedcreator = true
+	m.clearedFields[env.FieldCreatedBy] = struct{}{}
+}
+
+// CreatorCleared reports if the "creator" edge to the User entity was cleared.
+func (m *EnvMutation) CreatorCleared() bool {
+	return m.clearedcreator
+}
+
+// CreatorID returns the "creator" edge ID in the mutation.
+func (m *EnvMutation) CreatorID() (id uuid.UUID, exists bool) {
+	if m.creator != nil {
+		return *m.creator, true
+	}
+	return
+}
+
+// CreatorIDs returns the "creator" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// CreatorID instead. It exists only for internal usage by the builders.
+func (m *EnvMutation) CreatorIDs() (ids []uuid.UUID) {
+	if id := m.creator; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetCreator resets all changes to the "creator" edge.
+func (m *EnvMutation) ResetCreator() {
+	m.creator = nil
+	m.clearedcreator = false
+}
+
 // AddEnvAliasIDs adds the "env_aliases" edge to the EnvAlias entity by ids.
 func (m *EnvMutation) AddEnvAliasIDs(ids ...string) {
 	if m.env_aliases == nil {
@@ -1090,7 +1168,7 @@ func (m *EnvMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EnvMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.created_at != nil {
 		fields = append(fields, env.FieldCreatedAt)
 	}
@@ -1099,6 +1177,9 @@ func (m *EnvMutation) Fields() []string {
 	}
 	if m.team != nil {
 		fields = append(fields, env.FieldTeamID)
+	}
+	if m.creator != nil {
+		fields = append(fields, env.FieldCreatedBy)
 	}
 	if m.public != nil {
 		fields = append(fields, env.FieldPublic)
@@ -1126,6 +1207,8 @@ func (m *EnvMutation) Field(name string) (ent.Value, bool) {
 		return m.UpdatedAt()
 	case env.FieldTeamID:
 		return m.TeamID()
+	case env.FieldCreatedBy:
+		return m.CreatedBy()
 	case env.FieldPublic:
 		return m.Public()
 	case env.FieldBuildCount:
@@ -1149,6 +1232,8 @@ func (m *EnvMutation) OldField(ctx context.Context, name string) (ent.Value, err
 		return m.OldUpdatedAt(ctx)
 	case env.FieldTeamID:
 		return m.OldTeamID(ctx)
+	case env.FieldCreatedBy:
+		return m.OldCreatedBy(ctx)
 	case env.FieldPublic:
 		return m.OldPublic(ctx)
 	case env.FieldBuildCount:
@@ -1186,6 +1271,13 @@ func (m *EnvMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTeamID(v)
+		return nil
+	case env.FieldCreatedBy:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedBy(v)
 		return nil
 	case env.FieldPublic:
 		v, ok := value.(bool)
@@ -1309,6 +1401,9 @@ func (m *EnvMutation) ResetField(name string) error {
 	case env.FieldTeamID:
 		m.ResetTeamID()
 		return nil
+	case env.FieldCreatedBy:
+		m.ResetCreatedBy()
+		return nil
 	case env.FieldPublic:
 		m.ResetPublic()
 		return nil
@@ -1327,9 +1422,12 @@ func (m *EnvMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *EnvMutation) AddedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.team != nil {
 		edges = append(edges, env.EdgeTeam)
+	}
+	if m.creator != nil {
+		edges = append(edges, env.EdgeCreator)
 	}
 	if m.env_aliases != nil {
 		edges = append(edges, env.EdgeEnvAliases)
@@ -1346,6 +1444,10 @@ func (m *EnvMutation) AddedIDs(name string) []ent.Value {
 	switch name {
 	case env.EdgeTeam:
 		if id := m.team; id != nil {
+			return []ent.Value{*id}
+		}
+	case env.EdgeCreator:
+		if id := m.creator; id != nil {
 			return []ent.Value{*id}
 		}
 	case env.EdgeEnvAliases:
@@ -1366,7 +1468,7 @@ func (m *EnvMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *EnvMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.removedenv_aliases != nil {
 		edges = append(edges, env.EdgeEnvAliases)
 	}
@@ -1398,9 +1500,12 @@ func (m *EnvMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *EnvMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.clearedteam {
 		edges = append(edges, env.EdgeTeam)
+	}
+	if m.clearedcreator {
+		edges = append(edges, env.EdgeCreator)
 	}
 	if m.clearedenv_aliases {
 		edges = append(edges, env.EdgeEnvAliases)
@@ -1417,6 +1522,8 @@ func (m *EnvMutation) EdgeCleared(name string) bool {
 	switch name {
 	case env.EdgeTeam:
 		return m.clearedteam
+	case env.EdgeCreator:
+		return m.clearedcreator
 	case env.EdgeEnvAliases:
 		return m.clearedenv_aliases
 	case env.EdgeBuilds:
@@ -1432,6 +1539,9 @@ func (m *EnvMutation) ClearEdge(name string) error {
 	case env.EdgeTeam:
 		m.ClearTeam()
 		return nil
+	case env.EdgeCreator:
+		m.ClearCreator()
+		return nil
 	}
 	return fmt.Errorf("unknown Env unique edge %s", name)
 }
@@ -1442,6 +1552,9 @@ func (m *EnvMutation) ResetEdge(name string) error {
 	switch name {
 	case env.EdgeTeam:
 		m.ResetTeam()
+		return nil
+	case env.EdgeCreator:
+		m.ResetCreator()
 		return nil
 	case env.EdgeEnvAliases:
 		m.ResetEnvAliases()
@@ -5842,6 +5955,9 @@ type UserMutation struct {
 	teams                   map[uuid.UUID]struct{}
 	removedteams            map[uuid.UUID]struct{}
 	clearedteams            bool
+	created_envs            map[string]struct{}
+	removedcreated_envs     map[string]struct{}
+	clearedcreated_envs     bool
 	access_tokens           map[string]struct{}
 	removedaccess_tokens    map[string]struct{}
 	clearedaccess_tokens    bool
@@ -6048,6 +6164,60 @@ func (m *UserMutation) ResetTeams() {
 	m.teams = nil
 	m.clearedteams = false
 	m.removedteams = nil
+}
+
+// AddCreatedEnvIDs adds the "created_envs" edge to the Env entity by ids.
+func (m *UserMutation) AddCreatedEnvIDs(ids ...string) {
+	if m.created_envs == nil {
+		m.created_envs = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.created_envs[ids[i]] = struct{}{}
+	}
+}
+
+// ClearCreatedEnvs clears the "created_envs" edge to the Env entity.
+func (m *UserMutation) ClearCreatedEnvs() {
+	m.clearedcreated_envs = true
+}
+
+// CreatedEnvsCleared reports if the "created_envs" edge to the Env entity was cleared.
+func (m *UserMutation) CreatedEnvsCleared() bool {
+	return m.clearedcreated_envs
+}
+
+// RemoveCreatedEnvIDs removes the "created_envs" edge to the Env entity by IDs.
+func (m *UserMutation) RemoveCreatedEnvIDs(ids ...string) {
+	if m.removedcreated_envs == nil {
+		m.removedcreated_envs = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.created_envs, ids[i])
+		m.removedcreated_envs[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedCreatedEnvs returns the removed IDs of the "created_envs" edge to the Env entity.
+func (m *UserMutation) RemovedCreatedEnvsIDs() (ids []string) {
+	for id := range m.removedcreated_envs {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// CreatedEnvsIDs returns the "created_envs" edge IDs in the mutation.
+func (m *UserMutation) CreatedEnvsIDs() (ids []string) {
+	for id := range m.created_envs {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetCreatedEnvs resets all changes to the "created_envs" edge.
+func (m *UserMutation) ResetCreatedEnvs() {
+	m.created_envs = nil
+	m.clearedcreated_envs = false
+	m.removedcreated_envs = nil
 }
 
 // AddAccessTokenIDs adds the "access_tokens" edge to the AccessToken entity by ids.
@@ -6345,9 +6515,12 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.teams != nil {
 		edges = append(edges, user.EdgeTeams)
+	}
+	if m.created_envs != nil {
+		edges = append(edges, user.EdgeCreatedEnvs)
 	}
 	if m.access_tokens != nil {
 		edges = append(edges, user.EdgeAccessTokens)
@@ -6368,6 +6541,12 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 	case user.EdgeTeams:
 		ids := make([]ent.Value, 0, len(m.teams))
 		for id := range m.teams {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeCreatedEnvs:
+		ids := make([]ent.Value, 0, len(m.created_envs))
+		for id := range m.created_envs {
 			ids = append(ids, id)
 		}
 		return ids
@@ -6395,9 +6574,12 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.removedteams != nil {
 		edges = append(edges, user.EdgeTeams)
+	}
+	if m.removedcreated_envs != nil {
+		edges = append(edges, user.EdgeCreatedEnvs)
 	}
 	if m.removedaccess_tokens != nil {
 		edges = append(edges, user.EdgeAccessTokens)
@@ -6418,6 +6600,12 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 	case user.EdgeTeams:
 		ids := make([]ent.Value, 0, len(m.removedteams))
 		for id := range m.removedteams {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeCreatedEnvs:
+		ids := make([]ent.Value, 0, len(m.removedcreated_envs))
+		for id := range m.removedcreated_envs {
 			ids = append(ids, id)
 		}
 		return ids
@@ -6445,9 +6633,12 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.clearedteams {
 		edges = append(edges, user.EdgeTeams)
+	}
+	if m.clearedcreated_envs {
+		edges = append(edges, user.EdgeCreatedEnvs)
 	}
 	if m.clearedaccess_tokens {
 		edges = append(edges, user.EdgeAccessTokens)
@@ -6467,6 +6658,8 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 	switch name {
 	case user.EdgeTeams:
 		return m.clearedteams
+	case user.EdgeCreatedEnvs:
+		return m.clearedcreated_envs
 	case user.EdgeAccessTokens:
 		return m.clearedaccess_tokens
 	case user.EdgeCreatedAPIKeys:
@@ -6491,6 +6684,9 @@ func (m *UserMutation) ResetEdge(name string) error {
 	switch name {
 	case user.EdgeTeams:
 		m.ResetTeams()
+		return nil
+	case user.EdgeCreatedEnvs:
+		m.ResetCreatedEnvs()
 		return nil
 	case user.EdgeAccessTokens:
 		m.ResetAccessTokens()

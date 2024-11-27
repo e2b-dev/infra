@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
@@ -52,6 +53,21 @@ func (uc *UserCreate) AddTeams(t ...*Team) *UserCreate {
 		ids[i] = t[i].ID
 	}
 	return uc.AddTeamIDs(ids...)
+}
+
+// AddCreatedEnvIDs adds the "created_envs" edge to the Env entity by IDs.
+func (uc *UserCreate) AddCreatedEnvIDs(ids ...string) *UserCreate {
+	uc.mutation.AddCreatedEnvIDs(ids...)
+	return uc
+}
+
+// AddCreatedEnvs adds the "created_envs" edges to the Env entity.
+func (uc *UserCreate) AddCreatedEnvs(e ...*Env) *UserCreate {
+	ids := make([]string, len(e))
+	for i := range e {
+		ids[i] = e[i].ID
+	}
+	return uc.AddCreatedEnvIDs(ids...)
 }
 
 // AddAccessTokenIDs adds the "access_tokens" edge to the AccessToken entity by IDs.
@@ -201,6 +217,23 @@ func (uc *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := uc.mutation.CreatedEnvsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedEnvsTable,
+			Columns: []string{user.CreatedEnvsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(env.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uc.schemaConfig.Env
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := uc.mutation.AccessTokensIDs(); len(nodes) > 0 {

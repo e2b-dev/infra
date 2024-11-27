@@ -556,6 +556,25 @@ func (c *EnvClient) QueryTeam(e *Env) *TeamQuery {
 	return query
 }
 
+// QueryCreator queries the creator edge of a Env.
+func (c *EnvClient) QueryCreator(e *Env) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := e.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(env.Table, env.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, env.CreatorTable, env.CreatorColumn),
+		)
+		schemaConfig := e.schemaConfig
+		step.To.Schema = schemaConfig.User
+		step.Edge.Schema = schemaConfig.Env
+		fromV = sqlgraph.Neighbors(e.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryEnvAliases queries the env_aliases edge of a Env.
 func (c *EnvClient) QueryEnvAliases(e *Env) *EnvAliasQuery {
 	query := (&EnvAliasClient{config: c.config}).Query()
@@ -1595,6 +1614,25 @@ func (c *UserClient) QueryTeams(u *User) *TeamQuery {
 		schemaConfig := u.schemaConfig
 		step.To.Schema = schemaConfig.Team
 		step.Edge.Schema = schemaConfig.UsersTeams
+		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryCreatedEnvs queries the created_envs edge of a User.
+func (c *UserClient) QueryCreatedEnvs(u *User) *EnvQuery {
+	query := (&EnvClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := u.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(env.Table, env.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.CreatedEnvsTable, user.CreatedEnvsColumn),
+		)
+		schemaConfig := u.schemaConfig
+		step.To.Schema = schemaConfig.Env
+		step.Edge.Schema = schemaConfig.Env
 		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
 		return fromV, nil
 	}

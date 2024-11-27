@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/google/uuid"
 )
 
@@ -58,6 +59,12 @@ func (ec *EnvCreate) SetNillableUpdatedAt(t *time.Time) *EnvCreate {
 // SetTeamID sets the "team_id" field.
 func (ec *EnvCreate) SetTeamID(u uuid.UUID) *EnvCreate {
 	ec.mutation.SetTeamID(u)
+	return ec
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (ec *EnvCreate) SetCreatedBy(u uuid.UUID) *EnvCreate {
+	ec.mutation.SetCreatedBy(u)
 	return ec
 }
 
@@ -118,6 +125,17 @@ func (ec *EnvCreate) SetID(s string) *EnvCreate {
 // SetTeam sets the "team" edge to the Team entity.
 func (ec *EnvCreate) SetTeam(t *Team) *EnvCreate {
 	return ec.SetTeamID(t.ID)
+}
+
+// SetCreatorID sets the "creator" edge to the User entity by ID.
+func (ec *EnvCreate) SetCreatorID(id uuid.UUID) *EnvCreate {
+	ec.mutation.SetCreatorID(id)
+	return ec
+}
+
+// SetCreator sets the "creator" edge to the User entity.
+func (ec *EnvCreate) SetCreator(u *User) *EnvCreate {
+	return ec.SetCreatorID(u.ID)
 }
 
 // AddEnvAliasIDs adds the "env_aliases" edge to the EnvAlias entity by IDs.
@@ -214,6 +232,9 @@ func (ec *EnvCreate) check() error {
 	if _, ok := ec.mutation.TeamID(); !ok {
 		return &ValidationError{Name: "team_id", err: errors.New(`models: missing required field "Env.team_id"`)}
 	}
+	if _, ok := ec.mutation.CreatedBy(); !ok {
+		return &ValidationError{Name: "created_by", err: errors.New(`models: missing required field "Env.created_by"`)}
+	}
 	if _, ok := ec.mutation.Public(); !ok {
 		return &ValidationError{Name: "public", err: errors.New(`models: missing required field "Env.public"`)}
 	}
@@ -225,6 +246,9 @@ func (ec *EnvCreate) check() error {
 	}
 	if _, ok := ec.mutation.TeamID(); !ok {
 		return &ValidationError{Name: "team", err: errors.New(`models: missing required edge "Env.team"`)}
+	}
+	if _, ok := ec.mutation.CreatorID(); !ok {
+		return &ValidationError{Name: "creator", err: errors.New(`models: missing required edge "Env.creator"`)}
 	}
 	return nil
 }
@@ -303,6 +327,24 @@ func (ec *EnvCreate) createSpec() (*Env, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.TeamID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := ec.mutation.CreatorIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   env.CreatorTable,
+			Columns: []string{env.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = ec.schemaConfig.Env
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.CreatedBy = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := ec.mutation.EnvAliasesIDs(); len(nodes) > 0 {
@@ -412,6 +454,18 @@ func (u *EnvUpsert) SetTeamID(v uuid.UUID) *EnvUpsert {
 // UpdateTeamID sets the "team_id" field to the value that was provided on create.
 func (u *EnvUpsert) UpdateTeamID() *EnvUpsert {
 	u.SetExcluded(env.FieldTeamID)
+	return u
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (u *EnvUpsert) SetCreatedBy(v uuid.UUID) *EnvUpsert {
+	u.Set(env.FieldCreatedBy, v)
+	return u
+}
+
+// UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
+func (u *EnvUpsert) UpdateCreatedBy() *EnvUpsert {
+	u.SetExcluded(env.FieldCreatedBy)
 	return u
 }
 
@@ -557,6 +611,20 @@ func (u *EnvUpsertOne) SetTeamID(v uuid.UUID) *EnvUpsertOne {
 func (u *EnvUpsertOne) UpdateTeamID() *EnvUpsertOne {
 	return u.Update(func(s *EnvUpsert) {
 		s.UpdateTeamID()
+	})
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (u *EnvUpsertOne) SetCreatedBy(v uuid.UUID) *EnvUpsertOne {
+	return u.Update(func(s *EnvUpsert) {
+		s.SetCreatedBy(v)
+	})
+}
+
+// UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
+func (u *EnvUpsertOne) UpdateCreatedBy() *EnvUpsertOne {
+	return u.Update(func(s *EnvUpsert) {
+		s.UpdateCreatedBy()
 	})
 }
 
@@ -880,6 +948,20 @@ func (u *EnvUpsertBulk) SetTeamID(v uuid.UUID) *EnvUpsertBulk {
 func (u *EnvUpsertBulk) UpdateTeamID() *EnvUpsertBulk {
 	return u.Update(func(s *EnvUpsert) {
 		s.UpdateTeamID()
+	})
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (u *EnvUpsertBulk) SetCreatedBy(v uuid.UUID) *EnvUpsertBulk {
+	return u.Update(func(s *EnvUpsert) {
+		s.SetCreatedBy(v)
+	})
+}
+
+// UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
+func (u *EnvUpsertBulk) UpdateCreatedBy() *EnvUpsertBulk {
+	return u.Update(func(s *EnvUpsert) {
+		s.UpdateCreatedBy()
 	})
 }
 

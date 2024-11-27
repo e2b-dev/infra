@@ -82,6 +82,11 @@ func TeamID(v uuid.UUID) predicate.Env {
 	return predicate.Env(sql.FieldEQ(FieldTeamID, v))
 }
 
+// CreatedBy applies equality check predicate on the "created_by" field. It's identical to CreatedByEQ.
+func CreatedBy(v uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldEQ(FieldCreatedBy, v))
+}
+
 // Public applies equality check predicate on the "public" field. It's identical to PublicEQ.
 func Public(v bool) predicate.Env {
 	return predicate.Env(sql.FieldEQ(FieldPublic, v))
@@ -200,6 +205,26 @@ func TeamIDIn(vs ...uuid.UUID) predicate.Env {
 // TeamIDNotIn applies the NotIn predicate on the "team_id" field.
 func TeamIDNotIn(vs ...uuid.UUID) predicate.Env {
 	return predicate.Env(sql.FieldNotIn(FieldTeamID, vs...))
+}
+
+// CreatedByEQ applies the EQ predicate on the "created_by" field.
+func CreatedByEQ(v uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldEQ(FieldCreatedBy, v))
+}
+
+// CreatedByNEQ applies the NEQ predicate on the "created_by" field.
+func CreatedByNEQ(v uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldNEQ(FieldCreatedBy, v))
+}
+
+// CreatedByIn applies the In predicate on the "created_by" field.
+func CreatedByIn(vs ...uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldIn(FieldCreatedBy, vs...))
+}
+
+// CreatedByNotIn applies the NotIn predicate on the "created_by" field.
+func CreatedByNotIn(vs ...uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldNotIn(FieldCreatedBy, vs...))
 }
 
 // PublicEQ applies the EQ predicate on the "public" field.
@@ -362,6 +387,35 @@ func HasTeamWith(preds ...predicate.Team) predicate.Env {
 		step := newTeamStep()
 		schemaConfig := internal.SchemaConfigFromContext(s.Context())
 		step.To.Schema = schemaConfig.Team
+		step.Edge.Schema = schemaConfig.Env
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasCreator applies the HasEdge predicate on the "creator" edge.
+func HasCreator() predicate.Env {
+	return predicate.Env(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, CreatorTable, CreatorColumn),
+		)
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.User
+		step.Edge.Schema = schemaConfig.Env
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCreatorWith applies the HasEdge predicate on the "creator" edge with a given conditions (other predicates).
+func HasCreatorWith(preds ...predicate.User) predicate.Env {
+	return predicate.Env(func(s *sql.Selector) {
+		step := newCreatorStep()
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.User
 		step.Edge.Schema = schemaConfig.Env
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {

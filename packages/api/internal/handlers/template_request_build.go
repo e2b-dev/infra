@@ -203,6 +203,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		Create().
 		SetID(templateID).
 		SetTeamID(team.ID).
+		SetCreatedBy(*userID).
 		SetPublic(false).
 		OnConflictColumns(env.FieldID).
 		UpdateUpdatedAt().

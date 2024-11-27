@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
@@ -61,6 +62,21 @@ func (uu *UserUpdate) AddTeams(t ...*Team) *UserUpdate {
 		ids[i] = t[i].ID
 	}
 	return uu.AddTeamIDs(ids...)
+}
+
+// AddCreatedEnvIDs adds the "created_envs" edge to the Env entity by IDs.
+func (uu *UserUpdate) AddCreatedEnvIDs(ids ...string) *UserUpdate {
+	uu.mutation.AddCreatedEnvIDs(ids...)
+	return uu
+}
+
+// AddCreatedEnvs adds the "created_envs" edges to the Env entity.
+func (uu *UserUpdate) AddCreatedEnvs(e ...*Env) *UserUpdate {
+	ids := make([]string, len(e))
+	for i := range e {
+		ids[i] = e[i].ID
+	}
+	return uu.AddCreatedEnvIDs(ids...)
 }
 
 // AddAccessTokenIDs adds the "access_tokens" edge to the AccessToken entity by IDs.
@@ -132,6 +148,27 @@ func (uu *UserUpdate) RemoveTeams(t ...*Team) *UserUpdate {
 		ids[i] = t[i].ID
 	}
 	return uu.RemoveTeamIDs(ids...)
+}
+
+// ClearCreatedEnvs clears all "created_envs" edges to the Env entity.
+func (uu *UserUpdate) ClearCreatedEnvs() *UserUpdate {
+	uu.mutation.ClearCreatedEnvs()
+	return uu
+}
+
+// RemoveCreatedEnvIDs removes the "created_envs" edge to Env entities by IDs.
+func (uu *UserUpdate) RemoveCreatedEnvIDs(ids ...string) *UserUpdate {
+	uu.mutation.RemoveCreatedEnvIDs(ids...)
+	return uu
+}
+
+// RemoveCreatedEnvs removes "created_envs" edges to Env entities.
+func (uu *UserUpdate) RemoveCreatedEnvs(e ...*Env) *UserUpdate {
+	ids := make([]string, len(e))
+	for i := range e {
+		ids[i] = e[i].ID
+	}
+	return uu.RemoveCreatedEnvIDs(ids...)
 }
 
 // ClearAccessTokens clears all "access_tokens" edges to the AccessToken entity.
@@ -313,6 +350,54 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if uu.mutation.CreatedEnvsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedEnvsTable,
+			Columns: []string{user.CreatedEnvsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(env.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uu.schemaConfig.Env
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.RemovedCreatedEnvsIDs(); len(nodes) > 0 && !uu.mutation.CreatedEnvsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedEnvsTable,
+			Columns: []string{user.CreatedEnvsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(env.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uu.schemaConfig.Env
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.CreatedEnvsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedEnvsTable,
+			Columns: []string{user.CreatedEnvsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(env.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uu.schemaConfig.Env
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if uu.mutation.AccessTokensCleared() {
@@ -512,6 +597,21 @@ func (uuo *UserUpdateOne) AddTeams(t ...*Team) *UserUpdateOne {
 	return uuo.AddTeamIDs(ids...)
 }
 
+// AddCreatedEnvIDs adds the "created_envs" edge to the Env entity by IDs.
+func (uuo *UserUpdateOne) AddCreatedEnvIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.AddCreatedEnvIDs(ids...)
+	return uuo
+}
+
+// AddCreatedEnvs adds the "created_envs" edges to the Env entity.
+func (uuo *UserUpdateOne) AddCreatedEnvs(e ...*Env) *UserUpdateOne {
+	ids := make([]string, len(e))
+	for i := range e {
+		ids[i] = e[i].ID
+	}
+	return uuo.AddCreatedEnvIDs(ids...)
+}
+
 // AddAccessTokenIDs adds the "access_tokens" edge to the AccessToken entity by IDs.
 func (uuo *UserUpdateOne) AddAccessTokenIDs(ids ...string) *UserUpdateOne {
 	uuo.mutation.AddAccessTokenIDs(ids...)
@@ -581,6 +681,27 @@ func (uuo *UserUpdateOne) RemoveTeams(t ...*Team) *UserUpdateOne {
 		ids[i] = t[i].ID
 	}
 	return uuo.RemoveTeamIDs(ids...)
+}
+
+// ClearCreatedEnvs clears all "created_envs" edges to the Env entity.
+func (uuo *UserUpdateOne) ClearCreatedEnvs() *UserUpdateOne {
+	uuo.mutation.ClearCreatedEnvs()
+	return uuo
+}
+
+// RemoveCreatedEnvIDs removes the "created_envs" edge to Env entities by IDs.
+func (uuo *UserUpdateOne) RemoveCreatedEnvIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.RemoveCreatedEnvIDs(ids...)
+	return uuo
+}
+
+// RemoveCreatedEnvs removes "created_envs" edges to Env entities.
+func (uuo *UserUpdateOne) RemoveCreatedEnvs(e ...*Env) *UserUpdateOne {
+	ids := make([]string, len(e))
+	for i := range e {
+		ids[i] = e[i].ID
+	}
+	return uuo.RemoveCreatedEnvIDs(ids...)
 }
 
 // ClearAccessTokens clears all "access_tokens" edges to the AccessToken entity.
@@ -792,6 +913,54 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if uuo.mutation.CreatedEnvsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedEnvsTable,
+			Columns: []string{user.CreatedEnvsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(env.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uuo.schemaConfig.Env
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.RemovedCreatedEnvsIDs(); len(nodes) > 0 && !uuo.mutation.CreatedEnvsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedEnvsTable,
+			Columns: []string{user.CreatedEnvsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(env.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uuo.schemaConfig.Env
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.CreatedEnvsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedEnvsTable,
+			Columns: []string{user.CreatedEnvsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(env.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uuo.schemaConfig.Env
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if uuo.mutation.AccessTokensCleared() {

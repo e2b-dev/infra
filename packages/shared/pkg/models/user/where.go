@@ -154,6 +154,35 @@ func HasTeamsWith(preds ...predicate.Team) predicate.User {
 	})
 }
 
+// HasCreatedEnvs applies the HasEdge predicate on the "created_envs" edge.
+func HasCreatedEnvs() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, CreatedEnvsTable, CreatedEnvsColumn),
+		)
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.Env
+		step.Edge.Schema = schemaConfig.Env
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCreatedEnvsWith applies the HasEdge predicate on the "created_envs" edge with a given conditions (other predicates).
+func HasCreatedEnvsWith(preds ...predicate.Env) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newCreatedEnvsStep()
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.Env
+		step.Edge.Schema = schemaConfig.Env
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasAccessTokens applies the HasEdge predicate on the "access_tokens" edge.
 func HasAccessTokens() predicate.User {
 	return predicate.User(func(s *sql.Selector) {

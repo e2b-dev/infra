@@ -8,6 +8,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
@@ -15,9 +17,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// DeleteTemplatesTemplateID serves to delete an env (e.g. in CLI)
-func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
+// PatchTemplatesTemplateID serves to update a template
+func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID api.TemplateID) {
 	ctx := c.Request.Context()
+
+	body, err := utils.ParseBody[api.TemplateUpdateRequest](ctx, c)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
+
+		return
+	}
 
 	cleanedAliasOrEnvID, err := id.CleanEnvID(aliasOrTemplateID)
 	if err != nil {
@@ -29,7 +38,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	// Prepare info for deleting env
+	// Prepare info for updating env
 	userID, teams, err := a.GetUserAndTeams(c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
@@ -81,6 +90,19 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
+	// Update env
+	dbErr := a.db.UpdateEnv(ctx, template.ID, db.UpdateEnvInput{
+		Public: *body.Public,
+	})
+
+	if dbErr != nil {
+		errMsg := fmt.Errorf("error when updating env: %w", dbErr)
+		telemetry.ReportError(ctx, errMsg)
+
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating env")
+		return
+	}
+
 	telemetry.SetAttributes(ctx,
 		attribute.String("user.id", userID.String()),
 		attribute.String("env.team.id", team.ID.String()),
@@ -88,33 +110,15 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		attribute.String("env.id", template.ID),
 	)
 
-	deleteJobErr := a.templateManager.DeleteInstance(ctx, template.ID)
-	if deleteJobErr != nil {
-		errMsg := fmt.Errorf("error when deleting env files from fc-envs disk: %w", deleteJobErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
-	} else {
-		telemetry.ReportEvent(ctx, "deleted env from fc-envs disk")
-	}
-
-	dbErr := a.db.DeleteEnv(ctx, template.ID)
-	if dbErr != nil {
-		errMsg := fmt.Errorf("error when deleting env from db: %w", dbErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting env")
-
-		return
-	}
-
 	a.templateCache.Invalidate(template.ID)
 
-	telemetry.ReportEvent(ctx, "deleted env from db")
+	telemetry.ReportEvent(ctx, "updated env")
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "deleted environment", properties.Set("environment", template.ID))
+	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "updated environment", properties.Set("environment", template.ID))
 
-	a.logger.Infof("Deleted env '%s' from team '%s'", template.ID, team.ID)
+	a.logger.Infof("Updated env '%s' from team '%s'", template.ID, team.ID)
 
 	c.JSON(http.StatusOK, nil)
 }

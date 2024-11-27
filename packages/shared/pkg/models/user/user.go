@@ -16,6 +16,8 @@ const (
 	FieldEmail = "email"
 	// EdgeTeams holds the string denoting the teams edge name in mutations.
 	EdgeTeams = "teams"
+	// EdgeCreatedEnvs holds the string denoting the created_envs edge name in mutations.
+	EdgeCreatedEnvs = "created_envs"
 	// EdgeAccessTokens holds the string denoting the access_tokens edge name in mutations.
 	EdgeAccessTokens = "access_tokens"
 	// EdgeCreatedAPIKeys holds the string denoting the created_api_keys edge name in mutations.
@@ -31,6 +33,13 @@ const (
 	// TeamsInverseTable is the table name for the Team entity.
 	// It exists in this package in order to avoid circular dependency with the "team" package.
 	TeamsInverseTable = "teams"
+	// CreatedEnvsTable is the table that holds the created_envs relation/edge.
+	CreatedEnvsTable = "envs"
+	// CreatedEnvsInverseTable is the table name for the Env entity.
+	// It exists in this package in order to avoid circular dependency with the "env" package.
+	CreatedEnvsInverseTable = "envs"
+	// CreatedEnvsColumn is the table column denoting the created_envs relation/edge.
+	CreatedEnvsColumn = "created_by"
 	// AccessTokensTable is the table that holds the access_tokens relation/edge.
 	AccessTokensTable = "access_tokens"
 	// AccessTokensInverseTable is the table name for the AccessToken entity.
@@ -108,6 +117,20 @@ func ByTeams(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByCreatedEnvsCount orders the results by created_envs count.
+func ByCreatedEnvsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCreatedEnvsStep(), opts...)
+	}
+}
+
+// ByCreatedEnvs orders the results by created_envs terms.
+func ByCreatedEnvs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCreatedEnvsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByAccessTokensCount orders the results by access_tokens count.
 func ByAccessTokensCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -154,6 +177,13 @@ func newTeamsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(TeamsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, true, TeamsTable, TeamsPrimaryKey...),
+	)
+}
+func newCreatedEnvsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CreatedEnvsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, CreatedEnvsTable, CreatedEnvsColumn),
 	)
 }
 func newAccessTokensStep() *sqlgraph.Step {
