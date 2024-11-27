@@ -48,7 +48,7 @@ type Process struct {
 	uffdSocketPath        string
 	firecrackerSocketPath string
 
-	rootfs *rootfs.Overlay
+	rootfs *rootfs.CowDevice
 	files  *storage.SandboxFiles
 
 	Exit chan error
@@ -63,7 +63,7 @@ func NewProcess(
 	files *storage.SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
 	snapfile template.File,
-	rootfs *rootfs.Overlay,
+	rootfs *rootfs.CowDevice,
 	uffdReady chan struct{},
 ) (*Process, error) {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
@@ -232,7 +232,7 @@ func (p *Process) Start(
 	eg, ctx := errgroup.WithContext(startCtx)
 
 	eg.Go(func() error {
-		device, err := p.rootfs.Path(ctx)
+		device, err := p.rootfs.Path()
 		if err != nil {
 			return fmt.Errorf("error getting rootfs path: %w", err)
 		}

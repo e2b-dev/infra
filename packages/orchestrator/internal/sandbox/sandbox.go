@@ -36,7 +36,7 @@ type Sandbox struct {
 
 	process *fc.Process
 	uffd    *uffd.Uffd
-	rootfs  *rootfs.Overlay
+	rootfs  *rootfs.CowDevice
 
 	Config    *orchestrator.SandboxConfig
 	StartedAt time.Time
@@ -117,13 +117,13 @@ func NewSandbox(
 
 	_, overlaySpan := tracer.Start(childCtx, "create-rootfs-overlay")
 
-	rootfsDevice, err := t.Rootfs()
+	readonlyRootfs, err := t.Rootfs()
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get rootfs: %w", err)
 	}
 
-	rootfsOverlay, err := rootfs.NewOverlay(
-		rootfsDevice,
+	rootfsOverlay, err := rootfs.NewCowDevice(
+		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 	)
 	if err != nil {
@@ -137,7 +137,7 @@ func NewSandbox(
 	})
 
 	go func() {
-		runErr := rootfsOverlay.Run()
+		runErr := rootfsOverlay.Start(childCtx)
 		if runErr != nil {
 			fmt.Fprintf(os.Stderr, "[sandbox %s]: rootfs overlay error: %v\n", config.SandboxId, runErr)
 		}

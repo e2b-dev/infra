@@ -27,6 +27,7 @@ type DirectPathMount struct {
 
 func NewDirectPathMount(b block.Device) *DirectPathMount {
 	ctx, cancelfn := context.WithCancel(context.Background())
+
 	return &DirectPathMount{
 		Backend:   b,
 		ctx:       ctx,

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -142,6 +143,7 @@ func (d *DevicePool) Populate() error {
 func (d *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
 	devicePath := GetDevicePath(slot)
 
+	// TODO: Do we need this specific check? Aren't the other checks enough?
 	fd, err := syscall.Open(devicePath, syscall.O_EXCL, 0o644)
 	if errors.Is(err, syscall.EBUSY) {
 		return false, nil
@@ -276,4 +278,20 @@ func (d *DevicePool) ReleaseDevice(idx DeviceSlot) error {
 
 func GetDevicePath(slot DeviceSlot) DevicePath {
 	return fmt.Sprintf("/dev/nbd%d", slot)
+}
+
+var reSlot = regexp.MustCompile(`^/dev/nbd(\d+)$`)
+
+func GetDeviceSlot(path DevicePath) (DeviceSlot, error) {
+	matches := reSlot.FindStringSubmatch(path)
+	if len(matches) != 2 {
+		return 0, fmt.Errorf("invalid nbd path: %s", path)
+	}
+
+	slot, err := strconv.ParseUint(matches[1], 10, 0)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse slot from path: %w", err)
+	}
+
+	return DeviceSlot(slot), nil
 }
