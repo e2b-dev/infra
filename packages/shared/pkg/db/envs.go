@@ -125,6 +125,7 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 		WithEnvAliases(func(query *models.EnvAliasQuery) {
 			query.Order(models.Asc(envalias.FieldID)) // TODO: remove once we have only 1 alias per env
 		}).
+		WithCreator().
 		WithBuilds(func(query *models.EnvBuildQuery) {
 			query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt)).Limit(1)
 		}).Only(ctx)
