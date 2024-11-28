@@ -3,15 +3,12 @@ package server
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/metadata"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -44,21 +41,21 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 
 	logsWriter := writer.New(stream)
 	template := &build.Env{
-		TemplateFiles: storage.TemplateFiles{
-			TemplateId: config.TemplateID,
-			BuildId:    config.BuildID,
-		},
-		VCpuCount:             int64(config.VCpuCount),
-		MemoryMB:              int64(config.MemoryMB),
-		StartCmd:              config.StartCommand,
-		DiskSizeMB:            int64(config.DiskSizeMB),
-		HugePages:             config.HugePages,
-		KernelVersion:         config.KernelVersion,
-		FirecrackerBinaryPath: filepath.Join(storage.FirecrackerVersionsDir, config.FirecrackerVersion, storage.FirecrackerBinaryName),
-		BuildLogsWriter:       logsWriter,
+		TemplateFiles: storage.NewTemplateFiles(
+			config.TemplateID,
+			config.BuildID,
+			config.KernelVersion,
+			config.FirecrackerVersion,
+			config.HugePages,
+		),
+		VCpuCount:       int64(config.VCpuCount),
+		MemoryMB:        int64(config.MemoryMB),
+		StartCmd:        config.StartCommand,
+		DiskSizeMB:      int64(config.DiskSizeMB),
+		BuildLogsWriter: logsWriter,
 	}
 
-	buildStorage := s.templateStorage.NewTemplateBuild(&template.TemplateFiles)
+	buildStorage := s.templateStorage.NewBuild(template.TemplateFiles)
 
 	var err error
 
@@ -95,26 +92,12 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		}
 	}()
 
-	uploadWg, ctx := errgroup.WithContext(childCtx)
-
-	uploadWg.Go(func() error {
-		return buildStorage.UploadMemfile(ctx, template.BuildMemfilePath())
-	})
-
-	uploadWg.Go(func() error {
-		return buildStorage.UploadRootfs(ctx, template.BuildRootfsPath())
-	})
-
-	uploadWg.Go(func() error {
-		snapfile, err := os.Open(template.BuildSnapfilePath())
-		if err != nil {
-			return err
-		}
-
-		defer snapfile.Close()
-
-		return buildStorage.UploadSnapfile(ctx, snapfile)
-	})
+	upload := buildStorage.Upload(
+		childCtx,
+		template.BuildSnapfilePath(),
+		template.BuildMemfilePath(),
+		template.BuildRootfsPath(),
+	)
 
 	cmd := exec.Command(storage.HostEnvdPath, "-version")
 
@@ -125,12 +108,12 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		return err
 	}
 
-	uploadERr := uploadWg.Wait()
-	if uploadERr != nil {
-		errMsg := fmt.Sprintf("Error while uploading build files: %v", uploadERr)
+	uploadErr := <-upload
+	if uploadErr != nil {
+		errMsg := fmt.Sprintf("Error while uploading build files: %v", uploadErr)
 		_, _ = logsWriter.Write([]byte(errMsg))
 
-		return uploadERr
+		return uploadErr
 	}
 
 	version := strings.TrimSpace(string(out))

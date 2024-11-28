@@ -21,7 +21,7 @@ func Delete(
 	ctx context.Context,
 	tracer trace.Tracer,
 	artifactRegistry *artifactregistry.Client,
-	templateStorage *TemplateStorage,
+	templateStorage *Storage,
 	templateID string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "delete-template")

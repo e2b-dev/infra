@@ -106,10 +106,10 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 	err := snapshot.startFCProcess(
 		childCtx,
 		tracer,
-		env.FirecrackerBinaryPath,
+		env.FirecrackerPath(),
 		network.namespaceID,
 		storage.KernelMountDir,
-		env.KernelDirPath(),
+		env.CacheKernelDir(),
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("error starting fc process: %w", err)
@@ -272,7 +272,7 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 
 	ip := fmt.Sprintf("%s::%s:%s:instance:eth0:off:8.8.8.8", fcAddr, fcTapAddress, fcMaskLong)
 	kernelArgs := fmt.Sprintf("quiet loglevel=1 ip=%s reboot=k panic=1 pci=off nomodules i8042.nokbd i8042.noaux ipv6.disable=1 random.trust_cpu=on", ip)
-	kernelImagePath := s.env.KernelMountedPath()
+	kernelImagePath := storage.KernelMountedPath
 	bootSourceConfig := operations.PutGuestBootSourceParams{
 		Context: childCtx,
 		Body: &models.BootSource{
@@ -350,7 +350,7 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 		TrackDirtyPages: &trackDirtyPages,
 	}
 
-	if s.env.HugePages {
+	if s.env.Hugepages() {
 		machineConfig.HugePages = models.MachineConfigurationHugePagesNr2M
 	}
 

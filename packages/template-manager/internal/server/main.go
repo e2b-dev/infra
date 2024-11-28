@@ -30,7 +30,7 @@ type serverStore struct {
 	dockerClient       *client.Client
 	legacyDockerClient *docker.Client
 	artifactRegistry   *artifactregistry.Client
-	templateStorage    *template.TemplateStorage
+	templateStorage    *template.Storage
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -61,7 +61,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		panic(err)
 	}
 
-	templateStorage := template.NewTemplateStorage(ctx)
+	templateStorage := template.NewStorage(ctx)
 
 	template_manager.RegisterTemplateServiceServer(s, &serverStore{
 		tracer:             otel.Tracer(constants.ServiceName),

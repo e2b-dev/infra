@@ -21,7 +21,7 @@ func Delete(templateID string) {
 		panic(err)
 	}
 
-	templateStorage := template.NewTemplateStorage(ctx)
+	templateStorage := template.NewStorage(ctx)
 
 	err = template.Delete(ctx, tracer, artifactRegistry, templateStorage, templateID)
 	if err != nil {
