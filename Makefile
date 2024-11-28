@@ -49,7 +49,7 @@ init:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	terraform fmt -recursive
-	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.buckets
+	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode  $(ALL_MODULES_ARGS)
 
 .PHONY: apply
 apply:
@@ -117,7 +117,13 @@ build-and-upload-fc-components:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/fc-kernels build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/fc-versions build-and-upload
 
-.PHONY: migrate
+.PHONY: copy-public-builds
+copy-public-builds:
+	gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-env-pipeline/envd-v0.0.1
+	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
+	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
+
+
 migrate:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/shared migrate
 
