@@ -9,17 +9,3 @@ This repository contains the infrastructure that powers the E2B platform.
 The infrastructure is deployed using [Terraform](./terraform.md) and right now it is deployable on GCP only.
 
 Setting the infrastructure up can be a little rough right now, but we plan to improve it in the future.
-
-## Project Structure
-
-In this monorepo, there are several components written in Go and a Terraform configuration for the deployment.
-
-The main components are:
-
-1. [API server](./packages/api/)
-1. [Daemon running inside instances (sandboxes)](./packages/envd/)
-1. [Service for managing instances (sandboxes)](./packages/orchestrator/)
-1. [Service for building environments (templates)](./packages/template-manager/)
-
-The following diagram shows the architecture of the whole project:
-![E2B infrastructure diagram](./readme-assets/architecture.jpeg)
