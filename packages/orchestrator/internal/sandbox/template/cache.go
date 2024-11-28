@@ -7,6 +7,7 @@ import (
 
 	"github.com/jellydator/ttlcache/v3"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
@@ -79,8 +80,23 @@ func cacheKey(templateId, buildId string) string {
 }
 
 // refresh extends the expiration time of the template in the cache.
-func (c *TemplateCache) refresh(templateId, buildId string) {
+func (c *Cache) refresh(templateId, buildId string) {
 	key := cacheKey(templateId, buildId)
 
 	c.cache.Touch(key)
+}
+
+func (c *Cache) AddTemplateFromLocalFiles(files *storage.TemplateCacheFiles) (*localTemplate, error) {
+	localTemplate, err := newLocalTemplate(files, c.bucket)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create local template: %w", err)
+	}
+
+	c.cache.Set(
+		localTemplate.Files().CacheKey(),
+		localTemplate,
+		templateExpiration,
+	)
+
+	return localTemplate, nil
 }

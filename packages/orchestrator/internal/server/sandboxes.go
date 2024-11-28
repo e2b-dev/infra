@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -173,18 +174,56 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 }
 
 func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
-	// TODO: Implement
+	_, childSpan := s.tracer.Start(ctx, "sandbox-pause")
+	defer childSpan.End()
 
-	// 1. Remove sandbox from DNS
-	// 2. Pause the sandbox
-	// 3. Create the snapshot dump (memfile, snapfile)
-	// 4. Create the rootfs overlay + rootfs dump (or just cache move? We might be able to use the sandbox data here) <--------- This is the most unclear part
-	//   a. Decide how the rootfs+overlay have to be handled. For the few seconds for upload it might be ok for now to still use the nbd?
-	// 5. Create template cache entry for the snapshot
-	// 6. Remove sandbox from cache
-	// 7. Start proper upload to the storage in the background
-	// 8. Return so the API can correctly create DB entry and can be restored
-	// 9. Update the DB with info that the snapshot is fully uploaded
+	sbx, ok := s.sandboxes.Get(in.SandboxId)
+	if !ok {
+		return nil, status.New(codes.NotFound, "sandbox not found").Err()
+	}
+
+	s.dns.Remove(in.SandboxId)
+	s.sandboxes.Remove(in.SandboxId)
+
+	// TODO: Stop healthcheck, etc.
+	// TODO: We need to remove sandbox from API cache even if any following operations fail.
+
+	defer func() {
+		err := sbx.Stop()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error stopping sandbox during pause '%s': %v\n", in.SandboxId, err)
+		}
+	}()
+
+	snapshotTemplateFiles, err := storage.NewTemplateFiles(
+		in.TemplateId,
+		in.BuildId,
+		sbx.Config.KernelVersion,
+		sbx.Config.FirecrackerVersion,
+		sbx.Config.HugePages,
+	).NewTemplateCacheFiles()
+	if err != nil {
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
+
+	err = sbx.Snapshot(ctx, snapshotTemplateFiles)
+	if err != nil {
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
+
+	t, err := s.templateCache.AddTemplateFromLocalFiles(snapshotTemplateFiles)
+	if err != nil {
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
+
+	go func() {
+		// 7. Start proper upload to the storage in the background
+		// 9. Update the DB with info that the snapshot is fully uploaded
+		uploadErr := t.Upload(context.Background())
+		if uploadErr != nil {
+			fmt.Fprintf(os.Stderr, "error uploading template '%s': %v\n", in.TemplateId, uploadErr)
+		}
+	}()
 
 	return nil, status.New(codes.Unimplemented, "not implemented").Err()
 }

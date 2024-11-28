@@ -320,3 +320,22 @@ func (s *Sandbox) Stop() error {
 
 	return nil
 }
+
+func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.TemplateCacheFiles) error {
+	err := s.process.Snapshot(
+		ctx,
+		snapshotTemplateFiles.CacheSnapfilePath(),
+		snapshotTemplateFiles.CacheMemfilePath(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to snapshot sandbox: %w", err)
+	}
+
+	// TODO: Decide how the rootfs+overlay have to be handled. For the few seconds for upload it might be ok for now to still use the nbd?
+	err = s.rootfs.Export(ctx, snapshotTemplateFiles.CacheRootfsPath())
+	if err != nil {
+		return fmt.Errorf("failed to export rootfs: %w", err)
+	}
+
+	return nil
+}

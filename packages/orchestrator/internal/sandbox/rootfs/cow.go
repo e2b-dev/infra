@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os/exec"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -40,6 +41,20 @@ func (o *CowDevice) Start(ctx context.Context) error {
 	}
 
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
+}
+
+func (o *CowDevice) Export(ctx context.Context, path string) error {
+	devicePath, err := o.ready.Wait()
+	if err != nil {
+		return fmt.Errorf("error getting overlay path: %w", err)
+	}
+
+	_, err = exec.CommandContext(ctx, "cp", devicePath, path).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error exporting overlay: %w", err)
+	}
+
+	return nil
 }
 
 func (o *CowDevice) Close() error {

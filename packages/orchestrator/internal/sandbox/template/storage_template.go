@@ -2,7 +2,6 @@ package template
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -124,24 +123,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, bucket *gcs.BucketHandle) {
 }
 
 func (t *storageTemplate) Close() error {
-	var errs []error
-
-	memfile, err := t.Memfile()
-	if err == nil {
-		errs = append(errs, memfile.Close())
-	}
-
-	rootfs, err := t.Rootfs()
-	if err == nil {
-		errs = append(errs, rootfs.Close())
-	}
-
-	snapfile, err := t.Snapfile()
-	if err == nil {
-		errs = append(errs, snapfile.Close())
-	}
-
-	return errors.Join(errs...)
+	return closeTemplate(t)
 }
 
 func (t *storageTemplate) Files() *storage.TemplateCacheFiles {
