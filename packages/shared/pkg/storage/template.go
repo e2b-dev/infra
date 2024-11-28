@@ -34,6 +34,9 @@ const (
 	rootfsBlockSize = 2 << 11
 )
 
+// Path to the directory where the kernel can be accessed inside when the dirs are mounted.
+var KernelMountedPath = filepath.Join(KernelMountDir, KernelName)
+
 type TemplateFiles struct {
 	TemplateId         string
 	BuildId            string
@@ -72,8 +75,12 @@ func (t *TemplateFiles) CacheKey() string {
 	return fmt.Sprintf("%s-%s", t.TemplateId, t.BuildId)
 }
 
+func (t *TemplateFiles) CacheKernelDir() string {
+	return filepath.Join(KernelsDir, t.KernelVersion)
+}
+
 func (t *TemplateFiles) CacheKernelPath() string {
-	return filepath.Join(KernelsDir, t.KernelVersion, KernelName)
+	return filepath.Join(t.CacheKernelDir(), KernelName)
 }
 
 func (t *TemplateFiles) FirecrackerPath() string {
@@ -110,6 +117,10 @@ func (t *TemplateFiles) BuildRootfsPath() string {
 
 func (t *TemplateFiles) BuildSnapfilePath() string {
 	return filepath.Join(t.BuildDir(), SnapfileName)
+}
+
+func (t *TemplateFiles) Hugepages() bool {
+	return t.hugePages
 }
 
 func (t *TemplateFiles) MemfilePageSize() int64 {

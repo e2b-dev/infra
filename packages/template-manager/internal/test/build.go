@@ -11,7 +11,6 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
@@ -36,18 +35,18 @@ func Build(templateID, buildID string) {
 
 	var buf bytes.Buffer
 	t := build.Env{
-		TemplateFiles: storage.TemplateFiles{
-			BuildId:    buildID,
-			TemplateId: templateID,
-		},
-		VCpuCount:             2,
-		MemoryMB:              256,
-		StartCmd:              "",
-		KernelVersion:         "vmlinux-5.10.186",
-		DiskSizeMB:            512,
-		FirecrackerBinaryPath: "/fc-versions/v1.7.0-dev_8bb88311/firecracker",
-		BuildLogsWriter:       &buf,
-		HugePages:             true,
+		TemplateFiles: storage.NewTemplateFiles(
+			templateID,
+			buildID,
+			"vmlinux-5.10.186",
+			"v1.7.0-dev_8bb88311",
+			true,
+		),
+		VCpuCount:       2,
+		MemoryMB:        256,
+		StartCmd:        "",
+		DiskSizeMB:      512,
+		BuildLogsWriter: &buf,
 	}
 
 	err = t.Build(ctx, tracer, dockerClient, legacyClient)
@@ -59,30 +58,18 @@ func Build(templateID, buildID string) {
 		return
 	}
 
-	tempStorage := template.NewTemplateStorage(ctx)
+	tempStorage := template.NewStorage(ctx)
 
-	buildStorage := tempStorage.NewTemplateBuild(&t.TemplateFiles)
+	buildStorage := tempStorage.NewBuild(t.TemplateFiles)
 
-	uploadWg, ctx := errgroup.WithContext(ctx)
+	upload := buildStorage.Upload(
+		ctx,
+		t.BuildSnapfilePath(),
+		t.BuildMemfilePath(),
+		t.BuildRootfsPath(),
+	)
 
-	uploadWg.Go(func() error {
-		return buildStorage.UploadMemfile(ctx, t.BuildMemfilePath())
-	})
-
-	uploadWg.Go(func() error {
-		return buildStorage.UploadRootfs(ctx, t.BuildRootfsPath())
-	})
-
-	uploadWg.Go(func() error {
-		snapfile, err := os.Open(t.BuildSnapfilePath())
-		if err != nil {
-			return err
-		}
-
-		return buildStorage.UploadSnapfile(ctx, snapfile)
-	})
-
-	err = uploadWg.Wait()
+	err = <-upload
 	if err != nil {
 		log.Fatal().Err(err).Msg("error uploading build files")
 	}
