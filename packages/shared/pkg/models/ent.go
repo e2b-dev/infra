@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
@@ -85,6 +86,7 @@ func checkColumn(table, column string) error {
 			env.Table:         env.ValidColumn,
 			envalias.Table:    envalias.ValidColumn,
 			envbuild.Table:    envbuild.ValidColumn,
+			snapshot.Table:    snapshot.ValidColumn,
 			team.Table:        team.ValidColumn,
 			teamapikey.Table:  teamapikey.ValidColumn,
 			tier.Table:        tier.ValidColumn,

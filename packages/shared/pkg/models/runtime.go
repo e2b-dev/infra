@@ -8,6 +8,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
@@ -61,6 +62,12 @@ func init() {
 	envbuildDescFirecrackerVersion := envbuildFields[13].Descriptor()
 	// envbuild.DefaultFirecrackerVersion holds the default value on creation for the firecracker_version field.
 	envbuild.DefaultFirecrackerVersion = envbuildDescFirecrackerVersion.Default.(string)
+	snapshotFields := schema.Snapshot{}.Fields()
+	_ = snapshotFields
+	// snapshotDescCreatedAt is the schema descriptor for created_at field.
+	snapshotDescCreatedAt := snapshotFields[1].Descriptor()
+	// snapshot.DefaultCreatedAt holds the default value on creation for the created_at field.
+	snapshot.DefaultCreatedAt = snapshotDescCreatedAt.Default.(func() time.Time)
 	teamFields := schema.Team{}.Fields()
 	_ = teamFields
 	// teamDescCreatedAt is the schema descriptor for created_at field.

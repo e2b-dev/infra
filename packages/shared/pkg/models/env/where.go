@@ -429,6 +429,35 @@ func HasBuildsWith(preds ...predicate.EnvBuild) predicate.Env {
 	})
 }
 
+// HasSnapshots applies the HasEdge predicate on the "snapshots" edge.
+func HasSnapshots() predicate.Env {
+	return predicate.Env(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, SnapshotsTable, SnapshotsColumn),
+		)
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.Snapshot
+		step.Edge.Schema = schemaConfig.Snapshot
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasSnapshotsWith applies the HasEdge predicate on the "snapshots" edge with a given conditions (other predicates).
+func HasSnapshotsWith(preds ...predicate.Snapshot) predicate.Env {
+	return predicate.Env(func(s *sql.Selector) {
+		step := newSnapshotsStep()
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.Snapshot
+		step.Edge.Schema = schemaConfig.Snapshot
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.Env) predicate.Env {
 	return predicate.Env(sql.AndPredicates(predicates...))

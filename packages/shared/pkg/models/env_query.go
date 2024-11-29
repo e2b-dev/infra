@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/google/uuid"
 )
@@ -30,6 +31,7 @@ type EnvQuery struct {
 	withTeam       *TeamQuery
 	withEnvAliases *EnvAliasQuery
 	withBuilds     *EnvBuildQuery
+	withSnapshots  *SnapshotQuery
 	modifiers      []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -136,6 +138,31 @@ func (eq *EnvQuery) QueryBuilds() *EnvBuildQuery {
 		schemaConfig := eq.schemaConfig
 		step.To.Schema = schemaConfig.EnvBuild
 		step.Edge.Schema = schemaConfig.EnvBuild
+		fromU = sqlgraph.SetNeighbors(eq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QuerySnapshots chains the current query on the "snapshots" edge.
+func (eq *EnvQuery) QuerySnapshots() *SnapshotQuery {
+	query := (&SnapshotClient{config: eq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := eq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := eq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(env.Table, env.FieldID, selector),
+			sqlgraph.To(snapshot.Table, snapshot.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, env.SnapshotsTable, env.SnapshotsColumn),
+		)
+		schemaConfig := eq.schemaConfig
+		step.To.Schema = schemaConfig.Snapshot
+		step.Edge.Schema = schemaConfig.Snapshot
 		fromU = sqlgraph.SetNeighbors(eq.driver.Dialect(), step)
 		return fromU, nil
 	}
@@ -337,6 +364,7 @@ func (eq *EnvQuery) Clone() *EnvQuery {
 		withTeam:       eq.withTeam.Clone(),
 		withEnvAliases: eq.withEnvAliases.Clone(),
 		withBuilds:     eq.withBuilds.Clone(),
+		withSnapshots:  eq.withSnapshots.Clone(),
 		// clone intermediate query.
 		sql:  eq.sql.Clone(),
 		path: eq.path,
@@ -373,6 +401,17 @@ func (eq *EnvQuery) WithBuilds(opts ...func(*EnvBuildQuery)) *EnvQuery {
 		opt(query)
 	}
 	eq.withBuilds = query
+	return eq
+}
+
+// WithSnapshots tells the query-builder to eager-load the nodes that are connected to
+// the "snapshots" edge. The optional arguments are used to configure the query builder of the edge.
+func (eq *EnvQuery) WithSnapshots(opts ...func(*SnapshotQuery)) *EnvQuery {
+	query := (&SnapshotClient{config: eq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	eq.withSnapshots = query
 	return eq
 }
 
@@ -454,10 +493,11 @@ func (eq *EnvQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Env, err
 	var (
 		nodes       = []*Env{}
 		_spec       = eq.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [4]bool{
 			eq.withTeam != nil,
 			eq.withEnvAliases != nil,
 			eq.withBuilds != nil,
+			eq.withSnapshots != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -500,6 +540,13 @@ func (eq *EnvQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Env, err
 		if err := eq.loadBuilds(ctx, query, nodes,
 			func(n *Env) { n.Edges.Builds = []*EnvBuild{} },
 			func(n *Env, e *EnvBuild) { n.Edges.Builds = append(n.Edges.Builds, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := eq.withSnapshots; query != nil {
+		if err := eq.loadSnapshots(ctx, query, nodes,
+			func(n *Env) { n.Edges.Snapshots = []*Snapshot{} },
+			func(n *Env, e *Snapshot) { n.Edges.Snapshots = append(n.Edges.Snapshots, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -593,6 +640,36 @@ func (eq *EnvQuery) loadBuilds(ctx context.Context, query *EnvBuildQuery, nodes 
 		node, ok := nodeids[*fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "env_id" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (eq *EnvQuery) loadSnapshots(ctx context.Context, query *SnapshotQuery, nodes []*Env, init func(*Env), assign func(*Env, *Snapshot)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Env)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(snapshot.FieldEnvID)
+	}
+	query.Where(predicate.Snapshot(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(env.SnapshotsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.EnvID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "env_id" returned %v for node %v`, fk, n.ID)
 		}
 		assign(node, n)
 	}
