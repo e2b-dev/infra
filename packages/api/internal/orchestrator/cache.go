@@ -39,7 +39,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 
 		for _, node := range nodes {
 			// If the node is not in the list, connect to it
-			_, err := o.GetNode(node.ID)
+			_, err = o.GetNode(node.ID)
 			if err != nil {
 				err = o.connectToNode(node)
 				if err != nil {
@@ -68,6 +68,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 				}
 
 				delete(o.nodes, node.ID)
+				continue
 			}
 
 			activeInstances, instancesErr := o.getInstances(childCtx, node.ID)

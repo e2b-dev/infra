@@ -35,3 +35,7 @@ func (s *SandboxFiles) SandboxFirecrackerSocketPath() string {
 func (s *SandboxFiles) SandboxUffdSocketPath() string {
 	return filepath.Join(s.tmpDir, fmt.Sprintf("uffd-%s.sock", s.SandboxID))
 }
+
+func (s *SandboxFiles) SandboxCacheRootfsLinkPath() string {
+	return filepath.Join(s.SandboxCacheDir(), "rootfs.link")
+}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"syscall"
 	txtTemplate "text/template"
@@ -46,6 +47,9 @@ type Process struct {
 	uffdSocketPath        string
 	firecrackerSocketPath string
 
+	rootfs *rootfs.CowDevice
+	files  *storage.SandboxFiles
+
 	Exit chan error
 
 	client *apiClient
@@ -67,15 +71,10 @@ func NewProcess(
 	))
 	defer childSpan.End()
 
-	rootfsPath, err := rootfs.Path(childCtx)
-	if err != nil {
-		return nil, fmt.Errorf("error getting rootfs path: %w", err)
-	}
-
 	var fcStartScript bytes.Buffer
 
-	err = startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
-		"rootfsPath":        rootfsPath,
+	err := startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
+		"rootfsPath":        files.SandboxCacheRootfsLinkPath(),
 		"kernelPath":        files.CacheKernelPath(),
 		"buildDir":          files.BuildDir(),
 		"buildRootfsPath":   files.BuildRootfsPath(),
@@ -124,6 +123,8 @@ func NewProcess(
 		uffdSocketPath:        files.SandboxUffdSocketPath(),
 		snapfile:              snapfile,
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
+		rootfs:                rootfs,
+		files:                 files,
 	}, nil
 }
 
@@ -179,7 +180,12 @@ func (p *Process) Start(
 		}
 	}()
 
-	err := p.cmd.Start()
+	err := os.Symlink("/dev/null", p.files.SandboxCacheRootfsLinkPath())
+	if err != nil {
+		return fmt.Errorf("error symlinking rootfs: %w", err)
+	}
+
+	err = p.cmd.Start()
 	if err != nil {
 		return fmt.Errorf("error starting fc process: %w", err)
 	}
@@ -222,26 +228,20 @@ func (p *Process) Start(
 		return errors.Join(errMsg, fcStopErr)
 	}
 
-	eg, ctx := errgroup.WithContext(startCtx)
+	device, err := p.rootfs.Path()
+	if err != nil {
+		return fmt.Errorf("error getting rootfs path: %w", err)
+	}
 
-	eg.Go(func() error {
-		device, err := p.rootfs.Path()
-		if err != nil {
-			return fmt.Errorf("error getting rootfs path: %w", err)
-		}
+	err = os.Remove(p.files.SandboxCacheRootfsLinkPath())
+	if err != nil {
+		return fmt.Errorf("error removing rootfs symlink: %w", err)
+	}
 
-		err = os.Remove(p.files.SandboxCacheRootfsLinkPath())
-		if err != nil {
-			return fmt.Errorf("error removing rootfs symlink: %w", err)
-		}
-
-		err = os.Symlink(device, p.files.SandboxCacheRootfsLinkPath())
-		if err != nil {
-			return fmt.Errorf("error symlinking rootfs: %w", err)
-		}
-
-		return nil
-	})
+	err = os.Symlink(device, p.files.SandboxCacheRootfsLinkPath())
+	if err != nil {
+		return fmt.Errorf("error symlinking rootfs: %w", err)
+	}
 
 	err = p.client.loadSnapshot(
 		startCtx,
