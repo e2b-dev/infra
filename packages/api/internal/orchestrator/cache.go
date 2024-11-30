@@ -48,7 +48,28 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 			}
 		}
 
+		// TODO: Maybe we should remove nodes that are not in the list anymore
 		for _, node := range o.nodes {
+			found := false
+			for _, activeNode := range nodes {
+				if node.ID == activeNode.ID {
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				o.logger.Infof("Node %s is not active anymore", node.ID)
+
+				// Close the connection to the node
+				err = node.Client.Close()
+				if err != nil {
+					o.logger.Errorf("Error closing connection to node\n: %v", err)
+				}
+
+				delete(o.nodes, node.ID)
+			}
+
 			activeInstances, instancesErr := o.getInstances(childCtx, node.ID)
 			if instancesErr != nil {
 				o.logger.Errorf("Error getting instances\n: %v", instancesErr)

@@ -72,6 +72,10 @@ variable "nomad_port" {
   type = number
 }
 
+variable "api_instance_group" {
+  type = string
+}
+
 variable "client_instance_group" {
   type = string
 }

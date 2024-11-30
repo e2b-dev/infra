@@ -80,7 +80,7 @@ variable "otel_collector_grpc_endpoint" {
 
 job "api" {
   datacenters = [var.gcp_zone]
-
+  node_pool = "api"
   priority = 90
 
   group "api-service" {

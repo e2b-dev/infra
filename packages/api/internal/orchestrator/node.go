@@ -21,7 +21,8 @@ type nodeInfo struct {
 }
 
 func (o *Orchestrator) listNomadNodes() ([]*nodeInfo, error) {
-	nomadNodes, _, err := o.nomadClient.Nodes().List(&nomadapi.QueryOptions{Filter: "Status == \"ready\""})
+	// TODO: Use variable for node pool
+	nomadNodes, _, err := o.nomadClient.Nodes().List(&nomadapi.QueryOptions{Filter: "Status == \"ready\" and NodePool == \"default\""})
 	if err != nil {
 		return nil, err
 	}
