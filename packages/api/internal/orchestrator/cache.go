@@ -12,7 +12,6 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, error) {
@@ -48,7 +47,6 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 			}
 		}
 
-		// TODO: Maybe we should remove nodes that are not in the list anymore
 		for _, node := range o.nodes {
 			found := false
 			for _, activeNode := range nodes {
@@ -114,11 +112,11 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 
 		node, err := o.GetNode(info.Instance.ClientID)
 		if err != nil {
-			return fmt.Errorf("failed to get node '%s': %w", info.Instance.ClientID, err)
+			logger.Errorf("failed to get node '%s': %w", info.Instance.ClientID, err)
+		} else {
+			node.CPUUsage -= info.VCpu
+			node.RamUsage -= info.RamMB
 		}
-
-		node.CPUUsage -= info.VCpu
-		node.RamUsage -= info.RamMB
 
 		_, err = node.Client.Sandbox.Delete(ctx, &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID})
 		if err != nil {
@@ -135,10 +133,11 @@ func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *za
 	return func(info instance.InstanceInfo) error {
 		node, err := o.GetNode(info.Instance.ClientID)
 		if err != nil {
-			return fmt.Errorf("failed to get node '%s': %w", info.Instance.ClientID, err)
+			logger.Errorf("failed to get node '%s': %v", info.Instance.ClientID, err)
+		} else {
+			node.CPUUsage += info.VCpu
+			node.RamUsage += info.RamMB
 		}
-		node.CPUUsage += info.VCpu
-		node.RamUsage += info.RamMB
 
 		_, err = o.analytics.Client.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
 			InstanceId:    info.Instance.SandboxID,
@@ -148,9 +147,7 @@ func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *za
 			Timestamp:     timestamppb.Now(),
 		})
 		if err != nil {
-			errMsg := fmt.Errorf("error when sending analytics event: %w", err)
 			logger.Errorf("Error sending Analytics event: %v", err)
-			telemetry.ReportCriticalError(ctx, errMsg)
 		}
 
 		logger.Infof("Created sandbox '%s'", info.Instance.SandboxID)
