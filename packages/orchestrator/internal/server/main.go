@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -30,6 +31,8 @@ type server struct {
 	tracer        trace.Tracer
 	networkPool   *network.Pool
 	templateCache *template.Cache
+
+	pauseMu sync.Mutex
 }
 
 func New() (*grpc.Server, error) {

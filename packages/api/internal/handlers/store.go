@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -20,11 +21,17 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
-	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 )
+
+const (
+	defaultRequestLimit = 16
+)
+
+var sandboxStartRequestLimit = semaphore.NewWeighted(defaultRequestLimit)
 
 type APIStore struct {
 	Ctx             context.Context

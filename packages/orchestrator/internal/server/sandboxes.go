@@ -177,16 +177,21 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	_, childSpan := s.tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
 
+	s.pauseMu.Lock()
+
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
 	if !ok {
+		s.pauseMu.Unlock()
+
 		return nil, status.New(codes.NotFound, "sandbox not found").Err()
 	}
 
 	s.dns.Remove(in.SandboxId)
 	s.sandboxes.Remove(in.SandboxId)
 
+	s.pauseMu.Unlock()
+
 	// TODO: Stop healthcheck, etc.
-	// TODO: We need to remove sandbox from API cache even if any following operations fail.
 
 	defer func() {
 		err := sbx.Stop()
@@ -217,8 +222,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	go func() {
-		// 7. Start proper upload to the storage in the background
-		// 9. Update the DB with info that the snapshot is fully uploaded
 		uploadErr := t.Upload(context.Background())
 		if uploadErr != nil {
 			fmt.Fprintf(os.Stderr, "error uploading template '%s': %v\n", in.TemplateId, uploadErr)

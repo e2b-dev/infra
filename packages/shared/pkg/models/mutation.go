@@ -3327,6 +3327,7 @@ type SnapshotMutation struct {
 	id            *uuid.UUID
 	created_at    *time.Time
 	sandbox_id    *string
+	metadata      *map[string]interface{}
 	clearedFields map[string]struct{}
 	env           *string
 	clearedenv    bool
@@ -3547,6 +3548,42 @@ func (m *SnapshotMutation) ResetSandboxID() {
 	m.sandbox_id = nil
 }
 
+// SetMetadata sets the "metadata" field.
+func (m *SnapshotMutation) SetMetadata(value map[string]interface{}) {
+	m.metadata = &value
+}
+
+// Metadata returns the value of the "metadata" field in the mutation.
+func (m *SnapshotMutation) Metadata() (r map[string]interface{}, exists bool) {
+	v := m.metadata
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetadata returns the old "metadata" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldMetadata(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetadata is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetadata requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetadata: %w", err)
+	}
+	return oldValue.Metadata, nil
+}
+
+// ResetMetadata resets all changes to the "metadata" field.
+func (m *SnapshotMutation) ResetMetadata() {
+	m.metadata = nil
+}
+
 // ClearEnv clears the "env" edge to the Env entity.
 func (m *SnapshotMutation) ClearEnv() {
 	m.clearedenv = true
@@ -3608,7 +3645,7 @@ func (m *SnapshotMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SnapshotMutation) Fields() []string {
-	fields := make([]string, 0, 3)
+	fields := make([]string, 0, 4)
 	if m.created_at != nil {
 		fields = append(fields, snapshot.FieldCreatedAt)
 	}
@@ -3617,6 +3654,9 @@ func (m *SnapshotMutation) Fields() []string {
 	}
 	if m.sandbox_id != nil {
 		fields = append(fields, snapshot.FieldSandboxID)
+	}
+	if m.metadata != nil {
+		fields = append(fields, snapshot.FieldMetadata)
 	}
 	return fields
 }
@@ -3632,6 +3672,8 @@ func (m *SnapshotMutation) Field(name string) (ent.Value, bool) {
 		return m.EnvID()
 	case snapshot.FieldSandboxID:
 		return m.SandboxID()
+	case snapshot.FieldMetadata:
+		return m.Metadata()
 	}
 	return nil, false
 }
@@ -3647,6 +3689,8 @@ func (m *SnapshotMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldEnvID(ctx)
 	case snapshot.FieldSandboxID:
 		return m.OldSandboxID(ctx)
+	case snapshot.FieldMetadata:
+		return m.OldMetadata(ctx)
 	}
 	return nil, fmt.Errorf("unknown Snapshot field %s", name)
 }
@@ -3676,6 +3720,13 @@ func (m *SnapshotMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSandboxID(v)
+		return nil
+	case snapshot.FieldMetadata:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetadata(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Snapshot field %s", name)
@@ -3734,6 +3785,9 @@ func (m *SnapshotMutation) ResetField(name string) error {
 		return nil
 	case snapshot.FieldSandboxID:
 		m.ResetSandboxID()
+		return nil
+	case snapshot.FieldMetadata:
+		m.ResetMetadata()
 		return nil
 	}
 	return fmt.Errorf("unknown Snapshot field %s", name)

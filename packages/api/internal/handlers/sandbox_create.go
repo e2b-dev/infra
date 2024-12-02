@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -23,11 +22,25 @@ import (
 )
 
 const (
-	defaultRequestLimit = 16
-	InstanceIDPrefix    = "i"
+	InstanceIDPrefix = "i"
 )
 
-var postSandboxParallelLimit = semaphore.NewWeighted(defaultRequestLimit)
+
+
+
+
+func startSandbox(
+	ctx context.Context,
+	a *APIStore,
+	sandboxID string,
+	team authcache.AuthTeamInfo,
+	env *models.Env,
+	build *models.EnvBuild,
+)
+
+
+
+
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -107,7 +120,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	counter.Add(ctx, 1)
-	limitErr := postSandboxParallelLimit.Acquire(ctx, 1)
+	limitErr := sandboxStartRequestLimit.Acquire(ctx, 1)
 	counter.Add(ctx, -1)
 	if limitErr != nil {
 		errMsg := fmt.Errorf("error when acquiring parallel lock: %w", limitErr)
@@ -118,7 +131,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 
-	defer postSandboxParallelLimit.Release(1)
+	defer sandboxStartRequestLimit.Release(1)
 	telemetry.ReportEvent(ctx, "create sandbox parallel limit semaphore slot acquired")
 
 	rateSpan.End()

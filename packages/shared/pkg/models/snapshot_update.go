@@ -58,6 +58,12 @@ func (su *SnapshotUpdate) SetNillableSandboxID(s *string) *SnapshotUpdate {
 	return su
 }
 
+// SetMetadata sets the "metadata" field.
+func (su *SnapshotUpdate) SetMetadata(m map[string]interface{}) *SnapshotUpdate {
+	su.mutation.SetMetadata(m)
+	return su
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (su *SnapshotUpdate) SetEnv(e *Env) *SnapshotUpdate {
 	return su.SetEnvID(e.ID)
@@ -129,6 +135,9 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := su.mutation.SandboxID(); ok {
 		_spec.SetField(snapshot.FieldSandboxID, field.TypeString, value)
+	}
+	if value, ok := su.mutation.Metadata(); ok {
+		_spec.SetField(snapshot.FieldMetadata, field.TypeJSON, value)
 	}
 	if su.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -210,6 +219,12 @@ func (suo *SnapshotUpdateOne) SetNillableSandboxID(s *string) *SnapshotUpdateOne
 	if s != nil {
 		suo.SetSandboxID(*s)
 	}
+	return suo
+}
+
+// SetMetadata sets the "metadata" field.
+func (suo *SnapshotUpdateOne) SetMetadata(m map[string]interface{}) *SnapshotUpdateOne {
+	suo.mutation.SetMetadata(m)
 	return suo
 }
 
@@ -314,6 +329,9 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 	}
 	if value, ok := suo.mutation.SandboxID(); ok {
 		_spec.SetField(snapshot.FieldSandboxID, field.TypeString, value)
+	}
+	if value, ok := suo.mutation.Metadata(); ok {
+		_spec.SetField(snapshot.FieldMetadata, field.TypeJSON, value)
 	}
 	if suo.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{

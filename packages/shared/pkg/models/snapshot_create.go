@@ -51,6 +51,12 @@ func (sc *SnapshotCreate) SetSandboxID(s string) *SnapshotCreate {
 	return sc
 }
 
+// SetMetadata sets the "metadata" field.
+func (sc *SnapshotCreate) SetMetadata(m map[string]interface{}) *SnapshotCreate {
+	sc.mutation.SetMetadata(m)
+	return sc
+}
+
 // SetID sets the "id" field.
 func (sc *SnapshotCreate) SetID(u uuid.UUID) *SnapshotCreate {
 	sc.mutation.SetID(u)
@@ -114,6 +120,9 @@ func (sc *SnapshotCreate) check() error {
 	if _, ok := sc.mutation.SandboxID(); !ok {
 		return &ValidationError{Name: "sandbox_id", err: errors.New(`models: missing required field "Snapshot.sandbox_id"`)}
 	}
+	if _, ok := sc.mutation.Metadata(); !ok {
+		return &ValidationError{Name: "metadata", err: errors.New(`models: missing required field "Snapshot.metadata"`)}
+	}
 	if _, ok := sc.mutation.EnvID(); !ok {
 		return &ValidationError{Name: "env", err: errors.New(`models: missing required edge "Snapshot.env"`)}
 	}
@@ -161,6 +170,10 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.SandboxID(); ok {
 		_spec.SetField(snapshot.FieldSandboxID, field.TypeString, value)
 		_node.SandboxID = value
+	}
+	if value, ok := sc.mutation.Metadata(); ok {
+		_spec.SetField(snapshot.FieldMetadata, field.TypeJSON, value)
+		_node.Metadata = value
 	}
 	if nodes := sc.mutation.EnvIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -256,6 +269,18 @@ func (u *SnapshotUpsert) UpdateSandboxID() *SnapshotUpsert {
 	return u
 }
 
+// SetMetadata sets the "metadata" field.
+func (u *SnapshotUpsert) SetMetadata(v map[string]interface{}) *SnapshotUpsert {
+	u.Set(snapshot.FieldMetadata, v)
+	return u
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateMetadata() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldMetadata)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
 // Using this option is equivalent to using:
 //
@@ -332,6 +357,20 @@ func (u *SnapshotUpsertOne) SetSandboxID(v string) *SnapshotUpsertOne {
 func (u *SnapshotUpsertOne) UpdateSandboxID() *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateSandboxID()
+	})
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *SnapshotUpsertOne) SetMetadata(v map[string]interface{}) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetMetadata(v)
+	})
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateMetadata() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateMetadata()
 	})
 }
 
@@ -578,6 +617,20 @@ func (u *SnapshotUpsertBulk) SetSandboxID(v string) *SnapshotUpsertBulk {
 func (u *SnapshotUpsertBulk) UpdateSandboxID() *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateSandboxID()
+	})
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *SnapshotUpsertBulk) SetMetadata(v map[string]interface{}) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetMetadata(v)
+	})
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateMetadata() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateMetadata()
 	})
 }
 

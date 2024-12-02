@@ -3,6 +3,7 @@
 package models
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -25,6 +26,8 @@ type Snapshot struct {
 	EnvID string `json:"env_id,omitempty"`
 	// SandboxID holds the value of the "sandbox_id" field.
 	SandboxID string `json:"sandbox_id,omitempty"`
+	// Metadata holds the value of the "metadata" field.
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the SnapshotQuery when eager-loading is set.
 	Edges        SnapshotEdges `json:"edges"`
@@ -58,6 +61,8 @@ func (*Snapshot) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case snapshot.FieldMetadata:
+			values[i] = new([]byte)
 		case snapshot.FieldEnvID, snapshot.FieldSandboxID:
 			values[i] = new(sql.NullString)
 		case snapshot.FieldCreatedAt:
@@ -102,6 +107,14 @@ func (s *Snapshot) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field sandbox_id", values[i])
 			} else if value.Valid {
 				s.SandboxID = value.String
+			}
+		case snapshot.FieldMetadata:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field metadata", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &s.Metadata); err != nil {
+					return fmt.Errorf("unmarshal field metadata: %w", err)
+				}
 			}
 		default:
 			s.selectValues.Set(columns[i], values[i])
@@ -152,6 +165,9 @@ func (s *Snapshot) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("sandbox_id=")
 	builder.WriteString(s.SandboxID)
+	builder.WriteString(", ")
+	builder.WriteString("metadata=")
+	builder.WriteString(fmt.Sprintf("%v", s.Metadata))
 	builder.WriteByte(')')
 	return builder.String()
 }

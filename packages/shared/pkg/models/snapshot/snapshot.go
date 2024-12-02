@@ -20,6 +20,8 @@ const (
 	FieldEnvID = "env_id"
 	// FieldSandboxID holds the string denoting the sandbox_id field in the database.
 	FieldSandboxID = "sandbox_id"
+	// FieldMetadata holds the string denoting the metadata field in the database.
+	FieldMetadata = "metadata"
 	// EdgeEnv holds the string denoting the env edge name in mutations.
 	EdgeEnv = "env"
 	// Table holds the table name of the snapshot in the database.
@@ -39,6 +41,7 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldEnvID,
 	FieldSandboxID,
+	FieldMetadata,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
