@@ -88,15 +88,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 
 	// Sort sandboxes by start time descending
 	slices.SortFunc(sandboxes, func(a, b api.RunningSandbox) int {
-		if a.StartedAt.After(b.StartedAt) {
-			return -1
-		}
-
-		if a.StartedAt.Before(b.StartedAt) {
-			return 1
-		}
-
-		return 0
+                return a.StartedAt.Compare(b.StartedAt)
 	})
 
 	c.JSON(http.StatusOK, sandboxes)
