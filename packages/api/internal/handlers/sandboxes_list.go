@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"net/http"
-	"sort"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -87,8 +87,16 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 	}
 
 	// Sort sandboxes by start time descending
-	sort.Slice(sandboxes, func(i, j int) bool {
-		return sandboxes[i].StartedAt.After(sandboxes[j].StartedAt)
+	slices.SortFunc(sandboxes, func(a, b api.RunningSandbox) int {
+		if a.StartedAt.After(b.StartedAt) {
+			return -1
+		}
+
+		if a.StartedAt.Before(b.StartedAt) {
+			return 1
+		}
+
+		return 0
 	})
 
 	c.JSON(http.StatusOK, sandboxes)
