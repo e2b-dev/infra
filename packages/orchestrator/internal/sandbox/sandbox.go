@@ -84,11 +84,17 @@ func NewSandbox(
 	networkSpan.End()
 
 	internalLogger := logs.NewSandboxLogger(config.SandboxID, config.TemplateID, config.TeamID, config.VCpuCount, config.MemoryMB, true)
-
 	defer func() {
 		if err != nil {
-			networkPool.Return(consul, ips)
-			internalLogger.Debugf("returned ip slot")
+			// Just to be sure the network isn't the problem
+			err = cleanupSlot(consul, ips)
+			if err != nil {
+				internalLogger.Errorf("failed to remove network slot: %s", err)
+				telemetry.ReportCriticalError(childCtx, fmt.Errorf("failed to remove network slot: %w", err))
+			}
+
+			telemetry.ReportEvent(childCtx, "removed network slot")
+			internalLogger.Debugf("removed network slot")
 		}
 	}()
 
