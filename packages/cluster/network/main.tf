@@ -497,7 +497,7 @@ resource "google_compute_security_policy_rule" "api-throttling-api-key" {
     }
 
     rate_limit_threshold {
-      count        = var.domain_name == "e2b.dev" ? 60 : 120
+      count        = var.domain_name == "e2b.dev" ? 60 : 240
       interval_sec = 30
     }
   }
