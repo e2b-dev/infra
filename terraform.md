@@ -1,15 +1,18 @@
 # Terraform deployment
 
 ### Prerequisites
+
 You will need the following installed:
-- packer
-- terraform (v1.5 > version < 1.6)
-- atlas
-- golang
-- gcloud cli
-- docker
+
+- [packer](https://developer.hashicorp.com/packer/tutorials/docker-get-started/get-started-install-cli)
+- [terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli) (v1.5 > version < 1.6)
+- [atlas](https://atlasgo.io/docs#installation)
+- [golang](https://go.dev/doc/install)
+- [gcloud cli](https://cloud.google.com/sdk/docs/install)
+- [docker](https://docs.docker.com/engine/install/)
 
 You will also need:
+
 - a Cloudflare account
 - a domain on Cloudflare
 - GCP account + project
@@ -18,19 +21,21 @@ Optional but recommended for monitoring and logging:
 - Grafana Account & Stack (see Step 15 for detailed notes)
 - Posthog Account
 
-Lastly, Step 8 *require you to be on Linux* (explanation on step 8 for those interested). These are building Firecracker kernels and required versions--in the future, we will have these pre-built and available for ease-of-use.
-
+Lastly, Step 9 *require you to be on Linux* (explanation on step 8 for those interested). These are building Firecracker kernels and required versions--in the future, we will have these pre-built and available for ease-of-use.
 
 Check if you can use config for terraform state management
 
-1. Create bucket in Google Cloud
-2. Create `.env.prod` from `.env.template` and fill in the values. All are required except #Tests
+1. [Create bucket in Google Cloud](https://cloud.google.com/storage/docs/creating-buckets) (this is the source of truth for the terraform state)
+2. Create `.env.prod` from `.env.template` in the root of the repo and fill in the values. All are required except #Tests
 3. Run `make switch-env ENV=prod`
-4. Manually create a DB in Supabase and run `make migrate` (This step will fail--that's okay. After you get the error message, you will need to create atlas_schema_revisions.atlas_schema_revisions, just copied from public.atlas_schema_revisions) This can be done with the following statement in the Supabase visual SQL Editor:
-```
+4. Manually create a DB in your postgres (new project in Supabase) instance and run `make migrate` (This step will fail--that's okay. After you get the error message, you will need to create `atlas_schema_revisions.atlas_schema_revisions`, just copied from `public.atlas_schema_revisions`) This can be done with the following statement in the Supabase visual SQL Editor:
+
+```sql
 CREATE TABLE  atlas_schema_revisions.atlas_schema_revisions (LIKE public.atlas_schema_revisions INCLUDING ALL); 
 ```
-5. Run `make init` (If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds) A full list of services that will be enabled for API access:
+
+5. Run `make migrate` again
+6. Run `make init` (If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds) A full list of services that will be enabled for API access:
    - [Secret Manager API](https://console.cloud.google.com/apis/library/secretmanager.googleapis.com)
    - [Certificate Manager API](https://console.cloud.google.com/apis/library/certificatemanager.googleapis.com)
    - [Compute Engine API](https://console.cloud.google.com/apis/library/compute.googleapis.com)
@@ -38,10 +43,10 @@ CREATE TABLE  atlas_schema_revisions.atlas_schema_revisions (LIKE public.atlas_s
    - [OS Config API](https://console.cloud.google.com/apis/library/osconfig.googleapis.com)
    - [Stackdriver Monitoring API](https://console.cloud.google.com/apis/library/monitoring.googleapis.com)
    - [Stackdriver Logging API](https://console.cloud.google.com/apis/library/logging.googleapis.com)
-6. Run `make build-cluster-disk-image`
-7. Run `make build-and-upload-docker-images`
-8. Run `make copy-public-builds` (you can build your own kernel and firecracker version from source by running, more info bellow)
-9. At the time of this writing, several versions are required. The script may not fully create and upload these. As of 9/27/24, your Storage buckets should look like this:  
+7. Run `make build-cluster-disk-image`
+8. Run `make build-and-upload-docker-images`
+9. Run `make copy-public-builds` (you can build your own kernel and firecracker version from source by running, more info bellow)
+10. At the time of this writing, several versions are required. The script may not fully create and upload these. As of 9/27/24, your Storage buckets should look like this:  
 ```
 <prefix>-fc-env-pipeline/envd  
                         /envd-v.0.0.1 (this is legacy)  
