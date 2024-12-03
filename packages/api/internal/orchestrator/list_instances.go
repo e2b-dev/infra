@@ -70,9 +70,8 @@ func (o *Orchestrator) getInstances(ctx context.Context, nodeID string) ([]*inst
 			KernelVersion:      config.KernelVersion,
 			FirecrackerVersion: config.FirecrackerVersion,
 			EnvdVersion:        config.EnvdVersion,
-			// TODO: Regenerate the spec
-			// TotalDiskSizeMB:   config.TotalDiskSizeMB,
-			MaxInstanceLength: time.Duration(config.MaxSandboxLength) * time.Hour,
+			TotalDiskSizeMB:    config.TotalDiskSizeMb,
+			MaxInstanceLength:  time.Duration(config.MaxSandboxLength) * time.Hour,
 		})
 	}
 
