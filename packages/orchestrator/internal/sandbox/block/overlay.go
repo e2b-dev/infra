@@ -11,7 +11,7 @@ type Overlay struct {
 	blockSize int64
 }
 
-func NewOverlay(device ReadonlyDevice, cache Device, blockSize int64) *Overlay {
+func NewOverlay(device ReadonlyDevice, cache *Cache, blockSize int64) *Overlay {
 	return &Overlay{
 		device:    device,
 		cache:     cache,
@@ -63,16 +63,16 @@ func (o *Overlay) Close() error {
 	return o.cache.Close()
 }
 
-func LayerDevices(blockSize int64, layers ...Device) (ReadonlyDevice, error) {
+func LayerDevices(blockSize int64, layers ...*Cache) (ReadonlyDevice, error) {
 	if len(layers) == 0 {
 		return nil, fmt.Errorf("at least one layer is required")
 	}
 
-	overlay := layers[0]
+	var device Device = layers[0]
 
 	for _, layer := range layers[1:] {
-		overlay = NewOverlay(overlay, layer, blockSize)
+		device = NewOverlay(device, layer, blockSize)
 	}
 
-	return overlay, nil
+	return device, nil
 }
