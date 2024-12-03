@@ -20,7 +20,7 @@ type chunker struct {
 	ctx context.Context
 
 	base  io.ReaderAt
-	cache *cache
+	cache *Cache
 
 	size int64
 
@@ -34,7 +34,7 @@ func newChunker(
 	base io.ReaderAt,
 	cachePath string,
 ) (*chunker, error) {
-	cache, err := newCache(size, blockSize, cachePath)
+	cache, err := NewCache(size, blockSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}

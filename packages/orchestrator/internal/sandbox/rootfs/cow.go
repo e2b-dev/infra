@@ -20,10 +20,17 @@ type CowDevice struct {
 }
 
 func NewCowDevice(rootfs block.ReadonlyDevice, cachePath string, blockSize int64) (*CowDevice, error) {
-	overlay, err := block.NewOverlay(rootfs, blockSize, cachePath)
+	size, err := rootfs.Size()
 	if err != nil {
-		return nil, fmt.Errorf("error creating overlay: %w", err)
+		return nil, fmt.Errorf("error getting device size: %w", err)
 	}
+
+	cache, err := block.NewCache(size, blockSize, cachePath)
+	if err != nil {
+		return nil, fmt.Errorf("error creating cache: %w", err)
+	}
+
+	overlay := block.NewOverlay(rootfs, cache, blockSize)
 
 	mnt := nbd.NewDirectPathMount(overlay)
 

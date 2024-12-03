@@ -16,8 +16,6 @@ type ReadonlyDevice interface {
 }
 
 type Device interface {
-	io.ReaderAt
+	ReadonlyDevice
 	io.WriterAt
-	Size() (int64, error)
-	Close() error
 }
