@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	DefaultKernelVersion = "vmlinux-6.1.99"
+	DefaultKernelVersion = "vmlinux-6.1.102"
 	// The Firecracker version the last tag + the short SHA (so we can build our dev previews)
 	DefaultFirecrackerVersion = "v1.10.1_1fcdaec"
 )
