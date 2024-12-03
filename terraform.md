@@ -40,14 +40,7 @@ CREATE TABLE  atlas_schema_revisions.atlas_schema_revisions (LIKE public.atlas_s
    - [Stackdriver Logging API](https://console.cloud.google.com/apis/library/logging.googleapis.com)
 6. Run `make build-cluster-disk-image`
 7. Run `make build-and-upload-docker-images`
-8. Either:
-   - Run `make copy-public-builds`
-   - You can build your own kernel and firecracker version from source by running `make build-and-upload-fc-components`
-     - Note: This needs to be done on a Linux machine due to case-sensitive requirements for the file system--you'll error out during the automated git section with a complaint about unsaved changes. Kernel and versions could alternatively be sourced elsewhere.
-     - You will have to copy `envd-v0.0.1` from public bucket by running the command bellow or you can build it from [this commit](https://github.com/e2b-dev/infra/tree/703da3b2b8ef4af450f9874228e7406bdfc75d4a)
-```
-gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-env-pipeline/envd-v0.0.1
-```
+8. Run `make copy-public-builds` (you can build your own kernel and firecracker version from source by running, more info bellow)
 9. At the time of this writing, several versions are required. The script may not fully create and upload these. As of 9/27/24, your Storage buckets should look like this:  
 ```
 <prefix>-fc-env-pipeline/envd  
@@ -73,6 +66,16 @@ Some notes:
 16. If any problems arise, open [a Github Issue on the repo](https://github.com/e2b-dev/infra/issues) and we'll look into it.
 
 
+---
+
+### Building Firecracker and UFFD from source
+
+You can build your own kernel and firecracker version from source by running `make build-and-upload-fc-components`
+- Note: This needs to be done on a Linux machine due to case-sensitive requirements for the file system--you'll error out during the automated git section with a complaint about unsaved changes. Kernel and versions could alternatively be sourced elsewhere.
+- You will still have to copy `envd-v0.0.1` from public bucket by running the command bellow or you can build it from [this commit](https://github.com/e2b-dev/infra/tree/703da3b2b8ef4af450f9874228e7406bdfc75d4a)
+```
+gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-env-pipeline/envd-v0.0.1
+```
 
 
 
