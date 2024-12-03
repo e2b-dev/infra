@@ -17,6 +17,8 @@ variable "loki_bucket_name" {
 job "loki" {
   datacenters = [var.gcp_zone]
   type        = "service"
+  node_pool = "api"
+
 
   priority = 75
 

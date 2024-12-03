@@ -80,7 +80,7 @@ variable "otel_collector_grpc_endpoint" {
 
 job "api" {
   datacenters = [var.gcp_zone]
-
+  node_pool = "api"
   priority = 90
 
   group "api-service" {
@@ -126,6 +126,7 @@ job "api" {
         LOGS_COLLECTOR_ADDRESS        = var.logs_collector_address
         NOMAD_TOKEN                   = var.nomad_token
         OTEL_COLLECTOR_GRPC_ENDPOINT  = var.otel_collector_grpc_endpoint
+        TEMPLATE_BUCKET_NAME          = "skip"
       }
 
       config {

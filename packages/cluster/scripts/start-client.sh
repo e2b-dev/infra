@@ -19,6 +19,18 @@ exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&
 ulimit -n 1048576
 export GOMAXPROCS='nproc'
 
+sudo tee -a /etc/sysctl.conf <<EOF
+# Increase the maximum number of socket connections
+net.core.somaxconn = 65535
+
+# Increase the maximum number of backlogged connections
+net.core.netdev_max_backlog = 65535
+
+# Increase maximum number of TCP sockets
+net.ipv4.tcp_max_syn_backlog = 65535
+EOF
+sudo sysctl -p
+
 echo "Disabling inotify for NBD devices"
 # https://lore.kernel.org/lkml/20220422054224.19527-1-matthew.ruffell@canonical.com/
 cat <<EOH > /etc/udev/rules.d/97-nbd-device.rules

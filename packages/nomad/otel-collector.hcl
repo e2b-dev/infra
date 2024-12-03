@@ -41,6 +41,7 @@ variables {
 job "otel-collector" {
   datacenters = [var.gcp_zone]
   type        = "system"
+  node_pool = "api"
 
   priority = 95
 
@@ -122,10 +123,10 @@ receivers:
         write_buffer_size: 10943040
       http:
   nginx/session-proxy:
-    endpoint: http://localhost:3004/status
+    endpoint: http://session-proxy.service.consul:3004/status
     collection_interval: 10s
   nginx/client-proxy:
-    endpoint: http://localhost:3001/status
+    endpoint: http://client-proxy.service.consul:3001/status
     collection_interval: 10s
   # filelog/session-proxy:
   #   include:

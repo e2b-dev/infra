@@ -59,7 +59,7 @@ resource "nomad_job" "api" {
       template_manager_address      = "http://localhost:${var.template_manager_port}"
       otel_collector_grpc_endpoint  = "otel-collector.service.consul:4317"
       loki_address                  = "http://loki.service.consul:${var.loki_service_port.port}"
-      logs_collector_address        = "http://logs-collector.service.consul:${var.logs_proxy_port.port}"
+      logs_collector_address        = ""
       gcp_zone                      = var.gcp_zone
       api_port_name                 = var.api_port.name
       api_port_number               = var.api_port.port
@@ -106,7 +106,6 @@ resource "nomad_job" "client_proxy" {
       client_proxy_health_port_number = var.client_proxy_health_port.port
       client_proxy_health_port_name   = var.client_proxy_health_port.name
       client_proxy_health_port_path   = var.client_proxy_health_port.path
-      session_proxy_service_name      = var.session_proxy_service_name
       load_balancer_conf              = templatefile("${path.module}/proxies/client.conf", { domain_name_escaped = replace(var.domain_name, ".", "\\.") })
       nginx_conf                      = file("${path.module}/proxies/nginx.conf")
     }

@@ -6,6 +6,8 @@ IMAGE := e2b-orchestration/api
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
+	TF_VAR_api_machine_type=$(API_MACHINE_TYPE) \
+	TF_VAR_api_cluster_size=$(API_CLUSTER_SIZE) \
 	TF_VAR_server_machine_type=$(SERVER_MACHINE_TYPE) \
 	TF_VAR_server_cluster_size=$(SERVER_CLUSTER_SIZE) \
 	TF_VAR_gcp_project_id=$(GCP_PROJECT_ID) \

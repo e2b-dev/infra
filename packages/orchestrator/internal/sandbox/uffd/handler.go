@@ -78,6 +78,7 @@ func (u *Uffd) Start(sandboxId string) error {
 	}
 
 	go func() {
+		// TODO: If the handle function fails, we should kill the sandbox
 		handleErr := u.handle(sandboxId)
 		closeErr := u.lis.Close()
 		writerErr := u.exitWriter.Close()

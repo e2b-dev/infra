@@ -14,7 +14,6 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
@@ -229,26 +228,20 @@ func (p *Process) Start(
 		return errors.Join(errMsg, fcStopErr)
 	}
 
-	eg, ctx := errgroup.WithContext(startCtx)
+	device, err := p.rootfs.Path()
+	if err != nil {
+		return fmt.Errorf("error getting rootfs path: %w", err)
+	}
 
-	eg.Go(func() error {
-		device, err := p.rootfs.Path()
-		if err != nil {
-			return fmt.Errorf("error getting rootfs path: %w", err)
-		}
+	err = os.Remove(p.files.SandboxCacheRootfsLinkPath())
+	if err != nil {
+		return fmt.Errorf("error removing rootfs symlink: %w", err)
+	}
 
-		err = os.Remove(p.files.SandboxCacheRootfsLinkPath())
-		if err != nil {
-			return fmt.Errorf("error removing rootfs symlink: %w", err)
-		}
-
-		err = os.Symlink(device, p.files.SandboxCacheRootfsLinkPath())
-		if err != nil {
-			return fmt.Errorf("error symlinking rootfs: %w", err)
-		}
-
-		return nil
-	})
+	err = os.Symlink(device, p.files.SandboxCacheRootfsLinkPath())
+	if err != nil {
+		return fmt.Errorf("error symlinking rootfs: %w", err)
+	}
 
 	err = p.client.loadSnapshot(
 		startCtx,
@@ -260,13 +253,6 @@ func (p *Process) Start(
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
-	}
-
-	err = eg.Wait()
-	if err != nil {
-		fcStopErr := p.Stop()
-
-		return errors.Join(fmt.Errorf("error waiting for rootfs symlink: %w", err), fcStopErr)
 	}
 
 	err = p.client.resumeVM(startCtx)

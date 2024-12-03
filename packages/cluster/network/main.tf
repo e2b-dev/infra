@@ -27,7 +27,7 @@ locals {
         request_path = var.client_proxy_health_port.path
         port         = var.client_proxy_health_port.port
       }
-      groups = [{ group = var.client_instance_group }]
+      groups = [{ group = var.api_instance_group }]
     }
     api = {
       protocol                        = "HTTP"
@@ -39,7 +39,7 @@ locals {
         request_path = var.api_port.health_path
         port         = var.api_port.port
       }
-      groups = [{ group = var.client_instance_group }]
+      groups = [{ group = var.api_instance_group }]
     }
     docker-reverse-proxy = {
       protocol                        = "HTTP"
@@ -51,7 +51,7 @@ locals {
         request_path = var.docker_reverse_proxy_port.health_path
         port         = var.docker_reverse_proxy_port.port
       }
-      groups = [{ group = var.client_instance_group }]
+      groups = [{ group = var.api_instance_group }]
     }
     nomad = {
       protocol                        = "HTTP"
@@ -423,6 +423,18 @@ module "gce_lb_http_logs" {
       groups = [
         {
           group                        = var.client_instance_group
+          balancing_mode               = null
+          capacity_scaler              = null
+          description                  = null
+          max_connections              = null
+          max_connections_per_instance = null
+          max_connections_per_endpoint = null
+          max_rate                     = null
+          max_rate_per_instance        = null
+          max_rate_per_endpoint        = null
+          max_utilization              = null
+          }, {
+          group                        = var.api_instance_group
           balancing_mode               = null
           capacity_scaler              = null
           description                  = null
