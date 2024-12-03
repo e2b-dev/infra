@@ -10,8 +10,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (o *Orchestrator) PauseInstance(ctx context.Context, sbx *instance.InstanceInfo) error {
-	_, childSpan := o.tracer.Start(ctx, "delete-instance")
+func (o *Orchestrator) PauseInstance(ctx context.Context, sbx *instance.InstanceInfo, templateID, buildID string) error {
+	_, childSpan := o.tracer.Start(ctx, "pause-instance")
 	defer childSpan.End()
 
 	client, err := o.GetClient(sbx.Instance.ClientID)
@@ -21,12 +21,10 @@ func (o *Orchestrator) PauseInstance(ctx context.Context, sbx *instance.Instance
 
 	defer o.DeleteInstance(ctx, sbx.Instance.SandboxID)
 
-	// TODO: Create new build and template + snapshot if there is no snapshot for this sandbox_id already
-
 	_, err = client.Sandbox.Pause(ctx, &orchestrator.SandboxPauseRequest{
 		SandboxId:  sbx.Instance.SandboxID,
-		TemplateId: // New snapshot tempalte
-		BuildId:    // New snapshot build
+		TemplateId: templateID,
+		BuildId:    buildID,
 	})
 
 	err = utils.UnwrapGRPCError(err)

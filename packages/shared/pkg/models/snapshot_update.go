@@ -59,7 +59,7 @@ func (su *SnapshotUpdate) SetNillableSandboxID(s *string) *SnapshotUpdate {
 }
 
 // SetMetadata sets the "metadata" field.
-func (su *SnapshotUpdate) SetMetadata(m map[string]interface{}) *SnapshotUpdate {
+func (su *SnapshotUpdate) SetMetadata(m map[string]string) *SnapshotUpdate {
 	su.mutation.SetMetadata(m)
 	return su
 }
@@ -223,7 +223,7 @@ func (suo *SnapshotUpdateOne) SetNillableSandboxID(s *string) *SnapshotUpdateOne
 }
 
 // SetMetadata sets the "metadata" field.
-func (suo *SnapshotUpdateOne) SetMetadata(m map[string]interface{}) *SnapshotUpdateOne {
+func (suo *SnapshotUpdateOne) SetMetadata(m map[string]string) *SnapshotUpdateOne {
 	suo.mutation.SetMetadata(m)
 	return suo
 }

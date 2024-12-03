@@ -7,6 +7,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
@@ -38,7 +40,36 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	err = a.orchestrator.PauseInstance(ctx, sbx)
+	snapshotConfig := &db.SnapshotInfo{
+		SandboxID:          sandboxID,
+		VCPU:               sbx.VCpu,
+		RAMMB:              sbx.RamMB,
+		TotalDiskSizeMB:    sbx.TotalDiskSizeMB,
+		Metadata:           sbx.Metadata,
+		KernelVersion:      sbx.KernelVersion,
+		FirecrackerVersion: sbx.FirecrackerVersion,
+		EnvdVersion:        sbx.Instance.EnvdVersion,
+	}
+
+	envBuild, err := a.db.NewSnapshotBuild(
+		ctx,
+		snapshotConfig,
+		teamID,
+	)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
+
+		return
+	}
+
+	err = a.orchestrator.PauseInstance(ctx, sbx, *envBuild.EnvID, envBuild.ID.String())
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
+
+		return
+	}
+
+	err = a.db.EnvBuildSetStatus(ctx, *envBuild.EnvID, envBuild.ID, envbuild.StatusSuccess)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
 

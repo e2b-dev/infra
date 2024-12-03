@@ -27,7 +27,7 @@ type Snapshot struct {
 	// SandboxID holds the value of the "sandbox_id" field.
 	SandboxID string `json:"sandbox_id,omitempty"`
 	// Metadata holds the value of the "metadata" field.
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the SnapshotQuery when eager-loading is set.
 	Edges        SnapshotEdges `json:"edges"`

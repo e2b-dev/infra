@@ -23,16 +23,20 @@ const (
 )
 
 type InstanceInfo struct {
-	Logger            *logs.SandboxLogger
-	Instance          *api.Sandbox
-	TeamID            *uuid.UUID
-	BuildID           *uuid.UUID
-	Metadata          map[string]string
-	MaxInstanceLength time.Duration
-	StartTime         time.Time
-	EndTime           time.Time
-	VCpu              int64
-	RamMB             int64
+	Logger             *logs.SandboxLogger
+	Instance           *api.Sandbox
+	TeamID             *uuid.UUID
+	BuildID            *uuid.UUID
+	Metadata           map[string]string
+	MaxInstanceLength  time.Duration
+	StartTime          time.Time
+	EndTime            time.Time
+	VCpu               int64
+	TotalDiskSizeMB    int64
+	RamMB              int64
+	KernelVersion      string
+	FirecrackerVersion string
+	EnvdVersion        string
 }
 
 type InstanceCache struct {

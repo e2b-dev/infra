@@ -52,7 +52,7 @@ func (sc *SnapshotCreate) SetSandboxID(s string) *SnapshotCreate {
 }
 
 // SetMetadata sets the "metadata" field.
-func (sc *SnapshotCreate) SetMetadata(m map[string]interface{}) *SnapshotCreate {
+func (sc *SnapshotCreate) SetMetadata(m map[string]string) *SnapshotCreate {
 	sc.mutation.SetMetadata(m)
 	return sc
 }
@@ -270,7 +270,7 @@ func (u *SnapshotUpsert) UpdateSandboxID() *SnapshotUpsert {
 }
 
 // SetMetadata sets the "metadata" field.
-func (u *SnapshotUpsert) SetMetadata(v map[string]interface{}) *SnapshotUpsert {
+func (u *SnapshotUpsert) SetMetadata(v map[string]string) *SnapshotUpsert {
 	u.Set(snapshot.FieldMetadata, v)
 	return u
 }
@@ -361,7 +361,7 @@ func (u *SnapshotUpsertOne) UpdateSandboxID() *SnapshotUpsertOne {
 }
 
 // SetMetadata sets the "metadata" field.
-func (u *SnapshotUpsertOne) SetMetadata(v map[string]interface{}) *SnapshotUpsertOne {
+func (u *SnapshotUpsertOne) SetMetadata(v map[string]string) *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.SetMetadata(v)
 	})
@@ -621,7 +621,7 @@ func (u *SnapshotUpsertBulk) UpdateSandboxID() *SnapshotUpsertBulk {
 }
 
 // SetMetadata sets the "metadata" field.
-func (u *SnapshotUpsertBulk) SetMetadata(v map[string]interface{}) *SnapshotUpsertBulk {
+func (u *SnapshotUpsertBulk) SetMetadata(v map[string]string) *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.SetMetadata(v)
 	})

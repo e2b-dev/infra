@@ -25,10 +25,11 @@ message SandboxConfig {
   
   int64 vcpu = 11;
   int64 ram_mb = 12;
+  int64 total_disk_size_mb = 13;
 
-  string team_id = 13;
+  string team_id = 14;
   // Maximum length of the sandbox in Hours.
-  int64 max_sandbox_length = 14;
+  int64 max_sandbox_length = 15;
 }
 
 message SandboxCreateRequest {
