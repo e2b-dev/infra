@@ -44,8 +44,10 @@ func newSandboxLogExporter(serviceName string) *sandboxLogExporter {
 	}
 }
 
-var logsExporter *sandboxLogExporter
-var logsExporterMU = sync.Mutex{}
+var (
+	logsExporter   *sandboxLogExporter
+	logsExporterMU = sync.Mutex{}
+)
 
 func getSandboxLogExporter() *sandboxLogExporter {
 	logsExporterMU.Lock()
@@ -96,7 +98,7 @@ func (l *SandboxLogger) sendEvent(logger *zerolog.Event, format string, v ...int
 		Str("instanceID", l.instanceID).
 		Str("envID", l.envID).
 		Str("teamID", l.teamID).
-		Bool("internal", l.internal).
+		Bool("internal", l.internal). // if this is true, it's sent to internal loki else to grafana cloud
 		Msgf(format, v...)
 }
 
@@ -128,6 +130,7 @@ func (l *SandboxLogger) Infof(
 ) {
 	l.sendEvent(l.exporter.logger.Info(), format, v...)
 }
+
 func (l *SandboxLogger) Debugf(
 	format string,
 	v ...interface{},
