@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -147,9 +146,9 @@ func NewSandbox(
 
 		telemetry.ReportEvent(childCtx, "created uffd")
 
-		uffdErr := fcUffd.Start(childCtx, tracer, logger)
+		err = fcUffd.Start(childCtx, tracer, logger)
 		if err != nil {
-			errMsg := fmt.Errorf("failed to start uffd: %w", uffdErr)
+			errMsg := fmt.Errorf("failed to start uffd: %w", err)
 			telemetry.ReportCriticalError(childCtx, errMsg)
 
 			return nil, errMsg
@@ -239,25 +238,22 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
 
-	uffdStartCtx, initSpan := tracer.Start(childCtx, "ensure-clock-sync")
-
 	// Sync envds.
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
-		initErr := instance.initEnvd(uffdStartCtx, tracer, config.EnvVars)
-		if initErr != nil {
-			return nil, fmt.Errorf("failed to init new envd: %w", initErr)
+		err = instance.initEnvd(ctx, tracer, config.EnvVars)
+		if err != nil {
+			return nil, fmt.Errorf("failed to init new envd: %w", err)
 		} else {
-			telemetry.ReportEvent(uffdStartCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxID))
+			telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: initialized new envd", config.SandboxID))
 		}
 	} else {
-		syncErr := instance.syncOldEnvd(uffdStartCtx)
+		syncErr := instance.syncOldEnvd(ctx)
 		if syncErr != nil {
-			telemetry.ReportError(uffdStartCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
+			telemetry.ReportError(ctx, fmt.Errorf("failed to sync old envd: %w", syncErr))
 		} else {
-			telemetry.ReportEvent(uffdStartCtx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxID))
+			telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: synced old envd", config.SandboxID))
 		}
 	}
-	initSpan.End()
 
 	instance.StartedAt = time.Now()
 
@@ -269,28 +265,6 @@ func NewSandbox(
 	}()
 
 	return instance, nil
-}
-
-func (s *Sandbox) syncClock(ctx context.Context, port int64) error {
-	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostIP(), port)
-
-	request, err := http.NewRequestWithContext(ctx, "POST", address, nil)
-	if err != nil {
-		return err
-	}
-
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return err
-	}
-
-	if _, err := io.Copy(io.Discard, response.Body); err != nil {
-		return err
-	}
-
-	defer response.Body.Close()
-
-	return nil
 }
 
 func (s *Sandbox) CleanupAfterFCStop(
