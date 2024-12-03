@@ -3,7 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -78,8 +78,8 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(
 		}
 
 		// Sort logs by timestamp (they are returned by the time they arrived in Loki)
-		sort.Slice(logs, func(i, j int) bool {
-			return logs[i].Timestamp.Before(logs[j].Timestamp)
+		slices.SortFunc(logs, func(a, b api.SandboxLog) int {
+			return a.Timestamp.Compare(b.Timestamp)
 		})
 
 		c.JSON(http.StatusOK, &api.SandboxLogs{
