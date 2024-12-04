@@ -6,6 +6,6 @@ This repository contains the infrastructure that powers the E2B platform.
 
 ## Self-hosting
 
-The infrastructure is deployed using [Terraform](./terraform.md) and right now it is deployable on GCP only.
+The infrastructure is deployed using [Terraform](./self-host) and right now it is deployable on GCP only.
 
 Setting the infrastructure up can be a little rough right now, but we plan to improve it in the future.
