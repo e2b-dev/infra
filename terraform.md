@@ -55,7 +55,6 @@ CREATE TABLE  atlas_schema_revisions.atlas_schema_revisions (LIKE public.atlas_s
 11. Run `make plan` and then `make apply`. Note: provisioning of the TLS certificates can take some time; you can check the status in the Google Cloud Console
 12. To access the nomad web UI, go to nomad.<your-domain.com>. Go to sign in, and when prompted for an API token, you can find this in GCP Secrets Manager. From here, you can see nomad jobs and tasks for both client and server, including logging.
 13. Look inside packages/nomad for config files for your logging and monitoring agents. Follow the steps described on Step 13 to apply changes to the agents.
-14. As of 9/27/24, GCP Secrets Manager does not auto-populate with Grafana, PostgreSQL connection string, or Posthog API credentials from the .env file. You will need to manually fill in these Secret values. For Grafana, these values can be found not inside the Stack, but from the `Details` button on your Grafana account when choosing a Stack, then details for each plugin. IF you used Supabase, the PostgreSQL connection string can be found there.
 15. If any problems arise, open [a Github Issue on the repo](https://github.com/e2b-dev/infra/issues) and we'll look into it.
 
 ---
