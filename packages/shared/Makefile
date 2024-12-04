@@ -14,7 +14,7 @@ check-atlas:
 	@if ! command -v atlas >/dev/null 2>&1; then \
 		echo "Atlas is not installed. Do you want to install it?  (Y/n): "; \
 		read choice; \
-		if [ "$$choice" = "y" ]; then \
+		if [ "$$choice" = "Y" ]; then \
 			curl -sSf https://atlasgo.sh | ATLAS_VERSION=v0.25.0 sh; \
 		else \
 			exit 1; \
