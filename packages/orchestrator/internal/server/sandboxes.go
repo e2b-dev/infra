@@ -211,6 +211,11 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
+	err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
+	if err != nil {
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
+
 	err = sbx.Snapshot(ctx, snapshotTemplateFiles)
 	if err != nil {
 		return nil, status.New(codes.Internal, err.Error()).Err()
@@ -227,6 +232,8 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			fmt.Fprintf(os.Stderr, "error uploading template '%s': %v\n", in.TemplateId, uploadErr)
 		}
 	}()
+
+	// TODO: Delete all sandbox data
 
 	return nil, status.New(codes.Unimplemented, "not implemented").Err()
 }

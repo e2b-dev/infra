@@ -46,3 +46,7 @@ mock:
 .PHONY: mock-nbd
 mock-nbd:
 	sudo go run -gcflags=all="-N -l" cmd/mock-nbd/mock.go
+
+.PHONY: mock-snapshot
+mock-snapshot:
+	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="test-client" go run cmd/mock-snapshot/mock.go  -template 5wzg6c91u51yaebviysf -build "f0370054-b669-4d7e-b33b-573d5287c6ef" -alive 1 -count 1

@@ -51,7 +51,7 @@ func (c *apiClient) loadSnapshot(
 		Context: ctx,
 		Body: &models.SnapshotLoadParams{
 			ResumeVM:            false,
-			EnableDiffSnapshots: false,
+			EnableDiffSnapshots: true,
 			MemBackend:          backend,
 			SnapshotPath:        &snapfilePath,
 		},
@@ -116,6 +116,7 @@ func (c *apiClient) createSnapshot(
 		Body: &models.SnapshotCreateParams{
 			MemFilePath:  &memfilePath,
 			SnapshotPath: &snapfilePath,
+			SnapshotType: models.SnapshotCreateParamsSnapshotTypeDiff,
 		},
 	}
 
