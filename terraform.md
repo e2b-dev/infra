@@ -79,7 +79,7 @@ gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-e
 - `make destroy` - destroys the cluster
 - `make version` - increments the repo version
 - `make build-and-upload` - builds and uploads the docker images, binaries, and cluster disk image
-- `make copy-public-builds` - copies the old envd binaries, kernels, and firecracker versions from the public bucket to your bucket
+- `make copy-public-builds` - copies the old envd binary, kernels, and firecracker versions from the public bucket to your bucket
 - `make migrate` - runs the migrations for your database
 - `make update-api` - updates the API docker image
 - `make switch-env ENV={prod,staging,dev}` - switches the environment
