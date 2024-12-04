@@ -3,6 +3,7 @@ ENV := $(shell cat .last_used_env || echo "not-set")
 
 OTEL_TRACING_PRINT ?= false
 IMAGE := e2b-orchestration/api
+EXCLUDE_GITHUB ?= 1
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
@@ -90,32 +91,14 @@ destroy:
 version:
 	./scripts/increment-version.sh
 
-.PHONY: build-all
-build-all:
-	$(MAKE) -C packages/envd build
-	$(MAKE) -C packages/api build
-	$(MAKE) -C packages/docker-reverse-proxy build
-	$(MAKE) -C packages/orchestrator build
-	$(MAKE) -C packages/template-manager build
-	$(MAKE) -C packages/fc-kernels build
-	$(MAKE) -C packages/fc-versions build
-
-.PHONY: build-cluster-disk-image
-build-cluster-disk-image:
+.PHONY: build-and-upload
+build-and-upload:
 	$(MAKE) -C packages/cluster-disk-image build
-
-.PHONY: build-and-upload-docker-images
-build-and-upload-docker-images:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) make update-api
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/docker-reverse-proxy build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/template-manager build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/envd build-and-upload
-
-.PHONY: build-and-upload-fc-components
-build-and-upload-fc-components:
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/fc-kernels build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/fc-versions build-and-upload
 
 .PHONY: copy-public-builds
 copy-public-builds:
