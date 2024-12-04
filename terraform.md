@@ -21,7 +21,6 @@ You will also need:
 - Grafana Account & Stack (see Step 15 for detailed notes)
 - Posthog Account
 
-Lastly, Step 9 _require you to be on Linux_ (explanation on step 8 for those interested). These are building Firecracker kernels and required versions--in the future, we will have these pre-built and available for ease-of-use.
 
 Check if you can use config for terraform state management
 
@@ -56,7 +55,6 @@ CREATE TABLE  atlas_schema_revisions.atlas_schema_revisions (LIKE public.atlas_s
 11. Run `make plan` and then `make apply`. Note: provisioning of the TLS certificates can take some time; you can check the status in the Google Cloud Console
 12. To access the nomad web UI, go to nomad.<your-domain.com>. Go to sign in, and when prompted for an API token, you can find this in GCP Secrets Manager. From here, you can see nomad jobs and tasks for both client and server, including logging.
 13. Look inside packages/nomad for config files for your logging and monitoring agents. Follow the steps described on Step 13 to apply changes to the agents.
-14. As of 9/27/24, GCP Secrets Manager does not auto-populate with Grafana, PostgreSQL connection string, or Posthog API credentials from the .env file. You will need to manually fill in these Secret values. For Grafana, these values can be found not inside the Stack, but from the `Details` button on your Grafana account when choosing a Stack, then details for each plugin. IF you used Supabase, the PostgreSQL connection string can be found there.
 15. If any problems arise, open [a Github Issue on the repo](https://github.com/e2b-dev/infra/issues) and we'll look into it.
 
 ---
@@ -76,12 +74,12 @@ gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-e
 
 - `make init` - setup the terraform environment
 - `make plan` - plans the terraform changes
-- `make apply` - applies the terraform changes
+- `make apply` - applies the terraform changes, you have to run `make plan` before this one 
 - `make plan-without-jobs` - plans the terraform changes without provisioning nomad jobs
 - `make destroy` - destroys the cluster
 - `make version` - increments the repo version
 - `make build-and-upload` - builds and uploads the docker images, binaries, and cluster disk image
-- `make copy-public-builds` - copies the old envd binaries, kernels, and firecracker versions from the public bucket to your bucket
+- `make copy-public-builds` - copies the old envd binary, kernels, and firecracker versions from the public bucket to your bucket
 - `make migrate` - runs the migrations for your database
 - `make update-api` - updates the API docker image
 - `make switch-env ENV={prod,staging,dev}` - switches the environment
