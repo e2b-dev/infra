@@ -74,7 +74,7 @@ gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-e
 
 - `make init` - setup the terraform environment
 - `make plan` - plans the terraform changes
-- `make apply` - applies the terraform changes
+- `make apply` - applies the terraform changes, you have to run `make plan` before this one 
 - `make plan-without-jobs` - plans the terraform changes without provisioning nomad jobs
 - `make destroy` - destroys the cluster
 - `make version` - increments the repo version
