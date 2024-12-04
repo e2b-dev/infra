@@ -21,7 +21,6 @@ You will also need:
 - Grafana Account & Stack (see Step 15 for detailed notes)
 - Posthog Account
 
-Lastly, Step 9 _require you to be on Linux_ (explanation on step 8 for those interested). These are building Firecracker kernels and required versions--in the future, we will have these pre-built and available for ease-of-use.
 
 Check if you can use config for terraform state management
 
