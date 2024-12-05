@@ -76,10 +76,6 @@ variable "postgres_connection_string_secret_name" {
 }
 
 # Proxies
-variable "client_cluster_size" {
-  type = number
-}
-
 variable "session_proxy_service_name" {
   type = string
 }

@@ -36,9 +36,7 @@ variable "loki_service_port_number" {
 
 job "logs-collector" {
   datacenters = [var.gcp_zone]
-  type        = "service"
-  node_pool = "api"
-
+  type        = "system"
 
   priority = 85
 
