@@ -20,7 +20,7 @@ func GetMetrics() (*Metrics, error) {
 		return nil, err
 	}
 
-	cpuPcts, err := cpu.Percent(time.Second, false)
+	cpuPcts, err := cpu.Percent(0, false)
 	if err != nil {
 		return nil, err
 	}
