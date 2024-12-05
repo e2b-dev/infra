@@ -204,7 +204,7 @@ resource "nomad_job" "orchestrator" {
       environment  = var.environment
       consul_token = var.consul_acl_token_secret
       cpu_mhz      = floor(data.google_compute_machine_types.client.machine_types[0].guest_cpus * 1.5) * 1000
-      memory_mb    = floor(data.google_compute_machine_types.client.machine_types[0].memory_mb * 0.8 / 1024) * 1024
+      memory_mb    = floor(data.google_compute_machine_types.client.machine_types[0].memory_mb * 0.6 / 1024) * 1024
 
       bucket_name           = var.fc_env_pipeline_bucket_name
       orchestrator_checksum = data.external.orchestrator_checksum.result.hex
