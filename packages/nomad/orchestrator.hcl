@@ -27,6 +27,11 @@ variable "logs_proxy_address" {
   default = ""
 }
 
+variable "logs_collector_public_ip" {
+  type    = string
+  default = ""
+}
+
 variable "otel_tracing_print" {
   type    = string
   default = ""
