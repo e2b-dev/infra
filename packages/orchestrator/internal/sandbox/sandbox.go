@@ -194,7 +194,7 @@ func NewSandbox(
 		&fc.MmdsMetadata{
 			SandboxId:            config.SandboxId,
 			TemplateId:           config.TemplateId,
-			LogsCollectorAddress: logs.LogsCollectorAddress,
+			LogsCollectorAddress: logs.CollectorPublicIP,
 			TraceId:              traceID,
 			TeamId:               config.TeamId,
 		},
