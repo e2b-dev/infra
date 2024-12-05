@@ -32,7 +32,7 @@ func NewFromStorage(
 }
 
 func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
-	blocks := header.ListBlocks(off, off+int64(len(p)), b.header.Metadata.BlockSize)
+	blocks := header.ListBlocks(off, int64(len(p)), b.header.Metadata.BlockSize)
 
 	for _, blockOff := range blocks {
 		mapping, err := b.header.GetMapping(blockOff)
