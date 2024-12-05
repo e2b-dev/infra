@@ -323,11 +323,14 @@ func (s *Sandbox) Stop() error {
 }
 
 func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.TemplateCacheFiles) error {
-	s.uffd.Disable()
+	err := s.uffd.Disable()
+	if err != nil {
+		return fmt.Errorf("failed to disable uffd: %w", err)
+	}
 
 	start := time.Now()
 	fmt.Printf("[snapshot] creating snapfile and memfile diff\n")
-	err := s.process.Snapshot(
+	err = s.process.Snapshot(
 		ctx,
 		snapshotTemplateFiles.CacheSnapfilePath(),
 		snapshotTemplateFiles.CacheMemfilePath(),

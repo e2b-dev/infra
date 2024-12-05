@@ -8,9 +8,10 @@ import (
 	"sync"
 
 	"github.com/bits-and-blooms/bitset"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/layer"
 	"github.com/edsrzf/mmap-go"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
 )
 
 type Cache struct {
@@ -53,10 +54,11 @@ func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	tracked := bitset.New(uint((m.size + m.blockSize - 1) / m.blockSize))
+	tracked := bitset.New(header.NumberOfBlocks(m.size, m.blockSize))
 
 	m.dirty.Range(func(key, value any) bool {
-		block := key.(int64) / m.blockSize
+		block := header.GetBlockIdx(key.(int64), m.blockSize)
+
 		tracked.Set(uint(block))
 
 		_, err := out.Write((*m.mmap)[key.(int64) : key.(int64)+m.blockSize])
@@ -128,8 +130,8 @@ func (m *Cache) Slice(off, length int64) ([]byte, error) {
 }
 
 func (m *Cache) isCached(off, length int64) bool {
-	for _, block := range layer.ListBlocks(off, off+length, m.blockSize) {
-		_, dirty := m.dirty.Load(block.Start)
+	for _, block := range header.ListBlocks(off, length, m.blockSize) {
+		_, dirty := m.dirty.Load(block)
 		if !dirty {
 			return false
 		}
@@ -139,7 +141,7 @@ func (m *Cache) isCached(off, length int64) bool {
 }
 
 func (m *Cache) setIsCached(off, length int64) {
-	for _, block := range layer.ListBlocks(off, off+length, m.blockSize) {
-		m.dirty.Store(block.Start, struct{}{})
+	for _, blockOff := range header.ListBlocks(off, length, m.blockSize) {
+		m.dirty.Store(blockOff, struct{}{})
 	}
 }

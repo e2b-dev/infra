@@ -45,8 +45,8 @@ type Uffd struct {
 	socketPath string
 }
 
-func (u *Uffd) Disable() {
-	u.memfile.Disable()
+func (u *Uffd) Disable() error {
+	return u.memfile.Disable()
 }
 
 func (u *Uffd) Dirty() *bitset.BitSet {

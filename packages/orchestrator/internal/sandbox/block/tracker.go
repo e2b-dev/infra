@@ -6,6 +6,8 @@ import (
 	"sync/atomic"
 
 	"github.com/bits-and-blooms/bitset"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
 )
 
 type TrackedSliceDevice struct {
@@ -19,31 +21,32 @@ type TrackedSliceDevice struct {
 }
 
 func NewTrackedSliceDevice(blockSize int64, device ReadonlyDevice) (*TrackedSliceDevice, error) {
-	size, err := device.Size()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get device size: %w", err)
-	}
-
-	dirty := bitset.New(uint((size + blockSize - 1) / blockSize))
-	// We are starting with all being dirty.
-	dirty.FlipRange(0, uint(dirty.Len()))
-
 	return &TrackedSliceDevice{
 		data:      device,
-		dirty:     dirty,
 		empty:     make([]byte, blockSize),
 		blockSize: blockSize,
 	}, nil
 }
 
-func (t *TrackedSliceDevice) Disable() {
+func (t *TrackedSliceDevice) Disable() error {
+	size, err := t.data.Size()
+	if err != nil {
+		return fmt.Errorf("failed to get device size: %w", err)
+	}
+
+	t.dirty = bitset.New(header.NumberOfBlocks(size, t.blockSize))
+	// We are starting with all being dirty.
+	t.dirty.FlipRange(0, uint(t.dirty.Len()))
+
 	t.nilTracking.Store(true)
+
+	return nil
 }
 
 func (t *TrackedSliceDevice) Slice(off int64, len int64) ([]byte, error) {
 	if t.nilTracking.Load() {
 		t.dirtyMu.Lock()
-		t.dirty.Clear(uint(off / t.blockSize))
+		t.dirty.Clear(uint(header.GetBlockIdx(off, t.blockSize)))
 		t.dirtyMu.Unlock()
 
 		return t.empty, nil

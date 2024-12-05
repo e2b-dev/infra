@@ -6,7 +6,8 @@ import (
 	"io"
 
 	"github.com/bits-and-blooms/bitset"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/layer"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
 )
 
 type Overlay struct {
@@ -24,12 +25,12 @@ func NewOverlay(device ReadonlyDevice, cache *Cache, blockSize int64) *Overlay {
 }
 
 func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
-	blocks := layer.ListBlocks(off, off+int64(len(p)), o.blockSize)
+	blocks := header.ListBlocks(off, int64(len(p)), o.blockSize)
 
-	for i, block := range blocks {
-		n, err := o.cache.ReadAt(p[block.Start-off:block.End-off], block.Start)
+	for i, blockOff := range blocks {
+		n, err := o.cache.ReadAt(p[blockOff-off:blockOff+o.blockSize-off], blockOff)
 		if err == nil {
-			fmt.Printf("[overlay] (%d) > %d cache hit\n", i, block.Start)
+			fmt.Printf("[overlay] (%d) > %d cache hit\n", i, blockOff)
 
 			continue
 		}
@@ -38,7 +39,7 @@ func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
 			return n, fmt.Errorf("error reading from cache: %w", err)
 		}
 
-		n, err = o.device.ReadAt(p[block.Start-off:block.End-off], block.Start)
+		n, err = o.device.ReadAt(p[blockOff-off:blockOff+o.blockSize-off], blockOff)
 		if err != nil {
 			return n, fmt.Errorf("error reading from device: %w", err)
 		}
