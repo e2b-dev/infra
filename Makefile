@@ -3,6 +3,7 @@ ENV := $(shell cat .last_used_env || echo "not-set")
 
 OTEL_TRACING_PRINT ?= false
 IMAGE := e2b-orchestration/api
+EXCLUDE_GITHUB ?= 1
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
