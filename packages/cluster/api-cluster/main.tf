@@ -40,16 +40,6 @@ resource "google_compute_instance_group_manager" "api_cluster" {
   }
 
   named_port {
-    name = var.logs_health_proxy_port.name
-    port = var.logs_health_proxy_port.port
-  }
-
-  named_port {
-    name = var.logs_proxy_port.name
-    port = var.logs_proxy_port.port
-  }
-
-  named_port {
     name = var.api_port.name
     port = var.api_port.port
   }
