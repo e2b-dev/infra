@@ -88,6 +88,8 @@ module "server_cluster" {
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
   })
 
+  environment = var.environment
+
   cluster_name     = "${var.prefix}${var.server_cluster_name}"
   cluster_size     = var.server_cluster_size
   cluster_tag_name = var.cluster_tag_name
@@ -125,6 +127,8 @@ module "client_cluster" {
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
   })
+
+  environment = var.environment
 
   cluster_name     = "${var.prefix}${var.client_cluster_name}"
   cluster_size     = var.client_cluster_size
@@ -172,6 +176,8 @@ module "api_cluster" {
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
   })
 
+  environment = var.environment
+
   cluster_name     = "${var.prefix}orch-api"
   cluster_size     = var.api_cluster_size
   cluster_tag_name = var.cluster_tag_name
@@ -200,6 +206,8 @@ module "api_cluster" {
 
 module "network" {
   source = "./network"
+
+  environment = var.environment
 
   cloudflare_api_token_secret_name = var.cloudflare_api_token_secret_name
 

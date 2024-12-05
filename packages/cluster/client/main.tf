@@ -74,9 +74,9 @@ resource "google_compute_instance_template" "client" {
 
   labels = merge(
     var.labels,
-    {
+    (var.environment == "prod" ? {
       goog-ops-agent-policy = "v2-x86-template-1-2-0-${var.gcp_zone}"
-    }
+    } : {})
   )
   tags                    = concat([var.cluster_tag_name], var.custom_tags)
   metadata_startup_script = var.startup_script

@@ -2,6 +2,11 @@ variable "prefix" {
   type = string
 }
 
+variable "environment" {
+  description = "The environment (e.g. staging, prod)."
+  type        = string
+}
+
 variable "cloudflare_api_token_secret_name" {
   type = string
 }

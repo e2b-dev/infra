@@ -1,6 +1,12 @@
 variable "prefix" {
   type = string
 }
+
+variable "environment" {
+  description = "The environment (e.g. staging, prod)."
+  type        = string
+}
+
 variable "domain_name" {
   type = string
 }

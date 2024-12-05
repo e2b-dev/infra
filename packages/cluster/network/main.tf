@@ -276,7 +276,7 @@ resource "google_compute_backend_service" "default" {
   security_policy = google_compute_security_policy.default[each.key].self_link
 
   log_config {
-    enable = true
+    enable = var.environment == "prod"
   }
 
   dynamic "backend" {
