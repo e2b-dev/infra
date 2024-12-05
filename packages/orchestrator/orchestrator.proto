@@ -25,10 +25,11 @@ message SandboxConfig {
   
   int64 vcpu = 11;
   int64 ram_mb = 12;
+  int64 total_disk_size_mb = 13;
 
-  string team_id = 13;
+  string team_id = 14;
   // Maximum length of the sandbox in Hours.
-  int64 max_sandbox_length = 14;
+  int64 max_sandbox_length = 15;
 }
 
 message SandboxCreateRequest {
@@ -52,6 +53,12 @@ message SandboxDeleteRequest {
   string sandbox_id = 1;
 }
 
+message SandboxPauseRequest {
+  string sandbox_id = 1;
+  string template_id = 2;
+  string build_id = 3;
+}
+
 message RunningSandbox {
   SandboxConfig config = 1;
   string client_id = 2;
@@ -69,4 +76,5 @@ service SandboxService {
   rpc Update(SandboxUpdateRequest) returns (google.protobuf.Empty);
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
   rpc Delete(SandboxDeleteRequest) returns (google.protobuf.Empty);
+  rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
 }

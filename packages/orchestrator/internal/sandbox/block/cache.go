@@ -3,23 +3,27 @@ package block
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/edsrzf/mmap-go"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
 )
 
-type cache struct {
+type Cache struct {
 	filePath  string
 	size      int64
 	blockSize int64
-	mmap      mmap.MMap
+	mmap      *mmap.MMap
 	mu        sync.RWMutex
 	dirty     sync.Map
 }
 
-func newCache(size, blockSize int64, filePath string) (*cache, error) {
+func NewCache(size, blockSize int64, filePath string) (*Cache, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
@@ -38,15 +42,37 @@ func newCache(size, blockSize int64, filePath string) (*cache, error) {
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
-	return &cache{
-		mmap:      mm,
+	return &Cache{
+		mmap:      &mm,
 		filePath:  filePath,
 		size:      size,
 		blockSize: blockSize,
 	}, nil
 }
 
-func (m *cache) ReadAt(b []byte, off int64) (int, error) {
+func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	tracked := bitset.New(header.NumberOfBlocks(m.size, m.blockSize))
+
+	m.dirty.Range(func(key, value any) bool {
+		block := header.GetBlockIdx(key.(int64), m.blockSize)
+
+		tracked.Set(uint(block))
+
+		_, err := out.Write((*m.mmap)[key.(int64) : key.(int64)+m.blockSize])
+		if err != nil {
+			return false
+		}
+
+		return true
+	})
+
+	return tracked, nil
+}
+
+func (m *Cache) ReadAt(b []byte, off int64) (int, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -58,7 +84,7 @@ func (m *cache) ReadAt(b []byte, off int64) (int, error) {
 	return copy(b, slice), nil
 }
 
-func (m *cache) WriteAt(b []byte, off int64) (int, error) {
+func (m *Cache) WriteAt(b []byte, off int64) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -67,42 +93,45 @@ func (m *cache) WriteAt(b []byte, off int64) (int, error) {
 		end = m.size
 	}
 
-	n := copy(m.mmap[off:end], b)
+	n := copy((*m.mmap)[off:end], b)
 
 	m.setIsCached(off, end-off)
 
 	return n, nil
 }
 
-func (m *cache) Close() error {
+func (m *Cache) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	return errors.Join(
 		m.mmap.Unmap(),
 		os.RemoveAll(m.filePath),
 	)
 }
 
-func (m *cache) Size() (int64, error) {
+func (m *Cache) Size() (int64, error) {
 	return m.size, nil
 }
 
 // Slice returns a slice of the mmap.
 // When using WriteAt you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
-func (m *cache) Slice(off, length int64) ([]byte, error) {
+func (m *Cache) Slice(off, length int64) ([]byte, error) {
 	if m.isCached(off, length) {
 		end := off + length
 		if end > m.size {
 			end = m.size
 		}
 
-		return m.mmap[off:end], nil
+		return (*m.mmap)[off:end], nil
 	}
 
 	return nil, ErrBytesNotAvailable{}
 }
 
-func (m *cache) isCached(off, length int64) bool {
-	for _, block := range listBlocks(off, off+length, m.blockSize) {
-		_, dirty := m.dirty.Load(block.start)
+func (m *Cache) isCached(off, length int64) bool {
+	for _, block := range header.ListBlocks(off, length, m.blockSize) {
+		_, dirty := m.dirty.Load(block)
 		if !dirty {
 			return false
 		}
@@ -111,8 +140,8 @@ func (m *cache) isCached(off, length int64) bool {
 	return true
 }
 
-func (m *cache) setIsCached(off, length int64) {
-	for _, block := range listBlocks(off, off+length, m.blockSize) {
-		m.dirty.Store(block.start, struct{}{})
+func (m *Cache) setIsCached(off, length int64) {
+	for _, blockOff := range header.ListBlocks(off, length, m.blockSize) {
+		m.dirty.Store(blockOff, struct{}{})
 	}
 }

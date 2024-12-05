@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
@@ -42,6 +43,8 @@ type Client struct {
 	EnvAlias *EnvAliasClient
 	// EnvBuild is the client for interacting with the EnvBuild builders.
 	EnvBuild *EnvBuildClient
+	// Snapshot is the client for interacting with the Snapshot builders.
+	Snapshot *SnapshotClient
 	// Team is the client for interacting with the Team builders.
 	Team *TeamClient
 	// TeamAPIKey is the client for interacting with the TeamAPIKey builders.
@@ -67,6 +70,7 @@ func (c *Client) init() {
 	c.Env = NewEnvClient(c.config)
 	c.EnvAlias = NewEnvAliasClient(c.config)
 	c.EnvBuild = NewEnvBuildClient(c.config)
+	c.Snapshot = NewSnapshotClient(c.config)
 	c.Team = NewTeamClient(c.config)
 	c.TeamAPIKey = NewTeamAPIKeyClient(c.config)
 	c.Tier = NewTierClient(c.config)
@@ -171,6 +175,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Env:         NewEnvClient(cfg),
 		EnvAlias:    NewEnvAliasClient(cfg),
 		EnvBuild:    NewEnvBuildClient(cfg),
+		Snapshot:    NewSnapshotClient(cfg),
 		Team:        NewTeamClient(cfg),
 		TeamAPIKey:  NewTeamAPIKeyClient(cfg),
 		Tier:        NewTierClient(cfg),
@@ -199,6 +204,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Env:         NewEnvClient(cfg),
 		EnvAlias:    NewEnvAliasClient(cfg),
 		EnvBuild:    NewEnvBuildClient(cfg),
+		Snapshot:    NewSnapshotClient(cfg),
 		Team:        NewTeamClient(cfg),
 		TeamAPIKey:  NewTeamAPIKeyClient(cfg),
 		Tier:        NewTierClient(cfg),
@@ -233,8 +239,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AccessToken, c.Env, c.EnvAlias, c.EnvBuild, c.Team, c.TeamAPIKey, c.Tier,
-		c.User, c.UsersTeams,
+		c.AccessToken, c.Env, c.EnvAlias, c.EnvBuild, c.Snapshot, c.Team, c.TeamAPIKey,
+		c.Tier, c.User, c.UsersTeams,
 	} {
 		n.Use(hooks...)
 	}
@@ -244,8 +250,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AccessToken, c.Env, c.EnvAlias, c.EnvBuild, c.Team, c.TeamAPIKey, c.Tier,
-		c.User, c.UsersTeams,
+		c.AccessToken, c.Env, c.EnvAlias, c.EnvBuild, c.Snapshot, c.Team, c.TeamAPIKey,
+		c.Tier, c.User, c.UsersTeams,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -262,6 +268,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.EnvAlias.mutate(ctx, m)
 	case *EnvBuildMutation:
 		return c.EnvBuild.mutate(ctx, m)
+	case *SnapshotMutation:
+		return c.Snapshot.mutate(ctx, m)
 	case *TeamMutation:
 		return c.Team.mutate(ctx, m)
 	case *TeamAPIKeyMutation:
@@ -594,6 +602,25 @@ func (c *EnvClient) QueryBuilds(e *Env) *EnvBuildQuery {
 	return query
 }
 
+// QuerySnapshots queries the snapshots edge of a Env.
+func (c *EnvClient) QuerySnapshots(e *Env) *SnapshotQuery {
+	query := (&SnapshotClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := e.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(env.Table, env.FieldID, id),
+			sqlgraph.To(snapshot.Table, snapshot.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, env.SnapshotsTable, env.SnapshotsColumn),
+		)
+		schemaConfig := e.schemaConfig
+		step.To.Schema = schemaConfig.Snapshot
+		step.Edge.Schema = schemaConfig.Snapshot
+		fromV = sqlgraph.Neighbors(e.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *EnvClient) Hooks() []Hook {
 	return c.hooks.Env
@@ -920,6 +947,158 @@ func (c *EnvBuildClient) mutate(ctx context.Context, m *EnvBuildMutation) (Value
 		return (&EnvBuildDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("models: unknown EnvBuild mutation op: %q", m.Op())
+	}
+}
+
+// SnapshotClient is a client for the Snapshot schema.
+type SnapshotClient struct {
+	config
+}
+
+// NewSnapshotClient returns a client for the Snapshot from the given config.
+func NewSnapshotClient(c config) *SnapshotClient {
+	return &SnapshotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `snapshot.Hooks(f(g(h())))`.
+func (c *SnapshotClient) Use(hooks ...Hook) {
+	c.hooks.Snapshot = append(c.hooks.Snapshot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `snapshot.Intercept(f(g(h())))`.
+func (c *SnapshotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Snapshot = append(c.inters.Snapshot, interceptors...)
+}
+
+// Create returns a builder for creating a Snapshot entity.
+func (c *SnapshotClient) Create() *SnapshotCreate {
+	mutation := newSnapshotMutation(c.config, OpCreate)
+	return &SnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Snapshot entities.
+func (c *SnapshotClient) CreateBulk(builders ...*SnapshotCreate) *SnapshotCreateBulk {
+	return &SnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SnapshotClient) MapCreateBulk(slice any, setFunc func(*SnapshotCreate, int)) *SnapshotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SnapshotCreateBulk{err: fmt.Errorf("calling to SnapshotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SnapshotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Snapshot.
+func (c *SnapshotClient) Update() *SnapshotUpdate {
+	mutation := newSnapshotMutation(c.config, OpUpdate)
+	return &SnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SnapshotClient) UpdateOne(s *Snapshot) *SnapshotUpdateOne {
+	mutation := newSnapshotMutation(c.config, OpUpdateOne, withSnapshot(s))
+	return &SnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SnapshotClient) UpdateOneID(id uuid.UUID) *SnapshotUpdateOne {
+	mutation := newSnapshotMutation(c.config, OpUpdateOne, withSnapshotID(id))
+	return &SnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Snapshot.
+func (c *SnapshotClient) Delete() *SnapshotDelete {
+	mutation := newSnapshotMutation(c.config, OpDelete)
+	return &SnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SnapshotClient) DeleteOne(s *Snapshot) *SnapshotDeleteOne {
+	return c.DeleteOneID(s.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SnapshotClient) DeleteOneID(id uuid.UUID) *SnapshotDeleteOne {
+	builder := c.Delete().Where(snapshot.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SnapshotDeleteOne{builder}
+}
+
+// Query returns a query builder for Snapshot.
+func (c *SnapshotClient) Query() *SnapshotQuery {
+	return &SnapshotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSnapshot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Snapshot entity by its id.
+func (c *SnapshotClient) Get(ctx context.Context, id uuid.UUID) (*Snapshot, error) {
+	return c.Query().Where(snapshot.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SnapshotClient) GetX(ctx context.Context, id uuid.UUID) *Snapshot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryEnv queries the env edge of a Snapshot.
+func (c *SnapshotClient) QueryEnv(s *Snapshot) *EnvQuery {
+	query := (&EnvClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := s.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(snapshot.Table, snapshot.FieldID, id),
+			sqlgraph.To(env.Table, env.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, snapshot.EnvTable, snapshot.EnvColumn),
+		)
+		schemaConfig := s.schemaConfig
+		step.To.Schema = schemaConfig.Env
+		step.Edge.Schema = schemaConfig.Snapshot
+		fromV = sqlgraph.Neighbors(s.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *SnapshotClient) Hooks() []Hook {
+	return c.hooks.Snapshot
+}
+
+// Interceptors returns the client interceptors.
+func (c *SnapshotClient) Interceptors() []Interceptor {
+	return c.inters.Snapshot
+}
+
+func (c *SnapshotClient) mutate(ctx context.Context, m *SnapshotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("models: unknown Snapshot mutation op: %q", m.Op())
 	}
 }
 
@@ -1819,11 +1998,11 @@ func (c *UsersTeamsClient) mutate(ctx context.Context, m *UsersTeamsMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AccessToken, Env, EnvAlias, EnvBuild, Team, TeamAPIKey, Tier, User,
+		AccessToken, Env, EnvAlias, EnvBuild, Snapshot, Team, TeamAPIKey, Tier, User,
 		UsersTeams []ent.Hook
 	}
 	inters struct {
-		AccessToken, Env, EnvAlias, EnvBuild, Team, TeamAPIKey, Tier, User,
+		AccessToken, Env, EnvAlias, EnvBuild, Snapshot, Team, TeamAPIKey, Tier, User,
 		UsersTeams []ent.Interceptor
 	}
 )
@@ -1835,6 +2014,7 @@ var (
 		Env:         tableSchemas[1],
 		EnvAlias:    tableSchemas[1],
 		EnvBuild:    tableSchemas[1],
+		Snapshot:    tableSchemas[1],
 		Team:        tableSchemas[1],
 		TeamAPIKey:  tableSchemas[1],
 		Tier:        tableSchemas[1],

@@ -106,6 +106,28 @@ var (
 			},
 		},
 	}
+	// SnapshotsColumns holds the columns for the "snapshots" table.
+	SnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
+		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
+		{Name: "sandbox_id", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "metadata", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "env_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+	}
+	// SnapshotsTable holds the schema information for the "snapshots" table.
+	SnapshotsTable = &schema.Table{
+		Name:       "snapshots",
+		Columns:    SnapshotsColumns,
+		PrimaryKey: []*schema.Column{SnapshotsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "snapshots_envs_snapshots",
+				Columns:    []*schema.Column{SnapshotsColumns[4]},
+				RefColumns: []*schema.Column{EnvsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+	}
 	// TeamsColumns holds the columns for the "teams" table.
 	TeamsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
@@ -216,6 +238,7 @@ var (
 		EnvsTable,
 		EnvAliasesTable,
 		EnvBuildsTable,
+		SnapshotsTable,
 		TeamsTable,
 		TeamAPIKeysTable,
 		TiersTable,
@@ -235,6 +258,8 @@ func init() {
 	}
 	EnvBuildsTable.ForeignKeys[0].RefTable = EnvsTable
 	EnvBuildsTable.Annotation = &entsql.Annotation{}
+	SnapshotsTable.ForeignKeys[0].RefTable = EnvsTable
+	SnapshotsTable.Annotation = &entsql.Annotation{}
 	TeamsTable.ForeignKeys[0].RefTable = TiersTable
 	TeamsTable.Annotation = &entsql.Annotation{}
 	TeamAPIKeysTable.ForeignKeys[0].RefTable = TeamsTable

@@ -3,37 +3,34 @@ package block
 import (
 	"errors"
 	"fmt"
+	"io"
+
+	"github.com/bits-and-blooms/bitset"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
 )
 
 type Overlay struct {
-	device ReadonlyDevice
-	cache  *cache
+	device    ReadonlyDevice
+	cache     *Cache
+	blockSize int64
 }
 
-func NewOverlay(device ReadonlyDevice, blockSize int64, cachePath string) (*Overlay, error) {
-	size, err := device.Size()
-	if err != nil {
-		return nil, fmt.Errorf("error getting device size: %w", err)
-	}
-
-	cache, err := newCache(size, blockSize, cachePath)
-	if err != nil {
-		return nil, fmt.Errorf("error creating cache: %w", err)
-	}
-
+func NewOverlay(device ReadonlyDevice, cache *Cache, blockSize int64) *Overlay {
 	return &Overlay{
-		device: device,
-		cache:  cache,
-	}, nil
+		device:    device,
+		cache:     cache,
+		blockSize: blockSize,
+	}
 }
 
 func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
-	blocks := listBlocks(off, off+int64(len(p)), o.cache.blockSize)
+	blocks := header.ListBlocks(off, int64(len(p)), o.blockSize)
 
-	for i, block := range blocks {
-		n, err := o.cache.ReadAt(p[block.start-off:block.end-off], block.start)
+	for i, blockOff := range blocks {
+		n, err := o.cache.ReadAt(p[blockOff-off:blockOff+o.blockSize-off], blockOff)
 		if err == nil {
-			fmt.Printf("[overlay] (%d) > %d cache hit\n", i, block.start)
+			fmt.Printf("[overlay] (%d) > %d cache hit\n", i, blockOff)
 
 			continue
 		}
@@ -42,13 +39,25 @@ func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
 			return n, fmt.Errorf("error reading from cache: %w", err)
 		}
 
-		n, err = o.device.ReadAt(p[block.start-off:block.end-off], block.start)
+		n, err = o.device.ReadAt(p[blockOff-off:blockOff+o.blockSize-off], blockOff)
 		if err != nil {
 			return n, fmt.Errorf("error reading from device: %w", err)
 		}
 	}
 
 	return len(p), nil
+}
+
+func (o *Overlay) Export(out io.Writer) (*bitset.BitSet, error) {
+	return o.cache.Export(out)
+}
+
+func (o *Overlay) Slice(off, length int64) ([]byte, error) {
+	// This method will not be very optimal if the length is not the same as the block size, because we cannot be just exposing the cache slice,
+	// but creating and copying the bytes from the cache and device to the new slice.
+
+	// When we are implementing this we might want to just enforce the length to be the same as the block size.
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (o *Overlay) WriteAt(p []byte, off int64) (int, error) {

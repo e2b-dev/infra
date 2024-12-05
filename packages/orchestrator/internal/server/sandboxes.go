@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -170,4 +171,69 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	s.sandboxes.Remove(in.SandboxId)
 
 	return &emptypb.Empty{}, nil
+}
+
+func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
+	_, childSpan := s.tracer.Start(ctx, "sandbox-pause")
+	defer childSpan.End()
+
+	s.pauseMu.Lock()
+
+	sbx, ok := s.sandboxes.Get(in.SandboxId)
+	if !ok {
+		s.pauseMu.Unlock()
+
+		return nil, status.New(codes.NotFound, "sandbox not found").Err()
+	}
+
+	s.dns.Remove(in.SandboxId)
+	s.sandboxes.Remove(in.SandboxId)
+
+	s.pauseMu.Unlock()
+
+	// TODO: Stop healthcheck, etc.
+
+	defer func() {
+		err := sbx.Stop()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error stopping sandbox during pause '%s': %v\n", in.SandboxId, err)
+		}
+	}()
+
+	snapshotTemplateFiles, err := storage.NewTemplateFiles(
+		in.TemplateId,
+		in.BuildId,
+		sbx.Config.KernelVersion,
+		sbx.Config.FirecrackerVersion,
+		sbx.Config.HugePages,
+	).NewTemplateCacheFiles()
+	if err != nil {
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
+
+	err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
+	if err != nil {
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
+
+	err = sbx.Snapshot(ctx, snapshotTemplateFiles)
+	if err != nil {
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
+
+	t, err := s.templateCache.AddTemplateFromLocalFiles(snapshotTemplateFiles)
+	if err != nil {
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
+
+	go func() {
+		uploadErr := t.Upload(context.Background())
+		if uploadErr != nil {
+			fmt.Fprintf(os.Stderr, "error uploading template '%s': %v\n", in.TemplateId, uploadErr)
+		}
+	}()
+
+	// TODO: Delete all sandbox data
+
+	return nil, status.New(codes.Unimplemented, "not implemented").Err()
 }

@@ -37,6 +37,7 @@ func (Env) Edges() []ent.Edge {
 		edge.From("team", Team.Type).Ref("envs").Unique().Field("team_id").Required(),
 		edge.To("env_aliases", EnvAlias.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.To("builds", EnvBuild.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.To("snapshots", Snapshot.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }
 

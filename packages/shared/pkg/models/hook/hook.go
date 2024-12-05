@@ -57,6 +57,18 @@ func (f EnvBuildFunc) Mutate(ctx context.Context, m models.Mutation) (models.Val
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.EnvBuildMutation", m)
 }
 
+// The SnapshotFunc type is an adapter to allow the use of ordinary
+// function as Snapshot mutator.
+type SnapshotFunc func(context.Context, *models.SnapshotMutation) (models.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SnapshotFunc) Mutate(ctx context.Context, m models.Mutation) (models.Value, error) {
+	if mv, ok := m.(*models.SnapshotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *models.SnapshotMutation", m)
+}
+
 // The TeamFunc type is an adapter to allow the use of ordinary
 // function as Team mutator.
 type TeamFunc func(context.Context, *models.TeamMutation) (models.Value, error)

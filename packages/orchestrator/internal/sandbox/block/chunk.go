@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -20,7 +21,7 @@ type chunker struct {
 	ctx context.Context
 
 	base  io.ReaderAt
-	cache *cache
+	cache *Cache
 
 	size int64
 
@@ -34,7 +35,7 @@ func newChunker(
 	base io.ReaderAt,
 	cachePath string,
 ) (*chunker, error) {
-	cache, err := newCache(size, blockSize, cachePath)
+	cache, err := NewCache(size, blockSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
@@ -53,12 +54,12 @@ func newChunker(
 }
 
 func (c *chunker) prefetch() error {
-	blocks := listBlocks(0, c.size, chunkSize)
+	blocks := header.ListBlocks(0, c.size, chunkSize)
 
-	for _, block := range blocks {
-		err := c.fetchToCache(block.start, block.end-block.start)
+	for _, blockOff := range blocks {
+		err := c.fetchToCache(blockOff, chunkSize)
 		if err != nil {
-			return fmt.Errorf("failed to prefetch block %d-%d: %w", block.start, block.end, err)
+			return fmt.Errorf("failed to prefetch block %d-%d: %w", blockOff, blockOff+chunkSize, err)
 		}
 	}
 
@@ -101,30 +102,30 @@ func (c *chunker) Slice(off, length int64) ([]byte, error) {
 func (c *chunker) fetchToCache(off, len int64) error {
 	var eg errgroup.Group
 
-	blocks := listBlocks(off, off+len, chunkSize)
+	blocks := header.ListBlocks(off, len, chunkSize)
 
-	for _, block := range blocks {
-		start := block.start
-		end := block.end
+	for _, blockOff := range blocks {
+		// Ensure the closure captures the correct block offset.
+		fetchOff := blockOff
 
 		eg.Go(func() error {
-			return c.fetchers.Wait(block.start, func() error {
+			return c.fetchers.Wait(fetchOff, func() error {
 				select {
 				case <-c.ctx.Done():
-					return fmt.Errorf("error fetching range %d-%d: %w", start, end, c.ctx.Err())
+					return fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+chunkSize, c.ctx.Err())
 				default:
 				}
 
-				b := make([]byte, end-start)
+				b := make([]byte, chunkSize)
 
-				_, err := c.base.ReadAt(b, start)
+				_, err := c.base.ReadAt(b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {
-					return fmt.Errorf("failed to read chunk from base %d: %w", start, err)
+					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
 
-				_, cacheErr := c.cache.WriteAt(b, start)
+				_, cacheErr := c.cache.WriteAt(b, fetchOff)
 				if cacheErr != nil {
-					return fmt.Errorf("failed to write chunk %d to cache: %w", start, cacheErr)
+					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
 				}
 
 				return nil

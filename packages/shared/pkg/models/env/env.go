@@ -34,6 +34,8 @@ const (
 	EdgeEnvAliases = "env_aliases"
 	// EdgeBuilds holds the string denoting the builds edge name in mutations.
 	EdgeBuilds = "builds"
+	// EdgeSnapshots holds the string denoting the snapshots edge name in mutations.
+	EdgeSnapshots = "snapshots"
 	// EnvAliasFieldID holds the string denoting the ID field of the EnvAlias.
 	EnvAliasFieldID = "alias"
 	// Table holds the table name of the env in the database.
@@ -59,6 +61,13 @@ const (
 	BuildsInverseTable = "env_builds"
 	// BuildsColumn is the table column denoting the builds relation/edge.
 	BuildsColumn = "env_id"
+	// SnapshotsTable is the table that holds the snapshots relation/edge.
+	SnapshotsTable = "snapshots"
+	// SnapshotsInverseTable is the table name for the Snapshot entity.
+	// It exists in this package in order to avoid circular dependency with the "snapshot" package.
+	SnapshotsInverseTable = "snapshots"
+	// SnapshotsColumn is the table column denoting the snapshots relation/edge.
+	SnapshotsColumn = "env_id"
 )
 
 // Columns holds all SQL columns for env fields.
@@ -171,6 +180,20 @@ func ByBuilds(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newBuildsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// BySnapshotsCount orders the results by snapshots count.
+func BySnapshotsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newSnapshotsStep(), opts...)
+	}
+}
+
+// BySnapshots orders the results by snapshots terms.
+func BySnapshots(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newSnapshotsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newTeamStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -190,5 +213,12 @@ func newBuildsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(BuildsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, BuildsTable, BuildsColumn),
+	)
+}
+func newSnapshotsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(SnapshotsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, SnapshotsTable, SnapshotsColumn),
 	)
 }

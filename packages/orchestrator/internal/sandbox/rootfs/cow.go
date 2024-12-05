@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+
+	"github.com/bits-and-blooms/bitset"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -14,22 +17,34 @@ import (
 type CowDevice struct {
 	overlay block.Device
 	mnt     *nbd.DirectPathMount
+	cache   *block.Cache
 
 	ready *utils.SetOnce[string]
+
+	blockSize int64
 }
 
 func NewCowDevice(rootfs block.ReadonlyDevice, cachePath string, blockSize int64) (*CowDevice, error) {
-	overlay, err := block.NewOverlay(rootfs, blockSize, cachePath)
+	size, err := rootfs.Size()
 	if err != nil {
-		return nil, fmt.Errorf("error creating overlay: %w", err)
+		return nil, fmt.Errorf("error getting device size: %w", err)
 	}
+
+	cache, err := block.NewCache(size, blockSize, cachePath)
+	if err != nil {
+		return nil, fmt.Errorf("error creating cache: %w", err)
+	}
+
+	overlay := block.NewOverlay(rootfs, cache, blockSize)
 
 	mnt := nbd.NewDirectPathMount(overlay)
 
 	return &CowDevice{
-		mnt:     mnt,
-		overlay: overlay,
-		ready:   utils.NewSetOnce[string](),
+		mnt:       mnt,
+		overlay:   overlay,
+		ready:     utils.NewSetOnce[string](),
+		cache:     cache,
+		blockSize: blockSize,
 	}, nil
 }
 
@@ -40,6 +55,10 @@ func (o *CowDevice) Start(ctx context.Context) error {
 	}
 
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
+}
+
+func (o *CowDevice) Export(out io.Writer) (*bitset.BitSet, error) {
+	return o.cache.Export(out)
 }
 
 func (o *CowDevice) Close() error {

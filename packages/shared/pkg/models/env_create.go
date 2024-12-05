@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/google/uuid"
 )
@@ -148,6 +149,21 @@ func (ec *EnvCreate) AddBuilds(e ...*EnvBuild) *EnvCreate {
 		ids[i] = e[i].ID
 	}
 	return ec.AddBuildIDs(ids...)
+}
+
+// AddSnapshotIDs adds the "snapshots" edge to the Snapshot entity by IDs.
+func (ec *EnvCreate) AddSnapshotIDs(ids ...uuid.UUID) *EnvCreate {
+	ec.mutation.AddSnapshotIDs(ids...)
+	return ec
+}
+
+// AddSnapshots adds the "snapshots" edges to the Snapshot entity.
+func (ec *EnvCreate) AddSnapshots(s ...*Snapshot) *EnvCreate {
+	ids := make([]uuid.UUID, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return ec.AddSnapshotIDs(ids...)
 }
 
 // Mutation returns the EnvMutation object of the builder.
@@ -334,6 +350,23 @@ func (ec *EnvCreate) createSpec() (*Env, *sqlgraph.CreateSpec) {
 			},
 		}
 		edge.Schema = ec.schemaConfig.EnvBuild
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := ec.mutation.SnapshotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   env.SnapshotsTable,
+			Columns: []string{env.SnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(snapshot.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = ec.schemaConfig.Snapshot
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}

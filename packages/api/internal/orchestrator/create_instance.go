@@ -4,15 +4,15 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -22,48 +22,47 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+func getSandboxIDClient(sandboxID string) (string, bool) {
+	parts := strings.Split(sandboxID, "-")
+	if len(parts) != 2 {
+		return "", false
+	}
+
+	return parts[1], true
+}
+
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
-	templateID,
 	alias string,
-	teamID uuid.UUID,
+	team authcache.AuthTeamInfo,
 	build *models.EnvBuild,
-	maxInstanceLengthHours int64,
 	metadata,
 	envVars map[string]string,
-	kernelVersion,
-	firecrackerVersion,
-	envdVersion string,
 	startTime time.Time,
 	endTime time.Time,
-	maxInstancesPerTeam int64,
 	timeout time.Duration,
 	logger *logs.SandboxLogger,
 ) (*api.Sandbox, error) {
-	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox",
-		trace.WithAttributes(
-			attribute.String("env.id", templateID),
-		),
-	)
+	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
 
 	// Check if team has reached max instances
-	err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, teamID, maxInstancesPerTeam)
+	err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
 	if err != nil {
-		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", teamID, maxInstancesPerTeam)
+		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances)
 		telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
 
 		return nil, fmt.Errorf(
 			"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-				"please contact us at 'https://e2b.dev/docs/getting-help'", maxInstancesPerTeam)
+				"please contact us at 'https://e2b.dev/docs/getting-help'", team.Tier.ConcurrentInstances)
 	}
 
 	defer releaseTeamSandboxReservation()
 
-	features, err := sandbox.NewVersionInfo(firecrackerVersion)
+	features, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
+		errMsg := fmt.Errorf("failed to get features for firecracker version '%s': %w", build.FirecrackerVersion, err)
 
 		return nil, errMsg
 	}
@@ -72,17 +71,17 @@ func (o *Orchestrator) CreateSandbox(
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
-			TemplateId:         templateID,
+			TemplateId:         *build.EnvID,
 			Alias:              &alias,
-			TeamId:             teamID.String(),
+			TeamId:             team.Team.ID.String(),
 			BuildId:            build.ID.String(),
 			SandboxId:          sandboxID,
-			KernelVersion:      kernelVersion,
-			FirecrackerVersion: firecrackerVersion,
-			EnvdVersion:        envdVersion,
+			KernelVersion:      build.KernelVersion,
+			FirecrackerVersion: build.FirecrackerVersion,
+			EnvdVersion:        *build.EnvdVersion,
 			Metadata:           metadata,
 			EnvVars:            envVars,
-			MaxSandboxLength:   maxInstanceLengthHours,
+			MaxSandboxLength:   team.Tier.MaxLengthHours,
 			HugePages:          features.HasHugePages(),
 			RamMb:              build.RAMMB,
 			Vcpu:               build.Vcpu,
@@ -96,8 +95,13 @@ func (o *Orchestrator) CreateSandbox(
 	var excludedNodes []string
 
 	for {
-		node = o.getLeastBusyNode(childCtx, excludedNodes...)
-		telemetry.ReportEvent(childCtx, "Trying to place sandbox on node")
+		if clientID, ok := getSandboxIDClient(sandboxID); ok {
+			node = o.nodes[clientID]
+			telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
+		} else {
+			node = o.getLeastBusyNode(childCtx, excludedNodes...)
+			telemetry.ReportEvent(childCtx, "Trying to place sandbox on node")
+		}
 
 		if node == nil {
 			return nil, fmt.Errorf("failed to find a node to place sandbox on")
@@ -125,7 +129,7 @@ func (o *Orchestrator) CreateSandbox(
 	sbx := api.Sandbox{
 		ClientID:    node.ID,
 		SandboxID:   sandboxID,
-		TemplateID:  templateID,
+		TemplateID:  *build.EnvID,
 		Alias:       &alias,
 		EnvdVersion: *build.EnvdVersion,
 	}
@@ -136,16 +140,20 @@ func (o *Orchestrator) CreateSandbox(
 	endTime = startTime.Add(timeout)
 
 	instanceInfo := instance.InstanceInfo{
-		Logger:            logger,
-		StartTime:         startTime,
-		EndTime:           endTime,
-		Instance:          &sbx,
-		BuildID:           &build.ID,
-		TeamID:            &teamID,
-		Metadata:          metadata,
-		VCpu:              build.Vcpu,
-		RamMB:             build.RAMMB,
-		MaxInstanceLength: time.Duration(maxInstanceLengthHours) * time.Hour,
+		Logger:             logger,
+		StartTime:          startTime,
+		EndTime:            endTime,
+		Instance:           &sbx,
+		BuildID:            &build.ID,
+		TeamID:             &team.Team.ID,
+		Metadata:           metadata,
+		VCpu:               build.Vcpu,
+		RamMB:              build.RAMMB,
+		TotalDiskSizeMB:    *build.TotalDiskSizeMB,
+		KernelVersion:      build.KernelVersion,
+		FirecrackerVersion: build.FirecrackerVersion,
+		EnvdVersion:        *build.EnvdVersion,
+		MaxInstanceLength:  time.Duration(team.Tier.MaxLengthHours) * time.Hour,
 	}
 	if cacheErr := o.instanceCache.Add(instanceInfo, true); cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
