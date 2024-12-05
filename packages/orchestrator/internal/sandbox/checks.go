@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,12 +10,30 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	"golang.org/x/mod/semver"
 )
 
+const (
+	healthCheckInterval      = 10 * time.Second
+	metricsCheckInterval     = 5 * time.Second
+	minEnvdVersionForMetrcis = "0.1.3"
+)
+
+func isMetricsSupported(envdVersion string) bool {
+	return semver.Compare(envdVersion, minEnvdVersionForMetrcis) >= 0
+}
+
 func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
+	healthTicker := time.NewTicker(healthCheckInterval)
+	metricsTicker := time.NewTicker(metricsCheckInterval)
+	defer func() {
+		healthTicker.Stop()
+		metricsTicker.Stop()
+	}()
+
 	for {
 		select {
-		case <-time.After(10 * time.Second):
+		case <-healthTicker.C:
 			childCtx, cancel := context.WithTimeout(ctx, time.Second)
 
 			ctx.Lock()
@@ -27,8 +46,19 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 			if err != nil {
 				s.Logger.Warnf("failed to get stats: %s", err)
 			} else {
+				// use this for /stats
 				s.Logger.CPUUsage(stats.CPUCount)
 				s.Logger.MemoryUsage(stats.MemoryMB)
+			}
+		case <-metricsTicker.C:
+			if isMetricsSupported(s.Sandbox.EnvdVersion) {
+				metrics, err := s.GetMetrics(ctx, false)
+				if err != nil {
+					s.Logger.Warnf("failed to get metrics: %s", err)
+				} else {
+					s.Logger.CPUPct(metrics.CPUPercent)
+					s.Logger.MemMB(metrics.MemMB)
+				}
 			}
 		case <-ctx.Done():
 			return
@@ -64,4 +94,32 @@ func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 	if err != nil {
 		return
 	}
+}
+
+func (s *Sandbox) GetMetrics(ctx context.Context, alwaysReport bool) (SandboxMetrics, error) {
+	address := fmt.Sprintf("http://%s:%d/metrics", s.slot.HostIP(), consts.DefaultEnvdServerPort)
+
+	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
+	if err != nil {
+		return SandboxMetrics{}, err
+	}
+
+	response, err := httpClient.Do(request)
+	if err != nil {
+		return SandboxMetrics{}, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		err = fmt.Errorf("unexpected status code: %d", response.StatusCode)
+		return SandboxMetrics{}, err
+	}
+
+	var metrics SandboxMetrics
+	err = json.NewDecoder(response.Body).Decode(&metrics)
+	if err != nil {
+		return SandboxMetrics{}, err
+	}
+
+	return metrics, nil
 }
