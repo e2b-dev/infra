@@ -433,18 +433,6 @@ module "gce_lb_http_logs" {
           max_rate_per_instance        = null
           max_rate_per_endpoint        = null
           max_utilization              = null
-          }, {
-          group                        = var.api_instance_group
-          balancing_mode               = null
-          capacity_scaler              = null
-          description                  = null
-          max_connections              = null
-          max_connections_per_instance = null
-          max_connections_per_endpoint = null
-          max_rate                     = null
-          max_rate_per_instance        = null
-          max_rate_per_endpoint        = null
-          max_utilization              = null
         },
       ]
 
