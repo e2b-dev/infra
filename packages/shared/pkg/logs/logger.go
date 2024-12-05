@@ -179,6 +179,24 @@ func (l *SandboxLogger) MemoryUsage(memoryMB float64) {
 	}
 }
 
+func (l *SandboxLogger) CPUPct(cpuPct float64) {
+	l.exporter.logger.Info().
+		Str("instanceID", l.instanceID).
+		Str("envID", l.envID).
+		Str("teamID", l.teamID).
+		Float64("cpuPct", cpuPct).
+		Int32("cpuCount", l.cpuMax)
+}
+
+func (l *SandboxLogger) MemMB(memMB uint64) {
+	l.exporter.logger.Info().
+		Str("instanceID", l.instanceID).
+		Str("envID", l.envID).
+		Str("teamID", l.teamID).
+		Uint64("memMBUsed", memMB).
+		Int32("memoryMBTotal", l.memoryMBMax)
+}
+
 func (l *SandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
 	if !ok && !l.healthCheckWasFailing.Load() {
 		l.healthCheckWasFailing.Store(true)
