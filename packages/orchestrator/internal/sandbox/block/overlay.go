@@ -3,11 +3,15 @@ package block
 import (
 	"errors"
 	"fmt"
+	"io"
+
+	"github.com/bits-and-blooms/bitset"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/layer"
 )
 
 type Overlay struct {
 	device    ReadonlyDevice
-	cache     Device
+	cache     *Cache
 	blockSize int64
 }
 
@@ -20,12 +24,12 @@ func NewOverlay(device ReadonlyDevice, cache *Cache, blockSize int64) *Overlay {
 }
 
 func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
-	blocks := listBlocks(off, off+int64(len(p)), o.blockSize)
+	blocks := layer.ListBlocks(off, off+int64(len(p)), o.blockSize)
 
 	for i, block := range blocks {
-		n, err := o.cache.ReadAt(p[block.start-off:block.end-off], block.start)
+		n, err := o.cache.ReadAt(p[block.Start-off:block.End-off], block.Start)
 		if err == nil {
-			fmt.Printf("[overlay] (%d) > %d cache hit\n", i, block.start)
+			fmt.Printf("[overlay] (%d) > %d cache hit\n", i, block.Start)
 
 			continue
 		}
@@ -34,13 +38,17 @@ func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
 			return n, fmt.Errorf("error reading from cache: %w", err)
 		}
 
-		n, err = o.device.ReadAt(p[block.start-off:block.end-off], block.start)
+		n, err = o.device.ReadAt(p[block.Start-off:block.End-off], block.Start)
 		if err != nil {
 			return n, fmt.Errorf("error reading from device: %w", err)
 		}
 	}
 
 	return len(p), nil
+}
+
+func (o *Overlay) Export(out io.Writer) (*bitset.BitSet, error) {
+	return o.cache.Export(out)
 }
 
 func (o *Overlay) Slice(off, length int64) ([]byte, error) {
@@ -61,18 +69,4 @@ func (o *Overlay) Size() (int64, error) {
 
 func (o *Overlay) Close() error {
 	return o.cache.Close()
-}
-
-func LayerDevices(blockSize int64, layers ...*Cache) (ReadonlyDevice, error) {
-	if len(layers) == 0 {
-		return nil, fmt.Errorf("at least one layer is required")
-	}
-
-	var device Device = layers[0]
-
-	for _, layer := range layers[1:] {
-		device = NewOverlay(device, layer, blockSize)
-	}
-
-	return device, nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/layer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -53,12 +54,12 @@ func newChunker(
 }
 
 func (c *chunker) prefetch() error {
-	blocks := listBlocks(0, c.size, chunkSize)
+	blocks := layer.ListBlocks(0, c.size, chunkSize)
 
 	for _, block := range blocks {
-		err := c.fetchToCache(block.start, block.end-block.start)
+		err := c.fetchToCache(block.Start, block.End-block.Start)
 		if err != nil {
-			return fmt.Errorf("failed to prefetch block %d-%d: %w", block.start, block.end, err)
+			return fmt.Errorf("failed to prefetch block %d-%d: %w", block.Start, block.End, err)
 		}
 	}
 
@@ -101,14 +102,14 @@ func (c *chunker) Slice(off, length int64) ([]byte, error) {
 func (c *chunker) fetchToCache(off, len int64) error {
 	var eg errgroup.Group
 
-	blocks := listBlocks(off, off+len, chunkSize)
+	blocks := layer.ListBlocks(off, off+len, chunkSize)
 
 	for _, block := range blocks {
-		start := block.start
-		end := block.end
+		start := block.Start
+		end := block.End
 
 		eg.Go(func() error {
-			return c.fetchers.Wait(block.start, func() error {
+			return c.fetchers.Wait(block.Start, func() error {
 				select {
 				case <-c.ctx.Done():
 					return fmt.Errorf("error fetching range %d-%d: %w", start, end, c.ctx.Err())

@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
-	"os/exec"
+
+	"github.com/bits-and-blooms/bitset"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -15,8 +17,11 @@ import (
 type CowDevice struct {
 	overlay block.Device
 	mnt     *nbd.DirectPathMount
+	cache   *block.Cache
 
 	ready *utils.SetOnce[string]
+
+	blockSize int64
 }
 
 func NewCowDevice(rootfs block.ReadonlyDevice, cachePath string, blockSize int64) (*CowDevice, error) {
@@ -35,9 +40,11 @@ func NewCowDevice(rootfs block.ReadonlyDevice, cachePath string, blockSize int64
 	mnt := nbd.NewDirectPathMount(overlay)
 
 	return &CowDevice{
-		mnt:     mnt,
-		overlay: overlay,
-		ready:   utils.NewSetOnce[string](),
+		mnt:       mnt,
+		overlay:   overlay,
+		ready:     utils.NewSetOnce[string](),
+		cache:     cache,
+		blockSize: blockSize,
 	}, nil
 }
 
@@ -50,18 +57,8 @@ func (o *CowDevice) Start(ctx context.Context) error {
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
 }
 
-func (o *CowDevice) Export(ctx context.Context, path string) error {
-	devicePath, err := o.ready.Wait()
-	if err != nil {
-		return fmt.Errorf("error getting overlay path: %w", err)
-	}
-
-	_, err = exec.CommandContext(ctx, "cp", devicePath, path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error exporting overlay: %w", err)
-	}
-
-	return nil
+func (o *CowDevice) Export(out io.Writer) (*bitset.BitSet, error) {
+	return o.cache.Export(out)
 }
 
 func (o *CowDevice) Close() error {

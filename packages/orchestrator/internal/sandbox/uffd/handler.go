@@ -11,18 +11,23 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+
+	"github.com/bits-and-blooms/bitset"
 )
 
 const (
 	uffdMsgListenerTimeout = 10 * time.Second
 	fdSize                 = 4
 	mappingsSize           = 1024
-
 )
 
 type UffdSetup struct {
 	Mappings []GuestRegionUffdMapping
 	Fd       uintptr
+}
+
+func (u *Uffd) TrackAndReturnNil() error {
+	return u.lis.Close()
 }
 
 type Uffd struct {
@@ -36,14 +41,27 @@ type Uffd struct {
 
 	lis *net.UnixListener
 
-	memfile    block.ReadonlyDevice
+	memfile    *block.TrackedSliceDevice
 	socketPath string
 }
 
-func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
+func (u *Uffd) Disable() {
+	u.memfile.Disable()
+}
+
+func (u *Uffd) Dirty() *bitset.BitSet {
+	return u.memfile.Dirty()
+}
+
+func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
 	pRead, pWrite, err := os.Pipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exit fd: %w", err)
+	}
+
+	trackedMemfile, err := block.NewTrackedSliceDevice(blockSize, memfile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tracked slice device: %w", err)
 	}
 
 	return &Uffd{
@@ -51,7 +69,7 @@ func New(memfile block.ReadonlyDevice, socketPath string) (*Uffd, error) {
 		Ready:      make(chan struct{}, 1),
 		exitReader: pRead,
 		exitWriter: pWrite,
-		memfile:    memfile,
+		memfile:    trackedMemfile,
 		socketPath: socketPath,
 		Stop: sync.OnceValue(func() error {
 			_, writeErr := pWrite.Write([]byte{0})

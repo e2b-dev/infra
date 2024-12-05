@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -150,7 +151,7 @@ func NewSandbox(
 	}
 	overlaySpan.End()
 
-	fcUffd, uffdErr := uffd.New(memfile, sandboxFiles.SandboxUffdSocketPath())
+	fcUffd, uffdErr := uffd.New(memfile, sandboxFiles.SandboxUffdSocketPath(), sandboxFiles.MemfilePageSize())
 	if uffdErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to create uffd: %w", uffdErr)
 	}
@@ -322,8 +323,10 @@ func (s *Sandbox) Stop() error {
 }
 
 func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.TemplateCacheFiles) error {
+	s.uffd.Disable()
+
 	start := time.Now()
-	fmt.Printf("[sandbox %s]: snapshotting sandbox\n", s.Config.SandboxId)
+	fmt.Printf("[snapshot] creating snapfile and memfile diff\n")
 	err := s.process.Snapshot(
 		ctx,
 		snapshotTemplateFiles.CacheSnapfilePath(),
@@ -332,18 +335,57 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	if err != nil {
 		return fmt.Errorf("failed to snapshot sandbox: %w", err)
 	}
+	memfileDirty := s.uffd.Dirty()
+	fmt.Printf("[snapshot] (%s) tracked pages: %d\n",
+		time.Since(start),
+		memfileDirty.Count(),
+	)
 
-	fmt.Printf("[sandbox %s]: creating snapshot in  %s\n", s.Config.SandboxId, time.Since(start))
+	nbdPath, err := s.rootfs.Path()
+	if err != nil {
+		return fmt.Errorf("failed to get rootfs path: %w", err)
+	}
 
-	fmt.Printf("[sandbox %s]: exporting rootfs\n", s.Config.SandboxId)
+	// Flush the data to the operating system's buffer
+	file, err := os.Open(nbdPath)
+	if err != nil {
+		return fmt.Errorf("failed to open rootfs path: %w", err)
+	}
 
-	// TODO: Decide how the rootfs+overlay have to be handled. For the few seconds for upload it might be ok for now to still use the nbd?
-	err = s.rootfs.Export(ctx, snapshotTemplateFiles.CacheRootfsPath())
+	// TODO: We need to test this properly.
+	err = file.Sync()
+	if err != nil {
+		return fmt.Errorf("failed to sync rootfs path: %w", err)
+	}
+
+	// TODO: We need to test this properly.
+	err = syscall.Fsync(int(file.Fd()))
+	if err != nil {
+		return fmt.Errorf("failed to fsync rootfs path: %w", err)
+	}
+
+	fmt.Printf("[snapshot] creating rootfs snapshot file\n")
+
+	f, err := os.Create(snapshotTemplateFiles.CacheRootfsPath())
+	if err != nil {
+		return fmt.Errorf("failed to create rootfs snapshot file: %w", err)
+	}
+
+	defer f.Close()
+
+	fmt.Printf("[snapshot] exporting rootfs %s\n", snapshotTemplateFiles.CacheRootfsPath())
+
+	rootfsDirty, err := s.rootfs.Export(f)
 	if err != nil {
 		return fmt.Errorf("failed to export rootfs: %w", err)
 	}
 
-	fmt.Printf("[sandbox %s]: snapshotting done\n", s.Config.SandboxId)
+	fmt.Printf("[snapshot] (%s) tracked blocks: %d\n",
+		time.Since(start),
+		rootfsDirty.Count(),
+	)
+
+	fmt.Printf("[snapshot] snapshotting done\n")
 
 	return nil
 }
