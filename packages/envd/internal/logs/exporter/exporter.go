@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -95,21 +96,21 @@ func (w *HTTPExporter) start() {
 			continue
 		}
 
-		for _, log := range logs {
-			logsWithOpts, jsonErr := mmdsOpts.addOptsToJSON(log)
+		for _, logLine := range logs {
+			logsWithOpts, jsonErr := mmdsOpts.addOptsToJSON(logLine)
 			if jsonErr != nil {
-				fmt.Fprintf(os.Stderr, "error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", mmdsOpts, log, jsonErr)
+				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", mmdsOpts, logLine, jsonErr)
 
-				printLog(log)
+				printLog(logLine)
 
 				continue
 			}
 
 			err = w.sendInstanceLogs(logsWithOpts, mmdsOpts.Address)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, fmt.Sprintf("error sending instance logs: %+v", err))
+				log.Printf(fmt.Sprintf("error sending instance logs: %+v", err))
 
-				printLog(log)
+				printLog(logLine)
 
 				continue
 			}
