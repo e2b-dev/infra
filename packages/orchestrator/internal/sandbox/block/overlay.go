@@ -30,11 +30,9 @@ func NewOverlay(device ReadonlyDevice, blockSize int64, cachePath string) (*Over
 func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
 	blocks := listBlocks(off, off+int64(len(p)), o.cache.blockSize)
 
-	for i, block := range blocks {
+	for _, block := range blocks {
 		n, err := o.cache.ReadAt(p[block.start-off:block.end-off], block.start)
 		if err == nil {
-			fmt.Printf("[overlay] (%d) > %d cache hit\n", i, block.start)
-
 			continue
 		}
 

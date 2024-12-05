@@ -161,7 +161,6 @@ func NewSandbox(
 	}
 
 	cleanup.Add(func() error {
-		fmt.Printf("[sandbox %s]: stopping uffd\n", config.SandboxId)
 		stopErr := fcUffd.Stop()
 		if stopErr != nil {
 			return fmt.Errorf("failed to stop uffd: %w", stopErr)
