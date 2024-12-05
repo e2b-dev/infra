@@ -188,8 +188,6 @@ module "nomad" {
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
 
   # Proxies
-  client_cluster_size = var.client_cluster_size
-
   session_proxy_service_name = var.session_proxy_service_name
   session_proxy_port         = var.session_proxy_port
 

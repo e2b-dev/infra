@@ -177,8 +177,8 @@ module "api_cluster" {
   cluster_tag_name = var.cluster_tag_name
   gcp_zone         = var.gcp_zone
 
-  machine_type = var.client_machine_type
-  image_family = var.client_image_family
+  machine_type = var.api_machine_type
+  image_family = var.api_image_family
 
   network_name = var.network_name
 

@@ -30,6 +30,11 @@ variable "server_machine_type" {
   type = string
 }
 
+variable "api_image_family" {
+  type    = string
+  default = "e2b-orch"
+}
+
 variable "api_cluster_size" {
   type = number
 }
