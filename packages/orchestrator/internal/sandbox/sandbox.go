@@ -32,7 +32,7 @@ const (
 )
 
 var httpClient = http.Client{
-	Timeout: 5 * time.Second,
+	Timeout: time.Second,
 }
 
 type Sandbox struct {

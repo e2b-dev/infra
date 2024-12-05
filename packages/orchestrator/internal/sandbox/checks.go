@@ -20,6 +20,14 @@ const (
 )
 
 func isMetricsSupported(envdVersion string) bool {
+	if !semver.IsValid("v" + envdVersion) {
+		return false
+	}
+
+	if len(envdVersion) > 0 && envdVersion[0] != 'v' {
+		envdVersion = "v" + envdVersion
+	}
+
 	return semver.Compare(envdVersion, minEnvdVersionForMetrcis) >= 0
 }
 
@@ -30,6 +38,8 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 		healthTicker.Stop()
 		metricsTicker.Stop()
 	}()
+
+	go s.LogMetrics(ctx)
 
 	for {
 		select {
@@ -46,19 +56,12 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 			if err != nil {
 				s.Logger.Warnf("failed to get stats: %s", err)
 			} else {
-				// use this for /stats
 				s.Logger.CPUUsage(stats.CPUCount)
 				s.Logger.MemoryUsage(stats.MemoryMB)
 			}
 		case <-metricsTicker.C:
 			if isMetricsSupported(s.Sandbox.EnvdVersion) {
-				metrics, err := s.GetMetrics(ctx, false)
-				if err != nil {
-					s.Logger.Warnf("failed to get metrics: %s", err)
-				} else {
-					s.Logger.CPUPct(metrics.CPUPercent)
-					s.Logger.MemMB(metrics.MemMB)
-				}
+				s.LogMetrics(ctx)
 			}
 		case <-ctx.Done():
 			return
@@ -96,7 +99,7 @@ func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 	}
 }
 
-func (s *Sandbox) GetMetrics(ctx context.Context, alwaysReport bool) (SandboxMetrics, error) {
+func (s *Sandbox) GetMetrics(ctx context.Context) (SandboxMetrics, error) {
 	address := fmt.Sprintf("http://%s:%d/metrics", s.slot.HostIP(), consts.DefaultEnvdServerPort)
 
 	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
@@ -122,4 +125,14 @@ func (s *Sandbox) GetMetrics(ctx context.Context, alwaysReport bool) (SandboxMet
 	}
 
 	return metrics, nil
+}
+
+func (s *Sandbox) LogMetrics(ctx context.Context) {
+	metrics, err := s.GetMetrics(ctx)
+	if err != nil {
+		s.Logger.Warnf("failed to get metrics: %s", err)
+	} else {
+		s.Logger.CPUPct(metrics.CPUPercent)
+		s.Logger.MemMB(metrics.MemMB)
+	}
 }

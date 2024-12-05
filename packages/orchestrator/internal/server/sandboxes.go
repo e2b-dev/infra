@@ -146,6 +146,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 	}
 
 	sbx.Healthcheck(ctx, true)
+	sbx.LogMetrics(ctx)
 
 	childSpan.SetAttributes(
 		attribute.String("env.id", sbx.Sandbox.TemplateID),
