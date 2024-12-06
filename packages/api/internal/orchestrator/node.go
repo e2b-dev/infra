@@ -8,12 +8,17 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
+type sbxInProgress struct {
+	MiBMemory int64
+	CPUs      int64
+}
+
 type Node struct {
-	ID            string
-	CPUUsage      int64
-	RamUsage      int64
-	Client        *GRPCClient
-	sbxInProgress int
+	ID             string
+	CPUUsage       int64
+	RamUsage       int64
+	Client         *GRPCClient
+	sbxsInProgress map[string]*sbxInProgress
 }
 
 type nodeInfo struct {

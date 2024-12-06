@@ -96,32 +96,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		attribute.String("env.firecracker.version", build.FirecrackerVersion),
 	)
 
-	telemetry.ReportEvent(ctx, "waiting for create sandbox parallel limit semaphore slot")
-
-	// _, rateSpan := a.Tracer.Start(ctx, "rate-limit")
-	// counter, err := meters.GetUpDownCounter(meters.RateLimitCounterMeterName)
-	// if err != nil {
-	// 	a.logger.Errorf("error getting counter: %s", err)
-	// }
-
-	// counter.Add(ctx, 1)
-	// limitErr := postSandboxParallelLimit.Acquire(ctx, 1)
-	// counter.Add(ctx, -1)
-	// if limitErr != nil {
-	// 	errMsg := fmt.Errorf("error when acquiring parallel lock: %w", limitErr)
-	// 	telemetry.ReportCriticalError(ctx, errMsg)
-	//
-	// 	a.sendAPIStoreError(c, http.StatusInternalServerError, "Request canceled or timed out.")
-	//
-	// 	return
-	// }
-
-	// defer postSandboxParallelLimit.Release(1)
-	// telemetry.ReportEvent(ctx, "create sandbox parallel limit semaphore slot acquired")
-
-	// rateSpan.End()
-	telemetry.ReportEvent(ctx, "Reserved team sandbox slot")
-
 	var metadata map[string]string
 	if body.Metadata != nil {
 		metadata = *body.Metadata
