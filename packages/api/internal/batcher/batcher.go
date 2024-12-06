@@ -61,7 +61,6 @@ func (b *Batcher) batch() {
 		if count == 0 {
 			continue
 		}
-		log.Printf("updating spawn count for env %s: %d", env, count)
 
 		err := b.db.Client.Env.UpdateOneID(env).AddSpawnCount(count).Exec(b.ctx)
 		if err != nil {
