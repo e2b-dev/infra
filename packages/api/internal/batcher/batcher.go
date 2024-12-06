@@ -23,7 +23,7 @@ func NewBatcher(ctx context.Context, db *db.DB) *Batcher {
 		ctx:       ctx,
 		templates: make(map[string]int64),
 	}
-	go b.Loop()
+	go b.loop()
 
 	return b
 }
@@ -40,14 +40,14 @@ func (b *Batcher) UpdateTemplateSpawnCount(templateID string) {
 	b.templates[templateID]++
 }
 
-func (b *Batcher) Loop() {
+func (b *Batcher) loop() {
 	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			b.batch()
 		case <-b.ctx.Done():
-			ticker.Stop()
 			return
 		}
 	}
@@ -55,6 +55,8 @@ func (b *Batcher) Loop() {
 
 func (b *Batcher) batch() {
 	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	for env, count := range b.templates {
 		if count == 0 {
 			continue
