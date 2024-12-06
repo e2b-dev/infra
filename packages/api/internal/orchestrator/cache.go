@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/posthog/posthog-go"
@@ -69,11 +70,14 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 				continue
 			}
 
-			activeInstances, instancesErr := o.getInstances(childCtx, node.ID)
+			requestCtx, cancel := context.WithTimeout(childCtx, time.Second)
+			activeInstances, instancesErr := o.getInstances(requestCtx, node.ID)
 			if instancesErr != nil {
+				cancel()
 				o.logger.Errorf("Error getting instances\n: %v", instancesErr)
 				continue
 			}
+			cancel()
 
 			instanceCache.Sync(activeInstances, node.ID)
 
@@ -118,12 +122,21 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 			node.RamUsage -= info.RamMB
 		}
 
-		_, err = node.Client.Sandbox.Delete(ctx, &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID})
+		req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
+		if node == nil {
+			log.Printf("node '%s' not found", info.Instance.ClientID)
+			return fmt.Errorf("node '%s' not found", info.Instance)
+		}
+
+		if node.Client == nil {
+			log.Printf("client for node '%s' not found", info.Instance.ClientID)
+			return fmt.Errorf("client for node '%s' not found", info.Instance)
+		}
+
+		_, err = node.Client.Sandbox.Delete(ctx, req)
 		if err != nil {
 			return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
 		}
-
-		logger.Infof("Closed sandbox '%s' after %f seconds", info.Instance.SandboxID, duration)
 
 		return nil
 	}
@@ -149,8 +162,6 @@ func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *za
 		if err != nil {
 			logger.Errorf("Error sending Analytics event: %v", err)
 		}
-
-		logger.Infof("Created sandbox '%s'", info.Instance.SandboxID)
 
 		return nil
 	}

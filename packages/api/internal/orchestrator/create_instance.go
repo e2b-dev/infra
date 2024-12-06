@@ -96,17 +96,29 @@ func (o *Orchestrator) CreateSandbox(
 	var excludedNodes []string
 
 	for {
+		if childCtx.Err() != nil {
+			return nil, fmt.Errorf("context was canceled")
+		}
+
 		node = o.getLeastBusyNode(childCtx, excludedNodes...)
 		telemetry.ReportEvent(childCtx, "Trying to place sandbox on node")
 
 		if node == nil {
-			return nil, fmt.Errorf("failed to find a node to place sandbox on")
+			continue
 		}
+
+		node.CPUUsage += build.Vcpu
+		node.RamUsage += build.RAMMB
+		node.sbxInProgress++
 
 		_, err = node.Client.Sandbox.Create(ctx, sbxRequest)
 		if err == nil {
 			break
 		}
+
+		node.CPUUsage -= build.Vcpu
+		node.RamUsage -= build.RAMMB
+		node.sbxInProgress--
 
 		err = utils.UnwrapGRPCError(err)
 		if err != nil {
@@ -134,6 +146,10 @@ func (o *Orchestrator) CreateSandbox(
 	// Otherwise it could cause the instance to expire before user has a chance to use it
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
+
+	node.CPUUsage -= build.Vcpu
+	node.RamUsage -= build.RAMMB
+	node.sbxInProgress--
 
 	instanceInfo := instance.InstanceInfo{
 		Logger:            logger,
@@ -167,7 +183,7 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, excludedNodes ...st
 	defer childSpan.End()
 
 	for _, node := range o.nodes {
-		if leastBusyNode == nil || node.CPUUsage < leastBusyNode.CPUUsage {
+		if node.sbxInProgress <= 2 && (leastBusyNode == nil || node.CPUUsage < leastBusyNode.CPUUsage) {
 			for _, excludedNode := range excludedNodes {
 				if node.ID == excludedNode {
 					continue

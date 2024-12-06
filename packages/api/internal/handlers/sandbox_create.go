@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -18,12 +17,11 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
-	defaultRequestLimit = 128
+	defaultRequestLimit = 16
 	InstanceIDPrefix    = "i"
 )
 
@@ -100,28 +98,28 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "waiting for create sandbox parallel limit semaphore slot")
 
-	_, rateSpan := a.Tracer.Start(ctx, "rate-limit")
-	counter, err := meters.GetUpDownCounter(meters.RateLimitCounterMeterName)
-	if err != nil {
-		a.logger.Errorf("error getting counter: %s", err)
-	}
+	// _, rateSpan := a.Tracer.Start(ctx, "rate-limit")
+	// counter, err := meters.GetUpDownCounter(meters.RateLimitCounterMeterName)
+	// if err != nil {
+	// 	a.logger.Errorf("error getting counter: %s", err)
+	// }
 
-	counter.Add(ctx, 1)
-	limitErr := postSandboxParallelLimit.Acquire(ctx, 1)
-	counter.Add(ctx, -1)
-	if limitErr != nil {
-		errMsg := fmt.Errorf("error when acquiring parallel lock: %w", limitErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
+	// counter.Add(ctx, 1)
+	// limitErr := postSandboxParallelLimit.Acquire(ctx, 1)
+	// counter.Add(ctx, -1)
+	// if limitErr != nil {
+	// 	errMsg := fmt.Errorf("error when acquiring parallel lock: %w", limitErr)
+	// 	telemetry.ReportCriticalError(ctx, errMsg)
+	//
+	// 	a.sendAPIStoreError(c, http.StatusInternalServerError, "Request canceled or timed out.")
+	//
+	// 	return
+	// }
 
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Request canceled or timed out.")
+	// defer postSandboxParallelLimit.Release(1)
+	// telemetry.ReportEvent(ctx, "create sandbox parallel limit semaphore slot acquired")
 
-		return
-	}
-
-	defer postSandboxParallelLimit.Release(1)
-	telemetry.ReportEvent(ctx, "create sandbox parallel limit semaphore slot acquired")
-
-	rateSpan.End()
+	// rateSpan.End()
 	telemetry.ReportEvent(ctx, "Reserved team sandbox slot")
 
 	var metadata map[string]string
@@ -183,11 +181,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
 
-	c.Set("instanceID", sandbox.SandboxID)
-	c.Set("nodeID", sandbox.ClientID)
-
-	telemetry.ReportEvent(ctx, "Added sandbox to cache")
-
 	_, analyticsSpan := a.Tracer.Start(ctx, "analytics")
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
@@ -201,15 +194,16 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Created analytics event")
 
-	go func() {
-		err = a.db.UpdateEnvLastUsed(context.Background(), env.TemplateID)
-		if err != nil {
-			a.logger.Errorf("Error when updating last used for env: %s", err)
-		}
-	}()
+	// go func() {
+	// 	err = a.db.UpdateEnvLastUsed(context.Background(), env.TemplateID)
+	// 	if err != nil {
+	// 		a.logger.Errorf("Error when updating last used for env: %s", err)
+	// 	}
+	// }()
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("instance.id", sandbox.SandboxID),
+		attribute.String("node.id", sandbox.ClientID),
 	)
 
 	sandboxLogger.Infof("Sandbox created with - end time: %s", endTime.Format("2006-01-02 15:04:05 -07:00"))

@@ -9,10 +9,11 @@ import (
 )
 
 type Node struct {
-	ID       string
-	CPUUsage int64
-	RamUsage int64
-	Client   *GRPCClient
+	ID            string
+	CPUUsage      int64
+	RamUsage      int64
+	Client        *GRPCClient
+	sbxInProgress int
 }
 
 type nodeInfo struct {
