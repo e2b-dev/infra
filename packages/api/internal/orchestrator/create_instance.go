@@ -111,6 +111,8 @@ type PostInitJSONBody struct {
 	EnvVars *map[string]string `json:"envVars"`
 }
 
+const maxRetries = 30
+
 func initEnvd(ctx context.Context, envVars map[string]string, sandboxID, clientID string) error {
 	address := fmt.Sprintf("https://%d-%s-%s.goulash.dev/init", consts.DefaultEnvdServerPort, sandboxID, clientID)
 
@@ -125,43 +127,40 @@ func initEnvd(ctx context.Context, envVars map[string]string, sandboxID, clientI
 		return err
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			request, err := http.NewRequestWithContext(ctx, "POST", address, bytes.NewReader(envVarsJSON))
-			if err != nil {
-				return fmt.Errorf("failed to create request: %w", err)
-			}
-
-			response, err := httpClient.Do(request)
-			if err != nil {
-				counter++
-				if counter > 20 {
-					return fmt.Errorf("failed to send request: %w", err)
-				}
-
-				time.Sleep(10 * time.Millisecond)
-
-				continue
-			}
-
-			if response.StatusCode != http.StatusNoContent {
-				return fmt.Errorf("unexpected status code: %d", response.StatusCode)
-			}
-
-			_, err = io.Copy(io.Discard, response.Body)
-			if err != nil {
-				return fmt.Errorf("failed to read response body: %w", err)
-			}
-
-			err = response.Body.Close()
-			if err != nil {
-				return fmt.Errorf("failed to close response body: %w", err)
-			}
-
-			return nil
+	var response *http.Response
+	for counter <= maxRetries {
+		reqCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+		request, err := http.NewRequestWithContext(reqCtx, "POST", address, bytes.NewReader(envVarsJSON))
+		if err != nil {
+			cancel()
+			return fmt.Errorf("failed to create request: %w", err)
 		}
+		cancel()
+
+		response, err = httpClient.Do(request)
+		if err != nil {
+			counter++
+			time.Sleep(10 * time.Millisecond)
+
+			continue
+		}
+
 	}
+
+	if response == nil {
+		return fmt.Errorf("failed to init envd")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
+	}
+
+	_, err = io.Copy(io.Discard, response.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	return nil
+
 }
