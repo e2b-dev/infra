@@ -62,7 +62,7 @@ func NewAPIStore() *APIStore {
 		panic(err)
 	}
 
-	dbClient, err := db.NewClient(ctx)
+	dbClient, err := db.NewClient(ctx, 50)
 	if err != nil {
 		logger.Errorf("Error initializing Supabase client\n: %v", err)
 		panic(err)

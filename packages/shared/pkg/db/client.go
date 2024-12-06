@@ -19,7 +19,7 @@ type DB struct {
 
 var databaseURL = os.Getenv("POSTGRES_CONNECTION_STRING")
 
-func NewClient(ctx context.Context) (*DB, error) {
+func NewClient(ctx context.Context, connectionCount int) (*DB, error) {
 	if databaseURL == "" {
 		return nil, fmt.Errorf("database URL is empty")
 	}
@@ -31,7 +31,7 @@ func NewClient(ctx context.Context) (*DB, error) {
 
 	// Get the underlying sql.DB object of the driver.
 	db := drv.DB()
-	db.SetMaxOpenConns(20)
+	db.SetMaxOpenConns(connectionCount)
 
 	client := models.NewClient(models.Driver(drv))
 
