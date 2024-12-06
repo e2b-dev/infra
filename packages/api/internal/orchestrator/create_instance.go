@@ -43,6 +43,7 @@ func (o *Orchestrator) CreateSandbox(
 	endTime time.Time,
 	timeout time.Duration,
 	logger *logs.SandboxLogger,
+	isResume bool,
 ) (*api.Sandbox, error) {
 	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -85,6 +86,7 @@ func (o *Orchestrator) CreateSandbox(
 			HugePages:          features.HasHugePages(),
 			RamMb:              build.RAMMB,
 			Vcpu:               build.Vcpu,
+			Snapshot:           isResume,
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),

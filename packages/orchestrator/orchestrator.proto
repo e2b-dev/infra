@@ -14,22 +14,23 @@ message SandboxConfig {
   string firecracker_version = 4;
   
   bool huge_pages = 5;
+  bool snapshot = 6;
   
-  string sandbox_id = 6;
-  map<string, string> env_vars = 7;
+  string sandbox_id = 7;
+  map<string, string> env_vars = 8;
   
   // Metadata about the sandbox.
-  map<string, string> metadata = 8;
-  optional string alias = 9;
-  string envd_version = 10;
+  map<string, string> metadata = 9;
+  optional string alias = 10;
+  string envd_version = 11;
   
-  int64 vcpu = 11;
-  int64 ram_mb = 12;
-  int64 total_disk_size_mb = 13;
+  int64 vcpu = 12;
+  int64 ram_mb = 13;
+  int64 total_disk_size_mb = 14;
 
-  string team_id = 14;
+  string team_id = 15;
   // Maximum length of the sandbox in Hours.
-  int64 max_sandbox_length = 15;
+  int64 max_sandbox_length = 16;
 }
 
 message SandboxCreateRequest {

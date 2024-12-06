@@ -26,6 +26,7 @@ func (a *APIStore) startSandbox(
 	build *models.EnvBuild,
 	logger *logs.SandboxLogger,
 	requestHeader *http.Header,
+	isResume bool,
 ) (*api.Sandbox, error) {
 	_, rateSpan := a.Tracer.Start(ctx, "rate-limit")
 	counter, err := meters.GetUpDownCounter(meters.RateLimitCounterMeterName)
@@ -64,6 +65,7 @@ func (a *APIStore) startSandbox(
 		endTime,
 		timeout,
 		logger,
+		isResume,
 	)
 	if instanceErr != nil {
 		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
