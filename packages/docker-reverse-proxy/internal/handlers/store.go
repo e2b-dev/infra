@@ -21,7 +21,7 @@ type APIStore struct {
 
 func NewStore(ctx context.Context) *APIStore {
 	authCache := cache.New()
-	database, err := db.NewClient(ctx)
+	database, err := db.NewClient(ctx, 5)
 	if err != nil {
 		log.Fatal(err)
 	}
