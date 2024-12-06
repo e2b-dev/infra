@@ -20,7 +20,7 @@ func GetMetrics() (*Metrics, error) {
 		return nil, err
 	}
 
-	memMB := v.Total / 1024 / 1024
+	memMiB := v.Total / 1024 / 1024
 
 	cpuPcts, err := cpu.Percent(0, false)
 	if err != nil {
