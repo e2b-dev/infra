@@ -40,14 +40,6 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 			ctx.Unlock()
 
 			cancel()
-
-			stats, err := s.stats.getStats()
-			if err != nil {
-				s.Logger.Warnf("failed to get stats: %s", err)
-			} else {
-				s.Logger.CPUUsage(stats.CPUCount)
-				s.Logger.MemoryUsage(stats.MemoryMB)
-			}
 		case <-metricsTicker.C:
 			s.LogMetrics(ctx)
 		case <-ctx.Done():

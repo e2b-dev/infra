@@ -51,7 +51,6 @@ type Sandbox struct {
 
 	slot   IPSlot
 	Logger *logs.SandboxLogger
-	stats  *SandboxStats
 }
 
 func fcBinaryPath(fcVersion string) string {
@@ -198,11 +197,6 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
-	stats := newSandboxStats(int32(fc.pid))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stats: %w", err)
-	}
-
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	instance := &Sandbox{
@@ -215,7 +209,6 @@ func NewSandbox(
 		networkPool: networkPool,
 		EndAt:       endAt,
 		Logger:      logger,
-		stats:       stats,
 		stopOnce: sync.OnceValue(func() error {
 			var uffdErr error
 			if fcUffd != nil {
