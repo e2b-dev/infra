@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/mod/semver"
@@ -24,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -52,6 +54,8 @@ type Sandbox struct {
 	stats  *stats.Handle
 
 	uffdExit chan error
+
+	template template.Template
 }
 
 // Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
@@ -230,6 +234,7 @@ func NewSandbox(
 		uffdExit:  uffdExit,
 		files:     sandboxFiles,
 		slot:      ips,
+		template:  t,
 		process:   fcHandle,
 		uffd:      fcUffd,
 		Config:    config,
@@ -365,7 +370,41 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 
 	fmt.Printf("[snapshot] memfile diff %s\n", snapshotTemplateFiles.CacheMemfileDiffPath())
 
-	// TODO: Transform the memfile to be just the diff
+	fmt.Printf("[snapshot] >>>>>>>>. build id: %s\n", snapshotTemplateFiles.BuildId)
+
+	buildId, err := uuid.Parse(snapshotTemplateFiles.BuildId)
+	if err != nil {
+		return fmt.Errorf("failed to parse build id: %w", err)
+	}
+
+	originalMemfile, err := s.template.Memfile()
+	if err != nil {
+		return fmt.Errorf("failed to get original memfile: %w", err)
+	}
+
+	memfileSize, err := originalMemfile.Size()
+	if err != nil {
+		return fmt.Errorf("failed to get original memfile size: %w", err)
+	}
+
+	memfileMetadata := &header.Metadata{
+		Version:   1,
+		BlockSize: int64(s.files.MemfilePageSize()),
+		Size:      memfileSize,
+		BuildId:   buildId,
+	}
+
+	memfileMapping := header.CreateMapping(
+		memfileMetadata,
+		&buildId,
+		memfileDirty,
+	)
+
+	memfileMappings := header.MergeMappings(memfileMapping, nil)
+
+	for _, mapping := range memfileMappings {
+		fmt.Printf("[snapshot] memfile mapping: %+v\n", *mapping)
+	}
 
 	nbdPath, err := s.rootfs.Path()
 	if err != nil {
@@ -404,6 +443,35 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	rootfsDirty, err := s.rootfs.Export(f)
 	if err != nil {
 		return fmt.Errorf("failed to export rootfs: %w", err)
+	}
+
+	originalRootfs, err := s.template.Rootfs()
+	if err != nil {
+		return fmt.Errorf("failed to get original rootfs: %w", err)
+	}
+
+	rootfsSize, err := originalRootfs.Size()
+	if err != nil {
+		return fmt.Errorf("failed to get original rootfs size: %w", err)
+	}
+
+	rootfsMetadata := &header.Metadata{
+		Version:   1,
+		BlockSize: int64(s.files.RootfsBlockSize()),
+		Size:      rootfsSize,
+		BuildId:   buildId,
+	}
+
+	rootfsMapping := header.CreateMapping(
+		rootfsMetadata,
+		&buildId,
+		rootfsDirty,
+	)
+
+	rootfsMappings := header.MergeMappings(rootfsMapping, nil)
+
+	for _, mapping := range rootfsMappings {
+		fmt.Printf("[snapshot] rootfs mapping: %+v\n", *mapping)
 	}
 
 	fmt.Printf("[snapshot] (%s) tracked blocks: %d\n",

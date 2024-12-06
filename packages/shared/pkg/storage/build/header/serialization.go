@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type metadata struct {
+type Metadata struct {
 	Version   int64
 	BlockSize int64
 	Size      int64
@@ -26,7 +26,7 @@ type buildMap struct {
 	BuildStorageOffset uint64
 }
 
-func Serialize(metadata *metadata, mappings []*buildMap, out io.Writer) error {
+func Serialize(metadata *Metadata, mappings []*buildMap, out io.Writer) error {
 	err := binary.Write(out, binary.LittleEndian, metadata)
 	if err != nil {
 		return fmt.Errorf("failed to write metadata: %w", err)
@@ -43,7 +43,7 @@ func Serialize(metadata *metadata, mappings []*buildMap, out io.Writer) error {
 }
 
 func Deserialize(in io.Reader) (*Header, error) {
-	var metadata metadata
+	var metadata Metadata
 
 	err := binary.Read(in, binary.LittleEndian, &metadata)
 	if err != nil {

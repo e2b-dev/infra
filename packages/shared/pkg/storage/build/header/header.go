@@ -8,14 +8,23 @@ import (
 )
 
 type Header struct {
-	Metadata    *metadata
+	Metadata    *Metadata
 	blockStarts *bitset.BitSet
 	startMap    map[uint64]*buildMap
 
 	Mapping []*buildMap
 }
 
-func NewHeader(metadata *metadata, mapping []*buildMap) *Header {
+func NewHeader(metadata *Metadata, mapping []*buildMap) *Header {
+	if len(mapping) == 0 {
+		mapping = []*buildMap{{
+			Offset:             0,
+			Length:             uint64(metadata.Size),
+			BuildId:            metadata.BuildId,
+			BuildStorageOffset: 0,
+		}}
+	}
+
 	blocks := NumberOfBlocks(metadata.Size, metadata.BlockSize)
 
 	intervals := bitset.New(blocks)
@@ -51,10 +60,10 @@ func (t *Header) GetMapping(offset int64) (*buildMap, error) {
 }
 
 func CreateMapping(
-	metadata *metadata,
+	metadata *Metadata,
 	buildId *uuid.UUID,
 	dirty *bitset.BitSet,
-) ([]*buildMap, error) {
+) []*buildMap {
 	var mappings []*buildMap
 
 	var startBlock uint
@@ -92,8 +101,134 @@ func CreateMapping(
 		BuildStorageOffset: buildStorageOffset,
 	})
 
-	return mappings, nil
+	return mappings
 }
 
-func MergeMappings(baseMappings []*buildMap, newMappings []*buildMap) []*buildMap {
+// The mapping are stored in a sorted order.
+// The baseMapping must cover the whole size.
+func MergeMappings(
+	baseMapping []*buildMap,
+	diffMapping []*buildMap,
+) []*buildMap {
+	if len(diffMapping) == 0 {
+		return baseMapping
+	}
+
+	mappings := make([]*buildMap, 0)
+
+	var baseIdx int
+	var diffIdx int
+
+	for baseIdx < len(baseMapping) && diffIdx < len(diffMapping) {
+		base := baseMapping[baseIdx]
+		diff := diffMapping[diffIdx]
+
+		// base is before diff and there is no overlap
+		// add base to the result, because it will not be overlapping by any diff
+		if base.Offset+base.Length <= diff.Offset {
+			mappings = append(mappings, base)
+
+			baseIdx++
+
+			continue
+		}
+
+		// diff is before base and there is no overlap
+		// add diff to the result, because we don't need to check if it overlaps with any base
+		if diff.Offset+diff.Length <= base.Offset {
+			mappings = append(mappings, diff)
+
+			diffIdx++
+
+			continue
+		}
+
+		// base is inside diff
+		// remove base, because it's fully covered by diff
+		if base.Offset >= diff.Offset && base.Offset+base.Length <= diff.Offset+diff.Length {
+			baseIdx++
+
+			continue
+		}
+
+		// diff is inside base (they start and end can also be the same)
+		// split base into two parts: left part (before diff) and right part (after diff)
+		// if left part is not empty, add it to the result
+		// add diff to the result
+		// if right part is not empty, update baseMapping with it, otherwise remove it from the baseMapping
+		if diff.Offset >= base.Offset && diff.Offset+diff.Length <= base.Offset+base.Length {
+			leftBase := &buildMap{
+				Offset:  base.Offset,
+				Length:  diff.Offset - base.Offset,
+				BuildId: base.BuildId,
+				// the build storage offset is the same as the base mapping
+				BuildStorageOffset: base.BuildStorageOffset,
+			}
+
+			if leftBase.Length > 0 {
+				mappings = append(mappings, leftBase)
+			}
+
+			mappings = append(mappings, diff)
+
+			diffIdx++
+
+			rightBaseShift := diff.Offset + diff.Length - base.Offset
+
+			rightBase := &buildMap{
+				Offset:             base.Offset + rightBaseShift,
+				Length:             base.Length - rightBaseShift,
+				BuildId:            base.BuildId,
+				BuildStorageOffset: base.BuildStorageOffset + rightBaseShift,
+			}
+
+			if rightBase.Length > 0 {
+				baseMapping[baseIdx] = rightBase
+			} else {
+				baseIdx++
+			}
+
+			continue
+		}
+
+		// base is after diff and there is overlap
+		// add diff to the result
+		// add the right part of base to the baseMapping, it should not be empty because of the check above
+		if base.Offset+base.Length > diff.Offset {
+			mappings = append(mappings, diff)
+
+			diffIdx++
+
+			rightBaseShift := diff.Offset + diff.Length - base.Offset
+
+			baseMapping[baseIdx] = &buildMap{
+				Offset:             base.Offset + rightBaseShift,
+				Length:             base.Length - rightBaseShift,
+				BuildId:            base.BuildId,
+				BuildStorageOffset: base.BuildStorageOffset + rightBaseShift,
+			}
+
+			continue
+		}
+
+		// diff is after base and there is overlap
+		// add the left part of base to the result, it should not be empty because of the check above
+		if diff.Offset+diff.Length > base.Offset {
+			mappings = append(mappings, &buildMap{
+				Offset:             base.Offset,
+				Length:             diff.Offset - base.Offset,
+				BuildId:            base.BuildId,
+				BuildStorageOffset: base.BuildStorageOffset,
+			})
+
+			baseIdx++
+
+			continue
+		}
+	}
+
+	mappings = append(mappings, baseMapping[baseIdx:]...)
+	mappings = append(mappings, diffMapping[diffIdx:]...)
+
+	return mappings
 }

@@ -159,7 +159,7 @@ func mockSnapshot(
 
 	snapshotTemplateFiles, err := storage.NewTemplateFiles(
 		"snapshot-template",
-		"snapshot-build",
+		"f0370054-b669-eeee-b33b-573d5287c6ef",
 		sbx.Config.KernelVersion,
 		sbx.Config.FirecrackerVersion,
 		sbx.Config.HugePages,
