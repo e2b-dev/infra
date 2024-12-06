@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -338,11 +339,33 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	if err != nil {
 		return fmt.Errorf("failed to snapshot sandbox: %w", err)
 	}
+
 	memfileDirty := s.uffd.Dirty()
 	fmt.Printf("[snapshot] (%s) tracked pages: %d\n",
 		time.Since(start),
 		memfileDirty.Count(),
 	)
+
+	sourceFile, err := os.Open(s.files.CacheMemfilePath())
+	if err != nil {
+		return fmt.Errorf("failed to open memfile: %w", err)
+	}
+
+	diffFile, err := os.Create(snapshotTemplateFiles.CacheMemfileDiffPath())
+	if err != nil {
+		return fmt.Errorf("failed to create memfile diff file: %w", err)
+	}
+
+	defer diffFile.Close()
+
+	err = build.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirty, diffFile)
+	if err != nil {
+		return fmt.Errorf("failed to create memfile diff: %w", err)
+	}
+
+	fmt.Printf("[snapshot] memfile diff %s\n", snapshotTemplateFiles.CacheMemfileDiffPath())
+
+	// TODO: Transform the memfile to be just the diff
 
 	nbdPath, err := s.rootfs.Path()
 	if err != nil {

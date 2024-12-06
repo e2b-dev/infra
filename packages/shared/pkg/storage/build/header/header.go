@@ -50,29 +50,50 @@ func (t *Header) GetMapping(offset int64) (*buildMap, error) {
 	return mapping, nil
 }
 
-func createMapping(
+func CreateMapping(
 	metadata *metadata,
 	buildId *uuid.UUID,
-	change *bitset.BitSet,
+	dirty *bitset.BitSet,
 ) ([]*buildMap, error) {
 	var mappings []*buildMap
 
-	var currentMapping *buildMap
+	var startBlock uint
+	var blockLength uint
+	var buildStorageOffset uint64
 
-	var dataOffset uint64
+	for blockIdx, e := dirty.NextSet(0); e; blockIdx, e = dirty.NextSet(blockIdx + 1) {
+		if startBlock+blockLength == blockIdx {
+			blockLength++
 
-	for i, e := change.NextSet(0); e; i, e = change.NextSet(i + 1) {
-		if currentMapping == nil {
-			currentMapping = &buildMap{
-				Offset:  uint64(int64(i) * metadata.BlockSize),
-				BuildId: *buildId,
-			}
+			continue
 		}
 
-		change.PreviousSet(i - 1)
+		if blockLength > 0 {
+			m := &buildMap{
+				Offset:             uint64(int64(startBlock) * metadata.BlockSize),
+				BuildId:            *buildId,
+				Length:             uint64(blockLength) * uint64(metadata.BlockSize),
+				BuildStorageOffset: buildStorageOffset,
+			}
 
-		dataOffset += uint64(metadata.BlockSize)
+			mappings = append(mappings, m)
+
+			buildStorageOffset += m.Length
+		}
+
+		startBlock = blockIdx
+		blockLength = 1
 	}
 
+	mappings = append(mappings, &buildMap{
+		Offset:             uint64(int64(startBlock) * metadata.BlockSize),
+		BuildId:            *buildId,
+		Length:             uint64(blockLength) * uint64(metadata.BlockSize),
+		BuildStorageOffset: buildStorageOffset,
+	})
+
 	return mappings, nil
+}
+
+func MergeMappings(baseMappings []*buildMap, newMappings []*buildMap) []*buildMap {
 }

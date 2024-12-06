@@ -45,7 +45,7 @@ func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
 			return 0, fmt.Errorf("failed to get source: %w", err)
 		}
 
-		blockN, err := b.ReadAt(p[n:], int64(mapping.BuildOffset))
+		blockN, err := b.ReadAt(p[n:], int64(mapping.BuildStorageOffset))
 		if err != nil {
 			return 0, fmt.Errorf("failed to read from source: %w", err)
 		}

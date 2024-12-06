@@ -20,10 +20,10 @@ type metadata struct {
 // The list of block mappings will be in order of increasing Start, covering the entire file
 type buildMap struct {
 	// Offset defines which block of the current layer this mapping starts at
-	Offset      uint64
-	Length      uint64
-	BuildId     uuid.UUID
-	BuildOffset uint64
+	Offset             uint64
+	Length             uint64
+	BuildId            uuid.UUID
+	BuildStorageOffset uint64
 }
 
 func Serialize(metadata *metadata, mappings []*buildMap, out io.Writer) error {

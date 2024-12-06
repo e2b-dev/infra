@@ -37,6 +37,10 @@ func (c *TemplateCacheFiles) CacheMemfilePath() string {
 	return filepath.Join(c.CacheDir(), MemfileName)
 }
 
+func (c *TemplateCacheFiles) CacheMemfileDiffPath() string {
+	return filepath.Join(c.CacheDir(), MemfileName+".diff")
+}
+
 func (c *TemplateCacheFiles) CacheRootfsPath() string {
 	return filepath.Join(c.CacheDir(), RootfsName)
 }
