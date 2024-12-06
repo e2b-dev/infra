@@ -2,10 +2,13 @@ package orchestrator
 
 import (
 	"fmt"
+	"time"
 
 	nomadapi "github.com/hashicorp/nomad/api"
+	"github.com/jellydator/ttlcache/v3"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 type sbxInProgress struct {
@@ -14,11 +17,13 @@ type sbxInProgress struct {
 }
 
 type Node struct {
-	ID             string
-	CPUUsage       int64
-	RamUsage       int64
-	Client         *GRPCClient
+	ID       string
+	CPUUsage int64
+	RamUsage int64
+	Client   *GRPCClient
+
 	sbxsInProgress map[string]*sbxInProgress
+	buildCache     *ttlcache.Cache[string, interface{}]
 }
 
 type nodeInfo struct {
@@ -50,4 +55,21 @@ func (o *Orchestrator) GetNode(nodeID string) (*Node, error) {
 	}
 
 	return node, nil
+}
+
+func (n *Node) SyncBuilds(builds []*orchestrator.CachedBuildInfo) {
+	for _, build := range builds {
+		n.buildCache.Set(build.BuildId, struct{}{}, build.ExpirationTime.AsTime().Sub(time.Now()))
+	}
+}
+
+func (t *Node) InsertBuild(buildID string) {
+	exists := t.buildCache.Has(buildID)
+	if exists {
+		return
+	}
+
+	// Set the build in the cache for 2 minutes, it should get updated with the correct time from the orchestrator during sync
+	t.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
+	return
 }

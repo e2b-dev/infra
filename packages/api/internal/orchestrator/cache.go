@@ -70,16 +70,23 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 				continue
 			}
 
-			requestCtx, cancel := context.WithTimeout(childCtx, time.Second)
-			activeInstances, instancesErr := o.getInstances(requestCtx, node.ID)
+			activeInstances, instancesErr := o.getInstances(childCtx, node.ID)
 			if instancesErr != nil {
-				cancel()
 				o.logger.Errorf("Error getting instances\n: %v", instancesErr)
 				continue
 			}
-			cancel()
 
 			instanceCache.Sync(activeInstances, node.ID)
+
+			go func() {
+				builds, buildsErr := o.listCachedBuilds(childCtx, node.ID)
+				if buildsErr != nil {
+					o.logger.Errorf("Error listing cached builds\n: %v", buildsErr)
+					return
+				}
+
+				node.SyncBuilds(builds)
+			}()
 
 			o.logger.Infof("Node %s: CPU: %d, RAM: %d", node.ID, node.CPUUsage, node.RamUsage)
 		}

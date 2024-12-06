@@ -131,6 +131,9 @@ func (o *Orchestrator) CreateSandbox(
 		// The node is not available, try again with another node
 	}
 
+	// The build should be cached on the node now
+	node.InsertBuild(build.ID.String())
+
 	// The sandbox was created successfully, the resources will be counted in cache
 	defer delete(node.sbxsInProgress, sandboxID)
 

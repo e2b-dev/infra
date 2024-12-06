@@ -64,9 +64,22 @@ message SandboxListResponse {
   repeated RunningSandbox sandboxes = 1;
 }
 
+message CachedBuildInfo {
+  string build_id = 1;
+  google.protobuf.Timestamp expiration_time = 2;
+}
+
+message SandboxListCachedBuildsResponse {
+  repeated CachedBuildInfo builds = 1;
+}
+
+
+
 service SandboxService {
   rpc Create(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc Update(SandboxUpdateRequest) returns (google.protobuf.Empty);
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
   rpc Delete(SandboxDeleteRequest) returns (google.protobuf.Empty);
+
+  rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
 }

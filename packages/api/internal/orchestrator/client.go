@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
@@ -42,9 +43,14 @@ func (o *Orchestrator) connectToNode(node *nodeInfo) error {
 		return err
 	}
 
+	buildCache := ttlcache.New[string, interface{}]()
+	go buildCache.Start()
+
 	n := &Node{
-		ID:     node.ID,
-		Client: client,
+		ID:             node.ID,
+		Client:         client,
+		buildCache:     buildCache,
+		sbxsInProgress: make(map[string]*sbxInProgress),
 	}
 
 	o.nodes[n.ID] = n
