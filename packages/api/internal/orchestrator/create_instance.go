@@ -1,9 +1,14 @@
 package orchestrator
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -13,10 +18,15 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var httpClient = &http.Client{
+	Timeout: 1 * time.Second,
+}
 
 func (o *Orchestrator) CreateSandbox(
 	t trace.Tracer,
@@ -77,6 +87,15 @@ func (o *Orchestrator) CreateSandbox(
 		return nil, fmt.Errorf("failed to create sandbox '%s': %w", templateID, err)
 	}
 
+	go func() {
+		envdCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		envdErr := initEnvd(envdCtx, envVars, sandboxID, res.ClientID)
+		if envdErr != nil {
+			log.Printf(fmt.Sprintf("failed to init envd: %v", envdErr))
+		}
+	}()
+
 	telemetry.ReportEvent(childCtx, "Created sandbox")
 
 	return &api.Sandbox{
@@ -86,4 +105,62 @@ func (o *Orchestrator) CreateSandbox(
 		Alias:       &alias,
 		EnvdVersion: *build.EnvdVersion,
 	}, nil
+}
+
+type PostInitJSONBody struct {
+	EnvVars *map[string]string `json:"envVars"`
+}
+
+const maxRetries = 30
+
+func initEnvd(ctx context.Context, envVars map[string]string, sandboxID, clientID string) error {
+	address := fmt.Sprintf("https://%d-%s-%s.goulash.dev/init", consts.DefaultEnvdServerPort, sandboxID, clientID)
+
+	counter := 0
+
+	jsonBody := &PostInitJSONBody{
+		EnvVars: &envVars,
+	}
+
+	envVarsJSON, err := json.Marshal(jsonBody)
+	if err != nil {
+		return err
+	}
+
+	var response *http.Response
+	for counter <= maxRetries {
+		reqCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+		request, err := http.NewRequestWithContext(reqCtx, "POST", address, bytes.NewReader(envVarsJSON))
+		if err != nil {
+			cancel()
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+		cancel()
+
+		response, err = httpClient.Do(request)
+		if err != nil {
+			counter++
+			time.Sleep(10 * time.Millisecond)
+
+			continue
+		}
+
+	}
+
+	if response == nil {
+		return fmt.Errorf("failed to init envd")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
+	}
+
+	_, err = io.Copy(io.Discard, response.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	return nil
+
 }
