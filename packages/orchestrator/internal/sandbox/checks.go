@@ -19,18 +19,6 @@ const (
 	minEnvdVersionForMetrcis = "0.1.3"
 )
 
-func isMetricsSupported(envdVersion string) bool {
-	if !semver.IsValid("v" + envdVersion) {
-		return false
-	}
-
-	if len(envdVersion) > 0 && envdVersion[0] != 'v' {
-		envdVersion = "v" + envdVersion
-	}
-
-	return semver.Compare(envdVersion, minEnvdVersionForMetrcis) >= 0
-}
-
 func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	healthTicker := time.NewTicker(healthCheckInterval)
 	metricsTicker := time.NewTicker(metricsCheckInterval)
@@ -60,9 +48,7 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 				s.Logger.MemoryUsage(stats.MemoryMB)
 			}
 		case <-metricsTicker.C:
-			if isMetricsSupported(s.Sandbox.EnvdVersion) {
-				s.LogMetrics(ctx)
-			}
+			s.LogMetrics(ctx)
 		case <-ctx.Done():
 			return
 		}
@@ -128,11 +114,25 @@ func (s *Sandbox) GetMetrics(ctx context.Context) (SandboxMetrics, error) {
 }
 
 func (s *Sandbox) LogMetrics(ctx context.Context) {
-	metrics, err := s.GetMetrics(ctx)
-	if err != nil {
-		s.Logger.Warnf("failed to get metrics: %s", err)
-	} else {
-		s.Logger.CPUPct(metrics.CPUPercent)
-		s.Logger.MemMB(metrics.MemMB)
+	if isMetricsSupported(s.Sandbox.EnvdVersion) {
+		metrics, err := s.GetMetrics(ctx)
+		if err != nil {
+			s.Logger.Warnf("failed to get metrics: %s", err)
+		} else {
+			s.Logger.CPUPct(metrics.CPUPercent)
+			s.Logger.MemMB(metrics.MemMB)
+		}
 	}
+}
+
+func isMetricsSupported(envdVersion string) bool {
+	if !semver.IsValid("v" + envdVersion) {
+		return false
+	}
+
+	if len(envdVersion) > 0 && envdVersion[0] != 'v' {
+		envdVersion = "v" + envdVersion
+	}
+
+	return semver.Compare(envdVersion, minEnvdVersionForMetrcis) >= 0
 }
