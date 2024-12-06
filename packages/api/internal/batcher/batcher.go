@@ -13,14 +13,17 @@ type Batcher struct {
 	db        *db.DB
 	templates map[string]int64
 	ctx       context.Context
+	cancel    context.CancelFunc
 
 	mu sync.Mutex
 }
 
-func NewBatcher(ctx context.Context, db *db.DB) *Batcher {
+func New(ctx context.Context, db *db.DB) *Batcher {
+	ctx, cancel := context.WithCancel(ctx)
 	b := &Batcher{
 		db:        db,
 		ctx:       ctx,
+		cancel:    cancel,
 		templates: make(map[string]int64),
 	}
 	go b.loop()
@@ -46,7 +49,9 @@ func (b *Batcher) loop() {
 	for {
 		select {
 		case <-ticker.C:
+			b.mu.Lock()
 			b.batch()
+			b.mu.Unlock()
 		case <-b.ctx.Done():
 			return
 		}
@@ -54,9 +59,6 @@ func (b *Batcher) loop() {
 }
 
 func (b *Batcher) batch() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	for env, count := range b.templates {
 		if count == 0 {
 			continue
@@ -69,4 +71,12 @@ func (b *Batcher) batch() {
 
 		delete(b.templates, env)
 	}
+}
+
+func (b *Batcher) Close() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.batch()
+	b.cancel()
 }

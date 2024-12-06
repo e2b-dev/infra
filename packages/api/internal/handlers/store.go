@@ -133,7 +133,7 @@ func NewAPIStore() *APIStore {
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)
 
-	batcherClient := batcher.NewBatcher(ctx, dbClient)
+	batcherClient := batcher.New(ctx, dbClient)
 	return &APIStore{
 		Ctx:             ctx,
 		batcher:         batcherClient,
@@ -153,6 +153,9 @@ func NewAPIStore() *APIStore {
 }
 
 func (a *APIStore) Close() {
+	// Needs to be before DB, as it uses the DB
+	a.batcher.Close()
+
 	a.db.Close()
 
 	err := a.analytics.Close()
