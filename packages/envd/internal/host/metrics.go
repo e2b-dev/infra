@@ -35,7 +35,7 @@ func GetMetrics() (*Metrics, error) {
 
 	return &Metrics{
 		CPUPercent: cpuPctRounded,
-		MemMiB:     memMB,
+		MemMiB:     memMiB,
 		Timestamp:  time.Now().UTC().Unix(),
 	}, nil
 }
