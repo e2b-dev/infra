@@ -18,11 +18,14 @@ type Batcher struct {
 }
 
 func NewBatcher(ctx context.Context, db *db.DB) *Batcher {
-	return &Batcher{
+	b := &Batcher{
 		db:        db,
 		ctx:       ctx,
 		templates: make(map[string]int64),
 	}
+	go b.Loop()
+
+	return b
 }
 
 // UpdateTemplateSpawnCount updates the spawn count for the given environment.
@@ -56,6 +59,7 @@ func (b *Batcher) batch() {
 		if count == 0 {
 			continue
 		}
+		log.Printf("updating spawn count for env %s: %d", env, count)
 
 		err := b.db.Client.Env.UpdateOneID(env).AddSpawnCount(count).Exec(b.ctx)
 		if err != nil {
