@@ -10,7 +10,7 @@ import (
 
 type Metrics struct {
 	CPUPercent float64 `json:"cpu_pct"` // Percent rounded to 2 decimal places
-	MemMB      uint64  `json:"mem_mb"`  // Total virtual memory in MB
+	MemMiB     uint64  `json:"mem_mib"` // Total virtual memory in MiB
 	Timestamp  int64   `json:"ts"`      // Unix Timestamp in UTC
 }
 
@@ -35,7 +35,7 @@ func GetMetrics() (*Metrics, error) {
 
 	return &Metrics{
 		CPUPercent: cpuPctRounded,
-		MemMB:      memMB,
+		MemMiB:     memMB,
 		Timestamp:  time.Now().UTC().Unix(),
 	}, nil
 }

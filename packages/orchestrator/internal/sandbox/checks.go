@@ -27,6 +27,7 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 		metricsTicker.Stop()
 	}()
 
+	// Get metrics on sandbox startup
 	go s.LogMetrics(ctx)
 
 	for {
@@ -114,25 +115,25 @@ func (s *Sandbox) GetMetrics(ctx context.Context) (SandboxMetrics, error) {
 }
 
 func (s *Sandbox) LogMetrics(ctx context.Context) {
-	if isMetricsSupported(s.Sandbox.EnvdVersion) {
+	if isGTEVersion(s.Sandbox.EnvdVersion, minEnvdVersionForMetrcis) {
 		metrics, err := s.GetMetrics(ctx)
 		if err != nil {
 			s.Logger.Warnf("failed to get metrics: %s", err)
 		} else {
 			s.Logger.CPUPct(metrics.CPUPercent)
-			s.Logger.MemMB(metrics.MemMB)
+			s.Logger.MemMB(metrics.MemMiB)
 		}
 	}
 }
 
-func isMetricsSupported(envdVersion string) bool {
-	if !semver.IsValid("v" + envdVersion) {
+func isGTEVersion(curVersion, minVersion string) bool {
+	if len(curVersion) > 0 && curVersion[0] != 'v' {
+		curVersion = "v" + curVersion
+	}
+
+	if !semver.IsValid(curVersion) {
 		return false
 	}
 
-	if len(envdVersion) > 0 && envdVersion[0] != 'v' {
-		envdVersion = "v" + envdVersion
-	}
-
-	return semver.Compare(envdVersion, minEnvdVersionForMetrcis) >= 0
+	return semver.Compare(curVersion, minVersion) >= 0
 }

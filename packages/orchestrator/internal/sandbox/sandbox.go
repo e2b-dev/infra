@@ -12,7 +12,6 @@ import (
 	consul "github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
@@ -29,6 +28,7 @@ const (
 	kernelMountDir = "/fc-vm"
 	kernelName     = "vmlinux.bin"
 	fcBinaryName   = "firecracker"
+	newEnvdVersion = "v0.1.1"
 )
 
 var httpClient = http.Client{
@@ -245,7 +245,7 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
 
 	// Sync envds.
-	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
+	if isGTEVersion(config.EnvdVersion, newEnvdVersion) {
 		err = instance.initEnvd(ctx, tracer, config.EnvVars)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init new envd: %w", err)
