@@ -18,6 +18,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/batcher"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
@@ -32,6 +33,7 @@ import (
 type APIStore struct {
 	Ctx             context.Context
 	analytics       *analyticscollector.Analytics
+	batcher         *batcher.Batcher
 	posthog         *PosthogClient
 	Tracer          trace.Tracer
 	instanceCache   *instance.InstanceCache
@@ -131,8 +133,10 @@ func NewAPIStore() *APIStore {
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)
 
+	batcherClient := batcher.NewBatcher(ctx, dbClient)
 	return &APIStore{
 		Ctx:             ctx,
+		batcher:         batcherClient,
 		orchestrator:    orch,
 		templateManager: templateManager,
 		db:              dbClient,
