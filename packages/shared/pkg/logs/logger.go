@@ -185,7 +185,8 @@ func (l *SandboxLogger) CPUPct(cpuPct float64) {
 		Str("envID", l.envID).
 		Str("teamID", l.teamID).
 		Float64("cpuPct", cpuPct).
-		Int32("cpuCount", l.cpuMax)
+		Int32("cpuCount", l.cpuMax).
+		Msg("CPU usage")
 }
 
 func (l *SandboxLogger) MemMB(memMB uint64) {
@@ -194,7 +195,8 @@ func (l *SandboxLogger) MemMB(memMB uint64) {
 		Str("envID", l.envID).
 		Str("teamID", l.teamID).
 		Uint64("memMBUsed", memMB).
-		Int32("memoryMBTotal", l.memoryMBMax)
+		Int32("memoryMBTotal", l.memoryMBMax).
+		Msg("Memory usage")
 }
 
 func (l *SandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
