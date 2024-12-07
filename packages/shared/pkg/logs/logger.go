@@ -189,13 +189,22 @@ func (l *SandboxLogger) CPUPct(cpuPct float64) {
 		Msg("CPU usage")
 }
 
-func (l *SandboxLogger) MemMiB(memMiB uint64) {
+func (l *SandboxLogger) MemMiB(memTotalMiB uint64, memUsedMiB uint64) {
+	// Calculate memory used by firecracker
+	fcMemUsedMiB := uint64(l.memoryMiBMax) - memTotalMiB
+
+	// Add firecracker memory to the reported memory used for a more accurate value
+	realMemUsedMiB := memUsedMiB + fcMemUsedMiB
+
 	l.exporter.logger.Info().
 		Str("instanceID", l.instanceID).
 		Str("envID", l.envID).
 		Str("teamID", l.teamID).
-		Uint64("memMiBUsed", memMiB).
-		Int32("memoryMiBTotal", l.memoryMiBMax).
+		Uint64("memUsedMiB", memUsedMiB).
+		Uint64("memTotalMiB", memTotalMiB).
+		Int32("realMemTotalMiB", l.memoryMiBMax).
+		Uint64("fcMemUsedMiB", fcMemUsedMiB).
+		Uint64("realMemUsedMiB", realMemUsedMiB).
 		Msg("Memory usage")
 }
 
