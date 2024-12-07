@@ -133,6 +133,7 @@ func mockSnapshot(
 		time.Now(),
 		time.Now(),
 		logger,
+		false,
 	)
 	defer func() {
 		cleanupErr := cleanup.Run()
@@ -173,14 +174,9 @@ func mockSnapshot(
 		return fmt.Errorf("failed to create snapshot template files directory: %w", err)
 	}
 
-	err = sbx.Snapshot(ctx, snapshotTemplateFiles)
+	_, err = sbx.Snapshot(ctx, snapshotTemplateFiles)
 	if err != nil {
 		return fmt.Errorf("failed to snapshot sandbox: %w", err)
-	}
-
-	_, err = templateCache.AddTemplateFromLocalFiles(snapshotTemplateFiles)
-	if err != nil {
-		return fmt.Errorf("failed to add template from local files: %w", err)
 	}
 
 	duration = time.Since(snapshotTime)

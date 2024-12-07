@@ -1,6 +1,7 @@
 package header
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -42,10 +43,19 @@ func Serialize(metadata *Metadata, mappings []*buildMap, out io.Writer) error {
 	return nil
 }
 
-func Deserialize(in io.Reader) (*Header, error) {
+func Deserialize(in io.WriterTo) (*Header, error) {
+	var buf bytes.Buffer
+
+	_, err := in.WriteTo(&buf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write to buffer: %w", err)
+	}
+
+	reader := bytes.NewReader(buf.Bytes())
+
 	var metadata Metadata
 
-	err := binary.Read(in, binary.LittleEndian, &metadata)
+	err = binary.Read(reader, binary.LittleEndian, &metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
@@ -54,7 +64,7 @@ func Deserialize(in io.Reader) (*Header, error) {
 
 	for {
 		var m buildMap
-		err := binary.Read(in, binary.LittleEndian, &m)
+		err := binary.Read(reader, binary.LittleEndian, &m)
 		if err == io.EOF {
 			break
 		}

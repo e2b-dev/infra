@@ -70,6 +70,7 @@ func NewSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	logger *logs.SandboxLogger,
+	isSnapshot bool,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -82,6 +83,7 @@ func NewSandbox(
 		config.KernelVersion,
 		config.FirecrackerVersion,
 		config.HugePages,
+		isSnapshot,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get template snapshot data: %w", err)
@@ -328,10 +330,10 @@ func (s *Sandbox) Stop() error {
 	return nil
 }
 
-func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.TemplateCacheFiles) error {
+func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.TemplateCacheFiles) (*SnapshotData, error) {
 	err := s.uffd.Disable()
 	if err != nil {
-		return fmt.Errorf("failed to disable uffd: %w", err)
+		return nil, fmt.Errorf("failed to disable uffd: %w", err)
 	}
 
 	start := time.Now()
@@ -339,11 +341,14 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	err = s.process.Snapshot(
 		ctx,
 		snapshotTemplateFiles.CacheSnapfilePath(),
-		snapshotTemplateFiles.CacheMemfilePath(),
+		// temporary path for dumping the whole memfile,
+		snapshotTemplateFiles.CacheMemfileFullSnapshotPath(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to snapshot sandbox: %w", err)
+		return nil, fmt.Errorf("failed to snapshot sandbox: %w", err)
 	}
+
+	defer os.Remove(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
 
 	memfileDirty := s.uffd.Dirty()
 	fmt.Printf("[snapshot] (%s) tracked pages: %d\n",
@@ -353,38 +358,38 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 
 	sourceFile, err := os.Open(s.files.CacheMemfilePath())
 	if err != nil {
-		return fmt.Errorf("failed to open memfile: %w", err)
+		return nil, fmt.Errorf("failed to open memfile: %w", err)
 	}
 
-	diffFile, err := os.Create(snapshotTemplateFiles.CacheMemfileDiffPath())
+	diffFile, err := os.Create(snapshotTemplateFiles.CacheMemfilePath())
 	if err != nil {
-		return fmt.Errorf("failed to create memfile diff file: %w", err)
+		return nil, fmt.Errorf("failed to create memfile diff file: %w", err)
 	}
 
 	defer diffFile.Close()
 
 	err = build.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirty, diffFile)
 	if err != nil {
-		return fmt.Errorf("failed to create memfile diff: %w", err)
+		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
 	}
 
-	fmt.Printf("[snapshot] memfile diff %s\n", snapshotTemplateFiles.CacheMemfileDiffPath())
+	fmt.Printf("[snapshot] memfile diff %s\n", snapshotTemplateFiles.CacheMemfilePath())
 
 	fmt.Printf("[snapshot] >>>>>>>>. build id: %s\n", snapshotTemplateFiles.BuildId)
 
 	buildId, err := uuid.Parse(snapshotTemplateFiles.BuildId)
 	if err != nil {
-		return fmt.Errorf("failed to parse build id: %w", err)
+		return nil, fmt.Errorf("failed to parse build id: %w", err)
 	}
 
 	originalMemfile, err := s.template.Memfile()
 	if err != nil {
-		return fmt.Errorf("failed to get original memfile: %w", err)
+		return nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
 
 	memfileSize, err := originalMemfile.Size()
 	if err != nil {
-		return fmt.Errorf("failed to get original memfile size: %w", err)
+		return nil, fmt.Errorf("failed to get original memfile size: %w", err)
 	}
 
 	memfileMetadata := &header.Metadata{
@@ -408,32 +413,32 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 
 	nbdPath, err := s.rootfs.Path()
 	if err != nil {
-		return fmt.Errorf("failed to get rootfs path: %w", err)
+		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
 	}
 
 	// Flush the data to the operating system's buffer
 	file, err := os.Open(nbdPath)
 	if err != nil {
-		return fmt.Errorf("failed to open rootfs path: %w", err)
+		return nil, fmt.Errorf("failed to open rootfs path: %w", err)
 	}
 
 	// TODO: We need to test this properly.
 	err = file.Sync()
 	if err != nil {
-		return fmt.Errorf("failed to sync rootfs path: %w", err)
+		return nil, fmt.Errorf("failed to sync rootfs path: %w", err)
 	}
 
 	// TODO: We need to test this properly.
 	err = syscall.Fsync(int(file.Fd()))
 	if err != nil {
-		return fmt.Errorf("failed to fsync rootfs path: %w", err)
+		return nil, fmt.Errorf("failed to fsync rootfs path: %w", err)
 	}
 
 	fmt.Printf("[snapshot] creating rootfs snapshot file\n")
 
 	f, err := os.Create(snapshotTemplateFiles.CacheRootfsPath())
 	if err != nil {
-		return fmt.Errorf("failed to create rootfs snapshot file: %w", err)
+		return nil, fmt.Errorf("failed to create rootfs snapshot file: %w", err)
 	}
 
 	defer f.Close()
@@ -442,17 +447,17 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 
 	rootfsDirty, err := s.rootfs.Export(f)
 	if err != nil {
-		return fmt.Errorf("failed to export rootfs: %w", err)
+		return nil, fmt.Errorf("failed to export rootfs: %w", err)
 	}
 
 	originalRootfs, err := s.template.Rootfs()
 	if err != nil {
-		return fmt.Errorf("failed to get original rootfs: %w", err)
+		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
 	rootfsSize, err := originalRootfs.Size()
 	if err != nil {
-		return fmt.Errorf("failed to get original rootfs size: %w", err)
+		return nil, fmt.Errorf("failed to get original rootfs size: %w", err)
 	}
 
 	rootfsMetadata := &header.Metadata{
@@ -481,5 +486,17 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 
 	fmt.Printf("[snapshot] snapshotting done\n")
 
-	return nil
+	return &SnapshotData{
+		MemfileDiffPath:   snapshotTemplateFiles.CacheMemfilePath(),
+		MemfileDiffHeader: header.NewHeader(memfileMetadata, memfileMappings),
+		RootfsDiffPath:    snapshotTemplateFiles.CacheRootfsPath(),
+		RootfsDiffHeader:  header.NewHeader(rootfsMetadata, rootfsMappings),
+	}, nil
+}
+
+type SnapshotData struct {
+	MemfileDiffPath   string
+	MemfileDiffHeader *header.Header
+	RootfsDiffPath    string
+	RootfsDiffHeader  *header.Header
 }

@@ -88,15 +88,23 @@ func (t *TemplateFiles) FirecrackerPath() string {
 }
 
 func (t *TemplateFiles) StorageDir() string {
-	return fmt.Sprintf("%s/%s", t.TemplateId, t.BuildId)
+	return t.BuildId
 }
 
 func (t *TemplateFiles) StorageMemfilePath() string {
 	return fmt.Sprintf("%s/%s", t.StorageDir(), MemfileName)
 }
 
+func (t *TemplateFiles) StorageMemfileHeaderPath() string {
+	return fmt.Sprintf("%s/%s.header", t.StorageDir(), MemfileName)
+}
+
 func (t *TemplateFiles) StorageRootfsPath() string {
 	return fmt.Sprintf("%s/%s", t.StorageDir(), RootfsName)
+}
+
+func (t *TemplateFiles) StorageRootfsHeaderPath() string {
+	return fmt.Sprintf("%s/%s.header", t.StorageDir(), RootfsName)
 }
 
 func (t *TemplateFiles) StorageSnapfilePath() string {

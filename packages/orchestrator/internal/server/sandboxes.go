@@ -53,6 +53,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
 		logger,
+		req.Sandbox.Snapshot,
 	)
 	if err != nil {
 		log.Printf("failed to create sandbox -> clean up: %v", err)
@@ -216,22 +217,12 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
-	err = sbx.Snapshot(ctx, snapshotTemplateFiles)
+	_, err = sbx.Snapshot(ctx, snapshotTemplateFiles)
 	if err != nil {
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
-	t, err := s.templateCache.AddTemplateFromLocalFiles(snapshotTemplateFiles)
-	if err != nil {
-		return nil, status.New(codes.Internal, err.Error()).Err()
-	}
-
-	go func() {
-		uploadErr := t.Upload(context.Background())
-		if uploadErr != nil {
-			fmt.Fprintf(os.Stderr, "error uploading template '%s': %v\n", in.TemplateId, uploadErr)
-		}
-	}()
+	// TODO: Upload snapshot template files and headers
 
 	// TODO: Delete all sandbox data
 

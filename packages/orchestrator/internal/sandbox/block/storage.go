@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"cloud.google.com/go/storage"
+	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
 )
 
 type Storage struct {
@@ -16,26 +17,52 @@ type Storage struct {
 
 func NewStorage(
 	ctx context.Context,
-	bucket *storage.BucketHandle,
-	bucketObjectPath string,
+	store *build.Store,
+	buildId string,
+	storeKeySuffix string,
 	blockSize int64,
 	cachePath string,
+	isSnapshot bool,
 ) (*Storage, error) {
-	object := gcs.NewObject(ctx, bucket, bucketObjectPath)
+	id := uuid.MustParse(buildId)
 
-	size, err := object.Size()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get object size: %w", err)
+	var h *header.Header
+
+	if isSnapshot {
+		headerObject := store.Get(id.String() + "/" + storeKeySuffix + ".header")
+
+		diffHeader, err := header.Deserialize(headerObject)
+		if err != nil {
+			return nil, fmt.Errorf("failed to deserialize header: %w", err)
+		}
+
+		h = diffHeader
+	} else {
+		object := store.Get(id.String() + "/" + storeKeySuffix)
+
+		size, err := object.Size()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get object size: %w", err)
+		}
+
+		h = header.NewHeader(&header.Metadata{
+			BuildId:   id,
+			Size:      size,
+			Version:   1,
+			BlockSize: blockSize,
+		}, nil)
 	}
 
-	chunker, err := newChunker(ctx, size, blockSize, object, cachePath)
+	b := build.NewFromStorage(h, store, storeKeySuffix)
+
+	chunker, err := newChunker(ctx, h.Metadata.Size, blockSize, b, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create chunker: %w", err)
 	}
 
 	return &Storage{
 		source: chunker,
-		size:   size,
+		size:   h.Metadata.Size,
 	}, nil
 }
 

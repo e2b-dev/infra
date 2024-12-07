@@ -24,6 +24,7 @@ func NewOverlay(device ReadonlyDevice, cache *Cache, blockSize int64) *Overlay {
 	}
 }
 
+// TODO: Check the list block offsets during copying.
 func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
 	blocks := header.ListBlocks(off, int64(len(p)), o.blockSize)
 

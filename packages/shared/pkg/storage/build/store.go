@@ -1,39 +1,37 @@
 package build
 
 import (
-	"fmt"
-	"io"
+	"context"
 	"sync"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
 type Store struct {
-	sources       map[string]io.ReaderAt
-	mu            sync.Mutex
-	sourceFactory func(id string) (io.ReaderAt, error)
+	bucket  *gcs.BucketHandle
+	sources map[string]*gcs.Object
+	mu      sync.Mutex
+	ctx     context.Context
 }
 
-func NewStore(
-	sourceFactory func(id string) (io.ReaderAt, error),
-) *Store {
+func NewStore(bucket *gcs.BucketHandle, ctx context.Context) *Store {
 	return &Store{
-		sources:       make(map[string]io.ReaderAt),
-		sourceFactory: sourceFactory,
+		bucket:  bucket,
+		sources: make(map[string]*gcs.Object),
+		ctx:     ctx,
 	}
 }
 
-func (s *Store) Get(id string) (io.ReaderAt, error) {
+func (s *Store) Get(id string) *gcs.Object {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	source, ok := s.sources[id]
 	if !ok {
-		source, err := s.sourceFactory(id)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create source: %w", err)
-		}
-
-		s.sources[id] = source
+		source = gcs.NewObject(s.ctx, s.bucket, id)
 	}
 
-	return source, nil
+	s.sources[id] = source
+
+	return source
 }

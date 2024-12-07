@@ -48,7 +48,7 @@ func newChunker(
 		fetchers: utils.NewWaitMap(),
 	}
 
-	go chunker.prefetch()
+	// go chunker.prefetch()
 
 	return chunker, nil
 }

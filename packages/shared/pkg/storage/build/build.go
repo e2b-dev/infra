@@ -15,40 +15,67 @@ type Build struct {
 }
 
 func NewFromStorage(
-	headerData io.Reader,
+	header *header.Header,
 	store *Store,
 	storeKeySuffix string,
-) (*Build, error) {
-	h, err := header.Deserialize(headerData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deserialize header: %w", err)
-	}
-
+) *Build {
 	return &Build{
-		header:         h,
+		header:         header,
 		buildStore:     store,
 		storeKeySuffix: storeKeySuffix,
-	}, nil
+	}
 }
 
-func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
-	blocks := header.ListBlocks(off, int64(len(p)), b.header.Metadata.BlockSize)
+func min(a, b int64) int64 {
+	if a < b {
+		return a
+	}
 
-	for _, blockOff := range blocks {
-		mapping, err := b.header.GetMapping(blockOff)
+	return b
+}
+
+// TODO: Check the list block offsets during copying.
+func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
+	for n < len(p) {
+		destinationOffset := int64(n)
+		destinationLength := int64(len(p)) - destinationOffset
+
+		mapping, err := b.header.GetMapping(off + destinationOffset)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get mapping: %w", err)
 		}
 
-		b, err := b.getBuild(&mapping.BuildId)
-		if err != nil {
-			return 0, fmt.Errorf("failed to get source: %w", err)
-		}
+		buildReader := b.getBuild(&mapping.BuildId)
 
-		blockN, err := b.ReadAt(p[n:], int64(mapping.BuildStorageOffset))
+		sourceShift := off + destinationOffset - int64(mapping.Offset)
+		sourceOff := int64(mapping.BuildStorageOffset) + sourceShift
+		sourceLength := int64(mapping.Length) - sourceShift
+
+		remainingLength := destinationLength - destinationOffset
+
+		length := min(sourceLength, remainingLength)
+
+		blockN, err := buildReader.ReadAt(
+			p[destinationOffset:destinationOffset+length],
+			sourceOff,
+		)
 		if err != nil {
 			return 0, fmt.Errorf("failed to read from source: %w", err)
 		}
+
+		fmt.Printf(
+			"reading %d bytes from %+v/%+v: [%d:] -> [%d:%d] <> %d+%d (source length: %d, shift: %d)\n",
+			length,
+			mapping.BuildId,
+			b.storeKeySuffix,
+			sourceOff,
+			destinationOffset,
+			destinationOffset+length,
+			n,
+			blockN,
+			mapping.Length,
+			sourceShift,
+		)
 
 		n += blockN
 	}
@@ -56,6 +83,6 @@ func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
 	return n, nil
 }
 
-func (b *Build) getBuild(buildID *uuid.UUID) (io.ReaderAt, error) {
+func (b *Build) getBuild(buildID *uuid.UUID) io.ReaderAt {
 	return b.buildStore.Get(buildID.String() + "/" + b.storeKeySuffix)
 }

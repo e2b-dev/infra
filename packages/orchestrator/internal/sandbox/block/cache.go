@@ -129,6 +129,7 @@ func (m *Cache) Slice(off, length int64) ([]byte, error) {
 	return nil, ErrBytesNotAvailable{}
 }
 
+// TODO: Check the list block offsets during copying.
 func (m *Cache) isCached(off, length int64) bool {
 	for _, block := range header.ListBlocks(off, length, m.blockSize) {
 		_, dirty := m.dirty.Load(block)
@@ -140,6 +141,7 @@ func (m *Cache) isCached(off, length int64) bool {
 	return true
 }
 
+// TODO: Check the list block offsets during copying.
 func (m *Cache) setIsCached(off, length int64) {
 	for _, blockOff := range header.ListBlocks(off, length, m.blockSize) {
 		m.dirty.Store(blockOff, struct{}{})

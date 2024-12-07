@@ -1,12 +1,11 @@
 package template
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build"
 )
 
 type storageFile struct {
@@ -14,8 +13,7 @@ type storageFile struct {
 }
 
 func newStorageFile(
-	ctx context.Context,
-	bucket *gcs.BucketHandle,
+	buildStore *build.Store,
 	bucketObjectPath string,
 	path string,
 ) (*storageFile, error) {
@@ -26,7 +24,7 @@ func newStorageFile(
 
 	defer f.Close()
 
-	object := gcs.NewObject(ctx, bucket, bucketObjectPath)
+	object := buildStore.Get(bucketObjectPath)
 
 	_, err = object.WriteTo(f)
 	if err != nil {
