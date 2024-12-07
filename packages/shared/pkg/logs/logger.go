@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"math"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -177,6 +178,15 @@ func (l *SandboxLogger) MemoryUsage(memoryMB float64) {
 			Msgf("Sandbox memory used %d %% of RAM", int(memoryMB/float64(l.memoryMiBMax)*100))
 		return
 	}
+}
+
+func (l *SandboxLogger) Signal(sig os.Signal) {
+	l.exporter.logger.Info().
+		Str("instanceID", l.instanceID).
+		Str("envID", l.envID).
+		Str("teamID", l.teamID).
+		Str("signal", sig.String()).
+		Msg("Signal received")
 }
 
 func (l *SandboxLogger) CPUPct(cpuPct float64) {
