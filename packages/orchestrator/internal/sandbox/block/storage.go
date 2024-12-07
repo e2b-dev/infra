@@ -24,7 +24,10 @@ func NewStorage(
 	cachePath string,
 	isSnapshot bool,
 ) (*Storage, error) {
-	id := uuid.MustParse(buildId)
+	id, err := uuid.Parse(buildId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse build id: %w", err)
+	}
 
 	var h *header.Header
 
