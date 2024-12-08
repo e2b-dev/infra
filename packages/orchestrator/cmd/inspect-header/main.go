@@ -68,10 +68,13 @@ func main() {
 	fmt.Printf("\nMAPPING (%d maps, uses %s in storage)\n", len(h.Mapping), sizeMessage)
 	fmt.Printf("=======\n")
 
-	for i, mapping := range h.Mapping {
+	for _, mapping := range h.Mapping {
+		rangeMessage := fmt.Sprintf("%d-%d", int64(mapping.Offset)/h.Metadata.BlockSize, (int64(mapping.Offset+mapping.Length-1) / h.Metadata.BlockSize))
+
 		fmt.Printf(
-			"%-8d [%11d,%11d) = [%11d,%11d) in %s, %d B\n",
-			i+1, mapping.Offset, mapping.Offset+mapping.Length,
+			"%-11s [%11d,%11d) = [%11d,%11d) in %s, %d B\n",
+			rangeMessage,
+			mapping.Offset, mapping.Offset+mapping.Length,
 			mapping.BuildStorageOffset, mapping.BuildStorageOffset+mapping.Length, mapping.BuildId.String(), mapping.Length,
 		)
 	}
