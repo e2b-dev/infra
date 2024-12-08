@@ -84,7 +84,7 @@ func NewProcess(
 	err := startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
 		"rootfsPath":        files.SandboxCacheRootfsLinkPath(),
 		"kernelPath":        files.CacheKernelPath(),
-		"buildDir":          files.BuildDir(),
+		"buildDir":          baseBuild.BuildDir(),
 		"buildRootfsPath":   baseBuild.BuildRootfsPath(),
 		"buildKernelPath":   files.BuildKernelPath(),
 		"buildKernelDir":    files.BuildKernelDir(),
@@ -99,6 +99,8 @@ func NewProcess(
 	telemetry.SetAttributes(childCtx,
 		attribute.String("sandbox.cmd", fcStartScript.String()),
 	)
+
+	fmt.Printf("fcStartScript: \n\n%s\n\n", fcStartScript.String())
 
 	cmd := exec.Command(
 		"unshare",
@@ -235,8 +237,6 @@ func (p *Process) Start(
 
 		return errors.Join(errMsg, fcStopErr)
 	}
-
-	fmt.Println("get rootfs path")
 
 	device, err := p.rootfs.Path()
 	if err != nil {

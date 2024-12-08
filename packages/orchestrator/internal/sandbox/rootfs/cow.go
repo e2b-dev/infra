@@ -26,14 +26,10 @@ type CowDevice struct {
 }
 
 func NewCowDevice(rootfs *block.Storage, cachePath string, blockSize int64) (*CowDevice, error) {
-	fmt.Printf("getting size")
-
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
 	}
-
-	fmt.Printf("size: %d\n", size)
 
 	cache, err := block.NewCache(size, blockSize, cachePath)
 	if err != nil {
