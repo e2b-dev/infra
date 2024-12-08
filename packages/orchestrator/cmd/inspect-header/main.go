@@ -85,6 +85,14 @@ func main() {
 	}
 
 	for build, size := range builds {
-		fmt.Printf("%s: %d blocks, %d MiB\n", build, size/h.Metadata.BlockSize, size/1024/1024)
+		var additionalInfo string
+
+		if build == h.Metadata.BuildId.String() {
+			additionalInfo = " (current)"
+		} else if build == h.Metadata.BaseBuildId.String() {
+			additionalInfo = " (base)"
+		}
+
+		fmt.Printf("%s%s: %d blocks, %d MiB (%0.2f%%)\n", build, additionalInfo, size/h.Metadata.BlockSize, size/1024/1024, float64(size)/float64(h.Metadata.Size)*100)
 	}
 }
