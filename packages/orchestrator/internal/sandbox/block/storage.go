@@ -58,11 +58,6 @@ func NewStorage(
 		}, nil)
 	}
 
-	fmt.Printf("header -> %+v\n", h.Metadata)
-	for _, mapping := range h.Mapping {
-		fmt.Printf("mapping -> %+v\n", *mapping)
-	}
-
 	b := build.NewFromStorage(h, store, storeKeySuffix)
 
 	chunker, err := newChunker(ctx, h.Metadata.Size, blockSize, b, cachePath)
