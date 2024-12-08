@@ -51,7 +51,7 @@ func main() {
 	fmt.Printf("Generation         %d\n", h.Metadata.Generation)
 	fmt.Printf("Build ID           %s\n", h.Metadata.BuildId)
 	fmt.Printf("Base build ID      %s\n", h.Metadata.BaseBuildId)
-	fmt.Printf("Size               %d B\n", h.Metadata.Size)
+	fmt.Printf("Size               %d B (%d MiB)\n", h.Metadata.Size, h.Metadata.Size/1024/1024)
 	fmt.Printf("Block size         %d B\n", h.Metadata.BlockSize)
 	fmt.Printf("Blocks             %d\n", (h.Metadata.Size+h.Metadata.BlockSize-1)/h.Metadata.BlockSize)
 
@@ -64,14 +64,27 @@ func main() {
 		sizeMessage = fmt.Sprintf("%d KiB", totalSize)
 	}
 
-	fmt.Printf("\nMAPPING (%d, %s)\n", len(h.Mapping), sizeMessage)
+	fmt.Printf("\nMAPPING (%d maps, uses %s in storage)\n", len(h.Mapping), sizeMessage)
 	fmt.Printf("=======\n")
 
 	for i, mapping := range h.Mapping {
 		fmt.Printf(
 			"%-8d [%11d,%11d) = [%11d,%11d) in %s, %d B\n",
-			i, mapping.Offset, mapping.Offset+mapping.Length,
+			i+1, mapping.Offset, mapping.Offset+mapping.Length,
 			mapping.BuildStorageOffset, mapping.BuildStorageOffset+mapping.Length, mapping.BuildId.String(), mapping.Length,
 		)
+	}
+
+	fmt.Printf("\nMAPPING SUMMARY\n")
+	fmt.Printf("===============\n")
+
+	builds := make(map[string]int64)
+
+	for _, mapping := range h.Mapping {
+		builds[mapping.BuildId.String()] += int64(mapping.Length)
+	}
+
+	for build, size := range builds {
+		fmt.Printf("%s: %d blocks, %d MiB\n", build, size/h.Metadata.BlockSize, size/1024/1024)
 	}
 }
