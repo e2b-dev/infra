@@ -1,19 +1,23 @@
 package header
 
-func NumberOfBlocks(size, blockSize int64) uint {
-	return uint((size + blockSize - 1) / blockSize)
+func TotalBlocks(size, blockSize int64) int64 {
+	return (size + blockSize - 1) / blockSize
 }
 
-func ListBlocks(off, size, blockSize int64) []int64 {
-	blocks := make([]int64, NumberOfBlocks(size, blockSize))
+func BlocksOffsets(size, blockSize int64) []int64 {
+	offsets := make([]int64, TotalBlocks(size, blockSize))
 
-	for i := range blocks {
-		blocks[i] = off + int64(i)*blockSize
+	for i := range offsets {
+		offsets[i] = BlockOffset(int64(i), blockSize)
 	}
 
-	return blocks
+	return offsets
 }
 
-func GetBlockIdx(off int64, blockSize int64) int64 {
+func BlockIdx(off, blockSize int64) int64 {
 	return off / blockSize
+}
+
+func BlockOffset(idx, blockSize int64) int64 {
+	return idx * blockSize
 }

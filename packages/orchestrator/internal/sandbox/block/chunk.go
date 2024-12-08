@@ -54,7 +54,7 @@ func newChunker(
 }
 
 func (c *chunker) prefetch() error {
-	blocks := header.ListBlocks(0, c.size, chunkSize)
+	blocks := header.BlocksOffsets(c.size, chunkSize)
 
 	for _, blockOff := range blocks {
 		err := c.fetchToCache(blockOff, chunkSize)
@@ -102,11 +102,14 @@ func (c *chunker) Slice(off, length int64) ([]byte, error) {
 func (c *chunker) fetchToCache(off, len int64) error {
 	var eg errgroup.Group
 
-	blocks := header.ListBlocks(off, len, chunkSize)
+	chunks := header.BlocksOffsets(len, chunkSize)
 
-	for _, blockOff := range blocks {
+	startingChunk := header.BlockIdx(off, chunkSize)
+	startingChunkOffset := header.BlockOffset(startingChunk, chunkSize)
+
+	for _, chunkOff := range chunks {
 		// Ensure the closure captures the correct block offset.
-		fetchOff := blockOff
+		fetchOff := startingChunkOffset + chunkOff
 
 		eg.Go(func() error {
 			return c.fetchers.Wait(fetchOff, func() error {

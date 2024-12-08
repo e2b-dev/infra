@@ -34,7 +34,7 @@ func (t *TrackedSliceDevice) Disable() error {
 		return fmt.Errorf("failed to get device size: %w", err)
 	}
 
-	t.dirty = bitset.New(header.NumberOfBlocks(size, t.blockSize))
+	t.dirty = bitset.New(uint(header.TotalBlocks(size, t.blockSize)))
 	// We are starting with all being dirty.
 	t.dirty.FlipRange(0, uint(t.dirty.Len()))
 
@@ -46,7 +46,7 @@ func (t *TrackedSliceDevice) Disable() error {
 func (t *TrackedSliceDevice) Slice(off int64, len int64) ([]byte, error) {
 	if t.nilTracking.Load() {
 		t.dirtyMu.Lock()
-		t.dirty.Clear(uint(header.GetBlockIdx(off, t.blockSize)))
+		t.dirty.Clear(uint(header.BlockIdx(off, t.blockSize)))
 		t.dirtyMu.Unlock()
 
 		return t.empty, nil

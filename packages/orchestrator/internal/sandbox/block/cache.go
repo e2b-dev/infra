@@ -54,10 +54,10 @@ func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	tracked := bitset.New(header.NumberOfBlocks(m.size, m.blockSize))
+	tracked := bitset.New(uint(header.TotalBlocks(m.size, m.blockSize)))
 
 	m.dirty.Range(func(key, value any) bool {
-		block := header.GetBlockIdx(key.(int64), m.blockSize)
+		block := header.BlockIdx(key.(int64), m.blockSize)
 
 		tracked.Set(uint(block))
 
@@ -129,10 +129,9 @@ func (m *Cache) Slice(off, length int64) ([]byte, error) {
 	return nil, ErrBytesNotAvailable{}
 }
 
-// TODO: Check the list block offsets during copying.
 func (m *Cache) isCached(off, length int64) bool {
-	for _, block := range header.ListBlocks(off, length, m.blockSize) {
-		_, dirty := m.dirty.Load(block)
+	for _, blockOff := range header.BlocksOffsets(length, m.blockSize) {
+		_, dirty := m.dirty.Load(off + blockOff)
 		if !dirty {
 			return false
 		}
@@ -141,9 +140,8 @@ func (m *Cache) isCached(off, length int64) bool {
 	return true
 }
 
-// TODO: Check the list block offsets during copying.
 func (m *Cache) setIsCached(off, length int64) {
-	for _, blockOff := range header.ListBlocks(off, length, m.blockSize) {
-		m.dirty.Store(blockOff, struct{}{})
+	for _, blockOff := range header.BlocksOffsets(length, m.blockSize) {
+		m.dirty.Store(off+blockOff, struct{}{})
 	}
 }

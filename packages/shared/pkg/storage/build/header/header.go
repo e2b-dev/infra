@@ -25,9 +25,9 @@ func NewHeader(metadata *Metadata, mapping []*buildMap) *Header {
 		}}
 	}
 
-	blocks := NumberOfBlocks(metadata.Size, metadata.BlockSize)
+	blocks := TotalBlocks(metadata.Size, metadata.BlockSize)
 
-	intervals := bitset.New(blocks)
+	intervals := bitset.New(uint(blocks))
 	startMap := make(map[uint64]*buildMap, len(mapping))
 
 	for _, mapping := range mapping {
@@ -44,7 +44,7 @@ func NewHeader(metadata *Metadata, mapping []*buildMap) *Header {
 }
 
 func (t *Header) GetMapping(offset int64) (*buildMap, error) {
-	block := offset / t.Metadata.BlockSize
+	block := BlockIdx(offset, t.Metadata.BlockSize)
 
 	start, ok := t.blockStarts.PreviousSet(uint(block))
 	if !ok {

@@ -24,12 +24,11 @@ func NewOverlay(device ReadonlyDevice, cache *Cache, blockSize int64) *Overlay {
 	}
 }
 
-// TODO: Check the list block offsets during copying.
 func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
-	blocks := header.ListBlocks(off, int64(len(p)), o.blockSize)
+	blocks := header.BlocksOffsets(int64(len(p)), o.blockSize)
 
 	for i, blockOff := range blocks {
-		n, err := o.cache.ReadAt(p[blockOff-off:blockOff+o.blockSize-off], blockOff)
+		n, err := o.cache.ReadAt(p[blockOff:blockOff+o.blockSize], off+blockOff)
 		if err == nil {
 			fmt.Printf("[overlay] (%d) > %d cache hit\n", i, blockOff)
 
@@ -40,7 +39,7 @@ func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
 			return n, fmt.Errorf("error reading from cache: %w", err)
 		}
 
-		n, err = o.device.ReadAt(p[blockOff-off:blockOff+o.blockSize-off], blockOff)
+		n, err = o.device.ReadAt(p[blockOff:blockOff+o.blockSize], off+blockOff)
 		if err != nil {
 			return n, fmt.Errorf("error reading from device: %w", err)
 		}

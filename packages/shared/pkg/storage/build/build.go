@@ -36,7 +36,10 @@ func min(a, b int64) int64 {
 
 // TODO: Check the list block offsets during copying.
 func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
+	var block int64
+
 	for n < len(p) {
+		block++
 		destinationOffset := int64(n)
 		destinationLength := int64(len(p)) - destinationOffset
 
@@ -51,6 +54,12 @@ func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
 		sourceOff := int64(mapping.BuildStorageOffset) + sourceShift
 		sourceLength := int64(mapping.Length) - sourceShift
 
+		if sourceLength <= 0 {
+			fmt.Printf("EOF at block %d\n", block)
+
+			return n, io.EOF
+		}
+
 		remainingLength := destinationLength - destinationOffset
 
 		length := min(sourceLength, remainingLength)
@@ -64,7 +73,10 @@ func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
 		}
 
 		fmt.Printf(
-			"reading %d bytes from %+v/%+v: [%d:] -> [%d:%d] <> %d+%d (source length: %d, shift: %d)\n",
+			"(%d bytes left to read - block %d, off %d) reading %d bytes from %+v/%+v: [%d:] -> [%d:%d] <> %d+%d (source length: %d, shift: %d)\n",
+			len(p)-n,
+			block,
+			off,
 			length,
 			mapping.BuildId,
 			b.storeKeySuffix,
