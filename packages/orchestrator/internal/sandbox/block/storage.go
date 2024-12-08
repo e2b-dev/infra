@@ -54,6 +54,7 @@ func NewStorage(
 			Size:        size,
 			Version:     1,
 			BlockSize:   blockSize,
+			Generation:  1,
 		}, nil)
 	}
 
