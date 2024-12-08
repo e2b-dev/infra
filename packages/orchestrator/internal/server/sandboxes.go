@@ -217,14 +217,33 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
-	_, err = sbx.Snapshot(ctx, snapshotTemplateFiles)
+	defer func() {
+		err := os.RemoveAll(snapshotTemplateFiles.CacheDir())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error removing sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
+		}
+	}()
+
+	snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles)
 	if err != nil {
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
-	// TODO: Upload snapshot template files and headers
+	b := storage.NewTemplateBuild(
+		snapshot.MemfileDiffHeader,
+		snapshot.RootfsDiffHeader,
+		snapshotTemplateFiles.TemplateFiles,
+	)
 
-	// TODO: Delete all sandbox data
+	err = <-b.Upload(
+		ctx,
+		snapshotTemplateFiles.CacheSnapfilePath(),
+		snapshotTemplateFiles.CacheMemfilePath(),
+		snapshotTemplateFiles.CacheRootfsPath(),
+	)
+	if err != nil {
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
 
 	return nil, status.New(codes.Unimplemented, "not implemented").Err()
 }

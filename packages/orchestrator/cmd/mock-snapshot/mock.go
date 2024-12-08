@@ -174,14 +174,39 @@ func mockSnapshot(
 		return fmt.Errorf("failed to create snapshot template files directory: %w", err)
 	}
 
-	_, err = sbx.Snapshot(ctx, snapshotTemplateFiles)
+	defer func() {
+		err := os.RemoveAll(snapshotTemplateFiles.CacheDir())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error removing sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
+		}
+	}()
+
+	snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles)
 	if err != nil {
 		return fmt.Errorf("failed to snapshot sandbox: %w", err)
 	}
 
-	duration = time.Since(snapshotTime)
+	fmt.Println("Create snapshot time: ", time.Since(snapshotTime).Milliseconds())
 
-	fmt.Printf("[Sandbox snapshot] - took %dms \n", duration.Milliseconds())
+	b := storage.NewTemplateBuild(
+		snapshot.MemfileDiffHeader,
+		snapshot.RootfsDiffHeader,
+		snapshotTemplateFiles.TemplateFiles,
+	)
+
+	err = <-b.Upload(
+		ctx,
+		snapshotTemplateFiles.CacheSnapfilePath(),
+		snapshotTemplateFiles.CacheMemfilePath(),
+		snapshotTemplateFiles.CacheRootfsPath(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to upload snapshot template files: %w", err)
+	}
+
+	fmt.Println("Upload snapshot time: ", time.Since(snapshotTime).Milliseconds())
+
+	duration = time.Since(snapshotTime)
 
 	return nil
 }

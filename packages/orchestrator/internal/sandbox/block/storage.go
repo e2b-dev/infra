@@ -11,8 +11,8 @@ import (
 )
 
 type Storage struct {
+	header *header.Header
 	source *chunker
-	size   int64
 }
 
 func NewStorage(
@@ -49,11 +49,17 @@ func NewStorage(
 		}
 
 		h = header.NewHeader(&header.Metadata{
-			BuildId:   id,
-			Size:      size,
-			Version:   1,
-			BlockSize: blockSize,
+			BuildId:     id,
+			BaseBuildId: id,
+			Size:        size,
+			Version:     1,
+			BlockSize:   blockSize,
 		}, nil)
+	}
+
+	fmt.Printf("header -> %+v\n", h.Metadata)
+	for _, mapping := range h.Mapping {
+		fmt.Printf("mapping -> %+v\n", *mapping)
 	}
 
 	b := build.NewFromStorage(h, store, storeKeySuffix)
@@ -65,7 +71,7 @@ func NewStorage(
 
 	return &Storage{
 		source: chunker,
-		size:   h.Metadata.Size,
+		header: h,
 	}, nil
 }
 
@@ -74,7 +80,7 @@ func (d *Storage) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func (d *Storage) Size() (int64, error) {
-	return d.size, nil
+	return d.header.Metadata.Size, nil
 }
 
 func (d *Storage) Close() error {
@@ -83,4 +89,8 @@ func (d *Storage) Close() error {
 
 func (d *Storage) Slice(off, length int64) ([]byte, error) {
 	return d.source.Slice(off, length)
+}
+
+func (d *Storage) Header() *header.Header {
+	return d.header
 }

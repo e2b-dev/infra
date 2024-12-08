@@ -39,12 +39,14 @@ func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
 	var block int64
 
 	for n < len(p) {
+		fmt.Printf("n -> %d\n", n)
 		block++
 		destinationOffset := int64(n)
 		destinationLength := int64(len(p)) - destinationOffset
 
 		mapping, err := b.header.GetMapping(off + destinationOffset)
 		if err != nil {
+			fmt.Printf("failed to get mapping: %v\n", err)
 			return 0, fmt.Errorf("failed to get mapping: %w", err)
 		}
 
@@ -55,7 +57,7 @@ func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
 		sourceLength := int64(mapping.Length) - sourceShift
 
 		if sourceLength <= 0 {
-			fmt.Printf("EOF at block %d\n", block)
+			// fmt.Printf("EOF at block %d\n", block)
 
 			return n, io.EOF
 		}

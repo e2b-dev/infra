@@ -393,10 +393,12 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	}
 
 	memfileMetadata := &header.Metadata{
-		Version:   1,
-		BlockSize: int64(s.files.MemfilePageSize()),
-		Size:      memfileSize,
-		BuildId:   buildId,
+		Version:     1,
+		Generation:  originalMemfile.Header().Metadata.Generation + 1,
+		BlockSize:   int64(s.files.MemfilePageSize()),
+		Size:        memfileSize,
+		BuildId:     buildId,
+		BaseBuildId: originalMemfile.Header().Metadata.BaseBuildId,
 	}
 
 	memfileMapping := header.CreateMapping(
@@ -405,11 +407,15 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		memfileDirty,
 	)
 
-	memfileMappings := header.MergeMappings(memfileMapping, nil)
+	// TODO: Get the mapping of current memfile
+	memfileMappings := header.MergeMappings(
+		originalMemfile.Header().Mapping,
+		memfileMapping,
+	)
 
-	for _, mapping := range memfileMappings {
-		fmt.Printf("[snapshot] memfile mapping: %+v\n", *mapping)
-	}
+	// for _, mapping := range memfileMappings {
+	// 	fmt.Printf("[snapshot] memfile mapping: %+v\n", *mapping)
+	// }
 
 	nbdPath, err := s.rootfs.Path()
 	if err != nil {
@@ -461,10 +467,12 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	}
 
 	rootfsMetadata := &header.Metadata{
-		Version:   1,
-		BlockSize: int64(s.files.RootfsBlockSize()),
-		Size:      rootfsSize,
-		BuildId:   buildId,
+		Version:     1,
+		Generation:  originalRootfs.Header().Metadata.Generation + 1,
+		BlockSize:   int64(s.files.RootfsBlockSize()),
+		Size:        rootfsSize,
+		BuildId:     buildId,
+		BaseBuildId: originalRootfs.Header().Metadata.BaseBuildId,
 	}
 
 	rootfsMapping := header.CreateMapping(
@@ -473,18 +481,22 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		rootfsDirty,
 	)
 
-	rootfsMappings := header.MergeMappings(rootfsMapping, nil)
-
-	for _, mapping := range rootfsMappings {
-		fmt.Printf("[snapshot] rootfs mapping: %+v\n", *mapping)
-	}
-
-	fmt.Printf("[snapshot] (%s) tracked blocks: %d\n",
-		time.Since(start),
-		rootfsDirty.Count(),
+	// TODO: Get the mapping of current rootfs
+	rootfsMappings := header.MergeMappings(
+		originalRootfs.Header().Mapping,
+		rootfsMapping,
 	)
 
-	fmt.Printf("[snapshot] snapshotting done\n")
+	// for _, mapping := range rootfsMappings {
+	// 	fmt.Printf("[snapshot] rootfs mapping: %+v\n", *mapping)
+	// }
+
+	// fmt.Printf("[snapshot] (%s) tracked blocks: %d\n",
+	// 	time.Since(start),
+	// 	rootfsDirty.Count(),
+	// )
+
+	// fmt.Printf("[snapshot] snapshotting done\n")
 
 	return &SnapshotData{
 		MemfileDiffPath:   snapshotTemplateFiles.CacheMemfilePath(),

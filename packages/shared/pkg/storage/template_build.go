@@ -5,23 +5,32 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"golang.org/x/sync/errgroup"
 )
 
 type TemplateBuild struct {
+	files *TemplateFiles
+
+	memfileHeader *header.Header
+	rootfsHeader  *header.Header
+
 	bucket *gcs.BucketHandle
-	files  *TemplateFiles
 }
 
 func NewTemplateBuild(
-	bucket *gcs.BucketHandle,
+	memfileHeader *header.Header,
+	rootfsHeader *header.Header,
 	files *TemplateFiles,
 ) *TemplateBuild {
 	return &TemplateBuild{
-		bucket: bucket,
-		files:  files,
+		bucket:        gcs.TemplateBucket,
+		memfileHeader: memfileHeader,
+		rootfsHeader:  rootfsHeader,
+		files:         files,
 	}
 }
 
@@ -34,12 +43,44 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 	return nil
 }
 
+func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *header.Header) error {
+	object := gcs.NewObject(ctx, t.bucket, t.files.StorageMemfileHeaderPath())
+
+	serialized, err := header.Serialize(h.Metadata, h.Mapping)
+	if err != nil {
+		return fmt.Errorf("error when serializing memfile header: %w", err)
+	}
+
+	_, err = object.ReadFrom(serialized)
+	if err != nil {
+		return fmt.Errorf("error when uploading memfile header: %w", err)
+	}
+
+	return nil
+}
+
 func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
 	object := gcs.NewObject(ctx, t.bucket, t.files.StorageMemfilePath())
 
 	err := object.UploadWithCli(ctx, memfilePath)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
+	}
+
+	return nil
+}
+
+func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *header.Header) error {
+	object := gcs.NewObject(ctx, t.bucket, t.files.StorageRootfsHeaderPath())
+
+	serialized, err := header.Serialize(h.Metadata, h.Mapping)
+	if err != nil {
+		return fmt.Errorf("error when serializing memfile header: %w", err)
+	}
+
+	_, err = object.ReadFrom(serialized)
+	if err != nil {
+		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
 
 	return nil
@@ -77,14 +118,68 @@ func (t *TemplateBuild) Upload(
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		return t.uploadRootfs(ctx, rootfsPath)
+		start := time.Now()
+
+		if t.rootfsHeader == nil {
+			return nil
+		}
+
+		err := t.uploadRootfsHeader(ctx, t.rootfsHeader)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("[TemplateBuild] - uploaded rootfs header in %dms\n", time.Since(start).Milliseconds())
+
+		return nil
 	})
 
 	eg.Go(func() error {
-		return t.uploadMemfile(ctx, memfilePath)
+		start := time.Now()
+
+		err := t.uploadRootfs(ctx, rootfsPath)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("[TemplateBuild] - uploaded rootfs in %dms\n", time.Since(start).Milliseconds())
+
+		return nil
 	})
 
 	eg.Go(func() error {
+		start := time.Now()
+
+		if t.memfileHeader == nil {
+			return nil
+		}
+
+		err := t.uploadMemfileHeader(ctx, t.memfileHeader)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("[TemplateBuild] - uploaded memfile header in %dms\n", time.Since(start).Milliseconds())
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		start := time.Now()
+
+		err := t.uploadMemfile(ctx, memfilePath)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("[TemplateBuild] - uploaded memfile in %dms\n", time.Since(start).Milliseconds())
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		start := time.Now()
+
 		snapfile, err := os.Open(snapfilePath)
 		if err != nil {
 			return err
@@ -92,7 +187,14 @@ func (t *TemplateBuild) Upload(
 
 		defer snapfile.Close()
 
-		return t.uploadSnapfile(ctx, snapfile)
+		err = t.uploadSnapfile(ctx, snapfile)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("[TemplateBuild] - uploaded snapfile in %dms\n", time.Since(start).Milliseconds())
+
+		return nil
 	})
 
 	done := make(chan error)

@@ -15,8 +15,8 @@ import (
 type storageTemplate struct {
 	files *storage.TemplateCacheFiles
 
-	memfile  *utils.SetOnce[block.ReadonlyDevice]
-	rootfs   *utils.SetOnce[block.ReadonlyDevice]
+	memfile  *utils.SetOnce[*block.Storage]
+	rootfs   *utils.SetOnce[*block.Storage]
 	snapfile *utils.SetOnce[*storageFile]
 
 	isSnapshot bool
@@ -44,8 +44,8 @@ func newTemplateFromStorage(
 	return &storageTemplate{
 		files:      files,
 		isSnapshot: isSnapshot,
-		memfile:    utils.NewSetOnce[block.ReadonlyDevice](),
-		rootfs:     utils.NewSetOnce[block.ReadonlyDevice](),
+		memfile:    utils.NewSetOnce[*block.Storage](),
+		rootfs:     utils.NewSetOnce[*block.Storage](),
 		snapfile:   utils.NewSetOnce[*storageFile](),
 	}, nil
 }
@@ -137,11 +137,11 @@ func (t *storageTemplate) Files() *storage.TemplateCacheFiles {
 	return t.files
 }
 
-func (t *storageTemplate) Memfile() (block.ReadonlyDevice, error) {
+func (t *storageTemplate) Memfile() (*block.Storage, error) {
 	return t.memfile.Wait()
 }
 
-func (t *storageTemplate) Rootfs() (block.ReadonlyDevice, error) {
+func (t *storageTemplate) Rootfs() (*block.Storage, error) {
 	return t.rootfs.Wait()
 }
 

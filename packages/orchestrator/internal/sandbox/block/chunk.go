@@ -108,6 +108,7 @@ func (c *chunker) fetchToCache(off, len int64) error {
 	startingChunkOffset := header.BlockOffset(startingChunk, chunkSize)
 
 	for _, chunkOff := range chunks {
+		fmt.Printf("chunkOff -> %d\n", chunkOff)
 		// Ensure the closure captures the correct block offset.
 		fetchOff := startingChunkOffset + chunkOff
 

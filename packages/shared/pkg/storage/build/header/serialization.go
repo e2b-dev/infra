@@ -10,16 +10,19 @@ import (
 )
 
 type Metadata struct {
-	Version   int64
-	BlockSize int64
-	Size      int64
-	BuildId   uuid.UUID
+	Version    int64
+	BlockSize  int64
+	Size       int64
+	Generation int64
+	BuildId    uuid.UUID
+	// TODO: Use the base build id when setting up the snapshot rootfs
+	BaseBuildId uuid.UUID
 }
 
 // Start, Length and SourceStart are in bytes of the data file
 // Length will be a multiple of BlockSize
 // The list of block mappings will be in order of increasing Start, covering the entire file
-type buildMap struct {
+type BuildMap struct {
 	// Offset defines which block of the current layer this mapping starts at
 	Offset             uint64
 	Length             uint64
@@ -27,20 +30,22 @@ type buildMap struct {
 	BuildStorageOffset uint64
 }
 
-func Serialize(metadata *Metadata, mappings []*buildMap, out io.Writer) error {
-	err := binary.Write(out, binary.LittleEndian, metadata)
+func Serialize(metadata *Metadata, mappings []*BuildMap) (io.Reader, error) {
+	var buf bytes.Buffer
+
+	err := binary.Write(&buf, binary.LittleEndian, metadata)
 	if err != nil {
-		return fmt.Errorf("failed to write metadata: %w", err)
+		return nil, fmt.Errorf("failed to write metadata: %w", err)
 	}
 
 	for _, mapping := range mappings {
-		err := binary.Write(out, binary.LittleEndian, mapping)
+		err := binary.Write(&buf, binary.LittleEndian, mapping)
 		if err != nil {
-			return fmt.Errorf("failed to write block mapping: %w", err)
+			return nil, fmt.Errorf("failed to write block mapping: %w", err)
 		}
 	}
 
-	return nil
+	return &buf, nil
 }
 
 func Deserialize(in io.WriterTo) (*Header, error) {
@@ -60,10 +65,10 @@ func Deserialize(in io.WriterTo) (*Header, error) {
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
 
-	mappings := make([]*buildMap, 0)
+	mappings := make([]*BuildMap, 0)
 
 	for {
-		var m buildMap
+		var m BuildMap
 		err := binary.Read(reader, binary.LittleEndian, &m)
 		if err == io.EOF {
 			break

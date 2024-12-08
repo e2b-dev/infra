@@ -73,11 +73,19 @@ func NewProcess(
 
 	var fcStartScript bytes.Buffer
 
+	baseBuild := storage.NewTemplateFiles(
+		files.TemplateId,
+		rootfs.BaseBuildId,
+		files.KernelVersion,
+		files.FirecrackerVersion,
+		files.Hugepages(),
+	)
+
 	err := startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
 		"rootfsPath":        files.SandboxCacheRootfsLinkPath(),
 		"kernelPath":        files.CacheKernelPath(),
 		"buildDir":          files.BuildDir(),
-		"buildRootfsPath":   files.BuildRootfsPath(),
+		"buildRootfsPath":   baseBuild.BuildRootfsPath(),
 		"buildKernelPath":   files.BuildKernelPath(),
 		"buildKernelDir":    files.BuildKernelDir(),
 		"namespaceID":       slot.NamespaceID(),
@@ -227,6 +235,8 @@ func (p *Process) Start(
 
 		return errors.Join(errMsg, fcStopErr)
 	}
+
+	fmt.Println("get rootfs path")
 
 	device, err := p.rootfs.Path()
 	if err != nil {

@@ -132,7 +132,7 @@ func mockSandbox(
 		time.Now(),
 		time.Now(),
 		logger,
-		false,
+		true,
 	)
 	defer func() {
 		cleanupErr := cleanup.Run()

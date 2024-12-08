@@ -21,14 +21,19 @@ type CowDevice struct {
 
 	ready *utils.SetOnce[string]
 
-	blockSize int64
+	blockSize   int64
+	BaseBuildId string
 }
 
-func NewCowDevice(rootfs block.ReadonlyDevice, cachePath string, blockSize int64) (*CowDevice, error) {
+func NewCowDevice(rootfs *block.Storage, cachePath string, blockSize int64) (*CowDevice, error) {
+	fmt.Printf("getting size")
+
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
 	}
+
+	fmt.Printf("size: %d\n", size)
 
 	cache, err := block.NewCache(size, blockSize, cachePath)
 	if err != nil {
@@ -40,11 +45,12 @@ func NewCowDevice(rootfs block.ReadonlyDevice, cachePath string, blockSize int64
 	mnt := nbd.NewDirectPathMount(overlay)
 
 	return &CowDevice{
-		mnt:       mnt,
-		overlay:   overlay,
-		ready:     utils.NewSetOnce[string](),
-		cache:     cache,
-		blockSize: blockSize,
+		mnt:         mnt,
+		overlay:     overlay,
+		ready:       utils.NewSetOnce[string](),
+		cache:       cache,
+		blockSize:   blockSize,
+		BaseBuildId: rootfs.Header().Metadata.BaseBuildId.String(),
 	}, nil
 }
 
