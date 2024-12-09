@@ -2,10 +2,11 @@ package sandbox
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"syscall"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -16,8 +17,28 @@ import (
 const (
 	healthCheckInterval      = 10 * time.Second
 	metricsCheckInterval     = 5 * time.Second
-	minEnvdVersionForMetrcis = "0.1.3"
+	minEnvdVersionForMetrics = "0.1.3"
 )
+
+var sigsToListen = []os.Signal{
+	syscall.SIGKILL,   // Process termination
+	syscall.SIGTERM,   // Termination signal
+	syscall.SIGINT,    // Interrupt signal
+	syscall.SIGSEGV,   // Segmentation fault
+	syscall.SIGBUS,    // Bus error
+	syscall.SIGABRT,   // Abnormal termination
+	syscall.SIGWINCH,  // Window size change
+	syscall.SIGCHLD,   // Child process terminated
+	syscall.SIGQUIT,   // Quit signal
+	syscall.SIGURG,    // Urgent condition
+	syscall.SIGXCPU,   // CPU time limit exceeded
+	syscall.SIGXFSZ,   // File size limit exceeded
+	syscall.SIGVTALRM, // Virtual timer expired
+	syscall.SIGPROF,   // Profiling timer expired
+	syscall.SIGUSR1,   // User-defined signal 1
+	syscall.SIGUSR2,   // User-defined signal 2
+	syscall.SIGSYS,    // Bad system call
+}
 
 func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	healthTicker := time.NewTicker(healthCheckInterval)
@@ -27,8 +48,11 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 		metricsTicker.Stop()
 	}()
 
-	// Get metrics on sandbox startup
-	go s.LogMetrics(ctx)
+	// Get metrics and listen for signals on sandbox startup
+	go func() {
+		s.LogMetrics(ctx)
+		s.LogSignals(ctx)
+	}()
 
 	for {
 		select {
@@ -78,36 +102,8 @@ func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 	}
 }
 
-func (s *Sandbox) GetMetrics(ctx context.Context) (SandboxMetrics, error) {
-	address := fmt.Sprintf("http://%s:%d/metrics", s.slot.HostIP(), consts.DefaultEnvdServerPort)
-
-	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
-	if err != nil {
-		return SandboxMetrics{}, err
-	}
-
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return SandboxMetrics{}, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode != http.StatusOK {
-		err = fmt.Errorf("unexpected status code: %d", response.StatusCode)
-		return SandboxMetrics{}, err
-	}
-
-	var metrics SandboxMetrics
-	err = json.NewDecoder(response.Body).Decode(&metrics)
-	if err != nil {
-		return SandboxMetrics{}, err
-	}
-
-	return metrics, nil
-}
-
 func (s *Sandbox) LogMetrics(ctx context.Context) {
-	if isGTEVersion(s.Sandbox.EnvdVersion, minEnvdVersionForMetrcis) {
+	if isGTEVersion(s.Sandbox.EnvdVersion, minEnvdVersionForMetrics) {
 		metrics, err := s.GetMetrics(ctx)
 		if err != nil {
 			s.Logger.Warnf("failed to get metrics: %s", err)
@@ -115,6 +111,13 @@ func (s *Sandbox) LogMetrics(ctx context.Context) {
 			s.Logger.CPUPct(metrics.CPUPercent)
 			s.Logger.MemMiB(metrics.MemTotalMiB, metrics.MemUsedMiB)
 		}
+	}
+}
+
+func (s *Sandbox) LogSignals(ctx context.Context) {
+	if isGTEVersion(s.Sandbox.EnvdVersion, minEnvdVersionForMetrics) {
+		listenProcessSignals(
+			ctx, s.FcPid(), sigsToListen, func(sig os.Signal) { s.Logger.Signal(sig) })
 	}
 }
 
