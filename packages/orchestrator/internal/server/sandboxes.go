@@ -145,7 +145,9 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
 
+	// Check health metrics before stopping the sandbox
 	sbx.Healthcheck(ctx, true)
+	sbx.LogMetrics(ctx)
 
 	childSpan.SetAttributes(
 		attribute.String("env.id", sbx.Sandbox.TemplateID),
