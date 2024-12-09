@@ -163,7 +163,7 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 	}
 }
 
-func (l *SandboxLogger) MemoryUsage(memoryMB float64) {
+func (l *SandboxLogger) MemoryUsage(memoryMiB float64) {
 	// Cap at memoryMBMax
 	memoryMB = math.Min(memoryMB, float64(l.memoryMiBMax))
 	if memoryMB > memoryUsageThreshold*float64(l.memoryMiBMax) && int32(memoryMB) > l.memoryWasAbove.Load() {
