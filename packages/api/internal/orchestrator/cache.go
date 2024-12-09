@@ -39,8 +39,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 
 		for _, node := range nodes {
 			// If the node is not in the list, connect to it
-			_, err = o.GetNode(node.ID)
-			if err != nil {
+			if o.GetNode(node.ID) == nil {
 				err = o.connectToNode(node)
 				if err != nil {
 					o.logger.Errorf("Error connecting to node\n: %v", err)
@@ -121,9 +120,9 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 				Set("duration", duration),
 		)
 
-		node, err := o.GetNode(info.Instance.ClientID)
-		if err != nil {
-			logger.Errorf("failed to get node '%s': %w", info.Instance.ClientID, err)
+		node := o.GetNode(info.Instance.ClientID)
+		if node == nil {
+			logger.Errorf("failed to get node '%s'", info.Instance.ClientID)
 		} else {
 			node.CPUUsage -= info.VCpu
 			node.RamUsage -= info.RamMB
@@ -151,15 +150,15 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 
 func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
-		node, err := o.GetNode(info.Instance.ClientID)
-		if err != nil {
-			logger.Errorf("failed to get node '%s': %v", info.Instance.ClientID, err)
+		node := o.GetNode(info.Instance.ClientID)
+		if node == nil {
+			logger.Errorf("failed to get node '%s'", info.Instance.ClientID)
 		} else {
 			node.CPUUsage += info.VCpu
 			node.RamUsage += info.RamMB
 		}
 
-		_, err = o.analytics.Client.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
+		_, err := o.analytics.Client.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
 			InstanceId:    info.Instance.SandboxID,
 			EnvironmentId: info.Instance.TemplateID,
 			BuildId:       info.BuildID.String(),

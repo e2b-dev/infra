@@ -44,6 +44,10 @@ data "google_secret_manager_secret_version" "analytics_collector_api_token" {
   secret = var.analytics_collector_api_token_secret_name
 }
 
+data "google_secret_manager_secret_version" "api_admin_token" {
+  secret = var.api_admin_token_name
+}
+
 provider "nomad" {
   address      = "https://nomad.${var.domain_name}"
   secret_id    = var.nomad_acl_token_secret
@@ -71,6 +75,7 @@ resource "nomad_job" "api" {
       analytics_collector_api_token = data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data
       otel_tracing_print            = var.otel_tracing_print
       nomad_token                   = var.nomad_acl_token_secret
+      admin_token                   = data.google_secret_manager_secret_version.api_admin_token.secret_data
     }
   }
 }

@@ -191,7 +191,7 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context) (leastBusyNode *Nod
 
 		for _, node := range o.nodes {
 			// To prevent overloading the node
-			if len(node.sbxsInProgress) > 3 {
+			if len(node.sbxsInProgress) > 3 || node.Status != api.NodeStatusReady {
 				continue
 			}
 

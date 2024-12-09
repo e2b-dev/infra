@@ -18,7 +18,7 @@ components:
       bearerFormat: access_token
     AdminTokenAuth:
       type: apiKey
-      scheme: header
+      in: header
       name: X-Admin-Token
 
   parameters:
@@ -300,8 +300,8 @@ components:
       type: string
       description: Status of the node
       enum:
-          - online
-          - draining
+        - ready
+        - draining
 
     NodeStatusChange:
       required:
@@ -313,6 +313,10 @@ components:
     Node:
       required:
         - nodeID
+        - status
+        - sandboxCount
+        - allocatedCPU
+        - allocatedMemoryMiB
       properties:
         nodeID:
           type: string
@@ -327,7 +331,7 @@ components:
           type: integer
           format: int32
           description: Number of allocated CPU cores
-        allocatedMemory:
+        allocatedMemoryMiB:
           type: integer
           format: int32
           description: Amount of allocated memory in MiB
@@ -335,6 +339,8 @@ components:
     NodeDetail:
       required:
         - nodeID
+        - status
+        - sandboxes
       properties:
         nodeID:
           type: string
@@ -345,7 +351,7 @@ components:
           type: array
           description: List of sandboxes running on the node
           items:
-            - $ref: "#/components/schemas/RunningSandbox"
+            $ref: "#/components/schemas/RunningSandbox"
 
 
     Error:
@@ -712,7 +718,7 @@ paths:
                 type: array
                 items:
                   allOf:
-                   - $ref: "#/components/schemas/Node"
+                    - $ref: "#/components/schemas/Node"
         "401":
           $ref: "#/components/responses/401"
         "500":
@@ -723,40 +729,40 @@ paths:
       description: Get node info
       tags: [admin]
       security:
-          - AdminTokenAuth: []
+        - AdminTokenAuth: []
       parameters:
-          - $ref: "#/components/parameters/nodeID"
+        - $ref: "#/components/parameters/nodeID"
       responses:
-          "200":
-            description: Successfully returned the node
-            content:
-              application/json:
-                schema:
-                    $ref: "#/components/schemas/NodeDetail"
-          "401":
-            $ref: "#/components/responses/401"
-          "404":
-           $ref: "#/components/responses/404"
-          "500":
-            $ref: "#/components/responses/500"
+        "200":
+          description: Successfully returned the node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeDetail"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
     post:
       description: Change status of a node
       tags: [admin]
       security:
-          - AdminTokenAuth: []
+        - AdminTokenAuth: []
       parameters:
-          - $ref: "#/components/parameters/nodeID"
+        - $ref: "#/components/parameters/nodeID"
       requestBody:
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/NodeStatusChange"
       responses:
-          "204":
-            description: The node status was changed successfully
-          "401":
-            $ref: "#/components/responses/401"
-          "404":
-            $ref: "#/components/responses/404"
-          "500":
-            $ref: "#/components/responses/500"
+        "204":
+          description: The node status was changed successfully
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"

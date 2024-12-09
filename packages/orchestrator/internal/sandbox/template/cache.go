@@ -73,3 +73,7 @@ func (c *Cache) GetTemplate(
 
 	return t.Value(), nil
 }
+
+func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
+	return c.cache.Items()
+}

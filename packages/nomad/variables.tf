@@ -39,6 +39,10 @@ variable "api_secret" {
   type = string
 }
 
+variable "api_admin_token_name" {
+  type = string
+}
+
 variable "logs_proxy_address" {
   type = string
 }

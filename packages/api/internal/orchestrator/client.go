@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -51,6 +52,7 @@ func (o *Orchestrator) connectToNode(node *nodeInfo) error {
 		Client:         client,
 		buildCache:     buildCache,
 		sbxsInProgress: make(map[string]*sbxInProgress),
+		Status:         api.NodeStatusReady,
 	}
 
 	o.nodes[n.ID] = n
@@ -59,9 +61,9 @@ func (o *Orchestrator) connectToNode(node *nodeInfo) error {
 }
 
 func (o *Orchestrator) GetClient(nodeID string) (*GRPCClient, error) {
-	node, err := o.GetNode(nodeID)
-	if err != nil {
-		return nil, err
+	node := o.GetNode(nodeID)
+	if node == nil {
+		return nil, fmt.Errorf("node '%s' not found", nodeID)
 	}
 
 	return node.Client, nil

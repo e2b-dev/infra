@@ -7,6 +7,7 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/jellydator/ttlcache/v3"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -21,6 +22,7 @@ type Node struct {
 	CPUUsage int64
 	RamUsage int64
 	Client   *GRPCClient
+	Status   api.NodeStatus
 
 	sbxsInProgress map[string]*sbxInProgress
 	buildCache     *ttlcache.Cache[string, interface{}]
@@ -48,13 +50,66 @@ func (o *Orchestrator) listNomadNodes() ([]*nodeInfo, error) {
 	return nodes, nil
 }
 
-func (o *Orchestrator) GetNode(nodeID string) (*Node, error) {
-	node, ok := o.nodes[nodeID]
-	if !ok {
-		return nil, fmt.Errorf("node %s not found", nodeID)
+func (o *Orchestrator) GetNode(nodeID string) *Node {
+	node, _ := o.nodes[nodeID]
+	return node
+}
+
+func (o *Orchestrator) GetNodes() []*api.Node {
+	nodes := make(map[string]*api.Node)
+	for key, node := range o.nodes {
+		nodes[key] = &api.Node{NodeID: key, Status: node.Status}
 	}
 
-	return node, nil
+	fmt.Println("o.instanceCache.Items()", o.instanceCache.Items())
+	for _, sbx := range o.instanceCache.Items() {
+		nodes[sbx.Instance.ClientID].AllocatedCPU += int32(sbx.VCpu)
+		nodes[sbx.Instance.ClientID].AllocatedMemoryMiB += int32(sbx.RamMB)
+		nodes[sbx.Instance.ClientID].SandboxCount += 1
+	}
+
+	var result []*api.Node
+	for _, node := range nodes {
+		result = append(result, node)
+	}
+
+	return result
+}
+
+func (o *Orchestrator) GetNodeDetail(nodeId string) *api.NodeDetail {
+	var node *api.NodeDetail
+	for key, n := range o.nodes {
+		if key == nodeId {
+			node = &api.NodeDetail{NodeID: key, Status: n.Status}
+		}
+	}
+
+	if node == nil {
+		return nil
+	}
+
+	for _, sbx := range o.instanceCache.Items() {
+		if sbx.Instance.ClientID == nodeId {
+			var metadata *api.SandboxMetadata
+			if sbx.Metadata != nil {
+				meta := api.SandboxMetadata(sbx.Metadata)
+				metadata = &meta
+			}
+			node.Sandboxes = append(node.Sandboxes, api.RunningSandbox{
+				Alias:      sbx.Instance.Alias,
+				ClientID:   nodeId,
+				CpuCount:   api.CPUCount(sbx.VCpu),
+				MemoryMB:   api.MemoryMB(sbx.RamMB),
+				EndAt:      sbx.EndTime,
+				Metadata:   metadata,
+				SandboxID:  sbx.Instance.SandboxID,
+				StartedAt:  sbx.StartTime,
+				TemplateID: sbx.Instance.TemplateID,
+			})
+		}
+	}
+
+	return node
 }
 
 func (n *Node) SyncBuilds(builds []*orchestrator.CachedBuildInfo) {
