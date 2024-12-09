@@ -70,7 +70,6 @@ resource "google_compute_instance_template" "client" {
 
   instance_description = var.cluster_description
   machine_type         = var.machine_type
-  min_cpu_platform     = "Intel Skylake"
 
   labels = merge(
     var.labels,
@@ -90,14 +89,17 @@ resource "google_compute_instance_template" "client" {
   )
 
   scheduling {
-    on_host_maintenance = "MIGRATE"
+    on_host_maintenance = "TERMINATE"
   }
 
   disk {
     boot         = true
     source_image = data.google_compute_image.source_image.id
     disk_size_gb = var.root_volume_disk_size_gb
-    disk_type    = var.root_volume_disk_type
+    disk_type    = "hyperdisk-balanced"
+    auto_delete  = true
+    mode         = "READ_WRITE"
+    type         = "PERSISTENT"
   }
 
   network_interface {

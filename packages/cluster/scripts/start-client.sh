@@ -42,7 +42,7 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 
 # Load the nbd module with 4096 devices
-sudo modprobe nbd nbds_max=4096
+sudo modprobe nbd nbds_max=1024
 
 # Create the directory for the fc mounts
 mkdir -p /fc-vm
