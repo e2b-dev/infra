@@ -139,7 +139,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 		apiErr := api.Error{
 			Code:    http.StatusInternalServerError,
-			Message: errMsg.Error(),
+			Message: "Error when creating sandbox. Please try again later.",
 		}
 
 		a.sendAPIStoreError(c, int(apiErr.Code), apiErr.Message)
