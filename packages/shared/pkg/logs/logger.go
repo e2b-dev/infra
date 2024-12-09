@@ -173,7 +173,7 @@ func (l *SandboxLogger) MemoryUsage(memoryMB float64) {
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
 			Float64("memoryMBUsed", memoryMB).
-			Int32("memoryMBTotal", l.memoryMiBMax).
+			Int32("memoryMiBTotal", l.memoryMiBMax).
 			Msgf("Sandbox memory used %d %% of RAM", int(memoryMB/float64(l.memoryMiBMax)*100))
 		return
 	}
