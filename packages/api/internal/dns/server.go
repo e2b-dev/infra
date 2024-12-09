@@ -1,0 +1,88 @@
+package dns
+
+import (
+	"fmt"
+	"log"
+	"net"
+	"strings"
+
+	resolver "github.com/miekg/dns"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+)
+
+const ttl = 0
+
+type DNS struct {
+	records *smap.Map[string]
+}
+
+func New() *DNS {
+	return &DNS{
+		records: smap.New[string](),
+	}
+}
+
+func (d *DNS) Add(nodeID, ip string) {
+	d.records.Insert(d.hostname(nodeID), ip)
+}
+
+func (d *DNS) Remove(nodeID string) {
+	d.records.Remove(d.hostname(nodeID))
+}
+
+func (d *DNS) get(hostname string) (string, bool) {
+	return d.records.Get(hostname)
+}
+
+func (*DNS) hostname(sandboxID string) string {
+	return fmt.Sprintf("%s.", sandboxID)
+}
+
+func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
+	m := new(resolver.Msg)
+	m.SetReply(r)
+	m.Compress = false
+	m.Authoritative = true
+
+	for _, q := range m.Question {
+		if q.Qtype == resolver.TypeA {
+			fmt.Printf(q.Name)
+			nodeId := strings.Split(q.Name, "-")[1]
+			ip, found := d.get(nodeId)
+			if found {
+				a := &resolver.A{
+					Hdr: resolver.RR_Header{
+						Name:   q.Name,
+						Rrtype: resolver.TypeA,
+						Class:  resolver.ClassINET,
+						Ttl:    ttl,
+					},
+					A: net.ParseIP(ip).To4(),
+				}
+
+				m.Answer = append(m.Answer, a)
+			}
+		}
+	}
+
+	err := w.WriteMsg(m)
+	if err != nil {
+		log.Printf("Failed to write message: %s\n", err.Error())
+	}
+}
+
+func (d *DNS) Start(address string) error {
+	mux := resolver.NewServeMux()
+
+	mux.HandleFunc(".", d.handleDNSRequest)
+
+	server := resolver.Server{Addr: address, Net: "udp", Handler: mux}
+
+	err := server.ListenAndServe()
+	if err != nil {
+		return fmt.Errorf("failed to start DNS server: %w", err)
+	}
+
+	return nil
+}

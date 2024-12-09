@@ -117,7 +117,7 @@ variable "root_volume_disk_size_gb" {
 variable "root_volume_disk_type" {
   description = "The GCE disk type. Can be either pd-ssd, local-ssd, or pd-standard"
   type        = string
-  default     = "pd-ssd"
+  default     = "local-ssd"
 }
 
 # Update Policy
