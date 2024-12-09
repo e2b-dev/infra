@@ -75,7 +75,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 				continue
 			}
 
-			instanceCache.Sync(activeInstances, node.ID)
+			instanceCache.Sync(activeInstances, node.Info.ID)
 
 			go func() {
 				builds, buildsErr := o.listCachedBuilds(childCtx, node.ID)
@@ -87,7 +87,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 				node.SyncBuilds(builds)
 			}()
 
-			o.logger.Infof("Node %s: CPU: %d, RAM: %d", node.ID, node.CPUUsage, node.RamUsage)
+			o.logger.Infof("Node %s: CPU: %d, RAM: %d", node.Info.ID, node.CPUUsage, node.RamUsage)
 		}
 
 		childSpan.End()
