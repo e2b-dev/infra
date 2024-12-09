@@ -165,16 +165,16 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 
 func (l *SandboxLogger) MemoryUsage(memoryMiB float64) {
 	// Cap at memoryMBMax
-	memoryMiB = math.Min(memoryMB, float64(l.memoryMiBMax))
+	memoryMiB = math.Min(memoryMiB, float64(l.memoryMiBMax))
 	if memoryMiB > memoryUsageThreshold*float64(l.memoryMiBMax) && int32(memoryMiB) > l.memoryWasAbove.Load() {
-		l.memoryWasAbove.Store(int32(memoryMB))
+		l.memoryWasAbove.Store(int32(memoryMiB))
 		l.exporter.logger.Warn().
 			Str("instanceID", l.instanceID).
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
-			Float64("memoryMBUsed", memoryMB).
+			Float64("memoryMiBUsed", memoryMiB).
 			Int32("memoryMiBTotal", l.memoryMiBMax).
-			Msgf("Sandbox memory used %d %% of RAM", int(memoryMB/float64(l.memoryMiBMax)*100))
+			Msgf("Sandbox memory used %d %% of RAM", int(memoryMiB/float64(l.memoryMiBMax)*100))
 		return
 	}
 }
