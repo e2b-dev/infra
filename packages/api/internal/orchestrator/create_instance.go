@@ -97,9 +97,15 @@ func (o *Orchestrator) CreateSandbox(
 	var excludedNodes []string
 
 	for {
-		if clientID, ok := getSandboxIDClient(sandboxID); ok {
-			node = o.nodes[clientID]
+		if isResume {
 			telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
+
+			clientID, ok := getSandboxIDClient(sandboxID)
+			if !ok {
+				return nil, fmt.Errorf("failed to get client ID from sandbox ID '%s'", sandboxID)
+			}
+
+			node = o.nodes[clientID]
 		} else {
 			node = o.getLeastBusyNode(childCtx, excludedNodes...)
 			telemetry.ReportEvent(childCtx, "Trying to place sandbox on node")
