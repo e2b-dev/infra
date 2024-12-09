@@ -57,6 +57,7 @@ func (o *Orchestrator) connectToNode(node *node.NodeInfo) error {
 	}
 
 	o.nodes[n.Info.ID] = n
+	o.dns.Add(node.ID, node.ProxyAddress)
 
 	return nil
 }
