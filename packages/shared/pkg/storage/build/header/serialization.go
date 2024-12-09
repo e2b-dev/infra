@@ -10,10 +10,10 @@ import (
 )
 
 type Metadata struct {
-	Version    int64
-	BlockSize  int64
-	Size       int64
-	Generation int64
+	Version    uint64
+	BlockSize  uint64
+	Size       uint64
+	Generation uint64
 	BuildId    uuid.UUID
 	// TODO: Use the base build id when setting up the snapshot rootfs
 	BaseBuildId uuid.UUID

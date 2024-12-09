@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -62,8 +61,6 @@ func main() {
 	}
 	defer networkPool.Close()
 
-	eg, ctx := errgroup.WithContext(ctx)
-
 	for i := 0; i < *count; i++ {
 		fmt.Println("--------------------------------")
 		fmt.Printf("Starting sandbox %d\n", i)
@@ -81,14 +78,8 @@ func main() {
 			templateCache,
 		)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to start sandbox: %v\n", err)
-			return
+			break
 		}
-	}
-
-	err = eg.Wait()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start sandboxes: %v\n", err)
 	}
 }
 

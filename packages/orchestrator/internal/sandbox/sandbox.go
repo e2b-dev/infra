@@ -356,7 +356,7 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		memfileDirty.Count(),
 	)
 
-	sourceFile, err := os.Open(s.files.CacheMemfilePath())
+	sourceFile, err := os.Open(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open memfile: %w", err)
 	}
@@ -395,8 +395,8 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	memfileMetadata := &header.Metadata{
 		Version:     1,
 		Generation:  originalMemfile.Header().Metadata.Generation + 1,
-		BlockSize:   int64(s.files.MemfilePageSize()),
-		Size:        memfileSize,
+		BlockSize:   uint64(s.files.MemfilePageSize()),
+		Size:        uint64(memfileSize),
 		BuildId:     buildId,
 		BaseBuildId: originalMemfile.Header().Metadata.BaseBuildId,
 	}
@@ -469,8 +469,8 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	rootfsMetadata := &header.Metadata{
 		Version:     1,
 		Generation:  originalRootfs.Header().Metadata.Generation + 1,
-		BlockSize:   int64(s.files.RootfsBlockSize()),
-		Size:        rootfsSize,
+		BlockSize:   uint64(s.files.RootfsBlockSize()),
+		Size:        uint64(rootfsSize),
 		BuildId:     buildId,
 		BaseBuildId: originalRootfs.Header().Metadata.BaseBuildId,
 	}

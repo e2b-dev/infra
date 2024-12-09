@@ -10,7 +10,7 @@ import (
 type Header struct {
 	Metadata    *Metadata
 	blockStarts *bitset.BitSet
-	startMap    map[uint64]*BuildMap
+	startMap    map[int64]*BuildMap
 
 	Mapping []*BuildMap
 }
@@ -19,20 +19,22 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) *Header {
 	if len(mapping) == 0 {
 		mapping = []*BuildMap{{
 			Offset:             0,
-			Length:             uint64(metadata.Size),
+			Length:             metadata.Size,
 			BuildId:            metadata.BuildId,
 			BuildStorageOffset: 0,
 		}}
 	}
 
-	blocks := TotalBlocks(metadata.Size, metadata.BlockSize)
+	blocks := TotalBlocks(int64(metadata.Size), int64(metadata.BlockSize))
 
 	intervals := bitset.New(uint(blocks))
-	startMap := make(map[uint64]*BuildMap, len(mapping))
+	startMap := make(map[int64]*BuildMap, len(mapping))
 
 	for _, mapping := range mapping {
-		intervals.Set(uint(mapping.Offset))
-		startMap[mapping.Offset] = mapping
+		block := BlockIdx(int64(mapping.Offset), int64(metadata.BlockSize))
+
+		intervals.Set(uint(block))
+		startMap[block] = mapping
 	}
 
 	return &Header{
@@ -43,20 +45,22 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) *Header {
 	}
 }
 
-func (t *Header) GetMapping(offset int64) (*BuildMap, error) {
-	block := BlockIdx(offset, t.Metadata.BlockSize)
+func (t *Header) GetMapping(offset int64) (*BuildMap, int64, error) {
+	block := BlockIdx(offset, int64(t.Metadata.BlockSize))
 
 	start, ok := t.blockStarts.PreviousSet(uint(block))
 	if !ok {
-		return nil, fmt.Errorf("no source found for offset %d", offset)
+		return nil, 0, fmt.Errorf("no source found for offset %d", offset)
 	}
 
-	mapping, ok := t.startMap[uint64(start)]
+	mapping, ok := t.startMap[int64(start)]
 	if !ok {
-		return nil, fmt.Errorf("no mapping found for offset %d", offset)
+		return nil, 0, fmt.Errorf("no mapping found for offset %d", offset)
 	}
 
-	return mapping, nil
+	shift := (block - int64(start)) * int64(t.Metadata.BlockSize)
+
+	return mapping, shift, nil
 }
 
 func CreateMapping(
@@ -79,7 +83,7 @@ func CreateMapping(
 
 		if blockLength > 0 {
 			m := &BuildMap{
-				Offset:             uint64(int64(startBlock) * metadata.BlockSize),
+				Offset:             uint64(int64(startBlock) * int64(metadata.BlockSize)),
 				BuildId:            *buildId,
 				Length:             uint64(blockLength) * uint64(metadata.BlockSize),
 				BuildStorageOffset: buildStorageOffset,
@@ -95,7 +99,7 @@ func CreateMapping(
 	}
 
 	mappings = append(mappings, &BuildMap{
-		Offset:             uint64(int64(startBlock) * metadata.BlockSize),
+		Offset:             uint64(startBlock) * metadata.BlockSize,
 		BuildId:            *buildId,
 		Length:             uint64(blockLength) * uint64(metadata.BlockSize),
 		BuildStorageOffset: buildStorageOffset,

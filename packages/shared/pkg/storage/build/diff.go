@@ -11,10 +11,13 @@ func CreateDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff 
 	b := make([]byte, blockSize)
 
 	for i, e := dirty.NextSet(0); e; i, e = dirty.NextSet(i + 1) {
+
 		_, err := source.ReadAt(b, int64(i)*blockSize)
 		if err != nil {
 			return fmt.Errorf("error reading from source: %w", err)
 		}
+
+		// fmt.Printf("[block] with set bytes: %d %d\n", i, len(b)-bytes.Count(b, []byte("\x00")))
 
 		_, err = diff.Write(b)
 		if err != nil {

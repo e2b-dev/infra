@@ -51,16 +51,16 @@ func NewStorage(
 		h = header.NewHeader(&header.Metadata{
 			BuildId:     id,
 			BaseBuildId: id,
-			Size:        size,
+			Size:        uint64(size),
 			Version:     1,
-			BlockSize:   blockSize,
+			BlockSize:   uint64(blockSize),
 			Generation:  1,
 		}, nil)
 	}
 
 	b := build.NewFromStorage(h, store, storeKeySuffix)
 
-	chunker, err := newChunker(ctx, h.Metadata.Size, blockSize, b, cachePath)
+	chunker, err := newChunker(ctx, int64(h.Metadata.Size), blockSize, b, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create chunker: %w", err)
 	}
@@ -76,7 +76,7 @@ func (d *Storage) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func (d *Storage) Size() (int64, error) {
-	return d.header.Metadata.Size, nil
+	return int64(d.header.Metadata.Size), nil
 }
 
 func (d *Storage) Close() error {

@@ -100,8 +100,6 @@ func NewProcess(
 		attribute.String("sandbox.cmd", fcStartScript.String()),
 	)
 
-	fmt.Printf("fcStartScript: \n\n%s\n\n", fcStartScript.String())
-
 	cmd := exec.Command(
 		"unshare",
 		"-pfm",
