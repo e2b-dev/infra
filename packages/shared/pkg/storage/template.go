@@ -72,7 +72,7 @@ func (t *TemplateFiles) BuildKernelDir() string {
 
 // Key for the cache. Unique for template-build pair.
 func (t *TemplateFiles) CacheKey() string {
-	return fmt.Sprintf("%s", t.BuildId)
+	return fmt.Sprintf("%s-%s", t.TemplateId, t.BuildId)
 }
 
 func (t *TemplateFiles) CacheKernelDir() string {
@@ -88,7 +88,7 @@ func (t *TemplateFiles) FirecrackerPath() string {
 }
 
 func (t *TemplateFiles) StorageDir() string {
-	return fmt.Sprintf("%s", t.BuildId)
+	return fmt.Sprintf("%s/%s", t.TemplateId, t.BuildId)
 }
 
 func (t *TemplateFiles) StorageMemfilePath() string {
@@ -104,7 +104,7 @@ func (t *TemplateFiles) StorageSnapfilePath() string {
 }
 
 func (t *TemplateFiles) BuildDir() string {
-	return filepath.Join(EnvsDisk, buildDirName, t.BuildId)
+	return filepath.Join(EnvsDisk, t.TemplateId, buildDirName, t.BuildId)
 }
 
 func (t *TemplateFiles) BuildMemfilePath() string {

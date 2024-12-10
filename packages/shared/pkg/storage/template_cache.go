@@ -32,7 +32,7 @@ func (f *TemplateFiles) NewTemplateCacheFiles() (*TemplateCacheFiles, error) {
 }
 
 func (c *TemplateCacheFiles) CacheDir() string {
-	return filepath.Join(templateCacheDir, c.BuildId, "cache", c.CacheIdentifier)
+	return filepath.Join(templateCacheDir, c.TemplateId, c.BuildId, "cache", c.CacheIdentifier)
 }
 
 func (c *TemplateCacheFiles) CacheMemfilePath() string {
