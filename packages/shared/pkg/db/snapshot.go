@@ -108,6 +108,11 @@ func (db *DB) NewSnapshotBuild(
 		return nil, fmt.Errorf("failed to create env build '%s': %w", snapshotConfig.SandboxID, err)
 	}
 
+	err = tx.Commit()
+	if err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return b, nil
 }
 
