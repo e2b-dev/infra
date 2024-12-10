@@ -21,6 +21,7 @@ func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, err
 	}
 
 	sbx := item.Value()
+
 	return &sbx, nil
 }
 
