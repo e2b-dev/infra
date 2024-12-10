@@ -30,7 +30,6 @@ var sigsToListen = []os.Signal{
 	syscall.SIGWINCH,  // Window size change
 	syscall.SIGCHLD,   // Child process terminated
 	syscall.SIGQUIT,   // Quit signal
-	syscall.SIGURG,    // Urgent condition
 	syscall.SIGXCPU,   // CPU time limit exceeded
 	syscall.SIGXFSZ,   // File size limit exceeded
 	syscall.SIGVTALRM, // Virtual timer expired
