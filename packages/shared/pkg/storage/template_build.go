@@ -6,8 +6,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
 type TemplateBuild struct {
