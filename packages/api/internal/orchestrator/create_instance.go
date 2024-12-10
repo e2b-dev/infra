@@ -35,6 +35,7 @@ func (o *Orchestrator) CreateSandbox(
 	logger *logs.SandboxLogger,
 	isResume bool,
 	clientID *string,
+	baseTemplateID string,
 ) (*api.Sandbox, error) {
 	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -63,6 +64,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
+			BaseTemplateId:     baseTemplateID,
 			TemplateId:         *build.EnvID,
 			Alias:              &alias,
 			TeamId:             team.Team.ID.String(),

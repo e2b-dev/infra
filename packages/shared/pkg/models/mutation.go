@@ -3326,6 +3326,7 @@ type SnapshotMutation struct {
 	typ           string
 	id            *uuid.UUID
 	created_at    *time.Time
+	base_env_id   *string
 	sandbox_id    *string
 	metadata      *map[string]string
 	clearedFields map[string]struct{}
@@ -3474,6 +3475,42 @@ func (m *SnapshotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err e
 // ResetCreatedAt resets all changes to the "created_at" field.
 func (m *SnapshotMutation) ResetCreatedAt() {
 	m.created_at = nil
+}
+
+// SetBaseEnvID sets the "base_env_id" field.
+func (m *SnapshotMutation) SetBaseEnvID(s string) {
+	m.base_env_id = &s
+}
+
+// BaseEnvID returns the value of the "base_env_id" field in the mutation.
+func (m *SnapshotMutation) BaseEnvID() (r string, exists bool) {
+	v := m.base_env_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBaseEnvID returns the old "base_env_id" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldBaseEnvID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBaseEnvID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBaseEnvID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBaseEnvID: %w", err)
+	}
+	return oldValue.BaseEnvID, nil
+}
+
+// ResetBaseEnvID resets all changes to the "base_env_id" field.
+func (m *SnapshotMutation) ResetBaseEnvID() {
+	m.base_env_id = nil
 }
 
 // SetEnvID sets the "env_id" field.
@@ -3645,9 +3682,12 @@ func (m *SnapshotMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SnapshotMutation) Fields() []string {
-	fields := make([]string, 0, 4)
+	fields := make([]string, 0, 5)
 	if m.created_at != nil {
 		fields = append(fields, snapshot.FieldCreatedAt)
+	}
+	if m.base_env_id != nil {
+		fields = append(fields, snapshot.FieldBaseEnvID)
 	}
 	if m.env != nil {
 		fields = append(fields, snapshot.FieldEnvID)
@@ -3668,6 +3708,8 @@ func (m *SnapshotMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case snapshot.FieldCreatedAt:
 		return m.CreatedAt()
+	case snapshot.FieldBaseEnvID:
+		return m.BaseEnvID()
 	case snapshot.FieldEnvID:
 		return m.EnvID()
 	case snapshot.FieldSandboxID:
@@ -3685,6 +3727,8 @@ func (m *SnapshotMutation) OldField(ctx context.Context, name string) (ent.Value
 	switch name {
 	case snapshot.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
+	case snapshot.FieldBaseEnvID:
+		return m.OldBaseEnvID(ctx)
 	case snapshot.FieldEnvID:
 		return m.OldEnvID(ctx)
 	case snapshot.FieldSandboxID:
@@ -3706,6 +3750,13 @@ func (m *SnapshotMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
+		return nil
+	case snapshot.FieldBaseEnvID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBaseEnvID(v)
 		return nil
 	case snapshot.FieldEnvID:
 		v, ok := value.(string)
@@ -3779,6 +3830,9 @@ func (m *SnapshotMutation) ResetField(name string) error {
 	switch name {
 	case snapshot.FieldCreatedAt:
 		m.ResetCreatedAt()
+		return nil
+	case snapshot.FieldBaseEnvID:
+		m.ResetBaseEnvID()
 		return nil
 	case snapshot.FieldEnvID:
 		m.ResetEnvID()

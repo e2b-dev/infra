@@ -135,6 +135,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		&c.Request.Header,
 		false,
 		nil,
+		env.TemplateID,
 	)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, err.Error())

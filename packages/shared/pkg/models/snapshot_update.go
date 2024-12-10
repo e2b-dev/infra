@@ -30,6 +30,20 @@ func (su *SnapshotUpdate) Where(ps ...predicate.Snapshot) *SnapshotUpdate {
 	return su
 }
 
+// SetBaseEnvID sets the "base_env_id" field.
+func (su *SnapshotUpdate) SetBaseEnvID(s string) *SnapshotUpdate {
+	su.mutation.SetBaseEnvID(s)
+	return su
+}
+
+// SetNillableBaseEnvID sets the "base_env_id" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableBaseEnvID(s *string) *SnapshotUpdate {
+	if s != nil {
+		su.SetBaseEnvID(*s)
+	}
+	return su
+}
+
 // SetEnvID sets the "env_id" field.
 func (su *SnapshotUpdate) SetEnvID(s string) *SnapshotUpdate {
 	su.mutation.SetEnvID(s)
@@ -133,6 +147,9 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			}
 		}
 	}
+	if value, ok := su.mutation.BaseEnvID(); ok {
+		_spec.SetField(snapshot.FieldBaseEnvID, field.TypeString, value)
+	}
 	if value, ok := su.mutation.SandboxID(); ok {
 		_spec.SetField(snapshot.FieldSandboxID, field.TypeString, value)
 	}
@@ -192,6 +209,20 @@ type SnapshotUpdateOne struct {
 	hooks     []Hook
 	mutation  *SnapshotMutation
 	modifiers []func(*sql.UpdateBuilder)
+}
+
+// SetBaseEnvID sets the "base_env_id" field.
+func (suo *SnapshotUpdateOne) SetBaseEnvID(s string) *SnapshotUpdateOne {
+	suo.mutation.SetBaseEnvID(s)
+	return suo
+}
+
+// SetNillableBaseEnvID sets the "base_env_id" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableBaseEnvID(s *string) *SnapshotUpdateOne {
+	if s != nil {
+		suo.SetBaseEnvID(*s)
+	}
+	return suo
 }
 
 // SetEnvID sets the "env_id" field.
@@ -326,6 +357,9 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := suo.mutation.BaseEnvID(); ok {
+		_spec.SetField(snapshot.FieldBaseEnvID, field.TypeString, value)
 	}
 	if value, ok := suo.mutation.SandboxID(); ok {
 		_spec.SetField(snapshot.FieldSandboxID, field.TypeString, value)

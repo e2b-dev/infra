@@ -64,6 +64,7 @@ func NewProcess(
 	snapfile template.File,
 	rootfs *rootfs.CowDevice,
 	uffdReady chan struct{},
+	baseTemplateID string,
 ) (*Process, error) {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.String("sandbox.id", mmdsMetadata.SandboxId),
@@ -74,7 +75,7 @@ func NewProcess(
 	var fcStartScript bytes.Buffer
 
 	baseBuild := storage.NewTemplateFiles(
-		files.TemplateId,
+		baseTemplateID,
 		rootfs.BaseBuildId,
 		files.KernelVersion,
 		files.FirecrackerVersion,

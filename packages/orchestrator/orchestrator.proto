@@ -15,22 +15,23 @@ message SandboxConfig {
   
   bool huge_pages = 5;
   bool snapshot = 6;
+  string base_template_id = 7;
   
-  string sandbox_id = 7;
-  map<string, string> env_vars = 8;
+  string sandbox_id = 8;
+  map<string, string> env_vars = 9;
   
   // Metadata about the sandbox.
-  map<string, string> metadata = 9;
-  optional string alias = 10;
-  string envd_version = 11;
+  map<string, string> metadata = 10;
+  optional string alias = 11;
+  string envd_version = 12;
   
-  int64 vcpu = 12;
-  int64 ram_mb = 13;
-  int64 total_disk_size_mb = 14;
+  int64 vcpu = 13;
+  int64 ram_mb = 14;
+  int64 total_disk_size_mb = 15;
 
-  string team_id = 15;
+  string team_id = 16;
   // Maximum length of the sandbox in Hours.
-  int64 max_sandbox_length = 16;
+  int64 max_sandbox_length = 17;
 }
 
 message SandboxCreateRequest {

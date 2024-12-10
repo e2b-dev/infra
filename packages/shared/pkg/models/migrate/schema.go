@@ -87,8 +87,8 @@ var (
 		{Name: "ram_mb", Type: field.TypeInt64},
 		{Name: "free_disk_size_mb", Type: field.TypeInt64},
 		{Name: "total_disk_size_mb", Type: field.TypeInt64, Nullable: true},
-		{Name: "kernel_version", Type: field.TypeString, Default: "vmlinux-5.10.186", SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "firecracker_version", Type: field.TypeString, Default: "v1.7.0-dev_8bb88311", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "kernel_version", Type: field.TypeString, Default: "vmlinux-6.1.102", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "firecracker_version", Type: field.TypeString, Default: "v1.10.1_1fcdaec", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "envd_version", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "env_id", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 	}
@@ -110,6 +110,7 @@ var (
 	SnapshotsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
 		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
+		{Name: "base_env_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "sandbox_id", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "metadata", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "env_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
@@ -122,7 +123,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "snapshots_envs_snapshots",
-				Columns:    []*schema.Column{SnapshotsColumns[4]},
+				Columns:    []*schema.Column{SnapshotsColumns[5]},
 				RefColumns: []*schema.Column{EnvsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},

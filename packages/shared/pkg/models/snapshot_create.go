@@ -39,6 +39,12 @@ func (sc *SnapshotCreate) SetNillableCreatedAt(t *time.Time) *SnapshotCreate {
 	return sc
 }
 
+// SetBaseEnvID sets the "base_env_id" field.
+func (sc *SnapshotCreate) SetBaseEnvID(s string) *SnapshotCreate {
+	sc.mutation.SetBaseEnvID(s)
+	return sc
+}
+
 // SetEnvID sets the "env_id" field.
 func (sc *SnapshotCreate) SetEnvID(s string) *SnapshotCreate {
 	sc.mutation.SetEnvID(s)
@@ -114,6 +120,9 @@ func (sc *SnapshotCreate) check() error {
 	if _, ok := sc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`models: missing required field "Snapshot.created_at"`)}
 	}
+	if _, ok := sc.mutation.BaseEnvID(); !ok {
+		return &ValidationError{Name: "base_env_id", err: errors.New(`models: missing required field "Snapshot.base_env_id"`)}
+	}
 	if _, ok := sc.mutation.EnvID(); !ok {
 		return &ValidationError{Name: "env_id", err: errors.New(`models: missing required field "Snapshot.env_id"`)}
 	}
@@ -166,6 +175,10 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.CreatedAt(); ok {
 		_spec.SetField(snapshot.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
+	}
+	if value, ok := sc.mutation.BaseEnvID(); ok {
+		_spec.SetField(snapshot.FieldBaseEnvID, field.TypeString, value)
+		_node.BaseEnvID = value
 	}
 	if value, ok := sc.mutation.SandboxID(); ok {
 		_spec.SetField(snapshot.FieldSandboxID, field.TypeString, value)
@@ -244,6 +257,18 @@ type (
 		*sql.UpdateSet
 	}
 )
+
+// SetBaseEnvID sets the "base_env_id" field.
+func (u *SnapshotUpsert) SetBaseEnvID(v string) *SnapshotUpsert {
+	u.Set(snapshot.FieldBaseEnvID, v)
+	return u
+}
+
+// UpdateBaseEnvID sets the "base_env_id" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateBaseEnvID() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldBaseEnvID)
+	return u
+}
 
 // SetEnvID sets the "env_id" field.
 func (u *SnapshotUpsert) SetEnvID(v string) *SnapshotUpsert {
@@ -330,6 +355,20 @@ func (u *SnapshotUpsertOne) Update(set func(*SnapshotUpsert)) *SnapshotUpsertOne
 		set(&SnapshotUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetBaseEnvID sets the "base_env_id" field.
+func (u *SnapshotUpsertOne) SetBaseEnvID(v string) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetBaseEnvID(v)
+	})
+}
+
+// UpdateBaseEnvID sets the "base_env_id" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateBaseEnvID() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateBaseEnvID()
+	})
 }
 
 // SetEnvID sets the "env_id" field.
@@ -590,6 +629,20 @@ func (u *SnapshotUpsertBulk) Update(set func(*SnapshotUpsert)) *SnapshotUpsertBu
 		set(&SnapshotUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetBaseEnvID sets the "base_env_id" field.
+func (u *SnapshotUpsertBulk) SetBaseEnvID(v string) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetBaseEnvID(v)
+	})
+}
+
+// UpdateBaseEnvID sets the "base_env_id" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateBaseEnvID() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateBaseEnvID()
+	})
 }
 
 // SetEnvID sets the "env_id" field.

@@ -71,6 +71,7 @@ func NewSandbox(
 	endAt time.Time,
 	logger *logs.SandboxLogger,
 	isSnapshot bool,
+	baseTemplateID string,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -210,6 +211,7 @@ func NewSandbox(
 		snapfile,
 		rootfsOverlay,
 		fcUffd.Ready,
+		baseTemplateID,
 	)
 	if fcErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)

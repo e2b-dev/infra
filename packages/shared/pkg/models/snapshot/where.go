@@ -62,6 +62,11 @@ func CreatedAt(v time.Time) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldCreatedAt, v))
 }
 
+// BaseEnvID applies equality check predicate on the "base_env_id" field. It's identical to BaseEnvIDEQ.
+func BaseEnvID(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldBaseEnvID, v))
+}
+
 // EnvID applies equality check predicate on the "env_id" field. It's identical to EnvIDEQ.
 func EnvID(v string) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldEnvID, v))
@@ -110,6 +115,71 @@ func CreatedAtLT(v time.Time) predicate.Snapshot {
 // CreatedAtLTE applies the LTE predicate on the "created_at" field.
 func CreatedAtLTE(v time.Time) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldLTE(FieldCreatedAt, v))
+}
+
+// BaseEnvIDEQ applies the EQ predicate on the "base_env_id" field.
+func BaseEnvIDEQ(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldBaseEnvID, v))
+}
+
+// BaseEnvIDNEQ applies the NEQ predicate on the "base_env_id" field.
+func BaseEnvIDNEQ(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNEQ(FieldBaseEnvID, v))
+}
+
+// BaseEnvIDIn applies the In predicate on the "base_env_id" field.
+func BaseEnvIDIn(vs ...string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldIn(FieldBaseEnvID, vs...))
+}
+
+// BaseEnvIDNotIn applies the NotIn predicate on the "base_env_id" field.
+func BaseEnvIDNotIn(vs ...string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNotIn(FieldBaseEnvID, vs...))
+}
+
+// BaseEnvIDGT applies the GT predicate on the "base_env_id" field.
+func BaseEnvIDGT(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGT(FieldBaseEnvID, v))
+}
+
+// BaseEnvIDGTE applies the GTE predicate on the "base_env_id" field.
+func BaseEnvIDGTE(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGTE(FieldBaseEnvID, v))
+}
+
+// BaseEnvIDLT applies the LT predicate on the "base_env_id" field.
+func BaseEnvIDLT(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLT(FieldBaseEnvID, v))
+}
+
+// BaseEnvIDLTE applies the LTE predicate on the "base_env_id" field.
+func BaseEnvIDLTE(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLTE(FieldBaseEnvID, v))
+}
+
+// BaseEnvIDContains applies the Contains predicate on the "base_env_id" field.
+func BaseEnvIDContains(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldContains(FieldBaseEnvID, v))
+}
+
+// BaseEnvIDHasPrefix applies the HasPrefix predicate on the "base_env_id" field.
+func BaseEnvIDHasPrefix(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldHasPrefix(FieldBaseEnvID, v))
+}
+
+// BaseEnvIDHasSuffix applies the HasSuffix predicate on the "base_env_id" field.
+func BaseEnvIDHasSuffix(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldHasSuffix(FieldBaseEnvID, v))
+}
+
+// BaseEnvIDEqualFold applies the EqualFold predicate on the "base_env_id" field.
+func BaseEnvIDEqualFold(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEqualFold(FieldBaseEnvID, v))
+}
+
+// BaseEnvIDContainsFold applies the ContainsFold predicate on the "base_env_id" field.
+func BaseEnvIDContainsFold(v string) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldContainsFold(FieldBaseEnvID, v))
 }
 
 // EnvIDEQ applies the EQ predicate on the "env_id" field.
