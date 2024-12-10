@@ -28,5 +28,5 @@ func (t *Storage) Remove(ctx context.Context, templateID string) error {
 }
 
 func (t *Storage) NewBuild(files *storage.TemplateFiles) *storage.TemplateBuild {
-	return storage.NewTemplateBuild(t.bucket, files)
+	return storage.NewTemplateBuild(nil, nil, files)
 }
