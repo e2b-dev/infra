@@ -148,34 +148,5 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 
-	telemetry.ReportEvent(ctx, "Created sandbox")
-
-	_, analyticsSpan := a.Tracer.Start(ctx, "analytics")
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "created_instance",
-		properties.
-			Set("environment", env.TemplateID).
-			Set("instance_id", sandbox.SandboxID).
-			Set("alias", alias),
-	)
-	analyticsSpan.End()
-
-	telemetry.ReportEvent(ctx, "Created analytics event")
-
-	// go func() {
-	// 	err = a.db.UpdateEnvLastUsed(context.Background(), env.TemplateID)
-	// 	if err != nil {
-	// 		a.logger.Errorf("Error when updating last used for env: %s", err)
-	// 	}
-	// }()
-
-	telemetry.SetAttributes(ctx,
-		attribute.String("instance.id", sandbox.SandboxID),
-		attribute.String("node.id", sandbox.ClientID),
-	)
-
-	sandboxLogger.Infof("Sandbox created with - end time: %s", endTime.Format("2006-01-02 15:04:05 -07:00"))
-
 	c.JSON(http.StatusCreated, &sandbox)
 }
