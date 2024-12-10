@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -15,6 +16,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
 )
+
+func getSandboxIDClient(sandboxID string) (string, bool) {
+	parts := strings.Split(sandboxID, "-")
+	if len(parts) != 2 {
+		return "", false
+	}
+
+	return parts[1], true
+}
 
 func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
@@ -49,6 +59,15 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		}
 	}
 
+	clientID, ok := getSandboxIDClient(sandboxID)
+	if !ok {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid sandbox ID — missing client ID part: %s", sandboxID))
+
+		return
+	}
+
+	sandboxID = utils.ShortID(sandboxID)
+
 	snapshot, build, err := a.db.GetLastSnapshot(ctx, sandboxID, teamInfo.Team.ID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error resuming sandbox: %s", err))
@@ -78,6 +97,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		sandboxLogger,
 		&c.Request.Header,
 		true,
+		&clientID,
 	)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error resuming sandbox: %s", err))

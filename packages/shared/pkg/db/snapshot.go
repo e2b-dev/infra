@@ -9,6 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
+	"go.uber.org/zap"
 
 	"github.com/google/uuid"
 )
@@ -30,9 +31,12 @@ func (db *DB) NewSnapshotBuild(
 	ctx context.Context,
 	snapshotConfig *SnapshotInfo,
 	teamID uuid.UUID,
+	logger *zap.SugaredLogger,
 ) (*models.EnvBuild, error) {
 	tx, err := db.Client.BeginTx(ctx, nil)
 	defer tx.Rollback()
+
+	logger.Infof("getting snapshot")
 
 	s, err := tx.
 		Snapshot.
@@ -47,23 +51,29 @@ func (db *DB) NewSnapshotBuild(
 	notFound := models.IsNotFound(err)
 
 	if err != nil && !notFound {
+		logger.Infof("failed to get snapshot '%s': %v", snapshotConfig.SandboxID, err)
+
 		return nil, fmt.Errorf("failed to get snapshot '%s': %w", snapshotConfig.SandboxID, err)
 	}
 
-	e := s.Edges.Env
+	var e *models.Env
 
 	if notFound {
+		logger.Infof("creating env")
 		envID := id.Generate()
 
 		e, err = tx.
 			Env.
 			Create().
+			SetPublic(false).
 			SetTeamID(teamID).
 			SetID(envID).
 			Save(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create env '%s': %w", snapshotConfig.SandboxID, err)
 		}
+
+		logger.Infof("creating snapshot")
 
 		s, err = tx.
 			Snapshot.
@@ -75,7 +85,11 @@ func (db *DB) NewSnapshotBuild(
 		if err != nil {
 			return nil, fmt.Errorf("failed to create snapshot '%s': %w", snapshotConfig.SandboxID, err)
 		}
+	} else {
+		e = s.Edges.Env
 	}
+
+	logger.Infof("creating snapshot build")
 
 	b, err := tx.
 		EnvBuild.

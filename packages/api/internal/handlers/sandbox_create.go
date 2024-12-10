@@ -134,6 +134,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		sandboxLogger,
 		&c.Request.Header,
 		false,
+		nil,
 	)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, err.Error())

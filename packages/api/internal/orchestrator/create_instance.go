@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -22,15 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func getSandboxIDClient(sandboxID string) (string, bool) {
-	parts := strings.Split(sandboxID, "-")
-	if len(parts) != 2 {
-		return "", false
-	}
-
-	return parts[1], true
-}
-
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
@@ -44,6 +34,7 @@ func (o *Orchestrator) CreateSandbox(
 	timeout time.Duration,
 	logger *logs.SandboxLogger,
 	isResume bool,
+	clientID *string,
 ) (*api.Sandbox, error) {
 	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -97,15 +88,15 @@ func (o *Orchestrator) CreateSandbox(
 	var excludedNodes []string
 
 	for {
-		if isResume {
+		if isResume && clientID != nil {
 			telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
 
-			clientID, ok := getSandboxIDClient(sandboxID)
+			snapshotNode, ok := o.nodes[*clientID]
 			if !ok {
-				return nil, fmt.Errorf("failed to get client ID from sandbox ID '%s'", sandboxID)
+				return nil, fmt.Errorf("failed to find a node to place sandbox on")
 			}
 
-			node = o.nodes[clientID]
+			node = snapshotNode
 		} else {
 			node = o.getLeastBusyNode(childCtx, excludedNodes...)
 			telemetry.ReportEvent(childCtx, "Trying to place sandbox on node")
