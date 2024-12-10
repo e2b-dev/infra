@@ -170,7 +170,6 @@ func NewSandbox(
 	}
 
 	cleanup.Add(func() error {
-		fmt.Printf("[sandbox %s]: stopping uffd\n", config.SandboxId)
 		stopErr := fcUffd.Stop()
 		if stopErr != nil {
 			return fmt.Errorf("failed to stop uffd: %w", stopErr)
@@ -204,7 +203,7 @@ func NewSandbox(
 		&fc.MmdsMetadata{
 			SandboxId:            config.SandboxId,
 			TemplateId:           config.TemplateId,
-			LogsCollectorAddress: logs.LogsCollectorAddress,
+			LogsCollectorAddress: logs.CollectorPublicIP,
 			TraceId:              traceID,
 			TeamId:               config.TeamId,
 		},

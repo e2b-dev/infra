@@ -39,6 +39,10 @@ variable "api_secret" {
   type = string
 }
 
+variable "api_admin_token_name" {
+  type = string
+}
+
 variable "logs_proxy_address" {
   type = string
 }
@@ -76,10 +80,6 @@ variable "postgres_connection_string_secret_name" {
 }
 
 # Proxies
-variable "client_cluster_size" {
-  type = number
-}
-
 variable "session_proxy_service_name" {
   type = string
 }

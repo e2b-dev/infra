@@ -12,9 +12,12 @@ import (
 )
 
 func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
-		case <-time.After(10 * time.Second):
+		case <-ticker.C:
 			childCtx, cancel := context.WithTimeout(ctx, time.Second)
 
 			ctx.Lock()

@@ -22,7 +22,12 @@ variable "cpu_mhz" {
   default = 1000
 }
 
-variable "logs_proxy_address" {
+variable "logs_collector_address" {
+  type    = string
+  default = ""
+}
+
+variable "logs_collector_public_ip" {
   type    = string
   default = ""
 }
@@ -96,7 +101,8 @@ job "orchestrator" {
         NODE_ID                      = "${node.unique.id}"
         CONSUL_TOKEN                 = var.consul_token
         OTEL_TRACING_PRINT           = var.otel_tracing_print
-        LOGS_COLLECTOR_ADDRESS       = var.logs_proxy_address
+        LOGS_COLLECTOR_ADDRESS       = var.logs_collector_address
+        LOGS_COLLECTOR_PUBLIC_IP     = var.logs_collector_public_ip
         ENVIRONMENT                  = var.environment
         TEMPLATE_BUCKET_NAME         = var.template_bucket_name
         OTEL_COLLECTOR_GRPC_ENDPOINT = var.otel_collector_grpc_endpoint

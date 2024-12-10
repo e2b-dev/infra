@@ -3,7 +3,7 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 
 
 openapi := ../../spec/openapi.yml
-codegen := go run github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest
+codegen := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
 
 .PHONY: generate
 generate:

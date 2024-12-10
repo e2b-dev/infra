@@ -3,6 +3,7 @@ ENV := $(shell cat .last_used_env || echo "not-set")
 
 OTEL_TRACING_PRINT ?= false
 IMAGE := e2b-orchestration/api
+EXCLUDE_GITHUB ?= 1
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
@@ -24,10 +25,6 @@ ifeq ($(EXCLUDE_GITHUB),1)
 else
 	ALL_MODULES := $(shell cat main.tf | grep "^module" | awk '{print $$2}')
 endif
-
-WITHOUT_JOBS := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs)
-ALL_MODULES_ARGS := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | awk '{print "-target=module." $$0 ""}' | xargs)
-DESTROY_TARGETS := $(shell terraform state list | grep module | cut -d'.' -f1,2 | grep -v -e "buckets" | uniq | awk '{print "-target=" $$0 ""}' | xargs)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
@@ -52,7 +49,7 @@ init:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	terraform fmt -recursive
-	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode $(ALL_MODULES_ARGS)
+	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode $$(echo $(ALL_MODULES) | tr ' ' '\n' | awk '{print "-target=module." $$0 ""}' | xargs)
 
 .PHONY: apply
 apply:
@@ -76,7 +73,7 @@ plan-without-jobs:
 	-input=false \
 	-compact-warnings \
 	-parallelism=20 \
-  	$(WITHOUT_JOBS)
+  	$$(echo $(ALL_MODULES) | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs)
 
 .PHONY: destroy
 destroy:
@@ -86,7 +83,7 @@ destroy:
 	terraform destroy \
 	-compact-warnings \
 	-parallelism=20 \
-	$(DESTROY_TARGETS)
+	$$(terraform state list | grep module | cut -d'.' -f1,2 | grep -v -e "buckets" | uniq | awk '{print "-target=" $$0 ""}' | xargs)
 
 
 .PHONY: version

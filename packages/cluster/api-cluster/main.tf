@@ -40,16 +40,6 @@ resource "google_compute_instance_group_manager" "api_cluster" {
   }
 
   named_port {
-    name = var.logs_health_proxy_port.name
-    port = var.logs_health_proxy_port.port
-  }
-
-  named_port {
-    name = var.logs_proxy_port.name
-    port = var.logs_proxy_port.port
-  }
-
-  named_port {
     name = var.api_port.name
     port = var.api_port.port
   }
@@ -90,13 +80,12 @@ resource "google_compute_instance_template" "api" {
 
   instance_description = var.cluster_description
   machine_type         = var.machine_type
-  min_cpu_platform     = "Intel Skylake"
 
   labels = merge(
     var.labels,
-    {
+    (var.environment == "prod" ? {
       goog-ops-agent-policy = "v2-x86-template-1-2-0-${var.gcp_zone}"
-    }
+    } : {})
   )
   tags                    = concat([var.cluster_tag_name], var.custom_tags)
   metadata_startup_script = var.startup_script

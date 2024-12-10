@@ -7,9 +7,10 @@ import (
 	"os"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
-	"golang.org/x/sync/errgroup"
 )
 
 type TemplateBuild struct {

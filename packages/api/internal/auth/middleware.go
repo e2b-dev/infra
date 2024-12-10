@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -17,6 +18,8 @@ import (
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var adminToken = os.Getenv("ADMIN_TOKEN")
 
 var (
 	ErrNoAuthHeader      = errors.New("authorization header is missing")
@@ -78,9 +81,23 @@ func (a *authenticator[T]) Authenticate(ctx context.Context, input *openapi3filt
 	}
 
 	// Set the property on the gin context
-	middleware.GetGinContext(ctx).Set(a.contextKey, result)
+	if a.contextKey != "" {
+		middleware.GetGinContext(ctx).Set(a.contextKey, result)
+	}
 
 	return nil
+}
+
+func adminValidationFunction(_ context.Context, token string) (struct{}, *api.APIError) {
+	if token != adminToken {
+		return struct{}{}, &api.APIError{
+			Code:      http.StatusUnauthorized,
+			Err:       errors.New("invalid access token"),
+			ClientMsg: "Invalid Access token.",
+		}
+	}
+
+	return struct{}{}, nil
 }
 
 func CreateAuthenticationFunc(tracer trace.Tracer, teamValidationFunction func(context.Context, string) (authcache.AuthTeamInfo, *api.APIError), userValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError)) func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
@@ -102,6 +119,15 @@ func CreateAuthenticationFunc(tracer trace.Tracer, teamValidationFunction func(c
 		contextKey:         UserIDContextKey,
 		errorMessage:       "Invalid Access token, try to login again by running `e2b login`.",
 	}
+	adminTokenValidator := authenticator[struct{}]{
+		securitySchemeName: "AdminTokenAuth",
+		headerKey:          "X-Admin-Token",
+		prefix:             "",
+		removePrefix:       "",
+		validationFunction: adminValidationFunction,
+		contextKey:         "",
+		errorMessage:       "Invalid Access token.",
+	}
 
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 		ginContext := ctx.Value(middleware.GinContextKey).(*gin.Context)
@@ -115,6 +141,10 @@ func CreateAuthenticationFunc(tracer trace.Tracer, teamValidationFunction func(c
 
 		if input.SecuritySchemeName == accessTokenValidator.securitySchemeName {
 			return accessTokenValidator.Authenticate(ctx, input)
+		}
+
+		if input.SecuritySchemeName == adminTokenValidator.securitySchemeName {
+			return adminTokenValidator.Authenticate(ctx, input)
 		}
 
 		return fmt.Errorf("invalid security scheme name '%s'", input.SecuritySchemeName)

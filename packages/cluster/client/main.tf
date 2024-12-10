@@ -24,6 +24,16 @@ resource "google_compute_instance_group_manager" "client_cluster" {
     instance_template = google_compute_instance_template.client.id
   }
 
+  named_port {
+    name = var.logs_health_proxy_port.name
+    port = var.logs_health_proxy_port.port
+  }
+
+  named_port {
+    name = var.logs_proxy_port.name
+    port = var.logs_proxy_port.port
+  }
+
   auto_healing_policies {
     health_check      = google_compute_health_check.nomad_check.id
     initial_delay_sec = 600
@@ -64,9 +74,9 @@ resource "google_compute_instance_template" "client" {
 
   labels = merge(
     var.labels,
-    {
+    (var.environment == "prod" ? {
       goog-ops-agent-policy = "v2-x86-template-1-2-0-${var.gcp_zone}"
-    }
+    } : {})
   )
   tags                    = concat([var.cluster_tag_name], var.custom_tags)
   metadata_startup_script = var.startup_script

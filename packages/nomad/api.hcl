@@ -13,6 +13,11 @@ variable "api_port_name" {
   default = ""
 }
 
+variable "admin_token" {
+  type    = string
+  default = ""
+}
+
 variable "api_port_number" {
   type    = number
   default = 0
@@ -127,6 +132,7 @@ job "api" {
         NOMAD_TOKEN                   = var.nomad_token
         OTEL_COLLECTOR_GRPC_ENDPOINT  = var.otel_collector_grpc_endpoint
         TEMPLATE_BUCKET_NAME          = "skip"
+        ADMIN_TOKEN                   = var.admin_token
       }
 
       config {

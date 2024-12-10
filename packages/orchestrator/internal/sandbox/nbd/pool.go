@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 
 	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel/metric"
@@ -141,27 +140,10 @@ func (d *DevicePool) Populate() error {
 // https://superuser.com/questions/919895/how-to-get-a-list-of-connected-nbd-devices-on-ubuntu
 // https://github.com/NetworkBlockDevice/nbd/blob/17043b068f4323078637314258158aebbfff0a6c/nbd-client.c#L254
 func (d *DevicePool) isDeviceFree(slot DeviceSlot) (bool, error) {
-	devicePath := GetDevicePath(slot)
-
-	// TODO: Do we need this specific check? Aren't the other checks enough?
-	fd, err := syscall.Open(devicePath, syscall.O_EXCL, 0o644)
-	if errors.Is(err, syscall.EBUSY) {
-		return false, nil
-	}
-
-	if err != nil {
-		return false, fmt.Errorf("failed to open device: %w", err)
-	}
-
-	err = syscall.Close(fd)
-	if err != nil {
-		return false, fmt.Errorf("failed to close device: %w", err)
-	}
-
 	// Continue only if the file doesn't exist.
 	pidFile := fmt.Sprintf("/sys/block/nbd%d/pid", slot)
 
-	_, err = os.Stat(pidFile)
+	_, err := os.Stat(pidFile)
 	if err == nil {
 		// File is present, therefore the device is in use.
 		return false, nil

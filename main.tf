@@ -96,6 +96,8 @@ module "github_tf" {
 module "cluster" {
   source = "./packages/cluster"
 
+  environment = var.environment
+
   cloudflare_api_token_secret_name = module.init.cloudflare_api_token_secret_name
   gcp_project_id                   = var.gcp_project_id
   gcp_region                       = var.gcp_region
@@ -186,10 +188,8 @@ module "nomad" {
   posthog_api_key_secret_name               = module.api.posthog_api_key_secret_name
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
-
+  api_admin_token_name                      = module.api.api_admin_token_name
   # Proxies
-  client_cluster_size = var.client_cluster_size
-
   session_proxy_service_name = var.session_proxy_service_name
   session_proxy_port         = var.session_proxy_port
 

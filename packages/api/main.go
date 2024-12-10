@@ -40,8 +40,6 @@ func NewGinServer(apiStore *handlers.APIStore, swagger *openapi3.T, port int) *h
 
 	r := gin.New()
 
-	// pprof.Register(r, "debug/pprof")
-
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel
 		customMiddleware.ExcludeRoutes(tracingMiddleware.Middleware(serviceName),

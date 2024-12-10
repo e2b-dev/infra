@@ -31,7 +31,7 @@ func NewClient(ctx context.Context) (*DB, error) {
 
 	// Get the underlying sql.DB object of the driver.
 	db := drv.DB()
-	db.SetMaxOpenConns(20)
+	db.SetMaxOpenConns(100)
 
 	client := models.NewClient(models.Driver(drv))
 

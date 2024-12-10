@@ -3,9 +3,11 @@ package autchcache
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -24,6 +26,8 @@ type TeamInfo struct {
 	tier *models.Tier
 
 	lastRefresh time.Time
+	once        singleflight.Group
+	lock        sync.Mutex
 }
 
 type TeamAuthCache struct {
@@ -41,6 +45,7 @@ func NewTeamAuthCache(db *db.DB) *TeamAuthCache {
 	}
 }
 
+// TODO: save blocked teams to cache as well, handle the condition in the Get method
 func (c *TeamAuthCache) Get(ctx context.Context, apiKey string) (team *models.Team, tier *models.Tier, err error) {
 	var item *ttlcache.Item[string, *TeamInfo]
 	var templateInfo *TeamInfo
@@ -60,8 +65,10 @@ func (c *TeamAuthCache) Get(ctx context.Context, apiKey string) (team *models.Te
 
 	templateInfo = item.Value()
 	if time.Since(templateInfo.lastRefresh) > refreshInterval {
-		// Maybe we should use singleflight here.
-		go c.Refresh(apiKey)
+		go templateInfo.once.Do(apiKey, func() (interface{}, error) {
+			c.Refresh(apiKey)
+			return nil, err
+		})
 	}
 
 	return templateInfo.team, templateInfo.tier, nil

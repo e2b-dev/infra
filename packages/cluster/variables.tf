@@ -2,6 +2,11 @@ variable "prefix" {
   type = string
 }
 
+variable "environment" {
+  description = "The environment (e.g. staging, prod)."
+  type        = string
+}
+
 variable "cloudflare_api_token_secret_name" {
   type = string
 }
@@ -28,6 +33,11 @@ variable "server_cluster_size" {
 
 variable "server_machine_type" {
   type = string
+}
+
+variable "api_image_family" {
+  type    = string
+  default = "e2b-orch"
 }
 
 variable "api_cluster_size" {

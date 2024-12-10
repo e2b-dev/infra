@@ -24,14 +24,15 @@ type sandboxLogExporter struct {
 	logger *zerolog.Logger
 }
 
-var LogsCollectorAddress = os.Getenv("LOGS_COLLECTOR_ADDRESS")
+var CollectorAddress = os.Getenv("LOGS_COLLECTOR_ADDRESS")
+var CollectorPublicIP = os.Getenv("LOGS_COLLECTOR_PUBLIC_IP")
 
 func newSandboxLogExporter(serviceName string) *sandboxLogExporter {
 	zerolog.TimestampFieldName = "timestamp"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
 	ctx := context.Background()
-	exporters := []io.Writer{exporter.NewHTTPLogsExporter(ctx, LogsCollectorAddress)}
+	exporters := []io.Writer{exporter.NewHTTPLogsExporter(ctx, CollectorAddress)}
 
 	l := zerolog.
 		New(io.MultiWriter(exporters...)).

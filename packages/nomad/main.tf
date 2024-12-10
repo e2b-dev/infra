@@ -44,6 +44,10 @@ data "google_secret_manager_secret_version" "analytics_collector_api_token" {
   secret = var.analytics_collector_api_token_secret_name
 }
 
+data "google_secret_manager_secret_version" "api_admin_token" {
+  secret = var.api_admin_token_name
+}
+
 provider "nomad" {
   address      = "https://nomad.${var.domain_name}"
   secret_id    = var.nomad_acl_token_secret
@@ -56,10 +60,10 @@ resource "nomad_job" "api" {
   hcl2 {
     vars = {
       orchestrator_port             = var.orchestrator_port
-      template_manager_address      = "http://localhost:${var.template_manager_port}"
-      otel_collector_grpc_endpoint  = "otel-collector.service.consul:4317"
-      loki_address                  = "http://loki.service.consul:${var.loki_service_port.port}"
-      logs_collector_address        = ""
+      template_manager_address      = "http://template-manager.service.consul:${var.template_manager_port}"
+      otel_collector_grpc_endpoint  = "localhost:4317"
+      loki_address                  = "http://localhost:${var.loki_service_port.port}"
+      logs_collector_address        = "http://localhost:${var.logs_proxy_port.port}"
       gcp_zone                      = var.gcp_zone
       api_port_name                 = var.api_port.name
       api_port_number               = var.api_port.port
@@ -71,6 +75,7 @@ resource "nomad_job" "api" {
       analytics_collector_api_token = data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data
       otel_tracing_print            = var.otel_tracing_print
       nomad_token                   = var.nomad_acl_token_secret
+      admin_token                   = data.google_secret_manager_secret_version.api_admin_token.secret_data
     }
   }
 }
@@ -118,7 +123,6 @@ resource "nomad_job" "session_proxy" {
   hcl2 {
     vars = {
       gcp_zone                   = var.gcp_zone
-      client_cluster_size        = var.client_cluster_size
       session_proxy_port_number  = var.session_proxy_port.port
       session_proxy_port_name    = var.session_proxy_port.name
       session_proxy_service_name = var.session_proxy_service_name
@@ -200,14 +204,15 @@ resource "nomad_job" "orchestrator" {
       environment  = var.environment
       consul_token = var.consul_acl_token_secret
       cpu_mhz      = floor(data.google_compute_machine_types.client.machine_types[0].guest_cpus * 1.5) * 1000
-      memory_mb    = floor(data.google_compute_machine_types.client.machine_types[0].memory_mb * 0.8 / 1024) * 1024
+      memory_mb    = floor(data.google_compute_machine_types.client.machine_types[0].memory_mb * 0.6 / 1024) * 1024
 
       bucket_name                  = var.fc_env_pipeline_bucket_name
       orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
-      logs_proxy_address           = var.logs_proxy_address
+      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+      logs_collector_public_ip     = var.logs_proxy_address
       otel_tracing_print           = var.otel_tracing_print
       template_bucket_name         = var.template_bucket_name
-      otel_collector_grpc_endpoint = "otel-collector.service.consul:4317"
+      otel_collector_grpc_endpoint = "localhost:4317"
     }
   }
 }
@@ -244,7 +249,7 @@ resource "nomad_job" "template_manager" {
       template_manager_checksum    = data.external.template_manager.result.hex
       otel_tracing_print           = var.otel_tracing_print
       template_bucket_name         = var.template_bucket_name
-      otel_collector_grpc_endpoint = "otel-collector.service.consul:4317"
+      otel_collector_grpc_endpoint = "localhost:4317"
     }
   }
 }
