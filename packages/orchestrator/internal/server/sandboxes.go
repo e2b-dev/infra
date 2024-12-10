@@ -245,5 +245,5 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
-	return nil, status.New(codes.Unimplemented, "not implemented").Err()
+	return &emptypb.Empty{}, nil
 }
