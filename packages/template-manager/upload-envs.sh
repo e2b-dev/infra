@@ -61,9 +61,9 @@ for template_id in $(ls ${TARGET_DIR_NAME}); do
     continue
   fi
 
-  BUCKET_MEMFILE_PATH="gs://${TEMPLATE_BUCKET_NAME}/${template_id}/${BUILD_ID}/memfile"
-  BUCKET_ROOTFS_EXT4_PATH="gs://${TEMPLATE_BUCKET_NAME}/${template_id}/${BUILD_ID}/rootfs.ext4"
-  BUCKET_SNAPFILE_PATH="gs://${TEMPLATE_BUCKET_NAME}/${template_id}/${BUILD_ID}/snapfile"
+  BUCKET_MEMFILE_PATH="gs://${TEMPLATE_BUCKET_NAME}/${BUILD_ID}/memfile"
+  BUCKET_ROOTFS_EXT4_PATH="gs://${TEMPLATE_BUCKET_NAME}/${BUILD_ID}/rootfs.ext4"
+  BUCKET_SNAPFILE_PATH="gs://${TEMPLATE_BUCKET_NAME}/${BUILD_ID}/snapfile"
 
   # Upload the files
   echo "Uploading memfile"
