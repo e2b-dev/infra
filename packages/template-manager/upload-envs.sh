@@ -10,6 +10,9 @@ TARGET_DIR_NAME=$1
 
 # Second argument is template bucket name
 TEMPLATE_BUCKET_NAME=$2
+
+# Third argument is template id that you can specify to upload a specific env
+TEMPLATE_ID=$3
 # -------------------------------------------------------------------------------------------------
 
 echo "Uploading envs from ${TARGET_DIR_NAME} to GCS"
@@ -25,6 +28,10 @@ start_time=$(date +%s)
 
 # iterate over all directories in the target dir
 for template_id in $(ls ${TARGET_DIR_NAME}); do
+  if [ -n "${TEMPLATE_ID}" ] && [ "${template_id}" != "${TEMPLATE_ID}" ]; then
+    continue
+  fi
+
   # Increment the counter for uploaded envs
   uploaded_env_count=$((uploaded_env_count + 1))
 
