@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -124,7 +125,9 @@ func (o *Orchestrator) CreateSandbox(
 				// If the connection is not ready, we should remove the node from the list
 				delete(o.nodes, node.ID)
 			} else {
-				return nil, fmt.Errorf("failed to create sandbox on node '%s': %w", node.ID, err)
+				log.Printf("failed to create sandbox on node '%s': %v", node.ID, err)
+
+				return nil, fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
 			}
 		}
 
