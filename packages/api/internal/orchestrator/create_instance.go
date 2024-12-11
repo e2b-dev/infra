@@ -49,19 +49,19 @@ func (o *Orchestrator) CreateSandbox(
 	)
 	defer childSpan.End()
 
-	// Check if team has reached max instances
-	err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, teamID, maxInstancesPerTeam)
-	if err != nil {
-		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", teamID, maxInstancesPerTeam)
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
-
-		return nil, fmt.Errorf(
-			"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-				"please contact us at 'https://e2b.dev/docs/getting-help'", maxInstancesPerTeam)
-	}
-
-	telemetry.ReportEvent(childCtx, "Reserved sandbox for team")
-	defer releaseTeamSandboxReservation()
+	// // Check if team has reached max instances
+	// err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, teamID, maxInstancesPerTeam)
+	// if err != nil {
+	// 	errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", teamID, maxInstancesPerTeam)
+	// 	telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
+	//
+	// 	return nil, fmt.Errorf(
+	// 		"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
+	// 			"please contact us at 'https://e2b.dev/docs/getting-help'", maxInstancesPerTeam)
+	// }
+	//
+	// telemetry.ReportEvent(childCtx, "Reserved sandbox for team")
+	// defer releaseTeamSandboxReservation()
 
 	features, err := sandbox.NewVersionInfo(firecrackerVersion)
 	if err != nil {
@@ -192,6 +192,7 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context) (leastBusyNode *Nod
 			return nil, fmt.Errorf("context was canceled")
 		}
 
+		// TODO: Incorporate the node's cached builds and total resources into the decision
 		for _, node := range o.nodes {
 			// To prevent overloading the node
 			if len(node.sbxsInProgress) > 3 || node.Status != api.NodeStatusReady {
