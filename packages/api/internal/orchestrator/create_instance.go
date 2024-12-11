@@ -104,9 +104,9 @@ func (o *Orchestrator) CreateSandbox(
 			if err != nil {
 				errMsg := fmt.Errorf("failed to get least busy node: %w", err)
 				telemetry.ReportError(childCtx, errMsg)
-			}
 
-			return nil, errMsg
+				return nil, errMsg
+			}
 		}
 
 		// To creating a lot of sandboxes at once on the same node
