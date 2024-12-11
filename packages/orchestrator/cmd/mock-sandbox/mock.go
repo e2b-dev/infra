@@ -123,7 +123,7 @@ func mockSandbox(
 		time.Now(),
 		time.Now(),
 		logger,
-		false,
+		true,
 		templateId,
 	)
 	defer func() {

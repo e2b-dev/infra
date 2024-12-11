@@ -13,7 +13,7 @@ import (
 
 // How long to keep the template in the cache since the last access.
 // Should be longer than the maximum possible sandbox lifetime.
-const templateExpiration = time.Hour * 48
+const templateExpiration = time.Hour * 24
 
 type Cache struct {
 	cache      *ttlcache.Cache[string, Template]
@@ -79,4 +79,43 @@ func (c *Cache) GetTemplate(
 	}
 
 	return t.Value(), nil
+}
+
+func (c *Cache) RemoveTemplate(templateId string, buildId string) {
+	c.cache.Delete(fmt.Sprintf("%s-%s", templateId, buildId))
+}
+
+func (c *Cache) AddTemplateWithPrefetch(
+	templateId,
+	buildId,
+	kernelVersion,
+	firecrackerVersion string,
+	hugePages bool,
+	isSnapshot bool,
+) (func(), error) {
+	storageTemplate, err := newTemplateFromStorage(
+		templateId,
+		buildId,
+		kernelVersion,
+		firecrackerVersion,
+		hugePages,
+		isSnapshot,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
+	}
+
+	_, found := c.cache.GetOrSet(
+		storageTemplate.Files().CacheKey(),
+		storageTemplate,
+		ttlcache.WithTTL[string, Template](templateExpiration),
+	)
+
+	if !found {
+		return func() {
+			storageTemplate.Fetch(c.ctx, c.buildStore)
+		}, nil
+	}
+
+	return func() {}, nil
 }

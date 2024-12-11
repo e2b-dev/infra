@@ -195,13 +195,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	// TODO: Stop healthcheck, etc.
 
-	defer func() {
-		err := sbx.Stop()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error stopping sandbox during pause '%s': %v\n", in.SandboxId, err)
-		}
-	}()
-
 	snapshotTemplateFiles, err := storage.NewTemplateFiles(
 		in.TemplateId,
 		in.BuildId,
@@ -213,38 +206,73 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
-	err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
-	if err != nil {
-		return nil, status.New(codes.Internal, err.Error()).Err()
-	}
+	prefetchTemplateFiles, err := s.templateCache.AddTemplateWithPrefetch(
+		snapshotTemplateFiles.TemplateId,
+		snapshotTemplateFiles.BuildId,
+		snapshotTemplateFiles.KernelVersion,
+		snapshotTemplateFiles.FirecrackerVersion,
+		snapshotTemplateFiles.Hugepages(),
+		true,
+	)
 
-	defer func() {
-		err := os.RemoveAll(snapshotTemplateFiles.CacheDir())
+	go func() {
+		defer func() {
+			err := sbx.Stop()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error stopping sandbox after snapshot '%s': %v\n", in.SandboxId, err)
+			}
+		}()
+
+		err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error removing sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
+			fmt.Fprintf(os.Stderr, "error creating sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
+
+			return
+		}
+
+		defer func() {
+			err := os.RemoveAll(snapshotTemplateFiles.CacheDir())
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error removing sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
+			}
+		}()
+
+		snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error snapshotting sandbox '%s': %v\n", in.SandboxId, err)
+
+			return
+		}
+
+		b := storage.NewTemplateBuild(
+			snapshot.MemfileDiffHeader,
+			snapshot.RootfsDiffHeader,
+			snapshotTemplateFiles.TemplateFiles,
+		)
+
+		err = <-b.Upload(
+			ctx,
+			snapshotTemplateFiles.CacheSnapfilePath(),
+			snapshotTemplateFiles.CacheMemfilePath(),
+			snapshotTemplateFiles.CacheRootfsPath(),
+		)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error uploading sandbox snapshot '%s': %v\n", in.SandboxId, err)
+
+			return
+		}
+
+		fmt.Printf("Finished snapshot in the background: %s\n", snapshotTemplateFiles.TemplateId)
+
+		prefetchTemplateFiles()
+
+		fmt.Printf("prefetched snapshot files: %s\n", snapshotTemplateFiles.TemplateId)
+
+		if sbx.Config.Snapshot {
+			// If the sandbox we were snapshotting was already a snapshot we won't need the cache for the "previous" snapshot anymore.
+			s.templateCache.RemoveTemplate(sbx.Config.TemplateId, sbx.Config.BuildId)
 		}
 	}()
-
-	snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles)
-	if err != nil {
-		return nil, status.New(codes.Internal, err.Error()).Err()
-	}
-
-	b := storage.NewTemplateBuild(
-		snapshot.MemfileDiffHeader,
-		snapshot.RootfsDiffHeader,
-		snapshotTemplateFiles.TemplateFiles,
-	)
-
-	err = <-b.Upload(
-		ctx,
-		snapshotTemplateFiles.CacheSnapfilePath(),
-		snapshotTemplateFiles.CacheMemfilePath(),
-		snapshotTemplateFiles.CacheRootfsPath(),
-	)
-	if err != nil {
-		return nil, status.New(codes.Internal, err.Error()).Err()
-	}
 
 	return &emptypb.Empty{}, nil
 }
