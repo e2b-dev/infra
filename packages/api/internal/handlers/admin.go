@@ -20,6 +20,11 @@ func (a *APIStore) GetNodes(c *gin.Context) {
 func (a *APIStore) GetNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 	node := a.orchestrator.GetNodeDetail(nodeId)
 
+	if node == nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
 	c.JSON(http.StatusOK, node)
 }
 

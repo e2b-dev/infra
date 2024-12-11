@@ -80,7 +80,8 @@ func (o *Orchestrator) GetNodeDetail(nodeId string) *api.NodeDetail {
 	var node *api.NodeDetail
 	for key, n := range o.nodes {
 		if key == nodeId {
-			node = &api.NodeDetail{NodeID: key, Status: n.Status}
+			builds := n.buildCache.Keys()
+			node = &api.NodeDetail{NodeID: key, Status: n.Status, CachedBuilds: builds}
 		}
 	}
 

@@ -76,6 +76,9 @@ type Node struct {
 
 // NodeDetail defines model for NodeDetail.
 type NodeDetail struct {
+	// CachedBuilds List of cached builds id on the node
+	CachedBuilds []string `json:"cachedBuilds"`
+
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
 
