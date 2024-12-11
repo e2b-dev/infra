@@ -2,10 +2,13 @@ package orchestrator
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -16,7 +19,7 @@ type GRPCClient struct {
 }
 
 func NewClient(host string) (*GRPCClient, error) {
-	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()), grpc.WithBlock(), grpc.WithTimeout(time.Second))
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
@@ -41,9 +44,15 @@ func (o *Orchestrator) connectToNode(node *nodeInfo) error {
 		return err
 	}
 
+	buildCache := ttlcache.New[string, interface{}]()
+	go buildCache.Start()
+
 	n := &Node{
-		ID:     node.ID,
-		Client: client,
+		ID:             node.ID,
+		Client:         client,
+		buildCache:     buildCache,
+		sbxsInProgress: make(map[string]*sbxInProgress),
+		Status:         api.NodeStatusReady,
 	}
 
 	o.nodes[n.ID] = n
@@ -52,9 +61,9 @@ func (o *Orchestrator) connectToNode(node *nodeInfo) error {
 }
 
 func (o *Orchestrator) GetClient(nodeID string) (*GRPCClient, error) {
-	node, err := o.GetNode(nodeID)
-	if err != nil {
-		return nil, err
+	node := o.GetNode(nodeID)
+	if node == nil {
+		return nil, fmt.Errorf("node '%s' not found", nodeID)
 	}
 
 	return node.Client, nil

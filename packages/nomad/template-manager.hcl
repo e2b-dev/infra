@@ -61,7 +61,6 @@ variable "otel_collector_grpc_endpoint" {
 }
 
 job "template-manager" {
-  type = "system"
   datacenters = [var.gcp_zone]
 
   priority = 70

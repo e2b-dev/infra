@@ -6,13 +6,14 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 func (a *APIStore) startSandbox(
@@ -93,12 +94,12 @@ func (a *APIStore) startSandbox(
 
 	telemetry.ReportEvent(ctx, "Created analytics event")
 
-	go func() {
-		err = a.db.UpdateEnvLastUsed(ctx, *build.EnvID)
-		if err != nil {
-			a.logger.Errorf("Error when updating last used for env: %s", err)
-		}
-	}()
+	// go func() {
+	// 	err = a.db.UpdateEnvLastUsed(ctx, *build.EnvID)
+	// 	if err != nil {
+	// 		a.logger.Errorf("Error when updating last used for env: %s", err)
+	// 	}
+	// }()
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("instance.id", sandbox.SandboxID),

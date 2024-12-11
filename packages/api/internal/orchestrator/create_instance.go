@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"log"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -40,18 +41,19 @@ func (o *Orchestrator) CreateSandbox(
 	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
 
-	// Check if team has reached max instances
-	err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
-	if err != nil {
-		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances)
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
-
-		return nil, fmt.Errorf(
-			"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-				"please contact us at 'https://e2b.dev/docs/getting-help'", team.Tier.ConcurrentInstances)
-	}
-
-	defer releaseTeamSandboxReservation()
+	// // Check if team has reached max instances
+	// err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, teamID, maxInstancesPerTeam)
+	// if err != nil {
+	// 	errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", teamID, maxInstancesPerTeam)
+	// 	telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
+	//
+	// 	return nil, fmt.Errorf(
+	// 		"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
+	// 			"please contact us at 'https://e2b.dev/docs/getting-help'", maxInstancesPerTeam)
+	// }
+	//
+	// telemetry.ReportEvent(childCtx, "Reserved sandbox for team")
+	// defer releaseTeamSandboxReservation()
 
 	features, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
 	if err != nil {
@@ -87,8 +89,6 @@ func (o *Orchestrator) CreateSandbox(
 
 	var node *Node
 
-	var excludedNodes []string
-
 	for {
 		if isResume && clientID != nil {
 			telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
@@ -100,29 +100,50 @@ func (o *Orchestrator) CreateSandbox(
 
 			node = snapshotNode
 		} else {
-			node = o.getLeastBusyNode(childCtx, excludedNodes...)
-			telemetry.ReportEvent(childCtx, "Trying to place sandbox on node")
+			node, err = o.getLeastBusyNode(childCtx)
+			if err != nil {
+				errMsg := fmt.Errorf("failed to get least busy node: %w", err)
+				telemetry.ReportError(childCtx, errMsg)
+			}
+
+			return nil, errMsg
 		}
 
-		if node == nil {
-			return nil, fmt.Errorf("failed to find a node to place sandbox on")
+		// To creating a lot of sandboxes at once on the same node
+		node.sbxsInProgress[sandboxID] = &sbxInProgress{
+			MiBMemory: build.RAMMB,
+			CPUs:      build.Vcpu,
 		}
 
 		_, err = node.Client.Sandbox.Create(ctx, sbxRequest)
+		// The request is done, we will either add it to the cache or remove it from the node
+
 		if err == nil {
+			// The sandbox was created successfully
 			break
 		}
 
 		err = utils.UnwrapGRPCError(err)
 		if err != nil {
+			delete(node.sbxsInProgress, sandboxID)
 			if node.Client.connection.GetState() != connectivity.Ready {
-				telemetry.ReportEvent(childCtx, "Placing sandbox on node failed, node not ready", attribute.String("node.id", node.ID))
-				excludedNodes = append(excludedNodes, node.ID)
+				// If the connection is not ready, we should remove the node from the list
+				delete(o.nodes, node.ID)
 			} else {
-				return nil, fmt.Errorf("failed to create sandbox on node '%s': %w", node.ID, err)
+				log.Printf("failed to create sandbox on node '%s': %v", node.ID, err)
+
+				return nil, fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
 			}
 		}
+
+		// The node is not available, try again with another node
 	}
+
+	// The build should be cached on the node now
+	node.InsertBuild(build.ID.String())
+
+	// The sandbox was created successfully, the resources will be counted in cache
+	defer delete(node.sbxsInProgress, sandboxID)
 
 	telemetry.SetAttributes(childCtx, attribute.String("node.id", node.ID))
 	telemetry.ReportEvent(childCtx, "Created sandbox")
@@ -171,23 +192,37 @@ func (o *Orchestrator) CreateSandbox(
 	return &sbx, nil
 }
 
-func (o *Orchestrator) getLeastBusyNode(ctx context.Context, excludedNodes ...string) (leastBusyNode *Node) {
+func (o *Orchestrator) getLeastBusyNode(ctx context.Context) (leastBusyNode *Node, err error) {
 	childCtx, childSpan := o.tracer.Start(ctx, "get-least-busy-node")
 	defer childSpan.End()
 
-	for _, node := range o.nodes {
-		if leastBusyNode == nil || node.CPUUsage < leastBusyNode.CPUUsage {
-			for _, excludedNode := range excludedNodes {
-				if node.ID == excludedNode {
-					continue
-				}
+	for {
+		if childCtx.Err() != nil {
+			return nil, fmt.Errorf("context was canceled")
+		}
+
+		// TODO: Incorporate the node's cached builds and total resources into the decision
+		for _, node := range o.nodes {
+			// To prevent overloading the node
+			if len(node.sbxsInProgress) > 3 || node.Status != api.NodeStatusReady {
+				continue
 			}
 
-			leastBusyNode = node
+			cpuUsage := int64(0)
+			for _, sbx := range node.sbxsInProgress {
+				cpuUsage += sbx.CPUs
+			}
+
+			if leastBusyNode == nil || (node.CPUUsage+cpuUsage) < leastBusyNode.CPUUsage {
+				leastBusyNode = node
+			}
 		}
+
+		if leastBusyNode != nil {
+			return leastBusyNode, nil
+		}
+
+		// If no node is available, wait for a bit
+		time.Sleep(10 * time.Millisecond)
 	}
-
-	telemetry.ReportEvent(childCtx, "found the least busy node")
-
-	return leastBusyNode
 }

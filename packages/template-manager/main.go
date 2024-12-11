@@ -37,9 +37,6 @@ func main() {
 		case "build":
 			test.Build(*templateID, *buildID)
 			return
-		case "delete":
-			test.Delete(*templateID)
-			return
 		}
 	}
 

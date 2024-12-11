@@ -120,3 +120,11 @@ func (c *InstanceCache) Kill(instanceID string) bool {
 
 	return found
 }
+
+func (c *InstanceCache) Items() (infos []InstanceInfo) {
+	for _, item := range c.cache.Items() {
+		infos = append(infos, item.Value())
+	}
+
+	return infos
+}

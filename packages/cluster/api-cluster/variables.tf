@@ -3,6 +3,11 @@
 # You must provide a value for each of these parameters.
 # ---------------------------------------------------------------------------------------------------------------------
 
+variable "environment" {
+  description = "The environment (e.g. staging, prod)."
+  type        = string
+}
+
 variable "gcp_zone" {
   description = "The GCP zone in which the server cluster will be created (e.g. us-central1-a)."
   type        = string

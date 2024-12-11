@@ -48,6 +48,10 @@ func NewCache(ctx context.Context) *Cache {
 	}
 }
 
+func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
+	return c.cache.Items()
+}
+
 func (c *Cache) GetTemplate(
 	templateId,
 	buildId,

@@ -34,7 +34,7 @@ func NewHTTPLogsExporter(debug bool) *HTTPLogsExporter {
 }
 
 func (w *HTTPLogsExporter) sendInstanceLogs(logs []byte) error {
-	request, err := http.NewRequest("POST", logsConf.LogsCollectorAddress, bytes.NewBuffer(logs))
+	request, err := http.NewRequest("POST", logsConf.CollectorAddress, bytes.NewBuffer(logs))
 	if err != nil {
 		return err
 	}
