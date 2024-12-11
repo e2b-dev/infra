@@ -18,6 +18,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/batcher"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
@@ -32,6 +33,7 @@ import (
 type APIStore struct {
 	Ctx             context.Context
 	analytics       *analyticscollector.Analytics
+	batcher         *batcher.Batcher
 	posthog         *PosthogClient
 	Tracer          trace.Tracer
 	instanceCache   *instance.InstanceCache
@@ -60,7 +62,7 @@ func NewAPIStore() *APIStore {
 		panic(err)
 	}
 
-	dbClient, err := db.NewClient(ctx)
+	dbClient, err := db.NewClient(ctx, 50)
 	if err != nil {
 		logger.Errorf("Error initializing Supabase client\n: %v", err)
 		panic(err)
@@ -131,8 +133,10 @@ func NewAPIStore() *APIStore {
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)
 
+	batcherClient := batcher.New(ctx, dbClient)
 	return &APIStore{
 		Ctx:             ctx,
+		batcher:         batcherClient,
 		orchestrator:    orch,
 		templateManager: templateManager,
 		db:              dbClient,
@@ -149,6 +153,9 @@ func NewAPIStore() *APIStore {
 }
 
 func (a *APIStore) Close() {
+	// Needs to be before DB, as it uses the DB
+	a.batcher.Close()
+
 	a.db.Close()
 
 	err := a.analytics.Close()
