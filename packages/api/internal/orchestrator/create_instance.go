@@ -122,9 +122,9 @@ func (o *Orchestrator) CreateSandbox(
 			delete(node.sbxsInProgress, sandboxID)
 			if node.Client.connection.GetState() != connectivity.Ready {
 				// If the connection is not ready, we should remove the node from the list
-				delete(o.nodes, node.ID)
+				delete(o.nodes, node.Info.ID)
 			} else {
-				return nil, fmt.Errorf("failed to create sandbox on node '%s': %w", node.ID, err)
+				return nil, fmt.Errorf("failed to create sandbox on node '%s': %w", node.Info.ID, err)
 			}
 		}
 
@@ -137,11 +137,11 @@ func (o *Orchestrator) CreateSandbox(
 	// The sandbox was created successfully, the resources will be counted in cache
 	defer delete(node.sbxsInProgress, sandboxID)
 
-	telemetry.SetAttributes(childCtx, attribute.String("node.id", node.ID))
+	telemetry.SetAttributes(childCtx, attribute.String("node.id", node.Info.ID))
 	telemetry.ReportEvent(childCtx, "Created sandbox")
 
 	sbx := api.Sandbox{
-		ClientID:    node.ID,
+		ClientID:    node.Info.ID,
 		SandboxID:   sandboxID,
 		TemplateID:  templateID,
 		Alias:       &alias,
@@ -164,8 +164,11 @@ func (o *Orchestrator) CreateSandbox(
 		VCpu:              build.Vcpu,
 		RamMB:             build.RAMMB,
 		MaxInstanceLength: time.Duration(maxInstanceLengthHours) * time.Hour,
+		Node:              node.Info,
 	}
-	if cacheErr := o.instanceCache.Add(instanceInfo, true); cacheErr != nil {
+
+	cacheErr := o.instanceCache.Add(instanceInfo, true)
+	if cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 
