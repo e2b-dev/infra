@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"strings"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -17,9 +16,8 @@ func (s *server) ListCachedBuilds(ctx context.Context, _ *emptypb.Empty) (*orche
 	var builds []*orchestrator.CachedBuildInfo
 
 	for key, item := range s.templateCache.Items() {
-		buildId := strings.Split(key, "-")[1]
 		builds = append(builds, &orchestrator.CachedBuildInfo{
-			BuildId:        buildId,
+			BuildId:        key,
 			ExpirationTime: timestamppb.New(item.ExpiresAt()),
 		})
 	}
