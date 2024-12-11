@@ -3,7 +3,6 @@ package network
 import (
 	"fmt"
 	"log"
-	"net"
 
 	"github.com/vishvananda/netlink"
 
@@ -34,14 +33,8 @@ func getDefaultGateway() (string, error) {
 		return "", fmt.Errorf("error fetching routes: %w", err)
 	}
 
-	x := net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 0)}
 	for _, route := range routes {
 		// 0.0.0.0/0
-		log.Printf("Route.Dst: IP:%d\n, MASK:%d", route.Dst.IP, route.Dst.Mask)
-		log.Printf("Route.Gw: %+v\n", route.Gw)
-		log.Printf("Looking for: IP:%d\n, MASK:%d", x.IP, x.Mask)
-
-		log.Printf("=====================================")
 		if route.Dst.String() == "0.0.0.0/0" && route.Gw != nil {
 			log.Printf("default gateway: %s", route.Gw.String())
 			link, linkErr := netlink.LinkByIndex(route.LinkIndex)
