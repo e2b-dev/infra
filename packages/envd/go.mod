@@ -9,7 +9,7 @@ require (
 	github.com/creack/pty v1.1.18
 	github.com/deepmap/oapi-codegen/v2 v2.1.1-0.20240519200907-da9077bb5ffe
 	github.com/e2b-dev/infra/packages/shared v0.0.0
-	github.com/fsnotify/fsnotify v1.7.0
+	github.com/e2b-dev/fsnotify v0.0.0-20241202191622-2cae6c99fd56
 	github.com/go-chi/chi/v5 v5.0.12
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/rs/cors v1.11.0

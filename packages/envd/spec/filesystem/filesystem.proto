@@ -70,6 +70,7 @@ message ListDirResponse {
 
 message WatchDirRequest {
     string path = 1;
+    bool recursive = 2;
 }
 
 message FilesystemEvent {
@@ -91,6 +92,7 @@ message WatchDirResponse {
 
 message CreateWatcherRequest {
     string path = 1;
+    bool recursive = 2;
 }
 
 message CreateWatcherResponse {
