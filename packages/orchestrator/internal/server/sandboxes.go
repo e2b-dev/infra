@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/codes"
@@ -216,6 +217,9 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	)
 
 	go func() {
+		snapshotCtx, snapshotCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer snapshotCancel()
+
 		defer func() {
 			err := sbx.Stop()
 			if err != nil {
@@ -237,7 +241,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			}
 		}()
 
-		snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles)
+		snapshot, err := sbx.Snapshot(snapshotCtx, snapshotTemplateFiles)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error snapshotting sandbox '%s': %v\n", in.SandboxId, err)
 
@@ -251,7 +255,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		)
 
 		err = <-b.Upload(
-			ctx,
+			snapshotCtx,
 			snapshotTemplateFiles.CacheSnapfilePath(),
 			snapshotTemplateFiles.CacheMemfilePath(),
 			snapshotTemplateFiles.CacheRootfsPath(),

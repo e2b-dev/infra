@@ -52,6 +52,7 @@ require (
 	github.com/containerd/fifo v1.1.0 // indirect
 	github.com/containernetworking/cni v1.2.3 // indirect
 	github.com/containernetworking/plugins v1.6.0 // indirect
+	github.com/dchest/uniuri v1.2.0 // indirect
 	github.com/ebitengine/purego v0.8.1 // indirect
 	github.com/envoyproxy/go-control-plane v0.13.1 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.1.0 // indirect
