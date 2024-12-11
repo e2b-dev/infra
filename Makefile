@@ -3,6 +3,7 @@ ENV := $(shell cat .last_used_env || echo "not-set")
 
 OTEL_TRACING_PRINT ?= false
 IMAGE := e2b-orchestration/api
+EXCLUDE_GITHUB ?= 1
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
@@ -49,7 +50,7 @@ init:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	terraform fmt -recursive
-	$(tf_vars) terraform plan -compact-warnings -detailed-exitcode $(ALL_MODULES_ARGS)
+	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode  $(ALL_MODULES_ARGS)
 
 .PHONY: apply
 apply:
@@ -60,25 +61,16 @@ apply:
 	-auto-approve \
 	-input=false \
 	-compact-warnings \
-	-parallelism=20 $(ALL_MODULES_ARGS)
+	-parallelism=20 \
+	.tfplan.$(ENV)
+	@ rm .tfplan.$(ENV)
 
 .PHONY: plan-without-jobs
 plan-without-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(tf_vars) \
 	terraform plan \
-	-input=false \
-	-compact-warnings \
-	-parallelism=20 \
-  	$(WITHOUT_JOBS)
-
-.PHONY: apply-without-jobs
-apply-without-jobs:
-	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
-	$(tf_vars) \
-	terraform apply \
-	-auto-approve \
+	-out=.tfplan.$(ENV) \
 	-input=false \
 	-compact-warnings \
 	-parallelism=20 \
@@ -90,7 +82,6 @@ destroy:
 	./scripts/confirm.sh $(ENV)
 	$(tf_vars) \
 	terraform destroy \
-	-input=false \
 	-compact-warnings \
 	-parallelism=20 \
 	$(DESTROY_TARGETS)
@@ -100,25 +91,24 @@ destroy:
 version:
 	./scripts/increment-version.sh
 
-.PHONY: build-all
-build-all:
-	$(MAKE) -C packages/envd build
-	$(MAKE) -C packages/api build
-	$(MAKE) -C packages/docker-reverse-proxy build
-	$(MAKE) -C packages/orchestrator build
-	$(MAKE) -C packages/template-manager build
-	$(MAKE) -C packages/fc-kernels build
-	$(MAKE) -C packages/fc-versions build
-
-.PHONY: build-and-upload-all
-build-and-upload-all:
+.PHONY: build-and-upload
+build-and-upload:
+	$(MAKE) -C packages/cluster-disk-image build
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) make update-api
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/docker-reverse-proxy build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/template-manager build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/envd build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/fc-kernels build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/fc-versions build-and-upload
+
+.PHONY: copy-public-builds
+copy-public-builds:
+	gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-env-pipeline/envd-v0.0.1
+	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
+	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
+
+
+migrate:
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/shared migrate
 
 .PHONY: update-api
 update-api:
@@ -132,4 +122,18 @@ switch-env:
 	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ echo $(ENV) > .last_used_env
 	@ . .env.${ENV}
-	terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+	terraform init -input=false -upgrade -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+
+# Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
+.PHONY: import
+import:
+	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	./scripts/confirm.sh $(ENV)
+	$(tf_vars) terraform import $(TARGET) $(ID)
+
+.PHONY: setup-ssh
+setup-ssh:
+	@ printf "Setting up SSH for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n"
+	@ gcloud compute config-ssh --remove
+	@ gcloud compute config-ssh --project $(GCP_PROJECT_ID) --quiet
+	@ printf "SSH setup complete\n"

@@ -12,7 +12,9 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 	"github.com/google/uuid"
@@ -53,6 +55,21 @@ func (uc *UserCreate) AddTeams(t ...*Team) *UserCreate {
 	return uc.AddTeamIDs(ids...)
 }
 
+// AddCreatedEnvIDs adds the "created_envs" edge to the Env entity by IDs.
+func (uc *UserCreate) AddCreatedEnvIDs(ids ...string) *UserCreate {
+	uc.mutation.AddCreatedEnvIDs(ids...)
+	return uc
+}
+
+// AddCreatedEnvs adds the "created_envs" edges to the Env entity.
+func (uc *UserCreate) AddCreatedEnvs(e ...*Env) *UserCreate {
+	ids := make([]string, len(e))
+	for i := range e {
+		ids[i] = e[i].ID
+	}
+	return uc.AddCreatedEnvIDs(ids...)
+}
+
 // AddAccessTokenIDs adds the "access_tokens" edge to the AccessToken entity by IDs.
 func (uc *UserCreate) AddAccessTokenIDs(ids ...string) *UserCreate {
 	uc.mutation.AddAccessTokenIDs(ids...)
@@ -66,6 +83,21 @@ func (uc *UserCreate) AddAccessTokens(a ...*AccessToken) *UserCreate {
 		ids[i] = a[i].ID
 	}
 	return uc.AddAccessTokenIDs(ids...)
+}
+
+// AddCreatedAPIKeyIDs adds the "created_api_keys" edge to the TeamAPIKey entity by IDs.
+func (uc *UserCreate) AddCreatedAPIKeyIDs(ids ...uuid.UUID) *UserCreate {
+	uc.mutation.AddCreatedAPIKeyIDs(ids...)
+	return uc
+}
+
+// AddCreatedAPIKeys adds the "created_api_keys" edges to the TeamAPIKey entity.
+func (uc *UserCreate) AddCreatedAPIKeys(t ...*TeamAPIKey) *UserCreate {
+	ids := make([]uuid.UUID, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return uc.AddCreatedAPIKeyIDs(ids...)
 }
 
 // AddUsersTeamIDs adds the "users_teams" edge to the UsersTeams entity by IDs.
@@ -187,6 +219,23 @@ func (uc *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := uc.mutation.CreatedEnvsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedEnvsTable,
+			Columns: []string{user.CreatedEnvsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(env.FieldID, field.TypeString),
+			},
+		}
+		edge.Schema = uc.schemaConfig.Env
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	if nodes := uc.mutation.AccessTokensIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -199,6 +248,23 @@ func (uc *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			},
 		}
 		edge.Schema = uc.schemaConfig.AccessToken
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := uc.mutation.CreatedAPIKeysIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CreatedAPIKeysTable,
+			Columns: []string{user.CreatedAPIKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = uc.schemaConfig.TeamAPIKey
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}

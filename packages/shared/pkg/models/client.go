@@ -556,6 +556,25 @@ func (c *EnvClient) QueryTeam(e *Env) *TeamQuery {
 	return query
 }
 
+// QueryCreator queries the creator edge of a Env.
+func (c *EnvClient) QueryCreator(e *Env) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := e.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(env.Table, env.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, env.CreatorTable, env.CreatorColumn),
+		)
+		schemaConfig := e.schemaConfig
+		step.To.Schema = schemaConfig.User
+		step.Edge.Schema = schemaConfig.Env
+		fromV = sqlgraph.Neighbors(e.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryEnvAliases queries the env_aliases edge of a Env.
 func (c *EnvClient) QueryEnvAliases(e *Env) *EnvAliasQuery {
 	query := (&EnvAliasClient{config: c.config}).Query()
@@ -1212,7 +1231,7 @@ func (c *TeamAPIKeyClient) UpdateOne(tak *TeamAPIKey) *TeamAPIKeyUpdateOne {
 }
 
 // UpdateOneID returns an update builder for the given id.
-func (c *TeamAPIKeyClient) UpdateOneID(id string) *TeamAPIKeyUpdateOne {
+func (c *TeamAPIKeyClient) UpdateOneID(id uuid.UUID) *TeamAPIKeyUpdateOne {
 	mutation := newTeamAPIKeyMutation(c.config, OpUpdateOne, withTeamAPIKeyID(id))
 	return &TeamAPIKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
@@ -1229,7 +1248,7 @@ func (c *TeamAPIKeyClient) DeleteOne(tak *TeamAPIKey) *TeamAPIKeyDeleteOne {
 }
 
 // DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *TeamAPIKeyClient) DeleteOneID(id string) *TeamAPIKeyDeleteOne {
+func (c *TeamAPIKeyClient) DeleteOneID(id uuid.UUID) *TeamAPIKeyDeleteOne {
 	builder := c.Delete().Where(teamapikey.ID(id))
 	builder.mutation.id = &id
 	builder.mutation.op = OpDeleteOne
@@ -1246,12 +1265,12 @@ func (c *TeamAPIKeyClient) Query() *TeamAPIKeyQuery {
 }
 
 // Get returns a TeamAPIKey entity by its id.
-func (c *TeamAPIKeyClient) Get(ctx context.Context, id string) (*TeamAPIKey, error) {
+func (c *TeamAPIKeyClient) Get(ctx context.Context, id uuid.UUID) (*TeamAPIKey, error) {
 	return c.Query().Where(teamapikey.ID(id)).Only(ctx)
 }
 
 // GetX is like Get, but panics if an error occurs.
-func (c *TeamAPIKeyClient) GetX(ctx context.Context, id string) *TeamAPIKey {
+func (c *TeamAPIKeyClient) GetX(ctx context.Context, id uuid.UUID) *TeamAPIKey {
 	obj, err := c.Get(ctx, id)
 	if err != nil {
 		panic(err)
@@ -1271,6 +1290,25 @@ func (c *TeamAPIKeyClient) QueryTeam(tak *TeamAPIKey) *TeamQuery {
 		)
 		schemaConfig := tak.schemaConfig
 		step.To.Schema = schemaConfig.Team
+		step.Edge.Schema = schemaConfig.TeamAPIKey
+		fromV = sqlgraph.Neighbors(tak.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryCreator queries the creator edge of a TeamAPIKey.
+func (c *TeamAPIKeyClient) QueryCreator(tak *TeamAPIKey) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := tak.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamapikey.Table, teamapikey.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, teamapikey.CreatorTable, teamapikey.CreatorColumn),
+		)
+		schemaConfig := tak.schemaConfig
+		step.To.Schema = schemaConfig.User
 		step.Edge.Schema = schemaConfig.TeamAPIKey
 		fromV = sqlgraph.Neighbors(tak.driver.Dialect(), step)
 		return fromV, nil
@@ -1582,6 +1620,25 @@ func (c *UserClient) QueryTeams(u *User) *TeamQuery {
 	return query
 }
 
+// QueryCreatedEnvs queries the created_envs edge of a User.
+func (c *UserClient) QueryCreatedEnvs(u *User) *EnvQuery {
+	query := (&EnvClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := u.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(env.Table, env.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.CreatedEnvsTable, user.CreatedEnvsColumn),
+		)
+		schemaConfig := u.schemaConfig
+		step.To.Schema = schemaConfig.Env
+		step.Edge.Schema = schemaConfig.Env
+		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryAccessTokens queries the access_tokens edge of a User.
 func (c *UserClient) QueryAccessTokens(u *User) *AccessTokenQuery {
 	query := (&AccessTokenClient{config: c.config}).Query()
@@ -1595,6 +1652,25 @@ func (c *UserClient) QueryAccessTokens(u *User) *AccessTokenQuery {
 		schemaConfig := u.schemaConfig
 		step.To.Schema = schemaConfig.AccessToken
 		step.Edge.Schema = schemaConfig.AccessToken
+		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryCreatedAPIKeys queries the created_api_keys edge of a User.
+func (c *UserClient) QueryCreatedAPIKeys(u *User) *TeamAPIKeyQuery {
+	query := (&TeamAPIKeyClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := u.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(teamapikey.Table, teamapikey.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.CreatedAPIKeysTable, user.CreatedAPIKeysColumn),
+		)
+		schemaConfig := u.schemaConfig
+		step.To.Schema = schemaConfig.TeamAPIKey
+		step.Edge.Schema = schemaConfig.TeamAPIKey
 		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
 		return fromV, nil
 	}

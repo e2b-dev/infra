@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -24,6 +25,7 @@ type TeamInfo struct {
 	tier *models.Tier
 
 	lastRefresh time.Time
+	once        singleflight.Group
 }
 
 type TeamAuthCache struct {
@@ -60,7 +62,10 @@ func (c *TeamAuthCache) Get(ctx context.Context, apiKey string) (team *models.Te
 
 	templateInfo = item.Value()
 	if time.Since(templateInfo.lastRefresh) > refreshInterval {
-		go c.Refresh(apiKey)
+		go templateInfo.once.Do(apiKey, func() (interface{}, error) {
+			c.Refresh(apiKey)
+			return nil, err
+		})
 	}
 
 	return templateInfo.team, templateInfo.tier, nil

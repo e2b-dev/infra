@@ -47,6 +47,9 @@ type ServerInterface interface {
 	// (DELETE /templates/{templateID})
 	DeleteTemplatesTemplateID(c *gin.Context, templateID TemplateID)
 
+	// (PATCH /templates/{templateID})
+	PatchTemplatesTemplateID(c *gin.Context, templateID TemplateID)
+
 	// (POST /templates/{templateID})
 	PostTemplatesTemplateID(c *gin.Context, templateID TemplateID)
 
@@ -316,6 +319,32 @@ func (siw *ServerInterfaceWrapper) DeleteTemplatesTemplateID(c *gin.Context) {
 	siw.Handler.DeleteTemplatesTemplateID(c, templateID)
 }
 
+// PatchTemplatesTemplateID operation middleware
+func (siw *ServerInterfaceWrapper) PatchTemplatesTemplateID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameter("simple", false, "templateID", c.Param("templateID"), &templateID)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PatchTemplatesTemplateID(c, templateID)
+}
+
 // PostTemplatesTemplateID operation middleware
 func (siw *ServerInterfaceWrapper) PostTemplatesTemplateID(c *gin.Context) {
 
@@ -461,6 +490,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/templates", wrapper.GetTemplates)
 	router.POST(options.BaseURL+"/templates", wrapper.PostTemplates)
 	router.DELETE(options.BaseURL+"/templates/:templateID", wrapper.DeleteTemplatesTemplateID)
+	router.PATCH(options.BaseURL+"/templates/:templateID", wrapper.PatchTemplatesTemplateID)
 	router.POST(options.BaseURL+"/templates/:templateID", wrapper.PostTemplatesTemplateID)
 	router.POST(options.BaseURL+"/templates/:templateID/builds/:buildID", wrapper.PostTemplatesTemplateIDBuildsBuildID)
 	router.GET(options.BaseURL+"/templates/:templateID/builds/:buildID/status", wrapper.GetTemplatesTemplateIDBuildsBuildIDStatus)

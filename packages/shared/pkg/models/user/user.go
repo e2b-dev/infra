@@ -16,8 +16,12 @@ const (
 	FieldEmail = "email"
 	// EdgeTeams holds the string denoting the teams edge name in mutations.
 	EdgeTeams = "teams"
+	// EdgeCreatedEnvs holds the string denoting the created_envs edge name in mutations.
+	EdgeCreatedEnvs = "created_envs"
 	// EdgeAccessTokens holds the string denoting the access_tokens edge name in mutations.
 	EdgeAccessTokens = "access_tokens"
+	// EdgeCreatedAPIKeys holds the string denoting the created_api_keys edge name in mutations.
+	EdgeCreatedAPIKeys = "created_api_keys"
 	// EdgeUsersTeams holds the string denoting the users_teams edge name in mutations.
 	EdgeUsersTeams = "users_teams"
 	// AccessTokenFieldID holds the string denoting the ID field of the AccessToken.
@@ -29,6 +33,13 @@ const (
 	// TeamsInverseTable is the table name for the Team entity.
 	// It exists in this package in order to avoid circular dependency with the "team" package.
 	TeamsInverseTable = "teams"
+	// CreatedEnvsTable is the table that holds the created_envs relation/edge.
+	CreatedEnvsTable = "envs"
+	// CreatedEnvsInverseTable is the table name for the Env entity.
+	// It exists in this package in order to avoid circular dependency with the "env" package.
+	CreatedEnvsInverseTable = "envs"
+	// CreatedEnvsColumn is the table column denoting the created_envs relation/edge.
+	CreatedEnvsColumn = "created_by"
 	// AccessTokensTable is the table that holds the access_tokens relation/edge.
 	AccessTokensTable = "access_tokens"
 	// AccessTokensInverseTable is the table name for the AccessToken entity.
@@ -36,6 +47,13 @@ const (
 	AccessTokensInverseTable = "access_tokens"
 	// AccessTokensColumn is the table column denoting the access_tokens relation/edge.
 	AccessTokensColumn = "user_id"
+	// CreatedAPIKeysTable is the table that holds the created_api_keys relation/edge.
+	CreatedAPIKeysTable = "team_api_keys"
+	// CreatedAPIKeysInverseTable is the table name for the TeamAPIKey entity.
+	// It exists in this package in order to avoid circular dependency with the "teamapikey" package.
+	CreatedAPIKeysInverseTable = "team_api_keys"
+	// CreatedAPIKeysColumn is the table column denoting the created_api_keys relation/edge.
+	CreatedAPIKeysColumn = "created_by"
 	// UsersTeamsTable is the table that holds the users_teams relation/edge.
 	UsersTeamsTable = "users_teams"
 	// UsersTeamsInverseTable is the table name for the UsersTeams entity.
@@ -99,6 +117,20 @@ func ByTeams(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByCreatedEnvsCount orders the results by created_envs count.
+func ByCreatedEnvsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCreatedEnvsStep(), opts...)
+	}
+}
+
+// ByCreatedEnvs orders the results by created_envs terms.
+func ByCreatedEnvs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCreatedEnvsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByAccessTokensCount orders the results by access_tokens count.
 func ByAccessTokensCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -110,6 +142,20 @@ func ByAccessTokensCount(opts ...sql.OrderTermOption) OrderOption {
 func ByAccessTokens(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newAccessTokensStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByCreatedAPIKeysCount orders the results by created_api_keys count.
+func ByCreatedAPIKeysCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCreatedAPIKeysStep(), opts...)
+	}
+}
+
+// ByCreatedAPIKeys orders the results by created_api_keys terms.
+func ByCreatedAPIKeys(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCreatedAPIKeysStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 
@@ -133,11 +179,25 @@ func newTeamsStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.M2M, true, TeamsTable, TeamsPrimaryKey...),
 	)
 }
+func newCreatedEnvsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CreatedEnvsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, CreatedEnvsTable, CreatedEnvsColumn),
+	)
+}
 func newAccessTokensStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AccessTokensInverseTable, AccessTokenFieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, AccessTokensTable, AccessTokensColumn),
+	)
+}
+func newCreatedAPIKeysStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CreatedAPIKeysInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, CreatedAPIKeysTable, CreatedAPIKeysColumn),
 	)
 }
 func newUsersTeamsStep() *sqlgraph.Step {

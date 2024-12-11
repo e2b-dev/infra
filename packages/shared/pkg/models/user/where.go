@@ -154,6 +154,35 @@ func HasTeamsWith(preds ...predicate.Team) predicate.User {
 	})
 }
 
+// HasCreatedEnvs applies the HasEdge predicate on the "created_envs" edge.
+func HasCreatedEnvs() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, CreatedEnvsTable, CreatedEnvsColumn),
+		)
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.Env
+		step.Edge.Schema = schemaConfig.Env
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCreatedEnvsWith applies the HasEdge predicate on the "created_envs" edge with a given conditions (other predicates).
+func HasCreatedEnvsWith(preds ...predicate.Env) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newCreatedEnvsStep()
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.Env
+		step.Edge.Schema = schemaConfig.Env
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasAccessTokens applies the HasEdge predicate on the "access_tokens" edge.
 func HasAccessTokens() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
@@ -175,6 +204,35 @@ func HasAccessTokensWith(preds ...predicate.AccessToken) predicate.User {
 		schemaConfig := internal.SchemaConfigFromContext(s.Context())
 		step.To.Schema = schemaConfig.AccessToken
 		step.Edge.Schema = schemaConfig.AccessToken
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasCreatedAPIKeys applies the HasEdge predicate on the "created_api_keys" edge.
+func HasCreatedAPIKeys() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, CreatedAPIKeysTable, CreatedAPIKeysColumn),
+		)
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.TeamAPIKey
+		step.Edge.Schema = schemaConfig.TeamAPIKey
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCreatedAPIKeysWith applies the HasEdge predicate on the "created_api_keys" edge with a given conditions (other predicates).
+func HasCreatedAPIKeysWith(preds ...predicate.TeamAPIKey) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newCreatedAPIKeysStep()
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.TeamAPIKey
+		step.Edge.Schema = schemaConfig.TeamAPIKey
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

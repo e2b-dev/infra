@@ -38,6 +38,6 @@ upload:
 .PHONY: build-and-upload
 build-and-upload: build upload
 
-.PHONY: test
-test:
-	sudo NODE_ID="test-client-22" CONSUL_TOKEN=$(CONSUL_TOKEN) go run -race -gcflags=all="-N -l" main.go -env zli4m3wxr03ma3i99w8h -instance test-instance-1 -alive 1 -count 1
+.PHONY: mock
+mock:
+	sudo CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="test-client" go run -race -gcflags=all="-N -l" cmd/mock-sandbox/mock.go -template idnrwvs3vrde6hknozc0 -sandbox idnrwvs3vrde6hknozc0 -build "0f426192-e298-49d1-a779-2fecf990a522" -alive 20 -count 10

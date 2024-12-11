@@ -11,6 +11,11 @@ if [ -f "kernel_versions.txt" ]; then
     # Upload kernel to GCP bucket
     gsutil -h "Cache-Control:no-cache, max-age=0" cp -r "builds/vmlinux-${version}" "gs://${GCP_PROJECT_ID}-fc-kernels"
 
+    if [ "$GCP_PROJECT_ID" == "e2b-prod" ]; then
+      # Upload kernel to GCP public builds bucket
+      gsutil -h "Cache-Control:no-cache, max-age=0" cp -r "builds/vmlinux-${version}" "gs://${GCP_PROJECT_ID}-public-builds/kernels/"
+    fi
+
     rm -rf "builds/${version}"
   done <"kernel_versions.txt"
 

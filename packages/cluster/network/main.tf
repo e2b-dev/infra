@@ -252,8 +252,8 @@ resource "google_compute_global_forwarding_rule" "https" {
   name                  = "${var.prefix}forwarding-rule-https"
   target                = google_compute_target_https_proxy.default.self_link
   load_balancing_scheme = "EXTERNAL_MANAGED"
-  port_range = "443"
-  labels     = var.labels
+  port_range            = "443"
+  labels                = var.labels
 }
 
 
@@ -272,6 +272,8 @@ resource "google_compute_backend_service" "default" {
 
   load_balancing_scheme = "EXTERNAL_MANAGED"
   health_checks         = [google_compute_health_check.default[each.key].self_link]
+
+  security_policy = google_compute_security_policy.default[each.key].self_link
 
   log_config {
     enable = true
@@ -339,6 +341,23 @@ resource "google_compute_health_check" "default" {
   }
 }
 
+
+resource "google_compute_security_policy" "default" {
+  provider = google-beta
+  for_each = local.health_checked_backends
+  name     = "${var.prefix}${each.key}"
+
+  dynamic "adaptive_protection_config" {
+    for_each = each.key == "api" ? [true] : []
+
+    content {
+      layer_7_ddos_defense_config {
+        enable = true
+      }
+    }
+  }
+}
+
 resource "google_compute_firewall" "default-hc" {
   name    = "${var.prefix}load-balancer-hc"
   network = var.network_name
@@ -383,6 +402,7 @@ module "gce_lb_http_logs" {
       affinity_cookie_ttl_sec         = null
       custom_request_headers          = null
       custom_response_headers         = null
+      security_policy                 = google_compute_security_policy.disable-bots-log-collector.self_link
 
       health_check = {
         check_interval_sec  = null
@@ -453,3 +473,172 @@ resource "google_compute_firewall" "orch_firewall_egress" {
   direction   = "EGRESS"
   target_tags = [var.cluster_tag_name]
 }
+
+
+# Security policy
+resource "google_compute_security_policy_rule" "api-throttling-api-key" {
+  security_policy = google_compute_security_policy.default["api"].name
+  provider        = google-beta
+  action          = "throttle"
+  priority        = "300"
+  match {
+    expr {
+      expression = "request.path == \"/sandboxes\" && request.method == \"POST\""
+    }
+  }
+
+  rate_limit_options {
+    conform_action = "allow"
+    exceed_action  = "deny(429)"
+
+    enforce_on_key_configs {
+      enforce_on_key_name = "X-API-Key"
+      enforce_on_key_type = "HTTP_HEADER"
+    }
+
+    rate_limit_threshold {
+      count        = var.domain_name == "e2b.dev" ? 60 : 240
+      interval_sec = 30
+    }
+  }
+
+  description = "Sandbox creation per API key"
+}
+
+
+resource "google_compute_security_policy_rule" "api-throttling-ip" {
+  security_policy = google_compute_security_policy.default["api"].name
+  provider        = google-beta
+  action          = "throttle"
+  priority        = "500"
+  match {
+    versioned_expr = "SRC_IPS_V1"
+    config {
+      src_ip_ranges = ["*"]
+    }
+  }
+
+  rate_limit_options {
+    conform_action = "allow"
+    exceed_action  = "deny(429)"
+
+    enforce_on_key = ""
+
+    enforce_on_key_configs {
+      enforce_on_key_type = "IP"
+    }
+
+    rate_limit_threshold {
+      count        = var.domain_name == "e2b.dev" ? 2000 : 4000
+      interval_sec = 60
+    }
+  }
+
+  description = "Requests to API from IP address"
+}
+
+resource "google_compute_security_policy_rule" "sandbox-throttling-host" {
+  security_policy = google_compute_security_policy.default["session"].name
+  provider        = google-beta
+  description     = "WS envd connection requests per sandbox"
+
+  action   = "throttle"
+  priority = "300"
+  match {
+    expr {
+      expression = "request.path == \"/ws\""
+    }
+  }
+
+  rate_limit_options {
+    conform_action = "allow"
+    exceed_action  = "deny(429)"
+
+    enforce_on_key_configs {
+      enforce_on_key_name = "host"
+      enforce_on_key_type = "HTTP_HEADER"
+    }
+
+    rate_limit_threshold {
+      count        = 40
+      interval_sec = 30
+    }
+  }
+}
+
+resource "google_compute_security_policy_rule" "sandbox-throttling-ip" {
+  security_policy = google_compute_security_policy.default["session"].name
+  provider        = google-beta
+  action          = "throttle"
+  priority        = "500"
+  match {
+    versioned_expr = "SRC_IPS_V1"
+    config {
+      src_ip_ranges = ["*"]
+    }
+  }
+
+  rate_limit_options {
+    conform_action = "allow"
+    exceed_action  = "deny(429)"
+
+    enforce_on_key = ""
+
+    enforce_on_key_configs {
+      enforce_on_key_type = "IP"
+    }
+
+    rate_limit_threshold {
+      count        = var.domain_name == "e2b.dev" ? 2000 : 4000
+      interval_sec = 60
+    }
+  }
+
+  description = "Requests to sandboxes from IP address"
+}
+
+resource "google_compute_security_policy_rule" "disable-consul" {
+  security_policy = google_compute_security_policy.default["consul"].name
+  provider        = google-beta
+  action          = "deny(403)"
+  priority        = "1"
+  description     = "Disable all requests to Consul"
+  match {
+    versioned_expr = "SRC_IPS_V1"
+    config {
+      src_ip_ranges = ["*"]
+    }
+  }
+}
+
+
+
+resource "google_compute_security_policy" "disable-bots-log-collector" {
+  name     = "disable-bots-log-collector"
+  provider = google-beta
+
+  rule {
+    action   = "allow"
+    priority = "300"
+    match {
+      expr {
+        expression = "request.path == \"/\" && request.method == \"POST\""
+      }
+    }
+
+    description = "Allow POST requests  to / (collecting logs)"
+  }
+
+  rule {
+    action      = "deny(403)"
+    priority    = "2147483647"
+    description = "Default rule, higher priority overrides it"
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+  }
+}
+

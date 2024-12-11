@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -14,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -29,6 +31,15 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
+	logger := logs.NewSandboxLogger(
+		req.Sandbox.SandboxID,
+		req.Sandbox.TemplateID,
+		req.Sandbox.TeamID,
+		req.Sandbox.VCpuCount,
+		req.Sandbox.MemoryMB,
+		false,
+	)
+
 	sbx, err := sandbox.NewSandbox(
 		childCtx,
 		s.tracer,
@@ -39,6 +50,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
+		logger,
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create sandbox: %w", err)
@@ -59,11 +71,10 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 		waitErr := sbx.Wait(context.Background(), tracer)
 		if waitErr != nil {
-			errMsg := fmt.Errorf("failed to wait for Sandbox: %w", waitErr)
-			fmt.Println(errMsg)
-		} else {
-			fmt.Printf("Sandbox %s wait finished\n", req.Sandbox.SandboxID)
+			fmt.Fprintf(os.Stderr, "failed to wait for Sandbox: %w", waitErr)
 		}
+
+		logger.Infof("Sandbox killed")
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
@@ -133,6 +144,8 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxRequest) (*
 
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
+
+	sbx.Healthcheck(ctx, true)
 
 	childSpan.SetAttributes(
 		attribute.String("env.id", sbx.Sandbox.TemplateID),

@@ -14,18 +14,20 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/google/uuid"
 )
 
 // TeamAPIKeyQuery is the builder for querying TeamAPIKey entities.
 type TeamAPIKeyQuery struct {
 	config
-	ctx        *QueryContext
-	order      []teamapikey.OrderOption
-	inters     []Interceptor
-	predicates []predicate.TeamAPIKey
-	withTeam   *TeamQuery
-	modifiers  []func(*sql.Selector)
+	ctx         *QueryContext
+	order       []teamapikey.OrderOption
+	inters      []Interceptor
+	predicates  []predicate.TeamAPIKey
+	withTeam    *TeamQuery
+	withCreator *UserQuery
+	modifiers   []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -87,6 +89,31 @@ func (takq *TeamAPIKeyQuery) QueryTeam() *TeamQuery {
 	return query
 }
 
+// QueryCreator chains the current query on the "creator" edge.
+func (takq *TeamAPIKeyQuery) QueryCreator() *UserQuery {
+	query := (&UserClient{config: takq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := takq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := takq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamapikey.Table, teamapikey.FieldID, selector),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, teamapikey.CreatorTable, teamapikey.CreatorColumn),
+		)
+		schemaConfig := takq.schemaConfig
+		step.To.Schema = schemaConfig.User
+		step.Edge.Schema = schemaConfig.TeamAPIKey
+		fromU = sqlgraph.SetNeighbors(takq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
 // First returns the first TeamAPIKey entity from the query.
 // Returns a *NotFoundError when no TeamAPIKey was found.
 func (takq *TeamAPIKeyQuery) First(ctx context.Context) (*TeamAPIKey, error) {
@@ -111,8 +138,8 @@ func (takq *TeamAPIKeyQuery) FirstX(ctx context.Context) *TeamAPIKey {
 
 // FirstID returns the first TeamAPIKey ID from the query.
 // Returns a *NotFoundError when no TeamAPIKey ID was found.
-func (takq *TeamAPIKeyQuery) FirstID(ctx context.Context) (id string, err error) {
-	var ids []string
+func (takq *TeamAPIKeyQuery) FirstID(ctx context.Context) (id uuid.UUID, err error) {
+	var ids []uuid.UUID
 	if ids, err = takq.Limit(1).IDs(setContextOp(ctx, takq.ctx, "FirstID")); err != nil {
 		return
 	}
@@ -124,7 +151,7 @@ func (takq *TeamAPIKeyQuery) FirstID(ctx context.Context) (id string, err error)
 }
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (takq *TeamAPIKeyQuery) FirstIDX(ctx context.Context) string {
+func (takq *TeamAPIKeyQuery) FirstIDX(ctx context.Context) uuid.UUID {
 	id, err := takq.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -162,8 +189,8 @@ func (takq *TeamAPIKeyQuery) OnlyX(ctx context.Context) *TeamAPIKey {
 // OnlyID is like Only, but returns the only TeamAPIKey ID in the query.
 // Returns a *NotSingularError when more than one TeamAPIKey ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (takq *TeamAPIKeyQuery) OnlyID(ctx context.Context) (id string, err error) {
-	var ids []string
+func (takq *TeamAPIKeyQuery) OnlyID(ctx context.Context) (id uuid.UUID, err error) {
+	var ids []uuid.UUID
 	if ids, err = takq.Limit(2).IDs(setContextOp(ctx, takq.ctx, "OnlyID")); err != nil {
 		return
 	}
@@ -179,7 +206,7 @@ func (takq *TeamAPIKeyQuery) OnlyID(ctx context.Context) (id string, err error) 
 }
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (takq *TeamAPIKeyQuery) OnlyIDX(ctx context.Context) string {
+func (takq *TeamAPIKeyQuery) OnlyIDX(ctx context.Context) uuid.UUID {
 	id, err := takq.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -207,7 +234,7 @@ func (takq *TeamAPIKeyQuery) AllX(ctx context.Context) []*TeamAPIKey {
 }
 
 // IDs executes the query and returns a list of TeamAPIKey IDs.
-func (takq *TeamAPIKeyQuery) IDs(ctx context.Context) (ids []string, err error) {
+func (takq *TeamAPIKeyQuery) IDs(ctx context.Context) (ids []uuid.UUID, err error) {
 	if takq.ctx.Unique == nil && takq.path != nil {
 		takq.Unique(true)
 	}
@@ -219,7 +246,7 @@ func (takq *TeamAPIKeyQuery) IDs(ctx context.Context) (ids []string, err error) 
 }
 
 // IDsX is like IDs, but panics if an error occurs.
-func (takq *TeamAPIKeyQuery) IDsX(ctx context.Context) []string {
+func (takq *TeamAPIKeyQuery) IDsX(ctx context.Context) []uuid.UUID {
 	ids, err := takq.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -274,12 +301,13 @@ func (takq *TeamAPIKeyQuery) Clone() *TeamAPIKeyQuery {
 		return nil
 	}
 	return &TeamAPIKeyQuery{
-		config:     takq.config,
-		ctx:        takq.ctx.Clone(),
-		order:      append([]teamapikey.OrderOption{}, takq.order...),
-		inters:     append([]Interceptor{}, takq.inters...),
-		predicates: append([]predicate.TeamAPIKey{}, takq.predicates...),
-		withTeam:   takq.withTeam.Clone(),
+		config:      takq.config,
+		ctx:         takq.ctx.Clone(),
+		order:       append([]teamapikey.OrderOption{}, takq.order...),
+		inters:      append([]Interceptor{}, takq.inters...),
+		predicates:  append([]predicate.TeamAPIKey{}, takq.predicates...),
+		withTeam:    takq.withTeam.Clone(),
+		withCreator: takq.withCreator.Clone(),
 		// clone intermediate query.
 		sql:  takq.sql.Clone(),
 		path: takq.path,
@@ -297,18 +325,29 @@ func (takq *TeamAPIKeyQuery) WithTeam(opts ...func(*TeamQuery)) *TeamAPIKeyQuery
 	return takq
 }
 
+// WithCreator tells the query-builder to eager-load the nodes that are connected to
+// the "creator" edge. The optional arguments are used to configure the query builder of the edge.
+func (takq *TeamAPIKeyQuery) WithCreator(opts ...func(*UserQuery)) *TeamAPIKeyQuery {
+	query := (&UserClient{config: takq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	takq.withCreator = query
+	return takq
+}
+
 // GroupBy is used to group vertices by one or more fields/columns.
 // It is often used with aggregate functions, like: count, max, mean, min, sum.
 //
 // Example:
 //
 //	var v []struct {
-//		CreatedAt time.Time `json:"created_at,omitempty"`
+//		APIKey string `json:"api_key,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
 //	client.TeamAPIKey.Query().
-//		GroupBy(teamapikey.FieldCreatedAt).
+//		GroupBy(teamapikey.FieldAPIKey).
 //		Aggregate(models.Count()).
 //		Scan(ctx, &v)
 func (takq *TeamAPIKeyQuery) GroupBy(field string, fields ...string) *TeamAPIKeyGroupBy {
@@ -326,11 +365,11 @@ func (takq *TeamAPIKeyQuery) GroupBy(field string, fields ...string) *TeamAPIKey
 // Example:
 //
 //	var v []struct {
-//		CreatedAt time.Time `json:"created_at,omitempty"`
+//		APIKey string `json:"api_key,omitempty"`
 //	}
 //
 //	client.TeamAPIKey.Query().
-//		Select(teamapikey.FieldCreatedAt).
+//		Select(teamapikey.FieldAPIKey).
 //		Scan(ctx, &v)
 func (takq *TeamAPIKeyQuery) Select(fields ...string) *TeamAPIKeySelect {
 	takq.ctx.Fields = append(takq.ctx.Fields, fields...)
@@ -375,8 +414,9 @@ func (takq *TeamAPIKeyQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	var (
 		nodes       = []*TeamAPIKey{}
 		_spec       = takq.querySpec()
-		loadedTypes = [1]bool{
+		loadedTypes = [2]bool{
 			takq.withTeam != nil,
+			takq.withCreator != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -405,6 +445,12 @@ func (takq *TeamAPIKeyQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	if query := takq.withTeam; query != nil {
 		if err := takq.loadTeam(ctx, query, nodes, nil,
 			func(n *TeamAPIKey, e *Team) { n.Edges.Team = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := takq.withCreator; query != nil {
+		if err := takq.loadCreator(ctx, query, nodes, nil,
+			func(n *TeamAPIKey, e *User) { n.Edges.Creator = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -440,6 +486,38 @@ func (takq *TeamAPIKeyQuery) loadTeam(ctx context.Context, query *TeamQuery, nod
 	}
 	return nil
 }
+func (takq *TeamAPIKeyQuery) loadCreator(ctx context.Context, query *UserQuery, nodes []*TeamAPIKey, init func(*TeamAPIKey), assign func(*TeamAPIKey, *User)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*TeamAPIKey)
+	for i := range nodes {
+		if nodes[i].CreatedBy == nil {
+			continue
+		}
+		fk := *nodes[i].CreatedBy
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(user.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "created_by" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 
 func (takq *TeamAPIKeyQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := takq.querySpec()
@@ -456,7 +534,7 @@ func (takq *TeamAPIKeyQuery) sqlCount(ctx context.Context) (int, error) {
 }
 
 func (takq *TeamAPIKeyQuery) querySpec() *sqlgraph.QuerySpec {
-	_spec := sqlgraph.NewQuerySpec(teamapikey.Table, teamapikey.Columns, sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString))
+	_spec := sqlgraph.NewQuerySpec(teamapikey.Table, teamapikey.Columns, sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID))
 	_spec.From = takq.sql
 	if unique := takq.ctx.Unique; unique != nil {
 		_spec.Unique = *unique
@@ -473,6 +551,9 @@ func (takq *TeamAPIKeyQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if takq.withTeam != nil {
 			_spec.Node.AddColumnOnce(teamapikey.FieldTeamID)
+		}
+		if takq.withCreator != nil {
+			_spec.Node.AddColumnOnce(teamapikey.FieldCreatedBy)
 		}
 	}
 	if ps := takq.predicates; len(ps) > 0 {

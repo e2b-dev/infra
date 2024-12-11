@@ -8,9 +8,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/test"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -19,20 +17,10 @@ const (
 )
 
 func main() {
-	envID := flag.String("env", "", "env id")
-	instanceID := flag.String("instance", "", "instance id")
-	keepAlive := flag.Int("alive", 0, "keep alive")
-	count := flag.Int("count", 1, "number of spawned instances")
 
 	port := flag.Int("port", defaultPort, "Port for test HTTP server")
 
 	flag.Parse()
-
-	// If we're running a test, we don't need to start the server
-	if *envID != "" && *instanceID != "" {
-		test.Run(*envID, *instanceID, keepAlive, count)
-		return
-	}
 
 	if !env.IsLocal() {
 		shutdown := telemetry.InitOTLPExporter(constants.ServiceName, "no")
@@ -44,12 +32,7 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	logger, err := logging.New(env.IsLocal())
-	if err != nil {
-		log.Fatalf("Error initializing logging\n: %v\n", err)
-	}
-	// Create an instance of our handler which satisfies the generated interface
-	s := server.New(logger.Desugar())
+	s := server.New()
 
 	log.Printf("Starting server on port %d", *port)
 	if err := s.Serve(lis); err != nil {

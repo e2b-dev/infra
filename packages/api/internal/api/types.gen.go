@@ -5,6 +5,8 @@ package api
 
 import (
 	"time"
+
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 const (
@@ -128,10 +130,22 @@ type Team struct {
 	TeamID string `json:"teamID"`
 }
 
+// TeamUser defines model for TeamUser.
+type TeamUser struct {
+	// Email Email of the user
+	Email string `json:"email"`
+
+	// Id Identifier of the user
+	Id openapi_types.UUID `json:"id"`
+}
+
 // Template defines model for Template.
 type Template struct {
 	// Aliases Aliases of the template
 	Aliases *[]string `json:"aliases,omitempty"`
+
+	// BuildCount Number of times the template was built
+	BuildCount int32 `json:"buildCount"`
 
 	// BuildID Identifier of the last successful build for given template
 	BuildID string `json:"buildID"`
@@ -139,14 +153,27 @@ type Template struct {
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
 
+	// CreatedAt Time when the template was created
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy *TeamUser `json:"createdBy"`
+
+	// LastSpawnedAt Time when the template was last used
+	LastSpawnedAt time.Time `json:"lastSpawnedAt"`
+
 	// MemoryMB Memory for the sandbox in MB
 	MemoryMB MemoryMB `json:"memoryMB"`
 
 	// Public Whether the template is public or only accessible by the team
 	Public bool `json:"public"`
 
+	// SpawnCount Number of times the template was used
+	SpawnCount int64 `json:"spawnCount"`
+
 	// TemplateID Identifier of the template
 	TemplateID string `json:"templateID"`
+
+	// UpdatedAt Time when the template was last updated
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // TemplateBuild defines model for TemplateBuild.
@@ -186,6 +213,12 @@ type TemplateBuildRequest struct {
 
 	// TeamID Identifier of the team
 	TeamID *string `json:"teamID,omitempty"`
+}
+
+// TemplateUpdateRequest defines model for TemplateUpdateRequest.
+type TemplateUpdateRequest struct {
+	// Public Whether the template is public or only accessible by the team
+	Public *bool `json:"public,omitempty"`
 }
 
 // BuildID defines model for buildID.
@@ -252,6 +285,9 @@ type PostSandboxesSandboxIDTimeoutJSONRequestBody PostSandboxesSandboxIDTimeoutJ
 
 // PostTemplatesJSONRequestBody defines body for PostTemplates for application/json ContentType.
 type PostTemplatesJSONRequestBody = TemplateBuildRequest
+
+// PatchTemplatesTemplateIDJSONRequestBody defines body for PatchTemplatesTemplateID for application/json ContentType.
+type PatchTemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest
 
 // PostTemplatesTemplateIDJSONRequestBody defines body for PostTemplatesTemplateID for application/json ContentType.
 type PostTemplatesTemplateIDJSONRequestBody = TemplateBuildRequest

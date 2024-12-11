@@ -177,6 +177,22 @@ receivers:
 processors:
   batch:
     timeout: 5s
+  filter:
+    metrics:
+      include:
+        match_type: regexp
+        # Exclude metrics that start with `http`, `go`, `rpc`, or `nomad` but aren't `nomad.client`
+        metric_names:
+          - "nomad_client_host_cpu_idle"
+          - "nomad_client_host_disk_available"
+          - "nomad_client_host_disk_size"
+          - "nomad_client_allocs_memory_usage"
+          - "nomad_client_allocs_cpu_usage"
+          - "nomad_client_host_memory_available"
+          - "nomad_client_host_memory_total"
+          - "nomad_client_unallocated_memory"
+          - "orchestrator.*"
+          - "api.*"
   attributes/session-proxy:
     actions:
       - key: service.name
@@ -232,7 +248,7 @@ service:
       receivers:
         - prometheus
         - otlp
-      processors: [batch]
+      processors: [filter, batch]
       exporters:
         - prometheusremotewrite/grafana_cloud_metrics
     metrics/session-proxy:

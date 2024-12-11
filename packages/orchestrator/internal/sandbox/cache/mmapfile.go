@@ -10,6 +10,8 @@ import (
 	"github.com/edsrzf/mmap-go"
 	"github.com/jellydator/ttlcache/v3"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 const (
@@ -40,7 +42,7 @@ func (m *Mmapfile) Close() error {
 	return nil
 }
 
-func getMmapfile(path string) (*mmap.MMap, error) {
+func getMmapfile(logger *logs.SandboxLogger, path string) (*mmap.MMap, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY, 0o777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -49,7 +51,7 @@ func getMmapfile(path string) (*mmap.MMap, error) {
 	defer func() {
 		closeErr := f.Close()
 		if closeErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to close file: %v", closeErr)
+			logger.Errorf("failed to close file: %v", closeErr)
 		}
 	}()
 
@@ -61,11 +63,11 @@ func getMmapfile(path string) (*mmap.MMap, error) {
 	return &mp, nil
 }
 
-func newMmapfile(path string) *Mmapfile {
+func newMmapfile(logger *logs.SandboxLogger, path string) *Mmapfile {
 	h := &Mmapfile{}
 
 	h.EnsureOpen = sync.OnceValues(func() (*Mmapfile, error) {
-		mp, err := getMmapfile(path)
+		mp, err := getMmapfile(logger, path)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get mmapfile: %w", err)
 		}
@@ -82,8 +84,8 @@ type MmapfileCache struct {
 	cache *ttlcache.Cache[string, *Mmapfile]
 }
 
-func (c *MmapfileCache) GetMmapfile(path, id string) (*Mmapfile, error) {
-	hugefile, _ := c.cache.GetOrSet(id, newMmapfile(path), ttlcache.WithTTL[string, *Mmapfile](mmapExpiration))
+func (c *MmapfileCache) GetMmapfile(logger *logs.SandboxLogger, path, id string) (*Mmapfile, error) {
+	hugefile, _ := c.cache.GetOrSet(id, newMmapfile(logger, path), ttlcache.WithTTL[string, *Mmapfile](mmapExpiration))
 
 	mp, err := hugefile.Value().EnsureOpen()
 	if err != nil {
@@ -103,7 +105,7 @@ func NewMmapfileCache() *MmapfileCache {
 	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, *Mmapfile]) {
 		err := item.Value().Close()
 		if err != nil {
-			fmt.Printf("failed to close mmapfile: %v", err)
+			fmt.Fprintf(os.Stderr, "failed to close mmapfile: %v", err)
 		}
 	})
 

@@ -84,6 +84,7 @@ func withCORS(h http.Handler) http.Handler {
 			connectcors.AllowedHeaders(),
 			"Origin",
 			"Accept",
+			"Authorization",
 			"Content-Type",
 			"Cache-Control",
 			"X-Requested-With",
@@ -92,6 +93,7 @@ func withCORS(h http.Handler) http.Handler {
 			"Access-Control-Request-Headers",
 			"Access-Control-Request-Private-Network",
 			"Access-Control-Expose-Headers",
+			"Keepalive-Ping-Interval", // for gRPC
 		),
 		ExposedHeaders: append(
 			connectcors.ExposedHeaders(),
@@ -120,6 +122,7 @@ func main() {
 
 	m := chi.NewRouter()
 
+	envLogger := l.With().Str("logger", "envd").Logger()
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
 	filesystemRpc.Handle(m, &fsLogger)
 
@@ -128,7 +131,7 @@ func main() {
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, envVars)
 
-	handler := api.HandlerFromMux(api.New(&fsLogger, envVars), m)
+	handler := api.HandlerFromMux(api.New(&envLogger, envVars), m)
 
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 

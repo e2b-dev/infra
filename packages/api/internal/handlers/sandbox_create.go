@@ -16,6 +16,9 @@ import (
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -28,7 +31,7 @@ var postSandboxParallelLimit = semaphore.NewWeighted(defaultRequestLimit)
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
-	sandboxID := InstanceIDPrefix + utils.GenerateID()
+	sandboxID := InstanceIDPrefix + id.Generate()
 
 	// Get team from context, use TeamContextKey
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
@@ -37,9 +40,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	span := trace.SpanFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
-
-	sandboxLogger := a.sandboxLogger.With("instanceID", sandboxID, "teamID", team.ID.String(), "traceID", traceID)
-	sandboxLogger.Info("Started creating sandbox")
 
 	telemetry.ReportEvent(ctx, "Parsed body")
 
@@ -53,7 +53,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 
-	cleanedAliasOrEnvID, err := utils.CleanEnvID(body.TemplateID)
+	cleanedAliasOrEnvID, err := id.CleanEnvID(body.TemplateID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid environment ID: %s", err))
 
@@ -78,6 +78,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 	templateSpan.End()
 
+	sandboxLogger := logs.NewSandboxLogger(sandboxID, env.TemplateID, team.ID.String(), int32(build.Vcpu), int32(build.RAMMB), false)
+	sandboxLogger.Debugf("Started creating sandbox")
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	var alias string
@@ -99,7 +101,14 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "waiting for create sandbox parallel limit semaphore slot")
 
 	_, rateSpan := a.Tracer.Start(ctx, "rate-limit")
+	counter, err := meters.GetUpDownCounter(meters.RateLimitCounterMeterName)
+	if err != nil {
+		a.logger.Errorf("error getting counter: %s", err)
+	}
+
+	counter.Add(ctx, 1)
 	limitErr := postSandboxParallelLimit.Acquire(ctx, 1)
+	counter.Add(ctx, -1)
 	if limitErr != nil {
 		errMsg := fmt.Errorf("error when acquiring parallel lock: %w", limitErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -177,6 +186,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
 	instanceInfo := instance.InstanceInfo{
+		Logger:            sandboxLogger,
 		StartTime:         startTime,
 		EndTime:           endTime,
 		Instance:          sandbox,
@@ -187,7 +197,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	_, cacheSpan := a.Tracer.Start(ctx, "add-instance-to-cache")
-	if cacheErr := a.instanceCache.Add(instanceInfo); cacheErr != nil {
+	if cacheErr := a.instanceCache.Add(instanceInfo, true); cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 
@@ -234,7 +244,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		attribute.String("instance.id", sandbox.SandboxID),
 	)
 
-	sandboxLogger.With("envID", env.TemplateID).Info("Sandbox created")
+	sandboxLogger.Infof("Sandbox created with - end time: %s", endTime.Format("2006-01-02 15:04:05 -07:00"))
 
 	c.JSON(http.StatusCreated, &sandbox)
 }

@@ -4,7 +4,7 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 client := gcloud compute instances list --project=$(GCP_PROJECT_ID) --format='csv(name)' | grep "client"
 
 # Set the size of the fc-envs disk
-FC_ENVS_SIZE := 1600
+FC_ENVS_SIZE := 3300
 
 .PHONE: resize-fc-envs
 resize-fc-envs:

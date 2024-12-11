@@ -13,15 +13,30 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
 
+type TemplateCreator struct {
+	Email string
+	Id    uuid.UUID
+}
+
 type Template struct {
-	TemplateID string
-	BuildID    string
-	TeamID     uuid.UUID
-	VCPU       int64
-	DiskMB     int64
-	RAMMB      int64
-	Public     bool
-	Aliases    *[]string
+	TemplateID    string
+	BuildID       string
+	TeamID        uuid.UUID
+	VCPU          int64
+	DiskMB        int64
+	RAMMB         int64
+	Public        bool
+	Aliases       *[]string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	LastSpawnedAt time.Time
+	SpawnCount    int64
+	BuildCount    int32
+	CreatedBy     *TemplateCreator
+}
+
+type UpdateEnvInput struct {
+	Public bool
 }
 
 func (db *DB) DeleteEnv(ctx context.Context, envID string) error {
@@ -38,6 +53,10 @@ func (db *DB) DeleteEnv(ctx context.Context, envID string) error {
 	return nil
 }
 
+func (db *DB) UpdateEnv(ctx context.Context, envID string, input UpdateEnvInput) error {
+	return db.Client.Env.UpdateOneID(envID).SetPublic(input.Public).Exec(ctx)
+}
+
 func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template, err error) {
 	envs, err := db.
 		Client.
@@ -49,6 +68,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 		).
 		Order(models.Asc(env.FieldCreatedAt)).
 		WithEnvAliases().
+		WithCreator().
 		WithBuilds(func(query *models.EnvBuildQuery) {
 			query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt))
 		}).
@@ -63,16 +83,27 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 			aliases[i] = alias.ID
 		}
 
+		var createdBy *TemplateCreator
+		if item.Edges.Creator != nil {
+			createdBy = &TemplateCreator{Id: item.Edges.Creator.ID, Email: item.Edges.Creator.Email}
+		}
+
 		build := item.Edges.Builds[0]
 		result = append(result, &Template{
-			TemplateID: item.ID,
-			TeamID:     item.TeamID,
-			BuildID:    build.ID.String(),
-			VCPU:       build.Vcpu,
-			RAMMB:      build.RAMMB,
-			DiskMB:     build.FreeDiskSizeMB,
-			Public:     item.Public,
-			Aliases:    &aliases,
+			TemplateID:    item.ID,
+			TeamID:        item.TeamID,
+			BuildID:       build.ID.String(),
+			VCPU:          build.Vcpu,
+			RAMMB:         build.RAMMB,
+			DiskMB:        build.FreeDiskSizeMB,
+			Public:        item.Public,
+			Aliases:       &aliases,
+			CreatedAt:     item.CreatedAt,
+			UpdatedAt:     item.UpdatedAt,
+			LastSpawnedAt: item.LastSpawnedAt,
+			SpawnCount:    item.SpawnCount,
+			BuildCount:    item.BuildCount,
+			CreatedBy:     createdBy,
 		})
 	}
 
@@ -112,14 +143,19 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 
 	build = dbEnv.Edges.Builds[0]
 	return &Template{
-		TemplateID: dbEnv.ID,
-		BuildID:    build.ID.String(),
-		VCPU:       build.Vcpu,
-		RAMMB:      build.RAMMB,
-		DiskMB:     build.FreeDiskSizeMB,
-		Public:     dbEnv.Public,
-		Aliases:    &aliases,
-		TeamID:     dbEnv.TeamID,
+		TemplateID:    dbEnv.ID,
+		BuildID:       build.ID.String(),
+		VCPU:          build.Vcpu,
+		RAMMB:         build.RAMMB,
+		DiskMB:        build.FreeDiskSizeMB,
+		Public:        dbEnv.Public,
+		Aliases:       &aliases,
+		TeamID:        dbEnv.TeamID,
+		CreatedAt:     dbEnv.CreatedAt,
+		UpdatedAt:     dbEnv.UpdatedAt,
+		LastSpawnedAt: dbEnv.LastSpawnedAt,
+		SpawnCount:    dbEnv.SpawnCount,
+		BuildCount:    dbEnv.BuildCount,
 	}, build, nil
 }
 
