@@ -6,7 +6,6 @@
 
 set -euo pipefail
 
-
 # Set timestamp format
 PS4='[\D{%Y-%m-%d %H:%M:%S}] '
 # Enable command tracing
@@ -33,7 +32,7 @@ sudo sysctl -p
 
 echo "Disabling inotify for NBD devices"
 # https://lore.kernel.org/lkml/20220422054224.19527-1-matthew.ruffell@canonical.com/
-cat <<EOH > /etc/udev/rules.d/97-nbd-device.rules
+cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
 # Disable inotify watching of change events for NBD devices
 ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
 EOH
@@ -195,4 +194,17 @@ echo '_sbx_ssh() {
   ssh -o StrictHostKeyChecking=accept-new "root@$address"
 }
 
-alias sbx-ssh=_sbx_ssh' >> /etc/profile
+alias sbx-ssh=_sbx_ssh' >>/etc/profile
+
+# Add swapfile
+sudo fallocate -l 250G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+
+# Make swapfile persistent
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# Set swap settings
+sudo sysctl vm.swappiness=10
+sudo sysctl vm.vfs_cache_pressure=50
