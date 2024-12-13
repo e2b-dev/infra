@@ -84,10 +84,8 @@ func (m *Cache) ReadAt(b []byte, off int64) (int, error) {
 	return copy(b, slice), nil
 }
 
-func (m *Cache) WriteAt(b []byte, off int64) (int, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+// When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
+func (m *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	end := off + int64(len(b))
 	if end > m.size {
 		end = m.size
@@ -98,6 +96,13 @@ func (m *Cache) WriteAt(b []byte, off int64) (int, error) {
 	m.setIsCached(off, end-off)
 
 	return n, nil
+}
+
+func (m *Cache) WriteAt(b []byte, off int64) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.WriteAtWithoutLock(b, off)
 }
 
 func (m *Cache) Close() error {
@@ -115,7 +120,7 @@ func (m *Cache) Size() (int64, error) {
 }
 
 // Slice returns a slice of the mmap.
-// When using WriteAt you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
+// When using Slice you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
 func (m *Cache) Slice(off, length int64) ([]byte, error) {
 	if m.isCached(off, length) {
 		end := off + length

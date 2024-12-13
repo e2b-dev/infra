@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -63,8 +62,6 @@ func (c *chunker) prefetch() error {
 		if err != nil {
 			return fmt.Errorf("failed to prefetch block %d-%d: %w", blockOff, blockOff+chunkSize, err)
 		}
-
-		time.Sleep(time.Millisecond * 120)
 	}
 
 	return nil
@@ -138,7 +135,7 @@ func (c *chunker) fetchToCache(off, len int64) error {
 					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
 
-				_, cacheErr := c.cache.WriteAt(b, fetchOff)
+				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)
 				if cacheErr != nil {
 					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
 				}

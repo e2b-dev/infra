@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/codes"
@@ -216,73 +215,68 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		true,
 	)
 
-	go func() {
-		snapshotCtx, snapshotCancel := context.WithTimeout(context.Background(), 10*time.Minute)
-		defer snapshotCancel()
-
-		defer func() {
-			err := sbx.Stop()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error stopping sandbox after snapshot '%s': %v\n", in.SandboxId, err)
-			}
-		}()
-
-		err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
+	defer func() {
+		err := sbx.Stop()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error creating sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
-
-			return
-		}
-
-		defer func() {
-			err := os.RemoveAll(snapshotTemplateFiles.CacheDir())
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error removing sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
-			}
-		}()
-
-		snapshot, err := sbx.Snapshot(snapshotCtx, snapshotTemplateFiles)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error snapshotting sandbox '%s': %v\n", in.SandboxId, err)
-
-			return
-		}
-
-		// Stop the sandbox after the snapshot is created. This removes the DNS record.
-		// If we called the stop at the end, we could accidentally remove the DNS record for the resumed sandbox.
-		sbx.Stop()
-
-		b := storage.NewTemplateBuild(
-			snapshot.MemfileDiffHeader,
-			snapshot.RootfsDiffHeader,
-			snapshotTemplateFiles.TemplateFiles,
-		)
-
-		err = <-b.Upload(
-			snapshotCtx,
-			snapshotTemplateFiles.CacheSnapfilePath(),
-			snapshotTemplateFiles.CacheMemfilePath(),
-			snapshotTemplateFiles.CacheRootfsPath(),
-		)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error uploading sandbox snapshot '%s': %v\n", in.SandboxId, err)
-
-			return
-		}
-
-		fmt.Printf("Finished snapshot in the background: %s\n", snapshotTemplateFiles.TemplateId)
-
-		prefetchTemplateFiles()
-
-		fmt.Printf("prefetched snapshot files: %s\n", snapshotTemplateFiles.TemplateId)
-
-		if sbx.Config.Snapshot {
-			fmt.Printf("removing previous snapshot template: %s\n", sbx.Config.TemplateId)
-
-			// If the sandbox we were snapshotting was already a snapshot we won't need the cache for the "previous" snapshot anymore.
-			s.templateCache.RemoveTemplate(sbx.Config.TemplateId, sbx.Config.BuildId)
+			fmt.Fprintf(os.Stderr, "error stopping sandbox after snapshot '%s': %v\n", in.SandboxId, err)
 		}
 	}()
+
+	err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error creating sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
+
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
+
+	defer func() {
+		err := os.RemoveAll(snapshotTemplateFiles.CacheDir())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error removing sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
+		}
+	}()
+
+	snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error snapshotting sandbox '%s': %v\n", in.SandboxId, err)
+
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
+
+	// Stop the sandbox after the snapshot is created. This removes the DNS record.
+	// If we called the stop at the end, we could accidentally remove the DNS record for the resumed sandbox.
+	sbx.Stop()
+
+	b := storage.NewTemplateBuild(
+		snapshot.MemfileDiffHeader,
+		snapshot.RootfsDiffHeader,
+		snapshotTemplateFiles.TemplateFiles,
+	)
+
+	err = <-b.Upload(
+		ctx,
+		snapshotTemplateFiles.CacheSnapfilePath(),
+		snapshotTemplateFiles.CacheMemfilePath(),
+		snapshotTemplateFiles.CacheRootfsPath(),
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error uploading sandbox snapshot '%s': %v\n", in.SandboxId, err)
+
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
+
+	fmt.Printf("Finished snapshot in the background: %s\n", snapshotTemplateFiles.TemplateId)
+
+	prefetchTemplateFiles()
+
+	fmt.Printf("prefetched snapshot files: %s\n", snapshotTemplateFiles.TemplateId)
+
+	if sbx.Config.Snapshot {
+		fmt.Printf("removing previous snapshot template: %s\n", sbx.Config.TemplateId)
+
+		// If the sandbox we were snapshotting was already a snapshot we won't need the cache for the "previous" snapshot anymore.
+		s.templateCache.RemoveTemplate(sbx.Config.TemplateId, sbx.Config.BuildId)
+	}
 
 	return &emptypb.Empty{}, nil
 }
