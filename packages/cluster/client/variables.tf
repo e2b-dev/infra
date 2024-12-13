@@ -106,7 +106,7 @@ variable "custom_metadata" {
 variable "root_volume_disk_size_gb" {
   description = "The size, in GB, of the root disk volume on each Consul node."
   type        = number
-  default     = 200
+  default     = 500
 }
 
 variable "root_volume_disk_type" {
