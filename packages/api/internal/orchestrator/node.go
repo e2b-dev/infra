@@ -69,6 +69,7 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 		n, ok := nodes[sbx.Instance.ClientID]
 		if !ok {
 			fmt.Fprintf(os.Stderr, "node [%s] for sandbox [%s] wasn't found \n", sbx.Instance.ClientID, sbx.Instance.SandboxID)
+			continue
 		}
 
 		n.AllocatedCPU += int32(sbx.VCpu)
