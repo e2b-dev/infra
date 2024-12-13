@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -61,6 +62,8 @@ func (c *chunker) prefetch() error {
 		if err != nil {
 			return fmt.Errorf("failed to prefetch block %d-%d: %w", blockOff, blockOff+chunkSize, err)
 		}
+
+		time.Sleep(time.Millisecond * 120)
 	}
 
 	return nil
@@ -116,7 +119,7 @@ func (c *chunker) fetchToCache(off, len int64) error {
 				if r := recover(); r != nil {
 					fmt.Println("Recovered from panic in the fetch handler:", r)
 
-					err = fmt.Errorf("recovered from panic in the fetch handler: %w", r)
+					err = fmt.Errorf("recovered from panic in the fetch handler: %v", r)
 				}
 			}()
 
