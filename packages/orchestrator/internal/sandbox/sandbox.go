@@ -414,10 +414,6 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		memfileMapping,
 	)
 
-	// for _, mapping := range memfileMappings {
-	// 	fmt.Printf("[snapshot] memfile mapping: %+v\n", *mapping)
-	// }
-
 	nbdPath, err := s.rootfs.Path()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
@@ -487,17 +483,6 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		originalRootfs.Header().Mapping,
 		rootfsMapping,
 	)
-
-	// for _, mapping := range rootfsMappings {
-	// 	fmt.Printf("[snapshot] rootfs mapping: %+v\n", *mapping)
-	// }
-
-	// fmt.Printf("[snapshot] (%s) tracked blocks: %d\n",
-	// 	time.Since(start),
-	// 	rootfsDirty.Count(),
-	// )
-
-	// fmt.Printf("[snapshot] snapshotting done\n")
 
 	return &SnapshotData{
 		MemfileDiffPath:   snapshotTemplateFiles.CacheMemfilePath(),

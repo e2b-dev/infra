@@ -26,6 +26,7 @@ type chunker struct {
 
 	size int64
 
+	// TODO: Optimize this so we don't need to keep the fetchers in memory.
 	fetchers *utils.WaitMap
 }
 

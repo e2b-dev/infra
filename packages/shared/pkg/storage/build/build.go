@@ -41,8 +41,6 @@ func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
 			return 0, fmt.Errorf("failed to get mapping: %w", err)
 		}
 
-		mappedBuild := b.getBuild(buildID)
-
 		remainingReadLength := int64(len(p)) - int64(n)
 
 		readLength := min(mappedLength, remainingReadLength)
@@ -68,6 +66,20 @@ func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
 			return n, io.EOF
 		}
 
+		// Skip reading when the uuid is nil.
+		// We will use this to handle base builds that are already diffs.
+		// The passed slice p must start as empty, otherwise we would need to copy the empty values there.
+		if *buildID == uuid.Nil {
+			n += int(readLength)
+
+			continue
+		}
+
+		mappedBuild, err := b.getBuild(buildID)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get build: %w", err)
+		}
+
 		buildN, err := mappedBuild.ReadAt(
 			p[n:int64(n)+readLength],
 			mappedOffset,
@@ -82,6 +94,11 @@ func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
 	return n, nil
 }
 
-func (b *Build) getBuild(buildID *uuid.UUID) io.ReaderAt {
-	return b.buildStore.Get(buildID.String() + "/" + b.storeKeySuffix)
+func (b *Build) getBuild(buildID *uuid.UUID) (io.ReaderAt, error) {
+	source, err := b.buildStore.Get(buildID.String() + "/" + b.storeKeySuffix)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get build from store: %w", err)
+	}
+
+	return source, nil
 }

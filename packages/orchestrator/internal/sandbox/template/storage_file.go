@@ -24,7 +24,10 @@ func newStorageFile(
 
 	defer f.Close()
 
-	object := buildStore.Get(bucketObjectPath)
+	object, err := buildStore.Get(bucketObjectPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object: %w", err)
+	}
 
 	_, err = object.WriteTo(f)
 	if err != nil {

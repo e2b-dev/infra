@@ -32,7 +32,10 @@ func NewStorage(
 	var h *header.Header
 
 	if isSnapshot {
-		headerObject := store.Get(id.String() + "/" + storeKeySuffix + ".header")
+		headerObject, err := store.Get(id.String() + "/" + storeKeySuffix + ".header")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get header object: %w", err)
+		}
 
 		diffHeader, err := header.Deserialize(headerObject)
 		if err != nil {
@@ -41,7 +44,10 @@ func NewStorage(
 
 		h = diffHeader
 	} else {
-		object := store.Get(id.String() + "/" + storeKeySuffix)
+		object, err := store.Get(id.String() + "/" + storeKeySuffix)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get object: %w", err)
+		}
 
 		size, err := object.Size()
 		if err != nil {
