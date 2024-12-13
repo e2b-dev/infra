@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -23,26 +24,28 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
-	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 )
 
 type APIStore struct {
-	Ctx             context.Context
-	analytics       *analyticscollector.Analytics
-	posthog         *PosthogClient
-	Tracer          trace.Tracer
-	instanceCache   *instance.InstanceCache
-	orchestrator    *orchestrator.Orchestrator
-	templateManager *template_manager.TemplateManager
-	buildCache      *builds.BuildCache
-	db              *db.DB
-	lokiClient      *loki.DefaultClient
-	logger          *zap.SugaredLogger
-	templateCache   *templatecache.TemplateCache
-	authCache       *authcache.TeamAuthCache
+	Ctx                  context.Context
+	analytics            *analyticscollector.Analytics
+	posthog              *PosthogClient
+	Tracer               trace.Tracer
+	instanceCache        *instance.InstanceCache
+	orchestrator         *orchestrator.Orchestrator
+	templateManager      *template_manager.TemplateManager
+	buildCache           *builds.BuildCache
+	db                   *db.DB
+	lokiClient           *loki.DefaultClient
+	logger               *zap.SugaredLogger
+	templateCache        *templatecache.TemplateCache
+	authCache            *authcache.TeamAuthCache
+	templateSpawnCounter *utils.TemplateSpawnCounter
 }
 
 var lokiAddress = os.Getenv("LOKI_ADDRESS")
@@ -130,21 +133,25 @@ func NewAPIStore() *APIStore {
 
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)
+	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, func(templateID string, count int) error {
+		return dbClient.UpdateEnvLastUsed(context.Background(), templateID)
+	})
 
 	return &APIStore{
-		Ctx:             ctx,
-		orchestrator:    orch,
-		templateManager: templateManager,
-		db:              dbClient,
-		instanceCache:   instanceCache,
-		Tracer:          tracer,
-		analytics:       analytics,
-		posthog:         posthogClient,
-		buildCache:      buildCache,
-		logger:          logger,
-		lokiClient:      lokiClient,
-		templateCache:   templateCache,
-		authCache:       authCache,
+		Ctx:                  ctx,
+		orchestrator:         orch,
+		templateManager:      templateManager,
+		db:                   dbClient,
+		instanceCache:        instanceCache,
+		Tracer:               tracer,
+		analytics:            analytics,
+		posthog:              posthogClient,
+		buildCache:           buildCache,
+		logger:               logger,
+		lokiClient:           lokiClient,
+		templateCache:        templateCache,
+		authCache:            authCache,
+		templateSpawnCounter: templateSpawnCounter,
 	}
 }
 

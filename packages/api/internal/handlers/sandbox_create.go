@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -233,12 +232,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "Created analytics event")
 
-	go func() {
-		err = a.db.UpdateEnvLastUsed(context.Background(), env.TemplateID)
-		if err != nil {
-			a.logger.Errorf("Error when updating last used for env: %s", err)
-		}
-	}()
+	a.templateSpawnCounter.IncreaseTemplateSpawnCount(env.TemplateID)
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("instance.id", sandbox.SandboxID),
