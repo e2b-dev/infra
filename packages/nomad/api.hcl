@@ -68,11 +68,6 @@ variable "orchestrator_port" {
   default = ""
 }
 
-variable "session_proxy_port" {
-  type    = string
-  default = ""
-}
-
 variable "template_manager_address" {
   type    = string
   default = ""
@@ -124,7 +119,6 @@ job "api" {
       }
 
       env {
-        SESSION_PROXY_PORT            = var.session_proxy_port
         ORCHESTRATOR_PORT             = var.orchestrator_port
         TEMPLATE_MANAGER_ADDRESS      = var.template_manager_address
         POSTGRES_CONNECTION_STRING    = var.postgres_connection_string
