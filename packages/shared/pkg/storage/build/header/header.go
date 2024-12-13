@@ -45,7 +45,16 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) *Header {
 	}
 }
 
-func (t *Header) GetMapping(offset int64) (*BuildMap, int64, error) {
+func (t *Header) GetShiftedMapping(offset int64) (mappedOffset int64, mappedLength int64, buildID *uuid.UUID, err error) {
+	mapping, shift, err := t.getMapping(offset)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+
+	return int64(mapping.BuildStorageOffset) + shift, int64(mapping.Length) - shift, &mapping.BuildId, nil
+}
+
+func (t *Header) getMapping(offset int64) (*BuildMap, int64, error) {
 	block := BlockIdx(offset, int64(t.Metadata.BlockSize))
 
 	start, ok := t.blockStarts.PreviousSet(uint(block))
@@ -117,6 +126,12 @@ func MergeMappings(
 	if len(diffMapping) == 0 {
 		return baseMapping
 	}
+
+	baseMappingCopy := make([]*BuildMap, len(baseMapping))
+
+	copy(baseMappingCopy, baseMapping)
+
+	baseMapping = baseMappingCopy
 
 	mappings := make([]*BuildMap, 0)
 
