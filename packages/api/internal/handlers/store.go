@@ -133,9 +133,7 @@ func NewAPIStore() *APIStore {
 
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)
-	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, func(templateID string, count int) error {
-		return dbClient.UpdateEnvLastUsed(context.Background(), int64(count), templateID)
-	})
+	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
 	return &APIStore{
 		Ctx:                  ctx,

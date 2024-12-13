@@ -1,8 +1,11 @@
 package utils
 
 import (
+	"context"
 	"sync"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 )
 
 type TemplateSpawnCounter struct {
@@ -12,14 +15,14 @@ type TemplateSpawnCounter struct {
 	done     chan bool
 }
 
-func NewTemplateSpawnCounter(tickerDuration time.Duration, processingFunction func(templateID string, count int) error) *TemplateSpawnCounter {
+func NewTemplateSpawnCounter(tickerDuration time.Duration, dbClient *db.DB) *TemplateSpawnCounter {
 	counter := &TemplateSpawnCounter{
 		counters: make(map[string]int),
 		ticker:   time.NewTicker(tickerDuration),
 		done:     make(chan bool),
 	}
 
-	go counter.processUpdates(processingFunction)
+	go counter.processUpdates(dbClient)
 	return counter
 }
 
@@ -29,11 +32,11 @@ func (t *TemplateSpawnCounter) IncreaseTemplateSpawnCount(templateID string) {
 	t.mu.Unlock()
 }
 
-func (t *TemplateSpawnCounter) processUpdates(processingFunction func(templateID string, count int) error) {
+func (t *TemplateSpawnCounter) processUpdates(dbClient *db.DB) {
 	for {
 		select {
 		case <-t.ticker.C:
-			t.flushCounters(processingFunction)
+			t.flushCounters(dbClient)
 		case <-t.done:
 			t.ticker.Stop()
 			return
@@ -41,7 +44,7 @@ func (t *TemplateSpawnCounter) processUpdates(processingFunction func(templateID
 	}
 }
 
-func (t *TemplateSpawnCounter) flushCounters(processingFunction func(templateID string, count int) error) {
+func (t *TemplateSpawnCounter) flushCounters(dbClient *db.DB) {
 	t.mu.Lock()
 	updates := make(map[string]int)
 	for templateID, count := range t.counters {
@@ -54,7 +57,7 @@ func (t *TemplateSpawnCounter) flushCounters(processingFunction func(templateID 
 	t.mu.Unlock()
 
 	for templateID, count := range updates {
-		processingFunction(templateID, count)
+		dbClient.UpdateEnvLastUsed(context.Background(), int64(count), templateID)
 	}
 }
 
