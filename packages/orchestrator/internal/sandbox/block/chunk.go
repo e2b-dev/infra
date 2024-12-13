@@ -111,8 +111,16 @@ func (c *chunker) fetchToCache(off, len int64) error {
 		// Ensure the closure captures the correct block offset.
 		fetchOff := startingChunkOffset + chunkOff
 
-		eg.Go(func() error {
-			return c.fetchers.Wait(fetchOff, func() error {
+		eg.Go(func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Println("Recovered from panic in the fetch handler:", r)
+
+					err = fmt.Errorf("recovered from panic in the fetch handler: %w", r)
+				}
+			}()
+
+			err = c.fetchers.Wait(fetchOff, func() error {
 				select {
 				case <-c.ctx.Done():
 					return fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+chunkSize, c.ctx.Err())
@@ -133,6 +141,8 @@ func (c *chunker) fetchToCache(off, len int64) error {
 
 				return nil
 			})
+
+			return err
 		})
 	}
 
