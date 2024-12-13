@@ -13,10 +13,10 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -39,7 +39,7 @@ func New() (*grpc.Server, error) {
 	go func() {
 		log.Printf("Starting DNS server")
 
-		err := dnsServer.Start("127.0.0.1:53")
+		err := dnsServer.Start("127.0.0.4", 53)
 		if err != nil {
 			log.Fatalf("Failed running DNS server: %s\n", err.Error())
 		}
