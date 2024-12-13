@@ -13,7 +13,7 @@ import (
 
 // How long to keep the template in the cache since the last access.
 // Should be longer than the maximum possible sandbox lifetime.
-const templateExpiration = time.Hour * 48
+const templateExpiration = time.Hour * 24
 
 type Cache struct {
 	cache      *ttlcache.Cache[string, Template]
