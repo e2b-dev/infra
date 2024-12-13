@@ -47,7 +47,7 @@ func (o *Orchestrator) listNomadNodes() ([]*node.NodeInfo, error) {
 		nodes = append(nodes, &node.NodeInfo{
 			ID:                  n.ID[:consts.NodeIDLength],
 			OrchestratorAddress: fmt.Sprintf("%s:%s", n.Address, consts.OrchestratorPort),
-			ProxyAddress:        fmt.Sprintf("%s:%s", n.Address, consts.SessionProxyPort),
+			IPAddress:           n.Address,
 		})
 	}
 
