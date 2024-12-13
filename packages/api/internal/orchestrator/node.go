@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -57,20 +58,25 @@ func (o *Orchestrator) GetNode(nodeID string) *Node {
 
 func (o *Orchestrator) GetNodes() []*api.Node {
 	nodes := make(map[string]*api.Node)
-	for key, node := range o.nodes {
-		nodes[key] = &api.Node{NodeID: key, Status: node.Status}
+	for key, n := range o.nodes {
+		nodes[key] = &api.Node{NodeID: key, Status: n.Status}
 	}
 
-	fmt.Println("o.instanceCache.Items()", o.instanceCache.Items())
 	for _, sbx := range o.instanceCache.Items() {
-		nodes[sbx.Instance.ClientID].AllocatedCPU += int32(sbx.VCpu)
-		nodes[sbx.Instance.ClientID].AllocatedMemoryMiB += int32(sbx.RamMB)
-		nodes[sbx.Instance.ClientID].SandboxCount += 1
+		n, ok := nodes[sbx.Instance.ClientID]
+		if !ok {
+			fmt.Fprintf(os.Stderr, "node [%s] for sandbox [%s] wasn't found \n", sbx.Instance.ClientID, sbx.Instance.SandboxID)
+			continue
+		}
+
+		n.AllocatedCPU += int32(sbx.VCpu)
+		n.AllocatedMemoryMiB += int32(sbx.RamMB)
+		n.SandboxCount += 1
 	}
 
 	var result []*api.Node
-	for _, node := range nodes {
-		result = append(result, node)
+	for _, n := range nodes {
+		result = append(result, n)
 	}
 
 	return result
