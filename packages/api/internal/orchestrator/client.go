@@ -53,19 +53,19 @@ func (o *Orchestrator) connectToNode(node *node.NodeInfo) error {
 		buildCache:     buildCache,
 		sbxsInProgress: make(map[string]*sbxInProgress),
 		Status:         api.NodeStatusReady,
-		Info:   node,
+		Info:           node,
 	}
 
-	o.nodes[n.ID] = n
+	o.nodes[n.Info.ID] = n
 
 	return nil
 }
 
 func (o *Orchestrator) GetClient(nodeID string) (*GRPCClient, error) {
-	node := o.GetNode(nodeID)
-	if node == nil {
+	n := o.GetNode(nodeID)
+	if n == nil {
 		return nil, fmt.Errorf("node '%s' not found", nodeID)
 	}
 
-	return node.Client, nil
+	return n.Client, nil
 }
