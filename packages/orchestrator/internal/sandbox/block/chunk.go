@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -61,6 +62,8 @@ func (c *chunker) prefetch() error {
 		if err != nil {
 			return fmt.Errorf("failed to prefetch block %d-%d: %w", blockOff, blockOff+chunkSize, err)
 		}
+
+		time.Sleep(time.Millisecond * 120)
 	}
 
 	return nil
@@ -111,8 +114,16 @@ func (c *chunker) fetchToCache(off, len int64) error {
 		// Ensure the closure captures the correct block offset.
 		fetchOff := startingChunkOffset + chunkOff
 
-		eg.Go(func() error {
-			return c.fetchers.Wait(fetchOff, func() error {
+		eg.Go(func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Println("Recovered from panic in the fetch handler:", r)
+
+					err = fmt.Errorf("recovered from panic in the fetch handler: %v", r)
+				}
+			}()
+
+			err = c.fetchers.Wait(fetchOff, func() error {
 				select {
 				case <-c.ctx.Done():
 					return fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+chunkSize, c.ctx.Err())
@@ -133,6 +144,8 @@ func (c *chunker) fetchToCache(off, len int64) error {
 
 				return nil
 			})
+
+			return err
 		})
 	}
 

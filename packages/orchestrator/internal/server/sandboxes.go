@@ -248,6 +248,10 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			return
 		}
 
+		// Stop the sandbox after the snapshot is created. This removes the DNS record.
+		// If we called the stop at the end, we could accidentally remove the DNS record for the resumed sandbox.
+		sbx.Stop()
+
 		b := storage.NewTemplateBuild(
 			snapshot.MemfileDiffHeader,
 			snapshot.RootfsDiffHeader,
@@ -273,6 +277,8 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		fmt.Printf("prefetched snapshot files: %s\n", snapshotTemplateFiles.TemplateId)
 
 		if sbx.Config.Snapshot {
+			fmt.Printf("removing previous snapshot template: %s\n", sbx.Config.TemplateId)
+
 			// If the sandbox we were snapshotting was already a snapshot we won't need the cache for the "previous" snapshot anymore.
 			s.templateCache.RemoveTemplate(sbx.Config.TemplateId, sbx.Config.BuildId)
 		}
