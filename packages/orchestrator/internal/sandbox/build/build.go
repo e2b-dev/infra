@@ -9,21 +9,21 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-type Build struct {
-	header         *header.Header
-	buildStore     *DiffStore
-	storeKeySuffix string
+type File struct {
+	header   *header.Header
+	store    *DiffStore
+	fileType DiffType
 }
 
-func NewFromStorage(
+func NewFile(
 	header *header.Header,
 	store *DiffStore,
-	storeKeySuffix string,
-) *Build {
-	return &Build{
-		header:         header,
-		buildStore:     store,
-		storeKeySuffix: storeKeySuffix,
+	fileType DiffType,
+) *File {
+	return &File{
+		header:   header,
+		store:    store,
+		fileType: fileType,
 	}
 }
 
@@ -35,7 +35,7 @@ func min(a, b int64) int64 {
 	return b
 }
 
-func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
+func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
 	for n < len(p) {
 		mappedOffset, mappedLength, buildID, err := b.header.GetShiftedMapping(off + int64(n))
 		if err != nil {
@@ -53,7 +53,7 @@ func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
 				off,
 				readLength,
 				buildID,
-				b.storeKeySuffix,
+				b.fileType,
 				mappedOffset,
 				n,
 				int64(n)+readLength,
@@ -96,7 +96,7 @@ func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 // The slice access must be in the predefined blocksize of the build.
-func (b *Build) Slice(off, length int64) ([]byte, error) {
+func (b *File) Slice(off, length int64) ([]byte, error) {
 	mappedOffset, mappedLength, buildID, err := b.header.GetShiftedMapping(off)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mapping: %w", err)
@@ -110,9 +110,9 @@ func (b *Build) Slice(off, length int64) ([]byte, error) {
 	return build.Slice(mappedOffset, mappedLength)
 }
 
-func (b *Build) getBuild(buildID *uuid.UUID) (Diff, error) {
-	source, err := b.buildStore.Get(
-		buildID.String()+"/"+b.storeKeySuffix,
+func (b *File) getBuild(buildID *uuid.UUID) (Diff, error) {
+	source, err := b.store.Get(
+		buildID.String()+"/"+string(b.fileType),
 		int64(b.header.Metadata.BlockSize),
 	)
 	if err != nil {

@@ -49,7 +49,7 @@ type Sandbox struct {
 
 	networkPool *network.Pool
 
-	slot   network.Slot
+	Slot   network.Slot
 	Logger *logs.SandboxLogger
 	stats  *stats.Handle
 
@@ -236,7 +236,7 @@ func NewSandbox(
 	sbx := &Sandbox{
 		uffdExit:  uffdExit,
 		files:     sandboxFiles,
-		slot:      ips,
+		Slot:      ips,
 		template:  t,
 		process:   fcHandle,
 		uffd:      fcUffd,
@@ -297,7 +297,7 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
 
 	cleanup.Add(func() error {
-		dns.Remove(config.SandboxId)
+		dns.Remove(config.SandboxId, ips.HostIP())
 
 		return nil
 	})
@@ -377,7 +377,7 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	}
 
 	// TODO: Redirect this to the local diff
-	memfileDiff := build.NewLocalDiff()
+	memfileDiff := build.NewLocalDiff(buildId.String(), s.files.MemfilePageSize())
 
 	err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiff)
 	if err != nil {
@@ -394,6 +394,11 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		originalMemfile.Header().Mapping,
 		memfileMapping,
 	)
+
+	snapfile, err := template.NewLocalFile(snapshotTemplateFiles.CacheSnapfilePath())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create local snapfile: %w", err)
+	}
 
 	// ROOTFS
 	originalRootfs, err := s.template.Rootfs()
@@ -433,7 +438,7 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		return nil, fmt.Errorf("failed to fsync rootfs path: %w", err)
 	}
 
-	rootfsDiff := build.NewLocalDiff()
+	rootfsDiff := build.NewLocalDiff(buildId.String(), s.files.RootfsBlockSize())
 
 	rootfsDirtyBlocks, err := s.rootfs.Export(rootfsDiff)
 	if err != nil {
@@ -452,6 +457,7 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	)
 
 	return &Snapshot{
+		Snapfile:          snapfile,
 		MemfileDiffPath:   memfileDiff,
 		MemfileDiffHeader: header.NewHeader(memfileMetadata, memfileMappings),
 		RootfsDiffPath:    rootfsDiff,
@@ -464,4 +470,5 @@ type Snapshot struct {
 	MemfileDiffHeader *header.Header
 	RootfsDiffPath    *build.LocalDiff
 	RootfsDiffHeader  *header.Header
+	Snapfile          *template.LocalFile
 }

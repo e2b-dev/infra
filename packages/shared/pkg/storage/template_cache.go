@@ -33,16 +33,8 @@ func (c *TemplateCacheFiles) CacheDir() string {
 	return filepath.Join(templateCacheDir, c.TemplateId, c.BuildId, "cache", c.CacheIdentifier)
 }
 
-func (c *TemplateCacheFiles) CacheMemfilePath() string {
-	return filepath.Join(c.CacheDir(), MemfileName)
-}
-
 func (c *TemplateCacheFiles) CacheMemfileFullSnapshotPath() string {
 	return filepath.Join(c.CacheDir(), MemfileName+".snapshot")
-}
-
-func (c *TemplateCacheFiles) CacheRootfsPath() string {
-	return filepath.Join(c.CacheDir(), RootfsName)
 }
 
 func (c *TemplateCacheFiles) CacheSnapfilePath() string {

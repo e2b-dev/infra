@@ -6,36 +6,29 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type Storage struct {
 	header *header.Header
-	source *build.Build
+	source *build.File
 }
 
 func NewStorage(
 	ctx context.Context,
 	store *build.DiffStore,
 	buildId string,
-	storeKeySuffix string,
+	fileType build.DiffType,
 	blockSize int64,
 	isSnapshot bool,
+	h *header.Header,
+	bucket *gcs.BucketHandle,
 ) (*Storage, error) {
-	id, err := uuid.Parse(buildId)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse build id: %w", err)
-	}
-
-	var h *header.Header
-
-	if isSnapshot {
-		headerObject, err := store.Get(id.String()+"/"+storeKeySuffix+".header", block.ChunkSize)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get header object: %w", err)
-		}
+	if isSnapshot && h == nil {
+		headerObject := gcs.NewObject(ctx, bucket, buildId+"/"+string(fileType)+storage.HeaderSuffix)
 
 		diffHeader, err := header.Deserialize(headerObject)
 		if err != nil {
@@ -43,15 +36,17 @@ func NewStorage(
 		}
 
 		h = diffHeader
-	} else {
-		object, err := store.Get(id.String()+"/"+storeKeySuffix, block.ChunkSize)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get object: %w", err)
-		}
+	} else if h == nil {
+		object := gcs.NewObject(ctx, bucket, buildId+"/"+string(fileType))
 
 		size, err := object.Size()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object size: %w", err)
+		}
+
+		id, err := uuid.Parse(buildId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse build id: %w", err)
 		}
 
 		h = header.NewHeader(&header.Metadata{
@@ -64,7 +59,7 @@ func NewStorage(
 		}, nil)
 	}
 
-	b := build.NewFromStorage(h, store, storeKeySuffix)
+	b := build.NewFile(h, store, fileType)
 
 	return &Storage{
 		source: b,

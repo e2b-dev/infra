@@ -6,9 +6,10 @@ import (
 	"io"
 	"path/filepath"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
-	"github.com/google/uuid"
 )
 
 type StorageDiff struct {

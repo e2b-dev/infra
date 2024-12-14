@@ -161,7 +161,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	sbx.Healthcheck(ctx, true)
 
 	// Don't allow connecting to the sandbox anymore.
-	s.dns.Remove(in.SandboxId)
+	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
 
 	err := sbx.Stop()
 	if err != nil {
@@ -188,7 +188,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.NotFound, "sandbox not found").Err()
 	}
 
-	s.dns.Remove(in.SandboxId)
+	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
 	s.sandboxes.Remove(in.SandboxId)
 
 	s.pauseMu.Unlock()
@@ -238,29 +238,43 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	// If we called the stop at the end, we could accidentally remove the DNS record for the resumed sandbox.
 	sbx.Stop()
 
-	b := storage.NewTemplateBuild(
-		snapshot.MemfileDiffHeader,
-		snapshot.RootfsDiffHeader,
-		snapshotTemplateFiles.TemplateFiles,
-	)
+	// b := storage.NewTemplateBuild(
+	// 	snapshot.MemfileDiffHeader,
+	// 	snapshot.RootfsDiffHeader,
+	// 	snapshotTemplateFiles.TemplateFiles,
+	// )
 
 	// TODO: Add diffs to the build store and template to the template cache.
 
-	go func() {
-		err = <-b.Upload(
-			context.Background(),
-			snapshotTemplateFiles.CacheSnapfilePath(),
-			snapshotTemplateFiles.CacheMemfilePath(),
-			snapshotTemplateFiles.CacheRootfsPath(),
-		)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error uploading sandbox snapshot '%s': %v\n", in.SandboxId, err)
+	err = s.templateCache.AddSnapshot(
+		snapshotTemplateFiles.TemplateId,
+		snapshotTemplateFiles.BuildId,
+		snapshotTemplateFiles.KernelVersion,
+		snapshotTemplateFiles.FirecrackerVersion,
+		snapshotTemplateFiles.Hugepages(),
+		snapshot.MemfileDiffHeader,
+		snapshot.RootfsDiffHeader,
+		snapshot.Snapfile,
+	)
+	if err != nil {
+		return nil, status.New(codes.Internal, err.Error()).Err()
+	}
 
-			return
-		}
+	// go func() {
+	// 	err = <-b.Upload(
+	// 		context.Background(),
+	// 		snapshotTemplateFiles.CacheSnapfilePath(),
+	// 		snapshotTemplateFiles.CacheMemfilePath(),
+	// 		snapshotTemplateFiles.CacheRootfsPath(),
+	// 	)
+	// 	if err != nil {
+	// 		fmt.Fprintf(os.Stderr, "error uploading sandbox snapshot '%s': %v\n", in.SandboxId, err)
 
-		fmt.Printf("Finished uploading snapshot in the background: %s\n", snapshotTemplateFiles.TemplateId)
-	}()
+	// 		return
+	// 	}
+
+	// 	fmt.Printf("Finished uploading snapshot in the background: %s\n", snapshotTemplateFiles.TemplateId)
+	// }()
 
 	return &emptypb.Empty{}, nil
 }

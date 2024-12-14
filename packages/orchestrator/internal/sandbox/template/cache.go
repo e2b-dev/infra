@@ -9,11 +9,12 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 // How long to keep the template in the cache since the last access.
 // Should be longer than the maximum possible sandbox lifetime.
-const templateExpiration = time.Hour * 24
+const templateExpiration = time.Hour * 48
 
 type Cache struct {
 	cache      *ttlcache.Cache[string, Template]
@@ -70,6 +71,10 @@ func (c *Cache) GetTemplate(
 		firecrackerVersion,
 		hugePages,
 		isSnapshot,
+		nil,
+		nil,
+		c.bucket,
+		nil,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
@@ -88,28 +93,30 @@ func (c *Cache) GetTemplate(
 	return t.Value(), nil
 }
 
-func (c *Cache) RemoveTemplate(templateId string, buildId string) {
-	c.cache.Delete(fmt.Sprintf("%s-%s", templateId, buildId))
-}
-
-func (c *Cache) AddTemplateWithPrefetch(
+func (c *Cache) AddSnapshot(
 	templateId,
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
 	hugePages bool,
-	isSnapshot bool,
-) (func(), error) {
+	memfileHeader *header.Header,
+	rootfsHeader *header.Header,
+	localSnapfile *LocalFile,
+) error {
 	storageTemplate, err := newTemplateFromStorage(
 		templateId,
 		buildId,
 		kernelVersion,
 		firecrackerVersion,
 		hugePages,
-		isSnapshot,
+		true,
+		memfileHeader,
+		rootfsHeader,
+		c.bucket,
+		localSnapfile,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
+		return fmt.Errorf("failed to create template cache from storage: %w", err)
 	}
 
 	_, found := c.cache.GetOrSet(
@@ -119,10 +126,8 @@ func (c *Cache) AddTemplateWithPrefetch(
 	)
 
 	if !found {
-		return func() {
-			storageTemplate.Fetch(c.ctx, c.buildStore)
-		}, nil
+		go storageTemplate.Fetch(c.ctx, c.buildStore)
 	}
 
-	return func() {}, nil
+	return nil
 }

@@ -29,6 +29,8 @@ const (
 	RootfsName   = "rootfs.ext4"
 	SnapfileName = "snapfile"
 
+	HeaderSuffix = ".header"
+
 	pageSize        = 2 << 11
 	hugepageSize    = 2 << 20
 	rootfsBlockSize = 2 << 11
@@ -96,7 +98,7 @@ func (t *TemplateFiles) StorageMemfilePath() string {
 }
 
 func (t *TemplateFiles) StorageMemfileHeaderPath() string {
-	return fmt.Sprintf("%s/%s.header", t.StorageDir(), MemfileName)
+	return fmt.Sprintf("%s/%s%s", t.StorageDir(), MemfileName, HeaderSuffix)
 }
 
 func (t *TemplateFiles) StorageRootfsPath() string {
@@ -104,7 +106,7 @@ func (t *TemplateFiles) StorageRootfsPath() string {
 }
 
 func (t *TemplateFiles) StorageRootfsHeaderPath() string {
-	return fmt.Sprintf("%s/%s.header", t.StorageDir(), RootfsName)
+	return fmt.Sprintf("%s/%s%s", t.StorageDir(), RootfsName, HeaderSuffix)
 }
 
 func (t *TemplateFiles) StorageSnapfilePath() string {

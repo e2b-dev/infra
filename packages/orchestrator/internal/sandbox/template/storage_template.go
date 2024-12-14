@@ -8,6 +8,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -16,9 +18,15 @@ type storageTemplate struct {
 
 	memfile  *utils.SetOnce[*Storage]
 	rootfs   *utils.SetOnce[*Storage]
-	snapfile *utils.SetOnce[*storageFile]
+	snapfile *utils.SetOnce[File]
 
 	isSnapshot bool
+
+	memfileHeader *header.Header
+	rootfsHeader  *header.Header
+	localSnapfile *LocalFile
+
+	bucket *gcs.BucketHandle
 }
 
 func newTemplateFromStorage(
@@ -28,6 +36,10 @@ func newTemplateFromStorage(
 	firecrackerVersion string,
 	hugePages bool,
 	isSnapshot bool,
+	memfileHeader *header.Header,
+	rootfsHeader *header.Header,
+	bucket *gcs.BucketHandle,
+	localSnapfile *LocalFile,
 ) (*storageTemplate, error) {
 	files, err := storage.NewTemplateFiles(
 		templateId,
@@ -41,11 +53,15 @@ func newTemplateFromStorage(
 	}
 
 	return &storageTemplate{
-		files:      files,
-		isSnapshot: isSnapshot,
-		memfile:    utils.NewSetOnce[*Storage](),
-		rootfs:     utils.NewSetOnce[*Storage](),
-		snapfile:   utils.NewSetOnce[*storageFile](),
+		files:         files,
+		localSnapfile: localSnapfile,
+		isSnapshot:    isSnapshot,
+		memfileHeader: memfileHeader,
+		rootfsHeader:  rootfsHeader,
+		bucket:        bucket,
+		memfile:       utils.NewSetOnce[*Storage](),
+		rootfs:        utils.NewSetOnce[*Storage](),
+		snapfile:      utils.NewSetOnce[File](),
 	}, nil
 }
 
@@ -66,6 +82,9 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 	wg.Add(1)
 	go func() error {
 		defer wg.Done()
+		if t.localSnapfile != nil {
+			return t.snapfile.SetValue(t.localSnapfile)
+		}
 
 		snapfile, snapfileErr := newStorageFile(
 			buildStore,
@@ -89,9 +108,11 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			ctx,
 			buildStore,
 			t.files.BuildId,
-			storage.MemfileName,
+			build.Memfile,
 			t.files.MemfilePageSize(),
 			t.isSnapshot,
+			t.memfileHeader,
+			t.bucket,
 		)
 		if memfileErr != nil {
 			errMsg := fmt.Errorf("failed to create memfile storage: %w", memfileErr)
@@ -110,9 +131,11 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			ctx,
 			buildStore,
 			t.files.BuildId,
-			storage.RootfsName,
+			build.Rootfs,
 			t.files.RootfsBlockSize(),
 			t.isSnapshot,
+			t.rootfsHeader,
+			t.bucket,
 		)
 		if rootfsErr != nil {
 			errMsg := fmt.Errorf("failed to create rootfs storage: %w", rootfsErr)

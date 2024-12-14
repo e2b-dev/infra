@@ -1,6 +1,17 @@
 package build
 
-import "io"
+import (
+	"io"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+)
+
+type DiffType string
+
+const (
+	Memfile DiffType = storage.MemfileName
+	Rootfs  DiffType = storage.RootfsName
+)
 
 type Diff interface {
 	Init() error

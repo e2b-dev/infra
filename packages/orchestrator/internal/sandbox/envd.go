@@ -17,7 +17,7 @@ import (
 )
 
 func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
-	address := fmt.Sprintf("http://%s:%d/sync", s.slot.HostIP(), consts.OldEnvdServerPort)
+	address := fmt.Sprintf("http://%s:%d/sync", s.Slot.HostIP(), consts.OldEnvdServerPort)
 
 	for {
 		select {
@@ -62,7 +62,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map
 	childCtx, childSpan := tracer.Start(ctx, "envd-init")
 	defer childSpan.End()
 
-	address := fmt.Sprintf("http://%s:%d/init", s.slot.HostIP(), consts.DefaultEnvdServerPort)
+	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
 
 	jsonBody := &PostInitJSONBody{
 		EnvVars: &envVars,

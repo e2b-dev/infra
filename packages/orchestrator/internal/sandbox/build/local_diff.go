@@ -1,19 +1,15 @@
 package build
 
 import (
-	"context"
 	"io"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
 type LocalDiff struct {
 	chunker   *block.Chunker
 	size      int64
 	blockSize int64
-	ctx       context.Context
-	bucket    *gcs.BucketHandle
 	id        string
 }
 
@@ -23,32 +19,27 @@ func NewLocalDiff(
 ) *LocalDiff {
 	return &LocalDiff{
 		blockSize: blockSize,
-		ctx:       ctx,
-		bucket:    bucket,
 		id:        id,
 	}
 }
 
-func (b *StorageDiff) Upload(ctx context.Context, bucket *gcs.BucketHandle, objectPath string) error {
-}
-
-func (b *StorageDiff) Close() error {
+func (b *LocalDiff) Close() error {
 	return b.chunker.Close()
 }
 
-func (b *StorageDiff) ReadAt(p []byte, off int64) (int, error) {
+func (b *LocalDiff) ReadAt(p []byte, off int64) (int, error) {
 	return b.chunker.ReadAt(p, off)
 }
 
-func (b *StorageDiff) Size() (int64, error) {
+func (b *LocalDiff) Size() (int64, error) {
 	return b.size, nil
 }
 
-func (b *StorageDiff) Slice(off, length int64) ([]byte, error) {
+func (b *LocalDiff) Slice(off, length int64) ([]byte, error) {
 	return b.chunker.Slice(off, length)
 }
 
-func (b *StorageDiff) WriteTo(w io.Writer) (int64, error) {
+func (b *LocalDiff) WriteTo(w io.Writer) (int64, error) {
 	return b.chunker.WriteTo(w)
 }
 

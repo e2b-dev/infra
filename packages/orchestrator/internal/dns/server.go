@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 
 	resolver "github.com/miekg/dns"
 
@@ -13,6 +14,7 @@ import (
 const ttl = 0
 
 type DNS struct {
+	mu      sync.Mutex
 	records *smap.Map[string]
 }
 
@@ -26,8 +28,10 @@ func (d *DNS) Add(sandboxID, ip string) {
 	d.records.Insert(d.hostname(sandboxID), ip)
 }
 
-func (d *DNS) Remove(sandboxID string) {
-	d.records.Remove(d.hostname(sandboxID))
+func (d *DNS) Remove(sandboxID, ip string) {
+	d.records.RemoveCb(d.hostname(sandboxID), func(key string, v string, exists bool) bool {
+		return v == ip
+	})
 }
 
 func (d *DNS) get(hostname string) (string, bool) {
