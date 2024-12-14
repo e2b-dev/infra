@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -15,8 +14,8 @@ import (
 type storageTemplate struct {
 	files *storage.TemplateCacheFiles
 
-	memfile  *utils.SetOnce[*block.Storage]
-	rootfs   *utils.SetOnce[*block.Storage]
+	memfile  *utils.SetOnce[*Storage]
+	rootfs   *utils.SetOnce[*Storage]
 	snapfile *utils.SetOnce[*storageFile]
 
 	isSnapshot bool
@@ -44,8 +43,8 @@ func newTemplateFromStorage(
 	return &storageTemplate{
 		files:      files,
 		isSnapshot: isSnapshot,
-		memfile:    utils.NewSetOnce[*block.Storage](),
-		rootfs:     utils.NewSetOnce[*block.Storage](),
+		memfile:    utils.NewSetOnce[*Storage](),
+		rootfs:     utils.NewSetOnce[*Storage](),
 		snapfile:   utils.NewSetOnce[*storageFile](),
 	}, nil
 }
@@ -86,7 +85,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.Store) {
 	go func() error {
 		defer wg.Done()
 
-		memfileStorage, memfileErr := block.NewStorage(
+		memfileStorage, memfileErr := NewStorage(
 			ctx,
 			buildStore,
 			t.files.BuildId,
@@ -108,7 +107,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.Store) {
 	go func() error {
 		defer wg.Done()
 
-		rootfsStorage, rootfsErr := block.NewStorage(
+		rootfsStorage, rootfsErr := NewStorage(
 			ctx,
 			buildStore,
 			t.files.BuildId,
@@ -137,11 +136,11 @@ func (t *storageTemplate) Files() *storage.TemplateCacheFiles {
 	return t.files
 }
 
-func (t *storageTemplate) Memfile() (*block.Storage, error) {
+func (t *storageTemplate) Memfile() (*Storage, error) {
 	return t.memfile.Wait()
 }
 
-func (t *storageTemplate) Rootfs() (*block.Storage, error) {
+func (t *storageTemplate) Rootfs() (*Storage, error) {
 	return t.rootfs.Wait()
 }
 

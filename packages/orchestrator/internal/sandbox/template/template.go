@@ -3,14 +3,13 @@ package template
 import (
 	"errors"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type Template interface {
 	Files() *storage.TemplateCacheFiles
-	Memfile() (*block.Storage, error)
-	Rootfs() (*block.Storage, error)
+	Memfile() (*Storage, error)
+	Rootfs() (*Storage, error)
 	Snapfile() (File, error)
 	Close() error
 }

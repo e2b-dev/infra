@@ -1,4 +1,4 @@
-package block
+package template
 
 import (
 	"context"
@@ -6,13 +6,14 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type Storage struct {
 	header *header.Header
-	source *chunker
+	source *block.Chunker
 }
 
 func NewStorage(
@@ -64,9 +65,9 @@ func NewStorage(
 		}, nil)
 	}
 
-	b := build.NewFromStorage(h, store, storeKeySuffix)
+	b := block.NewFromStorage(h, store, storeKeySuffix)
 
-	chunker, err := newChunker(ctx, int64(h.Metadata.Size), blockSize, b, cachePath)
+	chunker, err := block.NewChunker(ctx, int64(h.Metadata.Size), blockSize, b, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create chunker: %w", err)
 	}

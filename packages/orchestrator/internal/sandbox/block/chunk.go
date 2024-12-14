@@ -17,7 +17,7 @@ const (
 	chunkSize = 2 * 1024 * 1024 // 2 MB
 )
 
-type chunker struct {
+type Chunker struct {
 	ctx context.Context
 
 	base  io.ReaderAt
@@ -29,19 +29,19 @@ type chunker struct {
 	fetchers *utils.WaitMap
 }
 
-func newChunker(
+func NewChunker(
 	ctx context.Context,
 	size,
 	blockSize int64,
 	base io.ReaderAt,
 	cachePath string,
-) (*chunker, error) {
+) (*Chunker, error) {
 	cache, err := NewCache(size, blockSize, cachePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
 
-	chunker := &chunker{
+	chunker := &Chunker{
 		ctx:      ctx,
 		size:     size,
 		base:     base,
@@ -54,7 +54,7 @@ func newChunker(
 	return chunker, nil
 }
 
-func (c *chunker) prefetch() error {
+func (c *Chunker) prefetch() error {
 	blocks := header.BlocksOffsets(c.size, chunkSize)
 
 	for _, blockOff := range blocks {
@@ -67,7 +67,7 @@ func (c *chunker) prefetch() error {
 	return nil
 }
 
-func (c *chunker) ReadAt(b []byte, off int64) (int, error) {
+func (c *Chunker) ReadAt(b []byte, off int64) (int, error) {
 	slice, err := c.Slice(off, int64(len(b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
@@ -76,7 +76,7 @@ func (c *chunker) ReadAt(b []byte, off int64) (int, error) {
 	return copy(b, slice), nil
 }
 
-func (c *chunker) WriteTo(w io.Writer) (int64, error) {
+func (c *Chunker) WriteTo(w io.Writer) (int64, error) {
 	for i := int64(0); i < c.size; i += chunkSize {
 		chunk := make([]byte, chunkSize)
 
@@ -94,7 +94,7 @@ func (c *chunker) WriteTo(w io.Writer) (int64, error) {
 	return int64(c.size), nil
 }
 
-func (c *chunker) Slice(off, length int64) ([]byte, error) {
+func (c *Chunker) Slice(off, length int64) ([]byte, error) {
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
 		return b, nil
@@ -118,7 +118,7 @@ func (c *chunker) Slice(off, length int64) ([]byte, error) {
 }
 
 // fetchToCache ensures that the data at the given offset and length is available in the cache.
-func (c *chunker) fetchToCache(off, len int64) error {
+func (c *Chunker) fetchToCache(off, len int64) error {
 	var eg errgroup.Group
 
 	chunks := header.BlocksOffsets(len, chunkSize)
@@ -173,6 +173,6 @@ func (c *chunker) fetchToCache(off, len int64) error {
 	return nil
 }
 
-func (c *chunker) Close() error {
+func (c *Chunker) Close() error {
 	return c.cache.Close()
 }

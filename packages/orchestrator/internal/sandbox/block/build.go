@@ -1,4 +1,4 @@
-package build
+package block
 
 import (
 	"fmt"
@@ -6,18 +6,19 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type Build struct {
 	header         *header.Header
-	buildStore     *Store
+	buildStore     *build.Store
 	storeKeySuffix string
 }
 
 func NewFromStorage(
 	header *header.Header,
-	store *Store,
+	store *build.Store,
 	storeKeySuffix string,
 ) *Build {
 	return &Build{
