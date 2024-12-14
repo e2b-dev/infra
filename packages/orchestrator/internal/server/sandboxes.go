@@ -238,12 +238,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	// If we called the stop at the end, we could accidentally remove the DNS record for the resumed sandbox.
 	sbx.Stop()
 
-	b := storage.NewTemplateBuild(
-		snapshot.MemfileDiffHeader,
-		snapshot.RootfsDiffHeader,
-		snapshotTemplateFiles.TemplateFiles,
-	)
-
 	err = s.templateCache.AddSnapshot(
 		snapshotTemplateFiles.TemplateId,
 		snapshotTemplateFiles.BuildId,
@@ -274,6 +268,12 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 			return
 		}
+
+		b := storage.NewTemplateBuild(
+			snapshot.MemfileDiffHeader,
+			snapshot.RootfsDiffHeader,
+			snapshotTemplateFiles.TemplateFiles,
+		)
 
 		err = <-b.Upload(
 			context.Background(),

@@ -37,6 +37,11 @@ func NewLocalDiffFile(
 func (f *LocalDiffFile) ToLocalDiff(
 	blockSize int64,
 ) (*LocalDiff, error) {
+	err := f.Sync()
+	if err != nil {
+		return nil, fmt.Errorf("failed to sync file: %w", err)
+	}
+
 	size, err := f.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file size: %w", err)

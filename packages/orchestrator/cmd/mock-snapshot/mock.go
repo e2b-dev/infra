@@ -187,12 +187,77 @@ func mockSnapshot(
 		}
 	}()
 
-	_, err = sbx.Snapshot(ctx, snapshotTemplateFiles)
+	snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles)
 	if err != nil {
 		return fmt.Errorf("failed to snapshot sandbox: %w", err)
 	}
 
 	fmt.Println("Create snapshot time: ", time.Since(snapshotTime).Milliseconds())
+
+	err = templateCache.AddSnapshot(
+		snapshotTemplateFiles.TemplateId,
+		snapshotTemplateFiles.BuildId,
+		snapshotTemplateFiles.KernelVersion,
+		snapshotTemplateFiles.FirecrackerVersion,
+		snapshotTemplateFiles.Hugepages(),
+		snapshot.MemfileDiffHeader,
+		snapshot.RootfsDiffHeader,
+		snapshot.Snapfile,
+		snapshot.MemfileDiff,
+		snapshot.RootfsDiff,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to add snapshot to template cache: %w", err)
+	}
+
+	fmt.Println("Add snapshot to template cache time: ", time.Since(snapshotTime).Milliseconds())
+
+	start = time.Now()
+
+	sbx, cleanup2, err := sandbox.NewSandbox(
+		childCtx,
+		tracer,
+		dns,
+		networkPool,
+		templateCache,
+		&orchestrator.SandboxConfig{
+			TemplateId:         snapshotTemplateFiles.TemplateId,
+			FirecrackerVersion: snapshotTemplateFiles.FirecrackerVersion,
+			KernelVersion:      snapshotTemplateFiles.KernelVersion,
+			TeamId:             "test-team",
+			BuildId:            snapshotTemplateFiles.BuildId,
+			HugePages:          snapshotTemplateFiles.Hugepages(),
+			MaxSandboxLength:   1,
+			SandboxId:          sandboxId,
+			EnvdVersion:        "0.1.1",
+			RamMb:              512,
+			Vcpu:               2,
+		},
+		"trace-test-1",
+		time.Now(),
+		time.Now(),
+		logger,
+		false,
+		templateId,
+	)
+	defer func() {
+		cleanupErr := cleanup2.Run()
+		if cleanupErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to cleanup sandbox: %v\n", cleanupErr)
+		}
+	}()
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create sandbox: %v\n", err)
+
+		return err
+	}
+
+	duration = time.Since(start)
+
+	fmt.Printf("[Resumed sandbox is running] - started in %dms \n", duration.Milliseconds())
+
+	time.Sleep(keepAlive)
 
 	// b := storage.NewTemplateBuild(
 	// 	snapshot.MemfileDiffHeader,
