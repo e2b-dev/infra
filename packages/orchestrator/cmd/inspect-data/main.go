@@ -102,6 +102,6 @@ func main() {
 	fmt.Printf("Empty inspected blocks: %d\n", emptyCount)
 	fmt.Printf("Non-empty inspected blocks: %d\n", nonEmptyCount)
 	fmt.Printf("Total inspected blocks: %d\n", emptyCount+nonEmptyCount)
-	fmt.Printf("Total inspected size: %d B (%d MiB)\n", size, size/1024/1024)
+	fmt.Printf("Total inspected size: %d B (%d MiB)\n", int64(emptyCount+nonEmptyCount)*blockSize, int64(emptyCount+nonEmptyCount)*blockSize/1024/1024)
 	fmt.Printf("Empty inspected size: %d B (%d MiB)\n", int64(emptyCount)*blockSize, int64(emptyCount)*blockSize/1024/1024)
 }
