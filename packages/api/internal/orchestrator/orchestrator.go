@@ -3,6 +3,8 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.opentelemetry.io/otel/trace"
@@ -10,6 +12,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
@@ -20,6 +23,7 @@ type Orchestrator struct {
 	tracer        trace.Tracer
 	logger        *zap.SugaredLogger
 	analytics     *analyticscollector.Analytics
+	dns           *dns.DNS
 }
 
 func New(
@@ -34,12 +38,23 @@ func New(
 		logger.Errorf("Error initializing Analytics client\n: %v", err)
 	}
 
+	dnsServer := dns.New()
+	go func() {
+		fmt.Printf("Starting DNS server\n")
+
+		dnsErr := dnsServer.Start("127.0.0.4", 53)
+		if dnsErr != nil {
+			log.Fatalf("Failed running DNS server: %v\n", dnsErr)
+		}
+	}()
+
 	o := Orchestrator{
 		analytics:   analyticsInstance,
 		nomadClient: nomadClient,
 		logger:      logger,
 		tracer:      tracer,
 		nodes:       make(map[string]*Node),
+		dns:         dnsServer,
 	}
 
 	cache := instance.NewCache(
