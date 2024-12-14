@@ -120,7 +120,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {
-					fmt.Printf("[sandbox %s]: recovered from panic in uffd serve: %v\n", sandboxId, r)
+					fmt.Printf("[sandbox %s]: recovered from panic in uffd serve (offset: %d, pagesize: %d): %v\n", sandboxId, offset, pagesize, r)
 				}
 			}()
 
