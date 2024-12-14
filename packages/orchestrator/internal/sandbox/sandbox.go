@@ -432,6 +432,11 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		return nil, fmt.Errorf("failed to open rootfs path: %w", err)
 	}
 
+	// Call ioctl with BLKFLSBUF
+	if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
+		return nil, fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
+	}
+
 	// TODO: We need to test this properly.
 	err = syscall.Fsync(int(file.Fd()))
 	if err != nil {
@@ -442,11 +447,6 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	err = file.Sync()
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync rootfs path: %w", err)
-	}
-
-	// Call ioctl with BLKFLSBUF
-	if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
-		return nil, fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
 	}
 
 	rootfsDiffFile, err := build.NewLocalDiffFile(buildId.String(), build.Rootfs)
