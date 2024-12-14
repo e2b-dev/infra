@@ -177,7 +177,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 }
 
 func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
-	childCtx, childSpan := s.tracer.Start(ctx, "sandbox-pause")
+	_, childSpan := s.tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
 
 	s.pauseMu.Lock()
@@ -221,14 +221,12 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
-	snapshot, err := sbx.Snapshot(s.tracer, childCtx, snapshotTemplateFiles)
+	snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error snapshotting sandbox '%s': %v\n", in.SandboxId, err)
 
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
-
-	telemetry.ReportEvent(childCtx, "adding snapshot to cache")
 
 	err = s.templateCache.AddSnapshot(
 		snapshotTemplateFiles.TemplateId,

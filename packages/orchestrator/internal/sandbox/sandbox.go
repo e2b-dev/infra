@@ -332,10 +332,7 @@ func (s *Sandbox) Stop() error {
 	return nil
 }
 
-func (s *Sandbox) Snapshot(tracer trace.Tracer, ctx context.Context, snapshotTemplateFiles *storage.TemplateCacheFiles) (*Snapshot, error) {
-	childCtx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
-	defer childSpan.End()
-
+func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.TemplateCacheFiles) (*Snapshot, error) {
 	buildId, err := uuid.Parse(snapshotTemplateFiles.BuildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse build id: %w", err)
@@ -360,8 +357,6 @@ func (s *Sandbox) Snapshot(tracer trace.Tracer, ctx context.Context, snapshotTem
 	if err != nil {
 		return nil, fmt.Errorf("failed to disable uffd: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "snapshotting memfile & snapfile")
 
 	err = s.process.Snapshot(
 		ctx,
@@ -390,14 +385,10 @@ func (s *Sandbox) Snapshot(tracer trace.Tracer, ctx context.Context, snapshotTem
 		return nil, fmt.Errorf("failed to create memfile diff file: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "creating memfile diff")
-
 	err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiffFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "creating memfile mapping")
 
 	memfileMapping := header.CreateMapping(
 		memfileMetadata,
@@ -405,14 +396,10 @@ func (s *Sandbox) Snapshot(tracer trace.Tracer, ctx context.Context, snapshotTem
 		memfileDirtyPages,
 	)
 
-	telemetry.ReportEvent(childCtx, "merging memfile mappings")
-
 	memfileMappings := header.MergeMappings(
 		originalMemfile.Header().Mapping,
 		memfileMapping,
 	)
-
-	telemetry.ReportEvent(childCtx, "creating memfile diff")
 
 	snapfile, err := template.NewLocalFile(snapshotTemplateFiles.CacheSnapfilePath())
 	if err != nil {
@@ -434,8 +421,6 @@ func (s *Sandbox) Snapshot(tracer trace.Tracer, ctx context.Context, snapshotTem
 		BaseBuildId: originalRootfs.Header().Metadata.BaseBuildId,
 	}
 
-	telemetry.ReportEvent(childCtx, "getting rootfs path")
-
 	nbdPath, err := s.rootfs.Path()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
@@ -447,20 +432,14 @@ func (s *Sandbox) Snapshot(tracer trace.Tracer, ctx context.Context, snapshotTem
 		return nil, fmt.Errorf("failed to open rootfs path: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "flushing rootfs path")
-
 	if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
 		return nil, fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "fsyncing rootfs path")
 
 	err = syscall.Fsync(int(file.Fd()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fsync rootfs path: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "syncing rootfs path")
 
 	err = file.Sync()
 	if err != nil {
@@ -472,14 +451,10 @@ func (s *Sandbox) Snapshot(tracer trace.Tracer, ctx context.Context, snapshotTem
 		return nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "exporting rootfs")
-
 	rootfsDirtyBlocks, err := s.rootfs.Export(rootfsDiffFile, s.Stop)
 	if err != nil {
 		return nil, fmt.Errorf("failed to export rootfs: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "creating rootfs mapping")
 
 	rootfsMapping := header.CreateMapping(
 		rootfsMetadata,
@@ -487,21 +462,15 @@ func (s *Sandbox) Snapshot(tracer trace.Tracer, ctx context.Context, snapshotTem
 		rootfsDirtyBlocks,
 	)
 
-	telemetry.ReportEvent(childCtx, "merging rootfs mappings")
-
 	rootfsMappings := header.MergeMappings(
 		originalRootfs.Header().Mapping,
 		rootfsMapping,
 	)
 
-	telemetry.ReportEvent(childCtx, "creating rootfs diff")
-
 	rootfsDiff, err := rootfsDiffFile.ToDiff(int64(originalRootfs.Header().Metadata.BlockSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "converting memfile diff file to local diff")
 
 	memfileDiff, err := memfileDiffFile.ToDiff(int64(originalMemfile.Header().Metadata.BlockSize))
 	if err != nil {
