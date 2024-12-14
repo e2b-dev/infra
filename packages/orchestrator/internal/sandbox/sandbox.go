@@ -191,6 +191,7 @@ func NewSandbox(
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
 
+	// todo: check if kernel, firecracker, and envd versions exist
 	snapfile, err := t.Snapfile()
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get snapfile: %w", err)
