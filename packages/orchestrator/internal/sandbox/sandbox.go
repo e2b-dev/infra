@@ -432,18 +432,15 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		return nil, fmt.Errorf("failed to open rootfs path: %w", err)
 	}
 
-	// Call ioctl with BLKFLSBUF
 	if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
 		return nil, fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
 	}
 
-	// TODO: We need to test this properly.
 	err = syscall.Fsync(int(file.Fd()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fsync rootfs path: %w", err)
 	}
 
-	// TODO: We need to test this properly.
 	err = file.Sync()
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync rootfs path: %w", err)
@@ -470,12 +467,12 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		rootfsMapping,
 	)
 
-	rootfsDiff, err := rootfsDiffFile.ToLocalDiff(int64(originalRootfs.Header().Metadata.BlockSize))
+	rootfsDiff, err := rootfsDiffFile.ToDiff(int64(originalRootfs.Header().Metadata.BlockSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
 	}
 
-	memfileDiff, err := memfileDiffFile.ToLocalDiff(int64(originalMemfile.Header().Metadata.BlockSize))
+	memfileDiff, err := memfileDiffFile.ToDiff(int64(originalMemfile.Header().Metadata.BlockSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
 	}
@@ -490,9 +487,9 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 }
 
 type Snapshot struct {
-	MemfileDiff       *build.LocalDiff
+	MemfileDiff       build.Diff
 	MemfileDiffHeader *header.Header
-	RootfsDiff        *build.LocalDiff
+	RootfsDiff        build.Diff
 	RootfsDiffHeader  *header.Header
 	Snapfile          *template.LocalFile
 }

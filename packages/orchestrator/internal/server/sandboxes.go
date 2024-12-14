@@ -15,6 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -244,18 +245,30 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	go func() {
+		var memfilePath *string
+
 		memfileLocalPath, err := snapshot.MemfileDiff.Path()
-		if err != nil {
+		if err != nil && !errors.Is(err, build.ErrNoDiff) {
 			fmt.Fprintf(os.Stderr, "error getting memfile diff path: %v\n", err)
 
 			return
 		}
 
+		if err == nil {
+			memfilePath = &memfileLocalPath
+		}
+
 		rootfsLocalPath, err := snapshot.RootfsDiff.Path()
-		if err != nil {
+		if err != nil && !errors.Is(err, build.ErrNoDiff) {
 			fmt.Fprintf(os.Stderr, "error getting rootfs diff path: %v\n", err)
 
 			return
+		}
+
+		var rootfsPath *string
+
+		if err == nil {
+			rootfsPath = &rootfsLocalPath
 		}
 
 		b := storage.NewTemplateBuild(
@@ -267,8 +280,8 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		err = <-b.Upload(
 			context.Background(),
 			snapshotTemplateFiles.CacheSnapfilePath(),
-			memfileLocalPath,
-			rootfsLocalPath,
+			memfilePath,
+			rootfsPath,
 		)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error uploading sandbox snapshot '%s': %v\n", in.SandboxId, err)

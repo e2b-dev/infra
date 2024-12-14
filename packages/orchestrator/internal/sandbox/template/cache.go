@@ -102,11 +102,26 @@ func (c *Cache) AddSnapshot(
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
 	localSnapfile *LocalFile,
-	memfileDiff *build.LocalDiff,
-	rootfsDiff *build.LocalDiff,
+	memfileDiff build.Diff,
+	rootfsDiff build.Diff,
 ) error {
-	c.buildStore.Add(buildId, build.Rootfs, rootfsDiff)
-	c.buildStore.Add(buildId, build.Memfile, memfileDiff)
+	memfileDiffSize, err := memfileDiff.Size()
+	if err != nil {
+		return fmt.Errorf("failed to get memfile diff size: %w", err)
+	}
+
+	if memfileDiffSize != 0 {
+		c.buildStore.Add(buildId, build.Rootfs, rootfsDiff)
+	}
+
+	rootfsDiffSize, err := rootfsDiff.Size()
+	if err != nil {
+		return fmt.Errorf("failed to get rootfs diff size: %w", err)
+	}
+
+	if rootfsDiffSize != 0 {
+		c.buildStore.Add(buildId, build.Memfile, memfileDiff)
+	}
 
 	storageTemplate, err := newTemplateFromStorage(
 		templateId,

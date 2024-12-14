@@ -92,11 +92,14 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		}
 	}()
 
+	memfilePath := template.BuildMemfilePath()
+	rootfsPath := template.BuildRootfsPath()
+
 	upload := buildStorage.Upload(
 		childCtx,
 		template.BuildSnapfilePath(),
-		template.BuildMemfilePath(),
-		template.BuildRootfsPath(),
+		&memfilePath,
+		&rootfsPath,
 	)
 
 	cmd := exec.Command(storage.HostEnvdPath, "-version")

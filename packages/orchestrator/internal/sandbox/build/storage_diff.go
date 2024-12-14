@@ -88,3 +88,8 @@ func (b *StorageDiff) Slice(off, length int64) ([]byte, error) {
 func (b *StorageDiff) WriteTo(w io.Writer) (int64, error) {
 	return b.chunker.WriteTo(w)
 }
+
+// The local file might not be synced.
+func (b *StorageDiff) Path() (string, error) {
+	return b.cachePath, nil
+}

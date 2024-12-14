@@ -113,8 +113,8 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, snapfile io.Reader) 
 func (t *TemplateBuild) Upload(
 	ctx context.Context,
 	snapfilePath string,
-	memfilePath string,
-	rootfsPath string,
+	memfilePath *string,
+	rootfsPath *string,
 ) chan error {
 	eg, ctx := errgroup.WithContext(ctx)
 
@@ -136,9 +136,13 @@ func (t *TemplateBuild) Upload(
 	})
 
 	eg.Go(func() error {
+		if rootfsPath == nil {
+			return nil
+		}
+
 		start := time.Now()
 
-		err := t.uploadRootfs(ctx, rootfsPath)
+		err := t.uploadRootfs(ctx, *rootfsPath)
 		if err != nil {
 			return err
 		}
@@ -166,9 +170,13 @@ func (t *TemplateBuild) Upload(
 	})
 
 	eg.Go(func() error {
+		if memfilePath == nil {
+			return nil
+		}
+
 		start := time.Now()
 
-		err := t.uploadMemfile(ctx, memfilePath)
+		err := t.uploadMemfile(ctx, *memfilePath)
 		if err != nil {
 			return err
 		}

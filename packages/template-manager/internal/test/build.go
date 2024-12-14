@@ -62,11 +62,14 @@ func Build(templateID, buildID string) {
 
 	buildStorage := tempStorage.NewBuild(t.TemplateFiles)
 
+	memfilePath := t.BuildMemfilePath()
+	rootfsPath := t.BuildRootfsPath()
+
 	upload := buildStorage.Upload(
 		ctx,
 		t.BuildSnapfilePath(),
-		t.BuildMemfilePath(),
-		t.BuildRootfsPath(),
+		&memfilePath,
+		&rootfsPath,
 	)
 
 	err = <-upload

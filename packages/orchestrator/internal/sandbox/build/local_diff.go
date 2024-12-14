@@ -34,9 +34,9 @@ func NewLocalDiffFile(
 	}, nil
 }
 
-func (f *LocalDiffFile) ToLocalDiff(
+func (f *LocalDiffFile) ToDiff(
 	blockSize int64,
-) (*LocalDiff, error) {
+) (Diff, error) {
 	err := f.Sync()
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync file: %w", err)
@@ -52,10 +52,14 @@ func (f *LocalDiffFile) ToLocalDiff(
 		return nil, fmt.Errorf("failed to close file: %w", err)
 	}
 
+	if size.Size() == 0 {
+		return &NoDiff{}, nil
+	}
+
 	return newLocalDiff(f.cachePath, size.Size(), blockSize)
 }
 
-type LocalDiff struct {
+type localDiff struct {
 	size      int64
 	blockSize int64
 	cachePath string
@@ -66,13 +70,13 @@ func newLocalDiff(
 	cachePath string,
 	size int64,
 	blockSize int64,
-) (*LocalDiff, error) {
+) (*localDiff, error) {
 	cache, err := block.NewCache(size, blockSize, cachePath, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache: %w", err)
 	}
 
-	return &LocalDiff{
+	return &localDiff{
 		size:      size,
 		blockSize: blockSize,
 		cachePath: cachePath,
@@ -80,22 +84,22 @@ func newLocalDiff(
 	}, nil
 }
 
-func (b *LocalDiff) Path() (string, error) {
+func (b *localDiff) Path() (string, error) {
 	return b.cachePath, nil
 }
 
-func (b *LocalDiff) Close() error {
+func (b *localDiff) Close() error {
 	return b.cache.Close()
 }
 
-func (b *LocalDiff) ReadAt(p []byte, off int64) (int, error) {
+func (b *localDiff) ReadAt(p []byte, off int64) (int, error) {
 	return b.cache.ReadAt(p, off)
 }
 
-func (b *LocalDiff) Size() (int64, error) {
+func (b *localDiff) Size() (int64, error) {
 	return b.size, nil
 }
 
-func (b *LocalDiff) Slice(off, length int64) ([]byte, error) {
+func (b *localDiff) Slice(off, length int64) ([]byte, error) {
 	return b.cache.Slice(off, length)
 }

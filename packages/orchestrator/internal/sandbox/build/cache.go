@@ -73,7 +73,7 @@ func (s *DiffStore) Get(buildId string, diffType DiffType, blockSize int64) (Dif
 	return value, nil
 }
 
-func (s *DiffStore) Add(buildId string, t DiffType, d *LocalDiff) {
+func (s *DiffStore) Add(buildId string, t DiffType, d Diff) {
 	storagePath := storagePath(buildId, t)
 
 	s.cache.Set(storagePath, d, buildExpiration)
