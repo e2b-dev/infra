@@ -247,27 +247,33 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	go func() {
 		var memfilePath *string
 
-		memfileLocalPath, err := snapshot.MemfileDiff.Path()
-		if err != nil && !errors.Is(err, build.ErrNoDiff) {
-			fmt.Fprintf(os.Stderr, "error getting memfile diff path: %v\n", err)
+		switch r := snapshot.MemfileDiff.(type) {
+		case *build.NoDiff:
+			break
+		default:
+			memfileLocalPath, err := r.Path()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error getting memfile diff path: %v\n", err)
 
-			return
-		}
+				return
+			}
 
-		if err == nil {
 			memfilePath = &memfileLocalPath
-		}
-
-		rootfsLocalPath, err := snapshot.RootfsDiff.Path()
-		if err != nil && !errors.Is(err, build.ErrNoDiff) {
-			fmt.Fprintf(os.Stderr, "error getting rootfs diff path: %v\n", err)
-
-			return
 		}
 
 		var rootfsPath *string
 
-		if err == nil {
+		switch r := snapshot.RootfsDiff.(type) {
+		case *build.NoDiff:
+			break
+		default:
+			rootfsLocalPath, err := r.Path()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error getting rootfs diff path: %v\n", err)
+
+				return
+			}
+
 			rootfsPath = &rootfsLocalPath
 		}
 
