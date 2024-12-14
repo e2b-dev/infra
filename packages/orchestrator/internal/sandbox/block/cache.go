@@ -1,7 +1,6 @@
 package block
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -62,13 +61,6 @@ func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	var empty []byte
-	if m.blockSize == header.RootfsBlockSize {
-		empty = header.EmptyBlock
-	} else {
-		empty = header.EmptyHugePage
-	}
-
 	tracked := bitset.New(uint(header.TotalBlocks(m.size, m.blockSize)))
 
 	m.dirty.Range(func(key, value any) bool {
@@ -76,13 +68,7 @@ func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
 
 		tracked.Set(uint(block))
 
-		p := (*m.mmap)[key.(int64) : key.(int64)+m.blockSize]
-
-		if bytes.Equal(p, empty) {
-			fmt.Printf("block %d is empty\n", block)
-		}
-
-		_, err := out.Write(p)
+		_, err := out.Write((*m.mmap)[key.(int64) : key.(int64)+m.blockSize])
 		if err != nil {
 			fmt.Printf("error writing to out: %v\n", err)
 
