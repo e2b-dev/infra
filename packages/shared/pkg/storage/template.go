@@ -3,6 +3,8 @@ package storage
 import (
 	"fmt"
 	"path/filepath"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const (
@@ -30,10 +32,6 @@ const (
 	SnapfileName = "snapfile"
 
 	HeaderSuffix = ".header"
-
-	pageSize        = 2 << 11
-	HugepageSize    = 2 << 20
-	rootfsBlockSize = 2 << 11
 )
 
 // Path to the directory where the kernel can be accessed inside when the dirs are mounted.
@@ -135,12 +133,12 @@ func (t *TemplateFiles) Hugepages() bool {
 
 func (t *TemplateFiles) MemfilePageSize() int64 {
 	if t.hugePages {
-		return HugepageSize
+		return header.HugepageSize
 	}
 
-	return pageSize
+	return header.PageSize
 }
 
 func (t *TemplateFiles) RootfsBlockSize() int64 {
-	return rootfsBlockSize
+	return header.RootfsBlockSize
 }

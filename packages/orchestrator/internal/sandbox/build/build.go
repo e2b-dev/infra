@@ -6,11 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
-
-var emptyHugePage = make([]byte, storage.HugepageSize)
 
 type File struct {
 	header   *header.Header
@@ -106,7 +103,7 @@ func (b *File) Slice(off, length int64) ([]byte, error) {
 	}
 
 	if *buildID == uuid.Nil {
-		return emptyHugePage, nil
+		return header.EmptyHugePage, nil
 	}
 
 	build, err := b.getBuild(buildID)

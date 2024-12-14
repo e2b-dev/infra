@@ -81,11 +81,6 @@ func newLocalDiff(
 }
 
 func (b *LocalDiff) Path() (string, error) {
-	err := b.cache.Sync()
-	if err != nil {
-		return "", fmt.Errorf("failed to sync cache: %w", err)
-	}
-
 	return b.cachePath, nil
 }
 
