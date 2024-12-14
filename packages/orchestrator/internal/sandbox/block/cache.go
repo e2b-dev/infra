@@ -106,7 +106,7 @@ func (m *Cache) Size() (int64, error) {
 }
 
 // Slice returns a slice of the mmap.
-// When using WriteAt you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
+// When using Slice you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
 func (m *Cache) Slice(off, length int64) ([]byte, error) {
 	if m.isCached(off, length) {
 		end := off + length
