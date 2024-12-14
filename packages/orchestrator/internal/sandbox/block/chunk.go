@@ -36,7 +36,7 @@ func NewChunker(
 	base io.ReaderAt,
 	cachePath string,
 ) (*Chunker, error) {
-	cache, err := NewCache(size, blockSize, cachePath)
+	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}

@@ -32,7 +32,7 @@ func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64) (
 		return nil, fmt.Errorf("error getting device size: %w", err)
 	}
 
-	cache, err := block.NewCache(size, blockSize, cachePath)
+	cache, err := block.NewCache(size, blockSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("error creating cache: %w", err)
 	}

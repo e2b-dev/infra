@@ -32,7 +32,7 @@ const (
 	HeaderSuffix = ".header"
 
 	pageSize        = 2 << 11
-	hugepageSize    = 2 << 20
+	HugepageSize    = 2 << 20
 	rootfsBlockSize = 2 << 11
 )
 
@@ -135,7 +135,7 @@ func (t *TemplateFiles) Hugepages() bool {
 
 func (t *TemplateFiles) MemfilePageSize() int64 {
 	if t.hugePages {
-		return hugepageSize
+		return HugepageSize
 	}
 
 	return pageSize

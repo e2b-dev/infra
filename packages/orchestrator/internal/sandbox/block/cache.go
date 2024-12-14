@@ -21,9 +21,11 @@ type Cache struct {
 	mmap      *mmap.MMap
 	mu        sync.RWMutex
 	dirty     sync.Map
+	dirtyFile bool
 }
 
-func NewCache(size, blockSize int64, filePath string) (*Cache, error) {
+// When we are passing filePath that is a file that has content we want to server want to use dirtyFile = true.
+func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
@@ -47,6 +49,7 @@ func NewCache(size, blockSize int64, filePath string) (*Cache, error) {
 		filePath:  filePath,
 		size:      size,
 		blockSize: blockSize,
+		dirtyFile: dirtyFile,
 	}, nil
 }
 
@@ -112,7 +115,7 @@ func (m *Cache) Size() (int64, error) {
 // Slice returns a slice of the mmap.
 // When using Slice you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
 func (m *Cache) Slice(off, length int64) ([]byte, error) {
-	if m.isCached(off, length) {
+	if m.dirtyFile || m.isCached(off, length) {
 		end := off + length
 		if end > m.size {
 			end = m.size

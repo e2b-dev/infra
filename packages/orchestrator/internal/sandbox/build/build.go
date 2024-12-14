@@ -6,8 +6,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
+
+var emptyHugePage = make([]byte, storage.HugepageSize)
 
 type File struct {
 	header   *header.Header
@@ -97,9 +100,13 @@ func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
 
 // The slice access must be in the predefined blocksize of the build.
 func (b *File) Slice(off, length int64) ([]byte, error) {
-	mappedOffset, mappedLength, buildID, err := b.header.GetShiftedMapping(off)
+	mappedOffset, _, buildID, err := b.header.GetShiftedMapping(off)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mapping: %w", err)
+	}
+
+	if *buildID == uuid.Nil {
+		return emptyHugePage, nil
 	}
 
 	build, err := b.getBuild(buildID)
@@ -107,7 +114,7 @@ func (b *File) Slice(off, length int64) ([]byte, error) {
 		return nil, fmt.Errorf("failed to get build: %w", err)
 	}
 
-	return build.Slice(mappedOffset, mappedLength)
+	return build.Slice(mappedOffset, int64(b.header.Metadata.BlockSize))
 }
 
 func (b *File) getBuild(buildID *uuid.UUID) (Diff, error) {
