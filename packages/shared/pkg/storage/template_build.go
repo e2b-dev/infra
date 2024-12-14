@@ -119,11 +119,12 @@ func (t *TemplateBuild) Upload(
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		start := time.Now()
-
 		if t.rootfsHeader == nil {
+			fmt.Printf("[TemplateBuild] - skipped rootfs header upload\n")
 			return nil
 		}
+
+		start := time.Now()
 
 		err := t.uploadRootfsHeader(ctx, t.rootfsHeader)
 		if err != nil {
@@ -137,6 +138,8 @@ func (t *TemplateBuild) Upload(
 
 	eg.Go(func() error {
 		if rootfsPath == nil {
+			fmt.Printf("[TemplateBuild] - skipped rootfs upload\n")
+
 			return nil
 		}
 
@@ -153,11 +156,13 @@ func (t *TemplateBuild) Upload(
 	})
 
 	eg.Go(func() error {
-		start := time.Now()
-
 		if t.memfileHeader == nil {
+			fmt.Printf("[TemplateBuild] - skipped memfile header upload\n")
+
 			return nil
 		}
+
+		start := time.Now()
 
 		err := t.uploadMemfileHeader(ctx, t.memfileHeader)
 		if err != nil {
@@ -171,6 +176,8 @@ func (t *TemplateBuild) Upload(
 
 	eg.Go(func() error {
 		if memfilePath == nil {
+			fmt.Printf("[TemplateBuild] - skipped memfile upload\n")
+
 			return nil
 		}
 

@@ -1,7 +1,6 @@
 package build
 
 import (
-	"errors"
 	"io"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -9,7 +8,11 @@ import (
 
 type DiffType string
 
-var ErrNoDiff = errors.New("no diff")
+type ErrNoDiff struct{}
+
+func (ErrNoDiff) Error() string {
+	return "the diff is empty"
+}
 
 const (
 	Memfile DiffType = storage.MemfileName
@@ -27,7 +30,7 @@ type Diff interface {
 type NoDiff struct{}
 
 func (n *NoDiff) Path() (string, error) {
-	return "", ErrNoDiff
+	return "", ErrNoDiff{}
 }
 
 func (n *NoDiff) Size() (int64, error) {
@@ -35,7 +38,7 @@ func (n *NoDiff) Size() (int64, error) {
 }
 
 func (n *NoDiff) Slice(off, length int64) ([]byte, error) {
-	return nil, ErrNoDiff
+	return nil, ErrNoDiff{}
 }
 
 func (n *NoDiff) Close() error {
@@ -43,5 +46,5 @@ func (n *NoDiff) Close() error {
 }
 
 func (n *NoDiff) ReadAt(p []byte, off int64) (int, error) {
-	return 0, ErrNoDiff
+	return 0, ErrNoDiff{}
 }
