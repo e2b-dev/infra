@@ -464,12 +464,12 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		rootfsMapping,
 	)
 
-	rootfsDiff, err := rootfsDiffFile.ToLocalDiff(s.files.RootfsBlockSize())
+	rootfsDiff, err := rootfsDiffFile.ToLocalDiff(int64(originalRootfs.Header().Metadata.BlockSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
 	}
 
-	memfileDiff, err := memfileDiffFile.ToLocalDiff(s.files.MemfilePageSize())
+	memfileDiff, err := memfileDiffFile.ToLocalDiff(int64(originalMemfile.Header().Metadata.BlockSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
 	}
