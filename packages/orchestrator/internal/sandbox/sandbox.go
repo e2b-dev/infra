@@ -15,6 +15,7 @@ import (
 	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
@@ -330,14 +331,32 @@ func (s *Sandbox) Stop() error {
 	return nil
 }
 
-func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.TemplateCacheFiles) (*SnapshotData, error) {
-	err := s.uffd.Disable()
+func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.TemplateCacheFiles) (*Snapshot, error) {
+	buildId, err := uuid.Parse(snapshotTemplateFiles.BuildId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse build id: %w", err)
+	}
+
+	// MEMFILE & SNAPFILE
+	originalMemfile, err := s.template.Memfile()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get original memfile: %w", err)
+	}
+
+	memfileMetadata := &header.Metadata{
+		Version:     1,
+		Generation:  originalMemfile.Header().Metadata.Generation + 1,
+		BlockSize:   originalMemfile.Header().Metadata.BlockSize,
+		Size:        originalMemfile.Header().Metadata.Size,
+		BuildId:     buildId,
+		BaseBuildId: originalMemfile.Header().Metadata.BaseBuildId,
+	}
+
+	err = s.uffd.Disable()
 	if err != nil {
 		return nil, fmt.Errorf("failed to disable uffd: %w", err)
 	}
 
-	start := time.Now()
-	fmt.Printf("[snapshot] creating snapfile and memfile diff\n")
 	err = s.process.Snapshot(
 		ctx,
 		snapshotTemplateFiles.CacheSnapfilePath(),
@@ -350,68 +369,46 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 
 	defer os.Remove(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
 
-	memfileDirty := s.uffd.Dirty()
-	fmt.Printf("[snapshot] (%s) tracked pages: %d\n",
-		time.Since(start),
-		memfileDirty.Count(),
-	)
+	memfileDirtyPages := s.uffd.Dirty()
 
 	sourceFile, err := os.Open(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open memfile: %w", err)
 	}
 
-	diffFile, err := os.Create(snapshotTemplateFiles.CacheMemfilePath())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create memfile diff file: %w", err)
-	}
+	// TODO: Redirect this to the local diff
+	memfileDiff := build.NewLocalDiff()
 
-	defer diffFile.Close()
-
-	err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirty, diffFile)
+	err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiff)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
-	}
-
-	fmt.Printf("[snapshot] memfile diff %s\n", snapshotTemplateFiles.CacheMemfilePath())
-
-	fmt.Printf("[snapshot] >>>>>>>>. build id: %s\n", snapshotTemplateFiles.BuildId)
-
-	buildId, err := uuid.Parse(snapshotTemplateFiles.BuildId)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse build id: %w", err)
-	}
-
-	originalMemfile, err := s.template.Memfile()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get original memfile: %w", err)
-	}
-
-	memfileSize, err := originalMemfile.Size()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get original memfile size: %w", err)
-	}
-
-	memfileMetadata := &header.Metadata{
-		Version:     1,
-		Generation:  originalMemfile.Header().Metadata.Generation + 1,
-		BlockSize:   uint64(s.files.MemfilePageSize()),
-		Size:        uint64(memfileSize),
-		BuildId:     buildId,
-		BaseBuildId: originalMemfile.Header().Metadata.BaseBuildId,
 	}
 
 	memfileMapping := header.CreateMapping(
 		memfileMetadata,
 		&buildId,
-		memfileDirty,
+		memfileDirtyPages,
 	)
 
-	// TODO: Get the mapping of current memfile
 	memfileMappings := header.MergeMappings(
 		originalMemfile.Header().Mapping,
 		memfileMapping,
 	)
+
+	// ROOTFS
+	originalRootfs, err := s.template.Rootfs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
+	}
+
+	rootfsMetadata := &header.Metadata{
+		Version:     1,
+		Generation:  originalRootfs.Header().Metadata.Generation + 1,
+		BlockSize:   originalRootfs.Header().Metadata.BlockSize,
+		Size:        originalRootfs.Header().Metadata.Size,
+		BuildId:     buildId,
+		BaseBuildId: originalRootfs.Header().Metadata.BaseBuildId,
+	}
 
 	nbdPath, err := s.rootfs.Path()
 	if err != nil {
@@ -436,64 +433,35 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		return nil, fmt.Errorf("failed to fsync rootfs path: %w", err)
 	}
 
-	fmt.Printf("[snapshot] creating rootfs snapshot file\n")
+	rootfsDiff := build.NewLocalDiff()
 
-	f, err := os.Create(snapshotTemplateFiles.CacheRootfsPath())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create rootfs snapshot file: %w", err)
-	}
-
-	defer f.Close()
-
-	fmt.Printf("[snapshot] exporting rootfs %s\n", snapshotTemplateFiles.CacheRootfsPath())
-
-	rootfsDirty, err := s.rootfs.Export(f)
+	rootfsDirtyBlocks, err := s.rootfs.Export(rootfsDiff)
 	if err != nil {
 		return nil, fmt.Errorf("failed to export rootfs: %w", err)
-	}
-
-	originalRootfs, err := s.template.Rootfs()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
-	}
-
-	rootfsSize, err := originalRootfs.Size()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get original rootfs size: %w", err)
-	}
-
-	rootfsMetadata := &header.Metadata{
-		Version:     1,
-		Generation:  originalRootfs.Header().Metadata.Generation + 1,
-		BlockSize:   uint64(s.files.RootfsBlockSize()),
-		Size:        uint64(rootfsSize),
-		BuildId:     buildId,
-		BaseBuildId: originalRootfs.Header().Metadata.BaseBuildId,
 	}
 
 	rootfsMapping := header.CreateMapping(
 		rootfsMetadata,
 		&buildId,
-		rootfsDirty,
+		rootfsDirtyBlocks,
 	)
 
-	// TODO: Get the mapping of current rootfs
 	rootfsMappings := header.MergeMappings(
 		originalRootfs.Header().Mapping,
 		rootfsMapping,
 	)
 
-	return &SnapshotData{
-		MemfileDiffPath:   snapshotTemplateFiles.CacheMemfilePath(),
+	return &Snapshot{
+		MemfileDiffPath:   memfileDiff,
 		MemfileDiffHeader: header.NewHeader(memfileMetadata, memfileMappings),
-		RootfsDiffPath:    snapshotTemplateFiles.CacheRootfsPath(),
+		RootfsDiffPath:    rootfsDiff,
 		RootfsDiffHeader:  header.NewHeader(rootfsMetadata, rootfsMappings),
 	}, nil
 }
 
-type SnapshotData struct {
-	MemfileDiffPath   string
+type Snapshot struct {
+	MemfileDiffPath   *build.LocalDiff
 	MemfileDiffHeader *header.Header
-	RootfsDiffPath    string
+	RootfsDiffPath    *build.LocalDiff
 	RootfsDiffHeader  *header.Header
 }

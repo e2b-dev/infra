@@ -1,4 +1,4 @@
-package block
+package build
 
 import (
 	"fmt"
@@ -6,19 +6,18 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type Build struct {
 	header         *header.Header
-	buildStore     *build.Store
+	buildStore     *DiffStore
 	storeKeySuffix string
 }
 
 func NewFromStorage(
 	header *header.Header,
-	store *build.Store,
+	store *DiffStore,
 	storeKeySuffix string,
 ) *Build {
 	return &Build{
@@ -96,8 +95,26 @@ func (b *Build) ReadAt(p []byte, off int64) (n int, err error) {
 	return n, nil
 }
 
-func (b *Build) getBuild(buildID *uuid.UUID) (io.ReaderAt, error) {
-	source, err := b.buildStore.Get(buildID.String() + "/" + b.storeKeySuffix)
+// The slice access must be in the predefined blocksize of the build.
+func (b *Build) Slice(off, length int64) ([]byte, error) {
+	mappedOffset, mappedLength, buildID, err := b.header.GetShiftedMapping(off)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get mapping: %w", err)
+	}
+
+	build, err := b.getBuild(buildID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get build: %w", err)
+	}
+
+	return build.Slice(mappedOffset, mappedLength)
+}
+
+func (b *Build) getBuild(buildID *uuid.UUID) (Diff, error) {
+	source, err := b.buildStore.Get(
+		buildID.String()+"/"+b.storeKeySuffix,
+		int64(b.header.Metadata.BlockSize),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build from store: %w", err)
 	}

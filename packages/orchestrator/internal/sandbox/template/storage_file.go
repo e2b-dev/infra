@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 )
 
@@ -13,7 +14,7 @@ type storageFile struct {
 }
 
 func newStorageFile(
-	buildStore *build.Store,
+	buildStore *build.DiffStore,
 	bucketObjectPath string,
 	path string,
 ) (*storageFile, error) {
@@ -24,7 +25,7 @@ func newStorageFile(
 
 	defer f.Close()
 
-	object, err := buildStore.Get(bucketObjectPath)
+	object, err := buildStore.Get(bucketObjectPath, block.ChunkSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object: %w", err)
 	}

@@ -53,7 +53,12 @@ func main() {
 		}
 	}()
 
-	templateCache := template.NewCache(ctx)
+	templateCache, err := template.NewCache(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create template cache: %v\n", err)
+
+		return
+	}
 
 	networkPool, err := network.NewPool(ctx, *count, 0)
 	if err != nil {

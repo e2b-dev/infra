@@ -206,15 +206,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
-	prefetchTemplateFiles, err := s.templateCache.AddTemplateWithPrefetch(
-		snapshotTemplateFiles.TemplateId,
-		snapshotTemplateFiles.BuildId,
-		snapshotTemplateFiles.KernelVersion,
-		snapshotTemplateFiles.FirecrackerVersion,
-		snapshotTemplateFiles.Hugepages(),
-		true,
-	)
-
 	defer func() {
 		err := sbx.Stop()
 		if err != nil {
@@ -253,30 +244,23 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		snapshotTemplateFiles.TemplateFiles,
 	)
 
-	err = <-b.Upload(
-		ctx,
-		snapshotTemplateFiles.CacheSnapfilePath(),
-		snapshotTemplateFiles.CacheMemfilePath(),
-		snapshotTemplateFiles.CacheRootfsPath(),
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error uploading sandbox snapshot '%s': %v\n", in.SandboxId, err)
+	// TODO: Add diffs to the build store and template to the template cache.
 
-		return nil, status.New(codes.Internal, err.Error()).Err()
-	}
+	go func() {
+		err = <-b.Upload(
+			context.Background(),
+			snapshotTemplateFiles.CacheSnapfilePath(),
+			snapshotTemplateFiles.CacheMemfilePath(),
+			snapshotTemplateFiles.CacheRootfsPath(),
+		)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error uploading sandbox snapshot '%s': %v\n", in.SandboxId, err)
 
-	fmt.Printf("Finished snapshot in the background: %s\n", snapshotTemplateFiles.TemplateId)
+			return
+		}
 
-	prefetchTemplateFiles()
-
-	fmt.Printf("prefetched snapshot files: %s\n", snapshotTemplateFiles.TemplateId)
-
-	if sbx.Config.Snapshot {
-		fmt.Printf("removing previous snapshot template: %s\n", sbx.Config.TemplateId)
-
-		// If the sandbox we were snapshotting was already a snapshot we won't need the cache for the "previous" snapshot anymore.
-		s.templateCache.RemoveTemplate(sbx.Config.TemplateId, sbx.Config.BuildId)
-	}
+		fmt.Printf("Finished uploading snapshot in the background: %s\n", snapshotTemplateFiles.TemplateId)
+	}()
 
 	return &emptypb.Empty{}, nil
 }

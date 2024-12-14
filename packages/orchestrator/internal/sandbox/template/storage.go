@@ -13,16 +13,15 @@ import (
 
 type Storage struct {
 	header *header.Header
-	source *block.Chunker
+	source *build.Build
 }
 
 func NewStorage(
 	ctx context.Context,
-	store *build.Store,
+	store *build.DiffStore,
 	buildId string,
 	storeKeySuffix string,
 	blockSize int64,
-	cachePath string,
 	isSnapshot bool,
 ) (*Storage, error) {
 	id, err := uuid.Parse(buildId)
@@ -33,7 +32,7 @@ func NewStorage(
 	var h *header.Header
 
 	if isSnapshot {
-		headerObject, err := store.Get(id.String() + "/" + storeKeySuffix + ".header")
+		headerObject, err := store.Get(id.String()+"/"+storeKeySuffix+".header", block.ChunkSize)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get header object: %w", err)
 		}
@@ -45,7 +44,7 @@ func NewStorage(
 
 		h = diffHeader
 	} else {
-		object, err := store.Get(id.String() + "/" + storeKeySuffix)
+		object, err := store.Get(id.String()+"/"+storeKeySuffix, block.ChunkSize)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object: %w", err)
 		}
@@ -65,15 +64,10 @@ func NewStorage(
 		}, nil)
 	}
 
-	b := block.NewFromStorage(h, store, storeKeySuffix)
-
-	chunker, err := block.NewChunker(ctx, int64(h.Metadata.Size), blockSize, b, cachePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create chunker: %w", err)
-	}
+	b := build.NewFromStorage(h, store, storeKeySuffix)
 
 	return &Storage{
-		source: chunker,
+		source: b,
 		header: h,
 	}, nil
 }
@@ -84,10 +78,6 @@ func (d *Storage) ReadAt(p []byte, off int64) (int, error) {
 
 func (d *Storage) Size() (int64, error) {
 	return int64(d.header.Metadata.Size), nil
-}
-
-func (d *Storage) Close() error {
-	return d.source.Close()
 }
 
 func (d *Storage) Slice(off, length int64) ([]byte, error) {

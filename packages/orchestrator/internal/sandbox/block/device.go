@@ -12,10 +12,10 @@ type ReadonlyDevice interface {
 	io.ReaderAt
 	Slice(off, length int64) ([]byte, error)
 	Size() (int64, error)
-	Close() error
 }
 
 type Device interface {
 	ReadonlyDevice
 	io.WriterAt
+	Close() error
 }

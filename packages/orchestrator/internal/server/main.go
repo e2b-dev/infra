@@ -48,7 +48,10 @@ func New() (*grpc.Server, error) {
 		}
 	}()
 
-	templateCache := template.NewCache(ctx)
+	templateCache, err := template.NewCache(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create template cache: %w", err)
+	}
 
 	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize)
 	if err != nil {

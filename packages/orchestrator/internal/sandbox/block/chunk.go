@@ -14,7 +14,7 @@ import (
 
 const (
 	// Chunks must always be bigger or equal to the block size.
-	chunkSize = 2 * 1024 * 1024 // 2 MB
+	ChunkSize = 2 * 1024 * 1024 // 2 MB
 )
 
 type Chunker struct {
@@ -49,18 +49,18 @@ func NewChunker(
 		fetchers: utils.NewWaitMap(),
 	}
 
-	go chunker.prefetch()
+	// go chunker.prefetch()
 
 	return chunker, nil
 }
 
 func (c *Chunker) prefetch() error {
-	blocks := header.BlocksOffsets(c.size, chunkSize)
+	blocks := header.BlocksOffsets(c.size, ChunkSize)
 
 	for _, blockOff := range blocks {
-		err := c.fetchToCache(blockOff, chunkSize)
+		err := c.fetchToCache(blockOff, ChunkSize)
 		if err != nil {
-			return fmt.Errorf("failed to prefetch block %d-%d: %w", blockOff, blockOff+chunkSize, err)
+			return fmt.Errorf("failed to prefetch block %d-%d: %w", blockOff, blockOff+ChunkSize, err)
 		}
 	}
 
@@ -77,12 +77,12 @@ func (c *Chunker) ReadAt(b []byte, off int64) (int, error) {
 }
 
 func (c *Chunker) WriteTo(w io.Writer) (int64, error) {
-	for i := int64(0); i < c.size; i += chunkSize {
-		chunk := make([]byte, chunkSize)
+	for i := int64(0); i < c.size; i += ChunkSize {
+		chunk := make([]byte, ChunkSize)
 
 		n, err := c.ReadAt(chunk, i)
 		if err != nil {
-			return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", i, i+chunkSize, err)
+			return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", i, i+ChunkSize, err)
 		}
 
 		_, err = w.Write(chunk[:n])
@@ -121,10 +121,10 @@ func (c *Chunker) Slice(off, length int64) ([]byte, error) {
 func (c *Chunker) fetchToCache(off, len int64) error {
 	var eg errgroup.Group
 
-	chunks := header.BlocksOffsets(len, chunkSize)
+	chunks := header.BlocksOffsets(len, ChunkSize)
 
-	startingChunk := header.BlockIdx(off, chunkSize)
-	startingChunkOffset := header.BlockOffset(startingChunk, chunkSize)
+	startingChunk := header.BlockIdx(off, ChunkSize)
+	startingChunkOffset := header.BlockOffset(startingChunk, ChunkSize)
 
 	for _, chunkOff := range chunks {
 		// Ensure the closure captures the correct block offset.
@@ -142,11 +142,11 @@ func (c *Chunker) fetchToCache(off, len int64) error {
 			err = c.fetchers.Wait(fetchOff, func() error {
 				select {
 				case <-c.ctx.Done():
-					return fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+chunkSize, c.ctx.Err())
+					return fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+ChunkSize, c.ctx.Err())
 				default:
 				}
 
-				b := make([]byte, chunkSize)
+				b := make([]byte, ChunkSize)
 
 				_, err := c.base.ReadAt(b, fetchOff)
 				if err != nil && !errors.Is(err, io.EOF) {

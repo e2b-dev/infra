@@ -19,10 +19,10 @@ type Cache struct {
 	cache      *ttlcache.Cache[string, Template]
 	bucket     *gcs.BucketHandle
 	ctx        context.Context
-	buildStore *build.Store
+	buildStore *build.DiffStore
 }
 
-func NewCache(ctx context.Context) *Cache {
+func NewCache(ctx context.Context) (*Cache, error) {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
@@ -38,14 +38,17 @@ func NewCache(ctx context.Context) *Cache {
 
 	go cache.Start()
 
-	buildStore := build.NewStore(gcs.TemplateBucket, ctx)
+	buildStore, err := build.NewDiffStore(gcs.TemplateBucket, ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create build store: %w", err)
+	}
 
 	return &Cache{
 		bucket:     gcs.TemplateBucket,
 		buildStore: buildStore,
 		cache:      cache,
 		ctx:        ctx,
-	}
+	}, nil
 }
 
 func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {

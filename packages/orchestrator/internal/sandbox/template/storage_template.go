@@ -49,7 +49,7 @@ func newTemplateFromStorage(
 	}, nil
 }
 
-func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.Store) {
+func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
 	err := os.MkdirAll(t.files.CacheDir(), os.ModePerm)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create directory %s: %w", t.files.CacheDir(), err)
@@ -91,7 +91,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.Store) {
 			t.files.BuildId,
 			storage.MemfileName,
 			t.files.MemfilePageSize(),
-			t.files.CacheMemfilePath(),
 			t.isSnapshot,
 		)
 		if memfileErr != nil {
@@ -113,7 +112,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.Store) {
 			t.files.BuildId,
 			storage.RootfsName,
 			t.files.RootfsBlockSize(),
-			t.files.CacheRootfsPath(),
 			t.isSnapshot,
 		)
 		if rootfsErr != nil {

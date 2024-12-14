@@ -17,16 +17,6 @@ type Template interface {
 func closeTemplate(t Template) error {
 	var errs []error
 
-	memfile, err := t.Memfile()
-	if err == nil {
-		errs = append(errs, memfile.Close())
-	}
-
-	rootfs, err := t.Rootfs()
-	if err == nil {
-		errs = append(errs, rootfs.Close())
-	}
-
 	snapfile, err := t.Snapfile()
 	if err == nil {
 		errs = append(errs, snapfile.Close())
