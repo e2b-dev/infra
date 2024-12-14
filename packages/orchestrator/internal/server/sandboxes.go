@@ -72,12 +72,12 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	go func() {
 		waitErr := sbx.Wait()
 		if waitErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to wait for Sandbox: %v", waitErr)
+			fmt.Fprintf(os.Stderr, "failed to wait for Sandbox: %v\n", waitErr)
 		}
 
 		cleanupErr := cleanup.Run()
 		if cleanupErr != nil {
-			fmt.Fprintf(os.Stderr, "failed to cleanup Sandbox: %v", cleanupErr)
+			fmt.Fprintf(os.Stderr, "failed to cleanup Sandbox: %v\n", cleanupErr)
 		}
 
 		s.sandboxes.Remove(req.Sandbox.SandboxId)
