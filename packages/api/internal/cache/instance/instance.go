@@ -92,17 +92,6 @@ func NewCache(
 
 			return
 		}
-
-		_, err = analytics.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
-			InstanceId:    instanceInfo.Instance.SandboxID,
-			EnvironmentId: instanceInfo.Instance.TemplateID,
-			BuildId:       instanceInfo.BuildID.String(),
-			TeamId:        instanceInfo.TeamID.String(),
-			Timestamp:     timestamppb.Now(),
-		})
-		if err != nil {
-			logger.Errorf("Error sending Analytics event: %v", err)
-		}
 	})
 
 	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, InstanceInfo]) {
