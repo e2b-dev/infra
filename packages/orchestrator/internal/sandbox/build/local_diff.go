@@ -47,6 +47,11 @@ func (f *LocalDiffFile) ToLocalDiff(
 		return nil, fmt.Errorf("failed to get file size: %w", err)
 	}
 
+	err = f.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to close file: %w", err)
+	}
+
 	return newLocalDiff(f.cachePath, size.Size(), blockSize)
 }
 
