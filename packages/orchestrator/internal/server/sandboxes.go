@@ -220,13 +220,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
-	defer func() {
-		err := os.RemoveAll(snapshotTemplateFiles.CacheDir())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error removing sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
-		}
-	}()
-
 	snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error snapshotting sandbox '%s': %v\n", in.SandboxId, err)
@@ -234,8 +227,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
-	// Stop the sandbox after the snapshot is created. This removes the DNS record.
-	// If we called the stop at the end, we could accidentally remove the DNS record for the resumed sandbox.
+	// We can stop the sandbox here already.
 	sbx.Stop()
 
 	err = s.templateCache.AddSnapshot(

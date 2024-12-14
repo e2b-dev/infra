@@ -432,15 +432,15 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	}
 
 	// TODO: We need to test this properly.
-	err = file.Sync()
-	if err != nil {
-		return nil, fmt.Errorf("failed to sync rootfs path: %w", err)
-	}
-
-	// TODO: We need to test this properly.
 	err = syscall.Fsync(int(file.Fd()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fsync rootfs path: %w", err)
+	}
+
+	// TODO: We need to test this properly.
+	err = file.Sync()
+	if err != nil {
+		return nil, fmt.Errorf("failed to sync rootfs path: %w", err)
 	}
 
 	rootfsDiffFile, err := build.NewLocalDiffFile(buildId.String(), build.Rootfs)

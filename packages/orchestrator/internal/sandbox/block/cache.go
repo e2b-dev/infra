@@ -57,6 +57,11 @@ func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	err := m.mmap.Flush()
+	if err != nil {
+		return nil, fmt.Errorf("error flushing mmap: %w", err)
+	}
+
 	tracked := bitset.New(uint(header.TotalBlocks(m.size, m.blockSize)))
 
 	m.dirty.Range(func(key, value any) bool {
