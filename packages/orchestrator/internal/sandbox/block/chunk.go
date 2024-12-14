@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -63,8 +62,6 @@ func (c *chunker) prefetch() error {
 		if err != nil {
 			return fmt.Errorf("failed to prefetch block %d-%d: %w", blockOff, blockOff+chunkSize, err)
 		}
-
-		time.Sleep(time.Millisecond * 120)
 	}
 
 	return nil
@@ -77,6 +74,24 @@ func (c *chunker) ReadAt(b []byte, off int64) (int, error) {
 	}
 
 	return copy(b, slice), nil
+}
+
+func (c *chunker) WriteTo(w io.Writer) (int64, error) {
+	for i := int64(0); i < c.size; i += chunkSize {
+		chunk := make([]byte, chunkSize)
+
+		n, err := c.ReadAt(chunk, i)
+		if err != nil {
+			return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", i, i+chunkSize, err)
+		}
+
+		_, err = w.Write(chunk[:n])
+		if err != nil {
+			return 0, fmt.Errorf("failed to write chunk %d to writer: %w", i, err)
+		}
+	}
+
+	return int64(c.size), nil
 }
 
 func (c *chunker) Slice(off, length int64) ([]byte, error) {
@@ -138,7 +153,7 @@ func (c *chunker) fetchToCache(off, len int64) error {
 					return fmt.Errorf("failed to read chunk from base %d: %w", fetchOff, err)
 				}
 
-				_, cacheErr := c.cache.WriteAt(b, fetchOff)
+				_, cacheErr := c.cache.WriteAtWithoutLock(b, fetchOff)
 				if cacheErr != nil {
 					return fmt.Errorf("failed to write chunk %d to cache: %w", fetchOff, cacheErr)
 				}

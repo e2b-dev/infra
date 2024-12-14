@@ -88,16 +88,7 @@ func (m *Cache) WriteAt(b []byte, off int64) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	end := off + int64(len(b))
-	if end > m.size {
-		end = m.size
-	}
-
-	n := copy((*m.mmap)[off:end], b)
-
-	m.setIsCached(off, end-off)
-
-	return n, nil
+	return m.WriteAtWithoutLock(b, off)
 }
 
 func (m *Cache) Close() error {
@@ -144,4 +135,18 @@ func (m *Cache) setIsCached(off, length int64) {
 	for _, blockOff := range header.BlocksOffsets(length, m.blockSize) {
 		m.dirty.Store(off+blockOff, struct{}{})
 	}
+}
+
+// When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
+func (m *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
+	end := off + int64(len(b))
+	if end > m.size {
+		end = m.size
+	}
+
+	n := copy((*m.mmap)[off:end], b)
+
+	m.setIsCached(off, end-off)
+
+	return n, nil
 }
