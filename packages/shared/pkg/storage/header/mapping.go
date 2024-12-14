@@ -51,12 +51,14 @@ func CreateMapping(
 		blockLength = 1
 	}
 
-	mappings = append(mappings, &BuildMap{
-		Offset:             uint64(startBlock) * metadata.BlockSize,
-		BuildId:            *buildId,
-		Length:             uint64(blockLength) * uint64(metadata.BlockSize),
-		BuildStorageOffset: buildStorageOffset,
-	})
+	if blockLength > 0 {
+		mappings = append(mappings, &BuildMap{
+			Offset:             uint64(startBlock) * metadata.BlockSize,
+			BuildId:            *buildId,
+			Length:             uint64(blockLength) * uint64(metadata.BlockSize),
+			BuildStorageOffset: buildStorageOffset,
+		})
+	}
 
 	return mappings
 }
@@ -85,6 +87,18 @@ func MergeMappings(
 	for baseIdx < len(baseMapping) && diffIdx < len(diffMapping) {
 		base := baseMapping[baseIdx]
 		diff := diffMapping[diffIdx]
+
+		if base.Length == 0 {
+			baseIdx++
+
+			continue
+		}
+
+		if diff.Length == 0 {
+			diffIdx++
+
+			continue
+		}
 
 		// base is before diff and there is no overlap
 		// add base to the result, because it will not be overlapping by any diff
