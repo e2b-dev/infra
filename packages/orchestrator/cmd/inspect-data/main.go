@@ -77,6 +77,9 @@ func main() {
 	fmt.Printf("\nDATA\n")
 	fmt.Printf("====\n")
 
+	emptyCount := 0
+	nonEmptyCount := 0
+
 	for i := *start * blockSize; i < *end*blockSize; i += blockSize {
 		_, err := obj.ReadAt(b, i)
 		if err != nil {
@@ -85,6 +88,20 @@ func main() {
 
 		nonZeroCount := blockSize - int64(bytes.Count(b, []byte("\x00")))
 
-		fmt.Printf("%-10d [%11d,%11d) %d non-zero bytes\n", i/blockSize, i, i+blockSize, nonZeroCount)
+		if nonZeroCount > 0 {
+			nonEmptyCount++
+			fmt.Printf("%-10d [%11d,%11d) %d non-zero bytes\n", i/blockSize, i, i+blockSize, nonZeroCount)
+		} else {
+			emptyCount++
+			fmt.Printf("%-10d [%11d,%11d) EMPTY\n", i/blockSize, i, i+blockSize)
+		}
 	}
+
+	fmt.Printf("\nSUMMARY\n")
+	fmt.Printf("=======\n")
+	fmt.Printf("Empty inspected blocks: %d\n", emptyCount)
+	fmt.Printf("Non-empty inspected blocks: %d\n", nonEmptyCount)
+	fmt.Printf("Total inspected blocks: %d\n", emptyCount+nonEmptyCount)
+	fmt.Printf("Total inspected size: %d B (%d MiB)\n", size, size/1024/1024)
+	fmt.Printf("Empty inspected size: %d B (%d MiB)\n", int64(emptyCount)*blockSize, int64(emptyCount)*blockSize/1024/1024)
 }
