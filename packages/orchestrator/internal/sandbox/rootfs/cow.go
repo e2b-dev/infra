@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync/atomic"
 
 	"github.com/bits-and-blooms/bitset"
 
@@ -24,6 +25,8 @@ type CowDevice struct {
 
 	blockSize   int64
 	BaseBuildId string
+
+	closing atomic.Bool
 }
 
 func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64) (*CowDevice, error) {
@@ -61,20 +64,61 @@ func (o *CowDevice) Start(ctx context.Context) error {
 }
 
 func (o *CowDevice) Export(out io.Writer) (*bitset.BitSet, error) {
-	return o.cache.Export(out)
+	if o.closing.CompareAndSwap(false, true) {
+		var errs []error
+
+		err := o.close()
+		if err != nil {
+			return nil, err
+		}
+
+		dirty, err := o.cache.Export(out)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error exporting cache: %w", err))
+		}
+
+		err = o.overlay.Close()
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error closing overlay cache: %w", err))
+		}
+
+		err = errors.Join(errs...)
+		if err != nil {
+			return nil, err
+		}
+
+		return dirty, nil
+	}
+
+	return nil, nil
 }
 
 func (o *CowDevice) Close() error {
+	if o.closing.CompareAndSwap(false, true) {
+		var errs []error
+
+		err := o.close()
+		if err != nil {
+			errs = append(errs, err)
+		}
+
+		err = o.overlay.Close()
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error closing overlay cache: %w", err))
+		}
+
+		return errors.Join(errs...)
+	}
+
+	return nil
+}
+
+func (o *CowDevice) close() error {
 	var errs []error
 
 	err := o.mnt.Close()
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error closing overlay mount: %w", err))
-	}
-
-	err = o.overlay.Close()
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error closing overlay cache: %w", err))
 	}
 
 	devicePath, err := o.ready.Wait()
