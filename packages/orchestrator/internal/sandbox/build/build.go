@@ -67,15 +67,6 @@ func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
 			return n, io.EOF
 		}
 
-		// Skip reading when the uuid is nil.
-		// We will use this to handle base builds that are already diffs.
-		// The passed slice p must start as empty, otherwise we would need to copy the empty values there.
-		if *buildID == uuid.Nil {
-			n += int(readLength)
-
-			continue
-		}
-
 		mappedBuild, err := b.getBuild(buildID)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
@@ -100,10 +91,6 @@ func (b *File) Slice(off, length int64) ([]byte, error) {
 	mappedOffset, _, buildID, err := b.header.GetShiftedMapping(off)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mapping: %w", err)
-	}
-
-	if *buildID == uuid.Nil {
-		return header.EmptyHugePage, nil
 	}
 
 	build, err := b.getBuild(buildID)
