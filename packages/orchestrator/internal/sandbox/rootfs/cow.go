@@ -63,8 +63,10 @@ func (o *CowDevice) Start(ctx context.Context) error {
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
 }
 
-func (o *CowDevice) Export(out io.Writer) (*bitset.BitSet, error) {
+func (o *CowDevice) Export(out io.Writer, stopSandbox func() error) (*bitset.BitSet, error) {
 	if o.closing.CompareAndSwap(false, true) {
+		stopSandbox()
+
 		var errs []error
 
 		err := o.close()

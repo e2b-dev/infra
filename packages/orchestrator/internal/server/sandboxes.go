@@ -227,9 +227,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
-	// We can stop the sandbox here already.
-	sbx.Stop()
-
 	err = s.templateCache.AddSnapshot(
 		snapshotTemplateFiles.TemplateId,
 		snapshotTemplateFiles.BuildId,
