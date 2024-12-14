@@ -27,6 +27,10 @@ net.core.netdev_max_backlog = 65535
 
 # Increase maximum number of TCP sockets
 net.ipv4.tcp_max_syn_backlog = 65535
+
+# Increase the maximum number of memory map areas
+vm.max_map_count=1048576
+
 EOF
 sudo sysctl -p
 
