@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/mod/semver"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
@@ -441,6 +442,11 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	err = file.Sync()
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync rootfs path: %w", err)
+	}
+
+	// Call ioctl with BLKFLSBUF
+	if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
+		return nil, fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
 	}
 
 	rootfsDiffFile, err := build.NewLocalDiffFile(buildId.String(), build.Rootfs)
