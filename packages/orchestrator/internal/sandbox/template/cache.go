@@ -102,7 +102,12 @@ func (c *Cache) AddSnapshot(
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
 	localSnapfile *LocalFile,
+	memfileDiff *build.LocalDiff,
+	rootfsDiff *build.LocalDiff,
 ) error {
+	c.buildStore.Add(buildId, build.Rootfs, rootfsDiff)
+	c.buildStore.Add(buildId, build.Memfile, memfileDiff)
+
 	storageTemplate, err := newTemplateFromStorage(
 		templateId,
 		buildId,

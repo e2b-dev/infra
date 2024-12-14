@@ -1,12 +1,12 @@
 package template
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
 type storageFile struct {
@@ -14,7 +14,8 @@ type storageFile struct {
 }
 
 func newStorageFile(
-	buildStore *build.DiffStore,
+	ctx context.Context,
+	bucket *gcs.BucketHandle,
 	bucketObjectPath string,
 	path string,
 ) (*storageFile, error) {
@@ -25,10 +26,7 @@ func newStorageFile(
 
 	defer f.Close()
 
-	object, err := buildStore.Get(bucketObjectPath, block.ChunkSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get object: %w", err)
-	}
+	object := gcs.NewObject(ctx, bucket, bucketObjectPath)
 
 	_, err = object.WriteTo(f)
 	if err != nil {

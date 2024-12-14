@@ -112,7 +112,8 @@ func (b *File) Slice(off, length int64) ([]byte, error) {
 
 func (b *File) getBuild(buildID *uuid.UUID) (Diff, error) {
 	source, err := b.store.Get(
-		buildID.String()+"/"+string(b.fileType),
+		buildID.String(),
+		b.fileType,
 		int64(b.header.Metadata.BlockSize),
 	)
 	if err != nil {

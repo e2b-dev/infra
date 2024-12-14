@@ -238,13 +238,11 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	// If we called the stop at the end, we could accidentally remove the DNS record for the resumed sandbox.
 	sbx.Stop()
 
-	// b := storage.NewTemplateBuild(
-	// 	snapshot.MemfileDiffHeader,
-	// 	snapshot.RootfsDiffHeader,
-	// 	snapshotTemplateFiles.TemplateFiles,
-	// )
-
-	// TODO: Add diffs to the build store and template to the template cache.
+	b := storage.NewTemplateBuild(
+		snapshot.MemfileDiffHeader,
+		snapshot.RootfsDiffHeader,
+		snapshotTemplateFiles.TemplateFiles,
+	)
 
 	err = s.templateCache.AddSnapshot(
 		snapshotTemplateFiles.TemplateId,
@@ -255,26 +253,42 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
+		snapshot.MemfileDiff,
+		snapshot.RootfsDiff,
 	)
 	if err != nil {
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
-	// go func() {
-	// 	err = <-b.Upload(
-	// 		context.Background(),
-	// 		snapshotTemplateFiles.CacheSnapfilePath(),
-	// 		snapshotTemplateFiles.CacheMemfilePath(),
-	// 		snapshotTemplateFiles.CacheRootfsPath(),
-	// 	)
-	// 	if err != nil {
-	// 		fmt.Fprintf(os.Stderr, "error uploading sandbox snapshot '%s': %v\n", in.SandboxId, err)
+	go func() {
+		memfileLocalPath, err := snapshot.MemfileDiff.Path()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error getting memfile diff path: %v\n", err)
 
-	// 		return
-	// 	}
+			return
+		}
 
-	// 	fmt.Printf("Finished uploading snapshot in the background: %s\n", snapshotTemplateFiles.TemplateId)
-	// }()
+		rootfsLocalPath, err := snapshot.RootfsDiff.Path()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error getting rootfs diff path: %v\n", err)
+
+			return
+		}
+
+		err = <-b.Upload(
+			context.Background(),
+			snapshotTemplateFiles.CacheSnapfilePath(),
+			memfileLocalPath,
+			rootfsLocalPath,
+		)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error uploading sandbox snapshot '%s': %v\n", in.SandboxId, err)
+
+			return
+		}
+
+		fmt.Printf("Finished uploading snapshot in the background: %s\n", snapshotTemplateFiles.TemplateId)
+	}()
 
 	return &emptypb.Empty{}, nil
 }

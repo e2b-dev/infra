@@ -6,46 +6,60 @@ import (
 	"io"
 	"path/filepath"
 
-	"github.com/google/uuid"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
+func storagePath(buildId string, diffType DiffType) string {
+	return fmt.Sprintf("%s/%s", buildId, diffType)
+}
+
 type StorageDiff struct {
-	chunker   *block.Chunker
-	size      int64
-	blockSize int64
-	ctx       context.Context
-	bucket    *gcs.BucketHandle
-	id        string
+	chunker     *block.Chunker
+	size        int64
+	blockSize   int64
+	ctx         context.Context
+	bucket      *gcs.BucketHandle
+	storagePath string
+	cachePath   string
 }
 
 func newStorageDiff(
 	ctx context.Context,
 	bucket *gcs.BucketHandle,
-	id string,
+	buildId string,
+	diffType DiffType,
 	blockSize int64,
 ) *StorageDiff {
+	cachePathSuffix := id.Generate()
+
+	storagePath := storagePath(buildId, diffType)
+	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
+	cachePath := filepath.Join(cachePath, cacheFile)
+
 	return &StorageDiff{
-		blockSize: blockSize,
-		ctx:       ctx,
-		bucket:    bucket,
-		id:        id,
+		blockSize:   blockSize,
+		ctx:         ctx,
+		bucket:      bucket,
+		storagePath: storagePath,
+		cachePath:   cachePath,
 	}
 }
 
+func (b *StorageDiff) CacheKey() string {
+	return b.storagePath
+}
+
 func (b *StorageDiff) Init() error {
-	obj := gcs.NewObject(b.ctx, b.bucket, b.id)
+	obj := gcs.NewObject(b.ctx, b.bucket, b.storagePath)
 
 	size, err := obj.Size()
 	if err != nil {
 		return fmt.Errorf("failed to get object size: %w", err)
 	}
 
-	id := uuid.New()
-
-	chunker, err := block.NewChunker(b.ctx, size, b.blockSize, obj, filepath.Join(cachePath, id.String()))
+	chunker, err := block.NewChunker(b.ctx, size, b.blockSize, obj, b.cachePath)
 	if err != nil {
 		return fmt.Errorf("failed to create chunker: %w", err)
 	}

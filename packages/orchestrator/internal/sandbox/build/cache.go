@@ -49,24 +49,32 @@ func NewDiffStore(bucket *gcs.BucketHandle, ctx context.Context) (*DiffStore, er
 	}, nil
 }
 
-func (s *DiffStore) Get(id string, blockSize int64) (Diff, error) {
+func (s *DiffStore) Get(buildId string, diffType DiffType, blockSize int64) (Diff, error) {
+	diff := newStorageDiff(s.ctx, s.bucket, buildId, diffType, blockSize)
+
 	source, found := s.cache.GetOrSet(
-		id,
-		newStorageDiff(s.ctx, s.bucket, id, blockSize),
+		diff.CacheKey(),
+		diff,
 		ttlcache.WithTTL[string, Diff](buildExpiration),
 	)
 
 	value := source.Value()
 	if value == nil {
-		return nil, fmt.Errorf("failed to get source from cache: %s", id)
+		return nil, fmt.Errorf("failed to get source from cache: %s", diff.CacheKey())
 	}
 
 	if !found {
-		err := value.Init()
+		err := diff.Init()
 		if err != nil {
 			return nil, fmt.Errorf("failed to init source: %w", err)
 		}
 	}
 
 	return value, nil
+}
+
+func (s *DiffStore) Add(buildId string, t DiffType, d *LocalDiff) {
+	storagePath := storagePath(buildId, t)
+
+	s.cache.Set(storagePath, d, buildExpiration)
 }

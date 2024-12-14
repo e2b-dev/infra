@@ -87,7 +87,8 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		}
 
 		snapfile, snapfileErr := newStorageFile(
-			buildStore,
+			ctx,
+			t.bucket,
 			t.files.StorageSnapfilePath(),
 			t.files.CacheSnapfilePath(),
 		)

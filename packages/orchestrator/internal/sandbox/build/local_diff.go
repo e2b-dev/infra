@@ -1,34 +1,90 @@
 package build
 
 import (
-	"io"
+	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
-type LocalDiff struct {
-	chunker   *block.Chunker
-	size      int64
-	blockSize int64
-	id        string
+type LocalDiffFile struct {
+	*os.File
+	cachePath string
 }
 
-func NewLocalDiff(
-	id string,
-	blockSize int64,
-) *LocalDiff {
-	return &LocalDiff{
-		blockSize: blockSize,
-		id:        id,
+func NewLocalDiffFile(
+	buildId string,
+	diffType DiffType,
+) (*LocalDiffFile, error) {
+	cachePathSuffix := id.Generate()
+
+	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
+	cachePath := filepath.Join(cachePath, cacheFile)
+
+	f, err := os.OpenFile(cachePath, os.O_RDWR|os.O_CREATE, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
+
+	return &LocalDiffFile{
+		File:      f,
+		cachePath: cachePath,
+	}, nil
+}
+
+func (f *LocalDiffFile) ToLocalDiff(
+	blockSize int64,
+) (*LocalDiff, error) {
+	size, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file size: %w", err)
+	}
+
+	return newLocalDiff(f.cachePath, size.Size(), blockSize)
+}
+
+type LocalDiff struct {
+	size      int64
+	blockSize int64
+	cachePath string
+	cache     *block.Cache
+}
+
+func newLocalDiff(
+	cachePath string,
+	size int64,
+	blockSize int64,
+) (*LocalDiff, error) {
+	cache, err := block.NewCache(size, blockSize, cachePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cache: %w", err)
+	}
+
+	return &LocalDiff{
+		size:      size,
+		blockSize: blockSize,
+		cachePath: cachePath,
+		cache:     cache,
+	}, nil
+}
+
+func (b *LocalDiff) Path() (string, error) {
+	err := b.cache.Sync()
+	if err != nil {
+		return "", fmt.Errorf("failed to sync cache: %w", err)
+	}
+
+	return b.cachePath, nil
 }
 
 func (b *LocalDiff) Close() error {
-	return b.chunker.Close()
+	return b.cache.Close()
 }
 
 func (b *LocalDiff) ReadAt(p []byte, off int64) (int, error) {
-	return b.chunker.ReadAt(p, off)
+	return b.cache.ReadAt(p, off)
 }
 
 func (b *LocalDiff) Size() (int64, error) {
@@ -36,13 +92,5 @@ func (b *LocalDiff) Size() (int64, error) {
 }
 
 func (b *LocalDiff) Slice(off, length int64) ([]byte, error) {
-	return b.chunker.Slice(off, length)
-}
-
-func (b *LocalDiff) WriteTo(w io.Writer) (int64, error) {
-	return b.chunker.WriteTo(w)
-}
-
-func (b *LocalDiff) Write(p []byte) (n int, err error) {
-	return 0, nil
+	return b.cache.Slice(off, length)
 }

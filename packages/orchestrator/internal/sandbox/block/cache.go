@@ -50,6 +50,10 @@ func NewCache(size, blockSize int64, filePath string) (*Cache, error) {
 	}, nil
 }
 
+func (m *Cache) Sync() error {
+	return m.mmap.Flush()
+}
+
 func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
