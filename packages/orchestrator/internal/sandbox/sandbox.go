@@ -383,7 +383,7 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memfile diff file: %w", err)
 	}
-  
+
 	err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiffFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
