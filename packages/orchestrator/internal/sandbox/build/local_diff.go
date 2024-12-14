@@ -67,8 +67,6 @@ func newLocalDiff(
 	size int64,
 	blockSize int64,
 ) (*LocalDiff, error) {
-	fmt.Printf("new local diff: size %d, blockSize %d, cachePath %s\n", size, blockSize, cachePath)
-
 	cache, err := block.NewCache(size, blockSize, cachePath, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache: %w", err)
