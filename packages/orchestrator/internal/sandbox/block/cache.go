@@ -11,7 +11,7 @@ import (
 	"github.com/edsrzf/mmap-go"
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type Cache struct {

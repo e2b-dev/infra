@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
 	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type Build struct {

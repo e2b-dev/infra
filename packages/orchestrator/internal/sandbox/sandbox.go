@@ -24,8 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -369,7 +368,7 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 
 	defer diffFile.Close()
 
-	err = build.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirty, diffFile)
+	err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirty, diffFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
 	}

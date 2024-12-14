@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 )
 
 type storageFile struct {

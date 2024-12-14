@@ -7,7 +7,7 @@ import (
 
 	"github.com/jellydator/ttlcache/v3"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 

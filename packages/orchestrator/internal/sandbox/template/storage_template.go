@@ -6,9 +6,9 @@ import (
 	"os"
 	"sync"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 

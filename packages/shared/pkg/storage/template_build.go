@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"golang.org/x/sync/errgroup"
 )
 

@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type Storage struct {

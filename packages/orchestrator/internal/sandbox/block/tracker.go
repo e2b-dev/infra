@@ -7,7 +7,7 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/build/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type TrackedSliceDevice struct {

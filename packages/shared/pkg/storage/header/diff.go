@@ -1,4 +1,4 @@
-package build
+package header
 
 import (
 	"fmt"
@@ -16,8 +16,6 @@ func CreateDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff 
 		if err != nil {
 			return fmt.Errorf("error reading from source: %w", err)
 		}
-
-		// fmt.Printf("[block] with set bytes: %d %d\n", i, len(b)-bytes.Count(b, []byte("\x00")))
 
 		_, err = diff.Write(b)
 		if err != nil {
