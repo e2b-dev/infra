@@ -46,7 +46,7 @@ sudo sysctl vm.vfs_cache_pressure=50
 # Add tmpfs for snapshotting
 # TODO: Parametrize this
 sudo mkdir -p /mnt/snapshot-cache
-sudo mount -t tmpfs -o size=50G tmpfs /mnt/snapshot-cache
+sudo mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
 
 ulimit -n 1048576
 export GOMAXPROCS='nproc'

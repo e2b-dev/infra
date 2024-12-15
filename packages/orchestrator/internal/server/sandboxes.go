@@ -178,7 +178,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	return &emptypb.Empty{}, nil
 }
 
-var pauseQueue = semaphore.NewWeighted(6)
+var pauseQueue = semaphore.NewWeighted(8)
 
 func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
 	_, childSpan := s.tracer.Start(ctx, "sandbox-pause")
