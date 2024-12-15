@@ -309,8 +309,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 			return
 		}
-
-		fmt.Printf("Finished uploading snapshot in the background: %s\n", snapshotTemplateFiles.TemplateId)
 	}()
 
 	return &emptypb.Empty{}, nil

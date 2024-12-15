@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -120,82 +119,57 @@ func (t *TemplateBuild) Upload(
 
 	eg.Go(func() error {
 		if t.rootfsHeader == nil {
-			fmt.Printf("[TemplateBuild] - skipped rootfs header upload\n")
 			return nil
 		}
-
-		start := time.Now()
 
 		err := t.uploadRootfsHeader(ctx, t.rootfsHeader)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("[TemplateBuild] - uploaded rootfs header in %dms\n", time.Since(start).Milliseconds())
-
 		return nil
 	})
 
 	eg.Go(func() error {
 		if rootfsPath == nil {
-			fmt.Printf("[TemplateBuild] - skipped rootfs upload\n")
-
 			return nil
 		}
-
-		start := time.Now()
 
 		err := t.uploadRootfs(ctx, *rootfsPath)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("[TemplateBuild] - uploaded rootfs in %dms\n", time.Since(start).Milliseconds())
-
 		return nil
 	})
 
 	eg.Go(func() error {
 		if t.memfileHeader == nil {
-			fmt.Printf("[TemplateBuild] - skipped memfile header upload\n")
-
 			return nil
 		}
-
-		start := time.Now()
 
 		err := t.uploadMemfileHeader(ctx, t.memfileHeader)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("[TemplateBuild] - uploaded memfile header in %dms\n", time.Since(start).Milliseconds())
-
 		return nil
 	})
 
 	eg.Go(func() error {
 		if memfilePath == nil {
-			fmt.Printf("[TemplateBuild] - skipped memfile upload\n")
-
 			return nil
 		}
-
-		start := time.Now()
 
 		err := t.uploadMemfile(ctx, *memfilePath)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("[TemplateBuild] - uploaded memfile in %dms\n", time.Since(start).Milliseconds())
-
 		return nil
 	})
 
 	eg.Go(func() error {
-		start := time.Now()
-
 		snapfile, err := os.Open(snapfilePath)
 		if err != nil {
 			return err
@@ -207,8 +181,6 @@ func (t *TemplateBuild) Upload(
 		if err != nil {
 			return err
 		}
-
-		fmt.Printf("[TemplateBuild] - uploaded snapfile in %dms\n", time.Since(start).Milliseconds())
 
 		return nil
 	})
