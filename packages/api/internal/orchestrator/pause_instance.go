@@ -4,11 +4,19 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gogo/status"
+	"google.golang.org/grpc/codes"
+
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+type ErrPauseQueueExhausted struct{}
+
+func (ErrPauseQueueExhausted) Error() string {
+	return "The pause queue is exhausted"
+}
 
 func (o *Orchestrator) PauseInstance(ctx context.Context, sbx *instance.InstanceInfo, templateID, buildID string) error {
 	_, childSpan := o.tracer.Start(ctx, "pause-instance")
@@ -19,15 +27,25 @@ func (o *Orchestrator) PauseInstance(ctx context.Context, sbx *instance.Instance
 		return fmt.Errorf("failed to get client '%s': %w", sbx.Instance.ClientID, err)
 	}
 
-	defer o.DeleteInstance(ctx, sbx.Instance.SandboxID)
-
 	_, err = client.Sandbox.Pause(ctx, &orchestrator.SandboxPauseRequest{
 		SandboxId:  sbx.Instance.SandboxID,
 		TemplateId: templateID,
 		BuildId:    buildID,
 	})
 
-	err = utils.UnwrapGRPCError(err)
+	if err == nil {
+		return nil
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		return err
+	}
+
+	if st.Code() == codes.ResourceExhausted {
+		return ErrPauseQueueExhausted{}
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.Instance.SandboxID, err)
 	}

@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -176,9 +177,18 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	return &emptypb.Empty{}, nil
 }
 
+var pauseQueue = semaphore.NewWeighted(4)
+
 func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
 	_, childSpan := s.tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
+
+	err := pauseQueue.Acquire(ctx, 1)
+	if err != nil {
+		return nil, status.New(codes.ResourceExhausted, err.Error()).Err()
+	}
+
+	defer pauseQueue.Release(1)
 
 	s.pauseMu.Lock()
 

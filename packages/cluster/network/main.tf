@@ -33,7 +33,7 @@ locals {
       protocol                        = "HTTP"
       port                            = var.api_port.port
       port_name                       = var.api_port.name
-      timeout_sec                     = 30
+      timeout_sec                     = 120
       connection_draining_timeout_sec = 1
       http_health_check = {
         request_path = var.api_port.health_path
@@ -641,4 +641,3 @@ resource "google_compute_security_policy" "disable-bots-log-collector" {
     }
   }
 }
-
