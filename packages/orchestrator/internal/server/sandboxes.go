@@ -177,7 +177,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	return &emptypb.Empty{}, nil
 }
 
-var pauseQueue = semaphore.NewWeighted(4)
+var pauseQueue = semaphore.NewWeighted(3)
 
 func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
 	_, childSpan := s.tracer.Start(ctx, "sandbox-pause")
@@ -188,13 +188,12 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.ResourceExhausted, err.Error()).Err()
 	}
 
-	defer pauseQueue.Release(1)
-
 	s.pauseMu.Lock()
 
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
 	if !ok {
 		s.pauseMu.Unlock()
+		pauseQueue.Release(1)
 
 		return nil, status.New(codes.NotFound, "sandbox not found").Err()
 	}
@@ -214,6 +213,8 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		sbx.Config.HugePages,
 	).NewTemplateCacheFiles()
 	if err != nil {
+		pauseQueue.Release(1)
+
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
@@ -228,6 +229,8 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error creating sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
 
+		pauseQueue.Release(1)
+
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
 
@@ -235,8 +238,12 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error snapshotting sandbox '%s': %v\n", in.SandboxId, err)
 
+		pauseQueue.Release(1)
+
 		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
+
+	pauseQueue.Release(1)
 
 	err = s.templateCache.AddSnapshot(
 		snapshotTemplateFiles.TemplateId,
