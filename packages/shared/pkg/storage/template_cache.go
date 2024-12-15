@@ -9,6 +9,7 @@ import (
 
 const (
 	templateCacheDir = "/orchestrator/template"
+	snapshotCacheDir = "/mnt/snapshot-cache"
 )
 
 type TemplateCacheFiles struct {
@@ -34,7 +35,9 @@ func (c *TemplateCacheFiles) CacheDir() string {
 }
 
 func (c *TemplateCacheFiles) CacheMemfileFullSnapshotPath() string {
-	return filepath.Join(c.CacheDir(), MemfileName+".snapshot")
+	name := fmt.Sprintf("%s-%s-%s.full", c.BuildId, MemfileName, c.CacheIdentifier)
+
+	return filepath.Join(snapshotCacheDir, name)
 }
 
 func (c *TemplateCacheFiles) CacheSnapfilePath() string {

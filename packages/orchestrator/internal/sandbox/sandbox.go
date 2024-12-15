@@ -333,7 +333,11 @@ func (s *Sandbox) Stop() error {
 	return nil
 }
 
-func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.TemplateCacheFiles) (*Snapshot, error) {
+func (s *Sandbox) Snapshot(
+	ctx context.Context,
+	snapshotTemplateFiles *storage.TemplateCacheFiles,
+	releaseLock func(),
+) (*Snapshot, error) {
 	buildId, err := uuid.Parse(snapshotTemplateFiles.BuildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse build id: %w", err)
@@ -392,6 +396,8 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	}
 
 	os.RemoveAll(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
+
+	releaseLock()
 
 	memfileMapping := header.CreateMapping(
 		memfileMetadata,
