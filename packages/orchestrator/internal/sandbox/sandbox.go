@@ -369,7 +369,7 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 		return nil, fmt.Errorf("failed to snapshot sandbox: %w", err)
 	}
 
-	defer os.Remove(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
+	defer os.RemoveAll(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
 
 	memfileDirtyPages := s.uffd.Dirty()
 
@@ -390,6 +390,8 @@ func (s *Sandbox) Snapshot(ctx context.Context, snapshotTemplateFiles *storage.T
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
 	}
+
+	os.RemoveAll(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
 
 	memfileMapping := header.CreateMapping(
 		memfileMetadata,
