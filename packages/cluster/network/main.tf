@@ -33,7 +33,7 @@ locals {
       protocol                        = "HTTP"
       port                            = var.api_port.port
       port_name                       = var.api_port.name
-      timeout_sec                     = 120
+      timeout_sec                     = 65
       connection_draining_timeout_sec = 1
       http_health_check = {
         request_path = var.api_port.health_path
