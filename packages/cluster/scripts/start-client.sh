@@ -15,6 +15,34 @@ set -x
 # Inspired by https://alestic.com/2010/12/ec2-user-data-output/
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
+# Add cache disk for orchestrator and swapfile
+# TODO: Parametrize this
+DISK="/dev/disk/by-id/google-persistent-disk-1"
+MOUNT_POINT="/orchestrator"
+
+# # Step 1: Format the disk with XFS and 65K block size
+sudo mkfs.xfs -f -b size=4096 $DISK
+
+# Step 2: Create the mount point
+sudo mkdir -p $MOUNT_POINT
+
+# # Step 4: Mount the disk with
+sudo mount -o noatime $DISK $MOUNT_POINT
+
+# Add swapfile
+SWAPFILE="/swapfile"
+sudo fallocate -l 50G $SWAPFILE
+sudo chmod 600 $SWAPFILE
+sudo mkswap $SWAPFILE
+sudo swapon $SWAPFILE
+
+# Make swapfile persistent
+echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+
+# Set swap settings
+sudo sysctl vm.swappiness=10
+sudo sysctl vm.vfs_cache_pressure=50
+
 ulimit -n 1048576
 export GOMAXPROCS='nproc'
 
@@ -199,16 +227,3 @@ echo '_sbx_ssh() {
 }
 
 alias sbx-ssh=_sbx_ssh' >>/etc/profile
-
-# Add swapfile
-sudo fallocate -l 250G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-
-# Make swapfile persistent
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-
-# Set swap settings
-sudo sysctl vm.swappiness=10
-sudo sysctl vm.vfs_cache_pressure=50
