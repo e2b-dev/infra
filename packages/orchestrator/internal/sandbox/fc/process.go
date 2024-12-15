@@ -308,20 +308,11 @@ func (p *Process) Stop() error {
 	return nil
 }
 
-func (p *Process) Snapshot(
-	ctx context.Context,
-	snapfilePath string,
-	memfilePath string,
-) error {
-	err := p.client.pauseVM(ctx)
-	if err != nil {
-		return fmt.Errorf("error pausing vm: %w", err)
-	}
+func (p *Process) Pause(ctx context.Context) error {
+	return p.client.pauseVM(ctx)
+}
 
-	err = p.client.createSnapshot(ctx, snapfilePath, memfilePath)
-	if err != nil {
-		return fmt.Errorf("error creating snapshot: %w", err)
-	}
-
-	return nil
+// VM needs to be paused before creating a snapshot.
+func (p *Process) CreateSnapshot(ctx context.Context, snapfilePath string, memfilePath string) error {
+	return p.client.createSnapshot(ctx, snapfilePath, memfilePath)
 }

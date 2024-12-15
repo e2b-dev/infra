@@ -57,6 +57,8 @@ type Sandbox struct {
 	uffdExit chan error
 
 	template template.Template
+
+	healthcheckCtx *utils.LockableCancelableContext
 }
 
 // Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
@@ -236,19 +238,20 @@ func NewSandbox(
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	sbx := &Sandbox{
-		uffdExit:  uffdExit,
-		files:     sandboxFiles,
-		Slot:      ips,
-		template:  t,
-		process:   fcHandle,
-		uffd:      fcUffd,
-		Config:    config,
-		StartedAt: startedAt,
-		EndAt:     endAt,
-		rootfs:    rootfsOverlay,
-		stats:     sandboxStats,
-		Logger:    logger,
-		cleanup:   cleanup,
+		uffdExit:       uffdExit,
+		files:          sandboxFiles,
+		Slot:           ips,
+		template:       t,
+		process:        fcHandle,
+		uffd:           fcUffd,
+		Config:         config,
+		StartedAt:      startedAt,
+		EndAt:          endAt,
+		rootfs:         rootfsOverlay,
+		stats:          sandboxStats,
+		Logger:         logger,
+		cleanup:        cleanup,
+		healthcheckCtx: healthcheckCtx,
 	}
 
 	cleanup.AddPriority(func() error {
@@ -358,22 +361,30 @@ func (s *Sandbox) Snapshot(
 		BaseBuildId: originalMemfile.Header().Metadata.BaseBuildId,
 	}
 
+	s.healthcheckCtx.Lock()
+	s.healthcheckCtx.Cancel()
+	s.healthcheckCtx.Unlock()
+
+	err = s.process.Pause(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error pausing vm: %w", err)
+	}
+
 	err = s.uffd.Disable()
 	if err != nil {
 		return nil, fmt.Errorf("failed to disable uffd: %w", err)
 	}
 
-	err = s.process.Snapshot(
+	defer os.RemoveAll(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
+
+	err = s.process.CreateSnapshot(
 		ctx,
 		snapshotTemplateFiles.CacheSnapfilePath(),
-		// temporary path for dumping the whole memfile,
 		snapshotTemplateFiles.CacheMemfileFullSnapshotPath(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to snapshot sandbox: %w", err)
+		return nil, fmt.Errorf("error creating snapshot: %w", err)
 	}
-
-	defer os.RemoveAll(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
 
 	memfileDirtyPages := s.uffd.Dirty()
 
