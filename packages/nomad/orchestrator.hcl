@@ -115,9 +115,10 @@ job "orchestrator" {
 
       artifact {
         source      = "gcs::https://www.googleapis.com/storage/v1/${var.bucket_name}/orchestrator"
-        options {
-            checksum    = "md5:${var.orchestrator_checksum}"
-        }
+        // Disabled checksum for very basic rolling updates.
+        # options {
+        #     checksum    = "md5:${var.orchestrator_checksum}"
+        # }
       }
     }
   }
