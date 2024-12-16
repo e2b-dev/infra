@@ -268,7 +268,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		case *build.NoDiff:
 			break
 		default:
-			memfileLocalPath, err := r.Path()
+			memfileLocalPath, err := r.CachePath()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error getting memfile diff path: %v\n", err)
 
@@ -284,7 +284,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		case *build.NoDiff:
 			break
 		default:
-			rootfsLocalPath, err := r.Path()
+			rootfsLocalPath, err := r.CachePath()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error getting rootfs diff path: %v\n", err)
 

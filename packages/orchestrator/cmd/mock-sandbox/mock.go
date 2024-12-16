@@ -112,9 +112,11 @@ func mockSandbox(
 		networkPool,
 		templateCache,
 		&orchestrator.SandboxConfig{
-			TemplateId:         templateId,
-			FirecrackerVersion: "v1.10.1_1fcdaec",
-			KernelVersion:      "vmlinux-6.1.102",
+			TemplateId: templateId,
+			// FirecrackerVersion: "v1.10.1_1fcdaec",
+			// KernelVersion:      "vmlinux-6.1.102",
+			FirecrackerVersion: "v1.7.0-dev_8bb88311",
+			KernelVersion:      "vmlinux-5.10.186",
 			TeamId:             "test-team",
 			BuildId:            buildId,
 			HugePages:          true,
@@ -129,7 +131,7 @@ func mockSandbox(
 		time.Now(),
 		logger,
 		true,
-		"k1urqpinffy6bcost93w",
+		templateId,
 	)
 	defer func() {
 		cleanupErr := cleanup.Run()

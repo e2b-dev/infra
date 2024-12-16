@@ -50,7 +50,7 @@ func NewDiffStore(bucket *gcs.BucketHandle, ctx context.Context) (*DiffStore, er
 }
 
 func (s *DiffStore) Get(buildId string, diffType DiffType, blockSize int64) (Diff, error) {
-	diff := newStorageDiff(s.ctx, s.bucket, buildId, diffType, blockSize)
+	diff := newStorageDiff(buildId, diffType, blockSize)
 
 	source, found := s.cache.GetOrSet(
 		diff.CacheKey(),
@@ -64,7 +64,7 @@ func (s *DiffStore) Get(buildId string, diffType DiffType, blockSize int64) (Dif
 	}
 
 	if !found {
-		err := diff.Init()
+		err := diff.Init(s.ctx, s.bucket)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init source: %w", err)
 		}

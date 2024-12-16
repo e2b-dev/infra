@@ -81,7 +81,7 @@ func newLocalDiff(
 	}, nil
 }
 
-func (b *localDiff) Path() (string, error) {
+func (b *localDiff) CachePath() (string, error) {
 	return b.cachePath, nil
 }
 
@@ -91,10 +91,6 @@ func (b *localDiff) Close() error {
 
 func (b *localDiff) ReadAt(p []byte, off int64) (int, error) {
 	return b.cache.ReadAt(p, off)
-}
-
-func (b *localDiff) Size() (int64, error) {
-	return b.size, nil
 }
 
 func (b *localDiff) Slice(off, length int64) ([]byte, error) {

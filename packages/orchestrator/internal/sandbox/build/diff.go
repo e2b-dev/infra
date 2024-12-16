@@ -22,19 +22,14 @@ const (
 type Diff interface {
 	io.Closer
 	io.ReaderAt
-	Size() (int64, error)
 	Slice(off, length int64) ([]byte, error)
-	Path() (string, error)
+	CachePath() (string, error)
 }
 
 type NoDiff struct{}
 
-func (n *NoDiff) Path() (string, error) {
+func (n *NoDiff) CachePath() (string, error) {
 	return "", ErrNoDiff{}
-}
-
-func (n *NoDiff) Size() (int64, error) {
-	return 0, nil
 }
 
 func (n *NoDiff) Slice(off, length int64) ([]byte, error) {
