@@ -42,7 +42,7 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 	}
 
 	node := a.orchestrator.GetNode(nodeId)
-	node.Status = body.Status
+	node.SetStatus(body.Status)
 
 	c.Status(http.StatusNoContent)
 }

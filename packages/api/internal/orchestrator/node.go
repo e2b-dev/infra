@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -23,10 +24,26 @@ type Node struct {
 	CPUUsage int64
 	RamUsage int64
 	Client   *GRPCClient
-	Status   api.NodeStatus
+
+	status api.NodeStatus
+	mu     sync.RWMutex
 
 	sbxsInProgress map[string]*sbxInProgress
 	buildCache     *ttlcache.Cache[string, interface{}]
+}
+
+func (n *Node) Status() api.NodeStatus {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
+	return n.status
+}
+
+func (n *Node) SetStatus(status api.NodeStatus) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.status = status
 }
 
 type nodeInfo struct {
@@ -59,7 +76,7 @@ func (o *Orchestrator) GetNode(nodeID string) *Node {
 func (o *Orchestrator) GetNodes() []*api.Node {
 	nodes := make(map[string]*api.Node)
 	for key, n := range o.nodes {
-		nodes[key] = &api.Node{NodeID: key, Status: n.Status}
+		nodes[key] = &api.Node{NodeID: key, Status: n.Status()}
 	}
 
 	for _, sbx := range o.instanceCache.Items() {
@@ -87,7 +104,7 @@ func (o *Orchestrator) GetNodeDetail(nodeId string) *api.NodeDetail {
 	for key, n := range o.nodes {
 		if key == nodeId {
 			builds := n.buildCache.Keys()
-			node = &api.NodeDetail{NodeID: key, Status: n.Status, CachedBuilds: builds}
+			node = &api.NodeDetail{NodeID: key, Status: n.Status(), CachedBuilds: builds}
 		}
 	}
 

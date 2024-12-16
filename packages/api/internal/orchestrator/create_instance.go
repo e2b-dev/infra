@@ -204,7 +204,7 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context) (leastBusyNode *Nod
 		// TODO: Incorporate the node's cached builds and total resources into the decision
 		for _, node := range o.nodes {
 			// To prevent overloading the node
-			if len(node.sbxsInProgress) > 3 || node.Status != api.NodeStatusReady {
+			if len(node.sbxsInProgress) > 3 || node.Status() != api.NodeStatusReady {
 				continue
 			}
 

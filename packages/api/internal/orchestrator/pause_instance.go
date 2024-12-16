@@ -34,6 +34,8 @@ func (o *Orchestrator) PauseInstance(ctx context.Context, sbx *instance.Instance
 	})
 
 	if err == nil {
+		telemetry.ReportEvent(ctx, "Paused sandbox")
+
 		return nil
 	}
 
@@ -46,11 +48,5 @@ func (o *Orchestrator) PauseInstance(ctx context.Context, sbx *instance.Instance
 		return ErrPauseQueueExhausted{}
 	}
 
-	if err != nil {
-		return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.Instance.SandboxID, err)
-	}
-
-	telemetry.ReportEvent(ctx, "Paused sandbox")
-
-	return nil
+	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.Instance.SandboxID, err)
 }
