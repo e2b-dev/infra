@@ -72,6 +72,8 @@ module "buckets" {
   gcp_project_id            = var.gcp_project_id
   gcp_region                = var.gcp_region
 
+  fc_template_bucket_name = var.template_bucket_name
+
   labels = var.labels
 }
 

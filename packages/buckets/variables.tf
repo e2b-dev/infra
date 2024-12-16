@@ -17,3 +17,8 @@ variable "labels" {
   description = "The labels to attach to resources created by this module"
   type        = map(string)
 }
+
+variable "fc_template_bucket_name" {
+  type        = string
+  description = "The name of the FC template bucket"
+}

@@ -24,5 +24,5 @@ output "fc_versions_bucket_name" {
 }
 
 output "fc_template_bucket_name" {
-  value = google_storage_bucket.fc_template_bucket.name
+  value = data.google_storage_bucket.fc_template_bucket.name
 }

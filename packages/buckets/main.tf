@@ -79,19 +79,8 @@ resource "google_storage_bucket" "fc_env_pipeline_bucket" {
   labels = var.labels
 }
 
-resource "google_storage_bucket" "fc_template_bucket" {
-  location = var.gcp_region
-  name     = "${var.gcp_project_id}-fc-templates"
-
-  public_access_prevention    = "enforced"
-  storage_class               = "STANDARD"
-  uniform_bucket_level_access = true
-
-  autoclass {
-    enabled = true
-  }
-
-  labels = var.labels
+data "google_storage_bucket" "fc_template_bucket" {
+  name = var.fc_template_bucket_name
 }
 
 resource "google_storage_bucket_iam_member" "loki_storage_iam" {
@@ -131,13 +120,13 @@ resource "google_storage_bucket_iam_member" "fc_versions_bucket_iam" {
 }
 
 resource "google_storage_bucket_iam_member" "fc_template_bucket_iam" {
-  bucket = google_storage_bucket.fc_template_bucket.name
+  bucket = data.google_storage_bucket.fc_template_bucket.name
   role   = "roles/storage.objectUser"
   member = "serviceAccount:${var.gcp_service_account_email}"
 }
 
 resource "google_storage_bucket_iam_member" "fc_template_bucket_iam_reader" {
-  bucket = google_storage_bucket.fc_template_bucket.name
+  bucket = data.google_storage_bucket.fc_template_bucket.name
   role   = "roles/storage.legacyBucketReader"
   member = "serviceAccount:${var.gcp_service_account_email}"
 }
