@@ -58,5 +58,8 @@ func (t *TrackedSliceDevice) Slice(off int64, length int64) ([]byte, error) {
 // Return which bytes were not read since Disable.
 // This effectively returns the bytes that have been requested after paused vm and are not dirty.
 func (t *TrackedSliceDevice) Dirty() *bitset.BitSet {
-	return t.dirty
+	t.dirtyMu.Lock()
+	defer t.dirtyMu.Unlock()
+
+	return t.dirty.Clone()
 }
