@@ -12,6 +12,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 )
@@ -36,6 +37,7 @@ type InstanceInfo struct {
 	KernelVersion      string
 	FirecrackerVersion string
 	EnvdVersion        string
+	Node               *node.NodeInfo
 }
 
 type InstanceCache struct {

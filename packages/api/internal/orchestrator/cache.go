@@ -51,14 +51,14 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 		for _, node := range o.nodes {
 			found := false
 			for _, activeNode := range nodes {
-				if node.ID == activeNode.ID {
+				if node.Info.ID == activeNode.ID {
 					found = true
 					break
 				}
 			}
 
 			if !found {
-				o.logger.Infof("Node %s is not active anymore", node.ID)
+				o.logger.Infof("Node %s is not active anymore", node.Info.ID)
 
 				// Close the connection to the node
 				err = node.Client.Close()
@@ -66,20 +66,20 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 					o.logger.Errorf("Error closing connection to node\n: %v", err)
 				}
 
-				delete(o.nodes, node.ID)
+				delete(o.nodes, node.Info.ID)
 				continue
 			}
 
-			activeInstances, instancesErr := o.getInstances(childCtx, node.ID)
+			activeInstances, instancesErr := o.getInstances(childCtx, node.Info)
 			if instancesErr != nil {
 				o.logger.Errorf("Error getting instances\n: %v", instancesErr)
 				continue
 			}
 
-			instanceCache.Sync(activeInstances, node.ID)
+			instanceCache.Sync(activeInstances, node.Info.ID)
 
 			go func() {
-				builds, buildsErr := o.listCachedBuilds(childCtx, node.ID)
+				builds, buildsErr := o.listCachedBuilds(childCtx, node.Info.ID)
 				if buildsErr != nil {
 					o.logger.Errorf("Error listing cached builds\n: %v", buildsErr)
 					return
@@ -88,7 +88,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 				node.SyncBuilds(builds)
 			}()
 
-			o.logger.Infof("Node %s: CPU: %d, RAM: %d", node.ID, node.CPUUsage, node.RamUsage)
+			o.logger.Infof("Node %s: CPU: %d, RAM: %d", node.Info.ID, node.CPUUsage, node.RamUsage)
 		}
 
 		childSpan.End()
@@ -127,6 +127,8 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 		} else {
 			node.CPUUsage -= info.VCpu
 			node.RamUsage -= info.RamMB
+
+			o.dns.Remove(info.Instance.SandboxID)
 		}
 
 		req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
@@ -157,6 +159,8 @@ func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *za
 		} else {
 			node.CPUUsage += info.VCpu
 			node.RamUsage += info.RamMB
+
+			o.dns.Add(info.Instance.SandboxID, node.Info.IPAddress)
 		}
 
 		_, err := o.analytics.Client.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
