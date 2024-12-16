@@ -11,7 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
-const buildExpiration = time.Hour * 12
+const buildExpiration = time.Hour * 25
 
 const cachePath = "/orchestrator/build"
 

@@ -14,7 +14,7 @@ import (
 
 const (
 	// Chunks must always be bigger or equal to the block size.
-	ChunkSize = 2 * 1024 * 1024 // 2 MB
+	ChunkSize = 8 * 1024 * 1024 // 8 MB
 )
 
 type Chunker struct {

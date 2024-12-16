@@ -30,8 +30,10 @@ message SandboxConfig {
   // Maximum length of the sandbox in Hours.
   int64 max_sandbox_length = 14;
 
-  bool snapshot = 15;
-  string base_template_id = 16;
+  int64 total_disk_size_mb = 15;
+
+  bool snapshot = 16;
+  string base_template_id = 17;
 }
 
 message SandboxCreateRequest {
