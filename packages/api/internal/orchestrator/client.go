@@ -52,7 +52,7 @@ func (o *Orchestrator) connectToNode(node *node.NodeInfo) error {
 		Client:         client,
 		buildCache:     buildCache,
 		sbxsInProgress: make(map[string]*sbxInProgress),
-		Status:         api.NodeStatusReady,
+		status:         api.NodeStatusReady,
 		Info:           node,
 	}
 

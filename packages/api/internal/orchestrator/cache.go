@@ -128,7 +128,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 			node.CPUUsage -= info.VCpu
 			node.RamUsage -= info.RamMB
 
-			o.dns.Remove(info.Instance.SandboxID)
+			o.dns.Remove(info.Instance.SandboxID, node.Info.IPAddress)
 		}
 
 		req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}

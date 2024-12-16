@@ -5,7 +5,7 @@ import (
 	"log"
 	"net"
 	"strings"
-
+	"sync"
 
 	resolver "github.com/miekg/dns"
 
