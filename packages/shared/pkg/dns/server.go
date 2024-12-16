@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 
 	resolver "github.com/miekg/dns"
@@ -50,7 +51,8 @@ func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
 
 	for _, q := range m.Question {
 		if q.Qtype == resolver.TypeA {
-			ip, found := d.get(q.Name)
+			sandboxID := strings.Split(q.Name, "-")[0]
+			ip, found := d.get(sandboxID)
 			if found {
 				a := &resolver.A{
 					Hdr: resolver.RR_Header{
@@ -73,12 +75,12 @@ func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
 	}
 }
 
-func (d *DNS) Start(address string) error {
+func (d *DNS) Start(address string, port int) error {
 	mux := resolver.NewServeMux()
 
 	mux.HandleFunc(".", d.handleDNSRequest)
 
-	server := resolver.Server{Addr: address, Net: "udp", Handler: mux}
+	server := resolver.Server{Addr: fmt.Sprintf("%s:%d", address, port), Net: "udp", Handler: mux}
 
 	err := server.ListenAndServe()
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/node"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
@@ -38,8 +39,8 @@ func (a *GRPCClient) Close() error {
 	return nil
 }
 
-func (o *Orchestrator) connectToNode(node *nodeInfo) error {
-	client, err := NewClient(node.Address)
+func (o *Orchestrator) connectToNode(node *node.NodeInfo) error {
+	client, err := NewClient(node.OrchestratorAddress)
 	if err != nil {
 		return err
 	}
@@ -48,23 +49,23 @@ func (o *Orchestrator) connectToNode(node *nodeInfo) error {
 	go buildCache.Start()
 
 	n := &Node{
-		ID:             node.ID,
 		Client:         client,
 		buildCache:     buildCache,
 		sbxsInProgress: make(map[string]*sbxInProgress),
 		status:         api.NodeStatusReady,
+		Info:           node,
 	}
 
-	o.nodes[n.ID] = n
+	o.nodes[n.Info.ID] = n
 
 	return nil
 }
 
 func (o *Orchestrator) GetClient(nodeID string) (*GRPCClient, error) {
-	node := o.GetNode(nodeID)
-	if node == nil {
+	n := o.GetNode(nodeID)
+	if n == nil {
 		return nil, fmt.Errorf("node '%s' not found", nodeID)
 	}
 
-	return node.Client, nil
+	return n.Client, nil
 }
