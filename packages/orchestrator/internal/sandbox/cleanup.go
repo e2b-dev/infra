@@ -12,8 +12,8 @@ import (
 type Cleanup struct {
 	cleanup         []func() error
 	priorityCleanup []func() error
-	once            sync.Once
 	error           error
+	once            sync.Once
 }
 
 func NewCleanup() *Cleanup {

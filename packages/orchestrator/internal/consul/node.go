@@ -8,6 +8,6 @@ const shortNodeIDLength = 8
 
 var (
 	nodeID = utils.RequiredEnv("NODE_ID", "Nomad ID of the instance node")
-	// Node ID must be at least 8 characters long
+	// Node ID must be at least 8 characters long.
 	ClientID = nodeID[:shortNodeIDLength]
 )

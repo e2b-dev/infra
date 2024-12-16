@@ -49,22 +49,7 @@ func NewChunker(
 		fetchers: utils.NewWaitMap(),
 	}
 
-	// go chunker.prefetch()
-
 	return chunker, nil
-}
-
-func (c *Chunker) prefetch() error {
-	blocks := header.BlocksOffsets(c.size, ChunkSize)
-
-	for _, blockOff := range blocks {
-		err := c.fetchToCache(blockOff, ChunkSize)
-		if err != nil {
-			return fmt.Errorf("failed to prefetch block %d-%d: %w", blockOff, blockOff+ChunkSize, err)
-		}
-	}
-
-	return nil
 }
 
 func (c *Chunker) ReadAt(b []byte, off int64) (int, error) {
@@ -91,7 +76,7 @@ func (c *Chunker) WriteTo(w io.Writer) (int64, error) {
 		}
 	}
 
-	return int64(c.size), nil
+	return c.size, nil
 }
 
 func (c *Chunker) Slice(off, length int64) ([]byte, error) {
@@ -118,10 +103,10 @@ func (c *Chunker) Slice(off, length int64) ([]byte, error) {
 }
 
 // fetchToCache ensures that the data at the given offset and length is available in the cache.
-func (c *Chunker) fetchToCache(off, len int64) error {
+func (c *Chunker) fetchToCache(off, length int64) error {
 	var eg errgroup.Group
 
-	chunks := header.BlocksOffsets(len, ChunkSize)
+	chunks := header.BlocksOffsets(length, ChunkSize)
 
 	startingChunk := header.BlockIdx(off, ChunkSize)
 	startingChunkOffset := header.BlockOffset(startingChunk, ChunkSize)
@@ -167,7 +152,7 @@ func (c *Chunker) fetchToCache(off, len int64) error {
 
 	err := eg.Wait()
 	if err != nil {
-		return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+len, err)
+		return fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
 	}
 
 	return nil

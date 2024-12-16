@@ -187,7 +187,9 @@ func mockSnapshot(
 		}
 	}()
 
-	snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles)
+	snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles, func() {
+		sbx.Stop()
+	})
 	if err != nil {
 		return fmt.Errorf("failed to snapshot sandbox: %w", err)
 	}

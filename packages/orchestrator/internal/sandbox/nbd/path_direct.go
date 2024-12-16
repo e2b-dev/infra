@@ -57,6 +57,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 		client := os.NewFile(uintptr(sockPair[0]), "client")
 		server := os.NewFile(uintptr(sockPair[1]), "server")
 		d.conn, err = net.FileConn(server)
+
 		if err != nil {
 			return 0, err
 		}
@@ -108,7 +109,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 
 	// Wait until it's connected...
 	for {
-		s, err := nbdnl.Status(uint32(d.deviceIndex))
+		s, err := nbdnl.Status(d.deviceIndex)
 		if err == nil && s.Connected {
 			break
 		}
@@ -127,7 +128,7 @@ func (d *DirectPathMount) Close() error {
 	d.dispatcher.Wait()
 
 	// Now ask to disconnect
-	err := nbdnl.Disconnect(uint32(d.deviceIndex))
+	err := nbdnl.Disconnect(d.deviceIndex)
 	if err != nil {
 		return err
 	}
@@ -140,7 +141,7 @@ func (d *DirectPathMount) Close() error {
 
 	// Wait until it's completely disconnected...
 	for {
-		s, err := nbdnl.Status(uint32(d.deviceIndex))
+		s, err := nbdnl.Status(d.deviceIndex)
 		if err == nil && !s.Connected {
 			break
 		}

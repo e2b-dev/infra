@@ -194,6 +194,7 @@ func (d *DevicePool) getMaybeEmptySlot(start DeviceSlot) (DeviceSlot, func(), bo
 // Get a free device slot.
 func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 	start := uint32(0)
+
 	for {
 		slot, cleanup, ok := d.getMaybeEmptySlot(start)
 

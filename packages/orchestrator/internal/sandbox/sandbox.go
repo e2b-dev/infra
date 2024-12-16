@@ -46,9 +46,6 @@ type Sandbox struct {
 	Config    *orchestrator.SandboxConfig
 	StartedAt time.Time
 	EndAt     time.Time
-	TraceID   string
-
-	networkPool *network.Pool
 
 	Slot   network.Slot
 	Logger *logs.SandboxLogger

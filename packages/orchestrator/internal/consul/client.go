@@ -10,10 +10,10 @@ import (
 
 var (
 	consulToken = utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
-	Client      = utils.Must(new())
+	Client      = utils.Must(newClient())
 )
 
-func new() (*api.Client, error) {
+func newClient() (*api.Client, error) {
 	config := api.DefaultConfig()
 	config.Token = consulToken
 

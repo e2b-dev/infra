@@ -36,14 +36,14 @@ func (t *TrackedSliceDevice) Disable() error {
 
 	t.dirty = bitset.New(uint(header.TotalBlocks(size, t.blockSize)))
 	// We are starting with all being dirty.
-	t.dirty.FlipRange(0, uint(t.dirty.Len()))
+	t.dirty.FlipRange(0, t.dirty.Len())
 
 	t.nilTracking.Store(true)
 
 	return nil
 }
 
-func (t *TrackedSliceDevice) Slice(off int64, len int64) ([]byte, error) {
+func (t *TrackedSliceDevice) Slice(off int64, length int64) ([]byte, error) {
 	if t.nilTracking.Load() {
 		t.dirtyMu.Lock()
 		t.dirty.Clear(uint(header.BlockIdx(off, t.blockSize)))
@@ -52,7 +52,7 @@ func (t *TrackedSliceDevice) Slice(off int64, len int64) ([]byte, error) {
 		return t.empty, nil
 	}
 
-	return t.data.Slice(off, len)
+	return t.data.Slice(off, length)
 }
 
 // Return which bytes were not read since Disable.

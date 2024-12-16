@@ -138,6 +138,7 @@ func (o *CowDevice) close() error {
 	}
 
 	counter := 0
+
 	for {
 		counter++
 		err := nbd.Pool.ReleaseDevice(slot)

@@ -150,6 +150,7 @@ func cleanup(slot Slot) error {
 
 func (p *Pool) Close() error {
 	p.cancel()
+
 	for slot := range p.newSlots {
 		err := cleanup(slot)
 		if err != nil {

@@ -24,6 +24,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const maxParalellSnapshotting = 8
+
 func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
 	childCtx, childSpan := s.tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
@@ -178,7 +180,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	return &emptypb.Empty{}, nil
 }
 
-var pauseQueue = semaphore.NewWeighted(8)
+var pauseQueue = semaphore.NewWeighted(maxParalellSnapshotting)
 
 func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
 	_, childSpan := s.tracer.Start(ctx, "sandbox-pause")

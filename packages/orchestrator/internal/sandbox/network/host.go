@@ -38,6 +38,7 @@ func getDefaultGateway() (string, error) {
 		if route.Dst.String() == "0.0.0.0/0" && route.Gw != nil {
 			log.Printf("default gateway: %s", route.Gw.String())
 			link, linkErr := netlink.LinkByIndex(route.LinkIndex)
+
 			if linkErr != nil {
 				return "", fmt.Errorf("error fetching interface for default gateway: %w", linkErr)
 			}

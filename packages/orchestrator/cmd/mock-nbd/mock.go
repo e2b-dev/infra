@@ -91,9 +91,12 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to get device: %w", err)
 	}
+
 	var mnt *nbd.DirectPathMount
+
 	defer func() {
 		counter := 0
+
 		for {
 			counter += 1
 			err = nbd.Pool.ReleaseDevice(deviceIndex)
