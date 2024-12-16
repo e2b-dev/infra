@@ -11,19 +11,13 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
-	"golang.org/x/sync/errgroup"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	consulapi "github.com/hashicorp/consul/api"
-
-	"go.opentelemetry.io/otel"
 )
 
 func main() {
@@ -106,8 +100,6 @@ func mockSandbox(
 ) error {
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
-
-	logger := logs.NewSandboxLogger(sandboxId, templateId, "test-team", 2, 512, false)
 
 	start := time.Now()
 	logger := logs.NewSandboxLogger(sandboxId, templateId, "test-team", 2, 512, false)

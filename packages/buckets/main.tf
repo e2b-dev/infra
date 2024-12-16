@@ -146,16 +146,6 @@ resource "google_storage_bucket" "public_builds_storage_bucket" {
   soft_delete_policy {
     retention_duration_seconds = 0
   }
-
-  lifecycle_rule {
-    condition {
-      age = 8
-    }
-
-    action {
-      type = "Delete"
-    }
-  }
 }
 
 resource "google_storage_bucket_iam_member" "public_builds_storage_bucket_iam" {
