@@ -50,16 +50,22 @@
     },
   },
   "editor.tabCompletion": "on",
-  "go.useLanguageServer": true,
-  "gopls": {
-    "formatting.local": "github.com/e2b-dev/api",
-    "formatting.gofumpt": true,
-    "ui.completion.usePlaceholders": true
-  },
   "go.lintTool": "golangci-lint",
   "go.lintFlags": [
     "--fast"
   ],
+  "go.liveErrors": {
+    "enabled": true,
+    "delay": 500
+  },
+  "go.lintOnSave": "workspace",
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "explicit",
+  },
+  "go.useLanguageServer": true,
+  "go.languageServerExperimentalFeatures": {
+    "diagnostics": true
+  },
   "remote.SSH.defaultExtensions": [
     "golang.go",
   ],
@@ -76,7 +82,6 @@
   "go.inlayHints.parameterNames": true,
   "go.buildOnSave": "off",
   "go.formatTool": "gofumpt",
-  "go.lintOnSave": "package",
   "go.survey.prompt": false,
   "go.useCodeSnippetsOnFunctionSuggestWithoutType": true,
   "go.useCodeSnippetsOnFunctionSuggest": true,
