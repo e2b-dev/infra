@@ -130,3 +130,37 @@ resource "google_storage_bucket_iam_member" "fc_template_bucket_iam_reader" {
   role   = "roles/storage.legacyBucketReader"
   member = "serviceAccount:${var.gcp_service_account_email}"
 }
+
+
+
+resource "google_storage_bucket" "public_builds_storage_bucket" {
+  count    = var.gcp_project_id == "e2b-prod" ? 1 : 0
+  name     = "${var.gcp_project_id}-public-builds"
+  location = var.gcp_region
+
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+
+  labels = var.labels
+
+  soft_delete_policy {
+    retention_duration_seconds = 0
+  }
+
+  lifecycle_rule {
+    condition {
+      age = 8
+    }
+
+    action {
+      type = "Delete"
+    }
+  }
+}
+
+resource "google_storage_bucket_iam_member" "public_builds_storage_bucket_iam" {
+  count  = var.gcp_project_id == "e2b-prod" ? 1 : 0
+  bucket = google_storage_bucket.public_builds_storage_bucket[0].name
+  role   = "roles/storage.objectViewer"
+  member = "allUsers"
+}

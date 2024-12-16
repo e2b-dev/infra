@@ -91,30 +91,22 @@ destroy:
 version:
 	./scripts/increment-version.sh
 
-.PHONY: build-all
-build-all:
-	$(MAKE) -C packages/envd build
-	$(MAKE) -C packages/api build
-	$(MAKE) -C packages/docker-reverse-proxy build
-	$(MAKE) -C packages/orchestrator build
-	$(MAKE) -C packages/template-manager build
-	$(MAKE) -C packages/fc-kernels build
-	$(MAKE) -C packages/fc-versions build
-
-.PHONY: build-and-upload-docker-images
-build-and-upload-docker-images:
+.PHONY: build-and-upload
+build-and-upload:
+	$(MAKE) -C packages/cluster-disk-image build
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) make update-api
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/docker-reverse-proxy build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/template-manager build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/envd build-and-upload
 
-.PHONY: build-and-upload-fc-components
-build-and-upload-fc-components:
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/fc-kernels build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/fc-versions build-and-upload
+.PHONY: copy-public-builds
+copy-public-builds:
+	gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-env-pipeline/envd-v0.0.1
+	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
+	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
-.PHONY: migrate
+
 migrate:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/shared migrate
 

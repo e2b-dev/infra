@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/google/uuid"
 )
 
@@ -59,6 +60,20 @@ func (eu *EnvUpdate) SetTeamID(u uuid.UUID) *EnvUpdate {
 func (eu *EnvUpdate) SetNillableTeamID(u *uuid.UUID) *EnvUpdate {
 	if u != nil {
 		eu.SetTeamID(*u)
+	}
+	return eu
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (eu *EnvUpdate) SetCreatedBy(u uuid.UUID) *EnvUpdate {
+	eu.mutation.SetCreatedBy(u)
+	return eu
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (eu *EnvUpdate) SetNillableCreatedBy(u *uuid.UUID) *EnvUpdate {
+	if u != nil {
+		eu.SetCreatedBy(*u)
 	}
 	return eu
 }
@@ -144,6 +159,17 @@ func (eu *EnvUpdate) SetTeam(t *Team) *EnvUpdate {
 	return eu.SetTeamID(t.ID)
 }
 
+// SetCreatorID sets the "creator" edge to the User entity by ID.
+func (eu *EnvUpdate) SetCreatorID(id uuid.UUID) *EnvUpdate {
+	eu.mutation.SetCreatorID(id)
+	return eu
+}
+
+// SetCreator sets the "creator" edge to the User entity.
+func (eu *EnvUpdate) SetCreator(u *User) *EnvUpdate {
+	return eu.SetCreatorID(u.ID)
+}
+
 // AddEnvAliasIDs adds the "env_aliases" edge to the EnvAlias entity by IDs.
 func (eu *EnvUpdate) AddEnvAliasIDs(ids ...string) *EnvUpdate {
 	eu.mutation.AddEnvAliasIDs(ids...)
@@ -197,6 +223,12 @@ func (eu *EnvUpdate) Mutation() *EnvMutation {
 // ClearTeam clears the "team" edge to the Team entity.
 func (eu *EnvUpdate) ClearTeam() *EnvUpdate {
 	eu.mutation.ClearTeam()
+	return eu
+}
+
+// ClearCreator clears the "creator" edge to the User entity.
+func (eu *EnvUpdate) ClearCreator() *EnvUpdate {
+	eu.mutation.ClearCreator()
 	return eu
 }
 
@@ -295,6 +327,9 @@ func (eu *EnvUpdate) check() error {
 	if _, ok := eu.mutation.TeamID(); eu.mutation.TeamCleared() && !ok {
 		return errors.New(`models: clearing a required unique edge "Env.team"`)
 	}
+	if _, ok := eu.mutation.CreatorID(); eu.mutation.CreatorCleared() && !ok {
+		return errors.New(`models: clearing a required unique edge "Env.creator"`)
+	}
 	return nil
 }
 
@@ -363,6 +398,37 @@ func (eu *EnvUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(team.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = eu.schemaConfig.Env
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if eu.mutation.CreatorCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   env.CreatorTable,
+			Columns: []string{env.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = eu.schemaConfig.Env
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := eu.mutation.CreatorIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   env.CreatorTable,
+			Columns: []string{env.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = eu.schemaConfig.Env
@@ -567,6 +633,20 @@ func (euo *EnvUpdateOne) SetNillableTeamID(u *uuid.UUID) *EnvUpdateOne {
 	return euo
 }
 
+// SetCreatedBy sets the "created_by" field.
+func (euo *EnvUpdateOne) SetCreatedBy(u uuid.UUID) *EnvUpdateOne {
+	euo.mutation.SetCreatedBy(u)
+	return euo
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (euo *EnvUpdateOne) SetNillableCreatedBy(u *uuid.UUID) *EnvUpdateOne {
+	if u != nil {
+		euo.SetCreatedBy(*u)
+	}
+	return euo
+}
+
 // SetPublic sets the "public" field.
 func (euo *EnvUpdateOne) SetPublic(b bool) *EnvUpdateOne {
 	euo.mutation.SetPublic(b)
@@ -648,6 +728,17 @@ func (euo *EnvUpdateOne) SetTeam(t *Team) *EnvUpdateOne {
 	return euo.SetTeamID(t.ID)
 }
 
+// SetCreatorID sets the "creator" edge to the User entity by ID.
+func (euo *EnvUpdateOne) SetCreatorID(id uuid.UUID) *EnvUpdateOne {
+	euo.mutation.SetCreatorID(id)
+	return euo
+}
+
+// SetCreator sets the "creator" edge to the User entity.
+func (euo *EnvUpdateOne) SetCreator(u *User) *EnvUpdateOne {
+	return euo.SetCreatorID(u.ID)
+}
+
 // AddEnvAliasIDs adds the "env_aliases" edge to the EnvAlias entity by IDs.
 func (euo *EnvUpdateOne) AddEnvAliasIDs(ids ...string) *EnvUpdateOne {
 	euo.mutation.AddEnvAliasIDs(ids...)
@@ -701,6 +792,12 @@ func (euo *EnvUpdateOne) Mutation() *EnvMutation {
 // ClearTeam clears the "team" edge to the Team entity.
 func (euo *EnvUpdateOne) ClearTeam() *EnvUpdateOne {
 	euo.mutation.ClearTeam()
+	return euo
+}
+
+// ClearCreator clears the "creator" edge to the User entity.
+func (euo *EnvUpdateOne) ClearCreator() *EnvUpdateOne {
+	euo.mutation.ClearCreator()
 	return euo
 }
 
@@ -812,6 +909,9 @@ func (euo *EnvUpdateOne) check() error {
 	if _, ok := euo.mutation.TeamID(); euo.mutation.TeamCleared() && !ok {
 		return errors.New(`models: clearing a required unique edge "Env.team"`)
 	}
+	if _, ok := euo.mutation.CreatorID(); euo.mutation.CreatorCleared() && !ok {
+		return errors.New(`models: clearing a required unique edge "Env.creator"`)
+	}
 	return nil
 }
 
@@ -897,6 +997,37 @@ func (euo *EnvUpdateOne) sqlSave(ctx context.Context) (_node *Env, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(team.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = euo.schemaConfig.Env
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if euo.mutation.CreatorCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   env.CreatorTable,
+			Columns: []string{env.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = euo.schemaConfig.Env
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := euo.mutation.CreatorIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   env.CreatorTable,
+			Columns: []string{env.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = euo.schemaConfig.Env

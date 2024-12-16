@@ -25,6 +25,7 @@ func (Env) Fields() []ent.Field {
 			),
 		field.Time("updated_at").Default(time.Now),
 		field.UUID("team_id", uuid.UUID{}),
+		field.UUID("created_by", uuid.UUID{}).Nillable(),
 		field.Bool("public").Annotations(entsql.Default("false")),
 		field.Int32("build_count").Default(1),
 		field.Int64("spawn_count").Default(0).Comment("Number of times the env was spawned"),
@@ -35,6 +36,7 @@ func (Env) Fields() []ent.Field {
 func (Env) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("team", Team.Type).Ref("envs").Unique().Field("team_id").Required(),
+		edge.From("creator", User.Type).Unique().Ref("created_envs").Field("created_by").Required(),
 		edge.To("env_aliases", EnvAlias.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.To("builds", EnvBuild.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.To("snapshots", Snapshot.Type).Annotations(entsql.OnDelete(entsql.Cascade)),

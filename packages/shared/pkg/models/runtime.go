@@ -31,11 +31,11 @@ func init() {
 	// env.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	env.DefaultUpdatedAt = envDescUpdatedAt.Default.(func() time.Time)
 	// envDescBuildCount is the schema descriptor for build_count field.
-	envDescBuildCount := envFields[5].Descriptor()
+	envDescBuildCount := envFields[6].Descriptor()
 	// env.DefaultBuildCount holds the default value on creation for the build_count field.
 	env.DefaultBuildCount = envDescBuildCount.Default.(int32)
 	// envDescSpawnCount is the schema descriptor for spawn_count field.
-	envDescSpawnCount := envFields[6].Descriptor()
+	envDescSpawnCount := envFields[7].Descriptor()
 	// env.DefaultSpawnCount holds the default value on creation for the spawn_count field.
 	env.DefaultSpawnCount = envDescSpawnCount.Default.(int64)
 	envaliasFields := schema.EnvAlias{}.Fields()
@@ -81,9 +81,13 @@ func init() {
 	teamapikeyFields := schema.TeamAPIKey{}.Fields()
 	_ = teamapikeyFields
 	// teamapikeyDescCreatedAt is the schema descriptor for created_at field.
-	teamapikeyDescCreatedAt := teamapikeyFields[1].Descriptor()
+	teamapikeyDescCreatedAt := teamapikeyFields[2].Descriptor()
 	// teamapikey.DefaultCreatedAt holds the default value on creation for the created_at field.
 	teamapikey.DefaultCreatedAt = teamapikeyDescCreatedAt.Default.(func() time.Time)
+	// teamapikeyDescName is the schema descriptor for name field.
+	teamapikeyDescName := teamapikeyFields[5].Descriptor()
+	// teamapikey.DefaultName holds the default value on creation for the name field.
+	teamapikey.DefaultName = teamapikeyDescName.Default.(string)
 	userFields := schema.User{}.Fields()
 	_ = userFields
 	// userDescEmail is the schema descriptor for email field.

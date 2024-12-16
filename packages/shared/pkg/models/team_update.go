@@ -141,14 +141,14 @@ func (tu *TeamUpdate) AddUsers(u ...*User) *TeamUpdate {
 }
 
 // AddTeamAPIKeyIDs adds the "team_api_keys" edge to the TeamAPIKey entity by IDs.
-func (tu *TeamUpdate) AddTeamAPIKeyIDs(ids ...string) *TeamUpdate {
+func (tu *TeamUpdate) AddTeamAPIKeyIDs(ids ...uuid.UUID) *TeamUpdate {
 	tu.mutation.AddTeamAPIKeyIDs(ids...)
 	return tu
 }
 
 // AddTeamAPIKeys adds the "team_api_keys" edges to the TeamAPIKey entity.
 func (tu *TeamUpdate) AddTeamAPIKeys(t ...*TeamAPIKey) *TeamUpdate {
-	ids := make([]string, len(t))
+	ids := make([]uuid.UUID, len(t))
 	for i := range t {
 		ids[i] = t[i].ID
 	}
@@ -229,14 +229,14 @@ func (tu *TeamUpdate) ClearTeamAPIKeys() *TeamUpdate {
 }
 
 // RemoveTeamAPIKeyIDs removes the "team_api_keys" edge to TeamAPIKey entities by IDs.
-func (tu *TeamUpdate) RemoveTeamAPIKeyIDs(ids ...string) *TeamUpdate {
+func (tu *TeamUpdate) RemoveTeamAPIKeyIDs(ids ...uuid.UUID) *TeamUpdate {
 	tu.mutation.RemoveTeamAPIKeyIDs(ids...)
 	return tu
 }
 
 // RemoveTeamAPIKeys removes "team_api_keys" edges to TeamAPIKey entities.
 func (tu *TeamUpdate) RemoveTeamAPIKeys(t ...*TeamAPIKey) *TeamUpdate {
-	ids := make([]string, len(t))
+	ids := make([]uuid.UUID, len(t))
 	for i := range t {
 		ids[i] = t[i].ID
 	}
@@ -435,7 +435,7 @@ func (tu *TeamUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Columns: []string{team.TeamAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = tu.schemaConfig.TeamAPIKey
@@ -449,7 +449,7 @@ func (tu *TeamUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Columns: []string{team.TeamAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = tu.schemaConfig.TeamAPIKey
@@ -466,7 +466,7 @@ func (tu *TeamUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Columns: []string{team.TeamAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = tu.schemaConfig.TeamAPIKey
@@ -732,14 +732,14 @@ func (tuo *TeamUpdateOne) AddUsers(u ...*User) *TeamUpdateOne {
 }
 
 // AddTeamAPIKeyIDs adds the "team_api_keys" edge to the TeamAPIKey entity by IDs.
-func (tuo *TeamUpdateOne) AddTeamAPIKeyIDs(ids ...string) *TeamUpdateOne {
+func (tuo *TeamUpdateOne) AddTeamAPIKeyIDs(ids ...uuid.UUID) *TeamUpdateOne {
 	tuo.mutation.AddTeamAPIKeyIDs(ids...)
 	return tuo
 }
 
 // AddTeamAPIKeys adds the "team_api_keys" edges to the TeamAPIKey entity.
 func (tuo *TeamUpdateOne) AddTeamAPIKeys(t ...*TeamAPIKey) *TeamUpdateOne {
-	ids := make([]string, len(t))
+	ids := make([]uuid.UUID, len(t))
 	for i := range t {
 		ids[i] = t[i].ID
 	}
@@ -820,14 +820,14 @@ func (tuo *TeamUpdateOne) ClearTeamAPIKeys() *TeamUpdateOne {
 }
 
 // RemoveTeamAPIKeyIDs removes the "team_api_keys" edge to TeamAPIKey entities by IDs.
-func (tuo *TeamUpdateOne) RemoveTeamAPIKeyIDs(ids ...string) *TeamUpdateOne {
+func (tuo *TeamUpdateOne) RemoveTeamAPIKeyIDs(ids ...uuid.UUID) *TeamUpdateOne {
 	tuo.mutation.RemoveTeamAPIKeyIDs(ids...)
 	return tuo
 }
 
 // RemoveTeamAPIKeys removes "team_api_keys" edges to TeamAPIKey entities.
 func (tuo *TeamUpdateOne) RemoveTeamAPIKeys(t ...*TeamAPIKey) *TeamUpdateOne {
-	ids := make([]string, len(t))
+	ids := make([]uuid.UUID, len(t))
 	for i := range t {
 		ids[i] = t[i].ID
 	}
@@ -1056,7 +1056,7 @@ func (tuo *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) 
 			Columns: []string{team.TeamAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = tuo.schemaConfig.TeamAPIKey
@@ -1070,7 +1070,7 @@ func (tuo *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) 
 			Columns: []string{team.TeamAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = tuo.schemaConfig.TeamAPIKey
@@ -1087,7 +1087,7 @@ func (tuo *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) 
 			Columns: []string{team.TeamAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = tuo.schemaConfig.TeamAPIKey

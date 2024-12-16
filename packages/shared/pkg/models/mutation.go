@@ -503,6 +503,8 @@ type EnvMutation struct {
 	clearedFields      map[string]struct{}
 	team               *uuid.UUID
 	clearedteam        bool
+	creator            *uuid.UUID
+	clearedcreator     bool
 	env_aliases        map[string]struct{}
 	removedenv_aliases map[string]struct{}
 	clearedenv_aliases bool
@@ -729,6 +731,42 @@ func (m *EnvMutation) ResetTeamID() {
 	m.team = nil
 }
 
+// SetCreatedBy sets the "created_by" field.
+func (m *EnvMutation) SetCreatedBy(u uuid.UUID) {
+	m.creator = &u
+}
+
+// CreatedBy returns the value of the "created_by" field in the mutation.
+func (m *EnvMutation) CreatedBy() (r uuid.UUID, exists bool) {
+	v := m.creator
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedBy returns the old "created_by" field's value of the Env entity.
+// If the Env object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnvMutation) OldCreatedBy(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedBy: %w", err)
+	}
+	return oldValue.CreatedBy, nil
+}
+
+// ResetCreatedBy resets all changes to the "created_by" field.
+func (m *EnvMutation) ResetCreatedBy() {
+	m.creator = nil
+}
+
 // SetPublic sets the "public" field.
 func (m *EnvMutation) SetPublic(b bool) {
 	m.public = &b
@@ -953,6 +991,46 @@ func (m *EnvMutation) ResetTeam() {
 	m.clearedteam = false
 }
 
+// SetCreatorID sets the "creator" edge to the User entity by id.
+func (m *EnvMutation) SetCreatorID(id uuid.UUID) {
+	m.creator = &id
+}
+
+// ClearCreator clears the "creator" edge to the User entity.
+func (m *EnvMutation) ClearCreator() {
+	m.clearedcreator = true
+	m.clearedFields[env.FieldCreatedBy] = struct{}{}
+}
+
+// CreatorCleared reports if the "creator" edge to the User entity was cleared.
+func (m *EnvMutation) CreatorCleared() bool {
+	return m.clearedcreator
+}
+
+// CreatorID returns the "creator" edge ID in the mutation.
+func (m *EnvMutation) CreatorID() (id uuid.UUID, exists bool) {
+	if m.creator != nil {
+		return *m.creator, true
+	}
+	return
+}
+
+// CreatorIDs returns the "creator" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// CreatorID instead. It exists only for internal usage by the builders.
+func (m *EnvMutation) CreatorIDs() (ids []uuid.UUID) {
+	if id := m.creator; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetCreator resets all changes to the "creator" edge.
+func (m *EnvMutation) ResetCreator() {
+	m.creator = nil
+	m.clearedcreator = false
+}
+
 // AddEnvAliasIDs adds the "env_aliases" edge to the EnvAlias entity by ids.
 func (m *EnvMutation) AddEnvAliasIDs(ids ...string) {
 	if m.env_aliases == nil {
@@ -1149,7 +1227,7 @@ func (m *EnvMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EnvMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.created_at != nil {
 		fields = append(fields, env.FieldCreatedAt)
 	}
@@ -1158,6 +1236,9 @@ func (m *EnvMutation) Fields() []string {
 	}
 	if m.team != nil {
 		fields = append(fields, env.FieldTeamID)
+	}
+	if m.creator != nil {
+		fields = append(fields, env.FieldCreatedBy)
 	}
 	if m.public != nil {
 		fields = append(fields, env.FieldPublic)
@@ -1185,6 +1266,8 @@ func (m *EnvMutation) Field(name string) (ent.Value, bool) {
 		return m.UpdatedAt()
 	case env.FieldTeamID:
 		return m.TeamID()
+	case env.FieldCreatedBy:
+		return m.CreatedBy()
 	case env.FieldPublic:
 		return m.Public()
 	case env.FieldBuildCount:
@@ -1208,6 +1291,8 @@ func (m *EnvMutation) OldField(ctx context.Context, name string) (ent.Value, err
 		return m.OldUpdatedAt(ctx)
 	case env.FieldTeamID:
 		return m.OldTeamID(ctx)
+	case env.FieldCreatedBy:
+		return m.OldCreatedBy(ctx)
 	case env.FieldPublic:
 		return m.OldPublic(ctx)
 	case env.FieldBuildCount:
@@ -1245,6 +1330,13 @@ func (m *EnvMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTeamID(v)
+		return nil
+	case env.FieldCreatedBy:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedBy(v)
 		return nil
 	case env.FieldPublic:
 		v, ok := value.(bool)
@@ -1368,6 +1460,9 @@ func (m *EnvMutation) ResetField(name string) error {
 	case env.FieldTeamID:
 		m.ResetTeamID()
 		return nil
+	case env.FieldCreatedBy:
+		m.ResetCreatedBy()
+		return nil
 	case env.FieldPublic:
 		m.ResetPublic()
 		return nil
@@ -1386,9 +1481,12 @@ func (m *EnvMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *EnvMutation) AddedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.team != nil {
 		edges = append(edges, env.EdgeTeam)
+	}
+	if m.creator != nil {
+		edges = append(edges, env.EdgeCreator)
 	}
 	if m.env_aliases != nil {
 		edges = append(edges, env.EdgeEnvAliases)
@@ -1408,6 +1506,10 @@ func (m *EnvMutation) AddedIDs(name string) []ent.Value {
 	switch name {
 	case env.EdgeTeam:
 		if id := m.team; id != nil {
+			return []ent.Value{*id}
+		}
+	case env.EdgeCreator:
+		if id := m.creator; id != nil {
 			return []ent.Value{*id}
 		}
 	case env.EdgeEnvAliases:
@@ -1434,7 +1536,7 @@ func (m *EnvMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *EnvMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.removedenv_aliases != nil {
 		edges = append(edges, env.EdgeEnvAliases)
 	}
@@ -1475,9 +1577,12 @@ func (m *EnvMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *EnvMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.clearedteam {
 		edges = append(edges, env.EdgeTeam)
+	}
+	if m.clearedcreator {
+		edges = append(edges, env.EdgeCreator)
 	}
 	if m.clearedenv_aliases {
 		edges = append(edges, env.EdgeEnvAliases)
@@ -1497,6 +1602,8 @@ func (m *EnvMutation) EdgeCleared(name string) bool {
 	switch name {
 	case env.EdgeTeam:
 		return m.clearedteam
+	case env.EdgeCreator:
+		return m.clearedcreator
 	case env.EdgeEnvAliases:
 		return m.clearedenv_aliases
 	case env.EdgeBuilds:
@@ -1514,6 +1621,9 @@ func (m *EnvMutation) ClearEdge(name string) error {
 	case env.EdgeTeam:
 		m.ClearTeam()
 		return nil
+	case env.EdgeCreator:
+		m.ClearCreator()
+		return nil
 	}
 	return fmt.Errorf("unknown Env unique edge %s", name)
 }
@@ -1524,6 +1634,9 @@ func (m *EnvMutation) ResetEdge(name string) error {
 	switch name {
 	case env.EdgeTeam:
 		m.ResetTeam()
+		return nil
+	case env.EdgeCreator:
+		m.ResetCreator()
 		return nil
 	case env.EdgeEnvAliases:
 		m.ResetEnvAliases()
@@ -3937,8 +4050,8 @@ type TeamMutation struct {
 	users                map[uuid.UUID]struct{}
 	removedusers         map[uuid.UUID]struct{}
 	clearedusers         bool
-	team_api_keys        map[string]struct{}
-	removedteam_api_keys map[string]struct{}
+	team_api_keys        map[uuid.UUID]struct{}
+	removedteam_api_keys map[uuid.UUID]struct{}
 	clearedteam_api_keys bool
 	team_tier            *string
 	clearedteam_tier     bool
@@ -4377,9 +4490,9 @@ func (m *TeamMutation) ResetUsers() {
 }
 
 // AddTeamAPIKeyIDs adds the "team_api_keys" edge to the TeamAPIKey entity by ids.
-func (m *TeamMutation) AddTeamAPIKeyIDs(ids ...string) {
+func (m *TeamMutation) AddTeamAPIKeyIDs(ids ...uuid.UUID) {
 	if m.team_api_keys == nil {
-		m.team_api_keys = make(map[string]struct{})
+		m.team_api_keys = make(map[uuid.UUID]struct{})
 	}
 	for i := range ids {
 		m.team_api_keys[ids[i]] = struct{}{}
@@ -4397,9 +4510,9 @@ func (m *TeamMutation) TeamAPIKeysCleared() bool {
 }
 
 // RemoveTeamAPIKeyIDs removes the "team_api_keys" edge to the TeamAPIKey entity by IDs.
-func (m *TeamMutation) RemoveTeamAPIKeyIDs(ids ...string) {
+func (m *TeamMutation) RemoveTeamAPIKeyIDs(ids ...uuid.UUID) {
 	if m.removedteam_api_keys == nil {
-		m.removedteam_api_keys = make(map[string]struct{})
+		m.removedteam_api_keys = make(map[uuid.UUID]struct{})
 	}
 	for i := range ids {
 		delete(m.team_api_keys, ids[i])
@@ -4408,7 +4521,7 @@ func (m *TeamMutation) RemoveTeamAPIKeyIDs(ids ...string) {
 }
 
 // RemovedTeamAPIKeys returns the removed IDs of the "team_api_keys" edge to the TeamAPIKey entity.
-func (m *TeamMutation) RemovedTeamAPIKeysIDs() (ids []string) {
+func (m *TeamMutation) RemovedTeamAPIKeysIDs() (ids []uuid.UUID) {
 	for id := range m.removedteam_api_keys {
 		ids = append(ids, id)
 	}
@@ -4416,7 +4529,7 @@ func (m *TeamMutation) RemovedTeamAPIKeysIDs() (ids []string) {
 }
 
 // TeamAPIKeysIDs returns the "team_api_keys" edge IDs in the mutation.
-func (m *TeamMutation) TeamAPIKeysIDs() (ids []string) {
+func (m *TeamMutation) TeamAPIKeysIDs() (ids []uuid.UUID) {
 	for id := range m.team_api_keys {
 		ids = append(ids, id)
 	}
@@ -5003,16 +5116,22 @@ func (m *TeamMutation) ResetEdge(name string) error {
 // TeamAPIKeyMutation represents an operation that mutates the TeamAPIKey nodes in the graph.
 type TeamAPIKeyMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *string
-	created_at    *time.Time
-	clearedFields map[string]struct{}
-	team          *uuid.UUID
-	clearedteam   bool
-	done          bool
-	oldValue      func(context.Context) (*TeamAPIKey, error)
-	predicates    []predicate.TeamAPIKey
+	op             Op
+	typ            string
+	id             *uuid.UUID
+	api_key        *string
+	created_at     *time.Time
+	updated_at     *time.Time
+	name           *string
+	last_used      *time.Time
+	clearedFields  map[string]struct{}
+	team           *uuid.UUID
+	clearedteam    bool
+	creator        *uuid.UUID
+	clearedcreator bool
+	done           bool
+	oldValue       func(context.Context) (*TeamAPIKey, error)
+	predicates     []predicate.TeamAPIKey
 }
 
 var _ ent.Mutation = (*TeamAPIKeyMutation)(nil)
@@ -5035,7 +5154,7 @@ func newTeamAPIKeyMutation(c config, op Op, opts ...teamapikeyOption) *TeamAPIKe
 }
 
 // withTeamAPIKeyID sets the ID field of the mutation.
-func withTeamAPIKeyID(id string) teamapikeyOption {
+func withTeamAPIKeyID(id uuid.UUID) teamapikeyOption {
 	return func(m *TeamAPIKeyMutation) {
 		var (
 			err   error
@@ -5087,13 +5206,13 @@ func (m TeamAPIKeyMutation) Tx() (*Tx, error) {
 
 // SetID sets the value of the id field. Note that this
 // operation is only accepted on creation of TeamAPIKey entities.
-func (m *TeamAPIKeyMutation) SetID(id string) {
+func (m *TeamAPIKeyMutation) SetID(id uuid.UUID) {
 	m.id = &id
 }
 
 // ID returns the ID value in the mutation. Note that the ID is only available
 // if it was provided to the builder or after it was returned from the database.
-func (m *TeamAPIKeyMutation) ID() (id string, exists bool) {
+func (m *TeamAPIKeyMutation) ID() (id uuid.UUID, exists bool) {
 	if m.id == nil {
 		return
 	}
@@ -5104,12 +5223,12 @@ func (m *TeamAPIKeyMutation) ID() (id string, exists bool) {
 // That means, if the mutation is applied within a transaction with an isolation level such
 // as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
 // or updated by the mutation.
-func (m *TeamAPIKeyMutation) IDs(ctx context.Context) ([]string, error) {
+func (m *TeamAPIKeyMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
 	switch {
 	case m.op.Is(OpUpdateOne | OpDeleteOne):
 		id, exists := m.ID()
 		if exists {
-			return []string{id}, nil
+			return []uuid.UUID{id}, nil
 		}
 		fallthrough
 	case m.op.Is(OpUpdate | OpDelete):
@@ -5117,6 +5236,42 @@ func (m *TeamAPIKeyMutation) IDs(ctx context.Context) ([]string, error) {
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
+}
+
+// SetAPIKey sets the "api_key" field.
+func (m *TeamAPIKeyMutation) SetAPIKey(s string) {
+	m.api_key = &s
+}
+
+// APIKey returns the value of the "api_key" field in the mutation.
+func (m *TeamAPIKeyMutation) APIKey() (r string, exists bool) {
+	v := m.api_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKey returns the old "api_key" field's value of the TeamAPIKey entity.
+// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamAPIKeyMutation) OldAPIKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKey: %w", err)
+	}
+	return oldValue.APIKey, nil
+}
+
+// ResetAPIKey resets all changes to the "api_key" field.
+func (m *TeamAPIKeyMutation) ResetAPIKey() {
+	m.api_key = nil
 }
 
 // SetCreatedAt sets the "created_at" field.
@@ -5155,6 +5310,55 @@ func (m *TeamAPIKeyMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
+// SetUpdatedAt sets the "updated_at" field.
+func (m *TeamAPIKeyMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *TeamAPIKeyMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the TeamAPIKey entity.
+// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamAPIKeyMutation) OldUpdatedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ClearUpdatedAt clears the value of the "updated_at" field.
+func (m *TeamAPIKeyMutation) ClearUpdatedAt() {
+	m.updated_at = nil
+	m.clearedFields[teamapikey.FieldUpdatedAt] = struct{}{}
+}
+
+// UpdatedAtCleared returns if the "updated_at" field was cleared in this mutation.
+func (m *TeamAPIKeyMutation) UpdatedAtCleared() bool {
+	_, ok := m.clearedFields[teamapikey.FieldUpdatedAt]
+	return ok
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *TeamAPIKeyMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+	delete(m.clearedFields, teamapikey.FieldUpdatedAt)
+}
+
 // SetTeamID sets the "team_id" field.
 func (m *TeamAPIKeyMutation) SetTeamID(u uuid.UUID) {
 	m.team = &u
@@ -5191,6 +5395,140 @@ func (m *TeamAPIKeyMutation) ResetTeamID() {
 	m.team = nil
 }
 
+// SetName sets the "name" field.
+func (m *TeamAPIKeyMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *TeamAPIKeyMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the TeamAPIKey entity.
+// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamAPIKeyMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *TeamAPIKeyMutation) ResetName() {
+	m.name = nil
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (m *TeamAPIKeyMutation) SetCreatedBy(u uuid.UUID) {
+	m.creator = &u
+}
+
+// CreatedBy returns the value of the "created_by" field in the mutation.
+func (m *TeamAPIKeyMutation) CreatedBy() (r uuid.UUID, exists bool) {
+	v := m.creator
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedBy returns the old "created_by" field's value of the TeamAPIKey entity.
+// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamAPIKeyMutation) OldCreatedBy(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedBy: %w", err)
+	}
+	return oldValue.CreatedBy, nil
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (m *TeamAPIKeyMutation) ClearCreatedBy() {
+	m.creator = nil
+	m.clearedFields[teamapikey.FieldCreatedBy] = struct{}{}
+}
+
+// CreatedByCleared returns if the "created_by" field was cleared in this mutation.
+func (m *TeamAPIKeyMutation) CreatedByCleared() bool {
+	_, ok := m.clearedFields[teamapikey.FieldCreatedBy]
+	return ok
+}
+
+// ResetCreatedBy resets all changes to the "created_by" field.
+func (m *TeamAPIKeyMutation) ResetCreatedBy() {
+	m.creator = nil
+	delete(m.clearedFields, teamapikey.FieldCreatedBy)
+}
+
+// SetLastUsed sets the "last_used" field.
+func (m *TeamAPIKeyMutation) SetLastUsed(t time.Time) {
+	m.last_used = &t
+}
+
+// LastUsed returns the value of the "last_used" field in the mutation.
+func (m *TeamAPIKeyMutation) LastUsed() (r time.Time, exists bool) {
+	v := m.last_used
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastUsed returns the old "last_used" field's value of the TeamAPIKey entity.
+// If the TeamAPIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamAPIKeyMutation) OldLastUsed(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastUsed is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastUsed requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastUsed: %w", err)
+	}
+	return oldValue.LastUsed, nil
+}
+
+// ClearLastUsed clears the value of the "last_used" field.
+func (m *TeamAPIKeyMutation) ClearLastUsed() {
+	m.last_used = nil
+	m.clearedFields[teamapikey.FieldLastUsed] = struct{}{}
+}
+
+// LastUsedCleared returns if the "last_used" field was cleared in this mutation.
+func (m *TeamAPIKeyMutation) LastUsedCleared() bool {
+	_, ok := m.clearedFields[teamapikey.FieldLastUsed]
+	return ok
+}
+
+// ResetLastUsed resets all changes to the "last_used" field.
+func (m *TeamAPIKeyMutation) ResetLastUsed() {
+	m.last_used = nil
+	delete(m.clearedFields, teamapikey.FieldLastUsed)
+}
+
 // ClearTeam clears the "team" edge to the Team entity.
 func (m *TeamAPIKeyMutation) ClearTeam() {
 	m.clearedteam = true
@@ -5216,6 +5554,46 @@ func (m *TeamAPIKeyMutation) TeamIDs() (ids []uuid.UUID) {
 func (m *TeamAPIKeyMutation) ResetTeam() {
 	m.team = nil
 	m.clearedteam = false
+}
+
+// SetCreatorID sets the "creator" edge to the User entity by id.
+func (m *TeamAPIKeyMutation) SetCreatorID(id uuid.UUID) {
+	m.creator = &id
+}
+
+// ClearCreator clears the "creator" edge to the User entity.
+func (m *TeamAPIKeyMutation) ClearCreator() {
+	m.clearedcreator = true
+	m.clearedFields[teamapikey.FieldCreatedBy] = struct{}{}
+}
+
+// CreatorCleared reports if the "creator" edge to the User entity was cleared.
+func (m *TeamAPIKeyMutation) CreatorCleared() bool {
+	return m.CreatedByCleared() || m.clearedcreator
+}
+
+// CreatorID returns the "creator" edge ID in the mutation.
+func (m *TeamAPIKeyMutation) CreatorID() (id uuid.UUID, exists bool) {
+	if m.creator != nil {
+		return *m.creator, true
+	}
+	return
+}
+
+// CreatorIDs returns the "creator" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// CreatorID instead. It exists only for internal usage by the builders.
+func (m *TeamAPIKeyMutation) CreatorIDs() (ids []uuid.UUID) {
+	if id := m.creator; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetCreator resets all changes to the "creator" edge.
+func (m *TeamAPIKeyMutation) ResetCreator() {
+	m.creator = nil
+	m.clearedcreator = false
 }
 
 // Where appends a list predicates to the TeamAPIKeyMutation builder.
@@ -5252,12 +5630,27 @@ func (m *TeamAPIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TeamAPIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 2)
+	fields := make([]string, 0, 7)
+	if m.api_key != nil {
+		fields = append(fields, teamapikey.FieldAPIKey)
+	}
 	if m.created_at != nil {
 		fields = append(fields, teamapikey.FieldCreatedAt)
 	}
+	if m.updated_at != nil {
+		fields = append(fields, teamapikey.FieldUpdatedAt)
+	}
 	if m.team != nil {
 		fields = append(fields, teamapikey.FieldTeamID)
+	}
+	if m.name != nil {
+		fields = append(fields, teamapikey.FieldName)
+	}
+	if m.creator != nil {
+		fields = append(fields, teamapikey.FieldCreatedBy)
+	}
+	if m.last_used != nil {
+		fields = append(fields, teamapikey.FieldLastUsed)
 	}
 	return fields
 }
@@ -5267,10 +5660,20 @@ func (m *TeamAPIKeyMutation) Fields() []string {
 // schema.
 func (m *TeamAPIKeyMutation) Field(name string) (ent.Value, bool) {
 	switch name {
+	case teamapikey.FieldAPIKey:
+		return m.APIKey()
 	case teamapikey.FieldCreatedAt:
 		return m.CreatedAt()
+	case teamapikey.FieldUpdatedAt:
+		return m.UpdatedAt()
 	case teamapikey.FieldTeamID:
 		return m.TeamID()
+	case teamapikey.FieldName:
+		return m.Name()
+	case teamapikey.FieldCreatedBy:
+		return m.CreatedBy()
+	case teamapikey.FieldLastUsed:
+		return m.LastUsed()
 	}
 	return nil, false
 }
@@ -5280,10 +5683,20 @@ func (m *TeamAPIKeyMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *TeamAPIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
+	case teamapikey.FieldAPIKey:
+		return m.OldAPIKey(ctx)
 	case teamapikey.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
+	case teamapikey.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
 	case teamapikey.FieldTeamID:
 		return m.OldTeamID(ctx)
+	case teamapikey.FieldName:
+		return m.OldName(ctx)
+	case teamapikey.FieldCreatedBy:
+		return m.OldCreatedBy(ctx)
+	case teamapikey.FieldLastUsed:
+		return m.OldLastUsed(ctx)
 	}
 	return nil, fmt.Errorf("unknown TeamAPIKey field %s", name)
 }
@@ -5293,6 +5706,13 @@ func (m *TeamAPIKeyMutation) OldField(ctx context.Context, name string) (ent.Val
 // type.
 func (m *TeamAPIKeyMutation) SetField(name string, value ent.Value) error {
 	switch name {
+	case teamapikey.FieldAPIKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKey(v)
+		return nil
 	case teamapikey.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -5300,12 +5720,40 @@ func (m *TeamAPIKeyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCreatedAt(v)
 		return nil
+	case teamapikey.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
 	case teamapikey.FieldTeamID:
 		v, ok := value.(uuid.UUID)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTeamID(v)
+		return nil
+	case teamapikey.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case teamapikey.FieldCreatedBy:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedBy(v)
+		return nil
+	case teamapikey.FieldLastUsed:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastUsed(v)
 		return nil
 	}
 	return fmt.Errorf("unknown TeamAPIKey field %s", name)
@@ -5336,7 +5784,17 @@ func (m *TeamAPIKeyMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *TeamAPIKeyMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(teamapikey.FieldUpdatedAt) {
+		fields = append(fields, teamapikey.FieldUpdatedAt)
+	}
+	if m.FieldCleared(teamapikey.FieldCreatedBy) {
+		fields = append(fields, teamapikey.FieldCreatedBy)
+	}
+	if m.FieldCleared(teamapikey.FieldLastUsed) {
+		fields = append(fields, teamapikey.FieldLastUsed)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -5349,6 +5807,17 @@ func (m *TeamAPIKeyMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *TeamAPIKeyMutation) ClearField(name string) error {
+	switch name {
+	case teamapikey.FieldUpdatedAt:
+		m.ClearUpdatedAt()
+		return nil
+	case teamapikey.FieldCreatedBy:
+		m.ClearCreatedBy()
+		return nil
+	case teamapikey.FieldLastUsed:
+		m.ClearLastUsed()
+		return nil
+	}
 	return fmt.Errorf("unknown TeamAPIKey nullable field %s", name)
 }
 
@@ -5356,11 +5825,26 @@ func (m *TeamAPIKeyMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *TeamAPIKeyMutation) ResetField(name string) error {
 	switch name {
+	case teamapikey.FieldAPIKey:
+		m.ResetAPIKey()
+		return nil
 	case teamapikey.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
+	case teamapikey.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
 	case teamapikey.FieldTeamID:
 		m.ResetTeamID()
+		return nil
+	case teamapikey.FieldName:
+		m.ResetName()
+		return nil
+	case teamapikey.FieldCreatedBy:
+		m.ResetCreatedBy()
+		return nil
+	case teamapikey.FieldLastUsed:
+		m.ResetLastUsed()
 		return nil
 	}
 	return fmt.Errorf("unknown TeamAPIKey field %s", name)
@@ -5368,9 +5852,12 @@ func (m *TeamAPIKeyMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *TeamAPIKeyMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.team != nil {
 		edges = append(edges, teamapikey.EdgeTeam)
+	}
+	if m.creator != nil {
+		edges = append(edges, teamapikey.EdgeCreator)
 	}
 	return edges
 }
@@ -5383,13 +5870,17 @@ func (m *TeamAPIKeyMutation) AddedIDs(name string) []ent.Value {
 		if id := m.team; id != nil {
 			return []ent.Value{*id}
 		}
+	case teamapikey.EdgeCreator:
+		if id := m.creator; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *TeamAPIKeyMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	return edges
 }
 
@@ -5401,9 +5892,12 @@ func (m *TeamAPIKeyMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *TeamAPIKeyMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.clearedteam {
 		edges = append(edges, teamapikey.EdgeTeam)
+	}
+	if m.clearedcreator {
+		edges = append(edges, teamapikey.EdgeCreator)
 	}
 	return edges
 }
@@ -5414,6 +5908,8 @@ func (m *TeamAPIKeyMutation) EdgeCleared(name string) bool {
 	switch name {
 	case teamapikey.EdgeTeam:
 		return m.clearedteam
+	case teamapikey.EdgeCreator:
+		return m.clearedcreator
 	}
 	return false
 }
@@ -5425,6 +5921,9 @@ func (m *TeamAPIKeyMutation) ClearEdge(name string) error {
 	case teamapikey.EdgeTeam:
 		m.ClearTeam()
 		return nil
+	case teamapikey.EdgeCreator:
+		m.ClearCreator()
+		return nil
 	}
 	return fmt.Errorf("unknown TeamAPIKey unique edge %s", name)
 }
@@ -5435,6 +5934,9 @@ func (m *TeamAPIKeyMutation) ResetEdge(name string) error {
 	switch name {
 	case teamapikey.EdgeTeam:
 		m.ResetTeam()
+		return nil
+	case teamapikey.EdgeCreator:
+		m.ResetCreator()
 		return nil
 	}
 	return fmt.Errorf("unknown TeamAPIKey edge %s", name)
@@ -6132,23 +6634,29 @@ func (m *TierMutation) ResetEdge(name string) error {
 // UserMutation represents an operation that mutates the User nodes in the graph.
 type UserMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *uuid.UUID
-	email                *string
-	clearedFields        map[string]struct{}
-	teams                map[uuid.UUID]struct{}
-	removedteams         map[uuid.UUID]struct{}
-	clearedteams         bool
-	access_tokens        map[string]struct{}
-	removedaccess_tokens map[string]struct{}
-	clearedaccess_tokens bool
-	users_teams          map[int]struct{}
-	removedusers_teams   map[int]struct{}
-	clearedusers_teams   bool
-	done                 bool
-	oldValue             func(context.Context) (*User, error)
-	predicates           []predicate.User
+	op                      Op
+	typ                     string
+	id                      *uuid.UUID
+	email                   *string
+	clearedFields           map[string]struct{}
+	teams                   map[uuid.UUID]struct{}
+	removedteams            map[uuid.UUID]struct{}
+	clearedteams            bool
+	created_envs            map[string]struct{}
+	removedcreated_envs     map[string]struct{}
+	clearedcreated_envs     bool
+	access_tokens           map[string]struct{}
+	removedaccess_tokens    map[string]struct{}
+	clearedaccess_tokens    bool
+	created_api_keys        map[uuid.UUID]struct{}
+	removedcreated_api_keys map[uuid.UUID]struct{}
+	clearedcreated_api_keys bool
+	users_teams             map[int]struct{}
+	removedusers_teams      map[int]struct{}
+	clearedusers_teams      bool
+	done                    bool
+	oldValue                func(context.Context) (*User, error)
+	predicates              []predicate.User
 }
 
 var _ ent.Mutation = (*UserMutation)(nil)
@@ -6345,6 +6853,60 @@ func (m *UserMutation) ResetTeams() {
 	m.removedteams = nil
 }
 
+// AddCreatedEnvIDs adds the "created_envs" edge to the Env entity by ids.
+func (m *UserMutation) AddCreatedEnvIDs(ids ...string) {
+	if m.created_envs == nil {
+		m.created_envs = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.created_envs[ids[i]] = struct{}{}
+	}
+}
+
+// ClearCreatedEnvs clears the "created_envs" edge to the Env entity.
+func (m *UserMutation) ClearCreatedEnvs() {
+	m.clearedcreated_envs = true
+}
+
+// CreatedEnvsCleared reports if the "created_envs" edge to the Env entity was cleared.
+func (m *UserMutation) CreatedEnvsCleared() bool {
+	return m.clearedcreated_envs
+}
+
+// RemoveCreatedEnvIDs removes the "created_envs" edge to the Env entity by IDs.
+func (m *UserMutation) RemoveCreatedEnvIDs(ids ...string) {
+	if m.removedcreated_envs == nil {
+		m.removedcreated_envs = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.created_envs, ids[i])
+		m.removedcreated_envs[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedCreatedEnvs returns the removed IDs of the "created_envs" edge to the Env entity.
+func (m *UserMutation) RemovedCreatedEnvsIDs() (ids []string) {
+	for id := range m.removedcreated_envs {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// CreatedEnvsIDs returns the "created_envs" edge IDs in the mutation.
+func (m *UserMutation) CreatedEnvsIDs() (ids []string) {
+	for id := range m.created_envs {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetCreatedEnvs resets all changes to the "created_envs" edge.
+func (m *UserMutation) ResetCreatedEnvs() {
+	m.created_envs = nil
+	m.clearedcreated_envs = false
+	m.removedcreated_envs = nil
+}
+
 // AddAccessTokenIDs adds the "access_tokens" edge to the AccessToken entity by ids.
 func (m *UserMutation) AddAccessTokenIDs(ids ...string) {
 	if m.access_tokens == nil {
@@ -6397,6 +6959,60 @@ func (m *UserMutation) ResetAccessTokens() {
 	m.access_tokens = nil
 	m.clearedaccess_tokens = false
 	m.removedaccess_tokens = nil
+}
+
+// AddCreatedAPIKeyIDs adds the "created_api_keys" edge to the TeamAPIKey entity by ids.
+func (m *UserMutation) AddCreatedAPIKeyIDs(ids ...uuid.UUID) {
+	if m.created_api_keys == nil {
+		m.created_api_keys = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.created_api_keys[ids[i]] = struct{}{}
+	}
+}
+
+// ClearCreatedAPIKeys clears the "created_api_keys" edge to the TeamAPIKey entity.
+func (m *UserMutation) ClearCreatedAPIKeys() {
+	m.clearedcreated_api_keys = true
+}
+
+// CreatedAPIKeysCleared reports if the "created_api_keys" edge to the TeamAPIKey entity was cleared.
+func (m *UserMutation) CreatedAPIKeysCleared() bool {
+	return m.clearedcreated_api_keys
+}
+
+// RemoveCreatedAPIKeyIDs removes the "created_api_keys" edge to the TeamAPIKey entity by IDs.
+func (m *UserMutation) RemoveCreatedAPIKeyIDs(ids ...uuid.UUID) {
+	if m.removedcreated_api_keys == nil {
+		m.removedcreated_api_keys = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.created_api_keys, ids[i])
+		m.removedcreated_api_keys[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedCreatedAPIKeys returns the removed IDs of the "created_api_keys" edge to the TeamAPIKey entity.
+func (m *UserMutation) RemovedCreatedAPIKeysIDs() (ids []uuid.UUID) {
+	for id := range m.removedcreated_api_keys {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// CreatedAPIKeysIDs returns the "created_api_keys" edge IDs in the mutation.
+func (m *UserMutation) CreatedAPIKeysIDs() (ids []uuid.UUID) {
+	for id := range m.created_api_keys {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetCreatedAPIKeys resets all changes to the "created_api_keys" edge.
+func (m *UserMutation) ResetCreatedAPIKeys() {
+	m.created_api_keys = nil
+	m.clearedcreated_api_keys = false
+	m.removedcreated_api_keys = nil
 }
 
 // AddUsersTeamIDs adds the "users_teams" edge to the UsersTeams entity by ids.
@@ -6586,12 +7202,18 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 5)
 	if m.teams != nil {
 		edges = append(edges, user.EdgeTeams)
 	}
+	if m.created_envs != nil {
+		edges = append(edges, user.EdgeCreatedEnvs)
+	}
 	if m.access_tokens != nil {
 		edges = append(edges, user.EdgeAccessTokens)
+	}
+	if m.created_api_keys != nil {
+		edges = append(edges, user.EdgeCreatedAPIKeys)
 	}
 	if m.users_teams != nil {
 		edges = append(edges, user.EdgeUsersTeams)
@@ -6609,9 +7231,21 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeCreatedEnvs:
+		ids := make([]ent.Value, 0, len(m.created_envs))
+		for id := range m.created_envs {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgeAccessTokens:
 		ids := make([]ent.Value, 0, len(m.access_tokens))
 		for id := range m.access_tokens {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeCreatedAPIKeys:
+		ids := make([]ent.Value, 0, len(m.created_api_keys))
+		for id := range m.created_api_keys {
 			ids = append(ids, id)
 		}
 		return ids
@@ -6627,12 +7261,18 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 5)
 	if m.removedteams != nil {
 		edges = append(edges, user.EdgeTeams)
 	}
+	if m.removedcreated_envs != nil {
+		edges = append(edges, user.EdgeCreatedEnvs)
+	}
 	if m.removedaccess_tokens != nil {
 		edges = append(edges, user.EdgeAccessTokens)
+	}
+	if m.removedcreated_api_keys != nil {
+		edges = append(edges, user.EdgeCreatedAPIKeys)
 	}
 	if m.removedusers_teams != nil {
 		edges = append(edges, user.EdgeUsersTeams)
@@ -6650,9 +7290,21 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeCreatedEnvs:
+		ids := make([]ent.Value, 0, len(m.removedcreated_envs))
+		for id := range m.removedcreated_envs {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgeAccessTokens:
 		ids := make([]ent.Value, 0, len(m.removedaccess_tokens))
 		for id := range m.removedaccess_tokens {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeCreatedAPIKeys:
+		ids := make([]ent.Value, 0, len(m.removedcreated_api_keys))
+		for id := range m.removedcreated_api_keys {
 			ids = append(ids, id)
 		}
 		return ids
@@ -6668,12 +7320,18 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 5)
 	if m.clearedteams {
 		edges = append(edges, user.EdgeTeams)
 	}
+	if m.clearedcreated_envs {
+		edges = append(edges, user.EdgeCreatedEnvs)
+	}
 	if m.clearedaccess_tokens {
 		edges = append(edges, user.EdgeAccessTokens)
+	}
+	if m.clearedcreated_api_keys {
+		edges = append(edges, user.EdgeCreatedAPIKeys)
 	}
 	if m.clearedusers_teams {
 		edges = append(edges, user.EdgeUsersTeams)
@@ -6687,8 +7345,12 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 	switch name {
 	case user.EdgeTeams:
 		return m.clearedteams
+	case user.EdgeCreatedEnvs:
+		return m.clearedcreated_envs
 	case user.EdgeAccessTokens:
 		return m.clearedaccess_tokens
+	case user.EdgeCreatedAPIKeys:
+		return m.clearedcreated_api_keys
 	case user.EdgeUsersTeams:
 		return m.clearedusers_teams
 	}
@@ -6710,8 +7372,14 @@ func (m *UserMutation) ResetEdge(name string) error {
 	case user.EdgeTeams:
 		m.ResetTeams()
 		return nil
+	case user.EdgeCreatedEnvs:
+		m.ResetCreatedEnvs()
+		return nil
 	case user.EdgeAccessTokens:
 		m.ResetAccessTokens()
+		return nil
+	case user.EdgeCreatedAPIKeys:
+		m.ResetCreatedAPIKeys()
 		return nil
 	case user.EdgeUsersTeams:
 		m.ResetUsersTeams()

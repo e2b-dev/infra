@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/google/uuid"
 )
 
@@ -29,6 +30,7 @@ type EnvQuery struct {
 	inters         []Interceptor
 	predicates     []predicate.Env
 	withTeam       *TeamQuery
+	withCreator    *UserQuery
 	withEnvAliases *EnvAliasQuery
 	withBuilds     *EnvBuildQuery
 	withSnapshots  *SnapshotQuery
@@ -87,6 +89,31 @@ func (eq *EnvQuery) QueryTeam() *TeamQuery {
 		)
 		schemaConfig := eq.schemaConfig
 		step.To.Schema = schemaConfig.Team
+		step.Edge.Schema = schemaConfig.Env
+		fromU = sqlgraph.SetNeighbors(eq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCreator chains the current query on the "creator" edge.
+func (eq *EnvQuery) QueryCreator() *UserQuery {
+	query := (&UserClient{config: eq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := eq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := eq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(env.Table, env.FieldID, selector),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, env.CreatorTable, env.CreatorColumn),
+		)
+		schemaConfig := eq.schemaConfig
+		step.To.Schema = schemaConfig.User
 		step.Edge.Schema = schemaConfig.Env
 		fromU = sqlgraph.SetNeighbors(eq.driver.Dialect(), step)
 		return fromU, nil
@@ -362,6 +389,7 @@ func (eq *EnvQuery) Clone() *EnvQuery {
 		inters:         append([]Interceptor{}, eq.inters...),
 		predicates:     append([]predicate.Env{}, eq.predicates...),
 		withTeam:       eq.withTeam.Clone(),
+		withCreator:    eq.withCreator.Clone(),
 		withEnvAliases: eq.withEnvAliases.Clone(),
 		withBuilds:     eq.withBuilds.Clone(),
 		withSnapshots:  eq.withSnapshots.Clone(),
@@ -379,6 +407,17 @@ func (eq *EnvQuery) WithTeam(opts ...func(*TeamQuery)) *EnvQuery {
 		opt(query)
 	}
 	eq.withTeam = query
+	return eq
+}
+
+// WithCreator tells the query-builder to eager-load the nodes that are connected to
+// the "creator" edge. The optional arguments are used to configure the query builder of the edge.
+func (eq *EnvQuery) WithCreator(opts ...func(*UserQuery)) *EnvQuery {
+	query := (&UserClient{config: eq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	eq.withCreator = query
 	return eq
 }
 
@@ -493,8 +532,9 @@ func (eq *EnvQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Env, err
 	var (
 		nodes       = []*Env{}
 		_spec       = eq.querySpec()
-		loadedTypes = [4]bool{
+		loadedTypes = [5]bool{
 			eq.withTeam != nil,
+			eq.withCreator != nil,
 			eq.withEnvAliases != nil,
 			eq.withBuilds != nil,
 			eq.withSnapshots != nil,
@@ -526,6 +566,12 @@ func (eq *EnvQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Env, err
 	if query := eq.withTeam; query != nil {
 		if err := eq.loadTeam(ctx, query, nodes, nil,
 			func(n *Env, e *Team) { n.Edges.Team = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := eq.withCreator; query != nil {
+		if err := eq.loadCreator(ctx, query, nodes, nil,
+			func(n *Env, e *User) { n.Edges.Creator = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -575,6 +621,38 @@ func (eq *EnvQuery) loadTeam(ctx context.Context, query *TeamQuery, nodes []*Env
 		nodes, ok := nodeids[n.ID]
 		if !ok {
 			return fmt.Errorf(`unexpected foreign-key "team_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
+func (eq *EnvQuery) loadCreator(ctx context.Context, query *UserQuery, nodes []*Env, init func(*Env), assign func(*Env, *User)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*Env)
+	for i := range nodes {
+		if nodes[i].CreatedBy == nil {
+			continue
+		}
+		fk := *nodes[i].CreatedBy
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(user.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "created_by" returned %v`, n.ID)
 		}
 		for i := range nodes {
 			assign(nodes[i], n)
@@ -708,6 +786,9 @@ func (eq *EnvQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if eq.withTeam != nil {
 			_spec.Node.AddColumnOnce(env.FieldTeamID)
+		}
+		if eq.withCreator != nil {
+			_spec.Node.AddColumnOnce(env.FieldCreatedBy)
 		}
 	}
 	if ps := eq.predicates; len(ps) > 0 {

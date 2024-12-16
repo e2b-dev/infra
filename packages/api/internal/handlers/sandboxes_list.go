@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -86,6 +87,11 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 
 		sandboxes = append(sandboxes, instance)
 	}
+
+	// Sort sandboxes by start time descending
+	slices.SortFunc(sandboxes, func(a, b api.RunningSandbox) int {
+		return a.StartedAt.Compare(b.StartedAt)
+	})
 
 	c.JSON(http.StatusOK, sandboxes)
 }
