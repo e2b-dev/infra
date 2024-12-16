@@ -89,17 +89,14 @@ func (o *Orchestrator) CreateSandbox(
 
 	var node *Node
 
+	if isResume && clientID != nil {
+		telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
+
+		node, _ = o.nodes[*clientID]
+	}
+
 	for {
-		if isResume && clientID != nil {
-			telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
-
-			snapshotNode, ok := o.nodes[*clientID]
-			if !ok {
-				return nil, fmt.Errorf("failed to find a node to place sandbox on")
-			}
-
-			node = snapshotNode
-		} else {
+		if node == nil {
 			node, err = o.getLeastBusyNode(childCtx)
 			if err != nil {
 				errMsg := fmt.Errorf("failed to get least busy node: %w", err)
@@ -137,6 +134,7 @@ func (o *Orchestrator) CreateSandbox(
 		}
 
 		// The node is not available, try again with another node
+		node = nil
 	}
 
 	// The build should be cached on the node now
