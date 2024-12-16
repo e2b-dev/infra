@@ -54,6 +54,7 @@ type Dispatch struct {
 	prov             Provider
 	fatal            chan error
 	pendingResponses sync.WaitGroup
+	pendingMu        sync.Mutex
 }
 
 func NewDispatch(ctx context.Context, fp io.ReadWriteCloser, prov Provider) *Dispatch {
@@ -70,6 +71,9 @@ func NewDispatch(ctx context.Context, fp io.ReadWriteCloser, prov Provider) *Dis
 }
 
 func (d *Dispatch) Wait() {
+	d.pendingMu.Lock()
+	defer d.pendingMu.Unlock()
+
 	// Wait for any pending responses
 	d.pendingResponses.Wait()
 }
@@ -192,6 +196,10 @@ func (d *Dispatch) Handle() error {
 }
 
 func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
+	d.pendingMu.Lock()
+	d.pendingResponses.Add(1)
+	d.pendingMu.Unlock()
+
 	performRead := func(handle uint64, from uint64, length uint32) error {
 		errchan := make(chan error)
 		data := make([]byte, length)
@@ -217,12 +225,12 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 		return d.writeResponse(errorValue, handle, data)
 	}
 
-	d.pendingResponses.Add(1)
 	go func() {
 		err := performRead(cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
 			d.fatal <- err
 		}
+
 		d.pendingResponses.Done()
 	}()
 
@@ -230,7 +238,10 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 }
 
 func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
+	d.pendingMu.Lock()
 	d.pendingResponses.Add(1)
+	d.pendingMu.Unlock()
+
 	go func() {
 		errchan := make(chan error)
 		go func() {
@@ -254,6 +265,7 @@ func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) er
 		if err != nil {
 			d.fatal <- err
 		}
+
 		d.pendingResponses.Done()
 	}()
 
