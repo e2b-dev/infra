@@ -109,14 +109,14 @@ func (tc *TeamCreate) AddUsers(u ...*User) *TeamCreate {
 }
 
 // AddTeamAPIKeyIDs adds the "team_api_keys" edge to the TeamAPIKey entity by IDs.
-func (tc *TeamCreate) AddTeamAPIKeyIDs(ids ...string) *TeamCreate {
+func (tc *TeamCreate) AddTeamAPIKeyIDs(ids ...uuid.UUID) *TeamCreate {
 	tc.mutation.AddTeamAPIKeyIDs(ids...)
 	return tc
 }
 
 // AddTeamAPIKeys adds the "team_api_keys" edges to the TeamAPIKey entity.
 func (tc *TeamCreate) AddTeamAPIKeys(t ...*TeamAPIKey) *TeamCreate {
-	ids := make([]string, len(t))
+	ids := make([]uuid.UUID, len(t))
 	for i := range t {
 		ids[i] = t[i].ID
 	}
@@ -323,7 +323,7 @@ func (tc *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 			Columns: []string{team.TeamAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(teamapikey.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = tc.schemaConfig.TeamAPIKey

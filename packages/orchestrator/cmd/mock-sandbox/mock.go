@@ -101,9 +101,8 @@ func mockSandbox(
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
 
-	logger := logs.NewSandboxLogger(sandboxId, templateId, "test-team", 2, 512, false)
-
 	start := time.Now()
+	logger := logs.NewSandboxLogger(sandboxId, templateId, "test-team", 2, 512, false)
 
 	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,

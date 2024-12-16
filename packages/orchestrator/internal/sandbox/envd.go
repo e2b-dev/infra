@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -16,42 +14,45 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
+const maxRetries = 100
+
 func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
 	address := fmt.Sprintf("http://%s:%d/sync", s.Slot.HostIP(), consts.OldEnvdServerPort)
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		request, err := http.NewRequestWithContext(ctx, "POST", address, nil)
+	var response *http.Response
+	for i := 0; i < maxRetries; i++ {
+		reqCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+		request, err := http.NewRequestWithContext(reqCtx, "POST", address, nil)
 		if err != nil {
+			cancel()
 			return err
 		}
 
-		response, err := httpClient.Do(request)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to send sync request to old envd: %v\n", err)
-
-			time.Sleep(10 * time.Millisecond)
-
-			continue
+		response, err = httpClient.Do(request)
+		if err == nil {
+			cancel()
+			break
 		}
 
-		_, err = io.Copy(io.Discard, response.Body)
-		if err != nil {
-			return err
-		}
-
-		err = response.Body.Close()
-		if err != nil {
-			return err
-		}
-
-		return nil
+		cancel()
+		time.Sleep(5 * time.Millisecond)
 	}
+
+	if response == nil {
+		return fmt.Errorf("failed to sync envd")
+	}
+
+	_, err := io.Copy(io.Discard, response.Body)
+	if err != nil {
+		return err
+	}
+
+	err = response.Body.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type PostInitJSONBody struct {
@@ -72,46 +73,39 @@ func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map
 	if err != nil {
 		return err
 	}
-	counter := 0
 
-	for {
-		select {
-		case <-childCtx.Done():
-			return childCtx.Err()
-		default:
-		}
-
-		request, err := http.NewRequestWithContext(childCtx, "POST", address, bytes.NewReader(envVarsJSON))
+	var response *http.Response
+	for i := 0; i < maxRetries; i++ {
+		reqCtx, cancel := context.WithTimeout(childCtx, 50*time.Millisecond)
+		request, err := http.NewRequestWithContext(reqCtx, "POST", address, bytes.NewReader(envVarsJSON))
 		if err != nil {
-			return fmt.Errorf("failed to create request: %w", err)
+			cancel()
+			return err
 		}
 
-		response, err := httpClient.Do(request)
-		if err != nil {
-			counter++
-			if counter%10 == 0 {
-				log.Printf("[%dth try] failed to send sync request to new envd: %v\n", counter+1, err)
-			}
-
-			time.Sleep(10 * time.Millisecond)
-
-			continue
+		response, err = httpClient.Do(request)
+		if err == nil {
+			cancel()
+			break
 		}
 
-		if response.StatusCode != http.StatusNoContent {
-			return fmt.Errorf("unexpected status code: %d", response.StatusCode)
-		}
-
-		_, err = io.Copy(io.Discard, response.Body)
-		if err != nil {
-			return fmt.Errorf("failed to read response body: %w", err)
-		}
-
-		err = response.Body.Close()
-		if err != nil {
-			return fmt.Errorf("failed to close response body: %w", err)
-		}
-
-		return nil
+		cancel()
+		time.Sleep(5 * time.Millisecond)
 	}
+
+	if response == nil {
+		return fmt.Errorf("failed to init envd")
+	}
+
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
+	}
+
+	_, err = io.Copy(io.Discard, response.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

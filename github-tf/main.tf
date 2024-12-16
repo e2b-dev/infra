@@ -140,6 +140,12 @@ resource "github_actions_secret" "domain_name" {
   plaintext_value = var.domain_name
 }
 
+resource "google_storage_bucket_iam_member" "public_builds_bucket_iam" {
+  bucket = "e2b-prod-public-builds"
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.github_action_service_account.email}"
+}
+
 resource "google_storage_bucket_iam_member" "fc_kernels_bucket_iam" {
   bucket = var.kernel_bucket
   role   = "roles/storage.objectAdmin"

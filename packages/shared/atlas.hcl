@@ -6,7 +6,7 @@ env "local" {
 
   // Define the URL of the Dev Database for this environment
   // See: https://atlasgo.io/concepts/dev-database
-  dev = "docker://postgres/15/dev"
+  dev = "docker://postgres/15/dev?search_path=public"
 
   migration {
     // Define the path to the migration directory.

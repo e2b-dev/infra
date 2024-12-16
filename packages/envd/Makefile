@@ -114,6 +114,17 @@ build-and-upload:
 .PHONY: generate
 generate:
 	go generate ./...
+	@if ! command -v buf >/dev/null 2>&1; then \
+		echo "buf is not installed. Do you want to install it?  (Y/n): "; \
+		read choice; \
+		if [ "$$choice" = "Y" ]; then \
+			go install github.com/bufbuild/buf/cmd/buf@latest && \
+			go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
+			go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest; \
+		else \
+			exit 1; \
+		fi; \
+	fi
 	cd spec && buf generate
 
 .PHONY: init-generate

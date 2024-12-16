@@ -39,6 +39,7 @@ var (
 		{Name: "spawn_count", Type: field.TypeInt64, Comment: "Number of times the env was spawned", Default: 0},
 		{Name: "last_spawned_at", Type: field.TypeTime, Nullable: true, Comment: "Timestamp of the last time the env was spawned"},
 		{Name: "team_id", Type: field.TypeUUID},
+		{Name: "created_by", Type: field.TypeUUID},
 	}
 	// EnvsTable holds the schema information for the "envs" table.
 	EnvsTable = &schema.Table{
@@ -51,6 +52,12 @@ var (
 				Columns:    []*schema.Column{EnvsColumns[7]},
 				RefColumns: []*schema.Column{TeamsColumns[0]},
 				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "envs_users_created_envs",
+				Columns:    []*schema.Column{EnvsColumns[8]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.SetNull,
 			},
 		},
 	}
@@ -156,9 +163,14 @@ var (
 	}
 	// TeamAPIKeysColumns holds the columns for the "team_api_keys" table.
 	TeamAPIKeysColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
 		{Name: "api_key", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "character varying(44)"}},
 		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
+		{Name: "updated_at", Type: field.TypeTime, Nullable: true},
+		{Name: "name", Type: field.TypeString, Default: "Unnamed API Key", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "last_used", Type: field.TypeTime, Nullable: true},
 		{Name: "team_id", Type: field.TypeUUID},
+		{Name: "created_by", Type: field.TypeUUID, Nullable: true},
 	}
 	// TeamAPIKeysTable holds the schema information for the "team_api_keys" table.
 	TeamAPIKeysTable = &schema.Table{
@@ -168,9 +180,15 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "team_api_keys_teams_team_api_keys",
-				Columns:    []*schema.Column{TeamAPIKeysColumns[2]},
+				Columns:    []*schema.Column{TeamAPIKeysColumns[6]},
 				RefColumns: []*schema.Column{TeamsColumns[0]},
 				OnDelete:   schema.Cascade,
+			},
+			{
+				Symbol:     "team_api_keys_users_created_api_keys",
+				Columns:    []*schema.Column{TeamAPIKeysColumns[7]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.SetNull,
 			},
 		},
 	}
@@ -252,6 +270,7 @@ func init() {
 	AccessTokensTable.ForeignKeys[0].RefTable = UsersTable
 	AccessTokensTable.Annotation = &entsql.Annotation{}
 	EnvsTable.ForeignKeys[0].RefTable = TeamsTable
+	EnvsTable.ForeignKeys[1].RefTable = UsersTable
 	EnvsTable.Annotation = &entsql.Annotation{}
 	EnvAliasesTable.ForeignKeys[0].RefTable = EnvsTable
 	EnvAliasesTable.Annotation = &entsql.Annotation{
@@ -264,6 +283,7 @@ func init() {
 	TeamsTable.ForeignKeys[0].RefTable = TiersTable
 	TeamsTable.Annotation = &entsql.Annotation{}
 	TeamAPIKeysTable.ForeignKeys[0].RefTable = TeamsTable
+	TeamAPIKeysTable.ForeignKeys[1].RefTable = UsersTable
 	TeamAPIKeysTable.Annotation = &entsql.Annotation{}
 	TiersTable.Annotation = &entsql.Annotation{}
 	TiersTable.Annotation.Checks = map[string]string{

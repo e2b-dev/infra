@@ -29,13 +29,17 @@ type User struct {
 type UserEdges struct {
 	// Teams holds the value of the teams edge.
 	Teams []*Team `json:"teams,omitempty"`
+	// CreatedEnvs holds the value of the created_envs edge.
+	CreatedEnvs []*Env `json:"created_envs,omitempty"`
 	// AccessTokens holds the value of the access_tokens edge.
 	AccessTokens []*AccessToken `json:"access_tokens,omitempty"`
+	// CreatedAPIKeys holds the value of the created_api_keys edge.
+	CreatedAPIKeys []*TeamAPIKey `json:"created_api_keys,omitempty"`
 	// UsersTeams holds the value of the users_teams edge.
 	UsersTeams []*UsersTeams `json:"users_teams,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [5]bool
 }
 
 // TeamsOrErr returns the Teams value or an error if the edge
@@ -47,19 +51,37 @@ func (e UserEdges) TeamsOrErr() ([]*Team, error) {
 	return nil, &NotLoadedError{edge: "teams"}
 }
 
+// CreatedEnvsOrErr returns the CreatedEnvs value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) CreatedEnvsOrErr() ([]*Env, error) {
+	if e.loadedTypes[1] {
+		return e.CreatedEnvs, nil
+	}
+	return nil, &NotLoadedError{edge: "created_envs"}
+}
+
 // AccessTokensOrErr returns the AccessTokens value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) AccessTokensOrErr() ([]*AccessToken, error) {
-	if e.loadedTypes[1] {
+	if e.loadedTypes[2] {
 		return e.AccessTokens, nil
 	}
 	return nil, &NotLoadedError{edge: "access_tokens"}
 }
 
+// CreatedAPIKeysOrErr returns the CreatedAPIKeys value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) CreatedAPIKeysOrErr() ([]*TeamAPIKey, error) {
+	if e.loadedTypes[3] {
+		return e.CreatedAPIKeys, nil
+	}
+	return nil, &NotLoadedError{edge: "created_api_keys"}
+}
+
 // UsersTeamsOrErr returns the UsersTeams value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) UsersTeamsOrErr() ([]*UsersTeams, error) {
-	if e.loadedTypes[2] {
+	if e.loadedTypes[4] {
 		return e.UsersTeams, nil
 	}
 	return nil, &NotLoadedError{edge: "users_teams"}
@@ -119,9 +141,19 @@ func (u *User) QueryTeams() *TeamQuery {
 	return NewUserClient(u.config).QueryTeams(u)
 }
 
+// QueryCreatedEnvs queries the "created_envs" edge of the User entity.
+func (u *User) QueryCreatedEnvs() *EnvQuery {
+	return NewUserClient(u.config).QueryCreatedEnvs(u)
+}
+
 // QueryAccessTokens queries the "access_tokens" edge of the User entity.
 func (u *User) QueryAccessTokens() *AccessTokenQuery {
 	return NewUserClient(u.config).QueryAccessTokens(u)
+}
+
+// QueryCreatedAPIKeys queries the "created_api_keys" edge of the User entity.
+func (u *User) QueryCreatedAPIKeys() *TeamAPIKeyQuery {
+	return NewUserClient(u.config).QueryCreatedAPIKeys(u)
 }
 
 // QueryUsersTeams queries the "users_teams" edge of the User entity.

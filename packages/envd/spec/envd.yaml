@@ -14,6 +14,17 @@ paths:
       responses:
         "204":
           description: The service is healthy
+          
+  /metrics:
+    get:
+      summary: Get the stats of the service
+      responses:
+        "200":
+          description: The resource usage metrics of the service
+          content:
+          application/json:
+              schema:
+                $ref: "#/components/schemas/Metrics"
 
   /init:
     post:
@@ -192,3 +203,14 @@ components:
       description: Environment variables to set
       additionalProperties:
           type: string
+    Metrics:
+      type: object
+      description: Resource usage metrics
+      properties:
+        cpu_pct:
+          type: number
+          format: float
+          description: CPU usage percentage
+        mem_bytes:
+          type: integer
+          description: Total virtual memory usage in bytes
