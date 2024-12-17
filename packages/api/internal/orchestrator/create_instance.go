@@ -93,6 +93,9 @@ func (o *Orchestrator) CreateSandbox(
 		telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
 
 		node, _ = o.nodes.Get(*clientID)
+		if node != nil && node.Status() != api.NodeStatusReady {
+			node = nil
+		}
 	}
 
 	for {
