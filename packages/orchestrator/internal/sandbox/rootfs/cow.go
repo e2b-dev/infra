@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"sync/atomic"
+	"time"
 
 	"github.com/bits-and-blooms/bitset"
 
@@ -146,6 +147,8 @@ func (o *CowDevice) close() error {
 			if counter%100 == 0 {
 				log.Printf("[%dth try] error releasing overlay device: %v\n", counter, err)
 			}
+
+			time.Sleep(100 * time.Millisecond)
 
 			continue
 		}

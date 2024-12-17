@@ -100,6 +100,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 			fmt.Printf("Error releasing device: %v\n", releaseErr)
 		}
 
+		time.Sleep(5 * time.Millisecond)
+
 		d.deviceIndex = 0
 
 		if strings.Contains(err.Error(), "invalid argument") {
@@ -114,7 +116,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 			break
 		}
 
-		time.Sleep(100 * time.Nanosecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	return d.deviceIndex, nil
@@ -146,7 +148,7 @@ func (d *DirectPathMount) Close() error {
 			break
 		}
 
-		time.Sleep(100 * time.Nanosecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	return nil

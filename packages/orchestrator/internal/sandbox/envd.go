@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-const maxRetries = 100
+const maxRetries = 50
 
 func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
 	address := fmt.Sprintf("http://%s:%d/sync", s.Slot.HostIP(), consts.OldEnvdServerPort)
@@ -35,7 +35,7 @@ func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
 		}
 
 		cancel()
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	if response == nil {
@@ -90,7 +90,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map
 		}
 
 		cancel()
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	if response == nil {

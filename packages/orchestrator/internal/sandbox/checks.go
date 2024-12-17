@@ -12,7 +12,7 @@ import (
 )
 
 func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
 	for {

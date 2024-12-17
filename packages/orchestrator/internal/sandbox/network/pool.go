@@ -15,7 +15,7 @@ import (
 
 const (
 	NewSlotsPoolSize    = 32
-	ReusedSlotsPoolSize = 64
+	ReusedSlotsPoolSize = 100
 )
 
 type Pool struct {
