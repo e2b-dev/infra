@@ -60,7 +60,7 @@ func (db *DB) NewSnapshotBuild(
 			Env.
 			Create().
 			SetPublic(false).
-			SetCreatedBy(uuid.Nil).
+			SetNillableCreatedBy(nil).
 			SetTeamID(teamID).
 			SetID(envID).
 			Save(ctx)

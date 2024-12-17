@@ -762,9 +762,22 @@ func (m *EnvMutation) OldCreatedBy(ctx context.Context) (v *uuid.UUID, err error
 	return oldValue.CreatedBy, nil
 }
 
+// ClearCreatedBy clears the value of the "created_by" field.
+func (m *EnvMutation) ClearCreatedBy() {
+	m.creator = nil
+	m.clearedFields[env.FieldCreatedBy] = struct{}{}
+}
+
+// CreatedByCleared returns if the "created_by" field was cleared in this mutation.
+func (m *EnvMutation) CreatedByCleared() bool {
+	_, ok := m.clearedFields[env.FieldCreatedBy]
+	return ok
+}
+
 // ResetCreatedBy resets all changes to the "created_by" field.
 func (m *EnvMutation) ResetCreatedBy() {
 	m.creator = nil
+	delete(m.clearedFields, env.FieldCreatedBy)
 }
 
 // SetPublic sets the "public" field.
@@ -1004,7 +1017,7 @@ func (m *EnvMutation) ClearCreator() {
 
 // CreatorCleared reports if the "creator" edge to the User entity was cleared.
 func (m *EnvMutation) CreatorCleared() bool {
-	return m.clearedcreator
+	return m.CreatedByCleared() || m.clearedcreator
 }
 
 // CreatorID returns the "creator" edge ID in the mutation.
@@ -1423,6 +1436,9 @@ func (m *EnvMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *EnvMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(env.FieldCreatedBy) {
+		fields = append(fields, env.FieldCreatedBy)
+	}
 	if m.FieldCleared(env.FieldLastSpawnedAt) {
 		fields = append(fields, env.FieldLastSpawnedAt)
 	}
@@ -1440,6 +1456,9 @@ func (m *EnvMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *EnvMutation) ClearField(name string) error {
 	switch name {
+	case env.FieldCreatedBy:
+		m.ClearCreatedBy()
+		return nil
 	case env.FieldLastSpawnedAt:
 		m.ClearLastSpawnedAt()
 		return nil

@@ -78,6 +78,12 @@ func (eu *EnvUpdate) SetNillableCreatedBy(u *uuid.UUID) *EnvUpdate {
 	return eu
 }
 
+// ClearCreatedBy clears the value of the "created_by" field.
+func (eu *EnvUpdate) ClearCreatedBy() *EnvUpdate {
+	eu.mutation.ClearCreatedBy()
+	return eu
+}
+
 // SetPublic sets the "public" field.
 func (eu *EnvUpdate) SetPublic(b bool) *EnvUpdate {
 	eu.mutation.SetPublic(b)
@@ -162,6 +168,14 @@ func (eu *EnvUpdate) SetTeam(t *Team) *EnvUpdate {
 // SetCreatorID sets the "creator" edge to the User entity by ID.
 func (eu *EnvUpdate) SetCreatorID(id uuid.UUID) *EnvUpdate {
 	eu.mutation.SetCreatorID(id)
+	return eu
+}
+
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (eu *EnvUpdate) SetNillableCreatorID(id *uuid.UUID) *EnvUpdate {
+	if id != nil {
+		eu = eu.SetCreatorID(*id)
+	}
 	return eu
 }
 
@@ -326,9 +340,6 @@ func (eu *EnvUpdate) ExecX(ctx context.Context) {
 func (eu *EnvUpdate) check() error {
 	if _, ok := eu.mutation.TeamID(); eu.mutation.TeamCleared() && !ok {
 		return errors.New(`models: clearing a required unique edge "Env.team"`)
-	}
-	if _, ok := eu.mutation.CreatorID(); eu.mutation.CreatorCleared() && !ok {
-		return errors.New(`models: clearing a required unique edge "Env.creator"`)
 	}
 	return nil
 }
@@ -647,6 +658,12 @@ func (euo *EnvUpdateOne) SetNillableCreatedBy(u *uuid.UUID) *EnvUpdateOne {
 	return euo
 }
 
+// ClearCreatedBy clears the value of the "created_by" field.
+func (euo *EnvUpdateOne) ClearCreatedBy() *EnvUpdateOne {
+	euo.mutation.ClearCreatedBy()
+	return euo
+}
+
 // SetPublic sets the "public" field.
 func (euo *EnvUpdateOne) SetPublic(b bool) *EnvUpdateOne {
 	euo.mutation.SetPublic(b)
@@ -731,6 +748,14 @@ func (euo *EnvUpdateOne) SetTeam(t *Team) *EnvUpdateOne {
 // SetCreatorID sets the "creator" edge to the User entity by ID.
 func (euo *EnvUpdateOne) SetCreatorID(id uuid.UUID) *EnvUpdateOne {
 	euo.mutation.SetCreatorID(id)
+	return euo
+}
+
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (euo *EnvUpdateOne) SetNillableCreatorID(id *uuid.UUID) *EnvUpdateOne {
+	if id != nil {
+		euo = euo.SetCreatorID(*id)
+	}
 	return euo
 }
 
@@ -908,9 +933,6 @@ func (euo *EnvUpdateOne) ExecX(ctx context.Context) {
 func (euo *EnvUpdateOne) check() error {
 	if _, ok := euo.mutation.TeamID(); euo.mutation.TeamCleared() && !ok {
 		return errors.New(`models: clearing a required unique edge "Env.team"`)
-	}
-	if _, ok := euo.mutation.CreatorID(); euo.mutation.CreatorCleared() && !ok {
-		return errors.New(`models: clearing a required unique edge "Env.creator"`)
 	}
 	return nil
 }

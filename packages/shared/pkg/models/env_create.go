@@ -69,6 +69,14 @@ func (ec *EnvCreate) SetCreatedBy(u uuid.UUID) *EnvCreate {
 	return ec
 }
 
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (ec *EnvCreate) SetNillableCreatedBy(u *uuid.UUID) *EnvCreate {
+	if u != nil {
+		ec.SetCreatedBy(*u)
+	}
+	return ec
+}
+
 // SetPublic sets the "public" field.
 func (ec *EnvCreate) SetPublic(b bool) *EnvCreate {
 	ec.mutation.SetPublic(b)
@@ -131,6 +139,14 @@ func (ec *EnvCreate) SetTeam(t *Team) *EnvCreate {
 // SetCreatorID sets the "creator" edge to the User entity by ID.
 func (ec *EnvCreate) SetCreatorID(id uuid.UUID) *EnvCreate {
 	ec.mutation.SetCreatorID(id)
+	return ec
+}
+
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (ec *EnvCreate) SetNillableCreatorID(id *uuid.UUID) *EnvCreate {
+	if id != nil {
+		ec = ec.SetCreatorID(*id)
+	}
 	return ec
 }
 
@@ -248,9 +264,6 @@ func (ec *EnvCreate) check() error {
 	if _, ok := ec.mutation.TeamID(); !ok {
 		return &ValidationError{Name: "team_id", err: errors.New(`models: missing required field "Env.team_id"`)}
 	}
-	if _, ok := ec.mutation.CreatedBy(); !ok {
-		return &ValidationError{Name: "created_by", err: errors.New(`models: missing required field "Env.created_by"`)}
-	}
 	if _, ok := ec.mutation.Public(); !ok {
 		return &ValidationError{Name: "public", err: errors.New(`models: missing required field "Env.public"`)}
 	}
@@ -262,9 +275,6 @@ func (ec *EnvCreate) check() error {
 	}
 	if _, ok := ec.mutation.TeamID(); !ok {
 		return &ValidationError{Name: "team", err: errors.New(`models: missing required edge "Env.team"`)}
-	}
-	if _, ok := ec.mutation.CreatorID(); !ok {
-		return &ValidationError{Name: "creator", err: errors.New(`models: missing required edge "Env.creator"`)}
 	}
 	return nil
 }
@@ -502,6 +512,12 @@ func (u *EnvUpsert) UpdateCreatedBy() *EnvUpsert {
 	return u
 }
 
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *EnvUpsert) ClearCreatedBy() *EnvUpsert {
+	u.SetNull(env.FieldCreatedBy)
+	return u
+}
+
 // SetPublic sets the "public" field.
 func (u *EnvUpsert) SetPublic(v bool) *EnvUpsert {
 	u.Set(env.FieldPublic, v)
@@ -658,6 +674,13 @@ func (u *EnvUpsertOne) SetCreatedBy(v uuid.UUID) *EnvUpsertOne {
 func (u *EnvUpsertOne) UpdateCreatedBy() *EnvUpsertOne {
 	return u.Update(func(s *EnvUpsert) {
 		s.UpdateCreatedBy()
+	})
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *EnvUpsertOne) ClearCreatedBy() *EnvUpsertOne {
+	return u.Update(func(s *EnvUpsert) {
+		s.ClearCreatedBy()
 	})
 }
 
@@ -995,6 +1018,13 @@ func (u *EnvUpsertBulk) SetCreatedBy(v uuid.UUID) *EnvUpsertBulk {
 func (u *EnvUpsertBulk) UpdateCreatedBy() *EnvUpsertBulk {
 	return u.Update(func(s *EnvUpsert) {
 		s.UpdateCreatedBy()
+	})
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *EnvUpsertBulk) ClearCreatedBy() *EnvUpsertBulk {
+	return u.Update(func(s *EnvUpsert) {
+		s.ClearCreatedBy()
 	})
 }
 

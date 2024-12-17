@@ -39,7 +39,7 @@ var (
 		{Name: "spawn_count", Type: field.TypeInt64, Comment: "Number of times the env was spawned", Default: 0},
 		{Name: "last_spawned_at", Type: field.TypeTime, Nullable: true, Comment: "Timestamp of the last time the env was spawned"},
 		{Name: "team_id", Type: field.TypeUUID},
-		{Name: "created_by", Type: field.TypeUUID},
+		{Name: "created_by", Type: field.TypeUUID, Nullable: true},
 	}
 	// EnvsTable holds the schema information for the "envs" table.
 	EnvsTable = &schema.Table{
