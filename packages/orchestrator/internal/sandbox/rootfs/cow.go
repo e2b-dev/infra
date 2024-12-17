@@ -148,7 +148,7 @@ func (o *CowDevice) close() error {
 				log.Printf("[%dth try] error releasing overlay device: %v\n", counter, err)
 			}
 
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 
 			continue
 		}

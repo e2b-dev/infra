@@ -111,6 +111,12 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 
 	// Wait until it's connected...
 	for {
+		select {
+		case <-d.ctx.Done():
+			return 0, d.ctx.Err()
+		default:
+		}
+
 		s, err := nbdnl.Status(d.deviceIndex)
 		if err == nil && s.Connected {
 			break
