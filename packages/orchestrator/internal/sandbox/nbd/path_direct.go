@@ -100,7 +100,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 			fmt.Printf("Error releasing device: %v\n", releaseErr)
 		}
 
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(10 * time.Microsecond)
 
 		d.deviceIndex = 0
 
@@ -116,7 +116,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 			break
 		}
 
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(10 * time.Microsecond)
 	}
 
 	return d.deviceIndex, nil
