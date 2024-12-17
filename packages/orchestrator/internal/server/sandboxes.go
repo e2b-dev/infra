@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"sync"
-	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/semaphore"
@@ -198,9 +197,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	defer releaseOnce()
 
-	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
-	defer cancel()
-
 	s.pauseMu.Lock()
 
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
@@ -214,8 +210,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	s.sandboxes.Remove(in.SandboxId)
 
 	s.pauseMu.Unlock()
-
-	// TODO: Stop healthcheck, etc.
 
 	snapshotTemplateFiles, err := storage.NewTemplateFiles(
 		in.TemplateId,
