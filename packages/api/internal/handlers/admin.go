@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"cmp"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 
@@ -13,6 +15,10 @@ import (
 
 func (a *APIStore) GetNodes(c *gin.Context) {
 	nodes := a.orchestrator.GetNodes()
+
+	slices.SortFunc(nodes, func(i, j *api.Node) int {
+		return cmp.Compare(i.NodeID, j.NodeID)
+	})
 
 	c.JSON(http.StatusOK, nodes)
 }
