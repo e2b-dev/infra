@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -13,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 type sbxInProgress struct {
@@ -21,29 +23,30 @@ type sbxInProgress struct {
 }
 
 type Node struct {
-	CPUUsage int64
-	RamUsage int64
+	CPUUsage atomic.Int64
+	RamUsage atomic.Int64
 	Client   *GRPCClient
 
-	status api.NodeStatus
-	Info   *node.NodeInfo
+	Info *node.NodeInfo
 
-	mu sync.RWMutex
+	status   api.NodeStatus
+	statusMu sync.RWMutex
 
-	sbxsInProgress map[string]*sbxInProgress
-	buildCache     *ttlcache.Cache[string, interface{}]
+	sbxsInProgress *smap.Map[*sbxInProgress]
+
+	buildCache *ttlcache.Cache[string, interface{}]
 }
 
 func (n *Node) Status() api.NodeStatus {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
+	n.statusMu.RLock()
+	defer n.statusMu.RUnlock()
 
 	return n.status
 }
 
 func (n *Node) SetStatus(status api.NodeStatus) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
+	n.statusMu.Lock()
+	defer n.statusMu.Unlock()
 
 	n.status = status
 }

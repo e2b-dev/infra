@@ -107,10 +107,10 @@ func (o *Orchestrator) CreateSandbox(
 		}
 
 		// To creating a lot of sandboxes at once on the same node
-		node.sbxsInProgress[sandboxID] = &sbxInProgress{
+		node.sbxsInProgress.Insert(sandboxID, &sbxInProgress{
 			MiBMemory: build.RAMMB,
 			CPUs:      build.Vcpu,
-		}
+		})
 
 		_, err = node.Client.Sandbox.Create(ctx, sbxRequest)
 		// The request is done, we will either add it to the cache or remove it from the node
@@ -122,7 +122,7 @@ func (o *Orchestrator) CreateSandbox(
 
 		err = utils.UnwrapGRPCError(err)
 		if err != nil {
-			delete(node.sbxsInProgress, sandboxID)
+			node.sbxsInProgress.Remove(sandboxID)
 			if node.Client.connection.GetState() != connectivity.Ready {
 				// If the connection is not ready, we should remove the node from the list
 				delete(o.nodes, node.Info.ID)
@@ -141,7 +141,7 @@ func (o *Orchestrator) CreateSandbox(
 	node.InsertBuild(build.ID.String())
 
 	// The sandbox was created successfully, the resources will be counted in cache
-	defer delete(node.sbxsInProgress, sandboxID)
+	defer node.sbxsInProgress.Remove(sandboxID)
 
 	telemetry.SetAttributes(childCtx, attribute.String("node.id", node.Info.ID))
 	telemetry.ReportEvent(childCtx, "Created sandbox")
@@ -205,16 +205,16 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context) (leastBusyNode *Nod
 		// TODO: Incorporate the node's cached builds and total resources into the decision
 		for _, node := range o.nodes {
 			// To prevent overloading the node
-			if len(node.sbxsInProgress) > 3 || node.Status() != api.NodeStatusReady {
+			if len(node.sbxsInProgress.Items()) > 3 || node.Status() != api.NodeStatusReady {
 				continue
 			}
 
 			cpuUsage := int64(0)
-			for _, sbx := range node.sbxsInProgress {
+			for _, sbx := range node.sbxsInProgress.Items() {
 				cpuUsage += sbx.CPUs
 			}
 
-			if leastBusyNode == nil || (node.CPUUsage+cpuUsage) < leastBusyNode.CPUUsage {
+			if leastBusyNode == nil || (node.CPUUsage.Load()+cpuUsage) < leastBusyNode.CPUUsage.Load() {
 				leastBusyNode = node
 			}
 		}

@@ -125,8 +125,8 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 		if node == nil {
 			logger.Errorf("failed to get node '%s'", info.Instance.ClientID)
 		} else {
-			node.CPUUsage -= info.VCpu
-			node.RamUsage -= info.RamMB
+			node.CPUUsage.Add(-info.VCpu)
+			node.RamUsage.Add(-info.RamMB)
 
 			o.dns.Remove(info.Instance.SandboxID, node.Info.IPAddress)
 		}
@@ -157,8 +157,8 @@ func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *za
 		if node == nil {
 			logger.Errorf("failed to get node '%s'", info.Instance.ClientID)
 		} else {
-			node.CPUUsage += info.VCpu
-			node.RamUsage += info.RamMB
+			node.CPUUsage.Add(info.VCpu)
+			node.RamUsage.Add(info.RamMB)
 
 			o.dns.Add(info.Instance.SandboxID, node.Info.IPAddress)
 		}

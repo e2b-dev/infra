@@ -12,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 type GRPCClient struct {
@@ -51,7 +52,7 @@ func (o *Orchestrator) connectToNode(node *node.NodeInfo) error {
 	n := &Node{
 		Client:         client,
 		buildCache:     buildCache,
-		sbxsInProgress: make(map[string]*sbxInProgress),
+		sbxsInProgress: smap.New[*sbxInProgress](),
 		status:         api.NodeStatusReady,
 		Info:           node,
 	}
