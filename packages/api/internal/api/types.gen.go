@@ -115,6 +115,27 @@ type SandboxLogs struct {
 // SandboxMetadata defines model for SandboxMetadata.
 type SandboxMetadata map[string]string
 
+// SandboxMetric Metric entry with timestamp and line
+type SandboxMetric struct {
+	// CpuPct CPU usage percentage
+	CpuPct *float32 `json:"cpuPct,omitempty"`
+
+	// MemMiBTotal Total memory in MiB
+	MemMiBTotal int64 `json:"memMiBTotal"`
+
+	// MemMiBUsed Memory used in MiB
+	MemMiBUsed int64 `json:"memMiBUsed"`
+
+	// Timestamp Timestamp of the log entry
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// SandboxMetrics defines model for SandboxMetrics.
+type SandboxMetrics struct {
+	// Metrics Metrics of the sandbox
+	Metrics []SandboxMetric `json:"metrics"`
+}
+
 // Team defines model for Team.
 type Team struct {
 	// ApiKey API key for the team
