@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"sync/atomic"
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
@@ -18,16 +17,15 @@ import (
 )
 
 type CowDevice struct {
-	overlay block.Device
+	overlay *block.Overlay
 	mnt     *nbd.DirectPathMount
-	cache   *block.Cache
 
 	ready *utils.SetOnce[string]
 
 	blockSize   int64
 	BaseBuildId string
 
-	closing atomic.Bool
+	finishedOperations chan struct{}
 }
 
 func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64) (*CowDevice, error) {
@@ -46,12 +44,12 @@ func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64) (
 	mnt := nbd.NewDirectPathMount(overlay)
 
 	return &CowDevice{
-		mnt:         mnt,
-		overlay:     overlay,
-		ready:       utils.NewSetOnce[string](),
-		cache:       cache,
-		blockSize:   blockSize,
-		BaseBuildId: rootfs.Header().Metadata.BaseBuildId.String(),
+		mnt:                mnt,
+		overlay:            overlay,
+		ready:              utils.NewSetOnce[string](),
+		blockSize:          blockSize,
+		finishedOperations: make(chan struct{}, 1),
+		BaseBuildId:        rootfs.Header().Metadata.BaseBuildId.String(),
 	}, nil
 }
 
@@ -65,63 +63,41 @@ func (o *CowDevice) Start(ctx context.Context) error {
 }
 
 func (o *CowDevice) Export(out io.Writer, stopSandbox func() error) (*bitset.BitSet, error) {
-	if o.closing.CompareAndSwap(false, true) {
-		stopSandbox()
-
-		var errs []error
-
-		err := o.close()
-		if err != nil {
-			return nil, err
-		}
-
-		dirty, err := o.cache.Export(out)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error exporting cache: %w", err))
-		}
-
-		err = o.overlay.Close()
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error closing overlay cache: %w", err))
-		}
-
-		err = errors.Join(errs...)
-		if err != nil {
-			return nil, err
-		}
-
-		return dirty, nil
+	cache, err := o.overlay.EjectCache()
+	if err != nil {
+		return nil, fmt.Errorf("error ejecting cache: %w", err)
 	}
 
-	return nil, nil
+	stopSandbox()
+
+	<-o.finishedOperations
+
+	dirty, err := cache.Export(out)
+	if err != nil {
+		return nil, fmt.Errorf("error exporting cache: %w", err)
+	}
+
+	err = cache.Close()
+	if err != nil {
+		return nil, fmt.Errorf("error closing cache: %w", err)
+	}
+
+	return dirty, nil
 }
 
 func (o *CowDevice) Close() error {
-	if o.closing.CompareAndSwap(false, true) {
-		var errs []error
-
-		err := o.close()
-		if err != nil {
-			errs = append(errs, err)
-		}
-
-		err = o.overlay.Close()
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error closing overlay cache: %w", err))
-		}
-
-		return errors.Join(errs...)
-	}
-
-	return nil
-}
-
-func (o *CowDevice) close() error {
 	var errs []error
 
 	err := o.mnt.Close()
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error closing overlay mount: %w", err))
+	}
+
+	o.finishedOperations <- struct{}{}
+
+	err = o.overlay.Close()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("error closing overlay cache: %w", err))
 	}
 
 	devicePath, err := o.ready.Wait()
@@ -139,7 +115,6 @@ func (o *CowDevice) close() error {
 	}
 
 	counter := 0
-
 	for {
 		counter++
 		err := nbd.Pool.ReleaseDevice(slot)
@@ -148,7 +123,7 @@ func (o *CowDevice) close() error {
 				log.Printf("[%dth try] error releasing overlay device: %v\n", counter, err)
 			}
 
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(500 * time.Millisecond)
 
 			continue
 		}
@@ -159,6 +134,8 @@ func (o *CowDevice) close() error {
 
 		break
 	}
+
+	fmt.Printf("overlay device released\n")
 
 	return nil
 }

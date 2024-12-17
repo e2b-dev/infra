@@ -119,11 +119,6 @@ func NewSandbox(
 		return nil
 	})
 
-	err = os.MkdirAll(sandboxFiles.SandboxCacheDir(), 0o755)
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to create sandbox cache dir: %w", err)
-	}
-
 	_, overlaySpan := tracer.Start(childCtx, "create-rootfs-overlay")
 
 	readonlyRootfs, err := t.Rootfs()

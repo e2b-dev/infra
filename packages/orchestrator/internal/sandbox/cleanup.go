@@ -57,7 +57,6 @@ func cleanupFiles(files *storage.SandboxFiles) error {
 	var errs []error
 
 	for _, p := range []string{
-		files.SandboxCacheDir(),
 		files.SandboxFirecrackerSocketPath(),
 		files.SandboxUffdSocketPath(),
 		files.SandboxCacheRootfsLinkPath(),

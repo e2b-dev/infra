@@ -3,17 +3,16 @@ package block
 import (
 	"errors"
 	"fmt"
-	"io"
-
-	"github.com/bits-and-blooms/bitset"
+	"sync/atomic"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type Overlay struct {
-	device    ReadonlyDevice
-	cache     *Cache
-	blockSize int64
+	device       ReadonlyDevice
+	cache        *Cache
+	blockSize    int64
+	cacheEjected atomic.Bool
 }
 
 func NewOverlay(device ReadonlyDevice, cache *Cache, blockSize int64) *Overlay {
@@ -46,8 +45,12 @@ func (o *Overlay) ReadAt(p []byte, off int64) (int, error) {
 	return len(p), nil
 }
 
-func (o *Overlay) Export(out io.Writer) (*bitset.BitSet, error) {
-	return o.cache.Export(out)
+func (o *Overlay) EjectCache() (*Cache, error) {
+	if !o.cacheEjected.CompareAndSwap(false, true) {
+		return nil, fmt.Errorf("cache already ejected")
+	}
+
+	return o.cache, nil
 }
 
 // This method will not be very optimal if the length is not the same as the block size, because we cannot be just exposing the cache slice,
@@ -67,5 +70,9 @@ func (o *Overlay) Size() (int64, error) {
 }
 
 func (o *Overlay) Close() error {
+	if o.cacheEjected.Load() {
+		return nil
+	}
+
 	return o.cache.Close()
 }

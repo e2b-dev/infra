@@ -100,13 +100,13 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 			fmt.Printf("Error releasing device: %v\n", releaseErr)
 		}
 
-		time.Sleep(10 * time.Microsecond)
-
 		d.deviceIndex = 0
 
 		if strings.Contains(err.Error(), "invalid argument") {
 			return 0, err
 		}
+
+		time.Sleep(25 * time.Millisecond)
 	}
 
 	// Wait until it's connected...
@@ -122,7 +122,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 			break
 		}
 
-		time.Sleep(10 * time.Microsecond)
+		time.Sleep(100 * time.Nanosecond)
 	}
 
 	return d.deviceIndex, nil
@@ -147,14 +147,22 @@ func (d *DirectPathMount) Close() error {
 		return err
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
 	// Wait until it's completely disconnected...
 	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		s, err := nbdnl.Status(d.deviceIndex)
 		if err == nil && !s.Connected {
 			break
 		}
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(100 * time.Nanosecond)
 	}
 
 	return nil

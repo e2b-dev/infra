@@ -8,6 +8,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
+const (
+	sandboxCacheDir = "/orchestrator/sandbox"
+)
+
 type SandboxFiles struct {
 	*TemplateCacheFiles
 	SandboxID string
@@ -27,12 +31,8 @@ func (c *TemplateCacheFiles) NewSandboxFiles(sandboxID string) *SandboxFiles {
 	}
 }
 
-func (s *SandboxFiles) SandboxCacheDir() string {
-	return filepath.Join(s.CacheDir(), "sandbox", s.SandboxID, s.randomID)
-}
-
 func (s *SandboxFiles) SandboxCacheRootfsPath() string {
-	return filepath.Join(s.SandboxCacheDir(), RootfsName)
+	return filepath.Join(sandboxCacheDir, fmt.Sprintf("rootfs-%s-%s.cow", s.SandboxID, s.randomID))
 }
 
 func (s *SandboxFiles) SandboxFirecrackerSocketPath() string {
@@ -44,5 +44,5 @@ func (s *SandboxFiles) SandboxUffdSocketPath() string {
 }
 
 func (s *SandboxFiles) SandboxCacheRootfsLinkPath() string {
-	return filepath.Join(s.SandboxCacheDir(), "rootfs.link")
+	return filepath.Join(sandboxCacheDir, fmt.Sprintf("rootfs-%s-%s.link", s.SandboxID, s.randomID))
 }

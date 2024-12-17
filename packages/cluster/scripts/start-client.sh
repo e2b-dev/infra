@@ -29,6 +29,10 @@ sudo mkdir -p $MOUNT_POINT
 # # Step 4: Mount the disk with
 sudo mount -o noatime $DISK $MOUNT_POINT
 
+sudo mkdir -p /orchestrator/sandbox
+sudo mkdir -p /orchestrator/template
+sudo mkdir -p /orchestrator/build
+
 # Add swapfile
 SWAPFILE="/swapfile"
 sudo fallocate -l 100G $SWAPFILE
