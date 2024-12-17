@@ -40,12 +40,11 @@ metrics:
     hostmetrics:
       type: hostmetrics
       collection_interval: 30s
-      exclude_metrics:
-        - process/.*
   processors:
     metrics_filter:
       type: exclude_metrics
-      metrics_pattern: []
+      metrics_pattern:
+        - agent.googleapis.com/processes/*
   service:
     pipelines:
       default_pipeline:
