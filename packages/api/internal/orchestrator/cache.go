@@ -48,7 +48,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 			}
 		}
 
-		for _, node := range o.nodes {
+		for _, node := range o.nodes.Items() {
 			found := false
 			for _, activeNode := range nodes {
 				if node.Info.ID == activeNode.ID {
@@ -66,7 +66,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 					o.logger.Errorf("Error closing connection to node\n: %v", err)
 				}
 
-				delete(o.nodes, node.Info.ID)
+				o.nodes.Remove(node.Info.ID)
 				continue
 			}
 

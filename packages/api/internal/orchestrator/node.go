@@ -76,13 +76,13 @@ func (o *Orchestrator) listNomadNodes() ([]*node.NodeInfo, error) {
 }
 
 func (o *Orchestrator) GetNode(nodeID string) *Node {
-	node, _ := o.nodes[nodeID]
+	node, _ := o.nodes.Get(nodeID)
 	return node
 }
 
 func (o *Orchestrator) GetNodes() []*api.Node {
 	nodes := make(map[string]*api.Node)
-	for key, n := range o.nodes {
+	for key, n := range o.nodes.Items() {
 		nodes[key] = &api.Node{NodeID: key, Status: n.Status()}
 	}
 
@@ -108,7 +108,7 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 
 func (o *Orchestrator) GetNodeDetail(nodeId string) *api.NodeDetail {
 	var node *api.NodeDetail
-	for key, n := range o.nodes {
+	for key, n := range o.nodes.Items() {
 		if key == nodeId {
 			builds := n.buildCache.Keys()
 			node = &api.NodeDetail{NodeID: key, Status: n.Status(), CachedBuilds: builds}

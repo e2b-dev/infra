@@ -57,7 +57,7 @@ func (o *Orchestrator) connectToNode(node *node.NodeInfo) error {
 		Info:           node,
 	}
 
-	o.nodes[n.Info.ID] = n
+	o.nodes.Insert(n.Info.ID, n)
 
 	return nil
 }

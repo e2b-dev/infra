@@ -14,12 +14,13 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 type Orchestrator struct {
 	nomadClient   *nomadapi.Client
 	instanceCache *instance.InstanceCache
-	nodes         map[string]*Node
+	nodes         *smap.Map[*Node]
 	tracer        trace.Tracer
 	logger        *zap.SugaredLogger
 	analytics     *analyticscollector.Analytics
@@ -53,7 +54,7 @@ func New(
 		nomadClient: nomadClient,
 		logger:      logger,
 		tracer:      tracer,
-		nodes:       make(map[string]*Node),
+		nodes:       smap.New[*Node](),
 		dns:         dnsServer,
 	}
 
@@ -77,7 +78,7 @@ func New(
 
 func (o *Orchestrator) Close() error {
 	var err error
-	for _, node := range o.nodes {
+	for _, node := range o.nodes.Items() {
 		closeErr := node.Client.Close()
 		if closeErr != nil {
 			err = errors.Join(err, closeErr)

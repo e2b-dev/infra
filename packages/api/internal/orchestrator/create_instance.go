@@ -92,7 +92,7 @@ func (o *Orchestrator) CreateSandbox(
 	if isResume && clientID != nil {
 		telemetry.ReportEvent(childCtx, "Placing sandbox on the node where the snapshot was taken")
 
-		node, _ = o.nodes[*clientID]
+		node, _ = o.nodes.Get(*clientID)
 	}
 
 	for {
@@ -125,7 +125,7 @@ func (o *Orchestrator) CreateSandbox(
 			node.sbxsInProgress.Remove(sandboxID)
 			if node.Client.connection.GetState() != connectivity.Ready {
 				// If the connection is not ready, we should remove the node from the list
-				delete(o.nodes, node.Info.ID)
+				o.nodes.Remove(node.Info.ID)
 			} else {
 				log.Printf("failed to create sandbox on node '%s': %v", node.Info.ID, err)
 
@@ -203,7 +203,7 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context) (leastBusyNode *Nod
 		}
 
 		// TODO: Incorporate the node's cached builds and total resources into the decision
-		for _, node := range o.nodes {
+		for _, node := range o.nodes.Items() {
 			// To prevent overloading the node
 			if len(node.sbxsInProgress.Items()) > 3 || node.Status() != api.NodeStatusReady {
 				continue
