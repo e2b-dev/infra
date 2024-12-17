@@ -87,8 +87,6 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 
 				node.SyncBuilds(builds)
 			}()
-
-			o.logger.Infof("Node %s: CPU: %d, RAM: %d", node.Info.ID, node.CPUUsage.Load(), node.RamUsage.Load())
 		}
 
 		childSpan.End()
