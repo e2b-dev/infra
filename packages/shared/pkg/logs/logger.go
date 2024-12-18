@@ -66,7 +66,7 @@ type SandboxLogger struct {
 	instanceID            string
 	envID                 string
 	teamID                string
-	cpuMax                int32
+	cpuloglogssMax        int32
 	cpuWasAboveTreshold   atomic.Bool
 	memoryMiBMax          int32
 	memoryWasAbove        atomic.Int32
@@ -181,6 +181,7 @@ func (l *SandboxLogger) MemoryUsage(memoryMiB float64) {
 
 func (l *SandboxLogger) CPUPct(cpuPct float64) {
 	l.exporter.logger.Info().
+		Str("category", "metrics").
 		Str("instanceID", l.instanceID).
 		Str("envID", l.envID).
 		Str("teamID", l.teamID).
@@ -197,6 +198,7 @@ func (l *SandboxLogger) MemMiB(memTotalMiB uint64, memUsedMiB uint64) {
 	realMemUsedMiB := memUsedMiB + fcMemUsedMiB
 
 	l.exporter.logger.Info().
+		Str("category", "metrics").
 		Str("instanceID", l.instanceID).
 		Str("envID", l.envID).
 		Str("teamID", l.teamID).
