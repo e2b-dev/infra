@@ -8,17 +8,21 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 )
 
+type TemplateCounter struct {
+	count      int
+	lastUpdate time.Time
+}
+
 type TemplateSpawnCounter struct {
-	counters   map[string]int
-	lastUpdate map[string]time.Time
-	mu         sync.Mutex
-	ticker     *time.Ticker
-	done       chan bool
+	counters map[string]*TemplateCounter
+	mu       sync.Mutex
+	ticker   *time.Ticker
+	done     chan bool
 }
 
 func NewTemplateSpawnCounter(tickerDuration time.Duration, dbClient *db.DB) *TemplateSpawnCounter {
 	counter := &TemplateSpawnCounter{
-		counters: make(map[string]int),
+		counters: make(map[string]*TemplateCounter),
 		ticker:   time.NewTicker(tickerDuration),
 		done:     make(chan bool),
 	}
@@ -29,8 +33,11 @@ func NewTemplateSpawnCounter(tickerDuration time.Duration, dbClient *db.DB) *Tem
 
 func (t *TemplateSpawnCounter) IncreaseTemplateSpawnCount(templateID string) {
 	t.mu.Lock()
-	t.counters[templateID]++
-	t.lastUpdate[templateID] = time.Now()
+	if _, exists := t.counters[templateID]; !exists {
+		t.counters[templateID] = &TemplateCounter{}
+	}
+	t.counters[templateID].count++
+	t.counters[templateID].lastUpdate = time.Now()
 	t.mu.Unlock()
 }
 
@@ -48,18 +55,18 @@ func (t *TemplateSpawnCounter) processUpdates(dbClient *db.DB, tickerDuration ti
 
 func (t *TemplateSpawnCounter) flushCounters(dbClient *db.DB) {
 	t.mu.Lock()
-	updates := make(map[string]int)
-	for templateID, count := range t.counters {
-		if count > 0 {
-			updates[templateID] = count
+	updates := make(map[string]*TemplateCounter)
+	for templateID, counter := range t.counters {
+		if counter.count > 0 {
+			updates[templateID] = counter
 		}
 	}
 	// Clear the counters
-	t.counters = make(map[string]int)
+	t.counters = make(map[string]*TemplateCounter)
 	t.mu.Unlock()
 
-	for templateID, count := range updates {
-		dbClient.UpdateEnvLastUsed(context.Background(), int64(count), t.lastUpdate[templateID], templateID)
+	for templateID, counter := range updates {
+		dbClient.UpdateEnvLastUsed(context.Background(), int64(counter.count), counter.lastUpdate, templateID)
 	}
 }
 
