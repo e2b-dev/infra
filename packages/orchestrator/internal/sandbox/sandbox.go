@@ -12,7 +12,6 @@ import (
 	consul "github.com/hashicorp/consul/api"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
@@ -29,10 +28,11 @@ const (
 	kernelMountDir = "/fc-vm"
 	kernelName     = "vmlinux.bin"
 	fcBinaryName   = "firecracker"
+	newEnvdVersion = "v0.1.1"
 )
 
 var httpClient = http.Client{
-	Timeout: 5 * time.Second,
+	Timeout: time.Second,
 }
 
 type Sandbox struct {
@@ -51,7 +51,6 @@ type Sandbox struct {
 
 	slot   IPSlot
 	Logger *logs.SandboxLogger
-	stats  *SandboxStats
 }
 
 func fcBinaryPath(fcVersion string) string {
@@ -198,11 +197,6 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
-	stats := newSandboxStats(int32(fc.pid))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stats: %w", err)
-	}
-
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	instance := &Sandbox{
@@ -215,7 +209,6 @@ func NewSandbox(
 		networkPool: networkPool,
 		EndAt:       endAt,
 		Logger:      logger,
-		stats:       stats,
 		stopOnce: sync.OnceValue(func() error {
 			var uffdErr error
 			if fcUffd != nil {
@@ -245,7 +238,7 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "ensuring clock sync")
 
 	// Sync envds.
-	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
+	if isGTEVersion(config.EnvdVersion, newEnvdVersion) {
 		err = instance.initEnvd(ctx, tracer, config.EnvVars)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init new envd: %w", err)
