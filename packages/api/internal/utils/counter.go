@@ -9,10 +9,11 @@ import (
 )
 
 type TemplateSpawnCounter struct {
-	counters map[string]int
-	mu       sync.Mutex
-	ticker   *time.Ticker
-	done     chan bool
+	counters   map[string]int
+	lastUpdate map[string]time.Time
+	mu         sync.Mutex
+	ticker     *time.Ticker
+	done       chan bool
 }
 
 func NewTemplateSpawnCounter(tickerDuration time.Duration, dbClient *db.DB) *TemplateSpawnCounter {
@@ -22,17 +23,18 @@ func NewTemplateSpawnCounter(tickerDuration time.Duration, dbClient *db.DB) *Tem
 		done:     make(chan bool),
 	}
 
-	go counter.processUpdates(dbClient)
+	go counter.processUpdates(dbClient, tickerDuration)
 	return counter
 }
 
 func (t *TemplateSpawnCounter) IncreaseTemplateSpawnCount(templateID string) {
 	t.mu.Lock()
 	t.counters[templateID]++
+	t.lastUpdate[templateID] = time.Now()
 	t.mu.Unlock()
 }
 
-func (t *TemplateSpawnCounter) processUpdates(dbClient *db.DB) {
+func (t *TemplateSpawnCounter) processUpdates(dbClient *db.DB, tickerDuration time.Duration) {
 	for {
 		select {
 		case <-t.ticker.C:
@@ -57,7 +59,7 @@ func (t *TemplateSpawnCounter) flushCounters(dbClient *db.DB) {
 	t.mu.Unlock()
 
 	for templateID, count := range updates {
-		dbClient.UpdateEnvLastUsed(context.Background(), int64(count), templateID)
+		dbClient.UpdateEnvLastUsed(context.Background(), int64(count), t.lastUpdate[templateID], templateID)
 	}
 }
 
