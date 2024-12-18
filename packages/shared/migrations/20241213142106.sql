@@ -7,6 +7,6 @@ CREATE TABLE "public"."snapshots"
     id uuid not null default gen_random_uuid (),
     metadata jsonb null,
     base_env_id text not null,
-    constraint snapshots_pkey primary key (id),
+    constraint snapshots_pkey primary key (id)
 );
 ALTER TABLE "public"."snapshots" ENABLE ROW LEVEL SECURITY;
