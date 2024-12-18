@@ -31,13 +31,13 @@ func NewTemplateSpawnCounter(tickerDuration time.Duration, dbClient *db.DB) *Tem
 	return counter
 }
 
-func (t *TemplateSpawnCounter) IncreaseTemplateSpawnCount(templateID string) {
+func (t *TemplateSpawnCounter) IncreaseTemplateSpawnCount(templateID string, time time.Time) {
 	t.mu.Lock()
 	if _, exists := t.counters[templateID]; !exists {
 		t.counters[templateID] = &TemplateCounter{}
 	}
 	t.counters[templateID].count++
-	t.counters[templateID].lastUpdate = time.Now()
+	t.counters[templateID].lastUpdate = time
 	t.mu.Unlock()
 }
 

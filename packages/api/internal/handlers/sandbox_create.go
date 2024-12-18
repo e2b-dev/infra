@@ -233,7 +233,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Created analytics event")
 
 	go func() {
-		a.templateSpawnCounter.IncreaseTemplateSpawnCount(env.TemplateID)
+		a.templateSpawnCounter.IncreaseTemplateSpawnCount(env.TemplateID, time.Now())
 	}()
 
 	telemetry.SetAttributes(ctx,
