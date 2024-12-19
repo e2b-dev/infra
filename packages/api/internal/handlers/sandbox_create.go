@@ -143,34 +143,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 
-	cacheSpan.End()
-
-	c.Set("instanceID", sandbox.SandboxID)
-
-	telemetry.ReportEvent(ctx, "Added sandbox to cache")
-
-	_, analyticsSpan := a.Tracer.Start(ctx, "analytics")
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "created_instance",
-		properties.
-			Set("environment", env.TemplateID).
-			Set("instance_id", sandbox.SandboxID).
-			Set("alias", alias),
-	)
-	analyticsSpan.End()
-
-	telemetry.ReportEvent(ctx, "Created analytics event")
-
-	go func() {
-		a.templateSpawnCounter.IncreaseTemplateSpawnCount(env.TemplateID, time.Now())
-	}()
-
-	telemetry.SetAttributes(ctx,
-		attribute.String("instance.id", sandbox.SandboxID),
-	)
-
-	sandboxLogger.Infof("Sandbox created with - end time: %s", endTime.Format("2006-01-02 15:04:05 -07:00"))
 	c.Set("nodeID", sandbox.ClientID)
 
 	c.JSON(http.StatusCreated, &sandbox)

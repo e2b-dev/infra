@@ -38,9 +38,8 @@ var sandboxStartRequestLimit = semaphore.NewWeighted(defaultRequestLimit)
 type APIStore struct {
 	Ctx                  context.Context
 	analytics            *analyticscollector.Analytics
-	posthog              *PosthogClient
+	posthog              *analyticscollector.PosthogClient
 	Tracer               trace.Tracer
-	instanceCache        *instance.InstanceCache
 	orchestrator         *orchestrator.Orchestrator
 	templateManager      *template_manager.TemplateManager
 	buildCache           *builds.BuildCache
@@ -125,9 +124,7 @@ func NewAPIStore() *APIStore {
 		orchestrator:         orch,
 		templateManager:      templateManager,
 		db:                   dbClient,
-		instanceCache:        instanceCache,
 		Tracer:               tracer,
-		analytics:            analytics,
 		posthog:              posthogClient,
 		buildCache:           buildCache,
 		logger:               logger,
@@ -139,7 +136,7 @@ func NewAPIStore() *APIStore {
 }
 
 func (a *APIStore) Close() {
-	a.db.Close()
+	a.templateSpawnCounter.Close()
 
 	err := a.analytics.Close()
 	if err != nil {
@@ -155,6 +152,12 @@ func (a *APIStore) Close() {
 	if err != nil {
 		a.logger.Errorf("Error closing Orchestrator client\n: %v", err)
 	}
+	err = a.templateManager.Close()
+	if err != nil {
+		a.logger.Errorf("Error closing Template manager client\n: %v", err)
+	}
+
+	a.db.Close()
 }
 
 // This function wraps sending of an error in the Error format, and

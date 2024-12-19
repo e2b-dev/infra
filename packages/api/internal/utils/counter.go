@@ -74,6 +74,6 @@ func (t *TemplateSpawnCounter) flushCounters(dbClient *db.DB) {
 	}
 }
 
-func (t *TemplateSpawnCounter) Stop() {
+func (t *TemplateSpawnCounter) Close() {
 	t.done <- true
 }
