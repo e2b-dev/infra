@@ -94,12 +94,9 @@ func (a *APIStore) startSandbox(
 
 	telemetry.ReportEvent(ctx, "Created analytics event")
 
-	// go func() {
-	// 	err = a.db.UpdateEnvLastUsed(ctx, *build.EnvID)
-	// 	if err != nil {
-	// 		a.logger.Errorf("Error when updating last used for env: %s", err)
-	// 	}
-	// }()
+	go func() {
+		a.templateSpawnCounter.IncreaseTemplateSpawnCount(baseTemplateID, time.Now())
+	}()
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("instance.id", sandbox.SandboxID),
