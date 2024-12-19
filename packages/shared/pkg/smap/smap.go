@@ -33,3 +33,7 @@ func (m *Map[V]) InsertIfAbsent(key string, value V) bool {
 func (m *Map[V]) Items() map[string]V {
 	return m.m.Items()
 }
+
+func (m *Map[V]) RemoveCb(key string, cb func(key string, v V, exists bool) bool) bool {
+	return m.m.RemoveCb(key, cb)
+}

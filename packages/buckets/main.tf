@@ -79,6 +79,10 @@ resource "google_storage_bucket" "fc_env_pipeline_bucket" {
   labels = var.labels
 }
 
+data "google_storage_bucket" "fc_template_bucket" {
+  name = var.fc_template_bucket_name
+}
+
 resource "google_storage_bucket_iam_member" "loki_storage_iam" {
   bucket = google_storage_bucket.loki_storage_bucket.name
   role   = "roles/storage.objectUser"
@@ -115,6 +119,18 @@ resource "google_storage_bucket_iam_member" "fc_versions_bucket_iam" {
   member = "serviceAccount:${var.gcp_service_account_email}"
 }
 
+resource "google_storage_bucket_iam_member" "fc_template_bucket_iam" {
+  bucket = data.google_storage_bucket.fc_template_bucket.name
+  role   = "roles/storage.objectUser"
+  member = "serviceAccount:${var.gcp_service_account_email}"
+}
+
+resource "google_storage_bucket_iam_member" "fc_template_bucket_iam_reader" {
+  bucket = data.google_storage_bucket.fc_template_bucket.name
+  role   = "roles/storage.legacyBucketReader"
+  member = "serviceAccount:${var.gcp_service_account_email}"
+}
+
 
 
 resource "google_storage_bucket" "public_builds_storage_bucket" {
@@ -129,16 +145,6 @@ resource "google_storage_bucket" "public_builds_storage_bucket" {
 
   soft_delete_policy {
     retention_duration_seconds = 0
-  }
-
-  lifecycle_rule {
-    condition {
-      age = 8
-    }
-
-    action {
-      type = "Delete"
-    }
   }
 }
 

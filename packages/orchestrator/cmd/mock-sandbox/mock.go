@@ -4,20 +4,20 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
 	"strconv"
 	"time"
 
-	"golang.org/x/sync/errgroup"
+	"go.opentelemetry.io/otel"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/dns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	consulapi "github.com/hashicorp/consul/api"
-
-	"go.opentelemetry.io/otel"
 )
 
 func main() {
@@ -29,61 +29,62 @@ func main() {
 
 	flag.Parse()
 
-	timeout := time.Second*time.Duration(*keepAlive) + time.Second*50
-	fmt.Printf("timeout: %d\n", timeout)
-
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start of mock build for testing
-	dns := dns.New()
-	go dns.Start("127.0.0.4:53")
-
-	consulClient, err := consul.New(context.Background())
-	if err != nil {
-		panic(err)
-	}
-
-	networkPool := sandbox.NewNetworkSlotPool(10, 0)
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
 
 	go func() {
-		poolErr := networkPool.Start(ctx, consulClient)
-		if poolErr != nil {
-			fmt.Fprintf(os.Stderr, "network pool error: %v\n", poolErr)
-		}
+		<-done
 
-		closeErr := networkPool.Close(consulClient)
-		if closeErr != nil {
-			fmt.Fprintf(os.Stderr, "network pool close error: %v\n", closeErr)
+		cancel()
+	}()
+
+	dnsServer := dns.New()
+	go func() {
+		log.Printf("Starting DNS server")
+
+		err := dnsServer.Start("127.0.0.4", 53)
+		if err != nil {
+			log.Fatalf("Failed running DNS server: %s\n", err.Error())
 		}
 	}()
 
-	eg, ctx := errgroup.WithContext(ctx)
+	templateCache, err := template.NewCache(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create template cache: %v\n", err)
 
-	for i := 0; i < *count; i++ {
-		fmt.Printf("Starting sandbox %d\n", i)
-
-		eg.Go(func() error {
-			mockSandbox(
-				ctx,
-				*templateId,
-				*buildId,
-				*sandboxId+"-"+strconv.Itoa(i),
-				dns,
-				time.Duration(*keepAlive)*time.Second,
-				networkPool,
-				consulClient,
-			)
-
-			return nil
-		})
-
+		return
 	}
 
-	err = eg.Wait()
+	networkPool, err := network.NewPool(ctx, *count, 0)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start sandboxes: %v\n", err)
+		fmt.Fprintf(os.Stderr, "failed to create network pool: %v\n", err)
+
+		return
+	}
+	defer networkPool.Close()
+
+	for i := 0; i < *count; i++ {
+		fmt.Println("--------------------------------")
+		fmt.Printf("Starting sandbox %d\n", i)
+
+		v := i
+
+		err = mockSandbox(
+			ctx,
+			*templateId,
+			*buildId,
+			*sandboxId+"-"+strconv.Itoa(v),
+			dnsServer,
+			time.Duration(*keepAlive)*time.Second,
+			networkPool,
+			templateCache,
+		)
+		if err != nil {
+			break
+		}
 	}
 }
 
@@ -94,47 +95,68 @@ func mockSandbox(
 	sandboxId string,
 	dns *dns.DNS,
 	keepAlive time.Duration,
-	networkPool *sandbox.NetworkSlotPool,
-	consulClient *consulapi.Client,
-) {
+	networkPool *network.Pool,
+	templateCache *template.Cache,
+) error {
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
 
 	start := time.Now()
 	logger := logs.NewSandboxLogger(sandboxId, templateId, "test-team", 2, 512, false)
 
-	sbx, err := sandbox.NewSandbox(
+	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
 		tracer,
-		consulClient,
 		dns,
 		networkPool,
+		templateCache,
 		&orchestrator.SandboxConfig{
-			TemplateID:         templateId,
+			TemplateId: templateId,
+			// FirecrackerVersion: "v1.10.1_1fcdaec",
+			// KernelVersion:      "vmlinux-6.1.102",
 			FirecrackerVersion: "v1.7.0-dev_8bb88311",
 			KernelVersion:      "vmlinux-5.10.186",
-			TeamID:             "test-team",
-			BuildID:            buildId,
+			TeamId:             "test-team",
+			BuildId:            buildId,
 			HugePages:          true,
-			MaxInstanceLength:  1,
-			SandboxID:          sandboxId,
+			MaxSandboxLength:   1,
+			SandboxId:          sandboxId,
+			EnvdVersion:        "0.1.1",
+			RamMb:              512,
+			Vcpu:               2,
 		},
 		"trace-test-1",
 		time.Now(),
 		time.Now(),
 		logger,
+		true,
+		templateId,
 	)
+	defer func() {
+		cleanupErr := cleanup.Run()
+		if cleanupErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to cleanup sandbox: %v\n", cleanupErr)
+		}
+	}()
+
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "failed to create sandbox: %v\n", err)
+
+		return err
 	}
 
 	duration := time.Since(start)
 
-	fmt.Printf("[Sandbox is running] - started in %dms (without network)\n", duration.Milliseconds())
+	fmt.Printf("[Sandbox is running] - started in %dms \n", duration.Milliseconds())
 
 	time.Sleep(keepAlive)
 
-	defer sbx.CleanupAfterFCStop(childCtx, tracer, consulClient, dns, sandboxId)
+	err = sbx.Stop()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to stop sandbox: %v\n", err)
 
-	sbx.Stop(childCtx, tracer)
+		return err
+	}
+
+	return nil
 }

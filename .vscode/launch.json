@@ -5,53 +5,68 @@
       "id": "buildID",
       "type": "promptString",
       "description": "Build ID",
-      "default": "49c02c96-62fd-939e-7d5e-27f5d4b73884"
+      "default": "9dc30023-c2e5-4cb7-8f4d-5ae196627abd"
     },
     {
-      "id": "envID",
+      "id": "templateID",
       "type": "promptString",
-      "description": "Env ID",
-      "default": "k3g50e4hhl513xjd2tpb"
+      "description": "Template ID",
+      "default": "0x5brrleaeg0pxeon4uh"
     },
     {
-      "id": "instanceID",
+      "id": "sandboxID",
       "type": "promptString",
-      "description": "Instance ID",
-      "default": "instance0test"
+      "description": "Sandbox ID",
+      "default": "test-instance-1"
     }
   ],
   "configurations": [
+    {
+      "name": "Debug NBD test",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "buildFlags": "-race",
+      "program": "${workspaceFolder}/packages/block-storage/cmd/mock-nbd-overlay/main.go",
+      "console": "integratedTerminal",
+      "asRoot": true,
+      "args": [
+        "-file",
+        "${workspaceFolder}/packages/block-storage/.test/test.ext4"
+      ],
+    },
     {
       "name": "Debug orchestrastor test",
       "type": "go",
       "request": "launch",
       "mode": "debug",
-      "buildFlags": "-race -gcflags=all=\"-N -l\"",
-      "program": "${workspaceFolder}/packages/orchestrator/main.go",
+      "buildFlags": "-race",
+      "program": "${workspaceFolder}/packages/orchestrator/cmd/mock-sandbox/mock.go",
       "env": {
-        "NODE_ID": "test-client-22",
-        "CONSUL_TOKEN": "${env:CONSUL_TOKEN}"
+        "NODE_ID": "test-client",
+        "TEMPLATE_BUCKET_NAME": "e2b-dev-fc-templates"
       },
       "args": [
-        "-env",
-        "${input:envID}",
-        "-instance",
-        "${input:instanceID}",
+        "-template",
+        "${input:templateID}",
+        "-sandbox",
+        "${input:sandboxID}",
+        "-build",
+        "${input:buildID}",
         "-alive",
-        "1",
+        "5",
         "-count",
-        "1"
+        "2"
       ],
       "console": "integratedTerminal",
-      "asRoot": true,
-      "envFile": "${workspaceFolder}/.env.staging",
+      "asRoot": true
     },
     {
       "name": "Debug api",
       "type": "go",
       "request": "launch",
       "mode": "debug",
-      "buildFlags": "-race -gcflags=all=\"-N -l\"",
+      "buildFlags": "-race",
       "program": "${workspaceFolder}/packages/api/main.go",
       "args": [
         "--port",

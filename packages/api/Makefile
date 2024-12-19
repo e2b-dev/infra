@@ -1,9 +1,10 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
+IMAGE := e2b-orchestration/api
 
 
 openapi := ../../spec/openapi.yml
-codegen := go run github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest
+codegen := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
 
 .PHONY: generate
 generate:
@@ -26,6 +27,8 @@ run:
 	POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) \
 	GOTRACEBACK=crash \
 	GODEBUG=madvdontneed=1 \
+	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
+	ENVIRONMENT=$(ENVIRONMENT) \
 	./bin/api --port 3000
 
 
@@ -34,3 +37,10 @@ run:
 .PHONY: profiler
 profiler:
 	go tool pprof -http :9991 http://localhost:3000/debug/pprof/$(metric)?seconds=$(interval)\&timeout=120
+
+.PHONY: build-and-upload
+build-and-upload:
+	@cp -r ../shared .shared/
+	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
+	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push .
+	@rm -rf .shared/

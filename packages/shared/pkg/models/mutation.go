@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/tier"
@@ -37,6 +38,7 @@ const (
 	TypeEnv         = "Env"
 	TypeEnvAlias    = "EnvAlias"
 	TypeEnvBuild    = "EnvBuild"
+	TypeSnapshot    = "Snapshot"
 	TypeTeam        = "Team"
 	TypeTeamAPIKey  = "TeamAPIKey"
 	TypeTier        = "Tier"
@@ -509,6 +511,9 @@ type EnvMutation struct {
 	builds             map[uuid.UUID]struct{}
 	removedbuilds      map[uuid.UUID]struct{}
 	clearedbuilds      bool
+	snapshots          map[uuid.UUID]struct{}
+	removedsnapshots   map[uuid.UUID]struct{}
+	clearedsnapshots   bool
 	done               bool
 	oldValue           func(context.Context) (*Env, error)
 	predicates         []predicate.Env
@@ -757,9 +762,22 @@ func (m *EnvMutation) OldCreatedBy(ctx context.Context) (v *uuid.UUID, err error
 	return oldValue.CreatedBy, nil
 }
 
+// ClearCreatedBy clears the value of the "created_by" field.
+func (m *EnvMutation) ClearCreatedBy() {
+	m.creator = nil
+	m.clearedFields[env.FieldCreatedBy] = struct{}{}
+}
+
+// CreatedByCleared returns if the "created_by" field was cleared in this mutation.
+func (m *EnvMutation) CreatedByCleared() bool {
+	_, ok := m.clearedFields[env.FieldCreatedBy]
+	return ok
+}
+
 // ResetCreatedBy resets all changes to the "created_by" field.
 func (m *EnvMutation) ResetCreatedBy() {
 	m.creator = nil
+	delete(m.clearedFields, env.FieldCreatedBy)
 }
 
 // SetPublic sets the "public" field.
@@ -999,7 +1017,7 @@ func (m *EnvMutation) ClearCreator() {
 
 // CreatorCleared reports if the "creator" edge to the User entity was cleared.
 func (m *EnvMutation) CreatorCleared() bool {
-	return m.clearedcreator
+	return m.CreatedByCleared() || m.clearedcreator
 }
 
 // CreatorID returns the "creator" edge ID in the mutation.
@@ -1132,6 +1150,60 @@ func (m *EnvMutation) ResetBuilds() {
 	m.builds = nil
 	m.clearedbuilds = false
 	m.removedbuilds = nil
+}
+
+// AddSnapshotIDs adds the "snapshots" edge to the Snapshot entity by ids.
+func (m *EnvMutation) AddSnapshotIDs(ids ...uuid.UUID) {
+	if m.snapshots == nil {
+		m.snapshots = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.snapshots[ids[i]] = struct{}{}
+	}
+}
+
+// ClearSnapshots clears the "snapshots" edge to the Snapshot entity.
+func (m *EnvMutation) ClearSnapshots() {
+	m.clearedsnapshots = true
+}
+
+// SnapshotsCleared reports if the "snapshots" edge to the Snapshot entity was cleared.
+func (m *EnvMutation) SnapshotsCleared() bool {
+	return m.clearedsnapshots
+}
+
+// RemoveSnapshotIDs removes the "snapshots" edge to the Snapshot entity by IDs.
+func (m *EnvMutation) RemoveSnapshotIDs(ids ...uuid.UUID) {
+	if m.removedsnapshots == nil {
+		m.removedsnapshots = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.snapshots, ids[i])
+		m.removedsnapshots[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedSnapshots returns the removed IDs of the "snapshots" edge to the Snapshot entity.
+func (m *EnvMutation) RemovedSnapshotsIDs() (ids []uuid.UUID) {
+	for id := range m.removedsnapshots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// SnapshotsIDs returns the "snapshots" edge IDs in the mutation.
+func (m *EnvMutation) SnapshotsIDs() (ids []uuid.UUID) {
+	for id := range m.snapshots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetSnapshots resets all changes to the "snapshots" edge.
+func (m *EnvMutation) ResetSnapshots() {
+	m.snapshots = nil
+	m.clearedsnapshots = false
+	m.removedsnapshots = nil
 }
 
 // Where appends a list predicates to the EnvMutation builder.
@@ -1364,6 +1436,9 @@ func (m *EnvMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *EnvMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(env.FieldCreatedBy) {
+		fields = append(fields, env.FieldCreatedBy)
+	}
 	if m.FieldCleared(env.FieldLastSpawnedAt) {
 		fields = append(fields, env.FieldLastSpawnedAt)
 	}
@@ -1381,6 +1456,9 @@ func (m *EnvMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *EnvMutation) ClearField(name string) error {
 	switch name {
+	case env.FieldCreatedBy:
+		m.ClearCreatedBy()
+		return nil
 	case env.FieldLastSpawnedAt:
 		m.ClearLastSpawnedAt()
 		return nil
@@ -1422,7 +1500,7 @@ func (m *EnvMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *EnvMutation) AddedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.team != nil {
 		edges = append(edges, env.EdgeTeam)
 	}
@@ -1434,6 +1512,9 @@ func (m *EnvMutation) AddedEdges() []string {
 	}
 	if m.builds != nil {
 		edges = append(edges, env.EdgeBuilds)
+	}
+	if m.snapshots != nil {
+		edges = append(edges, env.EdgeSnapshots)
 	}
 	return edges
 }
@@ -1462,18 +1543,27 @@ func (m *EnvMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case env.EdgeSnapshots:
+		ids := make([]ent.Value, 0, len(m.snapshots))
+		for id := range m.snapshots {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *EnvMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.removedenv_aliases != nil {
 		edges = append(edges, env.EdgeEnvAliases)
 	}
 	if m.removedbuilds != nil {
 		edges = append(edges, env.EdgeBuilds)
+	}
+	if m.removedsnapshots != nil {
+		edges = append(edges, env.EdgeSnapshots)
 	}
 	return edges
 }
@@ -1494,13 +1584,19 @@ func (m *EnvMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case env.EdgeSnapshots:
+		ids := make([]ent.Value, 0, len(m.removedsnapshots))
+		for id := range m.removedsnapshots {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *EnvMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.clearedteam {
 		edges = append(edges, env.EdgeTeam)
 	}
@@ -1512,6 +1608,9 @@ func (m *EnvMutation) ClearedEdges() []string {
 	}
 	if m.clearedbuilds {
 		edges = append(edges, env.EdgeBuilds)
+	}
+	if m.clearedsnapshots {
+		edges = append(edges, env.EdgeSnapshots)
 	}
 	return edges
 }
@@ -1528,6 +1627,8 @@ func (m *EnvMutation) EdgeCleared(name string) bool {
 		return m.clearedenv_aliases
 	case env.EdgeBuilds:
 		return m.clearedbuilds
+	case env.EdgeSnapshots:
+		return m.clearedsnapshots
 	}
 	return false
 }
@@ -1561,6 +1662,9 @@ func (m *EnvMutation) ResetEdge(name string) error {
 		return nil
 	case env.EdgeBuilds:
 		m.ResetBuilds()
+		return nil
+	case env.EdgeSnapshots:
+		m.ResetSnapshots()
 		return nil
 	}
 	return fmt.Errorf("unknown Env edge %s", name)
@@ -3345,6 +3449,608 @@ func (m *EnvBuildMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown EnvBuild edge %s", name)
+}
+
+// SnapshotMutation represents an operation that mutates the Snapshot nodes in the graph.
+type SnapshotMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	created_at    *time.Time
+	base_env_id   *string
+	sandbox_id    *string
+	metadata      *map[string]string
+	clearedFields map[string]struct{}
+	env           *string
+	clearedenv    bool
+	done          bool
+	oldValue      func(context.Context) (*Snapshot, error)
+	predicates    []predicate.Snapshot
+}
+
+var _ ent.Mutation = (*SnapshotMutation)(nil)
+
+// snapshotOption allows management of the mutation configuration using functional options.
+type snapshotOption func(*SnapshotMutation)
+
+// newSnapshotMutation creates new mutation for the Snapshot entity.
+func newSnapshotMutation(c config, op Op, opts ...snapshotOption) *SnapshotMutation {
+	m := &SnapshotMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSnapshot,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSnapshotID sets the ID field of the mutation.
+func withSnapshotID(id uuid.UUID) snapshotOption {
+	return func(m *SnapshotMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Snapshot
+		)
+		m.oldValue = func(ctx context.Context) (*Snapshot, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Snapshot.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSnapshot sets the old Snapshot of the mutation.
+func withSnapshot(node *Snapshot) snapshotOption {
+	return func(m *SnapshotMutation) {
+		m.oldValue = func(context.Context) (*Snapshot, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SnapshotMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SnapshotMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("models: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Snapshot entities.
+func (m *SnapshotMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SnapshotMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SnapshotMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Snapshot.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SnapshotMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SnapshotMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SnapshotMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetBaseEnvID sets the "base_env_id" field.
+func (m *SnapshotMutation) SetBaseEnvID(s string) {
+	m.base_env_id = &s
+}
+
+// BaseEnvID returns the value of the "base_env_id" field in the mutation.
+func (m *SnapshotMutation) BaseEnvID() (r string, exists bool) {
+	v := m.base_env_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBaseEnvID returns the old "base_env_id" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldBaseEnvID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBaseEnvID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBaseEnvID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBaseEnvID: %w", err)
+	}
+	return oldValue.BaseEnvID, nil
+}
+
+// ResetBaseEnvID resets all changes to the "base_env_id" field.
+func (m *SnapshotMutation) ResetBaseEnvID() {
+	m.base_env_id = nil
+}
+
+// SetEnvID sets the "env_id" field.
+func (m *SnapshotMutation) SetEnvID(s string) {
+	m.env = &s
+}
+
+// EnvID returns the value of the "env_id" field in the mutation.
+func (m *SnapshotMutation) EnvID() (r string, exists bool) {
+	v := m.env
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvID returns the old "env_id" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldEnvID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvID: %w", err)
+	}
+	return oldValue.EnvID, nil
+}
+
+// ResetEnvID resets all changes to the "env_id" field.
+func (m *SnapshotMutation) ResetEnvID() {
+	m.env = nil
+}
+
+// SetSandboxID sets the "sandbox_id" field.
+func (m *SnapshotMutation) SetSandboxID(s string) {
+	m.sandbox_id = &s
+}
+
+// SandboxID returns the value of the "sandbox_id" field in the mutation.
+func (m *SnapshotMutation) SandboxID() (r string, exists bool) {
+	v := m.sandbox_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSandboxID returns the old "sandbox_id" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldSandboxID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSandboxID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSandboxID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSandboxID: %w", err)
+	}
+	return oldValue.SandboxID, nil
+}
+
+// ResetSandboxID resets all changes to the "sandbox_id" field.
+func (m *SnapshotMutation) ResetSandboxID() {
+	m.sandbox_id = nil
+}
+
+// SetMetadata sets the "metadata" field.
+func (m *SnapshotMutation) SetMetadata(value map[string]string) {
+	m.metadata = &value
+}
+
+// Metadata returns the value of the "metadata" field in the mutation.
+func (m *SnapshotMutation) Metadata() (r map[string]string, exists bool) {
+	v := m.metadata
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetadata returns the old "metadata" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldMetadata(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetadata is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetadata requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetadata: %w", err)
+	}
+	return oldValue.Metadata, nil
+}
+
+// ResetMetadata resets all changes to the "metadata" field.
+func (m *SnapshotMutation) ResetMetadata() {
+	m.metadata = nil
+}
+
+// ClearEnv clears the "env" edge to the Env entity.
+func (m *SnapshotMutation) ClearEnv() {
+	m.clearedenv = true
+	m.clearedFields[snapshot.FieldEnvID] = struct{}{}
+}
+
+// EnvCleared reports if the "env" edge to the Env entity was cleared.
+func (m *SnapshotMutation) EnvCleared() bool {
+	return m.clearedenv
+}
+
+// EnvIDs returns the "env" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// EnvID instead. It exists only for internal usage by the builders.
+func (m *SnapshotMutation) EnvIDs() (ids []string) {
+	if id := m.env; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetEnv resets all changes to the "env" edge.
+func (m *SnapshotMutation) ResetEnv() {
+	m.env = nil
+	m.clearedenv = false
+}
+
+// Where appends a list predicates to the SnapshotMutation builder.
+func (m *SnapshotMutation) Where(ps ...predicate.Snapshot) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SnapshotMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SnapshotMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Snapshot, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SnapshotMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SnapshotMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Snapshot).
+func (m *SnapshotMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SnapshotMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.created_at != nil {
+		fields = append(fields, snapshot.FieldCreatedAt)
+	}
+	if m.base_env_id != nil {
+		fields = append(fields, snapshot.FieldBaseEnvID)
+	}
+	if m.env != nil {
+		fields = append(fields, snapshot.FieldEnvID)
+	}
+	if m.sandbox_id != nil {
+		fields = append(fields, snapshot.FieldSandboxID)
+	}
+	if m.metadata != nil {
+		fields = append(fields, snapshot.FieldMetadata)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SnapshotMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case snapshot.FieldCreatedAt:
+		return m.CreatedAt()
+	case snapshot.FieldBaseEnvID:
+		return m.BaseEnvID()
+	case snapshot.FieldEnvID:
+		return m.EnvID()
+	case snapshot.FieldSandboxID:
+		return m.SandboxID()
+	case snapshot.FieldMetadata:
+		return m.Metadata()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SnapshotMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case snapshot.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case snapshot.FieldBaseEnvID:
+		return m.OldBaseEnvID(ctx)
+	case snapshot.FieldEnvID:
+		return m.OldEnvID(ctx)
+	case snapshot.FieldSandboxID:
+		return m.OldSandboxID(ctx)
+	case snapshot.FieldMetadata:
+		return m.OldMetadata(ctx)
+	}
+	return nil, fmt.Errorf("unknown Snapshot field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SnapshotMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case snapshot.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case snapshot.FieldBaseEnvID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBaseEnvID(v)
+		return nil
+	case snapshot.FieldEnvID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvID(v)
+		return nil
+	case snapshot.FieldSandboxID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSandboxID(v)
+		return nil
+	case snapshot.FieldMetadata:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetadata(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Snapshot field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SnapshotMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SnapshotMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SnapshotMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Snapshot numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SnapshotMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SnapshotMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SnapshotMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Snapshot nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SnapshotMutation) ResetField(name string) error {
+	switch name {
+	case snapshot.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case snapshot.FieldBaseEnvID:
+		m.ResetBaseEnvID()
+		return nil
+	case snapshot.FieldEnvID:
+		m.ResetEnvID()
+		return nil
+	case snapshot.FieldSandboxID:
+		m.ResetSandboxID()
+		return nil
+	case snapshot.FieldMetadata:
+		m.ResetMetadata()
+		return nil
+	}
+	return fmt.Errorf("unknown Snapshot field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SnapshotMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.env != nil {
+		edges = append(edges, snapshot.EdgeEnv)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SnapshotMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case snapshot.EdgeEnv:
+		if id := m.env; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SnapshotMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SnapshotMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SnapshotMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedenv {
+		edges = append(edges, snapshot.EdgeEnv)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SnapshotMutation) EdgeCleared(name string) bool {
+	switch name {
+	case snapshot.EdgeEnv:
+		return m.clearedenv
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SnapshotMutation) ClearEdge(name string) error {
+	switch name {
+	case snapshot.EdgeEnv:
+		m.ClearEnv()
+		return nil
+	}
+	return fmt.Errorf("unknown Snapshot unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SnapshotMutation) ResetEdge(name string) error {
+	switch name {
+	case snapshot.EdgeEnv:
+		m.ResetEnv()
+		return nil
+	}
+	return fmt.Errorf("unknown Snapshot edge %s", name)
 }
 
 // TeamMutation represents an operation that mutates the Team nodes in the graph.

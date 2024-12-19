@@ -51,7 +51,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 	return &instance, nil
 }
 
-func (c *InstanceCache) Sync(instances []*InstanceInfo) {
+func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 	instanceMap := make(map[string]*InstanceInfo)
 
 	// Use map for faster lookup
@@ -61,9 +61,11 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo) {
 
 	// Delete instances that are not in Orchestrator anymore
 	for _, item := range c.cache.Items() {
-		_, found := instanceMap[item.Key()]
-		if !found {
-			c.cache.Delete(item.Key())
+		if item.Value().Instance.ClientID == nodeID {
+			_, found := instanceMap[item.Key()]
+			if !found {
+				c.cache.Delete(item.Key())
+			}
 		}
 	}
 

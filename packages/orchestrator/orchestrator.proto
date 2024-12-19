@@ -6,72 +6,92 @@ import "google/protobuf/timestamp.proto";
 option go_package = "https://github.com/e2b-dev/infra/orchestrator";
 
 message SandboxConfig {
-  string templateID = 1;
-  string buildID = 2;
-  string kernelVersion = 3;
-  string firecrackerVersion = 4;
-  bool hugePages = 5;
-
-  string teamID = 6;
-  // Maximum length of the instance in Hours
-  int64 maxInstanceLength = 7;
-
-  optional string alias = 8;
+  // Data required for creating a new sandbox.
+  string template_id = 1;
+  string build_id = 2;
   
-  string sandboxID = 9;
-  map<string, string> metadata = 10;
+  string kernel_version = 3;
+  string firecracker_version = 4;
+  
+  bool huge_pages = 5;
+  
+  string sandbox_id = 6;
+  map<string, string> env_vars = 7;
+  
+  // Metadata about the sandbox.
+  map<string, string> metadata = 8;
+  optional string alias = 9;
+  string envd_version = 10;
+  
+  int64 vcpu = 11;
+  int64 ram_mb = 12;
 
-  string envdVersion = 11;
-  map<string, string> envVars = 12;
+  string team_id = 13;
+  // Maximum length of the sandbox in Hours.
+  int64 max_sandbox_length = 14;
 
-  int32 memoryMB = 13;
-  int32 vCpuCount = 14;
+  int64 total_disk_size_mb = 15;
+
+  bool snapshot = 16;
+  string base_template_id = 17;
 }
 
-
-// Data required for creating a new sandbox.
 message SandboxCreateRequest {
   SandboxConfig sandbox = 1;
-  google.protobuf.Timestamp startTime = 2;
-  google.protobuf.Timestamp endTime = 3;
+
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
 }
 
-// Data about the sandbox.
 message SandboxCreateResponse {
-  string clientID = 1;
+  string client_id = 1;
 }
 
-// Data required for creating a new sandbox.
 message SandboxUpdateRequest {
-  string sandboxID = 1;
-  google.protobuf.Timestamp endTime = 2;
+  string sandbox_id = 1;
+
+  google.protobuf.Timestamp end_time = 2;
 }
 
-// Data required for action on a specified sandbox.
-message SandboxRequest {
-  string sandboxID = 1;
+message SandboxDeleteRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxPauseRequest {
+  string sandbox_id = 1;
+  string template_id = 2;
+  string build_id = 3;
 }
 
 message RunningSandbox {
   SandboxConfig config = 1;
-  string clientID = 2;
-  google.protobuf.Timestamp startTime = 9;
-  google.protobuf.Timestamp endTime = 10;
+  string client_id = 2;
+
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp end_time = 4;
 }
 
-// Data returned after listing all the sandboxes.
 message SandboxListResponse {
   repeated RunningSandbox sandboxes = 1;
 }
 
-// Interface exported by the server.
-service Sandbox {
-  // Create is a gRPC service that creates a new sandbox.
+message CachedBuildInfo {
+  string build_id = 1;
+  google.protobuf.Timestamp expiration_time = 2;
+}
+
+message SandboxListCachedBuildsResponse {
+  repeated CachedBuildInfo builds = 1;
+}
+
+
+
+service SandboxService {
   rpc Create(SandboxCreateRequest) returns (SandboxCreateResponse);
-  // Update is a gRPC service that updates a sandbox.
   rpc Update(SandboxUpdateRequest) returns (google.protobuf.Empty);
-  // List is a gRPC service that returns a list of all the sandboxes.
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
-  // Delete is a gRPC service that kills a sandbox.
-  rpc Delete(SandboxRequest) returns (google.protobuf.Empty);
+  rpc Delete(SandboxDeleteRequest) returns (google.protobuf.Empty);
+  rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
+
+  rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
 }

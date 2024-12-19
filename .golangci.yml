@@ -37,10 +37,17 @@ linters-settings:
     checks: [all, -ST1000, -ST1020]
 
 linters:
-  disable-all: true
   enable:
+    - asasalint
     - asciicheck
     - bidichk
+    - contextcheck
+    - durationcheck
+    - errname
+    - testableexamples
+    - thelper
+    - tparallel
+    - tagliatelle
     - errorlint
     - bodyclose
     - dogsled
@@ -61,14 +68,16 @@ linters:
     - reassign
     - tagalign
     - tenv
+    - predeclared
+    - interfacer
     - unconvert
     - unparam
     - usestdlibvars
     - wastedassign
     - wsl
+    - gofmt
     - wrapcheck
-    - exportloopref
-    - funlen
+    - copyloopvar
     - gochecknoinits
     - gocritic
     - goconst
@@ -77,7 +86,7 @@ linters:
     - gofumpt
     - goimports
     - revive
-    - gomnd
+    - mnd
     - goprintffuncname
     - gosec
     - gosimple
