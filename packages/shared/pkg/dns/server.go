@@ -14,6 +14,8 @@ import (
 
 const ttl = 0
 
+const defaultRoutingIP = "127.0.0.1"
+
 type DNS struct {
 	mu      sync.Mutex
 	records *smap.Map[string]
@@ -51,21 +53,24 @@ func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
 
 	for _, q := range m.Question {
 		if q.Qtype == resolver.TypeA {
+			a := &resolver.A{
+				Hdr: resolver.RR_Header{
+					Name:   q.Name,
+					Rrtype: resolver.TypeA,
+					Class:  resolver.ClassINET,
+					Ttl:    ttl,
+				},
+			}
+
 			sandboxID := strings.Split(q.Name, "-")[0]
 			ip, found := d.get(sandboxID)
 			if found {
-				a := &resolver.A{
-					Hdr: resolver.RR_Header{
-						Name:   q.Name,
-						Rrtype: resolver.TypeA,
-						Class:  resolver.ClassINET,
-						Ttl:    ttl,
-					},
-					A: net.ParseIP(ip).To4(),
-				}
-
-				m.Answer = append(m.Answer, a)
+				a.A = net.ParseIP(ip).To4()
+			} else {
+				a.A = net.ParseIP(defaultRoutingIP).To4()
 			}
+
+			m.Answer = append(m.Answer, a)
 		}
 	}
 
