@@ -32,7 +32,7 @@ const (
 
 var (
 	// These vars are automatically set by goreleaser.
-	Version = "0.1.2"
+	Version = "0.1.3"
 
 	debug bool
 	port  int64
