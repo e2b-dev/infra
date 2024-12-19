@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"log"
 	"sync"
 	"time"
 
@@ -66,7 +67,10 @@ func (t *TemplateSpawnCounter) flushCounters(dbClient *db.DB) {
 	t.mu.Unlock()
 
 	for templateID, counter := range updates {
-		dbClient.UpdateEnvLastUsed(context.Background(), int64(counter.count), counter.lastUpdate, templateID)
+		err := dbClient.UpdateEnvLastUsed(context.Background(), int64(counter.count), counter.lastUpdate, templateID)
+		if err != nil {
+			log.Println("Error updating template spawn count:", err)
+		}
 	}
 }
 
