@@ -2,7 +2,6 @@ ENV := $(shell cat .last_used_env || echo "not-set")
 -include .env.${ENV}
 
 OTEL_TRACING_PRINT ?= false
-IMAGE := e2b-orchestration/api
 EXCLUDE_GITHUB ?= 1
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
@@ -94,7 +93,7 @@ version:
 .PHONY: build-and-upload
 build-and-upload:
 	$(MAKE) -C packages/cluster-disk-image build
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) make update-api
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/api build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/docker-reverse-proxy build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/template-manager build-and-upload

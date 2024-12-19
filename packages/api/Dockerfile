@@ -4,18 +4,18 @@ RUN apk add --no-cache make
 
 WORKDIR /build/shared
 
-COPY packages/shared/go.mod packages/shared/go.sum ./
+COPY .shared/go.mod .shared/go.sum ./
 RUN go mod download
 
-COPY packages/shared/pkg pkg
+COPY .shared/pkg pkg
 
 WORKDIR /build/api
 
-COPY packages/api/go.mod packages/api/go.sum packages/api/Makefile ./
+COPY go.mod go.sum Makefile ./
 RUN go mod download
 
-COPY packages/api/internal internal
-COPY packages/api/main.go main.go
+COPY internal internal
+COPY main.go main.go
 
 RUN --mount=type=cache,target=/root/.cache/go-build make build
 

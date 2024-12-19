@@ -1,5 +1,6 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
+IMAGE := e2b-orchestration/api
 
 
 openapi := ../../spec/openapi.yml
@@ -36,3 +37,10 @@ run:
 .PHONY: profiler
 profiler:
 	go tool pprof -http :9991 http://localhost:3000/debug/pprof/$(metric)?seconds=$(interval)\&timeout=120
+
+.PHONY: build-and-upload
+build-and-upload:
+	@cp -r ../shared .shared/
+	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
+	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push .
+	@rm -rf .shared/
