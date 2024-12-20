@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -22,12 +23,12 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	info, err := a.instanceCache.GetInstance(id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, nil)
+		c.String(http.StatusNotFound, fmt.Sprintf("instance \"%s\" doesn't exist or you don't have access to it", id))
 		return
 	}
 
 	if *info.TeamID != team.ID {
-		c.JSON(http.StatusNotFound, nil)
+		c.JSON(http.StatusNotFound, fmt.Sprintf("instance \"%s\" doesn't exist or you don't have access to it", id))
 		return
 	}
 
@@ -38,6 +39,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	build, err := a.db.Client.EnvBuild.Query().Where(envbuild.ID(*info.BuildID)).First(ctx)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, err)
+		c.JSON(http.StatusInternalServerError, nil)
 
 		return
 	}
