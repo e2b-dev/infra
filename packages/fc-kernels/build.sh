@@ -1,8 +1,20 @@
 #!/bin/bash
+# inspired by https://github.com/firecracker-microvm/firecracker/blob/main/resources/rebuild.sh
 
 set -euo pipefail
 
-rm -rf linux
+function install_dependencies {
+    apt update
+    apt install -y bc flex bison gcc make libelf-dev libssl-dev squashfs-tools busybox-static tree cpio curl patch
+}
+
+function get_tag {
+    local KERNEL_VERSION=$1
+
+    # list all tags from newest to oldest
+    (git --no-pager tag -l --sort=-creatordate | grep microvm-kernel-$KERNEL_VERSION\..*\.amzn2 \
+        || git --no-pager tag -l --sort=-creatordate | grep kernel-$KERNEL_VERSION\..*\.amzn2) | head -n1
+}
 
 function build_version {
   local version=$1
@@ -11,10 +23,10 @@ function build_version {
   cp ../configs/"${version}.config" .config
 
   echo "Checking out repo for kernel at version: $version"
-  git fetch --depth 1 origin "v${version}"
-  git checkout FETCH_HEAD
+  git checkout "$(get_tag "$version")"
 
   echo "Building kernel version: $version"
+  make olddefconfig
   make vmlinux -j "$(nproc)"
 
   echo "Copying finished build to builds directory"
@@ -23,12 +35,16 @@ function build_version {
 }
 
 echo "Cloning the linux kernel repository"
-git clone --depth 1 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux
-cd linux
+
+install_dependencies
+
+[ -d linux ] || git clone --no-checkout --filter=tree:0 https://github.com/amazonlinux/linux
+pushd linux
+
+make distclean || true
 
 grep -v '^ *#' <../kernel_versions.txt | while IFS= read -r version; do
   build_version "$version"
 done
 
-cd ..
-rm -rf linux
+popd
