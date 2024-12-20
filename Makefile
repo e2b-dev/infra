@@ -3,6 +3,7 @@ ENV := $(shell cat .last_used_env || echo "not-set")
 
 OTEL_TRACING_PRINT ?= false
 EXCLUDE_GITHUB ?= 1
+TEMPLATE_BUCKET_LOCATION := $(GCP_REGION)
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
@@ -18,7 +19,8 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_terraform_state_bucket=$(TERRAFORM_STATE_BUCKET) \
 	TF_VAR_otel_tracing_print=$(OTEL_TRACING_PRINT) \
 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
-	TF_VAR_template_bucket_name=$(TEMPLATE_BUCKET_NAME)
+	TF_VAR_template_bucket_name=$(TEMPLATE_BUCKET_NAME) \
+	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION)
 
 ifeq ($(EXCLUDE_GITHUB),1)
 	ALL_MODULES := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | grep -v -e "github_tf")
