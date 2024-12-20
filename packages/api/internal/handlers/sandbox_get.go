@@ -21,7 +21,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	telemetry.ReportEvent(ctx, "get running instance")
 
-	info, err := a.instanceCache.GetInstance(id)
+	info, err := a.orchestrator.GetInstance(ctx, id)
 	if err != nil {
 		c.String(http.StatusNotFound, fmt.Sprintf("instance \"%s\" doesn't exist or you don't have access to it", id))
 		return
@@ -39,7 +39,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	build, err := a.db.Client.EnvBuild.Query().Where(envbuild.ID(*info.BuildID)).First(ctx)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, err)
-		c.JSON(http.StatusInternalServerError, nil)
+		c.JSON(http.StatusInternalServerError, "Error getting build for instance")
 
 		return
 	}
