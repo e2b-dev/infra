@@ -557,6 +557,27 @@ paths:
           $ref: "#/components/responses/500"
 
   /sandboxes/{sandboxID}:
+    get:
+      description: Get a sandbox by id
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      responses:
+        "200":
+          description: Successfully returned the sandbox
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunningSandbox"
+        "404":
+          $ref: "#/components/responses/404"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
     delete:
       description: Kill a sandbox
       tags: [sandboxes]
