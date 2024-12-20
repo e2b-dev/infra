@@ -75,12 +75,6 @@ job "orchestrator" {
       }
     }
 
-    update {
-      max_parallel     = 2
-      min_healthy_time = "30s"
-      healthy_deadline = "5m"
-    }
-
     service {
       name = "orchestrator"
       port = var.port
@@ -122,9 +116,9 @@ job "orchestrator" {
       artifact {
         source      = "gcs::https://www.googleapis.com/storage/v1/${var.bucket_name}/orchestrator"
         // Disabled checksum for very basic rolling updates.
-        options {
-            checksum    = "md5:${var.orchestrator_checksum}"
-        }
+        # options {
+        #     checksum    = "md5:${var.orchestrator_checksum}"
+        # }
       }
     }
   }
