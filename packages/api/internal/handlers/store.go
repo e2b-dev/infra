@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -22,6 +23,7 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
@@ -34,18 +36,19 @@ const (
 var sandboxStartRequestLimit = semaphore.NewWeighted(defaultRequestLimit)
 
 type APIStore struct {
-	Ctx             context.Context
-	analytics       *analyticscollector.Analytics
-	posthog         *analyticscollector.PosthogClient
-	Tracer          trace.Tracer
-	orchestrator    *orchestrator.Orchestrator
-	templateManager *template_manager.TemplateManager
-	buildCache      *builds.BuildCache
-	db              *db.DB
-	lokiClient      *loki.DefaultClient
-	logger          *zap.SugaredLogger
-	templateCache   *templatecache.TemplateCache
-	authCache       *authcache.TeamAuthCache
+	Ctx                  context.Context
+	analytics            *analyticscollector.Analytics
+	posthog              *analyticscollector.PosthogClient
+	Tracer               trace.Tracer
+	orchestrator         *orchestrator.Orchestrator
+	templateManager      *template_manager.TemplateManager
+	buildCache           *builds.BuildCache
+	db                   *db.DB
+	lokiClient           *loki.DefaultClient
+	logger               *zap.SugaredLogger
+	templateCache        *templatecache.TemplateCache
+	authCache            *authcache.TeamAuthCache
+	templateSpawnCounter *utils.TemplateSpawnCounter
 }
 
 var lokiAddress = os.Getenv("LOKI_ADDRESS")
@@ -114,24 +117,26 @@ func NewAPIStore() *APIStore {
 
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)
+	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
 	return &APIStore{
-		Ctx:             ctx,
-		orchestrator:    orch,
-		templateManager: templateManager,
-		db:              dbClient,
-		Tracer:          tracer,
-		posthog:         posthogClient,
-		buildCache:      buildCache,
-		logger:          logger,
-		lokiClient:      lokiClient,
-		templateCache:   templateCache,
-		authCache:       authCache,
+		Ctx:                  ctx,
+		orchestrator:         orch,
+		templateManager:      templateManager,
+		db:                   dbClient,
+		Tracer:               tracer,
+		posthog:              posthogClient,
+		buildCache:           buildCache,
+		logger:               logger,
+		lokiClient:           lokiClient,
+		templateCache:        templateCache,
+		authCache:            authCache,
+		templateSpawnCounter: templateSpawnCounter,
 	}
 }
 
 func (a *APIStore) Close() {
-	a.db.Close()
+	a.templateSpawnCounter.Close()
 
 	err := a.analytics.Close()
 	if err != nil {
@@ -147,6 +152,12 @@ func (a *APIStore) Close() {
 	if err != nil {
 		a.logger.Errorf("Error closing Orchestrator client\n: %v", err)
 	}
+	err = a.templateManager.Close()
+	if err != nil {
+		a.logger.Errorf("Error closing Template manager client\n: %v", err)
+	}
+
+	a.db.Close()
 }
 
 // This function wraps sending of an error in the Error format, and
