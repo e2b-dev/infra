@@ -81,6 +81,7 @@ common:
 storage_config:
   gcs:
     bucket_name: "${var.loki_bucket_name}"
+    chunk_buffer_size: 2097152  # 2MB
   tsdb_shipper:
     active_index_directory: /loki/tsdb-shipper-active
     cache_location: /loki/tsdb-shipper-cache
@@ -91,7 +92,7 @@ chunk_store_config:
   chunk_cache_config:
     embedded_cache:
       enabled: true
-      max_size_mb: 256
+      max_size_mb: 512
       ttl: 1h
 
 query_range:
@@ -113,6 +114,7 @@ ingester_client:
 ingester:
   chunk_idle_period: 30m
   chunk_encoding: snappy
+  chunk_target_size: 1048576  # 1MB
   wal:
     dir: /loki/wal
     flush_on_shutdown: true
@@ -139,9 +141,9 @@ compactor:
 limits_config:
   retention_period: 168h
   ingestion_rate_mb: 100
-  ingestion_burst_size_mb: 200
-  per_stream_rate_limit: "48MB"
-  per_stream_rate_limit_burst: "120MB"
+  ingestion_burst_size_mb: 500
+  per_stream_rate_limit: "80MB"
+  per_stream_rate_limit_burst: "240MB"
   max_streams_per_user: 0
   max_global_streams_per_user: 10000
 
