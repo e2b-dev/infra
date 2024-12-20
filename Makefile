@@ -109,12 +109,6 @@ copy-public-builds:
 migrate:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/shared migrate
 
-.PHONY: update-api
-update-api:
-	docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
-	docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push -f api.Dockerfile .
-
-
 .PHONY: switch-env
 switch-env:
 	@ touch .last_used_env
