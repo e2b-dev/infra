@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -21,7 +22,9 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	telemetry.ReportEvent(ctx, "get running instance")
 
-	info, err := a.orchestrator.GetInstance(ctx, id)
+	sandboxId := strings.Split(id, "-")[0]
+
+	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
 	if err != nil {
 		c.String(http.StatusNotFound, fmt.Sprintf("instance \"%s\" doesn't exist or you don't have access to it", id))
 		return
