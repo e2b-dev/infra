@@ -12,9 +12,12 @@ import (
 )
 
 func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
-		case <-time.After(10 * time.Second):
+		case <-ticker.C:
 			childCtx, cancel := context.WithTimeout(ctx, time.Second)
 
 			ctx.Lock()
@@ -23,7 +26,7 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 
 			cancel()
 
-			stats, err := s.stats.getStats()
+			stats, err := s.stats.Stats()
 			if err != nil {
 				s.Logger.Warnf("failed to get stats: %s", err)
 			} else {
@@ -42,7 +45,7 @@ func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 		s.Logger.Healthcheck(err == nil, alwaysReport)
 	}()
 
-	address := fmt.Sprintf("http://%s:%d/health", s.slot.HostIP(), consts.DefaultEnvdServerPort)
+	address := fmt.Sprintf("http://%s:%d/health", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
 
 	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
 	if err != nil {

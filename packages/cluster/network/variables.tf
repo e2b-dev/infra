@@ -1,6 +1,12 @@
 variable "prefix" {
   type = string
 }
+
+variable "environment" {
+  description = "The environment (e.g. staging, prod)."
+  type        = string
+}
+
 variable "domain_name" {
   type = string
 }
@@ -70,6 +76,10 @@ variable "logs_health_proxy_port" {
 
 variable "nomad_port" {
   type = number
+}
+
+variable "api_instance_group" {
+  type = string
 }
 
 variable "client_instance_group" {

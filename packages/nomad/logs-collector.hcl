@@ -36,7 +36,8 @@ variable "loki_service_port_number" {
 
 job "logs-collector" {
   datacenters = [var.gcp_zone]
-  type        = "service"
+  type        = "system"
+  node_pool    = "all"
 
   priority = 85
 
@@ -142,7 +143,7 @@ del(.internal)
 [sinks.local_loki_logs]
 type = "loki"
 inputs = [ "remove_internal" ]
-endpoint = "http://0.0.0.0:${var.loki_service_port_number}"
+endpoint = "http://loki.service.consul:${var.loki_service_port_number}"
 encoding.codec = "json"
 
 [sinks.local_loki_logs.labels]

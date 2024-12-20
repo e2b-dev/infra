@@ -1,27 +1,26 @@
 package consul
 
 import (
-	"context"
 	"fmt"
-	"os"
 
-	consul "github.com/hashicorp/consul/api"
+	"github.com/hashicorp/consul/api"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var consulToken = os.Getenv("CONSUL_TOKEN")
+var (
+	consulToken = utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
+	Client      = utils.Must(newClient())
+)
 
-func New(ctx context.Context) (*consul.Client, error) {
-	config := consul.DefaultConfig()
+func newClient() (*api.Client, error) {
+	config := api.DefaultConfig()
 	config.Token = consulToken
 
-	consulClient, err := consul.NewClient(config)
+	consulClient, err := api.NewClient(config)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to initialize Consul client: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return nil, errMsg
+		return nil, fmt.Errorf("failed to initialize Consul client: %w", err)
 	}
+
 	return consulClient, nil
 }

@@ -15,10 +15,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -93,7 +93,7 @@ func (tm *TemplateManager) CreateTemplate(
 	}
 
 	trailer := logs.Trailer()
-	rootfsSizeStr, ok := trailer[consts.RootfsSizeKey]
+	rootfsSizeStr, ok := trailer[storage.RootfsSizeKey]
 	if !ok {
 		errMsg := fmt.Errorf("rootfs size not found in trailer")
 		handleBuildErr(ctx, db, buildCache, templateID, buildID, errMsg)
@@ -109,7 +109,7 @@ func (tm *TemplateManager) CreateTemplate(
 		return parseErr
 	}
 
-	envdVersion, ok := trailer[consts.EnvdVersionKey]
+	envdVersion, ok := trailer[storage.EnvdVersionKey]
 	if !ok {
 		errMsg := fmt.Errorf("envd version not found in trailer")
 		handleBuildErr(ctx, db, buildCache, templateID, buildID, errMsg)

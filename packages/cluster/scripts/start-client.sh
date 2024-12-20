@@ -6,58 +6,120 @@
 
 set -euo pipefail
 
+# Set timestamp format
+PS4='[\D{%Y-%m-%d %H:%M:%S}] '
+# Enable command tracing
+set -x
+
 # Send the log output from this script to user-data.log, syslog, and the console
 # Inspired by https://alestic.com/2010/12/ec2-user-data-output/
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
+# Add cache disk for orchestrator and swapfile
+# TODO: Parametrize this
+DISK="/dev/disk/by-id/google-persistent-disk-1"
+MOUNT_POINT="/orchestrator"
+
+# # Step 1: Format the disk with XFS and 65K block size
+sudo mkfs.xfs -f -b size=4096 $DISK
+
+# Step 2: Create the mount point
+sudo mkdir -p $MOUNT_POINT
+
+# # Step 4: Mount the disk with
+sudo mount -o noatime $DISK $MOUNT_POINT
+
+sudo mkdir -p /orchestrator/sandbox
+sudo mkdir -p /orchestrator/template
+sudo mkdir -p /orchestrator/build
+
+# Add swapfile
+SWAPFILE="/swapfile"
+sudo fallocate -l 100G $SWAPFILE
+sudo chmod 600 $SWAPFILE
+sudo mkswap $SWAPFILE
+sudo swapon $SWAPFILE
+
+# Make swapfile persistent
+echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+
+# Set swap settings
+sudo sysctl vm.swappiness=10
+sudo sysctl vm.vfs_cache_pressure=50
+
+# Add tmpfs for snapshotting
+# TODO: Parametrize this
+sudo mkdir -p /mnt/snapshot-cache
+sudo mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
+
+ulimit -n 1048576
 export GOMAXPROCS='nproc'
 
-# --- Mount the persistent disk with Firecracker environments.
-# See https://cloud.google.com/compute/docs/disks/add-persistent-disk#create_disk
+sudo tee -a /etc/sysctl.conf <<EOF
+# Increase the maximum number of socket connections
+net.core.somaxconn = 65535
 
-mount_path="/mnt/disks/${DISK_DEVICE_NAME}"
+# Increase the maximum number of backlogged connections
+net.core.netdev_max_backlog = 65535
 
-mkdir -p "$mount_path"
+# Increase maximum number of TCP sockets
+net.ipv4.tcp_max_syn_backlog = 65535
 
-# Format the disk if it is not already formatted.
-if [[ $(lsblk -no FSTYPE "/dev/disk/by-id/google-${DISK_DEVICE_NAME}") != "xfs" ]]; then
-    mkfs.xfs "/dev/disk/by-id/google-${DISK_DEVICE_NAME}"
-fi
+# Increase the maximum number of memory map areas
+vm.max_map_count=1048576
 
-mount "/dev/disk/by-id/google-${DISK_DEVICE_NAME}" "$mount_path"
-chmod a+w "$mount_path"
+EOF
+sudo sysctl -p
 
-# Mount env buckets
-mkdir -p /mnt/disks/envs-pipeline
-gcsfuse -o=allow_other --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" /mnt/disks/envs-pipeline
+echo "Disabling inotify for NBD devices"
+# https://lore.kernel.org/lkml/20220422054224.19527-1-matthew.ruffell@canonical.com/
+cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
+# Disable inotify watching of change events for NBD devices
+ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"
+EOH
 
-# Copy the envd
-env_pipeline_local_dir="/fc-vm"
-mkdir -p $env_pipeline_local_dir
-sudo cp /mnt/disks/envs-pipeline/envd $env_pipeline_local_dir/envd
-sudo chmod +x $env_pipeline_local_dir/envd
+sudo udevadm control --reload-rules
+sudo udevadm trigger
 
-# Copy the envd-v0.0.1
-sudo cp /mnt/disks/envs-pipeline/envd-v0.0.1 $env_pipeline_local_dir/envd-v0.0.1
-sudo chmod +x $env_pipeline_local_dir/envd-v0.0.1
+# Load the nbd module with 4096 devices
+sudo modprobe nbd nbds_max=4096
 
-# Copy kernels
-mkdir -p /mnt/disks/fc-kernels
-gcsfuse -o=allow_other --implicit-dirs "${FC_KERNELS_BUCKET_NAME}" /mnt/disks/fc-kernels
+# Create the directory for the fc mounts
+mkdir -p /fc-vm
+
+# Create the config file for gcsfuse
+fuse_cache="/fuse/cache"
+mkdir -p $fuse_cache
+
+fuse_config="/fuse/config.yaml"
+
+cat >$fuse_config <<EOF
+file-cache:
+  max-size-mb: -1
+  cache-file-for-range-read: false
+
+metadata-cache:
+  ttl-secs: -1
+
+cache-dir: $fuse_cache
+EOF
+
+# Mount envd buckets
+envd_dir="/fc-envd"
+mkdir -p $envd_dir
+gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" $envd_dir
+
+# Mount kernels
 kernels_dir="/fc-kernels"
 mkdir -p $kernels_dir
-cp -r /mnt/disks/fc-kernels/* $kernels_dir
+gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_KERNELS_BUCKET_NAME}" $kernels_dir
 
-# Copy FC versions
-mkdir -p /mnt/disks/fc-versions
-gcsfuse -o=allow_other --implicit-dirs "${FC_VERSIONS_BUCKET_NAME}" /mnt/disks/fc-versions
+# Mount FC versions
 fc_versions_dir="/fc-versions"
 mkdir -p $fc_versions_dir
-cp -r /mnt/disks/fc-versions/* $fc_versions_dir
-chmod +x -R /fc-versions
+gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_VERSIONS_BUCKET_NAME}" $fc_versions_dir
 
 # These variables are passed in via Terraform template interpolation
-
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh
 gsutil cp "gs://${SCRIPTS_BUCKET}/run-nomad-${RUN_NOMAD_FILE_HASH}.sh" /opt/nomad/bin/run-nomad.sh
 
@@ -76,6 +138,16 @@ cat <<EOF >/root/docker/config.json
     }
 }
 EOF
+
+mkdir -p /etc/systemd/resolved.conf.d/
+touch /etc/systemd/resolved.conf.d/consul.conf
+cat <<EOF >/etc/systemd/resolved.conf.d/consul.conf
+[Resolve]
+DNS=127.0.0.1:8600
+DNSSEC=false
+Domains=~consul
+EOF
+systemctl restart systemd-resolved
 
 # Set up huge pages
 # We are not enabling Transparent Huge Pages for now, as they are not swappable and may result in slowdowns + we are not using swap right now.
@@ -150,7 +222,11 @@ echo "- Allocating $overcommitment_hugepages huge pages ($overcommitment_hugepag
 echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
 
 # These variables are passed in via Terraform template interpolation
-/opt/consul/bin/run-consul.sh --client --consul-token "${CONSUL_TOKEN}" --cluster-tag-name "${CLUSTER_TAG_NAME}" --enable-gossip-encryption --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" &
+/opt/consul/bin/run-consul.sh --client \
+    --consul-token "${CONSUL_TOKEN}" \
+    --cluster-tag-name "${CLUSTER_TAG_NAME}" \
+    --enable-gossip-encryption \
+    --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" &
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" &
 
 # Add alias for ssh-ing to sbx
@@ -159,4 +235,4 @@ echo '_sbx_ssh() {
   ssh -o StrictHostKeyChecking=accept-new "root@$address"
 }
 
-alias sbx-ssh=_sbx_ssh' >> /etc/profile
+alias sbx-ssh=_sbx_ssh' >>/etc/profile

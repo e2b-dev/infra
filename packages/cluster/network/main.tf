@@ -27,19 +27,19 @@ locals {
         request_path = var.client_proxy_health_port.path
         port         = var.client_proxy_health_port.port
       }
-      groups = [{ group = var.client_instance_group }]
+      groups = [{ group = var.api_instance_group }]
     }
     api = {
       protocol                        = "HTTP"
       port                            = var.api_port.port
       port_name                       = var.api_port.name
-      timeout_sec                     = 30
+      timeout_sec                     = 65
       connection_draining_timeout_sec = 1
       http_health_check = {
         request_path = var.api_port.health_path
         port         = var.api_port.port
       }
-      groups = [{ group = var.client_instance_group }]
+      groups = [{ group = var.api_instance_group }]
     }
     docker-reverse-proxy = {
       protocol                        = "HTTP"
@@ -51,7 +51,7 @@ locals {
         request_path = var.docker_reverse_proxy_port.health_path
         port         = var.docker_reverse_proxy_port.port
       }
-      groups = [{ group = var.client_instance_group }]
+      groups = [{ group = var.api_instance_group }]
     }
     nomad = {
       protocol                        = "HTTP"
@@ -276,7 +276,7 @@ resource "google_compute_backend_service" "default" {
   security_policy = google_compute_security_policy.default[each.key].self_link
 
   log_config {
-    enable = true
+    enable = var.environment == "prod"
   }
 
   dynamic "backend" {
@@ -497,7 +497,7 @@ resource "google_compute_security_policy_rule" "api-throttling-api-key" {
     }
 
     rate_limit_threshold {
-      count        = var.domain_name == "e2b.dev" ? 60 : 240
+      count        = var.domain_name == "e2b.dev" ? 5000 : 5000
       interval_sec = 30
     }
   }
@@ -529,8 +529,8 @@ resource "google_compute_security_policy_rule" "api-throttling-ip" {
     }
 
     rate_limit_threshold {
-      count        = var.domain_name == "e2b.dev" ? 2000 : 4000
-      interval_sec = 60
+      count        = var.domain_name == "e2b.dev" ? 20000 : 20000
+      interval_sec = 30
     }
   }
 
@@ -589,7 +589,7 @@ resource "google_compute_security_policy_rule" "sandbox-throttling-ip" {
     }
 
     rate_limit_threshold {
-      count        = var.domain_name == "e2b.dev" ? 2000 : 4000
+      count        = var.domain_name == "e2b.dev" ? 40000 : 40000
       interval_sec = 60
     }
   }
@@ -641,4 +641,3 @@ resource "google_compute_security_policy" "disable-bots-log-collector" {
     }
   }
 }
-

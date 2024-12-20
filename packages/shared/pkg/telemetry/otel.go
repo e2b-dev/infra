@@ -22,9 +22,10 @@ import (
 )
 
 const (
-	otelCollectorGRPCEndpoint = "0.0.0.0:4317"
-	metricExportPeriod        = 15 * time.Second
+	metricExportPeriod = 15 * time.Second
 )
+
+var otelCollectorGRPCEndpoint = os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 
 type client struct {
 	tracerProvider *sdktrace.TracerProvider

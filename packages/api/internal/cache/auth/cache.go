@@ -3,6 +3,7 @@ package autchcache
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -26,6 +27,7 @@ type TeamInfo struct {
 
 	lastRefresh time.Time
 	once        singleflight.Group
+	lock        sync.Mutex
 }
 
 type TeamAuthCache struct {
@@ -43,6 +45,7 @@ func NewTeamAuthCache(db *db.DB) *TeamAuthCache {
 	}
 }
 
+// TODO: save blocked teams to cache as well, handle the condition in the Get method
 func (c *TeamAuthCache) Get(ctx context.Context, apiKey string) (team *models.Team, tier *models.Tier, err error) {
 	var item *ttlcache.Item[string, *TeamInfo]
 	var templateInfo *TeamInfo

@@ -21,6 +21,7 @@ const (
 	RateLimitCounterMeterName                                = "api.sandbox.create.parallel_limit"
 	NewNetworkSlotSPoolCounterMeterName                      = "orchestrator.network.slots_pool.new"
 	ReusedNetworkSlotSPoolCounterMeterName                   = "orchestrator.network.slots_pool.reused"
+	NBDkSlotSReadyPoolCounterMeterName                       = "orchestrator.nbd.slots_pool.read"
 )
 
 var meter = otel.GetMeterProvider().Meter("nomad")
@@ -42,6 +43,7 @@ var upDownCounterDesc = map[UpDownCounterType]string{
 	RateLimitCounterMeterName:              "Number of currently waiting requests to create a new sandbox.",
 	ReusedNetworkSlotSPoolCounterMeterName: "Number of reused network slots ready to be used.",
 	NewNetworkSlotSPoolCounterMeterName:    "Number of new network slots ready to be used.",
+	NBDkSlotSReadyPoolCounterMeterName:     "Number of nbd slots ready to be used.",
 }
 
 var upDownCounterUnits = map[UpDownCounterType]string{
@@ -50,6 +52,7 @@ var upDownCounterUnits = map[UpDownCounterType]string{
 	RateLimitCounterMeterName:              "{sandbox}",
 	ReusedNetworkSlotSPoolCounterMeterName: "{slot}",
 	NewNetworkSlotSPoolCounterMeterName:    "{slot}",
+	NBDkSlotSReadyPoolCounterMeterName:     "{slot}",
 }
 
 func GetCounter(name CounterType) (metric.Int64Counter, error) {

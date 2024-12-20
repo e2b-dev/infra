@@ -32,6 +32,7 @@ function print_usage {
   echo -e "  --user\t\tThe user to run Nomad as. Optional. Default is to use the owner of --config-dir."
   echo -e "  --use-sudo\t\tIf set, run the Nomad agent with sudo. By default, sudo is only used if --client is set."
   echo -e "  --skip-nomad-config\tIf this flag is set, don't generate a Nomad configuration file. Optional. Default is false."
+  echo -e "  --api\t\tIf set, run the Nomad agent dedicated to API. Optional. Default is false."
   echo
   echo "Example:"
   echo
@@ -181,9 +182,9 @@ EOF
       cat <<EOF
 client {
   enabled = true
-  host_volume "fc-envs" {
-    path = "/mnt/disks/fc-envs"
-    read_only = false
+  node_pool = "default"
+  meta {
+    node_pool = "default"
   }
 }
 

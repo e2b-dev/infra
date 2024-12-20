@@ -13,6 +13,11 @@ variable "api_port_name" {
   default = ""
 }
 
+variable "admin_token" {
+  type    = string
+  default = ""
+}
+
 variable "api_port_number" {
   type    = number
   default = 0
@@ -38,7 +43,7 @@ variable "analytics_collector_host" {
   default = ""
 }
 
-variable "logs_proxy_address" {
+variable "logs_collector_address" {
   type    = string
   default = ""
 }
@@ -58,7 +63,7 @@ variable "loki_address" {
   default = ""
 }
 
-variable "orchestrator_address" {
+variable "orchestrator_port" {
   type    = string
   default = ""
 }
@@ -68,9 +73,19 @@ variable "template_manager_address" {
   default = ""
 }
 
-job "orchestration-api" {
-  datacenters = [var.gcp_zone]
+variable "nomad_token" {
+  type    = string
+  default = ""
+}
 
+variable "otel_collector_grpc_endpoint" {
+  type    = string
+  default = ""
+}
+
+job "api" {
+  datacenters = [var.gcp_zone]
+  node_pool = "api"
   priority = 90
 
   group "api-service" {
@@ -104,7 +119,7 @@ job "orchestration-api" {
       }
 
       env {
-        ORCHESTRATOR_ADDRESS          = var.orchestrator_address
+        ORCHESTRATOR_PORT             = var.orchestrator_port
         TEMPLATE_MANAGER_ADDRESS      = var.template_manager_address
         POSTGRES_CONNECTION_STRING    = var.postgres_connection_string
         ENVIRONMENT                   = var.environment
@@ -113,7 +128,11 @@ job "orchestration-api" {
         ANALYTICS_COLLECTOR_API_TOKEN = var.analytics_collector_api_token
         LOKI_ADDRESS                  = var.loki_address
         OTEL_TRACING_PRINT            = var.otel_tracing_print
-        LOGS_PROXY_ADDRESS            = var.logs_proxy_address
+        LOGS_COLLECTOR_ADDRESS        = var.logs_collector_address
+        NOMAD_TOKEN                   = var.nomad_token
+        OTEL_COLLECTOR_GRPC_ENDPOINT  = var.otel_collector_grpc_endpoint
+        TEMPLATE_BUCKET_NAME          = "skip"
+        ADMIN_TOKEN                   = var.admin_token
       }
 
       config {
