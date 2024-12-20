@@ -28,7 +28,7 @@ func NewTemplateSpawnCounter(tickerDuration time.Duration, dbClient *db.DB) *Tem
 		done:     make(chan bool),
 	}
 
-	go counter.processUpdates(dbClient, tickerDuration)
+	go counter.processUpdates(dbClient)
 	return counter
 }
 
@@ -42,7 +42,7 @@ func (t *TemplateSpawnCounter) IncreaseTemplateSpawnCount(templateID string, tim
 	t.mu.Unlock()
 }
 
-func (t *TemplateSpawnCounter) processUpdates(dbClient *db.DB, tickerDuration time.Duration) {
+func (t *TemplateSpawnCounter) processUpdates(dbClient *db.DB) {
 	for {
 		select {
 		case <-t.ticker.C:
