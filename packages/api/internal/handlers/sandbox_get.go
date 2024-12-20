@@ -39,7 +39,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	build, err := a.db.Client.EnvBuild.Query().Where(envbuild.ID(*info.BuildID)).First(ctx)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, err)
-		c.JSON(http.StatusInternalServerError, "Error getting build for instance")
+		c.JSON(http.StatusInternalServerError, fmt.Sprintf("Error getting build for instance %s", id))
 
 		return
 	}
