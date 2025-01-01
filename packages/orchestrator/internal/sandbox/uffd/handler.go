@@ -1,7 +1,6 @@
 package uffd
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,46 +10,67 @@ import (
 	"syscall"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/bits-and-blooms/bitset"
 )
 
 const (
-	uffdMsgListenerTimeout = 5 * time.Second
+	uffdMsgListenerTimeout = 10 * time.Second
 	fdSize                 = 4
 	mappingsSize           = 1024
 )
-
-var memfileCache = cache.NewMmapfileCache()
 
 type UffdSetup struct {
 	Mappings []GuestRegionUffdMapping
 	Fd       uintptr
 }
 
-func New(
-	memfilePath,
-	socketPath,
-	envID,
-	buildID string,
-) (*Uffd, error) {
+func (u *Uffd) TrackAndReturnNil() error {
+	return u.lis.Close()
+}
+
+type Uffd struct {
+	Exit  chan error
+	Ready chan struct{}
+
+	exitReader *os.File
+	exitWriter *os.File
+
+	Stop func() error
+
+	lis *net.UnixListener
+
+	memfile    *block.TrackedSliceDevice
+	socketPath string
+}
+
+func (u *Uffd) Disable() error {
+	return u.memfile.Disable()
+}
+
+func (u *Uffd) Dirty() *bitset.BitSet {
+	return u.memfile.Dirty()
+}
+
+func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
 	pRead, pWrite, err := os.Pipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exit fd: %w", err)
 	}
 
+	trackedMemfile, err := block.NewTrackedSliceDevice(blockSize, memfile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tracked slice device: %w", err)
+	}
+
 	return &Uffd{
-		exitChan:    make(chan error, 1),
-		PollReady:   make(chan struct{}, 1),
-		exitReader:  pRead,
-		exitWriter:  pWrite,
-		envID:       envID,
-		buildID:     buildID,
-		memfilePath: memfilePath,
-		socketPath:  socketPath,
+		Exit:       make(chan error, 1),
+		Ready:      make(chan struct{}, 1),
+		exitReader: pRead,
+		exitWriter: pWrite,
+		memfile:    trackedMemfile,
+		socketPath: socketPath,
 		Stop: sync.OnceValue(func() error {
 			_, writeErr := pWrite.Write([]byte{0})
 			if writeErr != nil {
@@ -62,39 +82,7 @@ func New(
 	}, nil
 }
 
-type Uffd struct {
-	exitChan  chan error
-	PollReady chan struct{}
-
-	exitReader *os.File
-	exitWriter *os.File
-
-	Stop func() error
-
-	lis *net.UnixListener
-
-	socketPath  string
-	memfilePath string
-
-	envID   string
-	buildID string
-}
-
-func (u *Uffd) Start(
-	ctx context.Context,
-	tracer trace.Tracer,
-	logger *logs.SandboxLogger,
-) error {
-	childCtx, childSpan := tracer.Start(ctx, "start-uffd")
-	defer childSpan.End()
-
-	mf, err := memfileCache.GetMmapfile(logger, u.memfilePath, fmt.Sprintf("%s-%s", u.envID, u.buildID))
-	if err != nil {
-		return fmt.Errorf("failed to get mmapfile: %w", err)
-	}
-
-	telemetry.ReportEvent(childCtx, "got mmapfile")
-
+func (u *Uffd) Start(sandboxId string) error {
 	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: u.socketPath, Net: "unix"})
 	if err != nil {
 		return fmt.Errorf("failed listening on socket: %w", err)
@@ -102,18 +90,21 @@ func (u *Uffd) Start(
 
 	u.lis = lis
 
-	telemetry.ReportEvent(childCtx, "listening on socket")
-
 	err = os.Chmod(u.socketPath, 0o777)
 	if err != nil {
 		return fmt.Errorf("failed setting socket permissions: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "set socket permissions")
-
 	go func() {
-		u.exitChan <- u.handle(logger, mf)
-		close(u.exitChan)
+		// TODO: If the handle function fails, we should kill the sandbox
+		handleErr := u.handle(sandboxId)
+		closeErr := u.lis.Close()
+		writerErr := u.exitWriter.Close()
+
+		u.Exit <- errors.Join(handleErr, closeErr, writerErr)
+
+		close(u.Ready)
+		close(u.Exit)
 	}()
 
 	return nil
@@ -173,7 +164,7 @@ func (u *Uffd) receiveSetup() (*UffdSetup, error) {
 	}, nil
 }
 
-func (u *Uffd) handle(logger *logs.SandboxLogger, memory *cache.Mmapfile) (err error) {
+func (u *Uffd) handle(sandboxId string) (err error) {
 	setup, err := u.receiveSetup()
 	if err != nil {
 		return fmt.Errorf("failed to receive setup message from firecracker: %w", err)
@@ -183,27 +174,16 @@ func (u *Uffd) handle(logger *logs.SandboxLogger, memory *cache.Mmapfile) (err e
 	defer func() {
 		closeErr := syscall.Close(int(uffd))
 		if closeErr != nil {
-			logger.Errorf("failed to close uffd: %v", closeErr)
+			fmt.Fprintf(os.Stderr, "[sandbox %s]: failed to close uffd at path %s: %v\n", sandboxId, u.socketPath, closeErr)
 		}
 	}()
 
-	u.PollReady <- struct{}{}
+	u.Ready <- struct{}{}
 
-	err = Serve(int(uffd), setup.Mappings, memory, u.exitReader.Fd())
+	err = Serve(int(uffd), setup.Mappings, u.memfile, u.exitReader.Fd(), u.Stop, sandboxId)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}
 
 	return nil
-}
-
-func (u *Uffd) Wait() error {
-	handleErr := <-u.exitChan
-
-	close(u.PollReady)
-
-	closeErr := u.lis.Close()
-	writerErr := u.exitWriter.Close()
-
-	return errors.Join(handleErr, closeErr, writerErr)
 }

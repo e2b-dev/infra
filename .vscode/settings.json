@@ -8,6 +8,11 @@
     ".terraform/**": true,
     ".vscode/**": true,
     ".git/**": true,
+    "packages/orchestrator/.shared/**": true,
+    "packages/orchestrator/.block-storage/**": true,
+    "packages/fc-kernels/linux/**": true,
+    "packages/fc-versions/firecracker/**": true,
+    "packages/fc-versions/builds/**": true,
   },
   "files.watcherExclude": {
     "**/.git": true,
@@ -18,6 +23,9 @@
     ".terraform/**": true,
     ".vscode/**": true,
     ".git/**": true,
+    "packages/fc-kernels/linux/**": true,
+    "packages/fc-versions/firecracker/**": true,
+    "packages/fc-versions/builds/**": true,
   },
   "editor.quickSuggestions": {
     "strings": true
@@ -25,6 +33,9 @@
   "editor.formatOnSave": true,
   "[terraform]": {
     "editor.tabSize": 2
+  },
+  "go.delveConfig": {
+    "debuggerMode": "native",
   },
   "[go]": {
     "editor.formatOnSave": true,
@@ -39,22 +50,29 @@
     },
   },
   "editor.tabCompletion": "on",
-  "go.useLanguageServer": true,
-  "gopls": {
-    "formatting.local": "github.com/e2b-dev/api",
-    "formatting.gofumpt": true,
-    "ui.completion.usePlaceholders": true
-  },
   "go.lintTool": "golangci-lint",
   "go.lintFlags": [
     "--fast"
   ],
+  "go.liveErrors": {
+    "enabled": true,
+    "delay": 500
+  },
+  "go.lintOnSave": "workspace",
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "explicit",
+  },
+  "go.useLanguageServer": true,
+  "go.languageServerExperimentalFeatures": {
+    "diagnostics": true
+  },
   "remote.SSH.defaultExtensions": [
     "golang.go",
   ],
   "go.autocompleteUnimportedPackages": true,
   "go.toolsManagement.autoUpdate": true,
   "go.testOnSave": false,
+  "go.testTimeout": "20s",
   "go.inlayHints.assignVariableTypes": true,
   "go.inlayHints.compositeLiteralFields": true,
   "go.inlayHints.compositeLiteralTypes": true,
@@ -64,7 +82,6 @@
   "go.inlayHints.parameterNames": true,
   "go.buildOnSave": "off",
   "go.formatTool": "gofumpt",
-  "go.lintOnSave": "package",
   "go.survey.prompt": false,
   "go.useCodeSnippetsOnFunctionSuggestWithoutType": true,
   "go.useCodeSnippetsOnFunctionSuggest": true,

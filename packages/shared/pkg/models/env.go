@@ -52,9 +52,11 @@ type EnvEdges struct {
 	EnvAliases []*EnvAlias `json:"env_aliases,omitempty"`
 	// Builds holds the value of the builds edge.
 	Builds []*EnvBuild `json:"builds,omitempty"`
+	// Snapshots holds the value of the snapshots edge.
+	Snapshots []*Snapshot `json:"snapshots,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [5]bool
 }
 
 // TeamOrErr returns the Team value or an error if the edge
@@ -99,6 +101,15 @@ func (e EnvEdges) BuildsOrErr() ([]*EnvBuild, error) {
 		return e.Builds, nil
 	}
 	return nil, &NotLoadedError{edge: "builds"}
+}
+
+// SnapshotsOrErr returns the Snapshots value or an error if the edge
+// was not loaded in eager-loading.
+func (e EnvEdges) SnapshotsOrErr() ([]*Snapshot, error) {
+	if e.loadedTypes[4] {
+		return e.Snapshots, nil
+	}
+	return nil, &NotLoadedError{edge: "snapshots"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -219,6 +230,11 @@ func (e *Env) QueryEnvAliases() *EnvAliasQuery {
 // QueryBuilds queries the "builds" edge of the Env entity.
 func (e *Env) QueryBuilds() *EnvBuildQuery {
 	return NewEnvClient(e.config).QueryBuilds(e)
+}
+
+// QuerySnapshots queries the "snapshots" edge of the Env entity.
+func (e *Env) QuerySnapshots() *SnapshotQuery {
+	return NewEnvClient(e.config).QuerySnapshots(e)
 }
 
 // Update returns a builder for updating this Env.

@@ -22,7 +22,12 @@ variable "cpu_mhz" {
   default = 1000
 }
 
-variable "logs_proxy_address" {
+variable "logs_collector_address" {
+  type    = string
+  default = ""
+}
+
+variable "logs_collector_public_ip" {
   type    = string
   default = ""
 }
@@ -43,6 +48,16 @@ variable "bucket_name" {
 }
 
 variable "orchestrator_checksum" {
+  type    = string
+  default = ""
+}
+
+variable "template_bucket_name" {
+  type    = string
+  default = ""
+}
+
+variable "otel_collector_grpc_endpoint" {
   type    = string
   default = ""
 }
@@ -83,12 +98,14 @@ job "orchestrator" {
       }
 
       env {
-        NODE_ID            = "${node.unique.id}"
-        CONSUL_TOKEN       = var.consul_token
-        OTEL_TRACING_PRINT = var.otel_tracing_print
-        LOGS_PROXY_ADDRESS = var.logs_proxy_address
-        ENVIRONMENT        = var.environment
-        RUST_BACKTRACE     = 1
+        NODE_ID                      = "${node.unique.id}"
+        CONSUL_TOKEN                 = var.consul_token
+        OTEL_TRACING_PRINT           = var.otel_tracing_print
+        LOGS_COLLECTOR_ADDRESS       = var.logs_collector_address
+        LOGS_COLLECTOR_PUBLIC_IP     = var.logs_collector_public_ip
+        ENVIRONMENT                  = var.environment
+        TEMPLATE_BUCKET_NAME         = var.template_bucket_name
+        OTEL_COLLECTOR_GRPC_ENDPOINT = var.otel_collector_grpc_endpoint
       }
 
       config {
@@ -98,9 +115,10 @@ job "orchestrator" {
 
       artifact {
         source      = "gcs::https://www.googleapis.com/storage/v1/${var.bucket_name}/orchestrator"
-        options {
-            checksum    = "md5:${var.orchestrator_checksum}"
-        }
+        // Disabled checksum for very basic rolling updates.
+        # options {
+        #     checksum    = "md5:${var.orchestrator_checksum}"
+        # }
       }
     }
   }

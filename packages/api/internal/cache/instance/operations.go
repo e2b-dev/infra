@@ -102,7 +102,7 @@ func (c *InstanceCache) Add(instance InstanceInfo, newlyCreated bool) error {
 	if ttl <= 0 {
 		ttl = time.Nanosecond
 		// TODO: It would be probably better to return error here, but in that case we need to make sure that sbxs in orchestrator are killed
-		//return fmt.Errorf("instance \"%s\" has already expired", instance.Instance.SandboxID)
+		// return fmt.Errorf("instance \"%s\" has already expired", instance.Instance.SandboxID)
 	}
 
 	c.cache.Set(instance.Instance.SandboxID, instance, ttl)
@@ -115,6 +115,16 @@ func (c *InstanceCache) Add(instance InstanceInfo, newlyCreated bool) error {
 }
 
 // Kill the instance and remove it from the cache.
-func (c *InstanceCache) Kill(instanceID string) {
-	c.cache.Delete(instanceID)
+func (c *InstanceCache) Kill(instanceID string) bool {
+	_, found := c.cache.GetAndDelete(instanceID, ttlcache.WithDisableTouchOnHit[string, InstanceInfo]())
+
+	return found
+}
+
+func (c *InstanceCache) Items() (infos []InstanceInfo) {
+	for _, item := range c.cache.Items() {
+		infos = append(infos, item.Value())
+	}
+
+	return infos
 }

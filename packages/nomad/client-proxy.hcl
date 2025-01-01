@@ -22,10 +22,6 @@ variable "client_proxy_port_number" {
   type = number
 }
 
-variable "session_proxy_service_name" {
-  type = string
-}
-
 variable "load_balancer_conf" {
   type = string
 }
@@ -36,6 +32,8 @@ variable "nginx_conf" {
 
 job "client-proxy" {
   datacenters = [var.gcp_zone]
+  node_pool = "api"
+  type = "system"
 
   priority = 80
 
@@ -67,9 +65,9 @@ job "client-proxy" {
       driver = "docker"
 
       resources {
-        memory_max = 6000
-        memory = 6000
-        cpu    = 2048
+        memory_max = 2000
+        memory = 1000
+        cpu    = 1000
       }
 
       config {

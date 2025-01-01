@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"regexp"
@@ -16,11 +17,13 @@ var regex = regexp.MustCompile(`http[s]?://`)
 
 type ClientConnInterface interface {
 	Invoke(ctx context.Context, method string, args any, reply any, opts ...grpc.CallOption) error
+	GetState() connectivity.State
 	NewStream(ctx context.Context, desc *grpc.StreamDesc, method string, opts ...grpc.CallOption) (grpc.ClientStream, error)
 	Close() error
 }
 
-func GetConnection(host string, options ...grpc.DialOption) (ClientConnInterface, error) {
+// TODO: Fix Host <-> Url
+func GetConnection(host string, safe bool, options ...grpc.DialOption) (ClientConnInterface, error) {
 	if strings.TrimSpace(host) == "" {
 		fmt.Println("Host for gRPC not set, using dummy connection")
 
@@ -28,7 +31,7 @@ func GetConnection(host string, options ...grpc.DialOption) (ClientConnInterface
 	}
 
 	host = regex.ReplaceAllString(host, "")
-	if strings.HasPrefix(host, "localhost") {
+	if strings.HasPrefix(host, "localhost") || !safe {
 		options = append(options, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		conn, err := grpc.Dial(host, options...)
 		if err != nil {

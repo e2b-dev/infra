@@ -1,15 +1,16 @@
 {
   "recommendations": [
-    "GitHub.vscode-pull-request-github",
     "golang.go",
     "hashicorp.hcl",
     "42Crunch.vscode-openapi",
+    "hashicorp.terraform",
     "foxundermoon.shell-format",
     "ms-vscode.makefile-tools",
     "hashicorp.terraform",
     "redhat.vscode-yaml",
     "christian-kohler.path-intellisense",
     "googlecloudtools.cloudcode",
-    "ms-azuretools.vscode-docker"
+    "ms-azuretools.vscode-docker",
+    "timonwong.shellcheck"
   ]
 }

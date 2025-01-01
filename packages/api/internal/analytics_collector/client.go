@@ -2,8 +2,9 @@ package analyticscollector
 
 import (
 	"fmt"
-	"google.golang.org/grpc"
 	"os"
+
+	"google.golang.org/grpc"
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 )
@@ -16,7 +17,7 @@ type Analytics struct {
 }
 
 func NewAnalytics() (*Analytics, error) {
-	conn, err := e2bgrpc.GetConnection(host, grpc.WithPerRPCCredentials(&gRPCApiKey{}))
+	conn, err := e2bgrpc.GetConnection(host, true, grpc.WithPerRPCCredentials(&gRPCApiKey{}))
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
