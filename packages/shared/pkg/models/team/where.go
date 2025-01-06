@@ -142,6 +142,16 @@ func IsBannedNEQ(v bool) predicate.Team {
 	return predicate.Team(sql.FieldNEQ(FieldIsBanned, v))
 }
 
+// IsBannedIsNil applies the IsNil predicate on the "is_banned" field.
+func IsBannedIsNil() predicate.Team {
+	return predicate.Team(sql.FieldIsNull(FieldIsBanned))
+}
+
+// IsBannedNotNil applies the NotNil predicate on the "is_banned" field.
+func IsBannedNotNil() predicate.Team {
+	return predicate.Team(sql.FieldNotNull(FieldIsBanned))
+}
+
 // IsBlockedEQ applies the EQ predicate on the "is_blocked" field.
 func IsBlockedEQ(v bool) predicate.Team {
 	return predicate.Team(sql.FieldEQ(FieldIsBlocked, v))
@@ -150,6 +160,16 @@ func IsBlockedEQ(v bool) predicate.Team {
 // IsBlockedNEQ applies the NEQ predicate on the "is_blocked" field.
 func IsBlockedNEQ(v bool) predicate.Team {
 	return predicate.Team(sql.FieldNEQ(FieldIsBlocked, v))
+}
+
+// IsBlockedIsNil applies the IsNil predicate on the "is_blocked" field.
+func IsBlockedIsNil() predicate.Team {
+	return predicate.Team(sql.FieldIsNull(FieldIsBlocked))
+}
+
+// IsBlockedNotNil applies the NotNil predicate on the "is_blocked" field.
+func IsBlockedNotNil() predicate.Team {
+	return predicate.Team(sql.FieldNotNull(FieldIsBlocked))
 }
 
 // BlockedReasonEQ applies the EQ predicate on the "blocked_reason" field.
