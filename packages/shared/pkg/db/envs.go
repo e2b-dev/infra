@@ -65,6 +65,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 		Where(
 			env.TeamID(teamID),
 			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusUploaded)),
+			env.Not(env.HasSnapshots()),
 		).
 		Order(models.Asc(env.FieldCreatedAt)).
 		WithEnvAliases().
