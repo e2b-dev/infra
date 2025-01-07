@@ -1,6 +1,10 @@
 package header
 
 import (
+	"fmt"
+	"os"
+	"strings"
+
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
 )
@@ -63,8 +67,12 @@ func CreateMapping(
 	return mappings
 }
 
+// MergeMappings merges two sets of mappings.
+//
 // The mapping are stored in a sorted order.
 // The baseMapping must cover the whole size.
+//
+// It returns a new set of mappings that covers the whole size.
 func MergeMappings(
 	baseMapping []*BuildMap,
 	diffMapping []*BuildMap,
@@ -88,13 +96,13 @@ func MergeMappings(
 		base := baseMapping[baseIdx]
 		diff := diffMapping[diffIdx]
 
-		if base.Length == 0 {
+		if base.Length <= 0 {
 			baseIdx++
 
 			continue
 		}
 
-		if diff.Length == 0 {
+		if diff.Length <= 0 {
 			diffIdx++
 
 			continue
@@ -134,15 +142,19 @@ func MergeMappings(
 		// add diff to the result
 		// if right part is not empty, update baseMapping with it, otherwise remove it from the baseMapping
 		if diff.Offset >= base.Offset && diff.Offset+diff.Length <= base.Offset+base.Length {
-			leftBase := &BuildMap{
-				Offset:  base.Offset,
-				Length:  diff.Offset - base.Offset,
-				BuildId: base.BuildId,
-				// the build storage offset is the same as the base mapping
-				BuildStorageOffset: base.BuildStorageOffset,
-			}
+			fmt.Printf("diff (%d-%d) is inside base (%d-%d)\n", diff.Offset/(2<<20), (diff.Offset+diff.Length)/(2<<20), base.Offset/(2<<20), (base.Offset+base.Length)/(2<<20))
 
-			if leftBase.Length > 0 {
+			leftBaseLength := int64(diff.Offset) - int64(base.Offset)
+
+			if leftBaseLength > 0 {
+				leftBase := &BuildMap{
+					Offset:  base.Offset,
+					Length:  uint64(leftBaseLength),
+					BuildId: base.BuildId,
+					// the build storage offset is the same as the base mapping
+					BuildStorageOffset: base.BuildStorageOffset,
+				}
+
 				mappings = append(mappings, leftBase)
 			}
 
@@ -150,16 +162,17 @@ func MergeMappings(
 
 			diffIdx++
 
-			rightBaseShift := diff.Offset + diff.Length - base.Offset
+			rightBaseShift := int64(diff.Offset) + int64(diff.Length) - int64(base.Offset)
+			rightBaseLength := int64(base.Length) - rightBaseShift
 
-			rightBase := &BuildMap{
-				Offset:             base.Offset + rightBaseShift,
-				Length:             base.Length - rightBaseShift,
-				BuildId:            base.BuildId,
-				BuildStorageOffset: base.BuildStorageOffset + rightBaseShift,
-			}
+			if rightBaseLength > 0 {
+				rightBase := &BuildMap{
+					Offset:             base.Offset + uint64(rightBaseShift),
+					Length:             uint64(rightBaseLength),
+					BuildId:            base.BuildId,
+					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
+				}
 
-			if rightBase.Length > 0 {
 				baseMapping[baseIdx] = rightBase
 			} else {
 				baseIdx++
@@ -171,18 +184,27 @@ func MergeMappings(
 		// base is after diff and there is overlap
 		// add diff to the result
 		// add the right part of base to the baseMapping, it should not be empty because of the check above
-		if base.Offset+base.Length > diff.Offset {
+		if base.Offset > diff.Offset {
+			fmt.Printf("base (%d-%d) is after diff (%d-%d) and there is overlap\n", base.Offset/(2<<20), (base.Offset+base.Length)/(2<<20), diff.Offset/(2<<20), (diff.Offset+diff.Length)/(2<<20))
+
 			mappings = append(mappings, diff)
 
 			diffIdx++
 
-			rightBaseShift := diff.Offset + diff.Length - base.Offset
+			rightBaseShift := int64(diff.Offset) + int64(diff.Length) - int64(base.Offset)
+			rightBaseLength := int64(base.Length) - rightBaseShift
 
-			baseMapping[baseIdx] = &BuildMap{
-				Offset:             base.Offset + rightBaseShift,
-				Length:             base.Length - rightBaseShift,
-				BuildId:            base.BuildId,
-				BuildStorageOffset: base.BuildStorageOffset + rightBaseShift,
+			if rightBaseLength > 0 {
+				rightBase := &BuildMap{
+					Offset:             base.Offset + uint64(rightBaseShift),
+					Length:             uint64(rightBaseLength),
+					BuildId:            base.BuildId,
+					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
+				}
+
+				baseMapping[baseIdx] = rightBase
+			} else {
+				baseIdx++
 			}
 
 			continue
@@ -190,22 +212,136 @@ func MergeMappings(
 
 		// diff is after base and there is overlap
 		// add the left part of base to the result, it should not be empty because of the check above
-		if diff.Offset+diff.Length > base.Offset {
-			mappings = append(mappings, &BuildMap{
-				Offset:             base.Offset,
-				Length:             diff.Offset - base.Offset,
-				BuildId:            base.BuildId,
-				BuildStorageOffset: base.BuildStorageOffset,
-			})
+		if diff.Offset > base.Offset {
+			fmt.Printf("diff (%d-%d) is after base (%d-%d) and there is overlap\n", diff.Offset/(2<<20), (diff.Offset+diff.Length)/(2<<20), base.Offset/(2<<20), (base.Offset+base.Length)/(2<<20))
+
+			leftBaseLength := int64(diff.Offset) - int64(base.Offset)
+
+			if leftBaseLength > 0 {
+				leftBase := &BuildMap{
+					Offset:             base.Offset,
+					Length:             uint64(leftBaseLength),
+					BuildId:            base.BuildId,
+					BuildStorageOffset: base.BuildStorageOffset,
+				}
+
+				mappings = append(mappings, leftBase)
+			}
 
 			baseIdx++
 
 			continue
 		}
+
+		fmt.Fprintf(os.Stderr, "invalid case during merge mappings: %+v %+v\n", base, diff)
 	}
 
 	mappings = append(mappings, baseMapping[baseIdx:]...)
 	mappings = append(mappings, diffMapping[diffIdx:]...)
 
 	return mappings
+}
+
+// Format returns a string representation of the mapping as:
+//
+// startBlock-endBlock [offset, offset+length) := [buildStorageOffset, buildStorageOffset+length) ⊂ buildId, length in bytes
+//
+// It is used for debugging and visualization.
+func (mapping *BuildMap) Format(blockSize uint64) string {
+	rangeMessage := fmt.Sprintf("%d-%d", mapping.Offset/blockSize, (mapping.Offset+mapping.Length)/blockSize)
+
+	return fmt.Sprintf(
+		"%-14s [%11d,%11d) := [%11d,%11d) ⊂ %s, %d B",
+		rangeMessage,
+		mapping.Offset, mapping.Offset+mapping.Length,
+		mapping.BuildStorageOffset, mapping.BuildStorageOffset+mapping.Length, mapping.BuildId.String(), mapping.Length,
+	)
+}
+
+const (
+	SkippedBlockChar = '░'
+	DirtyBlockChar1  = '▓'
+	DirtyBlockChar2  = '█'
+)
+
+// Layers returns a map of buildIds that are present in the mappings.
+func Layers(mappings []*BuildMap) *map[uuid.UUID]struct{} {
+	layers := make(map[uuid.UUID]struct{})
+
+	for _, mapping := range mappings {
+		layers[mapping.BuildId] = struct{}{}
+	}
+
+	return &layers
+}
+
+// Visualize returns a string representation of the mappings as a grid of blocks.
+// It is used for debugging and visualization.
+//
+// You can pass maps to visualize different groups of buildIds.
+func Visualize(mappings []*BuildMap, size, blockSize, cols uint64, bottomGroup, topGroup *map[uuid.UUID]struct{}) string {
+	output := make([]rune, size/blockSize)
+
+	for outputIdx := range output {
+		output[outputIdx] = SkippedBlockChar
+	}
+
+	for _, mapping := range mappings {
+		for block := uint64(0); block < mapping.Length/blockSize; block++ {
+			if bottomGroup != nil {
+				if _, ok := (*bottomGroup)[mapping.BuildId]; ok {
+					output[mapping.Offset/blockSize+block] = DirtyBlockChar1
+				}
+			}
+
+			if topGroup != nil {
+				if _, ok := (*topGroup)[mapping.BuildId]; ok {
+					output[mapping.Offset/blockSize+block] = DirtyBlockChar2
+				}
+			}
+		}
+	}
+
+	lineOutput := make([]string, 0)
+
+	for i := uint64(0); i < size/blockSize; i += cols {
+		if i+cols <= uint64(len(output)) {
+			lineOutput = append(lineOutput, string(output[i:i+cols]))
+		} else {
+			lineOutput = append(lineOutput, string(output[i:]))
+		}
+	}
+
+	return strings.Join(lineOutput, "\n")
+}
+
+// ValidateMappings validates the mappings.
+// It is used to check if the mappings are valid.
+//
+// It checks if the mappings are contiguous and if the length of each mapping is a multiple of the block size.
+// It also checks if the mappings cover the whole size.
+func ValidateMappings(mappings []*BuildMap, size, blockSize uint64) error {
+	var currentOffset uint64
+
+	for _, mapping := range mappings {
+		if currentOffset != mapping.Offset {
+			return fmt.Errorf("mapping validation failed: the following mapping\n- %s\ndoes not start at the correct offset: expected %d (block %d), got %d (block %d)\n", mapping.Format(blockSize), currentOffset, currentOffset/blockSize, mapping.Offset, mapping.Offset/blockSize)
+		}
+
+		if mapping.Length%blockSize != 0 {
+			return fmt.Errorf("mapping validation failed: the following mapping\n- %s\nhas an invalid length: %d. It should be a multiple of block size: %d\n", mapping.Format(blockSize), mapping.Length, blockSize)
+		}
+
+		if currentOffset+mapping.Length > size {
+			return fmt.Errorf("mapping validation failed: the following mapping\n- %s\ngoes beyond the size: %d (current offset) + %d (length) > %d (size)\n", mapping.Format(blockSize), currentOffset, mapping.Length, size)
+		}
+
+		currentOffset += mapping.Length
+	}
+
+	if currentOffset != size {
+		return fmt.Errorf("mapping validation failed: the following mapping\n- %s\ndoes not cover the whole size: %d (current offset) != %d (size)\n", mappings[len(mappings)-1].Format(blockSize), currentOffset, size)
+	}
+
+	return nil
 }
