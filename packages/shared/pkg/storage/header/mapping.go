@@ -345,3 +345,21 @@ func ValidateMappings(mappings []*BuildMap, size, blockSize uint64) error {
 
 	return nil
 }
+
+func (mapping *BuildMap) Equal(other *BuildMap) bool {
+	return mapping.Offset == other.Offset && mapping.Length == other.Length && mapping.BuildId == other.BuildId
+}
+
+func Equal(a, b []*BuildMap) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if !a[i].Equal(b[i]) {
+			return false
+		}
+	}
+
+	return true
+}
