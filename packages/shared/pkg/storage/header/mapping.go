@@ -142,8 +142,6 @@ func MergeMappings(
 		// add diff to the result
 		// if right part is not empty, update baseMapping with it, otherwise remove it from the baseMapping
 		if diff.Offset >= base.Offset && diff.Offset+diff.Length <= base.Offset+base.Length {
-			fmt.Printf("diff (%d-%d) is inside base (%d-%d)\n", diff.Offset/(2<<20), (diff.Offset+diff.Length)/(2<<20), base.Offset/(2<<20), (base.Offset+base.Length)/(2<<20))
-
 			leftBaseLength := int64(diff.Offset) - int64(base.Offset)
 
 			if leftBaseLength > 0 {
@@ -185,8 +183,6 @@ func MergeMappings(
 		// add diff to the result
 		// add the right part of base to the baseMapping, it should not be empty because of the check above
 		if base.Offset > diff.Offset {
-			fmt.Printf("base (%d-%d) is after diff (%d-%d) and there is overlap\n", base.Offset/(2<<20), (base.Offset+base.Length)/(2<<20), diff.Offset/(2<<20), (diff.Offset+diff.Length)/(2<<20))
-
 			mappings = append(mappings, diff)
 
 			diffIdx++
@@ -213,8 +209,6 @@ func MergeMappings(
 		// diff is after base and there is overlap
 		// add the left part of base to the result, it should not be empty because of the check above
 		if diff.Offset > base.Offset {
-			fmt.Printf("diff (%d-%d) is after base (%d-%d) and there is overlap\n", diff.Offset/(2<<20), (diff.Offset+diff.Length)/(2<<20), base.Offset/(2<<20), (base.Offset+base.Length)/(2<<20))
-
 			leftBaseLength := int64(diff.Offset) - int64(base.Offset)
 
 			if leftBaseLength > 0 {
