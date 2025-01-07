@@ -51,7 +51,8 @@ init:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	terraform fmt -recursive
-	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode $$(echo $(ALL_MODULES) | tr ' ' '\n' | awk '{print "-target=module." $$0 ""}' | xargs)
+	$(eval TARGET := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | awk '{print "-target=module." $$0 ""}' | xargs))
+	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode $(TARGET)
 
 .PHONY: apply
 apply:
@@ -69,13 +70,14 @@ apply:
 .PHONY: plan-without-jobs
 plan-without-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(eval TARGET := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
 	$(tf_vars) \
 	terraform plan \
 	-out=.tfplan.$(ENV) \
 	-input=false \
 	-compact-warnings \
 	-parallelism=20 \
-  	$$(echo $(ALL_MODULES) | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs)
+  	$(TARGET)
 
 .PHONY: destroy
 destroy:
