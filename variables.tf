@@ -198,6 +198,11 @@ variable "loki_service_port" {
   }
 }
 
+variable "template_bucket_location" {
+  type        = string
+  description = "The location of the FC template bucket"
+}
+
 variable "template_bucket_name" {
   type        = string
   description = "The name of the FC template bucket"

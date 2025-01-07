@@ -65,6 +65,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 		Where(
 			env.TeamID(teamID),
 			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusUploaded)),
+			env.Not(env.HasSnapshots()),
 		).
 		Order(models.Asc(env.FieldCreatedAt)).
 		WithEnvAliases().
@@ -194,6 +195,6 @@ func (db *DB) EnvBuildSetStatus(
 	return nil
 }
 
-func (db *DB) UpdateEnvLastUsed(ctx context.Context, envID string) (err error) {
-	return db.Client.Env.UpdateOneID(envID).AddSpawnCount(1).SetLastSpawnedAt(time.Now()).Exec(ctx)
+func (db *DB) UpdateEnvLastUsed(ctx context.Context, count int64, time time.Time, envID string) (err error) {
+	return db.Client.Env.UpdateOneID(envID).AddSpawnCount(count).SetLastSpawnedAt(time).Exec(ctx)
 }

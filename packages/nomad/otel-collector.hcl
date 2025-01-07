@@ -192,6 +192,7 @@ processors:
           - "nomad_client_host_memory_available"
           - "nomad_client_host_memory_total"
           - "nomad_client_unallocated_memory"
+          - "nomad_nomad_job_summary_running"
           - "orchestrator.*"
           - "api.*"
   attributes/session-proxy:

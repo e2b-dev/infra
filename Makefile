@@ -3,6 +3,7 @@ ENV := $(shell cat .last_used_env || echo "not-set")
 
 OTEL_TRACING_PRINT ?= false
 EXCLUDE_GITHUB ?= 1
+TEMPLATE_BUCKET_LOCATION := $(GCP_REGION)
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
@@ -18,7 +19,8 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_terraform_state_bucket=$(TERRAFORM_STATE_BUCKET) \
 	TF_VAR_otel_tracing_print=$(OTEL_TRACING_PRINT) \
 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
-	TF_VAR_template_bucket_name=$(TEMPLATE_BUCKET_NAME)
+	TF_VAR_template_bucket_name=$(TEMPLATE_BUCKET_NAME) \
+	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION)
 
 ifeq ($(EXCLUDE_GITHUB),1)
 	ALL_MODULES := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | grep -v -e "github_tf")
@@ -49,7 +51,8 @@ init:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	terraform fmt -recursive
-	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode $$(echo $(ALL_MODULES) | tr ' ' '\n' | awk '{print "-target=module." $$0 ""}' | xargs)
+	$(eval TARGET := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | awk '{print "-target=module." $$0 ""}' | xargs))
+	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode $(TARGET)
 
 .PHONY: apply
 apply:
@@ -67,13 +70,14 @@ apply:
 .PHONY: plan-without-jobs
 plan-without-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(eval TARGET := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
 	$(tf_vars) \
 	terraform plan \
 	-out=.tfplan.$(ENV) \
 	-input=false \
 	-compact-warnings \
 	-parallelism=20 \
-  	$$(echo $(ALL_MODULES) | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs)
+  	$(TARGET)
 
 .PHONY: destroy
 destroy:
@@ -108,12 +112,6 @@ copy-public-builds:
 
 migrate:
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/shared migrate
-
-.PHONY: update-api
-update-api:
-	docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
-	docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push -f api.Dockerfile .
-
 
 .PHONY: switch-env
 switch-env:
