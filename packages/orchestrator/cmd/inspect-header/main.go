@@ -69,14 +69,7 @@ func main() {
 	fmt.Printf("=======\n")
 
 	for _, mapping := range h.Mapping {
-		rangeMessage := fmt.Sprintf("%d-%d", mapping.Offset/h.Metadata.BlockSize, (mapping.Offset+mapping.Length-1)/h.Metadata.BlockSize)
-
-		fmt.Printf(
-			"%-14s [%11d,%11d) = [%11d,%11d) in %s, %d B\n",
-			rangeMessage,
-			mapping.Offset, mapping.Offset+mapping.Length,
-			mapping.BuildStorageOffset, mapping.BuildStorageOffset+mapping.Length, mapping.BuildId.String(), mapping.Length,
-		)
+		fmt.Println(mapping.Format(h.Metadata.BlockSize))
 	}
 
 	fmt.Printf("\nMAPPING SUMMARY\n")
