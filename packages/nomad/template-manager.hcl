@@ -91,7 +91,7 @@ job "template-manager" {
 
       resources {
         memory     = 1024
-        cpu        = 1000
+        cpu        = 256
       }
 
       env {
