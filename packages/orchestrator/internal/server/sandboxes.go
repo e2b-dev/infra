@@ -163,19 +163,21 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
 
-	sbx.Healthcheck(ctx, true)
-
 	// Don't allow connecting to the sandbox anymore.
 	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
+
+	// Remove the sandbox from the cache to prevent loading it again in API during the time the instance is stopping.
+	// Old comment:
+	// 	Ensure the sandbox is removed from cache.
+	// 	Ideally we would rely only on the goroutine defer.
+	s.sandboxes.Remove(in.SandboxId)
+
+	sbx.Healthcheck(ctx, true)
 
 	err := sbx.Stop()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error stopping sandbox '%s': %v\n", in.SandboxId, err)
 	}
-
-	// Ensure the sandbox is removed from cache.
-	// Ideally we would rely only on the goroutine defer.
-	s.sandboxes.Remove(in.SandboxId)
 
 	return &emptypb.Empty{}, nil
 }
