@@ -232,9 +232,22 @@ func (m *AccessTokenMutation) OldCreatedAt(ctx context.Context) (v time.Time, er
 	return oldValue.CreatedAt, nil
 }
 
+// ClearCreatedAt clears the value of the "created_at" field.
+func (m *AccessTokenMutation) ClearCreatedAt() {
+	m.created_at = nil
+	m.clearedFields[accesstoken.FieldCreatedAt] = struct{}{}
+}
+
+// CreatedAtCleared returns if the "created_at" field was cleared in this mutation.
+func (m *AccessTokenMutation) CreatedAtCleared() bool {
+	_, ok := m.clearedFields[accesstoken.FieldCreatedAt]
+	return ok
+}
+
 // ResetCreatedAt resets all changes to the "created_at" field.
 func (m *AccessTokenMutation) ResetCreatedAt() {
 	m.created_at = nil
+	delete(m.clearedFields, accesstoken.FieldCreatedAt)
 }
 
 // ClearUser clears the "user" edge to the User entity.
@@ -382,7 +395,11 @@ func (m *AccessTokenMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *AccessTokenMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(accesstoken.FieldCreatedAt) {
+		fields = append(fields, accesstoken.FieldCreatedAt)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -395,6 +412,11 @@ func (m *AccessTokenMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *AccessTokenMutation) ClearField(name string) error {
+	switch name {
+	case accesstoken.FieldCreatedAt:
+		m.ClearCreatedAt()
+		return nil
+	}
 	return fmt.Errorf("unknown AccessToken nullable field %s", name)
 }
 
@@ -4256,9 +4278,22 @@ func (m *TeamMutation) OldIsBanned(ctx context.Context) (v bool, err error) {
 	return oldValue.IsBanned, nil
 }
 
+// ClearIsBanned clears the value of the "is_banned" field.
+func (m *TeamMutation) ClearIsBanned() {
+	m.is_banned = nil
+	m.clearedFields[team.FieldIsBanned] = struct{}{}
+}
+
+// IsBannedCleared returns if the "is_banned" field was cleared in this mutation.
+func (m *TeamMutation) IsBannedCleared() bool {
+	_, ok := m.clearedFields[team.FieldIsBanned]
+	return ok
+}
+
 // ResetIsBanned resets all changes to the "is_banned" field.
 func (m *TeamMutation) ResetIsBanned() {
 	m.is_banned = nil
+	delete(m.clearedFields, team.FieldIsBanned)
 }
 
 // SetIsBlocked sets the "is_blocked" field.
@@ -4292,9 +4327,22 @@ func (m *TeamMutation) OldIsBlocked(ctx context.Context) (v bool, err error) {
 	return oldValue.IsBlocked, nil
 }
 
+// ClearIsBlocked clears the value of the "is_blocked" field.
+func (m *TeamMutation) ClearIsBlocked() {
+	m.is_blocked = nil
+	m.clearedFields[team.FieldIsBlocked] = struct{}{}
+}
+
+// IsBlockedCleared returns if the "is_blocked" field was cleared in this mutation.
+func (m *TeamMutation) IsBlockedCleared() bool {
+	_, ok := m.clearedFields[team.FieldIsBlocked]
+	return ok
+}
+
 // ResetIsBlocked resets all changes to the "is_blocked" field.
 func (m *TeamMutation) ResetIsBlocked() {
 	m.is_blocked = nil
+	delete(m.clearedFields, team.FieldIsBlocked)
 }
 
 // SetBlockedReason sets the "blocked_reason" field.
@@ -4899,6 +4947,12 @@ func (m *TeamMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *TeamMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(team.FieldIsBanned) {
+		fields = append(fields, team.FieldIsBanned)
+	}
+	if m.FieldCleared(team.FieldIsBlocked) {
+		fields = append(fields, team.FieldIsBlocked)
+	}
 	if m.FieldCleared(team.FieldBlockedReason) {
 		fields = append(fields, team.FieldBlockedReason)
 	}
@@ -4916,6 +4970,12 @@ func (m *TeamMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *TeamMutation) ClearField(name string) error {
 	switch name {
+	case team.FieldIsBanned:
+		m.ClearIsBanned()
+		return nil
+	case team.FieldIsBlocked:
+		m.ClearIsBlocked()
+		return nil
 	case team.FieldBlockedReason:
 		m.ClearBlockedReason()
 		return nil

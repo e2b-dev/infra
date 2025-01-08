@@ -10,6 +10,14 @@ generate-models:
 	rm -rf pkg/models/*
 	go generate ./pkg/generate_models.go
 
+.PHONY: prep-dev-cluster
+prep-dev-cluster:
+	@echo "Seeding database..."
+	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed-db.go
+	@echo "Building base template..."
+	@E2B_DOMAIN=$(DOMAIN_NAME) e2b tpl build -p scripts
+	@echo "Done"
+
 check-atlas:
 	@if ! command -v atlas >/dev/null 2>&1; then \
 		echo "Atlas is not installed. Do you want to install it?  (Y/n): "; \

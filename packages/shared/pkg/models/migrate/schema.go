@@ -12,7 +12,7 @@ var (
 	// AccessTokensColumns holds the columns for the "access_tokens" table.
 	AccessTokensColumns = []*schema.Column{
 		{Name: "access_token", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
+		{Name: "created_at", Type: field.TypeTime, Nullable: true, Default: "CURRENT_TIMESTAMP"},
 		{Name: "user_id", Type: field.TypeUUID},
 	}
 	// AccessTokensTable holds the schema information for the "access_tokens" table.
@@ -140,8 +140,8 @@ var (
 	TeamsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
 		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
-		{Name: "is_banned", Type: field.TypeBool, Default: "false"},
-		{Name: "is_blocked", Type: field.TypeBool, Default: "false"},
+		{Name: "is_banned", Type: field.TypeBool, Nullable: true, Default: "false"},
+		{Name: "is_blocked", Type: field.TypeBool, Nullable: true, Default: "false"},
 		{Name: "blocked_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "name", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "email", Type: field.TypeString, Size: 255, SchemaType: map[string]string{"postgres": "character varying(255)"}},

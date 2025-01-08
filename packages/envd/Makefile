@@ -34,14 +34,7 @@ start-docker:
 
 build-and-upload:
 	make build
-	make upload-local
-	gcloud compute instance-groups list-instances $(PREFIX)orch-client-ig \
-          	  --zone=$(GCP_ZONE) \
-          	  --project=$(GCP_PROJECT_ID) \
-          	  --format="value(instance)" \
-          	  --quiet | xargs -I {} -P 5 sh -c "gcloud compute ssh {} --zone=$(GCP_ZONE) --command='sudo rm -rf /fc-vm/envd && \
-												sudo cp /mnt/disks/envs-pipeline/envd /fc-vm/envd && sudo chmod +x /fc-vm/envd"
-	@echo "Uploaded envd to all clients"
+	make upload
 
 .PHONY: generate
 generate:

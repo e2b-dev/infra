@@ -114,6 +114,9 @@ func (atu *AccessTokenUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			}
 		}
 	}
+	if atu.mutation.CreatedAtCleared() {
+		_spec.ClearField(accesstoken.FieldCreatedAt, field.TypeTime)
+	}
 	if atu.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
@@ -281,6 +284,9 @@ func (atuo *AccessTokenUpdateOne) sqlSave(ctx context.Context) (_node *AccessTok
 				ps[i](selector)
 			}
 		}
+	}
+	if atuo.mutation.CreatedAtCleared() {
+		_spec.ClearField(accesstoken.FieldCreatedAt, field.TypeTime)
 	}
 	if atuo.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
