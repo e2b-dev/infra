@@ -53,7 +53,7 @@ killall:
           	  --zone=$(GCP_ZONE) \
           	  --project=$(GCP_PROJECT_ID) \
           	  --format="value(instance)" \
-          	  --quiet | xargs -I {} -P 5 sh -c "gcloud compute ssh {} --zone=$(GCP_ZONE) --command='sudo killall -9 firecracker'"
+          	  --quiet | xargs -I {} -P 5 sh -c "gcloud compute ssh {} --project=$(GCP_PROJECT_ID) --zone=$(GCP_ZONE) --command='sudo killall -9 firecracker'"
 	@echo "Killing all firecracker processes"
 
 .PHONY: mock-snapshot
