@@ -47,11 +47,6 @@ variable "bucket_name" {
     default = ""
 }
 
-variable "orchestrator_checksum" {
-  type    = string
-  default = ""
-}
-
 variable "template_bucket_name" {
   type    = string
   default = ""
