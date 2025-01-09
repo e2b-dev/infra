@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -51,12 +52,10 @@ func (n *Node) SetStatus(status api.NodeStatus) {
 	n.status = status
 }
 
-type nodeInfo struct {
-	ID      string
-	Address string
-}
+func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, error) {
+	_, listSpan := o.tracer.Start(ctx, "list-nomad-nodes")
+	defer listSpan.End()
 
-func (o *Orchestrator) listNomadNodes() ([]*node.NodeInfo, error) {
 	// TODO: Use variable for node pool name ("default")
 	nomadNodes, _, err := o.nomadClient.Nodes().List(&nomadapi.QueryOptions{Filter: "Status == \"ready\" and NodePool == \"default\""})
 	if err != nil {

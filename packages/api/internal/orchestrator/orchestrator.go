@@ -75,7 +75,7 @@ func New(
 	if env.IsLocal() {
 		logger.Info("Skipping syncing sandboxes, running locally")
 	} else {
-		go o.keepInSync(ctx, cache)
+		go o.keepInSync(cache)
 	}
 
 	return &o, nil

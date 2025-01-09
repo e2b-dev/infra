@@ -12,7 +12,7 @@ import (
 )
 
 func (o *Orchestrator) listCachedBuilds(ctx context.Context, nodeID string) ([]*orchestrator.CachedBuildInfo, error) {
-	childCtx, childSpan := o.tracer.Start(ctx, "list-instances")
+	childCtx, childSpan := o.tracer.Start(ctx, "list-cached-builds")
 	defer childSpan.End()
 
 	client, err := o.GetClient(nodeID)
