@@ -198,7 +198,7 @@ processors:
     transforms:
       - include: "nomad_client_host_cpu_idle"
         match_type: strict
-        action: combine
+        action: update
         operations:
           - action: aggregate_labels
             aggregation_type: sum
