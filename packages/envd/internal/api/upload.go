@@ -16,6 +16,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
+	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
 func freeDiskSpace(path string) (free uint64, err error) {
@@ -113,7 +114,12 @@ func resolvePath(part *multipart.Part, paths *UploadSuccess, u *user.User, param
 	if params.Path != nil {
 		pathToResolve = *params.Path
 	} else {
-		pathToResolve = part.FileName()
+		var err error
+		customPart := utils.NewCustomPart(part)
+		pathToResolve, err = customPart.FileNameWithPath()
+		if err != nil {
+			return "", fmt.Errorf("error getting multipart custom part file name: %w", err)
+		}
 	}
 
 	filePath, err := permissions.ExpandAndResolve(pathToResolve, u)
