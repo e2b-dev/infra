@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -13,8 +12,6 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
-
 	err := constants.CheckRequired()
 	if err != nil {
 		log.Fatal(err)
@@ -23,7 +20,7 @@ func main() {
 	port := flag.Int("port", 5000, "Port for test HTTP server")
 	flag.Parse()
 
-	store := handlers.NewStore(ctx)
+	store := handlers.NewStore()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		// Health check for nomad

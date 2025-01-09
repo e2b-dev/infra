@@ -36,7 +36,6 @@ const (
 var sandboxStartRequestLimit = semaphore.NewWeighted(defaultRequestLimit)
 
 type APIStore struct {
-	Ctx                  context.Context
 	analytics            *analyticscollector.Analytics
 	posthog              *analyticscollector.PosthogClient
 	Tracer               trace.Tracer
@@ -66,7 +65,7 @@ func NewAPIStore() *APIStore {
 		panic(err)
 	}
 
-	dbClient, err := db.NewClient(ctx)
+	dbClient, err := db.NewClient()
 	if err != nil {
 		logger.Errorf("Error initializing Supabase client\n: %v", err)
 		panic(err)
@@ -120,7 +119,6 @@ func NewAPIStore() *APIStore {
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
 	return &APIStore{
-		Ctx:                  ctx,
 		orchestrator:         orch,
 		templateManager:      templateManager,
 		db:                   dbClient,
