@@ -74,7 +74,7 @@ func (o *Orchestrator) keepInSync(instanceCache *instance.InstanceCache) {
 }
 
 func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.NodeInfo, instanceCache *instance.InstanceCache) {
-	ctx, childSpan := o.tracer.Start(ctx, "connect-to-node")
+	ctx, childSpan := o.tracer.Start(ctx, "sync-node")
 	telemetry.SetAttributes(ctx, attribute.String("node.id", node.Info.ID))
 	defer childSpan.End()
 
