@@ -74,8 +74,8 @@ resource "google_compute_instance_template" "server" {
   metadata_startup_script = var.startup_script
   metadata = merge(
     {
-      enable-osconfig                          = "TRUE",
-      enable-guest-attributes                  = "TRUE",
+      enable-osconfig         = "TRUE",
+      enable-guest-attributes = "TRUE",
     },
     var.custom_metadata,
   )

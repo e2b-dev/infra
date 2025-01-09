@@ -92,8 +92,8 @@ resource "google_compute_instance_template" "api" {
   metadata = merge(
     { api_cluster = "TRUE" },
     {
-      enable-osconfig                          = "TRUE",
-      enable-guest-attributes                  = "TRUE",
+      enable-osconfig         = "TRUE",
+      enable-guest-attributes = "TRUE",
     },
     var.custom_metadata,
   )
