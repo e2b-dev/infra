@@ -84,7 +84,6 @@ func NewSandbox(
 		config.KernelVersion,
 		config.FirecrackerVersion,
 		config.HugePages,
-		isSnapshot,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get template snapshot data: %w", err)
