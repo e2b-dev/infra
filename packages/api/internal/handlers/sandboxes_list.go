@@ -45,29 +45,28 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		}
 
 		// Filter instances to match all filters
-		for key, value := range filters {
 			n := 0
-
 			for _, instance := range instanceInfo {
 				if instance.Metadata == nil {
 					continue
 				}
-
-				if _, ok := instance.Metadata[key]; !ok {
-					continue
+				
+				matchesAll := true
+				for key, value := range filters {
+					if metadataValue, ok := instance.Metadata[key]; !ok || metadataValue != value {
+						matchesAll = false
+						break
+					}
 				}
-
-				if instance.Metadata[key] != value {
-					continue
+				
+				if matchesAll {
+					instanceInfo[n] = instance
+					n++
 				}
-
-				instanceInfo[n] = instance
-				n++
 			}
-
+			
 			// Trim slice
 			instanceInfo = instanceInfo[:n]
-		}
 	}
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
