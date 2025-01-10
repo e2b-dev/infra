@@ -18,11 +18,10 @@ COPY main.go main.go
 COPY internal internal
 
 RUN --mount=type=cache,target=/root/.cache/go-build make build
+RUN chmod +x /build/docker-reverse-proxy/bin/docker-reverse-proxy
 
 FROM alpine:3.17
 
 COPY --from=builder /build/docker-reverse-proxy/bin/docker-reverse-proxy .
-
-RUN chmod +x docker-reverse-proxy
 
 ENTRYPOINT [ "./docker-reverse-proxy" ]
