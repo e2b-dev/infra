@@ -3,10 +3,11 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/envd/internal/host"
-	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"io"
 	"net/http"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/host"
+	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 )
 
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
@@ -35,6 +36,10 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	// Set this env var to indicate that we are in a sandbox
+	// This is set after the user providced env vars are set to ensure that is not overriden upon initialization.
+	a.envVars.Store("E2B_SANDBOX", "true")
 
 	a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg("Syncing host")
 
