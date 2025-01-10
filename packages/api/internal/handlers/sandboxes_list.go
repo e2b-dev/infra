@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) GetSandboxes(c *gin.Context) {
+func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	ctx := c.Request.Context()
 
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
@@ -24,6 +25,50 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "list running instances")
 
 	instanceInfo := a.orchestrator.GetSandboxes(ctx, &team.ID)
+
+	if params.Filter != nil {
+		filters := make(map[string]string)
+
+		// Parse filters
+		for _, filter := range *params.Filter {
+			keyValuePair := strings.Split(filter, ":")
+
+			if len(keyValuePair) != 2 {
+				c.JSON(http.StatusBadRequest, "invalid filter")
+
+				return
+			}
+
+			key, value := keyValuePair[0], keyValuePair[1]
+
+			filters[key] = value
+		}
+
+		// Filter instances to match all filters
+		for key, value := range filters {
+			n := 0
+
+			for _, instance := range instanceInfo {
+				if instance.Metadata == nil {
+					continue
+				}
+
+				if _, ok := instance.Metadata[key]; !ok {
+					continue
+				}
+
+				if instance.Metadata[key] != value {
+					continue
+				}
+
+				instanceInfo[n] = instance
+				n++
+			}
+
+			// Trim slice
+			instanceInfo = instanceInfo[:n]
+		}
+	}
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
