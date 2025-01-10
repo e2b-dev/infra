@@ -96,13 +96,13 @@ func MergeMappings(
 		base := baseMapping[baseIdx]
 		diff := diffMapping[diffIdx]
 
-		if base.Length <= 0 {
+		if base.Length == 0 {
 			baseIdx++
 
 			continue
 		}
 
-		if diff.Length <= 0 {
+		if diff.Length == 0 {
 			diffIdx++
 
 			continue
