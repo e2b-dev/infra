@@ -45,23 +45,7 @@ func TestMergeMappingsRemoveEmpty(t *testing.T) {
 
 	m := MergeMappings(simpleBase, diff)
 
-	require.True(t, Equal(m, []*BuildMap{
-		{
-			Offset:  0,
-			Length:  2 * blockSize,
-			BuildId: ignoreID,
-		},
-		{
-			Offset:  2 * blockSize,
-			Length:  4 * blockSize,
-			BuildId: baseID,
-		},
-		{
-			Offset:  6 * blockSize,
-			Length:  2 * blockSize,
-			BuildId: ignoreID,
-		},
-	}))
+	require.True(t, Equal(m, simpleBase))
 
 	err := ValidateMappings(m, size, blockSize)
 
