@@ -45,17 +45,19 @@ func CreateDiff(
 			return nil, nil, fmt.Errorf("error reading from source: %w", err)
 		}
 
-		// At this moment the template should be cached locally, because it was used when starting or during running the sandbox—that's why it is dirty.
-		cacheBlock, err := base.Slice(int64(i)*blockSize, blockSize)
-		if err != nil {
-			return nil, nil, fmt.Errorf("error reading from cache: %w", err)
-		}
+		if base != nil {
+			// At this moment the template should be cached locally, because it was used when starting or during running the sandbox—that's why it is dirty.
+			cacheBlock, err := base.Slice(int64(i)*blockSize, blockSize)
+			if err != nil {
+				return nil, nil, fmt.Errorf("error reading from cache: %w", err)
+			}
 
-		// If the block is the same as in the base it is not dirty.
-		if bytes.Equal(b, cacheBlock) {
-			dirty.Clear(uint(i))
+			// If the block is the same as in the base it is not dirty.
+			if bytes.Equal(b, cacheBlock) {
+				dirty.Clear(uint(i))
 
-			continue
+				continue
+			}
 		}
 
 		// If the block is empty, we don't need to write it to the diff.
