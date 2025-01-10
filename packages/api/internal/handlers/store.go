@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -52,10 +53,8 @@ type APIStore struct {
 
 var lokiAddress = os.Getenv("LOKI_ADDRESS")
 
-func NewAPIStore() *APIStore {
+func NewAPIStore(ctx context.Context) *APIStore {
 	fmt.Println("Initializing API store")
-
-	ctx := context.Background()
 
 	tracer := otel.Tracer("api")
 
@@ -133,29 +132,32 @@ func NewAPIStore() *APIStore {
 	}
 }
 
-func (a *APIStore) Close() {
+func (a *APIStore) Close() error {
 	a.templateSpawnCounter.Close()
 
-	err := a.analytics.Close()
-	if err != nil {
-		a.logger.Errorf("Error closing Analytics\n: %v", err)
+	errs := []error{}
+
+	if err := a.analytics.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("closing Analytics: %w", err))
 	}
 
-	err = a.posthog.Close()
-	if err != nil {
-		a.logger.Errorf("Error closing Posthog client\n: %v", err)
+	if err := a.posthog.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("closing Posthog client: %w", err))
 	}
 
-	err = a.orchestrator.Close()
-	if err != nil {
-		a.logger.Errorf("Error closing Orchestrator client\n: %v", err)
+	if err := a.orchestrator.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("closing Orchestrator client: %w", err))
+
 	}
-	err = a.templateManager.Close()
-	if err != nil {
-		a.logger.Errorf("Error closing Template manager client\n: %v", err)
+	if err := a.templateManager.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("closing Template manager client: %w", err))
 	}
 
-	a.db.Close()
+	if err := a.db.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("closing database client: %w", err))
+	}
+
+	return errors.Join(errs...)
 }
 
 // This function wraps sending of an error in the Error format, and
