@@ -36,6 +36,6 @@ func NewClient() (*DB, error) {
 	return &DB{Client: client}, nil
 }
 
-func (db *DB) Close() {
-	_ = db.Client.Close()
+func (db *DB) Close() error {
+	return db.Client.Close()
 }
