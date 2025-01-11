@@ -37,10 +37,6 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Set this env var to indicate that we are in a sandbox
-	// This is set after the user providced env vars are set to ensure that is not overriden upon initialization.
-	a.envVars.Store("E2B_SANDBOX", "true")
-
 	a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg("Syncing host")
 
 	go func() {
