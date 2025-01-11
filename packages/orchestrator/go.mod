@@ -15,7 +15,6 @@ require (
 	github.com/hashicorp/consul/api v1.30.0
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/loopholelabs/userfaultfd-go v0.1.2
-	github.com/miekg/dns v1.1.62
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/shirou/gopsutil/v4 v4.24.10
 	github.com/vishvananda/netlink v1.3.0
@@ -93,6 +92,7 @@ require (
 	github.com/mdlayher/genetlink v1.3.2 // indirect
 	github.com/mdlayher/netlink v1.7.2 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
+	github.com/miekg/dns v1.1.62 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.1-0.20220423185008-bf980b35cac4 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect

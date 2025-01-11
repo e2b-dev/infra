@@ -84,7 +84,6 @@ func NewSandbox(
 		config.KernelVersion,
 		config.FirecrackerVersion,
 		config.HugePages,
-		isSnapshot,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get template snapshot data: %w", err)
@@ -393,7 +392,13 @@ func (s *Sandbox) Snapshot(
 		return nil, fmt.Errorf("failed to create memfile diff file: %w", err)
 	}
 
-	err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiffFile)
+	memfileDirtyPages, emptyDirtyPages, err := header.CreateDiff(
+		sourceFile,
+		s.files.MemfilePageSize(),
+		memfileDirtyPages,
+		originalMemfile,
+		memfileDiffFile,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
 	}
@@ -402,15 +407,32 @@ func (s *Sandbox) Snapshot(
 
 	releaseLock()
 
-	memfileMapping := header.CreateMapping(
-		memfileMetadata,
-		&buildId,
-		memfileDirtyPages,
+	var memfileMappings []*header.BuildMap
+
+	memfileEmptyMapping := header.CreateMapping(
+		&uuid.Nil,
+		emptyDirtyPages,
+		memfileMetadata.BlockSize,
 	)
 
-	memfileMappings := header.MergeMappings(
+	if memfileEmptyMapping != nil {
+		memfileMappings = header.MergeMappings(
+			originalMemfile.Header().Mapping,
+			memfileEmptyMapping,
+		)
+
+		memfileMappings = header.NormalizeMappings(memfileMappings)
+	}
+
+	memfileDirtyMappings := header.CreateMapping(
+		&buildId,
+		memfileDirtyPages,
+		memfileMetadata.BlockSize,
+	)
+
+	memfileMappings = header.MergeMappings(
 		originalMemfile.Header().Mapping,
-		memfileMapping,
+		memfileDirtyMappings,
 	)
 
 	snapfile, err := template.NewLocalFile(snapshotTemplateFiles.CacheSnapfilePath())
@@ -469,9 +491,9 @@ func (s *Sandbox) Snapshot(
 	}
 
 	rootfsMapping := header.CreateMapping(
-		rootfsMetadata,
 		&buildId,
 		rootfsDirtyBlocks,
+		rootfsMetadata.BlockSize,
 	)
 
 	rootfsMappings := header.MergeMappings(
