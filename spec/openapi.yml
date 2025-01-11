@@ -478,6 +478,15 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+      parameters:
+        - name: filter
+          in: query
+          description: A list of filters with key-value pairs (e.g. user:abc, app:prod).
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
       responses:
         "200":
           description: Successfully returned all running sandboxes

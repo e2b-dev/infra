@@ -303,6 +303,12 @@ type N409 = Error
 // N500 defines model for 500.
 type N500 = Error
 
+// GetSandboxesParams defines parameters for GetSandboxes.
+type GetSandboxesParams struct {
+	// Filter List of filters with key-value pairs (e.g., type:book, price:10).
+	Filter *[]string `form:"filter,omitempty" json:"filter,omitempty"`
+}
+
 // GetSandboxesSandboxIDLogsParams defines parameters for GetSandboxesSandboxIDLogs.
 type GetSandboxesSandboxIDLogsParams struct {
 	// Start Starting timestamp of the logs that should be returned in milliseconds
