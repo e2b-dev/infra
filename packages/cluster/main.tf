@@ -143,11 +143,6 @@ module "client_cluster" {
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
 
-  client_proxy_port        = var.client_proxy_port
-  client_proxy_health_port = var.client_proxy_health_port
-
-  api_port                  = var.api_port
-  docker_reverse_proxy_port = var.docker_reverse_proxy_port
   nomad_port                = var.nomad_port
 
   service_account_email = var.google_service_account_email
