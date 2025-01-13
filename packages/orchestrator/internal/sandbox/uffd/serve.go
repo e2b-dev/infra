@@ -4,16 +4,19 @@ import (
 	"errors"
 	"fmt"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/loopholelabs/userfaultfd-go/pkg/constants"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/cache"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
 
 const (
-	maxEagainAttempts = 32
+	maxEagainAttempts = 4096
+	eagainDelay       = 50 * time.Microsecond
 )
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
@@ -37,11 +40,13 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 	return nil, fmt.Errorf("address %d not found in any mapping", addr)
 }
 
-func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd uintptr) error {
+func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceDevice, fd uintptr, stop func() error, sandboxId string) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: int32(fd), Events: unix.POLLIN},
 	}
+
+	var eg errgroup.Group
 
 	for {
 		if _, err := unix.Poll(
@@ -57,6 +62,11 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 
 		exitFd := pollFds[1]
 		if exitFd.Revents&unix.POLLIN != 0 {
+			errMsg := eg.Wait()
+			if errMsg != nil {
+				return fmt.Errorf("failed to handle uffd: %w", errMsg)
+			}
+
 			return nil
 		}
 
@@ -72,10 +82,12 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 
 			if err == syscall.EAGAIN {
 				if i > maxEagainAttempts {
-					return fmt.Errorf("too many uffd read attempts, last error: %w", err)
+					return fmt.Errorf("too many uffd read attempts, last error: %w\n", err)
 				}
 
 				i++
+
+				time.Sleep(eagainDelay)
 
 				continue
 			}
@@ -85,6 +97,8 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 
 		msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
 		if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
+			stop()
+
 			return ErrUnexpectedEventType
 		}
 
@@ -95,38 +109,51 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *cache.Mmapfile, fd 
 
 		mapping, err := getMapping(uintptr(addr), mappings)
 		if err != nil {
+			stop()
+
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
-		offset := uint64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
-		pagesize := uint64(mapping.PageSize)
+		offset := int64(mapping.Offset + uintptr(addr) - mapping.BaseHostVirtAddr)
+		pagesize := int64(mapping.PageSize)
 
-		if offset+pagesize > uint64(len(*src.Map)) {
-			return fmt.Errorf("offset %v is out of bounds", offset)
-		}
+		eg.Go(func() error {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("[sandbox %s]: recovered from panic in uffd serve (offset: %d, pagesize: %d): %v\n", sandboxId, offset, pagesize, r)
+				}
+			}()
 
-		b := (*src.Map)[offset : offset+pagesize]
-
-		cpy := constants.NewUffdioCopy(
-			b,
-			addr&^constants.CULong(pagesize-1),
-			constants.CULong(pagesize),
-			0,
-			0,
-		)
-
-		if _, _, errno := syscall.Syscall(
-			syscall.SYS_IOCTL,
-			uintptr(uffd),
-			constants.UFFDIO_COPY,
-			uintptr(unsafe.Pointer(&cpy)),
-		); errno != 0 {
-			if errno == unix.EEXIST {
-				// Page is already mapped
-				continue
+			b, err := src.Slice(offset, pagesize)
+			if err != nil {
+				return fmt.Errorf("failed to read from source: %w", err)
 			}
 
-			return fmt.Errorf("failed uffdio copy %w", errno)
-		}
+			cpy := constants.NewUffdioCopy(
+				b,
+				addr&^constants.CULong(pagesize-1),
+				constants.CULong(pagesize),
+				0,
+				0,
+			)
+
+			if _, _, errno := syscall.Syscall(
+				syscall.SYS_IOCTL,
+				uintptr(uffd),
+				constants.UFFDIO_COPY,
+				uintptr(unsafe.Pointer(&cpy)),
+			); errno != 0 {
+				if errno == unix.EEXIST {
+					// Page is already mapped
+					return nil
+				}
+
+				stop()
+
+				return fmt.Errorf("failed uffdio copy %w", errno)
+			}
+
+			return nil
+		})
 	}
 }

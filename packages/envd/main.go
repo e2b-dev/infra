@@ -128,6 +128,8 @@ func main() {
 
 	envVars := utils.NewMap[string, string]()
 
+	envVars.Store("E2B_SANDBOX", "true")
+
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, envVars)
 

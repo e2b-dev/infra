@@ -25,21 +25,6 @@ resource "google_compute_instance_group_manager" "client_cluster" {
   }
 
   named_port {
-    name = var.docker_reverse_proxy_port.name
-    port = var.docker_reverse_proxy_port.port
-  }
-
-  named_port {
-    name = var.client_proxy_health_port.name
-    port = var.client_proxy_health_port.port
-  }
-
-  named_port {
-    name = var.client_proxy_port.name
-    port = var.client_proxy_port.port
-  }
-
-  named_port {
     name = var.logs_health_proxy_port.name
     port = var.logs_health_proxy_port.port
   }
@@ -47,11 +32,6 @@ resource "google_compute_instance_group_manager" "client_cluster" {
   named_port {
     name = var.logs_proxy_port.name
     port = var.logs_proxy_port.port
-  }
-
-  named_port {
-    name = var.api_port.name
-    port = var.api_port.port
   }
 
   auto_healing_policies {
@@ -94,17 +74,16 @@ resource "google_compute_instance_template" "client" {
 
   labels = merge(
     var.labels,
-    {
+    (var.environment == "prod" ? {
       goog-ops-agent-policy = "v2-x86-template-1-2-0-${var.gcp_zone}"
-    }
+    } : {})
   )
   tags                    = concat([var.cluster_tag_name], var.custom_tags)
   metadata_startup_script = var.startup_script
   metadata = merge(
     {
-      enable-osconfig                          = "TRUE",
-      enable-guest-attributes                  = "TRUE",
-      (var.metadata_key_name_for_cluster_size) = var.cluster_size
+      enable-osconfig         = "TRUE",
+      enable-guest-attributes = "TRUE",
     },
     var.custom_metadata,
   )
@@ -121,11 +100,11 @@ resource "google_compute_instance_template" "client" {
   }
 
   disk {
-    source      = var.fc_envs_disk_name
-    auto_delete = false
-    boot        = false
-    device_name = var.fc_envs_disk_device_name
-    mode        = "READ_WRITE"
+    auto_delete  = true
+    boot         = false
+    type         = "PERSISTENT"
+    disk_size_gb = 500
+    disk_type    = "pd-ssd"
   }
 
   network_interface {
@@ -155,5 +134,9 @@ resource "google_compute_instance_template" "client" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     create_before_destroy = true
+
+    # TODO: Temporary workaround to avoid unnecessary updates to the instance template.
+    #  This should be removed once cluster size is removed from the metadata
+    ignore_changes = [metadata]
   }
 }

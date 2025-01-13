@@ -23,7 +23,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 
 	telemetry.ReportEvent(ctx, "list running instances")
 
-	instanceInfo := a.instanceCache.GetInstances(&team.ID)
+	instanceInfo := a.orchestrator.GetSandboxes(ctx, &team.ID)
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
@@ -31,6 +31,10 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 
 	buildIDs := make([]uuid.UUID, 0)
 	for _, info := range instanceInfo {
+		if info.TeamID == nil {
+			continue
+		}
+
 		if *info.TeamID != team.ID {
 			continue
 		}
@@ -53,18 +57,16 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 	sandboxes := make([]api.RunningSandbox, 0)
 
 	for _, info := range instanceInfo {
+		if info.TeamID == nil {
+			continue
+		}
+
 		if *info.TeamID != team.ID {
 			continue
 		}
 
-		// Fallback if the env build was deleted, we don't have the information about the resources anymore,
-		// so we set them to -1.
-		memoryMB := int32(-1)
-		cpuCount := int32(-1)
-
-		if build, ok := buildsMap[*info.BuildID]; ok {
-			memoryMB = int32(build.RAMMB)
-			cpuCount = int32(build.Vcpu)
+		if info.BuildID == nil {
+			continue
 		}
 
 		instance := api.RunningSandbox{
@@ -73,8 +75,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 			Alias:      info.Instance.Alias,
 			SandboxID:  info.Instance.SandboxID,
 			StartedAt:  info.StartTime,
-			CpuCount:   cpuCount,
-			MemoryMB:   memoryMB,
+			CpuCount:   int32(buildsMap[*info.BuildID].Vcpu),
+			MemoryMB:   int32(buildsMap[*info.BuildID].RAMMB),
 			EndAt:      info.EndTime,
 		}
 
@@ -88,7 +90,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 
 	// Sort sandboxes by start time descending
 	slices.SortFunc(sandboxes, func(a, b api.RunningSandbox) int {
-                return a.StartedAt.Compare(b.StartedAt)
+		return a.StartedAt.Compare(b.StartedAt)
 	})
 
 	c.JSON(http.StatusOK, sandboxes)

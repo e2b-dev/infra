@@ -6,6 +6,10 @@ variable "consul_acl_token_secret" {
   type = string
 }
 
+variable "template_bucket_name" {
+  type = string
+}
+
 variable "nomad_acl_token_secret" {
   type = string
 }
@@ -32,6 +36,10 @@ variable "api_port" {
 }
 
 variable "api_secret" {
+  type = string
+}
+
+variable "api_admin_token_name" {
   type = string
 }
 
@@ -72,10 +80,6 @@ variable "postgres_connection_string_secret_name" {
 }
 
 # Proxies
-variable "client_cluster_size" {
-  type = number
-}
-
 variable "session_proxy_service_name" {
   type = string
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/internal"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/google/uuid"
@@ -74,6 +75,12 @@ func (eu *EnvUpdate) SetNillableCreatedBy(u *uuid.UUID) *EnvUpdate {
 	if u != nil {
 		eu.SetCreatedBy(*u)
 	}
+	return eu
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (eu *EnvUpdate) ClearCreatedBy() *EnvUpdate {
+	eu.mutation.ClearCreatedBy()
 	return eu
 }
 
@@ -164,6 +171,14 @@ func (eu *EnvUpdate) SetCreatorID(id uuid.UUID) *EnvUpdate {
 	return eu
 }
 
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (eu *EnvUpdate) SetNillableCreatorID(id *uuid.UUID) *EnvUpdate {
+	if id != nil {
+		eu = eu.SetCreatorID(*id)
+	}
+	return eu
+}
+
 // SetCreator sets the "creator" edge to the User entity.
 func (eu *EnvUpdate) SetCreator(u *User) *EnvUpdate {
 	return eu.SetCreatorID(u.ID)
@@ -197,6 +212,21 @@ func (eu *EnvUpdate) AddBuilds(e ...*EnvBuild) *EnvUpdate {
 		ids[i] = e[i].ID
 	}
 	return eu.AddBuildIDs(ids...)
+}
+
+// AddSnapshotIDs adds the "snapshots" edge to the Snapshot entity by IDs.
+func (eu *EnvUpdate) AddSnapshotIDs(ids ...uuid.UUID) *EnvUpdate {
+	eu.mutation.AddSnapshotIDs(ids...)
+	return eu
+}
+
+// AddSnapshots adds the "snapshots" edges to the Snapshot entity.
+func (eu *EnvUpdate) AddSnapshots(s ...*Snapshot) *EnvUpdate {
+	ids := make([]uuid.UUID, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return eu.AddSnapshotIDs(ids...)
 }
 
 // Mutation returns the EnvMutation object of the builder.
@@ -258,6 +288,27 @@ func (eu *EnvUpdate) RemoveBuilds(e ...*EnvBuild) *EnvUpdate {
 	return eu.RemoveBuildIDs(ids...)
 }
 
+// ClearSnapshots clears all "snapshots" edges to the Snapshot entity.
+func (eu *EnvUpdate) ClearSnapshots() *EnvUpdate {
+	eu.mutation.ClearSnapshots()
+	return eu
+}
+
+// RemoveSnapshotIDs removes the "snapshots" edge to Snapshot entities by IDs.
+func (eu *EnvUpdate) RemoveSnapshotIDs(ids ...uuid.UUID) *EnvUpdate {
+	eu.mutation.RemoveSnapshotIDs(ids...)
+	return eu
+}
+
+// RemoveSnapshots removes "snapshots" edges to Snapshot entities.
+func (eu *EnvUpdate) RemoveSnapshots(s ...*Snapshot) *EnvUpdate {
+	ids := make([]uuid.UUID, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return eu.RemoveSnapshotIDs(ids...)
+}
+
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (eu *EnvUpdate) Save(ctx context.Context) (int, error) {
 	return withHooks(ctx, eu.sqlSave, eu.mutation, eu.hooks)
@@ -289,9 +340,6 @@ func (eu *EnvUpdate) ExecX(ctx context.Context) {
 func (eu *EnvUpdate) check() error {
 	if _, ok := eu.mutation.TeamID(); eu.mutation.TeamCleared() && !ok {
 		return errors.New(`models: clearing a required unique edge "Env.team"`)
-	}
-	if _, ok := eu.mutation.CreatorID(); eu.mutation.CreatorCleared() && !ok {
-		return errors.New(`models: clearing a required unique edge "Env.creator"`)
 	}
 	return nil
 }
@@ -496,6 +544,54 @@ func (eu *EnvUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if eu.mutation.SnapshotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   env.SnapshotsTable,
+			Columns: []string{env.SnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(snapshot.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = eu.schemaConfig.Snapshot
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := eu.mutation.RemovedSnapshotsIDs(); len(nodes) > 0 && !eu.mutation.SnapshotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   env.SnapshotsTable,
+			Columns: []string{env.SnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(snapshot.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = eu.schemaConfig.Snapshot
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := eu.mutation.SnapshotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   env.SnapshotsTable,
+			Columns: []string{env.SnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(snapshot.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = eu.schemaConfig.Snapshot
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	_spec.Node.Schema = eu.schemaConfig.Env
 	ctx = internal.NewSchemaConfigContext(ctx, eu.schemaConfig)
 	_spec.AddModifiers(eu.modifiers...)
@@ -559,6 +655,12 @@ func (euo *EnvUpdateOne) SetNillableCreatedBy(u *uuid.UUID) *EnvUpdateOne {
 	if u != nil {
 		euo.SetCreatedBy(*u)
 	}
+	return euo
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (euo *EnvUpdateOne) ClearCreatedBy() *EnvUpdateOne {
+	euo.mutation.ClearCreatedBy()
 	return euo
 }
 
@@ -649,6 +751,14 @@ func (euo *EnvUpdateOne) SetCreatorID(id uuid.UUID) *EnvUpdateOne {
 	return euo
 }
 
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (euo *EnvUpdateOne) SetNillableCreatorID(id *uuid.UUID) *EnvUpdateOne {
+	if id != nil {
+		euo = euo.SetCreatorID(*id)
+	}
+	return euo
+}
+
 // SetCreator sets the "creator" edge to the User entity.
 func (euo *EnvUpdateOne) SetCreator(u *User) *EnvUpdateOne {
 	return euo.SetCreatorID(u.ID)
@@ -682,6 +792,21 @@ func (euo *EnvUpdateOne) AddBuilds(e ...*EnvBuild) *EnvUpdateOne {
 		ids[i] = e[i].ID
 	}
 	return euo.AddBuildIDs(ids...)
+}
+
+// AddSnapshotIDs adds the "snapshots" edge to the Snapshot entity by IDs.
+func (euo *EnvUpdateOne) AddSnapshotIDs(ids ...uuid.UUID) *EnvUpdateOne {
+	euo.mutation.AddSnapshotIDs(ids...)
+	return euo
+}
+
+// AddSnapshots adds the "snapshots" edges to the Snapshot entity.
+func (euo *EnvUpdateOne) AddSnapshots(s ...*Snapshot) *EnvUpdateOne {
+	ids := make([]uuid.UUID, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return euo.AddSnapshotIDs(ids...)
 }
 
 // Mutation returns the EnvMutation object of the builder.
@@ -743,6 +868,27 @@ func (euo *EnvUpdateOne) RemoveBuilds(e ...*EnvBuild) *EnvUpdateOne {
 	return euo.RemoveBuildIDs(ids...)
 }
 
+// ClearSnapshots clears all "snapshots" edges to the Snapshot entity.
+func (euo *EnvUpdateOne) ClearSnapshots() *EnvUpdateOne {
+	euo.mutation.ClearSnapshots()
+	return euo
+}
+
+// RemoveSnapshotIDs removes the "snapshots" edge to Snapshot entities by IDs.
+func (euo *EnvUpdateOne) RemoveSnapshotIDs(ids ...uuid.UUID) *EnvUpdateOne {
+	euo.mutation.RemoveSnapshotIDs(ids...)
+	return euo
+}
+
+// RemoveSnapshots removes "snapshots" edges to Snapshot entities.
+func (euo *EnvUpdateOne) RemoveSnapshots(s ...*Snapshot) *EnvUpdateOne {
+	ids := make([]uuid.UUID, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return euo.RemoveSnapshotIDs(ids...)
+}
+
 // Where appends a list predicates to the EnvUpdate builder.
 func (euo *EnvUpdateOne) Where(ps ...predicate.Env) *EnvUpdateOne {
 	euo.mutation.Where(ps...)
@@ -787,9 +933,6 @@ func (euo *EnvUpdateOne) ExecX(ctx context.Context) {
 func (euo *EnvUpdateOne) check() error {
 	if _, ok := euo.mutation.TeamID(); euo.mutation.TeamCleared() && !ok {
 		return errors.New(`models: clearing a required unique edge "Env.team"`)
-	}
-	if _, ok := euo.mutation.CreatorID(); euo.mutation.CreatorCleared() && !ok {
-		return errors.New(`models: clearing a required unique edge "Env.creator"`)
 	}
 	return nil
 }
@@ -1006,6 +1149,54 @@ func (euo *EnvUpdateOne) sqlSave(ctx context.Context) (_node *Env, err error) {
 			},
 		}
 		edge.Schema = euo.schemaConfig.EnvBuild
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if euo.mutation.SnapshotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   env.SnapshotsTable,
+			Columns: []string{env.SnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(snapshot.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = euo.schemaConfig.Snapshot
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := euo.mutation.RemovedSnapshotsIDs(); len(nodes) > 0 && !euo.mutation.SnapshotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   env.SnapshotsTable,
+			Columns: []string{env.SnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(snapshot.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = euo.schemaConfig.Snapshot
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := euo.mutation.SnapshotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   env.SnapshotsTable,
+			Columns: []string{env.SnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(snapshot.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = euo.schemaConfig.Snapshot
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}

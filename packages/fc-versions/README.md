@@ -2,10 +2,7 @@
 
 Scripts in this directory are used to build Firecracker and several other binaries used for starting sandboxes on our infrastructure.
 
-It builds the following binaries:
-
-- Firecracker for each specified version
-- UFFD for each specified version
+It builds Firecracker for each specified version
 
 ## How to add a new version
 

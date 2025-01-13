@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -68,14 +69,14 @@ func (w *HTTPExporter) sendInstanceLogs(logs []byte) error {
 }
 
 func (w *HTTPExporter) start() {
-	for log := range w.logQueue {
+	for logLine := range w.logQueue {
 		if w.debug {
-			fmt.Print(string(log))
+			fmt.Print(string(logLine))
 		}
 
-		err := w.sendInstanceLogs(log)
+		err := w.sendInstanceLogs(logLine)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, fmt.Sprintf("error sending instance logs: %+v\n", err))
+			log.Printf(fmt.Sprintf("error sending instance logs: %+v\n", err))
 		}
 	}
 }

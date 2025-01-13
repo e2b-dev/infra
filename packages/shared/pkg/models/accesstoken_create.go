@@ -37,6 +37,14 @@ func (atc *AccessTokenCreate) SetCreatedAt(t time.Time) *AccessTokenCreate {
 	return atc
 }
 
+// SetNillableCreatedAt sets the "created_at" field if the given value is not nil.
+func (atc *AccessTokenCreate) SetNillableCreatedAt(t *time.Time) *AccessTokenCreate {
+	if t != nil {
+		atc.SetCreatedAt(*t)
+	}
+	return atc
+}
+
 // SetID sets the "id" field.
 func (atc *AccessTokenCreate) SetID(s string) *AccessTokenCreate {
 	atc.mutation.SetID(s)
@@ -84,9 +92,6 @@ func (atc *AccessTokenCreate) ExecX(ctx context.Context) {
 func (atc *AccessTokenCreate) check() error {
 	if _, ok := atc.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`models: missing required field "AccessToken.user_id"`)}
-	}
-	if _, ok := atc.mutation.CreatedAt(); !ok {
-		return &ValidationError{Name: "created_at", err: errors.New(`models: missing required field "AccessToken.created_at"`)}
 	}
 	if _, ok := atc.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user", err: errors.New(`models: missing required edge "AccessToken.user"`)}

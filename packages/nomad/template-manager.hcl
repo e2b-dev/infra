@@ -50,8 +50,17 @@ variable "bucket_name" {
   default = ""
 }
 
+variable "template_bucket_name" {
+  type    = string
+  default = ""
+}
+
+variable "otel_collector_grpc_endpoint" {
+  type    = string
+  default = ""
+}
+
 job "template-manager" {
-  type = "system"
   datacenters = [var.gcp_zone]
 
   priority = 70
@@ -82,7 +91,7 @@ job "template-manager" {
 
       resources {
         memory     = 1024
-        cpu        = 1000
+        cpu        = 256
       }
 
       env {
@@ -93,6 +102,8 @@ job "template-manager" {
         API_SECRET                    = var.api_secret
         OTEL_TRACING_PRINT            = var.otel_tracing_print
         ENVIRONMENT                   = var.environment
+        TEMPLATE_BUCKET_NAME          = var.template_bucket_name
+        OTEL_COLLECTOR_GRPC_ENDPOINT  = var.otel_collector_grpc_endpoint
       }
 
       config {

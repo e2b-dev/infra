@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/google/uuid"
@@ -65,6 +66,14 @@ func (ec *EnvCreate) SetTeamID(u uuid.UUID) *EnvCreate {
 // SetCreatedBy sets the "created_by" field.
 func (ec *EnvCreate) SetCreatedBy(u uuid.UUID) *EnvCreate {
 	ec.mutation.SetCreatedBy(u)
+	return ec
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (ec *EnvCreate) SetNillableCreatedBy(u *uuid.UUID) *EnvCreate {
+	if u != nil {
+		ec.SetCreatedBy(*u)
+	}
 	return ec
 }
 
@@ -133,6 +142,14 @@ func (ec *EnvCreate) SetCreatorID(id uuid.UUID) *EnvCreate {
 	return ec
 }
 
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (ec *EnvCreate) SetNillableCreatorID(id *uuid.UUID) *EnvCreate {
+	if id != nil {
+		ec = ec.SetCreatorID(*id)
+	}
+	return ec
+}
+
 // SetCreator sets the "creator" edge to the User entity.
 func (ec *EnvCreate) SetCreator(u *User) *EnvCreate {
 	return ec.SetCreatorID(u.ID)
@@ -166,6 +183,21 @@ func (ec *EnvCreate) AddBuilds(e ...*EnvBuild) *EnvCreate {
 		ids[i] = e[i].ID
 	}
 	return ec.AddBuildIDs(ids...)
+}
+
+// AddSnapshotIDs adds the "snapshots" edge to the Snapshot entity by IDs.
+func (ec *EnvCreate) AddSnapshotIDs(ids ...uuid.UUID) *EnvCreate {
+	ec.mutation.AddSnapshotIDs(ids...)
+	return ec
+}
+
+// AddSnapshots adds the "snapshots" edges to the Snapshot entity.
+func (ec *EnvCreate) AddSnapshots(s ...*Snapshot) *EnvCreate {
+	ids := make([]uuid.UUID, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return ec.AddSnapshotIDs(ids...)
 }
 
 // Mutation returns the EnvMutation object of the builder.
@@ -232,9 +264,6 @@ func (ec *EnvCreate) check() error {
 	if _, ok := ec.mutation.TeamID(); !ok {
 		return &ValidationError{Name: "team_id", err: errors.New(`models: missing required field "Env.team_id"`)}
 	}
-	if _, ok := ec.mutation.CreatedBy(); !ok {
-		return &ValidationError{Name: "created_by", err: errors.New(`models: missing required field "Env.created_by"`)}
-	}
 	if _, ok := ec.mutation.Public(); !ok {
 		return &ValidationError{Name: "public", err: errors.New(`models: missing required field "Env.public"`)}
 	}
@@ -246,9 +275,6 @@ func (ec *EnvCreate) check() error {
 	}
 	if _, ok := ec.mutation.TeamID(); !ok {
 		return &ValidationError{Name: "team", err: errors.New(`models: missing required edge "Env.team"`)}
-	}
-	if _, ok := ec.mutation.CreatorID(); !ok {
-		return &ValidationError{Name: "creator", err: errors.New(`models: missing required edge "Env.creator"`)}
 	}
 	return nil
 }
@@ -381,6 +407,23 @@ func (ec *EnvCreate) createSpec() (*Env, *sqlgraph.CreateSpec) {
 		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := ec.mutation.SnapshotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   env.SnapshotsTable,
+			Columns: []string{env.SnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(snapshot.FieldID, field.TypeUUID),
+			},
+		}
+		edge.Schema = ec.schemaConfig.Snapshot
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	return _node, _spec
 }
 
@@ -466,6 +509,12 @@ func (u *EnvUpsert) SetCreatedBy(v uuid.UUID) *EnvUpsert {
 // UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
 func (u *EnvUpsert) UpdateCreatedBy() *EnvUpsert {
 	u.SetExcluded(env.FieldCreatedBy)
+	return u
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *EnvUpsert) ClearCreatedBy() *EnvUpsert {
+	u.SetNull(env.FieldCreatedBy)
 	return u
 }
 
@@ -625,6 +674,13 @@ func (u *EnvUpsertOne) SetCreatedBy(v uuid.UUID) *EnvUpsertOne {
 func (u *EnvUpsertOne) UpdateCreatedBy() *EnvUpsertOne {
 	return u.Update(func(s *EnvUpsert) {
 		s.UpdateCreatedBy()
+	})
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *EnvUpsertOne) ClearCreatedBy() *EnvUpsertOne {
+	return u.Update(func(s *EnvUpsert) {
+		s.ClearCreatedBy()
 	})
 }
 
@@ -962,6 +1018,13 @@ func (u *EnvUpsertBulk) SetCreatedBy(v uuid.UUID) *EnvUpsertBulk {
 func (u *EnvUpsertBulk) UpdateCreatedBy() *EnvUpsertBulk {
 	return u.Update(func(s *EnvUpsert) {
 		s.UpdateCreatedBy()
+	})
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *EnvUpsertBulk) ClearCreatedBy() *EnvUpsertBulk {
+	return u.Update(func(s *EnvUpsert) {
+		s.ClearCreatedBy()
 	})
 }
 

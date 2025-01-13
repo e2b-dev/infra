@@ -1,7 +1,6 @@
 package db
 
 import (
-	"context"
 	"fmt"
 	"os"
 
@@ -14,12 +13,11 @@ import (
 
 type DB struct {
 	Client *models.Client
-	ctx    context.Context
 }
 
 var databaseURL = os.Getenv("POSTGRES_CONNECTION_STRING")
 
-func NewClient(ctx context.Context) (*DB, error) {
+func NewClient() (*DB, error) {
 	if databaseURL == "" {
 		return nil, fmt.Errorf("database URL is empty")
 	}
@@ -31,11 +29,11 @@ func NewClient(ctx context.Context) (*DB, error) {
 
 	// Get the underlying sql.DB object of the driver.
 	db := drv.DB()
-	db.SetMaxOpenConns(20)
+	db.SetMaxOpenConns(100)
 
 	client := models.NewClient(models.Driver(drv))
 
-	return &DB{Client: client, ctx: ctx}, nil
+	return &DB{Client: client}, nil
 }
 
 func (db *DB) Close() {

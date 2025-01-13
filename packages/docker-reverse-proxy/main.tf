@@ -14,6 +14,7 @@ data "docker_registry_image" "docker_reverse_proxy_image" {
 resource "docker_image" "docker_reverse_proxy_image" {
   name          = data.docker_registry_image.docker_reverse_proxy_image.name
   pull_triggers = [data.docker_registry_image.docker_reverse_proxy_image.sha256_digest]
+  platform      = "linux/amd64/v8"
 }
 
 resource "google_service_account" "docker_registry_service_account" {

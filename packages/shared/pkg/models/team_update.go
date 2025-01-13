@@ -49,6 +49,12 @@ func (tu *TeamUpdate) SetNillableIsBanned(b *bool) *TeamUpdate {
 	return tu
 }
 
+// ClearIsBanned clears the value of the "is_banned" field.
+func (tu *TeamUpdate) ClearIsBanned() *TeamUpdate {
+	tu.mutation.ClearIsBanned()
+	return tu
+}
+
 // SetIsBlocked sets the "is_blocked" field.
 func (tu *TeamUpdate) SetIsBlocked(b bool) *TeamUpdate {
 	tu.mutation.SetIsBlocked(b)
@@ -60,6 +66,12 @@ func (tu *TeamUpdate) SetNillableIsBlocked(b *bool) *TeamUpdate {
 	if b != nil {
 		tu.SetIsBlocked(*b)
 	}
+	return tu
+}
+
+// ClearIsBlocked clears the value of the "is_blocked" field.
+func (tu *TeamUpdate) ClearIsBlocked() *TeamUpdate {
+	tu.mutation.ClearIsBlocked()
 	return tu
 }
 
@@ -352,8 +364,14 @@ func (tu *TeamUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if value, ok := tu.mutation.IsBanned(); ok {
 		_spec.SetField(team.FieldIsBanned, field.TypeBool, value)
 	}
+	if tu.mutation.IsBannedCleared() {
+		_spec.ClearField(team.FieldIsBanned, field.TypeBool)
+	}
 	if value, ok := tu.mutation.IsBlocked(); ok {
 		_spec.SetField(team.FieldIsBlocked, field.TypeBool, value)
+	}
+	if tu.mutation.IsBlockedCleared() {
+		_spec.ClearField(team.FieldIsBlocked, field.TypeBool)
 	}
 	if value, ok := tu.mutation.BlockedReason(); ok {
 		_spec.SetField(team.FieldBlockedReason, field.TypeString, value)
@@ -640,6 +658,12 @@ func (tuo *TeamUpdateOne) SetNillableIsBanned(b *bool) *TeamUpdateOne {
 	return tuo
 }
 
+// ClearIsBanned clears the value of the "is_banned" field.
+func (tuo *TeamUpdateOne) ClearIsBanned() *TeamUpdateOne {
+	tuo.mutation.ClearIsBanned()
+	return tuo
+}
+
 // SetIsBlocked sets the "is_blocked" field.
 func (tuo *TeamUpdateOne) SetIsBlocked(b bool) *TeamUpdateOne {
 	tuo.mutation.SetIsBlocked(b)
@@ -651,6 +675,12 @@ func (tuo *TeamUpdateOne) SetNillableIsBlocked(b *bool) *TeamUpdateOne {
 	if b != nil {
 		tuo.SetIsBlocked(*b)
 	}
+	return tuo
+}
+
+// ClearIsBlocked clears the value of the "is_blocked" field.
+func (tuo *TeamUpdateOne) ClearIsBlocked() *TeamUpdateOne {
+	tuo.mutation.ClearIsBlocked()
 	return tuo
 }
 
@@ -973,8 +1003,14 @@ func (tuo *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) 
 	if value, ok := tuo.mutation.IsBanned(); ok {
 		_spec.SetField(team.FieldIsBanned, field.TypeBool, value)
 	}
+	if tuo.mutation.IsBannedCleared() {
+		_spec.ClearField(team.FieldIsBanned, field.TypeBool)
+	}
 	if value, ok := tuo.mutation.IsBlocked(); ok {
 		_spec.SetField(team.FieldIsBlocked, field.TypeBool, value)
+	}
+	if tuo.mutation.IsBlockedCleared() {
+		_spec.ClearField(team.FieldIsBlocked, field.TypeBool)
 	}
 	if value, ok := tuo.mutation.BlockedReason(); ok {
 		_spec.SetField(team.FieldBlockedReason, field.TypeString, value)

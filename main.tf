@@ -24,10 +24,6 @@ terraform {
       source  = "hashicorp/nomad"
       version = "2.1.0"
     }
-    consul = {
-      source  = "hashicorp/consul"
-      version = "2.20.0"
-    }
     github = {
       source  = "integrations/github"
       version = "5.42.0"
@@ -76,17 +72,10 @@ module "buckets" {
   gcp_project_id            = var.gcp_project_id
   gcp_region                = var.gcp_region
 
-  labels = var.labels
-}
-
-module "fc_envs_disk" {
-  source = "./packages/fc-envs-disk"
-
-  gcp_zone          = var.gcp_zone
-  fc_envs_disk_size = var.fc_envs_disk_size
+  fc_template_bucket_name     = length(var.template_bucket_name) > 0 ? var.template_bucket_name : "${var.gcp_project_id}-fc-templates"
+  fc_template_bucket_location = var.template_bucket_location
 
   labels = var.labels
-  prefix = var.prefix
 }
 
 module "github_tf" {
@@ -110,6 +99,8 @@ module "github_tf" {
 module "cluster" {
   source = "./packages/cluster"
 
+  environment = var.environment
+
   cloudflare_api_token_secret_name = module.init.cloudflare_api_token_secret_name
   gcp_project_id                   = var.gcp_project_id
   gcp_region                       = var.gcp_region
@@ -118,9 +109,11 @@ module "cluster" {
 
   server_cluster_size = var.server_cluster_size
   client_cluster_size = var.client_cluster_size
+  api_cluster_size    = var.api_cluster_size
 
   server_machine_type = var.server_machine_type
   client_machine_type = var.client_machine_type
+  api_machine_type    = var.api_machine_type
 
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
@@ -133,7 +126,6 @@ module "cluster" {
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
 
-  fc_envs_disk_name           = module.fc_envs_disk.disk_name
   docker_contexts_bucket_name = module.buckets.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.buckets.cluster_setup_bucket_name
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name
@@ -199,10 +191,8 @@ module "nomad" {
   posthog_api_key_secret_name               = module.api.posthog_api_key_secret_name
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
-
+  api_admin_token_name                      = module.api.api_admin_token_name
   # Proxies
-  client_cluster_size = var.client_cluster_size
-
   session_proxy_service_name = var.session_proxy_service_name
   session_proxy_port         = var.session_proxy_port
 
@@ -238,4 +228,5 @@ module "nomad" {
 
   # Template manager
   template_manager_port = var.template_manager_port
+  template_bucket_name  = module.buckets.fc_template_bucket_name
 }

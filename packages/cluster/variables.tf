@@ -2,6 +2,11 @@ variable "prefix" {
   type = string
 }
 
+variable "environment" {
+  description = "The environment (e.g. staging, prod)."
+  type        = string
+}
+
 variable "cloudflare_api_token_secret_name" {
   type = string
 }
@@ -27,6 +32,19 @@ variable "server_cluster_size" {
 }
 
 variable "server_machine_type" {
+  type = string
+}
+
+variable "api_image_family" {
+  type    = string
+  default = "e2b-orch"
+}
+
+variable "api_cluster_size" {
+  type = number
+}
+
+variable "api_machine_type" {
   type = string
 }
 
@@ -120,11 +138,6 @@ variable "google_service_account_key" {
   type = string
 }
 
-variable "fc_envs_disk_name" {
-  type        = string
-  description = "The name of the disk that will be created to store the envs"
-}
-
 variable "docker_contexts_bucket_name" {
   type = string
 }
@@ -163,11 +176,6 @@ variable "nomad_acl_token_secret" {
 
 variable "nomad_port" {
   type = number
-}
-
-variable "fc_envs_disk_device_name" {
-  type    = string
-  default = "fc-envs"
 }
 
 variable "labels" {
