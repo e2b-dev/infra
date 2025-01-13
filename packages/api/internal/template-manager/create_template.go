@@ -16,8 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -77,52 +76,35 @@ func (tm *TemplateManager) CreateTemplate(
 			break
 		} else if receiveErr != nil {
 			// There was an error during the build
-			errMsg := fmt.Errorf("error when building env: %w", receiveErr)
-			handleBuildErr(ctx, db, buildCache, templateID, buildID, errMsg)
+			return fmt.Errorf("error when building env: %w", receiveErr)
 
-			return errMsg
 		}
 		logErr := buildCache.Append(templateID, buildID, log.Log)
 		if logErr != nil {
 			// There was an error saving the logs, the build wasn't found
-			errMsg := fmt.Errorf("error when saving docker build logs: %w", logErr)
-			handleBuildErr(ctx, db, buildCache, templateID, buildID, errMsg)
-
-			return errMsg
+			return fmt.Errorf("error when saving docker build logs: %w", logErr)
 		}
 	}
 
 	trailer := logs.Trailer()
 	rootfsSizeStr, ok := trailer[storage.RootfsSizeKey]
 	if !ok {
-		errMsg := fmt.Errorf("rootfs size not found in trailer")
-		handleBuildErr(ctx, db, buildCache, templateID, buildID, errMsg)
-
-		return errMsg
+		return fmt.Errorf("rootfs size not found in trailer")
 	}
 
 	diskSize, parseErr := strconv.ParseInt(rootfsSizeStr[0], 10, 64)
 	if parseErr != nil {
-		parseErr = fmt.Errorf("error when parsing rootfs size: %w", err)
-		handleBuildErr(ctx, db, buildCache, templateID, buildID, parseErr)
-
-		return parseErr
+		return fmt.Errorf("error when parsing rootfs size: %w", parseErr)
 	}
 
 	envdVersion, ok := trailer[storage.EnvdVersionKey]
 	if !ok {
-		errMsg := fmt.Errorf("envd version not found in trailer")
-		handleBuildErr(ctx, db, buildCache, templateID, buildID, errMsg)
-
-		return errMsg
+		return fmt.Errorf("envd version not found in trailer")
 	}
 
 	err = db.FinishEnvBuild(childCtx, templateID, buildID, diskSize, envdVersion[0])
 	if err != nil {
-		err = fmt.Errorf("error when finishing build: %w", err)
-		handleBuildErr(ctx, db, buildCache, templateID, buildID, err)
-
-		return err
+		return fmt.Errorf("error when finishing build: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "created new environment", attribute.String("env.id", templateID))
@@ -136,31 +118,4 @@ func (tm *TemplateManager) CreateTemplate(
 	telemetry.ReportEvent(childCtx, "Template build started")
 
 	return nil
-}
-
-func handleBuildErr(
-	ctx context.Context,
-	db *db.DB,
-	buildCache *builds.BuildCache,
-	templateID string,
-	buildID uuid.UUID,
-	buildErr error,
-) {
-	telemetry.ReportCriticalError(ctx, buildErr)
-
-	err := db.EnvBuildSetStatus(ctx, templateID, buildID, envbuild.StatusFailed)
-	if err != nil {
-		err = fmt.Errorf("error when setting build status: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
-	}
-
-	// Save the error in the logs
-	buildErr = buildCache.Append(templateID, buildID, fmt.Sprintf("Build failed: %s\n", buildErr))
-
-	cacheErr := buildCache.SetDone(templateID, buildID, api.TemplateBuildStatusError)
-	if cacheErr != nil {
-		err = fmt.Errorf("error when setting build done in logs: %w", cacheErr)
-		telemetry.ReportCriticalError(ctx, cacheErr)
-	}
-	return
 }
