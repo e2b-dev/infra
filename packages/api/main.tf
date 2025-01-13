@@ -34,6 +34,7 @@ data "docker_registry_image" "api_image" {
 resource "docker_image" "api_image" {
   name          = data.docker_registry_image.api_image.name
   pull_triggers = [data.docker_registry_image.api_image.sha256_digest]
+  platform      = "linux/amd64/v8"
 }
 
 resource "google_secret_manager_secret" "postgres_connection_string" {
