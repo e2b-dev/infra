@@ -94,7 +94,7 @@ func (tm *TemplateManager) CreateTemplate(
 
 	diskSize, parseErr := strconv.ParseInt(rootfsSizeStr[0], 10, 64)
 	if parseErr != nil {
-		return fmt.Errorf("error when parsing rootfs size: %w", err)
+		return fmt.Errorf("error when parsing rootfs size: %w", parseErr)
 	}
 
 	envdVersion, ok := trailer[storage.EnvdVersionKey]

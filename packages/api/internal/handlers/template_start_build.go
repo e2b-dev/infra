@@ -145,7 +145,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 			dbErr := a.db.EnvBuildSetStatus(ctx, templateID, buildUUID, envbuild.StatusFailed)
 			if dbErr != nil {
-				dbErr = fmt.Errorf("error when setting build status: %w", err)
+				dbErr = fmt.Errorf("error when setting build status: %w", dbErr)
 				telemetry.ReportCriticalError(ctx, dbErr)
 			}
 
