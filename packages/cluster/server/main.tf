@@ -76,6 +76,7 @@ resource "google_compute_instance_template" "server" {
     {
       enable-osconfig         = "TRUE",
       enable-guest-attributes = "TRUE",
+      (var.metadata_key_name_for_cluster_size) = var.cluster_size,
     },
     var.custom_metadata,
   )
@@ -128,9 +129,5 @@ resource "google_compute_instance_template" "server" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     create_before_destroy = true
-
-    # TODO: Temporary workaround to avoid unnecessary updates to the instance template.
-    #  This should be removed once cluster size is removed from the metadata
-    ignore_changes = [metadata]
   }
 }
