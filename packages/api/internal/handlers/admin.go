@@ -48,6 +48,11 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 	}
 
 	node := a.orchestrator.GetNode(nodeId)
+	if node == nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
 	node.SetStatus(body.Status)
 
 	c.Status(http.StatusNoContent)

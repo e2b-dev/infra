@@ -75,8 +75,8 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, er
 }
 
 func (o *Orchestrator) GetNode(nodeID string) *Node {
-	node, _ := o.nodes.Get(nodeID)
-	return node
+	n, _ := o.nodes.Get(nodeID)
+	return n
 }
 
 func (o *Orchestrator) GetNodes() []*api.Node {
