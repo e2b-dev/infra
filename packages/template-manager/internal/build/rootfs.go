@@ -75,6 +75,7 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 		env:          env,
 	}
 
+	_, _ = env.BuildLogsWriter.Write([]byte("Pulling Docker image...\n"))
 	err := rootfs.pullDockerImage(childCtx, tracer)
 	if err != nil {
 		errMsg := fmt.Errorf("error building docker image: %w", err)
@@ -83,6 +84,7 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 
 		return nil, errMsg
 	}
+	_, _ = env.BuildLogsWriter.Write([]byte("Pulled Docker image.\n\n"))
 
 	err = rootfs.createRootfsFile(childCtx, tracer)
 	if err != nil {
