@@ -195,8 +195,8 @@ resource "nomad_job" "orchestrator" {
       port         = var.orchestrator_port
       environment  = var.environment
       consul_token = var.consul_acl_token_secret
-      cpu_mhz      = floor(data.google_compute_machine_types.client.machine_types[0].guest_cpus * 1.5) * 1000
-      memory_mb    = floor(data.google_compute_machine_types.client.machine_types[0].memory_mb * 0.6 / 1024) * 1024
+      cpu_mhz      = var.environment == "prod" ? floor(data.google_compute_machine_types.client.machine_types[0].guest_cpus * 1.5) * 1000 : 1000
+      memory_mb    = var.environment == "prod" ? floor(data.google_compute_machine_types.client.machine_types[0].memory_mb * 0.6 / 1024) * 1024 : 1024
 
       bucket_name                  = var.fc_env_pipeline_bucket_name
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
