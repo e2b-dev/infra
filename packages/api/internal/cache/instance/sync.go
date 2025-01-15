@@ -85,8 +85,10 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 		instanceIds[i] = instance.Instance.SandboxID
 	}
 
-	_, err := c.analytics.RunningInstances(context.Background(), &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
-	if err != nil {
-		c.logger.Errorf("Error sending running instances event to analytics\n: %v", err)
-	}
+	go func() {
+		_, err := c.analytics.RunningInstances(context.Background(), &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
+		if err != nil {
+			c.logger.Errorf("Error sending running instances event to analytics\n: %v", err)
+		}
+	}()
 }

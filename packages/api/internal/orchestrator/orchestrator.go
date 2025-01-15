@@ -40,14 +40,19 @@ func New(
 	}
 
 	dnsServer := dns.New()
-	go func() {
-		fmt.Printf("Starting DNS server\n")
 
-		dnsErr := dnsServer.Start("127.0.0.4", 53)
-		if dnsErr != nil {
-			log.Fatalf("Failed running DNS server: %v\n", dnsErr)
-		}
-	}()
+	if env.IsLocal() {
+		fmt.Printf("Running locally, skipping starting DNS server\n")
+	} else {
+		go func() {
+			fmt.Printf("Starting DNS server\n")
+
+			dnsErr := dnsServer.Start("127.0.0.4", 53)
+			if dnsErr != nil {
+				log.Fatalf("Failed running DNS server: %v\n", dnsErr)
+			}
+		}()
+	}
 
 	o := Orchestrator{
 		analytics:   analyticsInstance,
@@ -70,7 +75,7 @@ func New(
 	if env.IsLocal() {
 		logger.Info("Skipping syncing sandboxes, running locally")
 	} else {
-		go o.keepInSync(ctx, cache)
+		go o.keepInSync(cache)
 	}
 
 	return &o, nil

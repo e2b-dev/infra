@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine3.20 as builder
+FROM golang:1.23-alpine3.20 AS builder
 
 RUN apk add --no-cache make
 
@@ -18,12 +18,11 @@ COPY internal internal
 COPY main.go main.go
 
 RUN --mount=type=cache,target=/root/.cache/go-build make build
+RUN chmod +x /build/api/bin/api
 
 FROM alpine:3.17
 
 COPY --from=builder /build/api/bin/api .
-
-RUN chmod +x api
 
 # Set Gin server to the production mode
 ENV GIN_MODE=release

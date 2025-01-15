@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -19,9 +18,9 @@ type APIStore struct {
 	proxy     *httputil.ReverseProxy
 }
 
-func NewStore(ctx context.Context) *APIStore {
+func NewStore() *APIStore {
 	authCache := cache.New()
-	database, err := db.NewClient(ctx)
+	database, err := db.NewClient()
 	if err != nil {
 		log.Fatal(err)
 	}

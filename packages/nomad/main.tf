@@ -181,14 +181,6 @@ data "google_storage_bucket_object" "orchestrator" {
 }
 
 
-data "external" "orchestrator_checksum" {
-  program = ["bash", "${path.module}/checksum.sh"]
-
-  query = {
-    base64 = data.google_storage_bucket_object.orchestrator.md5hash
-  }
-}
-
 data "google_compute_machine_types" "client" {
   zone   = var.gcp_zone
   filter = "name = \"${var.client_machine_type}\""
@@ -203,11 +195,10 @@ resource "nomad_job" "orchestrator" {
       port         = var.orchestrator_port
       environment  = var.environment
       consul_token = var.consul_acl_token_secret
-      cpu_mhz      = floor(data.google_compute_machine_types.client.machine_types[0].guest_cpus * 1.5) * 1000
-      memory_mb    = floor(data.google_compute_machine_types.client.machine_types[0].memory_mb * 0.6 / 1024) * 1024
+      cpu_mhz      = var.environment == "prod" ? floor(data.google_compute_machine_types.client.machine_types[0].guest_cpus * 1.5) * 1000 : 1000
+      memory_mb    = var.environment == "prod" ? floor(data.google_compute_machine_types.client.machine_types[0].memory_mb * 0.6 / 1024) * 1024 : 1024
 
       bucket_name                  = var.fc_env_pipeline_bucket_name
-      orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
       logs_collector_public_ip     = var.logs_proxy_address
       otel_tracing_print           = var.otel_tracing_print

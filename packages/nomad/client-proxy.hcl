@@ -67,7 +67,7 @@ job "client-proxy" {
       resources {
         memory_max = 2000
         memory = 1000
-        cpu    = 1000
+        cpu    = 512
       }
 
       config {

@@ -87,7 +87,7 @@ job "docker-reverse-proxy" {
       resources {
         memory_max = 2048
         memory = 512
-        cpu    = 1024
+        cpu    = 256
       }
 
       env {

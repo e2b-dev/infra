@@ -231,7 +231,7 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxID(c *gin.Context) {
 	// ------------- Path parameter "sandboxID" -------------
 	var sandboxID SandboxID
 
-	err = runtime.BindStyledParameter("simple", false, "sandboxID", c.Param("sandboxID"), &sandboxID)
+	err = runtime.BindStyledParameterWithOptions("simple", "sandboxID", c.Param("sandboxID"), &sandboxID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandboxID: %w", err), http.StatusBadRequest)
 		return

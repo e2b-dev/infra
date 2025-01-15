@@ -16,8 +16,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
-func (o *Orchestrator) getInstances(ctx context.Context, node *node.NodeInfo) ([]*instance.InstanceInfo, error) {
-	childCtx, childSpan := o.tracer.Start(ctx, "list-instances")
+func (o *Orchestrator) getSandboxes(ctx context.Context, node *node.NodeInfo) ([]*instance.InstanceInfo, error) {
+	childCtx, childSpan := o.tracer.Start(ctx, "get-sandboxes-from-orchestrator")
 	defer childSpan.End()
 
 	client, err := o.GetClient(node.ID)
@@ -80,9 +80,9 @@ func (o *Orchestrator) getInstances(ctx context.Context, node *node.NodeInfo) ([
 	return sandboxesInfo, nil
 }
 
-// GetInstances returns all instances for a given node.
-func (o *Orchestrator) GetInstances(ctx context.Context, teamID *uuid.UUID) []instance.InstanceInfo {
-	_, childSpan := o.tracer.Start(ctx, "get-instances")
+// GetSandboxes returns all instances for a given node.
+func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID) []instance.InstanceInfo {
+	_, childSpan := o.tracer.Start(ctx, "get-sandboxes")
 	defer childSpan.End()
 
 	return o.instanceCache.GetInstances(teamID)

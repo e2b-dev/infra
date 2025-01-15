@@ -108,7 +108,7 @@ job "otel-collector" {
       resources {
         memory_max = 4096
         memory = 1024
-        cpu    = 1000
+        cpu    = 256
       }
 
       template {
@@ -195,6 +195,15 @@ processors:
           - "nomad_nomad_job_summary_running"
           - "orchestrator.*"
           - "api.*"
+  metricstransform:
+    transforms:
+      - include: "nomad_client_host_cpu_idle"
+        match_type: strict
+        action: update
+        operations:
+          - action: aggregate_labels
+            aggregation_type: sum
+            label_set: [instance, node_id, node_status, node_pool]
   attributes/session-proxy:
     actions:
       - key: service.name
@@ -250,7 +259,7 @@ service:
       receivers:
         - prometheus
         - otlp
-      processors: [filter, batch]
+      processors: [filter, batch, metricstransform]
       exporters:
         - prometheusremotewrite/grafana_cloud_metrics
     # metrics/session-proxy:

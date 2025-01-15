@@ -32,7 +32,7 @@ const (
 
 var (
 	// These vars are automatically set by goreleaser.
-	Version = "0.1.2"
+	Version = "0.1.4"
 
 	debug bool
 	port  int64
@@ -127,6 +127,8 @@ func main() {
 	filesystemRpc.Handle(m, &fsLogger)
 
 	envVars := utils.NewMap[string, string]()
+
+	envVars.Store("E2B_SANDBOX", "true")
 
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, envVars)
