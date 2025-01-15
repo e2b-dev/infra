@@ -233,7 +233,7 @@ echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
 
 # Add alias for ssh-ing to sbx
 echo '_sbx_ssh() {
-  local address=$(dig @localhost $1. A +short 2>/dev/null)
+  local address=$(dig @127.0.0.4 $1. A +short 2>/dev/null)
   ssh -o StrictHostKeyChecking=accept-new "root@$address"
 }
 
