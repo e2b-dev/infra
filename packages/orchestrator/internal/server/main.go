@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dns"
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -59,7 +60,7 @@ func New() (*grpc.Server, error) {
 	}
 
 	s := grpc.NewServer(
-		grpc.StatsHandler(NewStatsWrapper(otelgrpc.NewServerHandler())),
+		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
 		grpc.ChainUnaryInterceptor(
 			recovery.UnaryServerInterceptor(),
 		),
