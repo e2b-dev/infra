@@ -189,7 +189,7 @@ func (db *DB) EnvBuildSetStatus(
 	err := db.Client.EnvBuild.Update().Where(envbuild.ID(buildID), envbuild.EnvID(envID)).
 		SetStatus(status).SetFinishedAt(time.Now()).Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to finish env build '%s': %w", buildID, err)
+		return fmt.Errorf("failed to set env build status %s for '%s': %w", status, buildID, err)
 	}
 
 	return nil
