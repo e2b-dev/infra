@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -26,47 +27,66 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	instanceInfo := a.orchestrator.GetSandboxes(ctx, &team.ID)
 
-	if params.Filter != nil {
+	if params.Query != nil {
+		// Unescape query
+		query, err := url.QueryUnescape(*params.Query)
+		if err != nil {
+			c.String(http.StatusBadRequest, "Error when unescaping query")
+
+			return
+		}
+
+		// Parse filters, both key and value are also unescaped
 		filters := make(map[string]string)
 
-		// Parse filters
-		for _, filter := range *params.Filter {
-			keyValuePair := strings.Split(filter, ":")
-
-			if len(keyValuePair) != 2 {
-				c.JSON(http.StatusBadRequest, "invalid filter")
+		for _, filter := range strings.Split(query, "&") {
+			parts := strings.Split(filter, "=")
+			if len(parts) != 2 {
+				c.String(http.StatusBadRequest, "Invalid key value pair in query")
 
 				return
 			}
 
-			key, value := keyValuePair[0], keyValuePair[1]
+			key, err := url.QueryUnescape(parts[0])
+			if err != nil {
+				c.String(http.StatusBadRequest, "Error when unescaping key")
+
+				return
+			}
+
+			value, err := url.QueryUnescape(parts[1])
+			if err != nil {
+				c.String(http.StatusBadRequest, "Error when unescaping value")
+
+				return
+			}
 
 			filters[key] = value
 		}
 
 		// Filter instances to match all filters
-			n := 0
-			for _, instance := range instanceInfo {
-				if instance.Metadata == nil {
-					continue
-				}
-				
-				matchesAll := true
-				for key, value := range filters {
-					if metadataValue, ok := instance.Metadata[key]; !ok || metadataValue != value {
-						matchesAll = false
-						break
-					}
-				}
-				
-				if matchesAll {
-					instanceInfo[n] = instance
-					n++
+		n := 0
+		for _, instance := range instanceInfo {
+			if instance.Metadata == nil {
+				continue
+			}
+
+			matchesAll := true
+			for key, value := range filters {
+				if metadataValue, ok := instance.Metadata[key]; !ok || metadataValue != value {
+					matchesAll = false
+					break
 				}
 			}
-			
-			// Trim slice
-			instanceInfo = instanceInfo[:n]
+
+			if matchesAll {
+				instanceInfo[n] = instance
+				n++
+			}
+		}
+
+		// Trim slice
+		instanceInfo = instanceInfo[:n]
 	}
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)

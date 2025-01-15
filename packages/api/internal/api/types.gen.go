@@ -305,8 +305,8 @@ type N500 = Error
 
 // GetSandboxesParams defines parameters for GetSandboxes.
 type GetSandboxesParams struct {
-	// Filter List of filters with key-value pairs (e.g., type:book, price:10).
-	Filter *[]string `form:"filter,omitempty" json:"filter,omitempty"`
+	// Query A query used to filter the sandboxes (e.g. "user=abc&app=prod"). Query and each key and values must be URL encoded.
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
 }
 
 // GetSandboxesSandboxIDLogsParams defines parameters for GetSandboxesSandboxIDLogs.

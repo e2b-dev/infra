@@ -177,11 +177,11 @@ func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesParams
 
-	// ------------- Optional query parameter "filter" -------------
+	// ------------- Optional query parameter "query" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "filter", c.Request.URL.Query(), &params.Filter)
+	err = runtime.BindQueryParameter("form", true, false, "query", c.Request.URL.Query(), &params.Query)
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter filter: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter query: %w", err), http.StatusBadRequest)
 		return
 	}
 
