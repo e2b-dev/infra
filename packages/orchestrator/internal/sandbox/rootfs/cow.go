@@ -62,7 +62,7 @@ func (o *CowDevice) Start(ctx context.Context) error {
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
 }
 
-func (o *CowDevice) Export(out io.Writer, stopSandbox func() error) (*bitset.BitSet, error) {
+func (o *CowDevice) Export(ctx context.Context, out io.Writer, stopSandbox func() error) (*bitset.BitSet, error) {
 	cache, err := o.overlay.EjectCache()
 	if err != nil {
 		return nil, fmt.Errorf("error ejecting cache: %w", err)
@@ -70,7 +70,12 @@ func (o *CowDevice) Export(out io.Writer, stopSandbox func() error) (*bitset.Bit
 
 	go stopSandbox()
 
-	<-o.finishedOperations
+	select {
+	case <-o.finishedOperations:
+		break
+	case <-ctx.Done():
+		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
+	}
 
 	dirty, err := cache.Export(out)
 	if err != nil {

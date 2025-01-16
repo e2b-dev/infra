@@ -463,7 +463,7 @@ func (s *Sandbox) Snapshot(
 		return nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
 
-	rootfsDirtyBlocks, err := s.rootfs.Export(rootfsDiffFile, s.Stop)
+	rootfsDirtyBlocks, err := s.rootfs.Export(ctx, rootfsDiffFile, s.Stop)
 	if err != nil {
 		return nil, fmt.Errorf("failed to export rootfs: %w", err)
 	}
