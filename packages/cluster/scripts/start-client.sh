@@ -107,7 +107,7 @@ EOF
 # Mount envd buckets
 envd_dir="/fc-envd"
 mkdir -p $envd_dir
-gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" $envd_dir
+gcsfuse -o=allow_other,ro --file-mode 755 --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" $envd_dir
 
 # Mount kernels
 kernels_dir="/fc-kernels"
