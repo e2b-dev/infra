@@ -68,7 +68,7 @@ func (o *CowDevice) Export(out io.Writer, stopSandbox func() error) (*bitset.Bit
 		return nil, fmt.Errorf("error ejecting cache: %w", err)
 	}
 
-	stopSandbox()
+	go stopSandbox()
 
 	<-o.finishedOperations
 
