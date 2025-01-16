@@ -35,9 +35,6 @@ var DefaultAttributes = func(serverName, route string, request *http.Request) []
 		semconv.HTTPMethodKey.String(request.Method),
 	}
 
-	if serverName != "" {
-		attrs = append(attrs, semconv.HTTPServerNameKey.String(serverName))
-	}
 	if route != "" {
 		attrs = append(attrs, semconv.HTTPRouteKey.String(route))
 	}

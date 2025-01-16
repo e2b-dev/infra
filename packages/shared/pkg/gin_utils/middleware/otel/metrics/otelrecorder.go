@@ -28,7 +28,7 @@ func GetRecorder(metricsPrefix string) Recorder {
 	meter := otel.Meter("api-metrics", metric.WithInstrumentationVersion(SemVersion()))
 
 	totalDuration, _ := meter.Float64Histogram(
-		metricName("http.server.test.request_duration_4"),
+		metricName("http.server.duration"),
 		metric.WithDescription("Time Taken by request"),
 		metric.WithUnit("s"),
 	)

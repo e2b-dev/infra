@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 
 	customMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/gin_utils/middleware"
+	metricsMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/gin_utils/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/gin_utils/middleware/otel/tracing"
 )
 
@@ -49,7 +50,7 @@ func NewGinServer(apiStore *handlers.APIStore, swagger *openapi3.T, port int) *h
 			"/templates/:templateID/builds/:buildID/logs",
 			"/templates/:templateID/builds/:buildID/status",
 		),
-		// customMiddleware.IncludeRoutes(metricsMiddleware.Middleware(serviceName), "/instances"),
+		customMiddleware.IncludeRoutes(metricsMiddleware.Middleware(serviceName), "/sandboxes"),
 		customMiddleware.ExcludeRoutes(gin.LoggerWithWriter(gin.DefaultWriter),
 			"/health",
 			"/sandboxes/:sandboxID/refreshes",
