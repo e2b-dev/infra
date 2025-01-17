@@ -26,7 +26,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
 	if err != nil {
-		c.String(http.StatusNotFound, fmt.Sprintf("instance \"%s\" doesn't exist or you don't have access to it", id))
+		c.JSON(http.StatusNotFound, fmt.Sprintf("instance \"%s\" doesn't exist or you don't have access to it", id))
 		return
 	}
 
