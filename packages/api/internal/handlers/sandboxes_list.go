@@ -31,7 +31,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		// Unescape query
 		query, err := url.QueryUnescape(*params.Query)
 		if err != nil {
-			c.String(http.StatusBadRequest, "Error when unescaping query")
+			c.JSON(http.StatusBadRequest, "Error when unescaping query")
 
 			return
 		}
@@ -42,21 +42,21 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		for _, filter := range strings.Split(query, "&") {
 			parts := strings.Split(filter, "=")
 			if len(parts) != 2 {
-				c.String(http.StatusBadRequest, "Invalid key value pair in query")
+				c.JSON(http.StatusBadRequest, "Invalid key value pair in query")
 
 				return
 			}
 
 			key, err := url.QueryUnescape(parts[0])
 			if err != nil {
-				c.String(http.StatusBadRequest, "Error when unescaping key")
+				c.JSON(http.StatusBadRequest, "Error when unescaping key")
 
 				return
 			}
 
 			value, err := url.QueryUnescape(parts[1])
 			if err != nil {
-				c.String(http.StatusBadRequest, "Error when unescaping value")
+				c.JSON(http.StatusBadRequest, "Error when unescaping value")
 
 				return
 			}
