@@ -139,4 +139,6 @@ func (c *client) close(ctx context.Context) error {
 			return err
 		}
 	}
+
+	return nil
 }

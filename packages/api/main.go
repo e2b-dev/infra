@@ -197,7 +197,7 @@ func main() {
 	defer cleanup()
 
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(serviceName, swagger.Info.Version)
+		shutdown := telemetry.InitOTLPExporter(ctx, serviceName, swagger.Info.Version)
 		cleanupFns = append(cleanupFns, func() error {
 			// shutdown handlers flush buffers upon call and take a context. passing a
 			// specific context here so that all timeout configuration is in one place.
