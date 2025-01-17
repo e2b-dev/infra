@@ -15,7 +15,6 @@ import (
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type GRPCClient struct {
@@ -45,7 +44,8 @@ func (a *GRPCClient) Close() error {
 
 func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) error {
 	ctx, childSpan := o.tracer.Start(ctx, "connect-to-node")
-	telemetry.SetAttributes(ctx, attribute.String("node.id", node.ID))
+	childSpan.SetAttributes(attribute.String("node.id", node.ID))
+
 	defer childSpan.End()
 
 	client, err := NewClient(node.OrchestratorAddress)

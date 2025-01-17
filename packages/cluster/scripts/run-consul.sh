@@ -3,6 +3,9 @@
 
 set -e
 
+# Enable command tracing
+set -x
+
 # Import the appropriate bash commons libraries
 readonly BASH_COMMONS_DIR="/opt/gruntwork/bash-commons"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

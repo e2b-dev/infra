@@ -225,10 +225,14 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	defer func() {
-		err := sbx.Stop()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error stopping sandbox after snapshot '%s': %v\n", in.SandboxId, err)
-		}
+		// sbx.Stop sometimes blocks for several seconds,
+		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and DNS.
+		go func() {
+			err := sbx.Stop()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error stopping sandbox after snapshot '%s': %v\n", in.SandboxId, err)
+			}
+		}()
 	}()
 
 	err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)

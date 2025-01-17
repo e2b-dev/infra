@@ -17,14 +17,15 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
 type serverStore struct {
-	template_manager.UnimplementedTemplateServiceServer
+	templatemanager.UnimplementedTemplateServiceServer
 	server             *grpc.Server
 	tracer             trace.Tracer
 	dockerClient       *client.Client
@@ -40,7 +41,7 @@ func New(logger *zap.Logger) *grpc.Server {
 	opts := []grpc_zap.Option{logging.WithoutHealthCheck()}
 
 	s := grpc.NewServer(
-		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
 		grpc.ChainUnaryInterceptor(
 			grpc_zap.UnaryServerInterceptor(logger, opts...),
 			recovery.UnaryServerInterceptor(),
@@ -63,7 +64,7 @@ func New(logger *zap.Logger) *grpc.Server {
 
 	templateStorage := template.NewStorage(ctx)
 
-	template_manager.RegisterTemplateServiceServer(s, &serverStore{
+	templatemanager.RegisterTemplateServiceServer(s, &serverStore{
 		tracer:             otel.Tracer(constants.ServiceName),
 		dockerClient:       dockerClient,
 		legacyDockerClient: legacyClient,

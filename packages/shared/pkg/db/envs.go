@@ -132,7 +132,7 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 
 	notFound := models.IsNotFound(err)
 	if notFound {
-		return nil, nil, fmt.Errorf("template '%s' not found", aliasOrEnvID)
+		return nil, nil, fmt.Errorf("template '%s' not found: %w", aliasOrEnvID, err)
 	} else if err != nil {
 		return nil, nil, fmt.Errorf("failed to get env '%s': %w", aliasOrEnvID, err)
 	}
@@ -189,7 +189,7 @@ func (db *DB) EnvBuildSetStatus(
 	err := db.Client.EnvBuild.Update().Where(envbuild.ID(buildID), envbuild.EnvID(envID)).
 		SetStatus(status).SetFinishedAt(time.Now()).Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to finish env build '%s': %w", buildID, err)
+		return fmt.Errorf("failed to set env build status %s for '%s': %w", status, buildID, err)
 	}
 
 	return nil

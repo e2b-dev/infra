@@ -15,6 +15,7 @@ import (
 	"golang.org/x/mod/semver"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -22,7 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
-	"github.com/e2b-dev/infra/packages/shared/pkg/dns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -463,7 +463,7 @@ func (s *Sandbox) Snapshot(
 		return nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
 
-	rootfsDirtyBlocks, err := s.rootfs.Export(rootfsDiffFile, s.Stop)
+	rootfsDirtyBlocks, err := s.rootfs.Export(ctx, rootfsDiffFile, s.Stop)
 	if err != nil {
 		return nil, fmt.Errorf("failed to export rootfs: %w", err)
 	}

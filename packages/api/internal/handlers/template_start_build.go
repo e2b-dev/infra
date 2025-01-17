@@ -140,8 +140,24 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 			build.RAMMB,
 		)
 		if buildErr != nil {
-			err = fmt.Errorf("error when building env: %w", buildErr)
+			buildErr = fmt.Errorf("error when building env: %w", buildErr)
 			telemetry.ReportCriticalError(buildContext, buildErr)
+
+			dbErr := a.db.EnvBuildSetStatus(buildContext, templateID, buildUUID, envbuild.StatusFailed)
+			if dbErr != nil {
+				telemetry.ReportCriticalError(buildContext, fmt.Errorf("error when setting build status: %w", dbErr))
+			}
+
+			// Save the error in the logs
+			buildCacheErr := a.buildCache.Append(templateID, buildUUID, fmt.Sprintf("Build failed: %s\n", buildErr))
+			if buildCacheErr != nil {
+				telemetry.ReportCriticalError(buildContext, fmt.Errorf("error when appending build logs: %w", buildCacheErr))
+			}
+
+			cacheErr := a.buildCache.SetDone(templateID, buildUUID, api.TemplateBuildStatusError)
+			if cacheErr != nil {
+				telemetry.ReportCriticalError(buildContext, fmt.Errorf("error when setting build done in logs: %w", cacheErr))
+			}
 
 			return
 		}

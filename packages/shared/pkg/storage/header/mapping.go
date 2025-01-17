@@ -1,6 +1,9 @@
 package header
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
 )
@@ -63,8 +66,12 @@ func CreateMapping(
 	return mappings
 }
 
+// MergeMappings merges two sets of mappings.
+//
 // The mapping are stored in a sorted order.
 // The baseMapping must cover the whole size.
+//
+// It returns a new set of mappings that covers the whole size.
 func MergeMappings(
 	baseMapping []*BuildMap,
 	diffMapping []*BuildMap,
@@ -134,15 +141,17 @@ func MergeMappings(
 		// add diff to the result
 		// if right part is not empty, update baseMapping with it, otherwise remove it from the baseMapping
 		if diff.Offset >= base.Offset && diff.Offset+diff.Length <= base.Offset+base.Length {
-			leftBase := &BuildMap{
-				Offset:  base.Offset,
-				Length:  diff.Offset - base.Offset,
-				BuildId: base.BuildId,
-				// the build storage offset is the same as the base mapping
-				BuildStorageOffset: base.BuildStorageOffset,
-			}
+			leftBaseLength := int64(diff.Offset) - int64(base.Offset)
 
-			if leftBase.Length > 0 {
+			if leftBaseLength > 0 {
+				leftBase := &BuildMap{
+					Offset:  base.Offset,
+					Length:  uint64(leftBaseLength),
+					BuildId: base.BuildId,
+					// the build storage offset is the same as the base mapping
+					BuildStorageOffset: base.BuildStorageOffset,
+				}
+
 				mappings = append(mappings, leftBase)
 			}
 
@@ -150,16 +159,17 @@ func MergeMappings(
 
 			diffIdx++
 
-			rightBaseShift := diff.Offset + diff.Length - base.Offset
+			rightBaseShift := int64(diff.Offset) + int64(diff.Length) - int64(base.Offset)
+			rightBaseLength := int64(base.Length) - rightBaseShift
 
-			rightBase := &BuildMap{
-				Offset:             base.Offset + rightBaseShift,
-				Length:             base.Length - rightBaseShift,
-				BuildId:            base.BuildId,
-				BuildStorageOffset: base.BuildStorageOffset + rightBaseShift,
-			}
+			if rightBaseLength > 0 {
+				rightBase := &BuildMap{
+					Offset:             base.Offset + uint64(rightBaseShift),
+					Length:             uint64(rightBaseLength),
+					BuildId:            base.BuildId,
+					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
+				}
 
-			if rightBase.Length > 0 {
 				baseMapping[baseIdx] = rightBase
 			} else {
 				baseIdx++
@@ -171,18 +181,25 @@ func MergeMappings(
 		// base is after diff and there is overlap
 		// add diff to the result
 		// add the right part of base to the baseMapping, it should not be empty because of the check above
-		if base.Offset+base.Length > diff.Offset {
+		if base.Offset > diff.Offset {
 			mappings = append(mappings, diff)
 
 			diffIdx++
 
-			rightBaseShift := diff.Offset + diff.Length - base.Offset
+			rightBaseShift := int64(diff.Offset) + int64(diff.Length) - int64(base.Offset)
+			rightBaseLength := int64(base.Length) - rightBaseShift
 
-			baseMapping[baseIdx] = &BuildMap{
-				Offset:             base.Offset + rightBaseShift,
-				Length:             base.Length - rightBaseShift,
-				BuildId:            base.BuildId,
-				BuildStorageOffset: base.BuildStorageOffset + rightBaseShift,
+			if rightBaseLength > 0 {
+				rightBase := &BuildMap{
+					Offset:             base.Offset + uint64(rightBaseShift),
+					Length:             uint64(rightBaseLength),
+					BuildId:            base.BuildId,
+					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
+				}
+
+				baseMapping[baseIdx] = rightBase
+			} else {
+				baseIdx++
 			}
 
 			continue
@@ -190,18 +207,26 @@ func MergeMappings(
 
 		// diff is after base and there is overlap
 		// add the left part of base to the result, it should not be empty because of the check above
-		if diff.Offset+diff.Length > base.Offset {
-			mappings = append(mappings, &BuildMap{
-				Offset:             base.Offset,
-				Length:             diff.Offset - base.Offset,
-				BuildId:            base.BuildId,
-				BuildStorageOffset: base.BuildStorageOffset,
-			})
+		if diff.Offset > base.Offset {
+			leftBaseLength := int64(diff.Offset) - int64(base.Offset)
+
+			if leftBaseLength > 0 {
+				leftBase := &BuildMap{
+					Offset:             base.Offset,
+					Length:             uint64(leftBaseLength),
+					BuildId:            base.BuildId,
+					BuildStorageOffset: base.BuildStorageOffset,
+				}
+
+				mappings = append(mappings, leftBase)
+			}
 
 			baseIdx++
 
 			continue
 		}
+
+		fmt.Fprintf(os.Stderr, "invalid case during merge mappings: %+v %+v\n", base, diff)
 	}
 
 	mappings = append(mappings, baseMapping[baseIdx:]...)

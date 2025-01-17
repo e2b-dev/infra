@@ -107,7 +107,7 @@ EOF
 # Mount envd buckets
 envd_dir="/fc-envd"
 mkdir -p $envd_dir
-gcsfuse -o=allow_other,ro --file-mode 755 --config-file $fuse_config --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" $envd_dir
+gcsfuse -o=allow_other,ro --file-mode 755 --implicit-dirs "${FC_ENV_PIPELINE_BUCKET_NAME}" $envd_dir
 
 # Mount kernels
 kernels_dir="/fc-kernels"
@@ -226,12 +226,14 @@ echo $overcommitment_hugepages >/proc/sys/vm/nr_overcommit_hugepages
     --consul-token "${CONSUL_TOKEN}" \
     --cluster-tag-name "${CLUSTER_TAG_NAME}" \
     --enable-gossip-encryption \
-    --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" &
+    --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" \
+    --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" &
+
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" &
 
 # Add alias for ssh-ing to sbx
 echo '_sbx_ssh() {
-  local address=$(dig @localhost $1. A +short 2>/dev/null)
+  local address=$(dig @127.0.0.4 $1. A +short 2>/dev/null)
   ssh -o StrictHostKeyChecking=accept-new "root@$address"
 }
 
