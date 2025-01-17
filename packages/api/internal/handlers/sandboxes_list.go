@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"net/http"
+	"net/url"
 	"slices"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) GetSandboxes(c *gin.Context) {
+func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	ctx := c.Request.Context()
 
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
@@ -24,6 +26,68 @@ func (a *APIStore) GetSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "list running instances")
 
 	instanceInfo := a.orchestrator.GetSandboxes(ctx, &team.ID)
+
+	if params.Query != nil {
+		// Unescape query
+		query, err := url.QueryUnescape(*params.Query)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, "Error when unescaping query")
+
+			return
+		}
+
+		// Parse filters, both key and value are also unescaped
+		filters := make(map[string]string)
+
+		for _, filter := range strings.Split(query, "&") {
+			parts := strings.Split(filter, "=")
+			if len(parts) != 2 {
+				c.JSON(http.StatusBadRequest, "Invalid key value pair in query")
+
+				return
+			}
+
+			key, err := url.QueryUnescape(parts[0])
+			if err != nil {
+				c.JSON(http.StatusBadRequest, "Error when unescaping key")
+
+				return
+			}
+
+			value, err := url.QueryUnescape(parts[1])
+			if err != nil {
+				c.JSON(http.StatusBadRequest, "Error when unescaping value")
+
+				return
+			}
+
+			filters[key] = value
+		}
+
+		// Filter instances to match all filters
+		n := 0
+		for _, instance := range instanceInfo {
+			if instance.Metadata == nil {
+				continue
+			}
+
+			matchesAll := true
+			for key, value := range filters {
+				if metadataValue, ok := instance.Metadata[key]; !ok || metadataValue != value {
+					matchesAll = false
+					break
+				}
+			}
+
+			if matchesAll {
+				instanceInfo[n] = instance
+				n++
+			}
+		}
+
+		// Trim slice
+		instanceInfo = instanceInfo[:n]
+	}
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)

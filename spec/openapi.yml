@@ -513,6 +513,13 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+      parameters:
+        - name: query
+          in: query
+          description: A query used to filter the sandboxes (e.g. "user=abc&app=prod"). Query and each key and values must be URL encoded.
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Successfully returned all running sandboxes

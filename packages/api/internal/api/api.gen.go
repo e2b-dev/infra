@@ -27,7 +27,7 @@ type ServerInterface interface {
 	PostNodesNodeID(c *gin.Context, nodeID NodeID)
 
 	// (GET /sandboxes)
-	GetSandboxes(c *gin.Context)
+	GetSandboxes(c *gin.Context, params GetSandboxesParams)
 
 	// (POST /sandboxes)
 	PostSandboxes(c *gin.Context)
@@ -173,7 +173,20 @@ func (siw *ServerInterfaceWrapper) PostNodesNodeID(c *gin.Context) {
 // GetSandboxes operation middleware
 func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 
+	var err error
+
 	c.Set(ApiKeyAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSandboxesParams
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "query", c.Request.URL.Query(), &params.Query)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter query: %w", err), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -182,7 +195,7 @@ func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetSandboxes(c)
+	siw.Handler.GetSandboxes(c, params)
 }
 
 // PostSandboxes operation middleware

@@ -324,6 +324,12 @@ type N409 = Error
 // N500 defines model for 500.
 type N500 = Error
 
+// GetSandboxesParams defines parameters for GetSandboxes.
+type GetSandboxesParams struct {
+	// Query A query used to filter the sandboxes (e.g. "user=abc&app=prod"). Query and each key and values must be URL encoded.
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+}
+
 // GetSandboxesSandboxIDLogsParams defines parameters for GetSandboxesSandboxIDLogs.
 type GetSandboxesSandboxIDLogsParams struct {
 	// Start Starting timestamp of the logs that should be returned in milliseconds

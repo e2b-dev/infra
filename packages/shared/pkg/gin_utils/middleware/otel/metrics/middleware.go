@@ -1,12 +1,9 @@
 package metrics
 
 import (
-	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 )
 
@@ -47,24 +44,6 @@ func Middleware(service string, options ...Option) gin.HandlerFunc {
 				reqAttributes...,
 			)
 
-			envID, ok := ginCtx.Value("envID").(string)
-			if ok {
-				fmt.Println("envID: ", envID)
-				resAttributes = append(resAttributes, attribute.String("env_id", envID))
-			}
-
-			teamID, ok := ginCtx.Value("teamID").(string)
-			if ok {
-				fmt.Println("teamID: ", teamID)
-				resAttributes = append(resAttributes, attribute.String("team_id", teamID))
-			}
-
-			instanceID, ok := ginCtx.Value("instanceID").(string)
-			if ok {
-				fmt.Println("instanceID: ", instanceID)
-				resAttributes = append(resAttributes, attribute.String("instance_id", instanceID))
-			}
-
 			if cfg.groupedStatus {
 				code := int(ginCtx.Writer.Status()/100) * 100
 				resAttributes = append(resAttributes, semconv.HTTPStatusCodeKey.Int(code))
@@ -78,31 +57,4 @@ func Middleware(service string, options ...Option) gin.HandlerFunc {
 
 		ginCtx.Next()
 	}
-}
-
-func computeApproximateRequestSize(r *http.Request) int64 {
-	s := 0
-	if r.URL != nil {
-		s = len(r.URL.Path)
-	}
-
-	s += len(r.Method)
-	s += len(r.Proto)
-
-	for name, values := range r.Header {
-		s += len(name)
-		for _, value := range values {
-			s += len(value)
-		}
-	}
-
-	s += len(r.Host)
-
-	// N.B. r.Form and r.MultipartForm are assumed to be included in r.URL.
-
-	if r.ContentLength != -1 {
-		s += int(r.ContentLength)
-	}
-
-	return int64(s)
 }
