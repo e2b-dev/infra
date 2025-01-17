@@ -28,9 +28,9 @@ func GetRecorder(metricsPrefix string) Recorder {
 	meter := otel.Meter("api-metrics", metric.WithInstrumentationVersion(SemVersion()))
 
 	totalDuration, _ := meter.Float64Histogram(
-		metricName("http.server.test.request_duration_4"),
+		metricName("http.server.duration"),
 		metric.WithDescription("Time Taken by request"),
-		metric.WithUnit("s"),
+		metric.WithUnit("ms"),
 	)
 
 	return &otelRecorder{
@@ -40,5 +40,5 @@ func GetRecorder(metricsPrefix string) Recorder {
 
 // ObserveHTTPRequestDuration measures the duration of an HTTP request.
 func (r *otelRecorder) ObserveHTTPRequestDuration(ctx context.Context, duration time.Duration, attributes []attribute.KeyValue) {
-	r.totalDuration.Record(ctx, float64(duration/time.Second), metric.WithAttributes(attributes...))
+	r.totalDuration.Record(ctx, float64(duration/time.Millisecond), metric.WithAttributes(attributes...))
 }
