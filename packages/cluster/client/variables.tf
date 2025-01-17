@@ -3,6 +3,11 @@
 # You must provide a value for each of these parameters.
 # ---------------------------------------------------------------------------------------------------------------------
 
+variable "environment" {
+  description = "The environment (e.g. staging, prod)."
+  type        = string
+}
+
 variable "gcp_zone" {
   description = "The GCP zone in which the server cluster will be created (e.g. us-central1-a)."
   type        = string
@@ -106,7 +111,7 @@ variable "custom_metadata" {
 variable "root_volume_disk_size_gb" {
   description = "The size, in GB, of the root disk volume on each Consul node."
   type        = number
-  default     = 200
+  default     = 300
 }
 
 variable "root_volume_disk_type" {
@@ -132,7 +137,7 @@ variable "instance_group_update_policy_minimal_action" {
 variable "instance_group_update_policy_max_surge_fixed" {
   description = "The maximum number of instances that can be created above the specified targetSize during the update process. Conflicts with var.instance_group_update_policy_max_surge_percent. See https://www.terraform.io/docs/providers/google/r/compute_region_instance_group_manager.html#max_surge_fixed for more information."
   type        = number
-  default     = 0
+  default     = 10
 }
 
 variable "instance_group_update_policy_max_surge_percent" {
@@ -144,44 +149,13 @@ variable "instance_group_update_policy_max_surge_percent" {
 variable "instance_group_update_policy_max_unavailable_fixed" {
   description = "The maximum number of instances that can be unavailable during the update process. Conflicts with var.instance_group_update_policy_max_unavailable_percent. It has to be either 0 or at least equal to the number of zones. If fixed values are used, at least one of var.instance_group_update_policy_max_unavailable_fixed or var.instance_group_update_policy_max_surge_fixed must be greater than 0."
   type        = number
-  default     = 1
+  default     = 5
 }
 
 variable "instance_group_update_policy_max_unavailable_percent" {
   description = "The maximum number of instances(calculated as percentage) that can be unavailable during the update process. Conflicts with var.instance_group_update_policy_max_unavailable_fixed. Only allowed for regional managed instance groups with size at least 10."
   type        = number
   default     = null
-}
-
-variable "client_proxy_health_port" {
-  type = object({
-    name = string
-    port = number
-    path = string
-  })
-}
-
-variable "client_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
-}
-
-variable "api_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}
-
-variable "docker_reverse_proxy_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
 }
 
 variable "logs_proxy_port" {
@@ -197,14 +171,4 @@ variable "logs_health_proxy_port" {
     port        = number
     health_path = string
   })
-}
-
-variable "fc_envs_disk_name" {
-  type        = string
-  description = "The name of the disk for storing built fc envs"
-}
-
-variable "fc_envs_disk_device_name" {
-  type        = string
-  description = "The name of the device for storing built fc envs"
 }

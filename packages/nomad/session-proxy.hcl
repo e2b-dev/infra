@@ -2,10 +2,6 @@ variable "gcp_zone" {
   type = string
 }
 
-variable "client_cluster_size" {
-  type = number
-}
-
 variable "session_proxy_port_number" {
   type = number
 }
@@ -77,8 +73,8 @@ job "session-proxy" {
       // TODO: Saner resources
       resources {
         memory_max = 6000
-        memory = 6000
-        cpu    = 1024
+        memory = 2048
+        cpu    = 1000
       }
 
       template {

@@ -3,13 +3,18 @@ package test
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
 func Build(templateID, buildID string) {
@@ -29,21 +34,46 @@ func Build(templateID, buildID string) {
 	}
 
 	var buf bytes.Buffer
-	e := build.Env{
-		BuildID:               buildID,
-		EnvID:                 templateID,
-		VCpuCount:             8,
-		MemoryMB:              4096,
-		StartCmd:              "",
-		KernelVersion:         "vmlinux-6.1.102",
-		DiskSizeMB:            5120,
-		FirecrackerBinaryPath: "/fc-versions/v1.9.1_3370eaf8/firecracker",
-		BuildLogsWriter:       &buf,
-		HugePages:             true,
+	t := build.Env{
+		TemplateFiles: storage.NewTemplateFiles(
+			templateID,
+			buildID,
+			"vmlinux-5.10.186",
+			"v1.7.0-dev_8bb88311",
+			true,
+		),
+		VCpuCount:       2,
+		MemoryMB:        256,
+		StartCmd:        "",
+		DiskSizeMB:      512,
+		BuildLogsWriter: &buf,
 	}
 
-	err = e.Build(ctx, tracer, dockerClient, legacyClient)
+	err = t.Build(ctx, tracer, dockerClient, legacyClient)
 	if err != nil {
-		panic(err)
+		errMsg := fmt.Errorf("error building template: %w", err)
+
+		fmt.Fprintln(os.Stderr, errMsg)
+
+		return
+	}
+
+	tempStorage := template.NewStorage(ctx)
+
+	buildStorage := tempStorage.NewBuild(t.TemplateFiles)
+
+	memfilePath := t.BuildMemfilePath()
+	rootfsPath := t.BuildRootfsPath()
+
+	upload := buildStorage.Upload(
+		ctx,
+		t.BuildSnapfilePath(),
+		&memfilePath,
+		&rootfsPath,
+	)
+
+	err = <-upload
+	if err != nil {
+		log.Fatal().Err(err).Msg("error uploading build files")
 	}
 }

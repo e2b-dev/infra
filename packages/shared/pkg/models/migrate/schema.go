@@ -12,7 +12,7 @@ var (
 	// AccessTokensColumns holds the columns for the "access_tokens" table.
 	AccessTokensColumns = []*schema.Column{
 		{Name: "access_token", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
+		{Name: "created_at", Type: field.TypeTime, Nullable: true, Default: "CURRENT_TIMESTAMP"},
 		{Name: "user_id", Type: field.TypeUUID},
 	}
 	// AccessTokensTable holds the schema information for the "access_tokens" table.
@@ -39,7 +39,7 @@ var (
 		{Name: "spawn_count", Type: field.TypeInt64, Comment: "Number of times the env was spawned", Default: 0},
 		{Name: "last_spawned_at", Type: field.TypeTime, Nullable: true, Comment: "Timestamp of the last time the env was spawned"},
 		{Name: "team_id", Type: field.TypeUUID},
-		{Name: "created_by", Type: field.TypeUUID},
+		{Name: "created_by", Type: field.TypeUUID, Nullable: true},
 	}
 	// EnvsTable holds the schema information for the "envs" table.
 	EnvsTable = &schema.Table{
@@ -87,15 +87,15 @@ var (
 		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
-		{Name: "status", Type: field.TypeEnum, Enums: []string{"waiting", "building", "failed", "success"}, Default: "waiting", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"waiting", "building", "failed", "success", "uploaded"}, Default: "waiting", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "dockerfile", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "start_cmd", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "vcpu", Type: field.TypeInt64},
 		{Name: "ram_mb", Type: field.TypeInt64},
 		{Name: "free_disk_size_mb", Type: field.TypeInt64},
 		{Name: "total_disk_size_mb", Type: field.TypeInt64, Nullable: true},
-		{Name: "kernel_version", Type: field.TypeString, Default: "vmlinux-5.10.186", SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "firecracker_version", Type: field.TypeString, Default: "v1.7.0-dev_8bb88311", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "kernel_version", Type: field.TypeString, Default: "vmlinux-6.1.102", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "firecracker_version", Type: field.TypeString, Default: "v1.10.1_1fcdaec", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "envd_version", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "env_id", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 	}
@@ -113,12 +113,35 @@ var (
 			},
 		},
 	}
+	// SnapshotsColumns holds the columns for the "snapshots" table.
+	SnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
+		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
+		{Name: "base_env_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "sandbox_id", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "metadata", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "env_id", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+	}
+	// SnapshotsTable holds the schema information for the "snapshots" table.
+	SnapshotsTable = &schema.Table{
+		Name:       "snapshots",
+		Columns:    SnapshotsColumns,
+		PrimaryKey: []*schema.Column{SnapshotsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "snapshots_envs_snapshots",
+				Columns:    []*schema.Column{SnapshotsColumns[5]},
+				RefColumns: []*schema.Column{EnvsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+	}
 	// TeamsColumns holds the columns for the "teams" table.
 	TeamsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
 		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
-		{Name: "is_banned", Type: field.TypeBool, Default: "false"},
-		{Name: "is_blocked", Type: field.TypeBool, Default: "false"},
+		{Name: "is_banned", Type: field.TypeBool, Nullable: true, Default: "false"},
+		{Name: "is_blocked", Type: field.TypeBool, Nullable: true, Default: "false"},
 		{Name: "blocked_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "name", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "email", Type: field.TypeString, Size: 255, SchemaType: map[string]string{"postgres": "character varying(255)"}},
@@ -234,6 +257,7 @@ var (
 		EnvsTable,
 		EnvAliasesTable,
 		EnvBuildsTable,
+		SnapshotsTable,
 		TeamsTable,
 		TeamAPIKeysTable,
 		TiersTable,
@@ -254,6 +278,8 @@ func init() {
 	}
 	EnvBuildsTable.ForeignKeys[0].RefTable = EnvsTable
 	EnvBuildsTable.Annotation = &entsql.Annotation{}
+	SnapshotsTable.ForeignKeys[0].RefTable = EnvsTable
+	SnapshotsTable.Annotation = &entsql.Annotation{}
 	TeamsTable.ForeignKeys[0].RefTable = TiersTable
 	TeamsTable.Annotation = &entsql.Annotation{}
 	TeamAPIKeysTable.ForeignKeys[0].RefTable = TeamsTable

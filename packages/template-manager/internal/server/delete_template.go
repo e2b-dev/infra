@@ -2,21 +2,14 @@ package server
 
 import (
 	"context"
+	"fmt"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
+	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
 func (s *serverStore) TemplateDelete(ctx context.Context, in *template_manager.TemplateDeleteRequest) (*emptypb.Empty, error) {
-	childCtx, childSpan := s.tracer.Start(ctx, "template-delete-request")
-	defer childSpan.End()
-
-	err := template.Delete(childCtx, s.tracer, s.artifactRegistry, in.TemplateID)
-	if err != nil {
-		return nil, err
-	}
-
-	return nil, nil
+	// TODO: We need to delete all template builds and also keep track of snapshots that reference builds.
+	return nil, fmt.Errorf("deleting template is not supported right now")
 }

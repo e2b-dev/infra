@@ -40,7 +40,8 @@ variables {
 
 job "otel-collector" {
   datacenters = [var.gcp_zone]
-  type        = "service"
+  type        = "system"
+  node_pool   = "all"
 
   priority = 95
 
@@ -105,9 +106,9 @@ job "otel-collector" {
       }
 
       resources {
-        memory_max = 2048
-        memory = 512
-        cpu    = 512
+        memory_max = 4096
+        memory = 1024
+        cpu    = 256
       }
 
       template {
@@ -120,13 +121,13 @@ receivers:
         read_buffer_size: 10943040
         max_concurrent_streams: 200
         write_buffer_size: 10943040
-      http:
-  nginx/session-proxy:
-    endpoint: http://localhost:3004/status
-    collection_interval: 10s
-  nginx/client-proxy:
-    endpoint: http://localhost:3001/status
-    collection_interval: 10s
+      # http:
+  # nginx/session-proxy:
+  #   endpoint: http://session-proxy.service.consul:3004/status
+  #   collection_interval: 10s
+  # nginx/client-proxy:
+  #   endpoint: http://client-proxy.service.consul:3001/status
+  #   collection_interval: 10s
   # filelog/session-proxy:
   #   include:
   #     - /var/log/session-proxy/access.log
@@ -194,6 +195,15 @@ processors:
           - "nomad_nomad_job_summary_running"
           - "orchestrator.*"
           - "api.*"
+  metricstransform:
+    transforms:
+      - include: "nomad_client_host_cpu_idle"
+        match_type: strict
+        action: update
+        operations:
+          - action: aggregate_labels
+            aggregation_type: sum
+            label_set: [instance, node_id, node_status, node_pool]
   attributes/session-proxy:
     actions:
       - key: service.name
@@ -249,21 +259,21 @@ service:
       receivers:
         - prometheus
         - otlp
-      processors: [filter, batch]
+      processors: [filter, batch, metricstransform]
       exporters:
         - prometheusremotewrite/grafana_cloud_metrics
-    metrics/session-proxy:
-      receivers:
-        - nginx/session-proxy
-      processors: [batch, attributes/session-proxy]
-      exporters:
-        - prometheusremotewrite/grafana_cloud_metrics
-    metrics/client-proxy:
-      receivers:
-        - nginx/client-proxy
-      processors: [batch, attributes/client-proxy]
-      exporters:
-        - prometheusremotewrite/grafana_cloud_metrics
+    # metrics/session-proxy:
+    #   receivers:
+        # - nginx/session-proxy
+      # processors: [batch, attributes/session-proxy]
+      # exporters:
+      #   - prometheusremotewrite/grafana_cloud_metrics
+    # metrics/client-proxy:
+    #   receivers:
+    #     - nginx/client-proxy
+    #   processors: [batch, attributes/client-proxy]
+    #   exporters:
+    #     - prometheusremotewrite/grafana_cloud_metrics
     traces:
       receivers:
         - otlp

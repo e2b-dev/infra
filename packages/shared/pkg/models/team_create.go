@@ -49,9 +49,25 @@ func (tc *TeamCreate) SetIsBanned(b bool) *TeamCreate {
 	return tc
 }
 
+// SetNillableIsBanned sets the "is_banned" field if the given value is not nil.
+func (tc *TeamCreate) SetNillableIsBanned(b *bool) *TeamCreate {
+	if b != nil {
+		tc.SetIsBanned(*b)
+	}
+	return tc
+}
+
 // SetIsBlocked sets the "is_blocked" field.
 func (tc *TeamCreate) SetIsBlocked(b bool) *TeamCreate {
 	tc.mutation.SetIsBlocked(b)
+	return tc
+}
+
+// SetNillableIsBlocked sets the "is_blocked" field if the given value is not nil.
+func (tc *TeamCreate) SetNillableIsBlocked(b *bool) *TeamCreate {
+	if b != nil {
+		tc.SetIsBlocked(*b)
+	}
 	return tc
 }
 
@@ -209,12 +225,6 @@ func (tc *TeamCreate) defaults() {
 func (tc *TeamCreate) check() error {
 	if _, ok := tc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`models: missing required field "Team.created_at"`)}
-	}
-	if _, ok := tc.mutation.IsBanned(); !ok {
-		return &ValidationError{Name: "is_banned", err: errors.New(`models: missing required field "Team.is_banned"`)}
-	}
-	if _, ok := tc.mutation.IsBlocked(); !ok {
-		return &ValidationError{Name: "is_blocked", err: errors.New(`models: missing required field "Team.is_blocked"`)}
 	}
 	if _, ok := tc.mutation.Name(); !ok {
 		return &ValidationError{Name: "name", err: errors.New(`models: missing required field "Team.name"`)}
@@ -448,6 +458,12 @@ func (u *TeamUpsert) UpdateIsBanned() *TeamUpsert {
 	return u
 }
 
+// ClearIsBanned clears the value of the "is_banned" field.
+func (u *TeamUpsert) ClearIsBanned() *TeamUpsert {
+	u.SetNull(team.FieldIsBanned)
+	return u
+}
+
 // SetIsBlocked sets the "is_blocked" field.
 func (u *TeamUpsert) SetIsBlocked(v bool) *TeamUpsert {
 	u.Set(team.FieldIsBlocked, v)
@@ -457,6 +473,12 @@ func (u *TeamUpsert) SetIsBlocked(v bool) *TeamUpsert {
 // UpdateIsBlocked sets the "is_blocked" field to the value that was provided on create.
 func (u *TeamUpsert) UpdateIsBlocked() *TeamUpsert {
 	u.SetExcluded(team.FieldIsBlocked)
+	return u
+}
+
+// ClearIsBlocked clears the value of the "is_blocked" field.
+func (u *TeamUpsert) ClearIsBlocked() *TeamUpsert {
+	u.SetNull(team.FieldIsBlocked)
 	return u
 }
 
@@ -579,6 +601,13 @@ func (u *TeamUpsertOne) UpdateIsBanned() *TeamUpsertOne {
 	})
 }
 
+// ClearIsBanned clears the value of the "is_banned" field.
+func (u *TeamUpsertOne) ClearIsBanned() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.ClearIsBanned()
+	})
+}
+
 // SetIsBlocked sets the "is_blocked" field.
 func (u *TeamUpsertOne) SetIsBlocked(v bool) *TeamUpsertOne {
 	return u.Update(func(s *TeamUpsert) {
@@ -590,6 +619,13 @@ func (u *TeamUpsertOne) SetIsBlocked(v bool) *TeamUpsertOne {
 func (u *TeamUpsertOne) UpdateIsBlocked() *TeamUpsertOne {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateIsBlocked()
+	})
+}
+
+// ClearIsBlocked clears the value of the "is_blocked" field.
+func (u *TeamUpsertOne) ClearIsBlocked() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.ClearIsBlocked()
 	})
 }
 
@@ -888,6 +924,13 @@ func (u *TeamUpsertBulk) UpdateIsBanned() *TeamUpsertBulk {
 	})
 }
 
+// ClearIsBanned clears the value of the "is_banned" field.
+func (u *TeamUpsertBulk) ClearIsBanned() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.ClearIsBanned()
+	})
+}
+
 // SetIsBlocked sets the "is_blocked" field.
 func (u *TeamUpsertBulk) SetIsBlocked(v bool) *TeamUpsertBulk {
 	return u.Update(func(s *TeamUpsert) {
@@ -899,6 +942,13 @@ func (u *TeamUpsertBulk) SetIsBlocked(v bool) *TeamUpsertBulk {
 func (u *TeamUpsertBulk) UpdateIsBlocked() *TeamUpsertBulk {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateIsBlocked()
+	})
+}
+
+// ClearIsBlocked clears the value of the "is_blocked" field.
+func (u *TeamUpsertBulk) ClearIsBlocked() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.ClearIsBlocked()
 	})
 }
 

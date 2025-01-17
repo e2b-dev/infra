@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"sync"
 	"time"
-)
 
-var vectorAddress = os.Getenv("LOGS_PROXY_ADDRESS")
+	logsConf "github.com/e2b-dev/infra/packages/shared/pkg/logs"
+)
 
 type HTTPLogsExporter struct {
 	client   http.Client
@@ -34,8 +33,8 @@ func NewHTTPLogsExporter(debug bool) *HTTPLogsExporter {
 	return exporter
 }
 
-func (w *HTTPLogsExporter) sendInstanceLogs(logs []byte, address string) error {
-	request, err := http.NewRequest("POST", address, bytes.NewBuffer(logs))
+func (w *HTTPLogsExporter) sendInstanceLogs(logs []byte) error {
+	request, err := http.NewRequest("POST", logsConf.CollectorAddress, bytes.NewBuffer(logs))
 	if err != nil {
 		return err
 	}
@@ -65,7 +64,7 @@ func (w *HTTPLogsExporter) start() {
 
 				continue
 			} else {
-				err := w.sendInstanceLogs(logs[0], vectorAddress)
+				err := w.sendInstanceLogs(logs[0])
 				if err != nil {
 					log.Printf("error sending logs: %v", err)
 				}

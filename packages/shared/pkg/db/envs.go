@@ -64,13 +64,14 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 		Query().
 		Where(
 			env.TeamID(teamID),
-			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
+			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusUploaded)),
+			env.Not(env.HasSnapshots()),
 		).
 		Order(models.Asc(env.FieldCreatedAt)).
 		WithEnvAliases().
 		WithCreator().
 		WithBuilds(func(query *models.EnvBuildQuery) {
-			query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt))
+			query.Where(envbuild.StatusEQ(envbuild.StatusUploaded)).Order(models.Desc(envbuild.FieldFinishedAt))
 		}).
 		All(ctx)
 	if err != nil {
@@ -120,18 +121,18 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 				env.HasEnvAliasesWith(envalias.ID(aliasOrEnvID)),
 				env.ID(aliasOrEnvID),
 			),
-			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
+			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusUploaded)),
 		).
 		WithEnvAliases(func(query *models.EnvAliasQuery) {
 			query.Order(models.Asc(envalias.FieldID)) // TODO: remove once we have only 1 alias per env
 		}).
 		WithBuilds(func(query *models.EnvBuildQuery) {
-			query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt)).Limit(1)
+			query.Where(envbuild.StatusEQ(envbuild.StatusUploaded)).Order(models.Desc(envbuild.FieldFinishedAt)).Limit(1)
 		}).Only(ctx)
 
 	notFound := models.IsNotFound(err)
 	if notFound {
-		return nil, nil, fmt.Errorf("template '%s' not found", aliasOrEnvID)
+		return nil, nil, fmt.Errorf("template '%s' not found: %w", aliasOrEnvID, err)
 	} else if err != nil {
 		return nil, nil, fmt.Errorf("failed to get env '%s': %w", aliasOrEnvID, err)
 	}
@@ -169,7 +170,7 @@ func (db *DB) FinishEnvBuild(
 	err := db.Client.EnvBuild.Update().Where(envbuild.ID(buildID), envbuild.EnvID(envID)).
 		SetFinishedAt(time.Now()).
 		SetTotalDiskSizeMB(totalDiskSizeMB).
-		SetStatus(envbuild.StatusSuccess).
+		SetStatus(envbuild.StatusUploaded).
 		SetEnvdVersion(envdVersion).
 		Exec(ctx)
 	if err != nil {
@@ -188,12 +189,12 @@ func (db *DB) EnvBuildSetStatus(
 	err := db.Client.EnvBuild.Update().Where(envbuild.ID(buildID), envbuild.EnvID(envID)).
 		SetStatus(status).SetFinishedAt(time.Now()).Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to finish env build '%s': %w", buildID, err)
+		return fmt.Errorf("failed to set env build status %s for '%s': %w", status, buildID, err)
 	}
 
 	return nil
 }
 
-func (db *DB) UpdateEnvLastUsed(ctx context.Context, envID string) (err error) {
-	return db.Client.Env.UpdateOneID(envID).AddSpawnCount(1).SetLastSpawnedAt(time.Now()).Exec(ctx)
+func (db *DB) UpdateEnvLastUsed(ctx context.Context, count int64, time time.Time, envID string) (err error) {
+	return db.Client.Env.UpdateOneID(envID).AddSpawnCount(count).SetLastSpawnedAt(time).Exec(ctx)
 }

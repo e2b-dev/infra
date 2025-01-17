@@ -34,8 +34,12 @@ build-and-upload: build upload
 
 .PHONY: test-build
 test-build:
-	sudo GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) GCP_REGION=$(GCP_REGION) GCP_PROJECT_ID=$(GCP_PROJECT_ID) GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) go run main.go -test build -template iovqkypv4uoqvto9y0j2 -build 995fc04e-f260-4950-8619-3a72973c55d5
+	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) GCP_PROJECT_ID=$(GCP_PROJECT_ID) GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) GCP_REGION=$(GCP_REGION) go run -race -gcflags=all="-N -l" main.go -test build -template d6a5c9wp4ccm7uqi4jzi -build 8e00bbdf-7f55-4025-9964-eede203c6ee5
 
 .PHONY: test-delete
 test-delete:
-	sudo go run -race -gcflags=all="-N -l" main.go -test delete -env 0v0c9frk1etrhpxr5ljw
+	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) GCP_PROJECT_ID=$(GCP_PROJECT_ID) GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) GCP_REGION=$(GCP_REGION) go run -race -gcflags=all="-N -l" main.go -test delete -env 0v0c9frk1etrhpxr5ljw
+
+.PHONY: migrate
+migrate:
+	./upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)

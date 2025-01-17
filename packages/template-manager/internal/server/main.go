@@ -10,7 +10,6 @@ import (
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -18,18 +17,21 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
 type serverStore struct {
-	template_manager.UnimplementedTemplateServiceServer
+	templatemanager.UnimplementedTemplateServiceServer
 	server             *grpc.Server
 	tracer             trace.Tracer
 	dockerClient       *client.Client
 	legacyDockerClient *docker.Client
 	artifactRegistry   *artifactregistry.Client
+	templateStorage    *template.Storage
 }
 
 func New(logger *zap.Logger) *grpc.Server {
@@ -39,7 +41,7 @@ func New(logger *zap.Logger) *grpc.Server {
 	opts := []grpc_zap.Option{logging.WithoutHealthCheck()}
 
 	s := grpc.NewServer(
-		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithInterceptorFilter(filters.Not(filters.HealthCheck())))),
+		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
 		grpc.ChainUnaryInterceptor(
 			grpc_zap.UnaryServerInterceptor(logger, opts...),
 			recovery.UnaryServerInterceptor(),
@@ -60,11 +62,14 @@ func New(logger *zap.Logger) *grpc.Server {
 		panic(err)
 	}
 
-	template_manager.RegisterTemplateServiceServer(s, &serverStore{
+	templateStorage := template.NewStorage(ctx)
+
+	templatemanager.RegisterTemplateServiceServer(s, &serverStore{
 		tracer:             otel.Tracer(constants.ServiceName),
 		dockerClient:       dockerClient,
 		legacyDockerClient: legacyClient,
 		artifactRegistry:   artifactRegistry,
+		templateStorage:    templateStorage,
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

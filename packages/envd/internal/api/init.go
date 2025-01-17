@@ -3,10 +3,11 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/envd/internal/host"
-	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"io"
 	"net/http"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/host"
+	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 )
 
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {

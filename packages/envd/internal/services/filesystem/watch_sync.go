@@ -8,12 +8,13 @@ import (
 	"sync"
 
 	"connectrpc.com/connect"
-	"github.com/fsnotify/fsnotify"
+	"github.com/e2b-dev/fsnotify"
 	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
+	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
@@ -26,13 +27,13 @@ type FileWatcher struct {
 	Lock sync.Mutex
 }
 
-func CreateFileWatcher(watchPath, operationID string, logger *zerolog.Logger) (*FileWatcher, error) {
+func CreateFileWatcher(watchPath string, recursive bool, operationID string, logger *zerolog.Logger) (*FileWatcher, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating watcher: %w", err))
 	}
 
-	err = w.Add(watchPath)
+	err = w.Add(utils.FsnotifyPath(watchPath, recursive))
 	if err != nil {
 		_ = w.Close()
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error adding path %s to watcher: %w", watchPath, err))
@@ -156,7 +157,7 @@ func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.Cre
 
 	watcherId := "w" + id.Generate()
 
-	w, err := CreateFileWatcher(watchPath, watcherId, s.logger)
+	w, err := CreateFileWatcher(watchPath, req.Msg.Recursive, watcherId, s.logger)
 	s.watchers.Store(watcherId, w)
 
 	return connect.NewResponse(&rpc.CreateWatcherResponse{

@@ -17,3 +17,7 @@ output "posthog_api_key_secret_name" {
 output "custom_envs_repository_name" {
   value = google_artifact_registry_repository.custom_environments_repository.name
 }
+
+output "api_admin_token_name" {
+  value = google_secret_manager_secret.api_admin_token.name
+}

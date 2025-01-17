@@ -28,6 +28,14 @@ variable "client_machine_type" {
   type = string
 }
 
+variable "api_cluster_size" {
+  type = number
+}
+
+variable "api_machine_type" {
+  type = string
+}
+
 variable "client_proxy_health_port" {
   type = object({
     name = string
@@ -154,13 +162,6 @@ variable "github_repository" {
   default = "infra"
 }
 
-
-variable "fc_envs_disk_size" {
-  type        = number
-  description = "The size of the disk for storing built fc envs"
-  default     = 50
-}
-
 variable "domain_name" {
   type        = string
   description = "The domain name where e2b will run"
@@ -195,4 +196,14 @@ variable "loki_service_port" {
     name = "loki"
     port = 3100
   }
+}
+
+variable "template_bucket_location" {
+  type        = string
+  description = "The location of the FC template bucket"
+}
+
+variable "template_bucket_name" {
+  type        = string
+  description = "The name of the FC template bucket"
 }

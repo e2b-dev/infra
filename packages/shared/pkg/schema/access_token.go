@@ -17,7 +17,7 @@ func (AccessToken) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("id").Unique().StorageKey("access_token").Immutable().SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.UUID("user_id", uuid.UUID{}),
-		field.Time("created_at").Immutable().Annotations(
+		field.Time("created_at").Optional().Immutable().Annotations(
 			entsql.Default("CURRENT_TIMESTAMP"),
 		),
 	}

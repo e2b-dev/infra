@@ -4,15 +4,18 @@ import (
 	"fmt"
 	"log"
 	"net"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"strings"
+	"sync"
 
 	resolver "github.com/miekg/dns"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 const ttl = 0
 
 type DNS struct {
+	mu      sync.Mutex
 	records *smap.Map[string]
 }
 
@@ -26,8 +29,10 @@ func (d *DNS) Add(sandboxID, ip string) {
 	d.records.Insert(d.hostname(sandboxID), ip)
 }
 
-func (d *DNS) Remove(sandboxID string) {
-	d.records.Remove(d.hostname(sandboxID))
+func (d *DNS) Remove(sandboxID, ip string) {
+	d.records.RemoveCb(d.hostname(sandboxID), func(key string, v string, exists bool) bool {
+		return v == ip
+	})
 }
 
 func (d *DNS) get(hostname string) (string, bool) {
@@ -46,7 +51,8 @@ func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
 
 	for _, q := range m.Question {
 		if q.Qtype == resolver.TypeA {
-			ip, found := d.get(q.Name)
+			sandboxID := strings.Split(q.Name, "-")[0]
+			ip, found := d.get(sandboxID)
 			if found {
 				a := &resolver.A{
 					Hdr: resolver.RR_Header{
@@ -69,17 +75,17 @@ func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
 	}
 }
 
-func (d *DNS) Start(address string) {
+func (d *DNS) Start(address string, port int) error {
 	mux := resolver.NewServeMux()
 
 	mux.HandleFunc(".", d.handleDNSRequest)
 
-	server := resolver.Server{Addr: address, Net: "udp", Handler: mux}
-
-	log.Printf("Starting DNS server at %s\n", server.Addr)
+	server := resolver.Server{Addr: fmt.Sprintf("%s:%d", address, port), Net: "udp", Handler: mux}
 
 	err := server.ListenAndServe()
 	if err != nil {
-		log.Fatalf("Failed to start server: %s\n", err.Error())
+		return fmt.Errorf("failed to start DNS server: %w", err)
 	}
+
+	return nil
 }

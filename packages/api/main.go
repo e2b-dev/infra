@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -39,8 +40,6 @@ func NewGinServer(apiStore *handlers.APIStore, swagger *openapi3.T, port int) *h
 	swagger.Servers = nil
 
 	r := gin.New()
-
-	// pprof.Register(r, "debug/pprof")
 
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel
@@ -134,7 +133,7 @@ func main() {
 
 	swagger, err := api.GetSwagger()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading swagger spec\n: %v\n", err)
+		log.Printf("Error loading swagger spec\n: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -153,6 +152,6 @@ func main() {
 	// And we serve HTTP until the world ends.
 	err = s.ListenAndServe()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
+		log.Printf("server error: %v\n", err)
 	}
 }

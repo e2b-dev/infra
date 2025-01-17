@@ -18,6 +18,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
@@ -26,6 +27,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -73,6 +75,7 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 		env:          env,
 	}
 
+	_, _ = env.BuildLogsWriter.Write([]byte("Pulling Docker image...\n"))
 	err := rootfs.pullDockerImage(childCtx, tracer)
 	if err != nil {
 		errMsg := fmt.Errorf("error building docker image: %w", err)
@@ -81,6 +84,7 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 
 		return nil, errMsg
 	}
+	_, _ = env.BuildLogsWriter.Write([]byte("Pulled Docker image.\n\n"))
 
 	err = rootfs.createRootfsFile(childCtx, tracer)
 	if err != nil {
@@ -107,7 +111,7 @@ func (r *Rootfs) pullDockerImage(ctx context.Context, tracer trace.Tracer) error
 
 	authConfigBase64 := base64.URLEncoding.EncodeToString(authConfigBytes)
 
-	logs, err := r.client.ImagePull(childCtx, r.dockerTag(), types.ImagePullOptions{
+	logs, err := r.client.ImagePull(childCtx, r.dockerTag(), image.PullOptions{
 		RegistryAuth: authConfigBase64,
 		Platform:     "linux/amd64",
 	})
@@ -143,7 +147,7 @@ func (r *Rootfs) cleanupDockerImage(ctx context.Context, tracer trace.Tracer) {
 	childCtx, childSpan := tracer.Start(ctx, "cleanup-docker-image")
 	defer childSpan.End()
 
-	_, err := r.client.ImageRemove(childCtx, r.dockerTag(), types.ImageRemoveOptions{
+	_, err := r.client.ImageRemove(childCtx, r.dockerTag(), image.RemoveOptions{
 		Force:         false,
 		PruneChildren: false,
 	})
@@ -156,7 +160,7 @@ func (r *Rootfs) cleanupDockerImage(ctx context.Context, tracer trace.Tracer) {
 }
 
 func (r *Rootfs) dockerTag() string {
-	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.env.EnvID, r.env.BuildID)
+	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.env.TemplateId, r.env.BuildId)
 }
 
 func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) error {
@@ -222,8 +226,8 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		MemoryLimit int
 	}{
 		FcAddress:   fcAddr,
-		EnvID:       r.env.EnvID,
-		BuildID:     r.env.BuildID,
+		EnvID:       r.env.TemplateId,
+		BuildID:     r.env.BuildId,
 		StartCmd:    strings.ReplaceAll(r.env.StartCmd, "'", "\\'"),
 		MemoryLimit: int(math.Min(float64(r.env.MemoryMB)/2, 512)),
 	})
@@ -333,12 +337,12 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 
 	filesToTar := []fileToTar{
 		{
-			localPath: consts.HostOldEnvdPath,
-			tarPath:   consts.GuestOldEnvdPath,
+			localPath: storage.HostOldEnvdPath,
+			tarPath:   storage.GuestOldEnvdPath,
 		},
 		{
-			localPath: consts.HostEnvdPath,
-			tarPath:   consts.GuestEnvdPath,
+			localPath: storage.HostEnvdPath,
+			tarPath:   storage.GuestEnvdPath,
 		},
 	}
 
@@ -490,7 +494,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		return errMsg
 	}
 
-	rootfsFile, err := os.Create(r.env.tmpRootfsPath())
+	rootfsFile, err := os.Create(r.env.BuildRootfsPath())
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs file: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -534,6 +538,8 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		}
 	}()
 
+	telemetry.ReportEvent(childCtx, "coverting tar to ext4")
+
 	// This package creates a read-only ext4 filesystem from a tar archive.
 	// We need to use another program to make the filesystem writable.
 	err = tar2ext4.ConvertTarToExt4(pr, rootfsFile, tar2ext4.MaximumDiskSize(maxRootfsSize))
@@ -553,7 +559,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	tuneContext, tuneSpan := tracer.Start(childCtx, "tune-rootfs-file-cmd")
 	defer tuneSpan.End()
 
-	cmd := exec.CommandContext(tuneContext, "tune2fs", "-O ^read-only", r.env.tmpRootfsPath())
+	cmd := exec.CommandContext(tuneContext, "tune2fs", "-O ^read-only", r.env.BuildRootfsPath())
 
 	tuneStdoutWriter := telemetry.NewEventWriter(tuneContext, "stdout")
 	cmd.Stdout = tuneStdoutWriter
@@ -599,7 +605,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	resizeContext, resizeSpan := tracer.Start(childCtx, "resize-rootfs-file-cmd")
 	defer resizeSpan.End()
 
-	cmd = exec.CommandContext(resizeContext, "resize2fs", r.env.tmpRootfsPath())
+	cmd = exec.CommandContext(resizeContext, "resize2fs", r.env.BuildRootfsPath())
 
 	resizeStdoutWriter := telemetry.NewEventWriter(resizeContext, "stdout")
 	cmd.Stdout = resizeStdoutWriter

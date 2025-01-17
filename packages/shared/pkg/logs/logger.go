@@ -4,13 +4,13 @@ import (
 	"context"
 	"io"
 	"math"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/exporter"
 )
 
@@ -24,12 +24,15 @@ type sandboxLogExporter struct {
 	logger *zerolog.Logger
 }
 
+var CollectorAddress = os.Getenv("LOGS_COLLECTOR_ADDRESS")
+var CollectorPublicIP = os.Getenv("LOGS_COLLECTOR_PUBLIC_IP")
+
 func newSandboxLogExporter(serviceName string) *sandboxLogExporter {
 	zerolog.TimestampFieldName = "timestamp"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
 	ctx := context.Background()
-	exporters := []io.Writer{exporter.NewHTTPLogsExporter(ctx, consts.LogsProxyAddress)}
+	exporters := []io.Writer{exporter.NewHTTPLogsExporter(ctx, CollectorAddress)}
 
 	l := zerolog.
 		New(io.MultiWriter(exporters...)).
@@ -66,7 +69,7 @@ type SandboxLogger struct {
 	instanceID            string
 	envID                 string
 	teamID                string
-	cpuloglogssMax        int32
+	cpuMax                int64
 	cpuWasAboveTreshold   atomic.Bool
 	memoryMiBMax          int32
 	memoryWasAbove        atomic.Int32
@@ -77,8 +80,8 @@ func NewSandboxLogger(
 	instanceID string,
 	envID string,
 	teamID string,
-	cpuMax int32,
-	memoryMax int32,
+	cpuMax int64,
+	memoryMax int64,
 	internal bool,
 ) *SandboxLogger {
 	sbxLogExporter := getSandboxLogExporter()
@@ -149,7 +152,7 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
 			Float64("cpuUsage", cpu).
-			Int32("cpuCount", l.cpuMax).
+			Int64("cpuCount", l.cpuMax).
 			Msgf("Sandbox is using %d %% of total CPU", int(cpu/float64(l.cpuMax)*100))
 	} else if l.cpuWasAboveTreshold.Load() && cpu <= cpuUsageThreshold*float64(l.cpuMax) {
 		l.cpuWasAboveTreshold.Store(false)
@@ -158,7 +161,7 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
 			Float64("cpuUsage", cpu).
-			Int32("cpuCount", l.cpuMax).
+			Int64("cpuCount", l.cpuMax).
 			Msgf("Sandbox usage fell below %d %% of total cpu", int(cpuUsageThreshold*100))
 	}
 }

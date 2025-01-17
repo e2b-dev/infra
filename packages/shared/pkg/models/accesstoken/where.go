@@ -137,6 +137,16 @@ func CreatedAtLTE(v time.Time) predicate.AccessToken {
 	return predicate.AccessToken(sql.FieldLTE(FieldCreatedAt, v))
 }
 
+// CreatedAtIsNil applies the IsNil predicate on the "created_at" field.
+func CreatedAtIsNil() predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldIsNull(FieldCreatedAt))
+}
+
+// CreatedAtNotNil applies the NotNil predicate on the "created_at" field.
+func CreatedAtNotNil() predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldNotNull(FieldCreatedAt))
+}
+
 // HasUser applies the HasEdge predicate on the "user" edge.
 func HasUser() predicate.AccessToken {
 	return predicate.AccessToken(func(s *sql.Selector) {

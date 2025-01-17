@@ -227,6 +227,16 @@ func CreatedByNotIn(vs ...uuid.UUID) predicate.Env {
 	return predicate.Env(sql.FieldNotIn(FieldCreatedBy, vs...))
 }
 
+// CreatedByIsNil applies the IsNil predicate on the "created_by" field.
+func CreatedByIsNil() predicate.Env {
+	return predicate.Env(sql.FieldIsNull(FieldCreatedBy))
+}
+
+// CreatedByNotNil applies the NotNil predicate on the "created_by" field.
+func CreatedByNotNil() predicate.Env {
+	return predicate.Env(sql.FieldNotNull(FieldCreatedBy))
+}
+
 // PublicEQ applies the EQ predicate on the "public" field.
 func PublicEQ(v bool) predicate.Env {
 	return predicate.Env(sql.FieldEQ(FieldPublic, v))
@@ -475,6 +485,35 @@ func HasBuildsWith(preds ...predicate.EnvBuild) predicate.Env {
 		schemaConfig := internal.SchemaConfigFromContext(s.Context())
 		step.To.Schema = schemaConfig.EnvBuild
 		step.Edge.Schema = schemaConfig.EnvBuild
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasSnapshots applies the HasEdge predicate on the "snapshots" edge.
+func HasSnapshots() predicate.Env {
+	return predicate.Env(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, SnapshotsTable, SnapshotsColumn),
+		)
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.Snapshot
+		step.Edge.Schema = schemaConfig.Snapshot
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasSnapshotsWith applies the HasEdge predicate on the "snapshots" edge with a given conditions (other predicates).
+func HasSnapshotsWith(preds ...predicate.Snapshot) predicate.Env {
+	return predicate.Env(func(s *sql.Selector) {
+		step := newSnapshotsStep()
+		schemaConfig := internal.SchemaConfigFromContext(s.Context())
+		step.To.Schema = schemaConfig.Snapshot
+		step.Edge.Schema = schemaConfig.Snapshot
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

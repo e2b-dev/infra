@@ -34,6 +34,7 @@ data "docker_registry_image" "api_image" {
 resource "docker_image" "api_image" {
   name          = data.docker_registry_image.api_image.name
   pull_triggers = [data.docker_registry_image.api_image.sha256_digest]
+  platform      = "linux/amd64/v8"
 }
 
 resource "google_secret_manager_secret" "postgres_connection_string" {
@@ -78,4 +79,22 @@ resource "google_secret_manager_secret_version" "api_secret_value" {
   secret = google_secret_manager_secret.api_secret.id
 
   secret_data = random_password.api_secret.result
+}
+
+resource "random_password" "api_admin_secret" {
+  length  = 32
+  special = true
+}
+
+
+resource "google_secret_manager_secret" "api_admin_token" {
+  secret_id = "${var.prefix}api-admin-token"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "api_admin_token_value" {
+  secret      = google_secret_manager_secret.api_admin_token.id
+  secret_data = random_password.api_admin_secret.result
 }
