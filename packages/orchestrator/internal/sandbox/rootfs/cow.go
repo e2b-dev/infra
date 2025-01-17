@@ -68,6 +68,7 @@ func (o *CowDevice) Export(ctx context.Context, out io.Writer, stopSandbox func(
 		return nil, fmt.Errorf("error ejecting cache: %w", err)
 	}
 
+        // the error is already logged in go routine in SandboxCreate handler
 	go stopSandbox()
 
 	select {
