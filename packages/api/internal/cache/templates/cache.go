@@ -78,7 +78,10 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 	if item == nil {
 		envDB, build, err = c.db.GetEnv(ctx, aliasOrEnvID)
 		if err != nil {
-			return nil, nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: fmt.Sprintf("error when getting template: %v", err), Err: err}
+			if models.IsNotFound(err) == true {
+				return nil, nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("template '%s' not found", aliasOrEnvID), Err: err}
+			}
+			return nil, nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: fmt.Sprintf("error while getting template: %v", err), Err: err}
 		}
 
 		c.aliasCache.cache.Set(envDB.TemplateID, envDB.TemplateID, templateInfoExpiration)

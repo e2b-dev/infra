@@ -61,11 +61,9 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	// Check if team has access to the environment
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
 	if checkErr != nil {
-		errMsg := fmt.Errorf("error when checking team access: %s", checkErr.Err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, checkErr.Err)
 
-		a.sendAPIStoreError(c, checkErr.Code, fmt.Sprintf("Error when checking team access: %s", checkErr.ClientMsg))
-
+		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
 		return
 	}
 	templateSpan.End()
