@@ -132,7 +132,7 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 
 	notFound := models.IsNotFound(err)
 	if notFound {
-		return nil, nil, fmt.Errorf("template '%s' not found", aliasOrEnvID)
+		return nil, nil, fmt.Errorf("template '%s' not found: %w", aliasOrEnvID, err)
 	} else if err != nil {
 		return nil, nil, fmt.Errorf("failed to get env '%s': %w", aliasOrEnvID, err)
 	}

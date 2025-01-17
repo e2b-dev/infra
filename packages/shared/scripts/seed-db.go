@@ -75,11 +75,16 @@ func main() {
 	}
 
 	// Create team
-	t, err := database.Client.Team.Create().SetEmail(email).SetName("E2B").SetID(teamUUID).SetTier("base_v1").AddUsers(user).Save(ctx)
+	t, err := database.Client.Team.Create().SetEmail(email).SetName("E2B").SetID(teamUUID).SetTier("base_v1").Save(ctx)
 	if err != nil {
 		panic(err)
 	}
 
+	// Create user team
+	_, err = database.Client.UsersTeams.Create().SetUserID(user.ID).SetTeamID(t.ID).SetIsDefault(true).Save(ctx)
+	if err != nil {
+		panic(err)
+	}
 	// Create access token
 	_, err = database.Client.AccessToken.Create().SetUser(user).SetID(accessToken).Save(ctx)
 	if err != nil {
