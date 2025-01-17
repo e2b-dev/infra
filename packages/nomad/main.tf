@@ -80,6 +80,16 @@ resource "nomad_job" "api" {
   }
 }
 
+resource "nomad_job" "redis" {
+  jobspec = file("${path.module}/redis.hcl")
+
+  hcl2 {
+    vars = {
+      gcp_zone = var.gcp_zone
+    }
+  }
+}
+
 resource "nomad_job" "docker_reverse_proxy" {
   jobspec = file("${path.module}/docker-reverse-proxy.hcl")
 

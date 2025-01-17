@@ -3,9 +3,10 @@
 
 provider "registry.terraform.io/cloudflare/cloudflare" {
   version     = "4.19.0"
-  constraints = "~> 4.0"
+  constraints = "4.19.0"
   hashes = [
     "h1:3EZM8zAObdA81PcyXyiic4y2aZsTowYKG29RjZKXbJU=",
+    "h1:JLYiArMIeU5gf/2jEbyijUBxuR1BeJCZRjUwe2bkr44=",
     "zh:1d5315dcbd8187a3a978dc1fb08e80b6cdd353de10afe531b3d1ecb834d0dbae",
     "zh:2a6e5b2e5072e442b35ce6142172e15afb835e16799d04a0054a79d3067f7560",
     "zh:308c5690024a1f6797300018456a1ac781c8699fa4bc4892a8c36eb992604a26",
@@ -27,6 +28,7 @@ provider "registry.terraform.io/cloudflare/cloudflare" {
 provider "registry.terraform.io/hashicorp/external" {
   version = "2.3.4"
   hashes = [
+    "h1:U6W8rgrdmR2pZ2cicFoGOSQ4GXuIf/4EK7s0vTJN7is=",
     "h1:cCabxnWQ5fX1lS7ZqgUzsvWmKZw9FA7NRxAZ94vcTcc=",
     "zh:037fd82cd86227359bc010672cd174235e2d337601d4686f526d0f53c87447cb",
     "zh:0ea1db63d6173d01f2fa8eb8989f0809a55135a0d8d424b08ba5dabad73095fa",
@@ -47,6 +49,7 @@ provider "registry.terraform.io/hashicorp/google" {
   version     = "5.31.0"
   constraints = ">= 4.50.0, 5.31.0, < 6.0.0"
   hashes = [
+    "h1:JZkdP8qA+yE7xfZr8c26ahfok1nO5GATIgows3ZYiM0=",
     "h1:q3xMw4s8/0yP7EiIzcULyANOMF/b/f/gRpACOQi+wCE=",
     "zh:19f68d33a25c1d79dccb90ddf990e971943eef1de0272858a94e88571bd5792b",
     "zh:2d65f3c99171c4ff4a7b28d2b2752f1da3303c94ec04279c655dd11743c86da7",
@@ -68,6 +71,7 @@ provider "registry.terraform.io/hashicorp/google-beta" {
   constraints = ">= 4.50.0, 5.31.0, < 6.0.0"
   hashes = [
     "h1:sIXAK1wOIAa7JI4Rrud730rDC3C1+WJl73HOZym7uag=",
+    "h1:tJ0ZokfEBllpoRM6EuhkKNl77SaphlT3ttr4bIwoL6o=",
     "zh:11b968dcc9ff336bc39809acb551aca6b385a987953225f1c29170bc85e81a6c",
     "zh:2f62f0ef17257002d49e1960ec96ffee9ebd6463464d06708a7fa88812e1cf7b",
     "zh:3a9e41ee9bb4ef152b2a33b6594a425b707b4162ba895a676521cc9a889e5fe4",
@@ -87,6 +91,7 @@ provider "registry.terraform.io/hashicorp/nomad" {
   version     = "2.1.0"
   constraints = "2.1.0"
   hashes = [
+    "h1:5ivj1OVGUWQb6Pv5U8roWWPuANBlmFR/3jnmFiLZ7dc=",
     "h1:xW88kA3/KMseqV8ISKZW1pQIsnTjZOYb/FtxfdTAWNI=",
     "zh:39ba4d4fc9557d4d2c1e4bf866cf63973359b73e908cce237c54384512bdb454",
     "zh:40d2b66e3f3675e6b88000c145977c1d5288510c76b702c6c131d9168546c605",
@@ -104,9 +109,11 @@ provider "registry.terraform.io/hashicorp/nomad" {
 }
 
 provider "registry.terraform.io/hashicorp/random" {
-  version = "3.5.1"
+  version     = "3.5.1"
+  constraints = ">= 2.1.0, 3.5.1"
   hashes = [
     "h1:IL9mSatmwov+e0+++YX2V6uel+dV6bn+fC/cnGDK3Ck=",
+    "h1:sZ7MTSD4FLekNN2wSNFGpM+5slfvpm5A/NLVZiB7CO0=",
     "zh:04e3fbd610cb52c1017d282531364b9c53ef72b6bc533acb2a90671957324a64",
     "zh:119197103301ebaf7efb91df8f0b6e0dd31e6ff943d231af35ee1831c599188d",
     "zh:4d2b219d09abf3b1bb4df93d399ed156cadd61f44ad3baf5cf2954df2fba0831",
@@ -126,6 +133,7 @@ provider "registry.terraform.io/hashicorp/time" {
   version = "0.12.1"
   hashes = [
     "h1:JzYsPugN8Fb7C4NlfLoFu7BBPuRVT2/fCOdCaxshveI=",
+    "h1:j+ED7j0ZFJ4EDx7sdna76wsiIf397toylDN0dFi6v0U=",
     "zh:090023137df8effe8804e81c65f636dadf8f9d35b79c3afff282d39367ba44b2",
     "zh:26f1e458358ba55f6558613f1427dcfa6ae2be5119b722d0b3adb27cd001efea",
     "zh:272ccc73a03384b72b964918c7afeb22c2e6be22460d92b150aaf28f29a7d511",
@@ -145,6 +153,7 @@ provider "registry.terraform.io/integrations/github" {
   version     = "5.42.0"
   constraints = "5.42.0"
   hashes = [
+    "h1:CZUAXhUhMIuIyTPm9VDcvOZgM1Lsl9tuKm5wW9tBEsM=",
     "h1:rfyLEgbZCk3MMCBuGd4PNFM914vtLqGIYcsmVKr6tdg=",
     "zh:0f97039c6b70295c4a82347bc8a0bcea700b3fb3df0e0be53585da025584bb7c",
     "zh:12e78898580cc2a72b5f2a77e191b158f88e974b0500489b691f34842288745c",
@@ -168,6 +177,7 @@ provider "registry.terraform.io/kreuzwerker/docker" {
   constraints = "3.0.2"
   hashes = [
     "h1:XjdpVL61KtTsuPE8swok3GY8A+Bu3TZs8T2DOEpyiXo=",
+    "h1:os8pBi4rbtFJJtzNWlcGhOVsz5V9UPJvo+L0wNQFYE8=",
     "zh:15b0a2b2b563d8d40f62f83057d91acb02cd0096f207488d8b4298a59203d64f",
     "zh:23d919de139f7cd5ebfd2ff1b94e6d9913f0977fcfc2ca02e1573be53e269f95",
     "zh:38081b3fe317c7e9555b2aaad325ad3fa516a886d2dfa8605ae6a809c1072138",
