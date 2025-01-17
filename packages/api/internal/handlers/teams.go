@@ -27,7 +27,7 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 		All(ctx)
 	if err != nil {
 		log.Println("Error when starting transaction: ", err)
-		c.String(http.StatusInternalServerError, "Error when starting transaction")
+		c.JSON(http.StatusInternalServerError, "Error when starting transaction")
 
 		return
 	}
