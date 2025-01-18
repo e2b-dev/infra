@@ -95,7 +95,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 }
 
 func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {
-	_, childSpan := s.tracer.Start(ctx, "sandbox-update")
+	ctx, childSpan := s.tracer.Start(ctx, "sandbox-update")
 	defer childSpan.End()
 
 	childSpan.SetAttributes(
@@ -106,7 +106,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	item, ok := s.sandboxes.Get(req.SandboxId)
 	if !ok {
 		errMsg := fmt.Errorf("sandbox not found")
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, errMsg)
 
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
@@ -147,7 +147,7 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 }
 
 func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteRequest) (*emptypb.Empty, error) {
-	_, childSpan := s.tracer.Start(ctx, "sandbox-delete")
+	ctx, childSpan := s.tracer.Start(ctx, "sandbox-delete")
 	defer childSpan.End()
 
 	childSpan.SetAttributes(
@@ -158,7 +158,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
 	if !ok {
 		errMsg := fmt.Errorf("sandbox '%s' not found", in.SandboxId)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, errMsg)
 
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
@@ -196,11 +196,13 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 var pauseQueue = semaphore.NewWeighted(maxParalellSnapshotting)
 
 func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
-	_, childSpan := s.tracer.Start(ctx, "sandbox-pause")
+	ctx, childSpan := s.tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
 
 	err := pauseQueue.Acquire(ctx, 1)
 	if err != nil {
+		telemetry.ReportCriticalError(ctx, err)
+
 		return nil, status.New(codes.ResourceExhausted, err.Error()).Err()
 	}
 
@@ -216,7 +218,10 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	if !ok {
 		s.pauseMu.Unlock()
 
-		return nil, status.New(codes.NotFound, "sandbox not found").Err()
+		errMsg := fmt.Errorf("sandbox not found")
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
 
 	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
@@ -232,7 +237,10 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		sbx.Config.HugePages,
 	).NewTemplateCacheFiles()
 	if err != nil {
-		return nil, status.New(codes.Internal, err.Error()).Err()
+		errMsg := fmt.Errorf("error creating template files: %w", err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return nil, status.New(codes.Internal, errMsg.Error()).Err()
 	}
 
 	defer func() {
@@ -248,16 +256,18 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error creating sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
+		errMsg := fmt.Errorf("error creating sandbox cache dir '%s': %w", snapshotTemplateFiles.CacheDir(), err)
+		telemetry.ReportCriticalError(ctx, errMsg)
 
-		return nil, status.New(codes.Internal, err.Error()).Err()
+		return nil, status.New(codes.Internal, errMsg.Error()).Err()
 	}
 
-	snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles, releaseOnce)
+	snapshot, err := sbx.Snapshot(ctx, s.tracer, snapshotTemplateFiles, releaseOnce)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error snapshotting sandbox '%s': %v\n", in.SandboxId, err)
+		errMsg := fmt.Errorf("error snapshotting sandbox '%s': %w", in.SandboxId, err)
+		telemetry.ReportCriticalError(ctx, errMsg)
 
-		return nil, status.New(codes.Internal, err.Error()).Err()
+		return nil, status.New(codes.Internal, errMsg.Error()).Err()
 	}
 
 	err = s.templateCache.AddSnapshot(
@@ -273,8 +283,13 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		snapshot.RootfsDiff,
 	)
 	if err != nil {
-		return nil, status.New(codes.Internal, err.Error()).Err()
+		errMsg := fmt.Errorf("error adding snapshot to template cache: %w", err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return nil, status.New(codes.Internal, errMsg.Error()).Err()
 	}
+
+	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	go func() {
 		var memfilePath *string

@@ -308,11 +308,17 @@ func (p *Process) Stop() error {
 	return nil
 }
 
-func (p *Process) Pause(ctx context.Context) error {
+func (p *Process) Pause(ctx context.Context, tracer trace.Tracer) error {
+	ctx, childSpan := tracer.Start(ctx, "pause-fc")
+	defer childSpan.End()
+
 	return p.client.pauseVM(ctx)
 }
 
 // VM needs to be paused before creating a snapshot.
-func (p *Process) CreateSnapshot(ctx context.Context, snapfilePath string, memfilePath string) error {
+func (p *Process) CreateSnapshot(ctx context.Context, tracer trace.Tracer, snapfilePath string, memfilePath string) error {
+	ctx, childSpan := tracer.Start(ctx, "create-snapshot-fc")
+	defer childSpan.End()
+
 	return p.client.createSnapshot(ctx, snapfilePath, memfilePath)
 }
