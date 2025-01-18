@@ -251,7 +251,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.Internal, errMsg.Error()).Err()
 	}
 
-	snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles, releaseOnce)
+	snapshot, err := sbx.Snapshot(ctx, s.tracer, snapshotTemplateFiles, releaseOnce)
 	if err != nil {
 		errMsg := fmt.Errorf("error snapshotting sandbox '%s': %w", in.SandboxId, err)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -277,6 +277,8 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 		return nil, status.New(codes.Internal, errMsg.Error()).Err()
 	}
+
+	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	go func() {
 		var memfilePath *string

@@ -330,9 +330,13 @@ func (s *Sandbox) Stop() error {
 
 func (s *Sandbox) Snapshot(
 	ctx context.Context,
+	tracer trace.Tracer,
 	snapshotTemplateFiles *storage.TemplateCacheFiles,
 	releaseLock func(),
 ) (*Snapshot, error) {
+	ctx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
+	defer childSpan.End()
+
 	buildId, err := uuid.Parse(snapshotTemplateFiles.BuildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse build id: %w", err)
@@ -357,7 +361,7 @@ func (s *Sandbox) Snapshot(
 	s.healthcheckCtx.Cancel()
 	s.healthcheckCtx.Unlock()
 
-	err = s.process.Pause(ctx)
+	err = s.process.Pause(ctx, tracer)
 	if err != nil {
 		return nil, fmt.Errorf("error pausing vm: %w", err)
 	}
@@ -371,6 +375,7 @@ func (s *Sandbox) Snapshot(
 
 	err = s.process.CreateSnapshot(
 		ctx,
+		tracer,
 		snapshotTemplateFiles.CacheSnapfilePath(),
 		snapshotTemplateFiles.CacheMemfileFullSnapshotPath(),
 	)
@@ -398,6 +403,8 @@ func (s *Sandbox) Snapshot(
 		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, "created memfile diff")
+
 	os.RemoveAll(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
 
 	releaseLock()
@@ -408,10 +415,14 @@ func (s *Sandbox) Snapshot(
 		memfileDirtyPages,
 	)
 
+	telemetry.ReportEvent(ctx, "created memfile mapping")
+
 	memfileMappings := header.MergeMappings(
 		originalMemfile.Header().Mapping,
 		memfileMapping,
 	)
+
+	telemetry.ReportEvent(ctx, "merged memfile mappings")
 
 	snapfile, err := template.NewLocalFile(snapshotTemplateFiles.CacheSnapfilePath())
 	if err != nil {
@@ -458,6 +469,8 @@ func (s *Sandbox) Snapshot(
 		return nil, fmt.Errorf("failed to sync rootfs path: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, "synced rootfs")
+
 	rootfsDiffFile, err := build.NewLocalDiffFile(buildId.String(), build.Rootfs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs diff: %w", err)
@@ -468,26 +481,51 @@ func (s *Sandbox) Snapshot(
 		return nil, fmt.Errorf("failed to export rootfs: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, "exported rootfs")
+
 	rootfsMapping := header.CreateMapping(
 		rootfsMetadata,
 		&buildId,
 		rootfsDirtyBlocks,
 	)
 
+	telemetry.ReportEvent(ctx, "created rootfs mapping")
+
 	rootfsMappings := header.MergeMappings(
 		originalRootfs.Header().Mapping,
 		rootfsMapping,
 	)
+
+	telemetry.ReportEvent(ctx, "merged rootfs mappings")
 
 	rootfsDiff, err := rootfsDiffFile.ToDiff(int64(originalRootfs.Header().Metadata.BlockSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
 	}
 
+	telemetry.ReportEvent(ctx, "converted rootfs diff file to local diff")
+
 	memfileDiff, err := memfileDiffFile.ToDiff(int64(originalMemfile.Header().Metadata.BlockSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
 	}
+
+	telemetry.ReportEvent(ctx, "converted memfile diff file to local diff")
+
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("snapshot.memfile.header.mappings.length", int64(len(memfileMappings))),
+		attribute.Int64("snapshot.rootfs.header.mappings.length", int64(len(rootfsMappings))),
+		attribute.Int64("snapshot.memfile.diff.size", int64(memfileDirtyPages.Count()*uint(originalMemfile.Header().Metadata.BlockSize))),
+		attribute.Int64("snapshot.memfile.mapped_size", int64(memfileMetadata.Size)),
+		attribute.Int64("snapshot.memfile.block_size", int64(memfileMetadata.BlockSize)),
+		attribute.Int64("snapshot.rootfs.diff.size", int64(rootfsDirtyBlocks.Count()*uint(originalRootfs.Header().Metadata.BlockSize))),
+		attribute.Int64("snapshot.rootfs.mapped_size", int64(rootfsMetadata.Size)),
+		attribute.Int64("snapshot.rootfs.block_size", int64(rootfsMetadata.BlockSize)),
+		attribute.Int64("snapshot.metadata.version", int64(memfileMetadata.Version)),
+		attribute.Int64("snapshot.metadata.generation", int64(memfileMetadata.Generation)),
+		attribute.String("snapshot.metadata.build_id", memfileMetadata.BuildId.String()),
+		attribute.String("snapshot.metadata.base_build_id", memfileMetadata.BaseBuildId.String()),
+	)
 
 	return &Snapshot{
 		Snapfile:          snapfile,
