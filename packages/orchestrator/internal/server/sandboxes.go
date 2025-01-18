@@ -172,15 +172,6 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	// 	Ideally we would rely only on the goroutine defer.
 	s.sandboxes.Remove(in.SandboxId)
 
-	// Don't allow connecting to the sandbox anymore.
-	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
-
-	// Remove the sandbox from the cache to prevent loading it again in API during the time the instance is stopping.
-	// Old comment:
-	// 	Ensure the sandbox is removed from cache.
-	// 	Ideally we would rely only on the goroutine defer.
-	s.sandboxes.Remove(in.SandboxId)
-
 	// Check health metrics before stopping the sandbox
 	sbx.Healthcheck(ctx, true)
 	sbx.LogMetrics(ctx)

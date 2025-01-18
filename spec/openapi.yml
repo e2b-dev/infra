@@ -171,6 +171,7 @@ components:
       description: Metric entry with timestamp and line
       required:
         - timestamp
+        - cpuTotal
         - cpuPercent
         - memMiBUsed
         - memMiBTotal
