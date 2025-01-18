@@ -153,6 +153,7 @@ teamID = "{{ teamID }}"
 envID = "{{ envID }}"
 sandboxID = "{{ sandboxID }}"
 
+%{ if var.grafana_logs_endpoint != " " }
 [sinks.grafana]
 type = "loki"
 inputs = [ "internal_routing.internal" ]
@@ -168,7 +169,7 @@ service = "{{ service }}"
 teamID = "{{ teamID }}"
 envID = "{{ envID }}"
 sandboxID = "{{ sandboxID }}"
-
+%{ endif }
         EOH
       }
     }
