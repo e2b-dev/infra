@@ -18,8 +18,11 @@ prep-cluster:
 	@E2B_DOMAIN=$(DOMAIN_NAME) e2b tpl build -p scripts
 	@echo "Done"
 
-.PHONY: generate-migration
-generate-migration:
+.PHONY: migrate
+migrate:
 	@echo "Generating migrations..."
-	cat ./migrations/* > ./../../migration.sql
+	@cat ./migrations/* > ./migration.sql
+	@echo "Applying migration"
+	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/migrate.go
+	@rm ./migration.sql
 	@echo "Done"

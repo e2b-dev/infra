@@ -118,9 +118,9 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
 
-@.PHONY: generate-migration
-generate-migration:
-	$(MAKE) -C packages/shared generate-migration
+@.PHONY: migrate
+migrate:
+	$(MAKE) -C packages/shared migrate
 
 .PHONY: switch-env
 switch-env:
