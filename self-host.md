@@ -1,4 +1,4 @@
-# Self-hosting E2B
+# Self-hosting E2B on Google Cloud
 
 ## Prerequisites
 
