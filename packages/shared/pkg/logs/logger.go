@@ -71,7 +71,7 @@ type SandboxLogger struct {
 	teamID                string
 	cpuMax                int64
 	cpuWasAboveTreshold   atomic.Bool
-	memoryMiBMax          int32
+	memoryMiBMax          int64
 	memoryWasAbove        atomic.Int32
 	healthCheckWasFailing atomic.Bool
 }
@@ -176,7 +176,7 @@ func (l *SandboxLogger) MemoryUsage(memoryMiB float64) {
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
 			Float64("memoryMiBUsed", memoryMiB).
-			Int32("memoryMiBTotal", l.memoryMiBMax).
+			Int64("memoryMiBTotal", l.memoryMiBMax).
 			Msgf("Sandbox memory used %d %% of RAM", int(memoryMiB/float64(l.memoryMiBMax)*100))
 		return
 	}
@@ -189,7 +189,7 @@ func (l *SandboxLogger) CPUPct(cpuPct float64) {
 		Str("envID", l.envID).
 		Str("teamID", l.teamID).
 		Float64("cpuPct", cpuPct).
-		Int32("cpuCount", l.cpuMax).
+		Int64("cpuCount", l.cpuMax).
 		Msg("CPU usage")
 }
 
@@ -207,7 +207,7 @@ func (l *SandboxLogger) MemMiB(memTotalMiB uint64, memUsedMiB uint64) {
 		Str("teamID", l.teamID).
 		Uint64("memUsedMiB", memUsedMiB).
 		Uint64("memTotalMiB", memTotalMiB).
-		Int32("realMemTotalMiB", l.memoryMiBMax).
+		Int64("realMemTotalMiB", l.memoryMiBMax).
 		Uint64("fcMemUsedMiB", fcMemUsedMiB).
 		Uint64("realMemUsedMiB", realMemUsedMiB).
 		Msg("Memory usage")

@@ -175,6 +175,9 @@ type SandboxMetric struct {
 	// CpuPct CPU usage percentage
 	CpuPct *float32 `json:"cpuPct,omitempty"`
 
+	// CpuTotal Total CPU cores
+	CpuTotal int32 `json:"cpuTotal"`
+
 	// MemMiBTotal Total memory in MiB
 	MemMiBTotal int64 `json:"memMiBTotal"`
 

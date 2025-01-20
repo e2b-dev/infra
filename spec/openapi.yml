@@ -180,6 +180,10 @@ components:
           type: string
           format: date-time
           description: Timestamp of the log entry
+        cpuTotal:
+          type: integer
+          format: int32
+          description: Total CPU cores
         cpuPct:
           type: number
           format: float
