@@ -18,11 +18,6 @@
       tfenv use 1.5.7
       ```
 
-- [Atlas](https://atlasgo.io/docs#installation)
-  - Used for database migrations
-  - We don't use Atlas's hosted service, only their [open-source CLI tool](https://atlasgo.io/cli-reference) which unfortunatelly requires you to login via `atlas login`.
-  - We're in the process of removing this dependency.
-
 - [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
   - Used for managing the infrastructure on Google Cloud
 
@@ -49,21 +44,11 @@ Recommended for monitoring and logging
 Check if you can use config for terraform state management
 
 1. Go to `console.cloud.google.com` and create a new GCP project
-2. Run `make login-gcloud` to login to `gcloud`
-3. Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
-4. Get [Postgres database connection string from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct
+2. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). You can pick any of them. Make sure to fill in the values. All are required.
+3. Run `make switch-env ENV={prod,staging,dev}` to start using your env
+4. Run `make login-gcloud` to login to `gcloud`
 5. [Create a storage bucket in Google Cloud](https://cloud.google.com/storage/docs/creating-buckets). This is the source of truth for the terraform state: Go to `console.cloud.google.com` -> Storage -> Create Bucket -> Bucket name: `e2b-terraform-state` -> Location: `US` -> Default storage class: `Standard` -> Location type: `Multi-region` -> Bucket location: `US` -> Create
-6. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). You can pick any of them. Make sure to fill in the values. All are required except the `# Tests` section
-7. Run `make switch-env ENV={prod,staging,dev}`
-8. Login to the Atlas CLI: `atlas login`
-9. Run `make migrate`: This step will fail--that's okay. After you get the error message, you will need to create `atlas_schema_revisions.atlas_schema_revisions`, just copied from `public.atlas_schema_revisions`. This can be done with the following statement in the Supabase visual SQL Editor:
-
-```sql
-CREATE TABLE atlas_schema_revisions.atlas_schema_revisions (LIKE public.atlas_schema_revisions INCLUDING ALL);
-```
-
-10. Run `make migrate` again
-11. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
+6. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
    - [Secret Manager API](https://console.cloud.google.com/apis/library/secretmanager.googleapis.com)
    - [Certificate Manager API](https://console.cloud.google.com/apis/library/certificatemanager.googleapis.com)
    - [Compute Engine API](https://console.cloud.google.com/apis/library/compute.googleapis.com)
@@ -71,20 +56,26 @@ CREATE TABLE atlas_schema_revisions.atlas_schema_revisions (LIKE public.atlas_sc
    - [OS Config API](https://console.cloud.google.com/apis/library/osconfig.googleapis.com)
    - [Stackdriver Monitoring API](https://console.cloud.google.com/apis/library/monitoring.googleapis.com)
    - [Stackdriver Logging API](https://console.cloud.google.com/apis/library/logging.googleapis.com)
-12. Run `make build-and-upload`
-13. Run `make copy-public-builds`. This will copy kernel and rootfs builds for Firecracker to your bucket. You can [build your own](#building-firecracker-and-uffd-from-source) kernel and Firecracker roots.
-14. Secrets are created and stored in GCP Secrets Manager. Once created, that is the source of truth--you will need to update values there to make changes. Create a secret value for the following secrets:
-
+7. Run `make build-and-upload`
+8. Run `make copy-public-builds`. This will copy kernel and rootfs builds for Firecracker to your bucket. You can [build your own](#building-firecracker-and-uffd-from-source) kernel and Firecracker roots.
+9. Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
+10. Get Postgres database connection string from your database 
+    - e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct 
+11. Run `make migration`
+12. Secrets are created and stored in GCP Secrets Manager. Once created, that is the source of truth--you will need to update values there to make changes. Create a secret value for the following secrets:
 - e2b-cloudflare-api-token
 - e2b-postgres-connection-string
 - Grafana secrets (optional)
 - Posthog API keys for monitoring (optional)
-
-15. Run `make plan-without-jobs` and then `make apply`
-16. Run `make plan` and then `make apply`. Note: provisioning of the TLS certificates can take some time; you can check the status in the Google Cloud Console
-17. To access the nomad web UI, go to nomad.<your-domain.com>. Go to sign in, and when prompted for an API token, you can find this in GCP Secrets Manager. From here, you can see nomad jobs and tasks for both client and server, including logging.
-18. Look inside packages/nomad for config files for your logging and monitoring agents.
-19. If any problems arise, open [a Github Issue on the repo](https://github.com/e2b-dev/infra/issues) and we'll look into it.
+13. Run `make plan-without-jobs` and then `make apply`
+14. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It1 can take some time; you can check the status in the Google Cloud Console
+15. Either run 
+    - `make prep-cluster` in `packages/shared` to create an initial user, etc. (You need to be logged in via [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli?activetab=versions)). It will create a user with same information (access token, api key, etc.) as you have in E2B. 
+    - You can also create a user in database, it will automatically also create a team, an API key and an access token. You will need to build template(s) for your cluster. Use [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli?activetab=versions)) and run `E2B_DOMAIN<your-domain> e2b template build`.
+16. When using SDK pass domain when creating new `Sandbox` (`Sandbox(domain=<your-domain>, ...})`)
+16. To access the nomad web UI, go to nomad.<your-domain.com>. Go to sign in, and when prompted for an API token, you can find this in GCP Secrets Manager. From here, you can see nomad jobs and tasks for both client and server, including logging.
+17. Look inside packages/nomad for config files for your logging and monitoring agents.
+18. If any problems arise, open [a Github Issue on the repo](https://github.com/e2b-dev/infra/issues) and we'll look into it.
 
 ---
 
@@ -106,6 +97,7 @@ gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-e
 - `make plan` - plans the terraform changes
 - `make apply` - applies the terraform changes, you have to run `make plan` before this one
 - `make plan-without-jobs` - plans the terraform changes without provisioning nomad jobs
+- `make plan-only-jobs` - plans the terraform changes only for provisioning nomad jobs
 - `make destroy` - destroys the cluster
 - `make version` - increments the repo version
 - `make build-and-upload` - builds and uploads the docker images, binaries, and cluster disk image

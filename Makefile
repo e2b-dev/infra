@@ -52,7 +52,7 @@ plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	terraform fmt -recursive
 	$(eval TARGET := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | awk '{print "-target=module." $$0 ""}' | xargs))
-	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode $(TARGET)
+	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad.nomad_job.logs_collector
 
 .PHONY: plan-only-jobs
 plan-only-jobs:
@@ -118,8 +118,9 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
 
+@.PHONY: migrate
 migrate:
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/shared migrate
+	$(MAKE) -C packages/shared migrate
 
 .PHONY: switch-env
 switch-env:
