@@ -227,7 +227,7 @@ func main() {
 		case errors.Is(err, http.ErrServerClosed):
 			log.Printf("http service (%d) shutdown successfully", port)
 		case err != nil:
-			exitCode.Add(2)
+			exitCode.Add(1)
 			log.Printf("http service (%d) encountered error: %v", port, err)
 		default:
 			// this probably shouldn't happen...
