@@ -16,7 +16,7 @@ import (
 const (
 	healthCheckInterval      = 10 * time.Second
 	metricsCheckInterval     = 5 * time.Second
-	minEnvdVersionForMetrcis = "0.1.3"
+	minEnvdVersionForMetrcis = "0.1.5"
 )
 
 func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
