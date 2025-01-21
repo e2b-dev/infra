@@ -172,11 +172,11 @@ type SandboxMetadata map[string]string
 
 // SandboxMetric Metric entry with timestamp and line
 type SandboxMetric struct {
-	// CpuPct CPU usage percentage
-	CpuPct *float32 `json:"cpuPct,omitempty"`
+	// CpuCount Number of CPU cores
+	CpuCount int32 `json:"cpuCount"`
 
-	// CpuTotal Total CPU cores
-	CpuTotal int32 `json:"cpuTotal"`
+	// CpuPct CPU usage percentage
+	CpuPct float32 `json:"cpuPct"`
 
 	// MemMiBTotal Total memory in MiB
 	MemMiBTotal int64 `json:"memMiBTotal"`
@@ -184,14 +184,8 @@ type SandboxMetric struct {
 	// MemMiBUsed Memory used in MiB
 	MemMiBUsed int64 `json:"memMiBUsed"`
 
-	// Timestamp Timestamp of the log entry
+	// Timestamp Timestamp of the metric entry
 	Timestamp time.Time `json:"timestamp"`
-}
-
-// SandboxMetrics defines model for SandboxMetrics.
-type SandboxMetrics struct {
-	// Metrics Metrics of the sandbox
-	Metrics []SandboxMetric `json:"metrics"`
 }
 
 // Team defines model for Team.

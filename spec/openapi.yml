@@ -171,19 +171,19 @@ components:
       description: Metric entry with timestamp and line
       required:
         - timestamp
-        - cpuTotal
-        - cpuPercent
+        - cpuCount
+        - cpuPct
         - memMiBUsed
         - memMiBTotal
       properties:
         timestamp:
           type: string
           format: date-time
-          description: Timestamp of the log entry
-        cpuTotal:
+          description: Timestamp of the metric entry
+        cpuCount:
           type: integer
           format: int32
-          description: Total CPU cores
+          description: Number of CPU cores
         cpuPct:
           type: number
           format: float
@@ -196,16 +196,6 @@ components:
           type: integer
           format: int64
           description: Total memory in MiB
-
-    SandboxMetrics:
-      required:
-        - metrics
-      properties:
-        metrics:
-          description: Metrics of the sandbox
-          type: array
-          items:
-            $ref: "#/components/schemas/SandboxMetric"
 
     Sandbox:
       required:
@@ -617,7 +607,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SandboxMetrics"
+                type: array
+                items:
+                  type: object
+                  $ref: "#/components/schemas/SandboxMetric"
         "404":
           $ref: "#/components/responses/404"
         "401":
