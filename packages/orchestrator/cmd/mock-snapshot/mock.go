@@ -189,7 +189,7 @@ func mockSnapshot(
 
 	fmt.Println("Snapshotting sandbox")
 
-	snapshot, err := sbx.Snapshot(ctx, snapshotTemplateFiles, func() {})
+	snapshot, err := sbx.Snapshot(ctx, otel.Tracer("orchestrator-mock"), snapshotTemplateFiles, func() {})
 	if err != nil {
 		return fmt.Errorf("failed to snapshot sandbox: %w", err)
 	}
