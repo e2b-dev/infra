@@ -10,7 +10,6 @@
 # import { Sandbox } from 'e2b'
 # const sandbox = await Sandbox.create('base')
 
-team_id = "460355b3-4f64-48f9-9a16-4442817f79f5"
 memory_mb = 512
 dockerfile = "e2b.Dockerfile"
 template_name = "base"

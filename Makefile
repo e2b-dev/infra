@@ -118,8 +118,9 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
 
+@.PHONY: migrate
 migrate:
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/shared migrate
+	$(MAKE) -C packages/shared migrate
 
 .PHONY: switch-env
 switch-env:

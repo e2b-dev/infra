@@ -153,12 +153,12 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 		req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
 		if node == nil {
 			log.Printf("node '%s' not found", info.Instance.ClientID)
-			return fmt.Errorf("node '%s' not found", info.Instance)
+			return fmt.Errorf("node '%s' not found", info.Instance.ClientID)
 		}
 
 		if node.Client == nil {
 			log.Printf("client for node '%s' not found", info.Instance.ClientID)
-			return fmt.Errorf("client for node '%s' not found", info.Instance)
+			return fmt.Errorf("client for node '%s' not found", info.Instance.ClientID)
 		}
 
 		_, err = node.Client.Sandbox.Delete(ctx, req)
