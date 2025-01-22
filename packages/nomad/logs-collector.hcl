@@ -152,6 +152,7 @@ service = "{{ service }}"
 teamID = "{{ teamID }}"
 envID = "{{ envID }}"
 sandboxID = "{{ sandboxID }}"
+category = "{{ category }}"
 
 %{ if var.grafana_logs_endpoint != " " }
 [sinks.grafana]
