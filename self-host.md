@@ -105,10 +105,11 @@ E2B_DOMAIN=<your-domain> e2b <command>
 You can also set your domain in the dashboard at [Developer settings](https://e2b.dev/dashboard?tab=developer)
 
 
-#### Monitoring and logging
+#### Monitoring and logging jobs
+
+To access the nomad web UI, go to https://nomad.<your-domain.com>. Go to sign in, and when prompted for an API token, you can find this in GCP Secrets Manager. From here, you can see nomad jobs and tasks for both client and server, including logging.
 
 To update jobs running in the cluster look inside packages/nomad for config files. This can be useful for setting your logging and monitoring agents.
-
 
 ### Troubleshooting
 
