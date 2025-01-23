@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/edsrzf/mmap-go"
@@ -14,7 +15,19 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-const errClosedTemplate = "block cache already closed for path %s"
+type ErrCacheClosed struct {
+	filePath string
+}
+
+func (e *ErrCacheClosed) Error() string {
+	return fmt.Sprintf("block cache already closed for path %s", e.filePath)
+}
+
+func NewErrCacheClosed(filePath string) *ErrCacheClosed {
+	return &ErrCacheClosed{
+		filePath: filePath,
+	}
+}
 
 type Cache struct {
 	filePath  string
@@ -24,7 +37,7 @@ type Cache struct {
 	mu        sync.RWMutex
 	dirty     sync.Map
 	dirtyFile bool
-	closed    chan struct{}
+	closed    atomic.Bool
 }
 
 // When we are passing filePath that is a file that has content we want to server want to use dirtyFile = true.
@@ -53,17 +66,11 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
-		closed:    make(chan struct{}),
 	}, nil
 }
 
 func (m *Cache) isClosed() bool {
-	select {
-	case <-m.closed:
-		return true
-	default:
-		return false
-	}
+	return m.closed.Load()
 }
 
 func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
@@ -71,7 +78,7 @@ func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
 	defer m.mu.Unlock()
 
 	if m.isClosed() {
-		return nil, fmt.Errorf(errClosedTemplate, m.filePath)
+		return nil, NewErrCacheClosed(m.filePath)
 	}
 
 	err := m.mmap.Flush()
@@ -104,7 +111,7 @@ func (m *Cache) ReadAt(b []byte, off int64) (int, error) {
 	defer m.mu.RUnlock()
 
 	if m.isClosed() {
-		return 0, fmt.Errorf(errClosedTemplate, m.filePath)
+		return 0, NewErrCacheClosed(m.filePath)
 	}
 
 	slice, err := m.Slice(off, int64(len(b)))
@@ -120,7 +127,7 @@ func (m *Cache) WriteAt(b []byte, off int64) (int, error) {
 	defer m.mu.Unlock()
 
 	if m.isClosed() {
-		return 0, fmt.Errorf(errClosedTemplate, m.filePath)
+		return 0, NewErrCacheClosed(m.filePath)
 	}
 
 	return m.WriteAtWithoutLock(b, off)
@@ -131,9 +138,9 @@ func (m *Cache) Close() error {
 	defer m.mu.Unlock()
 
 	if m.isClosed() {
-		return fmt.Errorf(errClosedTemplate, m.filePath)
+		return NewErrCacheClosed(m.filePath)
 	}
-	close(m.closed)
+	m.closed.Store(true)
 
 	return errors.Join(
 		m.mmap.Unmap(),
@@ -143,7 +150,7 @@ func (m *Cache) Close() error {
 
 func (m *Cache) Size() (int64, error) {
 	if m.isClosed() {
-		return 0, fmt.Errorf(errClosedTemplate, m.filePath)
+		return 0, NewErrCacheClosed(m.filePath)
 	}
 
 	return m.size, nil
@@ -153,7 +160,7 @@ func (m *Cache) Size() (int64, error) {
 // When using Slice you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
 func (m *Cache) Slice(off, length int64) ([]byte, error) {
 	if m.isClosed() {
-		return nil, fmt.Errorf(errClosedTemplate, m.filePath)
+		return nil, NewErrCacheClosed(m.filePath)
 	}
 
 	if m.dirtyFile || m.isCached(off, length) {
@@ -188,7 +195,7 @@ func (m *Cache) setIsCached(off, length int64) {
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
 func (m *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	if m.isClosed() {
-		return 0, fmt.Errorf(errClosedTemplate, m.filePath)
+		return 0, NewErrCacheClosed(m.filePath)
 	}
 
 	end := off + int64(len(b))
