@@ -80,8 +80,8 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 					Timestamp:   entry.Timestamp,
 					CpuPct:      metric.CPUPct,
 					CpuCount:    metric.CPUCount,
-					MemMiBTotal: metric.MemTotalMiB,
-					MemMiBUsed:  metric.MemUsedMiB,
+					MemTotalMiB: metric.MemTotalMiB,
+					MemUsedMiB:  metric.MemUsedMiB,
 				})
 			}
 		}

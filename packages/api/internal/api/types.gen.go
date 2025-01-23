@@ -178,11 +178,11 @@ type SandboxMetric struct {
 	// CpuPct CPU usage percentage
 	CpuPct float32 `json:"cpuPct"`
 
-	// MemMiBTotal Total memory in MiB
-	MemMiBTotal int64 `json:"memMiBTotal"`
+	// MemTotalMiB Total memory in MiB
+	MemTotalMiB int64 `json:"memTotalMiB"`
 
-	// MemMiBUsed Memory used in MiB
-	MemMiBUsed int64 `json:"memMiBUsed"`
+	// MemUsedMiB Memory used in MiB
+	MemUsedMiB int64 `json:"memUsedMiB"`
 
 	// Timestamp Timestamp of the metric entry
 	Timestamp time.Time `json:"timestamp"`

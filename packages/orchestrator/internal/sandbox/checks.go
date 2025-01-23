@@ -115,8 +115,8 @@ func (s *Sandbox) LogMetrics(ctx context.Context) {
 		if err != nil {
 			s.Logger.Warnf("failed to get metrics: %s", err)
 		} else {
-			s.Logger.CPUPct(metrics.CPUPercent)
-			s.Logger.MemMiB(metrics.MemTotalMiB, metrics.MemUsedMiB)
+			s.Logger.Metrics(
+				metrics.MemTotalMiB, metrics.MemUsedMiB, metrics.CPUCount, metrics.CPUPercent)
 		}
 	}
 }

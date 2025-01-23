@@ -173,8 +173,8 @@ components:
         - timestamp
         - cpuCount
         - cpuPct
-        - memMiBUsed
-        - memMiBTotal
+        - memUsedMiB
+        - memTotalMiB
       properties:
         timestamp:
           type: string
@@ -188,11 +188,11 @@ components:
           type: number
           format: float
           description: CPU usage percentage
-        memMiBUsed:
+        memUsedMiB:
           type: integer
           format: int64
           description: Memory used in MiB
-        memMiBTotal:
+        memTotalMiB:
           type: integer
           format: int64
           description: Total memory in MiB

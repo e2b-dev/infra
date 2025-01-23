@@ -182,35 +182,19 @@ func (l *SandboxLogger) MemoryUsage(memoryMiB float64) {
 	}
 }
 
-func (l *SandboxLogger) CPUPct(cpuPct float64) {
+func (l *SandboxLogger) Metrics(memTotalMiB, memUsedMiB uint64, cpuCount uint32, cpuPct float32) {
 	l.exporter.logger.Info().
 		Str("category", "metrics").
 		Str("instanceID", l.instanceID).
 		Str("envID", l.envID).
 		Str("teamID", l.teamID).
-		Float64("cpuPct", cpuPct).
-		Int64("cpuCount", l.cpuMax).
-		Msg("CPU usage")
-}
-
-func (l *SandboxLogger) MemMiB(memTotalMiB uint64, memUsedMiB uint64) {
-	// Calculate memory used by firecracker
-	fcMemUsedMiB := uint64(l.memoryMiBMax) - memTotalMiB
-
-	// Add firecracker memory to the reported memory used for a more accurate value
-	realMemUsedMiB := memUsedMiB + fcMemUsedMiB
-
-	l.exporter.logger.Info().
-		Str("category", "metrics").
-		Str("instanceID", l.instanceID).
-		Str("envID", l.envID).
-		Str("teamID", l.teamID).
-		Uint64("memUsedMiB", memUsedMiB).
+		Float32("cpuPct", cpuPct).
+		Uint32("cpuCount", cpuCount).
 		Uint64("memTotalMiB", memTotalMiB).
-		Int64("realMemTotalMiB", l.memoryMiBMax).
-		Uint64("fcMemUsedMiB", fcMemUsedMiB).
-		Uint64("realMemUsedMiB", realMemUsedMiB).
-		Msg("Memory usage")
+		Uint64("memUsedMiB", memUsedMiB).
+		Msg("Metrics")
+
+	return
 }
 
 func (l *SandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
