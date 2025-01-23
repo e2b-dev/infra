@@ -22,9 +22,9 @@ paths:
         "200":
           description: The resource usage metrics of the service
           content:
-          application/json:
-              schema:
-                $ref: "#/components/schemas/Metrics"
+            application/json:
+                schema:
+                  $ref: "#/components/schemas/Metrics"
 
   /init:
     post:
