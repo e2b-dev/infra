@@ -61,7 +61,7 @@ Check if you can use config for terraform state management
 9. Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
 10. Get Postgres database connection string from your database 
     - e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct 
-11. Run `make migration`
+11. Run `make migrate`
 12. Secrets are created and stored in GCP Secrets Manager. Once created, that is the source of truth--you will need to update values there to make changes. Create a secret value for the following secrets:
 - e2b-cloudflare-api-token
 - e2b-postgres-connection-string
@@ -70,12 +70,50 @@ Check if you can use config for terraform state management
 13. Run `make plan-without-jobs` and then `make apply`
 14. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It1 can take some time; you can check the status in the Google Cloud Console
 15. Either run 
-    - `make prep-cluster` in `packages/shared` to create an initial user, etc. (You need to be logged in via [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli?activetab=versions)). It will create a user with same information (access token, api key, etc.) as you have in E2B. 
-    - You can also create a user in database, it will automatically also create a team, an API key and an access token. You will need to build template(s) for your cluster. Use [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli?activetab=versions)) and run `E2B_DOMAIN<your-domain> e2b template build`.
-16. When using SDK pass domain when creating new `Sandbox` (`Sandbox(domain=<your-domain>, ...})`)
-16. To access the nomad web UI, go to nomad.<your-domain.com>. Go to sign in, and when prompted for an API token, you can find this in GCP Secrets Manager. From here, you can see nomad jobs and tasks for both client and server, including logging.
-17. Look inside packages/nomad for config files for your logging and monitoring agents.
-18. If any problems arise, open [a Github Issue on the repo](https://github.com/e2b-dev/infra/issues) and we'll look into it.
+    - `make prep-cluster` in `packages/shared` to create an initial user, etc. (You need to be logged in via [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli)). It will create a user with same information (access token, api key, etc.) as you have in E2B. 
+    - You can also create a user in database, it will automatically also create a team, an API key and an access token. You will need to build template(s) for your cluster. Use [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli?activetab=versions)) and run `E2B_DOMAIN=<your-domain> e2b template build`.
+
+
+### Interacting with the cluster
+
+#### SDK
+When using SDK pass domain when creating new `Sandbox` in JS/TS SDK
+```js
+import { Sandbox } from "@e2b/sdk";
+
+const sandbox = new Sandbox({
+  domain: "<your-domain>",
+});
+```
+
+or in Python SDK
+
+```python
+from e2b import Sandbox
+
+sandbox = Sandbox(domain="<your-domain>")
+```
+
+#### CLI
+When using CLI you can pass domain as well
+```sh
+E2B_DOMAIN=<your-domain> e2b <command>
+```
+
+#### Dashboard
+
+You can also set your domain in the dashboard at [Developer settings](https://e2b.dev/dashboard?tab=developer)
+
+
+#### Monitoring and logging jobs
+
+To access the nomad web UI, go to https://nomad.<your-domain.com>. Go to sign in, and when prompted for an API token, you can find this in GCP Secrets Manager. From here, you can see nomad jobs and tasks for both client and server, including logging.
+
+To update jobs running in the cluster look inside packages/nomad for config files. This can be useful for setting your logging and monitoring agents.
+
+### Troubleshooting
+
+If any problems arise, open [a Github Issue on the repo](https://github.com/e2b-dev/infra/issues) and we'll look into it.
 
 ---
 
@@ -103,7 +141,7 @@ gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-e
 - `make build-and-upload` - builds and uploads the docker images, binaries, and cluster disk image
 - `make copy-public-builds` - copies the old envd binary, kernels, and firecracker versions from the public bucket to your bucket
 - `make migrate` - runs the migrations for your database
-- `make update-api` - updates the API docker image
+- `make login-gcloud` - logs in to gcloud
 - `make switch-env ENV={prod,staging,dev}` - switches the environment
 - `make import TARGET={resource} ID={resource_id}` - imports the already created resources into the terraform state
 - `make setup-ssh` - sets up the ssh key for the environment (useful for remote-debugging)
