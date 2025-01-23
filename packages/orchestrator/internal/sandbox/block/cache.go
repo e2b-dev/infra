@@ -137,10 +137,10 @@ func (m *Cache) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.isClosed() {
+	succ := m.closed.CompareAndSwap(false, true)
+	if !succ {
 		return NewErrCacheClosed(m.filePath)
 	}
-	m.closed.Store(true)
 
 	return errors.Join(
 		m.mmap.Unmap(),
