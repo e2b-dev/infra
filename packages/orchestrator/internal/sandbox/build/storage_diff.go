@@ -24,6 +24,7 @@ type StorageDiff struct {
 }
 
 func newStorageDiff(
+	basePath string,
 	buildId string,
 	diffType DiffType,
 	blockSize int64,
@@ -32,7 +33,7 @@ func newStorageDiff(
 
 	storagePath := storagePath(buildId, diffType)
 	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
-	cachePath := filepath.Join(cachePath, cacheFile)
+	cachePath := filepath.Join(basePath, cacheFile)
 
 	return &StorageDiff{
 		storagePath: storagePath,

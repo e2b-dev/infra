@@ -14,12 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
-const buildExpiration = time.Hour * 25
-const buildSpacePercentageExpiration = 90.0
-
-const fileDeletionDelay = 60 * time.Second
-
-const cachePath = "/orchestrator/build"
+const DefaultCachePath = "/orchestrator/build"
 
 type deleteDiff struct {
 	size   int64
@@ -27,31 +22,35 @@ type deleteDiff struct {
 }
 
 type DiffStore struct {
-	bucket *gcs.BucketHandle
-	cache  *ttlcache.Cache[string, Diff]
-	ctx    context.Context
+	cachePath string
+	bucket    *gcs.BucketHandle
+	cache     *ttlcache.Cache[string, Diff]
+	ctx       context.Context
 
 	// pdSizes is used to keep track of the diff sizes
 	// that are scheduled for deletion, as this won't show up in the disk usage.
 	pdSizes map[string]*deleteDiff
 	pdMu    sync.RWMutex
+	pdDelay time.Duration
 }
 
-func NewDiffStore(bucket *gcs.BucketHandle, ctx context.Context) (*DiffStore, error) {
+func NewDiffStore(bucket *gcs.BucketHandle, ctx context.Context, cachePath string, ttl, delay time.Duration, maxUsedPercentage float64) (*DiffStore, error) {
 	err := os.MkdirAll(cachePath, 0o755)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
 	cache := ttlcache.New(
-		ttlcache.WithTTL[string, Diff](buildExpiration),
+		ttlcache.WithTTL[string, Diff](ttl),
 	)
 
 	ds := &DiffStore{
-		bucket:  bucket,
-		cache:   cache,
-		ctx:     ctx,
-		pdSizes: make(map[string]*deleteDiff),
+		cachePath: cachePath,
+		bucket:    bucket,
+		cache:     cache,
+		ctx:       ctx,
+		pdSizes:   make(map[string]*deleteDiff),
+		pdDelay:   delay,
 	}
 
 	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, Diff]) {
@@ -65,13 +64,13 @@ func NewDiffStore(bucket *gcs.BucketHandle, ctx context.Context) (*DiffStore, er
 	})
 
 	go cache.Start()
-	go ds.startDiskSpaceEviction()
+	go ds.startDiskSpaceEviction(maxUsedPercentage)
 
 	return ds, nil
 }
 
 func (s *DiffStore) Get(buildId string, diffType DiffType, blockSize int64) (Diff, error) {
-	diff := newStorageDiff(buildId, diffType, blockSize)
+	diff := newStorageDiff(s.cachePath, buildId, diffType, blockSize)
 
 	s.resetDelete(diff.CacheKey())
 	source, found := s.cache.GetOrSet(
@@ -102,7 +101,7 @@ func (s *DiffStore) Add(buildId string, t DiffType, d Diff) {
 	s.cache.Set(storagePath, d, ttlcache.DefaultTTL)
 }
 
-func (s *DiffStore) startDiskSpaceEviction() {
+func (s *DiffStore) startDiskSpaceEviction(threshold float64) {
 	getDelay := func(fast bool) time.Duration {
 		if fast {
 			return time.Microsecond
@@ -119,7 +118,7 @@ func (s *DiffStore) startDiskSpaceEviction() {
 		case <-s.ctx.Done():
 			return
 		case <-timer.C:
-			dUsed, dTotal, err := diskUsage(cachePath)
+			dUsed, dTotal, err := diskUsage(s.cachePath)
 			if err != nil {
 				fmt.Printf("[build data cache]: failed to get disk usage: %v\n", err)
 				timer.Reset(getDelay(false))
@@ -130,7 +129,7 @@ func (s *DiffStore) startDiskSpaceEviction() {
 			used := int64(dUsed) - pUsed
 			percentage := float64(used) / float64(dTotal) * 100
 
-			if percentage <= buildSpacePercentageExpiration {
+			if percentage <= threshold {
 				timer.Reset(getDelay(false))
 				continue
 			}
@@ -223,7 +222,7 @@ func (s *DiffStore) scheduleDelete(key string, dSize int64) {
 		select {
 		case <-s.ctx.Done():
 		case <-cancelCh:
-		case <-time.After(fileDeletionDelay):
+		case <-time.After(s.pdDelay):
 			s.cache.Delete(key)
 		}
 	})()

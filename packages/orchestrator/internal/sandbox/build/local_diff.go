@@ -21,7 +21,7 @@ func NewLocalDiffFile(
 	cachePathSuffix := id.Generate()
 
 	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
-	cachePath := filepath.Join(cachePath, cacheFile)
+	cachePath := filepath.Join(DefaultCachePath, cacheFile)
 
 	f, err := os.OpenFile(cachePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
