@@ -110,3 +110,12 @@ func (b *StorageDiff) WriteTo(w io.Writer) (int64, error) {
 func (b *StorageDiff) CachePath() (string, error) {
 	return b.cachePath, nil
 }
+
+func (b *StorageDiff) FileSize() (int64, error) {
+	c, err := b.chunker.Wait()
+	if err != nil {
+		return 0, err
+	}
+
+	return c.FileSize()
+}

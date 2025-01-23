@@ -96,3 +96,7 @@ func (b *localDiff) ReadAt(p []byte, off int64) (int, error) {
 func (b *localDiff) Slice(off, length int64) ([]byte, error) {
 	return b.cache.Slice(off, length)
 }
+
+func (b *localDiff) FileSize() (int64, error) {
+	return b.cache.FileSize()
+}
