@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -26,10 +25,9 @@ type DiffStore struct {
 	cache  *ttlcache.Cache[string, Diff]
 	ctx    context.Context
 
-	// pdSizes is used to keep track of the diff sizes
+	// dCache is used to keep track of the diff sizes
 	// that are scheduled for deletion, as this won't show up in the disk usage.
-	pdSizes map[string]int64
-	pdMu    sync.RWMutex
+	dCache *ttlcache.Cache[string, int64]
 }
 
 func NewDiffStore(bucket *gcs.BucketHandle, ctx context.Context) (*DiffStore, error) {
@@ -42,16 +40,23 @@ func NewDiffStore(bucket *gcs.BucketHandle, ctx context.Context) (*DiffStore, er
 		ttlcache.WithTTL[string, Diff](buildExpiration),
 	)
 
-	ds := &DiffStore{
-		bucket:  bucket,
-		cache:   cache,
-		ctx:     ctx,
-		pdSizes: make(map[string]int64),
-	}
+	dCache := ttlcache.New(
+		ttlcache.WithTTL[string, int64](fileDeletionDelay),
+	)
+
+	// Delay cache (file close/removal) deletion,
+	// this is to prevent race conditions with exposed slices,
+	// pending data fetching, or data upload
+	dCache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, int64]) {
+		if reason != ttlcache.EvictionReasonExpired {
+			return
+		}
+
+		cache.Delete(item.Key())
+	})
 
 	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, Diff]) {
 		buildData := item.Value()
-		defer ds.resetDelete(item.Key())
 
 		err = buildData.Close()
 		if err != nil {
@@ -59,7 +64,15 @@ func NewDiffStore(bucket *gcs.BucketHandle, ctx context.Context) (*DiffStore, er
 		}
 	})
 
+	ds := &DiffStore{
+		bucket: bucket,
+		cache:  cache,
+		ctx:    ctx,
+		dCache: dCache,
+	}
+
 	go cache.Start()
+	go dCache.Start()
 	go ds.startDiskSpaceEviction()
 
 	return ds, nil
@@ -72,7 +85,7 @@ func (s *DiffStore) Get(buildId string, diffType DiffType, blockSize int64) (Dif
 	source, found := s.cache.GetOrSet(
 		diff.CacheKey(),
 		diff,
-		ttlcache.WithTTL[string, Diff](buildExpiration),
+		ttlcache.WithTTL[string, Diff](ttlcache.DefaultTTL),
 	)
 
 	value := source.Value()
@@ -94,7 +107,7 @@ func (s *DiffStore) Add(buildId string, t DiffType, d Diff) {
 	storagePath := storagePath(buildId, t)
 
 	s.resetDelete(storagePath)
-	s.cache.Set(storagePath, d, buildExpiration)
+	s.cache.Set(storagePath, d, ttlcache.DefaultTTL)
 }
 
 func (s *DiffStore) startDiskSpaceEviction() {
@@ -144,13 +157,11 @@ func (s *DiffStore) startDiskSpaceEviction() {
 }
 
 func (s *DiffStore) getPendingDeletesSize() int64 {
-	s.pdMu.RLock()
-	defer s.pdMu.RUnlock()
-
 	var pendingSize int64
-	for _, value := range s.pdSizes {
-		pendingSize += value
-	}
+	s.dCache.Range(func(item *ttlcache.Item[string, int64]) bool {
+		pendingSize += item.Value()
+		return true
+	})
 	return pendingSize
 }
 
@@ -181,41 +192,15 @@ func (s *DiffStore) deleteOldestFromCache() (bool, error) {
 }
 
 func (s *DiffStore) resetDelete(key string) {
-	s.pdMu.Lock()
-	defer s.pdMu.Unlock()
-
-	delete(s.pdSizes, key)
+	s.dCache.Delete(key)
 }
 
 func (s *DiffStore) isBeingDeleted(key string) bool {
-	s.pdMu.RLock()
-	defer s.pdMu.RUnlock()
-
-	_, f := s.pdSizes[key]
-	return f
+	return s.dCache.Has(key)
 }
 
 func (s *DiffStore) scheduleDelete(key string, dSize int64) {
-	s.pdMu.Lock()
-	defer s.pdMu.Unlock()
-
-	s.pdSizes[key] = dSize
-
-	// Delay cache (file close/removal) deletion,
-	// this is to prevent race conditions with exposed slices,
-	// pending data fetching, or data upload
-	go (func() {
-		select {
-		case <-s.ctx.Done():
-		case <-time.After(fileDeletionDelay):
-			ev := s.isBeingDeleted(key)
-			if !ev {
-				return
-			}
-
-			s.cache.Delete(key)
-		}
-	})()
+	s.dCache.Set(key, dSize, ttlcache.DefaultTTL)
 }
 
 func diskUsage(path string) (uint64, uint64, error) {

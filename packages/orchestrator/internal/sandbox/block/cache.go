@@ -240,9 +240,6 @@ func (m *Cache) DirtySize() (int64, error) {
 // FileSize returns the size of the cache on disk.
 // The size might differ from the dirty size, as it may not be fully on disk.
 func (m *Cache) FileSize() (int64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	var stat syscall.Stat_t
 	err := syscall.Stat(m.filePath, &stat)
 	if err != nil {
