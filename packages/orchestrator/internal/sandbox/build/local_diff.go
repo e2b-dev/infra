@@ -16,13 +16,14 @@ type LocalDiffFile struct {
 }
 
 func NewLocalDiffFile(
+	basePath string,
 	buildId string,
 	diffType DiffType,
 ) (*LocalDiffFile, error) {
 	cachePathSuffix := id.Generate()
 
 	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
-	cachePath := filepath.Join(DefaultCachePath, cacheFile)
+	cachePath := filepath.Join(basePath, cacheFile)
 
 	f, err := os.OpenFile(cachePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {

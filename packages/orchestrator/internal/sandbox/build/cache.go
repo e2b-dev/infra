@@ -173,7 +173,7 @@ func (s *DiffStore) deleteOldestFromCache() (bool, error) {
 
 		sfSize, err := item.Value().FileSize()
 		if err != nil {
-			e = fmt.Errorf("failed to get file size: %w", err)
+			e = fmt.Errorf("failed to get diff size: %w", err)
 			return false
 		}
 

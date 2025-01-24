@@ -15,51 +15,19 @@ const (
 	blockSize = int64(1024)
 )
 
-type mockDiff struct {
-	t         *testing.T
-	cachePath string
-	buildId   string
-	diffType  DiffType
-	blockSize int64
-}
+func newDiff(t *testing.T, cachePath, buildId string, diffType DiffType, blockSize int64) Diff {
+	localDiff, err := NewLocalDiffFile(cachePath, buildId, diffType)
+	assert.NoError(t, err)
 
-func newMockDiff(t *testing.T, cachePath, buildId string, diffType DiffType, blockSize int64) *mockDiff {
-	return &mockDiff{
-		t:         t,
-		cachePath: cachePath,
-		buildId:   buildId,
-		diffType:  diffType,
-		blockSize: blockSize,
-	}
-}
+	// Write 100 bytes to the file
+	n, err := localDiff.WriteAt(make([]byte, 100), 0)
+	assert.NoError(t, err)
+	assert.Equal(t, 100, n)
 
-func (m *mockDiff) ReadAt(p []byte, off int64) (n int, err error) {
-	return 0, nil
-}
+	diff, err := localDiff.ToDiff(blockSize)
+	assert.NoError(t, err)
 
-func (m *mockDiff) CachePath() (string, error) {
-	return m.cachePath, nil
-}
-
-func (m *mockDiff) FileSize() (int64, error) {
-	return 1024, nil
-}
-
-func (m *mockDiff) Slice(off, length int64) ([]byte, error) {
-	return nil, nil
-}
-
-func (m *mockDiff) Close() error {
-	m.t.Logf("Closing diff: %s\n", m.CacheKey())
-	return nil
-}
-
-func (m *mockDiff) CacheKey() string {
-	return storagePath(m.buildId, m.diffType)
-}
-
-func (m *mockDiff) Init(ctx context.Context) error {
-	return nil
+	return diff
 }
 
 func createTempDir(t *testing.T) string {
@@ -111,7 +79,7 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Add an item to the cache
-	diff := newMockDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
+	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
 
 	// Add an item to the cache
 	store.Add(diff)
@@ -141,7 +109,7 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Add an item to the cache
-	diff := newMockDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
+	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
 
 	// Add an item to the cache
 	store.Add(diff)
@@ -177,7 +145,7 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Add an item to the cache
-	diff := newMockDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
+	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
 
 	// Add an item to the cache
 	store.Add(diff)
@@ -218,7 +186,7 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Add an item to the cache
-	diff := newMockDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
+	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
 
 	// Add an item to the cache
 	store.Add(diff)
