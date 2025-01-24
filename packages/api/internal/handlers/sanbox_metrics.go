@@ -65,7 +65,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 			for _, entry := range stream.Entries {
 
 				var metric struct {
-					CPUPct      float32 `json:"cpuPct"`
+					CPUUsedPct  float32 `json:"cpuUsedPct"`
 					CPUCount    int32   `json:"cpuCount"`
 					MemTotalMiB int64   `json:"memTotalMiB"`
 					MemUsedMiB  int64   `json:"memUsedMiB"`
@@ -78,7 +78,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 				}
 				metrics = append(metrics, api.SandboxMetric{
 					Timestamp:   entry.Timestamp,
-					CpuPct:      metric.CPUPct,
+					CpuUsedPct:  metric.CPUUsedPct,
 					CpuCount:    metric.CPUCount,
 					MemTotalMiB: metric.MemTotalMiB,
 					MemUsedMiB:  metric.MemUsedMiB,

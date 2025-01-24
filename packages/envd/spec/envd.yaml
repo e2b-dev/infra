@@ -207,7 +207,7 @@ components:
       type: object
       description: Resource usage metrics
       properties:
-        cpu_pct:
+        cpu_used_pct:
           type: number
           format: float
           description: CPU usage percentage

@@ -9,11 +9,11 @@ import (
 )
 
 type Metrics struct {
-	Timestamp   int64   `json:"ts"`            // Unix Timestamp in UTC
-	CPUCount    uint32  `json:"cpu_count"`     // Total CPU cores
-	CPUPercent  float32 `json:"cpu_pct"`       // Percent rounded to 2 decimal places
-	MemTotalMiB uint64  `json:"mem_total_mib"` // Total virtual memory in MiB
-	MemUsedMiB  uint64  `json:"mem_used_mib"`  // Used virtual memory in MiB
+	Timestamp      int64   `json:"ts"`            // Unix Timestamp in UTC
+	CPUCount       uint32  `json:"cpu_count"`     // Total CPU cores
+	CPUUsedPercent float32 `json:"cpu_used_pct"`  // Percent rounded to 2 decimal places
+	MemTotalMiB    uint64  `json:"mem_total_mib"` // Total virtual memory in MiB
+	MemUsedMiB     uint64  `json:"mem_used_mib"`  // Used virtual memory in MiB
 }
 
 func GetMetrics() (*Metrics, error) {
@@ -30,22 +30,22 @@ func GetMetrics() (*Metrics, error) {
 		return nil, err
 	}
 
-	cpuPcts, err := cpu.Percent(0, false)
+	cpuUsedPcts, err := cpu.Percent(0, false)
 	if err != nil {
 		return nil, err
 	}
 
-	cpuPct := cpuPcts[0]
-	cpuPctRounded := float32(cpuPct)
-	if cpuPct > 0 {
-		cpuPctRounded = float32(math.Round(cpuPct*100) / 100)
+	cpuUsedPct := cpuUsedPcts[0]
+	cpuUsedPctRounded := float32(cpuUsedPct)
+	if cpuUsedPct > 0 {
+		cpuUsedPctRounded = float32(math.Round(cpuUsedPct*100) / 100)
 	}
 
 	return &Metrics{
-		Timestamp:   time.Now().UTC().Unix(),
-		CPUCount:    uint32(cpuTotal),
-		CPUPercent:  cpuPctRounded,
-		MemUsedMiB:  memUsedMiB,
-		MemTotalMiB: memTotalMiB,
+		Timestamp:      time.Now().UTC().Unix(),
+		CPUCount:       uint32(cpuTotal),
+		CPUUsedPercent: cpuUsedPctRounded,
+		MemUsedMiB:     memUsedMiB,
+		MemTotalMiB:    memTotalMiB,
 	}, nil
 }

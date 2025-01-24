@@ -15,7 +15,7 @@ import (
 
 const (
 	healthCheckInterval      = 10 * time.Second
-	metricsCheckInterval     = 5 * time.Second
+	metricsCheckInterval     = 2 * time.Second
 	minEnvdVersionForMetrcis = "0.1.5"
 )
 

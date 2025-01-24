@@ -182,13 +182,13 @@ func (l *SandboxLogger) MemoryUsage(memoryMiB float64) {
 	}
 }
 
-func (l *SandboxLogger) Metrics(memTotalMiB, memUsedMiB uint64, cpuCount uint32, cpuPct float32) {
+func (l *SandboxLogger) Metrics(memTotalMiB, memUsedMiB uint64, cpuCount uint32, cpuUsedPct float32) {
 	l.exporter.logger.Info().
 		Str("category", "metrics").
 		Str("instanceID", l.instanceID).
 		Str("envID", l.envID).
 		Str("teamID", l.teamID).
-		Float32("cpuPct", cpuPct).
+		Float32("cpuUsedPct", cpuUsedPct).
 		Uint32("cpuCount", cpuCount).
 		Uint64("memTotalMiB", memTotalMiB).
 		Uint64("memUsedMiB", memUsedMiB).
