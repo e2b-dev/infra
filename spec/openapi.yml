@@ -609,7 +609,6 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
                   $ref: "#/components/schemas/SandboxMetric"
         "404":
           $ref: "#/components/responses/404"
