@@ -101,6 +101,12 @@ func (s *DiffStore) Add(buildId string, t DiffType, d Diff) {
 	s.cache.Set(storagePath, d, ttlcache.DefaultTTL)
 }
 
+func (s *DiffStore) Has(buildId string, t DiffType) bool {
+	storagePath := storagePath(buildId, t)
+
+	return s.cache.Has(storagePath)
+}
+
 func (s *DiffStore) startDiskSpaceEviction(threshold float64) {
 	getDelay := func(fast bool) time.Duration {
 		if fast {
