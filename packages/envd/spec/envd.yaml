@@ -22,9 +22,9 @@ paths:
         "200":
           description: The resource usage metrics of the service
           content:
-          application/json:
-              schema:
-                $ref: "#/components/schemas/Metrics"
+            application/json:
+                schema:
+                  $ref: "#/components/schemas/Metrics"
 
   /init:
     post:
@@ -207,7 +207,7 @@ components:
       type: object
       description: Resource usage metrics
       properties:
-        cpu_pct:
+        cpu_used_pct:
           type: number
           format: float
           description: CPU usage percentage
