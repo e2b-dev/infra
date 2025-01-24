@@ -2,14 +2,11 @@ package build
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
 const (
@@ -19,14 +16,16 @@ const (
 )
 
 type mockDiff struct {
+	t         *testing.T
 	cachePath string
 	buildId   string
 	diffType  DiffType
 	blockSize int64
 }
 
-func newMockDiff(cachePath, buildId string, diffType DiffType, blockSize int64) *mockDiff {
+func newMockDiff(t *testing.T, cachePath, buildId string, diffType DiffType, blockSize int64) *mockDiff {
 	return &mockDiff{
+		t:         t,
 		cachePath: cachePath,
 		buildId:   buildId,
 		diffType:  diffType,
@@ -51,11 +50,16 @@ func (m *mockDiff) Slice(off, length int64) ([]byte, error) {
 }
 
 func (m *mockDiff) Close() error {
+	m.t.Logf("Closing diff: %s\n", m.CacheKey())
 	return nil
 }
 
 func (m *mockDiff) CacheKey() string {
 	return storagePath(m.buildId, m.diffType)
+}
+
+func (m *mockDiff) Init(ctx context.Context) error {
+	return nil
 }
 
 func createTempDir(t *testing.T) string {
@@ -67,7 +71,7 @@ func createTempDir(t *testing.T) string {
 		os.RemoveAll(tempDir)
 	})
 
-	fmt.Printf("Temp dir: %s\n", tempDir)
+	t.Logf("Temp dir: %s\n", tempDir)
 	return tempDir
 }
 
@@ -77,7 +81,6 @@ func TestNewDiffStore(t *testing.T) {
 	t.Cleanup(cancel)
 
 	store, err := NewDiffStore(
-		gcs.TemplateBucket,
 		ctx,
 		cachePath,
 		25*time.Hour,
@@ -98,7 +101,6 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 	ttl := 1 * time.Second
 	delay := 60 * time.Second
 	store, err := NewDiffStore(
-		gcs.TemplateBucket,
 		ctx,
 		cachePath,
 		ttl,
@@ -109,17 +111,16 @@ func TestDiffStoreTTLEviction(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Add an item to the cache
-	buildId := "build-test-id"
-	diff1 := newMockDiff(cachePath, buildId, Rootfs, blockSize)
+	diff := newMockDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
 
 	// Add an item to the cache
-	store.Add(buildId, Rootfs, diff1)
+	store.Add(diff)
 
-	// Expire diff1
+	// Expire diff
 	time.Sleep(ttl + time.Second)
 
-	found1 := store.Has(buildId, Rootfs)
-	assert.False(t, found1)
+	found := store.Has(diff)
+	assert.False(t, found)
 }
 
 func TestDiffStoreRefreshTTLEviction(t *testing.T) {
@@ -130,7 +131,6 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 	ttl := 1 * time.Second
 	delay := 60 * time.Second
 	store, err := NewDiffStore(
-		gcs.TemplateBucket,
 		ctx,
 		cachePath,
 		ttl,
@@ -141,23 +141,21 @@ func TestDiffStoreRefreshTTLEviction(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Add an item to the cache
-	buildId := "build-test-id"
-	diffType := Rootfs
-	diff1 := newMockDiff(cachePath, buildId, diffType, blockSize)
+	diff := newMockDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
 
 	// Add an item to the cache
-	store.Add(buildId, diffType, diff1)
+	store.Add(diff)
 
-	// Refresh diff1 expiration
+	// Refresh diff expiration
 	time.Sleep(ttl / 2)
-	_, err = store.Get(buildId, diffType, blockSize)
+	_, err = store.Get(diff)
 	assert.NoError(t, err)
 
-	// Try to expire diff1
+	// Try to expire diff
 	time.Sleep(ttl/2 + time.Microsecond)
 
 	// Is still in cache
-	found2 := store.Has(buildId, diffType)
+	found2 := store.Has(diff)
 	assert.True(t, found2)
 }
 
@@ -169,7 +167,6 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
-		gcs.TemplateBucket,
 		ctx,
 		cachePath,
 		ttl,
@@ -180,29 +177,27 @@ func TestDiffStoreDelayEviction(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Add an item to the cache
-	buildId := "build-test-id"
-	diffType := Rootfs
-	diff1 := newMockDiff(cachePath, buildId, diffType, blockSize)
+	diff := newMockDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
 
 	// Add an item to the cache
-	store.Add(buildId, diffType, diff1)
+	store.Add(diff)
 
-	// Wait for removal trigger of diff1
+	// Wait for removal trigger of diff
 	time.Sleep(2 * time.Second)
 
 	// Verify still in cache
-	found1 := store.Has(buildId, diffType)
-	assert.True(t, found1)
-	dFound1 := store.isBeingDeleted(diff1.CacheKey())
-	assert.True(t, dFound1)
+	found := store.Has(diff)
+	assert.True(t, found)
+	dFound := store.isBeingDeleted(diff.CacheKey())
+	assert.True(t, dFound)
 
-	// Wait for complete removal of diff1
+	// Wait for complete removal of diff
 	time.Sleep(delay)
 
-	found1 = store.Has(buildId, diffType)
-	assert.False(t, found1)
-	dFound1 = store.isBeingDeleted(diff1.CacheKey())
-	assert.False(t, dFound1)
+	found = store.Has(diff)
+	assert.False(t, found)
+	dFound = store.isBeingDeleted(diff.CacheKey())
+	assert.False(t, dFound)
 }
 
 func TestDiffStoreDelayEvictionAbort(t *testing.T) {
@@ -213,7 +208,6 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	ttl := 60 * time.Second
 	delay := 4 * time.Second
 	store, err := NewDiffStore(
-		gcs.TemplateBucket,
 		ctx,
 		cachePath,
 		ttl,
@@ -224,34 +218,32 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Add an item to the cache
-	buildId := "build-test-id"
-	diffType := Rootfs
-	diff1 := newMockDiff(cachePath, buildId, diffType, blockSize)
+	diff := newMockDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
 
 	// Add an item to the cache
-	store.Add(buildId, diffType, diff1)
+	store.Add(diff)
 
-	// Wait for removal trigger of diff1
+	// Wait for removal trigger of diff
 	time.Sleep(2 * time.Second)
 
 	// Verify still in cache
-	found1 := store.Has(buildId, diffType)
-	assert.True(t, found1)
-	dFound1 := store.isBeingDeleted(diff1.CacheKey())
-	assert.True(t, dFound1)
+	found := store.Has(diff)
+	assert.True(t, found)
+	dFound := store.isBeingDeleted(diff.CacheKey())
+	assert.True(t, dFound)
 
-	// Abort removal of diff1
-	_, err = store.Get(buildId, diffType, blockSize)
+	// Abort removal of diff
+	_, err = store.Get(diff)
 	assert.NoError(t, err)
 
-	found1 = store.Has(buildId, diffType)
-	assert.True(t, found1)
-	dFound1 = store.isBeingDeleted(diff1.CacheKey())
-	assert.False(t, dFound1)
+	found = store.Has(diff)
+	assert.True(t, found)
+	dFound = store.isBeingDeleted(diff.CacheKey())
+	assert.False(t, dFound)
 
-	// Check insufficient delay cancellation of diff1 and verify it's still in the cache
+	// Check insufficient delay cancellation of diff and verify it's still in the cache
 	// after the delay period
 	time.Sleep(delay)
-	found1 = store.Has(buildId, diffType)
-	assert.True(t, found1)
+	found = store.Has(diff)
+	assert.True(t, found)
 }

@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -99,4 +100,12 @@ func (b *localDiff) Slice(off, length int64) ([]byte, error) {
 
 func (b *localDiff) FileSize() (int64, error) {
 	return b.cache.FileSize()
+}
+
+func (b *localDiff) CacheKey() string {
+	return b.cachePath
+}
+
+func (b *localDiff) Init(ctx context.Context) error {
+	return nil
 }

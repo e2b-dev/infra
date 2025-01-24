@@ -47,7 +47,6 @@ func NewCache(ctx context.Context) (*Cache, error) {
 	go cache.Start()
 
 	buildStore, err := build.NewDiffStore(
-		gcs.GetTemplateBucket(),
 		ctx,
 		build.DefaultCachePath,
 		buildCacheTTL,
@@ -123,14 +122,14 @@ func (c *Cache) AddSnapshot(
 	case *build.NoDiff:
 		break
 	default:
-		c.buildStore.Add(buildId, build.Memfile, memfileDiff)
+		c.buildStore.Add(memfileDiff)
 	}
 
 	switch rootfsDiff.(type) {
 	case *build.NoDiff:
 		break
 	default:
-		c.buildStore.Add(buildId, build.Rootfs, rootfsDiff)
+		c.buildStore.Add(rootfsDiff)
 	}
 
 	storageTemplate, err := newTemplateFromStorage(
