@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -121,6 +122,9 @@ func NewGinServer(apiStore *handlers.APIStore, swagger *openapi3.T, port int) *h
 }
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	fmt.Println("Initializing...")
 
 	port := flag.Int("port", defaultPort, "Port for test HTTP server")
@@ -139,8 +143,8 @@ func main() {
 	}
 
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(serviceName, swagger.Info.Version)
-		defer shutdown()
+		shutdown := telemetry.InitOTLPExporter(ctx, serviceName, swagger.Info.Version)
+		defer shutdown(context.TODO())
 	}
 
 	// Create an instance of our handler which satisfies the generated interface

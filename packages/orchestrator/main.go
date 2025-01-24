@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -14,14 +15,16 @@ import (
 const defaultPort = 5008
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	port := flag.Int("port", defaultPort, "orchestrator server port")
 
 	flag.Parse()
 
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(server.ServiceName, "no")
-
-		defer shutdown()
+		shutdown := telemetry.InitOTLPExporter(ctx, server.ServiceName, "no")
+		defer shutdown(context.TODO())
 	}
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
