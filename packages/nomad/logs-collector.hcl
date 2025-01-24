@@ -91,7 +91,7 @@ job "logs-collector" {
       resources {
         memory_max = 4096
         memory     = 512
-        cpu        = 256
+        cpu        = 512
       }
 
       template {
@@ -152,6 +152,7 @@ service = "{{ service }}"
 teamID = "{{ teamID }}"
 envID = "{{ envID }}"
 sandboxID = "{{ sandboxID }}"
+category = "{{ category }}"
 
 %{ if var.grafana_logs_endpoint != " " }
 [sinks.grafana]

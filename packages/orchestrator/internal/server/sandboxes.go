@@ -172,7 +172,9 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	// 	Ideally we would rely only on the goroutine defer.
 	s.sandboxes.Remove(in.SandboxId)
 
+	// Check health metrics before stopping the sandbox
 	sbx.Healthcheck(ctx, true)
+	sbx.LogMetrics(ctx)
 
 	err := sbx.Stop()
 	if err != nil {

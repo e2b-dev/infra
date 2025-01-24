@@ -71,7 +71,7 @@ type SandboxLogger struct {
 	teamID                string
 	cpuMax                int64
 	cpuWasAboveTreshold   atomic.Bool
-	memoryMBMax           int64
+	memoryMiBMax          int64
 	memoryWasAbove        atomic.Int32
 	healthCheckWasFailing atomic.Bool
 }
@@ -86,13 +86,13 @@ func NewSandboxLogger(
 ) *SandboxLogger {
 	sbxLogExporter := getSandboxLogExporter()
 	return &SandboxLogger{
-		exporter:    sbxLogExporter,
-		instanceID:  instanceID,
-		internal:    internal,
-		envID:       envID,
-		teamID:      teamID,
-		cpuMax:      cpuMax,
-		memoryMBMax: memoryMax,
+		exporter:     sbxLogExporter,
+		instanceID:   instanceID,
+		internal:     internal,
+		envID:        envID,
+		teamID:       teamID,
+		cpuMax:       cpuMax,
+		memoryMiBMax: memoryMax,
 	}
 }
 
@@ -110,7 +110,7 @@ func (l *SandboxLogger) GetInternalLogger() *SandboxLogger {
 		return l
 	}
 
-	return NewSandboxLogger(l.instanceID, l.envID, l.teamID, l.cpuMax, l.memoryMBMax, true)
+	return NewSandboxLogger(l.instanceID, l.envID, l.teamID, l.cpuMax, l.memoryMiBMax, true)
 }
 
 func (l *SandboxLogger) Errorf(
@@ -166,20 +166,35 @@ func (l *SandboxLogger) CPUUsage(cpu float64) {
 	}
 }
 
-func (l *SandboxLogger) MemoryUsage(memoryMB float64) {
+func (l *SandboxLogger) MemoryUsage(memoryMiB float64) {
 	// Cap at memoryMBMax
-	memoryMB = math.Min(memoryMB, float64(l.memoryMBMax))
-	if memoryMB > memoryUsageThreshold*float64(l.memoryMBMax) && int32(memoryMB) > l.memoryWasAbove.Load() {
-		l.memoryWasAbove.Store(int32(memoryMB))
+	memoryMiB = math.Min(memoryMiB, float64(l.memoryMiBMax))
+	if memoryMiB > memoryUsageThreshold*float64(l.memoryMiBMax) && int32(memoryMiB) > l.memoryWasAbove.Load() {
+		l.memoryWasAbove.Store(int32(memoryMiB))
 		l.exporter.logger.Warn().
 			Str("instanceID", l.instanceID).
 			Str("envID", l.envID).
 			Str("teamID", l.teamID).
-			Float64("memoryMBUsed", memoryMB).
-			Int64("memoryMBTotal", l.memoryMBMax).
-			Msgf("Sandbox memory used %d %% of RAM", int(memoryMB/float64(l.memoryMBMax)*100))
+			Float64("memoryMiBUsed", memoryMiB).
+			Int64("memoryMiBTotal", l.memoryMiBMax).
+			Msgf("Sandbox memory used %d %% of RAM", int(memoryMiB/float64(l.memoryMiBMax)*100))
 		return
 	}
+}
+
+func (l *SandboxLogger) Metrics(memTotalMiB, memUsedMiB uint64, cpuCount uint32, cpuUsedPct float32) {
+	l.exporter.logger.Info().
+		Str("category", "metrics").
+		Str("instanceID", l.instanceID).
+		Str("envID", l.envID).
+		Str("teamID", l.teamID).
+		Float32("cpuUsedPct", cpuUsedPct).
+		Uint32("cpuCount", cpuCount).
+		Uint64("memTotalMiB", memTotalMiB).
+		Uint64("memUsedMiB", memUsedMiB).
+		Msg("Metrics")
+
+	return
 }
 
 func (l *SandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
