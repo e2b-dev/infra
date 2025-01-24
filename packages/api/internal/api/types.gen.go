@@ -175,8 +175,8 @@ type SandboxMetric struct {
 	// CpuCount Number of CPU cores
 	CpuCount int32 `json:"cpuCount"`
 
-	// CpuPct CPU usage percentage
-	CpuPct float32 `json:"cpuPct"`
+	// CpuUsedPct CPU usage percentage
+	CpuUsedPct float32 `json:"cpuUsedPct"`
 
 	// MemTotalMiB Total memory in MiB
 	MemTotalMiB int64 `json:"memTotalMiB"`
