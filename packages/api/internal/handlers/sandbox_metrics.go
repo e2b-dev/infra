@@ -44,11 +44,11 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 	// equivalent CLI query:
 	// logcli query '{source="logs-collector", service="envd", teamID="65d165ab-69f6-4b5c-9165-6b93cd341503", sandboxID="izuhqjlfabd8ataeixrtl", category="metrics"}' --from="2025-01-19T10:00:00Z"
 	query := fmt.Sprintf(
-		"{source=\"logs-collector\", service=\"envd\", teamID=\"%s\", sandboxID=\"%s\", category=\"metrics\"}", teamID.String(), id)
+		"{source=\"logs-collector\", service=\"envd\", teamID=`%s`, sandboxID=`%s`, category=\"metrics\"}", teamID.String(), id)
 
 	res, err := a.lokiClient.QueryRange(query, 100, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
 	if err != nil {
-		errMsg := fmt.Errorf("error when returning metrics for sandbox: %w\tquery:%s", err, query)
+		errMsg := fmt.Errorf("error when returning metrics for sandbox: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error returning metrics for sandbox '%s'", sandboxID))
 
