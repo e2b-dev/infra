@@ -186,26 +186,29 @@ data "google_compute_machine_types" "client" {
   filter = "name = \"${var.client_machine_type}\""
 }
 
-resource "nomad_job" "orchestrator" {
-  jobspec = file("${path.module}/orchestrator.hcl")
+data "external" "orchestrator_checksum" {
+  program = ["bash", "${path.module}/checksum.sh"]
 
-  hcl2 {
-    vars = {
-      gcp_zone     = var.gcp_zone
-      port         = var.orchestrator_port
-      environment  = var.environment
-      consul_token = var.consul_acl_token_secret
-      cpu_mhz      = var.environment == "prod" ? floor(data.google_compute_machine_types.client.machine_types[0].guest_cpus * 1.5) * 1000 : 1000
-      memory_mb    = var.environment == "prod" ? floor(data.google_compute_machine_types.client.machine_types[0].memory_mb * 0.6 / 1024) * 1024 : 1024
-
-      bucket_name                  = var.fc_env_pipeline_bucket_name
-      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-      logs_collector_public_ip     = var.logs_proxy_address
-      otel_tracing_print           = var.otel_tracing_print
-      template_bucket_name         = var.template_bucket_name
-      otel_collector_grpc_endpoint = "localhost:4317"
-    }
+  query = {
+    base64 = data.google_storage_bucket_object.orchestrator.md5hash
   }
+}
+
+resource "nomad_job" "orchestrator" {
+  jobspec = templatefile("${path.module}/orchestrator.hcl", {
+    gcp_zone         = var.gcp_zone
+    port             = var.orchestrator_port
+    environment      = var.environment
+    consul_acl_token = var.consul_acl_token_secret
+
+    bucket_name                  = var.fc_env_pipeline_bucket_name
+    orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
+    logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+    logs_collector_public_ip     = var.logs_proxy_address
+    otel_tracing_print           = var.otel_tracing_print
+    template_bucket_name         = var.template_bucket_name
+    otel_collector_grpc_endpoint = "localhost:4317"
+  })
 }
 
 data "google_storage_bucket_object" "template_manager" {
