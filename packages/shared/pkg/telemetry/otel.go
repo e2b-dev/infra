@@ -33,7 +33,7 @@ type client struct {
 }
 
 // InitOTLPExporter initializes an OTLP exporter, and configures the corresponding trace providers.
-func InitOTLPExporter(serviceName, serviceVersion string) func() {
+func InitOTLPExporter(ctx context.Context, serviceName, serviceVersion string) func(ctx context.Context) error {
 	attributes := []attribute.KeyValue{
 		semconv.ServiceName(serviceName),
 		semconv.ServiceVersion(serviceVersion),
@@ -45,8 +45,6 @@ func InitOTLPExporter(serviceName, serviceVersion string) func() {
 	if err == nil {
 		attributes = append(attributes, semconv.HostName(hostname))
 	}
-
-	ctx := context.Background()
 
 	res, err := resource.New(
 		ctx,
@@ -126,23 +124,21 @@ func InitOTLPExporter(serviceName, serviceVersion string) func() {
 	}()
 
 	// Shutdown will flush any remaining spans and shut down the exporter.
-	return func() {
-		otelClient.close()
-	}
+	return otelClient.close
 }
 
-func (c *client) close() {
-	ctx := context.Background()
-
+func (c *client) close(ctx context.Context) error {
 	if c.tracerProvider != nil {
 		if err := c.tracerProvider.Shutdown(ctx); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
 	if c.meterProvider != nil {
 		if err := c.meterProvider.Shutdown(ctx); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
+
+	return nil
 }

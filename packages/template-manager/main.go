@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -19,6 +20,9 @@ const (
 )
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	testFlag := flag.String("test", "", "run tests")
 	templateID := flag.String("template", "", "template id")
 	buildID := flag.String("build", "", "build id")
@@ -41,8 +45,8 @@ func main() {
 	}
 
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(constants.ServiceName, "no")
-		defer shutdown()
+		shutdown := telemetry.InitOTLPExporter(ctx, constants.ServiceName, "no")
+		defer shutdown(context.TODO())
 	}
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
