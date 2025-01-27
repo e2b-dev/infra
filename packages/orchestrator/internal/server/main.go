@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
+	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -24,14 +26,16 @@ import (
 )
 
 const ServiceName = "orchestrator"
+const ExitErrorExpiration = 60 * time.Second
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
-	sandboxes     *smap.Map[*sandbox.Sandbox]
-	dns           *dns.DNS
-	tracer        trace.Tracer
-	networkPool   *network.Pool
-	templateCache *template.Cache
+	sandboxes         *smap.Map[*sandbox.Sandbox]
+	sandboxExitErrors *ttlcache.Cache[string, error]
+	dns               *dns.OrchDNS
+	tracer            trace.Tracer
+	networkPool       *network.Pool
+	templateCache     *template.Cache
 
 	pauseMu sync.Mutex
 }
@@ -39,7 +43,13 @@ type server struct {
 func New() (*grpc.Server, error) {
 	ctx := context.Background()
 
-	dnsServer := dns.New()
+	sandboxExitErrors := ttlcache.New(ttlcache.WithTTL[string, error](ExitErrorExpiration))
+	sandboxErrorChecker := func(sandboxID string) error {
+		item := sandboxExitErrors.Get(sandboxID)
+		return item.Value()
+	}
+
+	dnsServer := dns.New(sandboxErrorChecker)
 	go func() {
 		log.Printf("Starting DNS server")
 
@@ -67,11 +77,12 @@ func New() (*grpc.Server, error) {
 	)
 
 	orchestrator.RegisterSandboxServiceServer(s, &server{
-		tracer:        otel.Tracer(ServiceName),
-		dns:           dnsServer,
-		sandboxes:     smap.New[*sandbox.Sandbox](),
-		networkPool:   networkPool,
-		templateCache: templateCache,
+		tracer:            otel.Tracer(ServiceName),
+		dns:               dnsServer,
+		sandboxes:         smap.New[*sandbox.Sandbox](),
+		sandboxExitErrors: sandboxExitErrors,
+		networkPool:       networkPool,
+		templateCache:     templateCache,
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

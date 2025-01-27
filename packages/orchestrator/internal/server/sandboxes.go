@@ -77,6 +77,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		waitErr := sbx.Wait()
 		if waitErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to wait for Sandbox: %v\n", waitErr)
+			s.sandboxExitErrors.Set(req.Sandbox.SandboxId, waitErr, 0)
 		}
 
 		cleanupErr := cleanup.Run()
