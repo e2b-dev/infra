@@ -59,6 +59,11 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		}
 	}
 
+	autoPause := instance.InstanceAutoPause
+	if body.AutoPause != nil {
+		autoPause = *body.AutoPause
+	}
+
 	clientID, ok := getSandboxIDClient(sandboxID)
 	if !ok {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid sandbox ID — missing client ID part: %s", sandboxID))
@@ -106,6 +111,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		true,
 		&clientID,
 		snapshot.BaseEnvID,
+		autoPause,
 	)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error resuming sandbox: %s", err))

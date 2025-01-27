@@ -19,6 +19,7 @@ import (
 
 const (
 	InstanceExpiration = time.Second * 15
+	InstanceAutoPause  = false
 	CacheSyncTime      = time.Minute
 )
 
@@ -38,6 +39,7 @@ type InstanceInfo struct {
 	FirecrackerVersion string
 	EnvdVersion        string
 	Node               *node.NodeInfo
+	AutoPause          bool
 }
 
 type InstanceCache struct {
