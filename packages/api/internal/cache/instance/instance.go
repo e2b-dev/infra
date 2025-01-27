@@ -31,7 +31,6 @@ type InstanceInfo struct {
 	MaxInstanceLength  time.Duration
 	StartTime          time.Time
 	EndTime            time.Time
-	EndReason          string
 	VCpu               int64
 	TotalDiskSizeMB    int64
 	RamMB              int64
