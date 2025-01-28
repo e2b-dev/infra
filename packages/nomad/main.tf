@@ -76,6 +76,17 @@ resource "nomad_job" "api" {
       otel_tracing_print            = var.otel_tracing_print
       nomad_token                   = var.nomad_acl_token_secret
       admin_token                   = data.google_secret_manager_secret_version.api_admin_token.secret_data
+      redis_url                     = "redis://redis.service.consul:${var.redis_port_number}"
+    }
+  }
+}
+
+resource "nomad_job" "redis" {
+  jobspec = file("${path.module}/redis.hcl")
+
+  hcl2 {
+    vars = {
+      gcp_zone = var.gcp_zone
     }
   }
 }
