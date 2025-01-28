@@ -248,7 +248,7 @@ func main() {
 			log.Printf("http service (%d) shutdown error: %v", port, err)
 		}
 	case <-ctx.Done():
-		log.Println("http service (%d) shutdown outside of signal", port)
+		log.Printf("http service (%d) shutdown outside of signal\n", port)
 	}
 
 	// call cleanup explicitly because defers do not run on os.Exit
