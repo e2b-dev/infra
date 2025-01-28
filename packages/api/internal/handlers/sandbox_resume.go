@@ -59,7 +59,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		}
 	}
 
-	autoPause := instance.InstanceAutoPause
+	autoPause := instance.InstanceAutoPauseDefault
 	if body.AutoPause != nil {
 		autoPause = *body.AutoPause
 	}

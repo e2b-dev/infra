@@ -19,8 +19,9 @@ import (
 
 const (
 	InstanceExpiration = time.Second * 15
-	InstanceAutoPause  = false
-	CacheSyncTime      = time.Minute
+	// Should we auto pause the instance by default instead of killing it,
+	InstanceAutoPauseDefault = false
+	CacheSyncTime            = time.Minute
 )
 
 type InstanceInfo struct {

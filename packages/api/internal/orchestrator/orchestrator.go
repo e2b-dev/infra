@@ -13,6 +13,7 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -25,6 +26,7 @@ type Orchestrator struct {
 	logger        *zap.SugaredLogger
 	analytics     *analyticscollector.Analytics
 	dns           *dns.DNS
+	dbClient      *db.DB
 }
 
 func New(
@@ -34,6 +36,7 @@ func New(
 	logger *zap.Logger,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient *redis.Client,
+	dbClient *db.DB,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
 	if err != nil {
@@ -58,6 +61,7 @@ func New(
 		tracer:      tracer,
 		nodes:       smap.New[*Node](),
 		dns:         dnsServer,
+		dbClient:    dbClient,
 	}
 
 	cache := instance.NewCache(

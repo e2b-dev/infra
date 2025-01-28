@@ -117,7 +117,11 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 	node.SyncBuilds(builds)
 }
 
-func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogClient *analyticscollector.PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
+func (o *Orchestrator) getDeleteInstanceFunction(
+	ctx context.Context,
+	posthogClient *analyticscollector.PosthogClient,
+	logger *zap.SugaredLogger,
+) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
 		duration := time.Since(info.StartTime).Seconds()
 
@@ -132,11 +136,19 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 			logger.Errorf("error sending Analytics event: %v", err)
 		}
 
+		var closeType string
+		if info.AutoPause {
+			closeType = "pause"
+		} else {
+			closeType = "delete"
+		}
+
 		posthogClient.CreateAnalyticsTeamEvent(
 			info.TeamID.String(),
 			"closed_instance", posthog.NewProperties().
 				Set("instance_id", info.Instance.SandboxID).
 				Set("environment", info.Instance.TemplateID).
+				Set("type", closeType).
 				Set("duration", duration),
 		)
 
@@ -161,7 +173,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 		}
 
 		if info.AutoPause {
-			err = o.PauseInstance(ctx, &info, info.Instance.TemplateID, info.BuildID.String())
+			err = o.PauseInstance(ctx, o.tracer, &info, *info.TeamID)
 			if err != nil {
 				return fmt.Errorf("failed to auto pause sandbox '%s': %w", info.Instance.SandboxID, err)
 			}

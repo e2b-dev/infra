@@ -120,7 +120,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
-	autoPause := instance.InstanceAutoPause
+	autoPause := instance.InstanceAutoPauseDefault
 	if body.AutoPause != nil {
 		autoPause = *body.AutoPause
 	}
