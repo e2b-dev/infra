@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -42,16 +41,13 @@ func New(
 	dnsServer := dns.New()
 
 	if env.IsLocal() {
-		fmt.Printf("Running locally, skipping starting DNS server\n")
+		logger.Info("Running locally, skipping starting DNS server")
 	} else {
-		go func() {
-			fmt.Printf("Starting DNS server\n")
+		logger.Info("Starting DNS server")
 
-			dnsErr := dnsServer.Start(ctx, "127.0.0.4", 53)
-			if dnsErr != nil {
-				log.Fatalf("Failed running DNS server: %v\n", dnsErr)
-			}
-		}()
+		if dnsErr := dnsServer.Start(ctx, "127.0.0.4", 53); dnsErr != nil {
+			log.Fatalf("Failed running DNS server: %v", dnsErr)
+		}
 	}
 
 	o := Orchestrator{
