@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"syscall"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/edsrzf/mmap-go"
@@ -159,4 +160,33 @@ func (m *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	m.setIsCached(off, end-off)
 
 	return n, nil
+}
+
+// DirtySize returns the size of the dirty blocks in bytes.
+func (m *Cache) DirtySize() (int64, error) {
+	var blocks int64
+	m.dirty.Range(func(key, value any) bool {
+		blocks += 1
+		return true
+	})
+
+	return blocks * m.blockSize, nil
+}
+
+// FileSize returns the size of the cache on disk.
+// The size might differ from the dirty size, as it may not be fully on disk.
+func (m *Cache) FileSize() (int64, error) {
+	var stat syscall.Stat_t
+	err := syscall.Stat(m.filePath, &stat)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get file stats: %w", err)
+	}
+
+	var fsStat syscall.Statfs_t
+	err = syscall.Statfs(m.filePath, &fsStat)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get disk stats for path %s: %w", m.filePath, err)
+	}
+
+	return stat.Blocks * int64(fsStat.Bsize), nil
 }

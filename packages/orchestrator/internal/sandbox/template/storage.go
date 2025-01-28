@@ -59,7 +59,7 @@ func NewStorage(
 		}, nil)
 	}
 
-	b := build.NewFile(h, store, fileType)
+	b := build.NewFile(h, store, fileType, bucket)
 
 	return &Storage{
 		source: b,

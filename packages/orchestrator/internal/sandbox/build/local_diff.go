@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,13 +16,14 @@ type LocalDiffFile struct {
 }
 
 func NewLocalDiffFile(
+	basePath string,
 	buildId string,
 	diffType DiffType,
 ) (*LocalDiffFile, error) {
 	cachePathSuffix := id.Generate()
 
 	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
-	cachePath := filepath.Join(cachePath, cacheFile)
+	cachePath := filepath.Join(basePath, cacheFile)
 
 	f, err := os.OpenFile(cachePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
@@ -95,4 +97,16 @@ func (b *localDiff) ReadAt(p []byte, off int64) (int, error) {
 
 func (b *localDiff) Slice(off, length int64) ([]byte, error) {
 	return b.cache.Slice(off, length)
+}
+
+func (b *localDiff) FileSize() (int64, error) {
+	return b.cache.FileSize()
+}
+
+func (b *localDiff) CacheKey() string {
+	return b.cachePath
+}
+
+func (b *localDiff) Init(ctx context.Context) error {
+	return nil
 }

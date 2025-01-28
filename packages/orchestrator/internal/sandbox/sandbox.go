@@ -391,6 +391,7 @@ func (s *Sandbox) Snapshot(
 	}
 
 	memfileDiffFile, err := build.NewLocalDiffFile(
+		build.DefaultCachePath,
 		buildId.String(),
 		build.Memfile,
 	)
@@ -471,7 +472,7 @@ func (s *Sandbox) Snapshot(
 
 	telemetry.ReportEvent(ctx, "synced rootfs")
 
-	rootfsDiffFile, err := build.NewLocalDiffFile(buildId.String(), build.Rootfs)
+	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath, buildId.String(), build.Rootfs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
