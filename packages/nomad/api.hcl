@@ -83,6 +83,12 @@ variable "otel_collector_grpc_endpoint" {
   default = ""
 }
 
+variable "redis_url" {
+  type = string
+  default = ""
+}
+
+
 job "api" {
   datacenters = [var.gcp_zone]
   node_pool = "api"
@@ -133,6 +139,7 @@ job "api" {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = var.otel_collector_grpc_endpoint
         TEMPLATE_BUCKET_NAME          = "skip"
         ADMIN_TOKEN                   = var.admin_token
+        REDIS_URL                     = var.redis_url
       }
 
       config {
@@ -142,16 +149,6 @@ job "api" {
         args = [
           "--port", "${var.api_port_number}",
         ]
-      }
-
-      template {
-	env = true
-	destination = "local/env.txt"
-	data = <<EOF
-{{ range nomadService "redis" }}
-REDIS_URL=redis://{{ .Address }}:{{ . Port }}
-{{ end }}
-EOF
       }
     }
   }
