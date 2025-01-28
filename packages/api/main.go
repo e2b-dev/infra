@@ -132,7 +132,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background()) // root context
 	defer cancel()
 
-	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM)
+	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 	// TODO: additional improvements to signal handling/shutdown:
 	//   - provide access to root context in the signal handling
