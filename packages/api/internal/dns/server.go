@@ -1,6 +1,7 @@
 package dns
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -27,11 +28,11 @@ func New() *DNS {
 	}
 }
 
-func (d *DNS) Add(sandboxID, ip string) {
+func (d *DNS) Add(_ context.Context, sandboxID, ip string) {
 	d.records.Insert(d.hostname(sandboxID), ip)
 }
 
-func (d *DNS) Remove(sandboxID, ip string) {
+func (d *DNS) Remove(_ context.Context, sandboxID, ip string) {
 	d.records.RemoveCb(d.hostname(sandboxID), func(key string, v string, exists bool) bool {
 		return v == ip
 	})
@@ -80,7 +81,7 @@ func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
 	}
 }
 
-func (d *DNS) Start(address string, port int) error {
+func (d *DNS) Start(_ context.Context, address string, port int) error {
 	mux := resolver.NewServeMux()
 
 	mux.HandleFunc(".", d.handleDNSRequest)

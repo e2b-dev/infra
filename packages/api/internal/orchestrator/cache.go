@@ -147,7 +147,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 			node.CPUUsage.Add(-info.VCpu)
 			node.RamUsage.Add(-info.RamMB)
 
-			o.dns.Remove(info.Instance.SandboxID, node.Info.IPAddress)
+			o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
 		}
 
 		req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
@@ -179,7 +179,7 @@ func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *za
 			node.CPUUsage.Add(info.VCpu)
 			node.RamUsage.Add(info.RamMB)
 
-			o.dns.Add(info.Instance.SandboxID, node.Info.IPAddress)
+			o.dns.Add(ctx, info.Instance.SandboxID, node.Info.IPAddress)
 		}
 
 		_, err := o.analytics.Client.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
