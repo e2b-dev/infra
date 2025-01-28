@@ -143,6 +143,16 @@ job "api" {
           "--port", "${var.api_port_number}",
         ]
       }
+
+      template {
+	env = true
+	destination = "local/env.txt"
+	data = <<EOF
+{{ range nomadService "redis" }}
+REDIS_URL=redis://{{ .Address }}:{{ . Port }}
+{{ end }}
+EOF
+      }
     }
   }
 }
