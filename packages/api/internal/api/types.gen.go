@@ -21,11 +21,23 @@ const (
 	NodeStatusReady    NodeStatus = "ready"
 )
 
+// Defines values for RunningSandboxState.
+const (
+	RunningSandboxStatePaused  RunningSandboxState = "paused"
+	RunningSandboxStateRunning RunningSandboxState = "running"
+)
+
 // Defines values for TemplateBuildStatus.
 const (
 	TemplateBuildStatusBuilding TemplateBuildStatus = "building"
 	TemplateBuildStatusError    TemplateBuildStatus = "error"
 	TemplateBuildStatusReady    TemplateBuildStatus = "ready"
+)
+
+// Defines values for GetSandboxesParamsState.
+const (
+	GetSandboxesParamsStatePaused  GetSandboxesParamsState = "paused"
+	GetSandboxesParamsStateRunning GetSandboxesParamsState = "running"
 )
 
 // CPUCount CPU cores for the sandbox
@@ -130,9 +142,15 @@ type RunningSandbox struct {
 	// StartedAt Time when the sandbox was started
 	StartedAt time.Time `json:"startedAt"`
 
+	// State State of the sandbox
+	State RunningSandboxState `json:"state"`
+
 	// TemplateID Identifier of the template from which is the sandbox created
 	TemplateID string `json:"templateID"`
 }
+
+// RunningSandboxState State of the sandbox
+type RunningSandboxState string
 
 // Sandbox defines model for Sandbox.
 type Sandbox struct {
@@ -325,7 +343,13 @@ type N500 = Error
 type GetSandboxesParams struct {
 	// Query A query used to filter the sandboxes (e.g. "user=abc&app=prod"). Query and each key and values must be URL encoded.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// State A state of the sandbox (e.g. "running")
+	State *GetSandboxesParamsState `form:"state,omitempty" json:"state,omitempty"`
 }
+
+// GetSandboxesParamsState defines parameters for GetSandboxes.
+type GetSandboxesParamsState string
 
 // GetSandboxesSandboxIDLogsParams defines parameters for GetSandboxesSandboxIDLogs.
 type GetSandboxesSandboxIDLogsParams struct {
