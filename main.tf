@@ -231,5 +231,5 @@ module "nomad" {
   template_bucket_name  = module.buckets.fc_template_bucket_name
 
   # Redis
-  redis_port_number = var.redis_port.port
+  redis_port = var.redis_port
 }

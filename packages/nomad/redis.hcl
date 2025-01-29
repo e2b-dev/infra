@@ -1,24 +1,5 @@
-variable "gcp_zone" {
-  type    = string
-}
-
-variable "image_name" {
-  type    = string
-  default = "redis:7.4.2-alpine"
-}
-
-variable "redis_port_number" {
-  type    = number
-  default = 6379
-}
-
-variable "redis_port_name" {
-  type    = string
-  default = "redis"
-}
-
 job "redis" {
-  datacenters = [var.gcp_zone]
+  datacenters = ["${gcp_zone}"]
   node_pool = "all"
   type = "service"
   priority = 95
@@ -26,20 +7,20 @@ job "redis" {
   group "redis" {
     network {
       port "redis" {
-        static = var.redis_port_number
+        static = "${port_number}"
       }
     }
 
     service {
       name = "redis"
-      port = var.redis_port_name
+      port = "${port_name}"
 
       check {
         type     = "tcp"
         name     = "health"
         interval = "10s"
         timeout  = "2s"
-        port     = var.redis_port_number
+        port     = "${port_number}"
       }
     }
 
@@ -54,8 +35,8 @@ job "redis" {
 
       config {
         network_mode = "host"
-        image        = var.image_name
-        ports        = [var.redis_port_name]
+        image        = "redis:7.4.2-alpine"
+        ports        = ["${port_name}"]
         args = [
         ]
       }

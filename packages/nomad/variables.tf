@@ -210,6 +210,9 @@ variable "template_manager_port" {
 }
 
 # Redis
-variable "redis_port_number" {
-  type = number
+variable "redis_port" {
+  type = object({
+    name = string
+    port = number
+  })
 }
