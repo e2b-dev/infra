@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -17,7 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
+func (a *APIStore) getSandboxes(c *gin.Context, params api.GetSandboxesParams) ([]api.RunningSandbox, error) {
 	ctx := c.Request.Context()
 
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
@@ -31,9 +32,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		// Unescape query
 		query, err := url.QueryUnescape(*params.Query)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, "Error when unescaping query")
-
-			return
+			return nil, fmt.Errorf("error when unescaping query: %w", err)
 		}
 
 		// Parse filters, both key and value are also unescaped
@@ -42,23 +41,17 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		for _, filter := range strings.Split(query, "&") {
 			parts := strings.Split(filter, "=")
 			if len(parts) != 2 {
-				c.JSON(http.StatusBadRequest, "Invalid key value pair in query")
-
-				return
+				return nil, fmt.Errorf("invalid key value pair in query")
 			}
 
 			key, err := url.QueryUnescape(parts[0])
 			if err != nil {
-				c.JSON(http.StatusBadRequest, "Error when unescaping key")
-
-				return
+				return nil, fmt.Errorf("error when unescaping key: %w", err)
 			}
 
 			value, err := url.QueryUnescape(parts[1])
 			if err != nil {
-				c.JSON(http.StatusBadRequest, "Error when unescaping value")
-
-				return
+				return nil, fmt.Errorf("error when unescaping value: %w", err)
 			}
 
 			filters[key] = value
@@ -110,7 +103,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, err)
 
-		return
+		return nil, fmt.Errorf("error when getting builds: %w", err)
 	}
 
 	buildsMap := make(map[uuid.UUID]*models.EnvBuild, len(builds))
@@ -157,5 +150,40 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return a.StartedAt.Compare(b.StartedAt)
 	})
 
+	return sandboxes, nil
+}
+
+func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
+	sandboxes, err := a.getSandboxes(c, params)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, sandboxes)
+}
+
+func (a *APIStore) GetSandboxesWithMetrics(c *gin.Context, params api.GetSandboxesParams) {
+	sandboxes, err := a.getSandboxes(c, params)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	for _, sandbox := range sandboxes {
+		metrics, err := a.orchestrator.GetSandboxMetrics(c.Request.Context(), sandbox.SandboxID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, err.Error())
+			return
+		}
+
+		metrics, err = a.GetLastSandboxMetric(c.Request.Context(), sandbox.SandboxID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, err.Error())
+			return
+		}
+
+		sandbox.Metrics = metrics
+	}
 	c.JSON(http.StatusOK, sandboxes)
 }
