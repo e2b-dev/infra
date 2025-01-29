@@ -10,6 +10,11 @@ job "api" {
       }
     }
 
+    constraint {
+      operator  = "distinct_hosts"
+      value     = "true"
+    }
+
     service {
       name = "api"
       port = "${port_number}"
