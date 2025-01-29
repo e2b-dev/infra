@@ -24,8 +24,26 @@ job "api" {
       }
     }
 
+    # An update stanza to enable rolling updates of the service
+    update {
+      # The number of extra instances to run during the update
+      max_parallel     = 1
+      # Allows to spawn new version of the service before killing the old one
+      canary           = 1
+      # Time to wait for the canary to be healthy
+      min_healthy_time = "15s"
+      # Time to wait for the canary to be healthy, if not it will be marked as failed
+      healthy_deadline = "60s"
+      # Whether to promote the canary if the rest of the group is not healthy
+      auto_promote     = true
+    }
+
     task "start" {
       driver = "docker"
+      # If we need more than 30s we will need to update the max_kill_timeout in nomad
+      # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
+      kill_timeout = "15s"
+      kill_signal  = "SIGTERM"
 
       resources {
         memory_max = 4096
