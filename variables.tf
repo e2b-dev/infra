@@ -126,6 +126,17 @@ variable "docker_reverse_proxy_port" {
   }
 }
 
+variable "redis_port" {
+  type = object({
+    name = string
+    port = number
+  })
+  default = {
+    name = "redis"
+    port = 6379
+  }
+}
+
 variable "nomad_port" {
   type    = number
   default = 4646
