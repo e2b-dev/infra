@@ -58,21 +58,17 @@ func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
 	}
 }
 
-func (d *DNS) getLocal(hostname string) (string, bool) {
-	return d.records.Get(hostname)
-}
-
-func (*DNS) hostname(sandboxID string) string {
-	return fmt.Sprintf("%s.", sandboxID)
-}
-
-func (*DNS) getCacheKey(id string) string { return fmt.Sprintf("%s%s", cachedDnsPrefix, id) }
+func (d *DNS) getLocal(hostname string) (string, bool) { return d.records.Get(hostname) }
+func (*DNS) hostname(sandboxID string) string          { return fmt.Sprintf("%s.", sandboxID) }
+func (*DNS) getCacheKey(id string) string              { return fmt.Sprintf("%s%s", cachedDnsPrefix, id) }
 
 func (d *DNS) handleDNSRequest(ctx context.Context, w resolver.ResponseWriter, r *resolver.Msg) {
 	m := new(resolver.Msg)
 	m.SetReply(r)
 	m.Compress = false
 	m.Authoritative = true
+
+	// TODO collect errors from redis, and log them.
 
 	for _, q := range m.Question {
 		if q.Qtype == resolver.TypeA {
