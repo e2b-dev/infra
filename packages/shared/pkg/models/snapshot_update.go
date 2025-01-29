@@ -51,6 +51,20 @@ func (su *SnapshotUpdate) ClearPausedAt() *SnapshotUpdate {
 	return su
 }
 
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (su *SnapshotUpdate) SetSandboxStartedAt(t time.Time) *SnapshotUpdate {
+	su.mutation.SetSandboxStartedAt(t)
+	return su
+}
+
+// SetNillableSandboxStartedAt sets the "sandbox_started_at" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableSandboxStartedAt(t *time.Time) *SnapshotUpdate {
+	if t != nil {
+		su.SetSandboxStartedAt(*t)
+	}
+	return su
+}
+
 // SetBaseEnvID sets the "base_env_id" field.
 func (su *SnapshotUpdate) SetBaseEnvID(s string) *SnapshotUpdate {
 	su.mutation.SetBaseEnvID(s)
@@ -174,6 +188,9 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if su.mutation.PausedAtCleared() {
 		_spec.ClearField(snapshot.FieldPausedAt, field.TypeTime)
 	}
+	if value, ok := su.mutation.SandboxStartedAt(); ok {
+		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
+	}
 	if value, ok := su.mutation.BaseEnvID(); ok {
 		_spec.SetField(snapshot.FieldBaseEnvID, field.TypeString, value)
 	}
@@ -255,6 +272,20 @@ func (suo *SnapshotUpdateOne) SetNillablePausedAt(t *time.Time) *SnapshotUpdateO
 // ClearPausedAt clears the value of the "paused_at" field.
 func (suo *SnapshotUpdateOne) ClearPausedAt() *SnapshotUpdateOne {
 	suo.mutation.ClearPausedAt()
+	return suo
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (suo *SnapshotUpdateOne) SetSandboxStartedAt(t time.Time) *SnapshotUpdateOne {
+	suo.mutation.SetSandboxStartedAt(t)
+	return suo
+}
+
+// SetNillableSandboxStartedAt sets the "sandbox_started_at" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableSandboxStartedAt(t *time.Time) *SnapshotUpdateOne {
+	if t != nil {
+		suo.SetSandboxStartedAt(*t)
+	}
 	return suo
 }
 
@@ -410,6 +441,9 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 	}
 	if suo.mutation.PausedAtCleared() {
 		_spec.ClearField(snapshot.FieldPausedAt, field.TypeTime)
+	}
+	if value, ok := suo.mutation.SandboxStartedAt(); ok {
+		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
 	}
 	if value, ok := suo.mutation.BaseEnvID(); ok {
 		_spec.SetField(snapshot.FieldBaseEnvID, field.TypeString, value)

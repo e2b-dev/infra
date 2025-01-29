@@ -16,6 +16,7 @@ import (
 
 type SnapshotInfo struct {
 	SandboxID          string
+	SandboxStartedAt   time.Time
 	BaseTemplateID     string
 	VCPU               int64
 	RAMMB              int64
@@ -73,6 +74,7 @@ func (db *DB) NewSnapshotBuild(
 			Snapshot.
 			Create().
 			SetSandboxID(snapshotConfig.SandboxID).
+			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
 			SetBaseEnvID(snapshotConfig.BaseTemplateID).
 			SetEnv(e).
 			SetMetadata(snapshotConfig.Metadata).
