@@ -192,7 +192,7 @@ func main() {
 		}
 		log.Printf("running %d cleanup operations", count)
 		wg.Wait() // this doesn't have a timeout
-		log.Printf("%d cleanup operations compleated in %s", count, time.Since(start))
+		log.Printf("%d cleanup operations completed in %s", count, time.Since(start))
 	}
 	defer cleanup()
 
@@ -248,7 +248,7 @@ func main() {
 			log.Printf("http service (%d) shutdown error: %v", port, err)
 		}
 	case <-ctx.Done():
-		log.Println("http service (%d) shutdown outside of signal", port)
+		log.Printf("http service (%d) shutdown outside of signal\n", port)
 	}
 
 	// call cleanup explicitly because defers do not run on os.Exit

@@ -229,4 +229,7 @@ module "nomad" {
   # Template manager
   template_manager_port = var.template_manager_port
   template_bucket_name  = module.buckets.fc_template_bucket_name
+
+  # Redis
+  redis_port = var.redis_port
 }

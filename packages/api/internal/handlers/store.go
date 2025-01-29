@@ -37,7 +37,6 @@ const (
 var sandboxStartRequestLimit = semaphore.NewWeighted(defaultRequestLimit)
 
 type APIStore struct {
-	analytics            *analyticscollector.Analytics
 	posthog              *analyticscollector.PosthogClient
 	Tracer               trace.Tracer
 	orchestrator         *orchestrator.Orchestrator
@@ -136,11 +135,6 @@ func (a *APIStore) Close() error {
 	a.templateSpawnCounter.Close()
 
 	errs := []error{}
-
-	if err := a.analytics.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("closing Analytics: %w", err))
-	}
-
 	if err := a.posthog.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing Posthog client: %w", err))
 	}

@@ -2,7 +2,6 @@ package logging
 
 import (
 	"fmt"
-	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -21,6 +20,7 @@ func New(isLocal bool) (*zap.SugaredLogger, error) {
 			EncodeLevel:   zapcore.LowercaseLevelEncoder,
 			NameKey:       "logger",
 			StacktraceKey: "stacktrace",
+			EncodeTime:    zapcore.RFC3339TimeEncoder,
 		},
 		OutputPaths: []string{
 			"stdout",
@@ -29,11 +29,6 @@ func New(isLocal bool) (*zap.SugaredLogger, error) {
 			"stderr",
 		},
 	}
-
-	config.EncoderConfig.EncodeTime = zapcore.TimeEncoder(func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-		enc.AppendString(t.UTC().Format("2006-01-02T15:04:05Z0700"))
-		// 2019-08-13T04:39:11Z
-	})
 
 	logger, err := config.Build()
 	if err != nil {

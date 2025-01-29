@@ -47,7 +47,7 @@ func New(
 		go func() {
 			fmt.Printf("Starting DNS server\n")
 
-			dnsErr := dnsServer.Start("127.0.0.4", 53)
+			dnsErr := dnsServer.Start(ctx, "127.0.0.4", 53)
 			if dnsErr != nil {
 				log.Fatalf("Failed running DNS server: %v\n", dnsErr)
 			}

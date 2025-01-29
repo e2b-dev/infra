@@ -208,3 +208,11 @@ variable "client_machine_type" {
 variable "template_manager_port" {
   type = number
 }
+
+# Redis
+variable "redis_port" {
+  type = object({
+    name = string
+    port = number
+  })
+}
