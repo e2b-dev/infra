@@ -5,16 +5,15 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.SandboxID) {
@@ -46,45 +45,13 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	snapshotConfig := &db.SnapshotInfo{
-		BaseTemplateID:     sbx.Instance.TemplateID,
-		SandboxID:          sandboxID,
-		VCPU:               sbx.VCpu,
-		RAMMB:              sbx.RamMB,
-		TotalDiskSizeMB:    sbx.TotalDiskSizeMB,
-		Metadata:           sbx.Metadata,
-		KernelVersion:      sbx.KernelVersion,
-		FirecrackerVersion: sbx.FirecrackerVersion,
-		EnvdVersion:        sbx.Instance.EnvdVersion,
-	}
-
-	envBuild, err := a.db.NewSnapshotBuild(
-		ctx,
-		snapshotConfig,
-		teamID,
-	)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
-
-		return
-	}
-
-	err = a.orchestrator.PauseInstance(ctx, sbx, *envBuild.EnvID, envBuild.ID.String())
-	if errors.Is(err, orchestrator.ErrPauseQueueExhausted{}) {
+	err = a.orchestrator.PauseInstance(ctx, a.Tracer, sbx, teamID)
+	if errors.As(err, &orchestrator.ErrPauseQueueExhausted{}) {
 		a.sendAPIStoreError(c, http.StatusTooManyRequests, "Too many pause requests in progress, please retry later.")
 
 		return
 	}
 
-	defer a.orchestrator.DeleteInstance(ctx, sbx.Instance.SandboxID)
-
-	if err != nil && !errors.Is(err, orchestrator.ErrPauseQueueExhausted{}) {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
-
-		return
-	}
-
-	err = a.db.EnvBuildSetStatus(ctx, *envBuild.EnvID, envBuild.ID, envbuild.StatusSuccess)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
 

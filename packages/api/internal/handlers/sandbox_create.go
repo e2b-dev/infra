@@ -120,6 +120,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
+	autoPause := instance.InstanceAutoPauseDefault
+	if body.AutoPause != nil {
+		autoPause = *body.AutoPause
+	}
+
 	sandbox, err := a.startSandbox(
 		ctx,
 		sandboxID,
@@ -134,6 +139,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		false,
 		nil,
 		env.TemplateID,
+		autoPause,
 	)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, err.Error())

@@ -19,7 +19,9 @@ import (
 
 const (
 	InstanceExpiration = time.Second * 15
-	CacheSyncTime      = time.Minute
+	// Should we auto pause the instance by default instead of killing it,
+	InstanceAutoPauseDefault = false
+	CacheSyncTime            = time.Minute
 )
 
 type InstanceInfo struct {
@@ -38,6 +40,7 @@ type InstanceInfo struct {
 	FirecrackerVersion string
 	EnvdVersion        string
 	Node               *node.NodeInfo
+	AutoPause          bool
 }
 
 type InstanceCache struct {

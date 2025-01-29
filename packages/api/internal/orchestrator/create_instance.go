@@ -37,6 +37,7 @@ func (o *Orchestrator) CreateSandbox(
 	isResume bool,
 	clientID *string,
 	baseTemplateID string,
+	autoPause bool,
 ) (*api.Sandbox, error) {
 	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -178,6 +179,7 @@ func (o *Orchestrator) CreateSandbox(
 		EnvdVersion:        *build.EnvdVersion,
 		MaxInstanceLength:  time.Duration(team.Tier.MaxLengthHours) * time.Hour,
 		Node:               node.Info,
+		AutoPause:          autoPause,
 	}
 
 	cacheErr := o.instanceCache.Add(instanceInfo, true)
