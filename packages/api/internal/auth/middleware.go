@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -72,13 +73,18 @@ func (a *authenticator[T]) Authenticate(ctx context.Context, input *openapi3filt
 		return fmt.Errorf("%v %w", a.errorMessage, err)
 	}
 
+	telemetry.ReportEvent(ctx, "api key extracted")
+
 	// If the API key is valid, we will get a result back
 	result, validationError := a.validationFunction(ctx, apiKey)
 	if validationError != nil {
+		log.Printf("validation error %v", validationError.Err)
 		telemetry.ReportError(ctx, fmt.Errorf("%s %w", a.errorMessage, validationError.Err))
 
 		return fmt.Errorf(a.errorMessage)
 	}
+
+	telemetry.ReportEvent(ctx, "api key validated")
 
 	// Set the property on the gin context
 	if a.contextKey != "" {
