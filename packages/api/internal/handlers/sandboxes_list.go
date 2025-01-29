@@ -109,15 +109,9 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	for _, s := range snapshots {
 		build := snapshotBuilds[0]
 
-		var alias *string
-		if envAliases != nil && len(envAliases) > 0 {
-			alias = &envAliases[0].ID
-		}
-
 		instance := api.RunningSandbox{
 			ClientID:   "",
 			TemplateID: s.EnvID,
-			Alias:      alias,
 			SandboxID:  s.SandboxID,
 			StartedAt:  s.SandboxStartedAt,
 			CpuCount:   int32(build.Vcpu),
@@ -129,6 +123,10 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		if s.Metadata != nil {
 			meta := api.SandboxMetadata(s.Metadata)
 			instance.Metadata = &meta
+		}
+
+		if envAliases != nil && len(envAliases) > 0 {
+			instance.Alias = &envAliases[0].ID
 		}
 
 		sandboxes = append(sandboxes, instance)

@@ -65,15 +65,9 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// optional
-	var alias *string
-	if envAliases != nil && len(envAliases) > 0 {
-		alias = &envAliases[0].ID
-	}
-
 	instance := api.RunningSandbox{
 		ClientID:   "",
 		TemplateID: snapshot.EnvID,
-		Alias:      alias,
 		SandboxID:  snapshot.SandboxID,
 		StartedAt:  snapshot.SandboxStartedAt,
 		CpuCount:   int32(build.Vcpu),
@@ -85,6 +79,10 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if snapshot.Metadata != nil {
 		meta := api.SandboxMetadata(snapshot.Metadata)
 		instance.Metadata = &meta
+	}
+
+	if envAliases != nil && len(envAliases) > 0 {
+		instance.Alias = &envAliases[0].ID
 	}
 
 	c.JSON(http.StatusOK, instance)
