@@ -529,6 +529,7 @@ paths:
           schema:
             type: string
             enum:
+              - all
               - running
               - paused
       responses:

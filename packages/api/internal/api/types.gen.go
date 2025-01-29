@@ -36,6 +36,7 @@ const (
 
 // Defines values for GetSandboxesParamsState.
 const (
+	GetSandboxesParamsStateAll     GetSandboxesParamsState = "all"
 	GetSandboxesParamsStatePaused  GetSandboxesParamsState = "paused"
 	GetSandboxesParamsStateRunning GetSandboxesParamsState = "running"
 )
