@@ -13,9 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -36,29 +34,11 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	}
 
 	// all snapshots where env team is same as team.ID and sandbox_id is not included in instanceInfo.SandboxID
-	snapshots, err := a.db.Client.Snapshot.Query().
-		Where(snapshot.HasEnvWith(env.TeamID(team.ID))).
-		Where(snapshot.SandboxIDNotIn(instanceSandboxIDs...)).
-		WithEnv(func(query *models.EnvQuery) {
-			query.
-				WithBuilds(func(query *models.EnvBuildQuery) {
-					query.Where(envbuild.StatusEQ(envbuild.StatusUploaded)).
-						Order(models.Desc(envbuild.FieldFinishedAt))
-				}).
-				WithEnvAliases()
-		}).
-		All(ctx)
+	snapshots, snapshotBuilds, envAliases, err := a.db.GetTeamSnapshots(ctx, team.ID, instanceSandboxIDs)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, err)
 
 		return
-	}
-
-	latestSnapshots := make(map[string]*models.Snapshot)
-	for _, s := range snapshots {
-		if existing, ok := latestSnapshots[s.SandboxID]; !ok || s.CreatedAt.After(existing.CreatedAt) {
-			latestSnapshots[s.SandboxID] = s
-		}
 	}
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
@@ -126,14 +106,18 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	}
 
 	// append latest snapshots to sandboxes
-	for _, s := range latestSnapshots {
-		build := s.Edges.Env.Edges.Builds[0]
-		alias := s.Edges.Env.Edges.EnvAliases[0]
+	for _, s := range snapshots {
+		build := snapshotBuilds[0]
+
+		var alias *string
+		if envAliases != nil && len(envAliases) > 0 {
+			alias = &envAliases[0].ID
+		}
 
 		instance := api.RunningSandbox{
 			ClientID:   "",
 			TemplateID: s.EnvID,
-			Alias:      &alias.ID,
+			Alias:      alias,
 			SandboxID:  s.SandboxID,
 			StartedAt:  s.SandboxStartedAt,
 			CpuCount:   int32(build.Vcpu),

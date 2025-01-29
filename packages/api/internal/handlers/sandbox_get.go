@@ -24,50 +24,66 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	sandboxId := strings.Split(id, "-")[0]
 
+	// Try to get the running instance first
 	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
+	if err == nil && *info.TeamID == team.ID {
+		// Instance exists and belongs to the team - return running sandbox info
+		build, err := a.db.Client.EnvBuild.Query().Where(envbuild.ID(*info.BuildID)).First(ctx)
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, err)
+			c.JSON(http.StatusInternalServerError, fmt.Sprintf("Error getting build for instance %s", id))
+			return
+		}
+
+		instance := api.RunningSandbox{
+			ClientID:   info.Instance.ClientID,
+			TemplateID: info.Instance.TemplateID,
+			Alias:      info.Instance.Alias,
+			SandboxID:  info.Instance.SandboxID,
+			StartedAt:  info.StartTime,
+			CpuCount:   int32(build.Vcpu),
+			MemoryMB:   int32(build.RAMMB),
+			EndAt:      info.EndTime,
+			State:      "running",
+		}
+
+		if info.Metadata != nil {
+			meta := api.SandboxMetadata(info.Metadata)
+			instance.Metadata = &meta
+		}
+
+		c.JSON(http.StatusOK, instance)
+		return
+	}
+
+	// If instance not found or doesn't belong to team, try to get the latest snapshot
+	snapshot, build, envAliases, err := a.db.GetLastSnapshot(ctx, sandboxId, team.ID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, fmt.Sprintf("instance \"%s\" doesn't exist or you don't have access to it", id))
+		fmt.Println(err)
+		c.JSON(http.StatusNotFound, fmt.Sprintf("instance or snapshot \"%s\" doesn't exist or you don't have access to it", id))
 		return
 	}
 
-	if *info.TeamID != team.ID {
-		c.JSON(http.StatusNotFound, fmt.Sprintf("instance \"%s\" doesn't exist or you don't have access to it", id))
-		return
-	}
-
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "get running instance", properties)
-
-	build, err := a.db.Client.EnvBuild.Query().Where(envbuild.ID(*info.BuildID)).First(ctx)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, err)
-		c.JSON(http.StatusInternalServerError, fmt.Sprintf("Error getting build for instance %s", id))
-
-		return
-	}
-
-	memoryMB := int32(-1)
-	cpuCount := int32(-1)
-
-	if build != nil {
-		memoryMB = int32(build.RAMMB)
-		cpuCount = int32(build.Vcpu)
+	// optional
+	var alias *string
+	if envAliases != nil && len(envAliases) > 0 {
+		alias = &envAliases[0].ID
 	}
 
 	instance := api.RunningSandbox{
-		ClientID:   info.Instance.ClientID,
-		TemplateID: info.Instance.TemplateID,
-		Alias:      info.Instance.Alias,
-		SandboxID:  info.Instance.SandboxID,
-		StartedAt:  info.StartTime,
-		CpuCount:   cpuCount,
-		MemoryMB:   memoryMB,
-		EndAt:      info.EndTime,
+		ClientID:   "",
+		TemplateID: snapshot.EnvID,
+		Alias:      alias,
+		SandboxID:  snapshot.SandboxID,
+		StartedAt:  snapshot.SandboxStartedAt,
+		CpuCount:   int32(build.Vcpu),
+		MemoryMB:   int32(build.RAMMB),
+		EndAt:      snapshot.PausedAt,
+		State:      "paused",
 	}
 
-	if info.Metadata != nil {
-		meta := api.SandboxMetadata(info.Metadata)
+	if snapshot.Metadata != nil {
+		meta := api.SandboxMetadata(snapshot.Metadata)
 		instance.Metadata = &meta
 	}
 
