@@ -157,29 +157,32 @@ func main() {
 
 	swagger, err := api.GetSwagger()
 	if err != nil {
+		// this will call os.Exit: defers won't run, but none
+		// need to yet. Change this if this is called later.
 		log.Fatalf("Error loading swagger spec:\n%v", err)
 	}
 
 	var cleanupFns []func() error
 	exitCode := &atomic.Int32{}
+
 	cleanup := func() {
 		start := time.Now()
 		// doing shutdown in parallel to avoid
 		// unintentionally: creating shutdown ordering
 		// effects.
-		wg := &sync.WaitGroup{}
+		cwg := &sync.WaitGroup{}
 		count := 0
 		for idx := range cleanupFns {
 			if cleanup := cleanupFns[idx]; cleanup != nil {
-				wg.Add(1)
+				cwg.Add(1)
 				count++
-				go func() {
-					defer wg.Done()
+				go func(idx int) {
+					defer cwg.Done()
 					if err := cleanup(); err != nil {
 						exitCode.Add(1)
-						log.Printf("cleanup operation error: %v", err)
+						log.Printf("cleanup operation %d, error: %v", idx, err)
 					}
-				}()
+				}(idx)
 
 				// only run each cleanup once (in case cleanup is called
 				// explicitly.)
@@ -191,7 +194,7 @@ func main() {
 			return
 		}
 		log.Printf("running %d cleanup operations", count)
-		wg.Wait() // this doesn't have a timeout
+		cwg.Wait() // this doesn't have a timeout
 		log.Printf("%d cleanup operations completed in %s", count, time.Since(start))
 	}
 	defer cleanup()
@@ -201,7 +204,7 @@ func main() {
 		cleanupFns = append(cleanupFns, func() error {
 			// shutdown handlers flush buffers upon call and take a context. passing a
 			// specific context here so that all timeout configuration is in one place.
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
 			return shutdown(ctx)
@@ -217,7 +220,26 @@ func main() {
 	// pass the signal context so that handlers know when shutdown is happening.
 	s := NewGinServer(signalCtx, apiStore, swagger, port)
 
+	//////////////////////////
+	//
+	// Start the HTTP service
+
+	wg := &sync.WaitGroup{}
+
+	// it may be desireable to wg.Wait in a defer to make sure
+	// that the process doesn't return until the HTTP service is
+	// fully shutdown in the case of a panic.
+
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+
+		// make sure to cancel the parent context before this
+		// goroutine returns, so that in the case of a panic
+		// or error here, the other thread won't block until
+		// signaled.
+		defer cancel()
+
 		log.Printf("http service (%d) starting", port)
 
 		// Serve HTTP until shutdown.
@@ -234,24 +256,35 @@ func main() {
 			log.Printf("http service (%d) exited without error", port)
 		}
 
-		// cancel the parent context, in case the service
-		// ended outside of shutdown, (we want everything else
-		// to cleanup, and not to get stuck waiting).
-		cancel()
 	}()
 
-	select {
-	case <-signalCtx.Done():
-		// shutdown blocks until all active http handlers have returned.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-signalCtx.Done()
+
+		// if the parent context `ctx` is canceled the
+		// shutdown will return early. This should only happen
+		// if there's an error in starting the http service
+		// (and would be a noop), or if there's an unhandled
+		// panic and defers start running, _probably_ won't
+		// even have a chance to return before the program
+		// returns.
+
 		if err := s.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			log.Printf("http service (%d) shutdown error: %v", port, err)
 		}
-	case <-ctx.Done():
-		log.Printf("http service (%d) shutdown outside of signal\n", port)
-	}
 
-	// call cleanup explicitly because defers do not run on os.Exit
+	}()
+
+	// wait for the HTTP service to complete shutting down first
+	// before doing other cleanup, we're listening for the signal
+	// termination in one of these background threads.
+	wg.Wait()
+
+	// call cleanup explicitly because defers (from above) do not
+	// run on os.Exit.
 	cleanup()
 
 	// Exit, with appropriate code.
