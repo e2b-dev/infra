@@ -56,6 +56,7 @@ provider "nomad" {
 
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/api.hcl", {
+    update_stanza                 = var.api_machine_count > 1
     orchestrator_port             = var.orchestrator_port
     template_manager_address      = "http://template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint  = "localhost:4317"
