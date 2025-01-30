@@ -51,6 +51,10 @@ variable "environment" {
   type = string
 }
 
+variable "api_machine_count" {
+  type = number
+}
+
 variable "docker_contexts_bucket_name" {
   type = string
 }

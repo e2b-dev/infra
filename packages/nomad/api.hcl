@@ -29,6 +29,7 @@ job "api" {
       }
     }
 
+%{ if update_stanza == "true" }
     # An update stanza to enable rolling updates of the service
     update {
       # The number of extra instances to run during the update
@@ -42,6 +43,7 @@ job "api" {
       # Whether to promote the canary if the rest of the group is not healthy
       auto_promote     = true
     }
+%{ endif }
 
     task "start" {
       driver = "docker"
