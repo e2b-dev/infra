@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	loki "github.com/grafana/loki/pkg/logcli/client"
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -50,31 +51,26 @@ type APIStore struct {
 	templateSpawnCounter *utils.TemplateSpawnCounter
 }
 
-var lokiAddress = os.Getenv("LOKI_ADDRESS")
-
 func NewAPIStore(ctx context.Context) *APIStore {
-	fmt.Println("Initializing API store")
-
 	tracer := otel.Tracer("api")
 
 	logger, err := logging.New(env.IsLocal())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error initializing logger\n: %v\n", err)
-		panic(err)
+		panic(fmt.Errorf("initializing logger: %w", err))
 	}
+
+	logger.Info("initializing API store and services")
 
 	dbClient, err := db.NewClient()
 	if err != nil {
-		logger.Errorf("Error initializing Supabase client\n: %v", err)
-		panic(err)
+		logger.Panic("initializing Supabase client", zap.Error(err))
 	}
 
-	logger.Info("Initialized Supabase client")
+	logger.Info("created Supabase client")
 
 	posthogClient, posthogErr := analyticscollector.NewPosthogClient(logger)
 	if posthogErr != nil {
-		logger.Errorf("Error initializing Posthog client\n: %v", posthogErr)
-		panic(posthogErr)
+		logger.Panic("initializing Posthog client", zap.Error(posthogErr))
 	}
 
 	nomadConfig := &nomadapi.Config{
@@ -84,27 +80,35 @@ func NewAPIStore(ctx context.Context) *APIStore {
 
 	nomadClient, err := nomadapi.NewClient(nomadConfig)
 	if err != nil {
-		logger.Errorf("Error initializing Nomad client\n: %v", err)
-		panic(err)
+		logger.Panic("initializing Nomad client", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger, posthogClient)
+	var redisClient *redis.Client
+	if rurl := os.Getenv("REDIS_URL"); rurl != "" {
+		opts, err := redis.ParseURL(rurl)
+		if err != nil {
+			logger.Panic("invalid redis URL", zap.String("url", rurl), zap.Error(err))
+		}
+
+		redisClient = redis.NewClient(opts)
+	} else {
+		logger.Warn("REDIS_URL not set, using local caches")
+	}
+
+	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger, posthogClient, redisClient)
 	if err != nil {
-		logger.Errorf("Error initializing Orchestrator client\n: %v", err)
-		panic(err)
+		logger.Panic("initializing Orchestrator client", zap.Error(err))
 	}
 
 	templateManager, err := template_manager.New()
 	if err != nil {
-		logger.Errorf("Error initializing Template manager client\n: %v", err)
-		panic(err)
+		logger.Panic("initializing Template manager client", zap.Error(err))
 	}
 
 	var lokiClient *loki.DefaultClient
-
-	if lokiAddress != "" {
+	if laddr := os.Getenv("LOKI_ADDRESS"); laddr != "" {
 		lokiClient = &loki.DefaultClient{
-			Address: lokiAddress,
+			Address: laddr,
 		}
 	} else {
 		logger.Warn("LOKI_ADDRESS not set, disabling Loki client")
