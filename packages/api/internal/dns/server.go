@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-redis/cache/v8"
 	"github.com/go-redis/redis/v8"
 	resolver "github.com/miekg/dns"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -24,9 +25,11 @@ const defaultRoutingIP = "127.0.0.1"
 const cachedDnsPrefix = "sandbox.dns."
 
 type DNS struct {
-	records *smap.Map[string]
-	srv     *resolver.Server
-	redis   *redis.Client
+	srv    *resolver.Server
+	logger *zap.SugaredLogger
+
+	remote *cache.Cache
+	local  *smap.Map[string]
 
 	closer struct {
 		once sync.Once
@@ -35,90 +38,111 @@ type DNS struct {
 	}
 }
 
-func New() *DNS {
-	return &DNS{
-		records: smap.New[string](),
+func New(ctx context.Context, rc *redis.Client, logger *zap.SugaredLogger) *DNS {
+	d := &DNS{logger: logger}
+
+	if rc != nil {
+		d.remote = cache.New(&cache.Options{Redis: rc, LocalCache: cache.NewTinyLFU(10_000, time.Hour)})
+	} else {
+		d.local = smap.New[string]()
 	}
+
+	return d
 }
 
 func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
-	d.records.Insert(d.hostname(sandboxID), ip)
-	if d.redis != nil {
-		d.redis.Set(ctx, d.getCacheKey(sandboxID), ip, redisTTL)
+	switch {
+	case d.remote != nil:
+		d.remote.Set(&cache.Item{
+			Ctx:   ctx,
+			TTL:   redisTTL,
+			Key:   sandboxID,
+			Value: ip,
+		})
+	case d.local != nil:
+		d.local.Insert(sandboxID, ip)
+	default:
+		d.logger.Panic("malformed DNS service")
 	}
 }
 
 func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
-	d.records.RemoveCb(d.hostname(sandboxID), func(key string, v string, exists bool) bool {
-		return v == ip
-	})
-
-	if d.redis != nil {
-		d.redis.Del(ctx, d.getCacheKey(sandboxID))
+	switch {
+	case d.remote != nil:
+		if err := d.remote.Delete(ctx, sandboxID); err != nil {
+			d.logger.Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox", sandboxID))
+		}
+	case d.local != nil:
+		d.local.RemoveCb(d.hostname(sandboxID), func(k string, v string, ok bool) bool {
+			return v == ip
+		})
+	default:
+		d.logger.Panic("malformed DNS service")
 	}
 }
 
-func (d *DNS) getLocal(hostname string) (string, bool) { return d.records.Get(hostname) }
-func (*DNS) hostname(sandboxID string) string          { return fmt.Sprintf("%s.", sandboxID) }
-func (*DNS) getCacheKey(id string) string              { return fmt.Sprintf("%s%s", cachedDnsPrefix, id) }
+func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
+	var res string
+	switch {
+	case d.remote != nil:
+		if err := d.remote.Get(ctx, sandboxID, &res); err != nil {
+			if errors.Is(err, cache.ErrCacheMiss) {
+				d.logger.Warn("item missing in remote DNS cache", zap.String("sandbox", sandboxID))
+			} else {
+				d.logger.Error("resolving item from remote DNS cache", zap.String("sandbox", sandboxID), zap.Error(err))
+			}
+		}
+	case d.local != nil:
+		var ok bool
+		res, ok = d.local.Get(sandboxID)
+		if !ok {
+			d.logger.Warn("item not found in local DNS cache", zap.String("sandbox", sandboxID))
+		}
+	}
+
+	addr := net.ParseIP(res)
+	if addr == nil {
+		if res != "" {
+			d.logger.Error("malformed address in cache", zap.Bool("local", d.local != nil), zap.String("addr", res))
+		}
+
+		addr = net.ParseIP(defaultRoutingIP)
+	}
+
+	return addr.To4()
+}
+
+func (*DNS) hostname(sandboxID string) string { return fmt.Sprintf("%s.", sandboxID) }
+func (*DNS) getCacheKey(id string) string     { return fmt.Sprintf("%s%s", cachedDnsPrefix, id) }
 
 func (d *DNS) handleDNSRequest(ctx context.Context, w resolver.ResponseWriter, r *resolver.Msg) {
-	m := new(resolver.Msg)
-	m.SetReply(r)
-	m.Compress = false
-	m.Authoritative = true
+	m := &resolver.Msg{
+		Compress: false,
+		MsgHdr: resolver.MsgHdr{
+			Authoritative: true,
+		},
+	}
 
-	// TODO collect errors from redis, and log them.
+	m.SetReply(r)
 
 	for _, q := range m.Question {
 		if q.Qtype == resolver.TypeA {
-			a := &resolver.A{
+			sandboxID := strings.Split(q.Name, "-")[0]
+
+			m.Answer = append(m.Answer, &resolver.A{
 				Hdr: resolver.RR_Header{
 					Name:   q.Name,
 					Rrtype: resolver.TypeA,
 					Class:  resolver.ClassINET,
 					Ttl:    ttl,
 				},
-			}
-
-			var ip net.IP
-
-			sandboxID := strings.Split(q.Name, "-")[0]
-
-			if addr, found := d.getLocal(sandboxID); found {
-				// we have it cached locally, this is
-				// still fine.
-				a.A = net.ParseIP(addr).To4()
-			} else if d.redis != nil {
-				// TODO: at least log the error
-				res, err := d.redis.Get(ctx, d.getCacheKey(sandboxID)).Result()
-				if err == nil {
-					// TODO: do we need to do
-					// anything with the error or
-					// distinguish between "can't
-					// find" and "server error"
-
-					ip = net.ParseIP(res)
-
-					// TODO: should we add this to
-					// the local cache at this
-					// point or not?
-				}
-			}
-
-			if ip == nil {
-				ip = net.ParseIP(defaultRoutingIP)
-			}
-
-			a.A = ip.To4()
-			m.Answer = append(m.Answer, a)
+				A: d.Get(ctx, sandboxID),
+			})
 		}
 	}
 
-	err := w.WriteMsg(m)
-	if err != nil {
-		// TODO pass in a logger for clearer messages
-		log.Printf("Failed to write message: %s\n", err.Error())
+	if err := w.WriteMsg(m); err != nil {
+		d.logger.Error("write DNS message", zap.Error(err))
 	}
 }
 
@@ -127,7 +151,9 @@ var errOnStartup = errors.New("failed to start DNS server")
 func CheckErrOnStartup(err error) bool { return errors.Is(err, errOnStartup) }
 
 func (d *DNS) Start(ctx context.Context, address string, port int) {
-	// It shuold be an error to call start twice. Potentially
+	if d.srv != nil {
+		return
+	}
 
 	// configure the underlying resolver service.
 	mux := resolver.NewServeMux()
@@ -145,9 +171,23 @@ func (d *DNS) Start(ctx context.Context, address string, port int) {
 			// down for real, and the Close() method
 			// should work.
 			switch err.Error() {
-			case "server already started", "bad network":
+			case "bad network":
+				// this is the only error that can
+				// happen during startup. We have to
+				// panic here because we don't want
+				// the service to continue without any
+				// DNS service.
+				panic(errors.Join(errors.New("problem starting DNS service"), err, errOnStartup))
+			case "server already started":
+				// this only happens if you call start
+				// more than once, which shouldn't be
+				// possible.
 				errChan <- errors.Join(err, errOnStartup)
 			default:
+				// this should only happen if we
+				// encounter a (networking(?)) error
+				// during operation.
+
 				errChan <- err
 			}
 		}
@@ -191,13 +231,7 @@ func (d *DNS) Close(ctx context.Context) error {
 		}
 
 		if err := d.closer.op(ctx); err != nil {
-			switch err.Error() {
-			case "server already started", "bad network":
-				errs = append(errs, err, errOnStartup)
-			default:
-				errs = append(errs, err)
-			}
-
+			errs = append(errs, err)
 		}
 
 		d.closer.err = errors.Join(errs...)
