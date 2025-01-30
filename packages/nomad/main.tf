@@ -55,40 +55,36 @@ provider "nomad" {
 }
 
 resource "nomad_job" "api" {
-  jobspec = file("${path.module}/api.hcl")
-
-  hcl2 {
-    vars = {
-      orchestrator_port             = var.orchestrator_port
-      template_manager_address      = "http://template-manager.service.consul:${var.template_manager_port}"
-      otel_collector_grpc_endpoint  = "localhost:4317"
-      loki_address                  = "http://localhost:${var.loki_service_port.port}"
-      logs_collector_address        = "http://localhost:${var.logs_proxy_port.port}"
-      gcp_zone                      = var.gcp_zone
-      api_port_name                 = var.api_port.name
-      api_port_number               = var.api_port.port
-      image_name                    = var.api_docker_image_digest
-      postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-      posthog_api_key               = data.google_secret_manager_secret_version.posthog_api_key.secret_data
-      environment                   = var.environment
-      analytics_collector_host      = data.google_secret_manager_secret_version.analytics_collector_host.secret_data
-      analytics_collector_api_token = data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data
-      otel_tracing_print            = var.otel_tracing_print
-      nomad_token                   = var.nomad_acl_token_secret
-      admin_token                   = data.google_secret_manager_secret_version.api_admin_token.secret_data
-      redis_url                     = "redis://redis.service.consul:${var.redis_port_number}"
-    }
-  }
+  jobspec = templatefile("${path.module}/api.hcl", {
+    orchestrator_port             = var.orchestrator_port
+    template_manager_address      = "http://template-manager.service.consul:${var.template_manager_port}"
+    otel_collector_grpc_endpoint  = "localhost:4317"
+    loki_address                  = "http://localhost:${var.loki_service_port.port}"
+    logs_collector_address        = "http://localhost:${var.logs_proxy_port.port}"
+    gcp_zone                      = var.gcp_zone
+    port_name                     = var.api_port.name
+    port_number                   = var.api_port.port
+    api_docker_image              = var.api_docker_image_digest
+    postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    posthog_api_key               = data.google_secret_manager_secret_version.posthog_api_key.secret_data
+    environment                   = var.environment
+    analytics_collector_host      = data.google_secret_manager_secret_version.analytics_collector_host.secret_data
+    analytics_collector_api_token = data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data
+    otel_tracing_print            = var.otel_tracing_print
+    nomad_acl_token               = var.nomad_acl_token_secret
+    admin_token                   = data.google_secret_manager_secret_version.api_admin_token.secret_data
+    redis_url                     = "redis://redis.service.consul:${var.redis_port.port}"
+  })
 }
 
 resource "nomad_job" "redis" {
-  jobspec = file("${path.module}/redis.hcl")
-
-  hcl2 {
-    vars = {
-      gcp_zone = var.gcp_zone
+  jobspec = templatefile("${path.module}/redis.hcl",
+    {
+      gcp_zone    = var.gcp_zone
+      port_number = var.redis_port.port
+      port_name   = var.redis_port.name
     }
-  }
+  )
 }
 
 resource "nomad_job" "docker_reverse_proxy" {

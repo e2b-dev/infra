@@ -192,7 +192,7 @@ func main() {
 		}
 		log.Printf("running %d cleanup operations", count)
 		wg.Wait() // this doesn't have a timeout
-		log.Printf("%d cleanup operations compleated in %s", count, time.Since(start))
+		log.Printf("%d cleanup operations completed in %s", count, time.Since(start))
 	}
 	defer cleanup()
 
