@@ -61,23 +61,17 @@ func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
 		})
 	case d.local != nil:
 		d.local.Insert(sandboxID, ip)
-	default:
-		d.logger.Panic("malformed DNS service")
 	}
 }
 
 func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
 	switch {
 	case d.remote != nil:
-		if err := d.remote.Delete(ctx, sandboxID); err != nil {
+		if err := d.remote.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
 			d.logger.Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox", sandboxID))
 		}
 	case d.local != nil:
-		d.local.RemoveCb(d.hostname(sandboxID), func(k string, v string, ok bool) bool {
-			return v == ip
-		})
-	default:
-		d.logger.Panic("malformed DNS service")
+		d.local.RemoveCb(d.cacheKey(sandboxID), func(k string, v string, ok bool) bool { return v == ip })
 	}
 }
 
@@ -85,7 +79,7 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 	var res string
 	switch {
 	case d.remote != nil:
-		if err := d.remote.Get(ctx, sandboxID, &res); err != nil {
+		if err := d.remote.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
 			if errors.Is(err, cache.ErrCacheMiss) {
 				d.logger.Warn("item missing in remote DNS cache", zap.String("sandbox", sandboxID))
 			} else {
@@ -94,7 +88,7 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 		}
 	case d.local != nil:
 		var ok bool
-		res, ok = d.local.Get(sandboxID)
+		res, ok = d.local.Get(d.cacheKey(sandboxID))
 		if !ok {
 			d.logger.Warn("item not found in local DNS cache", zap.String("sandbox", sandboxID))
 		}
@@ -112,8 +106,16 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 	return addr.To4()
 }
 
-func (*DNS) hostname(sandboxID string) string { return fmt.Sprintf("%s.", sandboxID) }
-func (*DNS) getCacheKey(id string) string     { return fmt.Sprintf("%s%s", cachedDnsPrefix, id) }
+func (d *DNS) cacheKey(id string) string {
+	switch {
+	case d.remote != nil:
+		return fmt.Sprintf("%s%s", cachedDnsPrefix, id)
+	case d.local != nil:
+		return fmt.Sprintf("%s.", id)
+	default:
+		return id
+	}
+}
 
 func (d *DNS) handleDNSRequest(ctx context.Context, w resolver.ResponseWriter, r *resolver.Msg) {
 	m := &resolver.Msg{
@@ -162,7 +164,7 @@ func (d *DNS) Start(ctx context.Context, address string, port int) {
 
 	// setup error handling here: we want to catch the error from
 	// when the server starts.
-	errChan := make(chan error)
+	errChan := make(chan error, 1)
 	go func() {
 		defer close(errChan)
 		if err := d.srv.ListenAndServe(); err != nil {
