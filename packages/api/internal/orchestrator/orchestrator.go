@@ -3,8 +3,9 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 
-	"github.com/go-redis/redis/v8"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -32,20 +33,25 @@ func New(
 	nomadClient *nomadapi.Client,
 	logger *zap.SugaredLogger,
 	posthogClient *analyticscollector.PosthogClient,
-	redisClient *redis.Client,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
 	if err != nil {
-		logger.Error("Error initializing Analytics client", zap.Error(err))
+		logger.Errorf("Error initializing Analytics client\n: %v", err)
 	}
 
-	dnsServer := dns.New(redisClient, logger)
+	dnsServer := dns.New()
 
 	if env.IsLocal() {
-		logger.Info("Running locally, skipping starting DNS server")
+		fmt.Printf("Running locally, skipping starting DNS server\n")
 	} else {
-		logger.Info("Starting DNS server")
-		dnsServer.Start(ctx, "127.0.0.4", 53)
+		go func() {
+			fmt.Printf("Starting DNS server\n")
+
+			dnsErr := dnsServer.Start(ctx, "127.0.0.4", 53)
+			if dnsErr != nil {
+				log.Fatalf("Failed running DNS server: %v\n", dnsErr)
+			}
+		}()
 	}
 
 	o := Orchestrator{
