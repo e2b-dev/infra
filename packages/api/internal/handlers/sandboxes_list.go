@@ -34,7 +34,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	}
 
 	// all snapshots where env team is same as team.ID and sandbox_id is not included in instanceInfo.SandboxID
-	snapshots, err := a.db.GetTeamSnapshots(ctx, team.ID, instanceSandboxIDs)
+	snapshots, err := a.db.GetTeamSnapshots(ctx, team.ID)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, err)
 
@@ -107,21 +107,25 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	// append latest snapshots to sandboxes
 	for _, s := range snapshots {
-		// filter out snapshots that don't have a successful build
-		// builds := s.Edges.Env.Edges.Builds
-		// if len(builds) == 0 {
-		// 	continue
-		// }
+		env := s.Edges.Env
+		if env == nil {
+			continue
+		}
+
+		builds := env.Edges.Builds
+		if len(builds) == 0 {
+			continue
+		}
 
 		instance := api.RunningSandbox{
 			ClientID:   "",
 			TemplateID: s.EnvID,
 			SandboxID:  s.SandboxID,
 			StartedAt:  s.SandboxStartedAt,
-			// CpuCount:   int32(s.Edges.Env.Edges.Builds[0].Vcpu),
-			// MemoryMB:   int32(s.Edges.Env.Edges.Builds[0].RAMMB),
-			EndAt: s.PausedAt,
-			State: "paused",
+			CpuCount:   int32(builds[0].Vcpu),
+			MemoryMB:   int32(builds[0].RAMMB),
+			EndAt:      s.PausedAt,
+			State:      "paused",
 		}
 
 		if s.Metadata != nil {
