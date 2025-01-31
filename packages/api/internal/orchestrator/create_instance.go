@@ -180,6 +180,7 @@ func (o *Orchestrator) CreateSandbox(
 		MaxInstanceLength:  time.Duration(team.Tier.MaxLengthHours) * time.Hour,
 		Node:               node.Info,
 		AutoPause:          autoPause,
+		AutoPauseCh:        make(chan error),
 	}
 
 	cacheErr := o.instanceCache.Add(instanceInfo, true)
@@ -187,7 +188,7 @@ func (o *Orchestrator) CreateSandbox(
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 
-		deleted := o.DeleteInstance(childCtx, sbx.SandboxID)
+		deleted := o.DeleteInstance(childCtx, sbx.SandboxID, false)
 		if !deleted {
 			telemetry.ReportEvent(ctx, "instance wasn't found in cache when deleting")
 		}

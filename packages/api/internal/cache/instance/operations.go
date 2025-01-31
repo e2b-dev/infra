@@ -114,6 +114,11 @@ func (c *InstanceCache) Add(instance InstanceInfo, newlyCreated bool) error {
 	return nil
 }
 
+// Update the instance in the cache.
+func (c *InstanceCache) Update(instance InstanceInfo) {
+	c.cache.Set(instance.Instance.SandboxID, instance, instance.EndTime.Sub(time.Now()))
+}
+
 // Delete the instance and remove it from the cache.
 func (c *InstanceCache) Delete(instanceID string) bool {
 	_, found := c.cache.GetAndDelete(instanceID, ttlcache.WithDisableTouchOnHit[string, InstanceInfo]())

@@ -14,5 +14,7 @@ func (o *Orchestrator) DeleteInstance(ctx context.Context, sandboxID string, pau
 	}
 
 	info.AutoPause = pause
+	o.instanceCache.Update(info)
+
 	return o.instanceCache.Delete(sandboxID)
 }
