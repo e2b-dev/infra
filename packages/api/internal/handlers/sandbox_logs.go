@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -70,8 +71,19 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(
 
 		for _, stream := range value {
 			for _, entry := range stream.Entries {
+				// We use the timestamp from the actual log line instead of the
+				// timestamp from the Loki entry to sort the logs more accurately
+				var lineTimestamp struct {
+					RealTimestamp time.Time `json:"real_timestamp"`
+				}
+				err := json.Unmarshal([]byte(entry.Line), &lineTimestamp)
+				if err != nil {
+					telemetry.ReportCriticalError(ctx, fmt.Errorf("failed to unmarshal log entry line real_timestamp: %w", err))
+					continue
+				}
+
 				logs = append(logs, api.SandboxLog{
-					Timestamp: entry.Timestamp,
+					Timestamp: lineTimestamp.RealTimestamp,
 					Line:      entry.Line,
 				})
 			}
