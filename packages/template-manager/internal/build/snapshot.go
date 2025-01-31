@@ -134,7 +134,13 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 	telemetry.ReportEvent(childCtx, "waited for fc to start", attribute.Float64("seconds", float64(waitTimeForFCStart/time.Second)))
 
 	if env.StartCmd != "" {
-		time.Sleep(waitTimeForStartCmd)
+		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
+		// TODO: Remove this after we can add customizable wait time for building templates.
+		if env.TemplateId == "zegbt9dl3l2ixqem82mm" {
+			time.Sleep(120 * time.Second)
+		} else {
+			time.Sleep(waitTimeForStartCmd)
+		}
 		telemetry.ReportEvent(childCtx, "waited for start command", attribute.Float64("seconds", float64(waitTimeForStartCmd/time.Second)))
 	}
 
