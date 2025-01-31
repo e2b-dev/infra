@@ -64,8 +64,6 @@ func (o *Orchestrator) PauseInstance(
 		return ErrPauseQueueExhausted{}
 	}
 
-	defer o.DeleteInstance(ctx, sbx.Instance.SandboxID)
-
 	if err != nil && !errors.Is(err, ErrPauseQueueExhausted{}) {
 		errMsg := fmt.Errorf("error pausing sandbox: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)

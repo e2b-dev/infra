@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -11,7 +10,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -45,16 +43,19 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	err = a.orchestrator.PauseInstance(ctx, a.Tracer, sbx, teamID)
-	if errors.As(err, &orchestrator.ErrPauseQueueExhausted{}) {
-		a.sendAPIStoreError(c, http.StatusTooManyRequests, "Too many pause requests in progress, please retry later.")
-
+	found := a.orchestrator.DeleteInstance(ctx, sandboxID, true)
+	if !found {
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - sandbox '%s' was not found", sandboxID))
 		return
 	}
 
+	err, ok := <-sbx.AutoPauseCh
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
-
+		return
+	}
+	if !ok {
+		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
 		return
 	}
 

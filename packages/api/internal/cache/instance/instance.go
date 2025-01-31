@@ -41,6 +41,7 @@ type InstanceInfo struct {
 	EnvdVersion        string
 	Node               *node.NodeInfo
 	AutoPause          bool
+	AutoPauseCh        chan error
 }
 
 type InstanceCache struct {
@@ -113,4 +114,13 @@ func NewCache(
 	go cache.Start()
 
 	return instanceCache
+}
+
+func (c *InstanceInfo) PauseDone(err error) {
+	c.AutoPauseCh <- err
+	if err != nil {
+		return
+	}
+	
+	close(c.AutoPauseCh)
 }
