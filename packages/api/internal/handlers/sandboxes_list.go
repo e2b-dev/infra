@@ -34,7 +34,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	}
 
 	// all snapshots where env team is same as team.ID and sandbox_id is not included in instanceInfo.SandboxID
-	snapshots, snapshotBuilds, envAliases, err := a.db.GetTeamSnapshots(ctx, team.ID, instanceSandboxIDs)
+	snapshots, err := a.db.GetTeamSnapshots(ctx, team.ID, instanceSandboxIDs)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, err)
 
@@ -107,26 +107,32 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	// append latest snapshots to sandboxes
 	for _, s := range snapshots {
-		build := snapshotBuilds[0]
+		env := s.Edges.Env // skip if env is nil
+		if env == nil {
+			continue
+		}
+
+		// builds := s.Edges.Env.Edges.Builds
+		// if len(builds) == 0 {
+		// 	continue
+		// }
+
+		// build := builds[0]
 
 		instance := api.RunningSandbox{
 			ClientID:   "",
 			TemplateID: s.EnvID,
 			SandboxID:  s.SandboxID,
 			StartedAt:  s.SandboxStartedAt,
-			CpuCount:   int32(build.Vcpu),
-			MemoryMB:   int32(build.RAMMB),
-			EndAt:      s.PausedAt,
-			State:      "paused",
+			// CpuCount:   int32(build.Vcpu),
+			// MemoryMB:   int32(build.RAMMB),
+			EndAt: s.PausedAt,
+			State: "paused",
 		}
 
 		if s.Metadata != nil {
 			meta := api.SandboxMetadata(s.Metadata)
 			instance.Metadata = &meta
-		}
-
-		if envAliases != nil && len(envAliases) > 0 {
-			instance.Alias = &envAliases[0].ID
 		}
 
 		sandboxes = append(sandboxes, instance)

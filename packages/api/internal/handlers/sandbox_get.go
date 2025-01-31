@@ -57,7 +57,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// If instance not found or doesn't belong to team, try to get the latest snapshot
-	snapshot, build, envAliases, err := a.db.GetLastSnapshot(ctx, sandboxId, team.ID)
+	snapshot, build, err := a.db.GetLastSnapshot(ctx, sandboxId, team.ID)
 	if err != nil {
 		fmt.Println(err)
 		c.JSON(http.StatusNotFound, fmt.Sprintf("instance or snapshot \"%s\" doesn't exist or you don't have access to it", id))
@@ -79,10 +79,6 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if snapshot.Metadata != nil {
 		meta := api.SandboxMetadata(snapshot.Metadata)
 		instance.Metadata = &meta
-	}
-
-	if envAliases != nil && len(envAliases) > 0 {
-		instance.Alias = &envAliases[0].ID
 	}
 
 	c.JSON(http.StatusOK, instance)
