@@ -145,12 +145,12 @@ func (db *DB) GetLastSnapshot(ctx context.Context, sandboxID string, teamID uuid
 
 	notFound := models.IsNotFound(err)
 
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", sandboxID, err)
-	}
-
 	if notFound {
 		return nil, nil, nil, fmt.Errorf("no snapshot build found for '%s'", sandboxID)
+	}
+
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", sandboxID, err)
 	}
 
 	return e.Edges.Snapshots[0], e.Edges.Builds[0], e.Edges.EnvAliases, nil
@@ -180,12 +180,12 @@ func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, filteredSa
 
 	notFound := models.IsNotFound(err)
 
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", teamID, err)
+	if notFound {
+		return nil, nil, nil, nil
 	}
 
-	if notFound {
-		return nil, nil, nil, fmt.Errorf("no snapshot build found for '%s'", teamID)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", teamID, err)
 	}
 
 	return e.Edges.Snapshots, e.Edges.Builds, e.Edges.EnvAliases, nil
