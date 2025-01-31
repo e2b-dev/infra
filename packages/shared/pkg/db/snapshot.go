@@ -162,10 +162,9 @@ func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, filteredSa
 		Client.
 		Snapshot.
 		Query().
-		Where(snapshot.SandboxIDNotIn(filteredSandboxIDs...)).
+		Where(snapshot.SandboxIDNotIn(filteredSandboxIDs...), snapshot.HasEnvWith(env.TeamID(teamID))).
 		WithEnv(func(query *models.EnvQuery) {
 			query.
-				Where(env.TeamID(teamID)).
 				WithBuilds(func(query *models.EnvBuildQuery) {
 					query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt)).Only(ctx)
 				}).

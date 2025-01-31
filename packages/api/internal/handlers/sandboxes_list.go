@@ -107,25 +107,19 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	// append latest snapshots to sandboxes
 	for _, s := range snapshots {
-		env := s.Edges.Env // skip if env is nil
-		if env == nil {
-			continue
-		}
-
+		// filter out snapshots that don't have a successful build
 		// builds := s.Edges.Env.Edges.Builds
 		// if len(builds) == 0 {
 		// 	continue
 		// }
-
-		// build := builds[0]
 
 		instance := api.RunningSandbox{
 			ClientID:   "",
 			TemplateID: s.EnvID,
 			SandboxID:  s.SandboxID,
 			StartedAt:  s.SandboxStartedAt,
-			// CpuCount:   int32(build.Vcpu),
-			// MemoryMB:   int32(build.RAMMB),
+			// CpuCount:   int32(s.Edges.Env.Edges.Builds[0].Vcpu),
+			// MemoryMB:   int32(s.Edges.Env.Edges.Builds[0].RAMMB),
 			EndAt: s.PausedAt,
 			State: "paused",
 		}
