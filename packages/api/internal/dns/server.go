@@ -185,7 +185,7 @@ func (d *DNS) Start(ctx context.Context, address string, port int) {
 				// panic here because we don't want
 				// the service to continue without any
 				// DNS service.
-				panic(errors.Join(errors.New("problem starting DNS service"), err, errOnStartup))
+				panic(errors.Join(errors.New("configuration problem with DNS service"), err, errOnStartup))
 			case "server already started":
 				// this only happens if you call start
 				// more than once, which shouldn't be
@@ -194,8 +194,8 @@ func (d *DNS) Start(ctx context.Context, address string, port int) {
 			default:
 				// this should only happen if we
 				// encounter a (networking(?)) error
-				// during operation.
-
+				// during operation, or potentially startup.
+				d.logger.Warn("encountered issue while serving DNS, shutting down DNS.", zap.Error(err))
 				errChan <- err
 			}
 		}
