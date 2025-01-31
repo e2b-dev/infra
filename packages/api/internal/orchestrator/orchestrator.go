@@ -3,9 +3,8 @@ package orchestrator
 import (
 	"context"
 	"errors"
-	"fmt"
-	"log"
 
+	"github.com/go-redis/redis/v8"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -31,33 +30,30 @@ func New(
 	ctx context.Context,
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
-	logger *zap.SugaredLogger,
+	logger *zap.Logger,
 	posthogClient *analyticscollector.PosthogClient,
+	redisClient *redis.Client,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
 	if err != nil {
-		logger.Errorf("Error initializing Analytics client\n: %v", err)
+		logger.Error("Error initializing Analytics client", zap.Error(err))
 	}
 
-	dnsServer := dns.New()
+	dnsServer := dns.New(ctx, nil, logger)
 
 	if env.IsLocal() {
-		fmt.Printf("Running locally, skipping starting DNS server\n")
+		logger.Info("Running locally, skipping starting DNS server")
 	} else {
-		go func() {
-			fmt.Printf("Starting DNS server\n")
-
-			dnsErr := dnsServer.Start(ctx, "127.0.0.4", 53)
-			if dnsErr != nil {
-				log.Fatalf("Failed running DNS server: %v\n", dnsErr)
-			}
-		}()
+		logger.Info("Starting DNS server")
+		dnsServer.Start(ctx, "127.0.0.4", 53)
 	}
+
+	slogger := logger.Sugar()
 
 	o := Orchestrator{
 		analytics:   analyticsInstance,
 		nomadClient: nomadClient,
-		logger:      logger,
+		logger:      slogger,
 		tracer:      tracer,
 		nodes:       smap.New[*Node](),
 		dns:         dnsServer,
@@ -65,9 +61,9 @@ func New(
 
 	cache := instance.NewCache(
 		analyticsInstance.Client,
-		logger,
-		o.getInsertInstanceFunction(ctx, logger),
-		o.getDeleteInstanceFunction(ctx, posthogClient, logger),
+		slogger,
+		o.getInsertInstanceFunction(ctx, slogger),
+		o.getDeleteInstanceFunction(ctx, posthogClient, slogger),
 	)
 
 	o.instanceCache = cache
@@ -81,19 +77,27 @@ func New(
 	return &o, nil
 }
 
-func (o *Orchestrator) Close() error {
-	var err error
-	for _, node := range o.nodes.Items() {
-		closeErr := node.Client.Close()
-		if closeErr != nil {
-			err = errors.Join(err, closeErr)
+func (o *Orchestrator) Close(ctx context.Context) error {
+	nodes := o.nodes.Items()
+	errs := make([]error, 0, len(nodes)+2)
+
+	for _, node := range nodes {
+		if err := node.Client.Close(); err != nil {
+			errs = append(errs, err)
 		}
 	}
 
-	closeErr := o.analytics.Close()
-	if closeErr != nil {
-		err = errors.Join(err, closeErr)
+	if err := o.analytics.Close(); err != nil {
+		errs = append(errs, err)
 	}
 
-	return err
+	if o.dns != nil {
+		if err := o.dns.Close(ctx); err != nil {
+			errs = append(errs, err)
+
+		}
+
+	}
+
+	return errors.Join(errs...)
 }

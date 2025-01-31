@@ -26,7 +26,7 @@ const cachedDnsPrefix = "sandbox.dns."
 
 type DNS struct {
 	srv    *resolver.Server
-	logger *zap.SugaredLogger
+	logger *zap.Logger
 
 	remote *cache.Cache
 	local  *smap.Map[string]
@@ -38,7 +38,7 @@ type DNS struct {
 	}
 }
 
-func New(ctx context.Context, rc *redis.Client, logger *zap.SugaredLogger) *DNS {
+func New(ctx context.Context, rc *redis.Client, logger *zap.Logger) *DNS {
 	d := &DNS{logger: logger}
 
 	if rc != nil {
@@ -56,11 +56,11 @@ func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
 		d.remote.Set(&cache.Item{
 			Ctx:   ctx,
 			TTL:   redisTTL,
-			Key:   sandboxID,
+			Key:   d.cacheKey(sandboxID),
 			Value: ip,
 		})
 	case d.local != nil:
-		d.local.Insert(sandboxID, ip)
+		d.local.Insert(d.cacheKey(sandboxID), ip)
 	}
 }
 
@@ -109,10 +109,16 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 func (d *DNS) cacheKey(id string) string {
 	switch {
 	case d.remote != nil:
+		// add a prefix to the remote cache items to make is
+		// reasonable to introspect the remote cache data, to
+		// make it possible to safely use the redis cache for
+		// more than one set of cached items without fear of
+		// collision. Additionally the prefix allows us to
+		// have a hard break of compatibility between versions
+		// of the service by changing the prefix.
 		return fmt.Sprintf("%s%s", cachedDnsPrefix, id)
-	case d.local != nil:
-		return fmt.Sprintf("%s.", id)
 	default:
+		// local caches are scoped to the `DNS` instance and so don't need a prefix.
 		return id
 	}
 }
@@ -211,7 +217,7 @@ func (d *DNS) Start(ctx context.Context, address string, port int) {
 	go func() {
 		<-ctx.Done()
 
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		// Close should be a noop if it's already been called,
@@ -222,7 +228,7 @@ func (d *DNS) Start(ctx context.Context, address string, port int) {
 
 func (d *DNS) Close(ctx context.Context) error {
 	if d.srv == nil {
-		return errors.New("DNS was not started")
+		return nil
 	}
 
 	d.closer.once.Do(func() {
