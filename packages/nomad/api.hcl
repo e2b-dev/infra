@@ -18,6 +18,7 @@ job "api" {
     service {
       name = "api"
       port = "${port_number}"
+      task = "start"
 
       check {
         type     = "http"
