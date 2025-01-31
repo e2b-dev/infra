@@ -16,6 +16,7 @@ import (
 
 const ttl = 0
 
+// This allows us to return a different error message when the sandbox is not found instead of generic 502 Bad Gateway
 const defaultRoutingIP = "127.0.0.1"
 
 type DNS struct {
@@ -84,12 +85,12 @@ func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
 	}
 }
 
-func (d *DNS) Start(_ context.Context, address string, port int) error {
+func (d *DNS) Start(_ context.Context, address string, port string) error {
 	mux := resolver.NewServeMux()
 
 	mux.HandleFunc(".", d.handleDNSRequest)
 
-	server := resolver.Server{Addr: fmt.Sprintf("%s:%d", address, port), Net: "udp", Handler: mux}
+	server := resolver.Server{Addr: fmt.Sprintf("%s:%s", address, port), Net: "udp", Handler: mux}
 
 	err := server.ListenAndServe()
 	if err != nil {
