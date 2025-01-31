@@ -178,13 +178,13 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 				info.PauseDone(err)
 				return fmt.Errorf("failed to auto pause sandbox '%s': %w", info.Instance.SandboxID, err)
 			}
-		}
-		info.PauseDone(nil)
-
-		req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
-		_, err = node.Client.Sandbox.Delete(ctx, req)
-		if err != nil {
-			return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
+			info.PauseDone(nil)
+		} else {
+			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
+			_, err = node.Client.Sandbox.Delete(ctx, req)
+			if err != nil {
+				return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
+			}
 		}
 
 		return nil
