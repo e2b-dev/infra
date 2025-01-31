@@ -55,8 +55,9 @@ variable "api_machine_count" {
   type = number
 }
 
-variable "docker_contexts_bucket_name" {
-  type = string
+variable "api_dns_port_number" {
+  type    = number
+  default = 5353
 }
 
 variable "custom_envs_repository_name" {

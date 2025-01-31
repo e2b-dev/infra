@@ -27,6 +27,16 @@ job "api" {
         timeout  = "5s"
         port     = "${port_number}"
       }
+
+      // Check if not present sandbox returns 127.0.0.1, we are serving custom error there
+      check {
+        name     = "dns-resolve-check"
+        type     = "script"
+        command  = "/bin/bash"
+        args     = ["-c", "dig @localhost -p ${dns_port_number} dead-sandbox.ko | grep -q '127.0.0.1'"]
+        interval = "20s"
+        timeout  = "1s"
+      }
     }
 
 %{ if update_stanza == "true" }
@@ -46,7 +56,7 @@ job "api" {
 %{ endif }
 
     task "start" {
-      driver = "docker"
+      driver       = "docker"
       # If we need more than 30s we will need to update the max_kill_timeout in nomad
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
       kill_timeout = "15s"
@@ -73,6 +83,7 @@ job "api" {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         ADMIN_TOKEN                   = "${admin_token}"
         REDIS_URL                     = "${redis_url}"
+        DNS_PORT                      = "${dns_port_number}"
         # This is here just because it is required in some part of our code which is transitively imported
         TEMPLATE_BUCKET_NAME          = "skip"
       }
@@ -80,7 +91,7 @@ job "api" {
       config {
         network_mode = "host"
         image        = "${api_docker_image}"
-        ports        = ["${port_name}"]
+        ports = ["${port_name}"]
         args = [
           "--port", "${port_number}",
         ]

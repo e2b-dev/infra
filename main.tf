@@ -183,7 +183,6 @@ module "nomad" {
   logs_proxy_address                        = "http://${module.cluster.logs_proxy_ip}"
   api_port                                  = var.api_port
   environment                               = var.environment
-  docker_contexts_bucket_name               = module.buckets.envs_docker_context_bucket_name
   google_service_account_key                = module.init.google_service_account_key
   api_docker_image_digest                   = module.api.api_docker_image_digest
   api_secret                                = module.api.api_secret
