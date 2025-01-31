@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/go-redis/redis/v8"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.opentelemetry.io/otel/trace"
@@ -15,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type Orchestrator struct {

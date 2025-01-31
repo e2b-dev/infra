@@ -92,8 +92,8 @@ job "api" {
       config {
         network_mode = "host"
         image        = "${api_docker_image}"
-        ports = ["${port_name}"]
-        args = [
+        ports        = ["${port_name}"]
+        args         = [
           "--port", "${port_number}",
         ]
       }
