@@ -116,7 +116,7 @@ func (c *InstanceCache) Add(instance InstanceInfo, newlyCreated bool) error {
 
 // Update the instance in the cache.
 func (c *InstanceCache) Update(instance InstanceInfo) {
-	c.cache.Set(instance.Instance.SandboxID, instance, instance.EndTime.Sub(time.Now()))
+	c.cache.Set(instance.Instance.SandboxID, instance, time.Until(instance.EndTime))
 }
 
 // Delete the instance and remove it from the cache.

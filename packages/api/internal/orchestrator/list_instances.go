@@ -74,6 +74,8 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *node.NodeInfo) ([
 			TotalDiskSizeMB:    config.TotalDiskSizeMb,
 			MaxInstanceLength:  time.Duration(config.MaxSandboxLength) * time.Hour,
 			Node:               node,
+			AutoPause:          instance.InstanceAutoPauseDefault,
+			AutoPauseCh:        make(chan error, 1),
 		})
 	}
 

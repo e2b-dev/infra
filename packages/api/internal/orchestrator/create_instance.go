@@ -180,7 +180,7 @@ func (o *Orchestrator) CreateSandbox(
 		MaxInstanceLength:  time.Duration(team.Tier.MaxLengthHours) * time.Hour,
 		Node:               node.Info,
 		AutoPause:          autoPause,
-		AutoPauseCh:        make(chan error),
+		AutoPauseCh:        make(chan error, 1),
 	}
 
 	cacheErr := o.instanceCache.Add(instanceInfo, true)

@@ -28,8 +28,8 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err != nil {
-		_, _, err := a.db.GetLastSnapshot(ctx, sandboxID, teamID)
-		if err == nil {
+		_, _, fErr := a.db.GetLastSnapshot(ctx, sandboxID, teamID)
+		if fErr == nil {
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
 			return
 		}
