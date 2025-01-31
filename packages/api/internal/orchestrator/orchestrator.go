@@ -30,7 +30,7 @@ func New(
 	ctx context.Context,
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
-	logger *zap.SugaredLogger,
+	logger *zap.Logger,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient *redis.Client,
 ) (*Orchestrator, error) {
@@ -39,24 +39,21 @@ func New(
 		logger.Error("Error initializing Analytics client", zap.Error(err))
 	}
 
-	dnsServer := dns.New(redisClient)
+	dnsServer := dns.New(ctx, nil, logger)
 
 	if env.IsLocal() {
 		logger.Info("Running locally, skipping starting DNS server")
 	} else {
-		go func() {
-			logger.Info("Starting DNS server")
-
-			if err := dnsServer.Start(ctx, "127.0.0.4", 53); err != nil {
-				logger.Panic("Failed starting DNS server", zap.Error(err))
-			}
-		}()
+		logger.Info("Starting DNS server")
+		dnsServer.Start(ctx, "127.0.0.4", 53)
 	}
+
+	slogger := logger.Sugar()
 
 	o := Orchestrator{
 		analytics:   analyticsInstance,
 		nomadClient: nomadClient,
-		logger:      logger,
+		logger:      slogger,
 		tracer:      tracer,
 		nodes:       smap.New[*Node](),
 		dns:         dnsServer,
@@ -64,9 +61,9 @@ func New(
 
 	cache := instance.NewCache(
 		analyticsInstance.Client,
-		logger,
-		o.getInsertInstanceFunction(ctx, logger),
-		o.getDeleteInstanceFunction(ctx, posthogClient, logger),
+		slogger,
+		o.getInsertInstanceFunction(ctx, slogger),
+		o.getDeleteInstanceFunction(ctx, posthogClient, slogger),
 	)
 
 	o.instanceCache = cache
@@ -80,19 +77,27 @@ func New(
 	return &o, nil
 }
 
-func (o *Orchestrator) Close() error {
-	var err error
-	for _, node := range o.nodes.Items() {
-		closeErr := node.Client.Close()
-		if closeErr != nil {
-			err = errors.Join(err, closeErr)
+func (o *Orchestrator) Close(ctx context.Context) error {
+	nodes := o.nodes.Items()
+	errs := make([]error, 0, len(nodes)+2)
+
+	for _, node := range nodes {
+		if err := node.Client.Close(); err != nil {
+			errs = append(errs, err)
 		}
 	}
 
-	closeErr := o.analytics.Close()
-	if closeErr != nil {
-		err = errors.Join(err, closeErr)
+	if err := o.analytics.Close(); err != nil {
+		errs = append(errs, err)
 	}
 
-	return err
+	if o.dns != nil {
+		if err := o.dns.Close(ctx); err != nil {
+			errs = append(errs, err)
+
+		}
+
+	}
+
+	return errors.Join(errs...)
 }
