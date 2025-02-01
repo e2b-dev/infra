@@ -115,7 +115,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		snapshot := s.Edges.Snapshots[0]
 
 		instance := api.RunningSandbox{
-			ClientID:   "",
+			ClientID:   "00000000",
 			TemplateID: s.ID,
 			SandboxID:  snapshot.SandboxID,
 			StartedAt:  snapshot.SandboxStartedAt,
