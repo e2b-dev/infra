@@ -167,8 +167,7 @@ func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID) (
 			query.
 				WithBuilds(func(query *models.EnvBuildQuery) {
 					query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt)).Only(ctx)
-				}).
-				Only(ctx)
+				})
 		}).
 		All(ctx)
 

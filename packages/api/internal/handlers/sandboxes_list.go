@@ -112,8 +112,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 			continue
 		}
 
-		builds := env.Edges.Builds
-		if len(builds) == 0 {
+		snapshotBuilds := env.Edges.Builds
+		if len(snapshotBuilds) == 0 {
 			continue
 		}
 
@@ -122,8 +122,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 			TemplateID: s.EnvID,
 			SandboxID:  s.SandboxID,
 			StartedAt:  s.SandboxStartedAt,
-			CpuCount:   int32(builds[0].Vcpu),
-			MemoryMB:   int32(builds[0].RAMMB),
+			CpuCount:   int32(snapshotBuilds[0].Vcpu),
+			MemoryMB:   int32(snapshotBuilds[0].RAMMB),
 			EndAt:      s.PausedAt,
 			State:      "paused",
 		}
