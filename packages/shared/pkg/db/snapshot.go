@@ -155,19 +155,20 @@ func (db *DB) GetLastSnapshot(ctx context.Context, sandboxID string, teamID uuid
 }
 
 func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID) (
-	[]*models.Snapshot,
+	[]*models.Env,
 	error,
 ) {
 	e, err := db.
 		Client.
-		Snapshot.
+		Env.
 		Query().
-		Where(snapshot.HasEnvWith(env.TeamID(teamID))).
-		WithEnv(func(query *models.EnvQuery) {
-			query.
-				WithBuilds(func(query *models.EnvBuildQuery) {
-					query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt)).Only(ctx)
-				})
+		Where(
+			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
+			env.TeamID(teamID),
+		).
+		WithSnapshots().
+		WithBuilds(func(query *models.EnvBuildQuery) {
+			query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt))
 		}).
 		All(ctx)
 

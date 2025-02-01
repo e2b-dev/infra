@@ -107,29 +107,26 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	// append latest snapshots to sandboxes
 	for _, s := range snapshots {
-		env := s.Edges.Env
-		if env == nil {
-			continue
-		}
-
-		snapshotBuilds := env.Edges.Builds
+		snapshotBuilds := s.Edges.Builds
 		if len(snapshotBuilds) == 0 {
 			continue
 		}
 
+		snapshot := s.Edges.Snapshots[0]
+
 		instance := api.RunningSandbox{
 			ClientID:   "",
-			TemplateID: s.EnvID,
-			SandboxID:  s.SandboxID,
-			StartedAt:  s.SandboxStartedAt,
+			TemplateID: s.ID,
+			SandboxID:  snapshot.SandboxID,
+			StartedAt:  snapshot.SandboxStartedAt,
 			CpuCount:   int32(snapshotBuilds[0].Vcpu),
 			MemoryMB:   int32(snapshotBuilds[0].RAMMB),
-			EndAt:      s.PausedAt,
+			EndAt:      snapshot.PausedAt,
 			State:      "paused",
 		}
 
-		if s.Metadata != nil {
-			meta := api.SandboxMetadata(s.Metadata)
+		if snapshot.Metadata != nil {
+			meta := api.SandboxMetadata(snapshot.Metadata)
 			instance.Metadata = &meta
 		}
 
