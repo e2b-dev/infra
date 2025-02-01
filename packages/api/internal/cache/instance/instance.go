@@ -40,7 +40,7 @@ type InstanceInfo struct {
 	FirecrackerVersion string
 	EnvdVersion        string
 	Node               *node.NodeInfo
-	AutoPause          bool
+	AutoPause          *bool
 	AutoPauseCh        chan error
 }
 
@@ -121,6 +121,6 @@ func (c *InstanceInfo) PauseDone(err error) {
 	if err != nil {
 		return
 	}
-	
+
 	close(c.AutoPauseCh)
 }

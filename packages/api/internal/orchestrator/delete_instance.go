@@ -8,13 +8,5 @@ func (o *Orchestrator) DeleteInstance(ctx context.Context, sandboxID string, pau
 	_, childSpan := o.tracer.Start(ctx, "delete-instance")
 	defer childSpan.End()
 
-	info, err := o.instanceCache.GetInstance(sandboxID)
-	if err != nil {
-		return false
-	}
-
-	info.AutoPause = pause
-	o.instanceCache.Update(info)
-
-	return o.instanceCache.Delete(sandboxID)
+	return o.instanceCache.Delete(sandboxID, pause)
 }

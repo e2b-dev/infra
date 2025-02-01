@@ -137,7 +137,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		}
 
 		var closeType string
-		if info.AutoPause {
+		if *info.AutoPause {
 			closeType = "pause"
 		} else {
 			closeType = "delete"
@@ -172,7 +172,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			return fmt.Errorf("client for node '%s' not found", info.Instance.ClientID)
 		}
 
-		if info.AutoPause {
+		if *info.AutoPause {
 			err = o.PauseInstance(ctx, o.tracer, &info, *info.TeamID)
 			if err != nil {
 				info.PauseDone(err)

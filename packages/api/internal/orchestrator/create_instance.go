@@ -179,7 +179,7 @@ func (o *Orchestrator) CreateSandbox(
 		EnvdVersion:        *build.EnvdVersion,
 		MaxInstanceLength:  time.Duration(team.Tier.MaxLengthHours) * time.Hour,
 		Node:               node.Info,
-		AutoPause:          autoPause,
+		AutoPause:          &autoPause,
 		AutoPauseCh:        make(chan error, 1),
 	}
 

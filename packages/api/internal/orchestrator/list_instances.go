@@ -53,6 +53,8 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *node.NodeInfo) ([
 			return nil, fmt.Errorf("failed to parse build ID '%s' for job: %w", config.BuildId, err)
 		}
 
+		autoPause := instance.InstanceAutoPauseDefault
+
 		sandboxesInfo = append(sandboxesInfo, &instance.InstanceInfo{
 			Logger: logs.NewSandboxLogger(config.SandboxId, config.TemplateId, teamID.String(), config.Vcpu, config.RamMb, false),
 			Instance: &api.Sandbox{
@@ -74,7 +76,7 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *node.NodeInfo) ([
 			TotalDiskSizeMB:    config.TotalDiskSizeMb,
 			MaxInstanceLength:  time.Duration(config.MaxSandboxLength) * time.Hour,
 			Node:               node,
-			AutoPause:          instance.InstanceAutoPauseDefault,
+			AutoPause:          &autoPause,
 			AutoPauseCh:        make(chan error, 1),
 		})
 	}
