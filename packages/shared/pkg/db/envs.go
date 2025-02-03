@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 )
 
 type TemplateCreator struct {
@@ -158,6 +159,24 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 		SpawnCount:    dbEnv.SpawnCount,
 		BuildCount:    dbEnv.BuildCount,
 	}, build, nil
+}
+
+func (db *DB) CheckBaseEnvHasSnapshots(ctx context.Context, envID string) (result bool, err error) {
+	result, err = db.Client.Snapshot.Query().Where(snapshot.BaseEnvID(envID)).Exist(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if base env has snapshots for '%s': %w", envID, err)
+	}
+
+	return result, nil
+}
+
+func (db *DB) GetEnvBuilds(ctx context.Context, envID string) (result []*models.EnvBuild, err error) {
+	result, err = db.Client.EnvBuild.Query().Where(envbuild.EnvID(envID)).All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get env builds for '%s': %w", envID, err)
+	}
+
+	return result, nil
 }
 
 func (db *DB) FinishEnvBuild(
