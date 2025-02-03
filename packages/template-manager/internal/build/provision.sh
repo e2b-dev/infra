@@ -137,7 +137,7 @@ echo "nameserver 8.8.8.8" >/etc/resolv.conf
 
 # Start systemd services
 systemctl enable envd
-systemctl enable envd-v0.0.1
+# systemctl enable envd-v0.0.1
 systemctl enable chrony 2>&1
 
 cat <<EOF >/etc/systemd/system/forward_ports.service
@@ -149,12 +149,12 @@ Type=simple
 Restart=no
 User=root
 Group=root
-ExecStart=/bin/bash -l -c "(echo 1 | tee /proc/sys/net/ipv4/ip_forward) && iptables-legacy -t nat -A POSTROUTING -s 127.0.0.1 -j SNAT --to-source {{ .FcAddress }} && iptables-legacy -t nat -A PREROUTING -d {{ .FcAddress }} -j DNAT --to-destination 127.0.0.1"
+ExecStart=/bin/bash -l -c "(echo 1 | tee /proc/sys/net/ipv4/ip_forward) && (echo 1 | tee /proc/sys/net/ipv4/conf/eth0/route_localnet) && iptables-legacy -t nat -A POSTROUTING -s 127.0.0.1 -j SNAT --to-source {{ .FcAddress }} && iptables-legacy -t nat -A PREROUTING -d {{ .FcAddress }} -j DNAT --to-destination 127.0.0.1"
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# systemctl enable forward_ports
+systemctl enable forward_ports
 
 echo "Finished provisioning script"
