@@ -75,6 +75,7 @@ resource "nomad_job" "api" {
     nomad_acl_token               = var.nomad_acl_token_secret
     admin_token                   = data.google_secret_manager_secret_version.api_admin_token.secret_data
     redis_url                     = "redis://redis.service.consul:${var.redis_port.port}"
+    dns_port_number               = var.api_dns_port_number
   })
 }
 
@@ -94,7 +95,7 @@ resource "nomad_job" "docker_reverse_proxy" {
   hcl2 {
     vars = {
       gcp_zone                      = var.gcp_zone
-      image_name                    = var.docker_reverse_proxy_image_digest
+      image_name                    = var.docker_reverse_proxy_docker_image_digest
       postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
       google_service_account_secret = var.docker_reverse_proxy_service_account_key
       port_number                   = var.docker_reverse_proxy_port.port
@@ -109,20 +110,15 @@ resource "nomad_job" "docker_reverse_proxy" {
 }
 
 resource "nomad_job" "client_proxy" {
-  jobspec = file("${path.module}/client-proxy.hcl")
+  jobspec = templatefile("${path.module}/client-proxy.hcl",
+    {
+      gcp_zone    = var.gcp_zone
+      port_name   = var.client_proxy_port.name
+      port_number = var.client_proxy_port.port
+      environment = var.environment
 
-  hcl2 {
-    vars = {
-      gcp_zone                        = var.gcp_zone
-      client_proxy_port_number        = var.client_proxy_port.port
-      client_proxy_port_name          = var.client_proxy_port.name
-      client_proxy_health_port_number = var.client_proxy_health_port.port
-      client_proxy_health_port_name   = var.client_proxy_health_port.name
-      client_proxy_health_port_path   = var.client_proxy_health_port.path
-      load_balancer_conf              = templatefile("${path.module}/proxies/client.conf", { domain_name_escaped = replace(var.domain_name, ".", "\\.") })
-      nginx_conf                      = file("${path.module}/proxies/nginx.conf")
-    }
-  }
+      image_name = var.client_proxy_docker_image_digest
+  })
 }
 
 resource "nomad_job" "session_proxy" {
