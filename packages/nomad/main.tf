@@ -75,6 +75,7 @@ resource "nomad_job" "api" {
     nomad_acl_token               = var.nomad_acl_token_secret
     admin_token                   = data.google_secret_manager_secret_version.api_admin_token.secret_data
     redis_url                     = "redis://redis.service.consul:${var.redis_port.port}"
+    dns_port_number               = var.api_dns_port_number
   })
 }
 
@@ -119,7 +120,7 @@ resource "nomad_job" "client_proxy" {
       client_proxy_health_port_number = var.client_proxy_health_port.port
       client_proxy_health_port_name   = var.client_proxy_health_port.name
       client_proxy_health_port_path   = var.client_proxy_health_port.path
-      load_balancer_conf              = templatefile("${path.module}/proxies/client.conf", { domain_name_escaped = replace(var.domain_name, ".", "\\.") })
+      load_balancer_conf              = templatefile("${path.module}/proxies/client.conf", { dns_port = var.api_dns_port_number })
       nginx_conf                      = file("${path.module}/proxies/nginx.conf")
     }
   }

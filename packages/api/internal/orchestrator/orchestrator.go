@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type Orchestrator struct {
@@ -40,6 +41,7 @@ func New(
 	}
 
 	dnsServer := dns.New(redisClient)
+	port := utils.RequiredEnv("DNS_PORT", "Local DNS server resolving IPs for sandboxes")
 
 	if env.IsLocal() {
 		logger.Info("Running locally, skipping starting DNS server")
@@ -47,7 +49,7 @@ func New(
 		go func() {
 			logger.Info("Starting DNS server")
 
-			if err := dnsServer.Start(ctx, "127.0.0.4", 53); err != nil {
+			if err := dnsServer.Start(ctx, "0.0.0.0", port); err != nil {
 				logger.Panic("Failed starting DNS server", zap.Error(err))
 			}
 		}()

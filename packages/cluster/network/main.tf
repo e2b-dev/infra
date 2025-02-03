@@ -206,6 +206,7 @@ resource "google_compute_url_map" "orch_map" {
     name            = "api-paths"
     default_service = google_compute_backend_service.default["api"].self_link
   }
+
   path_matcher {
     name            = "docker-reverse-proxy-paths"
     default_service = google_compute_backend_service.default["docker-reverse-proxy"].self_link
