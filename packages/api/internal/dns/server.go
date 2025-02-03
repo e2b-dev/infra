@@ -20,6 +20,7 @@ import (
 const ttl = 0
 const redisTTL = 24 * time.Hour
 
+// This allows us to return a different error message when the sandbox is not found instead of generic 502 Bad Gateway
 const defaultRoutingIP = "127.0.0.1"
 
 const cachedDnsPrefix = "sandbox.dns."
@@ -60,7 +61,7 @@ func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
 			Value: ip,
 		})
 	case d.local != nil:
-		d.local.Insert(d.cacheKey(sandboxID), ip)
+		d.local.Insert(sandboxID, ip)
 	}
 }
 
@@ -144,7 +145,7 @@ func (d *DNS) handleDNSRequest(ctx context.Context, w resolver.ResponseWriter, r
 					Class:  resolver.ClassINET,
 					Ttl:    ttl,
 				},
-				A: d.Get(ctx, sandboxID),
+				A: d.Get(ctx, strings.TrimSuffix(sandboxID, ".")),
 			})
 		}
 	}
