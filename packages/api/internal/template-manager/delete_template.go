@@ -10,13 +10,13 @@ import (
 )
 
 func (tm *TemplateManager) DeleteInstance(ctx context.Context, buildId uuid.UUID) error {
-	_, err := tm.grpc.Client.TemplateDelete(ctx, &template_manager.TemplateDeleteRequest{
-		TemplateID: buildId.String(),
+	_, err := tm.grpc.Client.TemplateBuildDelete(ctx, &template_manager.TemplateBuildDeleteRequest{
+		BuildID: buildId.String(),
 	})
 
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
-		return fmt.Errorf("failed to delete template '%s': %w", buildId.String(), err)
+		return fmt.Errorf("failed to delete env build '%s': %w", buildId.String(), err)
 	}
 
 	return nil
@@ -26,7 +26,7 @@ func (tm *TemplateManager) DeleteInstances(ctx context.Context, buildIds []uuid.
 	for _, buildId := range buildIds {
 		err := tm.DeleteInstance(ctx, buildId)
 		if err != nil {
-			return fmt.Errorf("failed to delete template '%s': %w", buildId, err)
+			return fmt.Errorf("failed to delete env build '%s': %w", buildId, err)
 		}
 	}
 

@@ -9,11 +9,11 @@ import (
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
-func (s *serverStore) TemplateDelete(ctx context.Context, in *template_manager.TemplateDeleteRequest) (*emptypb.Empty, error) {
+func (s *serverStore) TemplateDelete(ctx context.Context, in *template_manager.TemplateBuildDeleteRequest) (*emptypb.Empty, error) {
 	childCtx, childSpan := s.tracer.Start(ctx, "template-delete-request")
 	defer childSpan.End()
 
-	err := template.Delete(childCtx, s.tracer, s.artifactRegistry, s.templateStorage, in.TemplateID)
+	err := template.Delete(childCtx, s.tracer, s.artifactRegistry, s.templateStorage, in.BuildID)
 	if err != nil {
 		return nil, err
 	}

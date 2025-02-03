@@ -18,10 +18,10 @@ func NewStorage(ctx context.Context) *Storage {
 	}
 }
 
-func (t *Storage) Remove(ctx context.Context, templateID string) error {
-	err := gcs.RemoveDir(ctx, t.bucket, templateID)
+func (t *Storage) Remove(ctx context.Context, buildId string) error {
+	err := gcs.RemoveDir(ctx, t.bucket, buildId)
 	if err != nil {
-		return fmt.Errorf("error when removing template '%s': %w", templateID, err)
+		return fmt.Errorf("error when removing template '%s': %w", buildId, err)
 	}
 
 	return nil

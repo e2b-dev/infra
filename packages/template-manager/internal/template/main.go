@@ -22,17 +22,17 @@ func Delete(
 	tracer trace.Tracer,
 	artifactRegistry *artifactregistry.Client,
 	templateStorage *Storage,
-	templateID string,
+	buildId string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "delete-template")
 	defer childSpan.End()
 
-	err := templateStorage.Remove(ctx, templateID)
+	err := templateStorage.Remove(ctx, buildId)
 	if err != nil {
 		return fmt.Errorf("error when deleting template objects: %w", err)
 	}
 
-	op, artifactRegistryDeleteErr := artifactRegistry.DeletePackage(ctx, &artifactregistrypb.DeletePackageRequest{Name: GetDockerImageURL(templateID)})
+	op, artifactRegistryDeleteErr := artifactRegistry.DeletePackage(ctx, &artifactregistrypb.DeletePackageRequest{Name: GetDockerImageURL(buildId)})
 	if artifactRegistryDeleteErr != nil {
 		errMsg := fmt.Errorf("error when deleting template image from registry: %w", artifactRegistryDeleteErr)
 		telemetry.ReportCriticalError(childCtx, errMsg)
