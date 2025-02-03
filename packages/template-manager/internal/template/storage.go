@@ -19,7 +19,12 @@ func NewStorage(ctx context.Context) *Storage {
 }
 
 func (t *Storage) Remove(ctx context.Context, templateID string) error {
-	return fmt.Errorf("not implemented for template storage")
+	err := gcs.RemoveDir(ctx, t.bucket, templateID)
+	if err != nil {
+		return fmt.Errorf("error when removing template '%s': %w", templateID, err)
+	}
+
+	return nil
 }
 
 func (t *Storage) NewBuild(files *storage.TemplateFiles) *storage.TemplateBuild {
