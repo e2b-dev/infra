@@ -31,7 +31,7 @@ func (Snapshot) Fields() []ent.Field {
 
 func (Snapshot) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.From("env", Env.Type).Ref("snapshots").Unique().Field("env_id").Required(),
+		edge.From("env", Env.Type).Ref("snapshots").Unique().Field("env_id").Required().Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }
 
