@@ -32,8 +32,6 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 		resp, _, err = client.Exchange(msg, dnsServer)
 		if err != nil || len(resp.Answer) == 0 {
 			log.Printf("Host not found: %s\n", host)
-			http.Error(w, "Host not found", http.StatusBadGateway)
-
 			continue
 		}
 
