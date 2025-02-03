@@ -35,6 +35,8 @@ func getAllowRuleForEstablished(slot *Slot) []string {
 }
 
 func (s *Slot) addBlockingRules(tables *iptables.IPTables) error {
+	// TEMPORARY HACK: We disable all traffic by default just for specific customer.
+	// This should not be deployed in general production.
 	blockAllRule := getBlockingRuleForEverything(s)
 	err := tables.Append("filter", "FORWARD", blockAllRule...)
 	if err != nil {
