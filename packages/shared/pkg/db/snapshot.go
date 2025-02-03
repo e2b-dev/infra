@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -15,6 +16,7 @@ import (
 
 type SnapshotInfo struct {
 	SandboxID          string
+	SandboxStartedAt   time.Time
 	BaseTemplateID     string
 	VCPU               int64
 	RAMMB              int64
@@ -72,6 +74,7 @@ func (db *DB) NewSnapshotBuild(
 			Snapshot.
 			Create().
 			SetSandboxID(snapshotConfig.SandboxID).
+			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
 			SetBaseEnvID(snapshotConfig.BaseTemplateID).
 			SetEnv(e).
 			SetMetadata(snapshotConfig.Metadata).
@@ -81,6 +84,16 @@ func (db *DB) NewSnapshotBuild(
 		}
 	} else {
 		e = s.Edges.Env
+		// Update existing snapshot with new metadata and pause time
+		s, err = tx.
+			Snapshot.
+			UpdateOne(s).
+			SetMetadata(snapshotConfig.Metadata).
+			SetPausedAt(time.Now()).
+			Save(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update snapshot '%s': %w", snapshotConfig.SandboxID, err)
+		}
 	}
 
 	b, err := tx.
@@ -130,13 +143,44 @@ func (db *DB) GetLastSnapshot(ctx context.Context, sandboxID string, teamID uuid
 
 	notFound := models.IsNotFound(err)
 
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", sandboxID, err)
-	}
-
 	if notFound {
 		return nil, nil, fmt.Errorf("no snapshot build found for '%s'", sandboxID)
 	}
 
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", sandboxID, err)
+	}
+
 	return e.Edges.Snapshots[0], e.Edges.Builds[0], nil
+}
+
+func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID) (
+	[]*models.Env,
+	error,
+) {
+	e, err := db.
+		Client.
+		Env.
+		Query().
+		Where(
+			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
+			env.TeamID(teamID),
+		).
+		WithSnapshots().
+		WithBuilds(func(query *models.EnvBuildQuery) {
+			query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt))
+		}).
+		All(ctx)
+
+	notFound := models.IsNotFound(err)
+
+	if notFound {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get snapshot build for '%s': %w", teamID, err)
+	}
+
+	return e, nil
 }

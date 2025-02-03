@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
@@ -27,6 +28,40 @@ type SnapshotUpdate struct {
 // Where appends a list predicates to the SnapshotUpdate builder.
 func (su *SnapshotUpdate) Where(ps ...predicate.Snapshot) *SnapshotUpdate {
 	su.mutation.Where(ps...)
+	return su
+}
+
+// SetPausedAt sets the "paused_at" field.
+func (su *SnapshotUpdate) SetPausedAt(t time.Time) *SnapshotUpdate {
+	su.mutation.SetPausedAt(t)
+	return su
+}
+
+// SetNillablePausedAt sets the "paused_at" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillablePausedAt(t *time.Time) *SnapshotUpdate {
+	if t != nil {
+		su.SetPausedAt(*t)
+	}
+	return su
+}
+
+// ClearPausedAt clears the value of the "paused_at" field.
+func (su *SnapshotUpdate) ClearPausedAt() *SnapshotUpdate {
+	su.mutation.ClearPausedAt()
+	return su
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (su *SnapshotUpdate) SetSandboxStartedAt(t time.Time) *SnapshotUpdate {
+	su.mutation.SetSandboxStartedAt(t)
+	return su
+}
+
+// SetNillableSandboxStartedAt sets the "sandbox_started_at" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableSandboxStartedAt(t *time.Time) *SnapshotUpdate {
+	if t != nil {
+		su.SetSandboxStartedAt(*t)
+	}
 	return su
 }
 
@@ -147,6 +182,15 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			}
 		}
 	}
+	if value, ok := su.mutation.PausedAt(); ok {
+		_spec.SetField(snapshot.FieldPausedAt, field.TypeTime, value)
+	}
+	if su.mutation.PausedAtCleared() {
+		_spec.ClearField(snapshot.FieldPausedAt, field.TypeTime)
+	}
+	if value, ok := su.mutation.SandboxStartedAt(); ok {
+		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
+	}
 	if value, ok := su.mutation.BaseEnvID(); ok {
 		_spec.SetField(snapshot.FieldBaseEnvID, field.TypeString, value)
 	}
@@ -209,6 +253,40 @@ type SnapshotUpdateOne struct {
 	hooks     []Hook
 	mutation  *SnapshotMutation
 	modifiers []func(*sql.UpdateBuilder)
+}
+
+// SetPausedAt sets the "paused_at" field.
+func (suo *SnapshotUpdateOne) SetPausedAt(t time.Time) *SnapshotUpdateOne {
+	suo.mutation.SetPausedAt(t)
+	return suo
+}
+
+// SetNillablePausedAt sets the "paused_at" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillablePausedAt(t *time.Time) *SnapshotUpdateOne {
+	if t != nil {
+		suo.SetPausedAt(*t)
+	}
+	return suo
+}
+
+// ClearPausedAt clears the value of the "paused_at" field.
+func (suo *SnapshotUpdateOne) ClearPausedAt() *SnapshotUpdateOne {
+	suo.mutation.ClearPausedAt()
+	return suo
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (suo *SnapshotUpdateOne) SetSandboxStartedAt(t time.Time) *SnapshotUpdateOne {
+	suo.mutation.SetSandboxStartedAt(t)
+	return suo
+}
+
+// SetNillableSandboxStartedAt sets the "sandbox_started_at" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableSandboxStartedAt(t *time.Time) *SnapshotUpdateOne {
+	if t != nil {
+		suo.SetSandboxStartedAt(*t)
+	}
+	return suo
 }
 
 // SetBaseEnvID sets the "base_env_id" field.
@@ -357,6 +435,15 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := suo.mutation.PausedAt(); ok {
+		_spec.SetField(snapshot.FieldPausedAt, field.TypeTime, value)
+	}
+	if suo.mutation.PausedAtCleared() {
+		_spec.ClearField(snapshot.FieldPausedAt, field.TypeTime)
+	}
+	if value, ok := suo.mutation.SandboxStartedAt(); ok {
+		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
 	}
 	if value, ok := suo.mutation.BaseEnvID(); ok {
 		_spec.SetField(snapshot.FieldBaseEnvID, field.TypeString, value)

@@ -68,6 +68,10 @@ func init() {
 	snapshotDescCreatedAt := snapshotFields[1].Descriptor()
 	// snapshot.DefaultCreatedAt holds the default value on creation for the created_at field.
 	snapshot.DefaultCreatedAt = snapshotDescCreatedAt.Default.(func() time.Time)
+	// snapshotDescPausedAt is the schema descriptor for paused_at field.
+	snapshotDescPausedAt := snapshotFields[2].Descriptor()
+	// snapshot.DefaultPausedAt holds the default value on creation for the paused_at field.
+	snapshot.DefaultPausedAt = snapshotDescPausedAt.Default.(func() time.Time)
 	teamFields := schema.Team{}.Fields()
 	_ = teamFields
 	// teamDescCreatedAt is the schema descriptor for created_at field.
