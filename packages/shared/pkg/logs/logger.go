@@ -28,7 +28,7 @@ var CollectorAddress = os.Getenv("LOGS_COLLECTOR_ADDRESS")
 var CollectorPublicIP = os.Getenv("LOGS_COLLECTOR_PUBLIC_IP")
 
 func newSandboxLogExporter(serviceName string) *sandboxLogExporter {
-	zerolog.TimestampFieldName = "timestamp"
+	zerolog.TimestampFieldName = "real_timestamp"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
 	ctx := context.Background()

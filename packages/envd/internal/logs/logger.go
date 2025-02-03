@@ -12,7 +12,7 @@ import (
 )
 
 func NewLogger(ctx context.Context, debug bool) *zerolog.Logger {
-	zerolog.TimestampFieldName = "timestamp"
+	zerolog.TimestampFieldName = "real_timestamp"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
 	exporters := []io.Writer{}
