@@ -3480,6 +3480,7 @@ type SnapshotMutation struct {
 	typ           string
 	id            *uuid.UUID
 	created_at    *time.Time
+	paused_at     *time.Time
 	base_env_id   *string
 	sandbox_id    *string
 	metadata      *map[string]string
@@ -3629,6 +3630,55 @@ func (m *SnapshotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err e
 // ResetCreatedAt resets all changes to the "created_at" field.
 func (m *SnapshotMutation) ResetCreatedAt() {
 	m.created_at = nil
+}
+
+// SetPausedAt sets the "paused_at" field.
+func (m *SnapshotMutation) SetPausedAt(t time.Time) {
+	m.paused_at = &t
+}
+
+// PausedAt returns the value of the "paused_at" field in the mutation.
+func (m *SnapshotMutation) PausedAt() (r time.Time, exists bool) {
+	v := m.paused_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPausedAt returns the old "paused_at" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldPausedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPausedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPausedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPausedAt: %w", err)
+	}
+	return oldValue.PausedAt, nil
+}
+
+// ClearPausedAt clears the value of the "paused_at" field.
+func (m *SnapshotMutation) ClearPausedAt() {
+	m.paused_at = nil
+	m.clearedFields[snapshot.FieldPausedAt] = struct{}{}
+}
+
+// PausedAtCleared returns if the "paused_at" field was cleared in this mutation.
+func (m *SnapshotMutation) PausedAtCleared() bool {
+	_, ok := m.clearedFields[snapshot.FieldPausedAt]
+	return ok
+}
+
+// ResetPausedAt resets all changes to the "paused_at" field.
+func (m *SnapshotMutation) ResetPausedAt() {
+	m.paused_at = nil
+	delete(m.clearedFields, snapshot.FieldPausedAt)
 }
 
 // SetBaseEnvID sets the "base_env_id" field.
@@ -3836,9 +3886,12 @@ func (m *SnapshotMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SnapshotMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 6)
 	if m.created_at != nil {
 		fields = append(fields, snapshot.FieldCreatedAt)
+	}
+	if m.paused_at != nil {
+		fields = append(fields, snapshot.FieldPausedAt)
 	}
 	if m.base_env_id != nil {
 		fields = append(fields, snapshot.FieldBaseEnvID)
@@ -3862,6 +3915,8 @@ func (m *SnapshotMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case snapshot.FieldCreatedAt:
 		return m.CreatedAt()
+	case snapshot.FieldPausedAt:
+		return m.PausedAt()
 	case snapshot.FieldBaseEnvID:
 		return m.BaseEnvID()
 	case snapshot.FieldEnvID:
@@ -3881,6 +3936,8 @@ func (m *SnapshotMutation) OldField(ctx context.Context, name string) (ent.Value
 	switch name {
 	case snapshot.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
+	case snapshot.FieldPausedAt:
+		return m.OldPausedAt(ctx)
 	case snapshot.FieldBaseEnvID:
 		return m.OldBaseEnvID(ctx)
 	case snapshot.FieldEnvID:
@@ -3904,6 +3961,13 @@ func (m *SnapshotMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
+		return nil
+	case snapshot.FieldPausedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPausedAt(v)
 		return nil
 	case snapshot.FieldBaseEnvID:
 		v, ok := value.(string)
@@ -3962,7 +4026,11 @@ func (m *SnapshotMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *SnapshotMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(snapshot.FieldPausedAt) {
+		fields = append(fields, snapshot.FieldPausedAt)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -3975,6 +4043,11 @@ func (m *SnapshotMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *SnapshotMutation) ClearField(name string) error {
+	switch name {
+	case snapshot.FieldPausedAt:
+		m.ClearPausedAt()
+		return nil
+	}
 	return fmt.Errorf("unknown Snapshot nullable field %s", name)
 }
 
@@ -3984,6 +4057,9 @@ func (m *SnapshotMutation) ResetField(name string) error {
 	switch name {
 	case snapshot.FieldCreatedAt:
 		m.ResetCreatedAt()
+		return nil
+	case snapshot.FieldPausedAt:
+		m.ResetPausedAt()
 		return nil
 	case snapshot.FieldBaseEnvID:
 		m.ResetBaseEnvID()

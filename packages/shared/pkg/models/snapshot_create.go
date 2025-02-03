@@ -39,6 +39,20 @@ func (sc *SnapshotCreate) SetNillableCreatedAt(t *time.Time) *SnapshotCreate {
 	return sc
 }
 
+// SetPausedAt sets the "paused_at" field.
+func (sc *SnapshotCreate) SetPausedAt(t time.Time) *SnapshotCreate {
+	sc.mutation.SetPausedAt(t)
+	return sc
+}
+
+// SetNillablePausedAt sets the "paused_at" field if the given value is not nil.
+func (sc *SnapshotCreate) SetNillablePausedAt(t *time.Time) *SnapshotCreate {
+	if t != nil {
+		sc.SetPausedAt(*t)
+	}
+	return sc
+}
+
 // SetBaseEnvID sets the "base_env_id" field.
 func (sc *SnapshotCreate) SetBaseEnvID(s string) *SnapshotCreate {
 	sc.mutation.SetBaseEnvID(s)
@@ -176,6 +190,10 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 		_spec.SetField(snapshot.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
 	}
+	if value, ok := sc.mutation.PausedAt(); ok {
+		_spec.SetField(snapshot.FieldPausedAt, field.TypeTime, value)
+		_node.PausedAt = value
+	}
 	if value, ok := sc.mutation.BaseEnvID(); ok {
 		_spec.SetField(snapshot.FieldBaseEnvID, field.TypeString, value)
 		_node.BaseEnvID = value
@@ -257,6 +275,24 @@ type (
 		*sql.UpdateSet
 	}
 )
+
+// SetPausedAt sets the "paused_at" field.
+func (u *SnapshotUpsert) SetPausedAt(v time.Time) *SnapshotUpsert {
+	u.Set(snapshot.FieldPausedAt, v)
+	return u
+}
+
+// UpdatePausedAt sets the "paused_at" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdatePausedAt() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldPausedAt)
+	return u
+}
+
+// ClearPausedAt clears the value of the "paused_at" field.
+func (u *SnapshotUpsert) ClearPausedAt() *SnapshotUpsert {
+	u.SetNull(snapshot.FieldPausedAt)
+	return u
+}
 
 // SetBaseEnvID sets the "base_env_id" field.
 func (u *SnapshotUpsert) SetBaseEnvID(v string) *SnapshotUpsert {
@@ -355,6 +391,27 @@ func (u *SnapshotUpsertOne) Update(set func(*SnapshotUpsert)) *SnapshotUpsertOne
 		set(&SnapshotUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetPausedAt sets the "paused_at" field.
+func (u *SnapshotUpsertOne) SetPausedAt(v time.Time) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetPausedAt(v)
+	})
+}
+
+// UpdatePausedAt sets the "paused_at" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdatePausedAt() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdatePausedAt()
+	})
+}
+
+// ClearPausedAt clears the value of the "paused_at" field.
+func (u *SnapshotUpsertOne) ClearPausedAt() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.ClearPausedAt()
+	})
 }
 
 // SetBaseEnvID sets the "base_env_id" field.
@@ -629,6 +686,27 @@ func (u *SnapshotUpsertBulk) Update(set func(*SnapshotUpsert)) *SnapshotUpsertBu
 		set(&SnapshotUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetPausedAt sets the "paused_at" field.
+func (u *SnapshotUpsertBulk) SetPausedAt(v time.Time) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetPausedAt(v)
+	})
+}
+
+// UpdatePausedAt sets the "paused_at" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdatePausedAt() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdatePausedAt()
+	})
+}
+
+// ClearPausedAt clears the value of the "paused_at" field.
+func (u *SnapshotUpsertBulk) ClearPausedAt() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.ClearPausedAt()
+	})
 }
 
 // SetBaseEnvID sets the "base_env_id" field.
