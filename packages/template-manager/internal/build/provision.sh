@@ -76,6 +76,9 @@ refclock PHC /dev/ptp0 poll -1 dpoll -1 offset 0 trust prefer
 makestep 1 -1
 EOF
 
+# Add a proxy config, as some environments expects it there (e.g. timemaster in Node Dockerimage)
+echo "include /etc/chrony/chrony.conf" >/etc/chrony.conf
+
 mkdir -p /etc/systemd/system/chrony.service.d
 # The ExecStart= should be emptying the ExecStart= line in config.
 cat <<EOF >/etc/systemd/system/chrony.service.d/override.conf
