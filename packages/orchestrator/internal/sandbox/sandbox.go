@@ -62,7 +62,7 @@ type Sandbox struct {
 func NewSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
-	dns *dns.DNS,
+	dns *dns.OrchDNS,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,
