@@ -4,7 +4,7 @@ job "proxy" {
 
   priority = 70
 
-  group "proxy" {
+  group "client-proxy" {
     network {
       port "${port_name}" {
         static = "${port_number}"
