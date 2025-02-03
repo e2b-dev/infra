@@ -167,16 +167,6 @@ variable "otel_tracing_print" {
   default     = false
 }
 
-variable "github_organization" {
-  type    = string
-  default = "e2b-dev"
-}
-
-variable "github_repository" {
-  type    = string
-  default = "infra"
-}
-
 variable "domain_name" {
   type        = string
   description = "The domain name where e2b will run"
