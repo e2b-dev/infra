@@ -6,7 +6,7 @@ job "proxy" {
 
   group "proxy" {
     network {
-      port "proxy" {
+      port "${port_name}" {
         static = "${port_number}"
       }
     }
@@ -27,11 +27,9 @@ job "proxy" {
 
       config {
         network_mode = "host"
-        image        = var.image_name
-        ports = [var.port_name]
-        args = [
-          "--port", "${var.port_number}",
-        ]
+        image        = "${image_name}"
+        ports        = ["${port_name}"]
+        args         = ["--port", "${port_number}"]
       }
     }
   }

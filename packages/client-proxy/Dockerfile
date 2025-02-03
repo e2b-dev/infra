@@ -10,10 +10,10 @@ RUN go mod download
 COPY main.go main.go
 
 RUN --mount=type=cache,target=/root/.cache/go-build make build
-RUN chmod +x /build/proxy/bin/proxy
+RUN chmod +x /build/proxy/bin/client-proxy
 
 FROM alpine:3.17
 
-COPY --from=builder /build/proxy/bin/proxy .
+COPY --from=builder /build/proxy/bin/client-proxy .
 
-ENTRYPOINT [ "./proxy"]
+ENTRYPOINT [ "./client-proxy"]
