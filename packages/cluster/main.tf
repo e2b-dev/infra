@@ -105,7 +105,7 @@ module "server_cluster" {
 
   labels = var.labels
 
-  depends_on = [google_storage_bucket_object.setup_config_objects]
+  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
 }
 
 module "client_cluster" {
@@ -148,7 +148,7 @@ module "client_cluster" {
   service_account_email = var.google_service_account_email
 
   labels     = var.labels
-  depends_on = [google_storage_bucket_object.setup_config_objects]
+  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
 }
 
 module "api_cluster" {
@@ -196,7 +196,7 @@ module "api_cluster" {
   service_account_email = var.google_service_account_email
 
   labels     = var.labels
-  depends_on = [google_storage_bucket_object.setup_config_objects]
+  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-api-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
 }
 
 module "network" {

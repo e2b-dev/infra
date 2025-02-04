@@ -132,8 +132,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background()) // root context
 	defer cancel()
 
-	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
-	defer sigCancel()
 	// TODO: additional improvements to signal handling/shutdown:
 	//   - provide access to root context in the signal handling
 	//     context so request scoped work can start background tasks
@@ -218,17 +216,26 @@ func main() {
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	// pass the signal context so that handlers know when shutdown is happening.
-	s := NewGinServer(signalCtx, apiStore, swagger, port)
+	s := NewGinServer(ctx, apiStore, swagger, port)
 
 	//////////////////////////
 	//
 	// Start the HTTP service
 
+	// set up the signal handlers so that we can trigger a
+	// shutdown of the HTTP service when the process catches the
+	// specified signal. The parent context isn't canceled until
+	// after the HTTP service returns, to avoid terminating
+	// connections to databases and other upstream services before
+	// the HTTP server has shut down.
+	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
+	defer sigCancel()
+
 	wg := &sync.WaitGroup{}
 
-	// it may be desireable to wg.Wait in a defer to make sure
-	// that the process doesn't return until the HTTP service is
-	// fully shutdown in the case of a panic.
+	// in the event of an unhandled panic *still* wait for the
+	// HTTP service to terminate:
+	defer wg.Wait()
 
 	wg.Add(1)
 	go func() {
@@ -286,6 +293,14 @@ func main() {
 	// call cleanup explicitly because defers (from above) do not
 	// run on os.Exit.
 	cleanup()
+
+	// TODO: wait for additional work to coalesce
+	//
+	// currently we only wait for the HTTP handlers to return, and
+	// then cancel the remaining context and run all of the
+	// cleanup functions. Background go routines at this point
+	// terminate. Would need to have a goroutine pool or worker
+	// coordinator running to manage and track that work.
 
 	// Exit, with appropriate code.
 	os.Exit(int(exitCode.Load()))
