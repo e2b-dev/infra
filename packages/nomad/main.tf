@@ -112,10 +112,11 @@ resource "nomad_job" "docker_reverse_proxy" {
 resource "nomad_job" "client_proxy" {
   jobspec = templatefile("${path.module}/client-proxy.hcl",
     {
-      gcp_zone    = var.gcp_zone
-      port_name   = var.client_proxy_port.name
-      port_number = var.client_proxy_port.port
-      environment = var.environment
+      gcp_zone           = var.gcp_zone
+      port_name          = var.client_proxy_port.name
+      port_number        = var.client_proxy_port.port
+      health_port_number = var.client_proxy_health_port.port
+      environment        = var.environment
 
       image_name = var.client_proxy_docker_image_digest
   })

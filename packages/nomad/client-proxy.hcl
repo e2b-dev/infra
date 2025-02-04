@@ -2,18 +2,32 @@ job "proxy" {
   datacenters = ["${gcp_zone}"]
   node_pool = "api"
 
-  priority = 70
+  priority = 80
 
   group "client-proxy" {
     network {
       port "${port_name}" {
         static = "${port_number}"
       }
+
+      port "health" {
+        static = "${health_port_number}"
+      }
     }
 
     service {
       name = "proxy"
       port = "${port_name}"
+
+
+      check {
+        type     = "http"
+        name     = "health"
+        path     = "/"
+        interval = "20s"
+        timeout  = "5s"
+        port     = "health"
+      }
     }
 
     task "start" {
