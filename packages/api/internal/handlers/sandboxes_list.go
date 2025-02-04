@@ -19,118 +19,102 @@ import (
 
 func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	ctx := c.Request.Context()
-
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
 	team := teamInfo.Team
 
 	telemetry.ReportEvent(ctx, "list running instances")
 
-	instanceInfo := a.orchestrator.GetSandboxes(ctx, &team.ID)
-
-	// all sandbox ids of current running sandboxes
-	instanceSandboxIDs := make([]string, 0)
-	for _, info := range instanceInfo {
-		instanceSandboxIDs = append(instanceSandboxIDs, info.Instance.SandboxID)
-	}
-
-	// all snapshots where env team is same as team.ID and sandbox_id is not included in instanceInfo.SandboxID
-	snapshotEnvs, err := a.db.GetTeamSnapshots(ctx, team.ID)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, err)
-
-		return
-	}
-
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances", properties)
-
-	buildIDs := make([]uuid.UUID, 0)
-	for _, info := range instanceInfo {
-		if info.TeamID == nil {
-			continue
-		}
-
-		if *info.TeamID != team.ID {
-			continue
-		}
-
-		buildIDs = append(buildIDs, *info.BuildID)
-	}
-
-	builds, err := a.db.Client.EnvBuild.Query().Where(envbuild.IDIn(buildIDs...)).All(ctx)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, err)
-
-		return
-	}
-
-	buildsMap := make(map[uuid.UUID]*models.EnvBuild, len(builds))
-	for _, build := range builds {
-		buildsMap[build.ID] = build
-	}
-
+	// Initialize empty slice for results
 	sandboxes := make([]api.ListedSandbox, 0)
 
-	for _, info := range instanceInfo {
-		if info.TeamID == nil {
-			continue
+	// Only fetch running instances if we need them (state is nil or "running")
+	if params.State == nil || *params.State == "running" {
+		instanceInfo := a.orchestrator.GetSandboxes(ctx, &team.ID)
+
+		// Get build IDs for running instances
+		buildIDs := make([]uuid.UUID, 0)
+		for _, info := range instanceInfo {
+			if info.TeamID != nil && *info.TeamID == team.ID && info.BuildID != nil {
+				buildIDs = append(buildIDs, *info.BuildID)
+			}
 		}
 
-		if *info.TeamID != team.ID {
-			continue
-		}
+		// Only fetch builds if we have running instances
+		if len(buildIDs) > 0 {
+			builds, err := a.db.Client.EnvBuild.Query().Where(envbuild.IDIn(buildIDs...)).All(ctx)
+			if err != nil {
+				telemetry.ReportCriticalError(ctx, err)
+				return
+			}
 
-		if info.BuildID == nil {
-			continue
-		}
+			buildsMap := make(map[uuid.UUID]*models.EnvBuild, len(builds))
+			for _, build := range builds {
+				buildsMap[build.ID] = build
+			}
 
-		instance := api.ListedSandbox{
-			ClientID:   info.Instance.ClientID,
-			TemplateID: info.Instance.TemplateID,
-			Alias:      info.Instance.Alias,
-			SandboxID:  info.Instance.SandboxID,
-			StartedAt:  info.StartTime,
-			CpuCount:   int32(buildsMap[*info.BuildID].Vcpu),
-			MemoryMB:   int32(buildsMap[*info.BuildID].RAMMB),
-			EndAt:      info.EndTime,
-			State:      "running",
-		}
+			// Add running instances to results
+			for _, info := range instanceInfo {
+				if info.TeamID == nil || *info.TeamID != team.ID || info.BuildID == nil {
+					continue
+				}
 
-		if info.Metadata != nil {
-			meta := api.SandboxMetadata(info.Metadata)
-			instance.Metadata = &meta
-		}
+				instance := api.ListedSandbox{
+					ClientID:   info.Instance.ClientID,
+					TemplateID: info.Instance.TemplateID,
+					Alias:      info.Instance.Alias,
+					SandboxID:  info.Instance.SandboxID,
+					StartedAt:  info.StartTime,
+					CpuCount:   int32(buildsMap[*info.BuildID].Vcpu),
+					MemoryMB:   int32(buildsMap[*info.BuildID].RAMMB),
+					EndAt:      info.EndTime,
+					State:      "running",
+				}
 
-		sandboxes = append(sandboxes, instance)
+				if info.Metadata != nil {
+					meta := api.SandboxMetadata(info.Metadata)
+					instance.Metadata = &meta
+				}
+
+				sandboxes = append(sandboxes, instance)
+			}
+		}
 	}
 
-	// append latest snapshots to sandboxes
-	for _, e := range snapshotEnvs {
-		snapshotBuilds := e.Edges.Builds
-		if len(snapshotBuilds) == 0 {
-			continue
+	// Only fetch snapshots if we need them (state is nil or "paused")
+	if params.State == nil || *params.State == "paused" {
+		snapshotEnvs, err := a.db.GetTeamSnapshots(ctx, team.ID)
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, err)
+			return
 		}
 
-		snapshot := e.Edges.Snapshots[0]
+		// Add snapshots to results
+		for _, e := range snapshotEnvs {
+			snapshotBuilds := e.Edges.Builds
+			if len(snapshotBuilds) == 0 {
+				continue
+			}
 
-		instance := api.ListedSandbox{
-			ClientID:   "00000000",
-			TemplateID: e.ID,
-			SandboxID:  snapshot.SandboxID,
-			StartedAt:  snapshot.SandboxStartedAt,
-			CpuCount:   int32(snapshotBuilds[0].Vcpu),
-			MemoryMB:   int32(snapshotBuilds[0].RAMMB),
-			EndAt:      snapshot.PausedAt,
-			State:      "paused",
+			snapshot := e.Edges.Snapshots[0]
+
+			instance := api.ListedSandbox{
+				ClientID:   "00000000",
+				TemplateID: e.ID,
+				SandboxID:  snapshot.SandboxID,
+				StartedAt:  snapshot.SandboxStartedAt,
+				CpuCount:   int32(snapshotBuilds[0].Vcpu),
+				MemoryMB:   int32(snapshotBuilds[0].RAMMB),
+				EndAt:      snapshot.PausedAt,
+				State:      "paused",
+			}
+
+			if snapshot.Metadata != nil {
+				meta := api.SandboxMetadata(snapshot.Metadata)
+				instance.Metadata = &meta
+			}
+
+			sandboxes = append(sandboxes, instance)
 		}
-
-		if snapshot.Metadata != nil {
-			meta := api.SandboxMetadata(snapshot.Metadata)
-			instance.Metadata = &meta
-		}
-
-		sandboxes = append(sandboxes, instance)
 	}
 
 	// filter sandboxes by metadata
@@ -221,6 +205,11 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
 		return a.StartedAt.Compare(b.StartedAt)
 	})
+
+	// Report analytics
+	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances", properties)
 
 	c.JSON(http.StatusOK, sandboxes)
 }
