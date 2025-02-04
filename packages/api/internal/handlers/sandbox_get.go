@@ -26,7 +26,13 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	// Try to get the running instance first
 	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
-	if err == nil && *info.TeamID == team.ID {
+	if err == nil {
+		// Check if instance belongs to the team
+		if *info.TeamID != team.ID {
+			c.JSON(http.StatusNotFound, fmt.Sprintf("instance \"%s\" doesn't exist or you don't have access to it", id))
+			return
+		}
+
 		// Instance exists and belongs to the team - return running sandbox info
 		build, err := a.db.Client.EnvBuild.Query().Where(envbuild.ID(*info.BuildID)).First(ctx)
 		if err != nil {
@@ -56,7 +62,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		return
 	}
 
-	// If instance not found or doesn't belong to team, try to get the latest snapshot
+	// If instance not found try to get the latest snapshot
 	snapshot, build, err := a.db.GetLastSnapshot(ctx, sandboxId, team.ID)
 	if err != nil {
 		fmt.Println(err)
