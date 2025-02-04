@@ -22,8 +22,6 @@ type Snapshot struct {
 	ID uuid.UUID `json:"id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
-	// PausedAt holds the value of the "paused_at" field.
-	PausedAt time.Time `json:"paused_at,omitempty"`
 	// BaseEnvID holds the value of the "base_env_id" field.
 	BaseEnvID string `json:"base_env_id,omitempty"`
 	// EnvID holds the value of the "env_id" field.
@@ -69,7 +67,7 @@ func (*Snapshot) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case snapshot.FieldBaseEnvID, snapshot.FieldEnvID, snapshot.FieldSandboxID:
 			values[i] = new(sql.NullString)
-		case snapshot.FieldCreatedAt, snapshot.FieldPausedAt:
+		case snapshot.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
 		case snapshot.FieldID:
 			values[i] = new(uuid.UUID)
@@ -99,12 +97,6 @@ func (s *Snapshot) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
 				s.CreatedAt = value.Time
-			}
-		case snapshot.FieldPausedAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field paused_at", values[i])
-			} else if value.Valid {
-				s.PausedAt = value.Time
 			}
 		case snapshot.FieldBaseEnvID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -175,9 +167,6 @@ func (s *Snapshot) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", s.ID))
 	builder.WriteString("created_at=")
 	builder.WriteString(s.CreatedAt.Format(time.ANSIC))
-	builder.WriteString(", ")
-	builder.WriteString("paused_at=")
-	builder.WriteString(s.PausedAt.Format(time.ANSIC))
 	builder.WriteString(", ")
 	builder.WriteString("base_env_id=")
 	builder.WriteString(s.BaseEnvID)
