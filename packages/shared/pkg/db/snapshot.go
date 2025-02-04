@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -87,7 +86,6 @@ func (db *DB) NewSnapshotBuild(
 			Snapshot.
 			UpdateOne(s).
 			SetMetadata(snapshotConfig.Metadata).
-			SetPausedAt(time.Now()).
 			Save(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update snapshot '%s': %w", snapshotConfig.SandboxID, err)
