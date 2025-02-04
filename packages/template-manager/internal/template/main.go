@@ -3,13 +3,16 @@ package template
 import (
 	"context"
 	"fmt"
+	"log"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
 	"cloud.google.com/go/artifactregistry/apiv1/artifactregistrypb"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/gogo/status"
 )
 
 func GetDockerImageURL(templateID string) string {
@@ -34,8 +37,13 @@ func Delete(
 
 	op, artifactRegistryDeleteErr := artifactRegistry.DeletePackage(ctx, &artifactregistrypb.DeletePackageRequest{Name: GetDockerImageURL(buildId)})
 	if artifactRegistryDeleteErr != nil {
-		errMsg := fmt.Errorf("error when deleting template image from registry: %w", artifactRegistryDeleteErr)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		if status.Code(artifactRegistryDeleteErr) == codes.NotFound {
+			log.Printf("template image not found in registry, skipping deletion: %v", artifactRegistryDeleteErr)
+			telemetry.ReportEvent(childCtx, fmt.Sprintf("template image not found in registry: %v", artifactRegistryDeleteErr))
+		} else {
+			errMsg := fmt.Errorf("error when deleting template image from registry: %w", artifactRegistryDeleteErr)
+			telemetry.ReportCriticalError(childCtx, errMsg)
+		}
 	} else {
 		telemetry.ReportEvent(childCtx, "started deleting template image from registry")
 
