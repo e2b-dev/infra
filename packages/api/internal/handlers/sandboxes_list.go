@@ -70,7 +70,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		buildsMap[build.ID] = build
 	}
 
-	sandboxes := make([]api.RunningSandbox, 0)
+	sandboxes := make([]api.ListedSandbox, 0)
 
 	for _, info := range instanceInfo {
 		if info.TeamID == nil {
@@ -85,7 +85,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 			continue
 		}
 
-		instance := api.RunningSandbox{
+		instance := api.ListedSandbox{
 			ClientID:   info.Instance.ClientID,
 			TemplateID: info.Instance.TemplateID,
 			Alias:      info.Instance.Alias,
@@ -114,7 +114,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 		snapshot := e.Edges.Snapshots[0]
 
-		instance := api.RunningSandbox{
+		instance := api.ListedSandbox{
 			ClientID:   "00000000",
 			TemplateID: e.ID,
 			SandboxID:  snapshot.SandboxID,
@@ -199,7 +199,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	// filter sandboxes by state
 	if params.State != nil {
 		if *params.State == "running" {
-			filtered := make([]api.RunningSandbox, 0, len(sandboxes))
+			filtered := make([]api.ListedSandbox, 0, len(sandboxes))
 			for _, s := range sandboxes {
 				if s.State == "running" {
 					filtered = append(filtered, s)
@@ -207,7 +207,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 			}
 			sandboxes = filtered
 		} else if *params.State == "paused" {
-			filtered := make([]api.RunningSandbox, 0, len(sandboxes))
+			filtered := make([]api.ListedSandbox, 0, len(sandboxes))
 			for _, s := range sandboxes {
 				if s.State == "paused" {
 					filtered = append(filtered, s)
@@ -218,7 +218,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	}
 
 	// Sort sandboxes by start time descending
-	slices.SortFunc(sandboxes, func(a, b api.RunningSandbox) int {
+	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
 		return a.StartedAt.Compare(b.StartedAt)
 	})
 

@@ -35,7 +35,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			return
 		}
 
-		instance := api.RunningSandbox{
+		instance := api.ListedSandbox{
 			ClientID:   info.Instance.ClientID,
 			TemplateID: info.Instance.TemplateID,
 			Alias:      info.Instance.Alias,
@@ -65,7 +65,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// optional
-	instance := api.RunningSandbox{
+	instance := api.ListedSandbox{
 		ClientID:   "00000000",
 		TemplateID: snapshot.EnvID,
 		SandboxID:  snapshot.SandboxID,
