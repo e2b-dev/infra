@@ -39,7 +39,7 @@ func Delete(
 	if artifactRegistryDeleteErr != nil {
 		if status.Code(artifactRegistryDeleteErr) == codes.NotFound {
 			log.Printf("template image not found in registry, skipping deletion: %v", artifactRegistryDeleteErr)
-			telemetry.ReportEvent(childCtx, fmt.Sprintf("template image not found in registry: %v", artifactRegistryDeleteErr))
+			telemetry.ReportEvent(childCtx, fmt.Sprintf("template image not found in registry, skipping deletion: %v", artifactRegistryDeleteErr))
 		} else {
 			errMsg := fmt.Errorf("error when deleting template image from registry: %w", artifactRegistryDeleteErr)
 			telemetry.ReportCriticalError(childCtx, errMsg)
