@@ -145,12 +145,7 @@ type = "remap"
 inputs = [ "remove_internal" ]
 source = '''
 . = parse_json!(string!(.message))
-parsed_timestamp, err = parse_timestamp(.timestamp, format: "%+")
-if err == null {
-  .timestamp = to_unix_timestamp(.timestamp)
-} else {
-  .timestamp = to_unix_timestamp(now())
-}
+.timestamp = parse_timestamp(.timestamp, "%+") ?? now()
 '''
 
 [sinks.local_loki_logs]
