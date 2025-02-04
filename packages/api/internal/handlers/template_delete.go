@@ -99,8 +99,8 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	if hasSnapshots {
-		telemetry.ReportError(ctx, fmt.Errorf("base env '%s' has snapshots", template.ID))
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("cannot delete env '%s' because snapshots exist", template.ID))
+		telemetry.ReportError(ctx, fmt.Errorf("base template '%s' has paused sandboxes", template.ID))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("cannot delete template '%s' because there are paused sandboxes using it", template.ID))
 
 		return
 	}
@@ -121,7 +121,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	// delete all builds
-	deleteJobErr := a.templateManager.DeleteInstances(ctx, buildIds)
+	deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIds)
 	if deleteJobErr != nil {
 		errMsg := fmt.Errorf("error when deleting env files from storage: %w", deleteJobErr)
 		telemetry.ReportCriticalError(ctx, errMsg)

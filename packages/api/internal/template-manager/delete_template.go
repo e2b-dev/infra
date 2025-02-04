@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func (tm *TemplateManager) DeleteInstance(ctx context.Context, buildId uuid.UUID) error {
+func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildId uuid.UUID) error {
 	_, err := tm.grpc.Client.TemplateBuildDelete(ctx, &template_manager.TemplateBuildDeleteRequest{
 		BuildID: buildId.String(),
 	})
@@ -22,9 +22,9 @@ func (tm *TemplateManager) DeleteInstance(ctx context.Context, buildId uuid.UUID
 	return nil
 }
 
-func (tm *TemplateManager) DeleteInstances(ctx context.Context, buildIds []uuid.UUID) error {
+func (tm *TemplateManager) DeleteBuilds(ctx context.Context, buildIds []uuid.UUID) error {
 	for _, buildId := range buildIds {
-		err := tm.DeleteInstance(ctx, buildId)
+		err := tm.DeleteBuild(ctx, buildId)
 		if err != nil {
 			return fmt.Errorf("failed to delete env build '%s': %w", buildId, err)
 		}
