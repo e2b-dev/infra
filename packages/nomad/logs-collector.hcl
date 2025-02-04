@@ -98,7 +98,7 @@ job "logs-collector" {
         destination   = "local/vector.toml"
         change_mode   = "signal"
         change_signal = "SIGHUP"
-        # overriding the delimiters to [[ ]] to avoid conflicts with Vector's native templating, which also uses {{ }}
+        # overriding the delimiters to [ ] to avoid conflicts with Vector's native templating, which also uses {{ }}
         left_delimiter  = "[["
         right_delimiter = "]]"
         data            = <<EOH
@@ -140,9 +140,22 @@ source = '''
 del(.internal)
 '''
 
+[transforms.use_real_timestamp]
+type = "remap"
+inputs = [ "remove_internal" ]
+source = '''
+. = parse_json!(string!(.message))
+parsed_timestamp, err = parse_timestamp(.real_timestamp, format: "%+")
+if err == null {
+  .timestamp = to_unix_timestamp(parsed_timestamp)
+} else {
+  .timestamp = to_unix_timestamp(now())
+}
+'''
+
 [sinks.local_loki_logs]
 type = "loki"
-inputs = [ "remove_internal" ]
+inputs = [ "use_real_timestamp" ]
 endpoint = "http://loki.service.consul:${var.loki_service_port_number}"
 encoding.codec = "json"
 
