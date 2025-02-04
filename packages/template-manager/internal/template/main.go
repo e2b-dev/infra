@@ -17,7 +17,7 @@ import (
 
 func GetDockerImageURL(templateID string) string {
 	// DockerImagesURL is the URL to the docker images in the artifact registry
-	return fmt.Sprintf("projects/%s/locations/%s/repositories/%s/packages/", consts.GCPProject, consts.GCPRegion, consts.DockerRegistry) + templateID
+	return fmt.Sprintf("projects/%s/locations/%s/repositories/%s/packages/%s", consts.GCPProject, consts.GCPRegion, consts.DockerRegistry, templateID)
 }
 
 func Delete(

@@ -37,6 +37,6 @@ message TemplateBuildLog {
 service TemplateService {
   // TemplateCreate is a gRPC service that creates a new template
   rpc TemplateCreate (TemplateCreateRequest) returns (stream TemplateBuildLog);
-  // EnvBuildDelete is a gRPC service that deletes files associated with a template build
+  // TemplateBuildDelete is a gRPC service that deletes files associated with a template build
   rpc TemplateBuildDelete (TemplateBuildDeleteRequest) returns (google.protobuf.Empty);
 }
