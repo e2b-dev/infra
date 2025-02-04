@@ -21,7 +21,7 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 	msg := new(dns.Msg)
 
 	// Set the question
-	msg.SetQuestion(host, dns.TypeA)
+	msg.SetQuestion(host+".", dns.TypeA)
 
 	// Define the DNS server to query
 	dnsServer := "api.service.consul:5353"
