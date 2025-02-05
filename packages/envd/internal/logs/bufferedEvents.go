@@ -18,7 +18,7 @@ func LogBufferedDataEvents(dataCh <-chan []byte, logger *zerolog.Logger, eventTy
 	var buffer []byte
 	defer func() {
 		if len(buffer) > 0 {
-			logger.Info().Str(eventType, string(buffer)).Msg("Streaming process event (flush)")
+			logger.Info().Str(eventType, string(buffer)).Str("tsmp", time.Now().Format("2006-01-02 15:04:05.000")).Msg("Streaming process event (flush)")
 		}
 	}()
 
