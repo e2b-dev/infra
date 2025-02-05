@@ -22,10 +22,6 @@ func (Snapshot) Fields() []ent.Field {
 			Annotations(
 				entsql.Default("CURRENT_TIMESTAMP"),
 			),
-		field.Time("paused_at").Optional().Default(time.Now).
-			Annotations(
-				entsql.Default("CURRENT_TIMESTAMP"),
-			),
 		field.Time("sandbox_started_at"),
 		field.String("base_env_id").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("env_id").SchemaType(map[string]string{dialect.Postgres: "text"}),

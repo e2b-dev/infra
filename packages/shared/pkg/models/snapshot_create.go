@@ -39,20 +39,6 @@ func (sc *SnapshotCreate) SetNillableCreatedAt(t *time.Time) *SnapshotCreate {
 	return sc
 }
 
-// SetPausedAt sets the "paused_at" field.
-func (sc *SnapshotCreate) SetPausedAt(t time.Time) *SnapshotCreate {
-	sc.mutation.SetPausedAt(t)
-	return sc
-}
-
-// SetNillablePausedAt sets the "paused_at" field if the given value is not nil.
-func (sc *SnapshotCreate) SetNillablePausedAt(t *time.Time) *SnapshotCreate {
-	if t != nil {
-		sc.SetPausedAt(*t)
-	}
-	return sc
-}
-
 // SetSandboxStartedAt sets the "sandbox_started_at" field.
 func (sc *SnapshotCreate) SetSandboxStartedAt(t time.Time) *SnapshotCreate {
 	sc.mutation.SetSandboxStartedAt(t)
@@ -133,10 +119,6 @@ func (sc *SnapshotCreate) defaults() {
 		v := snapshot.DefaultCreatedAt()
 		sc.mutation.SetCreatedAt(v)
 	}
-	if _, ok := sc.mutation.PausedAt(); !ok {
-		v := snapshot.DefaultPausedAt()
-		sc.mutation.SetPausedAt(v)
-	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -202,10 +184,6 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.CreatedAt(); ok {
 		_spec.SetField(snapshot.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
-	}
-	if value, ok := sc.mutation.PausedAt(); ok {
-		_spec.SetField(snapshot.FieldPausedAt, field.TypeTime, value)
-		_node.PausedAt = value
 	}
 	if value, ok := sc.mutation.SandboxStartedAt(); ok {
 		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
@@ -292,24 +270,6 @@ type (
 		*sql.UpdateSet
 	}
 )
-
-// SetPausedAt sets the "paused_at" field.
-func (u *SnapshotUpsert) SetPausedAt(v time.Time) *SnapshotUpsert {
-	u.Set(snapshot.FieldPausedAt, v)
-	return u
-}
-
-// UpdatePausedAt sets the "paused_at" field to the value that was provided on create.
-func (u *SnapshotUpsert) UpdatePausedAt() *SnapshotUpsert {
-	u.SetExcluded(snapshot.FieldPausedAt)
-	return u
-}
-
-// ClearPausedAt clears the value of the "paused_at" field.
-func (u *SnapshotUpsert) ClearPausedAt() *SnapshotUpsert {
-	u.SetNull(snapshot.FieldPausedAt)
-	return u
-}
 
 // SetSandboxStartedAt sets the "sandbox_started_at" field.
 func (u *SnapshotUpsert) SetSandboxStartedAt(v time.Time) *SnapshotUpsert {
@@ -420,27 +380,6 @@ func (u *SnapshotUpsertOne) Update(set func(*SnapshotUpsert)) *SnapshotUpsertOne
 		set(&SnapshotUpsert{UpdateSet: update})
 	}))
 	return u
-}
-
-// SetPausedAt sets the "paused_at" field.
-func (u *SnapshotUpsertOne) SetPausedAt(v time.Time) *SnapshotUpsertOne {
-	return u.Update(func(s *SnapshotUpsert) {
-		s.SetPausedAt(v)
-	})
-}
-
-// UpdatePausedAt sets the "paused_at" field to the value that was provided on create.
-func (u *SnapshotUpsertOne) UpdatePausedAt() *SnapshotUpsertOne {
-	return u.Update(func(s *SnapshotUpsert) {
-		s.UpdatePausedAt()
-	})
-}
-
-// ClearPausedAt clears the value of the "paused_at" field.
-func (u *SnapshotUpsertOne) ClearPausedAt() *SnapshotUpsertOne {
-	return u.Update(func(s *SnapshotUpsert) {
-		s.ClearPausedAt()
-	})
 }
 
 // SetSandboxStartedAt sets the "sandbox_started_at" field.
@@ -729,27 +668,6 @@ func (u *SnapshotUpsertBulk) Update(set func(*SnapshotUpsert)) *SnapshotUpsertBu
 		set(&SnapshotUpsert{UpdateSet: update})
 	}))
 	return u
-}
-
-// SetPausedAt sets the "paused_at" field.
-func (u *SnapshotUpsertBulk) SetPausedAt(v time.Time) *SnapshotUpsertBulk {
-	return u.Update(func(s *SnapshotUpsert) {
-		s.SetPausedAt(v)
-	})
-}
-
-// UpdatePausedAt sets the "paused_at" field to the value that was provided on create.
-func (u *SnapshotUpsertBulk) UpdatePausedAt() *SnapshotUpsertBulk {
-	return u.Update(func(s *SnapshotUpsert) {
-		s.UpdatePausedAt()
-	})
-}
-
-// ClearPausedAt clears the value of the "paused_at" field.
-func (u *SnapshotUpsertBulk) ClearPausedAt() *SnapshotUpsertBulk {
-	return u.Update(func(s *SnapshotUpsert) {
-		s.ClearPausedAt()
-	})
 }
 
 // SetSandboxStartedAt sets the "sandbox_started_at" field.

@@ -104,7 +104,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 				StartedAt:  snapshot.SandboxStartedAt,
 				CpuCount:   int32(snapshotBuilds[0].Vcpu),
 				MemoryMB:   int32(snapshotBuilds[0].RAMMB),
-				EndAt:      snapshot.PausedAt,
+				EndAt:      snapshot.CreatedAt,
 				State:      "paused",
 			}
 

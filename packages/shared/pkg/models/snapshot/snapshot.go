@@ -16,8 +16,6 @@ const (
 	FieldID = "id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
-	// FieldPausedAt holds the string denoting the paused_at field in the database.
-	FieldPausedAt = "paused_at"
 	// FieldSandboxStartedAt holds the string denoting the sandbox_started_at field in the database.
 	FieldSandboxStartedAt = "sandbox_started_at"
 	// FieldBaseEnvID holds the string denoting the base_env_id field in the database.
@@ -45,7 +43,6 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldCreatedAt,
-	FieldPausedAt,
 	FieldSandboxStartedAt,
 	FieldBaseEnvID,
 	FieldEnvID,
@@ -66,8 +63,6 @@ func ValidColumn(column string) bool {
 var (
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
-	// DefaultPausedAt holds the default value on creation for the "paused_at" field.
-	DefaultPausedAt func() time.Time
 )
 
 // OrderOption defines the ordering options for the Snapshot queries.
@@ -81,11 +76,6 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
-}
-
-// ByPausedAt orders the results by the paused_at field.
-func ByPausedAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldPausedAt, opts...).ToFunc()
 }
 
 // BySandboxStartedAt orders the results by the sandbox_started_at field.

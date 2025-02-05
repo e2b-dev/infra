@@ -62,11 +62,6 @@ func CreatedAt(v time.Time) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldCreatedAt, v))
 }
 
-// PausedAt applies equality check predicate on the "paused_at" field. It's identical to PausedAtEQ.
-func PausedAt(v time.Time) predicate.Snapshot {
-	return predicate.Snapshot(sql.FieldEQ(FieldPausedAt, v))
-}
-
 // SandboxStartedAt applies equality check predicate on the "sandbox_started_at" field. It's identical to SandboxStartedAtEQ.
 func SandboxStartedAt(v time.Time) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldSandboxStartedAt, v))
@@ -125,56 +120,6 @@ func CreatedAtLT(v time.Time) predicate.Snapshot {
 // CreatedAtLTE applies the LTE predicate on the "created_at" field.
 func CreatedAtLTE(v time.Time) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldLTE(FieldCreatedAt, v))
-}
-
-// PausedAtEQ applies the EQ predicate on the "paused_at" field.
-func PausedAtEQ(v time.Time) predicate.Snapshot {
-	return predicate.Snapshot(sql.FieldEQ(FieldPausedAt, v))
-}
-
-// PausedAtNEQ applies the NEQ predicate on the "paused_at" field.
-func PausedAtNEQ(v time.Time) predicate.Snapshot {
-	return predicate.Snapshot(sql.FieldNEQ(FieldPausedAt, v))
-}
-
-// PausedAtIn applies the In predicate on the "paused_at" field.
-func PausedAtIn(vs ...time.Time) predicate.Snapshot {
-	return predicate.Snapshot(sql.FieldIn(FieldPausedAt, vs...))
-}
-
-// PausedAtNotIn applies the NotIn predicate on the "paused_at" field.
-func PausedAtNotIn(vs ...time.Time) predicate.Snapshot {
-	return predicate.Snapshot(sql.FieldNotIn(FieldPausedAt, vs...))
-}
-
-// PausedAtGT applies the GT predicate on the "paused_at" field.
-func PausedAtGT(v time.Time) predicate.Snapshot {
-	return predicate.Snapshot(sql.FieldGT(FieldPausedAt, v))
-}
-
-// PausedAtGTE applies the GTE predicate on the "paused_at" field.
-func PausedAtGTE(v time.Time) predicate.Snapshot {
-	return predicate.Snapshot(sql.FieldGTE(FieldPausedAt, v))
-}
-
-// PausedAtLT applies the LT predicate on the "paused_at" field.
-func PausedAtLT(v time.Time) predicate.Snapshot {
-	return predicate.Snapshot(sql.FieldLT(FieldPausedAt, v))
-}
-
-// PausedAtLTE applies the LTE predicate on the "paused_at" field.
-func PausedAtLTE(v time.Time) predicate.Snapshot {
-	return predicate.Snapshot(sql.FieldLTE(FieldPausedAt, v))
-}
-
-// PausedAtIsNil applies the IsNil predicate on the "paused_at" field.
-func PausedAtIsNil() predicate.Snapshot {
-	return predicate.Snapshot(sql.FieldIsNull(FieldPausedAt))
-}
-
-// PausedAtNotNil applies the NotNil predicate on the "paused_at" field.
-func PausedAtNotNil() predicate.Snapshot {
-	return predicate.Snapshot(sql.FieldNotNull(FieldPausedAt))
 }
 
 // SandboxStartedAtEQ applies the EQ predicate on the "sandbox_started_at" field.
