@@ -179,6 +179,7 @@ module "nomad" {
   otel_tracing_print      = var.otel_tracing_print
 
   # API
+  api_machine_count                         = var.api_cluster_size
   logs_proxy_address                        = "http://${module.cluster.logs_proxy_ip}"
   api_port                                  = var.api_port
   environment                               = var.environment

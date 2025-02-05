@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-redis/redis/v8"
 	resolver "github.com/miekg/dns"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -19,11 +20,13 @@ const defaultRoutingIP = "127.0.0.1"
 
 type DNS struct {
 	mu      sync.Mutex
+	redis   *redis.Client
 	records *smap.Map[string]
 }
 
-func New() *DNS {
+func New(rc *redis.Client) *DNS {
 	return &DNS{
+		redis:   rc,
 		records: smap.New[string](),
 	}
 }
