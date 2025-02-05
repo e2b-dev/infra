@@ -129,6 +129,7 @@ func (db *DB) GetLastSnapshot(ctx context.Context, sandboxID string, teamID uuid
 		Where(
 			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
 			env.HasSnapshotsWith(snapshot.SandboxID(sandboxID)),
+			env.TeamID(teamID),
 		).
 		WithSnapshots(func(query *models.SnapshotQuery) {
 			query.Where(snapshot.SandboxID(sandboxID)).Only(ctx)
@@ -148,4 +149,36 @@ func (db *DB) GetLastSnapshot(ctx context.Context, sandboxID string, teamID uuid
 	}
 
 	return e.Edges.Snapshots[0], e.Edges.Builds[0], nil
+}
+
+func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uuid.UUID) (
+	*models.Env,
+	[]*models.EnvBuild,
+	error,
+) {
+	e, err := db.
+		Client.
+		Env.
+		Query().
+		Where(
+			env.HasSnapshotsWith(snapshot.SandboxID(sandboxID)),
+			env.TeamID(teamID),
+		).
+		WithSnapshots(func(query *models.SnapshotQuery) {
+			query.Where(snapshot.SandboxID(sandboxID)).Only(ctx)
+		}).
+		WithBuilds().
+		Only(ctx)
+
+	notFound := models.IsNotFound(err)
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", sandboxID, err)
+	}
+
+	if notFound {
+		return nil, nil, fmt.Errorf("no snapshot build found for '%s'", sandboxID)
+	}
+
+	return e, e.Edges.Builds, nil
 }
