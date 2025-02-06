@@ -90,17 +90,19 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		return
 	}
 
-	// Update env
-	dbErr := a.db.UpdateEnv(ctx, template.ID, db.UpdateEnvInput{
-		Public: *body.Public,
-	})
+	if body.Public != nil {
+		// Update env
+		dbErr := a.db.UpdateEnv(ctx, template.ID, db.UpdateEnvInput{
+			Public: *body.Public,
+		})
 
-	if dbErr != nil {
-		errMsg := fmt.Errorf("error when updating env: %w", dbErr)
-		telemetry.ReportError(ctx, errMsg)
+		if dbErr != nil {
+			errMsg := fmt.Errorf("error when updating env: %w", dbErr)
+			telemetry.ReportError(ctx, errMsg)
 
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating env")
-		return
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating env")
+			return
+		}
 	}
 
 	telemetry.SetAttributes(ctx,
