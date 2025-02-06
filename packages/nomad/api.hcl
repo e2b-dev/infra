@@ -30,7 +30,7 @@ job "api" {
       }
     }
 
-%{ if update_stanza == "true" }
+%{ if update_stanza }
     # An update stanza to enable rolling updates of the service
     update {
       # The number of extra instances to run during the update
