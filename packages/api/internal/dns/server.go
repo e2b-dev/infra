@@ -193,11 +193,14 @@ func (d *DNS) Start(ctx context.Context, address string, port int) {
 				// possible.
 				errChan <- errors.Join(err, errOnStartup)
 			default:
+				// encounter a non-nil error when listening
+				//
 				// this should only happen if we
 				// encounter a (networking(?)) error
-				// during operation, or potentially startup.
-				d.logger.Warn("encountered issue while serving DNS, shutting down DNS.", zap.Error(err))
-				errChan <- err
+				// during operation. Panic so that the
+				// service aborts rather than
+				// continuing in an unhealty state.
+				panic(errors.Join(errors.New("DNS service error"), err))
 			}
 		}
 	}()

@@ -78,14 +78,16 @@ func New(
 }
 
 func (o *Orchestrator) Close(ctx context.Context) error {
-	nodes := o.nodes.Items()
-	errs := make([]error, 0, len(nodes)+2)
+	var errs []error
 
+	nodes := o.nodes.Items()
 	for _, node := range nodes {
 		if err := node.Client.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
+
+	o.logger.Infof("shutting down node clients: %d of %d nodes had errors", len(errs), len(nodes))
 
 	if err := o.analytics.Close(); err != nil {
 		errs = append(errs, err)
@@ -96,7 +98,6 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 			errs = append(errs, err)
 
 		}
-
 	}
 
 	return errors.Join(errs...)
