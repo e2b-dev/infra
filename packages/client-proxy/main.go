@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/miekg/dns"
 )
 
@@ -68,17 +70,24 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	logger, err := logging.New(env.IsLocal())
+	if err != nil {
+		log.Fatalf("error creating logger: %v", err)
+	}
+
 	go func() {
 		// Health check
 		server := http.Server{Addr: ":3001"}
 
 		server.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			logger.Debug("Health check")
 			writer.WriteHeader(http.StatusOK)
 		})
 
 		err := server.ListenAndServe()
 		if err != nil {
-			log.Printf("server error: %v", err)
+			// Add different handling for the error
+			logger.Infof("server error: %v", err)
 		}
 	}()
 
@@ -86,8 +95,9 @@ func main() {
 	server := http.Server{Addr: ":3002"}
 	server.Handler = http.HandlerFunc(proxy)
 
-	err := server.ListenAndServe()
+	err = server.ListenAndServe()
+	// Add different handling for the error
 	if err != nil {
-		log.Printf("server error: %v", err)
+		logger.Infof("server error: %v", err)
 	}
 }
