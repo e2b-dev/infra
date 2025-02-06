@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -18,19 +19,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) getSandboxes(c *gin.Context, params api.GetSandboxesParams) ([]api.RunningSandbox, error) {
-	ctx := c.Request.Context()
+func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *string) ([]api.RunningSandbox, error) {
 
-	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
-	team := teamInfo.Team
+	instanceInfo := a.orchestrator.GetSandboxes(ctx, &teamID)
 
-	telemetry.ReportEvent(ctx, "list running instances")
-
-	instanceInfo := a.orchestrator.GetSandboxes(ctx, &team.ID)
-
-	if params.Query != nil {
+	if query != nil {
 		// Unescape query
-		query, err := url.QueryUnescape(*params.Query)
+		query, err := url.QueryUnescape(*query)
 		if err != nil {
 			return nil, fmt.Errorf("error when unescaping query: %w", err)
 		}
@@ -82,17 +77,13 @@ func (a *APIStore) getSandboxes(c *gin.Context, params api.GetSandboxesParams) (
 		instanceInfo = instanceInfo[:n]
 	}
 
-	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
-	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances", properties)
-
 	buildIDs := make([]uuid.UUID, 0)
 	for _, info := range instanceInfo {
 		if info.TeamID == nil {
 			continue
 		}
 
-		if *info.TeamID != team.ID {
+		if *info.TeamID != teamID {
 			continue
 		}
 
@@ -118,7 +109,7 @@ func (a *APIStore) getSandboxes(c *gin.Context, params api.GetSandboxesParams) (
 			continue
 		}
 
-		if *info.TeamID != team.ID {
+		if *info.TeamID != teamID {
 			continue
 		}
 
@@ -154,7 +145,17 @@ func (a *APIStore) getSandboxes(c *gin.Context, params api.GetSandboxesParams) (
 }
 
 func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
-	sandboxes, err := a.getSandboxes(c, params)
+	ctx := c.Request.Context()
+	telemetry.ReportEvent(ctx, "list running instances")
+
+	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
+	team := teamInfo.Team
+
+	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances", properties)
+
+	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, err.Error())
 		return
@@ -163,27 +164,42 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	c.JSON(http.StatusOK, sandboxes)
 }
 
-func (a *APIStore) GetSandboxesWithMetrics(c *gin.Context, params api.GetSandboxesParams) {
-	sandboxes, err := a.getSandboxes(c, params)
+func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMetricsParams) {
+	ctx := c.Request.Context()
+	telemetry.ReportEvent(ctx, "list running instances with metrics")
+
+	teamID := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team.ID
+
+	sandboxes, err := a.getSandboxes(ctx, teamID, params.Query)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, err.Error())
 		return
 	}
 
+	sandboxesWithMetrics := make([]api.RunningSandboxWithMetrics, 0)
 	for _, sandbox := range sandboxes {
-		metrics, err := a.orchestrator.GetSandboxMetrics(c.Request.Context(), sandbox.SandboxID)
+		metrics, err := a.getSandboxesSandboxIDMetrics(
+			c.Request.Context(), sandbox.SandboxID, teamID.String(), 1, oldestLogsLimit)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, err.Error())
 			return
 		}
 
-		metrics, err = a.GetLastSandboxMetric(c.Request.Context(), sandbox.SandboxID)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, err.Error())
-			return
-		}
+		sandboxesWithMetrics = append(sandboxesWithMetrics,
+			api.RunningSandboxWithMetrics{
+				ClientID:   sandbox.ClientID,
+				TemplateID: sandbox.TemplateID,
+				Alias:      sandbox.Alias,
+				SandboxID:  sandbox.SandboxID,
+				StartedAt:  sandbox.StartedAt,
+				CpuCount:   sandbox.CpuCount,
+				MemoryMB:   sandbox.MemoryMB,
+				EndAt:      sandbox.EndAt,
+				Metadata:   sandbox.Metadata,
 
-		sandbox.Metrics = metrics
+				Metrics: &metrics,
+			})
 	}
-	c.JSON(http.StatusOK, sandboxes)
+
+	c.JSON(http.StatusOK, sandboxesWithMetrics)
 }
