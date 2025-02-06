@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -49,7 +50,9 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 				env.HasEnvAliasesWith(envalias.ID(aliasOrTemplateID)),
 				env.ID(aliasOrTemplateID),
 			),
-		).Only(ctx)
+		).
+		WithBuilds().
+		Only(ctx)
 
 	notFound := models.IsNotFound(err)
 	if notFound {
@@ -88,12 +91,20 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		attribute.String("env.id", template.ID),
 	)
 
-	deleteJobErr := a.templateManager.DeleteInstance(ctx, template.ID)
-	if deleteJobErr != nil {
-		errMsg := fmt.Errorf("error when deleting env files from storage: %w", deleteJobErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
-	} else {
-		telemetry.ReportEvent(ctx, "deleted env from storage")
+	// check if base env has snapshots
+	hasSnapshots, err := a.db.CheckBaseEnvHasSnapshots(ctx, template.ID)
+	if err != nil {
+		telemetry.ReportError(ctx, fmt.Errorf("error when checking if base env has snapshots: %w", err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when checking if base env has snapshots")
+
+		return
+	}
+
+	if hasSnapshots {
+		telemetry.ReportError(ctx, fmt.Errorf("base template '%s' has paused sandboxes", template.ID))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("cannot delete template '%s' because there are paused sandboxes using it", template.ID))
+
+		return
 	}
 
 	dbErr := a.db.DeleteEnv(ctx, template.ID)
@@ -104,6 +115,21 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting env")
 
 		return
+	}
+
+	// get all build ids
+	buildIds := make([]uuid.UUID, len(template.Edges.Builds))
+	for i, build := range template.Edges.Builds {
+		buildIds[i] = build.ID
+	}
+
+	// delete all builds
+	deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIds)
+	if deleteJobErr != nil {
+		errMsg := fmt.Errorf("error when deleting env files from storage: %w", deleteJobErr)
+		telemetry.ReportCriticalError(ctx, errMsg)
+	} else {
+		telemetry.ReportEvent(ctx, "deleted env from storage")
 	}
 
 	a.templateCache.Invalidate(template.ID)

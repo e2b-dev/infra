@@ -17,7 +17,7 @@ func updateClock() error {
 	defer cancel()
 
 	// The chronyc -a makestep is not immediately stepping the clock
-	err := exec.CommandContext(ctx, "/usr/bin/bash", "-c", "/usr/bin/date -s @$(/usr/sbin/phc_ctl /dev/ptp0 get | cut -d' ' -f5)").Run()
+	err := exec.CommandContext(ctx, "/bin/bash", "-l", "-c", "date -s @$(/usr/sbin/phc_ctl /dev/ptp0 get | cut -d' ' -f5)").Run()
 	if err != nil {
 		return fmt.Errorf("failed to update clock: %w", err)
 	}
