@@ -3649,7 +3649,7 @@ func (m *SnapshotMutation) SandboxStartedAt() (r time.Time, exists bool) {
 // OldSandboxStartedAt returns the old "sandbox_started_at" field's value of the Snapshot entity.
 // If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SnapshotMutation) OldSandboxStartedAt(ctx context.Context) (v time.Time, err error) {
+func (m *SnapshotMutation) OldSandboxStartedAt(ctx context.Context) (v *time.Time, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldSandboxStartedAt is only allowed on UpdateOne operations")
 	}
@@ -3873,7 +3873,7 @@ func (m *SnapshotMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SnapshotMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 6)
 	if m.created_at != nil {
 		fields = append(fields, snapshot.FieldCreatedAt)
 	}

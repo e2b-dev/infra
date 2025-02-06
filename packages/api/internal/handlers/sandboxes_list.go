@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"net/url"
 	"slices"
@@ -100,6 +101,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		for _, e := range snapshotEnvs {
 			snapshotBuilds := e.Edges.Builds
 			snapshot := e.Edges.Snapshots[0]
+
+			log.Printf("snapshot %s, build count %d", snapshot.ID, len(snapshotBuilds))
 
 			memoryMB := int32(-1)
 			cpuCount := int32(-1)
