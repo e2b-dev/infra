@@ -2,16 +2,18 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"log"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -19,116 +21,195 @@ import (
 )
 
 const (
-	templateId = "5wzg6c91u51yaebviysf"
-	buildId    = "f0370054-b669-eeee-b33b-573d5287c6ef"
+	// envAlias is the alias of the base template to use for the sandbox
+	envAlias = "base"
 
-	fcVersion     = "v1.7.0-dev_8bb88311"
-	kernelVersion = "vmlinux-5.10.186"
-	envdVersion   = "0.1.1"
+	// benchmarkParallel controls whether the benchmarks iterations should run in parallel
+	benchmarkParallel = false
 )
 
-type Env struct {
-	ctx           context.Context
+type env struct {
 	dnsServer     *dns.DNS
 	networkPool   *network.Pool
 	templateCache *template.Cache
 }
 
-func prepareEnv(ctx context.Context) (*Env, error) {
-	dnsServer := dns.New()
-	go func() {
-		log.Printf("Starting DNS server")
+type vars struct {
+	templateId string
+	buildId    string
 
-		err := dnsServer.Start("127.0.0.4", 53)
-		if err != nil {
-			log.Fatalf("Failed running DNS server: %s\n", err.Error())
-		}
-	}()
+	fcVersion     string
+	kernelVersion string
+	envdVersion   string
+}
+
+func prepareEnv(ctx context.Context, tb testing.TB) (*env, error) {
+	dnsServer := dns.New()
 
 	templateCache, err := template.NewCache(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache: %w", err)
 	}
 
-	networkPool, err := network.NewPool(ctx, 1, 0)
+	networkPool, err := network.NewPool(ctx, 1, 1)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network pool: %w", err)
 	}
 
-	return &Env{
-		ctx:           ctx,
+	return &env{
 		dnsServer:     dnsServer,
 		networkPool:   networkPool,
 		templateCache: templateCache,
 	}, nil
 }
 
-func TestSnapshot(t *testing.T) {
+type SandboxTestSuite struct {
+	suite.Suite
+	env  *env
+	vars vars
+
+	parent context.Context
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func NewSandboxTestSuite(
+	ctx context.Context,
+	env *env,
+) *SandboxTestSuite {
+	db, err := db.NewClient()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create db client: %v", err))
+	}
+	defer db.Close()
+
+	template, build, err := db.GetEnv(ctx, envAlias)
+	if err != nil {
+		panic(fmt.Sprintf("failed to get %s env: %v", envAlias, err))
+	}
+
+	return &SandboxTestSuite{
+		env:    env,
+		parent: ctx,
+
+		vars: vars{
+			templateId: template.TemplateID,
+			buildId:    template.BuildID,
+
+			fcVersion:     build.FirecrackerVersion,
+			kernelVersion: build.KernelVersion,
+			envdVersion:   *build.EnvdVersion,
+		},
+	}
+}
+
+func TestSandboxTestSuite(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	env, err := prepareEnv(ctx)
+
+	lEnv, err := prepareEnv(ctx, t)
 	if err != nil {
 		t.Fatalf("failed to prepare environment: %v", err)
 	}
 
-	sandboxId := "test-sandbox-1"
-	teamId := "test-team"
-	keepAlive := time.Duration(10) * time.Second
+	suite.Run(t, NewSandboxTestSuite(ctx, lEnv))
+}
 
-	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
-	childCtx, _ := tracer.Start(env.ctx, "mock-sandbox")
+func (suite *SandboxTestSuite) SetupTest() {
+	ctx, cancel := context.WithCancel(suite.parent)
 
-	logger := logs.NewSandboxLogger(sandboxId, templateId, teamId, 2, 512, false)
+	suite.ctx = ctx
+	suite.cancel = cancel
+}
 
-	start := time.Now()
+func (suite *SandboxTestSuite) TearDownTest() {
+	suite.ctx = nil
+	suite.cancel()
+}
 
-	sbx, cleanup, err := NewSandbox(
-		childCtx,
-		tracer,
-		env.dnsServer,
-		env.networkPool,
-		env.templateCache,
-		&orchestrator.SandboxConfig{
-			TemplateId:         templateId,
-			FirecrackerVersion: fcVersion,
-			KernelVersion:      kernelVersion,
-			TeamId:             teamId,
-			BuildId:            buildId,
-			HugePages:          true,
-			MaxSandboxLength:   1,
-			SandboxId:          sandboxId,
-			EnvdVersion:        envdVersion,
-			RamMb:              512,
-			Vcpu:               2,
-		},
-		"trace-test-1",
-		time.Now(),
-		time.Now(),
-		logger,
-		false,
-		templateId,
-	)
-	defer func() {
-		cleanupErr := cleanup.Run()
-		if cleanupErr != nil {
-			t.Errorf("failed to cleanup sandbox: %v\n", cleanupErr)
-		}
-	}()
-
+func (suite *SandboxTestSuite) TestNewSandbox() {
+	sbx, cleanup, err := suite.createSandbox(512, 2)
 	if err != nil {
-		t.Fatalf("failed to create sandbox: %v", err)
+		suite.T().Fatalf("failed to create sandbox: %v", err)
+	}
+	defer cleanup.Run()
+
+	suite.Assert().NotNil(sbx)
+}
+
+func (suite *SandboxTestSuite) TestSnapshot() {
+	sbx, cleanup, err := suite.createSandbox(512, 2)
+	if err != nil {
+		suite.T().Fatalf("failed to create sandbox: %v", err)
+	}
+	defer cleanup.Run()
+
+	snapshot, err := suite.snapshotSandbox(sbx)
+	if err != nil {
+		suite.T().Fatalf("failed to snapshot sandbox: %v", err)
 	}
 
-	duration := time.Since(start)
+	suite.Assert().NotNil(snapshot)
+}
 
-	fmt.Printf("[Sandbox is running] - started in %dms \n", duration.Milliseconds())
+func genericBenchmarkSandbox(b *testing.B, ramMb, vCpu int64) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	time.Sleep(keepAlive)
+	lEnv, err := prepareEnv(ctx, b)
+	if err != nil {
+		b.Fatalf("failed to prepare environment: %v", err)
+	}
 
-	fmt.Println("Snapshotting sandbox")
+	suite := NewSandboxTestSuite(ctx, lEnv)
 
-	snapshotTime := time.Now()
+	test := func() {
+		suite.SetupTest()
+		defer suite.TearDownTest()
 
+		sbx, cleanup, err := suite.createSandbox(ramMb, vCpu)
+		if err != nil {
+			b.Fatalf("failed to create sandbox: %v", err)
+		}
+		defer cleanup.Run()
+
+		suite.snapshotSandbox(sbx)
+	}
+
+	if benchmarkParallel {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				test()
+			}
+		})
+	} else {
+		for i := 0; i < b.N; i++ {
+			test()
+		}
+	}
+}
+
+func BenchmarkSnapshot10(b *testing.B) {
+	genericBenchmarkSandbox(b, 512, 1)
+}
+
+func BenchmarkSnapshot11(b *testing.B) {
+	genericBenchmarkSandbox(b, 1024, 1)
+}
+
+func BenchmarkSnapshot12(b *testing.B) {
+	genericBenchmarkSandbox(b, 2*1024, 1)
+}
+
+func BenchmarkSnapshot13(b *testing.B) {
+	genericBenchmarkSandbox(b, 4*1024, 1)
+}
+
+func BenchmarkSnapshot14(b *testing.B) {
+	genericBenchmarkSandbox(b, 8*1024, 1)
+}
+
+func (suite *SandboxTestSuite) snapshotSandbox(sbx *Sandbox) (*Snapshot, error) {
 	snapshotTemplateFiles, err := storage.NewTemplateFiles(
 		"snapshot-template",
 		"f0370054-b669-eee4-b33b-573d5287c6ef",
@@ -137,71 +218,68 @@ func TestSnapshot(t *testing.T) {
 		sbx.Config.HugePages,
 	).NewTemplateCacheFiles()
 	if err != nil {
-		t.Fatalf("failed to create snapshot template files: %w", err)
+		return nil, fmt.Errorf("failed to create snapshot template files: %s", err)
 	}
 
 	err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
 	if err != nil {
-		t.Fatalf("failed to create snapshot template files directory: %w", err)
+		return nil, fmt.Errorf("failed to create snapshot template files directory: %s", err)
 	}
 
 	defer func() {
 		err := os.RemoveAll(snapshotTemplateFiles.CacheDir())
 		if err != nil {
-			t.Errorf("error removing sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
+			fmt.Printf("error removing sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
 		}
 	}()
 
-	fmt.Println("Snapshotting sandbox")
-
-	_, err = sbx.Snapshot(ctx, otel.Tracer("orchestrator-mock"), snapshotTemplateFiles, func() {})
+	snapshot, err := sbx.Snapshot(suite.ctx, otel.Tracer("orchestrator-mock"), snapshotTemplateFiles, func() {})
 	if err != nil {
-		t.Fatalf("failed to snapshot sandbox: %w", err)
+		return nil, fmt.Errorf("failed to snapshot sandbox: %s", err)
 	}
 
-	fmt.Println("Create snapshot time: ", time.Since(snapshotTime).Milliseconds())
-
-	assert.True(t, true)
+	return snapshot, nil
 }
 
-/*
-func TestSnapshot(t *testing.T) {
-	var out io.Writer
-	stopSandbox := func() error {
-		return nil
-	}
-	buildId := uuid.MustParse("f0370054-b669-eee4-b33b-573d5287c6ef")
-	cachePath := createTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	tracer := otel.Tracer("orchestrator-mock")
-	t.Cleanup(cancel)
+func (suite *SandboxTestSuite) createSandbox(ramMb, vCpu int64) (*Sandbox, *Cleanup, error) {
+	sandboxId := "test-sandbox-1"
+	teamId := "test-team"
 
-	sbx := &Sandbox{
-		template:       template,
-		rootfs:         template,
-		cleanup:        NewCleanup(),
-		process:        template,
-		uffd:           template,
-		files:          template, //MemfilePageSize
-		healthcheckCtx: utils.NewLockableCancelableContext(ctx),
-	}
+	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
+	childCtx, _ := tracer.Start(suite.ctx, "mock-sandbox")
 
-	snapshotTemplateFiles, err := storage.NewTemplateFiles(
-		"snapshot-template",
-		buildId.String(),
-		sbx.Config.KernelVersion,
-		sbx.Config.FirecrackerVersion,
-		sbx.Config.HugePages,
-	).NewTemplateCacheFiles()
+	logger := logs.NewSandboxLogger(sandboxId, suite.vars.templateId, teamId, vCpu, ramMb, false)
+
+	sbx, cleanup, err := NewSandbox(
+		childCtx,
+		tracer,
+		suite.env.dnsServer,
+		suite.env.networkPool,
+		suite.env.templateCache,
+		&orchestrator.SandboxConfig{
+			TemplateId:         suite.vars.templateId,
+			FirecrackerVersion: suite.vars.fcVersion,
+			KernelVersion:      suite.vars.kernelVersion,
+			TeamId:             teamId,
+			BuildId:            suite.vars.buildId,
+			HugePages:          true,
+			MaxSandboxLength:   1,
+			SandboxId:          sandboxId,
+			EnvdVersion:        suite.vars.envdVersion,
+			RamMb:              ramMb,
+			Vcpu:               vCpu,
+		},
+		"trace-test-1",
+		time.Now(),
+		time.Now(),
+		logger,
+		false,
+		suite.vars.templateId,
+	)
 	if err != nil {
-		t.Fatalf("Failed to create snapshot template files: %v", err)
+		errCleanup := cleanup.Run()
+		return nil, nil, fmt.Errorf("failed to create sandbox: %v", errors.Join(err, errCleanup))
 	}
 
-	_, err = sbx.Snapshot(ctx, tracer, snapshotTemplateFiles, func() {})
-	if err != nil {
-		t.Fatalf("Failed to snapshot sandbox: %v", err)
-	}
-
-	assert.True(t, true)
+	return sbx, cleanup, nil
 }
-*/

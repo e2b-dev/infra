@@ -226,7 +226,7 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get FC PID: %w", err)
 	}
 
-	sandboxStats := stats.NewHandle(int32(pid))
+	sandboxStats := stats.NewHandle(ctx, int32(pid))
 
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
@@ -451,14 +451,14 @@ func (s *Sandbox) Snapshot(
 
 	telemetry.ReportEvent(ctx, "merged rootfs mappings")
 
-	rootfsDiff, err := rootfsDiffFile.ToDiff(ctx, int64(originalRootfs.Header().Metadata.BlockSize))
+	rootfsDiff, err := rootfsDiffFile.ToDiff(int64(originalRootfs.Header().Metadata.BlockSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "converted rootfs diff file to local diff")
 
-	memfileDiff, err := memfileLDFile.ToDiff(ctx, int64(originalMemfile.Header().Metadata.BlockSize))
+	memfileDiff, err := memfileLDFile.ToDiff(int64(originalMemfile.Header().Metadata.BlockSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
 	}

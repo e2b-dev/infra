@@ -2,6 +2,7 @@ package stats
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -27,7 +28,7 @@ type processStats struct {
 	MemoryKB float64
 }
 
-func NewHandle(pid int32) *Handle {
+func NewHandle(ctx context.Context, pid int32) *Handle {
 	stats := Handle{
 		pid:       pid,
 		timestamp: time.Now(),
@@ -35,6 +36,11 @@ func NewHandle(pid int32) *Handle {
 	}
 
 	go func() {
+		_, ok := <-ctx.Done()
+		if !ok {
+			return
+		}
+
 		currentStats, err := getCurrentStats(pid)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to get current stats: %v\n", err)
