@@ -46,7 +46,7 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 
 			// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
 			if err != nil || len(resp.Answer) == 0 {
-				logger.Warnf("[%d] Host for sandbox %s found: %s", i, sandboxID, err)
+				logger.Warnf("[%d] Host for sandbox %s not found: %s", i, sandboxID, err)
 				continue
 			}
 
