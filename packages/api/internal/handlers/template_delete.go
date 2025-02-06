@@ -107,6 +107,16 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
+	dbErr := a.db.DeleteEnv(ctx, template.ID)
+	if dbErr != nil {
+		errMsg := fmt.Errorf("error when deleting env from db: %w", dbErr)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting env")
+
+		return
+	}
+
 	// get all build ids
 	buildIds := make([]uuid.UUID, len(template.Edges.Builds))
 	for i, build := range template.Edges.Builds {
@@ -120,16 +130,6 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		telemetry.ReportCriticalError(ctx, errMsg)
 	} else {
 		telemetry.ReportEvent(ctx, "deleted env from storage")
-	}
-
-	dbErr := a.db.DeleteEnv(ctx, template.ID)
-	if dbErr != nil {
-		errMsg := fmt.Errorf("error when deleting env from db: %w", dbErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting env")
-
-		return
 	}
 
 	a.templateCache.Invalidate(template.ID)

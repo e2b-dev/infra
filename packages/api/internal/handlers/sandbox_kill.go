@@ -64,6 +64,15 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		return
 	}
 
+	dbErr := a.db.DeleteEnv(ctx, env.ID)
+	if dbErr != nil {
+		errMsg := fmt.Errorf("error when deleting env from db: %w", dbErr)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting paused sandbox")
+		return
+	}
+
 	buildIds := make([]uuid.UUID, len(builds))
 	for i, build := range builds {
 		buildIds[i] = build.ID
@@ -76,15 +85,6 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		telemetry.ReportCriticalError(ctx, errMsg)
 	} else {
 		telemetry.ReportEvent(ctx, "deleted env from storage")
-	}
-
-	dbErr := a.db.DeleteEnv(ctx, env.ID)
-	if dbErr != nil {
-		errMsg := fmt.Errorf("error when deleting env from db: %w", dbErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting paused sandbox")
-		return
 	}
 
 	a.templateCache.Invalidate(env.ID)
