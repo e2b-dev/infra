@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
@@ -47,6 +49,10 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 			// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
 			if err != nil || len(resp.Answer) == 0 {
 				logger.Warnf("[%d] Host for sandbox %s not found: %s", i, sandboxID, err)
+
+				// Jitter
+				time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+
 				continue
 			}
 
