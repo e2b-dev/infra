@@ -92,5 +92,4 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	telemetry.ReportEvent(ctx, "deleted paused sandbox from db")
 
 	c.Status(http.StatusNoContent)
-	return
 }
