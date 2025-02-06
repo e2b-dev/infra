@@ -2,6 +2,7 @@ package logs
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/exporter"
 )
@@ -96,13 +98,32 @@ func NewSandboxLogger(
 	}
 }
 
+// getMessage returns a formatted message from a template and arguments.
+// Source: zap.SugaredLogger
+func getMessage(template string, fmtArgs []interface{}) string {
+	if len(fmtArgs) == 0 {
+		return template
+	}
+
+	if template != "" {
+		return fmt.Sprintf(template, fmtArgs...)
+	}
+
+	if len(fmtArgs) == 1 {
+		if str, ok := fmtArgs[0].(string); ok {
+			return str
+		}
+	}
+	return fmt.Sprint(fmtArgs...)
+}
+
 func (l *SandboxLogger) sendEvent(logger *zerolog.Event, format string, v ...interface{}) {
 	logger.
 		Str("instanceID", l.instanceID).
 		Str("envID", l.envID).
 		Str("teamID", l.teamID).
 		Bool("internal", l.internal). // if this is true, it's sent to internal loki else to grafana cloud
-		Msgf(format, v...)
+		Msg(getMessage(format, v))
 }
 
 func (l *SandboxLogger) GetInternalLogger() *SandboxLogger {
@@ -134,11 +155,44 @@ func (l *SandboxLogger) Infof(
 	l.sendEvent(l.exporter.logger.Info(), format, v...)
 }
 
+func (l *SandboxLogger) Debug(args ...interface{}) {
+	l.sendEvent(l.exporter.logger.Debug(), "", args...)
+}
+
 func (l *SandboxLogger) Debugf(
 	format string,
 	v ...interface{},
 ) {
 	l.sendEvent(l.exporter.logger.Debug(), format, v...)
+}
+
+func (l *SandboxLogger) Error(args ...interface{}) {
+	l.sendEvent(l.exporter.logger.Error(), "", args...)
+}
+
+func (l *SandboxLogger) Errorw(msg string, keysAndValues ...interface{}) {
+	l.sendEvent(l.exporter.logger.Error(), msg, keysAndValues...)
+}
+
+func (l *SandboxLogger) Warn(args ...interface{}) {
+	l.sendEvent(l.exporter.logger.Warn(), "", args...)
+}
+
+func (l *SandboxLogger) Info(args ...interface{}) {
+	l.sendEvent(l.exporter.logger.Info(), "", args...)
+}
+
+func (l *SandboxLogger) Panic(args ...interface{}) {
+	l.sendEvent(l.exporter.logger.Panic(), "", args...)
+}
+
+func (l *SandboxLogger) Fatalf(format string, v ...interface{}) {
+	l.sendEvent(l.exporter.logger.Fatal(), format, v...)
+}
+
+func (l *SandboxLogger) Desugar() *zap.Logger {
+	l.Panic("Desugar is not implemented for SandboxLogger")
+	return nil
 }
 
 func (l *SandboxLogger) CPUUsage(cpu float64) {

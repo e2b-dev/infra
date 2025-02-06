@@ -127,7 +127,10 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get rootfs: %w", err)
 	}
 
+	internalLogger := logger.GetInternalLogger()
+
 	rootfsOverlay, err := rootfs.NewCowDevice(
+		internalLogger,
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 		sandboxFiles.RootfsBlockSize(),
@@ -213,7 +216,6 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
-	internalLogger := logger.GetInternalLogger()
 	fcStartErr := fcHandle.Start(uffdStartCtx, tracer, internalLogger)
 	if fcStartErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to start FC: %w", fcStartErr)

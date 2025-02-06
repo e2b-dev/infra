@@ -46,7 +46,7 @@ type APIStore struct {
 	buildCache           *builds.BuildCache
 	db                   *db.DB
 	lokiClient           *loki.DefaultClient
-	logger               *zap.SugaredLogger
+	logger               logging.Logger
 	templateCache        *templatecache.TemplateCache
 	authCache            *authcache.TeamAuthCache
 	templateSpawnCounter *utils.TemplateSpawnCounter

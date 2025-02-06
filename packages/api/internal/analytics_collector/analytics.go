@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/posthog/posthog-go"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 )
 
 const (
@@ -24,10 +24,10 @@ const (
 
 type PosthogClient struct {
 	client posthog.Client
-	logger *zap.SugaredLogger
+	logger logging.Logger
 }
 
-func NewPosthogClient(logger *zap.SugaredLogger) (*PosthogClient, error) {
+func NewPosthogClient(logger logging.Logger) (*PosthogClient, error) {
 	posthogAPIKey := os.Getenv("POSTHOG_API_KEY")
 	posthogLogger := posthog.StdLogger(log.New(os.Stderr, "posthog ", log.LstdFlags))
 
