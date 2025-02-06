@@ -41,14 +41,22 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			return
 		}
 
+		cpuCount := int32(-1)
+		memoryMB := int32(-1)
+
+		if build != nil {
+			cpuCount = int32(build.Vcpu)
+			memoryMB = int32(build.RAMMB)
+		}
+
 		instance := api.ListedSandbox{
 			ClientID:   info.Instance.ClientID,
 			TemplateID: info.Instance.TemplateID,
 			Alias:      info.Instance.Alias,
 			SandboxID:  info.Instance.SandboxID,
 			StartedAt:  info.StartTime,
-			CpuCount:   int32(build.Vcpu),
-			MemoryMB:   int32(build.RAMMB),
+			CpuCount:   cpuCount,
+			MemoryMB:   memoryMB,
 			EndAt:      info.EndTime,
 			State:      "running",
 		}
@@ -70,14 +78,22 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		return
 	}
 
+	memoryMB := int32(-1)
+	cpuCount := int32(-1)
+
+	if build != nil {
+		memoryMB = int32(build.RAMMB)
+		cpuCount = int32(build.Vcpu)
+	}
+
 	// optional
 	instance := api.ListedSandbox{
 		ClientID:   "00000000",
 		TemplateID: snapshot.EnvID,
 		SandboxID:  snapshot.SandboxID,
 		StartedAt:  snapshot.SandboxStartedAt,
-		CpuCount:   int32(build.Vcpu),
-		MemoryMB:   int32(build.RAMMB),
+		CpuCount:   cpuCount,
+		MemoryMB:   memoryMB,
 		EndAt:      snapshot.CreatedAt,
 		State:      "paused",
 	}

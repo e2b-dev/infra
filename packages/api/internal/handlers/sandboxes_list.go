@@ -58,14 +58,22 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 					continue
 				}
 
+				memoryMB := int32(-1)
+				cpuCount := int32(-1)
+
+				if buildsMap[*info.BuildID] != nil {
+					memoryMB = int32(buildsMap[*info.BuildID].RAMMB)
+					cpuCount = int32(buildsMap[*info.BuildID].Vcpu)
+				}
+
 				instance := api.ListedSandbox{
 					ClientID:   info.Instance.ClientID,
 					TemplateID: info.Instance.TemplateID,
 					Alias:      info.Instance.Alias,
 					SandboxID:  info.Instance.SandboxID,
 					StartedAt:  info.StartTime,
-					CpuCount:   int32(buildsMap[*info.BuildID].Vcpu),
-					MemoryMB:   int32(buildsMap[*info.BuildID].RAMMB),
+					CpuCount:   cpuCount,
+					MemoryMB:   memoryMB,
 					EndAt:      info.EndTime,
 					State:      "running",
 				}
@@ -91,19 +99,23 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		// Add snapshots to results
 		for _, e := range snapshotEnvs {
 			snapshotBuilds := e.Edges.Builds
-			if len(snapshotBuilds) == 0 {
-				continue
-			}
-
 			snapshot := e.Edges.Snapshots[0]
+
+			memoryMB := int32(-1)
+			cpuCount := int32(-1)
+
+			if len(snapshotBuilds) > 0 {
+				memoryMB = int32(snapshotBuilds[0].RAMMB)
+				cpuCount = int32(snapshotBuilds[0].Vcpu)
+			}
 
 			instance := api.ListedSandbox{
 				ClientID:   "00000000",
 				TemplateID: e.ID,
 				SandboxID:  snapshot.SandboxID,
 				StartedAt:  snapshot.SandboxStartedAt,
-				CpuCount:   int32(snapshotBuilds[0].Vcpu),
-				MemoryMB:   int32(snapshotBuilds[0].RAMMB),
+				CpuCount:   cpuCount,
+				MemoryMB:   memoryMB,
 				EndAt:      snapshot.CreatedAt,
 				State:      "paused",
 			}
@@ -178,27 +190,6 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 		// Trim slice
 		sandboxes = sandboxes[:n]
-	}
-
-	// filter sandboxes by state
-	if params.State != nil {
-		if *params.State == "running" {
-			filtered := make([]api.ListedSandbox, 0, len(sandboxes))
-			for _, s := range sandboxes {
-				if s.State == "running" {
-					filtered = append(filtered, s)
-				}
-			}
-			sandboxes = filtered
-		} else if *params.State == "paused" {
-			filtered := make([]api.ListedSandbox, 0, len(sandboxes))
-			for _, s := range sandboxes {
-				if s.State == "paused" {
-					filtered = append(filtered, s)
-				}
-			}
-			sandboxes = filtered
-		}
 	}
 
 	// Sort sandboxes by start time descending

@@ -171,12 +171,6 @@ func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID) (
 		}).
 		All(ctx)
 
-	notFound := models.IsNotFound(err)
-
-	if notFound {
-		return nil, nil
-	}
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapshot build for '%s': %w", teamID, err)
 	}
