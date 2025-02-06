@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/miekg/dns"
 )
+
+const dnsServer = "api.service.consul:5353"
 
 // Create a DNS client
 var client = new(dns.Client)
@@ -21,10 +24,7 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 	msg := new(dns.Msg)
 
 	// Set the question
-	msg.SetQuestion(host+".", dns.TypeA)
-
-	// Define the DNS server to query
-	dnsServer := "api.service.consul:5353"
+	msg.SetQuestion(fmt.Sprintf("%s.", host), dns.TypeA)
 
 	var resp *dns.Msg
 	var err error
@@ -50,7 +50,7 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// There's no answer, we can't proxy the request
-	if err != nil || resp == nil || len(resp.Answer) == 0 {
+	if err != nil || len(resp.Answer) == 0 {
 		log.Printf("Host not found: %s\n", host)
 		http.Error(w, "Host not found", http.StatusBadGateway)
 		return
@@ -60,12 +60,11 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Proxying request to %s\n", resp.Answer[0].String())
 	targetUrl := &url.URL{
 		Scheme: "http",
-		Host:   resp.Answer[0].(*dns.A).A.String() + ":3003",
+		Host:   fmt.Sprintf("%s: 30003", resp.Answer[0].(*dns.A).A.String()),
 	}
 
 	// Proxy the request
-	p := httputil.NewSingleHostReverseProxy(targetUrl)
-	p.ServeHTTP(w, r)
+	httputil.NewSingleHostReverseProxy(targetUrl).ServeHTTP(w, r)
 }
 
 func main() {
@@ -75,7 +74,6 @@ func main() {
 
 		server.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			writer.WriteHeader(http.StatusOK)
-			writer.Write([]byte("OK"))
 		})
 
 		err := server.ListenAndServe()
