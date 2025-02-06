@@ -21,10 +21,13 @@ import (
 	"go.uber.org/zap"
 )
 
-const dnsServer = "api.service.consul:5353"
-const healthCheckPort = 3001
-const port = 3002
-const sandboxPort = 3003
+const (
+	dnsServer       = "api.service.consul:5353"
+	healthCheckPort = 3001
+	port            = 3002
+	sandboxPort     = 3003
+	maxRetries      = 3
+)
 
 // Create a DNS client
 var client = new(dns.Client)
@@ -42,13 +45,13 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 
 		var resp *dns.Msg
 		var err error
-		for i := range 3 {
+		for i := range maxRetries {
 			// Send the query to the server
 			resp, _, err = client.Exchange(msg, dnsServer)
 
 			// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
 			if err != nil || len(resp.Answer) == 0 {
-				logger.Warnf("[%d] Host for sandbox %s not found: %s", i, sandboxID, err)
+				logger.Warnf("[%d] Host for sandbox %s not found: %s", i+1, sandboxID, err)
 
 				// Jitter
 				time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
