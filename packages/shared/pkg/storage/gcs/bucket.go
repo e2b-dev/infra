@@ -8,12 +8,12 @@ import (
 
 type BucketHandle = storage.BucketHandle
 
-func newBucket(bucket string) *BucketHandle {
+func NewBucket(bucket string) *BucketHandle {
 	return client.Bucket(bucket)
 }
 
 var (
 	templateBucketName = utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "bucket for storing template files")
 
-	TemplateBucket = newBucket(templateBucketName)
+	TemplateBucket = NewBucket(templateBucketName)
 )

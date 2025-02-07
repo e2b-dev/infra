@@ -81,6 +81,29 @@ func (o *Object) ReadFrom(src io.Reader) (int64, error) {
 	return n, nil
 }
 
+func (o *Object) Copy(ctx context.Context, to *Object) error {
+	fromPath := fmt.Sprintf("gs://%s/%s", o.object.BucketName(), o.object.ObjectName())
+	toPath := fmt.Sprintf("gs://%s/%s", to.object.BucketName(), to.object.ObjectName())
+
+	cmd := exec.CommandContext(
+		ctx,
+		"gcloud",
+		"storage",
+		"cp",
+		"--verbosity",
+		"error",
+		fromPath,
+		toPath,
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to copy GCS object: %w\n%s", err, string(output))
+	}
+
+	return nil
+}
+
 func (o *Object) UploadWithCli(ctx context.Context, path string) error {
 	cmd := exec.CommandContext(
 		ctx,
