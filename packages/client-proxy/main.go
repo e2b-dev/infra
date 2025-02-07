@@ -43,10 +43,11 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 		if len(hostSplit) < 2 {
 			logger.Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)
+
 			return
 		}
 
-		sandboxID := strings.Split(r.Host, "-")[1]
+		sandboxID := hostSplit[1]
 		msg := new(dns.Msg)
 
 		// Set the question
