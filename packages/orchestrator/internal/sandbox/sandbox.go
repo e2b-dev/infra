@@ -329,6 +329,18 @@ func (s *Sandbox) Stop() error {
 	return nil
 }
 
+// Snapshot creates a snapshot of the sandbox
+// FC Snapshotting: https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/snapshot-support.md
+// The snapshotting works in three steps:
+//  1. Creates a snapshot of the memfile
+//     - It pauses the VM
+//     - Stops the uffd and starts returnin nil for all requested pages (because full VM snapshot requests all of them)
+//     - Creates a VM snapshot
+//     - Creates a diff of the memfile excluding the pages tried to be accessed during the snapshotting
+//  2. Creates a snapshot of the rootfs
+//     - Flushes the NBD device to the local NBD backend
+//     - Exports the dirty blocks from the COW device
+//  3. Prepares diffs of changes for later use and returns them
 func (s *Sandbox) Snapshot(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -404,59 +416,52 @@ func (s *Sandbox) createSnapshot(
 	}
 
 	// Get original template files
-	originalMemfile, err := templateProvider.Memfile()
+	originalMemfileHeader, err := templateProvider.MemfileHeader()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
 
 	// Create headers and mappings
-	memfileHeader, err := s.createMemfileHeader(
+	memfileHeader := s.createMemfileHeader(
 		ctx,
 		buildId,
-		originalMemfile,
+		originalMemfileHeader,
 		memfileDirtyPages,
 	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create memfile header: %w", err)
-	}
 
 	// Create rootfs snapshot
 	rootfsDiffFile, rootfsDirtyBlocks, err := s.createRootfsSnapshot(
 		ctx,
 		buildId,
 		provider,
-		templateProvider,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs snapshot: %w", err)
 	}
 
 	// Get original rootfs files
-	originalRootfs, err := templateProvider.Rootfs()
+	originalRootfsHeader, err := templateProvider.RootfsHeader()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
 	// Create rootfs header
-	rootfsHeader, err := s.createRootfsHeader(
+	rootfsHeader := s.createRootfsHeader(
 		ctx,
 		buildId,
-		originalRootfs,
+		originalRootfsHeader,
 		rootfsDirtyBlocks,
 	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create rootfs header: %w", err)
-	}
 
 	// Create memfile diff
-	memfileDiff, err := memfileLDFile.ToDiff(int64(originalMemfile.Header().Metadata.BlockSize))
+	memfileDiff, err := memfileLDFile.ToDiff(int64(originalMemfileHeader.Metadata.BlockSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "converted memfile diff file to local diff")
 
 	// Create rootfs diff
-	rootfsDiff, err := rootfsDiffFile.ToDiff(int64(originalRootfs.Header().Metadata.BlockSize))
+	rootfsDiff, err := rootfsDiffFile.ToDiff(int64(originalRootfsHeader.Metadata.BlockSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
 	}
@@ -512,19 +517,19 @@ func (s *Sandbox) createMemfileSnapshot(
 	defer sourceFile.Close()
 	defer os.RemoveAll(memfilePath)
 
-	telemetry.ReportEvent(ctx, "creating local diff file")
+	telemetry.ReportEvent(ctx, "uffd dirty")
+	memfileDirtyPages := provider.GetDirtyUffd()
+
+	telemetry.ReportEvent(ctx, "create diff")
 	memfileLDFile, err := build.NewLocalDiffFile(
 		buildId.String(),
 		build.Memfile,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile diff file: %w", err)
+		return nil, nil, fmt.Errorf("failed to create memfile LDFile: %w", err)
 	}
 
-	telemetry.ReportEvent(ctx, "uffd dirty")
-	memfileDirtyPages := provider.GetDirtyPages()
-	telemetry.ReportEvent(ctx, "create diff")
-	err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileLDFile)
+	err = header.CreateDiff(sourceFile, provider.GetMemfilePageSize(), memfileDirtyPages, memfileLDFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create memfile diff: %w", err)
 	}
@@ -535,64 +540,57 @@ func (s *Sandbox) createMemfileSnapshot(
 func (s *Sandbox) createMemfileHeader(
 	ctx context.Context,
 	buildId uuid.UUID,
-	originalMemfile *template.Storage,
+	originalMemfileHeader *header.Header,
 	memfileDirtyPages *bitset.BitSet,
-) (*header.Header, error) {
+) *header.Header {
+	telemetry.ReportEvent(ctx, "creating memfile header")
+	defer telemetry.ReportEvent(ctx, "done memfile header")
+
+	originalMetadata := originalMemfileHeader.Metadata
 	memfileMetadata := &header.Metadata{
 		Version:     1,
-		Generation:  originalMemfile.Header().Metadata.Generation + 1,
-		BlockSize:   originalMemfile.Header().Metadata.BlockSize,
-		Size:        originalMemfile.Header().Metadata.Size,
+		Generation:  originalMetadata.Generation + 1,
+		BlockSize:   originalMetadata.BlockSize,
+		Size:        originalMetadata.Size,
 		BuildId:     buildId,
-		BaseBuildId: originalMemfile.Header().Metadata.BaseBuildId,
+		BaseBuildId: originalMetadata.BaseBuildId,
 	}
+
 	memfileMapping := header.CreateMapping(
 		memfileMetadata,
 		&buildId,
 		memfileDirtyPages,
 	)
 
-	telemetry.ReportEvent(ctx, "created memfile mapping")
-
 	memfileMappings := header.MergeMappings(
-		originalMemfile.Header().Mapping,
+		originalMemfileHeader.Mapping,
 		memfileMapping,
 	)
 
-	telemetry.ReportEvent(ctx, "merged memfile mappings")
-
-	return header.NewHeader(memfileMetadata, memfileMappings), nil
+	return header.NewHeader(memfileMetadata, memfileMappings)
 }
 
 func (s *Sandbox) createRootfsSnapshot(
 	ctx context.Context,
 	buildId uuid.UUID,
 	provider SnapshotProvider,
-	templateProvider TemplateProvider,
 ) (*build.LocalDiffFile, *bitset.BitSet, error) {
-	// ROOTFS
-	rootfsPath, err := provider.GetRootfsPath()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get rootfs path: %w", err)
-	}
-	err = provider.FlushRootfs(rootfsPath)
+	defer telemetry.ReportEvent(ctx, "exported rootfs")
+
+	err := provider.FlushRootfsNBD()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to flush rootfs: %w", err)
 	}
-
 	telemetry.ReportEvent(ctx, "synced rootfs")
 
 	rootfsDiffFile, err := build.NewLocalDiffFile(buildId.String(), build.Rootfs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
-
 	rootfsDirtyBlocks, err := provider.ExportRootfs(ctx, rootfsDiffFile, s.Stop)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export rootfs: %w", err)
 	}
-
-	telemetry.ReportEvent(ctx, "exported rootfs")
 
 	return rootfsDiffFile, rootfsDirtyBlocks, nil
 }
@@ -600,32 +598,34 @@ func (s *Sandbox) createRootfsSnapshot(
 func (s *Sandbox) createRootfsHeader(
 	ctx context.Context,
 	buildId uuid.UUID,
-	originalRootfs *template.Storage,
+	originalRootfsHeader *header.Header,
 	rootfsDirtyBlocks *bitset.BitSet,
-) (*header.Header, error) {
+) *header.Header {
+	telemetry.ReportEvent(ctx, "creating rootfs header")
+	defer telemetry.ReportEvent(ctx, "done rootfs header")
+
+	originalMetadata := originalRootfsHeader.Metadata
 	rootfsMetadata := &header.Metadata{
 		Version:     1,
-		Generation:  originalRootfs.Header().Metadata.Generation + 1,
-		BlockSize:   originalRootfs.Header().Metadata.BlockSize,
-		Size:        originalRootfs.Header().Metadata.Size,
+		Generation:  originalMetadata.Generation + 1,
+		BlockSize:   originalMetadata.BlockSize,
+		Size:        originalMetadata.Size,
 		BuildId:     buildId,
-		BaseBuildId: originalRootfs.Header().Metadata.BaseBuildId,
+		BaseBuildId: originalMetadata.BaseBuildId,
 	}
+
 	rootfsMapping := header.CreateMapping(
 		rootfsMetadata,
 		&buildId,
 		rootfsDirtyBlocks,
 	)
-	telemetry.ReportEvent(ctx, "created rootfs mapping")
 
 	rootfsMappings := header.MergeMappings(
-		originalRootfs.Header().Mapping,
+		originalRootfsHeader.Mapping,
 		rootfsMapping,
 	)
 
-	telemetry.ReportEvent(ctx, "merged rootfs mappings")
-
-	return header.NewHeader(rootfsMetadata, rootfsMappings), nil
+	return header.NewHeader(rootfsMetadata, rootfsMappings)
 }
 
 type Snapshot struct {

@@ -66,6 +66,8 @@ func (o *CowDevice) Start(ctx context.Context) error {
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
 }
 
+// Export exports the dirty blocks from the COW device and closes it
+// Requires the stopSandbox function to call the COW Close function
 func (o *CowDevice) Export(ctx context.Context, out io.Writer, stopSandbox func() error) (*bitset.BitSet, error) {
 	cache, err := o.overlay.EjectCache()
 	if err != nil {
@@ -82,6 +84,7 @@ func (o *CowDevice) Export(ctx context.Context, out io.Writer, stopSandbox func(
 		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
 	}
 
+	// Dirty blocks from the COW device
 	dirty, err := cache.Export(out)
 	if err != nil {
 		return nil, fmt.Errorf("error exporting cache: %w", err)

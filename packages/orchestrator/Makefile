@@ -77,10 +77,14 @@ kill-old:
 mock-snapshot:
 	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="test-client" go run cmd/mock-snapshot/mock.go  -template 5wzg6c91u51yaebviysf -build "f0370054-b669-4d7e-b33b-573d5287c6ef" -alive 1 -count 1
 
+.PHONY: mock-generate
+mock-generate:
+	mockery
+
 .PHONY: test
 test:
-	sudo $(test_vars) go test ./internal/sandbox/ -v
+	@sudo $(test_vars) go test ./internal/sandbox/ -v
 
 .PHONY: test-bench
 test-bench:
-	sudo $(test_vars) go test -bench=. ./internal/sandbox/ -benchtime=5x
+	@sudo $(test_vars) go test -bench=. ./internal/sandbox/ -benchtime=5x

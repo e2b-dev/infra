@@ -18,7 +18,7 @@ var (
 	EmptyBlock    = make([]byte, RootfsBlockSize)
 )
 
-func CreateDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) error {
+func CreateDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, out io.Writer) error {
 	b := make([]byte, blockSize)
 
 	for i, e := dirty.NextSet(0); e; i, e = dirty.NextSet(i + 1) {
@@ -27,7 +27,7 @@ func CreateDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff 
 			return fmt.Errorf("error reading from source: %w", err)
 		}
 
-		_, err = diff.Write(b)
+		_, err = out.Write(b)
 		if err != nil {
 			return fmt.Errorf("error writing to diff: %w", err)
 		}

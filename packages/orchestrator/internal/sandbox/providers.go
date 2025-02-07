@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 // sandboxSnapshotProvider implements SnapshotProvider using actual sandbox components
@@ -38,7 +39,7 @@ func (p *sandboxSnapshotProvider) CreateVMSnapshot(ctx context.Context, tracer t
 	return p.process.CreateSnapshot(ctx, tracer, snapfilePath, memfilePath)
 }
 
-func (p *sandboxSnapshotProvider) GetDirtyPages() *bitset.BitSet {
+func (p *sandboxSnapshotProvider) GetDirtyUffd() *bitset.BitSet {
 	return p.uffd.Dirty()
 }
 
@@ -46,15 +47,17 @@ func (p *sandboxSnapshotProvider) GetMemfilePageSize() int64 {
 	return p.files.MemfilePageSize()
 }
 
-func (p *sandboxSnapshotProvider) GetRootfsPath() (string, error) {
-	return p.rootfs.Path()
-}
-
 func (p *sandboxSnapshotProvider) ExportRootfs(ctx context.Context, diffFile *build.LocalDiffFile, onStop func() error) (*bitset.BitSet, error) {
 	return p.rootfs.Export(ctx, diffFile, onStop)
 }
 
-func (p *sandboxSnapshotProvider) FlushRootfs(path string) error {
+// FlushRootfsNBD flushes the NBD device to the local NBD backend
+func (p *sandboxSnapshotProvider) FlushRootfsNBD() error {
+	path, err := p.rootfs.Path()
+	if err != nil {
+		return fmt.Errorf("failed to get rootfs path: %w", err)
+	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("failed to open rootfs path: %w", err)
@@ -77,10 +80,18 @@ type sandboxTemplateProvider struct {
 	template template.Template
 }
 
-func (p *sandboxTemplateProvider) Memfile() (*template.Storage, error) {
-	return p.template.Memfile()
+func (p *sandboxTemplateProvider) MemfileHeader() (*header.Header, error) {
+	memfile, err := p.template.Memfile()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get memfile: %w", err)
+	}
+	return memfile.Header(), nil
 }
 
-func (p *sandboxTemplateProvider) Rootfs() (*template.Storage, error) {
-	return p.template.Rootfs()
+func (p *sandboxTemplateProvider) RootfsHeader() (*header.Header, error) {
+	rootfs, err := p.template.Rootfs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rootfs: %w", err)
+	}
+	return rootfs.Header(), nil
 }
