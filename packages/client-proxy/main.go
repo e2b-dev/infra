@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"os/signal"
 	"strings"
 	"sync"
@@ -38,7 +39,15 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 		logger.Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
 		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.dev)
-		sandboxID := strings.Split(r.Host, "-")[1]
+		hostSplit := strings.Split(r.Host, "-")
+		if len(hostSplit) < 2 {
+			logger.Warn("invalid host", zap.String("host", r.Host))
+			http.Error(w, "Invalid host", http.StatusBadRequest)
+
+			return
+		}
+
+		sandboxID := hostSplit[1]
 		msg := new(dns.Msg)
 
 		// Set the question
@@ -91,6 +100,7 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 		httputil.NewSingleHostReverseProxy(targetUrl).ServeHTTP(w, r)
 	}
 }
+
 func main() {
 	exitCode := atomic.Int32{}
 	wg := sync.WaitGroup{}
@@ -104,16 +114,17 @@ func main() {
 		panic(fmt.Errorf("error creating logger: %v", err))
 	}
 
-	healthServer := http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
+	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
+	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+	})
+
+	wg.Add(1)
 	go func() {
 		// Health check
-		healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			logger.Debug("Health check")
-			writer.WriteHeader(http.StatusOK)
-		})
+		defer wg.Done()
 
 		logger.Info("starting health check server", zap.Int("port", healthCheckPort))
-		wg.Add(1)
 		err := healthServer.ListenAndServe()
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
@@ -125,15 +136,39 @@ func main() {
 			// this probably shouldn't happen...
 			logger.Error("http service exited without error", zap.Int("port", port))
 		}
-		wg.Done()
 	}()
 
 	// Proxy request to the correct node
-	server := http.Server{Addr: fmt.Sprintf(":%d", port)}
+	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
 	server.Handler = http.HandlerFunc(proxy(logger))
 
+	wg.Add(1)
 	go func() {
-		wg.Add(1)
+		defer wg.Done()
+		// make sure to cancel the parent context before this
+		// goroutine returns, so that in the case of a panic
+		// or error here, the other thread won't block until
+		// signaled.
+		defer sigCancel()
+
+		logger.Info("http service starting", zap.Int("port", port))
+		err := server.ListenAndServe()
+		// Add different handling for the error
+		switch {
+		case errors.Is(err, http.ErrServerClosed):
+			logger.Info("http service shutdown successfully", zap.Int("port", port))
+		case err != nil:
+			exitCode.Add(1)
+			logger.Error("http service encountered error", zap.Int("port", port), zap.Error(err))
+		default:
+			// this probably shouldn't happen...
+			logger.Error("http service exited without error", zap.Int("port", port))
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		<-signalCtx.Done()
 		logger.Info("shutting down http service", zap.Int("port", port))
 		if err := healthServer.Shutdown(ctx); err != nil {
@@ -147,21 +182,10 @@ func main() {
 			exitCode.Add(1)
 			logger.Error("http service shutdown error", zap.Int("port", port), zap.Error(err))
 		}
-		wg.Done()
 	}()
 
-	logger.Info("http service starting", zap.Int("port", port))
-	err = server.ListenAndServe()
-	// Add different handling for the error
-	switch {
-	case errors.Is(err, http.ErrServerClosed):
-		logger.Info("http service shutdown successfully", zap.Int("port", port))
-	case err != nil:
-		exitCode.Add(1)
-		logger.Error("http service encountered error", zap.Int("port", port), zap.Error(err))
-	default:
-		// this probably shouldn't happen...
-		logger.Error("http service exited without error", zap.Int("port", port))
-	}
 	wg.Wait()
+
+	// Exit, with appropriate code.
+	os.Exit(int(exitCode.Load()))
 }
