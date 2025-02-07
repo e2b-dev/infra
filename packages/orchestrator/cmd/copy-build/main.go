@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"sort"
 
 	googleStorage "cloud.google.com/go/storage"
 
@@ -82,6 +83,8 @@ func main() {
 
 	flag.Parse()
 
+	fmt.Printf("Copying build '%s' from bucket '%s' to bucket '%s'\n", *buildId, *from, *to)
+
 	template := storage.NewTemplateFiles(
 		"",
 		*buildId,
@@ -122,8 +125,11 @@ func main() {
 
 	filesToCopy = append(filesToCopy, snapfilePath)
 
+	// sort files to copy
+	sort.Strings(filesToCopy)
+
 	for _, file := range filesToCopy {
-		fmt.Printf("Copying %s", file)
+		fmt.Printf("- copying %s", file)
 
 		copied, err := copyFromBucket(ctx, fromBucket, toBucket, file)
 		if err != nil {
@@ -136,4 +142,6 @@ func main() {
 			fmt.Printf(" skipped\n")
 		}
 	}
+
+	fmt.Printf("Build copied\n")
 }
