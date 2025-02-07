@@ -100,6 +100,7 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 		httputil.NewSingleHostReverseProxy(targetUrl).ServeHTTP(w, r)
 	}
 }
+
 func main() {
 	exitCode := atomic.Int32{}
 	wg := sync.WaitGroup{}
