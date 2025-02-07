@@ -39,7 +39,7 @@ func New(
 		logger.Error("Error initializing Analytics client", zap.Error(err))
 	}
 
-	dnsServer := dns.New(ctx, nil, logger)
+	dnsServer := dns.New(ctx, redisClient, logger)
 
 	if env.IsLocal() {
 		logger.Info("Running locally, skipping starting DNS server")
