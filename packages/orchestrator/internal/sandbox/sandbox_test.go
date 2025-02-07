@@ -23,9 +23,6 @@ import (
 const (
 	// envAlias is the alias of the base template to use for the sandbox
 	envAlias = "base"
-
-	// benchmarkParallel controls whether the benchmarks iterations should run in parallel
-	benchmarkParallel = false
 )
 
 type env struct {
@@ -43,7 +40,7 @@ type vars struct {
 	envdVersion   string
 }
 
-func prepareEnv(ctx context.Context, tb testing.TB) (*env, error) {
+func prepareEnv(ctx context.Context, _ testing.TB) (*env, error) {
 	dnsServer := dns.New()
 
 	templateCache, err := template.NewCache(ctx)
@@ -155,6 +152,36 @@ func (suite *SandboxTestSuite) TestSnapshot() {
 func genericBenchmarkSandbox(b *testing.B, ramMb, vCpu int64) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	lEnv, err := prepareEnv(ctx, b)
+	if err != nil {
+		b.Fatalf("failed to prepare environment: %v", err)
+	}
+	suite := NewSandboxTestSuite(ctx, lEnv)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+
+		func() {
+			suite.SetupTest()
+			defer suite.TearDownTest()
+
+			sbx, cleanup, err := suite.createSandbox(ramMb, vCpu)
+			if err != nil {
+				b.Fatalf("failed to create sandbox: %v", err)
+			}
+			defer cleanup.Run()
+
+			b.StartTimer()
+			suite.snapshotSandbox(sbx)
+			b.StopTimer()
+		}()
+	}
+}
+
+func BenchmarkCreate(b *testing.B) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	lEnv, err := prepareEnv(ctx, b)
 	if err != nil {
@@ -163,49 +190,42 @@ func genericBenchmarkSandbox(b *testing.B, ramMb, vCpu int64) {
 
 	suite := NewSandboxTestSuite(ctx, lEnv)
 
-	test := func() {
-		suite.SetupTest()
-		defer suite.TearDownTest()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
 
-		sbx, cleanup, err := suite.createSandbox(ramMb, vCpu)
-		if err != nil {
-			b.Fatalf("failed to create sandbox: %v", err)
-		}
-		defer cleanup.Run()
+		func() {
+			suite.SetupTest()
+			defer suite.TearDownTest()
 
-		suite.snapshotSandbox(sbx)
-	}
-
-	if benchmarkParallel {
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				test()
+			b.StartTimer()
+			_, cleanup, err := suite.createSandbox(512, 2)
+			b.StopTimer()
+			if err != nil {
+				b.Fatalf("failed to create sandbox: %v", err)
 			}
-		})
-	} else {
-		for i := 0; i < b.N; i++ {
-			test()
-		}
+			defer cleanup.Run()
+		}()
 	}
 }
 
-func BenchmarkSnapshot10(b *testing.B) {
+func BenchmarkSnapshot512(b *testing.B) {
 	genericBenchmarkSandbox(b, 512, 1)
 }
 
-func BenchmarkSnapshot11(b *testing.B) {
+func BenchmarkSnapshot1024(b *testing.B) {
 	genericBenchmarkSandbox(b, 1024, 1)
 }
 
-func BenchmarkSnapshot12(b *testing.B) {
+func BenchmarkSnapshot2048(b *testing.B) {
 	genericBenchmarkSandbox(b, 2*1024, 1)
 }
 
-func BenchmarkSnapshot13(b *testing.B) {
+func BenchmarkSnapshot4096(b *testing.B) {
 	genericBenchmarkSandbox(b, 4*1024, 1)
 }
 
-func BenchmarkSnapshot14(b *testing.B) {
+func BenchmarkSnapshot8192(b *testing.B) {
 	genericBenchmarkSandbox(b, 8*1024, 1)
 }
 
@@ -225,13 +245,7 @@ func (suite *SandboxTestSuite) snapshotSandbox(sbx *Sandbox) (*Snapshot, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create snapshot template files directory: %s", err)
 	}
-
-	defer func() {
-		err := os.RemoveAll(snapshotTemplateFiles.CacheDir())
-		if err != nil {
-			fmt.Printf("error removing sandbox cache dir '%s': %v\n", snapshotTemplateFiles.CacheDir(), err)
-		}
-	}()
+	defer os.RemoveAll(snapshotTemplateFiles.CacheDir())
 
 	snapshot, err := sbx.Snapshot(suite.ctx, otel.Tracer("orchestrator-mock"), snapshotTemplateFiles, func() {})
 	if err != nil {
