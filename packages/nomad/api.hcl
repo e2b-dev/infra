@@ -18,6 +18,7 @@ job "api" {
     service {
       name = "api"
       port = "${port_number}"
+      task = "start"
 
       check {
         type     = "http"
@@ -29,7 +30,7 @@ job "api" {
       }
     }
 
-%{ if update_stanza == "true" }
+%{ if update_stanza }
     # An update stanza to enable rolling updates of the service
     update {
       # The number of extra instances to run during the update
@@ -46,7 +47,7 @@ job "api" {
 %{ endif }
 
     task "start" {
-      driver = "docker"
+      driver       = "docker"
       # If we need more than 30s we will need to update the max_kill_timeout in nomad
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
       kill_timeout = "15s"
@@ -73,6 +74,7 @@ job "api" {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         ADMIN_TOKEN                   = "${admin_token}"
         REDIS_URL                     = "${redis_url}"
+        DNS_PORT                      = "${dns_port_number}"
         # This is here just because it is required in some part of our code which is transitively imported
         TEMPLATE_BUCKET_NAME          = "skip"
       }
@@ -81,7 +83,7 @@ job "api" {
         network_mode = "host"
         image        = "${api_docker_image}"
         ports        = ["${port_name}"]
-        args = [
+        args         = [
           "--port", "${port_number}",
         ]
       }

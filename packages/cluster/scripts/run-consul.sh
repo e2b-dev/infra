@@ -415,6 +415,10 @@ function setup_dns_resolving {
     # Token is created on the leader node, so there's no problem with duplication
     touch dns-request-policy.hcl
     cat <<EOF >dns-request-policy.hcl
+service_prefix "" {
+  policy = "write"
+}
+
 node_prefix "" {
   policy = "read"
 }

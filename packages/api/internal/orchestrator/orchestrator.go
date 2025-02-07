@@ -45,7 +45,7 @@ func New(
 		logger.Info("Running locally, skipping starting DNS server")
 	} else {
 		logger.Info("Starting DNS server")
-		dnsServer.Start(ctx, "127.0.0.4", 53)
+		dnsServer.Start(ctx, "0.0.0.0", 5353)
 	}
 
 	slogger := logger.Sugar()
