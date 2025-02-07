@@ -217,7 +217,7 @@ func main() {
 	// pass the signal context so that handlers know when shutdown is happening.
 	s := NewGinServer(ctx, apiStore, swagger, port)
 
-	//////////////////////////
+	// ////////////////////////
 	//
 	// Start the HTTP service
 
@@ -268,6 +268,13 @@ func main() {
 	go func() {
 		defer wg.Done()
 		<-signalCtx.Done()
+
+		// Start returning 503s for health checks
+		// to signal that the service is shutting down.
+		// This is a bit of a hack, but this way we can properly propagate
+		// the health status to the load balancer.
+		apiStore.Healthy = false
+		time.Sleep(15 * time.Second)
 
 		// if the parent context `ctx` is canceled the
 		// shutdown will return early. This should only happen
