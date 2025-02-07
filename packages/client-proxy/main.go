@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"os/signal"
 	"strings"
 	"sync"
@@ -105,15 +106,17 @@ func main() {
 	}
 
 	healthServer := http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
+
+	wg.Add(1)
 	go func() {
 		// Health check
+		defer wg.Done()
 		healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			logger.Debug("Health check")
 			writer.WriteHeader(http.StatusOK)
 		})
 
 		logger.Info("starting health check server", zap.Int("port", healthCheckPort))
-		wg.Add(1)
 		err := healthServer.ListenAndServe()
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
@@ -125,15 +128,15 @@ func main() {
 			// this probably shouldn't happen...
 			logger.Error("http service exited without error", zap.Int("port", port))
 		}
-		wg.Done()
 	}()
 
 	// Proxy request to the correct node
 	server := http.Server{Addr: fmt.Sprintf(":%d", port)}
 	server.Handler = http.HandlerFunc(proxy(logger))
 
+	wg.Add(1)
 	go func() {
-		wg.Add(1)
+		defer wg.Done()
 		<-signalCtx.Done()
 		logger.Info("shutting down http service", zap.Int("port", port))
 		if err := healthServer.Shutdown(ctx); err != nil {
@@ -147,7 +150,6 @@ func main() {
 			exitCode.Add(1)
 			logger.Error("http service shutdown error", zap.Int("port", port), zap.Error(err))
 		}
-		wg.Done()
 	}()
 
 	logger.Info("http service starting", zap.Int("port", port))
@@ -164,4 +166,7 @@ func main() {
 		logger.Error("http service exited without error", zap.Int("port", port))
 	}
 	wg.Wait()
+
+	// Exit, with appropriate code.
+	os.Exit(int(exitCode.Load()))
 }
