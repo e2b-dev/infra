@@ -430,14 +430,15 @@ service_prefix "" {
 }
 EOF
       consul acl policy create -name "dns-request-policy" -rules @dns-request-policy.hcl -token="${consul_token}"
-      consul acl token create -secret "${dns_request_token}" -description "DNS Request Token" -policy-name "dns-request-policy" -token="${consul_token}" > /tmp/dns-request-token
-      consul acl token update -id "${dns_request_token}" -policy-name "register-service-policy" -token="${consul_token}"
+      consul acl policy create -name "register-service-policy" -rules @register-service-policy.hcl -token="a59fafb6-6829-9e31-9787-6a07c8ea586d"
+      consul acl token create -secret "${dns_request_token}" -description "Client Token" -policy-name "dns-request-policy" -policy-name "register-service-policy" -token="${consul_token}"
       rm dns-request-policy.hcl
+      rm register-service-policy.hcl
   fi
 
 
   consul acl set-agent-token -token="${consul_token}" default "${dns_request_token}"
-  log_info "DNS Request Token set"
+  log_info "Client token set"
 }
 
 # Based on: http://unix.stackexchange.com/a/7732/215969
