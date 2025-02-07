@@ -8,16 +8,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"go.opentelemetry.io/otel"
 )
 
 const (
@@ -296,4 +302,141 @@ func (suite *SandboxTestSuite) createSandbox(ramMb, vCpu int64) (*Sandbox, *Clea
 	}
 
 	return sbx, cleanup, nil
+}
+
+type mockSnapshotProvider struct {
+	mock.Mock
+}
+
+func (m *mockSnapshotProvider) PauseVM(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockSnapshotProvider) DisableUffd() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
+func (m *mockSnapshotProvider) CreateVMSnapshot(ctx context.Context, tracer trace.Tracer, snapfilePath string, memfilePath string) error {
+	args := m.Called(ctx, tracer, snapfilePath, memfilePath)
+	return args.Error(0)
+}
+
+func (m *mockSnapshotProvider) ExportRootfs(ctx context.Context, diffFile *build.LocalDiffFile, stop func() error) (*bitset.BitSet, error) {
+	args := m.Called(ctx, diffFile, stop)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*bitset.BitSet), args.Error(1)
+}
+
+func (m *mockSnapshotProvider) FlushRootfs(rootfsPath string) error {
+	args := m.Called(rootfsPath)
+	return args.Error(0)
+}
+
+func (m *mockSnapshotProvider) GetDirtyPages() *bitset.BitSet {
+	args := m.Called()
+	return args.Get(0).(*bitset.BitSet)
+}
+
+func (m *mockSnapshotProvider) GetMemfilePageSize() int64 {
+	args := m.Called()
+	return args.Get(0).(int64)
+}
+
+func (m *mockSnapshotProvider) GetRootfsPath() (string, error) {
+	args := m.Called()
+	return args.String(0), args.Error(1)
+}
+
+type mockTemplateProvider struct {
+	mock.Mock
+}
+
+func (m *mockTemplateProvider) Memfile() (*template.Storage, error) {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*template.Storage), args.Error(1)
+}
+
+func (m *mockTemplateProvider) Rootfs() (*template.Storage, error) {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*template.Storage), args.Error(1)
+}
+
+func TestCreateSnapshot(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupMocks     func(*mockSnapshotProvider, *mockTemplateProvider)
+		expectedError  string
+		expectedResult *Snapshot
+	}{
+		{
+			name: "successful snapshot",
+			setupMocks: func(sp *mockSnapshotProvider, tp *mockTemplateProvider) {
+				sp.On("PauseVM", mock.Anything).Return(nil)
+				sp.On("DisableUffd").Return(nil)
+				sp.On("CreateVMSnapshot", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+				dirtyPages := bitset.New(64)
+				dirtyPages.Set(1)
+				sp.On("GetDirtyPages").Return(dirtyPages)
+
+				// ... setup other expectations ...
+			},
+			expectedError:  "",
+			expectedResult: &Snapshot{
+				// ... expected snapshot data ...
+			},
+		},
+		{
+			name: "pause VM fails",
+			setupMocks: func(sp *mockSnapshotProvider, tp *mockTemplateProvider) {
+				sp.On("PauseVM", mock.Anything).Return(errors.New("pause failed"))
+			},
+			expectedError:  "failed to pause VM",
+			expectedResult: nil,
+		},
+		// ... more test cases ...
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockSP := &mockSnapshotProvider{}
+			mockTP := &mockTemplateProvider{}
+
+			if tt.setupMocks != nil {
+				tt.setupMocks(mockSP, mockTP)
+			}
+
+			sandbox := &Sandbox{}
+			result, err := sandbox.createSnapshot(
+				context.Background(),
+				nil, // tracer
+				uuid.New(),
+				&storage.TemplateCacheFiles{},
+				mockSP,
+				mockTP,
+				func() {}, // release lock
+			)
+
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedResult, result)
+			}
+
+			mockSP.AssertExpectations(t)
+			mockTP.AssertExpectations(t)
+		})
+	}
 }
