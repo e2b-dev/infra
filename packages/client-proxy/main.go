@@ -116,7 +116,6 @@ func main() {
 
 	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
 	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		logger.Debug("Health check")
 		writer.WriteHeader(http.StatusOK)
 	})
 
@@ -146,9 +145,14 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		// make sure to cancel the parent context before this
+		// goroutine returns, so that in the case of a panic
+		// or error here, the other thread won't block until
+		// signaled.
+		defer sigCancel()
 
 		logger.Info("http service starting", zap.Int("port", port))
-		err = server.ListenAndServe()
+		err := server.ListenAndServe()
 		// Add different handling for the error
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
