@@ -70,7 +70,7 @@ UPDATE teams
 SET slug =
   CASE
     WHEN t.slug_count = 1 THEN t.base_slug
-    ELSE t.base_slug || '-' || SUBSTRING(teams.id::text, 1, 8)
+    ELSE t.base_slug || '-' || SUBSTRING(teams.id::text, 1, 4)
   END
 FROM numbered_teams t
 WHERE teams.id = t.id;
