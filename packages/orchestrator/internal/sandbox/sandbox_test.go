@@ -24,6 +24,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -74,12 +76,20 @@ type SandboxTestSuite struct {
 	parent context.Context
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	sandboxId string
+	teamId    string
+	tracer    trace.Tracer
+	logger    *logs.SandboxLogger
 }
 
 func NewSandboxTestSuite(
 	ctx context.Context,
 	env *env,
 ) *SandboxTestSuite {
+	sandboxId := "test-sandbox-1"
+	teamId := "test-team"
+
 	db, err := db.NewClient()
 	if err != nil {
 		panic(fmt.Sprintf("failed to create db client: %v", err))
@@ -92,13 +102,15 @@ func NewSandboxTestSuite(
 	}
 
 	return &SandboxTestSuite{
-		env:    env,
-		parent: ctx,
-
+		env:       env,
+		parent:    ctx,
+		sandboxId: sandboxId,
+		teamId:    teamId,
+		tracer:    otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId)),
+		logger:    logs.NewSandboxLogger(sandboxId, template.TemplateID, teamId, 2, 512, false),
 		vars: vars{
-			templateId: template.TemplateID,
-			buildId:    template.BuildID,
-
+			templateId:    template.TemplateID,
+			buildId:       template.BuildID,
 			fcVersion:     build.FirecrackerVersion,
 			kernelVersion: build.KernelVersion,
 			envdVersion:   *build.EnvdVersion,
@@ -119,38 +131,30 @@ func TestSandboxTestSuite(t *testing.T) {
 }
 
 func (suite *SandboxTestSuite) SetupTest() {
-	ctx, cancel := context.WithCancel(suite.parent)
-
-	suite.ctx = ctx
-	suite.cancel = cancel
+	suite.ctx, suite.cancel = context.WithCancel(suite.parent)
 }
 
 func (suite *SandboxTestSuite) TearDownTest() {
-	suite.ctx = nil
-	suite.cancel()
+	if suite.cancel != nil {
+		suite.cancel()
+	}
 }
 
 func (suite *SandboxTestSuite) TestNewSandbox() {
 	sbx, cleanup, err := suite.createSandbox(512, 2)
-	if err != nil {
-		suite.T().Fatalf("failed to create sandbox: %v", err)
-	}
+	suite.Require().NoError(err)
 	defer cleanup.Run()
 
-	suite.Assert().NotNil(sbx)
+	suite.Require().NotNil(sbx)
 }
 
-func (suite *SandboxTestSuite) TestSnapshot() {
+func (suite *SandboxTestSuite) TestSandboxSnapshot() {
 	sbx, cleanup, err := suite.createSandbox(512, 2)
-	if err != nil {
-		suite.T().Fatalf("failed to create sandbox: %v", err)
-	}
+	suite.Require().NoError(err)
 	defer cleanup.Run()
 
 	snapshot, err := suite.snapshotSandbox(sbx)
-	if err != nil {
-		suite.T().Fatalf("failed to snapshot sandbox: %v", err)
-	}
+	suite.Require().NoError(err)
 
 	suite.Assert().NotNil(snapshot)
 }
@@ -158,6 +162,7 @@ func (suite *SandboxTestSuite) TestSnapshot() {
 func genericBenchmarkSandbox(b *testing.B, ramMb, vCpu int64) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
 	lEnv, err := prepareEnv(ctx, b)
 	if err != nil {
 		b.Fatalf("failed to prepare environment: %v", err)
@@ -167,21 +172,23 @@ func genericBenchmarkSandbox(b *testing.B, ramMb, vCpu int64) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
+		suite.SetupTest()
 
-		func() {
-			suite.SetupTest()
-			defer suite.TearDownTest()
+		sbx, cleanup, err := suite.createSandbox(ramMb, vCpu)
+		if err != nil {
+			b.Fatalf("failed to create sandbox: %v", err)
+		}
 
-			sbx, cleanup, err := suite.createSandbox(ramMb, vCpu)
-			if err != nil {
-				b.Fatalf("failed to create sandbox: %v", err)
-			}
-			defer cleanup.Run()
+		b.StartTimer()
+		_, err = suite.snapshotSandbox(sbx)
+		b.StopTimer()
 
-			b.StartTimer()
-			suite.snapshotSandbox(sbx)
-			b.StopTimer()
-		}()
+		cleanup.Run()
+		suite.TearDownTest()
+
+		if err != nil {
+			b.Fatalf("failed to snapshot sandbox: %v", err)
+		}
 	}
 }
 
@@ -193,46 +200,43 @@ func BenchmarkCreate(b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to prepare environment: %v", err)
 	}
-
 	suite := NewSandboxTestSuite(ctx, lEnv)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
+		suite.SetupTest()
 
-		func() {
-			suite.SetupTest()
-			defer suite.TearDownTest()
+		b.StartTimer()
+		_, cleanup, err := suite.createSandbox(512, 2)
+		b.StopTimer()
 
-			b.StartTimer()
-			_, cleanup, err := suite.createSandbox(512, 2)
-			b.StopTimer()
-			if err != nil {
-				b.Fatalf("failed to create sandbox: %v", err)
-			}
-			defer cleanup.Run()
-		}()
+		if err != nil {
+			b.Fatalf("failed to create sandbox: %v", err)
+		}
+		cleanup.Run()
+		suite.TearDownTest()
 	}
 }
 
-func BenchmarkSnapshot512(b *testing.B) {
-	genericBenchmarkSandbox(b, 512, 1)
-}
+func BenchmarkSandboxSnapshot(b *testing.B) {
+	tests := []struct {
+		name  string
+		ramMb int64
+		vCpu  int64
+	}{
+		{"512MB", 512, 1},
+		{"1GB", 1024, 1},
+		{"2GB", 2 * 1024, 1},
+		{"4GB", 4 * 1024, 1},
+		{"8GB", 8 * 1024, 1},
+	}
 
-func BenchmarkSnapshot1024(b *testing.B) {
-	genericBenchmarkSandbox(b, 1024, 1)
-}
-
-func BenchmarkSnapshot2048(b *testing.B) {
-	genericBenchmarkSandbox(b, 2*1024, 1)
-}
-
-func BenchmarkSnapshot4096(b *testing.B) {
-	genericBenchmarkSandbox(b, 4*1024, 1)
-}
-
-func BenchmarkSnapshot8192(b *testing.B) {
-	genericBenchmarkSandbox(b, 8*1024, 1)
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			genericBenchmarkSandbox(b, tt.ramMb, tt.vCpu)
+		})
+	}
 }
 
 func (suite *SandboxTestSuite) snapshotSandbox(sbx *Sandbox) (*Snapshot, error) {
@@ -253,7 +257,7 @@ func (suite *SandboxTestSuite) snapshotSandbox(sbx *Sandbox) (*Snapshot, error) 
 	}
 	defer os.RemoveAll(snapshotTemplateFiles.CacheDir())
 
-	snapshot, err := sbx.Snapshot(suite.ctx, otel.Tracer("orchestrator-mock"), snapshotTemplateFiles, func() {})
+	snapshot, err := sbx.Snapshot(suite.ctx, suite.tracer, snapshotTemplateFiles, func() {})
 	if err != nil {
 		return nil, fmt.Errorf("failed to snapshot sandbox: %s", err)
 	}
@@ -262,17 +266,11 @@ func (suite *SandboxTestSuite) snapshotSandbox(sbx *Sandbox) (*Snapshot, error) 
 }
 
 func (suite *SandboxTestSuite) createSandbox(ramMb, vCpu int64) (*Sandbox, *Cleanup, error) {
-	sandboxId := "test-sandbox-1"
-	teamId := "test-team"
-
-	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
-	childCtx, _ := tracer.Start(suite.ctx, "mock-sandbox")
-
-	logger := logs.NewSandboxLogger(sandboxId, suite.vars.templateId, teamId, vCpu, ramMb, false)
+	childCtx, _ := suite.tracer.Start(suite.ctx, "mock-sandbox")
 
 	sbx, cleanup, err := NewSandbox(
 		childCtx,
-		tracer,
+		suite.tracer,
 		suite.env.dnsServer,
 		suite.env.networkPool,
 		suite.env.templateCache,
@@ -280,11 +278,11 @@ func (suite *SandboxTestSuite) createSandbox(ramMb, vCpu int64) (*Sandbox, *Clea
 			TemplateId:         suite.vars.templateId,
 			FirecrackerVersion: suite.vars.fcVersion,
 			KernelVersion:      suite.vars.kernelVersion,
-			TeamId:             teamId,
+			TeamId:             suite.teamId,
 			BuildId:            suite.vars.buildId,
 			HugePages:          true,
 			MaxSandboxLength:   1,
-			SandboxId:          sandboxId,
+			SandboxId:          suite.sandboxId,
 			EnvdVersion:        suite.vars.envdVersion,
 			RamMb:              ramMb,
 			Vcpu:               vCpu,
@@ -292,7 +290,7 @@ func (suite *SandboxTestSuite) createSandbox(ramMb, vCpu int64) (*Sandbox, *Clea
 		"trace-test-1",
 		time.Now(),
 		time.Now(),
-		logger,
+		suite.logger,
 		false,
 		suite.vars.templateId,
 	)
