@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -70,8 +71,17 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(
 
 		for _, stream := range value {
 			for _, entry := range stream.Entries {
+				var entryLine struct {
+					Timestamp time.Time `json:"timestamp"`
+				}
+				if err := json.Unmarshal([]byte(entry.Line), &entryLine); err != nil {
+					errMsg := fmt.Errorf("error unmarshaling entry line for timestamp: %w", err)
+					telemetry.ReportCriticalError(ctx, errMsg)
+					a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error processing logs for sandbox '%s'", sandboxID))
+					return
+				}
 				logs = append(logs, api.SandboxLog{
-					Timestamp: entry.Timestamp,
+					Timestamp: entryLine.Timestamp,
 					Line:      entry.Line,
 				})
 			}
