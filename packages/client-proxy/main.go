@@ -39,6 +39,13 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 		logger.Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
 		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.dev)
+		hostSplit := strings.Split(r.Host, "-")
+		if len(hostSplit) < 2 {
+			logger.Warn("invalid host", zap.String("host", r.Host))
+			http.Error(w, "Invalid host", http.StatusBadRequest)
+			return
+		}
+
 		sandboxID := strings.Split(r.Host, "-")[1]
 		msg := new(dns.Msg)
 
