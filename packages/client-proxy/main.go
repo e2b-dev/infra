@@ -4,21 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"math/rand"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os/signal"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/miekg/dns"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 )
 
 const (
@@ -34,7 +35,7 @@ var client = new(dns.Client)
 
 func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		logger.Debug("Request for %s %s", r.Host, r.URL.Path)
+		logger.Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
 		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.dev)
 		sandboxID := strings.Split(r.Host, "-")[1]
@@ -43,24 +44,26 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 		// Set the question
 		msg.SetQuestion(fmt.Sprintf("%s.", sandboxID), dns.TypeA)
 
-		var resp *dns.Msg
+		var node string
 		var err error
 		for i := range maxRetries {
 			// Send the query to the server
-			resp, _, err = client.Exchange(msg, dnsServer)
+			resp, _, dnsErr := client.Exchange(msg, dnsServer)
 
 			// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
-			if err != nil || len(resp.Answer) == 0 {
-				logger.Warnf("[%d] Host for sandbox %s not found: %s", i+1, sandboxID, err)
-
+			if dnsErr != nil || len(resp.Answer) == 0 {
+				err = dnsErr
+				logger.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxID, err), zap.String("sandbox_id", sandboxID), zap.Error(err), zap.Int("retry", i+1))
 				// Jitter
 				time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 
 				continue
 			}
 
+			node = resp.Answer[0].(*dns.A).A.String()
 			// The sandbox was not found, we want to return this information to the user
-			if resp.Answer[0].String() == "localhost" {
+			if node == "127.0.0.1" {
+				logger.Warn("Sandbox not found", zap.String("sandbox_id", sandboxID))
 				w.WriteHeader(http.StatusBadGateway)
 				w.Write([]byte("Sandbox not found"))
 
@@ -71,17 +74,17 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 		}
 
 		// There's no answer, we can't proxy the request
-		if err != nil || len(resp.Answer) == 0 {
-			logger.Errorf("DNS resolving for %s failed: %s", sandboxID, err)
+		if err != nil {
+			logger.Error("DNS resolving for failed", zap.String("sandbox_id", sandboxID), zap.Error(err))
 			http.Error(w, "Host not found", http.StatusBadGateway)
 			return
 		}
 
 		// We've resolved the node to proxy the request to
-		logger.Debugf("Proxying request for %s to %s", sandboxID, resp.Answer[0].String())
+		logger.Debug("proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
 		targetUrl := &url.URL{
 			Scheme: "http",
-			Host:   fmt.Sprintf("%s:%d", resp.Answer[0].(*dns.A).A.String(), sandboxPort),
+			Host:   fmt.Sprintf("%s:%d", node, sandboxPort),
 		}
 
 		// Proxy the request
@@ -90,6 +93,7 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 }
 func main() {
 	exitCode := atomic.Int32{}
+	wg := sync.WaitGroup{}
 
 	ctx := context.Background()
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
@@ -97,7 +101,7 @@ func main() {
 
 	logger, err := logging.New(env.IsLocal())
 	if err != nil {
-		log.Fatalf("error creating logger: %v", err)
+		panic(fmt.Errorf("error creating logger: %v", err))
 	}
 
 	healthServer := http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
@@ -108,11 +112,20 @@ func main() {
 			writer.WriteHeader(http.StatusOK)
 		})
 
+		logger.Info("starting health check server", zap.Int("port", healthCheckPort))
+		wg.Add(1)
 		err := healthServer.ListenAndServe()
-		if err != nil {
-			// Add different handling for the error
-			logger.Infof("server error: %v", err)
+		switch {
+		case errors.Is(err, http.ErrServerClosed):
+			logger.Info("http service shutdown successfully", zap.Int("port", port))
+		case err != nil:
+			exitCode.Add(1)
+			logger.Error("http service encountered error", zap.Int("port", port), zap.Error(err))
+		default:
+			// this probably shouldn't happen...
+			logger.Error("http service exited without error", zap.Int("port", port))
 		}
+		wg.Done()
 	}()
 
 	// Proxy request to the correct node
@@ -120,31 +133,35 @@ func main() {
 	server.Handler = http.HandlerFunc(proxy(logger))
 
 	go func() {
+		wg.Add(1)
 		<-signalCtx.Done()
-		logger.Infof("shutting down http service (%d)", healthCheckPort)
+		logger.Info("shutting down http service", zap.Int("port", port))
 		if err := healthServer.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
-			logger.Errorf("http service (%d) shutdown error: %v", healthCheckPort, err)
+			logger.Error("http service shutdown error", zap.Int("port", healthCheckPort), zap.Error(err))
 		}
 
-		logger.Infof("shutting down http service (%d)", port)
+		logger.Info("shutting down http service", zap.Int("port", port))
 
 		if err := server.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
-			logger.Errorf("http service (%d) shutdown error: %v", port, err)
+			logger.Error("http service shutdown error", zap.Int("port", port), zap.Error(err))
 		}
+		wg.Done()
 	}()
 
+	logger.Info("http service starting", zap.Int("port", port))
 	err = server.ListenAndServe()
 	// Add different handling for the error
 	switch {
 	case errors.Is(err, http.ErrServerClosed):
-		log.Printf("http service (%d) shutdown successfully", port)
+		logger.Info("http service shutdown successfully", zap.Int("port", port))
 	case err != nil:
 		exitCode.Add(1)
-		log.Printf("http service (%d) encountered error: %v", port, err)
+		logger.Error("http service encountered error", zap.Int("port", port), zap.Error(err))
 	default:
 		// this probably shouldn't happen...
-		log.Printf("http service (%d) exited without error", port)
+		logger.Error("http service exited without error", zap.Int("port", port))
 	}
+	wg.Wait()
 }
