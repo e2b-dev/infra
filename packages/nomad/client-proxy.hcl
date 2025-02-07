@@ -34,10 +34,10 @@ job "client-proxy" {
       driver = "docker"
 
       resources {
+        memory_max = 4096
         memory     = 1024
-        cpu        = 256
+        cpu        = 1000
       }
-
 
       config {
         network_mode = "host"

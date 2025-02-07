@@ -91,7 +91,7 @@ job "logs-collector" {
       resources {
         memory_max = 4096
         memory     = 512
-        cpu        = 512
+        cpu        = 500
       }
 
       template {
