@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"syscall"
 
@@ -10,7 +11,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/bits-and-blooms/bitset"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -47,8 +47,8 @@ func (p *sandboxSnapshotProvider) GetMemfilePageSize() int64 {
 	return p.files.MemfilePageSize()
 }
 
-func (p *sandboxSnapshotProvider) ExportRootfs(ctx context.Context, diffFile *build.LocalDiffFile, onStop func() error) (*bitset.BitSet, error) {
-	return p.rootfs.Export(ctx, diffFile, onStop)
+func (p *sandboxSnapshotProvider) ExportRootfs(ctx context.Context, out io.Writer, stopSandbox func() error) (*bitset.BitSet, error) {
+	return p.rootfs.Export(ctx, out, stopSandbox)
 }
 
 // FlushRootfsNBD flushes the NBD device to the local NBD backend

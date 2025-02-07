@@ -6,7 +6,8 @@ import (
 	context "context"
 
 	bitset "github.com/bits-and-blooms/bitset"
-	build "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+
+	io "io"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -120,9 +121,9 @@ func (_c *SnapshotProvider_DisableUffd_Call) RunAndReturn(run func() error) *Sna
 	return _c
 }
 
-// ExportRootfs provides a mock function with given fields: ctx, diffFile, onStop
-func (_m *SnapshotProvider) ExportRootfs(ctx context.Context, diffFile *build.LocalDiffFile, onStop func() error) (*bitset.BitSet, error) {
-	ret := _m.Called(ctx, diffFile, onStop)
+// ExportRootfs provides a mock function with given fields: ctx, out, stopSandbox
+func (_m *SnapshotProvider) ExportRootfs(ctx context.Context, out io.Writer, stopSandbox func() error) (*bitset.BitSet, error) {
+	ret := _m.Called(ctx, out, stopSandbox)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ExportRootfs")
@@ -130,19 +131,19 @@ func (_m *SnapshotProvider) ExportRootfs(ctx context.Context, diffFile *build.Lo
 
 	var r0 *bitset.BitSet
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *build.LocalDiffFile, func() error) (*bitset.BitSet, error)); ok {
-		return rf(ctx, diffFile, onStop)
+	if rf, ok := ret.Get(0).(func(context.Context, io.Writer, func() error) (*bitset.BitSet, error)); ok {
+		return rf(ctx, out, stopSandbox)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *build.LocalDiffFile, func() error) *bitset.BitSet); ok {
-		r0 = rf(ctx, diffFile, onStop)
+	if rf, ok := ret.Get(0).(func(context.Context, io.Writer, func() error) *bitset.BitSet); ok {
+		r0 = rf(ctx, out, stopSandbox)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*bitset.BitSet)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *build.LocalDiffFile, func() error) error); ok {
-		r1 = rf(ctx, diffFile, onStop)
+	if rf, ok := ret.Get(1).(func(context.Context, io.Writer, func() error) error); ok {
+		r1 = rf(ctx, out, stopSandbox)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -157,15 +158,15 @@ type SnapshotProvider_ExportRootfs_Call struct {
 
 // ExportRootfs is a helper method to define mock.On call
 //   - ctx context.Context
-//   - diffFile *build.LocalDiffFile
-//   - onStop func() error
-func (_e *SnapshotProvider_Expecter) ExportRootfs(ctx interface{}, diffFile interface{}, onStop interface{}) *SnapshotProvider_ExportRootfs_Call {
-	return &SnapshotProvider_ExportRootfs_Call{Call: _e.mock.On("ExportRootfs", ctx, diffFile, onStop)}
+//   - out io.Writer
+//   - stopSandbox func() error
+func (_e *SnapshotProvider_Expecter) ExportRootfs(ctx interface{}, out interface{}, stopSandbox interface{}) *SnapshotProvider_ExportRootfs_Call {
+	return &SnapshotProvider_ExportRootfs_Call{Call: _e.mock.On("ExportRootfs", ctx, out, stopSandbox)}
 }
 
-func (_c *SnapshotProvider_ExportRootfs_Call) Run(run func(ctx context.Context, diffFile *build.LocalDiffFile, onStop func() error)) *SnapshotProvider_ExportRootfs_Call {
+func (_c *SnapshotProvider_ExportRootfs_Call) Run(run func(ctx context.Context, out io.Writer, stopSandbox func() error)) *SnapshotProvider_ExportRootfs_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*build.LocalDiffFile), args[2].(func() error))
+		run(args[0].(context.Context), args[1].(io.Writer), args[2].(func() error))
 	})
 	return _c
 }
@@ -175,7 +176,7 @@ func (_c *SnapshotProvider_ExportRootfs_Call) Return(_a0 *bitset.BitSet, _a1 err
 	return _c
 }
 
-func (_c *SnapshotProvider_ExportRootfs_Call) RunAndReturn(run func(context.Context, *build.LocalDiffFile, func() error) (*bitset.BitSet, error)) *SnapshotProvider_ExportRootfs_Call {
+func (_c *SnapshotProvider_ExportRootfs_Call) RunAndReturn(run func(context.Context, io.Writer, func() error) (*bitset.BitSet, error)) *SnapshotProvider_ExportRootfs_Call {
 	_c.Call.Return(run)
 	return _c
 }

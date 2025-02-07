@@ -2,11 +2,11 @@ package sandbox
 
 import (
 	"context"
+	"io"
 
 	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -24,7 +24,7 @@ type SnapshotProvider interface {
 	GetMemfilePageSize() int64
 
 	// Rootfs operations
-	ExportRootfs(ctx context.Context, diffFile *build.LocalDiffFile, onStop func() error) (*bitset.BitSet, error)
+	ExportRootfs(ctx context.Context, out io.Writer, stopSandbox func() error) (*bitset.BitSet, error)
 	FlushRootfsNBD() error
 }
 
