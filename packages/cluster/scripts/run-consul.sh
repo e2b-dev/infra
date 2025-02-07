@@ -415,10 +415,6 @@ function setup_dns_resolving {
     # Token is created on the leader node, so there's no problem with duplication
     touch dns-request-policy.hcl
     cat <<EOF >dns-request-policy.hcl
-service_prefix "" {
-  policy = "write"
-}
-
 node_prefix "" {
   policy = "read"
 }
@@ -426,8 +422,16 @@ service_prefix "" {
   policy = "read"
 }
 EOF
+
+    touch register-service-policy.hcl
+    cat <<EOF >register-service-policy.hcl
+service_prefix "" {
+  policy = "write"
+}
+EOF
       consul acl policy create -name "dns-request-policy" -rules @dns-request-policy.hcl -token="${consul_token}"
       consul acl token create -secret "${dns_request_token}" -description "DNS Request Token" -policy-name "dns-request-policy" -token="${consul_token}" > /tmp/dns-request-token
+      consul acl token update -id "${dns_request_token}" -policy-name "register-service-policy" -token="${consul_token}"
       rm dns-request-policy.hcl
   fi
 
