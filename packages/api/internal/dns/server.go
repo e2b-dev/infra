@@ -159,7 +159,7 @@ var errOnStartup = errors.New("failed to start DNS server")
 
 func CheckErrOnStartup(err error) bool { return errors.Is(err, errOnStartup) }
 
-func (d *DNS) Start(ctx context.Context, address string, port int) {
+func (d *DNS) Start(ctx context.Context, address string, port string) {
 	if d.srv != nil {
 		return
 	}
@@ -167,7 +167,7 @@ func (d *DNS) Start(ctx context.Context, address string, port int) {
 	// configure the underlying resolver service.
 	mux := resolver.NewServeMux()
 	mux.HandleFunc(".", func(w resolver.ResponseWriter, r *resolver.Msg) { d.handleDNSRequest(ctx, w, r) })
-	d.srv = &resolver.Server{Addr: fmt.Sprintf("%s:%d", address, port), Net: "udp", Handler: mux}
+	d.srv = &resolver.Server{Addr: fmt.Sprintf("%s:%s", address, port), Net: "udp", Handler: mux}
 
 	// setup error handling here: we want to catch the error from
 	// when the server starts.

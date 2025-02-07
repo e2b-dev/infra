@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"os"
 
 	"github.com/go-redis/redis/v8"
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -45,7 +46,7 @@ func New(
 		logger.Info("Running locally, skipping starting DNS server")
 	} else {
 		logger.Info("Starting DNS server")
-		dnsServer.Start(ctx, "0.0.0.0", 5353)
+		dnsServer.Start(ctx, "0.0.0.0", os.Getenv("DNS_PORT"))
 	}
 
 	slogger := logger.Sugar()
