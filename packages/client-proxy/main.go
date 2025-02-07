@@ -112,7 +112,7 @@ func main() {
 		panic(fmt.Errorf("error creating logger: %v", err))
 	}
 
-	healthServer := http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
+	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
 
 	wg.Add(1)
 	go func() {
@@ -138,7 +138,7 @@ func main() {
 	}()
 
 	// Proxy request to the correct node
-	server := http.Server{Addr: fmt.Sprintf(":%d", port)}
+	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
 	server.Handler = http.HandlerFunc(proxy(logger))
 
 	wg.Add(1)
