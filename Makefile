@@ -106,6 +106,7 @@ version:
 build-and-upload:
 	$(MAKE) -C packages/cluster-disk-image build
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/api build-and-upload
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/client-proxy build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/docker-reverse-proxy build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/template-manager build-and-upload

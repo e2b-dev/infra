@@ -5,6 +5,7 @@ use (
 	./packages/docker-reverse-proxy
 	./packages/envd
 	./packages/orchestrator
+	./packages/client-proxy
 	./packages/shared
 	./packages/template-manager
 )
