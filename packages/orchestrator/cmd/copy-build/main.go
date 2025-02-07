@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+
+	googleStorage "cloud.google.com/go/storage"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
@@ -45,11 +48,31 @@ func getReferencedData(ctx context.Context, bucket *gcs.BucketHandle, headerPath
 	return dataReferences, nil
 }
 
-func copyFromBucket(ctx context.Context, from *gcs.BucketHandle, to *gcs.BucketHandle, objectPath string) error {
+func copyFromBucket(ctx context.Context, from *gcs.BucketHandle, to *gcs.BucketHandle, objectPath string) (bool, error) {
 	fromObject := gcs.NewObject(ctx, from, objectPath)
+
+	fromSize, err := fromObject.Size()
+	if err != nil {
+		return false, fmt.Errorf("failed to get size of object: %w", err)
+	}
+
 	toObject := gcs.NewObject(ctx, to, objectPath)
 
-	return fromObject.Copy(ctx, toObject)
+	toSize, err := toObject.Size()
+	if err != nil && !errors.Is(err, googleStorage.ErrObjectNotExist) {
+		return false, fmt.Errorf("failed to get size of object: %w", err)
+	}
+
+	if fromSize == toSize {
+		return false, nil
+	}
+
+	err = fromObject.Copy(ctx, toObject)
+	if err != nil {
+		return false, fmt.Errorf("failed to copy object: %w", err)
+	}
+
+	return true, nil
 }
 
 func main() {
@@ -101,10 +124,16 @@ func main() {
 
 	for _, file := range filesToCopy {
 		fmt.Printf("Copying %s", file)
-		err := copyFromBucket(ctx, fromBucket, toBucket, file)
+
+		copied, err := copyFromBucket(ctx, fromBucket, toBucket, file)
 		if err != nil {
 			log.Fatalf("\nfailed to copy file: %s", err)
 		}
-		fmt.Printf(" done\n")
+
+		if copied {
+			fmt.Printf(" done\n")
+		} else {
+			fmt.Printf(" skipped\n")
+		}
 	}
 }

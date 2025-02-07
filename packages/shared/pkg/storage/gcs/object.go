@@ -159,6 +159,10 @@ func (o *Object) Size() (int64, error) {
 	defer cancel()
 
 	attrs, err := o.object.Attrs(ctx)
+	if errors.Is(err, storage.ErrObjectNotExist) {
+		return 0, storage.ErrObjectNotExist
+	}
+
 	if err != nil {
 		return 0, fmt.Errorf("failed to get GCS object (%s) attributes: %w", o.object.ObjectName(), err)
 	}
