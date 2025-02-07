@@ -114,15 +114,15 @@ func main() {
 	}
 
 	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
+	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		logger.Debug("Health check")
+		writer.WriteHeader(http.StatusOK)
+	})
 
 	wg.Add(1)
 	go func() {
 		// Health check
 		defer wg.Done()
-		healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			logger.Debug("Health check")
-			writer.WriteHeader(http.StatusOK)
-		})
 
 		logger.Info("starting health check server", zap.Int("port", healthCheckPort))
 		err := healthServer.ListenAndServe()
@@ -145,6 +145,25 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+
+		logger.Info("http service starting", zap.Int("port", port))
+		err = server.ListenAndServe()
+		// Add different handling for the error
+		switch {
+		case errors.Is(err, http.ErrServerClosed):
+			logger.Info("http service shutdown successfully", zap.Int("port", port))
+		case err != nil:
+			exitCode.Add(1)
+			logger.Error("http service encountered error", zap.Int("port", port), zap.Error(err))
+		default:
+			// this probably shouldn't happen...
+			logger.Error("http service exited without error", zap.Int("port", port))
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		<-signalCtx.Done()
 		logger.Info("shutting down http service", zap.Int("port", port))
 		if err := healthServer.Shutdown(ctx); err != nil {
@@ -160,19 +179,6 @@ func main() {
 		}
 	}()
 
-	logger.Info("http service starting", zap.Int("port", port))
-	err = server.ListenAndServe()
-	// Add different handling for the error
-	switch {
-	case errors.Is(err, http.ErrServerClosed):
-		logger.Info("http service shutdown successfully", zap.Int("port", port))
-	case err != nil:
-		exitCode.Add(1)
-		logger.Error("http service encountered error", zap.Int("port", port), zap.Error(err))
-	default:
-		// this probably shouldn't happen...
-		logger.Error("http service exited without error", zap.Int("port", port))
-	}
 	wg.Wait()
 
 	// Exit, with appropriate code.
