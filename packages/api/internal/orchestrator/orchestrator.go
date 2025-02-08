@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -23,7 +22,7 @@ type Orchestrator struct {
 	instanceCache *instance.InstanceCache
 	nodes         *smap.Map[*Node]
 	tracer        trace.Tracer
-	logger        logging.Logger
+	logger        *zap.SugaredLogger
 	analytics     *analyticscollector.Analytics
 	dns           *dns.DNS
 }
@@ -32,7 +31,7 @@ func New(
 	ctx context.Context,
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
-	logger logging.Logger,
+	logger *zap.Logger,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient *redis.Client,
 ) (*Orchestrator, error) {
@@ -50,10 +49,12 @@ func New(
 		dnsServer.Start(ctx, "0.0.0.0", os.Getenv("DNS_PORT"))
 	}
 
+	slogger := logger.Sugar()
+
 	o := Orchestrator{
 		analytics:   analyticsInstance,
 		nomadClient: nomadClient,
-		logger:      logger,
+		logger:      slogger,
 		tracer:      tracer,
 		nodes:       smap.New[*Node](),
 		dns:         dnsServer,
@@ -61,9 +62,9 @@ func New(
 
 	cache := instance.NewCache(
 		analyticsInstance.Client,
-		logger,
-		o.getInsertInstanceFunction(ctx, logger),
-		o.getDeleteInstanceFunction(ctx, posthogClient, logger),
+		slogger,
+		o.getInsertInstanceFunction(ctx, slogger),
+		o.getDeleteInstanceFunction(ctx, posthogClient, slogger),
 	)
 
 	o.instanceCache = cache

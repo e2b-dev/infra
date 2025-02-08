@@ -14,7 +14,6 @@ import (
 	resolver "github.com/miekg/dns"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -28,7 +27,7 @@ const cachedDnsPrefix = "sandbox.dns."
 
 type DNS struct {
 	srv    *resolver.Server
-	logger logging.Logger
+	logger *zap.Logger
 
 	remote *cache.Cache
 	local  *smap.Map[string]
@@ -40,7 +39,7 @@ type DNS struct {
 	}
 }
 
-func New(ctx context.Context, rc *redis.Client, logger logging.Logger) *DNS {
+func New(ctx context.Context, rc *redis.Client, logger *zap.Logger) *DNS {
 	d := &DNS{logger: logger}
 
 	if rc != nil {
