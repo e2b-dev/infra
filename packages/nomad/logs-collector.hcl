@@ -114,6 +114,10 @@ address = "0.0.0.0:${var.logs_port_number}"
 encoding = "json"
 path_key = "_path"
 
+
+[log_schema]
+  timestamp_key = "_timestamp" 
+
 [transforms.add_source_envd]
 type = "remap"
 inputs = ["envd"]
@@ -140,9 +144,16 @@ source = '''
 del(.internal)
 '''
 
+[transforms.use_real_timestamp]
+type = "remap"
+inputs = [ "remove_internal" ]
+source = '''
+._timestamp = parse_timestamp(.timestamp, "%+") ?? now()
+'''
+
 [sinks.local_loki_logs]
 type = "loki"
-inputs = [ "remove_internal" ]
+inputs = [ "use_real_timestamp" ]
 endpoint = "http://loki.service.consul:${var.loki_service_port_number}"
 encoding.codec = "json"
 
