@@ -85,6 +85,6 @@ mock-generate:
 test:
 	@sudo $(test_vars) go test ./internal/sandbox/ -v
 
-.PHONY: test-bench
-test-bench:
+.PHONY: benchmark
+benchmark:
 	@sudo $(test_vars) go test -bench=. ./internal/sandbox/ -benchtime=5x

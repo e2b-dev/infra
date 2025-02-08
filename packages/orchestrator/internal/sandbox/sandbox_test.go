@@ -31,6 +31,9 @@ import (
 const (
 	// envAlias is the alias of the base template to use for the sandbox
 	envAlias = "base"
+
+	// giB is the number of bytes in a gibibyte
+	giB = int64(1 << 30)
 )
 
 type env struct {
@@ -302,7 +305,7 @@ func (suite *SandboxTestSuite) createSandbox(ramMb, vCpu int64) (*Sandbox, *Clea
 	return sbx, cleanup, nil
 }
 
-func TestCreateSnapshot(t *testing.T) {
+func TestSnapshotLite(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	db, err := db.NewClient()
@@ -327,6 +330,61 @@ func TestCreateSnapshot(t *testing.T) {
 	os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
 	defer os.RemoveAll(snapshotTemplateFiles.CacheDir())
 
+	setupMocksWithMemory := func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider, memorySize int64) {
+		// Dummy mocks
+		sp.On("PauseVM", mock.Anything).Return(nil)
+		sp.On("DisableUffd").Return(nil)
+		sp.On("CreateVMSnapshot", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		sp.On("FlushRootfsNBD", mock.Anything).Return(nil)
+
+		// Memory setup
+		memoryPageSize := int64(4096)
+		memoryBlocks := uint(memorySize / memoryPageSize)
+		memoryData := make([]byte, int64(memoryBlocks)*memoryPageSize)
+
+		sp.On("GetMemfilePageSize").Return(memoryPageSize)
+
+		dirtyPages := bitset.New(memoryBlocks)
+		// Sets dirty pages (0-indexed)
+		dirtyPages.Set(1)
+		dirtyPages.Set(3)
+		sp.On("GetDirtyUffd").Return(dirtyPages)
+
+		// Rootfs setup
+		rootfsPageSize := int64(4096)
+		rootfsBlocks := uint(5 * giB / rootfsPageSize)
+
+		dirtyPagesRootfs := bitset.New(rootfsBlocks)
+		// Sets dirty pages (0-indexed)
+		dirtyPagesRootfs.Set(1)
+		dirtyPagesRootfs.Set(5)
+		// Creates a file with the rootfs data
+		rootfsData := make([]byte, int64(rootfsBlocks)*rootfsPageSize)
+		os.WriteFile(snapshotTemplateFiles.StorageRootfsPath(), rootfsData, 0644)
+		sp.On("ExportRootfs", mock.Anything, mock.Anything, mock.Anything).Return(dirtyPagesRootfs, nil)
+
+		// Headers
+		memStorageHeader := header.NewHeader(&header.Metadata{
+			Version:    1,
+			Size:       1024,
+			BlockSize:  uint64(memoryPageSize),
+			Generation: 1,
+			BuildId:    uuid.New(),
+		}, nil)
+		rootfsStorageHeader := header.NewHeader(&header.Metadata{
+			Version:    1,
+			Size:       1024,
+			BlockSize:  4096,
+			Generation: 1,
+			BuildId:    uuid.New(),
+		}, nil)
+		tp.On("MemfileHeader").Return(memStorageHeader, nil)
+		tp.On("RootfsHeader").Return(rootfsStorageHeader, nil)
+
+		// Create a temporary file with some content for the memfile snapshot
+		os.WriteFile(snapshotTemplateFiles.CacheMemfileFullSnapshotPath(), memoryData, 0644)
+	}
+
 	tests := []struct {
 		name           string
 		setupMocks     func(*mocks.SnapshotProvider, *mocks.TemplateProvider)
@@ -335,62 +393,45 @@ func TestCreateSnapshot(t *testing.T) {
 		expectedResult *Snapshot
 	}{
 		{
-			name: "successful snapshot - dirty pages",
+			name: "successful snapshot - 1 GiB memory",
 			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
-				// Dummy mocks
-				sp.On("PauseVM", mock.Anything).Return(nil)
-				sp.On("DisableUffd").Return(nil)
-				sp.On("CreateVMSnapshot", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-				sp.On("FlushRootfsNBD", mock.Anything).Return(nil)
-
-				GiB := int64(1 << 30)
-
-				// Memory setup
-				memoryPageSize := int64(4096)
-				memoryBlocks := uint(1 * GiB / memoryPageSize)
-				memoryData := make([]byte, int64(memoryBlocks)*memoryPageSize)
-
-				sp.On("GetMemfilePageSize").Return(memoryPageSize)
-
-				dirtyPages := bitset.New(memoryBlocks)
-				// Sets dirty pages (0-indexed)
-				dirtyPages.Set(1)
-				dirtyPages.Set(3)
-				sp.On("GetDirtyUffd").Return(dirtyPages)
-
-				// Rootfs setup
-				rootfsPageSize := int64(4096)
-				rootfsBlocks := uint(5 * GiB / rootfsPageSize)
-
-				dirtyPagesRootif := bitset.New(rootfsBlocks)
-				// Sets dirty pages (0-indexed)
-				dirtyPagesRootif.Set(1)
-				dirtyPagesRootif.Set(5)
-				// Creates a file with the rootfs data
-				rootfsData := make([]byte, int64(rootfsBlocks)*rootfsPageSize)
-				os.WriteFile(snapshotTemplateFiles.StorageRootfsPath(), rootfsData, 0644)
-				sp.On("ExportRootfs", mock.Anything, mock.Anything, mock.Anything).Return(dirtyPagesRootif, nil)
-
-				// Headers
-				memStorageHeader := header.NewHeader(&header.Metadata{
-					Version:    1,
-					Size:       1024,
-					BlockSize:  uint64(memoryPageSize),
-					Generation: 1,
-					BuildId:    uuid.New(),
-				}, nil)
-				rootfsStorageHeader := header.NewHeader(&header.Metadata{
-					Version:    1,
-					Size:       1024,
-					BlockSize:  4096,
-					Generation: 1,
-					BuildId:    uuid.New(),
-				}, nil)
-				tp.On("MemfileHeader").Return(memStorageHeader, nil)
-				tp.On("RootfsHeader").Return(rootfsStorageHeader, nil)
-
-				// Create a temporary file with some content for the memfile snapshot
-				os.WriteFile(snapshotTemplateFiles.CacheMemfileFullSnapshotPath(), memoryData, 0644)
+				setupMocksWithMemory(sp, tp, 1*giB)
+			},
+			closeMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
+				os.Remove(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
+				os.Remove(snapshotTemplateFiles.StorageRootfsPath())
+			},
+			expectedError:  "",
+			expectedResult: &Snapshot{},
+		},
+		{
+			name: "successful snapshot - 2 GiB memory",
+			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
+				setupMocksWithMemory(sp, tp, 2*giB)
+			},
+			closeMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
+				os.Remove(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
+				os.Remove(snapshotTemplateFiles.StorageRootfsPath())
+			},
+			expectedError:  "",
+			expectedResult: &Snapshot{},
+		},
+		{
+			name: "successful snapshot - 4 GiB memory",
+			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
+				setupMocksWithMemory(sp, tp, 4*giB)
+			},
+			closeMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
+				os.Remove(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
+				os.Remove(snapshotTemplateFiles.StorageRootfsPath())
+			},
+			expectedError:  "",
+			expectedResult: &Snapshot{},
+		},
+		{
+			name: "successful snapshot - 8 GiB memory",
+			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
+				setupMocksWithMemory(sp, tp, 8*giB)
 			},
 			closeMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
 				os.Remove(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
