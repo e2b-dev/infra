@@ -43,6 +43,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		if len(buildIDs) > 0 {
 			builds, err := a.db.Client.EnvBuild.Query().Where(envbuild.IDIn(buildIDs...)).All(ctx)
 			if err != nil {
+				a.logger.Errorf("error getting builds for running sandboxes: %s", err)
 				telemetry.ReportCriticalError(ctx, err)
 				return
 			}
@@ -92,6 +93,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	if params.State == nil || *params.State == api.GetSandboxesParamsStatePaused {
 		snapshotEnvs, err := a.db.GetTeamSnapshots(ctx, team.ID)
 		if err != nil {
+			a.logger.Errorf("error getting team snapshots: %s", err)
 			telemetry.ReportCriticalError(ctx, err)
 			return
 		}
@@ -110,7 +112,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 			}
 
 			sandbox := api.ListedSandbox{
-				ClientID:   "00000000",
+				ClientID:   "00000000", // for backwards compatibility we need to return a client id
 				TemplateID: e.ID,
 				SandboxID:  snapshot.SandboxID,
 				StartedAt:  snapshot.SandboxStartedAt,
@@ -134,6 +136,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		// Unescape query
 		query, err := url.QueryUnescape(*params.Query)
 		if err != nil {
+			a.logger.Errorf("error when unescaping query: %s", err)
+			telemetry.ReportCriticalError(ctx, err)
 			c.JSON(http.StatusBadRequest, "Error when unescaping query")
 
 			return
@@ -152,6 +156,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 			key, err := url.QueryUnescape(parts[0])
 			if err != nil {
+				a.logger.Errorf("error when unescaping key: %s", err)
+				telemetry.ReportCriticalError(ctx, err)
 				c.JSON(http.StatusBadRequest, "Error when unescaping key")
 
 				return
@@ -159,6 +165,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 			value, err := url.QueryUnescape(parts[1])
 			if err != nil {
+				a.logger.Errorf("error when unescaping value: %s", err)
+				telemetry.ReportCriticalError(ctx, err)
 				c.JSON(http.StatusBadRequest, "Error when unescaping value")
 
 				return

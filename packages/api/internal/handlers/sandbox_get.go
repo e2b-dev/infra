@@ -29,6 +29,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if *info.TeamID != team.ID {
+			a.logger.Errorf("sandbox %s doesn't exist or you don't have access to it", id)
 			c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 			return
 		}
@@ -36,6 +37,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		// Sandbox exists and belongs to the team - return running sandbox info
 		build, err := a.db.Client.EnvBuild.Query().Where(envbuild.ID(*info.BuildID)).First(ctx)
 		if err != nil {
+			a.logger.Errorf("error getting build for sandbox %s: %s", id, err)
 			telemetry.ReportCriticalError(ctx, err)
 			c.JSON(http.StatusInternalServerError, fmt.Sprintf("Error getting build for sandbox %s", id))
 			return
@@ -73,7 +75,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	// If sandbox not found try to get the latest snapshot
 	snapshot, build, err := a.db.GetLastSnapshot(ctx, sandboxId, team.ID)
 	if err != nil {
-		fmt.Println(err)
+		a.logger.Errorf("error getting last snapshot for sandbox %s: %s", id, err)
 		c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 		return
 	}
@@ -87,7 +89,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	sandbox := api.ListedSandbox{
-		ClientID:   "00000000",
+		ClientID:   "00000000", // for backwards compatibility we need to return a client id
 		TemplateID: snapshot.EnvID,
 		SandboxID:  snapshot.SandboxID,
 		StartedAt:  snapshot.SandboxStartedAt,
