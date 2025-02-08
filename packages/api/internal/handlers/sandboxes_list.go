@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"log"
 	"net/http"
 	"net/url"
 	"slices"
@@ -72,7 +71,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 					TemplateID: info.Instance.TemplateID,
 					Alias:      info.Instance.Alias,
 					SandboxID:  info.Instance.SandboxID,
-					StartedAt:  info.StartTime,
+					StartedAt:  &info.StartTime,
 					CpuCount:   cpuCount,
 					MemoryMB:   memoryMB,
 					EndAt:      info.EndTime,
@@ -101,8 +100,6 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		for _, e := range snapshotEnvs {
 			snapshotBuilds := e.Edges.Builds
 			snapshot := e.Edges.Snapshots[0]
-
-			log.Printf("snapshot %s, build count %d", snapshot.ID, len(snapshotBuilds))
 
 			memoryMB := int32(-1)
 			cpuCount := int32(-1)
@@ -197,7 +194,10 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	// Sort sandboxes by start time descending
 	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
-		return a.StartedAt.Compare(b.StartedAt)
+		if a.StartedAt == nil || b.StartedAt == nil {
+			return 0
+		}
+		return a.StartedAt.Compare(*b.StartedAt)
 	})
 
 	// Report analytics

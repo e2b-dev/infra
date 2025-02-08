@@ -77,7 +77,7 @@ type ListedSandbox struct {
 	SandboxID string `json:"sandboxID"`
 
 	// StartedAt Time when the sandbox was started
-	StartedAt time.Time `json:"startedAt"`
+	StartedAt *time.Time `json:"startedAt"`
 
 	// State State of the sandbox
 	State ListedSandboxState `json:"state"`
