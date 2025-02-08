@@ -20,24 +20,24 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
 	team := teamInfo.Team
 
-	telemetry.ReportEvent(ctx, "get running instance")
+	telemetry.ReportEvent(ctx, "get running sandbox")
 
 	sandboxId := strings.Split(id, "-")[0]
 
-	// Try to get the running instance first
+	// Try to get the running sandbox first
 	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
 	if err == nil {
-		// Check if instance belongs to the team
+		// Check if sandbox belongs to the team
 		if *info.TeamID != team.ID {
-			c.JSON(http.StatusNotFound, fmt.Sprintf("instance \"%s\" doesn't exist or you don't have access to it", id))
+			c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 			return
 		}
 
-		// Instance exists and belongs to the team - return running sandbox info
+		// Sandbox exists and belongs to the team - return running sandbox info
 		build, err := a.db.Client.EnvBuild.Query().Where(envbuild.ID(*info.BuildID)).First(ctx)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, err)
-			c.JSON(http.StatusInternalServerError, fmt.Sprintf("Error getting build for instance %s", id))
+			c.JSON(http.StatusInternalServerError, fmt.Sprintf("Error getting build for sandbox %s", id))
 			return
 		}
 
@@ -49,7 +49,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			memoryMB = int32(build.RAMMB)
 		}
 
-		instance := api.ListedSandbox{
+		sandbox := api.ListedSandbox{
 			ClientID:   info.Instance.ClientID,
 			TemplateID: info.Instance.TemplateID,
 			Alias:      info.Instance.Alias,
@@ -63,18 +63,18 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 		if info.Metadata != nil {
 			meta := api.SandboxMetadata(info.Metadata)
-			instance.Metadata = &meta
+			sandbox.Metadata = &meta
 		}
 
-		c.JSON(http.StatusOK, instance)
+		c.JSON(http.StatusOK, sandbox)
 		return
 	}
 
-	// If instance not found try to get the latest snapshot
+	// If sandbox not found try to get the latest snapshot
 	snapshot, build, err := a.db.GetLastSnapshot(ctx, sandboxId, team.ID)
 	if err != nil {
 		fmt.Println(err)
-		c.JSON(http.StatusNotFound, fmt.Sprintf("instance or snapshot \"%s\" doesn't exist or you don't have access to it", id))
+		c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 		return
 	}
 
@@ -86,8 +86,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		cpuCount = int32(build.Vcpu)
 	}
 
-	// optional
-	instance := api.ListedSandbox{
+	sandbox := api.ListedSandbox{
 		ClientID:   "00000000",
 		TemplateID: snapshot.EnvID,
 		SandboxID:  snapshot.SandboxID,
@@ -100,8 +99,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	if snapshot.Metadata != nil {
 		meta := api.SandboxMetadata(snapshot.Metadata)
-		instance.Metadata = &meta
+		sandbox.Metadata = &meta
 	}
 
-	c.JSON(http.StatusOK, instance)
+	c.JSON(http.StatusOK, sandbox)
 }

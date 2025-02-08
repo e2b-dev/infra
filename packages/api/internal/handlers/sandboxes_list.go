@@ -28,19 +28,19 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	// Initialize empty slice for results
 	sandboxes := make([]api.ListedSandbox, 0)
 
-	// Only fetch running instances if we need them (state is nil or "running")
+	// Only fetch running sandboxes if we need them (state is nil or "running")
 	if params.State == nil || *params.State == "running" {
-		instanceInfo := a.orchestrator.GetSandboxes(ctx, &team.ID)
+		sandboxInfo := a.orchestrator.GetSandboxes(ctx, &team.ID)
 
-		// Get build IDs for running instances
+		// Get build IDs for running sandboxes
 		buildIDs := make([]uuid.UUID, 0)
-		for _, info := range instanceInfo {
+		for _, info := range sandboxInfo {
 			if info.TeamID != nil && *info.TeamID == team.ID && info.BuildID != nil {
 				buildIDs = append(buildIDs, *info.BuildID)
 			}
 		}
 
-		// Only fetch builds if we have running instances
+		// Only fetch builds if we have running sandboxes
 		if len(buildIDs) > 0 {
 			builds, err := a.db.Client.EnvBuild.Query().Where(envbuild.IDIn(buildIDs...)).All(ctx)
 			if err != nil {
@@ -53,8 +53,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 				buildsMap[build.ID] = build
 			}
 
-			// Add running instances to results
-			for _, info := range instanceInfo {
+			// Add running sandboxes to results
+			for _, info := range sandboxInfo {
 				if info.TeamID == nil || *info.TeamID != team.ID || info.BuildID == nil {
 					continue
 				}
@@ -67,7 +67,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 					cpuCount = int32(buildsMap[*info.BuildID].Vcpu)
 				}
 
-				instance := api.ListedSandbox{
+				sandbox := api.ListedSandbox{
 					ClientID:   info.Instance.ClientID,
 					TemplateID: info.Instance.TemplateID,
 					Alias:      info.Instance.Alias,
@@ -81,10 +81,10 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 				if info.Metadata != nil {
 					meta := api.SandboxMetadata(info.Metadata)
-					instance.Metadata = &meta
+					sandbox.Metadata = &meta
 				}
 
-				sandboxes = append(sandboxes, instance)
+				sandboxes = append(sandboxes, sandbox)
 			}
 		}
 	}
@@ -112,7 +112,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 				cpuCount = int32(snapshotBuilds[0].Vcpu)
 			}
 
-			instance := api.ListedSandbox{
+			sandbox := api.ListedSandbox{
 				ClientID:   "00000000",
 				TemplateID: e.ID,
 				SandboxID:  snapshot.SandboxID,
@@ -125,10 +125,10 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 			if snapshot.Metadata != nil {
 				meta := api.SandboxMetadata(snapshot.Metadata)
-				instance.Metadata = &meta
+				sandbox.Metadata = &meta
 			}
 
-			sandboxes = append(sandboxes, instance)
+			sandboxes = append(sandboxes, sandbox)
 		}
 	}
 
@@ -170,23 +170,23 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 			filters[key] = value
 		}
 
-		// Filter instances to match all filters
+		// Filter sandboxes to match all filters
 		n := 0
-		for _, instance := range sandboxes {
-			if instance.Metadata == nil {
+		for _, sandbox := range sandboxes {
+			if sandbox.Metadata == nil {
 				continue
 			}
 
 			matchesAll := true
 			for key, value := range filters {
-				if metadataValue, ok := (*instance.Metadata)[key]; !ok || metadataValue != value {
+				if metadataValue, ok := (*sandbox.Metadata)[key]; !ok || metadataValue != value {
 					matchesAll = false
 					break
 				}
 			}
 
 			if matchesAll {
-				sandboxes[n] = instance
+				sandboxes[n] = sandbox
 				n++
 			}
 		}
@@ -203,7 +203,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	// Report analytics
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances", properties)
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running sandboxes", properties)
 
 	c.JSON(http.StatusOK, sandboxes)
 }
