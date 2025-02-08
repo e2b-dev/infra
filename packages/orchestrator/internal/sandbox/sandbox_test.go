@@ -74,6 +74,27 @@ func prepareEnv(ctx context.Context, _ testing.TB) (*env, error) {
 	}, nil
 }
 
+func getEnvVars(ctx context.Context) (*vars, error) {
+	db, err := db.NewClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create db client: %w", err)
+	}
+	defer db.Close()
+
+	template, build, err := db.GetEnv(ctx, envAlias)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get %s env: %w", envAlias, err)
+	}
+
+	return &vars{
+		templateId:    template.TemplateID,
+		buildId:       template.BuildID,
+		fcVersion:     build.FirecrackerVersion,
+		kernelVersion: build.KernelVersion,
+		envdVersion:   *build.EnvdVersion,
+	}, nil
+}
+
 type SandboxTestSuite struct {
 	suite.Suite
 	env  *env
@@ -96,15 +117,9 @@ func NewSandboxTestSuite(
 	sandboxId := "test-sandbox-1"
 	teamId := "test-team"
 
-	db, err := db.NewClient()
+	vars, err := getEnvVars(ctx)
 	if err != nil {
-		panic(fmt.Sprintf("failed to create db client: %v", err))
-	}
-	defer db.Close()
-
-	template, build, err := db.GetEnv(ctx, envAlias)
-	if err != nil {
-		panic(fmt.Sprintf("failed to get %s env: %v", envAlias, err))
+		panic(fmt.Sprintf("failed to get env vars: %v", err))
 	}
 
 	return &SandboxTestSuite{
@@ -113,14 +128,8 @@ func NewSandboxTestSuite(
 		sandboxId: sandboxId,
 		teamId:    teamId,
 		tracer:    otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId)),
-		logger:    logs.NewSandboxLogger(sandboxId, template.TemplateID, teamId, 2, 512, false),
-		vars: vars{
-			templateId:    template.TemplateID,
-			buildId:       template.BuildID,
-			fcVersion:     build.FirecrackerVersion,
-			kernelVersion: build.KernelVersion,
-			envdVersion:   *build.EnvdVersion,
-		},
+		logger:    logs.NewSandboxLogger(sandboxId, vars.templateId, teamId, 2, 512, false),
+		vars:      *vars,
 	}
 }
 
@@ -231,11 +240,8 @@ func BenchmarkSandboxSnapshot(b *testing.B) {
 		ramMb int64
 		vCpu  int64
 	}{
+		// Only 512MB is supported for now as it is baked to the base template
 		{"512MB", 512, 1},
-		{"1GB", 1024, 1},
-		{"2GB", 2 * 1024, 1},
-		{"4GB", 4 * 1024, 1},
-		{"8GB", 8 * 1024, 1},
 	}
 
 	for _, tt := range tests {
@@ -371,90 +377,51 @@ func setupMocksWithMemory(snapshotTemplateFiles *storage.TemplateCacheFiles, sp 
 func TestSnapshotLite(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	db, err := db.NewClient()
+	vars, err := getEnvVars(ctx)
 	if err != nil {
-		t.Fatalf("%s", fmt.Sprintf("failed to create db client: %v", err))
+		panic(fmt.Sprintf("failed to get env vars: %v", err))
 	}
-	defer db.Close()
-	_, build, err := db.GetEnv(ctx, envAlias)
-	if err != nil {
-		t.Fatalf("%s", fmt.Sprintf("failed to get %s env: %v", envAlias, err))
-	}
-	snapshotTemplateFiles, err := storage.NewTemplateFiles(
-		"snapshot-template",
-		"f0370054-b669-eee4-b33b-573d5287c6ef",
-		build.KernelVersion,
-		build.FirecrackerVersion,
-		true,
-	).NewTemplateCacheFiles()
-	if err != nil {
-		t.Fatalf("failed to create snapshot template files: %s", err)
-	}
-	os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
-	defer os.RemoveAll(snapshotTemplateFiles.CacheDir())
 
 	tests := []struct {
-		name           string
-		setupMocks     func(*mocks.SnapshotProvider, *mocks.TemplateProvider)
-		closeMocks     func(*mocks.SnapshotProvider, *mocks.TemplateProvider)
-		expectedError  string
-		expectedResult *Snapshot
+		name          string
+		setupMocks    func(*mocks.SnapshotProvider, *mocks.TemplateProvider, *storage.TemplateCacheFiles) func()
+		expectedError string
 	}{
 		{
 			name: "successful snapshot - 1 GiB memory",
-			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
-				setupMocksWithMemory(snapshotTemplateFiles, sp, tp, 1*giB)
+			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider, snapshotTemplateFiles *storage.TemplateCacheFiles) func() {
+				return setupMocksWithMemory(snapshotTemplateFiles, sp, tp, 1*giB)
 			},
-			closeMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
-				os.Remove(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
-				os.Remove(snapshotTemplateFiles.StorageRootfsPath())
-			},
-			expectedError:  "",
-			expectedResult: &Snapshot{},
+			expectedError: "",
 		},
 		{
 			name: "successful snapshot - 2 GiB memory",
-			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
-				setupMocksWithMemory(snapshotTemplateFiles, sp, tp, 2*giB)
+			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider, snapshotTemplateFiles *storage.TemplateCacheFiles) func() {
+				return setupMocksWithMemory(snapshotTemplateFiles, sp, tp, 2*giB)
 			},
-			closeMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
-				os.Remove(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
-				os.Remove(snapshotTemplateFiles.StorageRootfsPath())
-			},
-			expectedError:  "",
-			expectedResult: &Snapshot{},
+			expectedError: "",
 		},
 		{
 			name: "successful snapshot - 4 GiB memory",
-			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
-				setupMocksWithMemory(snapshotTemplateFiles, sp, tp, 4*giB)
+			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider, snapshotTemplateFiles *storage.TemplateCacheFiles) func() {
+				return setupMocksWithMemory(snapshotTemplateFiles, sp, tp, 4*giB)
 			},
-			closeMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
-				os.Remove(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
-				os.Remove(snapshotTemplateFiles.StorageRootfsPath())
-			},
-			expectedError:  "",
-			expectedResult: &Snapshot{},
+			expectedError: "",
 		},
 		{
 			name: "successful snapshot - 8 GiB memory",
-			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
-				setupMocksWithMemory(snapshotTemplateFiles, sp, tp, 8*giB)
+			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider, snapshotTemplateFiles *storage.TemplateCacheFiles) func() {
+				return setupMocksWithMemory(snapshotTemplateFiles, sp, tp, 8*giB)
 			},
-			closeMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
-				os.Remove(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
-				os.Remove(snapshotTemplateFiles.StorageRootfsPath())
-			},
-			expectedError:  "",
-			expectedResult: &Snapshot{},
+			expectedError: "",
 		},
 		{
 			name: "pause VM fails",
-			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider) {
+			setupMocks: func(sp *mocks.SnapshotProvider, tp *mocks.TemplateProvider, snapshotTemplateFiles *storage.TemplateCacheFiles) func() {
 				sp.On("PauseVM", mock.Anything).Return(errors.New("failed to pause VM"))
+				return func() {}
 			},
-			expectedError:  "failed to pause VM",
-			expectedResult: nil,
+			expectedError: "failed to pause VM",
 		},
 	}
 
@@ -463,12 +430,24 @@ func TestSnapshotLite(t *testing.T) {
 			mockSP := mocks.NewSnapshotProvider(t)
 			mockTP := mocks.NewTemplateProvider(t)
 
-			if tt.setupMocks != nil {
-				tt.setupMocks(mockSP, mockTP)
+			snapshotTemplateFiles, err := storage.NewTemplateFiles(
+				"snapshot-template",
+				uuid.New().String(),
+				vars.kernelVersion,
+				vars.fcVersion,
+				true,
+			).NewTemplateCacheFiles()
+			if err != nil {
+				t.Fatalf("failed to create snapshot template files: %s", err)
 			}
+			os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
+			defer os.RemoveAll(snapshotTemplateFiles.CacheDir())
 
-			if tt.closeMocks != nil {
-				defer tt.closeMocks(mockSP, mockTP)
+			if tt.setupMocks != nil {
+				stop := tt.setupMocks(mockSP, mockTP, snapshotTemplateFiles)
+				defer func() {
+					stop()
+				}()
 			}
 
 			sandbox := createMockSandbox()
@@ -488,7 +467,6 @@ func TestSnapshotLite(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.expectedError)
 			} else {
 				assert.NoError(t, err)
-				// assert.Equal(t, tt.expectedResult, result)
 				assert.NotNil(t, result)
 			}
 
@@ -499,42 +477,38 @@ func TestSnapshotLite(t *testing.T) {
 }
 
 func BenchmarkSandboxSnapshotLite(b *testing.B) {
-	memorySizes := []int64{512, 1024, 2048, 4096} // MB
+	memorySizes := []int64{512, 1024, 2048, 4096} // MiB
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	db, err := db.NewClient()
+	vars, err := getEnvVars(ctx)
 	if err != nil {
-		b.Fatalf("%s", fmt.Sprintf("failed to create db client: %v", err))
+		panic(fmt.Sprintf("failed to get env vars: %v", err))
 	}
-	defer db.Close()
-	_, build, err := db.GetEnv(ctx, envAlias)
-	if err != nil {
-		b.Fatalf("%s", fmt.Sprintf("failed to get %s env: %v", envAlias, err))
-	}
-	snapshotTemplateFiles, err := storage.NewTemplateFiles(
-		"snapshot-template",
-		"f0370054-b669-eee4-b33b-573d5287c6ef",
-		build.KernelVersion,
-		build.FirecrackerVersion,
-		true,
-	).NewTemplateCacheFiles()
-	if err != nil {
-		b.Fatalf("failed to create snapshot template files: %s", err)
-	}
-	os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
-	defer os.RemoveAll(snapshotTemplateFiles.CacheDir())
 
 	for _, memSize := range memorySizes {
 		b.Run(fmt.Sprintf("Memory_%dMB", memSize), func(b *testing.B) {
-			mockSP := mocks.NewSnapshotProvider(b)
-			mockTP := mocks.NewTemplateProvider(b)
-
-			setupMocksWithMemory(snapshotTemplateFiles, mockSP, mockTP, memSize*miB)
-			sandbox := createMockSandbox()
-
-			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				mockSP := mocks.NewSnapshotProvider(b)
+				mockTP := mocks.NewTemplateProvider(b)
+
+				snapshotTemplateFiles, err := storage.NewTemplateFiles(
+					"snapshot-template",
+					uuid.New().String(),
+					vars.kernelVersion,
+					vars.fcVersion,
+					true,
+				).NewTemplateCacheFiles()
+				if err != nil {
+					b.Fatalf("failed to create snapshot template files: %s", err)
+				}
+				os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
+
+				stop := setupMocksWithMemory(snapshotTemplateFiles, mockSP, mockTP, memSize*miB)
+				sandbox := createMockSandbox()
+
+				b.StartTimer()
 				result, err := sandbox.createSnapshot(
 					context.Background(),
 					otel.Tracer("test-tracer"),
@@ -551,10 +525,10 @@ func BenchmarkSandboxSnapshotLite(b *testing.B) {
 				if result == nil {
 					b.Fatal("expected non-nil result")
 				}
-			}
 
-			os.Remove(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
-			os.Remove(snapshotTemplateFiles.StorageRootfsPath())
+				stop()
+				os.RemoveAll(snapshotTemplateFiles.CacheDir())
+			}
 		})
 	}
 }
