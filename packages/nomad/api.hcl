@@ -76,7 +76,7 @@ job "api" {
         REDIS_URL                     = "${redis_url}"
         DNS_PORT                      = "${dns_port_number}"
         # This is here just because it is required in some part of our code which is transitively imported
-        TEMPLATE_BUCKET_NAME          = "skaip"
+        TEMPLATE_BUCKET_NAME          = "skip"
       }
 
       config {
