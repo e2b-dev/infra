@@ -98,7 +98,7 @@ job "logs-collector" {
         destination   = "local/vector.toml"
         change_mode   = "signal"
         change_signal = "SIGHUP"
-        # overriding the delimiters to [ ] to avoid conflicts with Vector's native templating, which also uses {{ }}
+        # overriding the delimiters to [[ ]] to avoid conflicts with Vector's native templating, which also uses {{ }}
         left_delimiter  = "[["
         right_delimiter = "]]"
         data            = <<EOH
