@@ -36,20 +36,20 @@ func NewHandle(ctx context.Context, pid int32) *Handle {
 	}
 
 	go func() {
-		_, ok := <-ctx.Done()
-		if !ok {
+		select {
+		case <-ctx.Done():
 			return
+		default:
+			currentStats, err := getCurrentStats(pid)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to get current stats: %v\n", err)
+
+				return
+			}
+
+			stats.cpuLast = currentStats.CPUTotal
+			stats.timestamp = time.Now()
 		}
-
-		currentStats, err := getCurrentStats(pid)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to get current stats: %v\n", err)
-
-			return
-		}
-
-		stats.cpuLast = currentStats.CPUTotal
-		stats.timestamp = time.Now()
 	}()
 
 	return &stats
