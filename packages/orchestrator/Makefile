@@ -79,7 +79,8 @@ mock-snapshot:
 
 .PHONY: mock-generate
 mock-generate:
-	mockery
+	go install github.com/vektra/mockery/v2@v2.52.1
+	$$(go env GOPATH)/bin/mockery
 
 .PHONY: test
 test:
