@@ -5,10 +5,12 @@ ENV_FILE := $(PWD)/.env.${ENV}
 
 OTEL_TRACING_PRINT ?= false
 EXCLUDE_GITHUB ?= 1
-TEMPLATE_BUCKET_LOCATION := $(GCP_REGION)
+TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
+CLIENT_CLUSTER_AUTO_SCALING_MAX ?= 0
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
+	TF_VAR_client_cluster_auto_scaling_max=$(CLIENT_CLUSTER_AUTO_SCALING_MAX) \
 	TF_VAR_api_machine_type=$(API_MACHINE_TYPE) \
 	TF_VAR_api_cluster_size=$(API_CLUSTER_SIZE) \
 	TF_VAR_server_machine_type=$(SERVER_MACHINE_TYPE) \

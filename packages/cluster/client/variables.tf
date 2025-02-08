@@ -28,6 +28,12 @@ variable "cluster_size" {
   type        = number
 }
 
+
+variable "cluster_auto_scaling_max" {
+  description = "The maximum number of additional nodes to have in the Nomad cluster based on the load."
+  type        = number
+}
+
 variable "image_family" {
   description = "The source image family used to create the boot disk for a Vault node. Only images based on Ubuntu 16.04 or 18.04 LTS are supported at this time."
   type        = string
