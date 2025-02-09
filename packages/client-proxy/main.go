@@ -176,6 +176,9 @@ func main() {
 			logger.Error("http service shutdown error", zap.Int("port", healthCheckPort), zap.Error(err))
 		}
 
+		logger.Info("waiting 15 seconds before shutting down http service")
+		time.Sleep(15 * time.Second)
+
 		logger.Info("shutting down http service", zap.Int("port", port))
 
 		if err := server.Shutdown(ctx); err != nil {

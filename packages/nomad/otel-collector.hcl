@@ -90,7 +90,6 @@ job "otel-collector" {
         volumes = [
           "local/config:/config",
           "/var/log/session-proxy:/var/log/session-proxy",
-          "/var/log/client-proxy:/var/log/client-proxy",
         ]
         args = [
           "--config=local/config/otel-collector-config.yaml",
@@ -125,9 +124,6 @@ receivers:
   # nginx/session-proxy:
   #   endpoint: http://session-proxy.service.consul:3004/status
   #   collection_interval: 10s
-  # nginx/client-proxy:
-  #   endpoint: http://client-proxy.service.consul:3001/status
-  #   collection_interval: 10s
   # filelog/session-proxy:
   #   include:
   #     - /var/log/session-proxy/access.log
@@ -141,20 +137,6 @@ receivers:
   #       field: body
   #   resource:
   #     service.name: session-proxy
-  # filelog/client-proxy:
-  #   include:
-  #     - /var/log/client-proxy/access.log
-  #   operators:
-  #     - type: json_parser
-  #       timestamp:
-  #         parse_from: attributes.time
-  #         layout: '%Y-%m-%dT%H:%M:%S%j'
-  #     - type: remove
-  #       id: body
-  #       field: body
-  #   resource:
-  #     service.name: client-proxy
-  #     service.node: {{ env "node.unique.id" }}
   prometheus:
     config:
       scrape_configs:
@@ -209,11 +191,6 @@ processors:
       - key: service.name
         action: upsert
         value: session-proxy
-  attributes/client-proxy:
-    actions:
-      - key: service.name
-        action: upsert
-        value: client-proxy
 extensions:
   basicauth/grafana_cloud_traces:
     client_auth:
@@ -268,12 +245,6 @@ service:
       # processors: [batch, attributes/session-proxy]
       # exporters:
       #   - prometheusremotewrite/grafana_cloud_metrics
-    # metrics/client-proxy:
-    #   receivers:
-    #     - nginx/client-proxy
-    #   processors: [batch, attributes/client-proxy]
-    #   exporters:
-    #     - prometheusremotewrite/grafana_cloud_metrics
     traces:
       receivers:
         - otlp
@@ -283,7 +254,6 @@ service:
     logs:
       receivers:
       # - filelog/session-proxy
-      # - filelog/client-proxy
         - otlp
       processors: [batch]
       exporters:
