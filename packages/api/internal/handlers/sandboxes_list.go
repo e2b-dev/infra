@@ -183,7 +183,29 @@ func (a *APIStore) getSandboxesMetrics(
 		err     error
 	}
 
-	// Create buffered channel to collect results and setup concurrency control
+	// TODO: Potential scaling consideration:
+	// Current implementation creates a buffered channel sized to the number of sandboxes.
+	// This could consume significant memory with very large numbers of sandboxes (thousands+).
+	// Consider implementing a fixed-size channel with backpressure for better resource management:
+	//
+	// Example approach:
+	// const maxChannelBuffer = 100
+	// results := make(chan metricsResult, maxChannelBuffer)
+	//
+	// Then in the goroutine:
+	// select {
+	// case results <- result:
+	// case <-ctx.Done():
+	//     return
+	// }
+	//
+	// And process results concurrently:
+	// go func() {
+	//     for result := range results {
+	//         processAndAppendResult(result)
+	//     }
+	// }()
+
 	results := make(chan metricsResult, len(sandboxes))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, maxConcurrentMetricFetches)
