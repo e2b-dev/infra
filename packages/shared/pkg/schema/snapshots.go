@@ -22,7 +22,7 @@ func (Snapshot) Fields() []ent.Field {
 			Annotations(
 				entsql.Default("CURRENT_TIMESTAMP"),
 			),
-		field.Time("sandbox_started_at").Nillable(),
+		field.Time("sandbox_started_at"),
 		field.String("base_env_id").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("env_id").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("sandbox_id").Unique().SchemaType(map[string]string{dialect.Postgres: "text"}),

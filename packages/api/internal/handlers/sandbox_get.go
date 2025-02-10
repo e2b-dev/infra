@@ -56,7 +56,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			TemplateID: info.Instance.TemplateID,
 			Alias:      info.Instance.Alias,
 			SandboxID:  info.Instance.SandboxID,
-			StartedAt:  &info.StartTime,
+			StartedAt:  info.StartTime,
 			CpuCount:   cpuCount,
 			MemoryMB:   memoryMB,
 			EndAt:      info.EndTime,

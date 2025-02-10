@@ -72,7 +72,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 					TemplateID: info.Instance.TemplateID,
 					Alias:      info.Instance.Alias,
 					SandboxID:  info.Instance.SandboxID,
-					StartedAt:  &info.StartTime,
+					StartedAt:  info.StartTime,
 					CpuCount:   cpuCount,
 					MemoryMB:   memoryMB,
 					EndAt:      info.EndTime,
@@ -202,10 +202,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	// Sort sandboxes by start time descending
 	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
-		if a.StartedAt == nil || b.StartedAt == nil {
-			return 0
-		}
-		return a.StartedAt.Compare(*b.StartedAt)
+		return a.StartedAt.Compare(b.StartedAt)
 	})
 
 	// Report analytics

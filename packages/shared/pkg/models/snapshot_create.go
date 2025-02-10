@@ -187,7 +187,7 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	}
 	if value, ok := sc.mutation.SandboxStartedAt(); ok {
 		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
-		_node.SandboxStartedAt = &value
+		_node.SandboxStartedAt = value
 	}
 	if value, ok := sc.mutation.BaseEnvID(); ok {
 		_spec.SetField(snapshot.FieldBaseEnvID, field.TypeString, value)

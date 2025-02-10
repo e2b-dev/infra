@@ -133,7 +133,7 @@ func (o *Orchestrator) GetNodeDetail(nodeId string) *api.NodeDetail {
 				EndAt:      sbx.EndTime,
 				Metadata:   metadata,
 				SandboxID:  sbx.Instance.SandboxID,
-				StartedAt:  &sbx.StartTime,
+				StartedAt:  sbx.StartTime,
 				TemplateID: sbx.Instance.TemplateID,
 			})
 		}
