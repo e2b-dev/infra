@@ -200,7 +200,7 @@ module "nomad" {
   posthog_api_key_secret_name               = module.api.posthog_api_key_secret_name
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
-  api_admin_token_name                      = module.api.api_admin_token_name
+  api_admin_token                           = module.api.api_admin_token
 
   # Proxies
   session_proxy_service_name = var.session_proxy_service_name

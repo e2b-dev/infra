@@ -39,7 +39,7 @@ variable "api_secret" {
   type = string
 }
 
-variable "api_admin_token_name" {
+variable "api_admin_token" {
   type = string
 }
 
