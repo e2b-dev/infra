@@ -15,6 +15,24 @@ resource "google_compute_health_check" "nomad_check" {
   }
 }
 
+resource "google_compute_autoscaler" "default" {
+  provider = google-beta
+
+  name   = "${var.cluster_name}-autoscaler"
+  zone   = var.gcp_zone
+  target = google_compute_instance_group_manager.client_cluster.id
+
+  autoscaling_policy {
+    max_replicas    = var.cluster_size + var.cluster_auto_scaling_max
+    min_replicas    = var.cluster_size
+    cooldown_period = 240
+    mode            = "ONLY_SCALE_OUT"
+
+    cpu_utilization {
+      target = 0.8
+    }
+  }
+}
 
 resource "google_compute_instance_group_manager" "client_cluster" {
   name = "${var.cluster_name}-ig"
@@ -52,7 +70,6 @@ resource "google_compute_instance_group_manager" "client_cluster" {
   }
 
   base_instance_name = var.cluster_name
-  target_size        = var.cluster_size
   target_pools       = var.instance_group_target_pools
 
   depends_on = [

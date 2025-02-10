@@ -93,6 +93,11 @@ variable "client_cluster_size" {
   type = number
 }
 
+
+variable "client_cluster_auto_scaling_max" {
+  type = number
+}
+
 variable "client_machine_type" {
   type = string
 }
