@@ -60,7 +60,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			CpuCount:   cpuCount,
 			MemoryMB:   memoryMB,
 			EndAt:      info.EndTime,
-			State:      api.ListedSandboxStateRunning,
+			State:      api.Running,
 		}
 
 		if info.Metadata != nil {
@@ -96,7 +96,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		CpuCount:   cpuCount,
 		MemoryMB:   memoryMB,
 		EndAt:      snapshot.CreatedAt,
-		State:      api.ListedSandboxStatePaused,
+		State:      api.Paused,
 	}
 
 	if snapshot.Metadata != nil {

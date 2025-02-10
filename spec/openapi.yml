@@ -138,6 +138,13 @@ components:
         type: string
         description: Metadata of the sandbox
 
+    SandboxState:
+      type: string
+      description: State of the sandbox
+      enum:
+        - running
+        - paused
+
     EnvVars:
       additionalProperties:
         type: string
@@ -259,11 +266,7 @@ components:
         metadata:
           $ref: "#/components/schemas/SandboxMetadata"
         state:
-          type: string
-          description: State of the sandbox
-          enum:
-            - running
-            - paused
+          $ref: "#/components/schemas/SandboxState"
 
     NewSandbox:
       required:
@@ -512,7 +515,7 @@ paths:
 
   /sandboxes:
     get:
-      description: List all running sandboxes
+      description: List all sandboxes
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
@@ -530,10 +533,7 @@ paths:
           schema:
             type: array
             items:
-              type: string
-              enum:
-                - running
-                - paused
+              $ref: "#/components/schemas/SandboxState"
           style: form
           explode: false
       responses:

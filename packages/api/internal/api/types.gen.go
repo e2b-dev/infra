@@ -15,16 +15,16 @@ const (
 	ApiKeyAuthScopes      = "ApiKeyAuth.Scopes"
 )
 
-// Defines values for ListedSandboxState.
-const (
-	ListedSandboxStatePaused  ListedSandboxState = "paused"
-	ListedSandboxStateRunning ListedSandboxState = "running"
-)
-
 // Defines values for NodeStatus.
 const (
 	NodeStatusDraining NodeStatus = "draining"
 	NodeStatusReady    NodeStatus = "ready"
+)
+
+// Defines values for SandboxState.
+const (
+	Paused  SandboxState = "paused"
+	Running SandboxState = "running"
 )
 
 // Defines values for TemplateBuildStatus.
@@ -32,12 +32,6 @@ const (
 	TemplateBuildStatusBuilding TemplateBuildStatus = "building"
 	TemplateBuildStatusError    TemplateBuildStatus = "error"
 	TemplateBuildStatusReady    TemplateBuildStatus = "ready"
-)
-
-// Defines values for GetSandboxesParamsState.
-const (
-	GetSandboxesParamsStatePaused  GetSandboxesParamsState = "paused"
-	GetSandboxesParamsStateRunning GetSandboxesParamsState = "running"
 )
 
 // CPUCount CPU cores for the sandbox
@@ -80,14 +74,11 @@ type ListedSandbox struct {
 	StartedAt *time.Time `json:"startedAt"`
 
 	// State State of the sandbox
-	State ListedSandboxState `json:"state"`
+	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
 	TemplateID string `json:"templateID"`
 }
-
-// ListedSandboxState State of the sandbox
-type ListedSandboxState string
 
 // MemoryMB Memory for the sandbox in MB
 type MemoryMB = int32
@@ -205,6 +196,9 @@ type SandboxMetric struct {
 	// Timestamp Timestamp of the metric entry
 	Timestamp time.Time `json:"timestamp"`
 }
+
+// SandboxState State of the sandbox
+type SandboxState string
 
 // Team defines model for Team.
 type Team struct {
@@ -345,11 +339,8 @@ type GetSandboxesParams struct {
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 
 	// State Filter sandboxes by one or more states
-	State *[]GetSandboxesParamsState `form:"state,omitempty" json:"state,omitempty"`
+	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
 }
-
-// GetSandboxesParamsState defines parameters for GetSandboxes.
-type GetSandboxesParamsState string
 
 // GetSandboxesSandboxIDLogsParams defines parameters for GetSandboxesSandboxIDLogs.
 type GetSandboxesSandboxIDLogsParams struct {
