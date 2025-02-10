@@ -190,7 +190,7 @@ func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 
 	// ------------- Optional query parameter "state" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "state", c.Request.URL.Query(), &params.State)
+	err = runtime.BindQueryParameter("form", false, false, "state", c.Request.URL.Query(), &params.State)
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter state: %w", err), http.StatusBadRequest)
 		return

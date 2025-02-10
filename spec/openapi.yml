@@ -525,13 +525,17 @@ paths:
             type: string
         - name: state
           in: query
-          description: A state of the sandbox (e.g. "running")
+          description: Filter sandboxes by one or more states
           required: false
           schema:
-            type: string
-            enum:
-              - running
-              - paused
+            type: array
+            items:
+              type: string
+              enum:
+                - running
+                - paused
+          style: form
+          explode: false
       responses:
         "200":
           description: Successfully returned all running sandboxes

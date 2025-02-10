@@ -28,7 +28,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	sandboxes := make([]api.ListedSandbox, 0)
 
 	// Only fetch running sandboxes if we need them (state is nil or "running")
-	if params.State == nil || *params.State == api.GetSandboxesParamsStateRunning {
+	if params.State == nil || slices.Contains(*params.State, api.GetSandboxesParamsStateRunning) {
 		sandboxInfo := a.orchestrator.GetSandboxes(ctx, &team.ID)
 
 		// Get build IDs for running sandboxes
@@ -90,7 +90,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	}
 
 	// Only fetch snapshots if we need them (state is nil or "paused")
-	if params.State == nil || *params.State == api.GetSandboxesParamsStatePaused {
+	if params.State == nil || slices.Contains(*params.State, api.GetSandboxesParamsStatePaused) {
 		snapshotEnvs, err := a.db.GetTeamSnapshots(ctx, team.ID)
 		if err != nil {
 			a.logger.Errorf("error getting team snapshots: %s", err)

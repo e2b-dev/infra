@@ -344,8 +344,8 @@ type GetSandboxesParams struct {
 	// Query A query used to filter the sandboxes (e.g. "user=abc&app=prod"). Query and each key and values must be URL encoded.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 
-	// State A state of the sandbox (e.g. "running")
-	State *GetSandboxesParamsState `form:"state,omitempty" json:"state,omitempty"`
+	// State Filter sandboxes by one or more states
+	State *[]GetSandboxesParamsState `form:"state,omitempty" json:"state,omitempty"`
 }
 
 // GetSandboxesParamsState defines parameters for GetSandboxes.
