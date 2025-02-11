@@ -43,6 +43,8 @@ job "client-proxy" {
       healthy_deadline = "30s"
       # Whether to promote the canary if the rest of the group is not healthy
       auto_promote     = true
+      # Deadline for the update to be completed
+      progress_deadline = "24h"
     }
 %{ endif }
 
@@ -50,7 +52,7 @@ job "client-proxy" {
       driver = "docker"
       # If we need more than 30s we will need to update the max_kill_timeout in nomad
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
-      kill_timeout = "30s"
+      kill_timeout = "24h"
       kill_signal  = "SIGTERM"
 
       resources {
