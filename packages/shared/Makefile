@@ -18,17 +18,23 @@ prep-cluster:
 	@E2B_DOMAIN=$(DOMAIN_NAME) e2b tpl build -p scripts
 	@echo "Done"
 
-.PHONY: migrate
-migrate:
-	@echo "Generating migrations..."
+.PHONY: migrate-postgres
+migrate-postgres:
+	@echo "Generating postgres migrations..."
 	@cat ./migrations/* > ./migration.sql
-	@echo "Applying migration"
+	@echo "Applying postgres migration"
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/migrate/postgres/main.go
 	@rm ./migration.sql
 	@echo "Done"
 
-.PHONY: migrate-clickhouse
-migrate-clickhouse:
-	@echo "Applying ClickHouse migration"
-	@CLICKHOUSE_CONNECTION_STRING=$(CLICKHOUSE_CONNECTION_STRING) go run ./scripts/migrate/clickhouse/main.go
+.PHONY: migrate-clickhouse-up
+migrate-clickhouse-up:
+	@echo "Applying ClickHouse migration *UPWARDS*"
+	@CLICKHOUSE_CONNECTION_STRING=$(CLICKHOUSE_CONNECTION_STRING) CLICKHOUSE_USERNAME=$(CLICKHOUSE_USERNAME) CLICKHOUSE_PASSWORD=$(CLICKHOUSE_PASSWORD) CLICKHOUSE_DATABASE=$(CLICKHOUSE_DATABASE) go run ./scripts/migrate/clickhouse/main.go -direction up
+	@echo "Done"
+
+.PHONY: migrate-clickhouse-down
+migrate-clickhouse-down:
+	@echo "Applying ClickHouse migration *DOWNWARDS*"
+	@CLICKHOUSE_CONNECTION_STRING=$(CLICKHOUSE_CONNECTION_STRING) CLICKHOUSE_USERNAME=$(CLICKHOUSE_USERNAME) CLICKHOUSE_PASSWORD=$(CLICKHOUSE_PASSWORD) CLICKHOUSE_DATABASE=$(CLICKHOUSE_DATABASE) go run ./scripts/migrate/clickhouse/main.go -direction down
 	@echo "Done"

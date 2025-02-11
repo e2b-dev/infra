@@ -1,6 +1,7 @@
 package clickhouse
 
 import (
+	"crypto/tls"
 	"embed"
 	"fmt"
 
@@ -64,24 +65,41 @@ func (chMig *ClickhouseMigrator) SetLogger(logger migrate.Logger) {
 	chMig.m.Log = logger
 }
 
-func NewMigrator(host, username, password, database string) (*ClickhouseMigrator, error) {
+func NewMigrator(connectionString, username, password, database string) (*ClickhouseMigrator, error) {
 	d, err := iofs.New(migrationsFS, "migrations")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open Clickhouse migrations iofs: %w", err)
 	}
 
 	db := ch.OpenDB(&ch.Options{
-		Addr: []string{host},
+		Addr:     []string{connectionString},
+		Protocol: ch.Native,
+		TLS:      &tls.Config{}, // Not using TLS for now
 		Auth: ch.Auth{
+			Database: database,
 			Username: username,
 			Password: password,
-			Database: database,
 		},
 	})
 
-	driver, err := clickhouse.WithInstance(db, &clickhouse.Config{})
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version    Int64,
+			dirty      UInt8,
+			sequence   UInt64
+		)
+		ENGINE = ReplicatedMergeTree
+		ORDER BY tuple();
+	`)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open clickhouse migration: %w", err)
+		return nil, fmt.Errorf("failed to create schema_migrations table: %w", err)
+	}
+
+	driver, err := clickhouse.WithInstance(db, &clickhouse.Config{
+		DatabaseName: database,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cl,ickhouse driver: %w", err)
 	}
 
 	m, err := migrate.NewWithInstance(

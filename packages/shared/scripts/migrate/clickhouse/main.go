@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -9,22 +10,33 @@ import (
 )
 
 func main() {
-	connectionString := os.Getenv("CLICKHOUSE_CONNECTION_STRING")
-	username := os.Getenv("CLICKHOUSE_USERNAME")
-	password := os.Getenv("CLICKHOUSE_PASSWORD")
-	database := os.Getenv("CLICKHOUSE_DATABASE")
+	direction := flag.String("direction", "up", "Migration direction (up/down)")
+	flag.Parse()
 
-	if connectionString == "" {
-		log.Fatalf("CLICKHOUSE_CONNECTION_STRING is not set")
-	}
-
+	var (
+		connectionString = os.Getenv("CLICKHOUSE_CONNECTION_STRING")
+		username         = os.Getenv("CLICKHOUSE_USERNAME")
+		password         = os.Getenv("CLICKHOUSE_PASSWORD")
+		database         = os.Getenv("CLICKHOUSE_DATABASE")
+	)
 	// Execute the migration
-	migrater, err := ch.NewMigrator(connectionString, username, password, database)
+	migrater, err := ch.NewMigrator(
+		connectionString,
+		username,
+		password,
+		database,
+	)
+
 	if err != nil {
 		log.Fatalf("Failed to execute migration: %v", err)
 	}
 
-	err = migrater.Up()
+	if *direction == "up" {
+		err = migrater.Up()
+	} else {
+		err = migrater.Down()
+	}
+
 	if err != nil {
 		log.Fatalf("Failed to execute migration: %v", err)
 	}
