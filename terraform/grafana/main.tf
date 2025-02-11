@@ -6,23 +6,12 @@ terraform {
   }
 }
 
-variable "labels" {
-  description = "The labels to attach to resources created by this module"
-  type        = map(string)
-  default = {
-    "app"       = "e2b"
-    "terraform" = "true"
-  }
-}
-
-
-
 variable "prefix" {
   type    = string
   default = "e2b-"
 }
 
-variable "grafana_cloud_access_policy_token_secret_name" {
+variable "access_token_secret_name" {
   type        = string
   description = <<EOT
 The name of the secret in GCP Secret Manager that contains the Grafana cloud access policy token.
@@ -32,21 +21,16 @@ should have permissions:
 - stack-service-accounts write
 EOT
 
-  default = "${var.prefix}grafana-cloud-access-policy-token"
+  default = "${var.prefix}grafana-api-key"
 }
 
-variable "grafana_service_account_token_secret_name" {
+variable "username_secret_name" {
   type        = string
   description = <<EOT
-The name of the secret in GCP Secret Manager that contains the Grafana service account token.
+  the stack id will be stored in this secret
 EOT
 
-  default = "${var.prefix}grafana-service-account-token"
-}
-
-
-data "google_secret_manager_secret_version" "grafana_cloud_access_policy_token" {
-  secret = "${var.prefix}grafana-cloud-access-policy-token"
+  default = "${var.prefix}grafana-username"
 }
 
 // Step 1: Create a stack
@@ -63,9 +47,17 @@ resource "grafana_cloud_stack" "e2b_stack" {
   region_slug = "us"
 }
 
+data "google_secret_manager_secret_version" "grafana_username" {
+  secret = var.username_secret_name
+}
+
 resource "google_secret_manager_secret_version" "grafana_username" {
   secret      = data.google_secret_manager_secret_version.grafana_username.secret
   secret_data = grafana_cloud_stack.e2b_stack.id
+}
+
+data "google_secret_manager_secret_version" "grafana_api_key" {
+  secret = var.access_token_secret_name
 }
 
 resource "google_secret_manager_secret_version" "grafana_api_key" {
