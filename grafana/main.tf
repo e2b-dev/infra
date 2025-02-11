@@ -42,7 +42,7 @@ resource "grafana_cloud_stack_service_account" "cloud_sa" {
   provider   = grafana.cloud
   stack_slug = grafana_cloud_stack.my_stack.slug
 
-  name        = "e2b-stack-service-account"
+  name        = "e2b-otel-collector-service-account"
   role        = "Admin"
   is_disabled = false
 }
