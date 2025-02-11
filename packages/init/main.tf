@@ -145,6 +145,51 @@ resource "google_secret_manager_secret" "grafana_cloud_access_policy_token" {
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
+# e2b-grafana-username
+resource "google_secret_manager_secret" "grafana_username" {
+  secret_id = "${var.prefix}grafana-username"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "grafana_username" {
+  secret      = google_secret_manager_secret.grafana_username.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+# e2b-grafana-api-key
+resource "google_secret_manager_secret" "grafana_api_key" {
+  secret_id = "${var.prefix}grafana-api-key"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "grafana_api_key" {
+  secret      = google_secret_manager_secret.grafana_api_key.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+
 resource "google_secret_manager_secret_version" "grafana_cloud_access_policy_token" {
   secret      = google_secret_manager_secret.grafana_cloud_access_policy_token.name
   secret_data = " "
