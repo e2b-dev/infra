@@ -6,6 +6,9 @@ terraform {
   }
 }
 
+data "google_client_config" "default" {}
+
+
 variable "prefix" {
   type    = string
   default = "e2b-"
@@ -60,7 +63,7 @@ resource "grafana_cloud_stack" "e2b_stack" {
 }
 
 data "google_secret_manager_secret_version" "grafana_username" {
-  secret  = var.username_secret_name
+  secret  = "e2b-grafana-username"
   project = var.project
 }
 
