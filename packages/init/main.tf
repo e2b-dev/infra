@@ -114,38 +114,7 @@ resource "google_secret_manager_secret_version" "nomad_acl_token" {
   secret_data = random_uuid.nomad_acl_token.result
 }
 
-resource "google_secret_manager_secret" "grafana_service_account_token" {
-  secret_id = "${var.prefix}grafana_service_account_token"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "grafana_service_account_token" {
-  secret      = google_secret_manager_secret.grafana_api_key.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret" "grafana_cloud_access_policy_token" {
-  secret_id = "${var.prefix}grafana-cloud-access-policy-token"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-# e2b-grafana-username
+# grafana username
 resource "google_secret_manager_secret" "grafana_username" {
   secret_id = "${var.prefix}grafana-username"
 
@@ -155,6 +124,7 @@ resource "google_secret_manager_secret" "grafana_username" {
 
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
+
 
 resource "google_secret_manager_secret_version" "grafana_username" {
   secret      = google_secret_manager_secret.grafana_username.name
@@ -167,7 +137,7 @@ resource "google_secret_manager_secret_version" "grafana_username" {
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
-# e2b-grafana-api-key
+# grafana api key
 resource "google_secret_manager_secret" "grafana_api_key" {
   secret_id = "${var.prefix}grafana-api-key"
 
@@ -189,17 +159,6 @@ resource "google_secret_manager_secret_version" "grafana_api_key" {
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
-
-resource "google_secret_manager_secret_version" "grafana_cloud_access_policy_token" {
-  secret      = google_secret_manager_secret.grafana_cloud_access_policy_token.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
 
 resource "google_secret_manager_secret" "analytics_collector_host" {
   secret_id = "${var.prefix}analytics-collector-host"

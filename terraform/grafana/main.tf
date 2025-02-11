@@ -15,16 +15,6 @@ variable "labels" {
   }
 }
 
-# wouldn't this double the number of resources or conflict with the main.tf? 
-# i think there is a incompatibility with wanting grafana to be in a different module
-# and having the init module contain the secrets definitions. could move the 
-# secrets definitions here  here though
-module "init" {
-  source = "../../packages/init"
-
-  labels = var.labels
-  prefix = var.prefix
-}
 
 
 variable "prefix" {
@@ -56,7 +46,7 @@ EOT
 
 
 data "google_secret_manager_secret_version" "grafana_cloud_access_policy_token" {
-  secret = module.init.grafana_cloud_access_policy_token_secret_name
+  secret = "${var.prefix}grafana-cloud-access-policy-token"
 }
 
 // Step 1: Create a stack
@@ -65,7 +55,7 @@ provider "grafana" {
   cloud_access_policy_token = data.google_secret_manager_secret_version.grafana_cloud_access_policy_token.secret_data
 }
 
-resource "grafana_cloud_stack" "my_stack" {
+resource "grafana_cloud_stack" "e2b_stack" {
   provider = grafana.cloud
 
   name        = "${var.prefix}stack"
@@ -73,25 +63,12 @@ resource "grafana_cloud_stack" "my_stack" {
   region_slug = "us"
 }
 
-// Step 2: Create a service account and key for the stack
-resource "grafana_cloud_stack_service_account" "cloud_sa" {
-  provider   = grafana.cloud
-  stack_slug = grafana_cloud_stack.my_stack.slug
-
-  name        = "${var.prefix}otel-collector-service-account"
-  role        = "Admin"
-  is_disabled = false
+resource "google_secret_manager_secret_version" "grafana_username" {
+  secret      = data.google_secret_manager_secret_version.grafana_username.secret
+  secret_data = grafana_cloud_stack.e2b_stack.id
 }
 
-resource "grafana_cloud_stack_service_account_token" "cloud_sa" {
-  provider   = grafana.cloud
-  stack_slug = grafana_cloud_stack.my_stack.slug
-
-  name               = "${var.prefix}stack-service-account-token"
-  service_account_id = grafana_cloud_stack_service_account.cloud_sa.id
-}
-
-resource "google_secret_manager_secret_version" "grafana_service_account_token" {
-  secret      = module.init.grafana_service_account_token_secret_name 
-  secret_data = grafana_cloud_stack_service_account_token.cloud_sa.key
+resource "google_secret_manager_secret_version" "grafana_api_key" {
+  secret      = data.google_secret_manager_secret_version.grafana_api_key.secret
+  secret_data = grafana_cloud_stack.e2b_stack.id
 }
