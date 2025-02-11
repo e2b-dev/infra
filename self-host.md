@@ -45,8 +45,8 @@ Check if you can use config for terraform state management
 
 1. Go to `console.cloud.google.com` and create a new GCP project
 2. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). You can pick any of them. Make sure to fill in the values. All are required.
-3. Run `make switch-env ENV={prod,staging,dev}` to start using your env
 4. Run `make login-gcloud` to login to `gcloud`
+3. Run `make switch-env ENV={prod,staging,dev}` to start using your env
 5. [Create a storage bucket in Google Cloud](https://cloud.google.com/storage/docs/creating-buckets). This is the source of truth for the terraform state: Go to `console.cloud.google.com` -> Storage -> Create Bucket -> Bucket name: `e2b-terraform-state` -> Location: `US` -> Default storage class: `Standard` -> Location type: `Multi-region` -> Bucket location: `US` -> Create
 6. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
    - [Secret Manager API](https://console.cloud.google.com/apis/library/secretmanager.googleapis.com)
@@ -65,7 +65,7 @@ Check if you can use config for terraform state management
 12. Secrets are created and stored in GCP Secrets Manager. Once created, that is the source of truth--you will need to update values there to make changes. Create a secret value for the following secrets:
 - e2b-cloudflare-api-token
 - e2b-postgres-connection-string
-- Grafana secrets (optional)
+- e2b-grafana-cloud-access-policy-token (optional)
 - Posthog API keys for monitoring (optional)
 13. Run `make plan-without-jobs` and then `make apply`
 14. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It1 can take some time; you can check the status in the Google Cloud Console
