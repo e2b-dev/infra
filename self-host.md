@@ -45,8 +45,8 @@ Check if you can use config for terraform state management
 
 1. Go to `console.cloud.google.com` and create a new GCP project
 2. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). You can pick any of them. Make sure to fill in the values. All are required.
-4. Run `make login-gcloud` to login to `gcloud`
 3. Run `make switch-env ENV={prod,staging,dev}` to start using your env
+4. Run `make login-gcloud` to login to `gcloud`
 5. [Create a storage bucket in Google Cloud](https://cloud.google.com/storage/docs/creating-buckets). This is the source of truth for the terraform state: Go to `console.cloud.google.com` -> Storage -> Create Bucket -> Bucket name: `e2b-terraform-state` -> Location: `US` -> Default storage class: `Standard` -> Location type: `Multi-region` -> Bucket location: `US` -> Create
 6. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
    - [Secret Manager API](https://console.cloud.google.com/apis/library/secretmanager.googleapis.com)
