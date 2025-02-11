@@ -1,3 +1,4 @@
+
 # Enable Secrets Manager API
 resource "google_project_service" "secrets_manager_api" {
   service = "secretmanager.googleapis.com"
@@ -68,43 +69,9 @@ resource "google_service_account_key" "google_service_key" {
   service_account_id = google_service_account.infra_instances_service_account.name
 }
 
-locals {
-  secrets = {
-    "cloudflare-api-token" = {
-      generate_uuid = false
-      initial_value = null
-    }
-    "consul-secret-id" = {
-      generate_uuid = true
-      initial_value = null
-    }
-    "nomad-secret-id" = {
-      generate_uuid = true
-      initial_value = null
-    }
-    "grafana-service-account-token" = {
-      generate_uuid = false
-      initial_value = " "
-    }
-    "e2b-grafana-cloud-access-policy-token" = {
-      generate_uuid = false
-      initial_value = " "
-    }
-    "analytics-collector-host" = {
-      generate_uuid = false
-      initial_value = " "
-    }
-    "analytics-collector-api-token" = {
-      generate_uuid = false
-      initial_value = " "
-    }
-  }
-}
 
-resource "google_secret_manager_secret" "secrets" {
-  for_each = local.secrets
-
-  secret_id = "${var.prefix}${each.key}"
+resource "google_secret_manager_secret" "cloudflare_api_token" {
+  secret_id = "${var.prefix}cloudflare-api-token"
 
   replication {
     auto {}
@@ -113,24 +80,98 @@ resource "google_secret_manager_secret" "secrets" {
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
-resource "random_uuid" "secret_uuids" {
-  for_each = {
-    for k, v in local.secrets : k => v
-    if v.generate_uuid
+resource "google_secret_manager_secret" "consul_acl_token" {
+  secret_id = "${var.prefix}consul-secret-id"
+
+  replication {
+    auto {}
   }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
-resource "google_secret_manager_secret_version" "secret_versions" {
-  for_each = local.secrets
+resource "random_uuid" "consul_acl_token" {}
 
-  secret      = google_secret_manager_secret.secrets[each.key].name
-  secret_data = each.value.generate_uuid ? random_uuid.secret_uuids[each.key].result : each.value.initial_value
+resource "google_secret_manager_secret_version" "consul_acl_token" {
+  secret      = google_secret_manager_secret.consul_acl_token.name
+  secret_data = random_uuid.consul_acl_token.result
+}
 
-  dynamic "lifecycle" {
-    for_each = each.value.initial_value != null ? [1] : []
-    content {
-      ignore_changes = [secret_data]
-    }
+resource "google_secret_manager_secret" "nomad_acl_token" {
+  secret_id = "${var.prefix}nomad-secret-id"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "random_uuid" "nomad_acl_token" {}
+
+resource "google_secret_manager_secret_version" "nomad_acl_token" {
+  secret      = google_secret_manager_secret.nomad_acl_token.name
+  secret_data = random_uuid.nomad_acl_token.result
+}
+
+resource "google_secret_manager_secret" "grafana_service_account_token" {
+  secret_id = "${var.prefix}grafana_service_account_token"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "grafana_service_account_token" {
+  secret      = google_secret_manager_secret.grafana_api_key.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret" "analytics_collector_host" {
+  secret_id = "${var.prefix}analytics-collector-host"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "analytics_collector_host" {
+  secret      = google_secret_manager_secret.analytics_collector_host.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret" "analytics_collector_api_token" {
+  secret_id = "${var.prefix}analytics-collector-api-token"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "analytics_collector_api_token" {
+  secret      = google_secret_manager_secret.analytics_collector_api_token.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
   }
 
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
@@ -147,6 +188,7 @@ resource "time_sleep" "artifact_registry_api_wait_60_seconds" {
 
   create_duration = "60s"
 }
+
 
 resource "google_artifact_registry_repository_iam_member" "orchestration_repository_member" {
   repository = google_artifact_registry_repository.orchestration_repository.name

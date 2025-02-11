@@ -6,6 +6,27 @@ terraform {
   }
 }
 
+variable "labels" {
+  description = "The labels to attach to resources created by this module"
+  type        = map(string)
+  default = {
+    "app"       = "e2b"
+    "terraform" = "true"
+  }
+}
+
+# wouldn't this double the number of resources or conflict with the main.tf? 
+# i think there is a incompatibility with wanting grafana to be in a different module
+# and having the init module contain the secrets definitions. could move the 
+# secrets definitions here  here though
+module "init" {
+  source = "../../packages/init"
+
+  labels = var.labels
+  prefix = var.prefix
+}
+
+
 variable "prefix" {
   type    = string
   default = "e2b-"
@@ -35,7 +56,7 @@ EOT
 
 
 data "google_secret_manager_secret_version" "grafana_cloud_access_policy_token" {
-  secret = var.grafana_cloud_access_policy_token_secret_name
+  secret = module.init.grafana_cloud_access_policy_token_secret_name
 }
 
 // Step 1: Create a stack
@@ -71,6 +92,6 @@ resource "grafana_cloud_stack_service_account_token" "cloud_sa" {
 }
 
 resource "google_secret_manager_secret_version" "grafana_service_account_token" {
-  secret      = var.grafana_service_account_token_secret_name
+  secret      = module.init.grafana_service_account_token_secret_name 
   secret_data = grafana_cloud_stack_service_account_token.cloud_sa.key
 }
