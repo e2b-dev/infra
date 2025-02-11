@@ -30,7 +30,7 @@ type Store[T any] interface {
 	Exec(ctx context.Context, query string) error
 }
 
-type OLAPStore[T any] struct {
+type ClickHouseStore[T any] struct {
 	TableName string
 	Conn      driver.Conn
 }
@@ -41,7 +41,7 @@ func NewConn() (driver.Conn, error) {
 		conn, err = ch.Open(&ch.Options{
 			Addr:     []string{connectionString},
 			Protocol: ch.Native,
-			TLS:      &tls.Config{}, // Not use TLS for now
+			TLS:      &tls.Config{}, // Not using TLS for now
 			Auth: ch.Auth{
 				Database: database,
 				Username: username,
@@ -72,18 +72,18 @@ func NewStore[T any](tableName string) (Store[T], error) {
 		return nil, err
 	}
 
-	return &OLAPStore[T]{Conn: conn, TableName: tableName}, nil
+	return &ClickHouseStore[T]{Conn: conn, TableName: tableName}, nil
 }
 
-func (c *OLAPStore[T]) Close() error {
+func (c *ClickHouseStore[T]) Close() error {
 	return c.Conn.Close()
 }
 
-func (c *OLAPStore[T]) InsertRow(ctx context.Context, row T) error {
+func (c *ClickHouseStore[T]) InsertRow(ctx context.Context, row T) error {
 	return c.Conn.AsyncInsert(ctx, "INSERT INTO "+c.TableName, true, row)
 }
 
-func (c *OLAPStore[T]) InsertRows(ctx context.Context, rows []T) error {
+func (c *ClickHouseStore[T]) InsertRows(ctx context.Context, rows []T) error {
 	batch, err := c.Conn.PrepareBatch(ctx, "INSERT INTO "+c.TableName)
 	if err != nil {
 		return err
@@ -98,7 +98,7 @@ func (c *OLAPStore[T]) InsertRows(ctx context.Context, rows []T) error {
 	return batch.Send()
 }
 
-func (c *OLAPStore[T]) QueryRow(ctx context.Context, query string) (T, error) {
+func (c *ClickHouseStore[T]) QueryRow(ctx context.Context, query string) (T, error) {
 	rows, err := c.Conn.Query(ctx, query)
 	if err != nil {
 		var zero T
@@ -114,7 +114,7 @@ func (c *OLAPStore[T]) QueryRow(ctx context.Context, query string) (T, error) {
 	return row, nil
 }
 
-func (c *OLAPStore[T]) QueryRows(ctx context.Context, query string) ([]T, error) {
+func (c *ClickHouseStore[T]) QueryRows(ctx context.Context, query string) ([]T, error) {
 	rows, err := c.Conn.Query(ctx, query)
 	if err != nil {
 		return nil, err
@@ -132,6 +132,6 @@ func (c *OLAPStore[T]) QueryRows(ctx context.Context, query string) ([]T, error)
 	return result, nil
 }
 
-func (c *OLAPStore[T]) Exec(ctx context.Context, query string) error {
+func (c *ClickHouseStore[T]) Exec(ctx context.Context, query string) error {
 	return c.Conn.Exec(ctx, query)
 }
