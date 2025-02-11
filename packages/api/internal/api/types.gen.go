@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
-	AdminTokenAuthScopes  = "AdminTokenAuth.Scopes"
-	ApiKeyAuthScopes      = "ApiKeyAuth.Scopes"
+	AccessTokenAuthScopes   = "AccessTokenAuth.Scopes"
+	AdminTokenAuthScopes    = "AdminTokenAuth.Scopes"
+	ApiKeyAuthScopes        = "ApiKeyAuth.Scopes"
+	SupabaseTokenAuthScopes = "SupabaseTokenAuth.Scopes"
 )
 
 // Defines values for NodeStatus.

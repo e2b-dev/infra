@@ -22,51 +22,80 @@ import (
 
 var adminToken = os.Getenv("ADMIN_TOKEN")
 
+type AuthorizationHeaderMissingError struct{}
+
+func (e *AuthorizationHeaderMissingError) Error() string {
+	return "authorization header is missing"
+}
+
 var (
-	ErrNoAuthHeader      = errors.New("authorization header is missing")
+	ErrNoAuthHeader      = &AuthorizationHeaderMissingError{}
 	ErrInvalidAuthHeader = errors.New("authorization header is malformed")
 )
 
-type authenticator[T any] struct {
-	securitySchemeName string
-	headerKey          string
-	prefix             string
-	removePrefix       string
-	validationFunction func(context.Context, string) (T, *api.APIError)
-	contextKey         string
-	errorMessage       string
+type headerKey struct {
+	name         string
+	prefix       string
+	removePrefix string
 }
 
-// getApiKeyFromRequest extracts an API key from the header.
-func (a *authenticator[T]) getAPIKeyFromRequest(req *http.Request) (string, error) {
-	apiKey := req.Header.Get(a.headerKey)
-	// Check for the Authorization header.
-	if apiKey == "" {
-		return "", ErrNoAuthHeader
+func newHeaderKey(name, prefix, removePrefix string) headerKey {
+	return headerKey{
+		name:         name,
+		prefix:       prefix,
+		removePrefix: removePrefix,
+	}
+}
+
+type commonAuthenticator[T any] struct {
+	securitySchemeName        string
+	headerKeys                []headerKey
+	validationFunction        func(context.Context, []string) (T, *api.APIError)
+	contextKeyMappingFunction func(T) map[string]interface{}
+	errorMessage              string
+}
+
+type authenticator interface {
+	Authenticate(ctx context.Context, input *openapi3filter.AuthenticationInput) error
+	SecuritySchemeName() string
+}
+
+// getHeaderKeysFromRequest extracts header keys from the header.
+func (a *commonAuthenticator[T]) getHeaderKeysFromRequest(req *http.Request) ([]string, error) {
+	keys := make([]string, 0)
+
+	for _, headerKey := range a.headerKeys {
+		key := req.Header.Get(headerKey.name)
+		// Check for the Authorization header.
+		if key == "" {
+			return nil, ErrNoAuthHeader
+		}
+
+		// Remove the prefix from the API key
+		if headerKey.removePrefix != "" {
+			key = strings.TrimSpace(strings.TrimPrefix(key, headerKey.removePrefix))
+		}
+
+		// We expect a header value to be in a special form
+		if !strings.HasPrefix(key, headerKey.prefix) {
+			return nil, ErrInvalidAuthHeader
+		}
+
+		keys = append(keys, key)
 	}
 
-	// Remove the prefix from the API key
-	if a.removePrefix != "" {
-		apiKey = strings.TrimSpace(strings.TrimPrefix(apiKey, a.removePrefix))
-	}
-
-	// We expect a header value to be in a special form
-	if !strings.HasPrefix(apiKey, a.prefix) {
-		return "", ErrInvalidAuthHeader
-	}
-
-	return apiKey, nil
+	return keys, nil
 }
 
 // Authenticate uses the specified validator to ensure an API key is valid.
-func (a *authenticator[T]) Authenticate(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
+func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 	// Our security scheme is named ApiKeyAuth, ensure this is the case
 	if input.SecuritySchemeName != a.securitySchemeName {
 		return fmt.Errorf("security scheme %s != '%s'", a.securitySchemeName, input.SecuritySchemeName)
 	}
 
 	// Now, we need to get the API key from the request
-	apiKey, err := a.getAPIKeyFromRequest(input.RequestValidationInput.Request)
+	headerKeys, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, fmt.Errorf("%v %w", a.errorMessage, err))
 
@@ -76,7 +105,7 @@ func (a *authenticator[T]) Authenticate(ctx context.Context, input *openapi3filt
 	telemetry.ReportEvent(ctx, "api key extracted")
 
 	// If the API key is valid, we will get a result back
-	result, validationError := a.validationFunction(ctx, apiKey)
+	result, validationError := a.validationFunction(ctx, headerKeys)
 	if validationError != nil {
 		log.Printf("validation error %v", validationError.Err)
 		telemetry.ReportError(ctx, fmt.Errorf("%s %w", a.errorMessage, validationError.Err))
@@ -87,15 +116,21 @@ func (a *authenticator[T]) Authenticate(ctx context.Context, input *openapi3filt
 	telemetry.ReportEvent(ctx, "api key validated")
 
 	// Set the property on the gin context
-	if a.contextKey != "" {
-		middleware.GetGinContext(ctx).Set(a.contextKey, result)
+	if a.contextKeyMappingFunction != nil {
+		for key, value := range a.contextKeyMappingFunction(result) {
+			middleware.GetGinContext(ctx).Set(key, value)
+		}
 	}
 
 	return nil
 }
 
-func adminValidationFunction(_ context.Context, token string) (struct{}, *api.APIError) {
-	if token != adminToken {
+func (a *commonAuthenticator[T]) SecuritySchemeName() string {
+	return a.securitySchemeName
+}
+
+func adminValidationFunction(_ context.Context, tokens []string) (struct{}, *api.APIError) {
+	if tokens[0] != adminToken {
 		return struct{}{}, &api.APIError{
 			Code:      http.StatusUnauthorized,
 			Err:       errors.New("invalid access token"),
@@ -106,51 +141,78 @@ func adminValidationFunction(_ context.Context, token string) (struct{}, *api.AP
 	return struct{}{}, nil
 }
 
-func CreateAuthenticationFunc(tracer trace.Tracer, teamValidationFunction func(context.Context, string) (authcache.AuthTeamInfo, *api.APIError), userValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError)) func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
-	apiKeyValidator := authenticator[authcache.AuthTeamInfo]{
-		securitySchemeName: "ApiKeyAuth",
-		headerKey:          "X-API-Key",
-		prefix:             "e2b_",
-		removePrefix:       "",
-		validationFunction: teamValidationFunction,
-		contextKey:         TeamContextKey,
-		errorMessage:       "Invalid API key, please visit https://e2b.dev/docs?reason=sdk-missing-api-key to get your API key.",
-	}
-	accessTokenValidator := authenticator[uuid.UUID]{
-		securitySchemeName: "AccessTokenAuth",
-		headerKey:          "Authorization",
-		prefix:             "sk_e2b_",
-		removePrefix:       "Bearer ",
-		validationFunction: userValidationFunction,
-		contextKey:         UserIDContextKey,
-		errorMessage:       "Invalid Access token, try to login again by running `e2b login`.",
-	}
-	adminTokenValidator := authenticator[struct{}]{
-		securitySchemeName: "AdminTokenAuth",
-		headerKey:          "X-Admin-Token",
-		prefix:             "",
-		removePrefix:       "",
-		validationFunction: adminValidationFunction,
-		contextKey:         "",
-		errorMessage:       "Invalid Access token.",
+func CreateAuthenticationFunc(
+	tracer trace.Tracer,
+	teamValidationFunction func(context.Context, []string) (authcache.AuthTeamInfo, *api.APIError),
+	userValidationFunction func(context.Context, []string) (uuid.UUID, *api.APIError),
+	supabaseValidationFunction func(context.Context, []string) (*SupabaseInfo, *api.APIError),
+) func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
+	authenticators := []authenticator{
+		&commonAuthenticator[authcache.AuthTeamInfo]{
+			securitySchemeName: "ApiKeyAuth",
+			headerKeys: []headerKey{
+				newHeaderKey("X-API-Key", "e2b_", ""),
+			},
+			validationFunction: teamValidationFunction,
+			contextKeyMappingFunction: func(ti authcache.AuthTeamInfo) map[string]interface{} {
+				return map[string]interface{}{
+					TeamContextKey: ti,
+				}
+			},
+			errorMessage: "Invalid API key, please visit https://e2b.dev/docs?reason=sdk-missing-api-key to get your API key.",
+		},
+		&commonAuthenticator[uuid.UUID]{
+			securitySchemeName: "AccessTokenAuth",
+			headerKeys: []headerKey{
+				newHeaderKey("Authorization", "sk_e2b_", "Bearer "),
+			},
+			validationFunction: userValidationFunction,
+			contextKeyMappingFunction: func(uuid uuid.UUID) map[string]interface{} {
+				return map[string]interface{}{
+					UserIDContextKey: uuid,
+				}
+			},
+			errorMessage: "Invalid Access token, try to login again by running `e2b login`.",
+		},
+		&commonAuthenticator[*SupabaseInfo]{
+			securitySchemeName: "SupabaseTokenAuth",
+			headerKeys: []headerKey{
+				newHeaderKey("X-Supabase-Token", "", ""),
+				newHeaderKey("X-Supabase-Team", "", ""),
+			},
+			validationFunction: supabaseValidationFunction,
+			contextKeyMappingFunction: func(si *SupabaseInfo) map[string]interface{} {
+				return map[string]interface{}{
+					TeamContextKey:   si.TeamInfo,
+					UserIDContextKey: si.UserID,
+				}
+			},
+			errorMessage: "Invalid Supabase token.",
+		},
+		&commonAuthenticator[struct{}]{
+			securitySchemeName: "AdminTokenAuth",
+			headerKeys: []headerKey{
+				newHeaderKey("X-Admin-Token", "", ""),
+			},
+			validationFunction: adminValidationFunction,
+			contextKeyMappingFunction: func(_ struct{}) map[string]interface{} {
+				return map[string]interface{}{}
+			},
+			errorMessage: "Invalid Access token.",
+		},
 	}
 
 	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 		ginContext := ctx.Value(middleware.GinContextKey).(*gin.Context)
 		requestContext := ginContext.Request.Context()
+
 		_, span := tracer.Start(requestContext, "authenticate")
 		defer span.End()
 
-		if input.SecuritySchemeName == apiKeyValidator.securitySchemeName {
-			return apiKeyValidator.Authenticate(ctx, input)
-		}
-
-		if input.SecuritySchemeName == accessTokenValidator.securitySchemeName {
-			return accessTokenValidator.Authenticate(ctx, input)
-		}
-
-		if input.SecuritySchemeName == adminTokenValidator.securitySchemeName {
-			return adminTokenValidator.Authenticate(ctx, input)
+		for _, validator := range authenticators {
+			if input.SecuritySchemeName == validator.SecuritySchemeName() {
+				return validator.Authenticate(ctx, input)
+			}
 		}
 
 		return fmt.Errorf("invalid security scheme name '%s'", input.SecuritySchemeName)

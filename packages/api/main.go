@@ -98,6 +98,7 @@ func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *ope
 		apiStore.Tracer,
 		apiStore.GetTeamFromAPIKey,
 		apiStore.GetUserFromAccessToken,
+		apiStore.GetTeamAndUserFromSupabaseToken,
 	)
 
 	// Use our validation middleware to check all requests against the
@@ -106,9 +107,12 @@ func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *ope
 		limits.RequestSizeLimiter(maxUploadLimit),
 		middleware.OapiRequestValidatorWithOptions(swagger,
 			&middleware.Options{
-				ErrorHandler: utils.ErrorHandler,
+				ErrorHandler:      utils.ErrorHandler,
+				MultiErrorHandler: utils.MultiErrorHandler,
 				Options: openapi3filter.Options{
 					AuthenticationFunc: AuthenticationFunc,
+					// Handle multiple errors as MultiError type
+					MultiError: true,
 				},
 			}),
 	)

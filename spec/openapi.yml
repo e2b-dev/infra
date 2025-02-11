@@ -16,6 +16,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: access_token
+    SupabaseTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Supabase-Token
     AdminTokenAuth:
       type: apiKey
       in: header
@@ -528,6 +532,7 @@ paths:
       tags: [auth]
       security:
         - AccessTokenAuth: []
+        - SupabaseTokenAuth: []
       responses:
         "200":
           description: Successfully returned all teams
@@ -549,6 +554,7 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - name: query
           in: query
@@ -577,6 +583,7 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - SupabaseTokenAuth: []
       requestBody:
         required: true
         content:
@@ -633,6 +640,7 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
         - in: query
@@ -670,6 +678,7 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -695,6 +704,7 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -716,6 +726,7 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -735,6 +746,7 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -755,6 +767,7 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -784,6 +797,7 @@ paths:
       description: Set the timeout for the sandbox. The sandbox will expire x seconds from the time of the request. Calling this method multiple times overwrites the TTL, each time using the current timestamp as the starting point to measure the timeout duration.
       security:
         - ApiKeyAuth: []
+        - SupabaseTokenAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -815,6 +829,7 @@ paths:
       description: Refresh the sandbox extending its time to live
       security:
         - ApiKeyAuth: []
+        - SupabaseTokenAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -843,6 +858,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - in: query
           required: false
@@ -869,6 +885,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - SupabaseTokenAuth: []
       requestBody:
         required: true
         content:
@@ -894,6 +911,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -919,6 +937,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -933,6 +952,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -957,6 +977,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -974,6 +995,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - SupabaseTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"

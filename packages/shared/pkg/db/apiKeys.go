@@ -4,12 +4,35 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
+	"github.com/google/uuid"
 )
+
+func validateTeamUsage(team *models.Team) error {
+	if team.IsBanned {
+		errMsg := fmt.Errorf("team is banned")
+
+		return errMsg
+	}
+
+	if team.IsBlocked {
+		if team.BlockedReason == nil {
+			errMsg := fmt.Errorf("team was blocked")
+
+			return errMsg
+		}
+
+		errMsg := fmt.Errorf("team was blocked - %s", *team.BlockedReason)
+
+		return errMsg
+	}
+
+	return nil
+}
 
 func (db *DB) GetTeamAuth(ctx context.Context, apiKey string) (*models.Team, *models.Tier, error) {
 	result, err := db.
@@ -27,25 +50,12 @@ func (db *DB) GetTeamAuth(ctx context.Context, apiKey string) (*models.Team, *mo
 
 		return nil, nil, errMsg
 	}
-	//
-	if result.IsBanned {
-		errMsg := fmt.Errorf("team is banned")
 
-		return nil, nil, errMsg
+	err = validateTeamUsage(result)
+	if err != nil {
+		return nil, nil, err
 	}
-	//
-	if result.IsBlocked {
-		if result.BlockedReason == nil {
-			errMsg := fmt.Errorf("team was blocked")
 
-			return nil, nil, errMsg
-		}
-
-		errMsg := fmt.Errorf("team was blocked - %s", *result.BlockedReason)
-
-		return nil, nil, errMsg
-	}
-	//
 	return result, result.Edges.TeamTier, nil
 }
 
@@ -64,4 +74,46 @@ func (db *DB) GetUserID(ctx context.Context, token string) (*uuid.UUID, error) {
 	}
 
 	return &result.UserID, nil
+}
+
+func (db *DB) GetTeamByIDAndUserIDAuth(ctx context.Context, teamID string, userID string) (*models.Team, *models.Tier, error) {
+	teamIDParsed, err := uuid.Parse(teamID)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to parse team ID: %w", err)
+
+		return nil, nil, errMsg
+	}
+
+	userIDParsed, err := uuid.Parse(userID)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to parse user ID: %w", err)
+
+		return nil, nil, errMsg
+	}
+
+	result, err := db.
+		Client.
+		Team.
+		Query().
+		WithUsersTeams().
+		Where(
+			team.ID(teamIDParsed),
+			team.HasUsersTeamsWith(
+				usersteams.UserID(userIDParsed),
+			),
+		).
+		WithTeamTier().
+		Only(ctx)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to get team from teamID and userID key: %w", err)
+
+		return nil, nil, errMsg
+	}
+
+	err = validateTeamUsage(result)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return result, result.Edges.TeamTier, nil
 }
