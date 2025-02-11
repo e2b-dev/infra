@@ -320,27 +320,33 @@ func (a *APIStore) getSandboxesMetrics(
 	)
 
 	// Log operation summary
-	if len(metricsErrors) > 0 {
+	if len(metricsErrors) == 0 {
+		a.logger.Info("Completed fetching sandbox metrics without errors",
+			zap.String("team_id", teamID.String()),
+			zap.Int("total_sandboxes", len(sandboxes)),
+			zap.Int32("successful_fetches", successCount.Load()),
+			zap.Int32("timeouts", timeoutCount.Load()),
+			zap.Duration("duration", time.Since(startTime)),
+		)
+	} else {
 		errorStrings := make([]string, len(metricsErrors))
 		for i, err := range metricsErrors {
 			errorStrings[i] = err.Error()
 		}
 
 		err := errors.Join(metricsErrors...)
+
 		a.logger.Error("Received errors while fetching metrics for some sandboxes",
+			zap.String("team_id", teamID.String()),
+			zap.Int("total_sandboxes", len(sandboxes)),
+			zap.Int32("successful_fetches", successCount.Load()),
 			zap.Int32("failed_fetches", errorCount.Load()),
+			zap.Int32("timeouts", timeoutCount.Load()),
+			zap.Duration("duration", time.Since(startTime)),
 			zap.Error(err),
 			zap.Strings("individual_errors", errorStrings),
 		)
 	}
-
-	a.logger.Info("Completed fetching sandbox metrics",
-		zap.String("team_id", teamID.String()),
-		zap.Int("total_sandboxes", len(sandboxes)),
-		zap.Int32("successful_fetches", successCount.Load()),
-		zap.Int32("timeouts", timeoutCount.Load()),
-		zap.Duration("duration", time.Since(startTime)),
-	)
 
 	return sandboxesWithMetrics, nil
 }
