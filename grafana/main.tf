@@ -8,7 +8,7 @@ terraform {
 
 variable "prefix" {
   type    = string
-  default = "e2b"
+  default = "e2b-"
 }
 
 variable "grafana_cloud_access_policy_token_secret_name" {
@@ -21,7 +21,7 @@ should have permissions:
 - stack-service-accounts write
 EOT
 
-  default = "e2b-grafana-cloud-access-policy-token"
+  default = "${var.prefix}grafana-cloud-access-policy-token"
 }
 
 data "google_secret_manager_secret_version" "grafana_cloud_access_policy_token" {
@@ -37,8 +37,8 @@ provider "grafana" {
 resource "grafana_cloud_stack" "my_stack" {
   provider = grafana.cloud
 
-  name        = "e2b-stack"
-  slug        = "e2b-stack"
+  name        = "${var.prefix}stack"
+  slug        = "${var.prefix}stack"
   region_slug = "us"
 }
 
@@ -47,7 +47,7 @@ resource "grafana_cloud_stack_service_account" "cloud_sa" {
   provider   = grafana.cloud
   stack_slug = grafana_cloud_stack.my_stack.slug
 
-  name        = "e2b-otel-collector-service-account"
+  name        = "${var.prefix}otel-collector-service-account"
   role        = "Admin"
   is_disabled = false
 }
@@ -56,6 +56,6 @@ resource "grafana_cloud_stack_service_account_token" "cloud_sa" {
   provider   = grafana.cloud
   stack_slug = grafana_cloud_stack.my_stack.slug
 
-  name               = "e2b-stack-service-account-token"
+  name               = "${var.prefix}stack-service-account-token"
   service_account_id = grafana_cloud_stack_service_account.cloud_sa.id
 }
