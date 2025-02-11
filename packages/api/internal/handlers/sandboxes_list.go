@@ -163,7 +163,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, err.Error())
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
 		return
 	}
 
@@ -366,16 +366,16 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
 
 	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, err.Error())
 
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
 		return
 	}
 
 	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, sandboxes)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, err.Error())
-
+		telemetry.ReportCriticalError(ctx, err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning metrics for sandboxes for team '%s'", team.ID))
 		return
 	}
 
