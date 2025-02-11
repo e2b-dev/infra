@@ -249,8 +249,7 @@ module "nomad" {
 
 module "grafana" {
   source = "./grafana"
-
-  prefix = var.prefix
-
-  
+  prefix                            = var.prefix
+  grafana_cloud_access_policy_token_secret_name = module.init.grafana_cloud_access_policy_token_secret_name
+  grafana_service_account_token_secret_name     = module.init.grafana_service_account_token_secret_name
 }
