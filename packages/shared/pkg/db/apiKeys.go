@@ -76,17 +76,10 @@ func (db *DB) GetUserID(ctx context.Context, token string) (*uuid.UUID, error) {
 	return &result.UserID, nil
 }
 
-func (db *DB) GetTeamByIDAndUserIDAuth(ctx context.Context, teamID string, userID string) (*models.Team, *models.Tier, error) {
+func (db *DB) GetTeamByIDAndUserIDAuth(ctx context.Context, teamID string, userID uuid.UUID) (*models.Team, *models.Tier, error) {
 	teamIDParsed, err := uuid.Parse(teamID)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to parse team ID: %w", err)
-
-		return nil, nil, errMsg
-	}
-
-	userIDParsed, err := uuid.Parse(userID)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to parse user ID: %w", err)
 
 		return nil, nil, errMsg
 	}
@@ -99,7 +92,7 @@ func (db *DB) GetTeamByIDAndUserIDAuth(ctx context.Context, teamID string, userI
 		Where(
 			team.ID(teamIDParsed),
 			team.HasUsersTeamsWith(
-				usersteams.UserID(userIDParsed),
+				usersteams.UserID(userID),
 			),
 		).
 		WithTeamTier().

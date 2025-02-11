@@ -16,10 +16,14 @@ components:
       type: http
       scheme: bearer
       bearerFormat: access_token
-    SupabaseTokenAuth:
+    Supabase1TokenAuth:
       type: apiKey
       in: header
       name: X-Supabase-Token
+    Supabase2TeamAuth:
+      type: apiKey
+      in: header
+      name: X-Supabase-Team
     AdminTokenAuth:
       type: apiKey
       in: header
@@ -532,7 +536,7 @@ paths:
       tags: [auth]
       security:
         - AccessTokenAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
       responses:
         "200":
           description: Successfully returned all teams
@@ -554,7 +558,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - name: query
           in: query
@@ -583,7 +588,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -640,7 +646,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
         - in: query
@@ -678,7 +685,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -704,7 +712,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -726,7 +735,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -746,7 +756,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -767,7 +778,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -797,7 +809,8 @@ paths:
       description: Set the timeout for the sandbox. The sandbox will expire x seconds from the time of the request. Calling this method multiple times overwrites the TTL, each time using the current timestamp as the starting point to measure the timeout duration.
       security:
         - ApiKeyAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -829,7 +842,8 @@ paths:
       description: Refresh the sandbox extending its time to live
       security:
         - ApiKeyAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -858,7 +872,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - in: query
           required: false
@@ -885,7 +899,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
       requestBody:
         required: true
         content:
@@ -911,7 +925,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -937,7 +951,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -952,7 +966,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -977,7 +991,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -995,7 +1009,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
-        - SupabaseTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"

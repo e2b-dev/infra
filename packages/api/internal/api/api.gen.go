@@ -180,7 +180,9 @@ func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesParams
@@ -208,7 +210,9 @@ func (siw *ServerInterfaceWrapper) PostSandboxes(c *gin.Context) {
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -264,7 +268,9 @@ func (siw *ServerInterfaceWrapper) DeleteSandboxesSandboxID(c *gin.Context) {
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -292,7 +298,9 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxID(c *gin.Context) {
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -320,7 +328,9 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDLogs(c *gin.Context) {
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesSandboxIDLogsParams
@@ -367,7 +377,9 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDMetrics(c *gin.Context) 
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -395,7 +407,9 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDPause(c *gin.Context) {
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -423,7 +437,9 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDRefreshes(c *gin.Contex
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -451,7 +467,9 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDResume(c *gin.Context) 
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -479,7 +497,9 @@ func (siw *ServerInterfaceWrapper) PostSandboxesSandboxIDTimeout(c *gin.Context)
 
 	c.Set(ApiKeyAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -496,7 +516,7 @@ func (siw *ServerInterfaceWrapper) GetTeams(c *gin.Context) {
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -515,7 +535,7 @@ func (siw *ServerInterfaceWrapper) GetTemplates(c *gin.Context) {
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesParams
@@ -543,7 +563,7 @@ func (siw *ServerInterfaceWrapper) PostTemplates(c *gin.Context) {
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -571,7 +591,7 @@ func (siw *ServerInterfaceWrapper) DeleteTemplatesTemplateID(c *gin.Context) {
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -599,7 +619,7 @@ func (siw *ServerInterfaceWrapper) PatchTemplatesTemplateID(c *gin.Context) {
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -627,7 +647,7 @@ func (siw *ServerInterfaceWrapper) PostTemplatesTemplateID(c *gin.Context) {
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -664,7 +684,7 @@ func (siw *ServerInterfaceWrapper) PostTemplatesTemplateIDBuildsBuildID(c *gin.C
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -701,7 +721,7 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDStatus(c *
 
 	c.Set(AccessTokenAuthScopes, []string{})
 
-	c.Set(SupabaseTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTemplatesTemplateIDBuildsBuildIDStatusParams

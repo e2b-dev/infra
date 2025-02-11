@@ -98,7 +98,8 @@ func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *ope
 		apiStore.Tracer,
 		apiStore.GetTeamFromAPIKey,
 		apiStore.GetUserFromAccessToken,
-		apiStore.GetTeamAndUserFromSupabaseToken,
+		apiStore.GetUserFromSupabaseToken,
+		apiStore.GetTeamFromSupabaseToken,
 	)
 
 	// Use our validation middleware to check all requests against the

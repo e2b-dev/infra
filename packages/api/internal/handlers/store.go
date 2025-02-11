@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	middleware "github.com/oapi-codegen/gin-middleware"
 	"net/http"
 	"os"
 	"time"
@@ -21,7 +22,6 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
@@ -186,9 +186,7 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 	c.String(http.StatusServiceUnavailable, "Service is unavailable")
 }
 
-func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, tokens []string) (authcache.AuthTeamInfo, *api.APIError) {
-	apiKey := tokens[0]
-
+func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authcache.AuthTeamInfo, *api.APIError) {
 	team, tier, err := a.authCache.Get(ctx, apiKey)
 	if err != nil {
 		return authcache.AuthTeamInfo{}, &api.APIError{
@@ -204,9 +202,7 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, tokens []string) (auth
 	}, nil
 }
 
-func (a *APIStore) GetUserFromAccessToken(ctx context.Context, tokens []string) (uuid.UUID, *api.APIError) {
-	accessToken := tokens[0]
-
+func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken string) (uuid.UUID, *api.APIError) {
 	userID, err := a.db.GetUserID(ctx, accessToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
@@ -224,9 +220,7 @@ type supabaseClaims struct {
 	jwt.RegisteredClaims
 }
 
-func (a *APIStore) GetTeamAndUserFromSupabaseToken(ctx context.Context, tokens []string) (*auth.SupabaseInfo, *api.APIError) {
-	supabaseToken, teamID := tokens[0], tokens[1]
-
+func (a *APIStore) GetUserFromSupabaseToken(ctx context.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
 	// Parse the token with the custom claims.
 	token, err := jwt.ParseWithClaims(supabaseToken, &supabaseClaims{}, func(token *jwt.Token) (interface{}, error) {
 		// Verify that the signing method is HMAC (HS256)
@@ -237,7 +231,7 @@ func (a *APIStore) GetTeamAndUserFromSupabaseToken(ctx context.Context, tokens [
 		return []byte(supabaseJWTSecret), nil
 	})
 	if err != nil {
-		return nil, &api.APIError{
+		return uuid.UUID{}, &api.APIError{
 			Err:       fmt.Errorf("failed to parse supabase token: %w", err),
 			ClientMsg: "Backend authentication failed",
 			Code:      http.StatusUnauthorized,
@@ -248,7 +242,7 @@ func (a *APIStore) GetTeamAndUserFromSupabaseToken(ctx context.Context, tokens [
 	if claims, ok := token.Claims.(*supabaseClaims); ok && token.Valid {
 		userId, err := claims.GetSubject()
 		if err != nil {
-			return nil, &api.APIError{
+			return uuid.UUID{}, &api.APIError{
 				Err:       fmt.Errorf("failed getting jwt subject: %w", err),
 				ClientMsg: "Backend authentication failed",
 				Code:      http.StatusUnauthorized,
@@ -257,36 +251,37 @@ func (a *APIStore) GetTeamAndUserFromSupabaseToken(ctx context.Context, tokens [
 
 		userIDParsed, err := uuid.Parse(userId)
 		if err != nil {
-			return nil, &api.APIError{
+			return uuid.UUID{}, &api.APIError{
 				Err:       fmt.Errorf("failed parsing user uuid: %w", err),
 				ClientMsg: "Backend authentication failed",
 				Code:      http.StatusUnauthorized,
 			}
 		}
 
-		team, tier, err := a.db.GetTeamByIDAndUserIDAuth(ctx, teamID, userId)
-		if err != nil {
-			return nil, &api.APIError{
-				Err:       fmt.Errorf("failed getting team: %w", err),
-				ClientMsg: "Backend authentication failed",
-				Code:      http.StatusUnauthorized,
-			}
-		}
-
-		teamInfo := authcache.AuthTeamInfo{
-			Team: team,
-			Tier: tier,
-		}
-
-		return &auth.SupabaseInfo{
-			TeamInfo: teamInfo,
-			UserID:   userIDParsed,
-		}, nil
+		return userIDParsed, nil
 	}
 
-	return nil, &api.APIError{
+	return uuid.UUID{}, &api.APIError{
 		Err:       fmt.Errorf("supabase token is invalid: %w", err),
 		ClientMsg: "Backend authentication failed",
 		Code:      http.StatusUnauthorized,
 	}
+}
+
+func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (authcache.AuthTeamInfo, *api.APIError) {
+	userID := a.GetUserID(middleware.GetGinContext(ctx))
+
+	team, tier, err := a.db.GetTeamByIDAndUserIDAuth(ctx, teamID, userID)
+	if err != nil {
+		return authcache.AuthTeamInfo{}, &api.APIError{
+			Err:       fmt.Errorf("failed getting team: %w", err),
+			ClientMsg: "Backend authentication failed",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	return authcache.AuthTeamInfo{
+		Team: team,
+		Tier: tier,
+	}, nil
 }
