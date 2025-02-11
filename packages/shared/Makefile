@@ -13,7 +13,7 @@ generate-models:
 .PHONY: prep-cluster
 prep-cluster:
 	@echo "Seeding database..."
-	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed-db.go
+	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed/postgres/main.go
 	@echo "Building base template..."
 	@E2B_DOMAIN=$(DOMAIN_NAME) e2b tpl build -p scripts
 	@echo "Done"
@@ -23,6 +23,12 @@ migrate:
 	@echo "Generating migrations..."
 	@cat ./migrations/* > ./migration.sql
 	@echo "Applying migration"
-	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/migrate.go
+	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/migrate/postgres/main.go
 	@rm ./migration.sql
+	@echo "Done"
+
+.PHONY: migrate-clickhouse
+migrate-clickhouse:
+	@echo "Applying ClickHouse migration"
+	@CLICKHOUSE_CONNECTION_STRING=$(CLICKHOUSE_CONNECTION_STRING) go run ./scripts/migrate/clickhouse/main.go
 	@echo "Done"
