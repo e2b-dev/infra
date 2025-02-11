@@ -245,3 +245,12 @@ module "nomad" {
   # Redis
   redis_port = var.redis_port
 }
+
+
+module "grafana" {
+  source = "./grafana"
+
+  prefix = var.prefix
+
+  
+}

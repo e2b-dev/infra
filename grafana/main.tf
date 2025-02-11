@@ -6,8 +6,13 @@ terraform {
   }
 }
 
+variable "prefix" {
+  type    = string
+  default = "e2b"
+}
+
 variable "grafana_cloud_access_policy_token_secret_name" {
-  type = string
+  type        = string
   description = <<EOT
 The name of the secret in GCP Secret Manager that contains the Grafana cloud access policy token.
 
@@ -54,6 +59,3 @@ resource "grafana_cloud_stack_service_account_token" "cloud_sa" {
   name               = "e2b-stack-service-account-token"
   service_account_id = grafana_cloud_stack_service_account.cloud_sa.id
 }
-
-# grafana_cloud_stack_service_account_token.cloud_sa.key //  <-- how to get the key 
-
