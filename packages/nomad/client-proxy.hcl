@@ -52,7 +52,9 @@ job "client-proxy" {
       driver = "docker"
       # If we need more than 30s we will need to update the max_kill_timeout in nomad
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
+%{ if update_stanza }
       kill_timeout = "24h"
+%{ endif }
       kill_signal  = "SIGTERM"
 
       resources {
