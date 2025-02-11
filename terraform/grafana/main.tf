@@ -52,7 +52,9 @@ provider "grafana" {
 resource "grafana_cloud_stack" "e2b_stack" {
   provider = grafana.cloud
 
-  name        = "${var.prefix}stack"
+  name = "${var.prefix}stack"
+  # (must be a lowercase alphanumeric string and must start with a letter.)
+  # cannot use var.prefix because it contains -
   slug        = "e2bstack"
   region_slug = "us"
 }
