@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -21,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 )
 
 func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *string) ([]api.RunningSandbox, error) {
@@ -226,12 +228,13 @@ func (a *APIStore) getSandboxesMetrics(
 
 	results := make(chan metricsResult, len(sandboxes))
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, maxConcurrentMetricFetches)
+	sem := semaphore.NewWeighted(int64(maxConcurrentMetricFetches))
 
 	// Error tracking with atomic counters
 	var errorCount atomic.Int32
 	var timeoutCount atomic.Int32
 	var successCount atomic.Int32
+	var metricsErrors []error
 
 	// Fetch metrics for each sandbox concurrently with rate limiting
 	for _, sandbox := range sandboxes {
@@ -239,11 +242,8 @@ func (a *APIStore) getSandboxesMetrics(
 		go func(s api.RunningSandbox) {
 			defer wg.Done()
 
-			// Try to acquire semaphore with context
-			select {
-			case sem <- struct{}{}:
-				defer func() { <-sem }() // Release semaphore when done
-			case <-ctx.Done():
+			err := sem.Acquire(ctx, 1)
+			if err != nil {
 				timeoutCount.Add(1)
 				err := fmt.Errorf("context cancelled while waiting for rate limiter: %w", ctx.Err())
 				telemetry.ReportError(ctx, err)
@@ -251,8 +251,10 @@ func (a *APIStore) getSandboxesMetrics(
 					sandbox: s,
 					err:     err,
 				}
+
 				return
 			}
+			defer sem.Release(1)
 
 			// Get metrics for this sandbox
 			metrics, err := a.getSandboxesSandboxIDMetrics(
@@ -303,6 +305,8 @@ func (a *APIStore) getSandboxesMetrics(
 
 		if result.err == nil {
 			sandbox.Metrics = &result.metrics
+		} else {
+			metricsErrors = append(metricsErrors, result.err)
 		}
 
 		sandboxesWithMetrics = append(sandboxesWithMetrics, sandbox)
@@ -316,11 +320,24 @@ func (a *APIStore) getSandboxesMetrics(
 	)
 
 	// Log operation summary
+	if len(metricsErrors) > 0 {
+		errorStrings := make([]string, len(metricsErrors))
+		for i, err := range metricsErrors {
+			errorStrings[i] = err.Error()
+		}
+
+		err := errors.Join(metricsErrors...)
+		a.logger.Error("Received errors while fetching metrics for some sandboxes",
+			zap.Int32("failed_fetches", errorCount.Load()),
+			zap.Error(err),
+			zap.Strings("individual_errors", errorStrings),
+		)
+	}
+
 	a.logger.Info("Completed fetching sandbox metrics",
 		zap.String("team_id", teamID.String()),
 		zap.Int("total_sandboxes", len(sandboxes)),
 		zap.Int32("successful_fetches", successCount.Load()),
-		zap.Int32("failed_fetches", errorCount.Load()),
 		zap.Int32("timeouts", timeoutCount.Load()),
 		zap.Duration("duration", time.Since(startTime)),
 	)
@@ -345,13 +362,14 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, err.Error())
+
 		return
 	}
 
 	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, sandboxes)
-
 	if err != nil {
 		c.JSON(http.StatusBadRequest, err.Error())
+
 		return
 	}
 

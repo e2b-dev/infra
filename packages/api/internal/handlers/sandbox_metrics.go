@@ -115,5 +115,4 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 	}
 
 	c.JSON(http.StatusOK, metrics)
-	return
 }
