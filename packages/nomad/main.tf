@@ -113,39 +113,39 @@ resource "nomad_job" "session_proxy" {
   }
 }
 
-resource "nomad_job" "otel_collector" {
-  jobspec = file("${path.module}/otel-collector.hcl")
+# resource "nomad_job" "otel_collector" {
+#   jobspec = file("${path.module}/otel-collector.hcl")
 
-  hcl2 {
-    vars = {
+#   hcl2 {
+#     vars = {
 
-      grafana_api_key = data.google_secret_manager_secret_version.grafana_api_key.secret_data
+#       grafana_api_key = data.google_secret_manager_secret_version.grafana_api_key.secret_data
 
-      consul_token = var.consul_acl_token_secret
+#       consul_token = var.consul_acl_token_secret
 
-      gcp_zone = var.gcp_zone
-    }
-  }
-}
+#       gcp_zone = var.gcp_zone
+#     }
+#   }
+# }
 
-resource "nomad_job" "logs_collector" {
-  jobspec = file("${path.module}/logs-collector.hcl")
+# resource "nomad_job" "logs_collector" {
+#   jobspec = file("${path.module}/logs-collector.hcl")
 
-  hcl2 {
-    vars = {
-      gcp_zone = var.gcp_zone
+#   hcl2 {
+#     vars = {
+#       gcp_zone = var.gcp_zone
 
-      logs_port_number        = var.logs_proxy_port.port
-      logs_health_port_number = var.logs_health_proxy_port.port
-      logs_health_path        = var.logs_health_proxy_port.health_path
-      logs_port_name          = var.logs_proxy_port.name
+#       logs_port_number        = var.logs_proxy_port.port
+#       logs_health_port_number = var.logs_health_proxy_port.port
+#       logs_health_path        = var.logs_health_proxy_port.health_path
+#       logs_port_name          = var.logs_proxy_port.name
 
-      loki_service_port_number = var.loki_service_port.port
+#       loki_service_port_number = var.loki_service_port.port
 
-      grafana_api_key = data.google_secret_manager_secret_version.grafana_api_key.secret_data
-    }
-  }
-}
+#       grafana_api_key = data.google_secret_manager_secret_version.grafana_api_key.secret_data
+#     }
+#   }
+# }
 
 data "google_storage_bucket_object" "orchestrator" {
   name   = "orchestrator"
