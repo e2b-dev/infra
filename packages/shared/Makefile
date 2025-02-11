@@ -27,14 +27,10 @@ migrate-postgres:
 	@rm ./migration.sql
 	@echo "Done"
 
-.PHONY: migrate-clickhouse-up
-migrate-clickhouse-up:
-	@echo "Applying ClickHouse migration *UPWARDS*"
-	@CLICKHOUSE_CONNECTION_STRING=$(CLICKHOUSE_CONNECTION_STRING) CLICKHOUSE_USERNAME=$(CLICKHOUSE_USERNAME) CLICKHOUSE_PASSWORD=$(CLICKHOUSE_PASSWORD) CLICKHOUSE_DATABASE=$(CLICKHOUSE_DATABASE) go run ./scripts/migrate/clickhouse/main.go -direction up
-	@echo "Done"
-
-.PHONY: migrate-clickhouse-down
-migrate-clickhouse-down:
-	@echo "Applying ClickHouse migration *DOWNWARDS*"
-	@CLICKHOUSE_CONNECTION_STRING=$(CLICKHOUSE_CONNECTION_STRING) CLICKHOUSE_USERNAME=$(CLICKHOUSE_USERNAME) CLICKHOUSE_PASSWORD=$(CLICKHOUSE_PASSWORD) CLICKHOUSE_DATABASE=$(CLICKHOUSE_DATABASE) go run ./scripts/migrate/clickhouse/main.go -direction down
+.PHONY: migrate-clickhouse
+migrate-clickhouse:migrate-clickhouse/up
+migrate-clickhouse:migrate-clickhouse/down
+migrate-clickhouse/%:
+	@echo "Applying ClickHouse migration *$(notdir $@)*"
+	@CLICKHOUSE_CONNECTION_STRING=$(CLICKHOUSE_CONNECTION_STRING) CLICKHOUSE_USERNAME=$(CLICKHOUSE_USERNAME) CLICKHOUSE_PASSWORD=$(CLICKHOUSE_PASSWORD) CLICKHOUSE_DATABASE=$(CLICKHOUSE_DATABASE) go run ./scripts/migrate/clickhouse/main.go -direction $(notdir $@)
 	@echo "Done"
