@@ -4,12 +4,33 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
+	"github.com/google/uuid"
 )
+
+func validateTeamUsage(team *models.Team) error {
+	if team.IsBanned {
+		errMsg := fmt.Errorf("team is banned")
+
+		return errMsg
+	}
+
+	if team.IsBlocked {
+		if team.BlockedReason == nil {
+			errMsg := fmt.Errorf("team was blocked")
+
+			return errMsg
+		}
+
+		errMsg := fmt.Errorf("team was blocked, reason: %s", *team.BlockedReason)
+
+		return errMsg
+	}
+
+	return nil
+}
 
 func (db *DB) GetTeamAuth(ctx context.Context, apiKey string) (*models.Team, *models.Tier, error) {
 	result, err := db.
@@ -27,25 +48,12 @@ func (db *DB) GetTeamAuth(ctx context.Context, apiKey string) (*models.Team, *mo
 
 		return nil, nil, errMsg
 	}
-	//
-	if result.IsBanned {
-		errMsg := fmt.Errorf("team is banned")
 
-		return nil, nil, errMsg
+	err = validateTeamUsage(result)
+	if err != nil {
+		return nil, nil, err
 	}
-	//
-	if result.IsBlocked {
-		if result.BlockedReason == nil {
-			errMsg := fmt.Errorf("team was blocked")
 
-			return nil, nil, errMsg
-		}
-
-		errMsg := fmt.Errorf("team was blocked - %s", *result.BlockedReason)
-
-		return nil, nil, errMsg
-	}
-	//
 	return result, result.Edges.TeamTier, nil
 }
 

@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	middleware "github.com/oapi-codegen/gin-middleware"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	loki "github.com/grafana/loki/pkg/logcli/client"
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -29,6 +31,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
+
+var supabaseJWTSecret = os.Getenv("SUPABASE_JWT_SECRET")
 
 type APIStore struct {
 	Healthy              bool
@@ -236,4 +240,75 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken strin
 	}
 
 	return *userID, nil
+}
+
+// supabaseClaims defines the claims we expect from the Supabase JWT.
+type supabaseClaims struct {
+	jwt.RegisteredClaims
+}
+
+func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
+	// Parse the token with the custom claims.
+	token, err := jwt.ParseWithClaims(supabaseToken, &supabaseClaims{}, func(token *jwt.Token) (interface{}, error) {
+		// Verify that the signing method is HMAC (HS256)
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		// Return the secret key used for signing the token.
+		return []byte(supabaseJWTSecret), nil
+	})
+	if err != nil {
+		return uuid.UUID{}, &api.APIError{
+			Err:       fmt.Errorf("failed to parse supabase token: %w", err),
+			ClientMsg: "Backend authentication failed",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	// Extract and return the custom claims if the token is valid.
+	if claims, ok := token.Claims.(*supabaseClaims); ok && token.Valid {
+		userId, err := claims.GetSubject()
+		if err != nil {
+			return uuid.UUID{}, &api.APIError{
+				Err:       fmt.Errorf("failed getting jwt subject: %w", err),
+				ClientMsg: "Backend authentication failed",
+				Code:      http.StatusUnauthorized,
+			}
+		}
+
+		userIDParsed, err := uuid.Parse(userId)
+		if err != nil {
+			return uuid.UUID{}, &api.APIError{
+				Err:       fmt.Errorf("failed parsing user uuid: %w", err),
+				ClientMsg: "Backend authentication failed",
+				Code:      http.StatusUnauthorized,
+			}
+		}
+
+		return userIDParsed, nil
+	}
+
+	return uuid.UUID{}, &api.APIError{
+		Err:       fmt.Errorf("supabase token is invalid: %w", err),
+		ClientMsg: "Backend authentication failed",
+		Code:      http.StatusUnauthorized,
+	}
+}
+
+func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (authcache.AuthTeamInfo, *api.APIError) {
+	userID := a.GetUserID(middleware.GetGinContext(ctx))
+
+	team, tier, err := a.db.GetTeamByIDAndUserIDAuth(ctx, teamID, userID)
+	if err != nil {
+		return authcache.AuthTeamInfo{}, &api.APIError{
+			Err:       fmt.Errorf("failed getting team: %w", err),
+			ClientMsg: "Backend authentication failed",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	return authcache.AuthTeamInfo{
+		Team: team,
+		Tier: tier,
+	}, nil
 }
