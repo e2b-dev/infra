@@ -24,6 +24,16 @@ EOT
   default = "${var.prefix}grafana-cloud-access-policy-token"
 }
 
+variable "grafana_service_account_token_secret_name" {
+  type        = string
+  description = <<EOT
+The name of the secret in GCP Secret Manager that contains the Grafana service account token.
+EOT
+
+  default = "${var.prefix}grafana-service-account-token"
+}
+
+
 data "google_secret_manager_secret_version" "grafana_cloud_access_policy_token" {
   secret = var.grafana_cloud_access_policy_token_secret_name
 }
@@ -58,4 +68,9 @@ resource "grafana_cloud_stack_service_account_token" "cloud_sa" {
 
   name               = "${var.prefix}stack-service-account-token"
   service_account_id = grafana_cloud_stack_service_account.cloud_sa.id
+}
+
+resource "google_secret_manager_secret_version" "grafana_service_account_token" {
+  secret      = var.grafana_service_account_token_secret_name
+  secret_data = grafana_cloud_stack_service_account_token.cloud_sa.key
 }

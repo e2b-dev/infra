@@ -82,31 +82,11 @@ locals {
       generate_uuid = true
       initial_value = null
     }
-    "grafana-api-key" = {
+    "grafana-service-account-token" = {
       generate_uuid = false
       initial_value = " "
     }
-    "grafana-traces-endpoint" = {
-      generate_uuid = false
-      initial_value = " "
-    }
-    "grafana-logs-endpoint" = {
-      generate_uuid = false
-      initial_value = " "
-    }
-    "grafana-metrics-endpoint" = {
-      generate_uuid = false
-      initial_value = " "
-    }
-    "grafana-traces-username" = {
-      generate_uuid = false
-      initial_value = " "
-    }
-    "grafana-logs-username" = {
-      generate_uuid = false
-      initial_value = " "
-    }
-    "grafana-metrics-username" = {
+    "e2b-grafana-cloud-access-policy-token" = {
       generate_uuid = false
       initial_value = " "
     }
