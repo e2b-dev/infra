@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -46,17 +47,14 @@ func (a *APIStore) getSandboxesSandboxIDMetrics(
 
 	res, err := a.lokiClient.QueryRange(query, limit, start, end, logproto.BACKWARD, time.Duration(0), time.Duration(0), true)
 	if err != nil {
-		errMsg := fmt.Errorf("error when returning metrics for sandbox: %w", err)
-		return nil, errMsg
+		return nil, fmt.Errorf("error when returning metrics for sandbox: %w", err)
 	}
 
 	if res.Data.Result.Type() != loghttp.ResultTypeStream {
-		errMsg := fmt.Errorf("unexpected value type %T", res.Data.Result.Type())
-		return nil, errMsg
+		return nil, fmt.Errorf("unexpected value type %T", res.Data.Result.Type())
 	}
 
 	value := res.Data.Result.(loghttp.Streams)
-
 	metrics := make([]api.SandboxMetric, 0)
 
 	for _, stream := range value {
@@ -70,20 +68,23 @@ func (a *APIStore) getSandboxesSandboxIDMetrics(
 					MemUsedMiB  int64     `json:"memUsedMiB"`
 				}
 
-				err := json.Unmarshal([]byte(entry.Line), &metric)
-				if err != nil {
-					telemetry.ReportCriticalError(ctx, fmt.Errorf("failed to unmarshal metric: %w", err))
-					continue
-				}
-				metrics = append(metrics, api.SandboxMetric{
-					Timestamp:   metric.Timestamp,
-					CpuUsedPct:  metric.CPUUsedPct,
-					CpuCount:    metric.CPUCount,
-					MemTotalMiB: metric.MemTotalMiB,
-					MemUsedMiB:  metric.MemUsedMiB,
-				})
+			err := json.Unmarshal([]byte(entry.Line), &metric)
+			if err != nil {
+				a.logger.Error("Failed to unmarshal metric", zap.String("sandbox", sandboxID), zap.Error(err))
+				telemetry.ReportCriticalError(ctx, fmt.Errorf("failed to unmarshal metric: %w", err))
+
+				continue
 			}
+
+			metrics = append(metrics, api.SandboxMetric{
+				Timestamp:   metric.Timestamp,
+				CpuUsedPct:  metric.CPUUsedPct,
+				CpuCount:    metric.CPUCount,
+				MemTotalMiB: metric.MemTotalMiB,
+				MemUsedMiB:  metric.MemUsedMiB,
+			})
 		}
+	}
 
 	// Sort metrics by timestamp (they are returned by the time they arrived in Loki)
 	slices.SortFunc(metrics, func(a, b api.SandboxMetric) int {
@@ -109,8 +110,13 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 
 	metrics, err := a.getSandboxesSandboxIDMetrics(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
 	if err != nil {
+		a.logger.Error("Error returning metrics for sandbox",
+			zap.Error(err),
+			zap.String("sandboxID", sandboxID),
+		)
 		telemetry.ReportCriticalError(ctx, err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning metrics for sandbox '%s'", sandboxID))
+
 		return
 	}
 

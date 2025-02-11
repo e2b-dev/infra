@@ -12,17 +12,23 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
-	"golang.org/x/sync/semaphore"
+)
+
+const (
+	getSandboxesMetricsTimeout = 30 * time.Second
+	maxConcurrentMetricFetches = 30
 )
 
 func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *string) ([]api.RunningSandbox, error) {
@@ -163,17 +169,14 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query)
 	if err != nil {
+		a.logger.Error("Error fetching sandboxes", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
+
 		return
 	}
 
 	c.JSON(http.StatusOK, sandboxes)
 }
-
-const (
-	getSandboxesMetricsTimeout = 30 * time.Second
-	maxConcurrentMetricFetches = 30
-)
 
 func (a *APIStore) getSandboxesMetrics(
 	ctx context.Context,
@@ -201,30 +204,6 @@ func (a *APIStore) getSandboxesMetrics(
 		metrics []api.SandboxMetric
 		err     error
 	}
-
-	// TODO: Potential scaling consideration:
-	//
-	// Current implementation creates a buffered channel sized to the number of sandboxes.
-	// This could consume significant memory with very large numbers of sandboxes (thousands+).
-	// Consider implementing a fixed-size channel with backpressure for better resource management:
-	//
-	// Example approach:
-	// const maxChannelBuffer = 100
-	// results := make(chan metricsResult, maxChannelBuffer)
-	//
-	// Then in the goroutine:
-	// select {
-	// case results <- result:
-	// case <-ctx.Done():
-	//     return
-	// }
-	//
-	// And process results concurrently:
-	// go func() {
-	//     for result := range results {
-	//         processAndAppendResult(result)
-	//     }
-	// }()
 
 	results := make(chan metricsResult, len(sandboxes))
 	var wg sync.WaitGroup
@@ -323,7 +302,7 @@ func (a *APIStore) getSandboxesMetrics(
 	if len(metricsErrors) == 0 {
 		a.logger.Info("Completed fetching sandbox metrics without errors",
 			zap.String("team_id", teamID.String()),
-			zap.Int("total_sandboxes", len(sandboxes)),
+			zap.Int32("total_sandboxes", int32(len(sandboxes))),
 			zap.Int32("successful_fetches", successCount.Load()),
 			zap.Int32("timeouts", timeoutCount.Load()),
 			zap.Duration("duration", time.Since(startTime)),
@@ -338,13 +317,12 @@ func (a *APIStore) getSandboxesMetrics(
 
 		a.logger.Error("Received errors while fetching metrics for some sandboxes",
 			zap.String("team_id", teamID.String()),
-			zap.Int("total_sandboxes", len(sandboxes)),
+			zap.Int32("total_sandboxes", int32(len(sandboxes))),
 			zap.Int32("successful_fetches", successCount.Load()),
 			zap.Int32("failed_fetches", errorCount.Load()),
 			zap.Int32("timeouts", timeoutCount.Load()),
 			zap.Duration("duration", time.Since(startTime)),
 			zap.Error(err),
-			zap.Strings("individual_errors", errorStrings),
 		)
 	}
 
@@ -366,16 +344,20 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
 
 	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query)
-
 	if err != nil {
+		a.logger.Error("Error fetching sandboxes", zap.Error(err))
+		telemetry.ReportCriticalError(ctx, err)
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
+
 		return
 	}
 
 	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, sandboxes)
 	if err != nil {
+		a.logger.Error("Error fetching metrics for sandboxes", zap.Error(err))
 		telemetry.ReportCriticalError(ctx, err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning metrics for sandboxes for team '%s'", team.ID))
+
 		return
 	}
 
