@@ -59,6 +59,10 @@ job "client-proxy" {
         cpu        = 1000
       }
 
+      env {
+        OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
+      }
+
       config {
         network_mode = "host"
         image        = "${image_name}"

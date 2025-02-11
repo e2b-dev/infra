@@ -117,6 +117,8 @@ resource "nomad_job" "client_proxy" {
       environment        = var.environment
 
       image_name = var.client_proxy_docker_image_digest
+
+      otel_collector_grpc_endpoint = "localhost:4317"
   })
 }
 
