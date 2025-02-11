@@ -1,3 +1,5 @@
+tf_vars := TF_VAR_project=$(GCP_PROJECT_ID) 
+
 .PHONY: plan
 plan:
 	@ printf "Planning Terraform\n"

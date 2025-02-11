@@ -11,6 +11,11 @@ variable "prefix" {
   default = "e2b-"
 }
 
+variable "project" {
+  type    = string
+  default = "e2b-staging-wendt-robert"
+}
+
 variable "access_token_secret_name" {
   type        = string
   description = <<EOT
@@ -20,8 +25,8 @@ should have permissions:
 - stacks read write delete
 - stack-service-accounts write
 EOT
-
-  default = "${var.prefix}grafana-api-key"
+  # Variables may not be used here.
+  default = "e2b-grafana-api-key"
 }
 
 variable "username_secret_name" {
@@ -29,8 +34,13 @@ variable "username_secret_name" {
   description = <<EOT
   the stack id will be stored in this secret
 EOT
+  # Variables may not be used here.
+  default = "e2b-grafana-username"
+}
 
-  default = "${var.prefix}grafana-username"
+data "google_secret_manager_secret_version" "grafana_cloud_access_policy_token" {
+  secret  = var.access_token_secret_name
+  project = var.project
 }
 
 // Step 1: Create a stack
@@ -43,24 +53,16 @@ resource "grafana_cloud_stack" "e2b_stack" {
   provider = grafana.cloud
 
   name        = "${var.prefix}stack"
-  slug        = "${var.prefix}stack"
+  slug        = "e2bstack"
   region_slug = "us"
 }
 
 data "google_secret_manager_secret_version" "grafana_username" {
-  secret = var.username_secret_name
+  secret  = var.username_secret_name
+  project = var.project
 }
 
 resource "google_secret_manager_secret_version" "grafana_username" {
   secret      = data.google_secret_manager_secret_version.grafana_username.secret
-  secret_data = grafana_cloud_stack.e2b_stack.id
-}
-
-data "google_secret_manager_secret_version" "grafana_api_key" {
-  secret = var.access_token_secret_name
-}
-
-resource "google_secret_manager_secret_version" "grafana_api_key" {
-  secret      = data.google_secret_manager_secret_version.grafana_api_key.secret
   secret_data = grafana_cloud_stack.e2b_stack.id
 }
