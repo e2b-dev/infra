@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -8,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -17,24 +20,18 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
-	ctx := c.Request.Context()
-	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
-	team := teamInfo.Team
-
-	telemetry.ReportEvent(ctx, "list running instances")
-
+func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *string, state *[]api.SandboxState) ([]api.ListedSandbox, error) {
 	// Initialize empty slice for results
 	sandboxes := make([]api.ListedSandbox, 0)
 
 	// Only fetch running sandboxes if we need them (state is nil or "running")
-	if params.State == nil || slices.Contains(*params.State, api.Running) {
-		sandboxInfo := a.orchestrator.GetSandboxes(ctx, &team.ID)
+	if state == nil || slices.Contains(*state, api.Running) {
+		sandboxInfo := a.orchestrator.GetSandboxes(ctx, &teamID)
 
 		// Get build IDs for running sandboxes
 		buildIDs := make([]uuid.UUID, 0)
 		for _, info := range sandboxInfo {
-			if info.TeamID != nil && *info.TeamID == team.ID && info.BuildID != nil {
+			if info.TeamID != nil && *info.TeamID == teamID && info.BuildID != nil {
 				buildIDs = append(buildIDs, *info.BuildID)
 			}
 		}
@@ -43,9 +40,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		if len(buildIDs) > 0 {
 			builds, err := a.db.Client.EnvBuild.Query().Where(envbuild.IDIn(buildIDs...)).All(ctx)
 			if err != nil {
-				a.logger.Errorf("error getting builds for running sandboxes: %s", err)
-				telemetry.ReportCriticalError(ctx, err)
-				return
+				return nil, fmt.Errorf("error getting builds for running sandboxes: %s", err)
 			}
 
 			buildsMap := make(map[uuid.UUID]*models.EnvBuild, len(builds))
@@ -55,7 +50,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 			// Add running sandboxes to results
 			for _, info := range sandboxInfo {
-				if info.TeamID == nil || *info.TeamID != team.ID || info.BuildID == nil {
+				if info.TeamID == nil || *info.TeamID != teamID || info.BuildID == nil {
 					continue
 				}
 
@@ -90,12 +85,10 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	}
 
 	// Only fetch snapshots if we need them (state is nil or "paused")
-	if params.State == nil || slices.Contains(*params.State, api.Paused) {
-		snapshotEnvs, err := a.db.GetTeamSnapshots(ctx, team.ID)
+	if state == nil || slices.Contains(*state, api.Paused) {
+		snapshotEnvs, err := a.db.GetTeamSnapshots(ctx, teamID)
 		if err != nil {
-			a.logger.Errorf("error getting team snapshots: %s", err)
-			telemetry.ReportCriticalError(ctx, err)
-			return
+			return nil, fmt.Errorf("error getting team snapshots: %s", err)
 		}
 
 		// Add snapshots to results
@@ -132,15 +125,11 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	}
 
 	// filter sandboxes by metadata
-	if params.Query != nil {
+	if query != nil {
 		// Unescape query
-		query, err := url.QueryUnescape(*params.Query)
+		query, err := url.QueryUnescape(*query)
 		if err != nil {
-			a.logger.Errorf("error when unescaping query: %s", err)
-			telemetry.ReportCriticalError(ctx, err)
-			c.JSON(http.StatusBadRequest, "Error when unescaping query")
-
-			return
+			return nil, fmt.Errorf("error when unescaping query: %w", err)
 		}
 
 		// Parse filters, both key and value are also unescaped
@@ -149,49 +138,39 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		for _, filter := range strings.Split(query, "&") {
 			parts := strings.Split(filter, "=")
 			if len(parts) != 2 {
-				c.JSON(http.StatusBadRequest, "Invalid key value pair in query")
-
-				return
+				return nil, fmt.Errorf("invalid key value pair in query")
 			}
 
 			key, err := url.QueryUnescape(parts[0])
 			if err != nil {
-				a.logger.Errorf("error when unescaping key: %s", err)
-				telemetry.ReportCriticalError(ctx, err)
-				c.JSON(http.StatusBadRequest, "Error when unescaping key")
-
-				return
+				return nil, fmt.Errorf("error when unescaping key: %w", err)
 			}
 
 			value, err := url.QueryUnescape(parts[1])
 			if err != nil {
-				a.logger.Errorf("error when unescaping value: %s", err)
-				telemetry.ReportCriticalError(ctx, err)
-				c.JSON(http.StatusBadRequest, "Error when unescaping value")
-
-				return
+				return nil, fmt.Errorf("error when unescaping value: %w", err)
 			}
 
 			filters[key] = value
 		}
 
-		// Filter sandboxes to match all filters
+		// Filter instances to match all filters
 		n := 0
-		for _, sandbox := range sandboxes {
-			if sandbox.Metadata == nil {
+		for _, instance := range sandboxes {
+			if instance.Metadata == nil {
 				continue
 			}
 
 			matchesAll := true
 			for key, value := range filters {
-				if metadataValue, ok := (*sandbox.Metadata)[key]; !ok || metadataValue != value {
+				if metadataValue, ok := (*instance.Metadata)[key]; !ok || metadataValue != value {
 					matchesAll = false
 					break
 				}
 			}
 
 			if matchesAll {
-				sandboxes[n] = sandbox
+				sandboxes[n] = instance
 				n++
 			}
 		}
@@ -205,10 +184,27 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return a.StartedAt.Compare(b.StartedAt)
 	})
 
-	// Report analytics
+	return sandboxes, nil
+}
+
+func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
+	ctx := c.Request.Context()
+	telemetry.ReportEvent(ctx, "list running instances")
+
+	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
+	team := teamInfo.Team
+
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running sandboxes", properties)
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances", properties)
+
+	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query, params.State)
+	if err != nil {
+		a.logger.Error("Error fetching sandboxes", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
+
+		return
+	}
 
 	c.JSON(http.StatusOK, sandboxes)
 }
