@@ -47,8 +47,8 @@ init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
 	terraform init -input=false -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
-	$(MAKE) -C packages/cluster-disk-image init build
 	$(tf_vars) terraform apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
+	$(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
 .PHONY: plan
