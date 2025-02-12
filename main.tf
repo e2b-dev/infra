@@ -107,9 +107,10 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
 
-  server_cluster_size = var.server_cluster_size
-  client_cluster_size = var.client_cluster_size
-  api_cluster_size    = var.api_cluster_size
+  server_cluster_size             = var.server_cluster_size
+  client_cluster_size             = var.client_cluster_size
+  client_cluster_auto_scaling_max = var.client_cluster_auto_scaling_max
+  api_cluster_size                = var.api_cluster_size
 
   server_machine_type = var.server_machine_type
   client_machine_type = var.client_machine_type
@@ -165,6 +166,15 @@ module "docker_reverse_proxy" {
   prefix = var.prefix
 }
 
+module "client_proxy" {
+  source = "./packages/client-proxy"
+
+  gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
+
+  orchestration_repository_name = module.init.orchestration_repository_name
+}
+
 module "nomad" {
   source = "./packages/nomad"
 
@@ -183,7 +193,6 @@ module "nomad" {
   logs_proxy_address                        = "http://${module.cluster.logs_proxy_ip}"
   api_port                                  = var.api_port
   environment                               = var.environment
-  docker_contexts_bucket_name               = module.buckets.envs_docker_context_bucket_name
   google_service_account_key                = module.init.google_service_account_key
   api_docker_image_digest                   = module.api.api_docker_image_digest
   api_secret                                = module.api.api_secret
@@ -192,13 +201,15 @@ module "nomad" {
   posthog_api_key_secret_name               = module.api.posthog_api_key_secret_name
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
-  api_admin_token_name                      = module.api.api_admin_token_name
+  api_admin_token                           = module.api.api_admin_token
+
   # Proxies
   session_proxy_service_name = var.session_proxy_service_name
   session_proxy_port         = var.session_proxy_port
 
-  client_proxy_port        = var.client_proxy_port
-  client_proxy_health_port = var.client_proxy_health_port
+  client_proxy_port                = var.client_proxy_port
+  client_proxy_health_port         = var.client_proxy_health_port
+  client_proxy_docker_image_digest = module.client_proxy.client_proxy_docker_image_digest
 
   domain_name = var.domain_name
 
@@ -219,7 +230,7 @@ module "nomad" {
   loki_service_port = var.loki_service_port
 
   # Docker reverse proxy
-  docker_reverse_proxy_image_digest        = module.docker_reverse_proxy.docker_reverse_proxy_image_digest
+  docker_reverse_proxy_docker_image_digest = module.docker_reverse_proxy.docker_reverse_proxy_docker_image_digest
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port
   docker_reverse_proxy_service_account_key = module.docker_reverse_proxy.docker_reverse_proxy_service_account_key
 

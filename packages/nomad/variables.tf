@@ -39,7 +39,7 @@ variable "api_secret" {
   type = string
 }
 
-variable "api_admin_token_name" {
+variable "api_admin_token" {
   type = string
 }
 
@@ -55,8 +55,9 @@ variable "api_machine_count" {
   type = number
 }
 
-variable "docker_contexts_bucket_name" {
-  type = string
+variable "api_dns_port_number" {
+  type    = number
+  default = 5353
 }
 
 variable "custom_envs_repository_name" {
@@ -93,6 +94,11 @@ variable "session_proxy_port" {
     name = string
     port = number
   })
+}
+
+
+variable "client_proxy_docker_image_digest" {
+  type = string
 }
 
 variable "client_proxy_health_port" {
@@ -178,7 +184,7 @@ variable "loki_service_port" {
 }
 
 # Docker reverse proxy
-variable "docker_reverse_proxy_image_digest" {
+variable "docker_reverse_proxy_docker_image_digest" {
   type = string
 }
 

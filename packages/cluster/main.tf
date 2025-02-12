@@ -130,10 +130,11 @@ module "client_cluster" {
 
   environment = var.environment
 
-  cluster_name     = "${var.prefix}${var.client_cluster_name}"
-  cluster_size     = var.client_cluster_size
-  cluster_tag_name = var.cluster_tag_name
-  gcp_zone         = var.gcp_zone
+  cluster_name             = "${var.prefix}${var.client_cluster_name}"
+  cluster_auto_scaling_max = var.client_cluster_auto_scaling_max
+  cluster_size             = var.client_cluster_size
+  cluster_tag_name         = var.cluster_tag_name
+  gcp_zone                 = var.gcp_zone
 
   machine_type = var.client_machine_type
   image_family = var.client_image_family

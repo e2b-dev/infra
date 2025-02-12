@@ -160,10 +160,14 @@ func main() {
 		log.Fatalf("Error loading swagger spec:\n%v", err)
 	}
 
-	var cleanupFns []func() error
+	var cleanupFns []func(context.Context) error
 	exitCode := &atomic.Int32{}
+	cleanupOp := func() {
+		// some cleanup functions do work that requires a context. passing shutdown a
+		// specific context here so that all timeout configuration is in one place.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 
-	cleanup := func() {
 		start := time.Now()
 		// doing shutdown in parallel to avoid
 		// unintentionally: creating shutdown ordering
@@ -174,16 +178,17 @@ func main() {
 			if cleanup := cleanupFns[idx]; cleanup != nil {
 				cwg.Add(1)
 				count++
-				go func(idx int) {
+				go func(
+					op func(context.Context) error,
+					idx int,
+				) {
 					defer cwg.Done()
-					if err := cleanup(); err != nil {
+					if err := op(ctx); err != nil {
 						exitCode.Add(1)
 						log.Printf("cleanup operation %d, error: %v", idx, err)
 					}
-				}(idx)
+				}(cleanup, idx)
 
-				// only run each cleanup once (in case cleanup is called
-				// explicitly.)
 				cleanupFns[idx] = nil
 			}
 		}
@@ -195,18 +200,12 @@ func main() {
 		cwg.Wait() // this doesn't have a timeout
 		log.Printf("%d cleanup operations completed in %s", count, time.Since(start))
 	}
+	cleanupOnce := &sync.Once{}
+	cleanup := func() { cleanupOnce.Do(cleanupOp) }
 	defer cleanup()
 
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(ctx, serviceName, swagger.Info.Version)
-		cleanupFns = append(cleanupFns, func() error {
-			// shutdown handlers flush buffers upon call and take a context. passing a
-			// specific context here so that all timeout configuration is in one place.
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-
-			return shutdown(ctx)
-		})
+		cleanupFns = append(cleanupFns, telemetry.InitOTLPExporter(ctx, serviceName, swagger.Info.Version))
 	}
 
 	// Create an instance of our handler which satisfies the generated interface
@@ -218,7 +217,7 @@ func main() {
 	// pass the signal context so that handlers know when shutdown is happening.
 	s := NewGinServer(ctx, apiStore, swagger, port)
 
-	//////////////////////////
+	// ////////////////////////
 	//
 	// Start the HTTP service
 
@@ -269,6 +268,13 @@ func main() {
 	go func() {
 		defer wg.Done()
 		<-signalCtx.Done()
+
+		// Start returning 503s for health checks
+		// to signal that the service is shutting down.
+		// This is a bit of a hack, but this way we can properly propagate
+		// the health status to the load balancer.
+		apiStore.Healthy = false
+		time.Sleep(15 * time.Second)
 
 		// if the parent context `ctx` is canceled the
 		// shutdown will return early. This should only happen

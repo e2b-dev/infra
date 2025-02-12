@@ -38,6 +38,7 @@ const (
 var sandboxStartRequestLimit = semaphore.NewWeighted(defaultRequestLimit)
 
 type APIStore struct {
+	Healthy              bool
 	posthog              *analyticscollector.PosthogClient
 	Tracer               trace.Tracer
 	orchestrator         *orchestrator.Orchestrator
@@ -95,7 +96,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		logger.Warn("REDIS_URL not set, using local caches")
 	}
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger, posthogClient, redisClient)
+	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger.Desugar(), posthogClient, redisClient)
 	if err != nil {
 		logger.Panic("initializing Orchestrator client", zap.Error(err))
 	}
@@ -121,6 +122,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
 	return &APIStore{
+		Healthy:              true,
 		orchestrator:         orch,
 		templateManager:      templateManager,
 		db:                   dbClient,
@@ -135,7 +137,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	}
 }
 
-func (a *APIStore) Close() error {
+func (a *APIStore) Close(ctx context.Context) error {
 	a.templateSpawnCounter.Close()
 
 	errs := []error{}
@@ -143,7 +145,7 @@ func (a *APIStore) Close() error {
 		errs = append(errs, fmt.Errorf("closing Posthog client: %w", err))
 	}
 
-	if err := a.orchestrator.Close(); err != nil {
+	if err := a.orchestrator.Close(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("closing Orchestrator client: %w", err))
 
 	}
@@ -171,7 +173,13 @@ func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
 }
 
 func (a *APIStore) GetHealth(c *gin.Context) {
-	c.String(http.StatusOK, "Health check successful")
+	if a.Healthy == true {
+		c.String(http.StatusOK, "Health check successful")
+
+		return
+	}
+
+	c.String(http.StatusServiceUnavailable, "Service is unavailable")
 }
 
 func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authcache.AuthTeamInfo, *api.APIError) {

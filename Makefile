@@ -1,12 +1,16 @@
 ENV := $(shell cat .last_used_env || echo "not-set")
--include .env.${ENV}
+ENV_FILE := $(PWD)/.env.${ENV}
+
+-include ${ENV_FILE}
 
 OTEL_TRACING_PRINT ?= false
 EXCLUDE_GITHUB ?= 1
-TEMPLATE_BUCKET_LOCATION := $(GCP_REGION)
+TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
+CLIENT_CLUSTER_AUTO_SCALING_MAX ?= 0
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
+	TF_VAR_client_cluster_auto_scaling_max=$(CLIENT_CLUSTER_AUTO_SCALING_MAX) \
 	TF_VAR_api_machine_type=$(API_MACHINE_TYPE) \
 	TF_VAR_api_cluster_size=$(API_CLUSTER_SIZE) \
 	TF_VAR_server_machine_type=$(SERVER_MACHINE_TYPE) \
@@ -43,8 +47,8 @@ init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
 	terraform init -input=false -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
-	$(MAKE) -C packages/cluster-disk-image init
 	$(tf_vars) terraform apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
+	$(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
 .PHONY: plan
@@ -85,7 +89,7 @@ plan-without-jobs:
 	-input=false \
 	-compact-warnings \
 	-parallelism=20 \
-  	$(TARGET)
+	$(TARGET)
 
 .PHONY: destroy
 destroy:
@@ -97,26 +101,27 @@ destroy:
 	-parallelism=20 \
 	$$(terraform state list | grep module | cut -d'.' -f1,2 | grep -v -e "buckets" | uniq | awk '{print "-target=" $$0 ""}' | xargs)
 
-
 .PHONY: version
 version:
 	./scripts/increment-version.sh
 
 .PHONY: build-and-upload
-build-and-upload:
-	$(MAKE) -C packages/cluster-disk-image build
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/api build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/docker-reverse-proxy build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/template-manager build-and-upload
-	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/envd build-and-upload
+build-and-upload:build-and-upload/api
+build-and-upload:build-and-upload/client-proxy
+build-and-upload:build-and-upload/docker-reverse-proxy
+build-and-upload:build-and-upload/orchestrator
+build-and-upload:build-and-upload/template-manager
+build-and-upload:build-and-upload/envd
+build/%:
+	$(MAKE) -C packages/$(notdir $@) build
+build-and-upload/%:
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
 
 .PHONY: copy-public-builds
 copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-env-pipeline/envd-v0.0.1
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
-
 
 @.PHONY: migrate
 migrate:
@@ -127,7 +132,7 @@ switch-env:
 	@ touch .last_used_env
 	@ printf "Switching from `tput setaf 1``tput bold`$(shell cat .last_used_env)`tput sgr0` to `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ echo $(ENV) > .last_used_env
-	@ . .env.${ENV}
+	@ . ${ENV_FILE}
 	terraform init -input=false -upgrade -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 
 # Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)

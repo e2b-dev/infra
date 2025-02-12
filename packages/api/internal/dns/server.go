@@ -2,99 +2,252 @@ package dns
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/go-redis/cache/v8"
 	"github.com/go-redis/redis/v8"
 	resolver "github.com/miekg/dns"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 const ttl = 0
+const redisTTL = 24 * time.Hour
 
+// This allows us to return a different error message when the sandbox is not found instead of generic 502 Bad Gateway
 const defaultRoutingIP = "127.0.0.1"
 
-type DNS struct {
-	mu      sync.Mutex
-	redis   *redis.Client
-	records *smap.Map[string]
-}
+const cachedDnsPrefix = "sandbox.dns."
 
-func New(rc *redis.Client) *DNS {
-	return &DNS{
-		redis:   rc,
-		records: smap.New[string](),
+type DNS struct {
+	srv    *resolver.Server
+	logger *zap.Logger
+
+	remote *cache.Cache
+	local  *smap.Map[string]
+
+	closer struct {
+		once sync.Once
+		op   func(context.Context) error
+		err  error
 	}
 }
 
-func (d *DNS) Add(_ context.Context, sandboxID, ip string) {
-	d.records.Insert(d.hostname(sandboxID), ip)
+func New(ctx context.Context, rc *redis.Client, logger *zap.Logger) *DNS {
+	d := &DNS{logger: logger}
+
+	if rc != nil {
+		d.remote = cache.New(&cache.Options{Redis: rc, LocalCache: cache.NewTinyLFU(10_000, time.Hour)})
+	} else {
+		d.local = smap.New[string]()
+	}
+
+	return d
 }
 
-func (d *DNS) Remove(_ context.Context, sandboxID, ip string) {
-	d.records.RemoveCb(d.hostname(sandboxID), func(key string, v string, exists bool) bool {
-		return v == ip
-	})
+func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
+	switch {
+	case d.remote != nil:
+		d.remote.Set(&cache.Item{
+			Ctx:   ctx,
+			TTL:   redisTTL,
+			Key:   d.cacheKey(sandboxID),
+			Value: ip,
+		})
+	case d.local != nil:
+		d.local.Insert(sandboxID, ip)
+	}
 }
 
-func (d *DNS) get(hostname string) (string, bool) {
-	return d.records.Get(hostname)
+func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
+	switch {
+	case d.remote != nil:
+		if err := d.remote.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
+			d.logger.Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox", sandboxID))
+		}
+	case d.local != nil:
+		d.local.RemoveCb(d.cacheKey(sandboxID), func(k string, v string, ok bool) bool { return v == ip })
+	}
 }
 
-func (*DNS) hostname(sandboxID string) string {
-	return fmt.Sprintf("%s.", sandboxID)
+func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
+	var res string
+	switch {
+	case d.remote != nil:
+		if err := d.remote.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
+			if errors.Is(err, cache.ErrCacheMiss) {
+				d.logger.Warn("item missing in remote DNS cache", zap.String("sandbox", sandboxID))
+			} else {
+				d.logger.Error("resolving item from remote DNS cache", zap.String("sandbox", sandboxID), zap.Error(err))
+			}
+		}
+	case d.local != nil:
+		var ok bool
+		res, ok = d.local.Get(d.cacheKey(sandboxID))
+		if !ok {
+			d.logger.Warn("item not found in local DNS cache", zap.String("sandbox", sandboxID))
+		}
+	}
+
+	addr := net.ParseIP(res)
+	if addr == nil {
+		if res != "" {
+			d.logger.Error("malformed address in cache", zap.Bool("local", d.local != nil), zap.String("addr", res))
+		}
+
+		addr = net.ParseIP(defaultRoutingIP)
+	}
+
+	return addr.To4()
 }
 
-func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
-	m := new(resolver.Msg)
+func (d *DNS) cacheKey(id string) string {
+	switch {
+	case d.remote != nil:
+		// add a prefix to the remote cache items to make is
+		// reasonable to introspect the remote cache data, to
+		// make it possible to safely use the redis cache for
+		// more than one set of cached items without fear of
+		// collision. Additionally the prefix allows us to
+		// have a hard break of compatibility between versions
+		// of the service by changing the prefix.
+		return fmt.Sprintf("%s%s", cachedDnsPrefix, id)
+	default:
+		// local caches are scoped to the `DNS` instance and so don't need a prefix.
+		return id
+	}
+}
+
+func (d *DNS) handleDNSRequest(ctx context.Context, w resolver.ResponseWriter, r *resolver.Msg) {
+	m := &resolver.Msg{
+		Compress: false,
+		MsgHdr: resolver.MsgHdr{
+			Authoritative: true,
+		},
+	}
+
 	m.SetReply(r)
-	m.Compress = false
-	m.Authoritative = true
 
 	for _, q := range m.Question {
 		if q.Qtype == resolver.TypeA {
-			a := &resolver.A{
+			sandboxID := strings.Split(q.Name, "-")[0]
+
+			m.Answer = append(m.Answer, &resolver.A{
 				Hdr: resolver.RR_Header{
 					Name:   q.Name,
 					Rrtype: resolver.TypeA,
 					Class:  resolver.ClassINET,
 					Ttl:    ttl,
 				},
-			}
-
-			sandboxID := strings.Split(q.Name, "-")[0]
-			ip, found := d.get(sandboxID)
-			if found {
-				a.A = net.ParseIP(ip).To4()
-			} else {
-				a.A = net.ParseIP(defaultRoutingIP).To4()
-			}
-
-			m.Answer = append(m.Answer, a)
+				A: d.Get(ctx, strings.TrimSuffix(sandboxID, ".")),
+			})
 		}
 	}
 
-	err := w.WriteMsg(m)
-	if err != nil {
-		log.Printf("Failed to write message: %s\n", err.Error())
+	if err := w.WriteMsg(m); err != nil {
+		d.logger.Error("write DNS message", zap.Error(err))
 	}
 }
 
-func (d *DNS) Start(_ context.Context, address string, port int) error {
-	mux := resolver.NewServeMux()
+var errOnStartup = errors.New("failed to start DNS server")
 
-	mux.HandleFunc(".", d.handleDNSRequest)
+func CheckErrOnStartup(err error) bool { return errors.Is(err, errOnStartup) }
 
-	server := resolver.Server{Addr: fmt.Sprintf("%s:%d", address, port), Net: "udp", Handler: mux}
-
-	err := server.ListenAndServe()
-	if err != nil {
-		return fmt.Errorf("failed to start DNS server: %w", err)
+func (d *DNS) Start(ctx context.Context, address string, port string) {
+	if d.srv != nil {
+		return
 	}
 
-	return nil
+	// configure the underlying resolver service.
+	mux := resolver.NewServeMux()
+	mux.HandleFunc(".", func(w resolver.ResponseWriter, r *resolver.Msg) { d.handleDNSRequest(ctx, w, r) })
+	d.srv = &resolver.Server{Addr: fmt.Sprintf("%s:%s", address, port), Net: "udp", Handler: mux}
+
+	// setup error handling here: we want to catch the error from
+	// when the server starts.
+	errChan := make(chan error, 1)
+	go func() {
+		defer close(errChan)
+		if err := d.srv.ListenAndServe(); err != nil {
+			// don't do this against a context because we
+			// want this to block until everything is shut
+			// down for real, and the Close() method
+			// should work.
+			switch err.Error() {
+			case "bad network":
+				// this is the only error that can
+				// happen during startup. We have to
+				// panic here because we don't want
+				// the service to continue without any
+				// DNS service.
+				panic(errors.Join(errors.New("configuration problem with DNS service"), err, errOnStartup))
+			case "server already started":
+				// this only happens if you call start
+				// more than once, which shouldn't be
+				// possible.
+				errChan <- errors.Join(err, errOnStartup)
+			default:
+				// encounter a non-nil error when listening
+				//
+				// this should only happen if we
+				// encounter a (networking(?)) error
+				// during operation. Panic so that the
+				// service aborts rather than
+				// continuing in an unhealty state.
+				panic(errors.Join(errors.New("DNS service error"), err))
+			}
+		}
+	}()
+
+	// have to define this here so that we can avoid needing to
+	// access the channel outside of this function (or need to).
+	d.closer.op = func(ictx context.Context) error {
+		select {
+		case err := <-errChan:
+			return err
+		case <-ictx.Done():
+			return ictx.Err()
+		}
+	}
+
+	// have an extra go routine here that will trigger shutdown
+	// when the start context is canceled.
+	go func() {
+		<-ctx.Done()
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// Close should be a noop if it's already been called,
+		// and it caches the error.
+		_ = d.Close(shutdownCtx)
+	}()
+}
+
+func (d *DNS) Close(ctx context.Context) error {
+	if d.srv == nil {
+		return nil
+	}
+
+	d.closer.once.Do(func() {
+		var errs []error
+
+		if err := d.srv.ShutdownContext(ctx); err != nil {
+			errs = append(errs, err)
+		}
+
+		if err := d.closer.op(ctx); err != nil {
+			errs = append(errs, err)
+		}
+
+		d.closer.err = errors.Join(errs...)
+	})
+
+	return d.closer.err
 }

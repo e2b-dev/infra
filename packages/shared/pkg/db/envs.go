@@ -170,15 +170,6 @@ func (db *DB) CheckBaseEnvHasSnapshots(ctx context.Context, envID string) (resul
 	return result, nil
 }
 
-func (db *DB) GetEnvBuilds(ctx context.Context, envID string) (result []*models.EnvBuild, err error) {
-	result, err = db.Client.EnvBuild.Query().Where(envbuild.EnvID(envID)).All(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get env builds for '%s': %w", envID, err)
-	}
-
-	return result, nil
-}
-
 func (db *DB) FinishEnvBuild(
 	ctx context.Context,
 	envID string,

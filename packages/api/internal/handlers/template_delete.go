@@ -50,7 +50,9 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 				env.HasEnvAliasesWith(envalias.ID(aliasOrTemplateID)),
 				env.ID(aliasOrTemplateID),
 			),
-		).Only(ctx)
+		).
+		WithBuilds().
+		Only(ctx)
 
 	notFound := models.IsNotFound(err)
 	if notFound {
@@ -105,18 +107,19 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	// get all template builds
-	builds, err := a.db.GetEnvBuilds(ctx, template.ID)
-	if err != nil {
-		telemetry.ReportError(ctx, fmt.Errorf("error when getting env builds: %w", err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting env builds")
+	dbErr := a.db.DeleteEnv(ctx, template.ID)
+	if dbErr != nil {
+		errMsg := fmt.Errorf("error when deleting env from db: %w", dbErr)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting env")
 
 		return
 	}
 
 	// get all build ids
-	buildIds := make([]uuid.UUID, len(builds))
-	for i, build := range builds {
+	buildIds := make([]uuid.UUID, len(template.Edges.Builds))
+	for i, build := range template.Edges.Builds {
 		buildIds[i] = build.ID
 	}
 
@@ -127,16 +130,6 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		telemetry.ReportCriticalError(ctx, errMsg)
 	} else {
 		telemetry.ReportEvent(ctx, "deleted env from storage")
-	}
-
-	dbErr := a.db.DeleteEnv(ctx, template.ID)
-	if dbErr != nil {
-		errMsg := fmt.Errorf("error when deleting env from db: %w", dbErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting env")
-
-		return
 	}
 
 	a.templateCache.Invalidate(template.ID)

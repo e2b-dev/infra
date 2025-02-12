@@ -1,101 +1,77 @@
-variable "gcp_zone" {
-  type = string
-}
-
-variable "client_proxy_health_port_name" {
-  type = string
-}
-
-variable "client_proxy_health_port_number" {
-  type = number
-}
-
-variable "client_proxy_health_port_path" {
-  type = string
-}
-
-variable "client_proxy_port_name" {
-  type = string
-}
-
-variable "client_proxy_port_number" {
-  type = number
-}
-
-variable "load_balancer_conf" {
-  type = string
-}
-
-variable "nginx_conf" {
-  type = string
-}
-
 job "client-proxy" {
-  datacenters = [var.gcp_zone]
+  datacenters = ["${gcp_zone}"]
   node_pool = "api"
-  type = "system"
 
   priority = 80
 
   group "client-proxy" {
     network {
-      port "health" {
-        static = var.client_proxy_health_port_number
+      port "${port_name}" {
+        static = "${port_number}"
       }
-      port "session" {
-        static = var.client_proxy_port_number
+
+      port "health" {
+        static = "${health_port_number}"
       }
     }
 
     service {
-      name = "client-proxy"
-      port = var.client_proxy_port_name
+      name = "proxy"
+      port = "${port_name}"
+
 
       check {
         type     = "http"
         name     = "health"
-        path     = "/health"
+        path     = "/"
         interval = "20s"
         timeout  = "5s"
         port     = "health"
       }
     }
 
-    task "client-proxy" {
+%{ if update_stanza }
+    # An update stanza to enable rolling updates of the service
+    update {
+      # The number of extra instances to run during the update
+      max_parallel     = 1
+      # Allows to spawn new version of the service before killing the old one
+      canary           = 1
+      # Time to wait for the canary to be healthy
+      min_healthy_time = "10s"
+      # Time to wait for the canary to be healthy, if not it will be marked as failed
+      healthy_deadline = "30s"
+      # Whether to promote the canary if the rest of the group is not healthy
+      auto_promote     = true
+      # Deadline for the update to be completed
+      progress_deadline = "24h"
+    }
+%{ endif }
+
+    task "start" {
       driver = "docker"
+      # If we need more than 30s we will need to update the max_kill_timeout in nomad
+      # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
+%{ if update_stanza }
+      kill_timeout = "24h"
+%{ endif }
+      kill_signal  = "SIGTERM"
 
       resources {
-        memory_max = 2000
-        memory = 1000
-        cpu    = 512
+        memory_max = 4096
+        memory     = 1024
+        cpu        = 1000
+      }
+
+      env {
+        OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
       }
 
       config {
-        image        = "nginx:1.27.0"
         network_mode = "host"
-        ports        = [var.client_proxy_health_port_name, var.client_proxy_port_name]
-        volumes = [
-          "local:/etc/nginx/",
-          "/var/log/client-proxy:/var/log/nginx"
-        ]
-      }
-
-      template {
-        left_delimiter  = "[["
-        right_delimiter = "]]"
-        data            = var.load_balancer_conf
-        destination     = "local/conf.d/load-balancer.conf"
-        change_mode     = "signal"
-        change_signal   = "SIGHUP"
-      }
-
-      template {
-        left_delimiter  = "[["
-        right_delimiter = "]]"
-        data            = var.nginx_conf
-        destination     = "local/nginx.conf"
-        change_mode     = "signal"
-        change_signal   = "SIGHUP"
+        image        = "${image_name}"
+        ports        = ["${port_name}"]
+        args         = ["--port", "${port_number}"]
       }
     }
   }
