@@ -217,13 +217,8 @@ module "nomad" {
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
 
-  grafana_api_key_secret_name          = module.init.grafana_api_key_secret_name
-  grafana_logs_endpoint_secret_name    = module.init.grafana_logs_endpoint_secret_name
-  grafana_logs_username_secret_name    = module.init.grafana_logs_username_secret_name
-  grafana_metrics_endpoint_secret_name = module.init.grafana_metrics_endpoint_secret_name
-  grafana_metrics_username_secret_name = module.init.grafana_metrics_username_secret_name
-  grafana_traces_endpoint_secret_name  = module.init.grafana_traces_endpoint_secret_name
-  grafana_traces_username_secret_name  = module.init.grafana_traces_username_secret_name
+  grafana_username_secret_name             = module.init.grafana_username_secret_name
+  grafana_otel_collector_token_secret_name = module.init.grafana_otel_collector_token_secret_name
 
   # Logs
   loki_bucket_name  = module.buckets.loki_bucket_name
@@ -245,3 +240,4 @@ module "nomad" {
   # Redis
   redis_port = var.redis_port
 }
+
