@@ -136,7 +136,7 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 	if env.StartCmd != "" {
 		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
 		// TODO: Remove this after we can add customizable wait time for building templates.
-		if env.TemplateId == "zegbt9dl3l2ixqem82mm" {
+		if env.TemplateId == "zegbt9dl3l2ixqem82mm" || env.TemplateId == "ot5bidkk3j2so2j02uuz" {
 			time.Sleep(120 * time.Second)
 		} else {
 			time.Sleep(waitTimeForStartCmd)
