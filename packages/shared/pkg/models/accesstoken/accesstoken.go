@@ -12,6 +12,10 @@ const (
 	Label = "access_token"
 	// FieldID holds the string denoting the id field in the database.
 	FieldID = "access_token"
+	// FieldAccessTokenHash holds the string denoting the access_token_hash field in the database.
+	FieldAccessTokenHash = "access_token_hash"
+	// FieldAccessTokenMask holds the string denoting the access_token_mask field in the database.
+	FieldAccessTokenMask = "access_token_mask"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -34,6 +38,8 @@ const (
 // Columns holds all SQL columns for accesstoken fields.
 var Columns = []string{
 	FieldID,
+	FieldAccessTokenHash,
+	FieldAccessTokenMask,
 	FieldUserID,
 	FieldCreatedAt,
 }
@@ -54,6 +60,16 @@ type OrderOption func(*sql.Selector)
 // ByID orders the results by the id field.
 func ByID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldID, opts...).ToFunc()
+}
+
+// ByAccessTokenHash orders the results by the access_token_hash field.
+func ByAccessTokenHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAccessTokenHash, opts...).ToFunc()
+}
+
+// ByAccessTokenMask orders the results by the access_token_mask field.
+func ByAccessTokenMask(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAccessTokenMask, opts...).ToFunc()
 }
 
 // ByUserID orders the results by the user_id field.

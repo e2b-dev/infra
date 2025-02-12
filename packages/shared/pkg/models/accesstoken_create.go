@@ -25,6 +25,18 @@ type AccessTokenCreate struct {
 	conflict []sql.ConflictOption
 }
 
+// SetAccessTokenHash sets the "access_token_hash" field.
+func (atc *AccessTokenCreate) SetAccessTokenHash(s string) *AccessTokenCreate {
+	atc.mutation.SetAccessTokenHash(s)
+	return atc
+}
+
+// SetAccessTokenMask sets the "access_token_mask" field.
+func (atc *AccessTokenCreate) SetAccessTokenMask(s string) *AccessTokenCreate {
+	atc.mutation.SetAccessTokenMask(s)
+	return atc
+}
+
 // SetUserID sets the "user_id" field.
 func (atc *AccessTokenCreate) SetUserID(u uuid.UUID) *AccessTokenCreate {
 	atc.mutation.SetUserID(u)
@@ -90,6 +102,12 @@ func (atc *AccessTokenCreate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (atc *AccessTokenCreate) check() error {
+	if _, ok := atc.mutation.AccessTokenHash(); !ok {
+		return &ValidationError{Name: "access_token_hash", err: errors.New(`models: missing required field "AccessToken.access_token_hash"`)}
+	}
+	if _, ok := atc.mutation.AccessTokenMask(); !ok {
+		return &ValidationError{Name: "access_token_mask", err: errors.New(`models: missing required field "AccessToken.access_token_mask"`)}
+	}
 	if _, ok := atc.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`models: missing required field "AccessToken.user_id"`)}
 	}
@@ -133,6 +151,14 @@ func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) 
 		_node.ID = id
 		_spec.ID.Value = id
 	}
+	if value, ok := atc.mutation.AccessTokenHash(); ok {
+		_spec.SetField(accesstoken.FieldAccessTokenHash, field.TypeString, value)
+		_node.AccessTokenHash = value
+	}
+	if value, ok := atc.mutation.AccessTokenMask(); ok {
+		_spec.SetField(accesstoken.FieldAccessTokenMask, field.TypeString, value)
+		_node.AccessTokenMask = value
+	}
 	if value, ok := atc.mutation.CreatedAt(); ok {
 		_spec.SetField(accesstoken.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -162,7 +188,7 @@ func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) 
 // of the `INSERT` statement. For example:
 //
 //	client.AccessToken.Create().
-//		SetUserID(v).
+//		SetAccessTokenHash(v).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -171,7 +197,7 @@ func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) 
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.AccessTokenUpsert) {
-//			SetUserID(v+v).
+//			SetAccessTokenHash(v+v).
 //		}).
 //		Exec(ctx)
 func (atc *AccessTokenCreate) OnConflict(opts ...sql.ConflictOption) *AccessTokenUpsertOne {
@@ -235,6 +261,12 @@ func (u *AccessTokenUpsertOne) UpdateNewValues() *AccessTokenUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		if _, exists := u.create.mutation.ID(); exists {
 			s.SetIgnore(accesstoken.FieldID)
+		}
+		if _, exists := u.create.mutation.AccessTokenHash(); exists {
+			s.SetIgnore(accesstoken.FieldAccessTokenHash)
+		}
+		if _, exists := u.create.mutation.AccessTokenMask(); exists {
+			s.SetIgnore(accesstoken.FieldAccessTokenMask)
 		}
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(accesstoken.FieldCreatedAt)
@@ -419,7 +451,7 @@ func (atcb *AccessTokenCreateBulk) ExecX(ctx context.Context) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.AccessTokenUpsert) {
-//			SetUserID(v+v).
+//			SetAccessTokenHash(v+v).
 //		}).
 //		Exec(ctx)
 func (atcb *AccessTokenCreateBulk) OnConflict(opts ...sql.ConflictOption) *AccessTokenUpsertBulk {
@@ -465,6 +497,12 @@ func (u *AccessTokenUpsertBulk) UpdateNewValues() *AccessTokenUpsertBulk {
 		for _, b := range u.create.builders {
 			if _, exists := b.mutation.ID(); exists {
 				s.SetIgnore(accesstoken.FieldID)
+			}
+			if _, exists := b.mutation.AccessTokenHash(); exists {
+				s.SetIgnore(accesstoken.FieldAccessTokenHash)
+			}
+			if _, exists := b.mutation.AccessTokenMask(); exists {
+				s.SetIgnore(accesstoken.FieldAccessTokenMask)
 			}
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(accesstoken.FieldCreatedAt)
