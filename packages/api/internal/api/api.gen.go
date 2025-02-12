@@ -32,6 +32,9 @@ type ServerInterface interface {
 	// (POST /sandboxes)
 	PostSandboxes(c *gin.Context)
 
+	// (GET /sandboxes/metrics)
+	GetSandboxesMetrics(c *gin.Context, params GetSandboxesMetricsParams)
+
 	// (DELETE /sandboxes/{sandboxID})
 	DeleteSandboxesSandboxID(c *gin.Context, sandboxID SandboxID)
 
@@ -219,6 +222,34 @@ func (siw *ServerInterfaceWrapper) PostSandboxes(c *gin.Context) {
 	}
 
 	siw.Handler.PostSandboxes(c)
+}
+
+// GetSandboxesMetrics operation middleware
+func (siw *ServerInterfaceWrapper) GetSandboxesMetrics(c *gin.Context) {
+
+	var err error
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSandboxesMetricsParams
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "query", c.Request.URL.Query(), &params.Query)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter query: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSandboxesMetrics(c, params)
 }
 
 // DeleteSandboxesSandboxID operation middleware
@@ -698,6 +729,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/nodes/:nodeID", wrapper.PostNodesNodeID)
 	router.GET(options.BaseURL+"/sandboxes", wrapper.GetSandboxes)
 	router.POST(options.BaseURL+"/sandboxes", wrapper.PostSandboxes)
+	router.GET(options.BaseURL+"/sandboxes/metrics", wrapper.GetSandboxesMetrics)
 	router.DELETE(options.BaseURL+"/sandboxes/:sandboxID", wrapper.DeleteSandboxesSandboxID)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID", wrapper.GetSandboxesSandboxID)
 	router.GET(options.BaseURL+"/sandboxes/:sandboxID/logs", wrapper.GetSandboxesSandboxIDLogs)
