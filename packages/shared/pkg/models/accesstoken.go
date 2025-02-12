@@ -19,6 +19,10 @@ type AccessToken struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID string `json:"id,omitempty"`
+	// AccessTokenHash holds the value of the "access_token_hash" field.
+	AccessTokenHash string `json:"-"`
+	// AccessTokenMask holds the value of the "access_token_mask" field.
+	AccessTokenMask string `json:"access_token_mask,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID uuid.UUID `json:"user_id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -56,7 +60,7 @@ func (*AccessToken) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case accesstoken.FieldID:
+		case accesstoken.FieldID, accesstoken.FieldAccessTokenHash, accesstoken.FieldAccessTokenMask:
 			values[i] = new(sql.NullString)
 		case accesstoken.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -82,6 +86,18 @@ func (at *AccessToken) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field id", values[i])
 			} else if value.Valid {
 				at.ID = value.String
+			}
+		case accesstoken.FieldAccessTokenHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field access_token_hash", values[i])
+			} else if value.Valid {
+				at.AccessTokenHash = value.String
+			}
+		case accesstoken.FieldAccessTokenMask:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field access_token_mask", values[i])
+			} else if value.Valid {
+				at.AccessTokenMask = value.String
 			}
 		case accesstoken.FieldUserID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
@@ -136,6 +152,11 @@ func (at *AccessToken) String() string {
 	var builder strings.Builder
 	builder.WriteString("AccessToken(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", at.ID))
+	builder.WriteString("access_token_hash=<sensitive>")
+	builder.WriteString(", ")
+	builder.WriteString("access_token_mask=")
+	builder.WriteString(at.AccessTokenMask)
+	builder.WriteString(", ")
 	builder.WriteString("user_id=")
 	builder.WriteString(fmt.Sprintf("%v", at.UserID))
 	builder.WriteString(", ")

@@ -81,11 +81,11 @@ func init() {
 	teamapikeyFields := schema.TeamAPIKey{}.Fields()
 	_ = teamapikeyFields
 	// teamapikeyDescCreatedAt is the schema descriptor for created_at field.
-	teamapikeyDescCreatedAt := teamapikeyFields[2].Descriptor()
+	teamapikeyDescCreatedAt := teamapikeyFields[4].Descriptor()
 	// teamapikey.DefaultCreatedAt holds the default value on creation for the created_at field.
 	teamapikey.DefaultCreatedAt = teamapikeyDescCreatedAt.Default.(func() time.Time)
 	// teamapikeyDescName is the schema descriptor for name field.
-	teamapikeyDescName := teamapikeyFields[5].Descriptor()
+	teamapikeyDescName := teamapikeyFields[7].Descriptor()
 	// teamapikey.DefaultName holds the default value on creation for the name field.
 	teamapikey.DefaultName = teamapikeyDescName.Default.(string)
 	userFields := schema.User{}.Fields()
