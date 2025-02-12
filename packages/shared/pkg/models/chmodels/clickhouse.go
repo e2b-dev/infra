@@ -1,4 +1,4 @@
-package models
+package chmodels
 
 type ClickhouseColumn struct {
 	Database string `ch:"database"`

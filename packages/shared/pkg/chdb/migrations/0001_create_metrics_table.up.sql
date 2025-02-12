@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS metrics (
-	timestamp DateTime('UTC'),
+	timestamp DateTime64(9, 'UTC'),
 	sandbox_id String,
+	team_id String,
 	cpu_count UInt32,
 	cpu_used_pct Float64,
 	mem_total_mib UInt64,

@@ -7,8 +7,10 @@ generate-fc:
 
 .PHONY: generate-models
 generate-models:
-	rm -rf pkg/models/*
-	go generate ./pkg/generate_models.go
+	@echo "Generating models..."
+	@find pkg/models/* -not -path "pkg/models/clickhouse*" -delete
+	@go generate ./pkg/generate_models.go
+	@echo "Done"
 
 .PHONY: prep-cluster
 prep-cluster:

@@ -1,4 +1,4 @@
-package clickhouse
+package chdb
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	ch "github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
@@ -38,11 +38,11 @@ type ClickHouseStore[T any] struct {
 func NewConn() (driver.Conn, error) {
 	var (
 		ctx       = context.Background()
-		conn, err = ch.Open(&ch.Options{
+		conn, err = clickhouse.Open(&clickhouse.Options{
 			Addr:     []string{connectionString},
-			Protocol: ch.Native,
+			Protocol: clickhouse.Native,
 			TLS:      &tls.Config{}, // Not using TLS for now
-			Auth: ch.Auth{
+			Auth: clickhouse.Auth{
 				Database: database,
 				Username: username,
 				Password: password,
@@ -50,8 +50,8 @@ func NewConn() (driver.Conn, error) {
 			DialTimeout: time.Second * 5,
 			ReadTimeout: time.Second * 90,
 			Debug:       debug,
-			Compression: &ch.Compression{
-				Method: ch.CompressionLZ4,
+			Compression: &clickhouse.Compression{
+				Method: clickhouse.CompressionLZ4,
 			},
 		})
 	)

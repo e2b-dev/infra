@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	ch "github.com/e2b-dev/infra/packages/shared/pkg/clickhouse"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 )
 
 func main() {
@@ -20,7 +20,7 @@ func main() {
 		database         = os.Getenv("CLICKHOUSE_DATABASE")
 	)
 	// Execute the migration
-	migrater, err := ch.NewMigrator(
+	migrater, err := chdb.NewMigrator(
 		connectionString,
 		username,
 		password,

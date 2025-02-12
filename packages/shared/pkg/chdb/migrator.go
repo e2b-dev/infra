@@ -1,13 +1,13 @@
-package clickhouse
+package chdb
 
 import (
 	"crypto/tls"
 	"embed"
 	"fmt"
 
-	ch "github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/clickhouse"
+	migch "github.com/golang-migrate/migrate/v4/database/clickhouse"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
@@ -71,11 +71,11 @@ func NewMigrator(connectionString, username, password, database string) (*Clickh
 		return nil, fmt.Errorf("failed to open Clickhouse migrations iofs: %w", err)
 	}
 
-	db := ch.OpenDB(&ch.Options{
+	db := clickhouse.OpenDB(&clickhouse.Options{
 		Addr:     []string{connectionString},
-		Protocol: ch.Native,
+		Protocol: clickhouse.Native,
 		TLS:      &tls.Config{}, // Not using TLS for now
-		Auth: ch.Auth{
+		Auth: clickhouse.Auth{
 			Database: database,
 			Username: username,
 			Password: password,
@@ -95,7 +95,7 @@ func NewMigrator(connectionString, username, password, database string) (*Clickh
 		return nil, fmt.Errorf("failed to create schema_migrations table: %w", err)
 	}
 
-	driver, err := clickhouse.WithInstance(db, &clickhouse.Config{
+	driver, err := migch.WithInstance(db, &migch.Config{
 		DatabaseName: database,
 	})
 	if err != nil {
