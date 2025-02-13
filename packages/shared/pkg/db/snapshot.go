@@ -89,7 +89,6 @@ func (db *DB) NewSnapshotBuild(
 			Snapshot.
 			UpdateOne(s).
 			SetMetadata(snapshotConfig.Metadata).
-			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
 			Save(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update snapshot '%s': %w", snapshotConfig.SandboxID, err)
