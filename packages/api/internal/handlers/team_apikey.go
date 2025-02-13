@@ -53,7 +53,7 @@ func (a *APIStore) GetApikeys(c *gin.Context) {
 
 	teamID := a.GetTeamInfo(c).Team.ID
 
-	apiKeys, err := a.db.GetTeamAPIKeys(ctx, teamID)
+	apiKeysDB, err := a.db.GetTeamAPIKeys(ctx, teamID)
 	if err != nil {
 		log.Println("Error when getting team API keys: ", err)
 		c.JSON(http.StatusInternalServerError, "Error when getting team API keys")
@@ -61,8 +61,8 @@ func (a *APIStore) GetApikeys(c *gin.Context) {
 		return
 	}
 
-	teamAPIKeys := make([]api.TeamAPIKey, len(apiKeys))
-	for i, apiKey := range apiKeys {
+	teamAPIKeys := make([]api.TeamAPIKey, len(apiKeysDB))
+	for i, apiKey := range apiKeysDB {
 		teamAPIKeys[i] = api.TeamAPIKey{
 			Id:        apiKey.ID,
 			Name:      apiKey.Name,
@@ -72,7 +72,7 @@ func (a *APIStore) GetApikeys(c *gin.Context) {
 			LastUsed:  apiKey.LastUsed,
 		}
 	}
-	c.JSON(http.StatusOK, apiKeys)
+	c.JSON(http.StatusOK, teamAPIKeys)
 }
 
 func (a *APIStore) DeleteApikeysApiKeyID(c *gin.Context, apiKeyID string) {

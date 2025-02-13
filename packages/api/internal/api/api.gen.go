@@ -114,7 +114,7 @@ type MiddlewareFunc func(c *gin.Context)
 // PostAccesstokens operation middleware
 func (siw *ServerInterfaceWrapper) PostAccesstokens(c *gin.Context) {
 
-	c.Set(AdminTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -140,7 +140,7 @@ func (siw *ServerInterfaceWrapper) DeleteAccesstokensAccessTokenID(c *gin.Contex
 		return
 	}
 
-	c.Set(AdminTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -155,7 +155,9 @@ func (siw *ServerInterfaceWrapper) DeleteAccesstokensAccessTokenID(c *gin.Contex
 // GetApikeys operation middleware
 func (siw *ServerInterfaceWrapper) GetApikeys(c *gin.Context) {
 
-	c.Set(AdminTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -170,7 +172,9 @@ func (siw *ServerInterfaceWrapper) GetApikeys(c *gin.Context) {
 // PostApikeys operation middleware
 func (siw *ServerInterfaceWrapper) PostApikeys(c *gin.Context) {
 
-	c.Set(AdminTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -196,7 +200,9 @@ func (siw *ServerInterfaceWrapper) DeleteApikeysApiKeyID(c *gin.Context) {
 		return
 	}
 
-	c.Set(AdminTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -222,7 +228,9 @@ func (siw *ServerInterfaceWrapper) PatchApikeysApiKeyID(c *gin.Context) {
 		return
 	}
 
-	c.Set(AdminTokenAuthScopes, []string{})
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
