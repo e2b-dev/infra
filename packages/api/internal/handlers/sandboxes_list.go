@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -20,12 +21,30 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *string, state *[]api.SandboxState) ([]api.ListedSandbox, error) {
+type SandboxesListParams struct {
+	State *[]api.SandboxState
+}
+
+type SandboxesListFilter struct {
+	Query *string
+}
+
+type SandboxesListPaginate struct {
+	Page    *int
+	PerPage *int
+}
+
+type SandboxesListResult struct {
+	Sandboxes  []api.ListedSandbox
+	TotalPages int
+}
+
+func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams) ([]api.ListedSandbox, error) {
 	// Initialize empty slice for results
 	sandboxes := make([]api.ListedSandbox, 0)
 
 	// Only fetch running sandboxes if we need them (state is nil or "running")
-	if state == nil || slices.Contains(*state, api.Running) {
+	if params.State == nil || slices.Contains(*params.State, api.Running) {
 		sandboxInfo := a.orchestrator.GetSandboxes(ctx, &teamID)
 
 		// Get build IDs for running sandboxes
@@ -85,7 +104,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 	}
 
 	// Only fetch snapshots if we need them (state is nil or "paused")
-	if state == nil || slices.Contains(*state, api.Paused) {
+	if params.State == nil || slices.Contains(*params.State, api.Paused) {
 		snapshotEnvs, err := a.db.GetTeamSnapshots(ctx, teamID)
 		if err != nil {
 			return nil, fmt.Errorf("error getting team snapshots: %s", err)
@@ -124,10 +143,14 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 		}
 	}
 
+	return sandboxes, nil
+}
+
+func filterSandboxes(sandboxes []api.ListedSandbox, filter SandboxesListFilter) ([]api.ListedSandbox, error) {
 	// filter sandboxes by metadata
-	if query != nil {
+	if filter.Query != nil {
 		// Unescape query
-		query, err := url.QueryUnescape(*query)
+		query, err := url.QueryUnescape(*filter.Query)
 		if err != nil {
 			return nil, fmt.Errorf("error when unescaping query: %w", err)
 		}
@@ -179,12 +202,36 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 		sandboxes = sandboxes[:n]
 	}
 
-	// Sort sandboxes by start time descending
-	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
-		return a.StartedAt.Compare(b.StartedAt)
-	})
-
 	return sandboxes, nil
+}
+
+func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPaginate) (SandboxesListResult, error) {
+	// Paginate sandboxes
+	totalPages := 1
+	if paginate.Page != nil && paginate.PerPage != nil {
+		totalPages = len(sandboxes) / *paginate.PerPage
+		if len(sandboxes)%*paginate.PerPage != 0 {
+			totalPages++
+		}
+
+		if *paginate.Page > totalPages {
+			return SandboxesListResult{}, fmt.Errorf("page exceeds total pages")
+		}
+
+		start := (*paginate.Page - 1) * *paginate.PerPage
+		end := start + *paginate.PerPage
+		if end > len(sandboxes) {
+			end = len(sandboxes)
+		}
+		sandboxes = sandboxes[start:end]
+	}
+
+	fmt.Println("total sandboxes", len(sandboxes))
+
+	return SandboxesListResult{
+		Sandboxes:  sandboxes,
+		TotalPages: totalPages,
+	}, nil
 }
 
 func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
@@ -198,13 +245,43 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances", properties)
 
-	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query, params.State)
+	sandboxes, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
+		State: params.State,
+	})
 	if err != nil {
 		a.logger.Error("Error fetching sandboxes", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
 
 		return
 	}
 
-	c.JSON(http.StatusOK, sandboxes)
+	sandboxes, err = filterSandboxes(sandboxes, SandboxesListFilter{
+		Query: params.Query,
+	})
+	if err != nil {
+		a.logger.Error("Error filtering sandboxes", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error filtering sandboxes for team '%s': %s", team.ID, err))
+
+		return
+	}
+
+	result, err := paginateSandboxes(sandboxes, SandboxesListPaginate{
+		Page:    params.Page,
+		PerPage: params.PerPage,
+	})
+	if err != nil {
+		a.logger.Error("Error paginating sandboxes", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error paginating sandboxes for team '%s': %s", team.ID, err))
+
+		return
+	}
+
+	// Sort by startedAt descending
+	slices.SortFunc(result.Sandboxes, func(a, b api.ListedSandbox) int {
+		return b.StartedAt.Compare(a.StartedAt)
+	})
+
+	c.Header("X-Total-Pages", strconv.Itoa(result.TotalPages))
+	c.Header("X-Total-Items", strconv.Itoa(len(sandboxes)))
+	c.JSON(http.StatusOK, result.Sandboxes)
 }

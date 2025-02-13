@@ -191,7 +191,10 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
 
-	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query, &[]api.SandboxState{api.Running})
+	result, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
+		State: &[]api.SandboxState{api.Running},
+	})
+
 	if err != nil {
 		a.logger.Error("Error fetching sandboxes", zap.Error(err))
 		telemetry.ReportCriticalError(ctx, err)
@@ -200,7 +203,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 		return
 	}
 
-	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, sandboxes)
+	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, result)
 	if err != nil {
 		a.logger.Error("Error fetching metrics for sandboxes", zap.Error(err))
 		telemetry.ReportCriticalError(ctx, err)
@@ -209,5 +212,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 		return
 	}
 
+	// c.Header("X-Total-Pages", strconv.Itoa(result.TotalPages))
+	// c.Header("X-Total-Items", strconv.Itoa(result.TotalItems))
 	c.JSON(http.StatusOK, sandboxesWithMetrics)
 }

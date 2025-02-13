@@ -576,6 +576,23 @@ paths:
               $ref: "#/components/schemas/SandboxState"
           style: form
           explode: false
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: per_page
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            default: 1000
+            minimum: 1
+            maximum: 1000
       responses:
         "200":
           description: Successfully returned all running sandboxes
@@ -630,6 +647,23 @@ paths:
           required: false
           schema:
             type: string
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: per_page
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            default: 1000
+            minimum: 1
+            maximum: 1000
       responses:
         "200":
           description: Successfully returned all running sandboxes with metrics
