@@ -680,6 +680,8 @@ tags:
   - name: templates
   - name: sandboxes
   - name: auth
+  - name: accesstokens
+  - name: apikeys
 
 paths:
   /health:
@@ -1263,9 +1265,9 @@ paths:
   /accesstokens:
     post:
       description: Create a new access token
-      tags: [admin]
+      tags: [accesstokens]
       security:
-        - AdminTokenAuth: []
+        - Supabase1TokenAuth: []
       requestBody:
         required: true
         content:
@@ -1287,9 +1289,9 @@ paths:
   /accesstokens/{accessTokenID}:
     delete:
       description: Delete an access token
-      tags: [admin]
+      tags: [accesstokens]
       security:
-        - AdminTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/accessTokenID"
       responses:
@@ -1305,9 +1307,10 @@ paths:
   /apikeys:
     get:
       description: List all team API keys
-      tags: [admin]
+      tags: [apikeys]
       security:
-        - AdminTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       responses:
         "200":
           description: Successfully returned all team API keys
@@ -1323,9 +1326,10 @@ paths:
           $ref: "#/components/responses/500"
     post:
       description: Create a new team API key
-      tags: [admin]
+      tags: [apikeys]
       security:
-        - AdminTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -1347,9 +1351,10 @@ paths:
   /apikeys/{apiKeyID}:
     patch:
       description: Update a team API key
-      tags: [admin]
+      tags: [apikeys]
       security:
-        - AdminTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/apiKeyID"
       requestBody:
@@ -1369,9 +1374,10 @@ paths:
           $ref: "#/components/responses/500"
     delete:
       description: Delete a team API key
-      tags: [admin]
+      tags: [apikeys]
       security:
-        - AdminTokenAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/apiKeyID"
       responses:
