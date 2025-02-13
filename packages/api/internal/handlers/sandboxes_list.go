@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -24,13 +25,20 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 	// Initialize empty slice for results
 	sandboxes := make([]api.ListedSandbox, 0)
 
-	// Only fetch running sandboxes if we need them (state is nil or "running")
-	if state == nil || slices.Contains(*state, api.Running) {
-		sandboxInfo := a.orchestrator.GetSandboxes(ctx, &teamID)
+	// Get all sandbox instances
+	runningSandboxes := a.orchestrator.GetSandboxes(ctx, &teamID)
 
+	// Running Sandbox IDs
+	runningSandboxesIDs := make([]string, 0)
+	for _, info := range runningSandboxes {
+		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.Instance.SandboxID))
+	}
+
+	// Only fetch running sandboxes (builds) if we need them (state is nil or "running")
+	if state == nil || slices.Contains(*state, api.Running) {
 		// Get build IDs for running sandboxes
 		buildIDs := make([]uuid.UUID, 0)
-		for _, info := range sandboxInfo {
+		for _, info := range runningSandboxes {
 			if info.TeamID != nil && *info.TeamID == teamID && info.BuildID != nil {
 				buildIDs = append(buildIDs, *info.BuildID)
 			}
@@ -49,7 +57,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 			}
 
 			// Add running sandboxes to results
-			for _, info := range sandboxInfo {
+			for _, info := range runningSandboxes {
 				if info.TeamID == nil || *info.TeamID != teamID || info.BuildID == nil {
 					continue
 				}
@@ -86,7 +94,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 
 	// Only fetch snapshots if we need them (state is nil or "paused")
 	if state == nil || slices.Contains(*state, api.Paused) {
-		snapshotEnvs, err := a.db.GetTeamSnapshots(ctx, teamID)
+		snapshotEnvs, err := a.db.GetTeamSnapshots(ctx, teamID, runningSandboxesIDs)
 		if err != nil {
 			return nil, fmt.Errorf("error getting team snapshots: %s", err)
 		}

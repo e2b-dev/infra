@@ -187,7 +187,7 @@ func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uu
 	return e, e.Edges.Builds, nil
 }
 
-func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID) (
+func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSandboxIDs []string) (
 	[]*models.Env,
 	error,
 ) {
@@ -197,6 +197,7 @@ func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID) (
 		Query().
 		Where(
 			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
+			env.HasSnapshotsWith(snapshot.SandboxIDNotIn(excludeSandboxIDs...)),
 			env.TeamID(teamID),
 		).
 		WithSnapshots().
