@@ -12,8 +12,10 @@ var (
 	// AccessTokensColumns holds the columns for the "access_tokens" table.
 	AccessTokensColumns = []*schema.Column{
 		{Name: "access_token", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
 		{Name: "access_token_hash", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "access_token_mask", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "access_token_mask", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "name", Type: field.TypeString, Default: "Unnamed Access Token", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "created_at", Type: field.TypeTime, Nullable: true, Default: "CURRENT_TIMESTAMP"},
 		{Name: "user_id", Type: field.TypeUUID},
 	}
@@ -25,7 +27,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "access_tokens_users_access_tokens",
-				Columns:    []*schema.Column{AccessTokensColumns[4]},
+				Columns:    []*schema.Column{AccessTokensColumns[6]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -168,7 +170,7 @@ var (
 		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
 		{Name: "api_key", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "character varying(44)"}},
 		{Name: "api_key_hash", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "character varying(64)"}},
-		{Name: "api_key_mask", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "character varying(44)"}},
+		{Name: "api_key_mask", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(44)"}},
 		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
 		{Name: "updated_at", Type: field.TypeTime, Nullable: true},
 		{Name: "name", Type: field.TypeString, Default: "Unnamed API Key", SchemaType: map[string]string{"postgres": "text"}},
