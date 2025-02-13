@@ -18,21 +18,16 @@ var (
 	debug            = os.Getenv("CLICKHOUSE_DEBUG") == "true"
 )
 
-type Store[T any] interface {
+type Store interface {
 	Close() error
 
-	InsertRow(ctx context.Context, row T) error
-	InsertRows(ctx context.Context, rows []T) error
-
-	QueryRow(ctx context.Context, query string) (T, error)
-	QueryRows(ctx context.Context, query string) ([]T, error)
-
+	Insert(ctx context.Context, rows []any, table string) error
+	Query(ctx context.Context, query string) (driver.Rows, error)
 	Exec(ctx context.Context, query string) error
 }
 
-type ClickHouseStore[T any] struct {
-	TableName string
-	Conn      driver.Conn
+type ClickHouseStore struct {
+	Conn driver.Conn
 }
 
 func NewConn() (driver.Conn, error) {
@@ -63,28 +58,25 @@ func NewConn() (driver.Conn, error) {
 	if err := conn.Ping(ctx); err != nil {
 		return nil, err
 	}
+
 	return conn, nil
 }
 
-func NewStore[T any](tableName string) (Store[T], error) {
+func NewStore(tableName string) (Store, error) {
 	conn, err := NewConn()
 	if err != nil {
 		return nil, err
 	}
 
-	return &ClickHouseStore[T]{Conn: conn, TableName: tableName}, nil
+	return &ClickHouseStore{conn}, nil
 }
 
-func (c *ClickHouseStore[T]) Close() error {
+func (c *ClickHouseStore) Close() error {
 	return c.Conn.Close()
 }
 
-func (c *ClickHouseStore[T]) InsertRow(ctx context.Context, row T) error {
-	return c.Conn.AsyncInsert(ctx, "INSERT INTO "+c.TableName, true, row)
-}
-
-func (c *ClickHouseStore[T]) InsertRows(ctx context.Context, rows []T) error {
-	batch, err := c.Conn.PrepareBatch(ctx, "INSERT INTO "+c.TableName)
+func (c *ClickHouseStore) Insert(ctx context.Context, rows []any, table string) error {
+	batch, err := c.Conn.PrepareBatch(ctx, "INSERT INTO "+table)
 	if err != nil {
 		return err
 	}
@@ -98,40 +90,47 @@ func (c *ClickHouseStore[T]) InsertRows(ctx context.Context, rows []T) error {
 	return batch.Send()
 }
 
-func (c *ClickHouseStore[T]) QueryRow(ctx context.Context, query string) (T, error) {
-	rows, err := c.Conn.Query(ctx, query)
-	if err != nil {
-		var zero T
-		return zero, err
-	}
-
-	var row T
-	if err := rows.ScanStruct(&row); err != nil {
-		var zero T
-		return zero, err
-	}
-
-	return row, nil
+func (c *ClickHouseStore) Query(ctx context.Context, query string) (driver.Rows, error) {
+	return c.Conn.Query(ctx, query)
 }
 
-func (c *ClickHouseStore[T]) QueryRows(ctx context.Context, query string) ([]T, error) {
-	rows, err := c.Conn.Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-
-	var result []T
-	for rows.Next() {
-		var row T
-		if err := rows.ScanStruct(&row); err != nil {
-			return nil, err
-		}
-		result = append(result, row)
-	}
-
-	return result, nil
-}
-
-func (c *ClickHouseStore[T]) Exec(ctx context.Context, query string) error {
+func (c *ClickHouseStore) Exec(ctx context.Context, query string) error {
 	return c.Conn.Exec(ctx, query)
+}
+
+/*
+ * Helper Generic Functions
+ * note: type must be a struct or slice of structs
+ */
+
+type QueryTypeConstraint interface {
+	struct{} | []struct{}
+}
+
+func TypedQuery[T QueryTypeConstraint](ctx context.Context, store *ClickHouseStore, query string) (T, error) {
+	rows, err := store.Query(ctx, query)
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+
+	var scannedRow T
+	if err := rows.ScanStruct(&scannedRow); err != nil {
+		var zero T
+		return zero, err
+	}
+
+	return scannedRow, nil
+}
+
+type InsertTypeConstraint interface {
+	[]struct{}
+}
+
+func TypedInsert[T InsertTypeConstraint](ctx context.Context, store *ClickHouseStore, rows []T, table string) error {
+	anyRows := make([]any, len(rows))
+	for i := range rows {
+		anyRows[i] = rows[i]
+	}
+	return store.Insert(ctx, anyRows, table)
 }

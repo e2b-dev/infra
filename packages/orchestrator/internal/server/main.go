@@ -11,25 +11,32 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const ServiceName = "orchestrator"
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
-	sandboxes     *smap.Map[*sandbox.Sandbox]
-	dns           *dns.DNS
-	tracer        trace.Tracer
+	sandboxes       *smap.Map[*sandbox.Sandbox]
+	dns             *dns.DNS
+	tracer          trace.Tracer
+	clickhouseStore chdb.Store[chmodels.Metrics]
+
 	networkPool   *network.Pool
 	templateCache *template.Cache
 
@@ -66,12 +73,21 @@ func New() (*grpc.Server, error) {
 		),
 	)
 
+	clickhouseStore, err := chdb.NewStore[chmodels.Metrics]("metrics")
+	if err != nil {
+		errMsg := fmt.Errorf("failed to create clickhouse store: %w", err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+	}
+
 	orchestrator.RegisterSandboxServiceServer(s, &server{
-		tracer:        otel.Tracer(ServiceName),
-		dns:           dnsServer,
-		sandboxes:     smap.New[*sandbox.Sandbox](),
-		networkPool:   networkPool,
-		templateCache: templateCache,
+		tracer:          otel.Tracer(ServiceName),
+		clickhouseStore: clickhouseStore,
+		dns:             dnsServer,
+		sandboxes:       smap.New[*sandbox.Sandbox](),
+		networkPool:     networkPool,
+		templateCache:   templateCache,
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

@@ -31,6 +31,40 @@ func (a *APIStore) getSandboxesSandboxIDMetrics(
 	limit int,
 	duration time.Duration,
 ) ([]api.SandboxMetric, error) {
+	end := time.Now().UTC()
+	start := end.Add(-duration)
+
+	query := fmt.Sprintf(
+		"SELECT * FROM metrics WHERE sandbox_id = '%s' AND team_id = '%s' AND timestamp >= %d LIMIT %d",
+		sandboxID, teamID, start.Unix(), limit,
+	)
+
+	a.logger.Info("~~~query", zap.String("query", query))
+
+	metrics, err := a.clickhouseStore.QueryRows(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("error when returning metrics for sandbox: %w", err)
+	}
+	apiMetrics := make([]api.SandboxMetric, len(metrics))
+	for i, m := range metrics {
+		apiMetrics[i] = api.SandboxMetric{
+			Timestamp:   time.Unix(m.Timestamp, 0),
+			CpuUsedPct:  float32(m.CPUUsedPercent),
+			CpuCount:    int32(m.CPUCount),
+			MemTotalMiB: int64(m.MemTotalMiB),
+			MemUsedMiB:  int64(m.MemUsedMiB),
+		}
+	}
+	return apiMetrics, nil
+}
+
+func (a *APIStore) _getSandboxesSandboxIDMetrics(
+	ctx context.Context,
+	sandboxID string,
+	teamID string,
+	limit int,
+	duration time.Duration,
+) ([]api.SandboxMetric, error) {
 	sandboxID = utils.ShortID(sandboxID)
 
 	end := time.Now()
@@ -60,13 +94,13 @@ func (a *APIStore) getSandboxesSandboxIDMetrics(
 	for _, stream := range value {
 		for _, entry := range stream.Entries {
 
-				var metric struct {
-					Timestamp   time.Time `json:"timestamp"`
-					CPUUsedPct  float32   `json:"cpuUsedPct"`
-					CPUCount    int32     `json:"cpuCount"`
-					MemTotalMiB int64     `json:"memTotalMiB"`
-					MemUsedMiB  int64     `json:"memUsedMiB"`
-				}
+			var metric struct {
+				Timestamp   time.Time `json:"timestamp"`
+				CPUUsedPct  float32   `json:"cpuUsedPct"`
+				CPUCount    int32     `json:"cpuCount"`
+				MemTotalMiB int64     `json:"memTotalMiB"`
+				MemUsedMiB  int64     `json:"memUsedMiB"`
+			}
 
 			err := json.Unmarshal([]byte(entry.Line), &metric)
 			if err != nil {

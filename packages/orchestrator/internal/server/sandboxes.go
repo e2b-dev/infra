@@ -58,6 +58,7 @@ func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
 		logger,
+		s.clickhouseStore,
 		req.Sandbox.Snapshot,
 		req.Sandbox.BaseTemplateId,
 	)
@@ -174,7 +175,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 
 	// Check health metrics before stopping the sandbox
 	sbx.Healthcheck(ctx, true)
-	sbx.LogMetrics(ctx)
+	sbx.SendMetrics(ctx)
 
 	err := sbx.Stop()
 	if err != nil {

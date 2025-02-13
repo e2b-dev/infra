@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -47,9 +48,10 @@ type Sandbox struct {
 	StartedAt time.Time
 	EndAt     time.Time
 
-	Slot   network.Slot
-	Logger *logs.SandboxLogger
-	stats  *stats.Handle
+	Slot            network.Slot
+	Logger          *logs.SandboxLogger
+	ClickhouseStore chdb.Store
+	stats           *stats.Handle
 
 	uffdExit chan error
 
@@ -70,6 +72,7 @@ func NewSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	logger *logs.SandboxLogger,
+	clickhouseStore chdb.Store,
 	isSnapshot bool,
 	baseTemplateID string,
 ) (*Sandbox, *Cleanup, error) {
@@ -230,20 +233,21 @@ func NewSandbox(
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	sbx := &Sandbox{
-		uffdExit:       uffdExit,
-		files:          sandboxFiles,
-		Slot:           ips,
-		template:       t,
-		process:        fcHandle,
-		uffd:           fcUffd,
-		Config:         config,
-		StartedAt:      startedAt,
-		EndAt:          endAt,
-		rootfs:         rootfsOverlay,
-		stats:          sandboxStats,
-		Logger:         logger,
-		cleanup:        cleanup,
-		healthcheckCtx: healthcheckCtx,
+		uffdExit:        uffdExit,
+		files:           sandboxFiles,
+		Slot:            ips,
+		template:        t,
+		process:         fcHandle,
+		uffd:            fcUffd,
+		Config:          config,
+		StartedAt:       startedAt,
+		EndAt:           endAt,
+		rootfs:          rootfsOverlay,
+		stats:           sandboxStats,
+		Logger:          logger,
+		ClickhouseStore: clickhouseStore,
+		cleanup:         cleanup,
+		healthcheckCtx:  healthcheckCtx,
 	}
 
 	cleanup.AddPriority(func() error {
