@@ -21,7 +21,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *string, state *[]api.SandboxState) ([]api.ListedSandbox, error) {
+type SandboxesListParams struct {
+	State *[]api.SandboxState
+}
+
+type SandboxesListFilter struct {
+	Query *string
+}
+
+func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams) ([]api.ListedSandbox, error) {
 	// Initialize empty slice for results
 	sandboxes := make([]api.ListedSandbox, 0)
 
@@ -35,7 +43,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 	}
 
 	// Only fetch running sandboxes if we need them (state is nil or "running")
-	if state == nil || slices.Contains(*state, api.Running) {
+	if params.State == nil || slices.Contains(*params.State, api.Running) {
 		// Get build IDs for running sandboxes
 		buildIDs := make([]uuid.UUID, 0)
 		for _, info := range runningSandboxes {
@@ -91,7 +99,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 	}
 
 	// Only fetch snapshots if we need them (state is nil or "paused")
-	if state == nil || slices.Contains(*state, api.Paused) {
+	if params.State == nil || slices.Contains(*params.State, api.Paused) {
 		snapshotEnvs, err := a.db.GetTeamSnapshots(ctx, teamID, runningSandboxesIDs)
 		if err != nil {
 			return nil, fmt.Errorf("error getting team snapshots: %s", err)
@@ -130,10 +138,14 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 		}
 	}
 
+	return sandboxes, nil
+}
+
+func filterSandboxes(sandboxes []api.ListedSandbox, filter SandboxesListFilter) ([]api.ListedSandbox, error) {
 	// filter sandboxes by metadata
-	if query != nil {
+	if filter.Query != nil {
 		// Unescape query
-		query, err := url.QueryUnescape(*query)
+		query, err := url.QueryUnescape(*filter.Query)
 		if err != nil {
 			return nil, fmt.Errorf("error when unescaping query: %w", err)
 		}
@@ -185,11 +197,6 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 		sandboxes = sandboxes[:n]
 	}
 
-	// Sort sandboxes by start time descending
-	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
-		return a.StartedAt.Compare(b.StartedAt)
-	})
-
 	return sandboxes, nil
 }
 
@@ -204,13 +211,30 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances", properties)
 
-	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query, params.State)
+	sandboxes, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
+		State: params.State,
+	})
 	if err != nil {
 		a.logger.Error("Error fetching sandboxes", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
 
 		return
 	}
+
+	sandboxes, err = filterSandboxes(sandboxes, SandboxesListFilter{
+		Query: params.Query,
+	})
+	if err != nil {
+		a.logger.Error("Error filtering sandboxes", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error filtering sandboxes for team '%s': %s", team.ID, err))
+
+		return
+	}
+
+	// Sort by startedAt descending
+	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
+		return b.StartedAt.Compare(a.StartedAt)
+	})
 
 	c.JSON(http.StatusOK, sandboxes)
 }

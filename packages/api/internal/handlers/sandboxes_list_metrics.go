@@ -191,11 +191,22 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
 
-	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query, &[]api.SandboxState{api.Running})
+	sandboxes, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
+		State: &[]api.SandboxState{api.Running},
+	})
 	if err != nil {
 		a.logger.Error("Error fetching sandboxes", zap.Error(err))
-		telemetry.ReportCriticalError(ctx, err)
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
+
+		return
+	}
+
+	sandboxes, err = filterSandboxes(sandboxes, SandboxesListFilter{
+		Query: params.Query,
+	})
+	if err != nil {
+		a.logger.Error("Error filtering sandboxes", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error filtering sandboxes for team '%s': %s", team.ID, err))
 
 		return
 	}
