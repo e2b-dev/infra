@@ -172,35 +172,6 @@ type RunningSandboxWithMetrics struct {
 	TemplateID string `json:"templateID"`
 }
 
-// RunningSandboxWithMetrics defines model for RunningSandboxWithMetrics.
-type RunningSandboxWithMetrics struct {
-	// Alias Alias of the template
-	Alias *string `json:"alias,omitempty"`
-
-	// ClientID Identifier of the client
-	ClientID string `json:"clientID"`
-
-	// CpuCount CPU cores for the sandbox
-	CpuCount CPUCount `json:"cpuCount"`
-
-	// EndAt Time when the sandbox will expire
-	EndAt time.Time `json:"endAt"`
-
-	// MemoryMB Memory for the sandbox in MB
-	MemoryMB MemoryMB         `json:"memoryMB"`
-	Metadata *SandboxMetadata `json:"metadata,omitempty"`
-	Metrics  *[]SandboxMetric `json:"metrics,omitempty"`
-
-	// SandboxID Identifier of the sandbox
-	SandboxID string `json:"sandboxID"`
-
-	// StartedAt Time when the sandbox was started
-	StartedAt time.Time `json:"startedAt"`
-
-	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID string `json:"templateID"`
-}
-
 // Sandbox defines model for Sandbox.
 type Sandbox struct {
 	// Alias Alias of the template
@@ -398,12 +369,6 @@ type GetSandboxesParams struct {
 
 	// State Filter sandboxes by one or more states
 	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
-}
-
-// GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.
-type GetSandboxesMetricsParams struct {
-	// Query A query used to filter the sandboxes (e.g. "user=abc&app=prod"). Query and each key and values must be URL encoded.
-	Query *string `form:"query,omitempty" json:"query,omitempty"`
 }
 
 // GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.
