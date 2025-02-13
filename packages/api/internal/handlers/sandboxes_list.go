@@ -34,61 +34,59 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.Instance.SandboxID))
 	}
 
-	// Only fetch running sandboxes (builds) if we need them (state is nil or "running")
+	// Only fetch running sandboxes if we need them (state is nil or "running")
 	if state == nil || slices.Contains(*state, api.Running) {
 		// Get build IDs for running sandboxes
 		buildIDs := make([]uuid.UUID, 0)
 		for _, info := range runningSandboxes {
-			if info.TeamID != nil && *info.TeamID == teamID && info.BuildID != nil {
+			if info.BuildID != nil {
 				buildIDs = append(buildIDs, *info.BuildID)
 			}
 		}
 
-		// Only fetch builds if we have running sandboxes
-		if len(buildIDs) > 0 {
-			builds, err := a.db.Client.EnvBuild.Query().Where(envbuild.IDIn(buildIDs...)).All(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("error getting builds for running sandboxes: %s", err)
+		// Fetch builds for running sandboxes
+		builds, err := a.db.Client.EnvBuild.Query().Where(envbuild.IDIn(buildIDs...)).All(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("error getting builds for running sandboxes: %s", err)
+		}
+
+		buildsMap := make(map[uuid.UUID]*models.EnvBuild, len(builds))
+		for _, build := range builds {
+			buildsMap[build.ID] = build
+		}
+
+		// Add running sandboxes to results
+		for _, info := range runningSandboxes {
+			if info.BuildID == nil {
+				continue
 			}
 
-			buildsMap := make(map[uuid.UUID]*models.EnvBuild, len(builds))
-			for _, build := range builds {
-				buildsMap[build.ID] = build
+			memoryMB := int32(-1)
+			cpuCount := int32(-1)
+
+			if buildsMap[*info.BuildID] != nil {
+				memoryMB = int32(buildsMap[*info.BuildID].RAMMB)
+				cpuCount = int32(buildsMap[*info.BuildID].Vcpu)
 			}
 
-			// Add running sandboxes to results
-			for _, info := range runningSandboxes {
-				if info.TeamID == nil || *info.TeamID != teamID || info.BuildID == nil {
-					continue
-				}
-
-				memoryMB := int32(-1)
-				cpuCount := int32(-1)
-
-				if buildsMap[*info.BuildID] != nil {
-					memoryMB = int32(buildsMap[*info.BuildID].RAMMB)
-					cpuCount = int32(buildsMap[*info.BuildID].Vcpu)
-				}
-
-				sandbox := api.ListedSandbox{
-					ClientID:   info.Instance.ClientID,
-					TemplateID: info.Instance.TemplateID,
-					Alias:      info.Instance.Alias,
-					SandboxID:  info.Instance.SandboxID,
-					StartedAt:  info.StartTime,
-					CpuCount:   cpuCount,
-					MemoryMB:   memoryMB,
-					EndAt:      info.EndTime,
-					State:      api.Running,
-				}
-
-				if info.Metadata != nil {
-					meta := api.SandboxMetadata(info.Metadata)
-					sandbox.Metadata = &meta
-				}
-
-				sandboxes = append(sandboxes, sandbox)
+			sandbox := api.ListedSandbox{
+				ClientID:   info.Instance.ClientID,
+				TemplateID: info.Instance.TemplateID,
+				Alias:      info.Instance.Alias,
+				SandboxID:  info.Instance.SandboxID,
+				StartedAt:  info.StartTime,
+				CpuCount:   cpuCount,
+				MemoryMB:   memoryMB,
+				EndAt:      info.EndTime,
+				State:      api.Running,
 			}
+
+			if info.Metadata != nil {
+				meta := api.SandboxMetadata(info.Metadata)
+				sandbox.Metadata = &meta
+			}
+
+			sandboxes = append(sandboxes, sandbox)
 		}
 	}
 
