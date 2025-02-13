@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 )
 
@@ -24,4 +25,8 @@ func (a *APIStore) GetUserAndTeams(c *gin.Context) (*uuid.UUID, []*models.Team, 
 	}
 
 	return &userID, teams, err
+}
+
+func (a *APIStore) GetTeamInfo(c *gin.Context) authcache.AuthTeamInfo {
+	return c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
 }

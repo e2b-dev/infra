@@ -14,6 +14,24 @@ import (
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
+	// (POST /accesstokens)
+	PostAccesstokens(c *gin.Context)
+
+	// (DELETE /accesstokens/{accessTokenID})
+	DeleteAccesstokensAccessTokenID(c *gin.Context, accessTokenID AccessTokenID)
+
+	// (GET /apikeys)
+	GetApikeys(c *gin.Context)
+
+	// (POST /apikeys)
+	PostApikeys(c *gin.Context)
+
+	// (DELETE /apikeys/{apiKeyID})
+	DeleteApikeysApiKeyID(c *gin.Context, apiKeyID ApiKeyID)
+
+	// (PATCH /apikeys/{apiKeyID})
+	PatchApikeysApiKeyID(c *gin.Context, apiKeyID ApiKeyID)
+
 	// (GET /health)
 	GetHealth(c *gin.Context)
 
@@ -92,6 +110,129 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(c *gin.Context)
+
+// PostAccesstokens operation middleware
+func (siw *ServerInterfaceWrapper) PostAccesstokens(c *gin.Context) {
+
+	c.Set(AdminTokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostAccesstokens(c)
+}
+
+// DeleteAccesstokensAccessTokenID operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAccesstokensAccessTokenID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "accessTokenID" -------------
+	var accessTokenID AccessTokenID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accessTokenID", c.Param("accessTokenID"), &accessTokenID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter accessTokenID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(AdminTokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteAccesstokensAccessTokenID(c, accessTokenID)
+}
+
+// GetApikeys operation middleware
+func (siw *ServerInterfaceWrapper) GetApikeys(c *gin.Context) {
+
+	c.Set(AdminTokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetApikeys(c)
+}
+
+// PostApikeys operation middleware
+func (siw *ServerInterfaceWrapper) PostApikeys(c *gin.Context) {
+
+	c.Set(AdminTokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostApikeys(c)
+}
+
+// DeleteApikeysApiKeyID operation middleware
+func (siw *ServerInterfaceWrapper) DeleteApikeysApiKeyID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "apiKeyID" -------------
+	var apiKeyID ApiKeyID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyID", c.Param("apiKeyID"), &apiKeyID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(AdminTokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteApikeysApiKeyID(c, apiKeyID)
+}
+
+// PatchApikeysApiKeyID operation middleware
+func (siw *ServerInterfaceWrapper) PatchApikeysApiKeyID(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "apiKeyID" -------------
+	var apiKeyID ApiKeyID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyID", c.Param("apiKeyID"), &apiKeyID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(AdminTokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PatchApikeysApiKeyID(c, apiKeyID)
+}
 
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(c *gin.Context) {
@@ -771,6 +912,12 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
+	router.POST(options.BaseURL+"/accesstokens", wrapper.PostAccesstokens)
+	router.DELETE(options.BaseURL+"/accesstokens/:accessTokenID", wrapper.DeleteAccesstokensAccessTokenID)
+	router.GET(options.BaseURL+"/apikeys", wrapper.GetApikeys)
+	router.POST(options.BaseURL+"/apikeys", wrapper.PostApikeys)
+	router.DELETE(options.BaseURL+"/apikeys/:apiKeyID", wrapper.DeleteApikeysApiKeyID)
+	router.PATCH(options.BaseURL+"/apikeys/:apiKeyID", wrapper.PatchApikeysApiKeyID)
 	router.GET(options.BaseURL+"/health", wrapper.GetHealth)
 	router.GET(options.BaseURL+"/nodes", wrapper.GetNodes)
 	router.GET(options.BaseURL+"/nodes/:nodeID", wrapper.GetNodesNodeID)
