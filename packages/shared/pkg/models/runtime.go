@@ -5,6 +5,7 @@ package models
 import (
 	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -20,6 +21,12 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	accesstokenFields := schema.AccessToken{}.Fields()
+	_ = accesstokenFields
+	// accesstokenDescName is the schema descriptor for name field.
+	accesstokenDescName := accesstokenFields[4].Descriptor()
+	// accesstoken.DefaultName holds the default value on creation for the name field.
+	accesstoken.DefaultName = accesstokenDescName.Default.(string)
 	envFields := schema.Env{}.Fields()
 	_ = envFields
 	// envDescCreatedAt is the schema descriptor for created_at field.

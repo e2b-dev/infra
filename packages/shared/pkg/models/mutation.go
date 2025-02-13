@@ -52,8 +52,10 @@ type AccessTokenMutation struct {
 	op                Op
 	typ               string
 	id                *string
+	unique_id         *uuid.UUID
 	access_token_hash *string
 	access_token_mask *string
+	name              *string
 	created_at        *time.Time
 	clearedFields     map[string]struct{}
 	user              *uuid.UUID
@@ -167,6 +169,42 @@ func (m *AccessTokenMutation) IDs(ctx context.Context) ([]string, error) {
 	}
 }
 
+// SetUniqueID sets the "unique_id" field.
+func (m *AccessTokenMutation) SetUniqueID(u uuid.UUID) {
+	m.unique_id = &u
+}
+
+// UniqueID returns the value of the "unique_id" field in the mutation.
+func (m *AccessTokenMutation) UniqueID() (r uuid.UUID, exists bool) {
+	v := m.unique_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUniqueID returns the old "unique_id" field's value of the AccessToken entity.
+// If the AccessToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccessTokenMutation) OldUniqueID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUniqueID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUniqueID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUniqueID: %w", err)
+	}
+	return oldValue.UniqueID, nil
+}
+
+// ResetUniqueID resets all changes to the "unique_id" field.
+func (m *AccessTokenMutation) ResetUniqueID() {
+	m.unique_id = nil
+}
+
 // SetAccessTokenHash sets the "access_token_hash" field.
 func (m *AccessTokenMutation) SetAccessTokenHash(s string) {
 	m.access_token_hash = &s
@@ -237,6 +275,42 @@ func (m *AccessTokenMutation) OldAccessTokenMask(ctx context.Context) (v string,
 // ResetAccessTokenMask resets all changes to the "access_token_mask" field.
 func (m *AccessTokenMutation) ResetAccessTokenMask() {
 	m.access_token_mask = nil
+}
+
+// SetName sets the "name" field.
+func (m *AccessTokenMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *AccessTokenMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the AccessToken entity.
+// If the AccessToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccessTokenMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *AccessTokenMutation) ResetName() {
+	m.name = nil
 }
 
 // SetUserID sets the "user_id" field.
@@ -385,12 +459,18 @@ func (m *AccessTokenMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccessTokenMutation) Fields() []string {
-	fields := make([]string, 0, 4)
+	fields := make([]string, 0, 6)
+	if m.unique_id != nil {
+		fields = append(fields, accesstoken.FieldUniqueID)
+	}
 	if m.access_token_hash != nil {
 		fields = append(fields, accesstoken.FieldAccessTokenHash)
 	}
 	if m.access_token_mask != nil {
 		fields = append(fields, accesstoken.FieldAccessTokenMask)
+	}
+	if m.name != nil {
+		fields = append(fields, accesstoken.FieldName)
 	}
 	if m.user != nil {
 		fields = append(fields, accesstoken.FieldUserID)
@@ -406,10 +486,14 @@ func (m *AccessTokenMutation) Fields() []string {
 // schema.
 func (m *AccessTokenMutation) Field(name string) (ent.Value, bool) {
 	switch name {
+	case accesstoken.FieldUniqueID:
+		return m.UniqueID()
 	case accesstoken.FieldAccessTokenHash:
 		return m.AccessTokenHash()
 	case accesstoken.FieldAccessTokenMask:
 		return m.AccessTokenMask()
+	case accesstoken.FieldName:
+		return m.Name()
 	case accesstoken.FieldUserID:
 		return m.UserID()
 	case accesstoken.FieldCreatedAt:
@@ -423,10 +507,14 @@ func (m *AccessTokenMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *AccessTokenMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
+	case accesstoken.FieldUniqueID:
+		return m.OldUniqueID(ctx)
 	case accesstoken.FieldAccessTokenHash:
 		return m.OldAccessTokenHash(ctx)
 	case accesstoken.FieldAccessTokenMask:
 		return m.OldAccessTokenMask(ctx)
+	case accesstoken.FieldName:
+		return m.OldName(ctx)
 	case accesstoken.FieldUserID:
 		return m.OldUserID(ctx)
 	case accesstoken.FieldCreatedAt:
@@ -440,6 +528,13 @@ func (m *AccessTokenMutation) OldField(ctx context.Context, name string) (ent.Va
 // type.
 func (m *AccessTokenMutation) SetField(name string, value ent.Value) error {
 	switch name {
+	case accesstoken.FieldUniqueID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUniqueID(v)
+		return nil
 	case accesstoken.FieldAccessTokenHash:
 		v, ok := value.(string)
 		if !ok {
@@ -453,6 +548,13 @@ func (m *AccessTokenMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAccessTokenMask(v)
+		return nil
+	case accesstoken.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
 		return nil
 	case accesstoken.FieldUserID:
 		v, ok := value.(uuid.UUID)
@@ -526,11 +628,17 @@ func (m *AccessTokenMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *AccessTokenMutation) ResetField(name string) error {
 	switch name {
+	case accesstoken.FieldUniqueID:
+		m.ResetUniqueID()
+		return nil
 	case accesstoken.FieldAccessTokenHash:
 		m.ResetAccessTokenHash()
 		return nil
 	case accesstoken.FieldAccessTokenMask:
 		m.ResetAccessTokenMask()
+		return nil
+	case accesstoken.FieldName:
+		m.ResetName()
 		return nil
 	case accesstoken.FieldUserID:
 		m.ResetUserID()

@@ -12,10 +12,14 @@ const (
 	Label = "access_token"
 	// FieldID holds the string denoting the id field in the database.
 	FieldID = "access_token"
+	// FieldUniqueID holds the string denoting the unique_id field in the database.
+	FieldUniqueID = "id"
 	// FieldAccessTokenHash holds the string denoting the access_token_hash field in the database.
 	FieldAccessTokenHash = "access_token_hash"
 	// FieldAccessTokenMask holds the string denoting the access_token_mask field in the database.
 	FieldAccessTokenMask = "access_token_mask"
+	// FieldName holds the string denoting the name field in the database.
+	FieldName = "name"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -38,8 +42,10 @@ const (
 // Columns holds all SQL columns for accesstoken fields.
 var Columns = []string{
 	FieldID,
+	FieldUniqueID,
 	FieldAccessTokenHash,
 	FieldAccessTokenMask,
+	FieldName,
 	FieldUserID,
 	FieldCreatedAt,
 }
@@ -54,12 +60,22 @@ func ValidColumn(column string) bool {
 	return false
 }
 
+var (
+	// DefaultName holds the default value on creation for the "name" field.
+	DefaultName string
+)
+
 // OrderOption defines the ordering options for the AccessToken queries.
 type OrderOption func(*sql.Selector)
 
 // ByID orders the results by the id field.
 func ByID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldID, opts...).ToFunc()
+}
+
+// ByUniqueID orders the results by the unique_id field.
+func ByUniqueID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUniqueID, opts...).ToFunc()
 }
 
 // ByAccessTokenHash orders the results by the access_token_hash field.
@@ -70,6 +86,11 @@ func ByAccessTokenHash(opts ...sql.OrderTermOption) OrderOption {
 // ByAccessTokenMask orders the results by the access_token_mask field.
 func ByAccessTokenMask(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAccessTokenMask, opts...).ToFunc()
+}
+
+// ByName orders the results by the name field.
+func ByName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldName, opts...).ToFunc()
 }
 
 // ByUserID orders the results by the user_id field.

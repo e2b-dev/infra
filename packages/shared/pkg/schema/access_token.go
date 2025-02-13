@@ -15,9 +15,11 @@ type AccessToken struct {
 
 func (AccessToken) Fields() []ent.Field {
 	return []ent.Field{
+		field.UUID("unique_id", uuid.UUID{}).StorageKey("id").Immutable().Unique().Annotations(entsql.Default("gen_random_uuid()")),
 		field.String("id").Unique().StorageKey("access_token").Immutable().SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("access_token_hash").Immutable().Unique().Sensitive().SchemaType(map[string]string{dialect.Postgres: "text"}),
-		field.String("access_token_mask").Immutable().Unique().SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.String("access_token_mask").Immutable().SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.String("name").SchemaType(map[string]string{dialect.Postgres: "text"}).Default("Unnamed Access Token"),
 		field.UUID("user_id", uuid.UUID{}),
 		field.Time("created_at").Optional().Immutable().Annotations(
 			entsql.Default("CURRENT_TIMESTAMP"),
