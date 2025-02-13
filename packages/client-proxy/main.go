@@ -21,7 +21,14 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+const ServiceName = "client_proxy"
+
+// Build information
+var commit = "dev"
 
 const (
 	dnsServer       = "api.service.consul:5353"
@@ -35,7 +42,19 @@ const (
 var client = new(dns.Client)
 
 func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Request) {
+	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
+	if err != nil {
+		logger.Error("failed to create active connections counter", zap.Error(err))
+	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
+		if activeConnections != nil {
+			activeConnections.Add(r.Context(), 1)
+			defer func() {
+				activeConnections.Add(r.Context(), -1)
+			}()
+		}
+
 		logger.Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
 		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.dev)
@@ -106,6 +125,7 @@ func main() {
 	wg := sync.WaitGroup{}
 
 	ctx := context.Background()
+
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 
@@ -113,6 +133,8 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("error creating logger: %v", err))
 	}
+
+	logger.Info("starting client proxy", zap.String("commit", commit))
 
 	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
 	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -137,6 +159,9 @@ func main() {
 			logger.Error("http service exited without error", zap.Int("port", port))
 		}
 	}()
+
+	cleanupTelemetry := telemetry.InitOTLPExporter(context.TODO(), ServiceName, "no")
+	defer cleanupTelemetry(ctx)
 
 	// Proxy request to the correct node
 	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
@@ -167,6 +192,7 @@ func main() {
 	}()
 
 	wg.Add(1)
+
 	go func() {
 		defer wg.Done()
 		<-signalCtx.Done()
@@ -178,6 +204,13 @@ func main() {
 
 		logger.Info("waiting 15 seconds before shutting down http service")
 		time.Sleep(15 * time.Second)
+
+		logger.Info("shutting down telemetry")
+
+		err := cleanupTelemetry(ctx)
+		if err != nil {
+			logger.Error("error shutting down telemetry", zap.Error(err))
+		}
 
 		logger.Info("shutting down http service", zap.Int("port", port))
 

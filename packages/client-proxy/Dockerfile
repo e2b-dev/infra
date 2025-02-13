@@ -16,7 +16,10 @@ RUN go mod download
 
 COPY main.go main.go
 
-RUN --mount=type=cache,target=/root/.cache/go-build make build
+ARG BUILD_COMMIT=dev
+ENV BUILD_COMMIT=${BUILD_COMMIT}
+
+RUN --mount=type=cache,target=/root/.cache/go-build LDFLAGS="-ldflags '-X=main.commit=${BUILD_COMMIT}'" make build
 RUN chmod +x /build/proxy/bin/client-proxy
 
 FROM alpine:3.17
