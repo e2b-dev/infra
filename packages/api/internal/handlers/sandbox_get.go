@@ -10,7 +10,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -35,11 +34,10 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 
 		// Sandbox exists and belongs to the team - return running sandbox info
-		build, err := a.db.Client.EnvBuild.Query().Where(envbuild.ID(*info.BuildID)).First(ctx)
+		_, build, err := a.templateCache.Get(ctx, info.Instance.TemplateID, team.ID, true)
 		if err != nil {
-			a.logger.Errorf("error getting build for sandbox %s: %s", id, err)
-			telemetry.ReportCriticalError(ctx, err)
-			c.JSON(http.StatusInternalServerError, fmt.Sprintf("Error getting build for sandbox %s", id))
+			telemetry.ReportCriticalError(ctx, err.Err)
+			a.sendAPIStoreError(c, err.Code, err.ClientMsg)
 			return
 		}
 
