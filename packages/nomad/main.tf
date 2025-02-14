@@ -161,9 +161,9 @@ resource "nomad_job" "logs_collector" {
 
       loki_service_port_number = var.loki_service_port.port
 
-      grafana_logs_username = data.google_secret_manager_secret_version.grafana_logs_username.secret_data
-      grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
-      grafana_api_key       = data.google_secret_manager_secret_version.grafana_api_key_logs_collector.secret_data
+      grafana_logs_username = try(data.google_secret_manager_secret_version.grafana_logs_username.secret_data, "")
+      grafana_logs_endpoint = try(data.google_secret_manager_secret_version.grafana_logs_url.secret_data, "")
+      grafana_api_key       = try(data.google_secret_manager_secret_version.grafana_api_key_logs_collector.secret_data, "")
     }
   }
 }
