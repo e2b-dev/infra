@@ -14,7 +14,14 @@ import (
 )
 
 func CreateAPIKey(ctx context.Context, db *db.DB, teamID uuid.UUID, userID uuid.UUID, name string) (*models.TeamAPIKey, error) {
-	teamApiKey := auth.GenerateTeamAPIKey()
+	teamApiKey, err := auth.GenerateTeamAPIKey()
+	if err != nil {
+		errMsg := fmt.Errorf("error when generating team API key: %w", err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return nil, errMsg
+	}
+
 	apiKey, err := db.Client.TeamAPIKey.
 		Create().
 		SetTeamID(teamID).

@@ -30,7 +30,16 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 		return
 	}
 
-	accessToken := auth.GenerateAccessToken()
+	accessToken, err := auth.GenerateAccessToken()
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when generating access token: %s", err))
+
+		errMsg := fmt.Errorf("error when generating access token: %w", err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return
+	}
+
 	accessTokenDB, err := a.db.Client.AccessToken.
 		Create().
 		SetUniqueID(uuid.New()).
