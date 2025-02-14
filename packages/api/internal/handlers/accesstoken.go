@@ -36,8 +36,8 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 		SetUniqueID(uuid.New()).
 		SetUserID(userID).
 		SetID(accessToken).
-		SetAccessTokenMask(auth.MaskAccessToken(accessToken)).
 		SetAccessTokenHash(auth.HashAccessToken(accessToken)).
+		SetAccessTokenMask(auth.MaskAccessToken(accessToken)).
 		SetCreatedAt(time.Now()).
 		SetName(body.Name).
 		Save(ctx)
@@ -47,12 +47,14 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 
 		errMsg := fmt.Errorf("error when creating access token: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return
 	}
 
 	c.JSON(http.StatusCreated, api.CreatedAccessToken{
 		Id:        accessTokenDB.UniqueID,
 		Token:     accessToken,
-		TokenMask: auth.MaskAccessToken(accessToken),
+		TokenMask: accessTokenDB.AccessTokenMask,
 		Name:      accessTokenDB.Name,
 		CreatedAt: accessTokenDB.CreatedAt,
 	})

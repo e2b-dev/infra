@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -77,8 +78,9 @@ func (a *APIStore) GetApikeys(c *gin.Context) {
 		}
 
 		teamAPIKeys[i] = api.TeamAPIKey{
-			Id:        apiKey.ID,
-			Name:      apiKey.Name,
+			Id:   apiKey.ID,
+			Name: apiKey.Name,
+			// TODO: remove this once we migrate to hashed API keys
 			KeyMask:   auth.MaskAPIKey(apiKey.APIKey),
 			CreatedAt: apiKey.CreatedAt,
 			CreatedBy: createdBy,
@@ -128,24 +130,14 @@ func (a *APIStore) PostApikeys(c *gin.Context) {
 		return
 	}
 
-	teamApiKey := auth.GenerateTeamAPIKey()
-	apiKey, err := a.db.Client.TeamAPIKey.
-		Create().
-		SetTeamID(teamID).
-		SetCreatedBy(userID).
-		SetLastUsed(time.Now()).
-		SetUpdatedAt(time.Now()).
-		SetAPIKey(teamApiKey).
-		SetAPIKeyMask(auth.MaskAPIKey(teamApiKey)).
-		SetAPIKeyHash(auth.HashAPIKey(teamApiKey)).
-		SetCreatedAt(time.Now()).
-		SetName(body.Name).
-		Save(ctx)
+	apiKey, err := team.CreateAPIKey(ctx, a.db, teamID, userID, body.Name)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating API key: %s", err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating team API key: %s", err))
 
-		errMsg := fmt.Errorf("error when creating API key: %w", err)
+		errMsg := fmt.Errorf("error when creating team API key: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return
 	}
 
 	user, err := a.db.Client.User.Get(ctx, userID)
@@ -154,12 +146,14 @@ func (a *APIStore) PostApikeys(c *gin.Context) {
 
 		errMsg := fmt.Errorf("error when getting user: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return
 	}
 
 	c.JSON(http.StatusCreated, api.CreatedTeamAPIKey{
 		Id:      apiKey.ID,
-		Key:     teamApiKey,
-		KeyMask: auth.MaskAPIKey(teamApiKey),
+		Key:     apiKey.APIKey,
+		KeyMask: apiKey.APIKeyMask,
 		Name:    apiKey.Name,
 		CreatedBy: &api.TeamUser{
 			Id:    user.ID,
