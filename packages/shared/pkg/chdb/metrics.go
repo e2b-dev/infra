@@ -3,7 +3,6 @@ package chdb
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
 )
@@ -13,7 +12,6 @@ func (c *ClickHouseStore) InsertMetrics(ctx context.Context, metrics chmodels.Me
 	if err != nil {
 		return err
 	}
-	log.Printf("~~~insert metrics: %+v", metrics)
 	err = batch.AppendStruct(&metrics)
 	if err != nil {
 		batch.Abort()
