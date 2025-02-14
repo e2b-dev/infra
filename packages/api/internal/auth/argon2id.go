@@ -23,25 +23,31 @@ var (
 	}
 )
 
+type argon2IDHashing struct {
+	Params Argon2IDParams
+}
+
+func NewArgon2IDHashing() *argon2IDHashing {
+	return &argon2IDHashing{
+		Params: defaultArgon2IDParams,
+	}
+}
+
 func generateSalt() []byte {
 	// No salt used for keys, so we can query DB directly
 	return []byte("e2b")
 }
 
-func HashKey(key []byte) string {
-	return HashKeyWithParams(key, &defaultArgon2IDParams)
-}
-
-func HashKeyWithParams(key []byte, params *Argon2IDParams) string {
+func (h *argon2IDHashing) Hash(key []byte) string {
 	salt := generateSalt()
 
 	hashBytes := argon2.IDKey(
 		key,
 		salt,
-		params.Time,
-		params.Memory,
-		params.Parallelism,
-		params.KeyLength,
+		h.Params.Time,
+		h.Params.Memory,
+		h.Params.Parallelism,
+		h.Params.KeyLength,
 	)
 
 	salt64 := base64.RawStdEncoding.EncodeToString(salt)
@@ -50,10 +56,10 @@ func HashKeyWithParams(key []byte, params *Argon2IDParams) string {
 	return fmt.Sprintf(
 		"$argon2id$v=%d$m=%d,t=%d,p=%d,l=%d$%s$%s",
 		argon2.Version,
-		params.Memory,
-		params.Time,
-		params.Parallelism,
-		params.KeyLength,
+		h.Params.Memory,
+		h.Params.Time,
+		h.Params.Parallelism,
+		h.Params.KeyLength,
 		salt64,
 		hash64,
 	)
