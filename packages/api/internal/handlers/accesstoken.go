@@ -33,9 +33,11 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 	accessToken := auth.GenerateAccessToken()
 	accessTokenDB, err := a.db.Client.AccessToken.
 		Create().
-		SetID(accessToken).
+		SetUniqueID(uuid.New()).
 		SetUserID(userID).
+		SetID(accessToken).
 		SetAccessTokenMask(auth.MaskAccessToken(accessToken)).
+		SetAccessTokenHash(auth.HashAccessToken(accessToken)).
 		SetCreatedAt(time.Now()).
 		SetName(body.Name).
 		Save(ctx)
@@ -48,7 +50,7 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, api.CreatedAccessToken{
-		Id:        accessTokenDB.ID,
+		Id:        accessTokenDB.UniqueID,
 		Token:     accessToken,
 		TokenMask: auth.MaskAccessToken(accessToken),
 		Name:      accessTokenDB.Name,

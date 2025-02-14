@@ -523,6 +523,7 @@ components:
       properties:
         id:
           type: string
+          format: uuid
           description: Identifier of the access token
         name:
           type: string
@@ -570,9 +571,8 @@ components:
           format: date-time
           description: Timestamp of API key creation
         createdBy:
-          type: string
-          format: uuid
-          description: Identifier of the user who created the API key
+          allOf:
+            - $ref: "#/components/schemas/TeamUser"
           nullable: true
         lastUsed:
           type: string
@@ -608,9 +608,8 @@ components:
           format: date-time
           description: Timestamp of API key creation
         createdBy:
-          type: string
-          format: uuid
-          description: Identifier of the user who created the API key
+          allOf:
+            - $ref: "#/components/schemas/TeamUser"
           nullable: true
         lastUsed:
           type: string
