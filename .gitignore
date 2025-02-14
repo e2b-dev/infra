@@ -8,3 +8,4 @@
 terraform.tfstate
 terraform.tfstate.backup
 **/.tfplan.*
+.direnv
