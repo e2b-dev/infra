@@ -16,7 +16,7 @@ func (db *DB) GetUserID(ctx context.Context, token string) (*uuid.UUID, error) {
 		Client.
 		AccessToken.
 		Query().
-		Where(accesstoken.AccessToken(token)).
+		Where(accesstoken.AccessTokenHash(hashedToken)).
 		Only(ctx)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get user from access token: %w", err)
