@@ -20,31 +20,38 @@ func (a *APIStore) deleteSnapshot(
 	sandboxID string,
 	teamID uuid.UUID,
 ) (*bool, error) {
-	env, builds, err := a.db.GetSnapshotBuilds(ctx, sandboxID, teamID)
+	envs, err := a.db.GetSnapshotBuilds(ctx, sandboxID, teamID)
 	if err != nil {
 		return nil, fmt.Errorf("error when getting paused sandbox from db: %w", err)
 	}
 
 	var found bool = true
-	if env == nil {
+	if len(envs) == 0 {
 		found = false
 		return &found, nil
 	}
 
-	dbErr := a.db.DeleteEnv(ctx, env.ID)
+	envIDs := make([]string, len(envs))
+	for i, env := range envs {
+		envIDs[i] = env.ID
+	}
+
+	envBuildIDs := make([]uuid.UUID, 0)
+	for _, env := range envs {
+		for _, build := range env.Edges.Builds {
+			envBuildIDs = append(envBuildIDs, build.ID)
+		}
+	}
+
+	dbErr := a.db.DeleteEnvs(ctx, envIDs)
 	if dbErr != nil {
 		return nil, fmt.Errorf("error when deleting env from db: %w", dbErr)
 	}
 
-	a.templateCache.Invalidate(env.ID)
-
-	buildIds := make([]uuid.UUID, len(builds))
-	for i, build := range builds {
-		buildIds[i] = build.ID
-	}
+	a.templateCache.InvalidateMultiple(envIDs)
 
 	// delete all builds
-	deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIds)
+	deleteJobErr := a.templateManager.DeleteBuilds(ctx, envBuildIDs)
 	if deleteJobErr != nil {
 		return nil, fmt.Errorf("error when deleting builds from storage: %w", deleteJobErr)
 	}

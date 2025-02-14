@@ -54,6 +54,20 @@ func (db *DB) DeleteEnv(ctx context.Context, envID string) error {
 	return nil
 }
 
+func (db *DB) DeleteEnvs(ctx context.Context, envIDs []string) error {
+	_, err := db.
+		Client.
+		Env.
+		Delete().
+		Where(env.IDIn(envIDs...)).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to delete envs '%s': %w", envIDs, err)
+	}
+
+	return nil
+}
+
 func (db *DB) UpdateEnv(ctx context.Context, envID string, input UpdateEnvInput) error {
 	return db.Client.Env.UpdateOneID(envID).SetPublic(input.Public).Exec(ctx)
 }
