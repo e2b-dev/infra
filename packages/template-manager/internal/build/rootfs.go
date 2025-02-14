@@ -600,7 +600,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		return errMsg
 	}
 
-	telemetry.ReportEvent(childCtx, "truncated rootfs file to size of build + defaultDiskSizeMB")
+	telemetry.ReportEvent(childCtx, "truncated rootfs file to size of build + defaultDiskSizeMB", attribute.Int64("rootfs_size", rootfsSize))
 
 	resizeContext, resizeSpan := tracer.Start(childCtx, "resize-rootfs-file-cmd")
 	defer resizeSpan.End()

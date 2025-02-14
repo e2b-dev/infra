@@ -36,6 +36,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		attribute.String("env.start_cmd", config.StartCommand),
 		attribute.Int64("env.memory_mb", int64(config.MemoryMB)),
 		attribute.Int64("env.vcpu_count", int64(config.VCpuCount)),
+		attribute.Int64("env.disk_size_mb", int64(config.DiskSizeMB)), 
 		attribute.Bool("env.huge_pages", config.HugePages),
 	)
 
