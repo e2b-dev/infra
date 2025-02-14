@@ -138,8 +138,8 @@ resource "nomad_job" "otel_collector" {
   hcl2 {
     vars = {
 
-      grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
-      grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+      grafana_otel_collector_token = try(data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data, "")
+      grafana_username             = try(data.google_secret_manager_secret_version.grafana_username.secret_data, "")
       consul_token                 = var.consul_acl_token_secret
 
       gcp_zone = var.gcp_zone
