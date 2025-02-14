@@ -27,16 +27,16 @@ func MaskKey(prefix string, value string) string {
 }
 
 func GenerateKey(prefix string) (Key, error) {
-	randomBytes := make([]byte, keyLength)
-	_, err := rand.Read(randomBytes)
+	keyBytes := make([]byte, keyLength)
+	_, err := rand.Read(keyBytes)
 	if err != nil {
 		return Key{}, err
 	}
-	generatedToken := hex.EncodeToString(randomBytes)
+	generatedToken := hex.EncodeToString(keyBytes)
 
 	return Key{
 		PrefixedRawValue: prefix + generatedToken,
-		HashedValue:      HashKey(generatedToken),
+		HashedValue:      HashKey(keyBytes),
 		MaskedValue:      MaskKey(prefix, generatedToken),
 	}, nil
 }
