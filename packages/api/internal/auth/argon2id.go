@@ -37,7 +37,7 @@ func HashKeyWithParams(key string, params *Argon2IDParams) string {
 
 	hashBytes := argon2.IDKey(
 		[]byte(key),
-		[]byte(salt),
+		salt,
 		params.Time,
 		params.Memory,
 		params.Parallelism,
