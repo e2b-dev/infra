@@ -12,9 +12,11 @@ const apiKeySalt = "e2b_api_key_hash_salt"
 
 func MaskAPIKey(key string) string {
 	prefixLength := len(ApiKeyPrefix)
+	suffixLength := 4
+
 	firstFour := key[:prefixLength]
-	lastFour := key[len(key)-prefixLength:]
-	stars := strings.Repeat("*", len(key)-8)
+	lastFour := key[len(key)-suffixLength:]
+	stars := strings.Repeat("*", len(key)-prefixLength-suffixLength)
 	return firstFour + stars + lastFour
 }
 
@@ -23,15 +25,15 @@ func HashAPIKey(key string) string {
 	return hex.EncodeToString(hashBytes)
 }
 
-func GenerateTeamAPIKey() string {
+func GenerateTeamAPIKey() (string, error) {
 	randomBytes := make([]byte, 20)
 	_, err := rand.Read(randomBytes)
 	if err != nil {
-		panic(err) // Handle error appropriately
+		return "", err
 	}
 
 	// Encode the random bytes to a hexadecimal string
 	generatedToken := hex.EncodeToString(randomBytes)
 
-	return ApiKeyPrefix + generatedToken
+	return ApiKeyPrefix + generatedToken, nil
 }
