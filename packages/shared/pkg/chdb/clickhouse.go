@@ -28,7 +28,7 @@ type Store interface {
 
 	// Metrics queries
 	InsertMetrics(ctx context.Context, metrics chmodels.Metrics) error
-	QueryMetrics(ctx context.Context, query string) ([]chmodels.Metrics, error)
+	QueryMetrics(ctx context.Context, sandboxID, teamID string, start int64, limit int) ([]chmodels.Metrics, error)
 }
 
 type ClickHouseStore struct {

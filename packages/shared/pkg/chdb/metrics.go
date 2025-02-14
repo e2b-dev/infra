@@ -23,7 +23,12 @@ func (c *ClickHouseStore) InsertMetrics(ctx context.Context, metrics chmodels.Me
 	return batch.Send()
 }
 
-func (c *ClickHouseStore) QueryMetrics(ctx context.Context, query string) ([]chmodels.Metrics, error) {
+func (c *ClickHouseStore) QueryMetrics(ctx context.Context, sandboxID, teamID string, start int64, limit int) ([]chmodels.Metrics, error) {
+	query := fmt.Sprintf(
+		"SELECT * FROM metrics WHERE sandbox_id = '%s' AND team_id = '%s' AND timestamp >= %d LIMIT %d",
+		sandboxID, teamID, start, limit,
+	)
+
 	rows, err := c.Query(ctx, query)
 	if err != nil {
 		return nil, err
