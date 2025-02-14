@@ -42,7 +42,7 @@ type CreatedAccessToken struct {
 	CreatedAt time.Time `json:"createdAt"`
 
 	// Id Identifier of the access token
-	Id string `json:"id"`
+	Id openapi_types.UUID `json:"id"`
 
 	// Name Name of the access token
 	Name string `json:"name"`
@@ -58,9 +58,7 @@ type CreatedAccessToken struct {
 type CreatedTeamAPIKey struct {
 	// CreatedAt Timestamp of API key creation
 	CreatedAt time.Time `json:"createdAt"`
-
-	// CreatedBy Identifier of the user who created the API key
-	CreatedBy *openapi_types.UUID `json:"createdBy"`
+	CreatedBy *TeamUser `json:"createdBy"`
 
 	// Id Identifier of the API key
 	Id openapi_types.UUID `json:"id"`
@@ -309,9 +307,7 @@ type Team struct {
 type TeamAPIKey struct {
 	// CreatedAt Timestamp of API key creation
 	CreatedAt time.Time `json:"createdAt"`
-
-	// CreatedBy Identifier of the user who created the API key
-	CreatedBy *openapi_types.UUID `json:"createdBy"`
+	CreatedBy *TeamUser `json:"createdBy"`
 
 	// Id Identifier of the API key
 	Id openapi_types.UUID `json:"id"`
