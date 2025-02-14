@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -77,11 +78,13 @@ func (a *APIStore) GetApikeys(c *gin.Context) {
 			}
 		}
 
+		keyValue := strings.Split(apiKey.APIKey, auth.ApiKeyPrefix)[1]
+
 		teamAPIKeys[i] = api.TeamAPIKey{
 			Id:   apiKey.ID,
 			Name: apiKey.Name,
 			// TODO: remove this once we migrate to hashed API keys
-			KeyMask:   auth.MaskAPIKey(apiKey.APIKey),
+			KeyMask:   auth.MaskKey(auth.ApiKeyPrefix, keyValue),
 			CreatedAt: apiKey.CreatedAt,
 			CreatedBy: createdBy,
 			LastUsed:  apiKey.LastUsed,

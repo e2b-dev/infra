@@ -14,7 +14,7 @@ import (
 )
 
 func CreateAPIKey(ctx context.Context, db *db.DB, teamID uuid.UUID, userID uuid.UUID, name string) (*models.TeamAPIKey, error) {
-	teamApiKey, err := auth.GenerateTeamAPIKey()
+	teamApiKey, err := auth.GenerateKey(auth.ApiKeyPrefix)
 	if err != nil {
 		errMsg := fmt.Errorf("error when generating team API key: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -28,9 +28,9 @@ func CreateAPIKey(ctx context.Context, db *db.DB, teamID uuid.UUID, userID uuid.
 		SetCreatedBy(userID).
 		SetLastUsed(time.Now()).
 		SetUpdatedAt(time.Now()).
-		SetAPIKey(teamApiKey).
-		SetAPIKeyMask(auth.MaskAPIKey(teamApiKey)).
-		SetAPIKeyHash(auth.HashAPIKey(teamApiKey)).
+		SetAPIKey(teamApiKey.PrefixedRawValue).
+		SetAPIKeyMask(teamApiKey.MaskedValue).
+		SetAPIKeyHash(teamApiKey.HashedValue).
 		SetCreatedAt(time.Now()).
 		SetName(name).
 		Save(ctx)

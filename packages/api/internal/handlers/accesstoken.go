@@ -30,7 +30,7 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 		return
 	}
 
-	accessToken, err := auth.GenerateAccessToken()
+	accessToken, err := auth.GenerateKey(auth.AccessTokenPrefix)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when generating access token: %s", err))
 
@@ -44,9 +44,9 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 		Create().
 		SetUniqueID(uuid.New()).
 		SetUserID(userID).
-		SetID(accessToken).
-		SetAccessTokenHash(auth.HashAccessToken(accessToken)).
-		SetAccessTokenMask(auth.MaskAccessToken(accessToken)).
+		SetID(accessToken.PrefixedRawValue).
+		SetAccessTokenHash(accessToken.HashedValue).
+		SetAccessTokenMask(accessToken.MaskedValue).
 		SetCreatedAt(time.Now()).
 		SetName(body.Name).
 		Save(ctx)
@@ -62,7 +62,7 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, api.CreatedAccessToken{
 		Id:        accessTokenDB.UniqueID,
-		Token:     accessToken,
+		Token:     accessToken.PrefixedRawValue,
 		TokenMask: accessTokenDB.AccessTokenMask,
 		Name:      accessTokenDB.Name,
 		CreatedAt: accessTokenDB.CreatedAt,
