@@ -39,17 +39,17 @@ func (a *APIStore) getSandboxesSandboxIDMetrics(
 		sandboxID, teamID, start.Unix(), limit,
 	)
 
-	a.logger.Info("~~~query", zap.String("query", query))
-
-	metrics, err := a.clickhouseStore.QueryRows(ctx, query)
+	metrics, err := a.clickhouseStore.QueryMetrics(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("error when returning metrics for sandbox: %w", err)
 	}
+
+	// XXX avoid this conversion to be more efficient
 	apiMetrics := make([]api.SandboxMetric, len(metrics))
 	for i, m := range metrics {
 		apiMetrics[i] = api.SandboxMetric{
-			Timestamp:   time.Unix(m.Timestamp, 0),
-			CpuUsedPct:  float32(m.CPUUsedPercent),
+			Timestamp:   m.Timestamp,
+			CpuUsedPct:  m.CPUUsedPercent,
 			CpuCount:    int32(m.CPUCount),
 			MemTotalMiB: int64(m.MemTotalMiB),
 			MemUsedMiB:  int64(m.MemUsedMiB),

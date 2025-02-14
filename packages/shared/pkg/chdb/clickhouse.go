@@ -8,6 +8,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
 )
 
 var (
@@ -21,9 +22,13 @@ var (
 type Store interface {
 	Close() error
 
-	Insert(ctx context.Context, rows []any, table string) error
+	// Base queries
 	Query(ctx context.Context, query string) (driver.Rows, error)
-	Exec(ctx context.Context, query string) error
+	Exec(ctx context.Context, query string, args ...any) error
+
+	// Metrics queries
+	InsertMetrics(ctx context.Context, metrics chmodels.Metrics) error
+	QueryMetrics(ctx context.Context, query string) ([]chmodels.Metrics, error)
 }
 
 type ClickHouseStore struct {
@@ -62,7 +67,7 @@ func NewConn() (driver.Conn, error) {
 	return conn, nil
 }
 
-func NewStore(tableName string) (Store, error) {
+func NewStore() (Store, error) {
 	conn, err := NewConn()
 	if err != nil {
 		return nil, err
@@ -75,62 +80,10 @@ func (c *ClickHouseStore) Close() error {
 	return c.Conn.Close()
 }
 
-func (c *ClickHouseStore) Insert(ctx context.Context, rows []any, table string) error {
-	batch, err := c.Conn.PrepareBatch(ctx, "INSERT INTO "+table)
-	if err != nil {
-		return err
-	}
-	for _, row := range rows {
-		err := batch.AppendStruct(&row)
-		if err != nil {
-			return err
-		}
-	}
-
-	return batch.Send()
-}
-
 func (c *ClickHouseStore) Query(ctx context.Context, query string) (driver.Rows, error) {
 	return c.Conn.Query(ctx, query)
 }
 
-func (c *ClickHouseStore) Exec(ctx context.Context, query string) error {
-	return c.Conn.Exec(ctx, query)
-}
-
-/*
- * Helper Generic Functions
- * note: type must be a struct or slice of structs
- */
-
-type QueryTypeConstraint interface {
-	struct{} | []struct{}
-}
-
-func TypedQuery[T QueryTypeConstraint](ctx context.Context, store *ClickHouseStore, query string) (T, error) {
-	rows, err := store.Query(ctx, query)
-	if err != nil {
-		var zero T
-		return zero, err
-	}
-
-	var scannedRow T
-	if err := rows.ScanStruct(&scannedRow); err != nil {
-		var zero T
-		return zero, err
-	}
-
-	return scannedRow, nil
-}
-
-type InsertTypeConstraint interface {
-	[]struct{}
-}
-
-func TypedInsert[T InsertTypeConstraint](ctx context.Context, store *ClickHouseStore, rows []T, table string) error {
-	anyRows := make([]any, len(rows))
-	for i := range rows {
-		anyRows[i] = rows[i]
-	}
-	return store.Insert(ctx, anyRows, table)
+func (c *ClickHouseStore) Exec(ctx context.Context, query string, args ...any) error {
+	return c.Conn.Exec(ctx, query, args...)
 }

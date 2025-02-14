@@ -23,7 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -35,7 +34,7 @@ type server struct {
 	sandboxes       *smap.Map[*sandbox.Sandbox]
 	dns             *dns.DNS
 	tracer          trace.Tracer
-	clickhouseStore chdb.Store[chmodels.Metrics]
+	clickhouseStore chdb.Store
 
 	networkPool   *network.Pool
 	templateCache *template.Cache
@@ -73,7 +72,7 @@ func New() (*grpc.Server, error) {
 		),
 	)
 
-	clickhouseStore, err := chdb.NewStore[chmodels.Metrics]("metrics")
+	clickhouseStore, err := chdb.NewStore()
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create clickhouse store: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)

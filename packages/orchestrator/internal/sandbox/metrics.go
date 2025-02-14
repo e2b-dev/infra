@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
@@ -59,24 +60,23 @@ func (s *Sandbox) LogMetrics(ctx context.Context) {
 }
 
 func (s *Sandbox) SendMetrics(ctx context.Context) {
-	s.Logger.Infof("~~~ sending metrics")
 	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrcis) {
-		metrics, err := s.GetMetrics(ctx)
+		envdMetrics, err := s.GetMetrics(ctx)
 		if err != nil {
 			s.Logger.Warnf("failed to get metrics from envd: %w", err)
 		} else {
-			row := chmodels.Metrics{
+			// XXX update upstream types to avoid this conversion
+			metrics := chmodels.Metrics{
 				SandboxID:      s.Config.SandboxId,
 				TeamID:         s.Config.TeamId,
-				Timestamp:      metrics.Timestamp,
-				MemTotalMiB:    metrics.MemTotalMiB,
-				MemUsedMiB:     metrics.MemUsedMiB,
-				CPUCount:       metrics.CPUCount,
-				CPUUsedPercent: metrics.CPUUsedPercent,
+				Timestamp:      time.Unix(envdMetrics.Timestamp, 0),
+				MemTotalMiB:    envdMetrics.MemTotalMiB,
+				MemUsedMiB:     envdMetrics.MemUsedMiB,
+				CPUCount:       envdMetrics.CPUCount,
+				CPUUsedPercent: envdMetrics.CPUUsedPercent,
 			}
-			s.Logger.Infof("inserting metrics row %+v", row)
 
-			err := s.ClickhouseStore.BatchInsert(ctx, []any{row})
+			err := s.ClickhouseStore.InsertMetrics(ctx, metrics)
 			if err != nil {
 				s.Logger.Warnf("failed to insert metrics in ClickHouse: %w", err)
 			}
