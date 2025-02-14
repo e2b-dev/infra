@@ -12,6 +12,8 @@ const (
 	keyLength = 20
 )
 
+var hashing Hashing = NewSHA256Hashing()
+
 type Key struct {
 	PrefixedRawValue string
 	HashedValue      string
@@ -36,7 +38,7 @@ func GenerateKey(prefix string) (Key, error) {
 
 	return Key{
 		PrefixedRawValue: prefix + generatedToken,
-		HashedValue:      HashKey(keyBytes),
+		HashedValue:      hashing.Hash(keyBytes),
 		MaskedValue:      MaskKey(prefix, generatedToken),
 	}, nil
 }
