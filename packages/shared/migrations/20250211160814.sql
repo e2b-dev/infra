@@ -1,6 +1,6 @@
 -- Add new columns to team_api_keys table
 ALTER TABLE team_api_keys
-    ADD COLUMN api_key_hash character varying(64) UNIQUE,
+    ADD COLUMN api_key_hash character text UNIQUE,
     ADD COLUMN api_key_mask character varying(44);
 
 -- Add new columns to access_tokens table
