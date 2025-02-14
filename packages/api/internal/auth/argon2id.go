@@ -28,15 +28,15 @@ func generateSalt() []byte {
 	return []byte("e2b")
 }
 
-func HashKey(key string) string {
+func HashKey(key []byte) string {
 	return HashKeyWithParams(key, &defaultArgon2IDParams)
 }
 
-func HashKeyWithParams(key string, params *Argon2IDParams) string {
+func HashKeyWithParams(key []byte, params *Argon2IDParams) string {
 	salt := generateSalt()
 
 	hashBytes := argon2.IDKey(
-		[]byte(key),
+		key,
 		salt,
 		params.Time,
 		params.Memory,
