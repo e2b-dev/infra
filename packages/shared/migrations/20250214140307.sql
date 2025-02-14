@@ -2,11 +2,14 @@
 CREATE OR REPLACE FUNCTION hex_to_sha256(hex_str text, prefix text) RETURNS text AS $$
 DECLARE
     bytes bytea;
+    base64_hash text;
 BEGIN
     -- Remove the prefix and convert remaining hex to bytes
     bytes := decode(substring(hex_str from length(prefix) + 1), 'hex');
-    -- Return SHA256 hash as base64 string
-    RETURN encode(sha256(bytes), 'base64');
+    -- Get base64 hash and remove padding
+    base64_hash := rtrim(encode(sha256(bytes), 'base64'), '=');
+    -- Return SHA256 hash with $sha256$ prefix and base64-encoded hash without padding
+    RETURN '$sha256$' || base64_hash;
 END;
 $$ LANGUAGE plpgsql;
 
