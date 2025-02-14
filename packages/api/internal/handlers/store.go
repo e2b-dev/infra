@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	middleware "github.com/oapi-codegen/gin-middleware"
 	"net/http"
 	"os"
 	"time"
+
+	middleware "github.com/oapi-codegen/gin-middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -22,6 +23,7 @@ import (
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
@@ -187,7 +189,16 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 }
 
 func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authcache.AuthTeamInfo, *api.APIError) {
-	team, tier, err := a.authCache.Get(ctx, apiKey)
+	hashedApiKey, err := auth.VerifyKey(auth.ApiKeyPrefix, apiKey)
+	if err != nil {
+		return authcache.AuthTeamInfo{}, &api.APIError{
+			Err:       fmt.Errorf("failed to verify api key: %w", err),
+			ClientMsg: "Invalid API key format",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	team, tier, err := a.authCache.Get(ctx, hashedApiKey)
 	if err != nil {
 		return authcache.AuthTeamInfo{}, &api.APIError{
 			Err:       fmt.Errorf("failed to get the team from db for an api key: %w", err),
@@ -203,7 +214,16 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authca
 }
 
 func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken string) (uuid.UUID, *api.APIError) {
-	userID, err := a.db.GetUserID(ctx, accessToken)
+	hashedToken, err := auth.VerifyKey(auth.AccessTokenPrefix, accessToken)
+	if err != nil {
+		return uuid.UUID{}, &api.APIError{
+			Err:       fmt.Errorf("failed to verify access token: %w", err),
+			ClientMsg: "Invalid access token format",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	userID, err := a.db.GetUserID(ctx, hashedToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
 			Err:       fmt.Errorf("failed to get the user from db for an access token: %w", err),

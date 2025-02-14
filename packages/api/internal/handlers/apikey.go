@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
@@ -78,13 +76,10 @@ func (a *APIStore) GetApikeys(c *gin.Context) {
 			}
 		}
 
-		keyValue := strings.Split(apiKey.APIKey, auth.ApiKeyPrefix)[1]
-
 		teamAPIKeys[i] = api.TeamAPIKey{
-			Id:   apiKey.ID,
-			Name: apiKey.Name,
-			// TODO: remove this once we migrate to hashed API keys
-			KeyMask:   auth.MaskKey(auth.ApiKeyPrefix, keyValue),
+			Id:        apiKey.ID,
+			Name:      apiKey.Name,
+			KeyMask:   apiKey.APIKeyMask,
 			CreatedAt: apiKey.CreatedAt,
 			CreatedBy: createdBy,
 			LastUsed:  apiKey.LastUsed,

@@ -46,27 +46,27 @@ func NewTeamAuthCache(db *db.DB) *TeamAuthCache {
 }
 
 // TODO: save blocked teams to cache as well, handle the condition in the Get method
-func (c *TeamAuthCache) Get(ctx context.Context, apiKey string) (team *models.Team, tier *models.Tier, err error) {
+func (c *TeamAuthCache) Get(ctx context.Context, apiKeyHashed string) (team *models.Team, tier *models.Tier, err error) {
 	var item *ttlcache.Item[string, *TeamInfo]
 	var templateInfo *TeamInfo
 
-	item = c.cache.Get(apiKey)
+	item = c.cache.Get(apiKeyHashed)
 	if item == nil {
-		team, tier, err = c.db.GetTeamAuth(ctx, apiKey)
+		team, tier, err = c.db.GetTeamAuth(ctx, apiKeyHashed)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get the team from db for an api key: %w", err)
 		}
 
 		templateInfo = &TeamInfo{team: team, tier: tier, lastRefresh: time.Now()}
-		c.cache.Set(apiKey, templateInfo, authInfoExpiration)
+		c.cache.Set(apiKeyHashed, templateInfo, authInfoExpiration)
 
 		return team, tier, nil
 	}
 
 	templateInfo = item.Value()
 	if time.Since(templateInfo.lastRefresh) > refreshInterval {
-		go templateInfo.once.Do(apiKey, func() (interface{}, error) {
-			c.Refresh(apiKey)
+		go templateInfo.once.Do(apiKeyHashed, func() (interface{}, error) {
+			c.Refresh(apiKeyHashed)
 			return nil, err
 		})
 	}
@@ -75,16 +75,16 @@ func (c *TeamAuthCache) Get(ctx context.Context, apiKey string) (team *models.Te
 }
 
 // Refresh refreshes the cache for the given team ID.
-func (c *TeamAuthCache) Refresh(apiKey string) {
+func (c *TeamAuthCache) Refresh(apiKeyHashed string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	team, tier, err := c.db.GetTeamAuth(ctx, apiKey)
+	team, tier, err := c.db.GetTeamAuth(ctx, apiKeyHashed)
 	if err != nil {
-		c.cache.Delete(apiKey)
+		c.cache.Delete(apiKeyHashed)
 
 		return
 	}
 
-	c.cache.Set(apiKey, &TeamInfo{team: team, tier: tier, lastRefresh: time.Now()}, authInfoExpiration)
+	c.cache.Set(apiKeyHashed, &TeamInfo{team: team, tier: tier, lastRefresh: time.Now()}, authInfoExpiration)
 }

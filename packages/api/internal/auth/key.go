@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"strings"
 )
 
@@ -41,4 +42,19 @@ func GenerateKey(prefix string) (Key, error) {
 		HashedValue:      hashing.Hash(keyBytes),
 		MaskedValue:      MaskKey(prefix, generatedToken),
 	}, nil
+}
+
+func VerifyKey(prefix string, key string) (string, error) {
+	parts := strings.Split(key, prefix)
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid key prefix")
+	}
+
+	keyValue := parts[1]
+	keyBytes, err := hex.DecodeString(keyValue)
+	if err != nil {
+		return "", fmt.Errorf("invalid key")
+	}
+
+	return hashing.Hash(keyBytes), nil
 }
