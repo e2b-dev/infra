@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -164,20 +165,18 @@ func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uu
 			env.HasSnapshotsWith(snapshot.SandboxID(sandboxID)),
 			env.TeamID(teamID),
 		).
-		WithSnapshots(func(query *models.SnapshotQuery) {
-			query.Where(snapshot.SandboxID(sandboxID)).Only(ctx)
-		}).
 		WithBuilds().
 		Only(ctx)
 
 	notFound := models.IsNotFound(err)
 
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", sandboxID, err)
+	if notFound {
+		log.Printf("whatever '%s' not found", sandboxID)
+		return nil, nil, nil
 	}
 
-	if notFound {
-		return nil, nil, fmt.Errorf("no snapshot build found for '%s'", sandboxID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", sandboxID, err)
 	}
 
 	return e, e.Edges.Builds, nil
