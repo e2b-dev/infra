@@ -85,12 +85,11 @@ func GenerateKey(prefix string) (Key, error) {
 }
 
 func VerifyKey(prefix string, key string) (string, error) {
-	parts := strings.Split(key, prefix)
-	if len(parts) != 2 {
+	if !strings.HasPrefix(key, prefix) {
 		return "", fmt.Errorf("invalid key prefix")
 	}
 
-	keyValue := parts[1]
+	keyValue := key[len(prefix):]
 	keyBytes, err := hex.DecodeString(keyValue)
 	if err != nil {
 		return "", fmt.Errorf("invalid key")
