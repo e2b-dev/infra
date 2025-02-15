@@ -114,28 +114,7 @@ resource "google_secret_manager_secret_version" "nomad_acl_token" {
   secret_data = random_uuid.nomad_acl_token.result
 }
 
-# grafana username
-resource "google_secret_manager_secret" "grafana_username" {
-  secret_id = "${var.prefix}grafana-username"
 
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-
-resource "google_secret_manager_secret_version" "grafana_username" {
-  secret      = google_secret_manager_secret.grafana_username.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
 
 # grafana api key
 resource "google_secret_manager_secret" "grafana_api_key" {
@@ -158,97 +137,6 @@ resource "google_secret_manager_secret_version" "grafana_api_key" {
 
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
-
-
-# grafana otel collector token
-resource "google_secret_manager_secret" "grafana_otel_collector_token" {
-  secret_id = "${var.prefix}grafana-otel-collector-token"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "grafana_otel_collector_token" {
-  secret      = google_secret_manager_secret.grafana_otel_collector_token.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-# grafana logs url
-resource "google_secret_manager_secret" "grafana_logs_url" {
-  secret_id = "${var.prefix}grafana-logs-url"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "grafana_logs_url" {
-  secret      = google_secret_manager_secret.grafana_logs_url.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-# grafana logs collector api token
-resource "google_secret_manager_secret" "grafana_logs_collector_api_token" {
-  secret_id = "${var.prefix}grafana-api-key-logs-collector"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
-  secret      = google_secret_manager_secret.grafana_logs_collector_api_token.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-
-resource "google_secret_manager_secret" "grafana_logs_username" {
-  secret_id = "${var.prefix}grafana-logs-username"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-resource "google_secret_manager_secret_version" "grafana_logs_username" {
-  secret      = google_secret_manager_secret.grafana_logs_username.name
-  secret_data = " "
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-
-  depends_on = [time_sleep.secrets_api_wait_60_seconds]
-}
-
-
 resource "google_secret_manager_secret" "analytics_collector_host" {
   secret_id = "${var.prefix}analytics-collector-host"
 

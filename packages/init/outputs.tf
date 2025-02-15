@@ -18,14 +18,6 @@ output "grafana_api_key_secret_name" {
   value = google_secret_manager_secret.grafana_api_key.name
 }
 
-output "grafana_username_secret_name" {
-  value = google_secret_manager_secret.grafana_username.name
-}
-
-output "grafana_logs_username_secret_name" {
-  value = google_secret_manager_secret.grafana_logs_username.name
-}
-
 output "analytics_collector_host_secret_name" {
   value = google_secret_manager_secret.analytics_collector_host.name
 }
@@ -42,14 +34,5 @@ output "cloudflare_api_token_secret_name" {
   value = google_secret_manager_secret.cloudflare_api_token.name
 }
 
-output "grafana_otel_collector_token_secret_name" {
-  value = google_secret_manager_secret.grafana_otel_collector_token.name
-}
 
-output "grafana_api_key_logs_collector_secret_name" {
-  value = google_secret_manager_secret.grafana_logs_collector_api_token.name
-}
 
-output "grafana_logs_url_secret_name" {
-  value = google_secret_manager_secret.grafana_logs_url.name
-}
