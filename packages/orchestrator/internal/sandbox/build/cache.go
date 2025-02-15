@@ -78,3 +78,8 @@ func (s *DiffStore) Add(buildId string, t DiffType, d Diff) {
 
 	s.cache.Set(storagePath, d, buildExpiration)
 }
+
+func (s *DiffStore) Close() {
+	s.cache.DeleteAll()
+	s.cache.Stop()
+}
