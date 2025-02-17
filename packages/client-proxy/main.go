@@ -110,6 +110,8 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 		proxy.ModifyResponse = func(resp *http.Response) error {
 			if resp.StatusCode >= 500 {
 				logger.Error("Backend responded with error", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID))
+			} else {
+				logger.Info("Backend responded", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID), zap.String("node", node), zap.String("path", r.URL.Path))
 			}
 
 			return nil
