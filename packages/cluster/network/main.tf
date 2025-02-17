@@ -24,8 +24,10 @@ locals {
       timeout_sec                     = 86400
       connection_draining_timeout_sec = 1
       http_health_check = {
-        request_path = var.client_proxy_health_port.path
-        port         = var.client_proxy_health_port.port
+        request_path       = var.client_proxy_health_port.path
+        port               = var.client_proxy_health_port.port
+        timeout_sec        = 3
+        check_interval_sec = 3
       }
       groups = [{ group = var.api_instance_group }]
     }
@@ -36,8 +38,10 @@ locals {
       timeout_sec                     = 65
       connection_draining_timeout_sec = 1
       http_health_check = {
-        request_path = var.api_port.health_path
-        port         = var.api_port.port
+        request_path       = var.api_port.health_path
+        port               = var.api_port.port
+        timeout_sec        = 3
+        check_interval_sec = 3
       }
       groups = [{ group = var.api_instance_group }]
     }
