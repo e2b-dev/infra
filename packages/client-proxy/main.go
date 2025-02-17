@@ -126,6 +126,8 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 			ResponseHeaderTimeout: 24 * time.Hour,    // Matches proxy_read_timeout
 			DisableKeepAlives:     false,             // Allow keep-alives
 		}
+
+		proxy.ServeHTTP(w, r)
 	}
 }
 
