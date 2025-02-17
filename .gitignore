@@ -5,6 +5,3 @@
 !.env.template
 .last_used_env
 .tfplan.*
-terraform.tfstate
-terraform.tfstate.backup
-**/.tfplan.*
