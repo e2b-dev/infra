@@ -177,6 +177,7 @@ processors:
           - "nomad_nomad_job_summary_running"
           - "orchestrator.*"
           - "api.*"
+          - "client_proxy.*"
   metricstransform:
     transforms:
       - include: "nomad_client_host_cpu_idle"
