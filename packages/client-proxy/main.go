@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -34,7 +35,7 @@ const (
 // Create a DNS client
 var client = new(dns.Client)
 
-func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Request) {
+func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		logger.Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
@@ -97,7 +98,38 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 		}
 
 		// Proxy the request
-		httputil.NewSingleHostReverseProxy(targetUrl).ServeHTTP(w, r)
+		proxy := httputil.NewSingleHostReverseProxy(targetUrl)
+
+		// Custom error handler for logging proxy errors
+		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+			logger.Error("Reverse proxy error", zap.Error(err), zap.String("sandbox_id", sandboxID))
+			http.Error(w, "Proxy error", http.StatusBadGateway)
+		}
+
+		// Modify response for logging or additional processing
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			if resp.StatusCode >= 500 {
+				logger.Error("Backend responded with error", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID))
+			}
+
+			return nil
+		}
+
+		// Create transport with timeouts and keep-alive settings similar to Nginx
+		proxy.Transport = &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second, // Similar to proxy_connect_timeout
+				KeepAlive: 620 * time.Second,
+			}).DialContext,
+			MaxIdleConns:          1024,              // Matches worker_connections
+			MaxIdleConnsPerHost:   8192,              // Matches keepalive_requests
+			IdleConnTimeout:       620 * time.Second, // Matches keepalive_timeout
+			TLSHandshakeTimeout:   10 * time.Second,  // Similar to client_header_timeout
+			ResponseHeaderTimeout: 24 * time.Hour,    // Matches proxy_read_timeout
+			ExpectContinueTimeout: 1 * time.Second,   // Slightly optimized
+			DisableKeepAlives:     false,             // Allow keep-alives
+		}
 	}
 }
 
@@ -140,7 +172,7 @@ func main() {
 
 	// Proxy request to the correct node
 	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
-	server.Handler = http.HandlerFunc(proxy(logger))
+	server.Handler = http.HandlerFunc(proxyHandler(logger))
 
 	wg.Add(1)
 	go func() {
