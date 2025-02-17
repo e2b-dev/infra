@@ -91,7 +91,7 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 		}
 
 		// We've resolved the node to proxy the request to
-		logger.Debug("proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
+		logger.Debug("Proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
 		targetUrl := &url.URL{
 			Scheme: "http",
 			Host:   fmt.Sprintf("%s:%d", node, sandboxPort),
