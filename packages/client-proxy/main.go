@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -119,17 +118,12 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 
 		// Create transport with timeouts and keep-alive settings similar to Nginx
 		proxy.Transport = &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second, // Similar to proxy_connect_timeout
-				KeepAlive: 620 * time.Second,
-			}).DialContext,
+			Proxy:                 http.ProxyFromEnvironment,
 			MaxIdleConns:          1024,              // Matches worker_connections
 			MaxIdleConnsPerHost:   8192,              // Matches keepalive_requests
 			IdleConnTimeout:       620 * time.Second, // Matches keepalive_timeout
 			TLSHandshakeTimeout:   10 * time.Second,  // Similar to client_header_timeout
 			ResponseHeaderTimeout: 24 * time.Hour,    // Matches proxy_read_timeout
-			ExpectContinueTimeout: 1 * time.Second,   // Slightly optimized
 			DisableKeepAlives:     false,             // Allow keep-alives
 		}
 	}
