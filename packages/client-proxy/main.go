@@ -116,7 +116,7 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 			return nil
 		}
 
-		// Create transport with timeouts and keep-alive settings similar to Nginx
+		// Set the transport options (with values similar to our old the nginx configuration)
 		proxy.Transport = &http.Transport{
 			Proxy:                 http.ProxyFromEnvironment,
 			MaxIdleConns:          1024,              // Matches worker_connections
