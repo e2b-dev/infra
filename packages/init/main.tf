@@ -309,10 +309,10 @@ resource "google_artifact_registry_repository" "orchestration_repository" {
   labels        = var.labels
 }
 
-resource "time_sleep" "artifact_registry_api_wait_60_seconds" {
+resource "time_sleep" "artifact_registry_api_wait_90_seconds" {
   depends_on = [google_project_service.artifact_registry_api]
 
-  create_duration = "60s"
+  create_duration = "90s"
 }
 
 
@@ -321,6 +321,6 @@ resource "google_artifact_registry_repository_iam_member" "orchestration_reposit
   role       = "roles/artifactregistry.reader"
   member     = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
 
-  depends_on = [time_sleep.artifact_registry_api_wait_60_seconds]
+  depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
 }
 
