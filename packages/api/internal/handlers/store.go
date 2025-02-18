@@ -26,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
@@ -45,6 +46,7 @@ type APIStore struct {
 	templateManager      *template_manager.TemplateManager
 	buildCache           *builds.BuildCache
 	db                   *db.DB
+	clickhouseStore      chdb.Store
 	lokiClient           *loki.DefaultClient
 	logger               *zap.SugaredLogger
 	templateCache        *templatecache.TemplateCache
@@ -68,6 +70,17 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	}
 
 	logger.Info("created Supabase client")
+
+	clickhouseStore, err := chdb.NewStore(chdb.ClickHouseConfig{
+		ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+		Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+		Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+		Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+		Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
+	})
+	if err != nil {
+		logger.Panic("initializing ClickHouse store", zap.Error(err))
+	}
 
 	posthogClient, posthogErr := analyticscollector.NewPosthogClient(logger)
 	if posthogErr != nil {
@@ -126,6 +139,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		orchestrator:         orch,
 		templateManager:      templateManager,
 		db:                   dbClient,
+		clickhouseStore:      clickhouseStore,
 		Tracer:               tracer,
 		posthog:              posthogClient,
 		buildCache:           buildCache,

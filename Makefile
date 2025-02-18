@@ -25,7 +25,11 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_otel_tracing_print=$(OTEL_TRACING_PRINT) \
 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	TF_VAR_template_bucket_name=$(TEMPLATE_BUCKET_NAME) \
-	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION)
+	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION) \
+	TF_VAR_clickhouse_connection_string=$(CLICKHOUSE_CONNECTION_STRING) \
+	TF_VAR_clickhouse_username=$(CLICKHOUSE_USERNAME) \
+	TF_VAR_clickhouse_password=$(CLICKHOUSE_PASSWORD) \
+	TF_VAR_clickhouse_database=$(CLICKHOUSE_DATABASE) 
 
 ifeq ($(EXCLUDE_GITHUB),1)
 	ALL_MODULES := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | grep -v -e "github_tf")
@@ -125,9 +129,10 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
-@.PHONY: migrate
+.PHONY: migrate
 migrate:
-	$(MAKE) -C packages/shared migrate
+	$(MAKE) -C packages/shared migrate-postgres
+	$(MAKE) -C packages/shared migrate-clickhouse/up
 
 .PHONY: switch-env
 switch-env:

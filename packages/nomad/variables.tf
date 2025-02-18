@@ -226,3 +226,20 @@ variable "redis_port" {
     port = number
   })
 }
+
+# Clickhouse
+variable "clickhouse_connection_string" {
+  type = string
+}
+
+variable "clickhouse_username" {
+  type = string
+}
+
+variable "clickhouse_password" {
+  type = string
+}
+
+variable "clickhouse_database" {
+  type = string
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
@@ -18,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -27,9 +29,11 @@ const ServiceName = "orchestrator"
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
-	sandboxes     *smap.Map[*sandbox.Sandbox]
-	dns           *dns.DNS
-	tracer        trace.Tracer
+	sandboxes       *smap.Map[*sandbox.Sandbox]
+	dns             *dns.DNS
+	tracer          trace.Tracer
+	clickhouseStore chdb.Store
+
 	networkPool   *network.Pool
 	templateCache *template.Cache
 
@@ -66,12 +70,24 @@ func New() (*grpc.Server, error) {
 		),
 	)
 
+	clickhouseStore, err := chdb.NewStore(chdb.ClickHouseConfig{
+		ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+		Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+		Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+		Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+		Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
+	}
+
 	orchestrator.RegisterSandboxServiceServer(s, &server{
-		tracer:        otel.Tracer(ServiceName),
-		dns:           dnsServer,
-		sandboxes:     smap.New[*sandbox.Sandbox](),
-		networkPool:   networkPool,
-		templateCache: templateCache,
+		tracer:          otel.Tracer(ServiceName),
+		clickhouseStore: clickhouseStore,
+		dns:             dnsServer,
+		sandboxes:       smap.New[*sandbox.Sandbox](),
+		networkPool:     networkPool,
+		templateCache:   templateCache,
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

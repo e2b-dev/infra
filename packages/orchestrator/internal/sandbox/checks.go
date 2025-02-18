@@ -27,7 +27,7 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	}()
 
 	// Get metrics on sandbox startup
-	go s.LogMetrics(ctx)
+	go s.SendMetrics(ctx)
 
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
@@ -43,7 +43,7 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 
 			cancel()
 		case <-metricsTicker.C:
-			s.LogMetrics(ctx)
+			s.SendMetrics(ctx)
 		case <-ctx.Done():
 			return
 		}
