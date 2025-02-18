@@ -11,6 +11,10 @@ variable "domain_name" {
   type = string
 }
 
+variable "additional_domains" {
+  type = list(string)
+}
+
 variable "cluster_tag_name" {
   type = string
 }

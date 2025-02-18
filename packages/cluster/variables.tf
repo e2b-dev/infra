@@ -152,6 +152,11 @@ variable "domain_name" {
   description = "The domain name where e2b will run"
 }
 
+variable "additional_domains" {
+  type        = list(string)
+  description = "Additional domains which can be used to access the e2b cluster"
+}
+
 variable "cluster_setup_bucket_name" {
   type        = string
   description = "The name of the bucket to store the setup files"
