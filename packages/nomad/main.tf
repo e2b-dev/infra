@@ -56,7 +56,7 @@ resource "nomad_job" "api" {
     orchestrator_port             = var.orchestrator_port
     template_manager_address      = "http://template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint  = "localhost:4317"
-    loki_address                  = "http://localhost:${var.loki_service_port.port}"
+    loki_address                  = "http://loki.service.consul:${var.loki_service_port.port}"
     logs_collector_address        = "http://localhost:${var.logs_proxy_port.port}"
     gcp_zone                      = var.gcp_zone
     port_name                     = var.api_port.name
