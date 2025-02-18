@@ -243,15 +243,3 @@ variable "clickhouse_password" {
 variable "clickhouse_database" {
   type = string
 }
-
-variable "grafana_username_secret_name" {
-  type = string
-}
-
-variable "grafana_api_key_logs_collector_secret_name" {
-  type = string
-}
-
-variable "grafana_logs_url_secret_name" {
-  type = string
-}
