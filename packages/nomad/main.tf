@@ -8,6 +8,34 @@ data "google_secret_manager_secret_version" "posthog_api_key" {
 }
 
 # Telemetry
+data "google_secret_manager_secret_version" "grafana_api_key" {
+  secret = var.grafana_api_key_secret_name
+}
+
+data "google_secret_manager_secret_version" "grafana_traces_endpoint" {
+  secret = var.grafana_traces_endpoint_secret_name
+}
+
+data "google_secret_manager_secret_version" "grafana_logs_endpoint" {
+  secret = var.grafana_logs_endpoint_secret_name
+}
+
+data "google_secret_manager_secret_version" "grafana_metrics_endpoint" {
+  secret = var.grafana_metrics_endpoint_secret_name
+}
+
+data "google_secret_manager_secret_version" "grafana_traces_username" {
+  secret = var.grafana_traces_username_secret_name
+}
+
+data "google_secret_manager_secret_version" "grafana_logs_username" {
+  secret = var.grafana_logs_username_secret_name
+}
+
+data "google_secret_manager_secret_version" "grafana_metrics_username" {
+  secret = var.grafana_metrics_username_secret_name
+}
+
 data "google_secret_manager_secret_version" "analytics_collector_host" {
   secret = var.analytics_collector_host_secret_name
 }
@@ -15,29 +43,6 @@ data "google_secret_manager_secret_version" "analytics_collector_host" {
 data "google_secret_manager_secret_version" "analytics_collector_api_token" {
   secret = var.analytics_collector_api_token_secret_name
 }
-
-data "google_secret_manager_secret_version" "grafana_otel_collector_token" {
-  secret = var.grafana_otel_collector_token_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_username" {
-  secret = var.grafana_username_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_api_key_logs_collector" {
-  secret = var.grafana_api_key_logs_collector_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_logs_url" {
-  secret = var.grafana_logs_url_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_logs_username" {
-  secret = var.grafana_logs_username_secret_name
-}
-
-
-
 
 provider "nomad" {
   address      = "https://nomad.${var.domain_name}"
@@ -51,7 +56,7 @@ resource "nomad_job" "api" {
     orchestrator_port             = var.orchestrator_port
     template_manager_address      = "http://template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint  = "localhost:4317"
-    loki_address                  = "http://localhost:${var.loki_service_port.port}"
+    loki_address                  = "http://loki.service.consul:${var.loki_service_port.port}"
     logs_collector_address        = "http://localhost:${var.logs_proxy_port.port}"
     gcp_zone                      = var.gcp_zone
     port_name                     = var.api_port.name
@@ -141,10 +146,17 @@ resource "nomad_job" "otel_collector" {
 
   hcl2 {
     vars = {
+      grafana_traces_endpoint  = data.google_secret_manager_secret_version.grafana_traces_endpoint.secret_data
+      grafana_logs_endpoint    = data.google_secret_manager_secret_version.grafana_logs_endpoint.secret_data
+      grafana_metrics_endpoint = data.google_secret_manager_secret_version.grafana_metrics_endpoint.secret_data
 
-      grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
-      grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
-      consul_token                 = var.consul_acl_token_secret
+      grafana_traces_username  = data.google_secret_manager_secret_version.grafana_traces_username.secret_data
+      grafana_logs_username    = data.google_secret_manager_secret_version.grafana_logs_username.secret_data
+      grafana_metrics_username = data.google_secret_manager_secret_version.grafana_metrics_username.secret_data
+
+      grafana_api_key = data.google_secret_manager_secret_version.grafana_api_key.secret_data
+
+      consul_token = var.consul_acl_token_secret
 
       gcp_zone = var.gcp_zone
     }
@@ -165,9 +177,9 @@ resource "nomad_job" "logs_collector" {
 
       loki_service_port_number = var.loki_service_port.port
 
+      grafana_api_key       = data.google_secret_manager_secret_version.grafana_api_key.secret_data
+      grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_endpoint.secret_data
       grafana_logs_username = data.google_secret_manager_secret_version.grafana_logs_username.secret_data
-      grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
-      grafana_api_key       = data.google_secret_manager_secret_version.grafana_api_key_logs_collector.secret_data
     }
   }
 }

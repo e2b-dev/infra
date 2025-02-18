@@ -2,11 +2,31 @@ variable "gcp_zone" {
   type = string
 }
 
-variable "grafana_otel_collector_token" {
+variable "grafana_api_key" {
   type = string
 }
 
-variable "grafana_username" {
+variable "grafana_logs_username" {
+  type = string
+}
+
+variable "grafana_traces_username" {
+  type = string
+}
+
+variable "grafana_metrics_username" {
+  type = string
+}
+
+variable "grafana_logs_endpoint" {
+  type = string
+}
+
+variable "grafana_traces_endpoint" {
+  type = string
+}
+
+variable "grafana_metrics_endpoint" {
   type = string
 }
 
@@ -100,6 +120,23 @@ receivers:
         read_buffer_size: 10943040
         max_concurrent_streams: 200
         write_buffer_size: 10943040
+      # http:
+  # nginx/session-proxy:
+  #   endpoint: http://session-proxy.service.consul:3004/status
+  #   collection_interval: 10s
+  # filelog/session-proxy:
+  #   include:
+  #     - /var/log/session-proxy/access.log
+  #   operators:
+  #     - type: json_parser
+  #       timestamp:
+  #         parse_from: attributes.time
+  #         layout: '%Y-%m-%dT%H:%M:%S%j'
+  #     - type: remove
+  #       id: body
+  #       field: body
+  #   resource:
+  #     service.name: session-proxy
   prometheus:
     config:
       scrape_configs:
@@ -155,29 +192,44 @@ processors:
         action: upsert
         value: session-proxy
 extensions:
-  basicauth/grafana_cloud:
-    # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/extension/basicauthextension
+  basicauth/grafana_cloud_traces:
     client_auth:
-      username: "${var.grafana_username}"
-      password: "${var.grafana_otel_collector_token}"
-
+      username: "${var.grafana_traces_username}"
+      password: "${var.grafana_api_key}"
+  basicauth/grafana_cloud_metrics:
+    client_auth:
+      username: "${var.grafana_metrics_username}"
+      password: "${var.grafana_api_key}"
+  basicauth/grafana_cloud_logs:
+    client_auth:
+      username: "${var.grafana_logs_username}"
+      password: "${var.grafana_api_key}"
   health_check:
 
 exporters:
   debug:
     verbosity: detailed
-  otlphttp/grafana_cloud:
-    # https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlpexporter
-    endpoint: "https://otlp-gateway-prod-us-central-0.grafana.net/otlp"
+  otlp/grafana_cloud_traces:
+    endpoint: "${var.grafana_traces_endpoint}"
     auth:
-      authenticator: basicauth/grafana_cloud
+      authenticator: basicauth/grafana_cloud_traces
+  loki/grafana_cloud_logs:
+    endpoint: "${var.grafana_logs_endpoint}/loki/api/v1/push"
+    auth:
+      authenticator: basicauth/grafana_cloud_logs
+  prometheusremotewrite/grafana_cloud_metrics:
+    endpoint: "${var.grafana_metrics_endpoint}"
+    auth:
+      authenticator: basicauth/grafana_cloud_metrics
 
 service:
   telemetry:
     logs:
       level: warn
   extensions:
-    - basicauth/grafana_cloud
+    - basicauth/grafana_cloud_traces
+    - basicauth/grafana_cloud_metrics
+    - basicauth/grafana_cloud_logs
     - health_check
   pipelines:
     metrics:
@@ -186,20 +238,26 @@ service:
         - otlp
       processors: [filter, batch, metricstransform]
       exporters:
-        - otlphttp/grafana_cloud
+        - prometheusremotewrite/grafana_cloud_metrics
+    # metrics/session-proxy:
+    #   receivers:
+        # - nginx/session-proxy
+      # processors: [batch, attributes/session-proxy]
+      # exporters:
+      #   - prometheusremotewrite/grafana_cloud_metrics
     traces:
       receivers:
         - otlp
       processors: [batch]
       exporters:
-        -  otlphttp/grafana_cloud
+        - otlp/grafana_cloud_traces
     logs:
       receivers:
       # - filelog/session-proxy
         - otlp
       processors: [batch]
       exporters:
-        -  otlphttp/grafana_cloud
+        - loki/grafana_cloud_logs
 EOF
 
         destination = "local/config/otel-collector-config.yaml"

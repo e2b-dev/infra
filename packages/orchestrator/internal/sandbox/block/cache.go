@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"sync"
 	"sync/atomic"
 
@@ -88,20 +89,18 @@ func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
 
 	tracked := bitset.New(uint(header.TotalBlocks(m.size, m.blockSize)))
 
-	m.dirty.Range(func(key, value any) bool {
-		block := header.BlockIdx(key.(int64), m.blockSize)
+	for _, key := range m.dirtySortedKeys() {
+		block := header.BlockIdx(key, m.blockSize)
 
 		tracked.Set(uint(block))
 
-		_, err := out.Write((*m.mmap)[key.(int64) : key.(int64)+m.blockSize])
+		_, err := out.Write((*m.mmap)[key : key+m.blockSize])
 		if err != nil {
 			fmt.Printf("error writing to out: %v\n", err)
 
-			return false
+			return nil, err
 		}
-
-		return true
-	})
+	}
 
 	return tracked, nil
 }
@@ -208,4 +207,19 @@ func (m *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	m.setIsCached(off, end-off)
 
 	return n, nil
+}
+
+// dirtySortedKeys returns a sorted list of dirty keys.
+// Key represents a block offset.
+func (m *Cache) dirtySortedKeys() []int64 {
+	var keys []int64
+	m.dirty.Range(func(key, _ any) bool {
+		keys = append(keys, key.(int64))
+		return true
+	})
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
+
+	return keys
 }

@@ -24,8 +24,8 @@ job "client-proxy" {
         type     = "http"
         name     = "health"
         path     = "/"
-        interval = "20s"
-        timeout  = "5s"
+        interval = "3s"
+        timeout  = "3s"
         port     = "health"
       }
     }

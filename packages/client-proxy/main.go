@@ -34,7 +34,7 @@ const (
 // Create a DNS client
 var client = new(dns.Client)
 
-func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Request) {
+func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		logger.Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
@@ -90,14 +90,44 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 		}
 
 		// We've resolved the node to proxy the request to
-		logger.Debug("proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
+		logger.Debug("Proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
 		targetUrl := &url.URL{
 			Scheme: "http",
 			Host:   fmt.Sprintf("%s:%d", node, sandboxPort),
 		}
 
 		// Proxy the request
-		httputil.NewSingleHostReverseProxy(targetUrl).ServeHTTP(w, r)
+		proxy := httputil.NewSingleHostReverseProxy(targetUrl)
+
+		// Custom error handler for logging proxy errors
+		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+			logger.Error("Reverse proxy error", zap.Error(err), zap.String("sandbox_id", sandboxID))
+			http.Error(w, "Proxy error", http.StatusBadGateway)
+		}
+
+		// Modify response for logging or additional processing
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			if resp.StatusCode >= 500 {
+				logger.Error("Backend responded with error", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID))
+			} else {
+				logger.Info("Backend responded", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID), zap.String("node", node), zap.String("path", r.URL.Path))
+			}
+
+			return nil
+		}
+
+		// Set the transport options (with values similar to our old the nginx configuration)
+		proxy.Transport = &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			MaxIdleConns:          1024,              // Matches worker_connections
+			MaxIdleConnsPerHost:   8192,              // Matches keepalive_requests
+			IdleConnTimeout:       620 * time.Second, // Matches keepalive_timeout
+			TLSHandshakeTimeout:   10 * time.Second,  // Similar to client_header_timeout
+			ResponseHeaderTimeout: 24 * time.Hour,    // Matches proxy_read_timeout
+			DisableKeepAlives:     false,             // Allow keep-alives
+		}
+
+		proxy.ServeHTTP(w, r)
 	}
 }
 
@@ -140,7 +170,7 @@ func main() {
 
 	// Proxy request to the correct node
 	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
-	server.Handler = http.HandlerFunc(proxy(logger))
+	server.Handler = http.HandlerFunc(proxyHandler(logger))
 
 	wg.Add(1)
 	go func() {

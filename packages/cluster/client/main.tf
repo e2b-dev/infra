@@ -29,7 +29,7 @@ resource "google_compute_autoscaler" "default" {
     mode            = "ONLY_SCALE_OUT"
 
     cpu_utilization {
-      target = 0.8
+      target = 0.6
     }
   }
 }
