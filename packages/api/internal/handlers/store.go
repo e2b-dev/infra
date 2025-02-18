@@ -71,7 +71,13 @@ func NewAPIStore(ctx context.Context) *APIStore {
 
 	logger.Info("created Supabase client")
 
-	clickhouseStore, err := chdb.NewStore()
+	clickhouseStore, err := chdb.NewStore(chdb.ClickHouseConfig{
+		ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+		Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+		Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+		Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+		Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
+	})
 	if err != nil {
 		logger.Panic("initializing ClickHouse store", zap.Error(err))
 	}

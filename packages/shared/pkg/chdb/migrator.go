@@ -65,20 +65,24 @@ func (chMig *ClickhouseMigrator) SetLogger(logger migrate.Logger) {
 	chMig.m.Log = logger
 }
 
-func NewMigrator(connectionString, username, password, database string) (*ClickhouseMigrator, error) {
+func NewMigrator(config ClickHouseConfig) (*ClickhouseMigrator, error) {
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("failed to validate ClickHouse config: %w", err)
+	}
+
 	d, err := iofs.New(migrationsFS, "migrations")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open Clickhouse migrations iofs: %w", err)
 	}
 
 	db := clickhouse.OpenDB(&clickhouse.Options{
-		Addr:     []string{connectionString},
+		Addr:     []string{config.ConnectionString},
 		Protocol: clickhouse.Native,
 		TLS:      &tls.Config{}, // Not using TLS for now
 		Auth: clickhouse.Auth{
-			Database: database,
-			Username: username,
-			Password: password,
+			Database: config.Database,
+			Username: config.Username,
+			Password: config.Password,
 		},
 	})
 
@@ -96,7 +100,7 @@ func NewMigrator(connectionString, username, password, database string) (*Clickh
 	}
 
 	driver, err := migch.WithInstance(db, &migch.Config{
-		DatabaseName: database,
+		DatabaseName: config.Database,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cl,ickhouse driver: %w", err)

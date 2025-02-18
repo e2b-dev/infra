@@ -3,7 +3,7 @@ package chdb
 import (
 	"context"
 	"crypto/tls"
-	"os"
+	"fmt"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -11,19 +11,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
 )
 
-var (
-	connectionString = os.Getenv("CLICKHOUSE_CONNECTION_STRING")
-	username         = os.Getenv("CLICKHOUSE_USERNAME")
-	password         = os.Getenv("CLICKHOUSE_PASSWORD")
-	database         = os.Getenv("CLICKHOUSE_DATABASE")
-	debug            = os.Getenv("CLICKHOUSE_DEBUG") == "true"
-)
-
 type Store interface {
 	Close() error
 
 	// Base queries
-	Query(ctx context.Context, query string) (driver.Rows, error)
+	Query(ctx context.Context, query string, args ...any) (driver.Rows, error)
 	Exec(ctx context.Context, query string, args ...any) error
 
 	// Metrics queries
@@ -35,21 +27,25 @@ type ClickHouseStore struct {
 	Conn driver.Conn
 }
 
-func NewConn() (driver.Conn, error) {
+func NewConn(config ClickHouseConfig) (driver.Conn, error) {
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("failed to validate ClickHouse config: %w", err)
+	}
+
 	var (
 		ctx       = context.Background()
 		conn, err = clickhouse.Open(&clickhouse.Options{
-			Addr:     []string{connectionString},
+			Addr:     []string{config.ConnectionString},
 			Protocol: clickhouse.Native,
 			TLS:      &tls.Config{}, // Not using TLS for now
 			Auth: clickhouse.Auth{
-				Database: database,
-				Username: username,
-				Password: password,
+				Database: config.Database,
+				Username: config.Username,
+				Password: config.Password,
 			},
 			DialTimeout: time.Second * 5,
 			ReadTimeout: time.Second * 90,
-			Debug:       debug,
+			Debug:       config.Debug,
 			Compression: &clickhouse.Compression{
 				Method: clickhouse.CompressionLZ4,
 			},
@@ -67,8 +63,8 @@ func NewConn() (driver.Conn, error) {
 	return conn, nil
 }
 
-func NewStore() (Store, error) {
-	conn, err := NewConn()
+func NewStore(config ClickHouseConfig) (Store, error) {
+	conn, err := NewConn(config)
 	if err != nil {
 		return nil, err
 	}
@@ -80,8 +76,8 @@ func (c *ClickHouseStore) Close() error {
 	return c.Conn.Close()
 }
 
-func (c *ClickHouseStore) Query(ctx context.Context, query string) (driver.Rows, error) {
-	return c.Conn.Query(ctx, query)
+func (c *ClickHouseStore) Query(ctx context.Context, query string, args ...any) (driver.Rows, error) {
+	return c.Conn.Query(ctx, query, args...)
 }
 
 func (c *ClickHouseStore) Exec(ctx context.Context, query string, args ...any) error {

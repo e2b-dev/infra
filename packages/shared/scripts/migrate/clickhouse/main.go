@@ -13,18 +13,14 @@ func main() {
 	direction := flag.String("direction", "up", "Migration direction (up/down)")
 	flag.Parse()
 
-	var (
-		connectionString = os.Getenv("CLICKHOUSE_CONNECTION_STRING")
-		username         = os.Getenv("CLICKHOUSE_USERNAME")
-		password         = os.Getenv("CLICKHOUSE_PASSWORD")
-		database         = os.Getenv("CLICKHOUSE_DATABASE")
-	)
 	// Execute the migration
 	migrater, err := chdb.NewMigrator(
-		connectionString,
-		username,
-		password,
-		database,
+		chdb.ClickHouseConfig{
+			ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+			Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+			Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+			Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+		},
 	)
 
 	if err != nil {

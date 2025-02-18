@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
 )
 
@@ -22,12 +23,16 @@ func (c *ClickHouseStore) InsertMetrics(ctx context.Context, metrics chmodels.Me
 }
 
 func (c *ClickHouseStore) QueryMetrics(ctx context.Context, sandboxID, teamID string, start int64, limit int) ([]chmodels.Metrics, error) {
-	query := fmt.Sprintf(
-		"SELECT * FROM metrics WHERE sandbox_id = '%s' AND team_id = '%s' AND timestamp >= %d LIMIT %d",
-		sandboxID, teamID, start, limit,
-	)
+	query := "SELECT * FROM metrics WHERE sandbox_id = {sandbox_id:String} AND team_id = {team_id:String} AND timestamp >= {start:UInt64} LIMIT {limit:UInt64}"
 
-	rows, err := c.Query(ctx, query)
+	chCtx := clickhouse.Context(context.Background(), clickhouse.WithParameters(clickhouse.Parameters{
+		"sandbox_id": sandboxID,
+		"team_id":    teamID,
+		"start":      fmt.Sprintf("%d", start),
+		"limit":      fmt.Sprintf("%d", limit),
+	}))
+
+	rows, err := c.Query(chCtx, query)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
@@ -11,10 +12,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -24,7 +23,6 @@ import (
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const ServiceName = "orchestrator"
@@ -72,12 +70,15 @@ func New() (*grpc.Server, error) {
 		),
 	)
 
-	clickhouseStore, err := chdb.NewStore()
+	clickhouseStore, err := chdb.NewStore(chdb.ClickHouseConfig{
+		ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+		Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+		Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+		Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+		Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
+	})
 	if err != nil {
-		errMsg := fmt.Errorf("failed to create clickhouse store: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+		return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
 	}
 
 	orchestrator.RegisterSandboxServiceServer(s, &server{
