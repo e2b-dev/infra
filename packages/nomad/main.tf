@@ -8,7 +8,6 @@ data "google_secret_manager_secret_version" "posthog_api_key" {
 }
 
 # Telemetry
-
 data "google_secret_manager_secret_version" "analytics_collector_host" {
   secret = var.analytics_collector_host_secret_name
 }
@@ -165,17 +164,10 @@ resource "nomad_job" "otel_collector" {
   ]
   hcl2 {
     vars = {
-      grafana_traces_endpoint  = var.grafana_traces_endpoint_secret_name
-      grafana_logs_endpoint    = var.grafana_logs_endpoint_secret_name
-      grafana_metrics_endpoint = var.grafana_metrics_endpoint_secret_name
 
-      grafana_traces_username  = var.grafana_traces_username_secret_name
-      grafana_logs_username    = var.grafana_logs_username_secret_name
-      grafana_metrics_username = var.grafana_metrics_username_secret_name
-
-      grafana_api_key = var.grafana_api_key_secret_name
-
-      consul_token = var.consul_acl_token_secret
+      grafana_otel_collector_token = google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+      grafana_username             = google_secret_manager_secret_version.grafana_username.secret_data
+      consul_token                 = var.consul_acl_token_secret
 
       gcp_zone = var.gcp_zone
     }
@@ -264,9 +256,9 @@ resource "nomad_job" "logs_collector" {
 
       loki_service_port_number = var.loki_service_port.port
 
-      grafana_api_key       = var.grafana_api_key_secret_name
-      grafana_logs_endpoint = var.grafana_logs_endpoint_secret_name
-      grafana_logs_username = var.grafana_logs_username_secret_name
+      grafana_logs_username = google_secret_manager_secret_version.grafana_logs_username.secret_data
+      grafana_logs_endpoint = google_secret_manager_secret_version.grafana_logs_url.secret_data
+      grafana_api_key       = google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data
     }
   }
 }
