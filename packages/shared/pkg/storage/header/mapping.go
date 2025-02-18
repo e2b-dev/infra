@@ -2,10 +2,9 @@ package header
 
 import (
 	"fmt"
-	"os"
-
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
+	"os"
 )
 
 // Start, Length and SourceStart are in bytes of the data file
@@ -20,9 +19,9 @@ type BuildMap struct {
 }
 
 func CreateMapping(
-	metadata *Metadata,
 	buildId *uuid.UUID,
 	dirty *bitset.BitSet,
+	blockSize uint64,
 ) []*BuildMap {
 	var mappings []*BuildMap
 
@@ -39,9 +38,9 @@ func CreateMapping(
 
 		if blockLength > 0 {
 			m := &BuildMap{
-				Offset:             uint64(int64(startBlock) * int64(metadata.BlockSize)),
+				Offset:             uint64(int64(startBlock) * int64(blockSize)),
 				BuildId:            *buildId,
-				Length:             uint64(blockLength) * uint64(metadata.BlockSize),
+				Length:             uint64(blockLength) * uint64(blockSize),
 				BuildStorageOffset: buildStorageOffset,
 			}
 
@@ -56,9 +55,9 @@ func CreateMapping(
 
 	if blockLength > 0 {
 		mappings = append(mappings, &BuildMap{
-			Offset:             uint64(startBlock) * metadata.BlockSize,
+			Offset:             uint64(startBlock) * blockSize,
 			BuildId:            *buildId,
-			Length:             uint64(blockLength) * uint64(metadata.BlockSize),
+			Length:             uint64(blockLength) * blockSize,
 			BuildStorageOffset: buildStorageOffset,
 		})
 	}
