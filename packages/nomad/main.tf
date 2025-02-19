@@ -115,6 +115,33 @@ variable "prefix" {
   default = "e2b-"
 }
 
+# grafana otel collector url
+
+resource "google_secret_manager_secret" "grafana_otlp_url" {
+  secret_id = "${var.prefix}grafana-otlp-url"
+
+  replication {
+    auto {}
+  }
+
+}
+
+resource "google_secret_manager_secret_version" "grafana_otlp_url" {
+  secret      = google_secret_manager_secret.grafana_otlp_url.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+data "google_secret_manager_secret_version" "grafana_otlp_url" {
+  secret = google_secret_manager_secret.grafana_otlp_url.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_otlp_url]
+}
+
+
 # grafana otel collector token
 resource "google_secret_manager_secret" "grafana_otel_collector_token" {
   secret_id = "${var.prefix}grafana-otel-collector-token"
@@ -122,7 +149,6 @@ resource "google_secret_manager_secret" "grafana_otel_collector_token" {
   replication {
     auto {}
   }
-
 }
 
 resource "google_secret_manager_secret_version" "grafana_otel_collector_token" {
