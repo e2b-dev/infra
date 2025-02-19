@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -23,7 +24,7 @@ const InstanceIDPrefix = "i"
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if a.proxying.Load() {
-		a.logger.Info("Proxying request for sandbox creation")
+		a.logger.Info("Proxying request for sandbox create")
 		a.singleProxy.ServeHTTP(c.Writer, c.Request)
 		return
 	}
@@ -62,7 +63,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
 	if checkErr != nil {
 		if checkErr.Code == http.StatusNotFound {
-			a.logger.Info("Proxying request for sandbox creation - template not found")
+			a.logger.Info("Proxying request for sandbox creation - template not found", zap.String("template", cleanedAliasOrEnvID))
 			a.singleProxy.ServeHTTP(c.Writer, c.Request)
 			return
 		}

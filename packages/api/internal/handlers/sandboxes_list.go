@@ -163,13 +163,14 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		allSbx = append(allSbx, sbxs...)
 	}()
 
-	ctx := c.Request.Context()
 	if a.proxying.Load() {
-		a.logger.Info("Proxying request for sandbox creation")
+		a.logger.Info("Proxying request for sandbox list")
 		a.singleProxy.ServeHTTP(c.Writer, c.Request)
 
 		return
 	}
+
+	ctx := c.Request.Context()
 
 	telemetry.ReportEvent(ctx, "list running instances")
 
@@ -196,14 +197,15 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 func (a *APIStore) loadSandboxesFromOldCluster(c *gin.Context, params api.GetSandboxesParams) ([]api.RunningSandbox, error) {
 	proxyIP := os.Getenv("PROXY_IP")
-	listUrl := fmt.Sprintf("%s:%d/sandboxes", proxyIP, 50001)
+	listUrl := "sandboxes"
 	if params.Query != nil {
 		listUrl += fmt.Sprintf("?%s", *params.Query)
 	}
 
 	targetUrl := &url.URL{
 		Scheme: "http",
-		Host:   listUrl,
+		Host:   fmt.Sprintf("%s:%d", proxyIP, 50001),
+		Path:   listUrl,
 	}
 	httpClient := http.Client{}
 	req := http.Request{

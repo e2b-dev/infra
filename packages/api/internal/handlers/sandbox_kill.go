@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
@@ -58,7 +59,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	env, builds, err := a.db.GetSnapshotBuilds(ctx, sandboxID, teamID)
 	if err != nil {
-		a.logger.Info("Proxying request for sandbox creation")
+		a.logger.Info("Proxying request for sandbox kill", zap.String("sandbox", sandboxID))
 		a.singleProxy.ServeHTTP(c.Writer, c.Request)
 		return
 	}

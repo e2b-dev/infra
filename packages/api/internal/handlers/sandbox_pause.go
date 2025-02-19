@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -32,7 +33,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err != nil {
-		a.logger.Info("Proxying request for sandbox creation")
+		a.logger.Info("Proxying request for sandbox pause", zap.String("sandbox", sandboxID))
 		a.singleProxy.ServeHTTP(c.Writer, c.Request)
 		return
 	}

@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -39,7 +41,7 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 
 	err = a.orchestrator.KeepAliveFor(sandboxID, duration, true)
 	if err != nil {
-		a.logger.Info("Proxying request for sandbox creation")
+		a.logger.Info("Proxying request for sandbox timeout", zap.String("sandbox", sandboxID))
 		a.singleProxy.ServeHTTP(c.Writer, c.Request)
 		return
 	}

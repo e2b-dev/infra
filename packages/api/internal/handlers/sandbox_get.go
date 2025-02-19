@@ -26,7 +26,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	info, err := a.orchestrator.GetInstance(ctx, sandboxId)
 	if err != nil {
-		a.logger.Info("Proxying request for sandbox creation")
+		a.logger.Info("Proxying request for sandbox get")
 		a.singleProxy.ServeHTTP(c.Writer, c.Request)
 		return
 	}

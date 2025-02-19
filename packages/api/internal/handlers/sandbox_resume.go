@@ -29,7 +29,7 @@ func getSandboxIDClient(sandboxID string) (string, bool) {
 
 func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.SandboxID) {
 	if a.proxying.Load() {
-		a.logger.Info("Proxying request for sandbox creation")
+		a.logger.Info("Proxying request for sandbox resume")
 		a.singleProxy.ServeHTTP(c.Writer, c.Request)
 		return
 	}

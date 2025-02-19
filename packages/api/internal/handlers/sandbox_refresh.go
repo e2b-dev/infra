@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
@@ -44,7 +45,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 
 	err = a.orchestrator.KeepAliveFor(sandboxID, duration, false)
 	if err != nil {
-		a.logger.Info("Proxying request for sandbox creation")
+		a.logger.Info("Proxying request for sandbox keep alive", zap.String("sandbox", sandboxID))
 		a.singleProxy.ServeHTTP(c.Writer, c.Request)
 		return
 	}
