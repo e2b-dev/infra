@@ -8,7 +8,9 @@ const templateName = `test-template-${uniqueID}`
 
 console.log('templateName', templateName)
 
-let out = await exec(`npx e2b template build --name "${templateName}" -c "/root/.jupyter/start-up.sh"`);
+let out = await exec(`npx e2b template build --name "${templateName}" -c "/root/.jupyter/start-up.sh"`, { output: OutputMode.Capture });
+
+console.log(out.output)
 
 // // todo for some reason template build doesn't have a 0 exit code
 // // if (out.code !== 0) {
