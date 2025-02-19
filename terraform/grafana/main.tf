@@ -44,13 +44,6 @@ resource "google_secret_manager_secret_version" "grafana_username" {
   secret_data = grafana_cloud_stack.e2b_stack.id
 }
 
-
-data "grafana_cloud_organization" "current" {
-  id       = var.grafana_cloud_organization_id
-  provider = grafana.cloud
-
-}
-
 resource "grafana_cloud_access_policy" "otel_collector" {
   provider = grafana.cloud
 
@@ -61,12 +54,8 @@ resource "grafana_cloud_access_policy" "otel_collector" {
   scopes = ["metrics:write", "logs:write", "traces:write", "profiles:write"]
 
   realm {
-    type       = "org"
-    identifier = data.grafana_cloud_organization.current.id
-
-    label_policy {
-      selector = "{namespace=\"default\"}"
-    }
+    type       = "stack"
+    identifier = grafana_cloud_stack.e2b_stack.id
   }
 }
 
@@ -109,12 +98,8 @@ resource "grafana_cloud_access_policy" "logs_collector" {
   scopes = ["logs:write"]
 
   realm {
-    type       = "org"
-    identifier = data.grafana_cloud_organization.current.id
-
-    label_policy {
-      selector = "{namespace=\"default\"}"
-    }
+    type       = "stack"
+    identifier = grafana_cloud_stack.e2b_stack.id
   }
 }
 

@@ -5,7 +5,6 @@ ENV_FILE := $(PWD)/../../.env.${ENV}
 
 tf_vars := TF_VAR_gcp_project_id=$(GCP_PROJECT_ID) \
 	TF_VAR_prefix=$(PREFIX) \
-	TF_VAR_grafana_cloud_organization_id=$(GRAFANA_CLOUD_ORGANIZATION_ID) \
 	TF_VAR_gcp_region=$(GCP_REGION)
 
 
