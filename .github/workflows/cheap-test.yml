@@ -27,8 +27,10 @@ jobs:
     strategy:
       matrix:
         e2b-domain:
-          - "e2b-robert.dev"
-          - "e2b-foxtrot.dev"
+          - host: "e2b-robert.dev"
+            api-key: ${{ secrets.E2B_API_KEY_ROBERT }}
+          - host: "e2b-foxtrot.dev"
+            api-key: ${{ secrets.E2B_API_KEY }}
         test-command:
           - command: "cheap-test/run-code.ts"
             name: "Run Code Tests"
@@ -51,8 +53,8 @@ jobs:
         run: deno run --allow-all ${{ matrix.test-command.command }}
         working-directory: ${{ matrix.test-command.dir }}
         env:
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-          E2B_DOMAIN: ${{ matrix.e2b-domain }}
+          E2B_API_KEY: ${{ matrix.e2b-domain.api-key }}
+          E2B_DOMAIN: ${{ matrix.e2b-domain.host }}
 
 # commented in dev
       # - name: Release Failed - Slack Notification
