@@ -43,8 +43,8 @@ resource "grafana_cloud_access_policy" "otel_collector" {
   provider = grafana.cloud
 
   region       = var.gcp_to_grafana_regions[var.gcp_region]
-  name         = "otel-collector"
-  display_name = "Otel Collector"
+  name         = "otel-collector-${var.gcp_project_id}"
+  display_name = "Otel Collector for ${var.gcp_project_id}"
 
   scopes = ["metrics:write", "logs:write", "traces:write", "profiles:write"]
 
