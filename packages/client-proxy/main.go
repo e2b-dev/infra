@@ -31,6 +31,8 @@ const (
 	maxRetries      = 3
 )
 
+var proxyIP = os.Getenv("PROXY_IP")
+
 // Create a DNS client
 var client = new(dns.Client)
 
@@ -72,9 +74,14 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 			node = resp.Answer[0].(*dns.A).A.String()
 			// The sandbox was not found, we want to return this information to the user
 			if node == "127.0.0.1" {
-				logger.Warn("Sandbox not found", zap.String("sandbox_id", sandboxID))
-				w.WriteHeader(http.StatusBadGateway)
-				w.Write([]byte("Sandbox not found"))
+				targetUrl := &url.URL{
+					Scheme: "http",
+					Host:   fmt.Sprintf("%s:%d", proxyIP, port),
+				}
+
+				// Proxy the request
+				logger.Info("proxying request", zap.String("sandbox_id", sandboxID))
+				httputil.NewSingleHostReverseProxy(targetUrl).ServeHTTP(w, r)
 
 				return
 			}
