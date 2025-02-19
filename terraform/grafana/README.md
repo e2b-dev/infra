@@ -14,7 +14,6 @@ Scopes:
  - stacks:write
  - stacks:delete
  - orgs:read
- - stack-service-accounts:write
 
 - fill it in gcloud secrets manager (grafana-api-key)
 
