@@ -27,10 +27,8 @@ jobs:
     strategy:
       matrix:
         e2b-domain:
-          - host: "e2b-robert.dev"
-            api-key: ${{ secrets.E2B_API_KEY_ROBERT }}
-          - host: "e2b-foxtrot.dev"
-            api-key: ${{ secrets.E2B_API_KEY }}
+          - "e2b-robert.dev"
+          - "e2b-foxtrot.dev"
         test-command:
           - command: "cheap-test/run-code.ts"
             name: "Run Code Tests"
@@ -49,12 +47,21 @@ jobs:
       - name: Install deno
         uses: denoland/setup-deno@v1
 
+      - name: Set API Key
+        id: set-api-key
+        run: |
+          if [ "${{ matrix.e2b-domain }}" == "e2b-robert.dev" ]; then
+            echo "api_key=${{ secrets.E2B_API_KEY_ROBERT }}" >> $GITHUB_OUTPUT
+          else
+            echo "api_key=${{ secrets.E2B_API_KEY }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: ${{ matrix.test-command.name }}
         run: deno run --allow-all ${{ matrix.test-command.command }}
         working-directory: ${{ matrix.test-command.dir }}
         env:
-          E2B_API_KEY: ${{ matrix.e2b-domain.api-key }}
-          E2B_DOMAIN: ${{ matrix.e2b-domain.host }}
+          E2B_API_KEY: ${{ steps.set-api-key.outputs.api_key }}
+          E2B_DOMAIN: ${{ matrix.e2b-domain }}
 
 # commented in dev
       # - name: Release Failed - Slack Notification
