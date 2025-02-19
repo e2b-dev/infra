@@ -32,6 +32,20 @@ upload:
 .PHONY: build-and-upload
 build-and-upload: build upload
 
+.PHONY: build-template
+build-template:
+	sudo -E TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
+	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
+	DOCKER_AUTH_BASE64=$(DOCKER_AUTH_BASE64) \
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) \
+	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
+	GCP_REGION=$(GCP_REGION) \
+	go run cmd/build-template/main.go \
+	-template $(TEMPLATE_ID) \
+	-build $(BUILD_ID) \
+	-kernel $(KERNEL_VERSION) \
+	-firecracker $(FIRECRACKER_VERSION)
+
 .PHONY: test
 test:
 	go test -v ./...

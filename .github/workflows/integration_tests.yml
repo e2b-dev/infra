@@ -1,0 +1,126 @@
+name: Infrastructure Tests
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  integration_tests:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Service Account
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: 'e2b-prod'
+          workload_identity_provider: 'projects/662973525644/locations/global/workloadIdentityPools/github-actions-e2b-prod-tests/providers/infra-integration-tests'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Environment Variables
+        env:
+          GOOGLE_SERVICE_ACCOUNT_BASE64: "required-but-not-needed"
+          POSTGRES_CONNECTION_STRING: "postgresql://postgres:local@localhost:5432/mydatabase?sslmode=disable"
+          E2B_API_KEY: "e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057"
+          TEMPLATE_BUCKET_NAME: "e2b-tests-fc-templates"
+          GCP_REGION: "us-central1"
+          GCP_PROJECT_ID: "e2b-prod"
+          GCP_DOCKER_REPOSITORY_NAME: "custom-environments-tests"
+        run: |
+          echo "test" > .last_used_env
+          printenv > .env.test
+          
+          echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
+
+      - name: Set up Docker
+        run: |
+          sudo gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
+          gcloud auth print-access-token | sudo docker login -u oauth2accesstoken --password-stdin https://${GCP_REGION}-docker.pkg.dev
+          
+          export ACCESS_TOKEN=$(gcloud auth print-access-token)
+          export DOCKER_AUTH_BASE64=$(echo -n "{\"username\":\"oauth2accesstoken\",\"password\":\"$ACCESS_TOKEN\"}" | base64 -w 0)
+          
+          echo "::add-mask::$DOCKER_AUTH_BASE64"
+          echo "DOCKER_AUTH_BASE64=${DOCKER_AUTH_BASE64}" >> $GITHUB_ENV 
+
+      - name: Initialize Host
+        run: |
+          chmod +x ./.github/workflows/artifacts/init-client.sh
+          sudo -E bash -c "./.github/workflows/artifacts/init-client.sh"
+
+      - name: Go Cache Paths
+        id: go-cache-paths
+        run: |
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+
+      - name: Go Build Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-build }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
+
+      - name: Go Mod Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-mod }}
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+
+      - name: Setup Golang
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.work'
+          cache: false
+
+      - name: Build Sandbox Template
+        env:
+          TEMPLATE_ID: "2j6ly824owf4awgai1xo"
+          BUILD_ID: "98130b63-ca75-431d-956a-9d829d14d317"
+          KERNEL_VERSION: "vmlinux-6.1.102"
+          FIRECRACKER_VERSION: "v1.10.1_1fcdaec"
+        run: |
+          make -C packages/template-manager build-debug
+          make -C packages/template-manager build-template TEMPLATE_ID=${TEMPLATE_ID} BUILD_ID=${BUILD_ID} KERNEL_VERSION=${KERNEL_VERSION} FC_VERSION=${FC_VERSION}
+
+      - name: Build Services
+        run: |
+          echo "Building packages..."
+          make -C packages/orchestrator build-debug
+          make -C packages/api build-debug
+
+      - name: Run PostgreSQL Database
+        run: |
+          docker run -d --name postgres \
+                        -e POSTGRES_USER=postgres \
+                        -e POSTGRES_PASSWORD=local \
+                        -e POSTGRES_DB=mydatabase \
+                        -p 5432:5432 \
+                        --health-cmd="pg_isready -U postgres" \
+                        --health-interval=5s \
+                        --health-timeout=2s \
+                        --health-retries=5 \
+                        postgres:latest
+          while [ "$(docker inspect -f '{{.State.Health.Status}}' postgres 2>/dev/null)" != "healthy" ]; do echo "Waiting for PostgreSQL to be healthy..."; sleep 2; done
+          echo "PostgreSQL is healthy!"
+          
+          set -x
+          make migrate
+          make seed-test
+
+      - name: Test Infra
+        run: |
+          echo "Starting services..."
+          make -C packages/orchestrator run-debug > /dev/stdout 2>&1 &
+          make -C packages/api run > /dev/stdout 2>&1 &
+          
+          sleep 30 # Wait for services to start, artificial delay
+          echo "Services started"
+          
+          make test-infra
