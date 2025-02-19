@@ -16,14 +16,14 @@ terraform {
   }
 }
 
-data "google_secret_manager_secret_version" "grafana_cloud_access_policy_token" {
-  secret  = "${var.prefix}grafana-api-key"
+data "google_secret_manager_secret_version" "grafana_api_key" {
+  secret  = "projects/${var.gcp_project_id}/secrets/${var.prefix}grafana-api-key"
   project = var.gcp_project_id
 }
 
 provider "grafana" {
   alias                     = "cloud"
-  cloud_access_policy_token = data.google_secret_manager_secret_version.grafana_cloud_access_policy_token.secret_data
+  cloud_access_policy_token = data.google_secret_manager_secret_version.grafana_api_key.secret_data
 }
 
 resource "grafana_cloud_stack" "e2b_stack" {
@@ -34,13 +34,8 @@ resource "grafana_cloud_stack" "e2b_stack" {
   region_slug = var.gcp_to_grafana_regions[var.gcp_region]
 }
 
-data "google_secret_manager_secret" "grafana_username" {
-  secret_id = "${var.prefix}grafana-username"
-  project   = var.gcp_project_id
-}
-
 resource "google_secret_manager_secret_version" "grafana_username" {
-  secret      = data.google_secret_manager_secret.grafana_username.id
+  secret      = "projects/${var.gcp_project_id}/secrets/${var.prefix}grafana-username"
   secret_data = grafana_cloud_stack.e2b_stack.id
 }
 
@@ -67,24 +62,19 @@ resource "grafana_cloud_access_policy_token" "otel_collector" {
   display_name     = "Otel Collector"
 }
 
-
-data "google_secret_manager_secret" "otel_collector_token" {
-  secret_id = "${var.prefix}grafana-otel-collector-token"
-  project   = var.gcp_project_id
-}
-
 resource "google_secret_manager_secret_version" "otel_collector_token" {
-  secret      = data.google_secret_manager_secret.otel_collector_token.id
+  secret      = "projects/${var.gcp_project_id}/secrets/${var.prefix}grafana-otel-collector-token"
   secret_data = grafana_cloud_access_policy_token.otel_collector.token
 }
 
-data "google_secret_manager_secret" "grafana_logs_url" {
-  secret_id = "${var.prefix}grafana-logs-url"
-  project   = var.gcp_project_id
+
+resource "google_secret_manager_secret_version" "grafana_otlp_url" {
+  secret      = "projects/${var.gcp_project_id}/secrets/${var.prefix}grafana-otlp-url"
+  secret_data = grafana_cloud_stack.e2b_stack.otlp_url
 }
 
 resource "google_secret_manager_secret_version" "grafana_logs_url" {
-  secret      = data.google_secret_manager_secret.grafana_logs_url.id
+  secret      = "projects/${var.gcp_project_id}/secrets/${var.prefix}grafana-logs-url"
   secret_data = grafana_cloud_stack.e2b_stack.logs_url
 }
 
@@ -112,29 +102,15 @@ resource "grafana_cloud_access_policy_token" "logs_collector" {
   display_name     = "Logs Collector"
 }
 
-# Get existing secret 
-data "google_secret_manager_secret" "grafana_api_key_logs_collector" {
-  secret_id = "${var.prefix}grafana-api-key-logs-collector"
-  project   = var.gcp_project_id
-}
 
 # # Update secret with new token
 resource "google_secret_manager_secret_version" "grafana_api_key_logs_collector" {
-  secret      = data.google_secret_manager_secret.grafana_api_key_logs_collector.id
+  secret      = "projects/${var.gcp_project_id}/secrets/${var.prefix}grafana-api-key-logs-collector"
   secret_data = grafana_cloud_access_policy_token.logs_collector.token
 }
 
-data "google_secret_manager_secret" "grafana_logs_username" {
-  secret_id = "${var.prefix}grafana-logs-username"
-  project   = var.gcp_project_id
-}
-
 # Update secret with new username
-resource "google_secret_manager_secret_version" "grafana_logsusername" {
-  # secret = data.google_secret_manager_secret_version.grafana_username.id
-  # regex to get the secret name without the version
-  secret      = data.google_secret_manager_secret.grafana_logs_username.id
+resource "google_secret_manager_secret_version" "grafana_logs_username" {
+  secret      = "projects/${var.gcp_project_id}/secrets/${var.prefix}grafana-logs-username"
   secret_data = grafana_cloud_stack.e2b_stack.logs_user_id
 }
-
-
