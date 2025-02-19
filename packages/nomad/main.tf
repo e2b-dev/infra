@@ -109,14 +109,7 @@ resource "nomad_job" "session_proxy" {
   }
 }
 
-
-variable "prefix" {
-  type    = string
-  default = "e2b-"
-}
-
 # grafana otel collector url
-
 resource "google_secret_manager_secret" "grafana_otlp_url" {
   secret_id = "${var.prefix}grafana-otlp-url"
 

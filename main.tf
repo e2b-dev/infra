@@ -178,6 +178,7 @@ module "client_proxy" {
 module "nomad" {
   source = "./packages/nomad"
 
+  prefix              = var.prefix
   gcp_project_id      = var.gcp_project_id
   gcp_region          = var.gcp_region
   gcp_zone            = var.gcp_zone
