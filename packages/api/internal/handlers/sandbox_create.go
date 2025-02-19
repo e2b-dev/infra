@@ -67,6 +67,12 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	// Check if team has access to the environment
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
 	if checkErr != nil {
+		if checkErr.Code == http.StatusNotFound {
+			a.logger.Info("Proxying request for sandbox creation - template not found")
+			a.singleProxy.ServeHTTP(c.Writer, c.Request)
+			return
+		}
+
 		telemetry.ReportCriticalError(ctx, checkErr.Err)
 
 		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
