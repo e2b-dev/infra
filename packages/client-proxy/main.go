@@ -81,7 +81,24 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 
 				// Proxy the request
 				logger.Info("proxying request", zap.String("sandbox_id", sandboxID))
-				httputil.NewSingleHostReverseProxy(targetUrl).ServeHTTP(w, r)
+				proxy := httputil.NewSingleHostReverseProxy(targetUrl)
+				proxy.Director = func(req *http.Request) {
+					originalHost := req.Host // e.g., 49983-idj4yd4em8vtu08tshiqz-4818f120.e2b-alpha.com
+					logger.Info("original host", zap.String("host", originalHost))
+
+					parts := strings.Split(originalHost, ".")
+					if len(parts) > 1 {
+
+						req.Host = parts[0] + ".e2b.dev"
+						req.Header.Set("Host", req.Host)
+					}
+
+					logger.Info("new host", zap.String("host", req.Host))
+					req.URL.Scheme = targetUrl.Scheme
+					req.URL.Host = targetUrl.Host
+				}
+
+				proxy.ServeHTTP(w, r)
 
 				return
 			}
