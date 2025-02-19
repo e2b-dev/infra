@@ -6,6 +6,8 @@ const uniqueID = crypto.randomUUID();
 
 const templateName = `test-template-${uniqueID}`
 
+console.log('templateName', templateName)
+
 let out = await exec(`npx e2b template build --name "${templateName}" -c "/root/.jupyter/start-up.sh"`);
 
 // // todo for some reason template build doesn't have a 0 exit code
@@ -20,6 +22,8 @@ let out = await exec(`npx e2b template build --name "${templateName}" -c "/root/
 console.log('Template built successfully')
 
 let listOut = await exec(`npx e2b template list`, { output: OutputMode.Capture });
+
+console.log(listOut.output)
 
 // Access   Template ID           Template Name                                       vCPUs  RAM MiB            Created by  Created at 
 
