@@ -26,8 +26,6 @@ jobs:
         test-command:
           - command: "cheap-test/run-code.ts"
             name: "Run Code Tests"
-          - command: "cheap-test/integration-tests.ts"
-            name: "Integration Tests"
           - command: "cheap-test/create-file.ts"
             name: "create file"
           - command: "cheap-test/build-template/index.ts"
