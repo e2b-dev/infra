@@ -5,3 +5,5 @@
 !.env.template
 .last_used_env
 .tfplan.*
+
+cheap-test/build-template/e2b.toml
