@@ -1,0 +1,45 @@
+name: Health check
+
+on:
+  schedule:
+    # every hour on hour 38
+    # 38 to avoid peak traffic
+    - cron: '38 * * * *'
+  workflow_dispatch:
+  # uncomment to run on pull request
+  # pull_request:
+  #   branches:
+  #     - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Repository changes
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install deno
+        uses: denoland/setup-deno@v1
+
+      - name: Test build
+        run: deno run --allow-all cheap-test/run-code.ts 
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+
+      - name: Release Failed - Slack Notification
+        uses: rtCamp/action-slack-notify@v2
+        if: failure()
+        env:
+          SLACK_COLOR: "#ff0000"
+          SLACK_MESSAGE: ":here-we-go-again: :bob-the-destroyer: We need :fix-parrot: ASAP :pray:"
+          SLACK_TITLE: "Health check failed"
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
