@@ -27,7 +27,7 @@ jobs:
     strategy:
       matrix:
         e2b-domain:
-          - "e2b-robert.dev"
+          # - "e2b-robert.dev"
           - "e2b-foxtrot.dev"
         test-command:
           - command: "cheap-test/run-code.ts"
@@ -37,6 +37,8 @@ jobs:
           - command: "index.ts"
             name: "build and delete template"
             dir: "cheap-test/build-template/"
+          - command: "cheap-test/snapshot-and-resume.ts"
+            name: "snapshot and resume"
       fail-fast: false
     steps:
       - name: Checkout repository

@@ -1,16 +1,11 @@
 import { Sandbox } from "npm:@e2b/code-interpreter@beta";
-
-
 const sbx = await Sandbox.create()
 console.log('Sandbox created', sbx.sandboxId)
-
-
 await sbx.runCode('x = 1');
-// Pause the sandbox
-// You can save the sandbox ID in your database
-// to resume the sandbox later
+console.log('Sandbox code executed')
 const sandboxId = await sbx.pause()
 console.log('Sandbox paused', sandboxId)
+
 
 // Resume the sandbox from the same state
 const sameSbx = await Sandbox.resume(sandboxId)
@@ -27,11 +22,7 @@ if (execution.text !== '2') {
 
 console.log('Sandbox resumed successfully')
 
-
-await sbx.stop()
-console.log('Sandbox stopped')
-
-await sbx.delete()
+await sbx.kill()
 console.log('Sandbox deleted')
 
 
