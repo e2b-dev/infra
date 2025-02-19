@@ -33,12 +33,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	// Get team from context, use TeamContextKey
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
 
-	c.Set("teamID", teamInfo.Team.ID.String())
-
-	span := trace.SpanFromContext(ctx)
-	traceID := span.SpanContext().TraceID().String()
-	c.Set("traceID", traceID)
-
 	body, err := utils.ParseBody[api.PostSandboxesJSONRequestBody](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
@@ -79,6 +73,12 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 	templateSpan.End()
+
+	c.Set("teamID", teamInfo.Team.ID.String())
+
+	span := trace.SpanFromContext(ctx)
+	traceID := span.SpanContext().TraceID().String()
+	c.Set("traceID", traceID)
 
 	telemetry.ReportEvent(ctx, "Checked team access")
 

@@ -144,6 +144,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		req.Header.Set("X-Forwarded-For", "1.2.3.4") // To distinguish from real requests
 		req.RemoteAddr = "1.2.3.4:12345"             // To distinguish from real requests
 	}
+
 	return &APIStore{
 		Healthy:              true,
 		orchestrator:         orch,

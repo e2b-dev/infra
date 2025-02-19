@@ -5,8 +5,8 @@
 3. Allow traffic on ports 5353 and 50001 for public in the old project
 4. Start udp forwarding
 5. Test if you can create sandbox on the new cluster (you should be forwarded)
-6. REMOVE DNS AUTH from terraform apply and then continue
-7. Change the domain, but don't create A star record yet
+6. REMOVE A CLOUDFLARE DNS RECORD FOR ADDITIONAL DOMAINS from terraform and then continue
+7. Add additional domain
 8. Wait for certificate verification
 9. Increase size of the cluster
 9. Update A record
