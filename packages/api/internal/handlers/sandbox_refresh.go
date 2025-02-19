@@ -5,11 +5,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/gin-gonic/gin"
 )
 
 func (a *APIStore) PostSandboxesSandboxIDRefreshes(
@@ -43,11 +44,8 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 
 	err = a.orchestrator.KeepAliveFor(sandboxID, duration, false)
 	if err != nil {
-		errMsg := fmt.Errorf("error when refreshing sandbox: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error refreshing sandbox '%s'", sandboxID))
-
+		a.logger.Info("Proxying request for sandbox creation")
+		a.singleProxy.ServeHTTP(c.Writer, c.Request)
 		return
 	}
 

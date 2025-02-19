@@ -6,6 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
@@ -13,8 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func getSandboxIDClient(sandboxID string) (string, bool) {
@@ -27,6 +28,12 @@ func getSandboxIDClient(sandboxID string) (string, bool) {
 }
 
 func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.SandboxID) {
+	if a.proxying.Load() {
+		a.logger.Info("Proxying request for sandbox creation")
+		a.singleProxy.ServeHTTP(c.Writer, c.Request)
+		return
+	}
+
 	ctx := c.Request.Context()
 
 	// Get team from context, use TeamContextKey

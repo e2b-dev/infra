@@ -2,11 +2,15 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -145,7 +149,28 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 }
 
 func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	allSbx := make([]api.RunningSandbox, 0)
+	go func() {
+		defer wg.Done()
+		sbxs, err := a.loadSandboxesFromOldCluster(c, params)
+		if err != nil {
+			a.logger.Error("[Proxy] Error when getting sandboxes: ", err)
+			return
+		}
+
+		allSbx = append(allSbx, sbxs...)
+	}()
+
 	ctx := c.Request.Context()
+	if a.proxying.Load() {
+		a.logger.Info("Proxying request for sandbox creation")
+		a.singleProxy.ServeHTTP(c.Writer, c.Request)
+
+		return
+	}
+
 	telemetry.ReportEvent(ctx, "list running instances")
 
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
@@ -163,5 +188,51 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return
 	}
 
+	wg.Wait()
+	sandboxes = append(sandboxes, allSbx...)
+
 	c.JSON(http.StatusOK, sandboxes)
+}
+
+func (a *APIStore) loadSandboxesFromOldCluster(c *gin.Context, params api.GetSandboxesParams) ([]api.RunningSandbox, error) {
+	proxyIP := os.Getenv("PROXY_IP")
+	listUrl := fmt.Sprintf("%s:%d/sandboxes", proxyIP, 50001)
+	if params.Query != nil {
+		listUrl += fmt.Sprintf("?%s", *params.Query)
+	}
+
+	targetUrl := &url.URL{
+		Scheme: "http",
+		Host:   listUrl,
+	}
+	httpClient := http.Client{}
+	req := http.Request{
+		Method: http.MethodGet,
+		URL:    targetUrl,
+		Header: http.Header{
+			"Content-Type":   []string{"application/json"},
+			"X-Team-API-Key": []string{c.Request.Header.Get("X-API-Key")},
+		},
+	}
+	resp, err := httpClient.Do(&req)
+	if err != nil {
+		a.logger.Error("[Proxy] Error when getting sandboxes: ", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	buf, err := io.ReadAll(resp.Body)
+	if err != nil {
+		a.logger.Error("[Proxy] Error when reading body for sandboxes: ", err)
+		return nil, err
+	}
+
+	var sbxs []api.RunningSandbox
+	err = json.Unmarshal(buf, &sbxs)
+	if err != nil {
+		a.logger.Error("[Proxy] Error when parsing sandboxes: ", err)
+		return nil, err
+	}
+
+	return sbxs, nil
 }

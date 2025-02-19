@@ -105,7 +105,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	proxying := &atomic.Bool{}
 	proxying.Store(true)
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger.Desugar(), posthogClient, redisClient, proxyIP)
+	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger.Desugar(), posthogClient, redisClient)
 	if err != nil {
 		logger.Panic("initializing Orchestrator client", zap.Error(err))
 	}

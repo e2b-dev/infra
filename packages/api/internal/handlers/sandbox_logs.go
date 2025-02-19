@@ -92,6 +92,12 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(
 			return a.Timestamp.Compare(b.Timestamp)
 		})
 
+		if len(logs) == 0 {
+			a.logger.Info("Proxying request for sandbox logs - no logs found")
+			a.singleProxy.ServeHTTP(c.Writer, c.Request)
+			return
+		}
+
 		c.JSON(http.StatusOK, &api.SandboxLogs{
 			Logs: logs,
 		})

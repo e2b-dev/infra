@@ -22,6 +22,12 @@ import (
 const InstanceIDPrefix = "i"
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
+	if a.proxying.Load() {
+		a.logger.Info("Proxying request for sandbox creation")
+		a.singleProxy.ServeHTTP(c.Writer, c.Request)
+		return
+	}
+
 	ctx := c.Request.Context()
 
 	// Get team from context, use TeamContextKey

@@ -58,9 +58,8 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	env, builds, err := a.db.GetSnapshotBuilds(ctx, sandboxID, teamID)
 	if err != nil {
-		telemetry.ReportError(ctx, fmt.Errorf("error when getting paused sandbox from db: %w", err))
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error killing sandbox - sandbox '%s' was not found", sandboxID))
-
+		a.logger.Info("Proxying request for sandbox creation")
+		a.singleProxy.ServeHTTP(c.Writer, c.Request)
 		return
 	}
 
