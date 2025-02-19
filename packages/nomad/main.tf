@@ -50,8 +50,13 @@ provider "nomad" {
   consul_token = var.consul_acl_token_secret
 }
 
+variable "proxy_ip" {
+  default =
+}
+
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/api.hcl", {
+    proxy_ip                      = var.proxy_ip
     update_stanza                 = var.api_machine_count > 1
     orchestrator_port             = var.orchestrator_port
     template_manager_address      = "http://template-manager.service.consul:${var.template_manager_port}"
@@ -108,6 +113,7 @@ resource "nomad_job" "docker_reverse_proxy" {
 resource "nomad_job" "client_proxy" {
   jobspec = templatefile("${path.module}/client-proxy.hcl",
     {
+      proxy_ip      = var.proxy_ip
       update_stanza = var.api_machine_count > 1
 
       gcp_zone           = var.gcp_zone
@@ -115,6 +121,7 @@ resource "nomad_job" "client_proxy" {
       port_number        = var.client_proxy_port.port
       health_port_number = var.client_proxy_health_port.port
       environment        = var.environment
+      dns_port_number    = var.api_dns_port_number
 
       image_name = var.client_proxy_docker_image_digest
 

@@ -65,6 +65,8 @@ job "client-proxy" {
 
       env {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
+        PROXY_IP                      = "${proxy_ip}"
+        API_DNS_PORT                  = "${dns_port_number}"
       }
 
       config {

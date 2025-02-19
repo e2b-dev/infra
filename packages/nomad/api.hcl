@@ -77,6 +77,8 @@ job "api" {
         DNS_PORT                      = "${dns_port_number}"
         # This is here just because it is required in some part of our code which is transitively imported
         TEMPLATE_BUCKET_NAME          = "skip"
+        # TODO: External API IP address
+        PROXY_IP = "${proxy_ip}"
       }
 
       config {
