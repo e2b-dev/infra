@@ -26,6 +26,9 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
+        e2b-domain:
+          - "e2b-robert.dev"
+          - "e2b-foxtrot.dev"
         test-command:
           - command: "cheap-test/run-code.ts"
             name: "Run Code Tests"
@@ -49,7 +52,7 @@ jobs:
         working-directory: ${{ matrix.test-command.dir }}
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-
+          E2B_DOMAIN: ${{ matrix.e2b-domain }}
 
 # commented in dev
       # - name: Release Failed - Slack Notification
