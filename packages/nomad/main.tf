@@ -214,7 +214,7 @@ resource "nomad_job" "otel_collector" {
 
 
 resource "google_secret_manager_secret" "grafana_logs_username" {
-  secret_id = "${var.prefix}grafana-logging-username"
+  secret_id = "${var.prefix}grafana-logs-username"
 
   replication {
     auto {}
