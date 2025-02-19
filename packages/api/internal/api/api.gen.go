@@ -26,6 +26,9 @@ type ServerInterface interface {
 	// (POST /nodes/{nodeID})
 	PostNodesNodeID(c *gin.Context, nodeID NodeID)
 
+	// (POST /proxy/create)
+	PostProxyCreate(c *gin.Context)
+
 	// (GET /sandboxes)
 	GetSandboxes(c *gin.Context, params GetSandboxesParams)
 
@@ -171,6 +174,21 @@ func (siw *ServerInterfaceWrapper) PostNodesNodeID(c *gin.Context) {
 	}
 
 	siw.Handler.PostNodesNodeID(c, nodeID)
+}
+
+// PostProxyCreate operation middleware
+func (siw *ServerInterfaceWrapper) PostProxyCreate(c *gin.Context) {
+
+	c.Set(AdminTokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostProxyCreate(c)
 }
 
 // GetSandboxes operation middleware
@@ -719,6 +737,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/nodes", wrapper.GetNodes)
 	router.GET(options.BaseURL+"/nodes/:nodeID", wrapper.GetNodesNodeID)
 	router.POST(options.BaseURL+"/nodes/:nodeID", wrapper.PostNodesNodeID)
+	router.POST(options.BaseURL+"/proxy/create", wrapper.PostProxyCreate)
 	router.GET(options.BaseURL+"/sandboxes", wrapper.GetSandboxes)
 	router.POST(options.BaseURL+"/sandboxes", wrapper.PostSandboxes)
 	router.GET(options.BaseURL+"/sandboxes/metrics", wrapper.GetSandboxesMetrics)

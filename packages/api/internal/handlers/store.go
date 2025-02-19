@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -50,6 +53,8 @@ type APIStore struct {
 	templateCache        *templatecache.TemplateCache
 	authCache            *authcache.TeamAuthCache
 	templateSpawnCounter *utils.TemplateSpawnCounter
+	proxying             *atomic.Bool
+	singleProxy          *httputil.ReverseProxy
 }
 
 func NewAPIStore(ctx context.Context) *APIStore {
@@ -96,7 +101,11 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		logger.Warn("REDIS_URL not set, using local caches")
 	}
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger.Desugar(), posthogClient, redisClient)
+	proxyIP := os.Getenv("PROXY_IP")
+	proxying := &atomic.Bool{}
+	proxying.Store(true)
+
+	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger.Desugar(), posthogClient, redisClient, proxyIP)
 	if err != nil {
 		logger.Panic("initializing Orchestrator client", zap.Error(err))
 	}
@@ -121,6 +130,20 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	authCache := authcache.NewTeamAuthCache(dbClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
+	targetUrl := &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("%s:%d", proxyIP, 50001),
+	}
+	proxy := httputil.NewSingleHostReverseProxy(targetUrl)
+	proxy.Director = func(req *http.Request) {
+		req.URL.Scheme = targetUrl.Scheme
+		req.URL.Host = targetUrl.Host
+		req.Host = targetUrl.Host
+
+		// Rewrite the IP address
+		req.Header.Set("X-Forwarded-For", "1.2.3.4") // To distinguish from real requests
+		req.RemoteAddr = "1.2.3.4:12345"             // To distinguish from real requests
+	}
 	return &APIStore{
 		Healthy:              true,
 		orchestrator:         orch,
@@ -134,6 +157,8 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		templateCache:        templateCache,
 		authCache:            authCache,
 		templateSpawnCounter: templateSpawnCounter,
+		singleProxy:          proxy,
+		proxying:             proxying,
 	}
 }
 

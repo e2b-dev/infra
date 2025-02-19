@@ -100,6 +100,9 @@ type NodeStatusChange struct {
 	Status NodeStatus `json:"status"`
 }
 
+// ProxyOn Status of the proxying
+type ProxyOn = bool
+
 // ResumedSandbox defines model for ResumedSandbox.
 type ResumedSandbox struct {
 	// Timeout Time to live for the sandbox in seconds.
@@ -396,6 +399,9 @@ type GetTemplatesTemplateIDBuildsBuildIDStatusParams struct {
 
 // PostNodesNodeIDJSONRequestBody defines body for PostNodesNodeID for application/json ContentType.
 type PostNodesNodeIDJSONRequestBody = NodeStatusChange
+
+// PostProxyCreateJSONRequestBody defines body for PostProxyCreate for application/json ContentType.
+type PostProxyCreateJSONRequestBody = ProxyOn
 
 // PostSandboxesJSONRequestBody defines body for PostSandboxes for application/json ContentType.
 type PostSandboxesJSONRequestBody = NewSandbox

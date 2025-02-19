@@ -13,6 +13,24 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+func (a *APIStore) PostProxyCreate(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	body, err := utils.ParseBody[api.PostProxyCreateJSONRequestBody](ctx, c)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
+
+		errMsg := fmt.Errorf("error when parsing request: %w", err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return
+	}
+
+	a.proxying.Store(body)
+
+	c.Status(http.StatusNoContent)
+}
+
 func (a *APIStore) GetNodes(c *gin.Context) {
 	nodes := a.orchestrator.GetNodes()
 

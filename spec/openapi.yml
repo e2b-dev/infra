@@ -436,6 +436,9 @@ components:
       enum:
         - ready
         - draining
+    ProxyOn:
+      type: boolean
+      description: Status of the proxying
 
     NodeStatusChange:
       required:
@@ -1053,6 +1056,28 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/NodeStatusChange"
+      responses:
+        "204":
+          description: The node status was changed successfully
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /proxy/create:
+    post:
+      description: Change status of a proxying
+      tags: [ admin ]
+      security:
+        - AdminTokenAuth: [ ]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyOn"
+
       responses:
         "204":
           description: The node status was changed successfully
