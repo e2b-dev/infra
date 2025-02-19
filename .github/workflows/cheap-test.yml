@@ -46,11 +46,8 @@ jobs:
 
       - name: Install deno
         uses: denoland/setup-deno@v1
-
-      - name: Install node for npx
-        uses: actions/setup-node@v3
-        with:
-          node-version: 20
+      - name: GitHub Action for npx
+        uses: mikeal/npx@1.0.0
 
       # workaround for not being able to use secrets in matrix
       - name: Set API Key
