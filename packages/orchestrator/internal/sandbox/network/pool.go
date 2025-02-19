@@ -26,6 +26,8 @@ type Pool struct {
 	reusedSlots       chan Slot
 	newSlotCounter    metric.Int64UpDownCounter
 	reusedSlotCounter metric.Int64UpDownCounter
+
+	slotStorage Storage
 }
 
 func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int) (*Pool, error) {
@@ -50,6 +52,7 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int) (*P
 		reusedSlotCounter: reusedSlotsCounter,
 		ctx:               ctx,
 		cancel:            cancel,
+		slotStorage:       NewStorage(slotsSize),
 	}
 
 	go func() {
@@ -63,14 +66,14 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int) (*P
 }
 
 func (p *Pool) createNetworkSlot() (*Slot, error) {
-	ips, err := NewSlot()
+	ips, err := p.slotStorage.Acquire()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network: %w", err)
 	}
 
 	err = ips.CreateNetwork()
 	if err != nil {
-		releaseErr := ips.Release()
+		releaseErr := p.slotStorage.Release(ips)
 		err = errors.Join(err, releaseErr)
 
 		return nil, fmt.Errorf("failed to create network: %w", err)
@@ -108,7 +111,7 @@ func (p *Pool) Get(ctx context.Context) (Slot, error) {
 	default:
 		select {
 		case <-ctx.Done():
-			return Slot{}, ctx.Err()
+			return *NewSlot("", 0), ctx.Err()
 		case slot := <-p.newSlots:
 			p.newSlotCounter.Add(ctx, -1)
 			telemetry.ReportEvent(ctx, "new network slot")
@@ -123,7 +126,7 @@ func (p *Pool) Return(slot Slot) error {
 	case p.reusedSlots <- slot:
 		p.reusedSlotCounter.Add(context.Background(), 1)
 	default:
-		err := cleanup(slot)
+		err := p.cleanup(slot)
 		if err != nil {
 			return fmt.Errorf("failed to return slot '%d': %w", slot.Idx, err)
 		}
@@ -132,7 +135,7 @@ func (p *Pool) Return(slot Slot) error {
 	return nil
 }
 
-func cleanup(slot Slot) error {
+func (p *Pool) cleanup(slot Slot) error {
 	var errs []error
 
 	err := slot.RemoveNetwork()
@@ -140,7 +143,7 @@ func cleanup(slot Slot) error {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
 	}
 
-	err = slot.Release()
+	err = p.slotStorage.Release(&slot)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.Idx, err))
 	}
@@ -152,14 +155,14 @@ func (p *Pool) Close() error {
 	p.cancel()
 
 	for slot := range p.newSlots {
-		err := cleanup(slot)
+		err := p.cleanup(slot)
 		if err != nil {
 			return fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err)
 		}
 	}
 
 	for slot := range p.reusedSlots {
-		err := cleanup(slot)
+		err := p.cleanup(slot)
 		if err != nil {
 			return fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err)
 		}

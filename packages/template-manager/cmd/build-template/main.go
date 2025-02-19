@@ -1,8 +1,9 @@
-package test
+package main
 
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -17,20 +18,37 @@ import (
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
-func Build(templateID, buildID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
+func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	templateID := flag.String("template", "", "template id")
+	buildID := flag.String("build", "", "build id")
+	kernelVersion := flag.String("kernel", "", "kernel version")
+	fcVersion := flag.String("firecracker", "", "firecracker version")
+	flag.Parse()
+
+	err := Build(ctx, *kernelVersion, *fcVersion, *templateID, *buildID)
+	if err != nil {
+		log.Fatal().Err(err).Msg("error building template")
+		os.Exit(1)
+	}
+}
+
+func Build(ctx context.Context, kernelVersion, fcVersion, templateID, buildID string) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute*3)
 	defer cancel()
 
 	tracer := otel.Tracer("test")
 
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	legacyClient, err := docker.NewClientFromEnv()
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	var buf bytes.Buffer
@@ -38,8 +56,8 @@ func Build(templateID, buildID string) {
 		TemplateFiles: storage.NewTemplateFiles(
 			templateID,
 			buildID,
-			"vmlinux-6.1.102",
-			"v1.10.1_1fcdaec",
+			kernelVersion,
+			fcVersion,
 			true,
 		),
 		VCpuCount:       2,
@@ -51,11 +69,7 @@ func Build(templateID, buildID string) {
 
 	err = t.Build(ctx, tracer, dockerClient, legacyClient)
 	if err != nil {
-		errMsg := fmt.Errorf("error building template: %w", err)
-
-		fmt.Fprintln(os.Stderr, errMsg)
-
-		return
+		return fmt.Errorf("error building template: %w", err)
 	}
 
 	tempStorage := template.NewStorage(ctx)
@@ -74,6 +88,8 @@ func Build(templateID, buildID string) {
 
 	err = <-upload
 	if err != nil {
-		log.Fatal().Err(err).Msg("error uploading build files")
+		return fmt.Errorf("error uploading build: %w", err)
 	}
+
+	return nil
 }

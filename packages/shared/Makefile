@@ -27,6 +27,15 @@ migrate:
 	@rm ./migration.sql
 	@echo "Done"
 
+@.PHONY: seed-test
+seed-test:
+	@echo "Generating seeds..."
+	@cat ./seeds/* > ./migration.sql
+	@echo "Applying seeds"
+	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/migrate.go
+	@rm ./migration.sql
+	@echo "Done"
+
 .PHONY: test
 test:
 	go test -v ./pkg/...

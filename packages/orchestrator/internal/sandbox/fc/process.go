@@ -97,6 +97,11 @@ func NewProcess(
 		attribute.String("sandbox.cmd", fcStartScript.String()),
 	)
 
+	_, err = os.Stat(files.FirecrackerPath())
+	if err != nil {
+		return nil, fmt.Errorf("error stating firecracker binary: %w", err)
+	}
+
 	cmd := exec.Command(
 		"unshare",
 		"-pfm",
@@ -147,6 +152,7 @@ func (p *Process) Start(
 			line := scanner.Text()
 
 			logger.Infof("[sandbox %s]: stdout: %s\n", p.metadata.SandboxId, line)
+			fmt.Printf("stdout: %s\n", line)
 		}
 
 		readerErr := scanner.Err()
@@ -168,6 +174,7 @@ func (p *Process) Start(
 		for scanner.Scan() {
 			line := scanner.Text()
 			logger.Warnf("[sandbox %s]: stderr: %s\n", p.metadata.SandboxId, line)
+			fmt.Printf("stderr: %s\n", line)
 		}
 
 		readerErr := scanner.Err()
