@@ -12,9 +12,6 @@ if (out.code !== 0) {
     throw new Error('Template not built')
 }
 
-
-
-
 console.log('Template built successfully')
 
 let listOut = await exec(`npx e2b template list | grep "test-template-${uniqueID}" > /dev/null`);
