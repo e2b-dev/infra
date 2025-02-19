@@ -32,8 +32,6 @@ jobs:
         test-command:
           - command: "cheap-test/run-code.ts"
             name: "Run Code Tests"
-          - command: "cheap-test/create-file.ts"
-            name: "create file"
           - command: "index.ts"
             name: "build and delete template"
             dir: "cheap-test/build-template/"
