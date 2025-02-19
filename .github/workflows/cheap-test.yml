@@ -46,8 +46,19 @@ jobs:
 
       - name: Install deno
         uses: denoland/setup-deno@v1
+
       - name: GitHub Action for npx
         uses: mikeal/npx@1.0.0
+
+      - name: Install node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      # install e2b cli
+      - name: Install e2b cli
+        run: |
+          npm install -g @e2b/cli
 
       # workaround for not being able to use secrets in matrix
       - name: Set API Key
