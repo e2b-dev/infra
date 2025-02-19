@@ -10,6 +10,7 @@ on:
   push:
     paths:
       - 'cheap-test/**'
+      - '.github/workflows/cheap-test.yml'
 
 
 
@@ -32,6 +33,7 @@ jobs:
             name: "create file"
           - command: "cheap-test/build-template/index.ts"
             name: "build and delete template"
+            dir: "cheap-test/build-template/"
       fail-fast: false
     steps:
       - name: Checkout repository
@@ -44,7 +46,7 @@ jobs:
 
       - name: ${{ matrix.test-command.name }}
         run: deno run --allow-all ${{ matrix.test-command.command }}
-         
+        working-directory: ${{ matrix.test-command.dir }}
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
 
