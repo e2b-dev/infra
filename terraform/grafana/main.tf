@@ -110,7 +110,7 @@ resource "google_secret_manager_secret_version" "grafana_api_key_logs_collector"
 }
 
 # Update secret with new username
-resource "google_secret_manager_secret_version" "grafana_logs_username" {
-  secret      = "projects/${var.gcp_project_id}/secrets/${var.prefix}grafana-logs-username"
+resource "google_secret_manager_secret_version" "grafana_logs_user" {
+  secret      = "projects/${var.gcp_project_id}/secrets/${var.prefix}grafana-logs-user"
   secret_data = grafana_cloud_stack.e2b_stack.logs_user_id
 }

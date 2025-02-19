@@ -197,16 +197,16 @@ resource "nomad_job" "otel_collector" {
 }
 
 
-resource "google_secret_manager_secret" "grafana_logs_username" {
-  secret_id = "${var.prefix}grafana-logs-username"
+resource "google_secret_manager_secret" "grafana_logs_user" {
+  secret_id = "${var.prefix}grafana-logs-user"
 
   replication {
     auto {}
   }
 }
 
-resource "google_secret_manager_secret_version" "grafana_logs_username" {
-  secret      = google_secret_manager_secret.grafana_logs_username.name
+resource "google_secret_manager_secret_version" "grafana_logs_user" {
+  secret      = google_secret_manager_secret.grafana_logs_user.name
   secret_data = " "
 
   lifecycle {
@@ -214,10 +214,10 @@ resource "google_secret_manager_secret_version" "grafana_logs_username" {
   }
 }
 
-data "google_secret_manager_secret_version" "grafana_logs_username" {
-  secret = google_secret_manager_secret.grafana_logs_username.name
+data "google_secret_manager_secret_version" "grafana_logs_user" {
+  secret = google_secret_manager_secret.grafana_logs_user.name
 
-  depends_on = [google_secret_manager_secret_version.grafana_logs_username]
+  depends_on = [google_secret_manager_secret_version.grafana_logs_user]
 }
 
 resource "google_secret_manager_secret" "grafana_logs_url" {
@@ -280,7 +280,7 @@ resource "nomad_job" "logs_collector" {
 
     loki_service_port_number = var.loki_service_port.port
 
-    grafana_logs_username = data.google_secret_manager_secret_version.grafana_logs_username.secret_data
+    grafana_logs_user = data.google_secret_manager_secret_version.grafana_logs_user.secret_data
     grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
     grafana_api_key       = data.google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data
   })

@@ -136,7 +136,7 @@ inputs = [ "internal_routing.internal" ]
 endpoint = "${grafana_logs_endpoint}"
 encoding.codec = "json"
 auth.strategy = "basic"
-auth.user = "${grafana_logs_username}"
+auth.user = "${grafana_logs_user}"
 auth.password = "${grafana_api_key}"
 
 [sinks.grafana.labels]
