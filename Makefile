@@ -20,6 +20,7 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_gcp_region=$(GCP_REGION) \
 	TF_VAR_gcp_zone=$(GCP_ZONE) \
 	TF_VAR_domain_name=$(DOMAIN_NAME) \
+	TF_VAR_additional_domains=$(ADDITIONAL_DOMAINS) \
 	TF_VAR_prefix=$(PREFIX) \
 	TF_VAR_terraform_state_bucket=$(TERRAFORM_STATE_BUCKET) \
 	TF_VAR_otel_tracing_print=$(OTEL_TRACING_PRINT) \
