@@ -30,6 +30,7 @@ jobs:
       - name: Install deno
         uses: denoland/setup-deno@v1
 
+
       - name: Test build
         run: deno run --allow-all cheap-test/run-code.ts 
         env:
