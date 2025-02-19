@@ -158,8 +158,14 @@ resource "google_secret_manager_secret_version" "grafana_otel_collector_token" {
   lifecycle {
     ignore_changes = [secret_data]
   }
-
 }
+
+data "google_secret_manager_secret_version" "grafana_otel_collector_token" {
+  secret = google_secret_manager_secret.grafana_otel_collector_token.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_otel_collector_token]
+}
+
 
 # grafana username
 resource "google_secret_manager_secret" "grafana_username" {
@@ -168,7 +174,6 @@ resource "google_secret_manager_secret" "grafana_username" {
   replication {
     auto {}
   }
-
 }
 
 
@@ -179,7 +184,12 @@ resource "google_secret_manager_secret_version" "grafana_username" {
   lifecycle {
     ignore_changes = [secret_data]
   }
+}
 
+data "google_secret_manager_secret_version" "grafana_username" {
+  secret = google_secret_manager_secret.grafana_username.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_username]
 }
 
 resource "nomad_job" "otel_collector" {
@@ -209,7 +219,6 @@ resource "google_secret_manager_secret" "grafana_logs_username" {
   replication {
     auto {}
   }
-
 }
 
 resource "google_secret_manager_secret_version" "grafana_logs_username" {
@@ -219,7 +228,12 @@ resource "google_secret_manager_secret_version" "grafana_logs_username" {
   lifecycle {
     ignore_changes = [secret_data]
   }
+}
 
+data "google_secret_manager_secret_version" "grafana_logs_username" {
+  secret = google_secret_manager_secret.grafana_logs_username.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_logs_username]
 }
 
 resource "google_secret_manager_secret" "grafana_logs_url" {
@@ -238,7 +252,12 @@ resource "google_secret_manager_secret_version" "grafana_logs_url" {
   lifecycle {
     ignore_changes = [secret_data]
   }
+}
 
+data "google_secret_manager_secret_version" "grafana_logs_url" {
+  secret = google_secret_manager_secret.grafana_logs_url.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_logs_url]
 }
 
 
@@ -248,7 +267,6 @@ resource "google_secret_manager_secret" "grafana_logs_collector_api_token" {
   replication {
     auto {}
   }
-
 }
 
 resource "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
@@ -258,7 +276,12 @@ resource "google_secret_manager_secret_version" "grafana_logs_collector_api_toke
   lifecycle {
     ignore_changes = [secret_data]
   }
+}
 
+data "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
+  secret = google_secret_manager_secret.grafana_logs_collector_api_token.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_logs_collector_api_token]
 }
 
 
