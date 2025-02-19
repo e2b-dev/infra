@@ -193,23 +193,14 @@ data "google_secret_manager_secret_version" "grafana_username" {
 }
 
 resource "nomad_job" "otel_collector" {
-  jobspec = file("${path.module}/otel-collector.hcl")
-  depends_on = [
-    google_secret_manager_secret_version.grafana_otel_collector_token,
-    google_secret_manager_secret_version.grafana_username,
-  ]
-  hcl2 {
-    vars = {
+  jobspec = templatefile("${path.module}/otel-collector.hcl", {
+    grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+    grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
+    grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+    consul_token                 = var.consul_acl_token_secret
 
-      grafana_otel_collector_token = google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
-      grafana_username             = google_secret_manager_secret_version.grafana_username.secret_data
-      consul_token                 = var.consul_acl_token_secret
-
-      gcp_zone = var.gcp_zone
-    }
-  }
-
-
+    gcp_zone = var.gcp_zone
+  })
 }
 
 
@@ -286,30 +277,20 @@ data "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
 
 
 resource "nomad_job" "logs_collector" {
-  jobspec = file("${path.module}/logs-collector.hcl")
+  jobspec = templatefile("${path.module}/logs-collector.hcl", {
+    gcp_zone = var.gcp_zone
 
-  depends_on = [
-    google_secret_manager_secret_version.grafana_logs_username,
-    google_secret_manager_secret_version.grafana_logs_url,
-    google_secret_manager_secret_version.grafana_logs_collector_api_token
-  ]
+    logs_port_number        = var.logs_proxy_port.port
+    logs_health_port_number = var.logs_health_proxy_port.port
+    logs_health_path        = var.logs_health_proxy_port.health_path
+    logs_port_name          = var.logs_proxy_port.name
 
-  hcl2 {
-    vars = {
-      gcp_zone = var.gcp_zone
+    loki_service_port_number = var.loki_service_port.port
 
-      logs_port_number        = var.logs_proxy_port.port
-      logs_health_port_number = var.logs_health_proxy_port.port
-      logs_health_path        = var.logs_health_proxy_port.health_path
-      logs_port_name          = var.logs_proxy_port.name
-
-      loki_service_port_number = var.loki_service_port.port
-
-      grafana_logs_username = google_secret_manager_secret_version.grafana_logs_username.secret_data
-      grafana_logs_endpoint = google_secret_manager_secret_version.grafana_logs_url.secret_data
-      grafana_api_key       = google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data
-    }
-  }
+    grafana_logs_username = data.google_secret_manager_secret_version.grafana_logs_username.secret_data
+    grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
+    grafana_api_key       = data.google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data
+  })
 }
 
 data "google_storage_bucket_object" "orchestrator" {
