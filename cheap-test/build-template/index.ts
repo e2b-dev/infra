@@ -48,11 +48,15 @@ const execution = await sandbox.runCode('x+=1; x');
 // Output result
 console.log(execution.text);
 
-let deleteOut = await exec(`npx e2b template delete -y --name "${templateName}"`);
+await exec(`npx e2b template delete -y --name "${templateName}"`);
 
-if (deleteOut.code !== 0) {
-    throw new Error('Template not deleted')
+
+const templates = await Sandbox.list()
+
+if (templates.find(t => t.name === templateName)) {
+    throw new Error('Template found in list')
 }
 
 
-console.log('Template deleted successfully')
+
+
