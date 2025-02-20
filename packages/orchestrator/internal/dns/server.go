@@ -88,9 +88,8 @@ func (d *DNS) Start(address string, port int) error {
 
 	server := resolver.Server{Addr: fmt.Sprintf("%s:%d", address, port), Net: "udp", Handler: mux}
 
-	err := server.ListenAndServe()
-	if err != nil {
-		return fmt.Errorf("failed to start DNS server: %w", err)
+	if err := server.ListenAndServe(); err != nil {
+		return fmt.Errorf("DNS server encounterted error: %w", err)
 	}
 
 	d.closer.op = server.ShutdownContext

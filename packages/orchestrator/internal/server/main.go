@@ -53,7 +53,7 @@ type Service struct {
 
 func New(ctx context.Context, port uint) (*Service, error) {
 	if port > math.MaxUint16 {
-		fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
+		return nil, fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
 	}
 
 	srv := &Service{port: uint16(port)}
@@ -106,7 +106,7 @@ func (srv *Service) Start(context.Context) error {
 		}
 	}()
 
-	// the listener is closed by
+	// the listener is closed by the shutdown operation
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", srv.port))
 	if err != nil {
 		return fmt.Errorf("failed to listen on port %d: %w", srv.port, err)
@@ -126,6 +126,10 @@ func (srv *Service) Start(context.Context) error {
 		srv.grpc.GracefulStop()
 
 		if err := srv.dns.Close(ctx); err != nil {
+			errs = append(errs, err)
+		}
+
+		if err := lis.Close(); err != nil {
 			errs = append(errs, err)
 		}
 
