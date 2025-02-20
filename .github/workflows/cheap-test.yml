@@ -65,6 +65,7 @@ jobs:
         working-directory: ${{ matrix.test-command.dir }}
         env:
           E2B_API_KEY: ${{ steps.set-api-key.outputs.api_key }}
+          E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
           E2B_DOMAIN: ${{ matrix.e2b-domain }}
 
 # commented in dev
