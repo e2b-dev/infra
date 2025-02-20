@@ -1,13 +1,6 @@
 import { Sandbox } from "npm:@e2b/code-interpreter";
 import { extractTemplateID } from "./extract.ts";
 
-// This will just show true/false for whether each variable exists, without exposing the actual values.
-// 
-console.log('E2B Environment variables present?', {
-    E2B_ACCESS_TOKEN: !!Deno.env.get('E2B_ACCESS_TOKEN'),
-    E2B_DOMAIN: !!Deno.env.get('E2B_DOMAIN'),
-    E2B_API_KEY: !!Deno.env.get('E2B_API_KEY')
-});
 
 // Helper function to stream command output
 async function streamCommandOutput(command: string, args: string[]) {
@@ -76,12 +69,10 @@ const process = Deno.run({
 const output = await process.output();
 const error = await process.stderrOutput();
 
-console.log('stdout:', new TextDecoder().decode(output));
-console.log('stderr:', new TextDecoder().decode(error));
-
+const templatesOutput = new TextDecoder().decode(output) + new TextDecoder().decode(error)
 process.close();
 
-console.log('templatesOutput:', output + error)
+console.log('templatesOutput:', templatesOutput)
 
 
 
