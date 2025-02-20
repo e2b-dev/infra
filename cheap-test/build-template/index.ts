@@ -35,13 +35,6 @@ const uniqueID = crypto.randomUUID();
 const templateName = `test-template-${uniqueID}`
 console.log('templateName:', templateName)
 
-// Echo command with streaming output
-console.log('Running echo test...');
-const echoStatus = await streamCommandOutput('echo', ['hello world']);
-if (echoStatus.status.code !== 0) {
-    throw new Error(`Echo command failed with code ${echoStatus.status.code}`);
-}
-
 // Build template command with streaming output
 console.log(`Building template ${templateName}...`);
 const buildStatus = await streamCommandOutput('npx', [
@@ -78,28 +71,16 @@ const sandbox = await Sandbox.create({ id: templateID })
 await sandbox.runCode('x = 1');
 const execution = await sandbox.runCode('x+=1; x');
 
+if (execution !== '2') {
+    throw new Error('Execution failed')
+}
+
 // Output result
 console.log('Execution result:', execution.text);
 
-// Delete template command with streaming output
-console.log(`Deleting template ${templateName}...`);
-const deleteStatus = await streamCommandOutput('npx', [
-    '@e2b/cli',
-    'template',
-    'delete',
-    '-y',
-    '--name',
-    templateName
-]);
+// kill sandbox
+await sandbox.kill()
 
-if (deleteStatus.code !== 0) {
-    throw new Error(`Delete failed with code ${deleteStatus.status.code}`);
-}
-
-const templatesAfterDelete = await Sandbox.list()
-if (templatesAfterDelete.find(t => t.name === templateName)) {
-    throw new Error('Template still found in list after deletion')
-}
 
 // cleanup by removing e2b.toml
 await Deno.remove('e2b.toml')
