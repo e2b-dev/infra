@@ -50,15 +50,20 @@ jobs:
       - name: GitHub Action for npx
         uses: mikeal/npx@1.0.0
 
-      - name: Install node
-        uses: actions/setup-node@v3
-        with:
-          node-version: 20
+      # - name: Install node
+      #   uses: actions/setup-node@v3
+      #   with:
+      #     node-version: 20
 
-      # install e2b cli
-      - name: Install e2b cli
+      # # install e2b cli
+      # - name: Install e2b cli
+      #   run: |
+      #     npm install -g @e2b/cli
+
+      # can run e2b cli commands with npx
+      - name: Run e2b cli command
         run: |
-          npm install -g @e2b/cli
+          npx e2b --help
 
       # workaround for not being able to use secrets in matrix
       - name: Set API Key
