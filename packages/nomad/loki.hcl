@@ -146,7 +146,7 @@ limits_config:
   per_stream_rate_limit_burst: "240MB"
   max_streams_per_user: 0
   max_global_streams_per_user: 10000
-  unordered_writes: false
+  unordered_writes: true
 
 EOF
 
