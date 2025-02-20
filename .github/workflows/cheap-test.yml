@@ -50,7 +50,6 @@ jobs:
       - name: GitHub Action for npx
         uses: mikeal/npx@1.0.0
 
-
       # workaround for not being able to use secrets in matrix
       - name: Set API Key
         id: set-api-key

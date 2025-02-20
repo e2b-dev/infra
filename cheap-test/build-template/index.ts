@@ -1,69 +1,98 @@
-import { exec, OutputMode } from "https://deno.land/x/exec/mod.ts";
 import { Sandbox } from "npm:@e2b/code-interpreter";
 
+// Helper function to stream command output
+async function streamCommandOutput(command: string, args: string[]) {
+    const cmd = new Deno.Command(command, {
+        args: args,
+        stdout: "piped",
+        stderr: "piped",
+    });
+
+    const process = cmd.spawn();
+    const decoder = new TextDecoder();
+
+    // Stream stdout
+    for await (const chunk of process.stdout) {
+        console.log(decoder.decode(chunk));
+    }
+
+    // Stream stderr
+    for await (const chunk of process.stderr) {
+        console.error(decoder.decode(chunk));
+    }
+
+    // Wait for the process to complete and get the status
+    const status = await process.status;
+    return status;
+}
 
 const uniqueID = crypto.randomUUID();
-
 const templateName = `test-template-${uniqueID}`
+console.log('templateName:', templateName)
 
-console.log('templateName', templateName)
+// Echo command with streaming output
+console.log('Running echo test...');
+const echoStatus = await streamCommandOutput('echo', ['hello world']);
+if (echoStatus.code !== 0) {
+    throw new Error(`Echo command failed with code ${echoStatus.code}`);
+}
 
+// Build template command with streaming output
+console.log(`Building template ${templateName}...`);
+const buildStatus = await streamCommandOutput('npx', [
+    '@e2b/cli',
+    'template',
+    'build',
+    '--name',
+    templateName,
+    '-c',
+    '/root/.jupyter/start-up.sh'
+]);
 
-let out = await exec(`npx @e2b/cli template build --name "${templateName}" -c "/root/.jupyter/start-up.sh"`, { output: OutputMode.Capture });
-
-console.log(out.output)
-// 
-// // todo for some reason template build doesn't have a 0 exit code
-// // if (out.code !== 0) {
-// //     console.log(out.stdout)
-// //     console.log(out.stderr)
-// //     console.log('error code', out.code)
-// //     console.log('cmd', `npx e2b template build --name "${templateID}" -c "/root/.jupyter/start-up.sh"`)
-// //     throw new Error('Template not built')
-// // }
+if (buildStatus.code !== 0) {
+    throw new Error(`Build failed with code ${buildStatus.code}`);
+}
 
 console.log('Template built successfully')
 
-let listOut = await exec(`npx @e2b/cli template list`, { output: OutputMode.Capture });
+const templates = await Sandbox.list()
+console.log('Available templates:', templates)
 
-console.log(listOut.output)
-
-// Access   Template ID           Template Name                                       vCPUs  RAM MiB            Created by  Created at 
-
-// Private  veiohd78xjs3ibuaju57  test-template-4504da89-35a8-4a40-9d30-d7aa40080c77      2     1024  robert.wendt@e2b.dev   2/19/2025 
-// Private  1bcr85b1kh4h87yxfsn5  test-template-f7f57822-1500-4d35-9af1-2638bcf77952      2     1024  robert.wendt@e2b.dev   2/19/2025 
-
-// extract template id from the list output
-let templateID = listOut.output.split('\n').find(line => line.includes(templateName))?.split(' ')[1]
+// Create a E2B Code Interpreter with JavaScript kernel
+const templateID = templates.find(t => t.name === templateName)?.id;
 
 if (!templateID) {
     throw new Error('Template not found')
 }
 
-
-// create sandbox from that template id, run code in it 
-
-// Create a E2B Code Interpreter with JavaScript kernel
-
 const sandbox = await Sandbox.create({ id: templateID })
-
 
 // Execute JavaScript cells
 await sandbox.runCode('x = 1');
 const execution = await sandbox.runCode('x+=1; x');
 
 // Output result
-console.log(execution.text);
+console.log('Execution result:', execution.text);
 
-await exec(`npx @e2b/cli template delete -y --name "${templateName}"`);
+// Delete template command with streaming output
+console.log(`Deleting template ${templateName}...`);
+const deleteStatus = await streamCommandOutput('npx', [
+    '@e2b/cli',
+    'template',
+    'delete',
+    '-y',
+    '--name',
+    templateName
+]);
 
-
-const templates = await Sandbox.list()
-
-if (templates.find(t => t.name === templateName)) {
-    throw new Error('Template found in list')
+if (deleteStatus.code !== 0) {
+    throw new Error(`Delete failed with code ${deleteStatus.code}`);
 }
 
+const templatesAfterDelete = await Sandbox.list()
+if (templatesAfterDelete.find(t => t.name === templateName)) {
+    throw new Error('Template still found in list after deletion')
+}
 
-
-
+// cleanup by removing e2b.toml
+await Deno.remove('e2b.toml')
