@@ -280,7 +280,7 @@ resource "nomad_job" "logs_collector" {
 
     loki_service_port_number = var.loki_service_port.port
 
-    grafana_logs_user = data.google_secret_manager_secret_version.grafana_logs_user.secret_data
+    grafana_logs_user     = data.google_secret_manager_secret_version.grafana_logs_user.secret_data
     grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
     grafana_api_key       = data.google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data
   })

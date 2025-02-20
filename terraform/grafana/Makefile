@@ -1,5 +1,6 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 ENV_FILE := $(PWD)/../../.env.${ENV}
+TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
 
 -include ${ENV_FILE}
 
@@ -11,7 +12,7 @@ tf_vars := TF_VAR_gcp_project_id=$(GCP_PROJECT_ID) \
 .PHONY: init
 init:
 	@ printf "Initializing Terraform\n"
-	terraform init -input=false -backend-config="bucket=${TERRAFORM_STATE_BUCKET}" 
+	terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 
 
 .PHONY: plan
