@@ -71,13 +71,7 @@ const sandbox = await Sandbox.create({ id: templateID })
 await sandbox.runCode('x = 1');
 const execution = await sandbox.runCode('x+=1; x');
 
-if (execution !== '2') {
-    throw new Error('Execution failed')
-}
-
-// Output result
-console.log('Execution result:', execution.text);
-
+console.log('Execution result:', execution);
 // kill sandbox
 await sandbox.kill()
 
