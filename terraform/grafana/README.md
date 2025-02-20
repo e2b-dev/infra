@@ -3,19 +3,19 @@
 ## Prerequisites
 
 - complete the steps in [self-host.md](../../self-host.md)
-- create a access token for the otel collector with permissions: 
-
+- create an access policy for the grafana cloud with following permissions
 Realms:
  - `<org name>` (all stacks)
 Scopes:
  - accesspolicies:read
- - stacks:read
- - orgs:read
  - accesspolicies:write
- - stack-service-accounts:write
- - stacks:write
  - accesspolicies:delete
+ - stacks:read
+ - stacks:write
  - stacks:delete
+ - orgs:read
+
+- fill it in gcloud secrets manager (grafana-api-key)
 
 ## Deploy
 

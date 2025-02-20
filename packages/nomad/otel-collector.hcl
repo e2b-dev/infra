@@ -1,25 +1,5 @@
-variable "gcp_zone" {
-  type = string
-}
-
-variable "grafana_otel_collector_token" {
-  type = string
-}
-
-variable "grafana_username" {
-  type = string
-}
-
-variable "consul_token" {
-  type = string
-}
-
-variables {
-  otel_image = "otel/opentelemetry-collector-contrib:0.99.0"
-}
-
 job "otel-collector" {
-  datacenters = [var.gcp_zone]
+  datacenters = ["${gcp_zone}"]
   type        = "system"
   node_pool   = "all"
 
@@ -65,7 +45,7 @@ job "otel-collector" {
 
       config {
         network_mode = "host"
-        image        = var.otel_image
+        image        = "otel/opentelemetry-collector-contrib:0.99.0"
 
         volumes = [
           "local/config:/config",
@@ -113,7 +93,7 @@ receivers:
             format: ['prometheus']
           consul_sd_configs:
           - services: ['nomad-client', 'nomad', 'api', 'client-proxy', 'session-proxy', 'otel-collector', 'logs-collector', 'docker-reverse-proxy', 'loki', 'orchestrator', 'template-manager']
-            token: "${var.consul_token}"
+            token: "${consul_token}"
 
           relabel_configs:
           - source_labels: ['__meta_consul_tags']
@@ -158,8 +138,8 @@ extensions:
   basicauth/grafana_cloud:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/extension/basicauthextension
     client_auth:
-      username: "${var.grafana_username}"
-      password: "${var.grafana_otel_collector_token}"
+      username: "${grafana_username}"
+      password: "${grafana_otel_collector_token}"
 
   health_check:
 
@@ -168,7 +148,7 @@ exporters:
     verbosity: detailed
   otlphttp/grafana_cloud:
     # https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlpexporter
-    endpoint: "https://otlp-gateway-prod-us-central-0.grafana.net/otlp"
+    endpoint: "${grafana_otlp_url}/otlp"
     auth:
       authenticator: basicauth/grafana_cloud
 

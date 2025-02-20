@@ -1,3 +1,7 @@
+variable "prefix" {
+  type = string
+}
+
 variable "gcp_zone" {
   type = string
 }
@@ -81,10 +85,6 @@ variable "posthog_api_key_secret_name" {
 }
 
 variable "postgres_connection_string_secret_name" {
-  type = string
-}
-
-variable "grafana_otel_collector_token_secret_name" {
   type = string
 }
 
@@ -201,20 +201,4 @@ variable "redis_port" {
     name = string
     port = number
   })
-}
-
-variable "grafana_username_secret_name" {
-  type = string
-}
-
-variable "grafana_api_key_logs_collector_secret_name" {
-  type = string
-}
-
-variable "grafana_logs_url_secret_name" {
-  type = string
-}
-
-variable "grafana_logs_username_secret_name" {
-  type = string
 }

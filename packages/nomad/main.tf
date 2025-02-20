@@ -16,29 +16,6 @@ data "google_secret_manager_secret_version" "analytics_collector_api_token" {
   secret = var.analytics_collector_api_token_secret_name
 }
 
-data "google_secret_manager_secret_version" "grafana_otel_collector_token" {
-  secret = var.grafana_otel_collector_token_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_username" {
-  secret = var.grafana_username_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_api_key_logs_collector" {
-  secret = var.grafana_api_key_logs_collector_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_logs_url" {
-  secret = var.grafana_logs_url_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_logs_username" {
-  secret = var.grafana_logs_username_secret_name
-}
-
-
-
-
 provider "nomad" {
   address      = "https://nomad.${var.domain_name}"
   secret_id    = var.nomad_acl_token_secret
@@ -51,7 +28,7 @@ resource "nomad_job" "api" {
     orchestrator_port             = var.orchestrator_port
     template_manager_address      = "http://template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint  = "localhost:4317"
-    loki_address                  = "http://localhost:${var.loki_service_port.port}"
+    loki_address                  = "http://loki.service.consul:${var.loki_service_port.port}"
     logs_collector_address        = "http://localhost:${var.logs_proxy_port.port}"
     gcp_zone                      = var.gcp_zone
     port_name                     = var.api_port.name
@@ -132,40 +109,181 @@ resource "nomad_job" "session_proxy" {
   }
 }
 
-resource "nomad_job" "otel_collector" {
-  jobspec = file("${path.module}/otel-collector.hcl")
+# grafana otel collector url
+resource "google_secret_manager_secret" "grafana_otlp_url" {
+  secret_id = "${var.prefix}grafana-otlp-url"
 
-  hcl2 {
-    vars = {
+  replication {
+    auto {}
+  }
 
-      grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
-      grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
-      consul_token                 = var.consul_acl_token_secret
+}
 
-      gcp_zone = var.gcp_zone
-    }
+resource "google_secret_manager_secret_version" "grafana_otlp_url" {
+  secret      = google_secret_manager_secret.grafana_otlp_url.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
   }
 }
 
-resource "nomad_job" "logs_collector" {
-  jobspec = file("${path.module}/logs-collector.hcl")
+data "google_secret_manager_secret_version" "grafana_otlp_url" {
+  secret = google_secret_manager_secret.grafana_otlp_url.name
 
-  hcl2 {
-    vars = {
-      gcp_zone = var.gcp_zone
+  depends_on = [google_secret_manager_secret_version.grafana_otlp_url]
+}
 
-      logs_port_number        = var.logs_proxy_port.port
-      logs_health_port_number = var.logs_health_proxy_port.port
-      logs_health_path        = var.logs_health_proxy_port.health_path
-      logs_port_name          = var.logs_proxy_port.name
 
-      loki_service_port_number = var.loki_service_port.port
+# grafana otel collector token
+resource "google_secret_manager_secret" "grafana_otel_collector_token" {
+  secret_id = "${var.prefix}grafana-otel-collector-token"
 
-      grafana_logs_username = data.google_secret_manager_secret_version.grafana_logs_username.secret_data
-      grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
-      grafana_api_key       = data.google_secret_manager_secret_version.grafana_api_key_logs_collector.secret_data
-    }
+  replication {
+    auto {}
   }
+}
+
+resource "google_secret_manager_secret_version" "grafana_otel_collector_token" {
+  secret      = google_secret_manager_secret.grafana_otel_collector_token.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+data "google_secret_manager_secret_version" "grafana_otel_collector_token" {
+  secret = google_secret_manager_secret.grafana_otel_collector_token.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_otel_collector_token]
+}
+
+
+# grafana username
+resource "google_secret_manager_secret" "grafana_username" {
+  secret_id = "${var.prefix}grafana-username"
+
+  replication {
+    auto {}
+  }
+}
+
+
+resource "google_secret_manager_secret_version" "grafana_username" {
+  secret      = google_secret_manager_secret.grafana_username.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+data "google_secret_manager_secret_version" "grafana_username" {
+  secret = google_secret_manager_secret.grafana_username.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_username]
+}
+
+resource "nomad_job" "otel_collector" {
+  jobspec = templatefile("${path.module}/otel-collector.hcl", {
+    grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+    grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
+    grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+    consul_token                 = var.consul_acl_token_secret
+
+    gcp_zone = var.gcp_zone
+  })
+}
+
+
+resource "google_secret_manager_secret" "grafana_logs_user" {
+  secret_id = "${var.prefix}grafana-logs-user"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "grafana_logs_user" {
+  secret      = google_secret_manager_secret.grafana_logs_user.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+data "google_secret_manager_secret_version" "grafana_logs_user" {
+  secret = google_secret_manager_secret.grafana_logs_user.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_logs_user]
+}
+
+resource "google_secret_manager_secret" "grafana_logs_url" {
+  secret_id = "${var.prefix}grafana-logs-url"
+
+  replication {
+    auto {}
+  }
+
+}
+
+resource "google_secret_manager_secret_version" "grafana_logs_url" {
+  secret      = google_secret_manager_secret.grafana_logs_url.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+data "google_secret_manager_secret_version" "grafana_logs_url" {
+  secret = google_secret_manager_secret.grafana_logs_url.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_logs_url]
+}
+
+
+resource "google_secret_manager_secret" "grafana_logs_collector_api_token" {
+  secret_id = "${var.prefix}grafana-api-key-logs-collector"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
+  secret      = google_secret_manager_secret.grafana_logs_collector_api_token.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+data "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
+  secret = google_secret_manager_secret.grafana_logs_collector_api_token.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_logs_collector_api_token]
+}
+
+
+resource "nomad_job" "logs_collector" {
+  jobspec = templatefile("${path.module}/logs-collector.hcl", {
+    gcp_zone = var.gcp_zone
+
+    logs_port_number        = var.logs_proxy_port.port
+    logs_health_port_number = var.logs_health_proxy_port.port
+    logs_health_path        = var.logs_health_proxy_port.health_path
+    logs_port_name          = var.logs_proxy_port.name
+
+    loki_service_port_number = var.loki_service_port.port
+
+    grafana_logs_user     = data.google_secret_manager_secret_version.grafana_logs_user.secret_data
+    grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
+    grafana_api_key       = data.google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data
+  })
 }
 
 data "google_storage_bucket_object" "orchestrator" {
