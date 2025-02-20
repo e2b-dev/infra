@@ -1,7 +1,5 @@
 import { Sandbox } from "npm:@e2b/code-interpreter";
 import { extractTemplateID } from "./extract.ts";
-// exec
-import { exec } from "https://deno.land/x/exec/mod.ts";
 
 // This will just show true/false for whether each variable exists, without exposing the actual values.
 // 
@@ -67,17 +65,27 @@ if (buildStatus.status.code !== 0) {
 }
 
 console.log('Template built successfully')
-// cleanup by removing e2b.toml
-// await Deno.remove('e2b.toml')
 
-// const templates = await streamCommandOutput('npx', [
-//     '@e2b/cli',
-//     'template',
-//     'list'
-// ])
+const process = Deno.run({
+    cmd: ['sh', '-c', 'npx @e2b/cli template list'],
+    env: Deno.env.toObject(),
+    stdout: 'piped',
+    stderr: 'piped'
+});
 
-const templates = exec("npx @e2b/cli template list")
-const templateID = extractTemplateID(templates.output, templateName)
+const output = await process.output();
+const error = await process.stderrOutput();
+
+console.log('stdout:', new TextDecoder().decode(output));
+console.log('stderr:', new TextDecoder().decode(error));
+
+process.close();
+
+console.log('templatesOutput:', output + error)
+
+
+
+const templateID = extractTemplateID(templatesOutput, templateName)
 
 if (!templateID) {
     throw new Error('Template not found')
