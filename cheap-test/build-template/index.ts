@@ -8,9 +8,9 @@ async function streamCommandOutput(command: string, args: string[]) {
         stdout: "piped",
         stderr: "piped",
         env: {
-            E2B_ACCESS_TOKEN: Deno.env.get('E2B_ACCESS_TOKEN')!,
-            E2B_DOMAIN: Deno.env.get('E2B_DOMAIN')!,
-            E2B_API_KEY: Deno.env.get('E2B_API_KEY')!
+            E2B_ACCESS_TOKEN: Deno.env.get('E2B_ACCESS_TOKEN'),
+            E2B_DOMAIN: Deno.env.get('E2B_DOMAIN'),
+            E2B_API_KEY: Deno.env.get('E2B_API_KEY')
         }
     });
 
