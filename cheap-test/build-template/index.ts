@@ -1,5 +1,15 @@
 import { Sandbox } from "npm:@e2b/code-interpreter";
 import { extractTemplateID } from "./extract.ts";
+// exec
+import { exec } from "https://deno.land/x/exec/mod.ts";
+
+// This will just show true/false for whether each variable exists, without exposing the actual values.
+// 
+console.log('E2B Environment variables present?', {
+    E2B_ACCESS_TOKEN: !!Deno.env.get('E2B_ACCESS_TOKEN'),
+    E2B_DOMAIN: !!Deno.env.get('E2B_DOMAIN'),
+    E2B_API_KEY: !!Deno.env.get('E2B_API_KEY')
+});
 
 // Helper function to stream command output
 async function streamCommandOutput(command: string, args: string[]) {
@@ -8,9 +18,9 @@ async function streamCommandOutput(command: string, args: string[]) {
         stdout: "piped",
         stderr: "piped",
         env: {
-            E2B_ACCESS_TOKEN: Deno.env.get('E2B_ACCESS_TOKEN'),
-            E2B_DOMAIN: Deno.env.get('E2B_DOMAIN'),
-            E2B_API_KEY: Deno.env.get('E2B_API_KEY')
+            E2B_ACCESS_TOKEN: Deno.env.get('E2B_ACCESS_TOKEN') ?? '',
+            E2B_DOMAIN: Deno.env.get('E2B_DOMAIN') ?? '',
+            E2B_API_KEY: Deno.env.get('E2B_API_KEY') ?? ''
         }
     });
 
@@ -58,13 +68,15 @@ if (buildStatus.status.code !== 0) {
 
 console.log('Template built successfully')
 // cleanup by removing e2b.toml
-await Deno.remove('e2b.toml')
+// await Deno.remove('e2b.toml')
 
-const templates = await streamCommandOutput('npx', [
-    '@e2b/cli',
-    'template',
-    'list'
-])
+// const templates = await streamCommandOutput('npx', [
+//     '@e2b/cli',
+//     'template',
+//     'list'
+// ])
+
+const templates = exec("npx @e2b/cli template list")
 const templateID = extractTemplateID(templates.output, templateName)
 
 if (!templateID) {
