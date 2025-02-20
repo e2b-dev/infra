@@ -7,6 +7,11 @@ async function streamCommandOutput(command: string, args: string[]) {
         args: args,
         stdout: "piped",
         stderr: "piped",
+        env: {
+            E2B_ACCESS_TOKEN: Deno.env.get('E2B_ACCESS_TOKEN')!,
+            E2B_DOMAIN: Deno.env.get('E2B_DOMAIN')!,
+            E2B_API_KEY: Deno.env.get('E2B_API_KEY')!
+        }
     });
 
     const process = cmd.spawn();
@@ -52,7 +57,8 @@ if (buildStatus.status.code !== 0) {
 }
 
 console.log('Template built successfully')
-
+// cleanup by removing e2b.toml
+await Deno.remove('e2b.toml')
 
 const templates = await streamCommandOutput('npx', [
     '@e2b/cli',
@@ -76,5 +82,3 @@ console.log('Execution result:', execution);
 await sandbox.kill()
 
 
-// cleanup by removing e2b.toml
-await Deno.remove('e2b.toml')
