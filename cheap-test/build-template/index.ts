@@ -9,7 +9,7 @@ const templateName = `test-template-${uniqueID}`
 console.log('templateName', templateName)
 
 
-let out = await exec(`e2b template build --name "${templateName}" -c "/root/.jupyter/start-up.sh"`, { output: OutputMode.Capture });
+let out = await exec(`npx @e2b/cli template build --name "${templateName}" -c "/root/.jupyter/start-up.sh"`, { output: OutputMode.Capture });
 
 console.log(out.output)
 // 
@@ -24,7 +24,7 @@ console.log(out.output)
 
 console.log('Template built successfully')
 
-let listOut = await exec(`npx e2b template list`, { output: OutputMode.Capture });
+let listOut = await exec(`npx @e2b/cli template list`, { output: OutputMode.Capture });
 
 console.log(listOut.output)
 
@@ -55,7 +55,7 @@ const execution = await sandbox.runCode('x+=1; x');
 // Output result
 console.log(execution.text);
 
-await exec(`npx e2b template delete -y --name "${templateName}"`);
+await exec(`npx @e2b/cli template delete -y --name "${templateName}"`);
 
 
 const templates = await Sandbox.list()
