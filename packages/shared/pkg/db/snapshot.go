@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -15,6 +16,7 @@ import (
 
 type SnapshotInfo struct {
 	SandboxID          string
+	SandboxStartedAt   time.Time
 	BaseTemplateID     string
 	VCPU               int64
 	RAMMB              int64
@@ -72,6 +74,7 @@ func (db *DB) NewSnapshotBuild(
 			Snapshot.
 			Create().
 			SetSandboxID(snapshotConfig.SandboxID).
+			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
 			SetBaseEnvID(snapshotConfig.BaseTemplateID).
 			SetEnv(e).
 			SetMetadata(snapshotConfig.Metadata).
@@ -86,6 +89,7 @@ func (db *DB) NewSnapshotBuild(
 			Snapshot.
 			UpdateOne(s).
 			SetMetadata(snapshotConfig.Metadata).
+			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
 			Save(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update snapshot '%s': %w", snapshotConfig.SandboxID, err)
@@ -181,4 +185,30 @@ func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uu
 	}
 
 	return e, e.Edges.Builds, nil
+}
+
+func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSandboxIDs []string) (
+	[]*models.Env,
+	error,
+) {
+	e, err := db.
+		Client.
+		Env.
+		Query().
+		Where(
+			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
+			env.HasSnapshotsWith(snapshot.SandboxIDNotIn(excludeSandboxIDs...)),
+			env.TeamID(teamID),
+		).
+		WithSnapshots().
+		WithBuilds(func(query *models.EnvBuildQuery) {
+			query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt))
+		}).
+		All(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get snapshot build for '%s': %w", teamID, err)
+	}
+
+	return e, nil
 }

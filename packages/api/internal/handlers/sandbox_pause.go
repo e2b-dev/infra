@@ -49,6 +49,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	snapshotConfig := &db.SnapshotInfo{
 		BaseTemplateID:     sbx.Instance.TemplateID,
 		SandboxID:          sandboxID,
+		SandboxStartedAt:   sbx.StartTime,
 		VCPU:               sbx.VCpu,
 		RAMMB:              sbx.RamMB,
 		TotalDiskSizeMB:    sbx.TotalDiskSizeMB,
