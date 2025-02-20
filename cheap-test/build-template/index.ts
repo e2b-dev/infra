@@ -1,4 +1,5 @@
 import { Sandbox } from "npm:@e2b/code-interpreter";
+import { extractTemplateID } from "./extract.ts";
 
 // Helper function to stream command output
 async function streamCommandOutput(command: string, args: string[]) {
@@ -11,19 +12,23 @@ async function streamCommandOutput(command: string, args: string[]) {
     const process = cmd.spawn();
     const decoder = new TextDecoder();
 
+    let output = ''
+
     // Stream stdout
     for await (const chunk of process.stdout) {
         console.log(decoder.decode(chunk));
+        output += decoder.decode(chunk)
     }
 
     // Stream stderr
     for await (const chunk of process.stderr) {
         console.error(decoder.decode(chunk));
+        output += decoder.decode(chunk)
     }
 
     // Wait for the process to complete and get the status
     const status = await process.status;
-    return status;
+    return { status, output }
 }
 
 const uniqueID = crypto.randomUUID();
@@ -33,8 +38,8 @@ console.log('templateName:', templateName)
 // Echo command with streaming output
 console.log('Running echo test...');
 const echoStatus = await streamCommandOutput('echo', ['hello world']);
-if (echoStatus.code !== 0) {
-    throw new Error(`Echo command failed with code ${echoStatus.code}`);
+if (echoStatus.status.code !== 0) {
+    throw new Error(`Echo command failed with code ${echoStatus.status.code}`);
 }
 
 // Build template command with streaming output
@@ -49,17 +54,19 @@ const buildStatus = await streamCommandOutput('npx', [
     '/root/.jupyter/start-up.sh'
 ]);
 
-if (buildStatus.code !== 0) {
-    throw new Error(`Build failed with code ${buildStatus.code}`);
+if (buildStatus.status.code !== 0) {
+    throw new Error(`Build failed with code ${buildStatus.status.code}`);
 }
 
 console.log('Template built successfully')
 
-const templates = await Sandbox.list()
-console.log('Available templates:', templates)
 
-// Create a E2B Code Interpreter with JavaScript kernel
-const templateID = templates.find(t => t.name === templateName)?.id;
+const templates = await streamCommandOutput('npx', [
+    '@e2b/cli',
+    'template',
+    'list'
+])
+const templateID = extractTemplateID(templates.output, templateName)
 
 if (!templateID) {
     throw new Error('Template not found')
@@ -86,7 +93,7 @@ const deleteStatus = await streamCommandOutput('npx', [
 ]);
 
 if (deleteStatus.code !== 0) {
-    throw new Error(`Delete failed with code ${deleteStatus.code}`);
+    throw new Error(`Delete failed with code ${deleteStatus.status.code}`);
 }
 
 const templatesAfterDelete = await Sandbox.list()
