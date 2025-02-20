@@ -147,7 +147,7 @@ limits_config:
   max_streams_per_user: 0
   max_global_streams_per_user: 10000
   unordered_writes: true
-
+  reject_old_samples_max_age: 168h
 EOF
 
         destination = "local/loki-config.yml"
