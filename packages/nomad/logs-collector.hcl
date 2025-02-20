@@ -92,6 +92,9 @@ del(."_path")
 if !exists(.envID) {
   .envID = "unknown"
 }
+if !exists(.category) {
+  .category = "default"
+}
 """
 
 [transforms.internal_routing]
