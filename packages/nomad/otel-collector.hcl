@@ -1,45 +1,5 @@
-variable "gcp_zone" {
-  type = string
-}
-
-variable "grafana_api_key" {
-  type = string
-}
-
-variable "grafana_logs_username" {
-  type = string
-}
-
-variable "grafana_traces_username" {
-  type = string
-}
-
-variable "grafana_metrics_username" {
-  type = string
-}
-
-variable "grafana_logs_endpoint" {
-  type = string
-}
-
-variable "grafana_traces_endpoint" {
-  type = string
-}
-
-variable "grafana_metrics_endpoint" {
-  type = string
-}
-
-variable "consul_token" {
-  type = string
-}
-
-variables {
-  otel_image = "otel/opentelemetry-collector-contrib:0.99.0"
-}
-
 job "otel-collector" {
-  datacenters = [var.gcp_zone]
+  datacenters = ["${gcp_zone}"]
   type        = "system"
   node_pool   = "all"
 
@@ -85,7 +45,7 @@ job "otel-collector" {
 
       config {
         network_mode = "host"
-        image        = var.otel_image
+        image        = "otel/opentelemetry-collector-contrib:0.99.0"
 
         volumes = [
           "local/config:/config",
@@ -120,23 +80,6 @@ receivers:
         read_buffer_size: 10943040
         max_concurrent_streams: 200
         write_buffer_size: 10943040
-      # http:
-  # nginx/session-proxy:
-  #   endpoint: http://session-proxy.service.consul:3004/status
-  #   collection_interval: 10s
-  # filelog/session-proxy:
-  #   include:
-  #     - /var/log/session-proxy/access.log
-  #   operators:
-  #     - type: json_parser
-  #       timestamp:
-  #         parse_from: attributes.time
-  #         layout: '%Y-%m-%dT%H:%M:%S%j'
-  #     - type: remove
-  #       id: body
-  #       field: body
-  #   resource:
-  #     service.name: session-proxy
   prometheus:
     config:
       scrape_configs:
@@ -150,7 +93,7 @@ receivers:
             format: ['prometheus']
           consul_sd_configs:
           - services: ['nomad-client', 'nomad', 'api', 'client-proxy', 'session-proxy', 'otel-collector', 'logs-collector', 'docker-reverse-proxy', 'loki', 'orchestrator', 'template-manager']
-            token: "${var.consul_token}"
+            token: "${consul_token}"
 
           relabel_configs:
           - source_labels: ['__meta_consul_tags']
@@ -192,44 +135,29 @@ processors:
         action: upsert
         value: session-proxy
 extensions:
-  basicauth/grafana_cloud_traces:
+  basicauth/grafana_cloud:
+    # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/extension/basicauthextension
     client_auth:
-      username: "${var.grafana_traces_username}"
-      password: "${var.grafana_api_key}"
-  basicauth/grafana_cloud_metrics:
-    client_auth:
-      username: "${var.grafana_metrics_username}"
-      password: "${var.grafana_api_key}"
-  basicauth/grafana_cloud_logs:
-    client_auth:
-      username: "${var.grafana_logs_username}"
-      password: "${var.grafana_api_key}"
+      username: "${grafana_username}"
+      password: "${grafana_otel_collector_token}"
+
   health_check:
 
 exporters:
   debug:
     verbosity: detailed
-  otlp/grafana_cloud_traces:
-    endpoint: "${var.grafana_traces_endpoint}"
+  otlphttp/grafana_cloud:
+    # https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlpexporter
+    endpoint: "${grafana_otlp_url}/otlp"
     auth:
-      authenticator: basicauth/grafana_cloud_traces
-  loki/grafana_cloud_logs:
-    endpoint: "${var.grafana_logs_endpoint}/loki/api/v1/push"
-    auth:
-      authenticator: basicauth/grafana_cloud_logs
-  prometheusremotewrite/grafana_cloud_metrics:
-    endpoint: "${var.grafana_metrics_endpoint}"
-    auth:
-      authenticator: basicauth/grafana_cloud_metrics
+      authenticator: basicauth/grafana_cloud
 
 service:
   telemetry:
     logs:
       level: warn
   extensions:
-    - basicauth/grafana_cloud_traces
-    - basicauth/grafana_cloud_metrics
-    - basicauth/grafana_cloud_logs
+    - basicauth/grafana_cloud
     - health_check
   pipelines:
     metrics:
@@ -238,26 +166,20 @@ service:
         - otlp
       processors: [filter, batch, metricstransform]
       exporters:
-        - prometheusremotewrite/grafana_cloud_metrics
-    # metrics/session-proxy:
-    #   receivers:
-        # - nginx/session-proxy
-      # processors: [batch, attributes/session-proxy]
-      # exporters:
-      #   - prometheusremotewrite/grafana_cloud_metrics
+        - otlphttp/grafana_cloud
     traces:
       receivers:
         - otlp
       processors: [batch]
       exporters:
-        - otlp/grafana_cloud_traces
+        -  otlphttp/grafana_cloud
     logs:
       receivers:
       # - filelog/session-proxy
         - otlp
       processors: [batch]
       exporters:
-        - loki/grafana_cloud_logs
+        -  otlphttp/grafana_cloud
 EOF
 
         destination = "local/config/otel-collector-config.yaml"
