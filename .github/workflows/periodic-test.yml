@@ -57,9 +57,9 @@ jobs:
           elif [ "${{ matrix.e2b-domain }}" == "e2b.dev" ]; then
             echo "api_key=${{ secrets.E2B_API_KEY }}" >> $GITHUB_OUTPUT
           elif [ "${{ matrix.e2b-domain }}" == "e2b-foxtrot.dev" ]; then
-            echo "api_key=${{ secrets.E2B_API_KEY_FOXTROT }}" >> $GITHUB_OUTPUT
-          else
             echo "api_key=${{ secrets.E2B_API_KEY }}" >> $GITHUB_OUTPUT
+          else
+            exit 1
           fi
 
       - name: Set Access Token based on domain
@@ -69,9 +69,9 @@ jobs:
           elif [ "${{ matrix.e2b-domain }}" == "e2b.dev" ]; then
             echo "access_token=${{ secrets.E2B_ACCESS_TOKEN }}" >> $GITHUB_OUTPUT
           elif [ "${{ matrix.e2b-domain }}" == "e2b-foxtrot.dev" ]; then
-            echo "access_token=${{ secrets.E2B_ACCESS_TOKEN_FOXTROT }}" >> $GITHUB_OUTPUT
-          else
             echo "access_token=${{ secrets.E2B_ACCESS_TOKEN }}" >> $GITHUB_OUTPUT
+          else
+            exit 1
           fi
 
       - name: ${{ matrix.test-command.name }}
