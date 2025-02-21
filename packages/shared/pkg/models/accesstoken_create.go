@@ -25,6 +25,38 @@ type AccessTokenCreate struct {
 	conflict []sql.ConflictOption
 }
 
+// SetUniqueID sets the "unique_id" field.
+func (atc *AccessTokenCreate) SetUniqueID(u uuid.UUID) *AccessTokenCreate {
+	atc.mutation.SetUniqueID(u)
+	return atc
+}
+
+// SetAccessTokenHash sets the "access_token_hash" field.
+func (atc *AccessTokenCreate) SetAccessTokenHash(s string) *AccessTokenCreate {
+	atc.mutation.SetAccessTokenHash(s)
+	return atc
+}
+
+// SetAccessTokenMask sets the "access_token_mask" field.
+func (atc *AccessTokenCreate) SetAccessTokenMask(s string) *AccessTokenCreate {
+	atc.mutation.SetAccessTokenMask(s)
+	return atc
+}
+
+// SetName sets the "name" field.
+func (atc *AccessTokenCreate) SetName(s string) *AccessTokenCreate {
+	atc.mutation.SetName(s)
+	return atc
+}
+
+// SetNillableName sets the "name" field if the given value is not nil.
+func (atc *AccessTokenCreate) SetNillableName(s *string) *AccessTokenCreate {
+	if s != nil {
+		atc.SetName(*s)
+	}
+	return atc
+}
+
 // SetUserID sets the "user_id" field.
 func (atc *AccessTokenCreate) SetUserID(u uuid.UUID) *AccessTokenCreate {
 	atc.mutation.SetUserID(u)
@@ -63,6 +95,7 @@ func (atc *AccessTokenCreate) Mutation() *AccessTokenMutation {
 
 // Save creates the AccessToken in the database.
 func (atc *AccessTokenCreate) Save(ctx context.Context) (*AccessToken, error) {
+	atc.defaults()
 	return withHooks(ctx, atc.sqlSave, atc.mutation, atc.hooks)
 }
 
@@ -88,8 +121,28 @@ func (atc *AccessTokenCreate) ExecX(ctx context.Context) {
 	}
 }
 
+// defaults sets the default values of the builder before save.
+func (atc *AccessTokenCreate) defaults() {
+	if _, ok := atc.mutation.Name(); !ok {
+		v := accesstoken.DefaultName
+		atc.mutation.SetName(v)
+	}
+}
+
 // check runs all checks and user-defined validators on the builder.
 func (atc *AccessTokenCreate) check() error {
+	if _, ok := atc.mutation.UniqueID(); !ok {
+		return &ValidationError{Name: "unique_id", err: errors.New(`models: missing required field "AccessToken.unique_id"`)}
+	}
+	if _, ok := atc.mutation.AccessTokenHash(); !ok {
+		return &ValidationError{Name: "access_token_hash", err: errors.New(`models: missing required field "AccessToken.access_token_hash"`)}
+	}
+	if _, ok := atc.mutation.AccessTokenMask(); !ok {
+		return &ValidationError{Name: "access_token_mask", err: errors.New(`models: missing required field "AccessToken.access_token_mask"`)}
+	}
+	if _, ok := atc.mutation.Name(); !ok {
+		return &ValidationError{Name: "name", err: errors.New(`models: missing required field "AccessToken.name"`)}
+	}
 	if _, ok := atc.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`models: missing required field "AccessToken.user_id"`)}
 	}
@@ -133,6 +186,22 @@ func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) 
 		_node.ID = id
 		_spec.ID.Value = id
 	}
+	if value, ok := atc.mutation.UniqueID(); ok {
+		_spec.SetField(accesstoken.FieldUniqueID, field.TypeUUID, value)
+		_node.UniqueID = value
+	}
+	if value, ok := atc.mutation.AccessTokenHash(); ok {
+		_spec.SetField(accesstoken.FieldAccessTokenHash, field.TypeString, value)
+		_node.AccessTokenHash = value
+	}
+	if value, ok := atc.mutation.AccessTokenMask(); ok {
+		_spec.SetField(accesstoken.FieldAccessTokenMask, field.TypeString, value)
+		_node.AccessTokenMask = value
+	}
+	if value, ok := atc.mutation.Name(); ok {
+		_spec.SetField(accesstoken.FieldName, field.TypeString, value)
+		_node.Name = value
+	}
 	if value, ok := atc.mutation.CreatedAt(); ok {
 		_spec.SetField(accesstoken.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -162,7 +231,7 @@ func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) 
 // of the `INSERT` statement. For example:
 //
 //	client.AccessToken.Create().
-//		SetUserID(v).
+//		SetUniqueID(v).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -171,7 +240,7 @@ func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) 
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.AccessTokenUpsert) {
-//			SetUserID(v+v).
+//			SetUniqueID(v+v).
 //		}).
 //		Exec(ctx)
 func (atc *AccessTokenCreate) OnConflict(opts ...sql.ConflictOption) *AccessTokenUpsertOne {
@@ -207,6 +276,18 @@ type (
 	}
 )
 
+// SetName sets the "name" field.
+func (u *AccessTokenUpsert) SetName(v string) *AccessTokenUpsert {
+	u.Set(accesstoken.FieldName, v)
+	return u
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *AccessTokenUpsert) UpdateName() *AccessTokenUpsert {
+	u.SetExcluded(accesstoken.FieldName)
+	return u
+}
+
 // SetUserID sets the "user_id" field.
 func (u *AccessTokenUpsert) SetUserID(v uuid.UUID) *AccessTokenUpsert {
 	u.Set(accesstoken.FieldUserID, v)
@@ -235,6 +316,15 @@ func (u *AccessTokenUpsertOne) UpdateNewValues() *AccessTokenUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		if _, exists := u.create.mutation.ID(); exists {
 			s.SetIgnore(accesstoken.FieldID)
+		}
+		if _, exists := u.create.mutation.UniqueID(); exists {
+			s.SetIgnore(accesstoken.FieldUniqueID)
+		}
+		if _, exists := u.create.mutation.AccessTokenHash(); exists {
+			s.SetIgnore(accesstoken.FieldAccessTokenHash)
+		}
+		if _, exists := u.create.mutation.AccessTokenMask(); exists {
+			s.SetIgnore(accesstoken.FieldAccessTokenMask)
 		}
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(accesstoken.FieldCreatedAt)
@@ -268,6 +358,20 @@ func (u *AccessTokenUpsertOne) Update(set func(*AccessTokenUpsert)) *AccessToken
 		set(&AccessTokenUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetName sets the "name" field.
+func (u *AccessTokenUpsertOne) SetName(v string) *AccessTokenUpsertOne {
+	return u.Update(func(s *AccessTokenUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *AccessTokenUpsertOne) UpdateName() *AccessTokenUpsertOne {
+	return u.Update(func(s *AccessTokenUpsert) {
+		s.UpdateName()
+	})
 }
 
 // SetUserID sets the "user_id" field.
@@ -341,6 +445,7 @@ func (atcb *AccessTokenCreateBulk) Save(ctx context.Context) ([]*AccessToken, er
 	for i := range atcb.builders {
 		func(i int, root context.Context) {
 			builder := atcb.builders[i]
+			builder.defaults()
 			var mut Mutator = MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
 				mutation, ok := m.(*AccessTokenMutation)
 				if !ok {
@@ -419,7 +524,7 @@ func (atcb *AccessTokenCreateBulk) ExecX(ctx context.Context) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.AccessTokenUpsert) {
-//			SetUserID(v+v).
+//			SetUniqueID(v+v).
 //		}).
 //		Exec(ctx)
 func (atcb *AccessTokenCreateBulk) OnConflict(opts ...sql.ConflictOption) *AccessTokenUpsertBulk {
@@ -466,6 +571,15 @@ func (u *AccessTokenUpsertBulk) UpdateNewValues() *AccessTokenUpsertBulk {
 			if _, exists := b.mutation.ID(); exists {
 				s.SetIgnore(accesstoken.FieldID)
 			}
+			if _, exists := b.mutation.UniqueID(); exists {
+				s.SetIgnore(accesstoken.FieldUniqueID)
+			}
+			if _, exists := b.mutation.AccessTokenHash(); exists {
+				s.SetIgnore(accesstoken.FieldAccessTokenHash)
+			}
+			if _, exists := b.mutation.AccessTokenMask(); exists {
+				s.SetIgnore(accesstoken.FieldAccessTokenMask)
+			}
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(accesstoken.FieldCreatedAt)
 			}
@@ -499,6 +613,20 @@ func (u *AccessTokenUpsertBulk) Update(set func(*AccessTokenUpsert)) *AccessToke
 		set(&AccessTokenUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetName sets the "name" field.
+func (u *AccessTokenUpsertBulk) SetName(v string) *AccessTokenUpsertBulk {
+	return u.Update(func(s *AccessTokenUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *AccessTokenUpsertBulk) UpdateName() *AccessTokenUpsertBulk {
+	return u.Update(func(s *AccessTokenUpsert) {
+		s.UpdateName()
+	})
 }
 
 // SetUserID sets the "user_id" field.

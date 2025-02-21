@@ -88,6 +88,10 @@ variable "postgres_connection_string_secret_name" {
   type = string
 }
 
+variable "supabase_jwt_secret_secret_name" {
+  type = string
+}
+
 # Proxies
 variable "session_proxy_service_name" {
   type = string

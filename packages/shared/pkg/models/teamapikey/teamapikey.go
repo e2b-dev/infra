@@ -16,6 +16,10 @@ const (
 	FieldID = "id"
 	// FieldAPIKey holds the string denoting the api_key field in the database.
 	FieldAPIKey = "api_key"
+	// FieldAPIKeyHash holds the string denoting the api_key_hash field in the database.
+	FieldAPIKeyHash = "api_key_hash"
+	// FieldAPIKeyMask holds the string denoting the api_key_mask field in the database.
+	FieldAPIKeyMask = "api_key_mask"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -54,6 +58,8 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldAPIKey,
+	FieldAPIKeyHash,
+	FieldAPIKeyMask,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldTeamID,
@@ -90,6 +96,16 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByAPIKey orders the results by the api_key field.
 func ByAPIKey(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAPIKey, opts...).ToFunc()
+}
+
+// ByAPIKeyHash orders the results by the api_key_hash field.
+func ByAPIKeyHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPIKeyHash, opts...).ToFunc()
+}
+
+// ByAPIKeyMask orders the results by the api_key_mask field.
+func ByAPIKeyMask(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPIKeyMask, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

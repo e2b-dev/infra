@@ -7,8 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
+	teamDB "github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 )
@@ -19,7 +20,7 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 	userID := a.GetUserID(c)
 
 	teamsDB, err := a.db.Client.Team.Query().
-		Where(team.HasUsersWith(user.ID(userID))).
+		Where(teamDB.HasUsersWith(user.ID(userID))).
 		WithTeamAPIKeys().
 		WithUsersTeams(func(query *models.UsersTeamsQuery) {
 			query.Where(usersteams.UserID(userID))
@@ -34,10 +35,18 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 
 	teams := make([]api.Team, len(teamsDB))
 	for i, teamDB := range teamsDB {
+		apiKey, err := team.CreateAPIKey(ctx, a.db, teamDB.ID, userID, "CLI login/configure")
+		if err != nil {
+			log.Println("Error when creating API key: ", err)
+			c.JSON(http.StatusInternalServerError, "Error when creating API key")
+
+			return
+		}
+
 		teams[i] = api.Team{
 			TeamID:    teamDB.ID.String(),
 			Name:      teamDB.Name,
-			ApiKey:    teamDB.Edges.TeamAPIKeys[0].APIKey,
+			ApiKey:    apiKey.APIKey,
 			IsDefault: teamDB.Edges.UsersTeams[0].IsDefault,
 		}
 	}

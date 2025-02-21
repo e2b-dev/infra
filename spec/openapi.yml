@@ -16,6 +16,14 @@ components:
       type: http
       scheme: bearer
       bearerFormat: access_token
+    Supabase1TokenAuth:
+      type: apiKey
+      in: header
+      name: X-Supabase-Token
+    Supabase2TeamAuth:
+      type: apiKey
+      in: header
+      name: X-Supabase-Team
     AdminTokenAuth:
       type: apiKey
       in: header
@@ -42,6 +50,18 @@ components:
         type: string
     nodeID:
       name: nodeID
+      in: path
+      required: true
+      schema:
+        type: string
+    apiKeyID:
+      name: apiKeyID
+      in: path
+      required: true
+      schema:
+        type: string
+    accessTokenID:
+      name: accessTokenID
       in: path
       required: true
       schema:
@@ -493,6 +513,125 @@ components:
             items:
                 type: string
 
+    CreatedAccessToken:
+      required:
+        - id
+        - name
+        - token
+        - tokenMask
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identifier of the access token
+        name:
+          type: string
+          description: Name of the access token
+        token:
+          type: string
+          description: Raw value of the access token
+        tokenMask:
+          type: string
+          description: Mask of the access token
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp of access token creation
+
+    NewAccessToken:
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Name of the access token
+
+    TeamAPIKey:
+      required:
+        - id
+        - name
+        - keyMask
+        - createdAt
+        - createdBy
+        - lastUsed
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identifier of the API key
+        name:
+          type: string
+          description: Name of the API key
+        keyMask:
+          type: string
+          description: Mask of the API key
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp of API key creation
+        createdBy:
+          allOf:
+            - $ref: "#/components/schemas/TeamUser"
+          nullable: true
+        lastUsed:
+          type: string
+          format: date-time
+          description: Last time this API key was used
+          nullable: true
+
+    CreatedTeamAPIKey:
+      required:
+        - id
+        - name
+        - key
+        - keyMask
+        - createdAt
+        - createdBy
+        - lastUsed
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identifier of the API key
+        name:
+          type: string
+          description: Name of the API key
+        key:
+          type: string
+          description: Raw value of the API key
+        keyMask:
+          type: string
+          description: Mask of the API key
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp of API key creation
+        createdBy:
+          allOf:
+            - $ref: "#/components/schemas/TeamUser"
+          nullable: true
+        lastUsed:
+          type: string
+          format: date-time
+          description: Last time this API key was used
+          nullable: true
+
+    NewTeamAPIKey:
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Name of the API key
+
+    UpdateTeamAPIKey:
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: New name for the API key
 
     Error:
       required:
@@ -511,6 +650,8 @@ tags:
   - name: templates
   - name: sandboxes
   - name: auth
+  - name: accesstokens
+  - name: apikeys
 
 paths:
   /health:
@@ -528,6 +669,7 @@ paths:
       tags: [auth]
       security:
         - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
       responses:
         "200":
           description: Successfully returned all teams
@@ -549,6 +691,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - name: query
           in: query
@@ -577,6 +721,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       requestBody:
         required: true
         content:
@@ -633,6 +779,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
         - in: query
@@ -670,6 +818,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -695,6 +845,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -716,6 +868,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -735,6 +889,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -755,6 +911,8 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -784,6 +942,8 @@ paths:
       description: Set the timeout for the sandbox. The sandbox will expire x seconds from the time of the request. Calling this method multiple times overwrites the TTL, each time using the current timestamp as the starting point to measure the timeout duration.
       security:
         - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -815,6 +975,8 @@ paths:
       description: Refresh the sandbox extending its time to live
       security:
         - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -843,6 +1005,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - in: query
           required: false
@@ -869,6 +1032,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
       requestBody:
         required: true
         content:
@@ -894,6 +1058,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -919,6 +1084,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -933,6 +1099,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -957,6 +1124,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -974,6 +1142,7 @@ paths:
       tags: [templates]
       security:
         - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -1056,6 +1225,134 @@ paths:
       responses:
         "204":
           description: The node status was changed successfully
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /accesstokens:
+    post:
+      description: Create a new access token
+      tags: [accesstokens]
+      security:
+        - Supabase1TokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewAccessToken"
+      responses:
+        "201":
+          description: Access token created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedAccessToken"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /accesstokens/{accessTokenID}:
+    delete:
+      description: Delete an access token
+      tags: [accesstokens]
+      security:
+        - Supabase1TokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/accessTokenID"
+      responses:
+        "204":
+          description: Access token deleted successfully
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /apikeys:
+    get:
+      description: List all team API keys
+      tags: [apikeys]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      responses:
+        "200":
+          description: Successfully returned all team API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamAPIKey"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+    post:
+      description: Create a new team API key
+      tags: [apikeys]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewTeamAPIKey"
+      responses:
+        "201":
+          description: Team API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedTeamAPIKey"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /apikeys/{apiKeyID}:
+    patch:
+      description: Update a team API key
+      tags: [apikeys]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/apiKeyID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTeamAPIKey"
+      responses:
+        "200":
+          description: Team API key updated successfully
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+    delete:
+      description: Delete a team API key
+      tags: [apikeys]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/apiKeyID"
+      responses:
+        "204":
+          description: Team API key deleted successfully
         "401":
           $ref: "#/components/responses/401"
         "404":
