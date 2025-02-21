@@ -113,6 +113,7 @@ resource "cloudflare_record" "a_star" {
   name    = "*"
   value   = google_compute_global_forwarding_rule.https.ip_address
   type    = "A"
+  comment = var.gcp_project_id
 }
 
 data "cloudflare_zone" "domains_additional" {
@@ -137,6 +138,7 @@ resource "cloudflare_record" "a_star_additional" {
   name     = "*"
   value    = google_compute_global_forwarding_rule.https.ip_address
   type     = "A"
+  comment  = var.gcp_project_id
 }
 
 # =======================================
