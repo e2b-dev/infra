@@ -45,10 +45,13 @@ type Uffd struct {
 	socketPath string
 }
 
+// Disable stops the uffd from returning pages and returns only nil for all requested pages
+// Requested pages are tracked and can be requested using the Dirty
 func (u *Uffd) Disable() error {
 	return u.memfile.Disable()
 }
 
+// Dirty returns a bitset of the pages that have been requested
 func (u *Uffd) Dirty() *bitset.BitSet {
 	return u.memfile.Dirty()
 }

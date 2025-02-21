@@ -7,7 +7,28 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-func New(isLocal bool) (*zap.SugaredLogger, error) {
+type Logger interface {
+	Debug(args ...interface{})
+
+	Info(args ...interface{})
+	Infof(template string, args ...interface{})
+
+	Warn(args ...interface{})
+	Warnf(template string, args ...interface{})
+
+	Error(args ...interface{})
+	Errorf(template string, args ...interface{})
+	Errorw(msg string, keysAndValues ...interface{})
+
+	Panic(args ...interface{})
+
+	Fatalf(template string, args ...interface{})
+
+	// Desugar is ZapLogger specific returns the underlying zap.Logger
+	Desugar() *zap.Logger
+}
+
+func New(isLocal bool) (Logger, error) {
 	config := zap.Config{
 		Level:             zap.NewAtomicLevelAt(zap.InfoLevel),
 		Development:       isLocal,

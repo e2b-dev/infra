@@ -8,11 +8,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
-	"go.uber.org/zap"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 )
@@ -45,7 +45,7 @@ type InstanceCache struct {
 
 	cache *ttlcache.Cache[string, InstanceInfo]
 
-	logger *zap.SugaredLogger
+	logger logging.Logger
 
 	sandboxCounter metric.Int64UpDownCounter
 	createdCounter metric.Int64Counter
@@ -56,7 +56,7 @@ type InstanceCache struct {
 
 func NewCache(
 	analytics analyticscollector.AnalyticsCollectorClient,
-	logger *zap.SugaredLogger,
+	logger logging.Logger,
 	insertInstance func(data InstanceInfo) error,
 	deleteInstance func(data InstanceInfo) error,
 ) *InstanceCache {

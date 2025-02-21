@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -26,9 +27,11 @@ type CowDevice struct {
 	BaseBuildId string
 
 	finishedOperations chan struct{}
+
+	logger logging.Logger
 }
 
-func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64) (*CowDevice, error) {
+func NewCowDevice(logger logging.Logger, rootfs *template.Storage, cachePath string, blockSize int64) (*CowDevice, error) {
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
@@ -50,6 +53,7 @@ func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64) (
 		blockSize:          blockSize,
 		finishedOperations: make(chan struct{}, 1),
 		BaseBuildId:        rootfs.Header().Metadata.BaseBuildId.String(),
+		logger:             logger,
 	}, nil
 }
 
@@ -62,13 +66,15 @@ func (o *CowDevice) Start(ctx context.Context) error {
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
 }
 
+// Export exports the dirty blocks from the COW device and closes it
+// Requires the stopSandbox function to call the COW Close function
 func (o *CowDevice) Export(ctx context.Context, out io.Writer, stopSandbox func() error) (*bitset.BitSet, error) {
 	cache, err := o.overlay.EjectCache()
 	if err != nil {
 		return nil, fmt.Errorf("error ejecting cache: %w", err)
 	}
 
-        // the error is already logged in go routine in SandboxCreate handler
+	// the error is already logged in go routine in SandboxCreate handler
 	go stopSandbox()
 
 	select {
@@ -78,6 +84,7 @@ func (o *CowDevice) Export(ctx context.Context, out io.Writer, stopSandbox func(
 		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
 	}
 
+	// Dirty blocks from the COW device
 	dirty, err := cache.Export(out)
 	if err != nil {
 		return nil, fmt.Errorf("error exporting cache: %w", err)
@@ -141,7 +148,7 @@ func (o *CowDevice) Close() error {
 		break
 	}
 
-	fmt.Printf("overlay device released\n")
+	o.logger.Infof("overlay device released")
 
 	return nil
 }

@@ -9,13 +9,13 @@ import (
 
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -117,7 +117,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 	node.SyncBuilds(builds)
 }
 
-func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogClient *analyticscollector.PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
+func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogClient *analyticscollector.PosthogClient, logger logging.Logger) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
 		duration := time.Since(info.StartTime).Seconds()
 
@@ -170,7 +170,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 	}
 }
 
-func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
+func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger logging.Logger) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
 		node := o.GetNode(info.Instance.ClientID)
 		if node == nil {

@@ -1,0 +1,16 @@
+with-expecter: True
+dir: mocks/{{ replaceAll .InterfaceDirRelative "internal" "internal_" }} 
+mockname: "{{.InterfaceName}}"
+outpkg: "{{.PackageName}}"
+filename: "{{.InterfaceName}}.go"
+all: True
+
+# Remove when updating to v3
+resolve-type-alias: False
+# Remove when updating to v3
+issue-845-fix: True
+
+packages:
+  github.com/e2b-dev/infra/packages/orchestrator:
+    config:
+      recursive: True
