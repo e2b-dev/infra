@@ -88,4 +88,9 @@ const output = await streamCommandOutput('npx', [
     templateID
 ])
 
+
+if (output.status.code !== 0) {
+    throw new Error(`Delete failed with code ${output.status.code}`);
+}
+
 console.log('Template deleted successfully')
