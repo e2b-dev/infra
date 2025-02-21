@@ -14,3 +14,7 @@ build-and-upload:
 	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
 	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push .
 	@rm -rf .shared/
+
+.PHONY: test
+test:
+	go test -v ./...
