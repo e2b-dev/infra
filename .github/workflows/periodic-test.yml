@@ -28,12 +28,12 @@ jobs:
           # - "e2b-robert.dev"
           - "e2b-foxtrot.dev"
         test-command:
-          - command: "tests/periodic-test/run-code.ts"
+          - command: "run-code"
             name: "Run Code Tests"
-          - command: "index.ts"
+          - command: "build-template"
             name: "build and delete template"
-            dir: "tests/periodic-test/build-template/"
-          - command: "tests/periodic-test/snapshot-and-resume.ts"
+            dir: "tests/periodic-test/build-template"
+          - command: "snapshot-and-resume"
             name: "snapshot and resume"
       fail-fast: false
     steps:

@@ -6,7 +6,13 @@
   "type": "module",
   "author": "e2b.dev",
   "dependencies": {
-    "e2b": "^0.13.0",
-    "dotenv": "^16.3.1"
+    "@e2b/code-interpreter": "^1.2.0-beta.1",
+    "dotenv": "^16.3.1",
+    "e2b": "^1.0.7"
+  },
+  "scripts": {
+    "run-code": "node periodic-test/run-code.js",
+    "build-template": "cd periodic-test/build-template/ && node index.js",
+    "snapshot-and-resume": "node periodic-test/snapshot-and-resume.js"
   }
 }
