@@ -88,4 +88,4 @@ const output = await streamCommandOutput('npx', [
     templateID
 ])
 
-console.log('Template deleted successfully', output)
+console.log('Template deleted successfully')
