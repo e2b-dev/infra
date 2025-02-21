@@ -25,8 +25,9 @@ jobs:
     strategy:
       matrix:
         e2b-domain: # each domain is a different cluster 
-          # - "e2b-robert.dev"
           - "e2b-foxtrot.dev"
+          - "e2b.dev"
+          - "e2b-juliett.dev"
         test-command:
           - command: "tests/periodic-test/run-code.ts"
             name: "Run Code Tests"
@@ -53,10 +54,26 @@ jobs:
       - name: Set API Key
         id: set-api-key
         run: |
-          if [ "${{ matrix.e2b-domain }}" == "e2b-robert.dev" ]; then
-            echo "api_key=${{ secrets.E2B_API_KEY_ROBERT }}" >> $GITHUB_OUTPUT
+          if [ "${{ matrix.e2b-domain }}" == "e2b-juliett.dev" ]; then
+            echo "api_key=${{ secrets.E2B_API_KEY_JULIETT }}" >> $GITHUB_OUTPUT
+          elif [ "${{ matrix.e2b-domain }}" == "e2b.dev" ]; then
+            echo "api_key=${{ secrets.E2B_API_KEY }}" >> $GITHUB_OUTPUT
+          elif [ "${{ matrix.e2b-domain }}" == "e2b-foxtrot.dev" ]; then
+            echo "api_key=${{ secrets.E2B_API_KEY_FOXTROT }}" >> $GITHUB_OUTPUT
           else
             echo "api_key=${{ secrets.E2B_API_KEY }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set Access Token based on domain
+        run: |
+          if [ "${{ matrix.e2b-domain }}" == "e2b-juliett.dev" ]; then
+            echo "access_token=${{ secrets.E2B_ACCESS_TOKEN_JULIETT }}" >> $GITHUB_OUTPUT
+          elif [ "${{ matrix.e2b-domain }}" == "e2b.dev" ]; then
+            echo "access_token=${{ secrets.E2B_ACCESS_TOKEN }}" >> $GITHUB_OUTPUT
+          elif [ "${{ matrix.e2b-domain }}" == "e2b-foxtrot.dev" ]; then
+            echo "access_token=${{ secrets.E2B_ACCESS_TOKEN_FOXTROT }}" >> $GITHUB_OUTPUT
+          else
+            echo "access_token=${{ secrets.E2B_ACCESS_TOKEN }}" >> $GITHUB_OUTPUT
           fi
 
       - name: ${{ matrix.test-command.name }}
@@ -64,7 +81,7 @@ jobs:
         working-directory: ${{ matrix.test-command.dir }}
         env:
           E2B_API_KEY: ${{ steps.set-api-key.outputs.api_key }}
-          E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
+          E2B_ACCESS_TOKEN: ${{ steps.set-access-token.outputs.access_token }}
           E2B_DOMAIN: ${{ matrix.e2b-domain }}
 
       - name: Periodic check failed - Slack Notification
