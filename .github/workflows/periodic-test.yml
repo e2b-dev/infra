@@ -63,6 +63,7 @@ jobs:
           fi
 
       - name: Set Access Token based on domain
+        id: set-access-token
         run: |
           if [ "${{ matrix.e2b-domain }}" == "e2b-juliett.dev" ]; then
             echo "access_token=${{ secrets.E2B_ACCESS_TOKEN_JULIETT }}" >> $GITHUB_OUTPUT
