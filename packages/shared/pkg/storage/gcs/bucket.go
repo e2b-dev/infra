@@ -1,6 +1,9 @@
 package gcs
 
 import (
+	"context"
+	"sync"
+
 	"cloud.google.com/go/storage"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -8,12 +11,21 @@ import (
 
 type BucketHandle = storage.BucketHandle
 
+var clientOnce sync.Once
+var client *storage.Client
+
+var getClient = sync.OnceValue(func() *storage.Client {
+	return utils.Must(newClient(context.Background()))
+})
+
 func newBucket(bucket string) *BucketHandle {
-	return client.Bucket(bucket)
+	return getClient().Bucket(bucket)
 }
 
-var (
-	templateBucketName = utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "bucket for storing template files")
+func getTemplateBucketName() string {
+	return utils.RequiredEnv("TEMPLATE_BUCKET_NAME", "bucket for storing template files")
+}
 
-	TemplateBucket = newBucket(templateBucketName)
-)
+func GetTemplateBucket() *BucketHandle {
+	return newBucket(getTemplateBucketName())
+}
