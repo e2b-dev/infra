@@ -1,13 +1,26 @@
 name: Run tests on PRs
 on:
-  pull_request
+  pull_request:
+    branches:
+      - main
 
 jobs:
   run-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - name: Setup Golang
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.22
-      - run: make test
+          go-version: 1.23
+          go-version-file: go.mod
+      # Check out this article, btw. https://danp.net/posts/github-actions-go-cache
+      - name: Cache Go dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod # actually uses `go env GOMODCACHE` output
+            ~/.cache/go-build # actually uses `go env GOCACHE` output
+          key: setup-go-Linux-x64-ubuntu24-go-1.23-${{ hashFiles('go.sum') }}
+      - name: Run tests
+        run: make test
