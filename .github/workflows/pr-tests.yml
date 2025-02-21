@@ -1,0 +1,13 @@
+name: Run tests on PRs
+on:
+  pull_request
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.22
+      - run: make test
