@@ -239,3 +239,4 @@ module "nomad" {
   redis_port = var.redis_port
 }
 
+
