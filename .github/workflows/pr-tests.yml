@@ -14,14 +14,13 @@ jobs:
         with:
           go-version: 1.23
           go-version-file: go.mod
-      # Check out this article, btw. https://danp.net/posts/github-actions-go-cache
       - name: Cache Go dependencies
         uses: actions/cache@v4
         with:
           path: |
-            ~/go/pkg/mod # actually uses `go env GOMODCACHE` output
-            ~/.cache/go-build # actually uses `go env GOCACHE` output
-          key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
+            ~/go/pkg/mod  # Uses `go env GOMODCACHE`
+            ~/.cache/go-build  # Uses `go env GOCACHE`
+          key: ${{ runner.os }}-golang-${{ hashFiles('packages/**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-golang-
       - name: Run tests
