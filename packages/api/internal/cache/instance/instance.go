@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 const (
@@ -46,6 +47,7 @@ type InstanceInfo struct {
 
 type InstanceCache struct {
 	reservations *ReservationCache
+	pausing      *smap.Map[*InstanceInfo]
 
 	cache *ttlcache.Cache[string, InstanceInfo]
 
@@ -114,6 +116,40 @@ func NewCache(
 	go cache.Start()
 
 	return instanceCache
+}
+
+func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {
+	if instanceInfo.AutoPause == nil {
+		return
+	}
+
+	if *instanceInfo.AutoPause {
+		c.pausing.InsertIfAbsent(instanceInfo.Instance.SandboxID, instanceInfo)
+	}
+}
+
+func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
+	c.pausing.RemoveCb(instanceInfo.Instance.SandboxID, func(key string, v *InstanceInfo, exists bool) bool {
+		return v.Instance.SandboxID == instanceInfo.Instance.SandboxID && v.StartTime == instanceInfo.StartTime
+	})
+}
+
+func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (*node.NodeInfo, bool) {
+	instanceInfo, ok := c.pausing.Get(sandboxID)
+	if !ok {
+		return nil, false
+	}
+
+	select {
+	case _, ok := <-instanceInfo.AutoPauseCh:
+		if !ok {
+			return instanceInfo.Node, true
+		}
+
+		return nil, false
+	case <-ctx.Done():
+		return nil, false
+	}
 }
 
 func (c *InstanceInfo) PauseDone(err error) {

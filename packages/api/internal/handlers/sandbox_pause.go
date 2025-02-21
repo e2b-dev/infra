@@ -53,15 +53,19 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	err, ok := <-sbx.AutoPauseCh
-	if !ok {
-		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
-		return
-	}
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
-		return
-	}
+	select {
+	case err, ok := <-sbx.AutoPauseCh:
+		if !ok {
+			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
+			return
+		}
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
+			return
+		}
+		c.Status(http.StatusNoContent)
 
-	c.Status(http.StatusNoContent)
+	case <-ctx.Done():
+		return
+	}
 }

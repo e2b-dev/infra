@@ -123,6 +123,8 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 	logger *zap.SugaredLogger,
 ) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
+		defer o.instanceCache.UnmarkAsPausing(&info)
+
 		duration := time.Since(info.StartTime).Seconds()
 
 		_, err := o.analytics.Client.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
@@ -173,11 +175,17 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		}
 
 		if *info.AutoPause {
+			o.instanceCache.MarkAsPausing(&info)
+
 			err = o.PauseInstance(ctx, o.tracer, &info, *info.TeamID)
 			if err != nil {
 				info.PauseDone(err)
 				return fmt.Errorf("failed to auto pause sandbox '%s': %w", info.Instance.SandboxID, err)
 			}
+
+			// We explicitly unmark as pausing here to avoid a race condition
+			// where we are creating a new instance and the pausing one is still in the pausing cache.
+			o.instanceCache.UnmarkAsPausing(&info)
 			info.PauseDone(nil)
 		} else {
 			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
@@ -212,6 +220,10 @@ func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *za
 		})
 		if err != nil {
 			logger.Errorf("Error sending Analytics event: %v", err)
+		}
+
+		if *info.AutoPause {
+			o.instanceCache.MarkAsPausing(&info)
 		}
 
 		return nil

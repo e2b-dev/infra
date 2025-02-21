@@ -80,6 +80,13 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
+	// Wait for any pausing for this sandbox in progress.
+	node, pausing := a.orchestrator.WaitForPause(ctx, sandboxID)
+	if pausing {
+		// If the pausing was in progress, prefer to restore on the node where the pausing happened.
+		clientID = node.ID
+	}
+
 	snapshot, build, err := a.db.GetLastSnapshot(ctx, sandboxID, teamInfo.Team.ID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error resuming sandbox: %s", err))

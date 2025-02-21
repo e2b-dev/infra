@@ -119,6 +119,9 @@ func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
 	value, found := c.cache.GetAndDelete(instanceID, ttlcache.WithDisableTouchOnHit[string, InstanceInfo]())
 	if found {
 		*value.Value().AutoPause = pause
+
+		v := value.Value()
+		c.MarkAsPausing(&v)
 	}
 
 	return found
