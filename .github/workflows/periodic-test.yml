@@ -2,8 +2,6 @@ name: Periodic Tests
 
 on:
   schedule:
-    # every hour on hour 38
-    # 38 to avoid peak traffic
     - cron: '*/10 * * * *'
   workflow_dispatch:
   # only run on changes to periodic-test dir 
