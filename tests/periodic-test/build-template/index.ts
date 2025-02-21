@@ -1,9 +1,5 @@
 import { Sandbox } from "npm:@e2b/code-interpreter";
 
-// print true if env vars are set 
-console.log('E2B_API_KEY:', !!Deno.env.get('E2B_API_KEY'))
-console.log('E2B_ACCESS_TOKEN:', !!Deno.env.get('E2B_ACCESS_TOKEN'))
-console.log('E2B_DOMAIN:', !!Deno.env.get('E2B_DOMAIN'))
 
 // Helper function to stream command output
 async function streamCommandOutput(command: string, args: string[]) {
@@ -81,3 +77,15 @@ const execution = await sandbox.runCode('x+=1; x');
 console.log('Execution result:', execution);
 // kill sandbox
 await sandbox.kill()
+
+
+// delete template
+const output = await streamCommandOutput('npx', [
+    '@e2b/cli',
+    'template',
+    'delete',
+    '-y',
+    templateID
+])
+
+console.log('Template deleted successfully', output)
