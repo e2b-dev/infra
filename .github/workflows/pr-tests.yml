@@ -6,7 +6,7 @@ on:
 
 jobs:
   run-tests:
-    name: Run tests for {{ matrix.package }}
+    name: Run tests for ${{ matrix.package }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
