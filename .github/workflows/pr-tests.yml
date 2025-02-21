@@ -21,6 +21,8 @@ jobs:
           path: |
             ~/go/pkg/mod # actually uses `go env GOMODCACHE` output
             ~/.cache/go-build # actually uses `go env GOCACHE` output
-          key: setup-go-Linux-x64-ubuntu24-go-1.23-${{ hashFiles('go.sum') }}
+          key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-golang-
       - name: Run tests
         run: make test
