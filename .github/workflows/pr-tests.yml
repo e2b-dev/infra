@@ -7,28 +7,48 @@ on:
 jobs:
   run-tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - package: packages/api
+            test_path: ./...
+          - package: packages/client-proxy
+            test_path: ./...
+          - package: packages/docker-reverse-proxy
+            test_path: ./...
+          - package: packages/envd
+            test_path: ./...
+          - package: packages/orchestrator
+            test_path: ./...
+          - package: packages/shared
+            test_path: ./pkg/...
+          - package: packages/template-manager
+            test_path: ./...
     steps:
       - uses: actions/checkout@v3
       - name: Setup Golang
         uses: actions/setup-go@v5
         with:
           go-version: 1.23
-      - name: Cache Go dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod  # Uses `go env GOMODCACHE`
-            ~/.cache/go-build  # Uses `go env GOCACHE`
-          key: ${{ runner.os }}-golang-${{ hashFiles('packages/**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-golang-
-      - name: Download dependencies for each package
+          cache: true
+      - name: Go Cache Paths
+        id: go-cache-paths
         run: |
-          for dir in packages/*; do
-            if [ -f "$dir/go.mod" ]; then
-              echo "Running go mod download in $dir"
-              (cd "$dir" && go mod download)
-            fi
-          done
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+
+      - name: Go Build Cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-build }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
+
+      - name: Go Mod Cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-mod }}
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+
       - name: Run tests
-        run: make test
+        working-directory: ${{ matrix.package }}
+        run: go test -v ${{ matrix.test_path }}
