@@ -2,6 +2,7 @@ package instance
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -89,6 +90,7 @@ func NewCache(
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
 		reservations:   NewReservationCache(),
+		pausing:        smap.New[*InstanceInfo](),
 	}
 
 	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, InstanceInfo]) {
@@ -129,8 +131,26 @@ func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {
 }
 
 func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
+	fmt.Println(instanceInfo)
+	fmt.Println(instanceInfo.Instance)
+	fmt.Println(instanceInfo.Instance.SandboxID)
+
 	c.pausing.RemoveCb(instanceInfo.Instance.SandboxID, func(key string, v *InstanceInfo, exists bool) bool {
-		return v.Instance.SandboxID == instanceInfo.Instance.SandboxID && v.StartTime == instanceInfo.StartTime
+		if v == nil {
+			return false
+		}
+
+		if instanceInfo == nil {
+			return false
+		}
+
+		if v == instanceInfo {
+			fmt.Println("v == instanceInfo")
+
+			return v.Instance.SandboxID == instanceInfo.Instance.SandboxID
+		}
+
+		return false
 	})
 }
 
