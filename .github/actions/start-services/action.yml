@@ -26,9 +26,9 @@ runs:
 
     - name: Start Services
       run: |
-        mkdir -p /logs
-        make -C packages/orchestrator run-debug 2>&1 | tee /logs/orchestrator.log &
-        make -C packages/api run 2>&1 | tee /logs/api.log &
+        mkdir -p ~/logs
+        make -C packages/orchestrator run-debug 2>&1 | tee ~/logs/orchestrator.log &
+        make -C packages/api run 2>&1 | tee ~/logs/api.log &
         
         sleep 30 # Wait for services to start
         echo "Services started"
