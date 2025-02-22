@@ -7,3 +7,4 @@ runs:
     - name: Run Infra Tests
       run: |
         make test-infra
+      shell: bash

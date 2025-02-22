@@ -12,3 +12,4 @@ runs:
         FIRECRACKER_VERSION: "v1.10.1_1fcdaec"
       run: |
         make -C packages/template-manager build-template TEMPLATE_ID=${TEMPLATE_ID} BUILD_ID=${BUILD_ID} KERNEL_VERSION=${KERNEL_VERSION} FC_VERSION=${FC_VERSION}
+      shell: bash

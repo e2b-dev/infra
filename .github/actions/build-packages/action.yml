@@ -9,6 +9,7 @@ runs:
       run: |
         echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
         echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+      shell: bash
 
     - name: Go Build Cache
       uses: actions/cache@v4
@@ -33,3 +34,4 @@ runs:
         make -C packages/template-manager build-debug
         make -C packages/orchestrator build-debug
         make -C packages/api build-debug
+      shell: bash

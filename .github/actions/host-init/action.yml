@@ -27,6 +27,7 @@ runs:
         printenv > .env.test
         
         echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
+      shell: bash
 
     - name: Set up Docker
       run: |
@@ -38,8 +39,10 @@ runs:
         
         echo "::add-mask::$DOCKER_AUTH_BASE64"
         echo "DOCKER_AUTH_BASE64=${DOCKER_AUTH_BASE64}" >> $GITHUB_ENV
+      shell: bash
 
     - name: Initialize Host
       run: |
         chmod +x ./.github/workflows/artifacts/init-client.sh
         sudo -E bash -c "./.github/workflows/artifacts/init-client.sh"
+      shell: bash

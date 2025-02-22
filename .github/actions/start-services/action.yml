@@ -22,6 +22,7 @@ runs:
         set -x
         make migrate
         make seed-test
+      shell: bash
 
     - name: Start Services
       run: |
@@ -30,3 +31,4 @@ runs:
         
         sleep 30 # Wait for services to start
         echo "Services started"
+      shell: bash
