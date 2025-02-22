@@ -1,0 +1,9 @@
+name: "Run Integration Tests"
+description: "Executes integration tests."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run Infra Tests
+      run: |
+        make test-infra
