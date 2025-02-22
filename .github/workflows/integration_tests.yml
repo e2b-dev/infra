@@ -15,11 +15,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Initialize Host
-        uses: ./.github/actions/host-init
-
       - name: Build Packages
         uses: ./.github/actions/build-packages
+
+      - name: Initialize Host
+        uses: ./.github/actions/host-init
 
       - name: Build Template
         uses: ./.github/actions/build-sandbox-template
