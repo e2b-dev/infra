@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"go.uber.org/zap"
 
 	"github.com/bits-and-blooms/bitset"
 )
@@ -174,7 +175,7 @@ func (u *Uffd) handle(sandboxId string) (err error) {
 	defer func() {
 		closeErr := syscall.Close(int(uffd))
 		if closeErr != nil {
-			fmt.Fprintf(os.Stderr, "[sandbox %s]: failed to close uffd at path %s: %v\n", sandboxId, u.socketPath, closeErr)
+			zap.L().Error("failed to close uffd", zap.String("sandbox_id", sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
 	}()
 

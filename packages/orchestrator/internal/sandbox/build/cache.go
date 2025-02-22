@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
@@ -31,7 +32,7 @@ func NewDiffStore(bucket *gcs.BucketHandle, ctx context.Context) (*DiffStore, er
 
 		err := buildData.Close()
 		if err != nil {
-			fmt.Printf("[build data cache]: failed to cleanup build data for item %s: %v\n", item.Key(), err)
+			zap.L().Warn("failed to cleanup build data for item", zap.String("item_key", item.Key()), zap.Error(err))
 		}
 	})
 

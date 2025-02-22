@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
 type SandboxMetrics struct {
@@ -49,10 +52,15 @@ func (s *Sandbox) LogMetrics(ctx context.Context) {
 	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrcis) {
 		metrics, err := s.GetMetrics(ctx)
 		if err != nil {
-			s.Logger.Warnf("failed to get metrics: %s", err)
+			s.Logger.Warn("failed to get metrics", zap.Error(err))
 		} else {
-			s.Logger.Metrics(
-				metrics.MemTotalMiB, metrics.MemUsedMiB, metrics.CPUCount, metrics.CPUUsedPercent)
+			s.Logger.Metrics(sbxlogger.SandboxMetricsFields{
+				Timestamp:      metrics.Timestamp,
+				CPUCount:       metrics.CPUCount,
+				CPUUsedPercent: metrics.CPUUsedPercent,
+				MemTotalMiB:    metrics.MemTotalMiB,
+				MemUsedMiB:     metrics.MemUsedMiB,
+			})
 		}
 	}
 }

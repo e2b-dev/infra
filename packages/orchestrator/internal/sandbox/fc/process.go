@@ -14,12 +14,13 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -140,7 +141,7 @@ func NewProcess(
 func (p *Process) Start(
 	ctx context.Context,
 	tracer trace.Tracer,
-	logger *logs.SandboxLogger,
+	sbxLogger *sbxlogger.SandboxLogger,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
@@ -149,7 +150,7 @@ func (p *Process) Start(
 		defer func() {
 			readerErr := p.stdout.Close()
 			if readerErr != nil {
-				logger.Errorf("[sandbox %s]: error closing fc stdout reader: %v\n", p.metadata.SandboxId, readerErr)
+				sbxLogger.Error("Error closing fc stdout reader", zap.Error(readerErr))
 			}
 		}()
 
@@ -158,12 +159,12 @@ func (p *Process) Start(
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			logger.Infof("[sandbox %s]: stdout: %s\n", p.metadata.SandboxId, line)
+			sbxLogger.Info("", zap.String("stdout", line))
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			logger.Errorf("[sandbox %s]: error reading fc stdout: %v\n", p.metadata.SandboxId, readerErr)
+			sbxLogger.Error("error reading fc stdout", zap.Error(readerErr))
 		}
 	}()
 
@@ -171,7 +172,7 @@ func (p *Process) Start(
 		defer func() {
 			readerErr := p.stderr.Close()
 			if readerErr != nil {
-				logger.Errorf("[sandbox %s]: error closing fc stderr reader: %v\n", p.metadata.SandboxId, readerErr)
+				sbxLogger.Error("error closing fc stderr reader", zap.Error(readerErr))
 			}
 		}()
 
@@ -180,12 +181,12 @@ func (p *Process) Start(
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			logger.Warnf("[sandbox %s]: stderr: %s\n", p.metadata.SandboxId, line)
+			sbxLogger.Warn("error scanning fc stderr", zap.String("stderr", line))
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			logger.Errorf("[sandbox %s]: error reading fc stderr: %v\n", p.metadata.SandboxId, readerErr)
+			sbxLogger.Error("error reading fc stderr", zap.Error(readerErr))
 		}
 	}()
 
