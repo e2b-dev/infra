@@ -150,3 +150,13 @@ setup-ssh:
 	@ gcloud compute config-ssh --remove
 	@ gcloud compute config-ssh --project $(GCP_PROJECT_ID) --quiet
 	@ printf "SSH setup complete\n"
+
+.PHONY: test
+test:
+	$(MAKE) -C packages/api test
+	$(MAKE) -C packages/client-proxy test
+	$(MAKE) -C packages/docker-reverse-proxy test
+	$(MAKE) -C packages/envd test
+	$(MAKE) -C packages/orchestrator test
+	$(MAKE) -C packages/shared test
+	$(MAKE) -C packages/template-manager test
