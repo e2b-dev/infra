@@ -1,0 +1,32 @@
+name: "Start Services"
+description: "Sets up and starts the required services, including PostgreSQL."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run PostgreSQL Database
+      run: |
+        docker run -d --name postgres \
+                      -e POSTGRES_USER=postgres \
+                      -e POSTGRES_PASSWORD=local \
+                      -e POSTGRES_DB=mydatabase \
+                      -p 5432:5432 \
+                      --health-cmd="pg_isready -U postgres" \
+                      --health-interval=5s \
+                      --health-timeout=2s \
+                      --health-retries=5 \
+                      postgres:latest
+        while [ "$(docker inspect -f '{{.State.Health.Status}}' postgres 2>/dev/null)" != "healthy" ]; do echo "Waiting for PostgreSQL to be healthy..."; sleep 2; done
+        echo "PostgreSQL is healthy!"
+        
+        set -x
+        make migrate
+        make seed-test
+
+    - name: Start Services
+      run: |
+        make -C packages/orchestrator run-debug > /dev/stdout 2>&1 &
+        make -C packages/api run > /dev/stdout 2>&1 &
+        
+        sleep 30 # Wait for services to start
+        echo "Services started"

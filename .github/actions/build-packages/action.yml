@@ -1,0 +1,35 @@
+name: "Build Packages"
+description: "Compiles and builds Go services."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Go Cache Paths
+      id: go-cache-paths
+      run: |
+        echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+        echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+
+    - name: Go Build Cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.go-cache-paths.outputs.go-build }}
+        key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
+
+    - name: Go Mod Cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.go-cache-paths.outputs.go-mod }}
+        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+
+    - name: Setup Golang
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.work'
+        cache: false
+
+    - name: Build Packages
+      run: |
+        make -C packages/template-manager build-debug
+        make -C packages/orchestrator build-debug
+        make -C packages/api build-debug
