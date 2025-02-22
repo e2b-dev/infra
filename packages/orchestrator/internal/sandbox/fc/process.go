@@ -152,7 +152,6 @@ func (p *Process) Start(
 			line := scanner.Text()
 
 			logger.Infof("[sandbox %s]: stdout: %s\n", p.metadata.SandboxId, line)
-			fmt.Printf("stdout: %s\n", line)
 		}
 
 		readerErr := scanner.Err()
@@ -174,7 +173,6 @@ func (p *Process) Start(
 		for scanner.Scan() {
 			line := scanner.Text()
 			logger.Warnf("[sandbox %s]: stderr: %s\n", p.metadata.SandboxId, line)
-			fmt.Printf("stderr: %s\n", line)
 		}
 
 		readerErr := scanner.Err()
