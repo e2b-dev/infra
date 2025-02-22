@@ -62,6 +62,16 @@ func APIKey(v string) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKey, v))
 }
 
+// APIKeyHash applies equality check predicate on the "api_key_hash" field. It's identical to APIKeyHashEQ.
+func APIKeyHash(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyHash, v))
+}
+
+// APIKeyMask applies equality check predicate on the "api_key_mask" field. It's identical to APIKeyMaskEQ.
+func APIKeyMask(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyMask, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldEQ(FieldCreatedAt, v))
@@ -155,6 +165,136 @@ func APIKeyEqualFold(v string) predicate.TeamAPIKey {
 // APIKeyContainsFold applies the ContainsFold predicate on the "api_key" field.
 func APIKeyContainsFold(v string) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldContainsFold(FieldAPIKey, v))
+}
+
+// APIKeyHashEQ applies the EQ predicate on the "api_key_hash" field.
+func APIKeyHashEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyHash, v))
+}
+
+// APIKeyHashNEQ applies the NEQ predicate on the "api_key_hash" field.
+func APIKeyHashNEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNEQ(FieldAPIKeyHash, v))
+}
+
+// APIKeyHashIn applies the In predicate on the "api_key_hash" field.
+func APIKeyHashIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIn(FieldAPIKeyHash, vs...))
+}
+
+// APIKeyHashNotIn applies the NotIn predicate on the "api_key_hash" field.
+func APIKeyHashNotIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotIn(FieldAPIKeyHash, vs...))
+}
+
+// APIKeyHashGT applies the GT predicate on the "api_key_hash" field.
+func APIKeyHashGT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGT(FieldAPIKeyHash, v))
+}
+
+// APIKeyHashGTE applies the GTE predicate on the "api_key_hash" field.
+func APIKeyHashGTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGTE(FieldAPIKeyHash, v))
+}
+
+// APIKeyHashLT applies the LT predicate on the "api_key_hash" field.
+func APIKeyHashLT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLT(FieldAPIKeyHash, v))
+}
+
+// APIKeyHashLTE applies the LTE predicate on the "api_key_hash" field.
+func APIKeyHashLTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLTE(FieldAPIKeyHash, v))
+}
+
+// APIKeyHashContains applies the Contains predicate on the "api_key_hash" field.
+func APIKeyHashContains(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContains(FieldAPIKeyHash, v))
+}
+
+// APIKeyHashHasPrefix applies the HasPrefix predicate on the "api_key_hash" field.
+func APIKeyHashHasPrefix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasPrefix(FieldAPIKeyHash, v))
+}
+
+// APIKeyHashHasSuffix applies the HasSuffix predicate on the "api_key_hash" field.
+func APIKeyHashHasSuffix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasSuffix(FieldAPIKeyHash, v))
+}
+
+// APIKeyHashEqualFold applies the EqualFold predicate on the "api_key_hash" field.
+func APIKeyHashEqualFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEqualFold(FieldAPIKeyHash, v))
+}
+
+// APIKeyHashContainsFold applies the ContainsFold predicate on the "api_key_hash" field.
+func APIKeyHashContainsFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContainsFold(FieldAPIKeyHash, v))
+}
+
+// APIKeyMaskEQ applies the EQ predicate on the "api_key_mask" field.
+func APIKeyMaskEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyMask, v))
+}
+
+// APIKeyMaskNEQ applies the NEQ predicate on the "api_key_mask" field.
+func APIKeyMaskNEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNEQ(FieldAPIKeyMask, v))
+}
+
+// APIKeyMaskIn applies the In predicate on the "api_key_mask" field.
+func APIKeyMaskIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIn(FieldAPIKeyMask, vs...))
+}
+
+// APIKeyMaskNotIn applies the NotIn predicate on the "api_key_mask" field.
+func APIKeyMaskNotIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotIn(FieldAPIKeyMask, vs...))
+}
+
+// APIKeyMaskGT applies the GT predicate on the "api_key_mask" field.
+func APIKeyMaskGT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGT(FieldAPIKeyMask, v))
+}
+
+// APIKeyMaskGTE applies the GTE predicate on the "api_key_mask" field.
+func APIKeyMaskGTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGTE(FieldAPIKeyMask, v))
+}
+
+// APIKeyMaskLT applies the LT predicate on the "api_key_mask" field.
+func APIKeyMaskLT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLT(FieldAPIKeyMask, v))
+}
+
+// APIKeyMaskLTE applies the LTE predicate on the "api_key_mask" field.
+func APIKeyMaskLTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLTE(FieldAPIKeyMask, v))
+}
+
+// APIKeyMaskContains applies the Contains predicate on the "api_key_mask" field.
+func APIKeyMaskContains(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContains(FieldAPIKeyMask, v))
+}
+
+// APIKeyMaskHasPrefix applies the HasPrefix predicate on the "api_key_mask" field.
+func APIKeyMaskHasPrefix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasPrefix(FieldAPIKeyMask, v))
+}
+
+// APIKeyMaskHasSuffix applies the HasSuffix predicate on the "api_key_mask" field.
+func APIKeyMaskHasSuffix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasSuffix(FieldAPIKeyMask, v))
+}
+
+// APIKeyMaskEqualFold applies the EqualFold predicate on the "api_key_mask" field.
+func APIKeyMaskEqualFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEqualFold(FieldAPIKeyMask, v))
+}
+
+// APIKeyMaskContainsFold applies the ContainsFold predicate on the "api_key_mask" field.
+func APIKeyMaskContainsFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContainsFold(FieldAPIKeyMask, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

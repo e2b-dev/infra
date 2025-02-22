@@ -63,6 +63,7 @@ job "api" {
         ORCHESTRATOR_PORT             = "${orchestrator_port}"
         TEMPLATE_MANAGER_ADDRESS      = "${template_manager_address}"
         POSTGRES_CONNECTION_STRING    = "${postgres_connection_string}"
+        SUPABASE_JWT_SECRET           = "${supabase_jwt_secret}"
         ENVIRONMENT                   = "${environment}"
         POSTHOG_API_KEY               = "${posthog_api_key}"
         ANALYTICS_COLLECTOR_HOST      = "${analytics_collector_host}"
