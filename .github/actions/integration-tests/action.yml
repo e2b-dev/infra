@@ -6,5 +6,10 @@ runs:
   steps:
     - name: Run Infra Tests
       run: |
+        # Monitor logs of the services
+        tail -f /logs/orchestrator.log &
+        tail -f /logs/api.log &
+        
+        # Run the integration tests
         make test-infra
       shell: bash
