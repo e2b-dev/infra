@@ -2,7 +2,6 @@ package instance
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -131,26 +130,9 @@ func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {
 }
 
 func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
-	fmt.Println(instanceInfo)
-	fmt.Println(instanceInfo.Instance)
-	fmt.Println(instanceInfo.Instance.SandboxID)
-
 	c.pausing.RemoveCb(instanceInfo.Instance.SandboxID, func(key string, v *InstanceInfo, exists bool) bool {
-		if v == nil {
-			return false
-		}
-
-		if instanceInfo == nil {
-			return false
-		}
-
-		if v == instanceInfo {
-			fmt.Println("v == instanceInfo")
-
-			return v.Instance.SandboxID == instanceInfo.Instance.SandboxID
-		}
-
-		return false
+		// We depend of the startTime not changing to uniquely identify instance in the cache.
+		return v.Instance.SandboxID == instanceInfo.Instance.SandboxID && v.StartTime == instanceInfo.StartTime
 	})
 }
 
