@@ -21,7 +21,7 @@ runs:
         
         set -x
         make migrate
-        make seed-test
+        make -C packages/integration-tests seed
       shell: bash
 
     - name: Start Services

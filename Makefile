@@ -153,10 +153,6 @@ test:
 	$(MAKE) -C packages/shared test
 	$(MAKE) -C packages/template-manager test
 
-@.PHONY: seed-test
-seed-test:
-	$(MAKE) -C packages/shared seed-test
-
 .PHONY: test-infra
 test-infra:
 	$(MAKE) -C packages/integration-tests test
