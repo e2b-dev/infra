@@ -32,4 +32,4 @@ test:
 	TESTS_API_SERVER_URL=$(TESTS_API_SERVER_URL) \
 	TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID) \
 	TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY) \
-	go test -v ./internal/tests/...
+	go test -v ./internal/tests/... -count=1
