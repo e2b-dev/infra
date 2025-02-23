@@ -20,7 +20,10 @@ seed:
 	@echo "Generating seeds..."
 	@cat ./seeds/* > ./seed.sql
 	@echo "Applying seeds"
-	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run seeds/seed.go
+	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) \
+		TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID) \
+		TESTS_SANDBOX_BUILD_ID=$(TESTS_SANDBOX_BUILD_ID) \
+		go run seeds/seed.go
 	@rm ./seed.sql
 	@echo "Done"
 

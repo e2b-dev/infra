@@ -1,8 +1,8 @@
 DO $$ 
 DECLARE
     team_id UUID := '834777bd-9956-45ca-b088-9bac9290e2ac';
-    env_id TEXT := '2j6ly824owf4awgai1xo';
-    build_id UUID := '98130b63-ca75-431d-956a-9d829d14d317';
+    env_id TEXT := '{{ .EnvId }}';
+    build_id UUID := '{{ .BuildId }}';
 BEGIN
 
 -- Team

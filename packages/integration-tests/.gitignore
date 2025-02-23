@@ -2,4 +2,4 @@ bin
 .env
 .shared
 
-seeds/seed.sql
+seed.sql
