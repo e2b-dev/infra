@@ -17,7 +17,9 @@ runs:
       env:
         GOOGLE_SERVICE_ACCOUNT_BASE64: "required-but-not-needed"
         POSTGRES_CONNECTION_STRING: "postgresql://postgres:local@localhost:5432/mydatabase?sslmode=disable"
-        E2B_API_KEY: "e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057"
+        TESTS_E2B_API_KEY: "e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057"
+        TESTS_API_SERVER_URL: "http://localhost:3000"
+        TESTS_SANDBOX_TEMPLATE_ID: "2j6ly824owf4awgai1xo"
         TEMPLATE_BUCKET_NAME: "e2b-tests-fc-templates"
         GCP_REGION: "us-central1"
         GCP_PROJECT_ID: "e2b-prod"
@@ -27,6 +29,7 @@ runs:
         printenv > .env.test
         
         echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
+        echo "TESTS_SANDBOX_TEMPLATE_ID=${TESTS_SANDBOX_TEMPLATE_ID}" >> $GITHUB_ENV
       shell: bash
 
     - name: Set up Docker
