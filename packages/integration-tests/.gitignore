@@ -1,4 +1,5 @@
 bin
 .env
 .shared
-seed.sql
+
+seeds/seed.sql

@@ -12,14 +12,15 @@ generate:
 
 .PHONY: build-debug
 build-debug:
-	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
+	go mod download
+	go vet ./internal/...
 
 @.PHONY: seed
 seed:
 	@echo "Generating seeds..."
 	@cat ./seeds/* > ./seed.sql
 	@echo "Applying seeds"
-	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run seed.go
+	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run seeds/seed.go
 	@rm ./seed.sql
 	@echo "Done"
 
