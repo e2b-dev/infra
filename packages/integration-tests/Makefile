@@ -23,7 +23,7 @@ seed:
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) \
 		TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID) \
 		TESTS_SANDBOX_BUILD_ID=$(TESTS_SANDBOX_BUILD_ID) \
-		go run seeds/seed.go
+		go run seed.go -file ./seed.sql
 	@rm ./seed.sql
 	@echo "Done"
 
