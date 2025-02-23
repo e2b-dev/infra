@@ -10,6 +10,7 @@ runs:
         TESTS_API_SERVER_URL: "http://localhost:3000"
       run: |
         # Monitor logs of the services
+        ls -l ~/logs
         tail -f ~/logs/orchestrator.log -n 0 &
         tail -f ~/logs/api.log -n 0 &
         
