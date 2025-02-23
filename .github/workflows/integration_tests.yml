@@ -1,4 +1,4 @@
-name: Infrastructure Tests
+name: Integration Tests
 
 on:
   pull_request:
