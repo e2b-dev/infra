@@ -42,7 +42,9 @@ runs:
       shell: bash
 
     - name: Initialize Host
+      env:
+        INIT_SCRIPT_PATH: "./.github/actions/host-init/init-client.sh"
       run: |
-        chmod +x ./.github/workflows/artifacts/init-client.sh
-        sudo -E bash -c "./.github/workflows/artifacts/init-client.sh"
+        chmod +x "${INIT_SCRIPT_PATH}"
+        sudo -E bash -c "${INIT_SCRIPT_PATH}"
       shell: bash
