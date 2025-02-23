@@ -4,7 +4,10 @@ description: "Executes integration tests."
 runs:
   using: "composite"
   steps:
-    - name: Run Infra Tests
+    - name: Run Integration Tests
+      env:
+        TESTS_E2B_API_KEY: "e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057"
+        TESTS_API_SERVER_URL: "http://localhost:3000"
       run: |
         # Monitor logs of the services
         tail -f ~/logs/orchestrator.log -n 0 &
