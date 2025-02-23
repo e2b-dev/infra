@@ -35,11 +35,10 @@ build-debug:
 .PHONY: run-debug
 run-debug:
 	make build-debug
-	sudo GOTRACEBACK=crash \
+	sudo -E GOTRACEBACK=crash \
 	GODEBUG=madvdontneed=1 \
 	NODE_ID="test-client" \
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
-	GOOGLE_APPLICATION_CREDENTIALS=$(GOOGLE_APPLICATION_CREDENTIALS) \
 	./bin/orchestrator
 
 .PHONY: upload

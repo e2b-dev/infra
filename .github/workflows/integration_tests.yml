@@ -27,5 +27,5 @@ jobs:
       - name: Start Services
         uses: ./.github/actions/start-services
 
-      - name: Run Infra Tests
+      - name: Run Integration Tests
         uses: ./.github/actions/integration-tests
