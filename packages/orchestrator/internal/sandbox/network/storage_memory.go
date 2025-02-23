@@ -2,34 +2,35 @@ package network
 
 import (
 	"fmt"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"sync"
-)
 
-var (
-	freeSlots   = make([]bool, slotsSize)
-	freeSlotsMu sync.Mutex
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 )
 
 type StorageMemory struct {
-	slotsSize int
+	slotsSize   int
+	freeSlots   []bool
+	freeSlotsMu sync.Mutex
 }
 
 func NewStorageMemory(slotsSize int) *StorageMemory {
 	return &StorageMemory{
-		slotsSize: slotsSize,
+		slotsSize:   slotsSize,
+		freeSlots:   make([]bool, slotsSize),
+		freeSlotsMu: sync.Mutex{},
 	}
 }
 
 func (s *StorageMemory) Acquire() (*Slot, error) {
-	freeSlotsMu.Lock()
-	defer freeSlotsMu.Unlock()
+	s.freeSlotsMu.Lock()
+	defer s.freeSlotsMu.Unlock()
 
 	// Simple slot tracking in memory
-	for slotIdx := 0; slotIdx < s.slotsSize; slotIdx++ {
+	// We skip the first slot because it's the host slot
+	for slotIdx := 1; slotIdx < s.slotsSize; slotIdx++ {
 		key := getMemoryKey(slotIdx)
-		if !freeSlots[slotIdx] {
-			freeSlots[slotIdx] = true
+		if !s.freeSlots[slotIdx] {
+			s.freeSlots[slotIdx] = true
 			return NewSlot(key, slotIdx), nil
 		}
 	}
@@ -38,10 +39,10 @@ func (s *StorageMemory) Acquire() (*Slot, error) {
 }
 
 func (s *StorageMemory) Release(ips *Slot) error {
-	freeSlotsMu.Lock()
-	defer freeSlotsMu.Unlock()
+	s.freeSlotsMu.Lock()
+	defer s.freeSlotsMu.Unlock()
 
-	freeSlots[ips.Idx] = false
+	s.freeSlots[ips.Idx] = false
 
 	return nil
 }
