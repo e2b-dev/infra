@@ -14,5 +14,5 @@ runs:
         tail -f ~/logs/api.log -n 0 &
         
         # Run the integration tests
-        make test-infra
+        make test-integration
       shell: bash

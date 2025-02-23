@@ -162,6 +162,6 @@ test:
 	$(MAKE) -C packages/shared test
 	$(MAKE) -C packages/template-manager test
 
-.PHONY: test-infra
-test-infra:
+.PHONY: test-integration
+test-integration:
 	$(MAKE) -C packages/integration-tests test
