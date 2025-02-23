@@ -159,10 +159,7 @@ seed-test:
 
 .PHONY: test-infra
 test-infra:
-	@ set -x
-	@ printf "Running infrastructure tests\n"
-	timeout --kill-after=5 120 curl --fail-with-body --location 'localhost:3000/sandboxes' --header 'Content-Type: application/json' --header 'Accept: application/json' --header 'X-API-Key: $(E2B_API_KEY)' --data '{"templateID": "2j6ly824owf4awgai1xo","timeout": 120}'
-	timeout --kill-after=5 120 curl --fail-with-body --location 'localhost:3000/sandboxes' --header 'Content-Type: application/json' --header 'Accept: application/json' --header 'X-API-Key: $(E2B_API_KEY)' --data '{"templateID": "2j6ly824owf4awgai1xo","timeout": 120}'
+	$(MAKE) -C packages/integration-tests test
 
 # $(MAKE) -C terraform/grafana init does not work b/c of the -include ${ENV_FILE} in the Makefile
 # so we need to call the Makefile directly
