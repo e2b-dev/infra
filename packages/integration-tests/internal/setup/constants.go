@@ -6,12 +6,11 @@ import (
 )
 
 const (
-	APIServerURL = "http://localhost:3000"
-	apiTimeout   = 120 * time.Second
-
-	SandboxTemplateID = "2j6ly824owf4awgai1xo"
+	apiTimeout = 120 * time.Second
 )
 
 var (
-	APIKey = os.Getenv("E2B_API_KEY")
+	APIServerURL      = os.Getenv("TESTS_API_SERVER_URL")
+	SandboxTemplateID = os.Getenv("TESTS_SANDBOX_TEMPLATE_ID")
+	APIKey            = os.Getenv("TESTS_E2B_API_KEY")
 )

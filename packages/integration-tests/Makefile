@@ -16,4 +16,7 @@ build-debug:
 
 .PHONY: test
 test:
-	E2B_API_KEY=$(E2B_API_KEY) go test -v ./internal/tests/...
+	TESTS_API_SERVER_URL=$(TESTS_API_SERVER_URL) \
+	TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID) \
+	TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY) \
+	go test -v ./internal/tests/...
