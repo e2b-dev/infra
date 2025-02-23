@@ -28,9 +28,6 @@ runs:
 
     - name: Set up Docker
       run: |
-        sudo gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
-        gcloud auth print-access-token | sudo docker login -u oauth2accesstoken --password-stdin https://${GCP_REGION}-docker.pkg.dev
-        
         export ACCESS_TOKEN=$(gcloud auth print-access-token)
         export DOCKER_AUTH_BASE64=$(echo -n "{\"username\":\"oauth2accesstoken\",\"password\":\"$ACCESS_TOKEN\"}" | base64 -w 0)
         
