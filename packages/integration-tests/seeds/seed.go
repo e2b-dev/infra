@@ -1,13 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"log"
 	"os"
+	"text/template"
 
 	_ "github.com/lib/pq"
 )
+
+type SeedData struct {
+	EnvId   string
+	BuildId string
+}
 
 func main() {
 	connectionString := os.Getenv("POSTGRES_CONNECTION_STRING")
@@ -21,13 +28,22 @@ func main() {
 	}
 	defer db.Close()
 
-	seed, err := os.ReadFile("seed.sql")
+	// Execute the seed
+	tmpl, err := template.ParseFiles("seed.sql")
 	if err != nil {
-		log.Fatalf("Failed to read seed file: %v", err)
+		log.Fatalf("Failed to parse seed file: %v", err)
 	}
 
-	// Execute the seed
-	_, err = db.Exec(string(seed))
+	var parsed bytes.Buffer
+	err = tmpl.Execute(&parsed, SeedData{
+		EnvId:   os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
+		BuildId: os.Getenv("TESTS_SANDBOX_BUILD_ID"),
+	})
+	if err != nil {
+		log.Fatalf("Failed to execute seed: %v", err)
+	}
+
+	_, err = db.Exec(parsed.String())
 	if err != nil {
 		log.Fatalf("Failed to execute seed: %v", err)
 	}
