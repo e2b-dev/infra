@@ -4,8 +4,10 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
-  # only run on changes to periodic-test dir 
   push:
+    branches:
+        - main
+    # only run on changes to periodic-test dir 
     paths:
       - 'tests/periodic-test/**'
       - '.github/workflows/periodic-test.yml'
@@ -94,4 +96,3 @@ jobs:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           # use this channel for dev
           # SLACK_CHANNEL: C08F4DXJA00  
-
