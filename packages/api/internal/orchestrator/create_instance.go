@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (o *Orchestrator) CreateSandbox(
@@ -180,7 +181,7 @@ func (o *Orchestrator) CreateSandbox(
 		MaxInstanceLength:  time.Duration(team.Tier.MaxLengthHours) * time.Hour,
 		Node:               node.Info,
 		AutoPause:          &autoPause,
-		AutoPauseCh:        make(chan error, 1),
+		PauseResult:        sUtils.NewSetOnce[*instance.PauseResult](),
 	}
 
 	cacheErr := o.instanceCache.Add(instanceInfo, true)

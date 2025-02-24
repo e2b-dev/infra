@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (o *Orchestrator) getSandboxes(ctx context.Context, node *node.NodeInfo) ([]*instance.InstanceInfo, error) {
@@ -77,7 +78,7 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *node.NodeInfo) ([
 			MaxInstanceLength:  time.Duration(config.MaxSandboxLength) * time.Hour,
 			Node:               node,
 			AutoPause:          &autoPause,
-			AutoPauseCh:        make(chan error, 1),
+			PauseResult:        sUtils.NewSetOnce[*instance.PauseResult](),
 		})
 	}
 

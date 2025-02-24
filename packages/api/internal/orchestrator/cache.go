@@ -184,7 +184,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			}
 
 			// We explicitly unmark as pausing here to avoid a race condition
-			// where we are creating a new instance and the pausing one is still in the pausing cache.
+			// where we are creating a new instance, and the pausing one is still in the pausing cache.
 			o.instanceCache.UnmarkAsPausing(&info)
 			info.PauseDone(nil)
 		} else {

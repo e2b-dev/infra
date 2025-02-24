@@ -2,6 +2,7 @@ package instance
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -24,6 +26,11 @@ const (
 	InstanceAutoPauseDefault = false
 	CacheSyncTime            = time.Minute
 )
+
+type PauseResult struct {
+	WasPaused bool
+	Node      *node.NodeInfo
+}
 
 type InstanceInfo struct {
 	Logger             *logs.SandboxLogger
@@ -42,7 +49,7 @@ type InstanceInfo struct {
 	EnvdVersion        string
 	Node               *node.NodeInfo
 	AutoPause          *bool
-	AutoPauseCh        chan error
+	PauseResult        *utils.SetOnce[*PauseResult]
 }
 
 type InstanceCache struct {
@@ -140,29 +147,55 @@ func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
 	})
 }
 
-func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (*node.NodeInfo, bool) {
+func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (*PauseResult, error) {
 	instanceInfo, ok := c.pausing.Get(sandboxID)
 	if !ok {
-		return nil, false
+		return &PauseResult{
+			WasPaused: false,
+			Node:      nil,
+		}, nil
 	}
 
-	select {
-	case _, ok := <-instanceInfo.AutoPauseCh:
-		if !ok {
-			return instanceInfo.Node, true
-		}
+	type waitForPause struct {
+		value *PauseResult
+		err   error
+	}
 
-		return nil, false
+	done := make(chan waitForPause, 1)
+
+	go func() {
+		value, err := instanceInfo.PauseResult.Wait()
+
+		done <- waitForPause{
+			value: value,
+			err:   err,
+		}
+		close(done)
+	}()
+
+	select {
+	case result := <-done:
+		return result.value, result.err
 	case <-ctx.Done():
-		return nil, false
+		return nil, fmt.Errorf("pause waiting was canceled")
 	}
 }
 
 func (c *InstanceInfo) PauseDone(err error) {
-	c.AutoPauseCh <- err
-	if err != nil {
-		return
+	if err == nil {
+		err := c.PauseResult.SetValue(&PauseResult{
+			WasPaused: true,
+			Node:      c.Node,
+		})
+		if err != nil {
+			fmt.Printf("error setting PauseDone value: %v", err)
+			return
+		}
+	} else {
+		err := c.PauseResult.SetError(err)
+		if err != nil {
+			fmt.Printf("error setting PauseDone error: %v", err)
+			return
+		}
 	}
-
-	close(c.AutoPauseCh)
 }
