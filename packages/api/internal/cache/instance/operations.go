@@ -120,8 +120,10 @@ func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
 	if found {
 		*value.Value().AutoPause = pause
 
-		v := value.Value()
-		c.MarkAsPausing(&v)
+		if pause {
+			v := value.Value()
+			c.MarkAsPausing(&v)
+		}
 	}
 
 	return found
