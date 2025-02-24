@@ -156,29 +156,15 @@ func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (*Pa
 		}, nil
 	}
 
-	type waitForPause struct {
-		value *PauseResult
-		err   error
+	value, err := instanceInfo.PauseResult.WaitWithContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("pause waiting was canceled: %w", err)
 	}
 
-	done := make(chan waitForPause, 1)
-
-	go func() {
-		value, err := instanceInfo.PauseResult.Wait()
-
-		done <- waitForPause{
-			value: value,
-			err:   err,
-		}
-		close(done)
-	}()
-
-	select {
-	case result := <-done:
-		return result.value, result.err
-	case <-ctx.Done():
-		return nil, fmt.Errorf("pause waiting was canceled")
-	}
+	return &PauseResult{
+		WasPaused: value.WasPaused,
+		Node:      value.Node,
+	}, nil
 }
 
 func (c *InstanceInfo) PauseDone(err error) {
