@@ -13,6 +13,7 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
+	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -108,6 +109,7 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (o *Orchestrator) WaitForPause(ctx context.Context, sandboxID string) (*instance.PauseResult, error) {
+// WaitForPause waits for the instance to be paused and returns the node info where the instance was paused on.
+func (o *Orchestrator) WaitForPause(ctx context.Context, sandboxID string) (*node.NodeInfo, error) {
 	return o.instanceCache.WaitForPause(ctx, sandboxID)
 }

@@ -11,13 +11,13 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/node"
+	nNode "github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	sUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-func (o *Orchestrator) getSandboxes(ctx context.Context, node *node.NodeInfo) ([]*instance.InstanceInfo, error) {
+func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) ([]*instance.InstanceInfo, error) {
 	childCtx, childSpan := o.tracer.Start(ctx, "get-sandboxes-from-orchestrator")
 	defer childSpan.End()
 
@@ -78,7 +78,7 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *node.NodeInfo) ([
 			MaxInstanceLength:  time.Duration(config.MaxSandboxLength) * time.Hour,
 			Node:               node,
 			AutoPause:          &autoPause,
-			PauseResult:        sUtils.NewSetOnce[*instance.PauseResult](),
+			Pausing:            sUtils.NewSetOnce[*nNode.NodeInfo](),
 		})
 	}
 

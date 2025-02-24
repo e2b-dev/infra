@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	nNode "github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -181,7 +182,7 @@ func (o *Orchestrator) CreateSandbox(
 		MaxInstanceLength:  time.Duration(team.Tier.MaxLengthHours) * time.Hour,
 		Node:               node.Info,
 		AutoPause:          &autoPause,
-		PauseResult:        sUtils.NewSetOnce[*instance.PauseResult](),
+		Pausing:            sUtils.NewSetOnce[*nNode.NodeInfo](),
 	}
 
 	cacheErr := o.instanceCache.Add(instanceInfo, true)

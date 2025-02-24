@@ -2,6 +2,7 @@ package instance
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -27,10 +28,9 @@ const (
 	CacheSyncTime            = time.Minute
 )
 
-type PauseResult struct {
-	DidPause bool
-	Node     *node.NodeInfo
-}
+var (
+	ErrPausingInstanceNotFound = errors.New("pausing instance not found")
+)
 
 type InstanceInfo struct {
 	Logger             *logs.SandboxLogger
@@ -49,7 +49,7 @@ type InstanceInfo struct {
 	EnvdVersion        string
 	Node               *node.NodeInfo
 	AutoPause          *bool
-	PauseResult        *utils.SetOnce[*PauseResult]
+	Pausing            *utils.SetOnce[*node.NodeInfo]
 }
 
 type InstanceCache struct {
@@ -147,40 +147,33 @@ func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
 	})
 }
 
-func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (*PauseResult, error) {
+func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (*node.NodeInfo, error) {
 	instanceInfo, ok := c.pausing.Get(sandboxID)
 	if !ok {
-		return &PauseResult{
-			DidPause: false,
-			Node:     nil,
-		}, nil
+		return nil, ErrPausingInstanceNotFound
 	}
 
-	value, err := instanceInfo.PauseResult.WaitWithContext(ctx)
+	value, err := instanceInfo.Pausing.WaitWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("pause waiting was canceled: %w", err)
 	}
 
-	return &PauseResult{
-		WasPaused: value.WasPaused,
-		Node:      value.Node,
-	}, nil
+	return value, nil
 }
 
 func (c *InstanceInfo) PauseDone(err error) {
 	if err == nil {
-		err := c.PauseResult.SetValue(&PauseResult{
-			DidPause: true,
-			Node:     c.Node,
-		})
+		err := c.Pausing.SetValue(c.Node)
 		if err != nil {
 			fmt.Printf("error setting PauseDone value: %v", err)
+
 			return
 		}
 	} else {
-		err := c.PauseResult.SetError(err)
+		err := c.Pausing.SetError(err)
 		if err != nil {
 			fmt.Printf("error setting PauseDone error: %v", err)
+
 			return
 		}
 	}

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -81,16 +82,16 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	// Wait for any pausing for this sandbox in progress.
-	pauseResult, err := a.orchestrator.WaitForPause(ctx, sandboxID)
-	if err != nil {
+	pausedOnNode, err := a.orchestrator.WaitForPause(ctx, sandboxID)
+	if err != nil && !errors.Is(err, instance.ErrPausingInstanceNotFound) {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error while pausing sandbox %s: %s", sandboxID, err))
 
 		return
 	}
 
-	if pauseResult.DidPause {
+	if err == nil {
 		// If the pausing was in progress, prefer to restore on the node where the pausing happened.
-		clientID = pauseResult.Node.ID
+		clientID = pausedOnNode.ID
 	}
 
 	snapshot, build, err := a.db.GetLastSnapshot(ctx, sandboxID, teamInfo.Team.ID)
