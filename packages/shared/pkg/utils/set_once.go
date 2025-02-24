@@ -21,19 +21,25 @@ func NewSetOnce[T any]() *SetOnce[T] {
 	result := make(chan result[T], 1)
 	done := make(chan struct{})
 
+	wait := sync.OnceValues(func() (T, error) {
+		defer close(done)
+
+		value, ok := <-result
+		if !ok {
+			return *new(T), fmt.Errorf("init channel was closed")
+		}
+
+		return value.value, value.err
+	})
+
+	// We need to start the wait function in a new goroutine to avoid deadlocks
+	// between the wait function call and done channel close.
+	go wait()
+
 	return &SetOnce[T]{
 		result: result,
 		done:   done,
-		wait: sync.OnceValues(func() (T, error) {
-			defer close(done)
-
-			value, ok := <-result
-			if !ok {
-				return *new(T), fmt.Errorf("init channel was closed")
-			}
-
-			return value.value, value.err
-		}),
+		wait:   wait,
 	}
 }
 
