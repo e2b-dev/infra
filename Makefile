@@ -20,6 +20,7 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_gcp_region=$(GCP_REGION) \
 	TF_VAR_gcp_zone=$(GCP_ZONE) \
 	TF_VAR_domain_name=$(DOMAIN_NAME) \
+	TF_VAR_additional_domains=$(ADDITIONAL_DOMAINS) \
 	TF_VAR_prefix=$(PREFIX) \
 	TF_VAR_terraform_state_bucket=$(TERRAFORM_STATE_BUCKET) \
 	TF_VAR_otel_tracing_print=$(OTEL_TRACING_PRINT) \
@@ -150,3 +151,13 @@ setup-ssh:
 	@ gcloud compute config-ssh --remove
 	@ gcloud compute config-ssh --project $(GCP_PROJECT_ID) --quiet
 	@ printf "SSH setup complete\n"
+
+.PHONY: test
+test:
+	$(MAKE) -C packages/api test
+	$(MAKE) -C packages/client-proxy test
+	$(MAKE) -C packages/docker-reverse-proxy test
+	$(MAKE) -C packages/envd test
+	$(MAKE) -C packages/orchestrator test
+	$(MAKE) -C packages/shared test
+	$(MAKE) -C packages/template-manager test

@@ -114,9 +114,17 @@ func (c *InstanceCache) Add(instance InstanceInfo, newlyCreated bool) error {
 	return nil
 }
 
-// Kill the instance and remove it from the cache.
-func (c *InstanceCache) Kill(instanceID string) bool {
-	_, found := c.cache.GetAndDelete(instanceID, ttlcache.WithDisableTouchOnHit[string, InstanceInfo]())
+// Delete the instance and remove it from the cache.
+func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
+	value, found := c.cache.GetAndDelete(instanceID, ttlcache.WithDisableTouchOnHit[string, InstanceInfo]())
+	if found {
+		*value.Value().AutoPause = pause
+
+		if pause {
+			v := value.Value()
+			c.MarkAsPausing(&v)
+		}
+	}
 
 	return found
 }

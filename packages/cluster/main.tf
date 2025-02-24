@@ -213,6 +213,7 @@ module "network" {
   docker_reverse_proxy_port = var.docker_reverse_proxy_port
   network_name              = var.network_name
   domain_name               = var.domain_name
+  additional_domains        = var.additional_domains
 
   client_instance_group    = module.client_cluster.instance_group
   client_proxy_port        = var.client_proxy_port

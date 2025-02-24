@@ -158,13 +158,13 @@ func main() {
 		err := healthServer.ListenAndServe()
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			logger.Info("http service shutdown successfully", zap.Int("port", port))
+			logger.Info("http service shutdown successfully", zap.Int("port", healthCheckPort))
 		case err != nil:
 			exitCode.Add(1)
-			logger.Error("http service encountered error", zap.Int("port", port), zap.Error(err))
+			logger.Error("http service encountered error", zap.Int("port", healthCheckPort), zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			logger.Error("http service exited without error", zap.Int("port", port))
+			logger.Error("http service exited without error", zap.Int("port", healthCheckPort))
 		}
 	}()
 
@@ -200,7 +200,7 @@ func main() {
 	go func() {
 		defer wg.Done()
 		<-signalCtx.Done()
-		logger.Info("shutting down http service", zap.Int("port", port))
+		logger.Info("shutting down http service", zap.Int("port", healthCheckPort))
 		if err := healthServer.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			logger.Error("http service shutdown error", zap.Int("port", healthCheckPort), zap.Error(err))

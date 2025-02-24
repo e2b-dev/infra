@@ -32,6 +32,10 @@ upload:
 .PHONY: build-and-upload
 build-and-upload: build upload
 
+.PHONY: test
+test:
+	go test -v ./...
+
 .PHONY: test-build
 test-build:
 	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) GCP_PROJECT_ID=$(GCP_PROJECT_ID) GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) GCP_REGION=$(GCP_REGION) go run -race -gcflags=all="-N -l" main.go -test build -template d6a5c9wp4ccm7uqi4jzi -build 8e00bbdf-7f55-4025-9964-eede203c6ee5

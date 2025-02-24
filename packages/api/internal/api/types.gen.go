@@ -48,8 +48,10 @@ type MemoryMB = int32
 
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
-	EnvVars  *EnvVars         `json:"envVars,omitempty"`
-	Metadata *SandboxMetadata `json:"metadata,omitempty"`
+	// AutoPause Automatically pauses the sandbox after the timeout
+	AutoPause *bool            `json:"autoPause,omitempty"`
+	EnvVars   *EnvVars         `json:"envVars,omitempty"`
+	Metadata  *SandboxMetadata `json:"metadata,omitempty"`
 
 	// TemplateID Identifier of the required template
 	TemplateID string `json:"templateID"`
@@ -102,6 +104,9 @@ type NodeStatusChange struct {
 
 // ResumedSandbox defines model for ResumedSandbox.
 type ResumedSandbox struct {
+	// AutoPause Automatically pauses the sandbox after the timeout
+	AutoPause *bool `json:"autoPause,omitempty"`
+
 	// Timeout Time to live for the sandbox in seconds.
 	Timeout *int32 `json:"timeout,omitempty"`
 }
