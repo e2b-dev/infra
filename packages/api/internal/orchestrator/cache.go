@@ -118,11 +118,15 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 }
 
 func (o *Orchestrator) getDeleteInstanceFunction(
-	ctx context.Context,
+	parentCtx context.Context,
 	posthogClient *analyticscollector.PosthogClient,
 	logger *zap.SugaredLogger,
+	timeout time.Duration,
 ) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
+		ctx, cancel := context.WithTimeout(parentCtx, timeout)
+		defer cancel()
+
 		defer o.instanceCache.UnmarkAsPausing(&info)
 
 		duration := time.Since(info.StartTime).Seconds()
@@ -199,8 +203,11 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 	}
 }
 
-func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
+func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, logger *zap.SugaredLogger, timeout time.Duration) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
+		ctx, cancel := context.WithTimeout(parentCtx, timeout)
+		defer cancel()
+
 		node := o.GetNode(info.Instance.ClientID)
 		if node == nil {
 			logger.Errorf("failed to get node '%s'", info.Instance.ClientID)

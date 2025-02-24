@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -18,6 +19,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
+
+// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks
+const cacheHookTimeout = 5 * time.Minute
 
 type Orchestrator struct {
 	nomadClient   *nomadapi.Client
@@ -68,8 +72,8 @@ func New(
 	cache := instance.NewCache(
 		analyticsInstance.Client,
 		slogger,
-		o.getInsertInstanceFunction(ctx, slogger),
-		o.getDeleteInstanceFunction(ctx, posthogClient, slogger),
+		o.getInsertInstanceFunction(ctx, slogger, cacheHookTimeout),
+		o.getDeleteInstanceFunction(ctx, posthogClient, slogger, cacheHookTimeout),
 	)
 
 	o.instanceCache = cache
