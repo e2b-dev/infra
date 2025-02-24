@@ -13,12 +13,12 @@ type StorageMemory struct {
 	freeSlotsMu sync.Mutex
 }
 
-func NewStorageMemory(slotsSize int) *StorageMemory {
+func NewStorageMemory(slotsSize int) (*StorageMemory, error) {
 	return &StorageMemory{
 		slotsSize:   slotsSize,
 		freeSlots:   make([]bool, slotsSize),
 		freeSlotsMu: sync.Mutex{},
-	}
+	}, nil
 }
 
 func (s *StorageMemory) Acquire() (*Slot, error) {

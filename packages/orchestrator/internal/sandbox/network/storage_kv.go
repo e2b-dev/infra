@@ -8,20 +8,42 @@ import (
 	consulApi "github.com/hashicorp/consul/api"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type StorageKV struct {
-	slotsSize int
+	slotsSize    int
+	consulClient *consulApi.Client
 }
 
-func NewStorageKV(slotsSize int) *StorageKV {
-	return &StorageKV{
-		slotsSize: slotsSize,
+func NewStorageKV(slotsSize int) (*StorageKV, error) {
+	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
+
+	consulClient, err := newConsulClient(consulToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init StorageKV consul client: %w", err)
 	}
+
+	return &StorageKV{
+		slotsSize:    slotsSize,
+		consulClient: consulClient,
+	}, nil
+}
+
+func newConsulClient(token string) (*consulApi.Client, error) {
+	config := consulApi.DefaultConfig()
+	config.Token = token
+
+	consulClient, err := consulApi.NewClient(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize Consul client: %w", err)
+	}
+
+	return consulClient, nil
 }
 
 func (s *StorageKV) Acquire() (*Slot, error) {
-	kv := consul.Client().KV()
+	kv := s.consulClient.KV()
 
 	var slot *Slot
 
@@ -94,7 +116,7 @@ func (s *StorageKV) Acquire() (*Slot, error) {
 }
 
 func (s *StorageKV) Release(ips *Slot) error {
-	kv := consul.Client().KV()
+	kv := s.consulClient.KV()
 
 	pair, _, err := kv.Get(ips.Key, nil)
 	if err != nil {
