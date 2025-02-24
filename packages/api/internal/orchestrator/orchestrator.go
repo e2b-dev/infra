@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -13,9 +14,14 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
+	"github.com/e2b-dev/infra/packages/api/internal/node"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
+
+// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks
+const cacheHookTimeout = 5 * time.Minute
 
 type Orchestrator struct {
 	nomadClient   *nomadapi.Client
@@ -25,6 +31,7 @@ type Orchestrator struct {
 	logger        *zap.SugaredLogger
 	analytics     *analyticscollector.Analytics
 	dns           *dns.DNS
+	dbClient      *db.DB
 }
 
 func New(
@@ -34,6 +41,7 @@ func New(
 	logger *zap.Logger,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient *redis.Client,
+	dbClient *db.DB,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
 	if err != nil {
@@ -58,13 +66,14 @@ func New(
 		tracer:      tracer,
 		nodes:       smap.New[*Node](),
 		dns:         dnsServer,
+		dbClient:    dbClient,
 	}
 
 	cache := instance.NewCache(
 		analyticsInstance.Client,
 		slogger,
-		o.getInsertInstanceFunction(ctx, slogger),
-		o.getDeleteInstanceFunction(ctx, posthogClient, slogger),
+		o.getInsertInstanceFunction(ctx, slogger, cacheHookTimeout),
+		o.getDeleteInstanceFunction(ctx, posthogClient, slogger, cacheHookTimeout),
 	)
 
 	o.instanceCache = cache
@@ -102,4 +111,9 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// WaitForPause waits for the instance to be paused and returns the node info where the instance was paused on.
+func (o *Orchestrator) WaitForPause(ctx context.Context, sandboxID string) (*node.NodeInfo, error) {
+	return o.instanceCache.WaitForPause(ctx, sandboxID)
 }

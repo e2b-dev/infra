@@ -29,6 +29,7 @@ func (a *APIStore) startSandbox(
 	isResume bool,
 	clientID *string,
 	baseTemplateID string,
+	autoPause bool,
 ) (*api.Sandbox, error) {
 	telemetry.ReportEvent(ctx, "Reserved team sandbox slot")
 
@@ -50,6 +51,7 @@ func (a *APIStore) startSandbox(
 		isResume,
 		clientID,
 		baseTemplateID,
+		autoPause,
 	)
 	if instanceErr != nil {
 		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)

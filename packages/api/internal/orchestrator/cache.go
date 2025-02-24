@@ -117,8 +117,18 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 	node.SyncBuilds(builds)
 }
 
-func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogClient *analyticscollector.PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
+func (o *Orchestrator) getDeleteInstanceFunction(
+	parentCtx context.Context,
+	posthogClient *analyticscollector.PosthogClient,
+	logger *zap.SugaredLogger,
+	timeout time.Duration,
+) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
+		ctx, cancel := context.WithTimeout(parentCtx, timeout)
+		defer cancel()
+
+		defer o.instanceCache.UnmarkAsPausing(&info)
+
 		duration := time.Since(info.StartTime).Seconds()
 
 		_, err := o.analytics.Client.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
@@ -132,11 +142,19 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 			logger.Errorf("error sending Analytics event: %v", err)
 		}
 
+		var closeType string
+		if *info.AutoPause {
+			closeType = "pause"
+		} else {
+			closeType = "delete"
+		}
+
 		posthogClient.CreateAnalyticsTeamEvent(
 			info.TeamID.String(),
 			"closed_instance", posthog.NewProperties().
 				Set("instance_id", info.Instance.SandboxID).
 				Set("environment", info.Instance.TemplateID).
+				Set("type", closeType).
 				Set("duration", duration),
 		)
 
@@ -150,7 +168,6 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 			o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
 		}
 
-		req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
 		if node == nil {
 			log.Printf("node '%s' not found", info.Instance.ClientID)
 			return fmt.Errorf("node '%s' not found", info.Instance.ClientID)
@@ -161,17 +178,36 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 			return fmt.Errorf("client for node '%s' not found", info.Instance.ClientID)
 		}
 
-		_, err = node.Client.Sandbox.Delete(ctx, req)
-		if err != nil {
-			return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
+		if *info.AutoPause {
+			o.instanceCache.MarkAsPausing(&info)
+
+			err = o.PauseInstance(ctx, o.tracer, &info, *info.TeamID)
+			if err != nil {
+				info.PauseDone(err)
+				return fmt.Errorf("failed to auto pause sandbox '%s': %w", info.Instance.SandboxID, err)
+			}
+
+			// We explicitly unmark as pausing here to avoid a race condition
+			// where we are creating a new instance, and the pausing one is still in the pausing cache.
+			o.instanceCache.UnmarkAsPausing(&info)
+			info.PauseDone(nil)
+		} else {
+			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
+			_, err = node.Client.Sandbox.Delete(ctx, req)
+			if err != nil {
+				return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
+			}
 		}
 
 		return nil
 	}
 }
 
-func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
+func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, logger *zap.SugaredLogger, timeout time.Duration) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
+		ctx, cancel := context.WithTimeout(parentCtx, timeout)
+		defer cancel()
+
 		node := o.GetNode(info.Instance.ClientID)
 		if node == nil {
 			logger.Errorf("failed to get node '%s'", info.Instance.ClientID)
@@ -191,6 +227,10 @@ func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *za
 		})
 		if err != nil {
 			logger.Errorf("Error sending Analytics event: %v", err)
+		}
+
+		if *info.AutoPause {
+			o.instanceCache.MarkAsPausing(&info)
 		}
 
 		return nil

@@ -2,6 +2,8 @@ package instance
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -15,11 +17,19 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
 	InstanceExpiration = time.Second * 15
-	CacheSyncTime      = time.Minute
+	// Should we auto pause the instance by default instead of killing it,
+	InstanceAutoPauseDefault = false
+	CacheSyncTime            = time.Minute
+)
+
+var (
+	ErrPausingInstanceNotFound = errors.New("pausing instance not found")
 )
 
 type InstanceInfo struct {
@@ -38,10 +48,13 @@ type InstanceInfo struct {
 	FirecrackerVersion string
 	EnvdVersion        string
 	Node               *node.NodeInfo
+	AutoPause          *bool
+	Pausing            *utils.SetOnce[*node.NodeInfo]
 }
 
 type InstanceCache struct {
 	reservations *ReservationCache
+	pausing      *smap.Map[*InstanceInfo]
 
 	cache *ttlcache.Cache[string, InstanceInfo]
 
@@ -83,6 +96,7 @@ func NewCache(
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
 		reservations:   NewReservationCache(),
+		pausing:        smap.New[*InstanceInfo](),
 	}
 
 	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, InstanceInfo]) {
@@ -110,4 +124,57 @@ func NewCache(
 	go cache.Start()
 
 	return instanceCache
+}
+
+func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {
+	if instanceInfo.AutoPause == nil {
+		return
+	}
+
+	if *instanceInfo.AutoPause {
+		c.pausing.InsertIfAbsent(instanceInfo.Instance.SandboxID, instanceInfo)
+	}
+}
+
+func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
+	c.pausing.RemoveCb(instanceInfo.Instance.SandboxID, func(key string, v *InstanceInfo, exists bool) bool {
+		if !exists {
+			return false
+		}
+
+		// We depend of the startTime not changing to uniquely identify instance in the cache.
+		return v.Instance.SandboxID == instanceInfo.Instance.SandboxID && v.StartTime == instanceInfo.StartTime
+	})
+}
+
+func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (*node.NodeInfo, error) {
+	instanceInfo, ok := c.pausing.Get(sandboxID)
+	if !ok {
+		return nil, ErrPausingInstanceNotFound
+	}
+
+	value, err := instanceInfo.Pausing.WaitWithContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("pause waiting was canceled: %w", err)
+	}
+
+	return value, nil
+}
+
+func (c *InstanceInfo) PauseDone(err error) {
+	if err == nil {
+		err := c.Pausing.SetValue(c.Node)
+		if err != nil {
+			fmt.Printf("error setting PauseDone value: %v", err)
+
+			return
+		}
+	} else {
+		err := c.Pausing.SetError(err)
+		if err != nil {
+			fmt.Printf("error setting PauseDone error: %v", err)
+
+			return
+		}
+	}
 }

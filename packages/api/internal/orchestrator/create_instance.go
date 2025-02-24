@@ -14,12 +14,14 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	nNode "github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (o *Orchestrator) CreateSandbox(
@@ -37,6 +39,7 @@ func (o *Orchestrator) CreateSandbox(
 	isResume bool,
 	clientID *string,
 	baseTemplateID string,
+	autoPause bool,
 ) (*api.Sandbox, error) {
 	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -178,6 +181,8 @@ func (o *Orchestrator) CreateSandbox(
 		EnvdVersion:        *build.EnvdVersion,
 		MaxInstanceLength:  time.Duration(team.Tier.MaxLengthHours) * time.Hour,
 		Node:               node.Info,
+		AutoPause:          &autoPause,
+		Pausing:            sUtils.NewSetOnce[*nNode.NodeInfo](),
 	}
 
 	cacheErr := o.instanceCache.Add(instanceInfo, true)
@@ -185,7 +190,7 @@ func (o *Orchestrator) CreateSandbox(
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)
 
-		deleted := o.DeleteInstance(childCtx, sbx.SandboxID)
+		deleted := o.DeleteInstance(childCtx, sbx.SandboxID, false)
 		if !deleted {
 			telemetry.ReportEvent(ctx, "instance wasn't found in cache when deleting")
 		}
