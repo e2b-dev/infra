@@ -56,12 +56,6 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	}
 
 	_, err = sbx.Pausing.WaitWithContext(ctx)
-	if errors.Is(err, instance.ErrPausingInstanceNotFound) {
-		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
-
-		return
-	}
-
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
 
