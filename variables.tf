@@ -184,7 +184,7 @@ variable "domain_name" {
 
 variable "additional_domains" {
   type        = string
-  description = "Additional domains which can be used to access the e2b cluster"
+  description = "Additional domains which can be used to access the e2b cluster, separated by commas"
   default     = ""
 }
 

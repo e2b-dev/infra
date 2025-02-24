@@ -126,7 +126,7 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
-  additional_domains           = var.additional_domains != "" ? split(",", var.additional_domains) : []
+  additional_domains           = var.additional_domains != "" ? [for item in split(",", var.additional_domains) : trimspace(item)] : []
 
   docker_contexts_bucket_name = module.buckets.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.buckets.cluster_setup_bucket_name
