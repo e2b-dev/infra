@@ -82,8 +82,8 @@ resource "google_secret_manager_secret_version" "grafana_logs_url" {
 resource "grafana_cloud_access_policy" "logs_collector" {
   provider     = grafana.cloud
   region       = var.gcp_to_grafana_regions[var.gcp_region]
-  name         = "logs-collector-workaround"
-  display_name = "Logs Collector workaround"
+  name         = "logs-collector-${var.gcp_project_id}"
+  display_name = "Logs Collector for ${var.gcp_project_id}"
 
   scopes = ["logs:write"]
 
@@ -98,8 +98,8 @@ resource "grafana_cloud_access_policy_token" "logs_collector" {
   provider         = grafana.cloud
   region           = var.gcp_to_grafana_regions[var.gcp_region]
   access_policy_id = grafana_cloud_access_policy.logs_collector.policy_id
-  name             = "logs-collector-workaround"
-  display_name     = "Logs Collector Workaround"
+  name             = "logs-collector-${var.gcp_project_id}"
+  display_name     = "Logs Collector for ${var.gcp_project_id}"
 }
 
 
