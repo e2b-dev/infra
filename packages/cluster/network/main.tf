@@ -16,7 +16,7 @@ provider "cloudflare" {
 }
 
 locals {
-  domain_map = { for d in var.additional_domains : split(".", d)[0] => d }
+  domain_map = { for d in var.additional_domains : replace(d, ".", "-") => d }
   backends = {
     session = {
       protocol                        = "HTTP"
