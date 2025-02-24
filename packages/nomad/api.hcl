@@ -10,6 +10,7 @@ job "api" {
       }
     }
 
+    count = 1
     constraint {
       operator  = "distinct_hosts"
       value     = "true"
