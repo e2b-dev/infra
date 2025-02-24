@@ -5,6 +5,13 @@ job "client-proxy" {
   priority = 80
 
   group "client-proxy" {
+  count = 3
+
+  constraint {
+    operator  = "distinct_hosts"
+    value     = "true"
+  }
+
     network {
       port "${port_name}" {
         static = "${port_number}"
@@ -34,7 +41,7 @@ job "client-proxy" {
     # An update stanza to enable rolling updates of the service
     update {
       # The number of extra instances to run during the update
-      max_parallel     = 1
+      max_parallel     = 2
       # Allows to spawn new version of the service before killing the old one
       canary           = 1
       # Time to wait for the canary to be healthy
