@@ -39,14 +39,6 @@ type headerKey struct {
 	removePrefix string
 }
 
-func newHeaderKey(name, prefix, removePrefix string) headerKey {
-	return headerKey{
-		name:         name,
-		prefix:       prefix,
-		removePrefix: removePrefix,
-	}
-}
-
 type commonAuthenticator[T any] struct {
 	securitySchemeName string
 	headerKey          headerKey
@@ -60,7 +52,8 @@ type authenticator interface {
 	SecuritySchemeName() string
 }
 
-// getHeaderKeysFromRequest extracts header keys from the header.
+type AuthenticationFunc func(ctx context.Context, input *openapi3filter.AuthenticationInput) error
+
 func (a *commonAuthenticator[T]) getHeaderKeysFromRequest(req *http.Request) (string, error) {
 	key := req.Header.Get(a.headerKey.name)
 	// Check for the Authorization header.
@@ -139,39 +132,59 @@ func CreateAuthenticationFunc(
 	userValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError),
 	supabaseTokenValidationFunction func(context.Context, string) (uuid.UUID, *api.APIError),
 	supabaseTeamValidationFunction func(context.Context, string) (authcache.AuthTeamInfo, *api.APIError),
-) func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
+) AuthenticationFunc {
 	authenticators := []authenticator{
 		&commonAuthenticator[authcache.AuthTeamInfo]{
 			securitySchemeName: "ApiKeyAuth",
-			headerKey:          newHeaderKey("X-API-Key", "e2b_", ""),
+			headerKey: headerKey{
+				name:         "X-API-Key",
+				prefix:       "e2b_",
+				removePrefix: "",
+			},
 			validationFunction: teamValidationFunction,
 			contextKey:         TeamContextKey,
 			errorMessage:       "Invalid API key, please visit https://e2b.dev/docs?reason=sdk-missing-api-key to get your API key.",
 		},
 		&commonAuthenticator[uuid.UUID]{
 			securitySchemeName: "AccessTokenAuth",
-			headerKey:          newHeaderKey("Authorization", "sk_e2b_", "Bearer "),
+			headerKey: headerKey{
+				name:         "Authorization",
+				prefix:       "sk_e2b_",
+				removePrefix: "Bearer ",
+			},
 			validationFunction: userValidationFunction,
 			contextKey:         UserIDContextKey,
 			errorMessage:       "Invalid Access token, try to login again by running `e2b login`.",
 		},
 		&commonAuthenticator[uuid.UUID]{
 			securitySchemeName: "Supabase1TokenAuth",
-			headerKey:          newHeaderKey("X-Supabase-Token", "", ""),
+			headerKey: headerKey{
+				name:         "X-Supabase-Token",
+				prefix:       "",
+				removePrefix: "",
+			},
 			validationFunction: supabaseTokenValidationFunction,
 			contextKey:         UserIDContextKey,
 			errorMessage:       "Invalid Supabase token.",
 		},
 		&commonAuthenticator[authcache.AuthTeamInfo]{
 			securitySchemeName: "Supabase2TeamAuth",
-			headerKey:          newHeaderKey("X-Supabase-Team", "", ""),
+			headerKey: headerKey{
+				name:         "X-Supabase-Team",
+				prefix:       "",
+				removePrefix: "",
+			},
 			validationFunction: supabaseTeamValidationFunction,
 			contextKey:         TeamContextKey,
 			errorMessage:       "Invalid Supabase token teamID.",
 		},
 		&commonAuthenticator[struct{}]{
 			securitySchemeName: "AdminTokenAuth",
-			headerKey:          newHeaderKey("X-Admin-Token", "", ""),
+			headerKey: headerKey{
+				name:         "X-Admin-Token",
+				prefix:       "",
+				removePrefix: "",
+			},
 			validationFunction: adminValidationFunction,
 			contextKey:         "",
 			errorMessage:       "Invalid Access token.",
