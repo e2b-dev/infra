@@ -59,12 +59,12 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	if !pauseResult.WasPaused {
+	if !pauseResult.DidPause {
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
 		return
 	}
 
-	if pauseResult.WasPaused {
+	if pauseResult.DidPause {
 		c.Status(http.StatusNoContent)
 		return
 	}
