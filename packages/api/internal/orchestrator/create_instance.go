@@ -85,6 +85,7 @@ func (o *Orchestrator) CreateSandbox(
 			RamMb:              build.RAMMB,
 			Vcpu:               build.Vcpu,
 			Snapshot:           isResume,
+			AutoPause:          &autoPause,
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
