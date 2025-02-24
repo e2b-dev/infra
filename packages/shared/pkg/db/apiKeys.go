@@ -24,7 +24,7 @@ func validateTeamUsage(team *models.Team) error {
 			return errMsg
 		}
 
-		errMsg := fmt.Errorf("team was blocked - %s", *team.BlockedReason)
+		errMsg := fmt.Errorf("team was blocked, reason: %s", *team.BlockedReason)
 
 		return errMsg
 	}
