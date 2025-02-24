@@ -125,11 +125,11 @@ func (srv *Service) Start(context.Context) error {
 
 		srv.grpc.GracefulStop()
 
-		if err := srv.dns.Close(ctx); err != nil {
+		if err := lis.Close(); err != nil {
 			errs = append(errs, err)
 		}
 
-		if err := lis.Close(); err != nil {
+		if err := srv.dns.Close(ctx); err != nil {
 			errs = append(errs, err)
 		}
 
@@ -140,6 +140,15 @@ func (srv *Service) Start(context.Context) error {
 }
 
 func (srv *Service) Close(ctx context.Context) error {
-	srv.shutdown.once.Do(func() { srv.shutdown.err = srv.shutdown.op(ctx) })
+	srv.shutdown.once.Do(func() {
+		if srv.shutdown.op == nil {
+			// should only be true if there was an error
+			// during startup.
+			return
+		}
+
+		srv.shutdown.err = srv.shutdown.op(ctx)
+		srv.shutdown.op = nil
+	})
 	return srv.shutdown.err
 }
