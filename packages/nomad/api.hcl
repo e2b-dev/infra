@@ -24,8 +24,8 @@ job "api" {
         type     = "http"
         name     = "health"
         path     = "/health"
-        interval = "5s"
-        timeout  = "5s"
+        interval = "3s"
+        timeout  = "3s"
         port     = "${port_number}"
       }
     }

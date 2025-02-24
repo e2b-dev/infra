@@ -3,6 +3,7 @@ ENV_FILE := $(PWD)/.env.${ENV}
 
 -include ${ENV_FILE}
 
+TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
 OTEL_TRACING_PRINT ?= false
 EXCLUDE_GITHUB ?= 1
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
@@ -46,7 +47,8 @@ login-gcloud:
 init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
-	terraform init -input=false -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+	gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
+	terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 	$(tf_vars) terraform apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
 	$(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
@@ -148,3 +150,13 @@ setup-ssh:
 	@ gcloud compute config-ssh --remove
 	@ gcloud compute config-ssh --project $(GCP_PROJECT_ID) --quiet
 	@ printf "SSH setup complete\n"
+
+.PHONY: test
+test:
+	$(MAKE) -C packages/api test
+	$(MAKE) -C packages/client-proxy test
+	$(MAKE) -C packages/docker-reverse-proxy test
+	$(MAKE) -C packages/envd test
+	$(MAKE) -C packages/orchestrator test
+	$(MAKE) -C packages/shared test
+	$(MAKE) -C packages/template-manager test
