@@ -34,6 +34,8 @@ message SandboxConfig {
 
   bool snapshot = 16;
   string base_template_id = 17;
+
+  optional bool auto_pause = 18;
 }
 
 message SandboxCreateRequest {
