@@ -182,6 +182,12 @@ variable "domain_name" {
   description = "The domain name where e2b will run"
 }
 
+variable "additional_domains" {
+  type        = string
+  description = "Additional domains which can be used to access the e2b cluster, separated by commas"
+  default     = ""
+}
+
 variable "prefix" {
   type        = string
   description = "The prefix to use for all resources in this module"

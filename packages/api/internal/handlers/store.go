@@ -96,7 +96,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		logger.Warn("REDIS_URL not set, using local caches")
 	}
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger.Desugar(), posthogClient, redisClient)
+	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger.Desugar(), posthogClient, redisClient, dbClient)
 	if err != nil {
 		logger.Panic("initializing Orchestrator client", zap.Error(err))
 	}
