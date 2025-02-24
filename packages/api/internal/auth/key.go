@@ -21,10 +21,8 @@ type Key struct {
 }
 
 func MaskKey(prefix string, value string) string {
-	suffixLength := keySuffixLength
-
-	lastFour := value[len(value)-suffixLength:]
-	stars := strings.Repeat("*", len(value)-suffixLength)
+	lastFour := value[len(value)-keySuffixLength:]
+	stars := strings.Repeat("*", len(value)-keySuffixLength)
 	return prefix + stars + lastFour
 }
 
