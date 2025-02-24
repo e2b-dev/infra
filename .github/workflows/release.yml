@@ -1,9 +1,6 @@
 name: Release
 
-on:
-  push:
-    branches:
-      - main
+on: workflow_call
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
