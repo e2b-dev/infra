@@ -5,6 +5,13 @@ job "client-proxy" {
   priority = 80
 
   group "client-proxy" {
+  count = 3
+
+  constraint {
+    operator  = "distinct_hosts"
+    value     = "true"
+  }
+
     network {
       port "${port_name}" {
         static = "${port_number}"
