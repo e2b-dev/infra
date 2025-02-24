@@ -44,6 +44,11 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int) (*P
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}
 
+	slotStorage, err := NewStorage(slotsSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create slot storage: %w", err)
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	pool := &Pool{
 		newSlots:          newSlots,
@@ -52,7 +57,7 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int) (*P
 		reusedSlotCounter: reusedSlotsCounter,
 		ctx:               ctx,
 		cancel:            cancel,
-		slotStorage:       NewStorage(slotsSize),
+		slotStorage:       slotStorage,
 	}
 
 	go func() {
@@ -111,7 +116,7 @@ func (p *Pool) Get(ctx context.Context) (Slot, error) {
 	default:
 		select {
 		case <-ctx.Done():
-			return *NewSlot("", 0), ctx.Err()
+			return Slot{}, ctx.Err()
 		case slot := <-p.newSlots:
 			p.newSlotCounter.Add(ctx, -1)
 			telemetry.ReportEvent(ctx, "new network slot")

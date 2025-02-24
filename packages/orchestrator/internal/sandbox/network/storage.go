@@ -8,7 +8,7 @@ type Storage interface {
 }
 
 // NewStorage creates a new slot storage based on the environment, we are ok with using a memory storage for local
-func NewStorage(slotsSize int) Storage {
+func NewStorage(slotsSize int) (Storage, error) {
 	if env.IsLocal() {
 		return NewStorageMemory(slotsSize)
 	} else {
