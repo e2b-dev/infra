@@ -1,5 +1,5 @@
 package auth
 
-type Hashing interface {
+type Hasher interface {
 	Hash(key []byte) string
 }
