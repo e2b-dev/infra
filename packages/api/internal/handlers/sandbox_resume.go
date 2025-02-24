@@ -88,7 +88,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	if pauseResult.WasPaused {
+	if pauseResult.DidPause {
 		// If the pausing was in progress, prefer to restore on the node where the pausing happened.
 		clientID = pauseResult.Node.ID
 	}

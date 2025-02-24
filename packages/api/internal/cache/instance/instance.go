@@ -28,8 +28,8 @@ const (
 )
 
 type PauseResult struct {
-	WasPaused bool
-	Node      *node.NodeInfo
+	DidPause bool
+	Node     *node.NodeInfo
 }
 
 type InstanceInfo struct {
@@ -151,8 +151,8 @@ func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (*Pa
 	instanceInfo, ok := c.pausing.Get(sandboxID)
 	if !ok {
 		return &PauseResult{
-			WasPaused: false,
-			Node:      nil,
+			DidPause: false,
+			Node:     nil,
 		}, nil
 	}
 
@@ -184,8 +184,8 @@ func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (*Pa
 func (c *InstanceInfo) PauseDone(err error) {
 	if err == nil {
 		err := c.PauseResult.SetValue(&PauseResult{
-			WasPaused: true,
-			Node:      c.Node,
+			DidPause: true,
+			Node:     c.Node,
 		})
 		if err != nil {
 			fmt.Printf("error setting PauseDone value: %v", err)
