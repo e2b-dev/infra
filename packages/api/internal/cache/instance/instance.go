@@ -131,6 +131,10 @@ func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {
 
 func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
 	c.pausing.RemoveCb(instanceInfo.Instance.SandboxID, func(key string, v *InstanceInfo, exists bool) bool {
+		if !exists {
+			return false
+		}
+
 		// We depend of the startTime not changing to uniquely identify instance in the cache.
 		return v.Instance.SandboxID == instanceInfo.Instance.SandboxID && v.StartTime == instanceInfo.StartTime
 	})
