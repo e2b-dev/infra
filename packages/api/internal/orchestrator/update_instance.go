@@ -16,13 +16,12 @@ import (
 )
 
 func (o *Orchestrator) UpdateSandbox(
-	t trace.Tracer,
 	ctx context.Context,
 	sandboxID string,
 	endTime time.Time,
 	nodeID string,
 ) error {
-	childCtx, childSpan := t.Start(ctx, "update-sandbox",
+	childCtx, childSpan := o.tracer.Start(ctx, "update-sandbox",
 		trace.WithAttributes(
 			attribute.String("instance.id", sandboxID),
 		),
