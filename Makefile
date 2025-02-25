@@ -161,3 +161,23 @@ test:
 	$(MAKE) -C packages/orchestrator test
 	$(MAKE) -C packages/shared test
 	$(MAKE) -C packages/template-manager test
+
+
+# $(MAKE) -C terraform/grafana init does not work b/c of the -include ${ENV_FILE} in the Makefile
+# so we need to call the Makefile directly
+# && cd - || cd - is used to handle the case where the command fails, we still want to cd -
+.PHONY: grafana-init
+grafana-init:
+	@ printf "Initializing Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	cd terraform/grafana && make init && cd - || cd -
+
+.PHONY: grafana-plan
+grafana-plan:
+	@ printf "Planning Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	cd terraform/grafana && make plan && cd - || cd -
+
+.PHONY: grafana-apply
+grafana-apply:
+	@ printf "Applying Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	cd terraform/grafana && make apply && cd - || cd -
+
