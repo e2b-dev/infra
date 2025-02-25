@@ -41,7 +41,7 @@ func main() {
 		cancel()
 	}()
 
-	dnsServer := dns.New()
+	dnsServer := dns.New(func(sandboxID string) error { return nil })
 	go func() {
 		log.Printf("Starting DNS server")
 
@@ -93,7 +93,7 @@ func mockSandbox(
 	templateId,
 	buildId,
 	sandboxId string,
-	dns *dns.DNS,
+	dns *dns.OrchDNS,
 	keepAlive time.Duration,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
