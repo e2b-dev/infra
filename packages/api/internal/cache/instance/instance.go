@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -118,7 +117,8 @@ type InstanceCache struct {
 	reservations *ReservationCache
 	pausing      *smap.Map[*InstanceInfo]
 
-	instances *lifecycleCache
+	instances      *lifecycleCache
+	insertInstance func(data *InstanceInfo) error
 
 	logger *zap.SugaredLogger
 
@@ -130,16 +130,15 @@ type InstanceCache struct {
 }
 
 func NewCache(
+	ctx context.Context,
 	analytics analyticscollector.AnalyticsCollectorClient,
 	logger *zap.SugaredLogger,
-	insertInstance func(data InstanceInfo) error,
-	deleteInstance func(data InstanceInfo) error,
+	insertInstance func(data *InstanceInfo) error,
+	deleteInstance func(data *InstanceInfo) error,
 ) *InstanceCache {
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
-	cache := ttlcache.New(
-		ttlcache.WithTTL[string, InstanceInfo](InstanceExpiration),
-	)
+	cache := newLifecycleCache()
 
 	sandboxCounter, err := meters.GetUpDownCounter(meters.SandboxCountMeterName)
 	if err != nil {
@@ -152,7 +151,8 @@ func NewCache(
 	}
 
 	instanceCache := &InstanceCache{
-		instances:      newLifecycleCache(func(instance *InstanceInfo) {}),
+		instances:      cache,
+		insertInstance: insertInstance,
 		logger:         logger,
 		analytics:      analytics,
 		sandboxCounter: sandboxCounter,
@@ -161,29 +161,16 @@ func NewCache(
 		pausing:        smap.New[*InstanceInfo](),
 	}
 
-	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, InstanceInfo]) {
-		instanceInfo := i.Value()
-		err := insertInstance(instanceInfo)
+	cache.OnEviction(func(ctx context.Context, instanceInfo *InstanceInfo) {
+		err := deleteInstance(instanceInfo)
 		if err != nil {
-			logger.Errorf("Error inserting instance: %v", err)
-
-			return
+			logger.Errorf("Error deleting instance (%v)\n: %v", err)
 		}
+
+		instanceCache.UpdateCounters(instanceInfo, -1, false)
 	})
 
-	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, InstanceInfo]) {
-		if er == ttlcache.EvictionReasonExpired || er == ttlcache.EvictionReasonDeleted {
-			instanceInfo := i.Value()
-			err := deleteInstance(instanceInfo)
-			if err != nil {
-				logger.Errorf("Error deleting instance (%v)\n: %v", er, err)
-			}
-
-			instanceCache.UpdateCounters(i.Value(), -1, false)
-		}
-	})
-
-	go cache.Start()
+	go cache.Start(ctx)
 
 	go func() {
 		for {
@@ -192,12 +179,24 @@ func NewCache(
 			items := cache.Items()
 			fmt.Printf("evictions: %d\n", cache.Metrics().Evictions)
 			for _, item := range items {
-				fmt.Printf("item: %s %s %s %t %s %d %t\n", item.Key(), item.Value().Instance.SandboxID, item.TTL(), item.IsExpired(), item.ExpiresAt(), item.Version(), *item.Value().AutoPause)
+				fmt.Printf("item: %s, expired: %t, end time: %s, autoPause: %t\n", item.Instance.SandboxID, item.IsExpired(), item.GetEndTime(), *item.AutoPause)
 			}
 		}
 	}()
 
 	return instanceCache
+}
+
+func (c *InstanceCache) Set(key string, value *InstanceInfo) {
+	inserted := c.instances.SetIfAbsent(key, value)
+	if inserted {
+		go func() {
+			err := c.insertInstance(value)
+			if err != nil {
+				fmt.Printf("error inserting instance: %v", err)
+			}
+		}()
+	}
 }
 
 func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {

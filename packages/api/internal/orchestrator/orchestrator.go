@@ -70,6 +70,7 @@ func New(
 	}
 
 	cache := instance.NewCache(
+		ctx,
 		analyticsInstance.Client,
 		slogger,
 		o.getInsertInstanceFunction(ctx, slogger, cacheHookTimeout),

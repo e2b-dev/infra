@@ -21,21 +21,20 @@ func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceL
 
 // KeepAliveFor the instance's expiration timer.
 func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, allowShorter bool) (*InstanceInfo, error) {
-	item, err := c.Get(instanceID)
+	instance, err := c.Get(instanceID)
 	if err != nil {
 		return nil, err
 	}
 
 	now := time.Now()
-	instance := item.Value()
 
 	endTime := instance.GetEndTime()
 	if !allowShorter && endTime.After(now.Add(duration)) {
-		return &instance, nil
+		return instance, nil
 	}
 
 	if (time.Since(instance.StartTime)) > instance.MaxInstanceLength {
-		c.cache.Delete(instanceID)
+		c.instances.Remove(instanceID)
 
 		return nil, fmt.Errorf("instance \"%s\" reached maximal allowed uptime", instanceID)
 	} else {
@@ -43,14 +42,9 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 
 		newEndTime := now.Add(maxAllowedTTL)
 		instance.SetEndTime(newEndTime)
-
-		item = c.cache.Set(instanceID, instance, maxAllowedTTL)
-		if item == nil {
-			return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
-		}
 	}
 
-	return &instance, nil
+	return instance, nil
 }
 
 func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
@@ -62,19 +56,20 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 	}
 
 	// Delete instances that are not in Orchestrator anymore
-	for _, item := range c.cache.Items() {
-		if item.Value().Instance.ClientID == nodeID {
-			_, found := instanceMap[item.Key()]
-			if !found {
-				c.cache.Delete(item.Key())
-			}
+	for _, item := range c.instances.Items() {
+		if item.Instance.ClientID != nodeID {
+			continue
+		}
+		_, found := instanceMap[item.Instance.SandboxID]
+		if !found {
+			c.instances.Remove(item.Instance.SandboxID)
 		}
 	}
 
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
 		if !c.Exists(instance.Instance.SandboxID) {
-			err := c.Add(*instance, false)
+			err := c.Add(instance, false)
 			if err != nil {
 				fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
 			}

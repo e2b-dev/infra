@@ -2,19 +2,17 @@ package instance
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/jellydator/ttlcache/v3"
 )
 
 func (c *InstanceCache) Count() int {
-	return c.cache.Len()
+	return c.instances.Len()
 }
 
 func (c *InstanceCache) CountForTeam(teamID uuid.UUID) (count uint) {
-	for _, item := range c.cache.Items() {
-		currentTeamID := item.Value().TeamID
+	for _, item := range c.instances.Items() {
+		currentTeamID := item.TeamID
 
 		if currentTeamID == nil {
 			continue
@@ -28,16 +26,16 @@ func (c *InstanceCache) CountForTeam(teamID uuid.UUID) (count uint) {
 	return count
 }
 
-// Check if the instance exists in the cache.
+// Exists Check if the instance exists in the cache.
 func (c *InstanceCache) Exists(instanceID string) bool {
-	item := c.cache.Has(instanceID)
+	_, exists := c.instances.Get(instanceID)
 
-	return item
+	return exists
 }
 
 // Get the item from the cache.
-func (c *InstanceCache) Get(instanceID string) (*ttlcache.Item[string, InstanceInfo], error) {
-	item := c.cache.Get(instanceID, ttlcache.WithDisableTouchOnHit[string, InstanceInfo]())
+func (c *InstanceCache) Get(instanceID string) (*InstanceInfo, error) {
+	item, _ := c.instances.Get(instanceID)
 	if item != nil {
 		return item, nil
 	} else {
@@ -46,21 +44,21 @@ func (c *InstanceCache) Get(instanceID string) (*ttlcache.Item[string, InstanceI
 }
 
 // GetInstance from the cache.
-func (c *InstanceCache) GetInstance(instanceID string) (InstanceInfo, error) {
+func (c *InstanceCache) GetInstance(instanceID string) (*InstanceInfo, error) {
 	item, err := c.Get(instanceID)
 	if err != nil {
-		return InstanceInfo{}, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
+		return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
 	} else {
-		return item.Value(), nil
+		return item, nil
 	}
 }
 
 func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []*InstanceInfo) {
-	for _, item := range c.cache.Items() {
-		currentTeamID := item.Value().TeamID
+	for _, item := range c.instances.Items() {
+		currentTeamID := item.TeamID
 
 		if teamID == nil || *currentTeamID == *teamID {
-			instances = append(instances, item.Value())
+			instances = append(instances, item)
 		}
 	}
 
@@ -100,7 +98,7 @@ func (c *InstanceCache) Add(instance *InstanceInfo, newlyCreated bool) error {
 		instance.SetEndTime(instance.StartTime.Add(instance.MaxInstanceLength))
 	}
 
-	c.cache.Set(instance.Instance.SandboxID, instance, ttl)
+	c.Set(instance.Instance.SandboxID, instance)
 	c.UpdateCounters(instance, 1, newlyCreated)
 
 	// Release the reservation if it exists
@@ -111,23 +109,19 @@ func (c *InstanceCache) Add(instance *InstanceInfo, newlyCreated bool) error {
 
 // Delete the instance and remove it from the cache.
 func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
-	value, found := c.cache.GetAndDelete(instanceID)
+	value, found := c.instances.GetAndRemove(instanceID)
 	if found {
-		*value.Value().AutoPause = pause
+		*value.AutoPause = pause
 
 		if pause {
-			v := value.Value()
-			c.MarkAsPausing(&v)
+			v := value
+			c.MarkAsPausing(v)
 		}
 	}
 
 	return found
 }
 
-func (c *InstanceCache) Items() (infos []InstanceInfo) {
-	for _, item := range c.cache.Items() {
-		infos = append(infos, item.Value())
-	}
-
-	return infos
+func (c *InstanceCache) Items() []*InstanceInfo {
+	return c.instances.Items()
 }

@@ -2,21 +2,39 @@ package instance
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	cmap "github.com/orcaman/concurrent-map/v2"
 )
 
-type lifecycleCache struct {
-	running cmap.ConcurrentMap[string, *InstanceInfo]
-	onEvict func(instance *InstanceInfo)
+type lifecycleCacheMetrics struct {
+	Evictions uint64
 }
 
-func newLifecycleCache(onEvict func(instance *InstanceInfo)) *lifecycleCache {
+type lifecycleCache struct {
+	running cmap.ConcurrentMap[string, *InstanceInfo]
+	onEvict func(ctx context.Context, instance *InstanceInfo)
+
+	metrics lifecycleCacheMetrics
+}
+
+func newLifecycleCache() *lifecycleCache {
 	return &lifecycleCache{
 		running: cmap.New[*InstanceInfo](),
-		onEvict: onEvict,
+		onEvict: func(ctx context.Context, instance *InstanceInfo) {},
+		metrics: lifecycleCacheMetrics{
+			Evictions: 0,
+		},
 	}
+}
+
+func (c *lifecycleCache) OnEviction(onEvict func(ctx context.Context, instance *InstanceInfo)) {
+	c.onEvict = onEvict
+}
+
+func (c *lifecycleCache) Metrics() lifecycleCacheMetrics {
+	return c.metrics
 }
 
 func (c *lifecycleCache) Start(ctx context.Context) {
@@ -24,31 +42,33 @@ func (c *lifecycleCache) Start(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		default:
-		}
+		case <-time.After(50 * time.Millisecond):
+			// Get all items from the cache before iterating over them
+			// to avoid holding the lock while removing items from the cache.
+			items := c.running.Items()
 
-		// Get all items from cache before iterating over them
-		// to avoid holding the lock while removing items from the cache.
-		items := c.running.Items()
+			for key, value := range items {
+				if value.IsExpired() {
+					c.running.RemoveCb(key, func(key string, value *InstanceInfo, exist bool) bool {
+						fmt.Printf("Evicting instance: %s, %t\n", key, exist)
+						if !exist {
+							return false
+						}
 
-		for key, value := range items {
-			if value.IsExpired() {
-				c.running.RemoveCb(key, func(key string, value *InstanceInfo, exits bool) bool {
-					if !exits {
-						return false
-					}
+						go c.onEvict(ctx, value)
 
-					go c.onEvict(value)
+						return true
+					})
 
-					return true
-				})
+					c.metrics.Evictions += 1
+				}
 			}
 		}
 	}
 }
 
-func (c *lifecycleCache) Set(key string, value *InstanceInfo) {
-	c.running.Set(key, value)
+func (c *lifecycleCache) SetIfAbsent(key string, value *InstanceInfo) bool {
+	return c.running.SetIfAbsent(key, value)
 }
 
 func (c *lifecycleCache) Get(key string) (*InstanceInfo, bool) {
@@ -64,20 +84,34 @@ func (c *lifecycleCache) Get(key string) (*InstanceInfo, bool) {
 	return value, true
 }
 
-func (c *lifecycleCache) Remove(key string) bool {
+func (c *lifecycleCache) GetAndRemove(key string) (*InstanceInfo, bool) {
 	v, ok := c.running.Get(key)
 	if !ok {
-		return false
+		return nil, false
 	}
 
-	// Set end time to now trigger eviction.
+	// Set end time to now and trigger the eviction.
+	// Not removing from the cache, let the eviction handle it.
 	v.SetEndTime(time.Now())
 
-	return true
+	return v, true
+}
+
+func (c *lifecycleCache) Remove(key string) bool {
+	_, ok := c.GetAndRemove(key)
+	return ok
 }
 
 func (c *lifecycleCache) Items() (items []*InstanceInfo) {
 	for _, item := range c.running.Items() {
+		if item.IsExpired() {
+			continue
+		}
 		items = append(items, item)
 	}
+	return items
+}
+
+func (c *lifecycleCache) Len() int {
+	return c.running.Count()
 }
