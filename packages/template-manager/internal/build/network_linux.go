@@ -118,7 +118,7 @@ func (n *FCNetwork) setup(ctx context.Context, tracer trace.Tracer) error {
 	tapAttrs.Namespace = ns
 
 	tap := &netlink.Tuntap{
-		Mode:      netlink.TUNTAP_MODE_TUN,
+		Mode:      netlink.TUNTAP_MODE_TAP,
 		LinkAttrs: tapAttrs,
 	}
 
