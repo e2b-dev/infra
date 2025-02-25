@@ -34,7 +34,7 @@ const (
 // Create a DNS client
 var client = new(dns.Client)
 
-func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Request) {
+func proxyHandler(transport *http.Transport, logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		logger.Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
@@ -116,17 +116,8 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 			return nil
 		}
 
-		// Set the transport options (with values similar to our old the nginx configuration)
-		proxy.Transport = &http.Transport{
-			Proxy:                 http.ProxyFromEnvironment,
-			MaxIdleConns:          1024,              // Matches worker_connections
-			MaxIdleConnsPerHost:   8192,              // Matches keepalive_requests
-			IdleConnTimeout:       620 * time.Second, // Matches keepalive_timeout
-			TLSHandshakeTimeout:   10 * time.Second,  // Similar to client_header_timeout
-			ResponseHeaderTimeout: 24 * time.Hour,    // Matches proxy_read_timeout
-			DisableKeepAlives:     false,             // Allow keep-alives
-		}
-
+		// Set the transport
+		proxy.Transport = transport
 		proxy.ServeHTTP(w, r)
 	}
 }
@@ -170,7 +161,19 @@ func main() {
 
 	// Proxy request to the correct node
 	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
-	server.Handler = http.HandlerFunc(proxyHandler(logger))
+
+	// similar values to our old the nginx configuration
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		MaxIdleConns:          1024,              // Matches worker_connections
+		MaxIdleConnsPerHost:   8192,              // Matches keepalive_requests
+		IdleConnTimeout:       620 * time.Second, // Matches keepalive_timeout
+		TLSHandshakeTimeout:   10 * time.Second,  // Similar to client_header_timeout
+		ResponseHeaderTimeout: 24 * time.Hour,    // Matches proxy_read_timeout
+		DisableKeepAlives:     false,             // Allow keep-alives
+	}
+
+	server.Handler = http.HandlerFunc(proxyHandler(transport, logger))
 
 	wg.Add(1)
 	go func() {
