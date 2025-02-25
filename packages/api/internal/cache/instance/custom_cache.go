@@ -2,7 +2,6 @@ package instance
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -50,7 +49,6 @@ func (c *lifecycleCache) Start(ctx context.Context) {
 			for key, value := range items {
 				if value.IsExpired() {
 					c.running.RemoveCb(key, func(key string, value *InstanceInfo, exist bool) bool {
-						fmt.Printf("Evicting instance: %s, %t\n", key, exist)
 						if !exist {
 							return false
 						}

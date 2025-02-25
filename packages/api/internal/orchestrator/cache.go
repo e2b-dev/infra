@@ -122,8 +122,6 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 	timeout time.Duration,
 ) func(info *instance.InstanceInfo) error {
 	return func(info *instance.InstanceInfo) error {
-		fmt.Printf("Deleting instance %s\n", info.Instance.SandboxID)
-
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		defer cancel()
 
@@ -199,7 +197,6 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			}
 		}
 
-		fmt.Printf("Deleted instance %s\n", info.Instance.SandboxID)
 		return nil
 	}
 }

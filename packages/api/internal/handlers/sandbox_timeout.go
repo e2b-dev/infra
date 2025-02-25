@@ -39,7 +39,6 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 
 	err = a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, true)
 	if err != nil {
-		fmt.Printf("Error setting sandbox timeout: %v\n", err)
 		errMsg := fmt.Errorf("error setting sandbox timeout: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error setting sandbox timeout for sandbox '%s'", sandboxID))
