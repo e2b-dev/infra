@@ -24,6 +24,10 @@ import (
 	sUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+const (
+	maxNodeRetries = 3
+)
+
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
@@ -101,9 +105,20 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
+	err = o.waitForNodes(childCtx)
+	if err != nil {
+		return nil, fmt.Errorf("no node available: %w", err)
+	}
+
+	attempt := 1
+	nodesToSchedule := o.nodes.Items()
 	for {
+		if attempt > maxNodeRetries {
+			return nil, fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
+		}
+
 		if node == nil {
-			node, err = o.getLeastBusyNode(childCtx)
+			node, err = o.getLeastBusyNode(childCtx, nodesToSchedule)
 			if err != nil {
 				errMsg := fmt.Errorf("failed to get least busy node: %w", err)
 				telemetry.ReportError(childCtx, errMsg)
@@ -132,15 +147,16 @@ func (o *Orchestrator) CreateSandbox(
 			if node.Client.connection.GetState() != connectivity.Ready {
 				// If the connection is not ready, we should remove the node from the list
 				o.nodes.Remove(node.Info.ID)
-			} else {
-				log.Printf("failed to create sandbox on node '%s': %v", node.Info.ID, err)
-
-				return nil, fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
 			}
 		}
 
+		log.Printf("failed to create sandbox on node '%s', attempt #%d: %v", node.Info.ID, attempt, err)
+
 		// The node is not available, try again with another node
+		node.createFails.Add(1)
+		delete(nodesToSchedule, node.Info.ID)
 		node = nil
+		attempt += 1
 	}
 
 	// The build should be cached on the node now
@@ -201,37 +217,53 @@ func (o *Orchestrator) CreateSandbox(
 	return &sbx, nil
 }
 
-func (o *Orchestrator) getLeastBusyNode(ctx context.Context) (leastBusyNode *Node, err error) {
-	childCtx, childSpan := o.tracer.Start(ctx, "get-least-busy-node")
+func (o *Orchestrator) waitForNodes(ctx context.Context) (err error) {
+	childCtx, childSpan := o.tracer.Start(ctx, "wait-for-nodes")
 	defer childSpan.End()
 
 	for {
-		if childCtx.Err() != nil {
-			return nil, fmt.Errorf("context was canceled")
-		}
-
-		// TODO: Incorporate the node's cached builds and total resources into the decision
-		for _, node := range o.nodes.Items() {
-			// To prevent overloading the node
-			if len(node.sbxsInProgress.Items()) > 3 || node.Status() != api.NodeStatusReady {
-				continue
+		select {
+		case <-ctx.Done():
+			return childCtx.Err()
+		default:
+			if len(o.nodes.Items()) > 0 {
+				return nil
 			}
 
-			cpuUsage := int64(0)
-			for _, sbx := range node.sbxsInProgress.Items() {
-				cpuUsage += sbx.CPUs
-			}
-
-			if leastBusyNode == nil || (node.CPUUsage.Load()+cpuUsage) < leastBusyNode.CPUUsage.Load() {
-				leastBusyNode = node
-			}
+			// If no node is available, wait for a bit
+			time.Sleep(10 * time.Millisecond)
 		}
-
-		if leastBusyNode != nil {
-			return leastBusyNode, nil
-		}
-
-		// If no node is available, wait for a bit
-		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func (o *Orchestrator) getLeastBusyNode(ctx context.Context, nodes map[string]*Node) (leastBusyNode *Node, err error) {
+	_, childSpan := o.tracer.Start(ctx, "get-least-busy-node")
+	defer childSpan.End()
+
+	for _, node := range nodes {
+		if node == nil {
+			// The node might be nil if it was removed from the list while iterating
+			continue
+		}
+
+		// To prevent overloading the node
+		if len(node.sbxsInProgress.Items()) > 3 || node.Status() != api.NodeStatusReady {
+			continue
+		}
+
+		cpuUsage := int64(0)
+		for _, sbx := range node.sbxsInProgress.Items() {
+			cpuUsage += sbx.CPUs
+		}
+
+		if leastBusyNode == nil || (node.CPUUsage.Load()+cpuUsage) < leastBusyNode.CPUUsage.Load() {
+			leastBusyNode = node
+		}
+	}
+
+	if leastBusyNode != nil {
+		return leastBusyNode, nil
+	}
+
+	return nil, fmt.Errorf("no node available")
 }
