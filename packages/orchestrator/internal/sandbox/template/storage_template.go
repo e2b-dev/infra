@@ -20,8 +20,6 @@ type storageTemplate struct {
 	rootfs   *utils.SetOnce[*Storage]
 	snapfile *utils.SetOnce[File]
 
-	isSnapshot bool
-
 	memfileHeader *header.Header
 	rootfsHeader  *header.Header
 	localSnapfile *LocalFile
@@ -35,7 +33,6 @@ func newTemplateFromStorage(
 	kernelVersion,
 	firecrackerVersion string,
 	hugePages bool,
-	isSnapshot bool,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
 	bucket *gcs.BucketHandle,
@@ -55,7 +52,6 @@ func newTemplateFromStorage(
 	return &storageTemplate{
 		files:         files,
 		localSnapfile: localSnapfile,
-		isSnapshot:    isSnapshot,
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
 		bucket:        bucket,
@@ -111,7 +107,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.files.BuildId,
 			build.Memfile,
 			t.files.MemfilePageSize(),
-			t.isSnapshot,
 			t.memfileHeader,
 			t.bucket,
 		)
@@ -134,7 +129,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			t.files.BuildId,
 			build.Rootfs,
 			t.files.RootfsBlockSize(),
-			t.isSnapshot,
 			t.rootfsHeader,
 			t.bucket,
 		)

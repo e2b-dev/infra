@@ -62,7 +62,6 @@ func (c *Cache) GetTemplate(
 	kernelVersion,
 	firecrackerVersion string,
 	hugePages bool,
-	isSnapshot bool,
 ) (Template, error) {
 	storageTemplate, err := newTemplateFromStorage(
 		templateId,
@@ -70,7 +69,6 @@ func (c *Cache) GetTemplate(
 		kernelVersion,
 		firecrackerVersion,
 		hugePages,
-		isSnapshot,
 		nil,
 		nil,
 		c.bucket,
@@ -125,7 +123,6 @@ func (c *Cache) AddSnapshot(
 		kernelVersion,
 		firecrackerVersion,
 		hugePages,
-		true,
 		memfileHeader,
 		rootfsHeader,
 		c.bucket,

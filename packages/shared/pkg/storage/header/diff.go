@@ -1,6 +1,7 @@
 package header
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 
@@ -18,20 +19,36 @@ var (
 	EmptyBlock    = make([]byte, RootfsBlockSize)
 )
 
-func CreateDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) error {
+func CreateDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*bitset.BitSet, *bitset.BitSet, error) {
 	b := make([]byte, blockSize)
+
+	emptyBuf := EmptyBlock
+	if blockSize == HugepageSize {
+		emptyBuf = EmptyHugePage
+	}
+
+	empty := bitset.New(0)
 
 	for i, e := dirty.NextSet(0); e; i, e = dirty.NextSet(i + 1) {
 		_, err := source.ReadAt(b, int64(i)*blockSize)
 		if err != nil {
-			return fmt.Errorf("error reading from source: %w", err)
+			return nil, nil, fmt.Errorf("error reading from source: %w", err)
+		}
+
+		// If the block is empty, we don't need to write it to the diff.
+		// Because we checked it does not equal to the base, so we keep it separately.
+		if bytes.Equal(b, emptyBuf) {
+			dirty.Clear(i)
+			empty.Set(i)
+
+			continue
 		}
 
 		_, err = diff.Write(b)
 		if err != nil {
-			return fmt.Errorf("error writing to diff: %w", err)
+			return nil, nil, fmt.Errorf("error writing to diff: %w", err)
 		}
 	}
 
-	return nil
+	return dirty, empty, nil
 }
