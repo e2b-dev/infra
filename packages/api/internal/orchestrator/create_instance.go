@@ -240,6 +240,11 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, nodes map[string]*N
 	defer childSpan.End()
 
 	for _, node := range nodes {
+		if node == nil {
+			// The node might be nil if it was removed from the list while iterating
+			continue
+		}
+
 		// To prevent overloading the node
 		if len(node.sbxsInProgress.Items()) > 3 || node.Status() != api.NodeStatusReady {
 			continue
