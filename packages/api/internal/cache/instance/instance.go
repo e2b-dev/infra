@@ -32,6 +32,46 @@ var (
 	ErrPausingInstanceNotFound = errors.New("pausing instance not found")
 )
 
+func NewInstanceInfo(
+	Logger *logs.SandboxLogger,
+	Instance *api.Sandbox,
+	TeamID *uuid.UUID,
+	BuildID *uuid.UUID,
+	Metadata map[string]string,
+	MaxInstanceLength time.Duration,
+	StartTime time.Time,
+	endTime time.Time,
+	VCpu int64,
+	TotalDiskSizeMB int64,
+	RamMB int64,
+	KernelVersion string,
+	FirecrackerVersion string,
+	EnvdVersion string,
+	Node *node.NodeInfo,
+	AutoPause *bool,
+) *InstanceInfo {
+	return &InstanceInfo{
+		Logger:             Logger,
+		Instance:           Instance,
+		TeamID:             TeamID,
+		BuildID:            BuildID,
+		Metadata:           Metadata,
+		MaxInstanceLength:  MaxInstanceLength,
+		StartTime:          StartTime,
+		endTime:            endTime,
+		VCpu:               VCpu,
+		TotalDiskSizeMB:    TotalDiskSizeMB,
+		RamMB:              RamMB,
+		KernelVersion:      KernelVersion,
+		FirecrackerVersion: FirecrackerVersion,
+		EnvdVersion:        EnvdVersion,
+		Node:               Node,
+		AutoPause:          AutoPause,
+		Pausing:            utils.NewSetOnce[*node.NodeInfo](),
+		mu:                 sync.RWMutex{},
+	}
+}
+
 type InstanceInfo struct {
 	Logger             *logs.SandboxLogger
 	Instance           *api.Sandbox
@@ -40,7 +80,7 @@ type InstanceInfo struct {
 	Metadata           map[string]string
 	MaxInstanceLength  time.Duration
 	StartTime          time.Time
-	EndTime            time.Time
+	endTime            time.Time
 	VCpu               int64
 	TotalDiskSizeMB    int64
 	RamMB              int64
@@ -50,13 +90,35 @@ type InstanceInfo struct {
 	Node               *node.NodeInfo
 	AutoPause          *bool
 	Pausing            *utils.SetOnce[*node.NodeInfo]
+	mu                 sync.RWMutex
+}
+
+func (i *InstanceInfo) IsExpired() bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
+	return time.Now().After(i.endTime)
+}
+
+func (i *InstanceInfo) GetEndTime() time.Time {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
+	return i.endTime
+}
+
+func (i *InstanceInfo) SetEndTime(endTime time.Time) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	i.endTime = endTime
 }
 
 type InstanceCache struct {
 	reservations *ReservationCache
 	pausing      *smap.Map[*InstanceInfo]
 
-	cache *ttlcache.Cache[string, InstanceInfo]
+	instances *lifecycleCache
 
 	logger *zap.SugaredLogger
 
@@ -90,7 +152,7 @@ func NewCache(
 	}
 
 	instanceCache := &InstanceCache{
-		cache:          cache,
+		instances:      newLifecycleCache(func(instance *InstanceInfo) {}),
 		logger:         logger,
 		analytics:      analytics,
 		sandboxCounter: sandboxCounter,
@@ -122,6 +184,18 @@ func NewCache(
 	})
 
 	go cache.Start()
+
+	go func() {
+		for {
+			time.Sleep(time.Second * 10)
+			fmt.Printf("cache size: %d\n", cache.Len())
+			items := cache.Items()
+			fmt.Printf("evictions: %d\n", cache.Metrics().Evictions)
+			for _, item := range items {
+				fmt.Printf("item: %s %s %s %t %s %d %t\n", item.Key(), item.Value().Instance.SandboxID, item.TTL(), item.IsExpired(), item.ExpiresAt(), item.Version(), *item.Value().AutoPause)
+			}
+		}
+	}()
 
 	return instanceCache
 }

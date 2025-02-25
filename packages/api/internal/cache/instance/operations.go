@@ -30,9 +30,9 @@ func (c *InstanceCache) CountForTeam(teamID uuid.UUID) (count uint) {
 
 // Check if the instance exists in the cache.
 func (c *InstanceCache) Exists(instanceID string) bool {
-	item := c.cache.Get(instanceID, ttlcache.WithDisableTouchOnHit[string, InstanceInfo]())
+	item := c.cache.Has(instanceID)
 
-	return item != nil
+	return item
 }
 
 // Get the item from the cache.
@@ -55,7 +55,7 @@ func (c *InstanceCache) GetInstance(instanceID string) (InstanceInfo, error) {
 	}
 }
 
-func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []InstanceInfo) {
+func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []*InstanceInfo) {
 	for _, item := range c.cache.Items() {
 		currentTeamID := item.Value().TeamID
 
@@ -69,7 +69,7 @@ func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []InstanceInf
 
 // Add the instance to the cache and start expiration timer.
 // If the instance already exists we do nothing - it was loaded from Orchestrator.
-func (c *InstanceCache) Add(instance InstanceInfo, newlyCreated bool) error {
+func (c *InstanceCache) Add(instance *InstanceInfo, newlyCreated bool) error {
 	if instance.Instance == nil {
 		return fmt.Errorf("instance doesn't contain info about inself")
 	}
@@ -90,19 +90,14 @@ func (c *InstanceCache) Add(instance InstanceInfo, newlyCreated bool) error {
 		return fmt.Errorf("instance %s is missing env ID", instance.Instance.TemplateID)
 	}
 
-	if instance.StartTime.IsZero() || instance.EndTime.IsZero() || instance.StartTime.After(instance.EndTime) {
-		return fmt.Errorf("instance %s has invalid start(%s)/end(%s) times", instance.Instance.SandboxID, instance.StartTime, instance.EndTime)
+	endTime := instance.endTime
+
+	if instance.StartTime.IsZero() || endTime.IsZero() || instance.StartTime.After(endTime) {
+		return fmt.Errorf("instance %s has invalid start(%s)/end(%s) times", instance.Instance.SandboxID, instance.StartTime, endTime)
 	}
 
-	if instance.EndTime.Sub(instance.StartTime) > instance.MaxInstanceLength {
-		instance.EndTime = instance.StartTime.Add(instance.MaxInstanceLength)
-	}
-
-	ttl := instance.EndTime.Sub(time.Now())
-	if ttl <= 0 {
-		ttl = time.Nanosecond
-		// TODO: It would be probably better to return error here, but in that case we need to make sure that sbxs in orchestrator are killed
-		// return fmt.Errorf("instance \"%s\" has already expired", instance.Instance.SandboxID)
+	if endTime.Sub(instance.StartTime) > instance.MaxInstanceLength {
+		instance.SetEndTime(instance.StartTime.Add(instance.MaxInstanceLength))
 	}
 
 	c.cache.Set(instance.Instance.SandboxID, instance, ttl)
@@ -116,7 +111,7 @@ func (c *InstanceCache) Add(instance InstanceInfo, newlyCreated bool) error {
 
 // Delete the instance and remove it from the cache.
 func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
-	value, found := c.cache.GetAndDelete(instanceID, ttlcache.WithDisableTouchOnHit[string, InstanceInfo]())
+	value, found := c.cache.GetAndDelete(instanceID)
 	if found {
 		*value.Value().AutoPause = pause
 

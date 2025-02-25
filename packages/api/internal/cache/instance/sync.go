@@ -28,7 +28,9 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 
 	now := time.Now()
 	instance := item.Value()
-	if !allowShorter && instance.EndTime.After(now.Add(duration)) {
+
+	endTime := instance.GetEndTime()
+	if !allowShorter && endTime.After(now.Add(duration)) {
 		return &instance, nil
 	}
 
@@ -40,7 +42,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 		maxAllowedTTL := getMaxAllowedTTL(now, instance.StartTime, duration, instance.MaxInstanceLength)
 
 		newEndTime := now.Add(maxAllowedTTL)
-		instance.EndTime = newEndTime
+		instance.SetEndTime(newEndTime)
 
 		item = c.cache.Set(instanceID, instance, maxAllowedTTL)
 		if item == nil {

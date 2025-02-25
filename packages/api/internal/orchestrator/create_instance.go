@@ -14,14 +14,12 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	nNode "github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	sUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -182,27 +180,26 @@ func (o *Orchestrator) CreateSandbox(
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
 
-	instanceInfo := instance.InstanceInfo{
-		Logger:             logger,
-		StartTime:          startTime,
-		EndTime:            endTime,
-		Instance:           &sbx,
-		BuildID:            &build.ID,
-		TeamID:             &team.Team.ID,
-		Metadata:           metadata,
-		VCpu:               build.Vcpu,
-		RamMB:              build.RAMMB,
-		TotalDiskSizeMB:    *build.TotalDiskSizeMB,
-		KernelVersion:      build.KernelVersion,
-		FirecrackerVersion: build.FirecrackerVersion,
-		EnvdVersion:        *build.EnvdVersion,
-		MaxInstanceLength:  time.Duration(team.Tier.MaxLengthHours) * time.Hour,
-		Node:               node.Info,
-		AutoPause:          &autoPause,
-		Pausing:            sUtils.NewSetOnce[*nNode.NodeInfo](),
-	}
+	instanceInfo := instance.NewInstanceInfo(
+		logger,
+		&sbx,
+		&team.Team.ID,
+		&build.ID,
+		metadata,
+		time.Duration(team.Tier.MaxLengthHours)*time.Hour,
+		startTime,
+		endTime,
+		build.Vcpu,
+		*build.TotalDiskSizeMB,
+		build.RAMMB,
+		build.KernelVersion,
+		build.FirecrackerVersion,
+		*build.EnvdVersion,
+		node.Info,
+		&autoPause,
+	)
 
-	cacheErr := o.instanceCache.Add(instanceInfo, true)
+	cacheErr := o.instanceCache.Add(*instanceInfo, true)
 	if cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)

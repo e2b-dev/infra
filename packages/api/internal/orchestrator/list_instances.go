@@ -59,6 +59,8 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 			autoPause = *config.AutoPause
 		}
 
+		
+
 		sandboxesInfo = append(sandboxesInfo, &instance.InstanceInfo{
 			Logger: logs.NewSandboxLogger(config.SandboxId, config.TemplateId, teamID.String(), config.Vcpu, config.RamMb, false),
 			Instance: &api.Sandbox{
@@ -68,7 +70,6 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 				ClientID:   sbx.ClientId,
 			},
 			StartTime:          sbx.StartTime.AsTime(),
-			EndTime:            sbx.EndTime.AsTime(),
 			VCpu:               config.Vcpu,
 			RamMB:              config.RamMb,
 			BuildID:            &buildID,
@@ -83,6 +84,8 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 			AutoPause:          &autoPause,
 			Pausing:            sUtils.NewSetOnce[*nNode.NodeInfo](),
 		})
+
+
 	}
 
 	return sandboxesInfo, nil
