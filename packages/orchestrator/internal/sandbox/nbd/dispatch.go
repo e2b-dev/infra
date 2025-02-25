@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"sync"
+
+	"go.uber.org/zap"
 )
 
 type Provider interface {
@@ -86,7 +88,7 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
 	d.writeLock.Lock()
 	defer d.writeLock.Unlock()
 
-	//	fmt.Printf("WriteResponse %v %x -> %d\n", d.fp, respHandle, len(chunk))
+	zap.L().Debug("Writing NBD response", zap.Uint64("handle", respHandle), zap.Int("chunk_size", len(chunk)))
 
 	binary.BigEndian.PutUint32(d.responseHeader[4:], respError)
 	binary.BigEndian.PutUint64(d.responseHeader[8:], respHandle)

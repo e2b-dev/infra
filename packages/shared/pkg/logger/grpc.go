@@ -1,4 +1,4 @@
-package logging
+package logger
 
 import grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 

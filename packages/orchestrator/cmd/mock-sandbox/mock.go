@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
 func main() {
@@ -102,7 +102,12 @@ func mockSandbox(
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
 
 	start := time.Now()
-	logger := logs.NewSandboxLogger(sandboxId, templateId, "test-team", 2, 512, false)
+	logger := sbxlogger.NewSandboxLogger(childCtx, sbxlogger.SandboxLoggerConfig{
+		SandboxID:        sandboxId,
+		TemplateID:       templateId,
+		TeamID:           "test-team",
+		CollectorAddress: "http://localhost:8080",
+	})
 
 	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,

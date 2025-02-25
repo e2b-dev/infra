@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"regexp"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 )
@@ -84,7 +84,7 @@ func init() {
 	go func() {
 		err = pool.Populate()
 		if err != nil {
-			log.Fatalf("failed during populating device pool: %v\n", err)
+			zap.L().Fatal("failed during populating device pool", zap.Error(err))
 		}
 	}()
 
@@ -120,7 +120,7 @@ func (d *DevicePool) Populate() error {
 		default:
 			device, err := d.getFreeDeviceSlot()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "[nbd pool]: failed to create network: %v\n", err)
+				zap.L().Error("[nbd pool]: failed to create network", zap.Error(err))
 
 				continue
 			}

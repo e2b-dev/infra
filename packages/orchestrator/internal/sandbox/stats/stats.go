@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/shirou/gopsutil/v4/process"
+	"go.uber.org/zap"
 )
 
 type Handle struct {
@@ -37,7 +38,7 @@ func NewHandle(pid int32) *Handle {
 	go func() {
 		currentStats, err := getCurrentStats(pid)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to get current stats: %v\n", err)
+			zap.L().Error("failed to get current stats", zap.Error(err))
 
 			return
 		}

@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/loopholelabs/userfaultfd-go/pkg/constants"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
@@ -120,7 +121,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {
-					fmt.Printf("[sandbox %s]: recovered from panic in uffd serve (offset: %d, pagesize: %d): %v\n", sandboxId, offset, pagesize, r)
+					zap.L().Error("recovered from panic in uffd serve", zap.Int64("offset", offset), zap.Int64("pagesize", pagesize), zap.Any("panic", r))
 				}
 			}()
 

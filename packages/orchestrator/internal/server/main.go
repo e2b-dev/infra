@@ -3,13 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -41,11 +41,11 @@ func New() (*grpc.Server, error) {
 
 	dnsServer := dns.New()
 	go func() {
-		log.Printf("Starting DNS server")
+		zap.L().Info("Starting DNS server")
 
 		err := dnsServer.Start("127.0.0.4", 53)
 		if err != nil {
-			log.Fatalf("Failed running DNS server: %s\n", err.Error())
+			zap.L().Error("Failed running DNS server", zap.Error(err))
 		}
 	}()
 
