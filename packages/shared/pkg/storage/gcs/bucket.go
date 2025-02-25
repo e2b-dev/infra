@@ -11,9 +11,6 @@ import (
 
 type BucketHandle = storage.BucketHandle
 
-var clientOnce sync.Once
-var client *storage.Client
-
 var getClient = sync.OnceValue(func() *storage.Client {
 	return utils.Must(newClient(context.Background()))
 })
