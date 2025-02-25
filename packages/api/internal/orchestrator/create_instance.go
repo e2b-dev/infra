@@ -153,6 +153,7 @@ func (o *Orchestrator) CreateSandbox(
 		log.Printf("failed to create sandbox on node '%s', attempt #%d: %v", node.Info.ID, attempt, err)
 
 		// The node is not available, try again with another node
+		node.createFails.Add(1)
 		delete(nodesToSchedule, node.Info.ID)
 		node = nil
 		attempt += 1
