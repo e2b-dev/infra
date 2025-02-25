@@ -23,6 +23,7 @@ job "loki" {
   priority = 75
 
   group "loki-service" {
+    count = 2
     network {
       port "loki" {
         to = var.loki_service_port_number
