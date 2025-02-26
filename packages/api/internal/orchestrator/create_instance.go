@@ -193,7 +193,7 @@ func (o *Orchestrator) CreateSandbox(
 		build.FirecrackerVersion,
 		*build.EnvdVersion,
 		node.Info,
-		&autoPause,
+		autoPause,
 	)
 
 	cacheErr := o.instanceCache.Add(instanceInfo, true)

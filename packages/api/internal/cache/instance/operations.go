@@ -43,17 +43,6 @@ func (c *InstanceCache) Get(instanceID string) (*InstanceInfo, error) {
 	return item, nil
 }
 
-// GetInstance from the cache.
-// TODO: Is this needed?
-func (c *InstanceCache) GetInstance(instanceID string) (*InstanceInfo, error) {
-	item, err := c.Get(instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
-	} else {
-		return item, nil
-	}
-}
-
 func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []*InstanceInfo) {
 	for _, item := range c.cache.Items() {
 		currentTeamID := item.TeamID
@@ -113,8 +102,7 @@ func (c *InstanceCache) Add(instance *InstanceInfo, newlyCreated bool) error {
 func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
 	value, found := c.cache.GetAndRemove(instanceID)
 	if found {
-		// TODO: Lock the autopause value
-		*value.AutoPause = pause
+		value.AutoPause.Store(pause)
 
 		if pause {
 			c.MarkAsPausing(value)

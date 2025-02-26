@@ -141,7 +141,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		}
 
 		var closeType string
-		if *info.AutoPause {
+		if info.AutoPause.Load() {
 			closeType = "pause"
 		} else {
 			closeType = "delete"
@@ -176,7 +176,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			return fmt.Errorf("client for node '%s' not found", info.Instance.ClientID)
 		}
 
-		if *info.AutoPause {
+		if info.AutoPause.Load() {
 			o.instanceCache.MarkAsPausing(info)
 
 			err = o.PauseInstance(ctx, o.tracer, info, *info.TeamID)
@@ -227,7 +227,7 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, logg
 			logger.Errorf("Error sending Analytics event: %v", err)
 		}
 
-		if *info.AutoPause {
+		if info.AutoPause.Load() {
 			o.instanceCache.MarkAsPausing(info)
 		}
 

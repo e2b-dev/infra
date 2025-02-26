@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -47,8 +48,11 @@ func NewInstanceInfo(
 	FirecrackerVersion string,
 	EnvdVersion string,
 	Node *node.NodeInfo,
-	AutoPause *bool,
+	AutoPause bool,
 ) *InstanceInfo {
+	var autoPause atomic.Bool
+	autoPause.Store(AutoPause)
+
 	return &InstanceInfo{
 		Logger:             Logger,
 		Instance:           Instance,
@@ -65,7 +69,7 @@ func NewInstanceInfo(
 		FirecrackerVersion: FirecrackerVersion,
 		EnvdVersion:        EnvdVersion,
 		Node:               Node,
-		AutoPause:          AutoPause,
+		AutoPause:          &autoPause,
 		Pausing:            utils.NewSetOnce[*node.NodeInfo](),
 		mu:                 sync.RWMutex{},
 	}
@@ -87,7 +91,7 @@ type InstanceInfo struct {
 	FirecrackerVersion string
 	EnvdVersion        string
 	Node               *node.NodeInfo
-	AutoPause          *bool
+	AutoPause          *atomic.Bool
 	Pausing            *utils.SetOnce[*node.NodeInfo]
 	mu                 sync.RWMutex
 }
@@ -192,11 +196,7 @@ func (c *InstanceCache) Set(key string, value *InstanceInfo) {
 }
 
 func (c *InstanceCache) MarkAsPausing(instanceInfo *InstanceInfo) {
-	if instanceInfo.AutoPause == nil {
-		return
-	}
-
-	if *instanceInfo.AutoPause {
+	if instanceInfo.AutoPause.Load() {
 		c.pausing.InsertIfAbsent(instanceInfo.Instance.SandboxID, instanceInfo)
 	}
 }

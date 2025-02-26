@@ -81,7 +81,7 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 				config.FirecrackerVersion,
 				config.EnvdVersion,
 				node,
-				&autoPause,
+				autoPause,
 			),
 		)
 	}
@@ -98,5 +98,5 @@ func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID) []*i
 }
 
 func (o *Orchestrator) GetInstance(ctx context.Context, id string) (*instance.InstanceInfo, error) {
-	return o.instanceCache.GetInstance(id)
+	return o.instanceCache.Get(id)
 }
