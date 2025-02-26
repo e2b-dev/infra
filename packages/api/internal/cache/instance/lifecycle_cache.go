@@ -90,7 +90,7 @@ func (c *lifecycleCache[T]) Get(key string) (T, bool) {
 
 func (c *lifecycleCache[T]) GetAndRemove(key string) (T, bool) {
 	var zero T
-	v, ok := c.running.Get(key)
+	v, ok := c.Get(key)
 	if !ok {
 		return zero, false
 	}
