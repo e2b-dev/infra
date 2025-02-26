@@ -237,7 +237,7 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, nodesExcluded map[s
 					continue
 				}
 
-				// To prevent overloading the node (only in production)
+				// To prevent overloading the node
 				if len(node.sbxsInProgress.Items()) > maxStartingInstancesPerNode {
 					continue
 				}
