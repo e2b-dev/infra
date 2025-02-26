@@ -117,7 +117,7 @@ type InstanceCache struct {
 	reservations *ReservationCache
 	pausing      *smap.Map[*InstanceInfo]
 
-	instances      *lifecycleCache
+	cache          *lifecycleCache[*InstanceInfo]
 	insertInstance func(data *InstanceInfo) error
 
 	logger *zap.SugaredLogger
@@ -138,7 +138,7 @@ func NewCache(
 ) *InstanceCache {
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
-	cache := newLifecycleCache()
+	cache := newLifecycleCache[*InstanceInfo]()
 
 	sandboxCounter, err := meters.GetUpDownCounter(meters.SandboxCountMeterName)
 	if err != nil {
@@ -151,7 +151,7 @@ func NewCache(
 	}
 
 	instanceCache := &InstanceCache{
-		instances:      cache,
+		cache:          cache,
 		insertInstance: insertInstance,
 		logger:         logger,
 		analytics:      analytics,
@@ -188,7 +188,7 @@ func NewCache(
 }
 
 func (c *InstanceCache) Set(key string, value *InstanceInfo) {
-	inserted := c.instances.SetIfAbsent(key, value)
+	inserted := c.cache.SetIfAbsent(key, value)
 	if inserted {
 		go func() {
 			err := c.insertInstance(value)

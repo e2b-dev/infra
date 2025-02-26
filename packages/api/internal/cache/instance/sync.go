@@ -34,7 +34,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 	}
 
 	if (time.Since(instance.StartTime)) > instance.MaxInstanceLength {
-		c.instances.Remove(instanceID)
+		c.cache.Remove(instanceID)
 
 		return nil, fmt.Errorf("instance \"%s\" reached maximal allowed uptime", instanceID)
 	} else {
@@ -56,13 +56,13 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 	}
 
 	// Delete instances that are not in Orchestrator anymore
-	for _, item := range c.instances.Items() {
+	for _, item := range c.cache.Items() {
 		if item.Instance.ClientID != nodeID {
 			continue
 		}
 		_, found := instanceMap[item.Instance.SandboxID]
 		if !found {
-			c.instances.Remove(item.Instance.SandboxID)
+			c.cache.Remove(item.Instance.SandboxID)
 		}
 	}
 

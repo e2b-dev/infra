@@ -7,11 +7,11 @@ import (
 )
 
 func (c *InstanceCache) Count() int {
-	return c.instances.Len()
+	return c.cache.Len()
 }
 
 func (c *InstanceCache) CountForTeam(teamID uuid.UUID) (count uint) {
-	for _, item := range c.instances.Items() {
+	for _, item := range c.cache.Items() {
 		currentTeamID := item.TeamID
 
 		if currentTeamID == nil {
@@ -28,14 +28,14 @@ func (c *InstanceCache) CountForTeam(teamID uuid.UUID) (count uint) {
 
 // Exists Check if the instance exists in the cache.
 func (c *InstanceCache) Exists(instanceID string) bool {
-	_, exists := c.instances.Get(instanceID)
+	_, exists := c.cache.Get(instanceID)
 
 	return exists
 }
 
 // Get the item from the cache.
 func (c *InstanceCache) Get(instanceID string) (*InstanceInfo, error) {
-	item, _ := c.instances.Get(instanceID)
+	item, _ := c.cache.Get(instanceID)
 	if item != nil {
 		return item, nil
 	} else {
@@ -54,7 +54,7 @@ func (c *InstanceCache) GetInstance(instanceID string) (*InstanceInfo, error) {
 }
 
 func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []*InstanceInfo) {
-	for _, item := range c.instances.Items() {
+	for _, item := range c.cache.Items() {
 		currentTeamID := item.TeamID
 
 		if teamID == nil || *currentTeamID == *teamID {
@@ -109,7 +109,7 @@ func (c *InstanceCache) Add(instance *InstanceInfo, newlyCreated bool) error {
 
 // Delete the instance and remove it from the cache.
 func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
-	value, found := c.instances.GetAndRemove(instanceID)
+	value, found := c.cache.GetAndRemove(instanceID)
 	if found {
 		*value.AutoPause = pause
 
@@ -123,5 +123,5 @@ func (c *InstanceCache) Delete(instanceID string, pause bool) bool {
 }
 
 func (c *InstanceCache) Items() []*InstanceInfo {
-	return c.instances.Items()
+	return c.cache.Items()
 }
