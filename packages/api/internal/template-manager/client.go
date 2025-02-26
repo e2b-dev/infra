@@ -3,9 +3,11 @@ package template_manager
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -21,7 +23,13 @@ type GRPCClient struct {
 }
 
 func NewClient() (*GRPCClient, error) {
-	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	keepaliveParam := grpc.WithKeepaliveParams(keepalive.ClientParameters{
+		Time:                10 * time.Second, // Send ping every 10s
+		Timeout:             2 * time.Second,  // Wait 2s for response
+		PermitWithoutStream: true,
+	})
+
+	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()), keepaliveParam)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
