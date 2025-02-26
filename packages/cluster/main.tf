@@ -260,8 +260,9 @@ module "network" {
   client_proxy_port        = var.client_proxy_port
   client_proxy_health_port = var.client_proxy_health_port
 
-  api_instance_group    = module.api_cluster.instance_group
-  server_instance_group = module.server_cluster.instance_group
+  api_instance_group     = module.api_cluster.instance_group
+  builder_instance_group = module.build_cluster.instance_group
+  server_instance_group  = module.server_cluster.instance_group
 
   nomad_port             = var.nomad_port
   logs_proxy_port        = var.logs_proxy_port

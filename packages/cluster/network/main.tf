@@ -56,7 +56,7 @@ locals {
         request_path = var.docker_reverse_proxy_port.health_path
         port         = var.docker_reverse_proxy_port.port
       }
-      groups = [{ group = var.api_instance_group }]
+      groups = [{ group = var.builder_instance_group }]
     }
     nomad = {
       protocol                        = "HTTP"
