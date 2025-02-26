@@ -32,7 +32,7 @@ func NewDiffStore(bucket *gcs.BucketHandle, ctx context.Context) (*DiffStore, er
 
 		err := buildData.Close()
 		if err != nil {
-			zap.L().Warn("failed to cleanup build data for item", zap.String("item_key", item.Key()), zap.Error(err))
+			zap.L().Warn("failed to cleanup build data cache for item", zap.String("item_key", item.Key()), zap.Error(err))
 		}
 	})
 

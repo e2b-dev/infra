@@ -31,9 +31,9 @@ func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxL
 		IsDevelopment: config.IsDevelopment,
 		IsDebug:       true,
 		InitialFields: map[string]interface{}{
-			"sandbox_id":  config.SandboxID,
-			"template_id": config.TemplateID,
-			"team_id":     config.TeamID,
+			"sandboxID":  config.SandboxID,
+			"templateID": config.TemplateID,
+			"teamID":     config.TeamID,
 		},
 		CollectorAddress: config.CollectorAddress,
 	})

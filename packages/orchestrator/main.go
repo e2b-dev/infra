@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"net"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
@@ -31,13 +30,16 @@ func main() {
 		defer shutdown(context.TODO())
 	}
 
-	zap.ReplaceGlobals(zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:      server.ServiceName,
 		IsInternal:       true,
 		IsDevelopment:    env.IsLocal(),
 		IsDebug:          env.IsDebug(),
 		CollectorAddress: logsCollectorAddress,
-	})))
+	}))
+	defer logger.Sync()
+
+	zap.ReplaceGlobals(logger)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
@@ -49,7 +51,7 @@ func main() {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
 
-	log.Printf("starting server on port %d", *port)
+	logger.Info("Starting orchestrator server", zap.Int("port", *port))
 
 	if err := s.Serve(lis); err != nil {
 		zap.L().Fatal("failed to serve", zap.Error(err))

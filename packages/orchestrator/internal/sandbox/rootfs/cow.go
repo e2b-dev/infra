@@ -120,13 +120,13 @@ func (o *CowDevice) Close() error {
 		return errors.Join(errs...)
 	}
 
-	counter := 0
+	attempts := 0
 	for {
-		counter++
+		attempts++
 		err := nbd.Pool.ReleaseDevice(slot)
 		if errors.Is(err, nbd.ErrDeviceInUse{}) {
-			if counter%100 == 0 {
-				zap.L().Info("error releasing overlay device", zap.Int("counter", counter), zap.Error(err))
+			if attempts%100 == 0 {
+				zap.L().Info("error releasing overlay device", zap.Int("attempts", attempts), zap.Error(err))
 			}
 
 			time.Sleep(500 * time.Millisecond)

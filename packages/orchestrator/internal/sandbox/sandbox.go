@@ -70,7 +70,7 @@ func NewSandbox(
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
-	logger *sbxlogger.SandboxLogger,
+	sbxLogger *sbxlogger.SandboxLogger,
 	isSnapshot bool,
 	baseTemplateID string,
 ) (*Sandbox, *Cleanup, error) {
@@ -145,7 +145,7 @@ func NewSandbox(
 	go func() {
 		runErr := rootfsOverlay.Start(childCtx)
 		if runErr != nil {
-			logger.Warn("rootfs overlay error", zap.Error(runErr))
+			sbxLogger.Warn("rootfs overlay error", zap.Error(runErr))
 		}
 	}()
 
@@ -213,7 +213,7 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
-	fcStartErr := fcHandle.Start(uffdStartCtx, tracer, logger)
+	fcStartErr := fcHandle.Start(uffdStartCtx, tracer, sbxLogger)
 	if fcStartErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
@@ -241,7 +241,7 @@ func NewSandbox(
 		EndAt:          endAt,
 		rootfs:         rootfsOverlay,
 		stats:          sandboxStats,
-		Logger:         logger,
+		Logger:         sbxLogger,
 		cleanup:        cleanup,
 		healthcheckCtx: healthcheckCtx,
 	}

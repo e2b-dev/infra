@@ -45,7 +45,7 @@ func New() (*grpc.Server, error) {
 
 		err := dnsServer.Start("127.0.0.4", 53)
 		if err != nil {
-			zap.L().Error("Failed running DNS server", zap.Error(err))
+			zap.L().Fatal("failed starting DNS server", zap.Error(err))
 		}
 	}()
 
