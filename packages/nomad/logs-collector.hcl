@@ -38,7 +38,7 @@ job "logs-collector" {
 
       config {
         network_mode = "host"
-        image        = "timberio/vector:0.34.X-alpine"
+        image        = "timberio/vector:0.45.X-alpine"
 
         ports = [
           "health",
@@ -49,7 +49,8 @@ job "logs-collector" {
       env {
         VECTOR_CONFIG          = "local/vector.toml"
         VECTOR_REQUIRE_HEALTHY = "true"
-        VECTOR_LOG             = "warn"
+        VECTOR_LOG             = "info"
+        VECTOR_INTERNAL_LOG_RATE_LIMIT = "1000"
       }
 
       resources {
@@ -84,10 +85,7 @@ inputs = ["envd"]
 source = """
 del(."_path")
 .service = "envd"
-.sandboxID = .instanceID
-if !exists(.envID) {
-  .envID = "unknown"
-}
+
 if !exists(.category) {
   .category = "default"
 }
@@ -124,7 +122,7 @@ category = "{{ category }}"
 %{ if grafana_logs_endpoint != " " }
 [sinks.grafana]
 type = "loki"
-inputs = [ "internal_routing.internal" ]
+inputs = [ "add_source_envd" ]
 endpoint = "${grafana_logs_endpoint}"
 encoding.codec = "json"
 auth.strategy = "basic"
@@ -133,10 +131,6 @@ auth.password = "${grafana_api_key}"
 
 [sinks.grafana.labels]
 source = "logs-collector"
-service = "{{ service }}"
-teamID = "{{ teamID }}"
-envID = "{{ envID }}"
-sandboxID = "{{ sandboxID }}"
 %{ endif }
         EOH
       }

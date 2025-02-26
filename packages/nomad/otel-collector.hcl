@@ -172,14 +172,14 @@ service:
         - otlp
       processors: [batch]
       exporters:
-        -  otlphttp/grafana_cloud
+        - otlphttp/grafana_cloud
     logs:
       receivers:
       # - filelog/session-proxy
         - otlp
       processors: [batch]
       exporters:
-        -  otlphttp/grafana_cloud
+        - otlphttp/grafana_cloud
 EOF
 
         destination = "local/config/otel-collector-config.yaml"
