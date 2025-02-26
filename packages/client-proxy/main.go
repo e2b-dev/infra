@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -41,20 +42,156 @@ const (
 // Create a DNS client
 var client = new(dns.Client)
 
-func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Request) {
+
+// MeteredTransport wraps the standard http.Transport and adds connection metering
+type MeteredTransport struct {
+	*http.Transport
+	activeConnections meters.UpDownCounter
+	logger            *zap.SugaredLogger
+}
+
+// NewMeteredTransport creates a new http Transport with connection metering
+func NewMeteredTransport(logger *zap.SugaredLogger) (*MeteredTransport, error) {
 	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
 	if err != nil {
 		logger.Error("failed to create active connections counter", zap.Error(err))
+		// Still return a transport, it just won't meter connections
+		activeConnections = nil
 	}
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		if activeConnections != nil {
-			activeConnections.Add(r.Context(), 1)
-			defer func() {
-				activeConnections.Add(r.Context(), -1)
-			}()
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+	}
+
+	mt := &MeteredTransport{
+		Transport:         transport,
+		activeConnections: activeConnections,
+		logger:            logger,
+	}
+
+	// Override the DialContext function to meter connections
+	mt.Transport.DialContext = mt.meteredDialContext
+	
+	return mt, nil
+}
+
+// meteredDialContext wraps the default DialContext to track active connections
+func (mt *MeteredTransport) meteredDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	// Use the default dialer to create the connection
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	
+	conn, err := dialer.DialContext(ctx, network, addr)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Increment the connection counter
+	if mt.activeConnections != nil {
+		mt.activeConnections.Add(ctx, 1)
+		mt.logger.Debug("opened new connection", zap.String("addr", addr))
+	}
+	
+	// Return a wrapped connection that decrements the counter when closed
+	return &meteredConn{
+		Conn:              conn,
+		activeConnections: mt.activeConnections,
+		ctx:               ctx,
+		logger:            mt.logger,
+		addr:              addr,
+	}, nil
+}
+
+// meteredConn wraps a net.Conn to track when it's closed
+type meteredConn struct {
+	net.Conn
+	activeConnections meters.UpDownCounter
+	ctx               context.Context
+	logger            *zap.SugaredLogger
+	addr              string
+	closed            bool
+}
+
+// Close overrides the default Close method to decrement the connection counter
+func (mc *meteredConn) Close() error {
+	if !mc.closed {
+		mc.closed = true
+		if mc.activeConnections != nil {
+			mc.activeConnections.Add(mc.ctx, -1)
+			mc.logger.Debug("closed connection", zap.String("addr", mc.addr))
+		}
+	}
+	return mc.Conn.Close()
+}
+
+// resolveSandboxNode resolves the sandbox ID to a node IP address
+func resolveSandboxNode(logger *zap.SugaredLogger, sandboxID string) (string, error) {
+	msg := new(dns.Msg)
+	// Set the question
+	msg.SetQuestion(fmt.Sprintf("%s.", sandboxID), dns.TypeA)
+
+	var node string
+	var err error
+	for i := 0; i < maxRetries; i++ {
+		// Send the query to the server
+		resp, _, dnsErr := client.Exchange(msg, dnsServer)
+
+		// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
+		if dnsErr != nil || resp == nil || len(resp.Answer) == 0 {
+			err = dnsErr
+			if err == nil {
+				err = errors.New("empty DNS response")
+			}
+			logger.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxID, err), 
+				zap.String("sandbox_id", sandboxID), 
+				zap.Error(err), 
+				zap.Int("retry", i+1))
+			// Jitter
+			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+			continue
 		}
 
+		aRecord, ok := resp.Answer[0].(*dns.A)
+		if !ok {
+			err = fmt.Errorf("unexpected DNS response type: %T", resp.Answer[0])
+			logger.Warn("Unexpected DNS response type", 
+				zap.String("sandbox_id", sandboxID), 
+				zap.Error(err), 
+				zap.Int("retry", i+1))
+			continue
+		}
+
+		node = aRecord.A.String()
+		// The sandbox was not found, we want to return this information to the user
+		if node == "127.0.0.1" {
+			return "", fmt.Errorf("sandbox not found")
+		}
+
+		return node, nil
+	}
+
+	// There's no answer, we can't proxy the request
+	if err == nil {
+		err = errors.New("failed to resolve sandbox after max retries")
+	}
+	
+	return "", err
+}
+
+// createProxyWithMeteredTransport creates a handler that uses a metered transport
+func createProxyWithMeteredTransport(logger *zap.SugaredLogger) http.Handler {
+	meteredTransport, err := NewMeteredTransport(logger)
+	if err != nil {
+		logger.Error("failed to create metered transport", zap.Error(err))
+		// Fall back to standard transport
+		meteredTransport = &MeteredTransport{Transport: &http.Transport{}}
+	}
+	
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
 		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.dev)
@@ -62,49 +199,22 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 		if len(hostSplit) < 2 {
 			logger.Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)
-
 			return
 		}
 
 		sandboxID := hostSplit[1]
-		msg := new(dns.Msg)
-
-		// Set the question
-		msg.SetQuestion(fmt.Sprintf("%s.", sandboxID), dns.TypeA)
-
-		var node string
-		var err error
-		for i := range maxRetries {
-			// Send the query to the server
-			resp, _, dnsErr := client.Exchange(msg, dnsServer)
-
-			// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
-			if dnsErr != nil || len(resp.Answer) == 0 {
-				err = dnsErr
-				logger.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxID, err), zap.String("sandbox_id", sandboxID), zap.Error(err), zap.Int("retry", i+1))
-				// Jitter
-				time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
-
-				continue
-			}
-
-			node = resp.Answer[0].(*dns.A).A.String()
-			// The sandbox was not found, we want to return this information to the user
-			if node == "127.0.0.1" {
+		
+		// Resolve the sandbox node
+		node, err := resolveSandboxNode(logger, sandboxID)
+		if err != nil {
+			if err.Error() == "sandbox not found" {
 				logger.Warn("Sandbox not found", zap.String("sandbox_id", sandboxID))
 				w.WriteHeader(http.StatusBadGateway)
 				w.Write([]byte("Sandbox not found"))
-
-				return
+			} else {
+				logger.Error("DNS resolving failed", zap.String("sandbox_id", sandboxID), zap.Error(err))
+				http.Error(w, "Host not found", http.StatusBadGateway)
 			}
-
-			break
-		}
-
-		// There's no answer, we can't proxy the request
-		if err != nil {
-			logger.Error("DNS resolving for failed", zap.String("sandbox_id", sandboxID), zap.Error(err))
-			http.Error(w, "Host not found", http.StatusBadGateway)
 			return
 		}
 
@@ -115,9 +225,14 @@ func proxy(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Reques
 			Host:   fmt.Sprintf("%s:%d", node, sandboxPort),
 		}
 
-		// Proxy the request
-		httputil.NewSingleHostReverseProxy(targetUrl).ServeHTTP(w, r)
-	}
+		// Create a reverse proxy with the metered transport
+		proxy := httputil.NewSingleHostReverseProxy(targetUrl)
+		
+		// Replace the default transport with our metered one
+		proxy.Transport = meteredTransport
+		
+		proxy.ServeHTTP(w, r)
+	})
 }
 
 func main() {
@@ -150,22 +265,27 @@ func main() {
 		err := healthServer.ListenAndServe()
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			logger.Info("http service shutdown successfully", zap.Int("port", port))
+			logger.Info("http service shutdown successfully", zap.Int("port", healthCheckPort))
 		case err != nil:
 			exitCode.Add(1)
-			logger.Error("http service encountered error", zap.Int("port", port), zap.Error(err))
+			logger.Error("http service encountered error", zap.Int("port", healthCheckPort), zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			logger.Error("http service exited without error", zap.Int("port", port))
+			logger.Error("http service exited without error", zap.Int("port", healthCheckPort))
 		}
 	}()
 
 	cleanupTelemetry := telemetry.InitOTLPExporter(context.TODO(), ServiceName, "no")
 	defer cleanupTelemetry(ctx)
 
+	// Create the handler with metered transport
+	handler := createProxyWithMeteredTransport(logger)
+
 	// Proxy request to the correct node
-	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
-	server.Handler = http.HandlerFunc(proxy(logger))
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: handler,
+	}
 
 	wg.Add(1)
 	go func() {
@@ -192,7 +312,6 @@ func main() {
 	}()
 
 	wg.Add(1)
-
 	go func() {
 		defer wg.Done()
 		<-signalCtx.Done()
