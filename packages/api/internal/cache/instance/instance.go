@@ -33,7 +33,7 @@ var (
 )
 
 func NewInstanceInfo(
-	Logger *logs.SandboxLogger,
+	Logger *sbxlogger.SandboxLogger,
 	Instance *api.Sandbox,
 	TeamID *uuid.UUID,
 	BuildID *uuid.UUID,
@@ -139,8 +139,8 @@ type InstanceCache struct {
 func NewCache(
 	ctx context.Context,
 	analytics analyticscollector.AnalyticsCollectorClient,
-	insertInstance func(data InstanceInfo) error,
-	deleteInstance func(data InstanceInfo) error,
+	insertInstance func(data *InstanceInfo) error,
+	deleteInstance func(data *InstanceInfo) error,
 ) *InstanceCache {
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
@@ -159,7 +159,6 @@ func NewCache(
 	instanceCache := &InstanceCache{
 		cache:          cache,
 		insertInstance: insertInstance,
-		logger:         logger,
 		analytics:      analytics,
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,

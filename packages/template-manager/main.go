@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/server"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/test"
+	"go.uber.org/zap"
 )
 
 const (
@@ -55,16 +56,15 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	logger, err := logger.NewLogger(ctx, logger.LoggerConfig{
+	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:      constants.ServiceName,
 		IsInternal:       true,
 		IsDevelopment:    env.IsLocal(),
 		IsDebug:          true,
 		CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
-	})
-	if err != nil {
-		log.Fatalf("Error initializing logging\n: %v\n", err)
-	}
+	}))
+	defer logger.Sync()
+	zap.ReplaceGlobals(logger)
 
 	// Create an instance of our handler which satisfies the generated interface
 	s := server.New(logger)

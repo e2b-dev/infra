@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"net"
 	"sync"
@@ -113,9 +112,9 @@ func (srv *Service) Start(context.Context) error {
 	}
 
 	go func() {
-		log.Printf("Starting DNS server")
+		zap.L().Info("Starting DNS server")
 		if err := srv.dns.Start("127.0.0.4", 53); err != nil {
-			log.Panic(fmt.Errorf("Failed running DNS server: %w", err))
+			zap.L().Fatal("Failed running DNS server", zap.Error(err))
 		}
 	}()
 
@@ -125,11 +124,11 @@ func (srv *Service) Start(context.Context) error {
 		return fmt.Errorf("failed to listen on port %d: %w", srv.port, err)
 	}
 
-	log.Printf("starting server on port %d", srv.port)
+	zap.L().Info("Starting orchestrator server", zap.Uint16("port", srv.port))
 
 	go func() {
 		if err := srv.grpc.Serve(lis); err != nil {
-			log.Panic(fmt.Errorf("failed to serve: %w", err))
+			zap.L().Fatal("grpc server failed to serve", zap.Error(err))
 		}
 	}()
 

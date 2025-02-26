@@ -145,7 +145,7 @@ func NewSandbox(
 	go func() {
 		runErr := rootfsOverlay.Start(childCtx)
 		if runErr != nil {
-			sbxLogger.Warn("rootfs overlay error", zap.Error(runErr))
+			sbxLogger.Error("rootfs overlay error", zap.Error(runErr))
 		}
 	}()
 

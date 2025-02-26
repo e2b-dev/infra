@@ -46,6 +46,10 @@ func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxL
 	}
 }
 
+func (sl *SandboxLogger) Debug(msg string, fields ...zap.Field) {
+	sl.logger.Debug(msg, fields...)
+}
+
 func (sl *SandboxLogger) Info(msg string, fields ...zap.Field) {
 	sl.logger.Info(msg, fields...)
 }
@@ -92,7 +96,7 @@ func (sl *SandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
 	if ok && sl.healthCheckWasFailing.Load() {
 		sl.healthCheckWasFailing.Store(false)
 
-		sl.logger.Warn("",
+		sl.logger.Info("",
 			zap.Error(fmt.Errorf("Sandbox healthcheck recovered")),
 			zap.Bool("healthcheck", ok))
 
@@ -105,7 +109,7 @@ func (sl *SandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
 				"Control sandbox healthcheck was successful",
 				zap.Bool("healthcheck", ok))
 		} else {
-			sl.logger.Error("",
+			sl.logger.Error("Control sandbox healthcheck was unsuccessful",
 				zap.Error(fmt.Errorf("Sandbox healthcheck failed")),
 				zap.Bool("healthcheck", ok))
 		}

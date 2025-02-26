@@ -15,7 +15,6 @@ import (
 	nNode "github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	sUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const ServiceName = "orchestration-api"
@@ -72,30 +71,32 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
 		})
 
-		sandboxesInfo = append(sandboxesInfo, &instance.InstanceInfo{
-			Logger: logger,
-			Instance: &api.Sandbox{
-				SandboxID:  config.SandboxId,
-				TemplateID: config.TemplateId,
-				Alias:      config.Alias,
-				ClientID:   sbx.ClientId,
-			},
-			StartTime:          sbx.StartTime.AsTime(),
-			EndTime:            sbx.EndTime.AsTime(),
-			VCpu:               config.Vcpu,
-			RamMB:              config.RamMb,
-			BuildID:            &buildID,
-			TeamID:             &teamID,
-			Metadata:           config.Metadata,
-			KernelVersion:      config.KernelVersion,
-			FirecrackerVersion: config.FirecrackerVersion,
-			EnvdVersion:        config.EnvdVersion,
-			TotalDiskSizeMB:    config.TotalDiskSizeMb,
-			MaxInstanceLength:  time.Duration(config.MaxSandboxLength) * time.Hour,
-			Node:               node,
-			AutoPause:          &autoPause,
-			Pausing:            sUtils.NewSetOnce[*nNode.NodeInfo](),
-		})
+		sandboxesInfo = append(
+			sandboxesInfo,
+			instance.NewInstanceInfo(
+				logger,
+				&api.Sandbox{
+					SandboxID:  config.SandboxId,
+					TemplateID: config.TemplateId,
+					Alias:      config.Alias,
+					ClientID:   sbx.ClientId,
+				},
+				&teamID,
+				&buildID,
+				config.Metadata,
+				time.Duration(config.MaxSandboxLength)*time.Hour,
+				sbx.StartTime.AsTime(),
+				sbx.EndTime.AsTime(),
+				config.Vcpu,
+				config.TotalDiskSizeMb,
+				config.RamMb,
+				config.KernelVersion,
+				config.FirecrackerVersion,
+				config.EnvdVersion,
+				node,
+				autoPause,
+			),
+		)
 	}
 
 	return sandboxesInfo, nil

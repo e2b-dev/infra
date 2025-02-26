@@ -24,6 +24,7 @@ import (
 )
 
 const (
+	ServiceName     = "client-proxy"
 	dnsServer       = "api.service.consul:5353"
 	healthCheckPort = 3001
 	port            = 3002
@@ -32,7 +33,10 @@ const (
 )
 
 // Create a DNS client
-var client = new(dns.Client)
+var (
+	client               = new(dns.Client)
+	logsCollectorAddress = env.GetEnv("LOGS_COLLECTOR_ADDRESS", "")
+)
 
 func proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -139,16 +143,15 @@ func main() {
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 
-	logger, err := logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName:      "client-proxy",
+	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+		ServiceName:      ServiceName,
 		IsInternal:       true,
 		IsDevelopment:    env.IsLocal(),
-		IsDebug:          true,
-		CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
-	})
-	if err != nil {
-		panic(fmt.Errorf("error creating logger: %v", err))
-	}
+		IsDebug:          env.IsDebug(),
+		CollectorAddress: logsCollectorAddress,
+	}))
+	defer logger.Sync()
+	zap.ReplaceGlobals(logger)
 
 	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
 	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

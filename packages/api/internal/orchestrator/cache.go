@@ -199,8 +199,8 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 	}
 }
 
-func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, timeout time.Duration) func(info instance.InstanceInfo) error {
-	return func(info instance.InstanceInfo) error {
+func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, timeout time.Duration) func(info *instance.InstanceInfo) error {
+	return func(info *instance.InstanceInfo) error {
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		defer cancel()
 

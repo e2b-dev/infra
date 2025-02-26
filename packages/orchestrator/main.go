@@ -5,19 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-<<<<<<< HEAD
-	"net"
-||||||| 397e5e6a
-	"log"
-	"net"
-=======
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"sync/atomic"
 	"syscall"
->>>>>>> fc4de370eb2036db95799a3dc8d100c0b9f80650
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -26,7 +19,10 @@ import (
 	"go.uber.org/zap"
 )
 
-const defaultPort = 5008
+const (
+	defaultPort = 5008
+	ServiceName = "orchestrator"
+)
 
 var logsCollectorAddress = env.GetEnv("LOGS_COLLECTOR_ADDRESS", "")
 
@@ -41,6 +37,16 @@ func main() {
 
 	flag.UintVar(&port, "port", defaultPort, "orchestrator server port")
 	flag.Parse()
+
+	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+		ServiceName:      ServiceName,
+		IsInternal:       true,
+		IsDevelopment:    env.IsLocal(),
+		IsDebug:          env.IsDebug(),
+		CollectorAddress: logsCollectorAddress,
+	}))
+	defer logger.Sync()
+	zap.ReplaceGlobals(logger)
 
 	wg := &sync.WaitGroup{}
 	exitCode := &atomic.Int32{}
@@ -63,58 +69,16 @@ func main() {
 		}()
 	}
 
-<<<<<<< HEAD
-	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName:      server.ServiceName,
-		IsInternal:       true,
-		IsDevelopment:    env.IsLocal(),
-		IsDebug:          env.IsDebug(),
-		CollectorAddress: logsCollectorAddress,
-	}))
-	defer logger.Sync()
-
-	zap.ReplaceGlobals(logger)
-
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
-	if err != nil {
-		zap.L().Fatal("failed to listen", zap.Error(err))
-	}
-
-	s, err := server.New()
-||||||| 397e5e6a
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-
-	s, err := server.New()
-=======
 	srv, err := server.New(ctx, port)
->>>>>>> fc4de370eb2036db95799a3dc8d100c0b9f80650
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
 
-<<<<<<< HEAD
-	logger.Info("Starting orchestrator server", zap.Int("port", *port))
-||||||| 397e5e6a
-	log.Printf("starting server on port %d", *port)
-=======
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		var err error
->>>>>>> fc4de370eb2036db95799a3dc8d100c0b9f80650
 
-<<<<<<< HEAD
-	if err := s.Serve(lis); err != nil {
-		zap.L().Fatal("failed to serve", zap.Error(err))
-	}
-||||||| 397e5e6a
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
-=======
 		defer func() {
 			// recover the panic because the service manages a number of go routines
 			// that can panic, so catching this here allows for the rest of the process
@@ -159,5 +123,4 @@ func main() {
 	wg.Wait()
 
 	os.Exit(int(exitCode.Load()))
->>>>>>> fc4de370eb2036db95799a3dc8d100c0b9f80650
 }
