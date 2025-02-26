@@ -176,18 +176,6 @@ func NewCache(
 
 	go cache.Start(ctx)
 
-	go func() {
-		for {
-			time.Sleep(time.Second * 10)
-			fmt.Printf("cache size: %d\n", cache.Len())
-			items := cache.Items()
-			fmt.Printf("evictions: %d\n", cache.Metrics().Evictions)
-			for _, item := range items {
-				fmt.Printf("item: %s, expired: %t, end time: %s, autoPause: %t\n", item.Instance.SandboxID, item.IsExpired(), item.GetEndTime(), *item.AutoPause)
-			}
-		}
-	}()
-
 	return instanceCache
 }
 
