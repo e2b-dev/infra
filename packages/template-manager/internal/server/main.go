@@ -18,6 +18,7 @@ import (
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
@@ -36,7 +37,7 @@ func New(logger *zap.Logger) *grpc.Server {
 	ctx := context.Background()
 	logger.Info("Initializing template manager")
 
-	opts := []grpc_zap.Option{grpc_zap.WithLevels(grpc_zap.DefaultCodeToLevel)}
+	opts := []grpc_zap.Option{l.WithoutHealthCheck()}
 
 	s := grpc.NewServer(
 		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),

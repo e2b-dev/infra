@@ -170,8 +170,6 @@ func NewCache(
 		err := deleteInstance(instanceInfo)
 		if err != nil {
 			zap.L().Error("Error inserting instance", zap.Error(err))
-
-			return
 		}
 
 		instanceCache.UpdateCounters(instanceInfo, -1, false)

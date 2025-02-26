@@ -182,7 +182,7 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 
 	err := sbx.Stop()
 	if err != nil {
-		sbx.Logger.Warn("error stopping sandbox", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
+		sbx.Logger.Error("error stopping sandbox", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 	}
 
 	return &emptypb.Empty{}, nil
@@ -244,7 +244,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		go func() {
 			err := sbx.Stop()
 			if err != nil {
-				sbx.Logger.Warn("error stopping sandbox after snapshot", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
+				sbx.Logger.Error("error stopping sandbox after snapshot", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 			}
 		}()
 	}()
@@ -295,7 +295,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		default:
 			memfileLocalPath, err := r.CachePath()
 			if err != nil {
-				sbx.Logger.Warn("error getting memfile diff path", zap.Error(err))
+				sbx.Logger.Error("error getting memfile diff path", zap.Error(err))
 
 				return
 			}
@@ -311,7 +311,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		default:
 			rootfsLocalPath, err := r.CachePath()
 			if err != nil {
-				sbx.Logger.Warn("error getting rootfs diff path", zap.Error(err))
+				sbx.Logger.Error("error getting rootfs diff path", zap.Error(err))
 
 				return
 			}
@@ -332,7 +332,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			rootfsPath,
 		)
 		if err != nil {
-			sbx.Logger.Warn("error uploading sandbox snapshot", zap.Error(err))
+			sbx.Logger.Error("error uploading sandbox snapshot", zap.Error(err))
 
 			return
 		}

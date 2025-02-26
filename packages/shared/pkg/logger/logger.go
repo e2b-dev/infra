@@ -58,6 +58,7 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 		},
 		InitialFields: func() map[string]interface{} {
 			fields := map[string]interface{}{
+				"service":  loggerConfig.ServiceName,
 				"internal": loggerConfig.IsInternal,
 				"pid":      os.Getpid(),
 			}

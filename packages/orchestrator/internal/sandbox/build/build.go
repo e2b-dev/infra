@@ -48,7 +48,7 @@ func (b *File) ReadAt(p []byte, off int64) (n int, err error) {
 		readLength := min(mappedLength, remainingReadLength)
 
 		if readLength <= 0 {
-			zap.L().Debug(fmt.Sprintf(
+			zap.L().Error(fmt.Sprintf(
 				"(%d bytes left to read, off %d) reading %d bytes from %+v/%+v: [%d:] -> [%d:%d] <> %d (mapped length: %d, remaining read length: %d)\n>>> EOF\n",
 				len(p)-n,
 				off,
