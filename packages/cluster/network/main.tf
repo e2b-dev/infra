@@ -24,6 +24,7 @@ locals {
       port_name                       = var.client_proxy_port.name
       timeout_sec                     = 86400
       connection_draining_timeout_sec = 1
+
       http_health_check = {
         request_path       = var.client_proxy_health_port.path
         port               = var.client_proxy_health_port.port
@@ -344,7 +345,7 @@ resource "google_compute_backend_service" "default" {
   security_policy = google_compute_security_policy.default[each.key].self_link
 
   log_config {
-    enable = var.environment == "prod"
+    enable = true
   }
 
   dynamic "backend" {
