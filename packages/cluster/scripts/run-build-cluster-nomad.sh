@@ -3,10 +3,6 @@
 
 set -e
 
-
-# Enable command tracing
-set -x
-
 readonly NOMAD_CONFIG_FILE="default.hcl"
 readonly SUPERVISOR_CONFIG_PATH="/etc/supervisor/conf.d/run-nomad.conf"
 
@@ -15,33 +11,6 @@ readonly GOOGLE_CLOUD_METADATA_REQUEST_HEADER="Metadata-Flavor: Google"
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_NAME="$(basename "$0")"
-
-function print_usage {
-  echo
-  echo "Usage: run-nomad [OPTIONS]"
-  echo
-  echo "This script is used to configure and run Nomad on a Google Compute Instance."
-  echo
-  echo "Options:"
-  echo
-  echo -e "  --server\t\tIf set, run in server mode. Optional. At least one of --server or --client must be set."
-  echo -e "  --client\t\tIf set, run in client mode. Optional. At least one of --server or --client must be set."
-  echo -e "  --num-servers\t\tThe minimum number of servers to expect in the Nomad cluster. Required if --server is true."
-  echo -e "  --consul-token\t\tThe ACL token that Consul uses."
-  echo -e "  --nomad-token\t\tThe Nomad ACL token to use."
-  echo -e "  --config-dir\t\tThe path to the Nomad config folder. Optional. Default is the absolute path of '../config', relative to this script."
-  echo -e "  --data-dir\t\tThe path to the Nomad data folder. Optional. Default is the absolute path of '../data', relative to this script."
-  echo -e "  --bin-dir\t\tThe path to the folder with Nomad binary. Optional. Default is the absolute path of the parent folder of this script."
-  echo -e "  --log-dir\t\tThe path to the Nomad log folder. Optional. Default is the absolute path of '../log', relative to this script."
-  echo -e "  --user\t\tThe user to run Nomad as. Optional. Default is to use the owner of --config-dir."
-  echo -e "  --use-sudo\t\tIf set, run the Nomad agent with sudo. By default, sudo is only used if --client is set."
-  echo -e "  --skip-nomad-config\tIf this flag is set, don't generate a Nomad configuration file. Optional. Default is false."
-  echo -e "  --api\t\tIf set, run the Nomad agent dedicated to API. Optional. Default is false."
-  echo
-  echo "Example:"
-  echo
-  echo "  run-nomad.sh --server --config-dir /custom/path/to/nomad/config"
-}
 
 function log {
   local readonly level="$1"
@@ -167,41 +136,6 @@ function generate_nomad_config {
   instance_region=$(get_instance_region)
   zone=$(get_instance_zone)
 
-  local server_config=""
-  if [[ "$server" == "true" ]]; then
-    server_config=$(
-      cat <<EOF
-server {
-  enabled = true
-  bootstrap_expect = $num_servers
-}
-
-EOF
-    )
-  fi
-
-  local client_config=""
-  if [[ "$client" == "true" ]]; then
-    client_config=$(
-      cat <<EOF
-client {
-  enabled = true
-  node_pool = "default"
-  meta {
-    node_pool = "default"
-  }
-}
-
-plugin "raw_exec" {
-  config {
-    enabled = true
-    no_cgroups = true
-  }
-}
-
-EOF
-    )
-  fi
 
   log_info "Creating default Nomad config file in $config_path"
   cat >"$config_path" <<EOF
@@ -219,9 +153,14 @@ advertise {
 leave_on_interrupt = true
 leave_on_terminate = true
 
-$client_config
-
-$server_config
+client {
+  enabled = true
+  node_pool = "build"
+  meta {
+    "node_pool" = "build"
+  }
+  max_kill_timeout = "24h"
+}
 
 plugin_dir = "/opt/nomad/plugins"
 
@@ -233,6 +172,14 @@ plugin "docker" {
     auth {
       config = "/root/docker/config.json"
     }
+  }
+}
+
+
+plugin "raw_exec" {
+  config {
+    enabled = true
+    no_cgroups = true
   }
 }
 
@@ -315,23 +262,6 @@ function bootstrap {
   rm "/tmp/nomad.token"
 }
 
-function create_node_pools {
-  local readonly nomad_token="$1"
-  log_info "Creating node pools"
-  cat > "$config_dir/api_node_pool.hcl"  <<EOF
-node_pool "api" {
-  description = "Nodes for api."
-}
-EOF
-  nomad node pool apply -token "$nomad_token" "$config_dir/api_node_pool.hcl"
-  cat > "$config_dir/build_node_pool.hcl"  <<EOF
-node_pool "build" {
-  description = "Nodes for template builds."
-}
-EOF
-  nomad node pool apply -token "$nomad_token" "$config_dir/build_node_pool.hcl"
-}
-
 # Based on: http://unix.stackexchange.com/a/7732/215969
 function get_owner_of_path {
   local readonly path="$1"
@@ -339,86 +269,17 @@ function get_owner_of_path {
 }
 
 function run {
-  local server="false"
-  local client="false"
-  local num_servers=""
-  local config_dir=""
-  local data_dir=""
-  local bin_dir=""
-  local log_dir=""
-  local user=""
-  local skip_nomad_config="false"
-  local use_sudo=""
+  local nodepool="default"
   local all_args=()
 
   while [[ $# > 0 ]]; do
     local key="$1"
 
     case "$key" in
-    --server)
-      server="true"
-      ;;
-    --client)
-      client="true"
-      ;;
-    --num-servers)
-      num_servers="$2"
-      shift
-      ;;
-    --nomad-token)
-      assert_not_empty "$key" "$2"
-      nomad_token="$2"
-      shift
-      ;;
     --consul-token)
       assert_not_empty "$key" "$2"
       consul_token="$2"
       shift
-      ;;
-    --config-dir)
-      assert_not_empty "$key" "$2"
-      config_dir="$2"
-      shift
-      ;;
-    --data-dir)
-      assert_not_empty "$key" "$2"
-      data_dir="$2"
-      shift
-      ;;
-    --bin-dir)
-      assert_not_empty "$key" "$2"
-      bin_dir="$2"
-      shift
-      ;;
-    --log-dir)
-      assert_not_empty "$key" "$2"
-      log_dir="$2"
-      shift
-      ;;
-    --user)
-      assert_not_empty "$key" "$2"
-      user="$2"
-      shift
-      ;;
-    --cluster-tag-key)
-      assert_not_empty "$key" "$2"
-      cluster_tag_key="$2"
-      shift
-      ;;
-    --cluster-tag-value)
-      assert_not_empty "$key" "$2"
-      cluster_tag_value="$2"
-      shift
-      ;;
-    --skip-nomad-config)
-      skip_nomad_config="true"
-      ;;
-    --use-sudo)
-      use_sudo="true"
-      ;;
-    --help)
-      print_usage
-      exit
       ;;
     *)
       log_error "Unrecognized argument: $key"
@@ -430,70 +291,26 @@ function run {
     shift
   done
 
-  if [[ "$server" == "true" ]]; then
-    assert_not_empty "--num-servers" "$num_servers"
-  fi
 
-  if [[ "$server" == "false" && "$client" == "false" ]]; then
-    log_error "At least one of --server or --client must be set"
-    exit 1
-  fi
 
-  if [[ -z "$use_sudo" ]]; then
-    if [[ "$client" == "true" ]]; then
-      use_sudo="true"
-    else
-      use_sudo="false"
-    fi
-  fi
+  use_sudo="true"
 
   assert_is_installed "supervisorctl"
   assert_is_installed "curl"
 
-  if [[ -z "$config_dir" ]]; then
-    config_dir=$(cd "$SCRIPT_DIR/../config" && pwd)
-  fi
+  config_dir=$(cd "$SCRIPT_DIR/../config" && pwd)
 
-  if [[ -z "$data_dir" ]]; then
-    data_dir=$(cd "$SCRIPT_DIR/../data" && pwd)
-  fi
+  data_dir=$(cd "$SCRIPT_DIR/../data" && pwd)
 
-  if [[ -z "$bin_dir" ]]; then
-    bin_dir=$(cd "$SCRIPT_DIR/../bin" && pwd)
-  fi
+  bin_dir=$(cd "$SCRIPT_DIR/../bin" && pwd)
 
-  if [[ -z "$log_dir" ]]; then
-    log_dir=$(cd "$SCRIPT_DIR/../log" && pwd)
-  fi
+  log_dir=$(cd "$SCRIPT_DIR/../log" && pwd)
 
-  if [[ -z "$user" ]]; then
-    user=$(get_owner_of_path "$config_dir")
-  fi
+  user=$(get_owner_of_path "$config_dir")
 
-  if [[ "$skip_nomad_config" == "true" ]]; then
-    log_info "The --skip-nomad-config flag is set, so will not generate a default Nomad config file."
-  else
-    generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$consul_token"
-  fi
-
+  generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$consul_token"
   generate_supervisor_config "$SUPERVISOR_CONFIG_PATH" "$config_dir" "$data_dir" "$bin_dir" "$log_dir" "$user" "$use_sudo"
-
-  # TODO: Let client wait for Nomad servers to start
-  #  if [[ "$client" == "true" ]]; then
-  #     log_info "Waiting for Nomad servers to start"
-  #     while test -z "$(curl -s http://127.0.0.1:4646/v1/agent/leader)"
-  #     do
-  #       log_info "Nomad servers not yet started. Waiting for 1 second."
-  #       sleep 1
-  #     done
-  #  fi
-
   start_nomad
-
-  if [[ "$server" == "true" ]]; then
-    bootstrap "$nomad_token"
-    create_node_pools "$nomad_token"
-  fi
 }
 
 run "$@"

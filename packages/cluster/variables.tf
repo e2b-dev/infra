@@ -48,6 +48,19 @@ variable "api_machine_type" {
   type = string
 }
 
+variable "build_image_family" {
+  type    = string
+  default = "e2b-orch"
+}
+
+variable "build_cluster_size" {
+  type = number
+}
+
+variable "build_machine_type" {
+  type = string
+}
+
 variable "client_proxy_health_port" {
   type = object({
     name = string

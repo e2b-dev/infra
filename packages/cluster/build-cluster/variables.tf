@@ -158,22 +158,7 @@ variable "instance_group_update_policy_max_unavailable_percent" {
   default     = null
 }
 
-variable "client_proxy_health_port" {
-  type = object({
-    name = string
-    port = number
-    path = string
-  })
-}
-
-variable "client_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
-}
-
-variable "api_port" {
+variable "docker_reverse_proxy_port" {
   type = object({
     name        = string
     port        = number

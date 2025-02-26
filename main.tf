@@ -89,10 +89,12 @@ module "cluster" {
   client_cluster_size             = var.client_cluster_size
   client_cluster_auto_scaling_max = var.client_cluster_auto_scaling_max
   api_cluster_size                = var.api_cluster_size
+  build_cluster_size              = var.build_cluster_size
 
   server_machine_type = var.server_machine_type
   client_machine_type = var.client_machine_type
   api_machine_type    = var.api_machine_type
+  build_machine_type  = var.build_machine_type
 
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
