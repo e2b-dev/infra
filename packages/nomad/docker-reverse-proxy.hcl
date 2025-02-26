@@ -55,7 +55,7 @@ variable "google_service_account_secret" {
 
 job "docker-reverse-proxy" {
   datacenters = [var.gcp_zone]
-  node_pool = "api"
+  node_pool = "builder"
 
 
   priority = 85
