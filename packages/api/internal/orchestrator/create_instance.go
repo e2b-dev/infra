@@ -28,6 +28,10 @@ const (
 	maxStartingInstancesPerNode = 3
 )
 
+var (
+	sandboxCreateFailedError = fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
+)
+
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
@@ -109,8 +113,15 @@ func (o *Orchestrator) CreateSandbox(
 	attempt := 1
 	nodesExcluded := make(map[string]*Node)
 	for {
+		select {
+		case <-childCtx.Done():
+			return nil, sandboxCreateFailedError
+		default:
+			// Continue
+		}
+
 		if attempt > maxNodeRetries {
-			return nil, fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
+			return nil, sandboxCreateFailedError
 		}
 
 		if node == nil {
@@ -146,7 +157,7 @@ func (o *Orchestrator) CreateSandbox(
 			}
 		}
 
-		log.Printf("failed to create sandbox on node '%s', attempt #%d: %v", node.Info.ID, attempt, err)
+		log.Printf("failed to create sandbox '%s' on node '%s', attempt #%d: %v", sandboxID, node.Info.ID, attempt, err)
 
 		// The node is not available, try again with another node
 		node.createFails.Add(1)
