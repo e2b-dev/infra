@@ -155,9 +155,9 @@ leave_on_terminate = true
 
 client {
   enabled = true
-  node_pool = "builder"
+  node_pool = "build"
   meta {
-    "node_pool" = "builder"
+    "node_pool" = "build"
   }
   max_kill_timeout = "24h"
 }

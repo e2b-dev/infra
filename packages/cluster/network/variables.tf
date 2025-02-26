@@ -86,7 +86,7 @@ variable "api_instance_group" {
   type = string
 }
 
-variable "builder_instance_group" {
+variable "build_instance_group" {
   type = string
 }
 

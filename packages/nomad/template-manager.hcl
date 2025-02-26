@@ -62,7 +62,7 @@ variable "otel_collector_grpc_endpoint" {
 
 job "template-manager" {
   datacenters = [var.gcp_zone]
-  node_pool  = "builder"
+  node_pool  = "build"
   priority = 70
 
   group "template-manager" {

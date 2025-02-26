@@ -324,7 +324,7 @@ node_pool "api" {
 EOF
   nomad node pool apply "$config_dir/api_node_pool.hcl"
   cat > "$config_dir/build_node_pool.hcl"  <<EOF
-  node_pool "build" {
+node_pool "build" {
   description = "Nodes for template builds."
 }
 EOF
