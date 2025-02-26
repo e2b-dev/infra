@@ -9,7 +9,7 @@ import (
 
 type LifecycleCacheItem interface {
 	IsExpired() bool
-	SetEndTime(time.Time)
+	SetExpired()
 }
 
 type lifecycleCacheMetrics struct {
@@ -97,7 +97,7 @@ func (c *lifecycleCache[T]) GetAndRemove(key string) (T, bool) {
 
 	// Set end time to now and trigger the eviction.
 	// Not removing from the cache, let the eviction handle it.
-	v.SetEndTime(time.Now())
+	v.SetExpired()
 
 	return v, true
 }
@@ -118,5 +118,5 @@ func (c *lifecycleCache[T]) Items() (items []T) {
 }
 
 func (c *lifecycleCache[T]) Len() int {
-	return c.running.Count()
+	return len(c.Items())
 }

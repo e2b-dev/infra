@@ -113,6 +113,10 @@ func (i *InstanceInfo) SetEndTime(endTime time.Time) {
 	i.endTime = endTime
 }
 
+func (i *InstanceInfo) SetExpired() {
+	i.SetEndTime(time.Now())
+}
+
 type InstanceCache struct {
 	reservations *ReservationCache
 	pausing      *smap.Map[*InstanceInfo]
