@@ -53,11 +53,14 @@ type Process struct {
 	Exit chan error
 
 	client *apiClient
+
+	logger *logs.SandboxLogger
 }
 
 func NewProcess(
 	ctx context.Context,
 	tracer trace.Tracer,
+	logger *logs.SandboxLogger,
 	slot network.Slot,
 	files *storage.SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
@@ -136,58 +139,43 @@ func NewProcess(
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
 		rootfs:                rootfs,
 		files:                 files,
+		logger:                logger,
 	}, nil
 }
 
 func (p *Process) Start(
 	ctx context.Context,
 	tracer trace.Tracer,
-	logger *logs.SandboxLogger,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
 
 	go func() {
-		defer func() {
-			readerErr := p.stdout.Close()
-			if readerErr != nil {
-				logger.Errorf("[sandbox %s]: error closing fc stdout reader: %v\n", p.metadata.SandboxId, readerErr)
-			}
-		}()
-
 		scanner := bufio.NewScanner(p.stdout)
 
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			logger.Infof("[sandbox %s]: stdout: %s\n", p.metadata.SandboxId, line)
+			p.logger.Infof("[sandbox %s]: stdout: %s\n", p.metadata.SandboxId, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			logger.Errorf("[sandbox %s]: error reading fc stdout: %v\n", p.metadata.SandboxId, readerErr)
+			p.logger.Errorf("[sandbox %s]: error reading fc stdout: %v\n", p.metadata.SandboxId, readerErr)
 		}
 	}()
 
 	go func() {
-		defer func() {
-			readerErr := p.stderr.Close()
-			if readerErr != nil {
-				logger.Errorf("[sandbox %s]: error closing fc stderr reader: %v\n", p.metadata.SandboxId, readerErr)
-			}
-		}()
-
 		scanner := bufio.NewScanner(p.stderr)
 
 		for scanner.Scan() {
 			line := scanner.Text()
-
-			logger.Warnf("[sandbox %s]: stderr: %s\n", p.metadata.SandboxId, line)
+			p.logger.Warnf("[sandbox %s]: stderr: %s\n", p.metadata.SandboxId, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			logger.Errorf("[sandbox %s]: error reading fc stderr: %v\n", p.metadata.SandboxId, readerErr)
+			p.logger.Errorf("[sandbox %s]: error reading fc stderr: %v\n", p.metadata.SandboxId, readerErr)
 		}
 	}()
 
@@ -301,6 +289,16 @@ func (p *Process) Stop() error {
 	pid, err := p.Pid()
 	if err != nil {
 		return fmt.Errorf("fc process not started")
+	}
+
+	err = p.stdout.Close()
+	if err != nil {
+		p.logger.Errorf("[sandbox %s]: error closing fc stdout reader: %v\n", p.metadata.SandboxId, err)
+	}
+
+	err = p.stderr.Close()
+	if err != nil {
+		p.logger.Errorf("[sandbox %s]: error closing fc stderr reader: %v\n", p.metadata.SandboxId, err)
 	}
 
 	err = syscall.Kill(-pid, syscall.SIGKILL)
