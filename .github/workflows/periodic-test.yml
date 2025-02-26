@@ -4,8 +4,10 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
-  # only run on changes to periodic-test dir 
   push:
+    branches:
+        - main
+    # only run on changes to periodic-test dir 
     paths:
       - 'tests/periodic-test/**'
       - '.github/workflows/periodic-test.yml'
@@ -24,7 +26,7 @@ jobs:
       matrix:
         e2b-domain: # each domain is a different cluster 
           - "e2b-foxtrot.dev"
-          - "e2b.dev"
+          - "e2b-bravo.dev"
           - "e2b-juliett.dev"
         test-command:
           - command: "tests/periodic-test/run-code.ts"
@@ -54,8 +56,8 @@ jobs:
         run: |
           if [ "${{ matrix.e2b-domain }}" == "e2b-juliett.dev" ]; then
             echo "api_key=${{ secrets.E2B_API_KEY_JULIETT }}" >> $GITHUB_OUTPUT
-          elif [ "${{ matrix.e2b-domain }}" == "e2b.dev" ]; then
-            echo "api_key=${{ secrets.E2B_API_KEY }}" >> $GITHUB_OUTPUT
+          elif [ "${{ matrix.e2b-domain }}" == "e2b-bravo.dev" ]; then
+            echo "api_key=${{ secrets.E2B_API_KEY_BRAVO }}" >> $GITHUB_OUTPUT
           elif [ "${{ matrix.e2b-domain }}" == "e2b-foxtrot.dev" ]; then
             echo "api_key=${{ secrets.E2B_API_KEY }}" >> $GITHUB_OUTPUT
           else
@@ -67,8 +69,8 @@ jobs:
         run: |
           if [ "${{ matrix.e2b-domain }}" == "e2b-juliett.dev" ]; then
             echo "access_token=${{ secrets.E2B_ACCESS_TOKEN_JULIETT }}" >> $GITHUB_OUTPUT
-          elif [ "${{ matrix.e2b-domain }}" == "e2b.dev" ]; then
-            echo "access_token=${{ secrets.E2B_ACCESS_TOKEN }}" >> $GITHUB_OUTPUT
+          elif [ "${{ matrix.e2b-domain }}" == "e2b-bravo.dev" ]; then
+            echo "access_token=${{ secrets.E2B_ACCESS_TOKEN_BRAVO }}" >> $GITHUB_OUTPUT
           elif [ "${{ matrix.e2b-domain }}" == "e2b-foxtrot.dev" ]; then
             echo "access_token=${{ secrets.E2B_ACCESS_TOKEN }}" >> $GITHUB_OUTPUT
           else
@@ -94,4 +96,3 @@ jobs:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           # use this channel for dev
           # SLACK_CHANNEL: C08F4DXJA00  
-
