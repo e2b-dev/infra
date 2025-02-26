@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	"log"
 	"math"
 	"net"
 	"sync"
 
+	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
@@ -23,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	e2blogging "github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -68,13 +72,27 @@ func New(ctx context.Context, port uint) (*Service, error) {
 		return nil, fmt.Errorf("failed to create network pool: %w", err)
 	}
 
+	loggerSugar, err := e2blogging.New(env.IsLocal())
+	if err != nil {
+		return nil, fmt.Errorf("initializing logger: %w", err)
+	}
+	logger := loggerSugar.Desugar()
+
 	// BLOCK: initialize services
 	{
 		srv.dns = dns.New()
+
+		opts := []grpc_zap.Option{e2blogging.WithoutHealthCheck()}
 		srv.grpc = grpc.NewServer(
 			grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
 			grpc.ChainUnaryInterceptor(
 				recovery.UnaryServerInterceptor(),
+				grpc_zap.UnaryServerInterceptor(logger, opts...),
+				grpc_zap.PayloadUnaryServerInterceptor(logger, withoutHealthCheckPayload()),
+			),
+			grpc.ChainStreamInterceptor(
+				grpc_zap.StreamServerInterceptor(logger, opts...),
+				grpc_zap.PayloadStreamServerInterceptor(logger, withoutHealthCheckPayload()),
 			),
 		)
 
@@ -151,4 +169,16 @@ func (srv *Service) Close(ctx context.Context) error {
 		srv.shutdown.op = nil
 	})
 	return srv.shutdown.err
+}
+
+func withoutHealthCheckPayload() grpc_logging.ServerPayloadLoggingDecider {
+	return func(ctx context.Context, fullMethodName string, servingObject interface{}) bool {
+		// will not log gRPC calls if it was a call to healthcheck and no error was raised
+		if fullMethodName == "/grpc.health.v1.Health/Check" {
+			return false
+		}
+
+		// by default everything will be logged
+		return true
+	}
 }
