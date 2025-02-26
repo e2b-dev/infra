@@ -12,67 +12,76 @@ type result[T any] struct {
 }
 
 type SetOnce[T any] struct {
-	wait   func() (T, error)
-	result chan result[T]
-	done   chan struct{}
+	setDone func()
+	done    chan struct{}
+	res     *result[T]
+	mux     sync.RWMutex
 }
 
 func NewSetOnce[T any]() *SetOnce[T] {
-	result := make(chan result[T], 1)
 	done := make(chan struct{})
 
-	wait := sync.OnceValues(func() (T, error) {
-		defer close(done)
-
-		value, ok := <-result
-		if !ok {
-			return *new(T), fmt.Errorf("init channel was closed")
-		}
-
-		return value.value, value.err
-	})
-
-	// We need to start the wait function in a new goroutine to avoid deadlocks
-	// between the wait function call and done channel close.
-	go wait()
-
 	return &SetOnce[T]{
-		result: result,
-		done:   done,
-		wait:   wait,
+		done: done,
+		setDone: sync.OnceFunc(func() {
+			close(done)
+		}),
 	}
 }
 
-// TODO: Use waitWithContext in all places instead of Wait.
-func (o *SetOnce[T]) WaitWithContext(ctx context.Context) (T, error) {
+func (s *SetOnce[T]) SetValue(value T) error {
+	return s.setResult(result[T]{value: value})
+}
+
+func (s *SetOnce[T]) SetError(err error) error {
+	return s.setResult(result[T]{err: err})
+}
+
+// SetResult internal method for setting the result only once.
+func (s *SetOnce[T]) setResult(r result[T]) error {
+	// Should do the action only once
+	defer s.setDone()
+
 	select {
-	case <-o.done:
-		return o.wait()
-	case <-ctx.Done():
-		return *new(T), ctx.Err()
+	case <-s.done:
+		return fmt.Errorf("value already set")
+	default:
+		// not set yet, so try to set it
+		s.mux.Lock()
+		defer s.mux.Unlock()
+
+		if s.res != nil {
+			return fmt.Errorf("value already set")
+		}
+
+		s.res = &r
+
+		return nil
 	}
 }
 
 // Wait returns the value or error set by SetValue or SetError.
 // It can be called multiple times, returning the same value or error.
-func (o *SetOnce[T]) Wait() (T, error) {
-	return o.wait()
+func (s *SetOnce[T]) Wait() (T, error) {
+	<-s.done
+
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+
+	return s.res.value, s.res.err
 }
 
-func (o *SetOnce[T]) SetValue(value T) error {
+// WaitWithContext TODO: Use waitWithContext in all places instead of Wait.
+func (s *SetOnce[T]) WaitWithContext(ctx context.Context) (T, error) {
 	select {
-	case o.result <- result[T]{value: value}:
-		return nil
-	default:
-		return fmt.Errorf("error setting value: init channel was closed")
-	}
-}
+	case <-s.done:
+		s.mux.RLock()
+		defer s.mux.RUnlock()
 
-func (o *SetOnce[T]) SetError(err error) error {
-	select {
-	case o.result <- result[T]{err: err}:
-		return nil
-	default:
-		return fmt.Errorf("error setting error: init channel was closed")
+		return s.res.value, s.res.err
+	case <-ctx.Done():
+		var zero T
+
+		return zero, ctx.Err()
 	}
 }
