@@ -14,7 +14,6 @@ import (
 	nNode "github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	sUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) ([]*instance.InstanceInfo, error) {
@@ -59,43 +58,45 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 			autoPause = *config.AutoPause
 		}
 
-		sandboxesInfo = append(sandboxesInfo, &instance.InstanceInfo{
-			Logger: logs.NewSandboxLogger(config.SandboxId, config.TemplateId, teamID.String(), config.Vcpu, config.RamMb, false),
-			Instance: &api.Sandbox{
-				SandboxID:  config.SandboxId,
-				TemplateID: config.TemplateId,
-				Alias:      config.Alias,
-				ClientID:   sbx.ClientId,
-			},
-			StartTime:          sbx.StartTime.AsTime(),
-			EndTime:            sbx.EndTime.AsTime(),
-			VCpu:               config.Vcpu,
-			RamMB:              config.RamMb,
-			BuildID:            &buildID,
-			TeamID:             &teamID,
-			Metadata:           config.Metadata,
-			KernelVersion:      config.KernelVersion,
-			FirecrackerVersion: config.FirecrackerVersion,
-			EnvdVersion:        config.EnvdVersion,
-			TotalDiskSizeMB:    config.TotalDiskSizeMb,
-			MaxInstanceLength:  time.Duration(config.MaxSandboxLength) * time.Hour,
-			Node:               node,
-			AutoPause:          &autoPause,
-			Pausing:            sUtils.NewSetOnce[*nNode.NodeInfo](),
-		})
+		sandboxesInfo = append(
+			sandboxesInfo,
+			instance.NewInstanceInfo(
+				logs.NewSandboxLogger(config.SandboxId, config.TemplateId, teamID.String(), config.Vcpu, config.RamMb, false),
+				&api.Sandbox{
+					SandboxID:  config.SandboxId,
+					TemplateID: config.TemplateId,
+					Alias:      config.Alias,
+					ClientID:   sbx.ClientId,
+				},
+				&teamID,
+				&buildID,
+				config.Metadata,
+				time.Duration(config.MaxSandboxLength)*time.Hour,
+				sbx.StartTime.AsTime(),
+				sbx.EndTime.AsTime(),
+				config.Vcpu,
+				config.TotalDiskSizeMb,
+				config.RamMb,
+				config.KernelVersion,
+				config.FirecrackerVersion,
+				config.EnvdVersion,
+				node,
+				autoPause,
+			),
+		)
 	}
 
 	return sandboxesInfo, nil
 }
 
 // GetSandboxes returns all instances for a given node.
-func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID) []instance.InstanceInfo {
+func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID) []*instance.InstanceInfo {
 	_, childSpan := o.tracer.Start(ctx, "get-sandboxes")
 	defer childSpan.End()
 
 	return o.instanceCache.GetInstances(teamID)
 }
 
-func (o *Orchestrator) GetInstance(ctx context.Context, id string) (instance.InstanceInfo, error) {
-	return o.instanceCache.GetInstance(id)
+func (o *Orchestrator) GetInstance(ctx context.Context, id string) (*instance.InstanceInfo, error) {
+	return o.instanceCache.Get(id)
 }
