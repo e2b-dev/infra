@@ -196,7 +196,7 @@ resource "grafana_data_source" "gcloud_logs" {
   })
 
   secure_json_data_encoded = jsonencode({
-    privateKey = google_service_account_key.grafana_logging_key.private_key
+    privateKey = jsondecode(base64decode(google_service_account_key.grafana_logging_key.private_key)).private_key
   })
 
 }
