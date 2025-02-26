@@ -185,3 +185,120 @@ func TestSetOnceSetResultConcurrentWithContext(t *testing.T) {
 
 	wg2.Wait()
 }
+
+func TestSetOnceConcurrentReads(t *testing.T) {
+	setOnce := NewSetOnce[int]()
+	const numReaders = 100
+
+	// Set value first
+	setOnce.SetValue(42)
+
+	// Start multiple concurrent readers
+	var wg sync.WaitGroup
+	wg.Add(numReaders)
+
+	for i := 0; i < numReaders; i++ {
+		go func() {
+			defer wg.Done()
+			value, err := setOnce.Wait()
+			assert.Nil(t, err)
+			assert.Equal(t, 42, value)
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestSetOnceConcurrentReadsWithContext(t *testing.T) {
+	setOnce := NewSetOnce[int]()
+	const numReaders = 100
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set value first
+	setOnce.SetValue(42)
+
+	// Start multiple concurrent readers
+	var wg sync.WaitGroup
+	wg.Add(numReaders)
+
+	for i := 0; i < numReaders; i++ {
+		go func() {
+			defer wg.Done()
+			value, err := setOnce.WaitWithContext(ctx)
+			assert.Nil(t, err)
+			assert.Equal(t, 42, value)
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestSetOnceConcurrentReadersBeforeWrite(t *testing.T) {
+	setOnce := NewSetOnce[int]()
+	const numReaders = 50
+
+	// Start readers before the value is set
+	var wg sync.WaitGroup
+	wg.Add(numReaders)
+
+	results := make(chan int, numReaders)
+
+	// Launch readers
+	for i := 0; i < numReaders; i++ {
+		go func() {
+			defer wg.Done()
+			value, err := setOnce.Wait()
+			assert.Nil(t, err)
+			results <- value
+		}()
+	}
+
+	// Small delay to ensure readers are waiting
+	time.Sleep(10 * time.Millisecond)
+
+	// Set the value
+	setOnce.SetValue(42)
+
+	// Wait for all readers
+	wg.Wait()
+	close(results)
+
+	// Verify all readers got the same value
+	for value := range results {
+		assert.Equal(t, 42, value)
+	}
+}
+
+func TestSetOnceConcurrentReadWriteRace(t *testing.T) {
+	setOnce := NewSetOnce[int]()
+	const numOperations = 100
+
+	var wg sync.WaitGroup
+	wg.Add(numOperations * 2) // For both readers and writers
+
+	// Launch concurrent readers and writers
+	for i := 0; i < numOperations; i++ {
+		// Reader
+		go func() {
+			defer wg.Done()
+			value, _ := setOnce.Wait()
+			// Value should be either 0 (not set) or 42 (set)
+			assert.Contains(t, []int{0, 42}, value)
+		}()
+
+		// Writer
+		go func() {
+			defer wg.Done()
+			_ = setOnce.SetValue(42)
+		}()
+	}
+
+	wg.Wait()
+
+	// Final value should be 42 if any write succeeded
+	finalValue, err := setOnce.Wait()
+	assert.Nil(t, err)
+	assert.Equal(t, 42, finalValue)
+}
