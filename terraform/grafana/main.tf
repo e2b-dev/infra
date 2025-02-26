@@ -213,19 +213,8 @@ resource "google_project_iam_member" "grafana_monitoring_viewer" {
   member  = "serviceAccount:${google_service_account.grafana_monitoring.email}"
 }
 
-resource "google_project_iam_member" "grafana_monitoring_accessor" {
-  project = var.gcp_project_id
-  role    = "roles/monitoring.viewAccessor"
-  member  = "serviceAccount:${google_service_account.grafana_monitoring.email}"
-}
-
 resource "google_service_account_key" "grafana_monitoring_key" {
   service_account_id = google_service_account.grafana_monitoring.name
-}
-
-# key for grafana monitoring
-resource "google_service_account_key" "grafana_monitoring_key" {
-  service_account_id = google_service_account.grafana_monitoring_name
 }
 
 resource "grafana_data_source" "gcloud_monitoring" {
@@ -233,7 +222,7 @@ resource "grafana_data_source" "gcloud_monitoring" {
 
 
   name = "gcloud-monitoring"
-  type = "googlecloud-monitoring-datasource"
+  type = "stackdriver"
 
 
   json_data_encoded = jsonencode({
@@ -244,7 +233,8 @@ resource "grafana_data_source" "gcloud_monitoring" {
   })
 
   secure_json_data_encoded = jsonencode({
-    privateKey = google_service_account_key.grafana_monitoring_key.private_key
+    privateKey = jsondecode(base64decode(google_service_account_key.grafana_monitoring_key.private_key)).private_key
   })
-  
+
 }
+
