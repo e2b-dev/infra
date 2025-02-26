@@ -4,9 +4,9 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
-  # push:
-  #   branches:
-  #       - main
+  push:
+    branches:
+        - main
     # only run on changes to periodic-test dir 
     paths:
       - 'tests/periodic-test/**'
