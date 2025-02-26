@@ -6,11 +6,16 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
+	_ "net/http/pprof" // This will register pprof handlers
 	"os"
 	"os/signal"
+	"runtime"
+	"runtime/pprof"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -19,9 +24,56 @@ import (
 
 const defaultPort = 5008
 
+func startMemoryProfiling() {
+	// Create a ticker to collect memory profiles periodically
+	ticker := time.NewTicker(15 * time.Minute)
+	go func() {
+		count := 0
+		for range ticker.C {
+			filename := fmt.Sprintf("/tmp/memprofile-%d.pprof", count)
+			f, err := os.Create(filename)
+			if err != nil {
+				log.Printf("Could not create memory profile: %v", err)
+				continue
+			}
+			defer f.Close()
+
+			// Force a garbage collection before taking the profile
+			runtime.GC()
+			if err := pprof.WriteHeapProfile(f); err != nil {
+				log.Printf("Could not write memory profile: %v", err)
+			}
+			log.Printf("Memory profile written to %s", filename)
+			count++
+		}
+	}()
+}
+
+func monitorMemoryUsage() {
+	go func() {
+		var m runtime.MemStats
+		for {
+			runtime.ReadMemStats(&m)
+			log.Printf("Alloc = %v MiB", m.Alloc/1024/1024)
+			log.Printf("TotalAlloc = %v MiB", m.TotalAlloc/1024/1024)
+			log.Printf("Sys = %v MiB", m.Sys/1024/1024)
+			log.Printf("NumGC = %v", m.NumGC)
+			time.Sleep(1 * time.Minute)
+		}
+	}()
+}
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	go func() {
+		log.Println("Starting pprof server on :6060")
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
+	go startMemoryProfiling()
+	go monitorMemoryUsage()
 
 	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()
