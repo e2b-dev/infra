@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -266,9 +267,9 @@ func TestLifecycleCacheConcurrentEvictionOnEviction(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
 
-	calledCount := 0
+	calledCount := atomic.Int32{}
 	cache.OnEviction(func(ctx context.Context, item *testLifecycleCacheItem) {
-		calledCount++
+		calledCount.Add(1)
 	})
 
 	wg := sync.WaitGroup{}
@@ -286,5 +287,5 @@ func TestLifecycleCacheConcurrentEvictionOnEviction(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	assert.Equal(t, 100, calledCount)
+	assert.Equal(t, int32(100), calledCount.Load())
 }
