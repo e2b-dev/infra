@@ -104,6 +104,12 @@ inputs = [ "internal_routing._unmatched" ]
 source = '''
 del(.internal)
 '''
+[transforms.metrics_routing]
+type = "route"
+inputs = [ "add_source_envd" ]
+
+[transforms.metrics_routing.route]
+metrics = '.category == "metrics"'
 
 [sinks.local_loki_logs]
 type = "loki"
@@ -122,7 +128,7 @@ category = "{{ category }}"
 %{ if grafana_logs_endpoint != " " }
 [sinks.grafana]
 type = "loki"
-inputs = [ "add_source_envd" ]
+inputs = [ "metrics_routing._unmatched" ]
 endpoint = "${grafana_logs_endpoint}"
 encoding.codec = "json"
 auth.strategy = "basic"
