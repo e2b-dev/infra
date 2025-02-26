@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/server"
@@ -54,13 +55,19 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	logger, err := logging.New(env.IsLocal())
+	logger, err := logger.NewLogger(ctx, logger.LoggerConfig{
+		ServiceName:      constants.ServiceName,
+		IsInternal:       true,
+		IsDevelopment:    env.IsLocal(),
+		IsDebug:          true,
+		CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+	})
 	if err != nil {
 		log.Fatalf("Error initializing logging\n: %v\n", err)
 	}
 
 	// Create an instance of our handler which satisfies the generated interface
-	s := server.New(logger.Desugar())
+	s := server.New(logger)
 
 	log.Printf("Starting server on port %d", *port)
 	if err := s.Serve(lis); err != nil {

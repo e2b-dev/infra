@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"log"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
 	"github.com/docker/docker/client"
@@ -19,7 +18,6 @@ import (
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
@@ -36,9 +34,9 @@ type serverStore struct {
 
 func New(logger *zap.Logger) *grpc.Server {
 	ctx := context.Background()
-	log.Println("Initializing template manager")
+	logger.Info("Initializing template manager")
 
-	opts := []grpc_zap.Option{logging.WithoutHealthCheck()}
+	opts := []grpc_zap.Option{grpc_zap.WithLevels(grpc_zap.DefaultCodeToLevel)}
 
 	s := grpc.NewServer(
 		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
