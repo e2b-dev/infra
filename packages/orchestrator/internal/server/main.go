@@ -76,7 +76,7 @@ func New(ctx context.Context, port uint) (*Service, error) {
 	{
 		srv.dns = dns.New()
 
-		opts := []grpc_zap.Option{logger.WithoutHealthCheck()}
+		opts := []grpc_zap.Option{logger.WithoutHealthCheck(), grpc_zap.WithLevels(grpc_zap.DefaultCodeToLevel)}
 		srv.grpc = grpc.NewServer(
 			grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
 			grpc.ChainUnaryInterceptor(

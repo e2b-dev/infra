@@ -37,7 +37,7 @@ func New(logger *zap.Logger) *grpc.Server {
 	ctx := context.Background()
 	logger.Info("Initializing template manager")
 
-	opts := []grpc_zap.Option{l.WithoutHealthCheck()}
+	opts := []grpc_zap.Option{l.WithoutHealthCheck(), grpc_zap.WithLevels(grpc_zap.DefaultCodeToLevel)}
 
 	s := grpc.NewServer(
 		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
