@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   changes:
-    name: Repository changes
+    name: Check
     runs-on: ubuntu-22.04
     strategy:
       matrix:
@@ -90,9 +90,12 @@ jobs:
         if: failure() && github.ref == 'refs/heads/main'
         env:
           SLACK_COLOR: "#ff0000"
+          SLACK_USERNAME: "GitHub Action: Periodic Check"
+          MSG_MINIMAL: true
+          SLACKIFY_MARKDOWN: true
           # $name failed $link to workflow run
           SLACK_MESSAGE: "Check ${{ matrix.test-command.name }} failed — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          SLACK_TITLE: "Periodic check for domain ${{ matrix.e2b-domain }} failed on ${{ matrix.test-command.name }}"
+          SLACK_TITLE: "Periodic check for domain *${{ matrix.e2b-domain }}* FAILED on ${{ matrix.test-command.name }}"
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           # use this channel for dev
           # SLACK_CHANNEL: C08F4DXJA00  
