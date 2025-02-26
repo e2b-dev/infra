@@ -40,6 +40,14 @@ variable "api_machine_type" {
   type = string
 }
 
+variable "build_cluster_size" {
+  type = number
+}
+
+variable "build_machine_type" {
+  type = string
+}
+
 variable "client_proxy_health_port" {
   type = object({
     name = string

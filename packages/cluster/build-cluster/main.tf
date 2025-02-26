@@ -1,5 +1,5 @@
 resource "google_compute_health_check" "nomad_check" {
-  name                = "${var.cluster_name}-nomad-api-check"
+  name                = "${var.cluster_name}-nomad-build-cluster-check"
   check_interval_sec  = 15
   timeout_sec         = 10
   healthy_threshold   = 2
@@ -16,28 +16,17 @@ resource "google_compute_health_check" "nomad_check" {
 }
 
 
-resource "google_compute_instance_group_manager" "api_cluster" {
+resource "google_compute_instance_group_manager" "build_cluster" {
   name = "${var.cluster_name}-ig"
 
   version {
-    name              = google_compute_instance_template.api.id
-    instance_template = google_compute_instance_template.api.id
-  }
-
-
-  named_port {
-    name = var.client_proxy_health_port.name
-    port = var.client_proxy_health_port.port
+    name              = google_compute_instance_template.build.id
+    instance_template = google_compute_instance_template.build.id
   }
 
   named_port {
-    name = var.client_proxy_port.name
-    port = var.client_proxy_port.port
-  }
-
-  named_port {
-    name = var.api_port.name
-    port = var.api_port.port
+    name = var.docker_reverse_proxy_port.name
+    port = var.docker_reverse_proxy_port.port
   }
 
   auto_healing_policies {
@@ -62,7 +51,7 @@ resource "google_compute_instance_group_manager" "api_cluster" {
   target_pools       = var.instance_group_target_pools
 
   depends_on = [
-    google_compute_instance_template.api,
+    google_compute_instance_template.build,
   ]
 }
 
@@ -71,7 +60,7 @@ data "google_compute_image" "source_image" {
 }
 
 
-resource "google_compute_instance_template" "api" {
+resource "google_compute_instance_template" "build" {
   name_prefix = "${var.cluster_name}-"
 
   instance_description = var.cluster_description
@@ -86,7 +75,6 @@ resource "google_compute_instance_template" "api" {
   tags                    = concat([var.cluster_tag_name], var.custom_tags)
   metadata_startup_script = var.startup_script
   metadata = merge(
-    { api_cluster = "TRUE" },
     {
       enable-osconfig         = "TRUE",
       enable-guest-attributes = "TRUE",

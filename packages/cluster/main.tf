@@ -63,6 +63,7 @@ variable "setup_files" {
   default = {
     "scripts/run-nomad.sh"     = "run-nomad",
     "scripts/run-api-nomad.sh" = "run-api-nomad",
+    "scripts/run-build-cluster-nomad.sh" = "run-build-cluster-nomad",
     "scripts/run-consul.sh"    = "run-consul"
   }
 }
@@ -184,20 +185,59 @@ module "api_cluster" {
 
   network_name = var.network_name
 
-  logs_health_proxy_port = var.logs_health_proxy_port
-  logs_proxy_port        = var.logs_proxy_port
-
   client_proxy_port        = var.client_proxy_port
   client_proxy_health_port = var.client_proxy_health_port
 
   api_port                  = var.api_port
-  docker_reverse_proxy_port = var.docker_reverse_proxy_port
   nomad_port                = var.nomad_port
 
   service_account_email = var.google_service_account_email
 
   labels     = var.labels
   depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-api-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
+}
+
+
+
+module "build_cluster" {
+  source = "./build-cluster"
+
+  startup_script = templatefile("${path.module}/scripts/start-build-cluster.sh", {
+    CLUSTER_TAG_NAME             = var.cluster_tag_name
+    SCRIPTS_BUCKET               = var.cluster_setup_bucket_name
+    FC_KERNELS_BUCKET_NAME       = var.fc_kernels_bucket_name
+    FC_VERSIONS_BUCKET_NAME      = var.fc_versions_bucket_name
+    FC_ENV_PIPELINE_BUCKET_NAME  = var.fc_env_pipeline_bucket_name
+    DOCKER_CONTEXTS_BUCKET_NAME  = var.docker_contexts_bucket_name
+    GCP_REGION                   = var.gcp_region
+    GOOGLE_SERVICE_ACCOUNT_KEY   = var.google_service_account_key
+    NOMAD_TOKEN                  = var.nomad_acl_token_secret
+    CONSUL_TOKEN                 = var.consul_acl_token_secret
+    RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
+    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-build-cluster-nomad.sh"]
+    CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
+    CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
+  })
+
+  environment = var.environment
+
+  cluster_name     = "${var.prefix}orch-build"
+  cluster_size     = var.build_cluster_size
+  cluster_tag_name = var.cluster_tag_name
+  gcp_zone         = var.gcp_zone
+
+  machine_type = var.build_machine_type
+  image_family = var.build_image_family
+
+  network_name = var.network_name
+
+  docker_reverse_proxy_port = var.docker_reverse_proxy_port
+  nomad_port                = var.nomad_port
+
+  service_account_email = var.google_service_account_email
+
+  labels     = var.labels
+  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-build-cluster-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
 }
 
 module "network" {
