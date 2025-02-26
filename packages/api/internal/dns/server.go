@@ -26,8 +26,7 @@ const defaultRoutingIP = "127.0.0.1"
 const cachedDnsPrefix = "sandbox.dns."
 
 type DNS struct {
-	srv    *resolver.Server
-	logger *zap.Logger
+	srv *resolver.Server
 
 	remote *cache.Cache
 	local  *smap.Map[string]
@@ -39,8 +38,8 @@ type DNS struct {
 	}
 }
 
-func New(ctx context.Context, rc *redis.Client, logger *zap.Logger) *DNS {
-	d := &DNS{logger: logger}
+func New(ctx context.Context, rc *redis.Client) *DNS {
+	d := &DNS{}
 
 	if rc != nil {
 		d.remote = cache.New(&cache.Options{Redis: rc, LocalCache: cache.NewTinyLFU(10_000, time.Hour)})
@@ -69,7 +68,7 @@ func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
 	switch {
 	case d.remote != nil:
 		if err := d.remote.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
-			d.logger.Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox", sandboxID))
+			zap.L().Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox", sandboxID))
 		}
 	case d.local != nil:
 		d.local.RemoveCb(d.cacheKey(sandboxID), func(k string, v string, ok bool) bool { return v == ip })
@@ -82,23 +81,23 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 	case d.remote != nil:
 		if err := d.remote.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
 			if errors.Is(err, cache.ErrCacheMiss) {
-				d.logger.Warn("item missing in remote DNS cache", zap.String("sandbox", sandboxID))
+				zap.L().Warn("item missing in remote DNS cache", zap.String("sandbox", sandboxID))
 			} else {
-				d.logger.Error("resolving item from remote DNS cache", zap.String("sandbox", sandboxID), zap.Error(err))
+				zap.L().Error("resolving item from remote DNS cache", zap.String("sandbox", sandboxID), zap.Error(err))
 			}
 		}
 	case d.local != nil:
 		var ok bool
 		res, ok = d.local.Get(d.cacheKey(sandboxID))
 		if !ok {
-			d.logger.Warn("item not found in local DNS cache", zap.String("sandbox", sandboxID))
+			zap.L().Warn("item not found in local DNS cache", zap.String("sandbox", sandboxID))
 		}
 	}
 
 	addr := net.ParseIP(res)
 	if addr == nil {
 		if res != "" {
-			d.logger.Error("malformed address in cache", zap.Bool("local", d.local != nil), zap.String("addr", res))
+			zap.L().Error("malformed address in cache", zap.Bool("local", d.local != nil), zap.String("addr", res))
 		}
 
 		addr = net.ParseIP(defaultRoutingIP)
@@ -151,7 +150,7 @@ func (d *DNS) handleDNSRequest(ctx context.Context, w resolver.ResponseWriter, r
 	}
 
 	if err := w.WriteMsg(m); err != nil {
-		d.logger.Error("write DNS message", zap.Error(err))
+		zap.L().Error("write DNS message", zap.Error(err))
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
@@ -101,15 +102,20 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	sandboxLogger := logs.NewSandboxLogger(
-		sandboxID,
-		*build.EnvID,
-		teamInfo.Team.ID.String(),
-		build.Vcpu,
-		build.RAMMB,
-		false,
+	sbxLogger := sbxlogger.NewSandboxLogger(
+		ctx,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      ServiceName,
+			IsInternal:       true,
+			IsDevelopment:    true,
+			SandboxID:        sandboxID,
+			TemplateID:       *build.EnvID,
+			TeamID:           teamInfo.Team.ID.String(),
+			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		},
 	)
-	sandboxLogger.Debugf("Started resuming sandbox")
+
+	sbxLogger.Debug("Started resuming sandbox")
 
 	sbx, err := a.startSandbox(
 		ctx,
@@ -120,7 +126,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		"",
 		teamInfo,
 		build,
-		sandboxLogger,
+		sbxLogger,
 		&c.Request.Header,
 		true,
 		&clientID,

@@ -18,7 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -35,7 +35,7 @@ func (o *Orchestrator) CreateSandbox(
 	startTime time.Time,
 	endTime time.Time,
 	timeout time.Duration,
-	logger *logs.SandboxLogger,
+	logger *sbxlogger.SandboxLogger,
 	isResume bool,
 	clientID *string,
 	baseTemplateID string,

@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -36,7 +35,7 @@ func (o *Orchestrator) keepInSync(instanceCache *instance.InstanceCache) {
 		ctx, span := o.tracer.Start(context.Background(), "keep-in-sync")
 		nodes, err := o.listNomadNodes(ctx)
 		if err != nil {
-			o.logger.Errorf("Error listing nodes: %v", err)
+			zap.L().Error("Error listing nodes", zap.Error(err))
 			span.End()
 
 			continue
@@ -51,7 +50,7 @@ func (o *Orchestrator) keepInSync(instanceCache *instance.InstanceCache) {
 					defer wg.Done()
 					err = o.connectToNode(ctx, n)
 					if err != nil {
-						o.logger.Errorf("Error connecting to node: %v", err)
+						zap.L().Error("Error connecting to node", zap.Error(err))
 					}
 				}(n)
 			}
@@ -87,12 +86,12 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 	}
 
 	if !found {
-		o.logger.Infof("Node %s is not active anymore", node.Info.ID)
+		zap.L().Info("Node is not active anymore", zap.String("node_id", node.Info.ID))
 
 		// Close the connection to the node
 		err := node.Client.Close()
 		if err != nil {
-			o.logger.Errorf("Error closing connection to node: %v", err)
+			zap.L().Error("Error closing connection to node", zap.Error(err))
 		}
 
 		o.nodes.Remove(node.Info.ID)
@@ -102,7 +101,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 
 	activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
 	if instancesErr != nil {
-		o.logger.Errorf("Error getting instances: %v", instancesErr)
+		zap.L().Error("Error getting instances", zap.Error(instancesErr))
 		return
 	}
 
@@ -110,7 +109,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 
 	builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
 	if buildsErr != nil {
-		o.logger.Errorf("Error listing cached builds: %v", buildsErr)
+		zap.L().Error("Error listing cached builds", zap.Error(buildsErr))
 		return
 	}
 
@@ -120,7 +119,6 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 func (o *Orchestrator) getDeleteInstanceFunction(
 	parentCtx context.Context,
 	posthogClient *analyticscollector.PosthogClient,
-	logger *zap.SugaredLogger,
 	timeout time.Duration,
 ) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
@@ -139,7 +137,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			Duration:      float32(duration),
 		})
 		if err != nil {
-			logger.Errorf("error sending Analytics event: %v", err)
+			zap.L().Error("error sending Analytics event", zap.Error(err))
 		}
 
 		var closeType string
@@ -160,7 +158,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 
 		node := o.GetNode(info.Instance.ClientID)
 		if node == nil {
-			logger.Errorf("failed to get node '%s'", info.Instance.ClientID)
+			zap.L().Error("failed to get node", zap.String("node_id", info.Instance.ClientID))
 		} else {
 			node.CPUUsage.Add(-info.VCpu)
 			node.RamUsage.Add(-info.RamMB)
@@ -169,12 +167,12 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		}
 
 		if node == nil {
-			log.Printf("node '%s' not found", info.Instance.ClientID)
+			zap.L().Error("node not found", zap.String("node_id", info.Instance.ClientID))
 			return fmt.Errorf("node '%s' not found", info.Instance.ClientID)
 		}
 
 		if node.Client == nil {
-			log.Printf("client for node '%s' not found", info.Instance.ClientID)
+			zap.L().Error("client for node not found", zap.String("node_id", info.Instance.ClientID))
 			return fmt.Errorf("client for node '%s' not found", info.Instance.ClientID)
 		}
 
@@ -203,14 +201,14 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 	}
 }
 
-func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, logger *zap.SugaredLogger, timeout time.Duration) func(info instance.InstanceInfo) error {
+func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, timeout time.Duration) func(info instance.InstanceInfo) error {
 	return func(info instance.InstanceInfo) error {
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		defer cancel()
 
 		node := o.GetNode(info.Instance.ClientID)
 		if node == nil {
-			logger.Errorf("failed to get node '%s'", info.Instance.ClientID)
+			zap.L().Error("failed to get node", zap.String("node_id", info.Instance.ClientID))
 		} else {
 			node.CPUUsage.Add(info.VCpu)
 			node.RamUsage.Add(info.RamMB)
@@ -226,7 +224,7 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, logg
 			Timestamp:     timestamppb.Now(),
 		})
 		if err != nil {
-			logger.Errorf("Error sending Analytics event: %v", err)
+			zap.L().Error("Error sending Analytics event", zap.Error(err))
 		}
 
 		if *info.AutoPause {

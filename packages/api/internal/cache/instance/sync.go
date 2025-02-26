@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
@@ -74,7 +75,7 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 		if !c.Exists(instance.Instance.SandboxID) {
 			err := c.Add(*instance, false)
 			if err != nil {
-				fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
+				zap.L().Error("error adding instance to cache", zap.Error(err))
 			}
 		}
 	}
@@ -88,7 +89,7 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 	go func() {
 		_, err := c.analytics.RunningInstances(context.Background(), &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
 		if err != nil {
-			c.logger.Errorf("Error sending running instances event to analytics\n: %v", err)
+			zap.L().Error("error sending running instances event to analytics", zap.Error(err))
 		}
 	}()
 }

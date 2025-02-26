@@ -15,7 +15,7 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -33,7 +33,7 @@ var (
 )
 
 type InstanceInfo struct {
-	Logger             *logs.SandboxLogger
+	Logger             *sbxlogger.SandboxLogger
 	Instance           *api.Sandbox
 	TeamID             *uuid.UUID
 	BuildID            *uuid.UUID
@@ -58,8 +58,6 @@ type InstanceCache struct {
 
 	cache *ttlcache.Cache[string, InstanceInfo]
 
-	logger *zap.SugaredLogger
-
 	sandboxCounter metric.Int64UpDownCounter
 	createdCounter metric.Int64Counter
 	analytics      analyticscollector.AnalyticsCollectorClient
@@ -69,7 +67,6 @@ type InstanceCache struct {
 
 func NewCache(
 	analytics analyticscollector.AnalyticsCollectorClient,
-	logger *zap.SugaredLogger,
 	insertInstance func(data InstanceInfo) error,
 	deleteInstance func(data InstanceInfo) error,
 ) *InstanceCache {
@@ -81,17 +78,16 @@ func NewCache(
 
 	sandboxCounter, err := meters.GetUpDownCounter(meters.SandboxCountMeterName)
 	if err != nil {
-		logger.Errorw("error getting counter", "error", err)
+		zap.L().Error("error getting counter", zap.Error(err))
 	}
 
 	createdCounter, err := meters.GetCounter(meters.SandboxCreateMeterName)
 	if err != nil {
-		logger.Errorw("error getting counter", "error", err)
+		zap.L().Error("error getting counter", zap.Error(err))
 	}
 
 	instanceCache := &InstanceCache{
 		cache:          cache,
-		logger:         logger,
 		analytics:      analytics,
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
@@ -103,7 +99,7 @@ func NewCache(
 		instanceInfo := i.Value()
 		err := insertInstance(instanceInfo)
 		if err != nil {
-			logger.Errorf("Error inserting instance: %v", err)
+			zap.L().Error("Error inserting instance", zap.Error(err))
 
 			return
 		}
@@ -114,7 +110,7 @@ func NewCache(
 			instanceInfo := i.Value()
 			err := deleteInstance(instanceInfo)
 			if err != nil {
-				logger.Errorf("Error deleting instance (%v)\n: %v", er, err)
+				zap.L().Error("Error deleting instance", zap.Error(err))
 			}
 
 			instanceCache.UpdateCounters(i.Value(), -1, false)
@@ -165,14 +161,14 @@ func (c *InstanceInfo) PauseDone(err error) {
 	if err == nil {
 		err := c.Pausing.SetValue(c.Node)
 		if err != nil {
-			fmt.Printf("error setting PauseDone value: %v", err)
+			zap.L().Error("error setting PauseDone value", zap.Error(err))
 
 			return
 		}
 	} else {
 		err := c.Pausing.SetError(err)
 		if err != nil {
-			fmt.Printf("error setting PauseDone error: %v", err)
+			zap.L().Error("error setting PauseDone error", zap.Error(err))
 
 			return
 		}

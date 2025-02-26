@@ -69,7 +69,7 @@ func (a *APIStore) getSandboxesSandboxIDMetrics(
 
 			err := json.Unmarshal([]byte(entry.Line), &metric)
 			if err != nil {
-				a.logger.Error("Failed to unmarshal metric", zap.String("sandbox", sandboxID), zap.Error(err))
+				zap.L().Error("Failed to unmarshal metric", zap.String("sandbox", sandboxID), zap.Error(err))
 				telemetry.ReportCriticalError(ctx, fmt.Errorf("failed to unmarshal metric: %w", err))
 
 				continue
@@ -109,7 +109,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 
 	metrics, err := a.getSandboxesSandboxIDMetrics(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
 	if err != nil {
-		a.logger.Error("Error returning metrics for sandbox",
+		zap.L().Error("Error returning metrics for sandbox",
 			zap.Error(err),
 			zap.String("sandboxID", sandboxID),
 		)

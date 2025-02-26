@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -21,12 +20,14 @@ import (
 	limits "github.com/gin-contrib/size"
 	"github.com/gin-gonic/gin"
 	middleware "github.com/oapi-codegen/gin-middleware"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 
 	customMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/gin_utils/middleware"
@@ -41,6 +42,8 @@ const (
 	maxReadHeaderTimeout = 60 * time.Second
 	defaultPort          = 80
 )
+
+var logsCollectorAddress = env.GetEnv("LOGS_COLLECTOR_ADDRESS", "")
 
 func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
 	// Clear out the servers array in the swagger spec, that skips validating
@@ -148,7 +151,17 @@ func main() {
 	flag.StringVar(&debug, "true", "false", "is debug")
 	flag.Parse()
 
-	log.Println("Starting API service...")
+	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+		ServiceName:      serviceName,
+		IsInternal:       true,
+		IsDevelopment:    env.IsLocal(),
+		IsDebug:          env.IsDebug(),
+		CollectorAddress: logsCollectorAddress,
+	}))
+	defer logger.Sync()
+	zap.ReplaceGlobals(logger)
+
+	logger.Info("Starting API service...")
 	if debug != "true" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -157,7 +170,7 @@ func main() {
 	if err != nil {
 		// this will call os.Exit: defers won't run, but none
 		// need to yet. Change this if this is called later.
-		log.Fatalf("Error loading swagger spec:\n%v", err)
+		logger.Fatal("Error loading swagger spec", zap.Error(err))
 	}
 
 	var cleanupFns []func(context.Context) error
@@ -185,7 +198,7 @@ func main() {
 					defer cwg.Done()
 					if err := op(ctx); err != nil {
 						exitCode.Add(1)
-						log.Printf("cleanup operation %d, error: %v", idx, err)
+						logger.Error("cleanup operation error", zap.Int("index", idx), zap.Error(err))
 					}
 				}(cleanup, idx)
 
@@ -193,12 +206,12 @@ func main() {
 			}
 		}
 		if count == 0 {
-			log.Println("no cleanup operations")
+			logger.Info("no cleanup operations")
 			return
 		}
-		log.Printf("running %d cleanup operations", count)
+		logger.Info("running cleanup operations", zap.Int("count", count))
 		cwg.Wait() // this doesn't have a timeout
-		log.Printf("%d cleanup operations completed in %s", count, time.Since(start))
+		logger.Info("cleanup operations completed", zap.Int("count", count), zap.Duration("duration", time.Since(start)))
 	}
 	cleanupOnce := &sync.Once{}
 	cleanup := func() { cleanupOnce.Do(cleanupOp) }
@@ -246,20 +259,20 @@ func main() {
 		// signaled.
 		defer cancel()
 
-		log.Printf("http service (%d) starting", port)
+		logger.Info("http service starting", zap.Int("port", port))
 
 		// Serve HTTP until shutdown.
 		err := s.ListenAndServe()
 
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			log.Printf("http service (%d) shutdown successfully", port)
+			logger.Info("http service shutdown successfully", zap.Int("port", port))
 		case err != nil:
 			exitCode.Add(1)
-			log.Printf("http service (%d) encountered error: %v", port, err)
+			logger.Error("http service encountered error", zap.Int("port", port), zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			log.Printf("http service (%d) exited without error", port)
+			logger.Info("http service exited without error", zap.Int("port", port))
 		}
 
 	}()
@@ -286,7 +299,7 @@ func main() {
 
 		if err := s.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
-			log.Printf("http service (%d) shutdown error: %v", port, err)
+			logger.Error("http service shutdown error", zap.Int("port", port), zap.Error(err))
 		}
 
 	}()

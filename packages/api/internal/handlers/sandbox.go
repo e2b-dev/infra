@@ -7,10 +7,11 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -25,7 +26,7 @@ func (a *APIStore) startSandbox(
 	alias string,
 	team authcache.AuthTeamInfo,
 	build *models.EnvBuild,
-	logger *logs.SandboxLogger,
+	sbxLogger *sbxlogger.SandboxLogger,
 	requestHeader *http.Header,
 	isResume bool,
 	clientID *string,
@@ -35,7 +36,7 @@ func (a *APIStore) startSandbox(
 	_, rateSpan := a.Tracer.Start(ctx, "rate-limit")
 	counter, err := meters.GetUpDownCounter(meters.RateLimitCounterMeterName)
 	if err != nil {
-		a.logger.Errorf("error getting counter: %s", err)
+		sbxLogger.Error("error getting counter", zap.Error(err))
 	}
 
 	counter.Add(ctx, 1)
@@ -68,7 +69,7 @@ func (a *APIStore) startSandbox(
 		startTime,
 		endTime,
 		timeout,
-		logger,
+		sbxLogger,
 		isResume,
 		clientID,
 		baseTemplateID,
@@ -104,7 +105,7 @@ func (a *APIStore) startSandbox(
 		attribute.String("instance.id", sandbox.SandboxID),
 	)
 
-	logger.Infof("Sandbox created with - end time: %s", endTime.Format("2006-01-02 15:04:05 -07:00"))
+	sbxLogger.Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
 	return &api.Sandbox{
 		ClientID:    sandbox.ClientID,

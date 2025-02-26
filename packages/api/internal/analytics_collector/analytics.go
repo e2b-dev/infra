@@ -24,15 +24,14 @@ const (
 
 type PosthogClient struct {
 	client posthog.Client
-	logger *zap.SugaredLogger
 }
 
-func NewPosthogClient(logger *zap.SugaredLogger) (*PosthogClient, error) {
+func NewPosthogClient() (*PosthogClient, error) {
 	posthogAPIKey := os.Getenv("POSTHOG_API_KEY")
 	posthogLogger := posthog.StdLogger(log.New(os.Stderr, "posthog ", log.LstdFlags))
 
 	if strings.TrimSpace(posthogAPIKey) == "" {
-		logger.Info("No Posthog API key provided, silencing logs")
+		zap.L().Info("No Posthog API key provided, silencing logs")
 
 		writer := &utils.NoOpWriter{}
 		posthogLogger = posthog.StdLogger(log.New(writer, "posthog ", log.LstdFlags))
@@ -46,12 +45,11 @@ func NewPosthogClient(logger *zap.SugaredLogger) (*PosthogClient, error) {
 	})
 
 	if err != nil {
-		logger.Fatalf("error initializing Posthog client: %v\n", err)
+		zap.L().Fatal("error initializing Posthog client", zap.Error(err))
 	}
 
 	return &PosthogClient{
 		client: client,
-		logger: logger,
 	}, nil
 }
 
@@ -69,7 +67,7 @@ func (p *PosthogClient) IdentifyAnalyticsTeam(teamID string, teamName string) {
 	},
 	)
 	if err != nil {
-		p.logger.Errorf("error when setting group property in Posthog: %v", err)
+		zap.L().Error("error when setting group property in Posthog", zap.Error(err))
 	}
 }
 
@@ -82,7 +80,7 @@ func (p *PosthogClient) CreateAnalyticsTeamEvent(teamID, event string, propertie
 			Set("team", teamID),
 	})
 	if err != nil {
-		p.logger.Errorf("error when sending event to Posthog: %v", err)
+		zap.L().Error("error when sending event to Posthog", zap.Error(err))
 	}
 }
 
@@ -95,7 +93,7 @@ func (p *PosthogClient) CreateAnalyticsUserEvent(userID string, teamID string, e
 			Set("team", teamID),
 	})
 	if err != nil {
-		p.logger.Errorf("error when sending event to Posthog: %v", err)
+		zap.L().Error("error when sending event to Posthog", zap.Error(err))
 	}
 }
 

@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,11 +16,14 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const InstanceIDPrefix = "i"
+const (
+	InstanceIDPrefix = "i"
+	ServiceName      = "orchestration-api"
+)
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -76,15 +80,20 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	c.Set("instanceID", sandboxID)
 
-	sandboxLogger := logs.NewSandboxLogger(
-		sandboxID,
-		env.TemplateID,
-		teamInfo.Team.ID.String(),
-		build.Vcpu,
-		build.RAMMB,
-		false,
+	sbxLogger := sbxlogger.NewSandboxLogger(
+		ctx,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      ServiceName,
+			IsInternal:       true,
+			IsDevelopment:    true,
+			SandboxID:        sandboxID,
+			TemplateID:       env.TemplateID,
+			TeamID:           teamInfo.Team.ID.String(),
+			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		},
 	)
-	sandboxLogger.Debugf("Started creating sandbox")
+
+	sbxLogger.Debug("Started creating sandbox")
 
 	var alias string
 	if env.Aliases != nil && len(*env.Aliases) > 0 {
@@ -134,7 +143,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		alias,
 		teamInfo,
 		build,
-		sandboxLogger,
+		sbxLogger,
 		&c.Request.Header,
 		false,
 		nil,
