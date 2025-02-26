@@ -36,6 +36,8 @@ type Node struct {
 	sbxsInProgress *smap.Map[*sbxInProgress]
 
 	buildCache *ttlcache.Cache[string, interface{}]
+
+	createFails atomic.Uint64
 }
 
 func (n *Node) Status() api.NodeStatus {
@@ -82,7 +84,11 @@ func (o *Orchestrator) GetNode(nodeID string) *Node {
 func (o *Orchestrator) GetNodes() []*api.Node {
 	nodes := make(map[string]*api.Node)
 	for key, n := range o.nodes.Items() {
-		nodes[key] = &api.Node{NodeID: key, Status: n.Status()}
+		nodes[key] = &api.Node{
+			NodeID:      key,
+			Status:      n.Status(),
+			CreateFails: n.createFails.Load(),
+		}
 	}
 
 	for _, sbx := range o.instanceCache.Items() {
@@ -105,12 +111,18 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 	return result
 }
 
-func (o *Orchestrator) GetNodeDetail(nodeId string) *api.NodeDetail {
+func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 	var node *api.NodeDetail
+
 	for key, n := range o.nodes.Items() {
-		if key == nodeId {
+		if key == nodeID {
 			builds := n.buildCache.Keys()
-			node = &api.NodeDetail{NodeID: key, Status: n.Status(), CachedBuilds: builds}
+			node = &api.NodeDetail{
+				NodeID:       key,
+				Status:       n.Status(),
+				CachedBuilds: builds,
+				CreateFails:  n.createFails.Load(),
+			}
 		}
 	}
 
@@ -119,7 +131,7 @@ func (o *Orchestrator) GetNodeDetail(nodeId string) *api.NodeDetail {
 	}
 
 	for _, sbx := range o.instanceCache.Items() {
-		if sbx.Instance.ClientID == nodeId {
+		if sbx.Instance.ClientID == nodeID {
 			var metadata *api.SandboxMetadata
 			if sbx.Metadata != nil {
 				meta := api.SandboxMetadata(sbx.Metadata)
@@ -127,10 +139,10 @@ func (o *Orchestrator) GetNodeDetail(nodeId string) *api.NodeDetail {
 			}
 			node.Sandboxes = append(node.Sandboxes, api.RunningSandbox{
 				Alias:      sbx.Instance.Alias,
-				ClientID:   nodeId,
+				ClientID:   nodeID,
 				CpuCount:   api.CPUCount(sbx.VCpu),
 				MemoryMB:   api.MemoryMB(sbx.RamMB),
-				EndAt:      sbx.EndTime,
+				EndAt:      sbx.GetEndTime(),
 				Metadata:   metadata,
 				SandboxID:  sbx.Instance.SandboxID,
 				StartedAt:  sbx.StartTime,

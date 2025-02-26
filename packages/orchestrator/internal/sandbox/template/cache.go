@@ -40,13 +40,13 @@ func NewCache(ctx context.Context) (*Cache, error) {
 
 	go cache.Start()
 
-	buildStore, err := build.NewDiffStore(gcs.TemplateBucket, ctx)
+	buildStore, err := build.NewDiffStore(gcs.GetTemplateBucket(), ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
 	}
 
 	return &Cache{
-		bucket:     gcs.TemplateBucket,
+		bucket:     gcs.GetTemplateBucket(),
 		buildStore: buildStore,
 		cache:      cache,
 		ctx:        ctx,

@@ -114,3 +114,89 @@ resource "google_secret_manager_secret_version" "grafana_logs_user" {
   secret      = "projects/${var.gcp_project_id}/secrets/${var.prefix}grafana-logs-user"
   secret_data = grafana_cloud_stack.e2b_stack.logs_user_id
 }
+
+# Enable Cloud Logging API
+resource "google_project_service" "logging_api" {
+  project = var.gcp_project_id
+  service = "logging.googleapis.com"
+}
+
+# Enable Cloud Resource Manager API
+resource "google_project_service" "resource_manager_api" {
+  project = var.gcp_project_id
+  service = "cloudresourcemanager.googleapis.com"
+}
+
+# Create service account for Grafana
+resource "google_service_account" "grafana_logging" {
+  account_id   = "${var.prefix}grafana-logging"
+  display_name = "Grafana Cloud Logging Service Account"
+  project      = var.gcp_project_id
+}
+
+# Assign required roles to the service account
+resource "google_project_iam_member" "grafana_logging_viewer" {
+  project = var.gcp_project_id
+  role    = "roles/logging.viewer"
+  member  = "serviceAccount:${google_service_account.grafana_logging.email}"
+}
+
+resource "google_project_iam_member" "grafana_logging_accessor" {
+  project = var.gcp_project_id
+  role    = "roles/logging.viewAccessor"
+  member  = "serviceAccount:${google_service_account.grafana_logging.email}"
+}
+
+# Create and download service account key
+resource "google_service_account_key" "grafana_logging_key" {
+  service_account_id = google_service_account.grafana_logging.name
+}
+
+# configure gcp logs datasource
+resource "grafana_cloud_plugin_installation" "grafana_gcp_logs_datasource" {
+  provider   = grafana.cloud
+  stack_slug = grafana_cloud_stack.e2b_stack.slug
+  slug       = "googlecloud-logging-datasource"
+  version    = "1.4.1"
+}
+
+resource "grafana_cloud_stack_service_account" "cloud_sa" {
+  provider   = grafana.cloud
+  stack_slug = grafana_cloud_stack.e2b_stack.slug
+
+  name        = "cloud service account for managing datasource ${var.gcp_project_id}"
+  role        = "Admin"
+  is_disabled = false
+}
+
+resource "grafana_cloud_stack_service_account_token" "manage_datasource" {
+  name               = "manage-datasource-${var.gcp_project_id}"
+  service_account_id = grafana_cloud_stack_service_account.cloud_sa.id
+  stack_slug         = grafana_cloud_stack.e2b_stack.slug
+  provider           = grafana.cloud
+}
+
+provider "grafana" {
+  alias = "datasource"
+  url   = grafana_cloud_stack.e2b_stack.url
+  auth  = grafana_cloud_stack_service_account_token.manage_datasource.key
+
+}
+
+resource "grafana_data_source" "gcloud_logs" {
+  provider = grafana.datasource
+
+  name = "gcloud-logs"
+  type = "googlecloud-logging-datasource"
+  json_data_encoded = jsonencode({
+    authenticationType = "jwt"
+    clientEmail        = google_service_account.grafana_logging.email
+    defaultProject     = var.gcp_project_id
+    tokenUri           = "https://oauth2.googleapis.com/token"
+  })
+
+  secure_json_data_encoded = jsonencode({
+    privateKey = google_service_account_key.grafana_logging_key.private_key
+  })
+
+}

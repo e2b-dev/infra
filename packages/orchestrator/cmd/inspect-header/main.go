@@ -38,7 +38,7 @@ func main() {
 
 	ctx := context.Background()
 
-	obj := gcs.NewObject(ctx, gcs.TemplateBucket, storagePath)
+	obj := gcs.NewObject(ctx, gcs.GetTemplateBucket(), storagePath)
 
 	h, err := header.Deserialize(obj)
 	if err != nil {
@@ -47,7 +47,7 @@ func main() {
 
 	fmt.Printf("\nMETADATA\n")
 	fmt.Printf("========\n")
-	fmt.Printf("Storage path       %s/%s\n", gcs.TemplateBucket.BucketName(), storagePath)
+	fmt.Printf("Storage path       %s/%s\n", gcs.GetTemplateBucket().BucketName(), storagePath)
 	fmt.Printf("Version            %d\n", h.Metadata.Version)
 	fmt.Printf("Generation         %d\n", h.Metadata.Generation)
 	fmt.Printf("Build ID           %s\n", h.Metadata.BuildId)

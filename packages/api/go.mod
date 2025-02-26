@@ -28,6 +28,8 @@ require (
 	go.uber.org/zap v1.26.0
 )
 
+require github.com/stretchr/testify v1.10.0
+
 require (
 	ariga.io/atlas v0.15.0 // indirect
 	cloud.google.com/go v0.112.0 // indirect
@@ -143,7 +145,6 @@ require (
 	github.com/prometheus/exporter-toolkit v0.10.1-0.20230714054209-2f4150c63f97 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852 // indirect
-	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver/v5 v5.1.1 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect
@@ -152,7 +153,6 @@ require (
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/uber/jaeger-client-go v2.30.0+incompatible // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect

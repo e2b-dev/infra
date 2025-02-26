@@ -18,7 +18,6 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/orcaman/concurrent-map/v2 v2.0.1
-	github.com/rs/zerolog v1.33.0
 	github.com/stretchr/testify v1.10.0
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.57.0
 	go.opentelemetry.io/otel v1.32.0
@@ -76,7 +75,6 @@ require (
 	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.1-0.20220423185008-bf980b35cac4 // indirect

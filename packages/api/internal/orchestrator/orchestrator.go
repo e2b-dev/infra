@@ -65,6 +65,7 @@ func New(
 	}
 
 	cache := instance.NewCache(
+		ctx,
 		analyticsInstance.Client,
 		o.getInsertInstanceFunction(ctx, cacheHookTimeout),
 		o.getDeleteInstanceFunction(ctx, posthogClient, cacheHookTimeout),

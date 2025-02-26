@@ -68,6 +68,9 @@ type Node struct {
 	// AllocatedMemoryMiB Amount of allocated memory in MiB
 	AllocatedMemoryMiB int32 `json:"allocatedMemoryMiB"`
 
+	// CreateFails Number of sandbox create fails
+	CreateFails uint64 `json:"createFails"`
+
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
 
@@ -82,6 +85,9 @@ type Node struct {
 type NodeDetail struct {
 	// CachedBuilds List of cached builds id on the node
 	CachedBuilds []string `json:"cachedBuilds"`
+
+	// CreateFails Number of sandbox create fails
+	CreateFails uint64 `json:"createFails"`
 
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`

@@ -36,11 +36,15 @@ import (
 )
 
 const (
-	serviceName          = "orchestration-api"
-	maxMultipartMemory   = 1 << 27 // 128 MiB
-	maxUploadLimit       = 1 << 28 // 256 MiB
+	serviceName        = "orchestration-api"
+	maxMultipartMemory = 1 << 27 // 128 MiB
+	maxUploadLimit     = 1 << 28 // 256 MiB
+
 	maxReadHeaderTimeout = 60 * time.Second
-	defaultPort          = 80
+	maxReadTimeout       = 75 * time.Second
+	maxWriteTimeout      = 75 * time.Second
+	
+	defaultPort = 80
 )
 
 var logsCollectorAddress = env.GetEnv("LOGS_COLLECTOR_ADDRESS", "")
@@ -125,6 +129,8 @@ func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *ope
 		Handler:           r,
 		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
 		ReadHeaderTimeout: maxReadHeaderTimeout,
+		ReadTimeout:       maxReadTimeout,
+		WriteTimeout:      maxWriteTimeout,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 	}
 

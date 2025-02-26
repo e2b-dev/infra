@@ -58,6 +58,9 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 		}
 
 		autoPause := instance.InstanceAutoPauseDefault
+		if config.AutoPause != nil {
+			autoPause = *config.AutoPause
+		}
 
 		logger := sbxlogger.NewSandboxLogger(childCtx, sbxlogger.SandboxLoggerConfig{
 			ServiceName:      ServiceName,
@@ -99,13 +102,13 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 }
 
 // GetSandboxes returns all instances for a given node.
-func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID) []instance.InstanceInfo {
+func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID) []*instance.InstanceInfo {
 	_, childSpan := o.tracer.Start(ctx, "get-sandboxes")
 	defer childSpan.End()
 
 	return o.instanceCache.GetInstances(teamID)
 }
 
-func (o *Orchestrator) GetInstance(ctx context.Context, id string) (instance.InstanceInfo, error) {
-	return o.instanceCache.GetInstance(id)
+func (o *Orchestrator) GetInstance(ctx context.Context, id string) (*instance.InstanceInfo, error) {
+	return o.instanceCache.Get(id)
 }

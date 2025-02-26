@@ -52,9 +52,7 @@ func (r *ReservationCache) list(teamID uuid.UUID) (instanceIDs []string) {
 }
 
 func (c *InstanceCache) list(teamID uuid.UUID) (instanceIDs []string) {
-	for _, item := range c.cache.Items() {
-		value := item.Value()
-
+	for _, value := range c.cache.Items() {
 		currentTeamID := value.TeamID
 
 		if currentTeamID == nil {

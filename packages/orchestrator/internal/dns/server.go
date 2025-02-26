@@ -1,6 +1,7 @@
 package dns
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -15,8 +16,13 @@ import (
 const ttl = 0
 
 type DNS struct {
-	mu      sync.Mutex
 	records *smap.Map[string]
+
+	closer struct {
+		once sync.Once
+		op   func(context.Context) error
+		err  error
+	}
 }
 
 func New() *DNS {
@@ -82,10 +88,16 @@ func (d *DNS) Start(address string, port int) error {
 
 	server := resolver.Server{Addr: fmt.Sprintf("%s:%d", address, port), Net: "udp", Handler: mux}
 
-	err := server.ListenAndServe()
-	if err != nil {
-		return fmt.Errorf("failed to start DNS server: %w", err)
+	if err := server.ListenAndServe(); err != nil {
+		return fmt.Errorf("DNS server encounterted error: %w", err)
 	}
 
+	d.closer.op = server.ShutdownContext
+
 	return nil
+}
+
+func (d *DNS) Close(ctx context.Context) error {
+	d.closer.once.Do(func() { d.closer.err = d.closer.op(ctx) })
+	return d.closer.err
 }
