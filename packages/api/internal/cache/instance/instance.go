@@ -50,10 +50,7 @@ func NewInstanceInfo(
 	Node *node.NodeInfo,
 	AutoPause bool,
 ) *InstanceInfo {
-	var autoPause atomic.Bool
-	autoPause.Store(AutoPause)
-
-	return &InstanceInfo{
+	instance := &InstanceInfo{
 		Logger:             Logger,
 		Instance:           Instance,
 		TeamID:             TeamID,
@@ -69,10 +66,14 @@ func NewInstanceInfo(
 		FirecrackerVersion: FirecrackerVersion,
 		EnvdVersion:        EnvdVersion,
 		Node:               Node,
-		AutoPause:          &autoPause,
+		AutoPause:          atomic.Bool{},
 		Pausing:            utils.NewSetOnce[*node.NodeInfo](),
 		mu:                 sync.RWMutex{},
 	}
+
+	instance.AutoPause.Store(AutoPause)
+
+	return instance
 }
 
 type InstanceInfo struct {
@@ -91,7 +92,7 @@ type InstanceInfo struct {
 	FirecrackerVersion string
 	EnvdVersion        string
 	Node               *node.NodeInfo
-	AutoPause          *atomic.Bool
+	AutoPause          atomic.Bool
 	Pausing            *utils.SetOnce[*node.NodeInfo]
 	mu                 sync.RWMutex
 }
