@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"log"
+	"time"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
 	"github.com/docker/docker/client"
@@ -16,6 +17,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/keepalive"
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -41,6 +43,14 @@ func New(logger *zap.Logger) *grpc.Server {
 	opts := []grpc_zap.Option{logging.WithoutHealthCheck()}
 
 	s := grpc.NewServer(
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             5 * time.Second, // Minimum time between pings from client
+			PermitWithoutStream: true,            // Allow pings even when no active streams
+		}),
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:    15 * time.Second, // Server sends keepalive pings every 15s
+			Timeout: 5 * time.Second,  // Wait 5s for response before considering dead
+		}),
 		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
 		grpc.ChainUnaryInterceptor(
 			grpc_zap.UnaryServerInterceptor(logger, opts...),
