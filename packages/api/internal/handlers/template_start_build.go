@@ -11,6 +11,7 @@ import (
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -141,6 +142,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		)
 		if buildErr != nil {
 			buildErr = fmt.Errorf("error when building env: %w", buildErr)
+			a.logger.Error("build failed", zap.Error(buildErr))
 			telemetry.ReportCriticalError(buildContext, buildErr)
 
 			dbErr := a.db.EnvBuildSetStatus(buildContext, templateID, buildUUID, envbuild.StatusFailed)

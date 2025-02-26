@@ -5,12 +5,14 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"regexp"
+	"strings"
+
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"regexp"
-	"strings"
 )
 
 var regex = regexp.MustCompile(`http[s]?://`)
@@ -29,6 +31,8 @@ func GetConnection(host string, safe bool, options ...grpc.DialOption) (ClientCo
 
 		return &DummyConn{}, nil
 	}
+
+	options = append(options, grpc.WithConnectParams(grpc.ConnectParams{Backoff: backoff.DefaultConfig}))
 
 	host = regex.ReplaceAllString(host, "")
 	if strings.HasPrefix(host, "localhost") || !safe {
