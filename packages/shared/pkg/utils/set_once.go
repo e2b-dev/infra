@@ -15,7 +15,7 @@ type SetOnce[T any] struct {
 	setDone func()
 	done    chan struct{}
 	res     *result[T]
-	mux     sync.RWMutex
+	mu     sync.RWMutex
 }
 
 func NewSetOnce[T any]() *SetOnce[T] {
@@ -47,8 +47,8 @@ func (s *SetOnce[T]) setResult(r result[T]) error {
 		return fmt.Errorf("value already set")
 	default:
 		// not set yet, so try to set it
-		s.mux.Lock()
-		defer s.mux.Unlock()
+		s.mu.Lock()
+		defer s.mu.Unlock()
 
 		if s.res != nil {
 			return fmt.Errorf("value already set")
@@ -65,8 +65,8 @@ func (s *SetOnce[T]) setResult(r result[T]) error {
 func (s *SetOnce[T]) Wait() (T, error) {
 	<-s.done
 
-	s.mux.RLock()
-	defer s.mux.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	return s.res.value, s.res.err
 }
@@ -75,8 +75,8 @@ func (s *SetOnce[T]) Wait() (T, error) {
 func (s *SetOnce[T]) WaitWithContext(ctx context.Context) (T, error) {
 	select {
 	case <-s.done:
-		s.mux.RLock()
-		defer s.mux.RUnlock()
+		s.mu.RLock()
+		defer s.mu.RUnlock()
 
 		return s.res.value, s.res.err
 	case <-ctx.Done():
