@@ -2,9 +2,10 @@
 # orchestrator image with Packer.
 locals {
   file_hash = {
-    "scripts/run-consul.sh"    = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
-    "scripts/run-nomad.sh"     = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
-    "scripts/run-api-nomad.sh" = substr(filesha256("${path.module}/scripts/run-api-nomad.sh"), 0, 5)
+    "scripts/run-consul.sh"              = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
+    "scripts/run-nomad.sh"               = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
+    "scripts/run-api-nomad.sh"           = substr(filesha256("${path.module}/scripts/run-api-nomad.sh"), 0, 5)
+    "scripts/run-build-cluster-nomad.sh" = substr(filesha256("${path.module}/scripts/run-build-cluster-nomad.sh"), 0, 5)
   }
 }
 
@@ -61,10 +62,10 @@ resource "google_project_iam_member" "logging_writer" {
 variable "setup_files" {
   type = map(string)
   default = {
-    "scripts/run-nomad.sh"     = "run-nomad",
-    "scripts/run-api-nomad.sh" = "run-api-nomad",
+    "scripts/run-nomad.sh"               = "run-nomad",
+    "scripts/run-api-nomad.sh"           = "run-api-nomad",
     "scripts/run-build-cluster-nomad.sh" = "run-build-cluster-nomad",
-    "scripts/run-consul.sh"    = "run-consul"
+    "scripts/run-consul.sh"              = "run-consul"
   }
 }
 
@@ -188,8 +189,8 @@ module "api_cluster" {
   client_proxy_port        = var.client_proxy_port
   client_proxy_health_port = var.client_proxy_health_port
 
-  api_port                  = var.api_port
-  nomad_port                = var.nomad_port
+  api_port   = var.api_port
+  nomad_port = var.nomad_port
 
   service_account_email = var.google_service_account_email
 
