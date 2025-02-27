@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -38,9 +37,6 @@ type Process struct {
 	snapfile  template.File
 
 	cmd *exec.Cmd
-
-	stdout io.ReadCloser
-	stderr io.ReadCloser
 
 	metadata *MmdsMetadata
 
@@ -117,22 +113,10 @@ func NewProcess(
 		Pgid:    0,
 	}
 
-	cmdStdoutReader, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("error creating fc stdout pipe: %w", err)
-	}
-
-	cmdStderrReader, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, fmt.Errorf("error creating fc stderr pipe: %w", err)
-	}
-
 	return &Process{
 		Exit:                  make(chan error, 1),
 		uffdReady:             uffdReady,
 		cmd:                   cmd,
-		stdout:                cmdStdoutReader,
-		stderr:                cmdStderrReader,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		metadata:              mmdsMetadata,
 		uffdSocketPath:        files.SandboxUffdSocketPath(),
@@ -151,10 +135,15 @@ func (p *Process) Start(
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
 
+	stdoutReader, err := p.cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("error creating fc stdout pipe: %w", err)
+	}
+
 	go func() {
 		// The stdout should be closed with the process cmd automatically, as it uses the StdoutPipe()
 		// TODO: Better handling of processing all logs before calling wait
-		scanner := bufio.NewScanner(p.stdout)
+		scanner := bufio.NewScanner(stdoutReader)
 
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -168,10 +157,15 @@ func (p *Process) Start(
 		}
 	}()
 
+	stderrReader, err := p.cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("error creating fc stderr pipe: %w", err)
+	}
+
 	go func() {
 		// The stderr should be closed with the process cmd automatically, as it uses the StderrPipe()
 		// TODO: Better handling of processing all logs before calling wait
-		scanner := bufio.NewScanner(p.stderr)
+		scanner := bufio.NewScanner(stderrReader)
 
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -184,7 +178,7 @@ func (p *Process) Start(
 		}
 	}()
 
-	err := os.Symlink("/dev/null", p.files.SandboxCacheRootfsLinkPath())
+	err = os.Symlink("/dev/null", p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
