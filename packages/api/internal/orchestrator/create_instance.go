@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
-	"google.golang.org/grpc/connectivity"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -23,7 +22,8 @@ import (
 )
 
 const (
-	maxNodeRetries = 3
+	maxNodeRetries       = 3
+	leastBusyNodeTimeout = 60 * time.Second
 
 	maxStartingInstancesPerNode = 3
 )
@@ -140,24 +140,16 @@ func (o *Orchestrator) CreateSandbox(
 			CPUs:      build.Vcpu,
 		})
 
-		_, err = node.Client.Sandbox.Create(ctx, sbxRequest)
+		_, err = node.Client.Sandbox.Create(childCtx, sbxRequest)
 		// The request is done, we will either add it to the cache or remove it from the node
-
 		if err == nil {
 			// The sandbox was created successfully
 			break
 		}
 
-		err = utils.UnwrapGRPCError(err)
-		if err != nil {
-			node.sbxsInProgress.Remove(sandboxID)
-			if node.Client.connection.GetState() != connectivity.Ready {
-				// If the connection is not ready, we should remove the node from the list
-				o.nodes.Remove(node.Info.ID)
-			}
-		}
+		node.sbxsInProgress.Remove(sandboxID)
 
-		log.Printf("failed to create sandbox '%s' on node '%s', attempt #%d: %v", sandboxID, node.Info.ID, attempt, err)
+		log.Printf("failed to create sandbox '%s' on node '%s', attempt #%d: %v", sandboxID, node.Info.ID, attempt, utils.UnwrapGRPCError(err))
 
 		// The node is not available, try again with another node
 		node.createFails.Add(1)
@@ -223,7 +215,10 @@ func (o *Orchestrator) CreateSandbox(
 	return &sbx, nil
 }
 
-func (o *Orchestrator) getLeastBusyNode(ctx context.Context, nodesExcluded map[string]*Node) (leastBusyNode *Node, err error) {
+func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded map[string]*Node) (leastBusyNode *Node, err error) {
+	ctx, cancel := context.WithTimeout(parentCtx, leastBusyNodeTimeout)
+	defer cancel()
+
 	childCtx, childSpan := o.tracer.Start(ctx, "get-least-busy-node")
 	defer childSpan.End()
 
@@ -231,7 +226,9 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, nodesExcluded map[s
 		select {
 		case <-childCtx.Done():
 			return nil, childCtx.Err()
-		default:
+		case <-time.After(10 * time.Millisecond):
+			// If no node is available, wait for a bit and try again
+
 			for _, node := range o.nodes.Items() {
 				// The node might be nil if it was removed from the list while iterating
 				if node == nil {
@@ -249,7 +246,7 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, nodesExcluded map[s
 				}
 
 				// To prevent overloading the node
-				if len(node.sbxsInProgress.Items()) > maxStartingInstancesPerNode {
+				if node.sbxsInProgress.Count() > maxStartingInstancesPerNode {
 					continue
 				}
 
@@ -266,9 +263,6 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, nodesExcluded map[s
 			if leastBusyNode != nil {
 				return leastBusyNode, nil
 			}
-
-			// If no node is available, wait for a bit
-			time.Sleep(10 * time.Millisecond)
 		}
 	}
 }
