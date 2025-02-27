@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -38,9 +37,6 @@ type Process struct {
 	snapfile  template.File
 
 	cmd *exec.Cmd
-
-	stdout *io.PipeReader
-	stderr *io.PipeReader
 
 	metadata *MmdsMetadata
 
@@ -115,18 +111,10 @@ func NewProcess(
 		Setsid: true, // Create a new session
 	}
 
-	cmdStdoutReader, cmdStdoutWriter := io.Pipe()
-	cmd.Stdout = cmdStdoutWriter
-
-	cmdStderrReader, cmdStderrWriter := io.Pipe()
-	cmd.Stderr = cmdStderrWriter
-
 	return &Process{
 		Exit:                  make(chan error, 1),
 		uffdReady:             uffdReady,
 		cmd:                   cmd,
-		stdout:                cmdStdoutReader,
-		stderr:                cmdStderrReader,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		metadata:              mmdsMetadata,
 		uffdSocketPath:        files.SandboxUffdSocketPath(),
@@ -145,15 +133,15 @@ func (p *Process) Start(
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
 
-	go func() {
-		defer func() {
-			readerErr := p.stdout.Close()
-			if readerErr != nil {
-				logger.Errorf("[sandbox %s]: error closing fc stdout reader: %v\n", p.metadata.SandboxId, readerErr)
-			}
-		}()
+	stdoutReader, err := p.cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("error creating fc stdout pipe: %w", err)
+	}
 
-		scanner := bufio.NewScanner(p.stdout)
+	go func() {
+		// The stdout should be closed with the process cmd automatically, as it uses the StdoutPipe()
+		// TODO: Better handling of processing all logs before calling wait
+		scanner := bufio.NewScanner(stdoutReader)
 
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -167,15 +155,15 @@ func (p *Process) Start(
 		}
 	}()
 
-	go func() {
-		defer func() {
-			readerErr := p.stderr.Close()
-			if readerErr != nil {
-				logger.Errorf("[sandbox %s]: error closing fc stderr reader: %v\n", p.metadata.SandboxId, readerErr)
-			}
-		}()
+	stderrReader, err := p.cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("error creating fc stderr pipe: %w", err)
+	}
 
-		scanner := bufio.NewScanner(p.stderr)
+	go func() {
+		// The stderr should be closed with the process cmd automatically, as it uses the StderrPipe()
+		// TODO: Better handling of processing all logs before calling wait
+		scanner := bufio.NewScanner(stderrReader)
 
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -189,7 +177,7 @@ func (p *Process) Start(
 		}
 	}()
 
-	err := os.Symlink("/dev/null", p.files.SandboxCacheRootfsLinkPath())
+	err = os.Symlink("/dev/null", p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
