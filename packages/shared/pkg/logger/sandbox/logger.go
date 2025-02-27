@@ -108,7 +108,6 @@ func (sl *SandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
 				zap.Bool("healthcheck", ok))
 		} else {
 			sl.logger.Error("Control sandbox healthcheck was unsuccessful",
-				zap.Error(fmt.Errorf("Sandbox healthcheck failed")),
 				zap.Bool("healthcheck", ok))
 		}
 	}
