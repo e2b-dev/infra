@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	healthCheckInterval      = 10 * time.Second
-	metricsCheckInterval     = 2 * time.Second
+	healthCheckInterval      = 20 * time.Second
+	metricsCheckInterval     = 60 * time.Second
 	minEnvdVersionForMetrcis = "0.1.5"
 )
 
@@ -28,9 +28,6 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 
 	// Get metrics on sandbox startup
 	go s.LogMetrics(ctx)
-
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
 
 	for {
 		select {
