@@ -444,6 +444,7 @@ components:
       enum:
         - ready
         - draining
+        - connecting
 
     NodeStatusChange:
       required:

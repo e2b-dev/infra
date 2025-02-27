@@ -17,8 +17,9 @@ const (
 
 // Defines values for NodeStatus.
 const (
-	NodeStatusDraining NodeStatus = "draining"
-	NodeStatusReady    NodeStatus = "ready"
+	NodeStatusConnecting NodeStatus = "connecting"
+	NodeStatusDraining   NodeStatus = "draining"
+	NodeStatusReady      NodeStatus = "ready"
 )
 
 // Defines values for TemplateBuildStatus.

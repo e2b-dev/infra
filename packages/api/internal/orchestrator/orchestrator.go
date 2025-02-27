@@ -86,7 +86,7 @@ func New(
 	if env.IsLocal() {
 		logger.Info("Skipping syncing sandboxes, running locally")
 	} else {
-		go o.keepInSync(cache)
+		go o.keepInSync(ctx, cache)
 	}
 
 	go o.startStatusLogging(ctx)
@@ -116,13 +116,14 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 					nodes = append(nodes, map[string]interface{}{
 						"id":                    nodeItem.Info.ID,
 						"status":                nodeItem.Status(),
+						"socket_status":         nodeItem.Client.connection.GetState(),
 						"in_progress_count":     nodeItem.sbxsInProgress.Count(),
 						"failed_to_start_count": nodeItem.createFails.Load(),
 					})
 				}
 			}
 
-			zap.L().Info("Orchestrator status",
+			zap.L().Info("API internal status",
 				zap.Int("sandboxes_size", o.instanceCache.Len()),
 				zap.Int("nodes_size", o.nodes.Count()),
 				zap.Any("nodes", nodes),
