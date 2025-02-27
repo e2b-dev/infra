@@ -63,15 +63,14 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 		}
 		server.Close()
 
-		dis := NewDispatch(d.ctx, d.conn, d.Backend)
+		d.dispatcher = NewDispatch(d.ctx, d.conn, d.Backend)
 		// Start reading commands on the socket and dispatching them to our provider
 		go func() {
-			handleErr := dis.Handle()
+			handleErr := d.dispatcher.Handle()
 			if handleErr != nil {
 				log.Printf("Error handling NBD commands: %v", handleErr)
 			}
 		}()
-		d.dispatcher = dis
 
 		var opts []nbdnl.ConnectOption
 		opts = append(opts, nbdnl.WithBlockSize(d.blockSize))
@@ -133,7 +132,9 @@ func (d *DirectPathMount) Close() error {
 	d.ctx.Done()
 
 	// Now wait for any pending responses to be sent
-	d.dispatcher.Wait()
+	if d.dispatcher != nil {
+		d.dispatcher.Wait()
+	}
 
 	// Now ask to disconnect
 	err := nbdnl.Disconnect(d.deviceIndex)

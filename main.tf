@@ -24,10 +24,6 @@ terraform {
       source  = "hashicorp/nomad"
       version = "2.1.0"
     }
-    github = {
-      source  = "integrations/github"
-      version = "5.42.0"
-    }
     random = {
       source  = "hashicorp/random"
       version = "3.5.1"
@@ -76,24 +72,6 @@ module "buckets" {
   fc_template_bucket_location = var.template_bucket_location
 
   labels = var.labels
-}
-
-module "github_tf" {
-  source = "./github-tf"
-
-  gcp_project_id = var.gcp_project_id
-  gcp_region     = var.gcp_region
-  gcp_zone       = var.gcp_zone
-
-  github_organization = var.github_organization
-  github_repository   = var.github_repository
-
-  domain_name            = var.domain_name
-  terraform_state_bucket = var.terraform_state_bucket
-  kernel_bucket          = module.buckets.fc_kernels_bucket_name
-  fc_versions_bucket     = module.buckets.fc_versions_bucket_name
-
-  prefix = var.prefix
 }
 
 module "cluster" {
@@ -239,4 +217,5 @@ module "nomad" {
   # Redis
   redis_port = var.redis_port
 }
+
 

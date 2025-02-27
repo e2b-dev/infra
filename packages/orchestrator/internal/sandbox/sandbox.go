@@ -48,7 +48,6 @@ type Sandbox struct {
 
 	Slot   network.Slot
 	Logger *logs.SandboxLogger
-	// stats  *stats.Handle
 
 	uffdExit chan error
 
@@ -222,17 +221,16 @@ func NewSandbox(
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	sbx := &Sandbox{
-		uffdExit:  uffdExit,
-		files:     sandboxFiles,
-		Slot:      ips,
-		template:  t,
-		process:   fcHandle,
-		uffd:      fcUffd,
-		Config:    config,
-		StartedAt: startedAt,
-		EndAt:     endAt,
-		rootfs:    rootfsOverlay,
-		// stats:          sandboxStats,
+		uffdExit:       uffdExit,
+		files:          sandboxFiles,
+		Slot:           ips,
+		template:       t,
+		process:        fcHandle,
+		uffd:           fcUffd,
+		Config:         config,
+		StartedAt:      startedAt,
+		EndAt:          endAt,
+		rootfs:         rootfsOverlay,
 		Logger:         logger,
 		cleanup:        cleanup,
 		healthcheckCtx: healthcheckCtx,

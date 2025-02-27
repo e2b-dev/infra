@@ -54,6 +54,9 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 		}
 
 		autoPause := instance.InstanceAutoPauseDefault
+		if config.AutoPause != nil {
+			autoPause = *config.AutoPause
+		}
 
 		sandboxesInfo = append(
 			sandboxesInfo,

@@ -167,7 +167,6 @@ func (p *Process) Start(
 
 		for scanner.Scan() {
 			line := scanner.Text()
-
 			logger.Warnf("[sandbox %s]: stderr: %s\n", p.metadata.SandboxId, line)
 		}
 

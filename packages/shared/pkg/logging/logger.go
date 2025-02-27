@@ -35,5 +35,6 @@ func New(isLocal bool) (*zap.SugaredLogger, error) {
 		return nil, fmt.Errorf("error building logger: %w", err)
 	}
 
+	zap.ReplaceGlobals(logger)
 	return logger.Sugar(), nil
 }
