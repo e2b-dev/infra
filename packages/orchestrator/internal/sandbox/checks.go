@@ -29,9 +29,6 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	// Get metrics on sandbox startup
 	go s.LogMetrics(ctx)
 
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
-
 	for {
 		select {
 		case <-healthTicker.C:

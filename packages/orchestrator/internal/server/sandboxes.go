@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/semaphore"
@@ -172,9 +173,12 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	// 	Ideally we would rely only on the goroutine defer.
 	s.sandboxes.Remove(in.SandboxId)
 
+	loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
+	defer cancelLogginCtx()
+
 	// Check health metrics before stopping the sandbox
-	sbx.Healthcheck(ctx, true)
-	sbx.LogMetrics(ctx)
+	sbx.Healthcheck(loggingCtx, true)
+	sbx.LogMetrics(loggingCtx)
 
 	err := sbx.Stop()
 	if err != nil {
