@@ -39,8 +39,8 @@ type Process struct {
 
 	cmd *exec.Cmd
 
-	stdout *io.PipeReader
-	stderr *io.PipeReader
+	stdout io.ReadCloser
+	stderr io.ReadCloser
 
 	metadata *MmdsMetadata
 
@@ -53,14 +53,11 @@ type Process struct {
 	Exit chan error
 
 	client *apiClient
-
-	logger *logs.SandboxLogger
 }
 
 func NewProcess(
 	ctx context.Context,
 	tracer trace.Tracer,
-	logger *logs.SandboxLogger,
 	slot network.Slot,
 	files *storage.SandboxFiles,
 	mmdsMetadata *MmdsMetadata,
@@ -120,11 +117,15 @@ func NewProcess(
 		Pgid:    0,
 	}
 
-	cmdStdoutReader, cmdStdoutWriter := io.Pipe()
-	cmd.Stdout = cmdStdoutWriter
+	cmdStdoutReader, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("error creating fc stdout pipe: %w", err)
+	}
 
-	cmdStderrReader, cmdStderrWriter := io.Pipe()
-	cmd.Stderr = cmdStderrWriter
+	cmdStderrReader, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("error creating fc stderr pipe: %w", err)
+	}
 
 	return &Process{
 		Exit:                  make(chan error, 1),
@@ -139,43 +140,47 @@ func NewProcess(
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
 		rootfs:                rootfs,
 		files:                 files,
-		logger:                logger,
 	}, nil
 }
 
 func (p *Process) Start(
 	ctx context.Context,
 	tracer trace.Tracer,
+	logger *logs.SandboxLogger,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
 
 	go func() {
+		// The stdout should be closed with the process cmd automatically, as it uses the StdoutPipe()
+		// TODO: Better handling of processing all logs before calling wait
 		scanner := bufio.NewScanner(p.stdout)
 
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			p.logger.Infof("[sandbox %s]: stdout: %s\n", p.metadata.SandboxId, line)
+			logger.Infof("[sandbox %s]: stdout: %s\n", p.metadata.SandboxId, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			p.logger.Errorf("[sandbox %s]: error reading fc stdout: %v\n", p.metadata.SandboxId, readerErr)
+			logger.Errorf("[sandbox %s]: error reading fc stdout: %v\n", p.metadata.SandboxId, readerErr)
 		}
 	}()
 
 	go func() {
+		// The stderr should be closed with the process cmd automatically, as it uses the StderrPipe()
+		// TODO: Better handling of processing all logs before calling wait
 		scanner := bufio.NewScanner(p.stderr)
 
 		for scanner.Scan() {
 			line := scanner.Text()
-			p.logger.Warnf("[sandbox %s]: stderr: %s\n", p.metadata.SandboxId, line)
+			logger.Warnf("[sandbox %s]: stderr: %s\n", p.metadata.SandboxId, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			p.logger.Errorf("[sandbox %s]: error reading fc stderr: %v\n", p.metadata.SandboxId, readerErr)
+			logger.Errorf("[sandbox %s]: error reading fc stderr: %v\n", p.metadata.SandboxId, readerErr)
 		}
 	}()
 
@@ -289,16 +294,6 @@ func (p *Process) Stop() error {
 	pid, err := p.Pid()
 	if err != nil {
 		return fmt.Errorf("fc process not started")
-	}
-
-	err = p.stdout.Close()
-	if err != nil {
-		p.logger.Errorf("[sandbox %s]: error closing fc stdout reader: %v\n", p.metadata.SandboxId, err)
-	}
-
-	err = p.stderr.Close()
-	if err != nil {
-		p.logger.Errorf("[sandbox %s]: error closing fc stderr reader: %v\n", p.metadata.SandboxId, err)
 	}
 
 	err = syscall.Kill(-pid, syscall.SIGKILL)
