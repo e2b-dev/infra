@@ -24,7 +24,7 @@ const (
 	// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks
 	cacheHookTimeout = 5 * time.Minute
 
-	statusLogInterval = time.Second * 10
+	statusLogInterval = time.Second * 20
 )
 
 type Orchestrator struct {
@@ -116,7 +116,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 					nodes = append(nodes, map[string]interface{}{
 						"id":                    nodeItem.Info.ID,
 						"status":                nodeItem.Status(),
-						"socket_status":         nodeItem.Client.connection.GetState(),
+						"socket_status":         nodeItem.Client.connection.GetState().String(),
 						"in_progress_count":     nodeItem.sbxsInProgress.Count(),
 						"failed_to_start_count": nodeItem.createFails.Load(),
 					})
