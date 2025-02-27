@@ -96,6 +96,7 @@ func NewSandbox(
 	}
 
 	cleanup.Add(func() error {
+		logger.Infof("returning network slot")
 		returnErr := networkPool.Return(ips)
 		if returnErr != nil {
 			return fmt.Errorf("failed to return network slot: %w", returnErr)
@@ -109,6 +110,7 @@ func NewSandbox(
 	sandboxFiles := t.Files().NewSandboxFiles(config.SandboxId)
 
 	cleanup.Add(func() error {
+		logger.Infof("cleaning up sandbox files")
 		filesErr := cleanupFiles(sandboxFiles)
 		if filesErr != nil {
 			return fmt.Errorf("failed to cleanup files: %w", filesErr)
@@ -134,6 +136,7 @@ func NewSandbox(
 	}
 
 	cleanup.Add(func() error {
+		logger.Infof("closing rootfs overlay")
 		rootfsOverlay.Close()
 
 		return nil
@@ -142,7 +145,7 @@ func NewSandbox(
 	go func() {
 		runErr := rootfsOverlay.Start(childCtx)
 		if runErr != nil {
-			fmt.Fprintf(os.Stderr, "[sandbox %s]: rootfs overlay error: %v\n", config.SandboxId, runErr)
+			logger.Errorf("rootfs overlay error: %v\n", runErr)
 		}
 	}()
 
@@ -163,6 +166,7 @@ func NewSandbox(
 	}
 
 	cleanup.Add(func() error {
+		logger.Infof("stopping uffd")
 		stopErr := fcUffd.Stop()
 		if stopErr != nil {
 			return fmt.Errorf("failed to stop uffd: %w", stopErr)
@@ -237,6 +241,8 @@ func NewSandbox(
 	}
 
 	cleanup.AddPriority(func() error {
+		logger.Infof("stopping sandbox")
+
 		var errs []error
 
 		fcStopErr := fcHandle.Stop()
@@ -284,6 +290,7 @@ func NewSandbox(
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
 
 	cleanup.Add(func() error {
+		logger.Infof("removing DNS record")
 		dns.Remove(config.SandboxId, ips.HostIP())
 
 		return nil

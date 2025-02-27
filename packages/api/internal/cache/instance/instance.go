@@ -171,6 +171,7 @@ func NewCache(
 	}
 
 	cache.OnEviction(func(ctx context.Context, instanceInfo *InstanceInfo) {
+		logger.Info("Evicting instance from cache", zap.String("sandbox_id", instanceInfo.Instance.SandboxID))
 		err := deleteInstance(instanceInfo)
 		if err != nil {
 			logger.Errorf("Error deleting instance (%v)\n: %v", err)
