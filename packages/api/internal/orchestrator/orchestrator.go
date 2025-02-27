@@ -3,7 +3,9 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -20,8 +22,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks
-const cacheHookTimeout = 5 * time.Minute
+const (
+	// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks
+	cacheHookTimeout = 5 * time.Minute
+
+	statusLogInterval = time.Second * 10
+)
 
 type Orchestrator struct {
 	nomadClient   *nomadapi.Client
@@ -85,7 +91,36 @@ func New(
 		go o.keepInSync(cache)
 	}
 
+	go o.startStatusLogging(ctx)
+
 	return &o, nil
+}
+
+func (o *Orchestrator) startStatusLogging(ctx context.Context) {
+	ticker := time.NewTicker(statusLogInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			o.logger.Infof("Stopping status logging")
+			return
+		case <-ticker.C:
+			var logMessage strings.Builder
+
+			logMessage.WriteString("Orchestrator status:\n")
+			logMessage.WriteString(fmt.Sprintf("  Sandboxes cache size: %d\n", o.instanceCache.Len()))
+			logMessage.WriteString(fmt.Sprintf("  Nodes cache size: %d\n", o.nodes.Count()))
+
+			for _, nodeItem := range o.nodes.Items() {
+				logMessage.WriteString(fmt.Sprintf("    Node %s: %d sandboxes in progress, %d CPU usage\n",
+					nodeItem.Info.ID, len(nodeItem.sbxsInProgress.Items()), nodeItem.CPUUsage.Load()))
+			}
+			logMessage.WriteString("    All Nodes listed\n")
+
+			o.logger.Infof(logMessage.String())
+		}
+	}
 }
 
 func (o *Orchestrator) Close(ctx context.Context) error {
