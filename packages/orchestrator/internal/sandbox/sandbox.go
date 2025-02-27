@@ -89,6 +89,7 @@ func NewSandbox(
 	}
 
 	networkCtx, networkSpan := tracer.Start(childCtx, "get-network-slot")
+	defer networkSpan.End()
 
 	ips, err := networkPool.Get(networkCtx)
 	if err != nil {
@@ -103,7 +104,6 @@ func NewSandbox(
 
 		return nil
 	})
-
 	networkSpan.End()
 
 	sandboxFiles := t.Files().NewSandboxFiles(config.SandboxId)
@@ -118,6 +118,7 @@ func NewSandbox(
 	})
 
 	_, overlaySpan := tracer.Start(childCtx, "create-rootfs-overlay")
+	defer overlaySpan.End()
 
 	readonlyRootfs, err := t.Rootfs()
 	if err != nil {

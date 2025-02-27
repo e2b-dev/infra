@@ -58,6 +58,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Cleaned template ID")
 
 	_, templateSpan := a.Tracer.Start(ctx, "get-template")
+	defer templateSpan.End()
+	
 	// Check if team has access to the environment
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
 	if checkErr != nil {
