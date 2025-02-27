@@ -20,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -49,7 +48,7 @@ type Sandbox struct {
 
 	Slot   network.Slot
 	Logger *logs.SandboxLogger
-	stats  *stats.Handle
+	// stats  *stats.Handle
 
 	uffdExit chan error
 
@@ -220,27 +219,20 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
-	pid, err := fcHandle.Pid()
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get FC PID: %w", err)
-	}
-
-	sandboxStats := stats.NewHandle(int32(pid))
-
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	sbx := &Sandbox{
-		uffdExit:       uffdExit,
-		files:          sandboxFiles,
-		Slot:           ips,
-		template:       t,
-		process:        fcHandle,
-		uffd:           fcUffd,
-		Config:         config,
-		StartedAt:      startedAt,
-		EndAt:          endAt,
-		rootfs:         rootfsOverlay,
-		stats:          sandboxStats,
+		uffdExit:  uffdExit,
+		files:     sandboxFiles,
+		Slot:      ips,
+		template:  t,
+		process:   fcHandle,
+		uffd:      fcUffd,
+		Config:    config,
+		StartedAt: startedAt,
+		EndAt:     endAt,
+		rootfs:    rootfsOverlay,
+		// stats:          sandboxStats,
 		Logger:         logger,
 		cleanup:        cleanup,
 		healthcheckCtx: healthcheckCtx,
