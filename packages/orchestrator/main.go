@@ -24,6 +24,8 @@ import (
 
 const defaultPort = 5008
 
+var commitSHA string
+
 func startMemoryProfiling() {
 	// Create a ticker to collect memory profiles periodically
 	ticker := time.NewTicker(15 * time.Minute)
@@ -103,6 +105,8 @@ func main() {
 			}
 		}()
 	}
+
+	log.Println("Starting orchestrator", "commit", commitSHA)
 
 	srv, err := server.New(ctx, port)
 	if err != nil {

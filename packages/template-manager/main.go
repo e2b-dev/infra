@@ -15,9 +15,9 @@ import (
 	"github.com/e2b-dev/infra/packages/template-manager/internal/test"
 )
 
-const (
-	defaultPort = 5009
-)
+const defaultPort = 5009
+
+var commitSHA string
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -28,6 +28,8 @@ func main() {
 	buildID := flag.String("build", "", "build id")
 
 	port := flag.Int("port", defaultPort, "Port for test HTTP server")
+
+	log.Println("Starting template manager", "commit", commitSHA)
 
 	flag.Parse()
 

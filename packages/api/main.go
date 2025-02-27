@@ -42,9 +42,11 @@ const (
 	maxReadHeaderTimeout = 60 * time.Second
 	maxReadTimeout       = 75 * time.Second
 	maxWriteTimeout      = 75 * time.Second
-	
+
 	defaultPort = 80
 )
+
+var commitSHA string
 
 func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
 	// Clear out the servers array in the swagger spec, that skips validating
@@ -154,7 +156,7 @@ func main() {
 	flag.StringVar(&debug, "true", "false", "is debug")
 	flag.Parse()
 
-	log.Println("Starting API service...")
+	log.Println("Starting API service...", "commit_sha", commitSHA)
 	if debug != "true" {
 		gin.SetMode(gin.ReleaseMode)
 	}

@@ -15,7 +15,8 @@ RUN go mod download
 COPY main.go Makefile ./
 COPY internal internal
 
-RUN --mount=type=cache,target=/root/.cache/go-build make build-local
+ARG COMMIT_SHA
+RUN --mount=type=cache,target=/root/.cache/go-build make build-local COMMIT_SHA=${COMMIT_SHA}
 
 FROM scratch
 

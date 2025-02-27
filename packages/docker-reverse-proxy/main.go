@@ -11,6 +11,8 @@ import (
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/handlers"
 )
 
+var commitSHA string
+
 func main() {
 	err := constants.CheckRequired()
 	if err != nil {
@@ -19,6 +21,8 @@ func main() {
 
 	port := flag.Int("port", 5000, "Port for test HTTP server")
 	flag.Parse()
+
+	log.Println("Starting docker reverse proxy", "commit", commitSHA)
 
 	store := handlers.NewStore()
 

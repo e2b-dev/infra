@@ -19,14 +19,17 @@ generate:
 
 .PHONY: build
 build:
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	@rm -rf .shared/
 	@cp -r ../shared .shared/
-	@docker build --platform linux/amd64 --output=bin .
+	@docker build --platform linux/amd64 --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" .
 	@rm -rf .shared/
 
 .PHONY: build-local
 build-local:
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/orchestrator .
+	# Allow for passing commit sha directly for docker builds
+	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
 
 .PHONY: build-debug
 build-debug:
