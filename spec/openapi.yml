@@ -444,6 +444,7 @@ components:
       enum:
         - ready
         - draining
+        - connecting
 
     NodeStatusChange:
       required:
@@ -460,6 +461,7 @@ components:
         - allocatedCPU
         - allocatedMemoryMiB
         - createFails
+        - sandboxStartingCount
       properties:
         nodeID:
           type: string
@@ -482,6 +484,10 @@ components:
           type: integer
           format: uint64
           description: Number of sandbox create fails
+        sandboxStartingCount:
+          type: integer
+          format: int
+          description: Number of starting Sandboxes
 
     NodeDetail:
       required:

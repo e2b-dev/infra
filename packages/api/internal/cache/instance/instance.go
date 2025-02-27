@@ -184,6 +184,10 @@ func NewCache(
 	return instanceCache
 }
 
+func (c *InstanceCache) Len() int {
+	return c.cache.Len()
+}
+
 func (c *InstanceCache) Set(key string, value *InstanceInfo) {
 	inserted := c.cache.SetIfAbsent(key, value)
 	if inserted {
