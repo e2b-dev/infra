@@ -43,11 +43,14 @@ const (
 	maxReadHeaderTimeout = 60 * time.Second
 	maxReadTimeout       = 75 * time.Second
 	maxWriteTimeout      = 75 * time.Second
-	
+
 	defaultPort = 80
 )
 
-var logsCollectorAddress = env.GetEnv("LOGS_COLLECTOR_ADDRESS", "")
+var (
+	logsCollectorAddress = env.GetEnv("LOGS_COLLECTOR_ADDRESS", "")
+	commitSHA            string
+)
 
 func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
 	// Clear out the servers array in the swagger spec, that skips validating
@@ -154,7 +157,7 @@ func main() {
 		debug string
 	)
 	flag.IntVar(&port, "port", defaultPort, "Port for test HTTP server")
-	flag.StringVar(&debug, "true", "false", "is debug")
+	flag.StringVar(&debug, "debug", "false", "is debug")
 	flag.Parse()
 
 	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
@@ -167,7 +170,7 @@ func main() {
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
 
-	logger.Info("Starting API service...")
+	logger.Info("Starting API service...", zap.String("commit_sha", commitSHA))
 	if debug != "true" {
 		gin.SetMode(gin.ReleaseMode)
 	}

@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"google.golang.org/grpc/connectivity"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -44,6 +45,14 @@ func (n *Node) Status() api.NodeStatus {
 	n.statusMu.RLock()
 	defer n.statusMu.RUnlock()
 
+	if n.status != api.NodeStatusReady {
+		return n.status
+	}
+
+	if n.Client.connection.GetState() != connectivity.Ready {
+		return api.NodeStatusConnecting
+	}
+
 	return n.status
 }
 
@@ -58,8 +67,11 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, er
 	_, listSpan := o.tracer.Start(ctx, "list-nomad-nodes")
 	defer listSpan.End()
 
-	// TODO: Use variable for node pool name ("default")
-	nomadNodes, _, err := o.nomadClient.Nodes().List(&nomadapi.QueryOptions{Filter: "Status == \"ready\" and NodePool == \"default\""})
+	options := &nomadapi.QueryOptions{
+		// TODO: Use variable for node pool name ("default")
+		Filter: "Status == \"ready\" and NodePool == \"default\"",
+	}
+	nomadNodes, _, err := o.nomadClient.Nodes().List(options.WithContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -85,9 +97,10 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 	nodes := make(map[string]*api.Node)
 	for key, n := range o.nodes.Items() {
 		nodes[key] = &api.Node{
-			NodeID:      key,
-			Status:      n.Status(),
-			CreateFails: n.createFails.Load(),
+			NodeID:               key,
+			Status:               n.Status(),
+			CreateFails:          n.createFails.Load(),
+			SandboxStartingCount: n.sbxsInProgress.Count(),
 		}
 	}
 

@@ -92,6 +92,7 @@ func NewSandbox(
 	}
 
 	networkCtx, networkSpan := tracer.Start(childCtx, "get-network-slot")
+	defer networkSpan.End()
 
 	ips, err := networkPool.Get(networkCtx)
 	if err != nil {
@@ -106,7 +107,6 @@ func NewSandbox(
 
 		return nil
 	})
-
 	networkSpan.End()
 
 	sandboxFiles := t.Files().NewSandboxFiles(config.SandboxId)
@@ -121,6 +121,7 @@ func NewSandbox(
 	})
 
 	_, overlaySpan := tracer.Start(childCtx, "create-rootfs-overlay")
+	defer overlaySpan.End()
 
 	readonlyRootfs, err := t.Rootfs()
 	if err != nil {
@@ -220,13 +221,6 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
-	pid, err := fcHandle.Pid()
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get FC PID: %w", err)
-	}
-
-	sandboxStats := stats.NewHandle(int32(pid))
-
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	sbx := &Sandbox{
@@ -240,7 +234,6 @@ func NewSandbox(
 		StartedAt:      startedAt,
 		EndAt:          endAt,
 		rootfs:         rootfsOverlay,
-		stats:          sandboxStats,
 		Logger:         sbxLogger,
 		cleanup:        cleanup,
 		healthcheckCtx: healthcheckCtx,

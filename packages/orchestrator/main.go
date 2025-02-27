@@ -26,6 +26,8 @@ const (
 
 var logsCollectorAddress = env.GetEnv("LOGS_COLLECTOR_ADDRESS", "")
 
+var commitSHA string
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -68,6 +70,8 @@ func main() {
 			}
 		}()
 	}
+
+	log.Println("Starting orchestrator", "commit", commitSHA)
 
 	srv, err := server.New(ctx, port)
 	if err != nil {

@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const ExporterTimeout = 10 * time.Second
+
 type LogsExporter interface {
 	Write(logs []byte) (int, error)
 	Start()
@@ -32,7 +34,7 @@ func NewHTTPLogsExporter(ctx context.Context, address string, debugLogs bool) Lo
 
 	exporter := &HTTPExporter{
 		client: http.Client{
-			Timeout: 2 * time.Second,
+			Timeout: ExporterTimeout,
 		},
 		logQueue:  make(chan []byte, 2048),
 		debugLogs: debugLogs,

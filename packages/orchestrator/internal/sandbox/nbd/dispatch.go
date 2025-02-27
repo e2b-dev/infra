@@ -54,7 +54,6 @@ type Dispatch struct {
 	responseHeader   []byte
 	writeLock        sync.Mutex
 	prov             Provider
-	fatal            chan error
 	pendingResponses sync.WaitGroup
 	pendingMu        sync.Mutex
 }
@@ -62,7 +61,6 @@ type Dispatch struct {
 func NewDispatch(ctx context.Context, fp io.ReadWriteCloser, prov Provider) *Dispatch {
 	d := &Dispatch{
 		responseHeader: make([]byte, 16),
-		fatal:          make(chan error, 8),
 		fp:             fp,
 		prov:           prov,
 		ctx:            ctx,
@@ -230,7 +228,7 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 	go func() {
 		err := performRead(cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
-			d.fatal <- err
+			zap.L().Error("nbd error cmd read", zap.Error(err))
 		}
 
 		d.pendingResponses.Done()
@@ -265,7 +263,7 @@ func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) er
 		}
 		err := d.writeResponse(errorValue, cmdHandle, []byte{})
 		if err != nil {
-			d.fatal <- err
+			zap.L().Error("nbd error cmd write", zap.Error(err))
 		}
 
 		d.pendingResponses.Done()

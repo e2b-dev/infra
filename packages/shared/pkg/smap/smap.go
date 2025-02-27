@@ -37,3 +37,7 @@ func (m *Map[V]) Items() map[string]V {
 func (m *Map[V]) RemoveCb(key string, cb func(key string, v V, exists bool) bool) bool {
 	return m.m.RemoveCb(key, cb)
 }
+
+func (m *Map[V]) Count() int {
+	return m.m.Count()
+}

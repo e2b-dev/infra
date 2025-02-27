@@ -196,7 +196,45 @@ resource "grafana_data_source" "gcloud_logs" {
   })
 
   secure_json_data_encoded = jsonencode({
-    privateKey = google_service_account_key.grafana_logging_key.private_key
+    privateKey = jsondecode(base64decode(google_service_account_key.grafana_logging_key.private_key)).private_key
   })
 
 }
+
+resource "google_service_account" "grafana_monitoring" {
+  account_id   = "${var.prefix}grafana-monitoring"
+  display_name = "Grafana Cloud Monitoring Service Account"
+  project      = var.gcp_project_id
+}
+
+resource "google_project_iam_member" "grafana_monitoring_viewer" {
+  project = var.gcp_project_id
+  role    = "roles/monitoring.viewer"
+  member  = "serviceAccount:${google_service_account.grafana_monitoring.email}"
+}
+
+resource "google_service_account_key" "grafana_monitoring_key" {
+  service_account_id = google_service_account.grafana_monitoring.name
+}
+
+resource "grafana_data_source" "gcloud_monitoring" {
+  provider = grafana.datasource
+
+
+  name = "gcloud-monitoring"
+  type = "stackdriver"
+
+
+  json_data_encoded = jsonencode({
+    authenticationType = "jwt"
+    clientEmail        = google_service_account.grafana_monitoring.email
+    defaultProject     = var.gcp_project_id
+    tokenUri           = "https://oauth2.googleapis.com/token"
+  })
+
+  secure_json_data_encoded = jsonencode({
+    privateKey = jsondecode(base64decode(google_service_account_key.grafana_monitoring_key.private_key)).private_key
+  })
+
+}
+

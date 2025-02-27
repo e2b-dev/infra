@@ -28,46 +28,59 @@ func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, err
 }
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) keepInSync(instanceCache *instance.InstanceCache) {
+func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache) {
 	for {
-		ctx, span := o.tracer.Start(context.Background(), "keep-in-sync")
-		nodes, err := o.listNomadNodes(ctx)
-		if err != nil {
-			zap.L().Error("Error listing nodes", zap.Error(err))
-			span.End()
+		select {
+		case <-ctx.Done():
+			o.logger.Info("Stopping keepInSync")
 
-			continue
+			return
+		case <-time.After(instance.CacheSyncTime):
+			// Sleep for a while before syncing again
+
+			o.syncNodes(ctx, instanceCache)
 		}
+	}
+}
 
-		var wg sync.WaitGroup
-		for _, n := range nodes {
-			// If the node is not in the list, connect to it
-			if o.GetNode(n.ID) == nil {
-				wg.Add(1)
-				go func(n *node.NodeInfo) {
-					defer wg.Done()
-					err = o.connectToNode(ctx, n)
-					if err != nil {
-						zap.L().Error("Error connecting to node", zap.Error(err))
-					}
-				}(n)
-			}
-		}
-		wg.Wait()
+func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.InstanceCache) {
+	ctxTimeout, cancel := context.WithTimeout(ctx, 1*time.Minute)
+	defer cancel()
 
-		for _, n := range o.nodes.Items() {
+	spanCtx, span := o.tracer.Start(ctxTimeout, "keep-in-sync")
+	defer span.End()
+
+	nodes, err := o.listNomadNodes(spanCtx)
+	if err != nil {
+		o.logger.Errorf("Error listing nodes: %v", err)
+
+		return
+	}
+
+	var wg sync.WaitGroup
+	for _, n := range nodes {
+		// If the node is not in the list, connect to it
+		if o.GetNode(n.ID) == nil {
 			wg.Add(1)
-			go func(n *Node) {
+			go func(n *node.NodeInfo) {
 				defer wg.Done()
-				o.syncNode(ctx, n, nodes, instanceCache)
+				err = o.connectToNode(spanCtx, n)
+				if err != nil {
+					o.logger.Errorf("Error connecting to node: %v", err)
+				}
 			}(n)
 		}
-		wg.Wait()
-
-		span.End()
-		// Sleep for a while before syncing again
-		time.Sleep(instance.CacheSyncTime)
 	}
+	wg.Wait()
+
+	for _, n := range o.nodes.Items() {
+		wg.Add(1)
+		go func(n *Node) {
+			defer wg.Done()
+			o.syncNode(spanCtx, n, nodes, instanceCache)
+		}(n)
+	}
+	wg.Wait()
 }
 
 func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.NodeInfo, instanceCache *instance.InstanceCache) {

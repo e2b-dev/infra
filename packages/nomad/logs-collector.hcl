@@ -38,7 +38,7 @@ job "logs-collector" {
 
       config {
         network_mode = "host"
-        image        = "timberio/vector:0.45.X-alpine"
+        image        = "timberio/vector:0.34.X-alpine"
 
         ports = [
           "health",
@@ -49,9 +49,7 @@ job "logs-collector" {
       env {
         VECTOR_CONFIG          = "local/vector.toml"
         VECTOR_REQUIRE_HEALTHY = "true"
-        VECTOR_LOG             = "info"
-        # 10 minutes
-        VECTOR_INTERNAL_LOG_RATE_LIMIT = "600"   
+        VECTOR_LOG             = "warn"
       }
 
       resources {
@@ -74,27 +72,45 @@ data_dir = "alloc/data/vector/"
 enabled = true
 address = "0.0.0.0:${logs_health_port_number}"
 
-[sources.envd]
+[sources.infra]
 type = "http_server"
 address = "0.0.0.0:${logs_port_number}"
 encoding = "json"
 path_key = "_path"
 
-[transforms.add_source_envd]
+[transforms.add_fields]
 type = "remap"
-inputs = ["envd"]
+inputs = ["infra"]
 source = """
 del(."_path")
-.service = "envd"
 
+ts = .timestamp
+
+. = parse_json!(.message)
+
+if !exists(.service) {
+  .service = "envd"
+}
+if !exists(.envID) {
+  .envID = "unknown"
+}
 if !exists(.category) {
   .category = "default"
 }
+if !exists(.sandboxID) {
+  .sandboxID = .instanceID
+}
+
+if exists(.timestamp) { 
+  .timestamp = parse_timestamp!(.timestamp, format: "%x")
+} else {
+  .timestamp = ts
+} 
 """
 
 [transforms.internal_routing]
 type = "route"
-inputs = [ "add_source_envd" ]
+inputs = [ "add_fields" ]
 
 [transforms.internal_routing.route]
 internal = '.internal == true'
@@ -105,18 +121,13 @@ inputs = [ "internal_routing._unmatched" ]
 source = '''
 del(.internal)
 '''
-[transforms.metrics_routing]
-type = "route"
-inputs = [ "add_source_envd" ]
-
-[transforms.metrics_routing.route]
-metrics = '.category == "metrics"'
 
 [sinks.local_loki_logs]
 type = "loki"
 inputs = [ "remove_internal" ]
 endpoint = "http://loki.service.consul:${loki_service_port_number}"
 encoding.codec = "json"
+request.concurrency = 100
 
 [sinks.local_loki_logs.labels]
 source = "logs-collector"
@@ -129,15 +140,20 @@ category = "{{ category }}"
 %{ if grafana_logs_endpoint != " " }
 [sinks.grafana]
 type = "loki"
-inputs = [ "metrics_routing._unmatched" ]
+inputs = [ "internal_routing.internal" ]
 endpoint = "${grafana_logs_endpoint}"
 encoding.codec = "json"
 auth.strategy = "basic"
 auth.user = "${grafana_logs_user}"
 auth.password = "${grafana_api_key}"
+request.concurrency = 100
 
 [sinks.grafana.labels]
 source = "logs-collector"
+service = "{{ service }}"
+teamID = "{{ teamID }}"
+envID = "{{ envID }}"
+sandboxID = "{{ sandboxID }}"
 %{ endif }
         EOH
       }
