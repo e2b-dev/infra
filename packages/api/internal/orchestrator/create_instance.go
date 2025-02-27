@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
-	"google.golang.org/grpc/connectivity"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -142,22 +141,14 @@ func (o *Orchestrator) CreateSandbox(
 
 		_, err = node.Client.Sandbox.Create(ctx, sbxRequest)
 		// The request is done, we will either add it to the cache or remove it from the node
-
 		if err == nil {
 			// The sandbox was created successfully
 			break
 		}
 
-		err = utils.UnwrapGRPCError(err)
-		if err != nil {
-			node.sbxsInProgress.Remove(sandboxID)
-			if node.Client.connection.GetState() != connectivity.Ready {
-				// If the connection is not ready, we should remove the node from the list
-				o.nodes.Remove(node.Info.ID)
-			}
-		}
+		node.sbxsInProgress.Remove(sandboxID)
 
-		log.Printf("failed to create sandbox '%s' on node '%s', attempt #%d: %v", sandboxID, node.Info.ID, attempt, err)
+		log.Printf("failed to create sandbox '%s' on node '%s', attempt #%d: %v", sandboxID, node.Info.ID, attempt, utils.UnwrapGRPCError(err))
 
 		// The node is not available, try again with another node
 		node.createFails.Add(1)
