@@ -95,7 +95,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			o.logger.Infof("Stopping status logging")
+			zap.L().Info("Stopping status logging")
 
 			return
 		case <-ticker.C:
