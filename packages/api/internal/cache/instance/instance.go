@@ -169,7 +169,7 @@ func NewCache(
 	cache.OnEviction(func(ctx context.Context, instanceInfo *InstanceInfo) {
 		err := deleteInstance(instanceInfo)
 		if err != nil {
-			zap.L().Error("Error inserting instance", zap.Error(err))
+			zap.L().Error("Error deleting instance", zap.Error(err))
 		}
 
 		instanceCache.UpdateCounters(instanceInfo, -1, false)
