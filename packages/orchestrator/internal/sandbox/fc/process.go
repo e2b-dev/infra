@@ -112,9 +112,7 @@ func NewProcess(
 	)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		// Setsid:  true, // Create a new session
-		Setpgid: true,
-		Pgid:    0,
+		Setsid: true, // Create a new session
 	}
 
 	cmdStdoutReader, cmdStdoutWriter := io.Pipe()
@@ -298,12 +296,11 @@ func (p *Process) Pid() (int, error) {
 }
 
 func (p *Process) Stop() error {
-	pid, err := p.Pid()
-	if err != nil {
+	if p.cmd.Process == nil {
 		return fmt.Errorf("fc process not started")
 	}
 
-	err = syscall.Kill(-pid, syscall.SIGKILL)
+	err := p.cmd.Process.Kill()
 	if err != nil {
 		return fmt.Errorf("failed to send KILL to FC process: %w", err)
 	}
