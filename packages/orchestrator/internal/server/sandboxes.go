@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -179,6 +180,8 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	// Check health metrics before stopping the sandbox
 	sbx.Healthcheck(loggingCtx, true)
 	sbx.LogMetrics(loggingCtx)
+
+	zap.L().Info("stopping sandbox (after healthcheck)", zap.String("sandbox_id", in.SandboxId))
 
 	err := sbx.Stop()
 	if err != nil {
