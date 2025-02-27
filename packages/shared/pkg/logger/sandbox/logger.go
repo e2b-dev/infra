@@ -95,8 +95,7 @@ func (sl *SandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
 	if ok && sl.healthCheckWasFailing.Load() {
 		sl.healthCheckWasFailing.Store(false)
 
-		sl.logger.Info("",
-			zap.Error(fmt.Errorf("Sandbox healthcheck recovered")),
+		sl.logger.Info("Sandbox healthcheck recovered",
 			zap.Bool("healthcheck", ok))
 
 		return
