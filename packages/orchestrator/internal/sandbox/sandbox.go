@@ -191,9 +191,11 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get snapfile: %w", err)
 	}
 
+	internalLogger := logger.GetInternalLogger()
 	fcHandle, fcErr := fc.NewProcess(
 		uffdStartCtx,
 		tracer,
+		internalLogger,
 		ips,
 		sandboxFiles,
 		&fc.MmdsMetadata{
@@ -212,8 +214,7 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
-	internalLogger := logger.GetInternalLogger()
-	fcStartErr := fcHandle.Start(uffdStartCtx, tracer, internalLogger)
+	fcStartErr := fcHandle.Start(uffdStartCtx, tracer)
 	if fcStartErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
