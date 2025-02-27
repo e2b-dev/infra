@@ -32,7 +32,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 	for {
 		select {
 		case <-ctx.Done():
-			o.logger.Info("Stopping keepInSync")
+			zap.L().Info("Stopping keepInSync")
 
 			return
 		case <-time.After(instance.CacheSyncTime):
@@ -52,7 +52,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 
 	nodes, err := o.listNomadNodes(spanCtx)
 	if err != nil {
-		o.logger.Errorf("Error listing nodes: %v", err)
+		zap.L().Error("Error listing nodes", zap.Error(err))
 
 		return
 	}
@@ -66,7 +66,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 				defer wg.Done()
 				err = o.connectToNode(spanCtx, n)
 				if err != nil {
-					o.logger.Errorf("Error connecting to node: %v", err)
+					zap.L().Error("Error connecting to node", zap.Error(err))
 				}
 			}(n)
 		}

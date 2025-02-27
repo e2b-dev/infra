@@ -2,7 +2,6 @@ package sbxlogger
 
 import (
 	"context"
-	"fmt"
 	"sync/atomic"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
