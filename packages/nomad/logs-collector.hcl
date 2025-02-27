@@ -50,7 +50,8 @@ job "logs-collector" {
         VECTOR_CONFIG          = "local/vector.toml"
         VECTOR_REQUIRE_HEALTHY = "true"
         VECTOR_LOG             = "info"
-        VECTOR_INTERNAL_LOG_RATE_LIMIT = "1000"
+        # 10 minutes
+        VECTOR_INTERNAL_LOG_RATE_LIMIT = "600"   
       }
 
       resources {
