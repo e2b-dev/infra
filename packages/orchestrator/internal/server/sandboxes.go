@@ -94,7 +94,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		}
 
 		s.sandboxes.Remove(req.Sandbox.SandboxId)
-		zap.L().Info("sandbox removed from cache", zap.String("sandbox_id", req.Sandbox.SandboxId))
+		zap.L().Info("sandbox removed from cache (lifecycle/process)", zap.String("sandbox_id", req.Sandbox.SandboxId))
 
 		zap.L().Info("Sandbox killed")
 
@@ -187,7 +187,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// 	Ideally we would rely only on the goroutine defer.
 	s.sandboxes.Remove(in.SandboxId)
 
-	zap.L().Info("sandbox removed from cache", zap.String("sandbox_id", in.SandboxId))
+	zap.L().Info("sandbox removed from cache (delete)", zap.String("sandbox_id", in.SandboxId))
 
 	loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
 	defer cancelLogginCtx()
@@ -240,7 +240,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
 	s.sandboxes.Remove(in.SandboxId)
 
-	zap.L().Info("sandbox removed from cache", zap.String("sandbox_id", in.SandboxId))
+	zap.L().Info("sandbox removed from cache (pause)", zap.String("sandbox_id", in.SandboxId))
 
 	s.pauseMu.Unlock()
 
