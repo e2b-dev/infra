@@ -222,7 +222,9 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, nodesExcluded map[s
 		select {
 		case <-childCtx.Done():
 			return nil, childCtx.Err()
-		default:
+		case <-time.After(10 * time.Millisecond):
+			// If no node is available, wait for a bit and try again
+
 			for _, node := range o.nodes.Items() {
 				// The node might be nil if it was removed from the list while iterating
 				if node == nil {
@@ -257,9 +259,6 @@ func (o *Orchestrator) getLeastBusyNode(ctx context.Context, nodesExcluded map[s
 			if leastBusyNode != nil {
 				return leastBusyNode, nil
 			}
-
-			// If no node is available, wait for a bit
-			time.Sleep(10 * time.Millisecond)
 		}
 	}
 }
