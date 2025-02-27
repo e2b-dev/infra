@@ -19,6 +19,8 @@ import (
 
 const defaultPort = 5008
 
+var commitSHA string
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -51,6 +53,8 @@ func main() {
 			}
 		}()
 	}
+
+	log.Println("Starting orchestrator", "commit", commitSHA)
 
 	srv, err := server.New(ctx, port)
 	if err != nil {
