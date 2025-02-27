@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	maxNodeRetries = 3
+	maxNodeRetries       = 3
+	leastBusyNodeTimeout = 60 * time.Second
 
 	maxStartingInstancesPerNode = 3
 )
@@ -139,7 +140,7 @@ func (o *Orchestrator) CreateSandbox(
 			CPUs:      build.Vcpu,
 		})
 
-		_, err = node.Client.Sandbox.Create(ctx, sbxRequest)
+		_, err = node.Client.Sandbox.Create(childCtx, sbxRequest)
 		// The request is done, we will either add it to the cache or remove it from the node
 		if err == nil {
 			// The sandbox was created successfully
@@ -214,7 +215,10 @@ func (o *Orchestrator) CreateSandbox(
 	return &sbx, nil
 }
 
-func (o *Orchestrator) getLeastBusyNode(ctx context.Context, nodesExcluded map[string]*Node) (leastBusyNode *Node, err error) {
+func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded map[string]*Node) (leastBusyNode *Node, err error) {
+	ctx, cancel := context.WithTimeout(parentCtx, leastBusyNodeTimeout)
+	defer cancel()
+
 	childCtx, childSpan := o.tracer.Start(ctx, "get-least-busy-node")
 	defer childSpan.End()
 

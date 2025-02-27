@@ -85,9 +85,10 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 	nodes := make(map[string]*api.Node)
 	for key, n := range o.nodes.Items() {
 		nodes[key] = &api.Node{
-			NodeID:      key,
-			Status:      n.Status(),
-			CreateFails: n.createFails.Load(),
+			NodeID:               key,
+			Status:               n.Status(),
+			CreateFails:          n.createFails.Load(),
+			SandboxStartingCount: n.sbxsInProgress.Count(),
 		}
 	}
 

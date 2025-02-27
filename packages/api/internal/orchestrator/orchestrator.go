@@ -3,9 +3,7 @@ package orchestrator
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -104,21 +102,31 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			o.logger.Infof("Stopping status logging")
+
 			return
 		case <-ticker.C:
-			var logMessage strings.Builder
-
-			logMessage.WriteString("Orchestrator status:\n")
-			logMessage.WriteString(fmt.Sprintf("  Sandboxes cache size: %d\n", o.instanceCache.Len()))
-			logMessage.WriteString(fmt.Sprintf("  Nodes cache size: %d\n", o.nodes.Count()))
+			nodes := make([]map[string]interface{}, 0, o.nodes.Count())
 
 			for _, nodeItem := range o.nodes.Items() {
-				logMessage.WriteString(fmt.Sprintf("    Node %s: %d sandboxes in progress, %d CPU usage\n",
-					nodeItem.Info.ID, len(nodeItem.sbxsInProgress.Items()), nodeItem.CPUUsage.Load()))
+				if nodeItem == nil {
+					nodes = append(nodes, map[string]interface{}{
+						"id": "nil",
+					})
+				} else {
+					nodes = append(nodes, map[string]interface{}{
+						"id":                    nodeItem.Info.ID,
+						"status":                nodeItem.Status(),
+						"in_progress_count":     nodeItem.sbxsInProgress.Count(),
+						"failed_to_start_count": nodeItem.createFails.Load(),
+					})
+				}
 			}
-			logMessage.WriteString("    All Nodes listed\n")
 
-			o.logger.Infof(logMessage.String())
+			zap.L().Info("Orchestrator status",
+				zap.Int("sandboxes_size", o.instanceCache.Len()),
+				zap.Int("nodes_size", o.nodes.Count()),
+				zap.Any("nodes", nodes),
+			)
 		}
 	}
 }

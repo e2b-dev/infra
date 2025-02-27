@@ -77,6 +77,9 @@ type Node struct {
 	// SandboxCount Number of sandboxes running on the node
 	SandboxCount int32 `json:"sandboxCount"`
 
+	// SandboxStartingCount Number of starting Sandboxes
+	SandboxStartingCount int `json:"sandboxStartingCount"`
+
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
 }
