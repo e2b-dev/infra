@@ -31,6 +31,8 @@ const (
 	maxRetries      = 3
 )
 
+var commitSHA string
+
 // Create a DNS client
 var client = new(dns.Client)
 
@@ -134,6 +136,8 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("error creating logger: %v", err))
 	}
+
+	logger.Info("Starting client proxy", zap.String("commit", commitSHA))
 
 	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
 	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
