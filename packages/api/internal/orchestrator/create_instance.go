@@ -246,7 +246,7 @@ func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded
 				}
 
 				// To prevent overloading the node
-				if len(node.sbxsInProgress.Items()) > maxStartingInstancesPerNode {
+				if node.sbxsInProgress.Count() > maxStartingInstancesPerNode {
 					continue
 				}
 
