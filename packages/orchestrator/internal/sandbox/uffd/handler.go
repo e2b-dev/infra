@@ -103,9 +103,8 @@ func (u *Uffd) Start(sandboxId string) error {
 		writerErr := u.exitWriter.Close()
 
 		err := errors.Join(handleErr, closeErr, writerErr)
-		if err != nil {
-			zap.L().Info("UFFD exited", zap.String("sandbox_id", sandboxId), zap.Error(err))
-		}
+
+		zap.L().Info("UFFD handler exited", zap.String("sandbox_id", sandboxId), zap.Error(err))
 
 		u.Exit <- err
 

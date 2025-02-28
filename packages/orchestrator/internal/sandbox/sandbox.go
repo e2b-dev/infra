@@ -186,7 +186,7 @@ func NewSandbox(
 		uffdWaitErr := <-fcUffd.Exit
 		uffdExit <- uffdWaitErr
 
-		zap.L().Info("UFFD exited", zap.String("sandbox_id", config.SandboxId), zap.Error(uffdWaitErr))
+		zap.L().Info("UFFD exited in wait goroutine", zap.String("sandbox_id", config.SandboxId), zap.Error(uffdWaitErr))
 
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
@@ -312,13 +312,13 @@ func NewSandbox(
 func (s *Sandbox) Wait() error {
 	select {
 	case fcErr := <-s.process.Exit:
-		zap.L().Info("FC exited", zap.String("sandbox_id", s.Config.SandboxId))
+		zap.L().Info("FC exited—sandbox will be stopped", zap.String("sandbox_id", s.Config.SandboxId))
 		stopErr := s.Stop()
 		uffdErr := <-s.uffdExit
 
 		return errors.Join(fcErr, stopErr, uffdErr)
 	case uffdErr := <-s.uffdExit:
-		zap.L().Info("UFFD exited", zap.String("sandbox_id", s.Config.SandboxId))
+		zap.L().Info("UFFD exited—sandbox will be stopped", zap.String("sandbox_id", s.Config.SandboxId))
 		stopErr := s.Stop()
 		fcErr := <-s.process.Exit
 
