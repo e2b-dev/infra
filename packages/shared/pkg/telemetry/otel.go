@@ -3,15 +3,17 @@ package telemetry
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -30,6 +32,7 @@ var otelCollectorGRPCEndpoint = os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 type client struct {
 	tracerProvider *sdktrace.TracerProvider
 	meterProvider  *metric.MeterProvider
+	logsProvider   *log.LoggerProvider
 }
 
 // InitOTLPExporter initializes an OTLP exporter, and configures the corresponding trace providers.
@@ -76,7 +79,7 @@ func InitOTLPExporter(ctx context.Context, serviceName, serviceVersion string) f
 			cancel()
 
 			if err != nil {
-				log.Printf("Failed to connect to otel collector: %v", err)
+				fmt.Printf("Failed to connect to otel collector: %v", err)
 				time.Sleep(retryInterval)
 			} else {
 				break
@@ -104,6 +107,7 @@ func InitOTLPExporter(ctx context.Context, serviceName, serviceVersion string) f
 
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 		otel.SetTracerProvider(tracerProvider)
+		otelClient.tracerProvider = tracerProvider
 
 		metricExporter, metricErr := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithGRPCConn(conn))
 		if metricErr != nil {
@@ -121,6 +125,21 @@ func InitOTLPExporter(ctx context.Context, serviceName, serviceVersion string) f
 		)
 
 		otel.SetMeterProvider(meterProvider)
+		otelClient.meterProvider = meterProvider
+
+		logsExporter, logsErr := otlploggrpc.New(ctx, otlploggrpc.WithGRPCConn(conn))
+		if logsErr != nil {
+			panic(fmt.Errorf("failed to create logs exporter: %w", err))
+		}
+
+		logsProcessor := log.NewBatchProcessor(logsExporter)
+		logsProvider := log.NewLoggerProvider(
+			log.WithResource(res),
+			log.WithProcessor(logsProcessor),
+		)
+
+		global.SetLoggerProvider(logsProvider)
+		otelClient.logsProvider = logsProvider
 	}()
 
 	// Shutdown will flush any remaining spans and shut down the exporter.
@@ -136,6 +155,12 @@ func (c *client) close(ctx context.Context) error {
 
 	if c.meterProvider != nil {
 		if err := c.meterProvider.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+
+	if c.logsProvider != nil {
+		if err := c.logsProvider.Shutdown(ctx); err != nil {
 			return err
 		}
 	}

@@ -40,16 +40,6 @@ func main() {
 	flag.UintVar(&port, "port", defaultPort, "orchestrator server port")
 	flag.Parse()
 
-	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName:      ServiceName,
-		IsInternal:       true,
-		IsDevelopment:    env.IsLocal(),
-		IsDebug:          env.IsDebug(),
-		CollectorAddress: logsCollectorAddress,
-	}))
-	defer logger.Sync()
-	zap.ReplaceGlobals(logger)
-
 	wg := &sync.WaitGroup{}
 	exitCode := &atomic.Int32{}
 	telemetrySignal := make(chan struct{})
@@ -70,6 +60,16 @@ func main() {
 			}
 		}()
 	}
+
+	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+		ServiceName:      ServiceName,
+		IsInternal:       true,
+		IsDevelopment:    env.IsLocal(),
+		IsDebug:          env.IsDebug(),
+		CollectorAddress: logsCollectorAddress,
+	}))
+	defer logger.Sync()
+	zap.ReplaceGlobals(logger)
 
 	log.Println("Starting orchestrator", "commit", commitSHA)
 

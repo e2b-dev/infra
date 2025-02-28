@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	"go.opentelemetry.io/contrib/bridges/otelzap"
+	"go.opentelemetry.io/otel/log/global"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -91,6 +93,13 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 			httpWriter,
 			config.Level,
 		))
+	}
+
+	provider := global.GetLoggerProvider()
+	if provider != nil {
+		cores = append(cores,
+			otelzap.NewCore(loggerConfig.ServiceName, otelzap.WithLoggerProvider(provider)),
+		)
 	}
 
 	logger = logger.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
