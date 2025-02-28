@@ -12,17 +12,12 @@ import (
 
 const flushTimeout = 30 * time.Second
 
-	if address == "" {
-		fmt.Println("no address provided for logs exporter, logs will not be sent")
-	}
 type HTTPWriter struct {
 	ctx        context.Context
 	url        string
 	httpClient *http.Client
 }
 
-	if debugLogs {
-		fmt.Println("debug logs enabled")
 func NewHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSyncer {
 	return &HTTPWriter{
 		ctx: ctx,
