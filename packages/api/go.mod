@@ -29,6 +29,7 @@ require (
 )
 
 require (
+	github.com/gin-contrib/zap v1.1.4
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.69.4
 )

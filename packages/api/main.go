@@ -18,6 +18,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-contrib/cors"
 	limits "github.com/gin-contrib/size"
+	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.uber.org/zap"
@@ -66,7 +67,7 @@ func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *ope
 			"/templates/:templateID/builds/:buildID/status",
 		),
 		customMiddleware.IncludeRoutes(metricsMiddleware.Middleware(serviceName), "/sandboxes"),
-		customMiddleware.ExcludeRoutes(gin.LoggerWithWriter(gin.DefaultWriter),
+		customMiddleware.ExcludeRoutes(ginzap.Ginzap(zap.L(), time.RFC3339, true),
 			"/health",
 			"/sandboxes/:sandboxID/refreshes",
 			"/templates/:templateID/builds/:buildID/logs",
