@@ -88,15 +88,15 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 			zap.L().Error("failed to wait for Sandbox", zap.Error(waitErr))
 		}
 
+		zap.L().Info("sandbox killed", zap.String("sandbox_id", req.Sandbox.SandboxId), zap.String("node_id", consul.ClientID))
+
 		cleanupErr := cleanup.Run()
 		if cleanupErr != nil {
 			zap.L().Error("failed to cleanup Sandbox", zap.Error(cleanupErr))
 		}
 
 		s.sandboxes.Remove(req.Sandbox.SandboxId)
-		zap.L().Info("sandbox removed from cache (lifecycle/process)", zap.String("sandbox_id", req.Sandbox.SandboxId))
-
-		zap.L().Info("Sandbox killed")
+		zap.L().Info("sandbox removed from cache (lifecycle/process)", zap.String("sandbox_id", req.Sandbox.SandboxId), zap.String("node_id", consul.ClientID))
 
 		logger.Infof("Sandbox killed")
 	}()
@@ -189,12 +189,12 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	zap.L().Info("sandbox removed from cache (delete)", zap.String("sandbox_id", in.SandboxId))
 
-	loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
-	defer cancelLogginCtx()
+	// loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
+	// defer cancelLogginCtx()
 
 	// Check health metrics before stopping the sandbox
-	sbx.Healthcheck(loggingCtx, true)
-	sbx.LogMetrics(loggingCtx)
+	// sbx.Healthcheck(loggingCtx, true)
+	// sbx.LogMetrics(loggingCtx)
 
 	zap.L().Info("stopping sandbox (after healthcheck)", zap.String("sandbox_id", in.SandboxId))
 

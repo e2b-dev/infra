@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"golang.org/x/mod/semver"
 	"golang.org/x/sys/unix"
 
@@ -185,6 +186,8 @@ func NewSandbox(
 		uffdWaitErr := <-fcUffd.Exit
 		uffdExit <- uffdWaitErr
 
+		zap.L().Info("UFFD exited", zap.String("sandbox_id", config.SandboxId), zap.Error(uffdWaitErr))
+
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
 
@@ -256,9 +259,13 @@ func NewSandbox(
 			errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
 		}
 
-		healthcheckCtx.Lock()
-		healthcheckCtx.Cancel()
-		healthcheckCtx.Unlock()
+		go func() {
+			zap.L().Info("stopping healthcheck during cleanup", zap.String("sandbox_id", config.SandboxId))
+			healthcheckCtx.Lock()
+			healthcheckCtx.Cancel()
+			healthcheckCtx.Unlock()
+			zap.L().Info("stopped healthcheck during cleanup", zap.String("sandbox_id", config.SandboxId))
+		}()
 
 		return errors.Join(errs...)
 	})
@@ -305,11 +312,13 @@ func NewSandbox(
 func (s *Sandbox) Wait() error {
 	select {
 	case fcErr := <-s.process.Exit:
+		zap.L().Info("FC exited", zap.String("sandbox_id", s.Config.SandboxId))
 		stopErr := s.Stop()
 		uffdErr := <-s.uffdExit
 
 		return errors.Join(fcErr, stopErr, uffdErr)
 	case uffdErr := <-s.uffdExit:
+		zap.L().Info("UFFD exited", zap.String("sandbox_id", s.Config.SandboxId))
 		stopErr := s.Stop()
 		fcErr := <-s.process.Exit
 

@@ -13,6 +13,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
@@ -191,20 +192,38 @@ func (p *Process) Start(
 
 	go func() {
 		waitErr := p.cmd.Wait()
+		zap.L().Info("FC process exited", zap.String("sandbox_id", p.metadata.SandboxId), zap.Error(waitErr))
+
 		if waitErr != nil {
 			var exitErr *exec.ExitError
 			if errors.As(waitErr, &exitErr) {
 				// Check if the process was killed by a signal
-				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && status.Signal() == syscall.SIGKILL {
-					p.Exit <- nil
 
-					return
+				status, ok := exitErr.Sys().(syscall.WaitStatus)
+				if ok {
+
+					zap.L().Info(
+						"FC process exited with status",
+						zap.String("sandbox_id", p.metadata.SandboxId),
+						zap.Error(waitErr),
+						zap.Int("exit_code", status.ExitStatus()),
+						zap.Bool("signaled", status.Signaled()),
+						zap.String("signal", status.Signal().String()),
+					)
+
+					if status.Signaled() && status.Signal() == syscall.SIGKILL {
+						p.Exit <- nil
+
+						return
+					}
 				}
 			}
 
 			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
 
 			p.Exit <- errMsg
+
+			zap.L().Info("FC process exited with error", zap.String("sandbox_id", p.metadata.SandboxId), zap.Error(errMsg))
 
 			cancelStart(errMsg)
 

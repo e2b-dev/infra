@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"go.uber.org/zap"
 
 	"github.com/bits-and-blooms/bitset"
 )
@@ -101,7 +102,12 @@ func (u *Uffd) Start(sandboxId string) error {
 		closeErr := u.lis.Close()
 		writerErr := u.exitWriter.Close()
 
-		u.Exit <- errors.Join(handleErr, closeErr, writerErr)
+		err := errors.Join(handleErr, closeErr, writerErr)
+		if err != nil {
+			zap.L().Info("UFFD exited", zap.String("sandbox_id", sandboxId), zap.Error(err))
+		}
+
+		u.Exit <- err
 
 		close(u.Ready)
 		close(u.Exit)
