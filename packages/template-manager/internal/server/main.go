@@ -7,8 +7,9 @@ import (
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
-	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -39,9 +40,10 @@ func New(logger *zap.Logger) *grpc.Server {
 	ctx := context.Background()
 	logger.Info("Initializing template manager")
 
-	opts := []grpc_zap.Option{
-		l.WithoutHealthCheck(),
-		grpc_zap.WithLevels(grpc_zap.DefaultCodeToLevel),
+	opts := []logging.Option{
+		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
+		logging.WithLevels(logging.DefaultServerCodeToLevel),
+		logging.WithFieldsFromContext(logging.ExtractFields),
 	}
 
 	s := grpc.NewServer(
@@ -55,8 +57,11 @@ func New(logger *zap.Logger) *grpc.Server {
 		}),
 		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
 		grpc.ChainUnaryInterceptor(
-			grpc_zap.UnaryServerInterceptor(logger.With(zap.String("service", constants.ServiceName)), opts...),
 			recovery.UnaryServerInterceptor(),
+			selector.UnaryServerInterceptor(
+				logging.UnaryServerInterceptor(l.GRPCLogger(logger), opts...),
+				l.WithoutHealthCheck(),
+			),
 		),
 	)
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)

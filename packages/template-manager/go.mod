@@ -11,7 +11,6 @@ require (
 	github.com/fsouza/go-dockerclient v1.12.0
 	github.com/go-openapi/strfmt v0.23.0
 	github.com/gogo/status v1.1.1
-	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/rs/zerolog v1.33.0
@@ -77,6 +76,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.0 // indirect
+	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.25.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
