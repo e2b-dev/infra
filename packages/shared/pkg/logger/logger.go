@@ -16,6 +16,8 @@ type LoggerConfig struct {
 	IsDevelopment bool
 	IsDebug       bool
 	InitialFields []zap.Field
+
+	Cores []zapcore.Core
 }
 
 func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, error) {
@@ -49,6 +51,8 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 			otelzap.NewCore(loggerConfig.ServiceName, otelzap.WithLoggerProvider(provider)),
 		)
 	}
+
+	cores = append(cores, loggerConfig.Cores...)
 
 	logger, err := config.Build(
 		zap.WrapCore(func(c zapcore.Core) zapcore.Core {

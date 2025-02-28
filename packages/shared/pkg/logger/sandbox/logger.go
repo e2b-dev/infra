@@ -27,51 +27,39 @@ type SandboxLoggerConfig struct {
 
 func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxLogger {
 	level := zap.NewAtomicLevelAt(zap.DebugLevel)
+
+	vectorCore := zapcore.NewNopCore()
+	if !config.IsInternal && config.CollectorAddress != "" {
+		// Add Vector exporter to the core
+		vectorEncoder := zapcore.NewJSONEncoder(logger.GetEncoderConfig())
+		httpWriter := logger.NewHTTPWriter(ctx, config.CollectorAddress)
+		vectorCore = zapcore.NewCore(
+			vectorEncoder,
+			httpWriter,
+			level,
+		)
+	}
+
 	lg, err := logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   config.ServiceName,
 		IsInternal:    config.IsInternal,
 		IsDevelopment: config.IsDevelopment,
 		IsDebug:       true,
 		InitialFields: []zap.Field{
+			zap.String("logger", config.ServiceName),
+
 			zap.String("sandboxID", config.SandboxID),
 			zap.String("templateID", config.TemplateID),
 			zap.String("teamID", config.TeamID),
 
-			// Old fields
+			// Fields for Vector
 			zap.String("instanceID", config.SandboxID),
 			zap.String("envID", config.TemplateID),
-			zap.Bool("internal", false),
 		},
+		Cores: []zapcore.Core{vectorCore},
 	})
 	if err != nil {
 		panic(err)
-	}
-
-	if !config.IsInternal && config.CollectorAddress != "" {
-		// Add Vector exporter to the core
-		vectorEncoder := zapcore.NewJSONEncoder(logger.GetEncoderConfig())
-		httpWriter := logger.NewHTTPWriter(ctx, config.CollectorAddress)
-		vectorCore := zapcore.NewCore(
-			vectorEncoder,
-			httpWriter,
-			level,
-		)
-
-		lg = lg.WithOptions(
-			zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-				return zapcore.NewTee(c, vectorCore)
-			}),
-			zap.Fields(
-				//zap.String("sandboxID", config.SandboxID),
-				//zap.String("templateID", config.TemplateID),
-				zap.String("teamID", config.TeamID),
-
-				// Old fields
-				zap.String("instanceID", config.SandboxID),
-				zap.String("envID", config.TemplateID),
-				zap.Bool("internal", false),
-			),
-		)
 	}
 
 	return &SandboxLogger{
