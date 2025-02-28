@@ -76,8 +76,7 @@ console.log('starting command')
 // Start the command in the background
 const command = await sandbox.commands.run('echo hello;echo world')
 let out = command.stdout
-console.log('waiting for command to finish')
-await new Promise(resolve => setTimeout(resolve, 5000))
+
 
 console.log('killing command')
 // Kill the command
