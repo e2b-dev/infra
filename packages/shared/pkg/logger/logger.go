@@ -3,8 +3,8 @@ package logger
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -26,13 +26,6 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 		level = zap.NewAtomicLevelAt(zap.DebugLevel)
 	} else {
 		level = zap.NewAtomicLevelAt(zap.InfoLevel)
-	}
-
-	exporters := []io.Writer{}
-	if loggerConfig.CollectorAddress != "" {
-		exporter := NewHTTPLogsExporter(
-			ctx, loggerConfig.CollectorAddress, loggerConfig.IsDevelopment)
-		exporters = append(exporters, exporter)
 	}
 
 	config := zap.Config{
@@ -74,16 +67,35 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 		return nil, fmt.Errorf("error building logger: %w", err)
 	}
 
-	if len(exporters) > 0 {
-		core := zapcore.NewCore(
-			zapcore.NewJSONEncoder(config.EncoderConfig),
-			zapcore.AddSync(io.MultiWriter(exporters...)),
+	cores := make([]zapcore.Core, 0)
+
+	if loggerConfig.CollectorAddress != "" {
+		// Add Vector exporter to the core
+		vectorEncoder := zapcore.NewJSONEncoder(config.EncoderConfig)
+		httpWriter := &zapcore.BufferedWriteSyncer{
+			WS:            NewHTTPWriter(ctx, loggerConfig.CollectorAddress),
+			Size:          256 * 1024, // 256 kB
+			FlushInterval: 5 * time.Second,
+		}
+		go func() {
+			select {
+			case <-ctx.Done():
+				if err := httpWriter.Stop(); err != nil {
+					fmt.Printf("Error stopping HTTP writer: %v\n", err)
+				}
+			}
+		}()
+
+		cores = append(cores, zapcore.NewCore(
+			vectorEncoder,
+			httpWriter,
 			config.Level,
-		)
-		logger = logger.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-			return zapcore.NewTee(c, core)
-		}))
+		))
 	}
+
+	logger = logger.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+		return zapcore.NewTee(cores...)
+	}))
 
 	return logger, nil
 }
