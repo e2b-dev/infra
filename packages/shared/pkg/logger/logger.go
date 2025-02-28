@@ -16,8 +16,6 @@ type LoggerConfig struct {
 	IsDevelopment bool
 	IsDebug       bool
 	InitialFields []zap.Field
-
-	CollectorAddress string
 }
 
 func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, error) {
@@ -43,27 +41,25 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 		},
 	}
 
-	logger, err := config.Build()
-	if err != nil {
-		return nil, fmt.Errorf("error building logger: %w", err)
-	}
-
 	cores := make([]zapcore.Core, 0)
 
 	if loggerConfig.IsInternal {
 		provider := global.GetLoggerProvider()
-		if provider != nil {
-			cores = append(cores,
-				otelzap.NewCore(loggerConfig.ServiceName, otelzap.WithLoggerProvider(provider)),
-			)
-		}
+		cores = append(cores,
+			otelzap.NewCore(loggerConfig.ServiceName, otelzap.WithLoggerProvider(provider)),
+		)
+	}
+
+	logger, err := config.Build(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+		cores = append(cores, c)
+
+		return zapcore.NewTee(cores...)
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("error building logger: %w", err)
 	}
 
 	logger = logger.
-		WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-			cores = append(cores, c)
-			return zapcore.NewTee(cores...)
-		})).
 		With(
 			zap.String("service", loggerConfig.ServiceName),
 			zap.Bool("internal", loggerConfig.IsInternal),

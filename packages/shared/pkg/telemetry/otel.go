@@ -60,7 +60,7 @@ func InitOTLPExporter(ctx context.Context, serviceName, serviceVersion string) f
 
 	var otelClient client
 
-	go func() {
+	{
 		// Set up a connection to the collector.
 		var conn *grpc.ClientConn
 
@@ -144,7 +144,7 @@ func InitOTLPExporter(ctx context.Context, serviceName, serviceVersion string) f
 
 		global.SetLoggerProvider(logsProvider)
 		otelClient.logsProvider = logsProvider
-	}()
+	}
 
 	// Shutdown will flush any remaining spans and shut down the exporter.
 	return otelClient.close
