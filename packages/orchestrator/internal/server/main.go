@@ -8,14 +8,12 @@ import (
 	"net"
 	"sync"
 
-	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
-	"go.uber.org/zap"
-
-	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -26,7 +24,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -55,6 +52,45 @@ type Service struct {
 	}
 }
 
+// InterceptorLogger adapts zap logger to interceptor logger.
+// This code is simple enough to be copied and not imported.
+func InterceptorLogger(l *zap.Logger) logging.Logger {
+	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
+		f := make([]zap.Field, 0, len(fields)/2)
+
+		for i := 0; i < len(fields); i += 2 {
+			key := fields[i]
+			value := fields[i+1]
+
+			switch v := value.(type) {
+			case string:
+				f = append(f, zap.String(key.(string), v))
+			case int:
+				f = append(f, zap.Int(key.(string), v))
+			case bool:
+				f = append(f, zap.Bool(key.(string), v))
+			default:
+				f = append(f, zap.Any(key.(string), v))
+			}
+		}
+
+		logger := l.WithOptions(zap.AddCallerSkip(1)).With(f...)
+
+		switch lvl {
+		case logging.LevelDebug:
+			logger.Debug(msg)
+		case logging.LevelInfo:
+			logger.Info(msg)
+		case logging.LevelWarn:
+			logger.Warn(msg)
+		case logging.LevelError:
+			logger.Error(msg)
+		default:
+			panic(fmt.Sprintf("unknown level %v", lvl))
+		}
+	})
+}
+
 func New(ctx context.Context, port uint) (*Service, error) {
 	if port > math.MaxUint16 {
 		return nil, fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
@@ -76,17 +112,19 @@ func New(ctx context.Context, port uint) (*Service, error) {
 	{
 		srv.dns = dns.New()
 
-		opts := []grpc_zap.Option{logger.WithoutHealthCheck(), grpc_zap.WithLevels(grpc_zap.DefaultCodeToLevel)}
+		opts := []logging.Option{
+			logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
+			logging.WithLevels(logging.DefaultServerCodeToLevel),
+			logging.WithFieldsFromContext(logging.ExtractFields),
+		}
 		srv.grpc = grpc.NewServer(
 			grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
 			grpc.ChainUnaryInterceptor(
 				recovery.UnaryServerInterceptor(),
-				grpc_zap.UnaryServerInterceptor(zap.L(), opts...),
-				grpc_zap.PayloadUnaryServerInterceptor(zap.L(), withoutHealthCheckPayload()),
+				logging.UnaryServerInterceptor(InterceptorLogger(zap.L()), opts...),
 			),
 			grpc.ChainStreamInterceptor(
-				grpc_zap.StreamServerInterceptor(zap.L(), opts...),
-				grpc_zap.PayloadStreamServerInterceptor(zap.L(), withoutHealthCheckPayload()),
+				logging.StreamServerInterceptor(InterceptorLogger(zap.L()), opts...),
 			),
 		)
 
@@ -163,16 +201,4 @@ func (srv *Service) Close(ctx context.Context) error {
 		srv.shutdown.op = nil
 	})
 	return srv.shutdown.err
-}
-
-func withoutHealthCheckPayload() grpc_logging.ServerPayloadLoggingDecider {
-	return func(ctx context.Context, fullMethodName string, servingObject interface{}) bool {
-		// will not log gRPC calls if it was a call to healthcheck and no error was raised
-		if fullMethodName == "/grpc.health.v1.Health/Check" {
-			return false
-		}
-
-		// by default everything will be logged
-		return true
-	}
 }

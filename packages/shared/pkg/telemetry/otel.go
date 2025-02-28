@@ -127,7 +127,11 @@ func InitOTLPExporter(ctx context.Context, serviceName, serviceVersion string) f
 		otel.SetMeterProvider(meterProvider)
 		otelClient.meterProvider = meterProvider
 
-		logsExporter, logsErr := otlploggrpc.New(ctx, otlploggrpc.WithGRPCConn(conn))
+		logsExporter, logsErr := otlploggrpc.New(
+			ctx,
+			otlploggrpc.WithGRPCConn(conn),
+			otlploggrpc.WithCompressor(gzip.Name),
+		)
 		if logsErr != nil {
 			panic(fmt.Errorf("failed to create logs exporter: %w", err))
 		}
