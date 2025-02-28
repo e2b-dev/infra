@@ -75,7 +75,7 @@ address = "0.0.0.0:${logs_health_port_number}"
 [sources.envd]
 type = "http_server"
 address = "0.0.0.0:${logs_port_number}"
-encoding = "json"
+encoding = "ndjson"
 path_key = "_path"
 
 [transforms.add_source_envd]
