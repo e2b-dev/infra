@@ -93,6 +93,7 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 
 	logger = logger.
 		WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+			cores = append(cores, c)
 			return zapcore.NewTee(cores...)
 		})).
 		With(
