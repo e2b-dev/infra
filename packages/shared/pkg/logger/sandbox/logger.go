@@ -36,6 +36,11 @@ func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxL
 			zap.String("sandboxID", config.SandboxID),
 			zap.String("templateID", config.TemplateID),
 			zap.String("teamID", config.TeamID),
+
+			// Old fields
+			zap.String("instanceID", config.SandboxID),
+			zap.String("envID", config.TemplateID),
+			zap.Bool("internal", false),
 		},
 	})
 	if err != nil {
@@ -45,16 +50,28 @@ func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxL
 	if !config.IsInternal && config.CollectorAddress != "" {
 		// Add Vector exporter to the core
 		vectorEncoder := zapcore.NewJSONEncoder(logger.GetEncoderConfig())
-		httpWriter := logger.NewBufferedHTTPWriter(ctx, config.CollectorAddress)
+		httpWriter := logger.NewHTTPWriter(ctx, config.CollectorAddress)
 		vectorCore := zapcore.NewCore(
 			vectorEncoder,
 			httpWriter,
 			level,
 		)
 
-		lg = lg.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-			return zapcore.NewTee(c, vectorCore)
-		}))
+		lg = lg.WithOptions(
+			zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+				return zapcore.NewTee(c, vectorCore)
+			}),
+			zap.Fields(
+				//zap.String("sandboxID", config.SandboxID),
+				//zap.String("templateID", config.TemplateID),
+				zap.String("teamID", config.TeamID),
+
+				// Old fields
+				zap.String("instanceID", config.SandboxID),
+				zap.String("envID", config.TemplateID),
+				zap.Bool("internal", false),
+			),
+		)
 	}
 
 	return &SandboxLogger{

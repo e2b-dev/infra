@@ -50,22 +50,22 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 		)
 	}
 
-	logger, err := config.Build(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-		cores = append(cores, c)
+	logger, err := config.Build(
+		zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+			cores = append(cores, c)
 
-		return zapcore.NewTee(cores...)
-	}))
-	if err != nil {
-		return nil, fmt.Errorf("error building logger: %w", err)
-	}
-
-	logger = logger.
-		With(
+			return zapcore.NewTee(cores...)
+		}),
+		zap.Fields(
 			zap.String("service", loggerConfig.ServiceName),
 			zap.Bool("internal", loggerConfig.IsInternal),
 			zap.Int("pid", os.Getpid()),
-		).
-		With(loggerConfig.InitialFields...)
+		),
+		zap.Fields(loggerConfig.InitialFields...),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error building logger: %w", err)
+	}
 
 	return logger, nil
 }
