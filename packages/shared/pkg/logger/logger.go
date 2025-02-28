@@ -17,7 +17,7 @@ type LoggerConfig struct {
 	IsInternal    bool
 	IsDevelopment bool
 	IsDebug       bool
-	InitialFields map[string]interface{}
+	InitialFields []zap.Field
 
 	CollectorAddress string
 }
@@ -51,17 +51,6 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 		ErrorOutputPaths: []string{
 			"stderr",
 		},
-		InitialFields: func() map[string]interface{} {
-			fields := map[string]interface{}{
-				"service":  loggerConfig.ServiceName,
-				"internal": loggerConfig.IsInternal,
-				"pid":      os.Getpid(),
-			}
-			for k, v := range loggerConfig.InitialFields {
-				fields[k] = v
-			}
-			return fields
-		}(),
 	}
 
 	logger, err := config.Build()
@@ -102,9 +91,16 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 		)
 	}
 
-	logger = logger.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-		return zapcore.NewTee(cores...)
-	}))
+	logger = logger.
+		WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+			return zapcore.NewTee(cores...)
+		})).
+		With(
+			zap.String("service", loggerConfig.ServiceName),
+			zap.Bool("internal", loggerConfig.IsInternal),
+			zap.Int("pid", os.Getpid()),
+		).
+		With(loggerConfig.InitialFields...)
 
 	return logger, nil
 }

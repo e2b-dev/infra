@@ -147,7 +147,7 @@ func (p *Process) Start(
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			sbxLogger.Info("", zap.String("stdout", line))
+			sbxLogger.Info(line, zap.String("sandbox_id", p.metadata.SandboxId))
 		}
 
 		readerErr := scanner.Err()
@@ -168,7 +168,7 @@ func (p *Process) Start(
 
 		for scanner.Scan() {
 			line := scanner.Text()
-			sbxLogger.Warn("stderr", zap.String("sandbox_id", p.metadata.SandboxId), zap.String("line", line))
+			sbxLogger.Error(line, zap.String("sandbox_id", p.metadata.SandboxId))
 		}
 
 		readerErr := scanner.Err()

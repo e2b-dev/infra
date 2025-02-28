@@ -29,10 +29,10 @@ func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxL
 		IsInternal:    config.IsInternal,
 		IsDevelopment: config.IsDevelopment,
 		IsDebug:       true,
-		InitialFields: map[string]interface{}{
-			"sandboxID":  config.SandboxID,
-			"templateID": config.TemplateID,
-			"teamID":     config.TeamID,
+		InitialFields: []zap.Field{
+			zap.String("sandboxID", config.SandboxID),
+			zap.String("templateID", config.TemplateID),
+			zap.String("teamID", config.TeamID),
 		},
 		CollectorAddress: config.CollectorAddress,
 	})
