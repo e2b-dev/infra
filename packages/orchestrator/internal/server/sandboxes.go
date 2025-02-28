@@ -50,7 +50,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		childCtx,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      ServiceName,
-			IsInternal:       true,
+			IsInternal:       false,
 			IsDevelopment:    true,
 			SandboxID:        req.Sandbox.SandboxId,
 			TemplateID:       req.Sandbox.TemplateId,

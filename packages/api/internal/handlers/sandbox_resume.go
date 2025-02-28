@@ -106,7 +106,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      ServiceName,
-			IsInternal:       true,
+			IsInternal:       false,
 			IsDevelopment:    true,
 			SandboxID:        sandboxID,
 			TemplateID:       *build.EnvID,

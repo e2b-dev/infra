@@ -24,8 +24,6 @@ const (
 	ServiceName = "orchestrator"
 )
 
-var logsCollectorAddress = env.GetEnv("LOGS_COLLECTOR_ADDRESS", "")
-
 var commitSHA string
 
 func main() {
@@ -62,11 +60,10 @@ func main() {
 	}
 
 	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName:      ServiceName,
-		IsInternal:       true,
-		IsDevelopment:    env.IsLocal(),
-		IsDebug:          env.IsDebug(),
-		CollectorAddress: logsCollectorAddress,
+		ServiceName:   ServiceName,
+		IsInternal:    true,
+		IsDevelopment: env.IsLocal(),
+		IsDebug:       env.IsDebug(),
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)

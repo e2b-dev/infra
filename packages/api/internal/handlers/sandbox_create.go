@@ -63,7 +63,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	_, templateSpan := a.Tracer.Start(ctx, "get-template")
 	defer templateSpan.End()
-	
+
 	// Check if team has access to the environment
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
 	if checkErr != nil {
@@ -86,7 +86,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      ServiceName,
-			IsInternal:       true,
+			IsInternal:       false,
 			IsDevelopment:    true,
 			SandboxID:        sandboxID,
 			TemplateID:       env.TemplateID,

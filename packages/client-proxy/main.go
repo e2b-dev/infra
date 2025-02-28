@@ -36,8 +36,7 @@ var commitSHA string
 
 // Create a DNS client
 var (
-	client               = new(dns.Client)
-	logsCollectorAddress = env.GetEnv("LOGS_COLLECTOR_ADDRESS", "")
+	client = new(dns.Client)
 )
 
 func proxyHandler() func(w http.ResponseWriter, r *http.Request) {
@@ -146,11 +145,10 @@ func main() {
 	defer sigCancel()
 
 	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName:      ServiceName,
-		IsInternal:       true,
-		IsDevelopment:    env.IsLocal(),
-		IsDebug:          env.IsDebug(),
-		CollectorAddress: logsCollectorAddress,
+		ServiceName:   ServiceName,
+		IsInternal:    true,
+		IsDevelopment: env.IsLocal(),
+		IsDebug:       env.IsDebug(),
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)

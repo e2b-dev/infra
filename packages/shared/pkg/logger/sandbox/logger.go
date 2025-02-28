@@ -4,8 +4,10 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type SandboxLogger struct {
@@ -24,7 +26,8 @@ type SandboxLoggerConfig struct {
 }
 
 func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxLogger {
-	logger, err := logger.NewLogger(ctx, logger.LoggerConfig{
+	level := zap.NewAtomicLevelAt(zap.DebugLevel)
+	lg, err := logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   config.ServiceName,
 		IsInternal:    config.IsInternal,
 		IsDevelopment: config.IsDevelopment,
@@ -34,14 +37,29 @@ func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxL
 			zap.String("templateID", config.TemplateID),
 			zap.String("teamID", config.TeamID),
 		},
-		CollectorAddress: config.CollectorAddress,
 	})
 	if err != nil {
 		panic(err)
 	}
 
+	if config.CollectorAddress != "" {
+		// Add Vector exporter to the core
+		vectorEncoder := zapcore.NewJSONEncoder(logger.GetEncoderConfig())
+		httpWriter := logger.NewBufferedHTTPWriter(ctx, config.CollectorAddress)
+		vectorCore := zapcore.NewCore(
+			vectorEncoder,
+			httpWriter,
+			level,
+		)
+
+		lg = lg.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+			return zapcore.NewTee(c, vectorCore)
+		}))
+	}
+
 	return &SandboxLogger{
-		logger: logger,
+		logger:                lg,
+		healthCheckWasFailing: atomic.Bool{},
 	}
 }
 

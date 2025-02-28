@@ -3,13 +3,11 @@ package logger
 import (
 	"context"
 	"fmt"
-	"os"
-	"time"
-
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel/log/global"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"os"
 )
 
 type LoggerConfig struct {
@@ -36,15 +34,7 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 		DisableStacktrace: false,
 		Sampling:          nil,
 		Encoding:          "json",
-		EncoderConfig: zapcore.EncoderConfig{
-			TimeKey:       "timestamp",
-			MessageKey:    "message",
-			LevelKey:      "level",
-			EncodeLevel:   zapcore.LowercaseLevelEncoder,
-			NameKey:       "logger",
-			StacktraceKey: "stacktrace",
-			EncodeTime:    zapcore.RFC3339TimeEncoder,
-		},
+		EncoderConfig:     GetEncoderConfig(),
 		OutputPaths: []string{
 			"stdout",
 		},
@@ -60,35 +50,13 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 
 	cores := make([]zapcore.Core, 0)
 
-	if loggerConfig.CollectorAddress != "" {
-		// Add Vector exporter to the core
-		vectorEncoder := zapcore.NewJSONEncoder(config.EncoderConfig)
-		httpWriter := &zapcore.BufferedWriteSyncer{
-			WS:            NewHTTPWriter(ctx, loggerConfig.CollectorAddress),
-			Size:          256 * 1024, // 256 kB
-			FlushInterval: 5 * time.Second,
+	if loggerConfig.IsInternal {
+		provider := global.GetLoggerProvider()
+		if provider != nil {
+			cores = append(cores,
+				otelzap.NewCore(loggerConfig.ServiceName, otelzap.WithLoggerProvider(provider)),
+			)
 		}
-		go func() {
-			select {
-			case <-ctx.Done():
-				if err := httpWriter.Stop(); err != nil {
-					fmt.Printf("Error stopping HTTP writer: %v\n", err)
-				}
-			}
-		}()
-
-		cores = append(cores, zapcore.NewCore(
-			vectorEncoder,
-			httpWriter,
-			config.Level,
-		))
-	}
-
-	provider := global.GetLoggerProvider()
-	if provider != nil {
-		cores = append(cores,
-			otelzap.NewCore(loggerConfig.ServiceName, otelzap.WithLoggerProvider(provider)),
-		)
 	}
 
 	logger = logger.
@@ -104,4 +72,16 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 		With(loggerConfig.InitialFields...)
 
 	return logger, nil
+}
+
+func GetEncoderConfig() zapcore.EncoderConfig {
+	return zapcore.EncoderConfig{
+		TimeKey:       "timestamp",
+		MessageKey:    "message",
+		LevelKey:      "level",
+		EncodeLevel:   zapcore.LowercaseLevelEncoder,
+		NameKey:       "logger",
+		StacktraceKey: "stacktrace",
+		EncodeTime:    zapcore.RFC3339TimeEncoder,
+	}
 }

@@ -28,6 +28,24 @@ func NewHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSyncer {
 	}
 }
 
+func NewBufferedHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSyncer {
+	httpWriter := &zapcore.BufferedWriteSyncer{
+		WS:            NewHTTPWriter(ctx, endpoint),
+		Size:          256 * 1024, // 256 kB
+		FlushInterval: 5 * time.Second,
+	}
+	go func() {
+		select {
+		case <-ctx.Done():
+			if err := httpWriter.Stop(); err != nil {
+				fmt.Printf("Error stopping HTTP writer: %v\n", err)
+			}
+		}
+	}()
+
+	return httpWriter
+}
+
 // Write sends the logs to the HTTP endpoint.
 func (h *HTTPWriter) Write(p []byte) (n int, err error) {
 	ctx, cancel := context.WithTimeout(h.ctx, flushTimeout)

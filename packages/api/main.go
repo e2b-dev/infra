@@ -48,8 +48,7 @@ const (
 )
 
 var (
-	logsCollectorAddress = env.GetEnv("LOGS_COLLECTOR_ADDRESS", "")
-	commitSHA            string
+	commitSHA string
 )
 
 func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
@@ -161,11 +160,10 @@ func main() {
 	flag.Parse()
 
 	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName:      serviceName,
-		IsInternal:       true,
-		IsDevelopment:    env.IsLocal(),
-		IsDebug:          env.IsDebug(),
-		CollectorAddress: logsCollectorAddress,
+		ServiceName:   serviceName,
+		IsInternal:    true,
+		IsDevelopment: env.IsLocal(),
+		IsDebug:       env.IsDebug(),
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)

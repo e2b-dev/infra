@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
 
+	"go.uber.org/zap"
+	
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/server"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/test"
-	"go.uber.org/zap"
 )
 
 const defaultPort = 5009
@@ -59,11 +59,10 @@ func main() {
 	}
 
 	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName:      constants.ServiceName,
-		IsInternal:       true,
-		IsDevelopment:    env.IsLocal(),
-		IsDebug:          true,
-		CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		ServiceName:   constants.ServiceName,
+		IsInternal:    true,
+		IsDevelopment: env.IsLocal(),
+		IsDebug:       true,
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
