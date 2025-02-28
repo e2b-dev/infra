@@ -72,45 +72,30 @@ data_dir = "alloc/data/vector/"
 enabled = true
 address = "0.0.0.0:${logs_health_port_number}"
 
-[sources.infra]
+[sources.envd]
 type = "http_server"
 address = "0.0.0.0:${logs_port_number}"
 encoding = "json"
 path_key = "_path"
 
-[transforms.add_fields]
+[transforms.add_source_envd]
 type = "remap"
-inputs = ["infra"]
+inputs = ["envd"]
 source = """
 del(."_path")
-
-ts = .timestamp
-
-. = parse_json!(.message)
-
-if !exists(.service) {
-  .service = "envd"
-}
+.service = "envd"
+.sandboxID = .instanceID
 if !exists(.envID) {
   .envID = "unknown"
 }
 if !exists(.category) {
   .category = "default"
 }
-if !exists(.sandboxID) {
-  .sandboxID = .instanceID
-}
-
-if exists(.timestamp) { 
-  .timestamp = parse_timestamp!(.timestamp, format: "%x")
-} else {
-  .timestamp = ts
-} 
 """
 
 [transforms.internal_routing]
 type = "route"
-inputs = [ "add_fields" ]
+inputs = [ "add_source_envd" ]
 
 [transforms.internal_routing.route]
 internal = '.internal == true'
@@ -127,7 +112,6 @@ type = "loki"
 inputs = [ "remove_internal" ]
 endpoint = "http://loki.service.consul:${loki_service_port_number}"
 encoding.codec = "json"
-request.concurrency = 100
 
 [sinks.local_loki_logs.labels]
 source = "logs-collector"
@@ -146,7 +130,6 @@ encoding.codec = "json"
 auth.strategy = "basic"
 auth.user = "${grafana_logs_user}"
 auth.password = "${grafana_api_key}"
-request.concurrency = 100
 
 [sinks.grafana.labels]
 source = "logs-collector"
