@@ -104,7 +104,12 @@ func (u *Uffd) Start(sandboxId string) error {
 		closeErr := u.lis.Close()
 		writerErr := u.exitWriter.Close()
 
-		u.Exit <- errors.Join(handleErr, closeErr, writerErr)
+		err := errors.Join(handleErr, closeErr, writerErr)
+		if err != nil {
+			zap.L().Info("UFFD exited", zap.String("sandbox_id", sandboxId), zap.Error(err))
+		}
+
+		u.Exit <- err
 
 		close(u.Ready)
 		close(u.Exit)
