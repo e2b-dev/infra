@@ -39,7 +39,10 @@ func New(logger *zap.Logger) *grpc.Server {
 	ctx := context.Background()
 	logger.Info("Initializing template manager")
 
-	opts := []grpc_zap.Option{l.WithoutHealthCheck(), grpc_zap.WithLevels(grpc_zap.DefaultCodeToLevel)}
+	opts := []grpc_zap.Option{
+		l.WithoutHealthCheck(),
+		grpc_zap.WithLevels(grpc_zap.DefaultCodeToLevel),
+	}
 
 	s := grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
@@ -52,7 +55,7 @@ func New(logger *zap.Logger) *grpc.Server {
 		}),
 		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
 		grpc.ChainUnaryInterceptor(
-			grpc_zap.UnaryServerInterceptor(logger, opts...),
+			grpc_zap.UnaryServerInterceptor(logger.With(zap.String("service", constants.ServiceName)), opts...),
 			recovery.UnaryServerInterceptor(),
 		),
 	)
