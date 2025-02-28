@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"math/rand"
 	"net/http"
 	"net/http/httputil"
@@ -143,6 +144,9 @@ func main() {
 	ctx := context.Background()
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
+
+	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, "no")
+	defer stopOtlp(ctx)
 
 	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   ServiceName,

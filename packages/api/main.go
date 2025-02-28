@@ -27,12 +27,11 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-
 	customMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/gin_utils/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/gin_utils/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/gin_utils/middleware/otel/tracing"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -159,6 +158,20 @@ func main() {
 	flag.StringVar(&debug, "debug", "false", "is debug")
 	flag.Parse()
 
+	swagger, err := api.GetSwagger()
+	if err != nil {
+		// this will call os.Exit: defers won't run, but none
+		// need to yet. Change this if this is called later.
+		fmt.Fprintf(os.Stderr, "error loading swagger spec: %v\n", err)
+		return
+	}
+
+	var cleanupFns []func(context.Context) error
+
+	if !env.IsLocal() {
+		cleanupFns = append(cleanupFns, telemetry.InitOTLPExporter(ctx, serviceName, swagger.Info.Version))
+	}
+
 	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName:   serviceName,
 		IsInternal:    true,
@@ -173,14 +186,6 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	swagger, err := api.GetSwagger()
-	if err != nil {
-		// this will call os.Exit: defers won't run, but none
-		// need to yet. Change this if this is called later.
-		logger.Fatal("Error loading swagger spec", zap.Error(err))
-	}
-
-	var cleanupFns []func(context.Context) error
 	exitCode := &atomic.Int32{}
 	cleanupOp := func() {
 		// some cleanup functions do work that requires a context. passing shutdown a
@@ -223,10 +228,6 @@ func main() {
 	cleanupOnce := &sync.Once{}
 	cleanup := func() { cleanupOnce.Do(cleanupOp) }
 	defer cleanup()
-
-	if !env.IsLocal() {
-		cleanupFns = append(cleanupFns, telemetry.InitOTLPExporter(ctx, serviceName, swagger.Info.Version))
-	}
 
 	// Create an instance of our handler which satisfies the generated interface
 	//  (use the outer context rather than the signal handling
