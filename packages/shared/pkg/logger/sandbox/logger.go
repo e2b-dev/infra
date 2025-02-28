@@ -42,7 +42,7 @@ func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxL
 		panic(err)
 	}
 
-	if config.CollectorAddress != "" {
+	if !config.IsInternal && config.CollectorAddress != "" {
 		// Add Vector exporter to the core
 		vectorEncoder := zapcore.NewJSONEncoder(logger.GetEncoderConfig())
 		httpWriter := logger.NewBufferedHTTPWriter(ctx, config.CollectorAddress)

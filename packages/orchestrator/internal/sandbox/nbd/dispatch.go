@@ -85,9 +85,7 @@ func (d *Dispatch) Wait() {
 func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []byte) error {
 	d.writeLock.Lock()
 	defer d.writeLock.Unlock()
-
-	zap.L().Debug("Writing NBD response", zap.Uint64("handle", respHandle), zap.Int("chunk_size", len(chunk)))
-
+	
 	binary.BigEndian.PutUint32(d.responseHeader[4:], respError)
 	binary.BigEndian.PutUint64(d.responseHeader[8:], respHandle)
 
