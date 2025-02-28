@@ -129,10 +129,12 @@ func (w *HTTPExporter) resumeProcessing() {
 
 func (w *HTTPExporter) Write(logs []byte) (int, error) {
 	logsCopy := make([]byte, len(logs))
-	copy(logsCopy, logs)
 
-	go w.addLogs(logsCopy)
+	go func(logs []byte) {
+		copy(logsCopy, logs)
 
+		w.addLogs(logsCopy)
+	}(logsCopy)
 	return len(logs), nil
 }
 
