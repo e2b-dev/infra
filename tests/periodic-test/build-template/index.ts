@@ -43,8 +43,6 @@ const buildStatus = await streamCommandOutput('npx', [
     'build',
     '--name',
     templateName,
-    '-c',
-    '/root/.jupyter/start-up.sh'
 ]);
 
 if (buildStatus.status.code !== 0) {
@@ -67,14 +65,39 @@ await Deno.remove('e2b.toml')
 if (!templateID) {
     throw new Error('Template not found')
 }
+console.log('creating sandbox')
+const sandbox = await Sandbox.create(templateID)
+console.log('sandbox created')
 
-const sandbox = await Sandbox.create({ id: templateID })
 
-// Execute JavaScript cells
-await sandbox.runCode('x = 1');
-const execution = await sandbox.runCode('x+=1; x');
+console.log('running command')
 
-console.log('Execution result:', execution);
+let out = ''
+console.log('starting command')
+// Start the command in the background
+const command = await sandbox.commands.run('echo hello; sleep 3; echo world', {
+    background: true,
+    onStdout: (data) => {
+        out += data
+    },
+})
+
+console.log('waiting for command to finish')
+await new Promise(resolve => setTimeout(resolve, 5000))
+
+console.log('killing command')
+// Kill the command
+await command.kill()
+
+console.log('checking output')
+if (!out.includes('hello')) {
+    throw new Error('hello not found')
+}
+
+if (!out.includes('world')) {
+    throw new Error('world not found')
+}
+
 // kill sandbox
 await sandbox.kill()
 
