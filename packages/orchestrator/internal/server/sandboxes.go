@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -81,6 +82,8 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		if waitErr != nil {
 			sbxlogger.I(sbx).Error("failed to wait for sandbox, cleaning up", zap.Error(waitErr))
 		}
+
+		zap.L().Info("sandbox killed", zap.String("sandbox_id", req.Sandbox.SandboxId), zap.String("node_id", consul.GetClientID()))
 
 		cleanupErr := cleanup.Run(ctx)
 		if cleanupErr != nil {
@@ -192,12 +195,14 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// Don't allow connecting to the sandbox anymore.
 	s.sandboxes.Remove(in.SandboxId)
 
-	loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
-	defer cancelLogginCtx()
+	zap.L().Info("sandbox removed from cache (delete)", zap.String("sandbox_id", in.SandboxId))
+
+	// loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
+	// defer cancelLogginCtx()
 
 	// Check health metrics before stopping the sandbox
-	sbx.Healthcheck(loggingCtx, true)
-	sbx.LogMetrics(loggingCtx)
+	// sbx.Healthcheck(loggingCtx, true)
+	// sbx.LogMetrics(loggingCtx)
 
 	err := sbx.Stop(ctx)
 	if err != nil {
