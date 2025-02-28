@@ -85,7 +85,9 @@ func (w *HTTPExporter) Write(log []byte) (int, error) {
 	logsCopy := make([]byte, len(log))
 	copy(logsCopy, log)
 
-	w.logQueue <- logsCopy
+	go func(log []byte) {
+		w.logQueue <- log
+	}(logsCopy)
 
 	return len(log), nil
 }
