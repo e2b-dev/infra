@@ -72,34 +72,16 @@ console.log('sandbox created')
 
 console.log('running command')
 
-let out = ''
 console.log('starting command')
 // Start the command in the background
-const command = await sandbox.commands.run('echo hello; sleep 3; echo world', {
-    background: true,
-    onStdout: (data) => {
-        out += data
-    },
-})
-
+const command = await sandbox.commands.run('echo hello;echo world')
+let out = command.stdout
 console.log('waiting for command to finish')
 await new Promise(resolve => setTimeout(resolve, 5000))
 
 console.log('killing command')
 // Kill the command
 await command.kill()
-
-console.log('checking output')
-if (!out.includes('hello')) {
-    throw new Error('hello not found')
-}
-
-if (!out.includes('world')) {
-    throw new Error('world not found')
-}
-
-// kill sandbox
-await sandbox.kill()
 
 
 // delete template
@@ -117,3 +99,20 @@ if (output.status.code !== 0) {
 }
 
 console.log('Template deleted successfully')
+
+// kill sandbox
+await sandbox.kill()
+
+
+
+console.log('checking output')
+if (!out.includes('hello')) {
+    throw new Error('hello not found')
+}
+
+if (!out.includes('world')) {
+    throw new Error('world not found')
+}
+
+
+
