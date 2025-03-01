@@ -84,6 +84,10 @@ func (sl *SandboxLogger) Error(msg string, fields ...zap.Field) {
 	sl.logger.Error(msg, fields...)
 }
 
+func (sl *SandboxLogger) Sync() error {
+	return sl.logger.Sync()
+}
+
 type SandboxMetricsFields struct {
 	Timestamp      int64
 	CPUCount       uint32
