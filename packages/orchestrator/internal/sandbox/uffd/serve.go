@@ -70,13 +70,32 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 			return nil
 		}
 
+		uffdFd := pollFds[0]
+		if uffdFd.Revents&unix.POLLIN == 0 {
+			// Uffd is not ready for reading as there is nothing to read on the fd.
+			// https://github.com/firecracker-microvm/firecracker/issues/5056
+			// https://elixir.bootlin.com/linux/v6.8.12/source/fs/userfaultfd.c#L1149
+			// TODO: Check for all the errors
+			// - https://docs.kernel.org/admin-guide/mm/userfaultfd.html
+			// - https://elixir.bootlin.com/linux/v6.8.12/source/fs/userfaultfd.c
+			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
+			// TODO: Also check for data != 0 in the syscall.Read loop
+			continue
+		}
+
 		buf := make([]byte, unsafe.Sizeof(constants.UffdMsg{}))
 
 		var i int
 
 		for {
 			_, err := syscall.Read(uffd, buf)
+			if err == syscall.EINTR {
+				continue
+			}
+
 			if err == nil {
+				i = 0
+
 				break
 			}
 
@@ -97,8 +116,6 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 
 		msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
 		if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
-			stop()
-
 			return ErrUnexpectedEventType
 		}
 
@@ -109,8 +126,6 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 
 		mapping, err := getMapping(uintptr(addr), mappings)
 		if err != nil {
-			stop()
-
 			return fmt.Errorf("failed to map: %w", err)
 		}
 
@@ -126,6 +141,9 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 
 			b, err := src.Slice(offset, pagesize)
 			if err != nil {
+
+				stop()
+
 				return fmt.Errorf("failed to read from source: %w", err)
 			}
 
