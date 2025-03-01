@@ -32,6 +32,7 @@ import (
 	metricsMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/gin_utils/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/gin_utils/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -181,6 +182,26 @@ func main() {
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
+
+	sbxlogger.SetSandboxLoggerExternal(
+		ctx,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      serviceName,
+			IsInternal:       false,
+			IsDevelopment:    true,
+			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		},
+	)
+
+	sbxlogger.SetSandboxLoggerInternal(
+		ctx,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      serviceName,
+			IsInternal:       true,
+			IsDevelopment:    true,
+			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		},
+	)
 
 	logger.Info("Starting API service...", zap.String("commit_sha", commitSHA))
 	if debug != "true" {

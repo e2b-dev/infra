@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"go.uber.org/zap"
 )
@@ -67,6 +68,26 @@ func main() {
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
+
+	sbxlogger.SetSandboxLoggerExternal(
+		ctx,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      ServiceName,
+			IsInternal:       false,
+			IsDevelopment:    true,
+			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		},
+	)
+
+	sbxlogger.SetSandboxLoggerInternal(
+		ctx,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      ServiceName,
+			IsInternal:       true,
+			IsDevelopment:    true,
+			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		},
+	)
 
 	log.Println("Starting orchestrator", "commit", commitSHA)
 

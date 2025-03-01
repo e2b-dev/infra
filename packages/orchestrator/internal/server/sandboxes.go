@@ -46,23 +46,8 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
-	sbxCtx, sbxCtxCancel := context.WithCancel(context.Background())
-	sbxLogger := sbxlogger.NewSandboxLogger(
-		sbxCtx,
-		sbxlogger.SandboxLoggerConfig{
-			ServiceName:      ServiceName,
-			IsInternal:       false,
-			IsDevelopment:    true,
-			SandboxID:        req.Sandbox.SandboxId,
-			TemplateID:       req.Sandbox.TemplateId,
-			TeamID:           req.Sandbox.TeamId,
-			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
-		},
-	)
-
 	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
-		sbxCtx,
 		s.tracer,
 		s.dns,
 		s.networkPool,
@@ -71,19 +56,11 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
-		sbxLogger,
 		req.Sandbox.Snapshot,
 		req.Sandbox.BaseTemplateId,
 	)
-	cleanup.Add(func() error {
-		// Cancel sandbox context to close the logger
-		sbxCtxCancel()
-
-		return nil
-	})
-
 	if err != nil {
-		sbxLogger.Error("failed to create sandbox, cleaning up", zap.Error(err))
+		sbxlogger.E(sbx).Error("failed to create sandbox, cleaning up", zap.Error(err))
 		cleanupErr := cleanup.Run()
 
 		errMsg := fmt.Errorf("failed to cleanup sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
@@ -97,17 +74,17 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	go func() {
 		waitErr := sbx.Wait()
 		if waitErr != nil {
-			sbxLogger.Error("failed to wait for sandbox, cleaning up", zap.Error(waitErr))
+			sbxlogger.I(sbx).Error("failed to wait for sandbox, cleaning up", zap.Error(waitErr))
 		}
 
 		cleanupErr := cleanup.Run()
 		if cleanupErr != nil {
-			sbxLogger.Error("failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
+			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
 		}
 
 		s.sandboxes.Remove(req.Sandbox.SandboxId)
 
-		sbxLogger.Info("Sandbox killed")
+		sbxlogger.E(sbx).Info("Sandbox killed")
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
@@ -205,7 +182,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	err := sbx.Stop()
 	if err != nil {
-		sbx.Logger.Error("error stopping sandbox", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
+		sbxlogger.I(sbx).Error("error stopping sandbox", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 	}
 
 	return &emptypb.Empty{}, nil
@@ -267,7 +244,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		go func() {
 			err := sbx.Stop()
 			if err != nil {
-				sbx.Logger.Error("error stopping sandbox after snapshot", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
+				sbxlogger.I(sbx).Error("error stopping sandbox after snapshot", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 			}
 		}()
 	}()
@@ -318,7 +295,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		default:
 			memfileLocalPath, err := r.CachePath()
 			if err != nil {
-				sbx.Logger.Error("error getting memfile diff path", zap.Error(err))
+				sbxlogger.I(sbx).Error("error getting memfile diff path", zap.Error(err))
 
 				return
 			}
@@ -334,7 +311,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		default:
 			rootfsLocalPath, err := r.CachePath()
 			if err != nil {
-				sbx.Logger.Error("error getting rootfs diff path", zap.Error(err))
+				sbxlogger.I(sbx).Error("error getting rootfs diff path", zap.Error(err))
 
 				return
 			}
@@ -355,7 +332,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			rootfsPath,
 		)
 		if err != nil {
-			sbx.Logger.Error("error uploading sandbox snapshot", zap.Error(err))
+			sbxlogger.I(sbx).Error("error uploading sandbox snapshot", zap.Error(err))
 
 			return
 		}

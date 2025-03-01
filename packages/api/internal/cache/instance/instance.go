@@ -33,7 +33,6 @@ var (
 )
 
 func NewInstanceInfo(
-	Logger *sbxlogger.SandboxLogger,
 	Instance *api.Sandbox,
 	TeamID *uuid.UUID,
 	BuildID *uuid.UUID,
@@ -51,7 +50,6 @@ func NewInstanceInfo(
 	AutoPause bool,
 ) *InstanceInfo {
 	instance := &InstanceInfo{
-		Logger:             Logger,
 		Instance:           Instance,
 		TeamID:             TeamID,
 		BuildID:            BuildID,
@@ -77,7 +75,6 @@ func NewInstanceInfo(
 }
 
 type InstanceInfo struct {
-	Logger             *sbxlogger.SandboxLogger
 	Instance           *api.Sandbox
 	TeamID             *uuid.UUID
 	BuildID            *uuid.UUID
@@ -95,6 +92,14 @@ type InstanceInfo struct {
 	AutoPause          atomic.Bool
 	Pausing            *utils.SetOnce[*node.NodeInfo]
 	mu                 sync.RWMutex
+}
+
+func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
+	return sbxlogger.SandboxMetadata{
+		SandboxID:  i.Instance.SandboxID,
+		TemplateID: i.Instance.TemplateID,
+		TeamID:     i.TeamID.String(),
+	}
 }
 
 func (i *InstanceInfo) IsExpired() bool {

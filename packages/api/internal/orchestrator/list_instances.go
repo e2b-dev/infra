@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -14,7 +13,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	nNode "github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
 const ServiceName = "orchestration-api"
@@ -61,20 +59,9 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 			autoPause = *config.AutoPause
 		}
 
-		logger := sbxlogger.NewSandboxLogger(childCtx, sbxlogger.SandboxLoggerConfig{
-			ServiceName:      ServiceName,
-			IsInternal:       true,
-			IsDevelopment:    true,
-			SandboxID:        config.SandboxId,
-			TemplateID:       config.TemplateId,
-			TeamID:           teamID.String(),
-			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
-		})
-
 		sandboxesInfo = append(
 			sandboxesInfo,
 			instance.NewInstanceInfo(
-				logger,
 				&api.Sandbox{
 					SandboxID:  config.SandboxId,
 					TemplateID: config.TemplateId,

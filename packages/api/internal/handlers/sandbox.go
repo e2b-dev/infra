@@ -25,7 +25,6 @@ func (a *APIStore) startSandbox(
 	alias string,
 	team authcache.AuthTeamInfo,
 	build *models.EnvBuild,
-	sbxLogger *sbxlogger.SandboxLogger,
 	requestHeader *http.Header,
 	isResume bool,
 	clientID *string,
@@ -46,7 +45,6 @@ func (a *APIStore) startSandbox(
 		startTime,
 		endTime,
 		timeout,
-		sbxLogger,
 		isResume,
 		clientID,
 		baseTemplateID,
@@ -82,7 +80,11 @@ func (a *APIStore) startSandbox(
 		attribute.String("instance.id", sandbox.SandboxID),
 	)
 
-	sbxLogger.Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
+	sbxlogger.E(&sbxlogger.SandboxMetadata{
+		SandboxID:  sandbox.SandboxID,
+		TemplateID: *build.EnvID,
+		TeamID:     team.Team.ID.String(),
+	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
 	return &api.Sandbox{
 		ClientID:    sandbox.ClientID,

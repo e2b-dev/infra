@@ -48,10 +48,8 @@ type Sandbox struct {
 	StartedAt time.Time
 	EndAt     time.Time
 
-	Slot           network.Slot
-	Logger         *sbxlogger.SandboxLogger
-	InternalLogger *sbxlogger.SandboxLogger
-	stats          *stats.Handle
+	Slot  network.Slot
+	stats *stats.Handle
 
 	uffdExit chan error
 
@@ -60,10 +58,17 @@ type Sandbox struct {
 	healthcheckCtx *utils.LockableCancelableContext
 }
 
+func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
+	return sbxlogger.SandboxMetadata{
+		SandboxID:  s.Config.SandboxId,
+		TemplateID: s.Config.TemplateId,
+		TeamID:     s.Config.TeamId,
+	}
+}
+
 // Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
 func NewSandbox(
 	ctx context.Context,
-	sbxCtx context.Context,
 	tracer trace.Tracer,
 	dns *dns.DNS,
 	networkPool *network.Pool,
@@ -72,7 +77,6 @@ func NewSandbox(
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
-	sbxLogger *sbxlogger.SandboxLogger,
 	isSnapshot bool,
 	baseTemplateID string,
 ) (*Sandbox, *Cleanup, error) {
@@ -148,7 +152,7 @@ func NewSandbox(
 	go func() {
 		runErr := rootfsOverlay.Start(childCtx)
 		if runErr != nil {
-			sbxLogger.Error("rootfs overlay error", zap.Error(runErr))
+			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
 	}()
 
@@ -216,17 +220,7 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
-	internalLogger := sbxlogger.NewSandboxLogger(sbxCtx, sbxlogger.SandboxLoggerConfig{
-		ServiceName:   "sandbox",
-		IsInternal:    true,
-		IsDevelopment: true,
-		SandboxID:     config.SandboxId,
-		TemplateID:    config.TemplateId,
-		TeamID:        config.TeamId,
-	})
-	cleanup.Add(internalLogger.Sync)
-
-	fcStartErr := fcHandle.Start(uffdStartCtx, tracer, internalLogger)
+	fcStartErr := fcHandle.Start(uffdStartCtx, tracer)
 	if fcStartErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
@@ -246,8 +240,6 @@ func NewSandbox(
 		StartedAt:      startedAt,
 		EndAt:          endAt,
 		rootfs:         rootfsOverlay,
-		Logger:         sbxLogger,
-		InternalLogger: internalLogger,
 		cleanup:        cleanup,
 		healthcheckCtx: healthcheckCtx,
 	}

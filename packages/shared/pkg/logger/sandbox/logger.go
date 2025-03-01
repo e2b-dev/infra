@@ -10,29 +10,100 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-type SandboxLogger struct {
-	logger                *zap.Logger
-	healthCheckWasFailing atomic.Bool
+var (
+	sandboxLoggerInternal LoggerBuilder
+	sandboxLoggerExternal LoggerBuilder
+)
+
+type LoggerBuilder interface {
+	WithMetadata(m LoggerMetadata) Logger
+}
+
+type Logger interface {
+	Debug(msg string, fields ...zap.Field)
+	Info(msg string, fields ...zap.Field)
+	Warn(msg string, fields ...zap.Field)
+	Error(msg string, fields ...zap.Field)
+
+	Sync() error
+
+	Metrics(metrics SandboxMetricsFields)
+	Healthcheck(ok bool, alwaysReport bool)
+}
+
+type LoggerMetadata interface {
+	LoggerMetadata() SandboxMetadata
 }
 
 type SandboxLoggerConfig struct {
 	ServiceName      string
 	IsInternal       bool
 	IsDevelopment    bool
-	SandboxID        string
-	TemplateID       string
-	TeamID           string
 	CollectorAddress string
 }
 
-func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxLogger {
+type SandboxMetadata struct {
+	SandboxID  string
+	TemplateID string
+	TeamID     string
+}
+
+func (sm SandboxMetadata) LoggerMetadata() SandboxMetadata {
+	return sm
+}
+
+func (sm SandboxMetadata) Fields() []zap.Field {
+	return []zap.Field{
+		zap.String("sandboxID", sm.SandboxID),
+		zap.String("templateID", sm.TemplateID),
+		zap.String("teamID", sm.TeamID),
+
+		// Fields for Vector
+		zap.String("instanceID", sm.SandboxID),
+		zap.String("envID", sm.TemplateID),
+	}
+}
+
+func SetSandboxLoggerInternal(ctx context.Context, config SandboxLoggerConfig) {
+	sandboxLoggerInternal = newSandboxLogger(ctx, config)
+}
+
+func SetSandboxLoggerExternal(ctx context.Context, config SandboxLoggerConfig) {
+	sandboxLoggerExternal = newSandboxLogger(ctx, config)
+}
+
+func I(m LoggerMetadata) Logger {
+	return sandboxLoggerInternal.WithMetadata(m)
+}
+
+func E(m LoggerMetadata) Logger {
+	return sandboxLoggerExternal.WithMetadata(m)
+}
+
+type sandboxLogger struct {
+	logger                *zap.Logger
+	healthCheckWasFailing atomic.Bool
+}
+
+type LoggerBuilderBase struct {
+	logger *zap.Logger
+}
+
+func (sl *LoggerBuilderBase) WithMetadata(m LoggerMetadata) Logger {
+	return &sandboxLogger{
+		logger:                sl.logger.With(m.LoggerMetadata().Fields()...),
+		healthCheckWasFailing: atomic.Bool{},
+	}
+}
+
+func newSandboxLogger(ctx context.Context, config SandboxLoggerConfig) LoggerBuilder {
 	level := zap.NewAtomicLevelAt(zap.DebugLevel)
 
 	vectorCore := zapcore.NewNopCore()
 	if !config.IsInternal && config.CollectorAddress != "" {
 		// Add Vector exporter to the core
 		vectorEncoder := zapcore.NewJSONEncoder(logger.GetEncoderConfig(zapcore.DefaultLineEnding))
-		httpWriter := logger.NewHTTPWriter(ctx, config.CollectorAddress)
+		httpWriter := logger.NewBufferedHTTPWriter(ctx, config.CollectorAddress)
 		vectorCore = zapcore.NewCore(
 			vectorEncoder,
 			httpWriter,
@@ -47,14 +118,6 @@ func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxL
 		IsDebug:       true,
 		InitialFields: []zap.Field{
 			zap.String("logger", config.ServiceName),
-
-			zap.String("sandboxID", config.SandboxID),
-			zap.String("templateID", config.TemplateID),
-			zap.String("teamID", config.TeamID),
-
-			// Fields for Vector
-			zap.String("instanceID", config.SandboxID),
-			zap.String("envID", config.TemplateID),
 		},
 		Cores: []zapcore.Core{vectorCore},
 	})
@@ -62,29 +125,28 @@ func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxL
 		panic(err)
 	}
 
-	return &SandboxLogger{
-		logger:                lg,
-		healthCheckWasFailing: atomic.Bool{},
+	return &LoggerBuilderBase{
+		logger: lg,
 	}
 }
 
-func (sl *SandboxLogger) Debug(msg string, fields ...zap.Field) {
+func (sl *sandboxLogger) Debug(msg string, fields ...zap.Field) {
 	sl.logger.Debug(msg, fields...)
 }
 
-func (sl *SandboxLogger) Info(msg string, fields ...zap.Field) {
+func (sl *sandboxLogger) Info(msg string, fields ...zap.Field) {
 	sl.logger.Info(msg, fields...)
 }
 
-func (sl *SandboxLogger) Warn(msg string, fields ...zap.Field) {
+func (sl *sandboxLogger) Warn(msg string, fields ...zap.Field) {
 	sl.logger.Warn(msg, fields...)
 }
 
-func (sl *SandboxLogger) Error(msg string, fields ...zap.Field) {
+func (sl *sandboxLogger) Error(msg string, fields ...zap.Field) {
 	sl.logger.Error(msg, fields...)
 }
 
-func (sl *SandboxLogger) Sync() error {
+func (sl *sandboxLogger) Sync() error {
 	return sl.logger.Sync()
 }
 
@@ -96,7 +158,7 @@ type SandboxMetricsFields struct {
 	MemUsedMiB     uint64
 }
 
-func (sl *SandboxLogger) Metrics(metrics SandboxMetricsFields) {
+func (sl *sandboxLogger) Metrics(metrics SandboxMetricsFields) {
 	sl.logger.Info(
 		"",
 		zap.String("category", "metrics"),
@@ -109,7 +171,7 @@ func (sl *SandboxLogger) Metrics(metrics SandboxMetricsFields) {
 	return
 }
 
-func (sl *SandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
+func (sl *sandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
 	if !ok && !sl.healthCheckWasFailing.Load() {
 		sl.healthCheckWasFailing.Store(true)
 

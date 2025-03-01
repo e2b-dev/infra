@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -82,20 +81,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	c.Set("instanceID", sandboxID)
 
-	sbxLogger := sbxlogger.NewSandboxLogger(
-		ctx,
-		sbxlogger.SandboxLoggerConfig{
-			ServiceName:      ServiceName,
-			IsInternal:       false,
-			IsDevelopment:    true,
-			SandboxID:        sandboxID,
-			TemplateID:       env.TemplateID,
-			TeamID:           teamInfo.Team.ID.String(),
-			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
-		},
-	)
-
-	sbxLogger.Debug("Started creating sandbox")
+	sbxlogger.E(&sbxlogger.SandboxMetadata{
+		SandboxID:  sandboxID,
+		TemplateID: env.TemplateID,
+		TeamID:     teamInfo.Team.ID.String(),
+	}).Debug("Started creating sandbox")
 
 	var alias string
 	if env.Aliases != nil && len(*env.Aliases) > 0 {
@@ -145,7 +135,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		alias,
 		teamInfo,
 		build,
-		sbxLogger,
 		&c.Request.Header,
 		false,
 		nil,

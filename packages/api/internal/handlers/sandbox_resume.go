@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -102,20 +101,11 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	sbxLogger := sbxlogger.NewSandboxLogger(
-		ctx,
-		sbxlogger.SandboxLoggerConfig{
-			ServiceName:      ServiceName,
-			IsInternal:       false,
-			IsDevelopment:    true,
-			SandboxID:        sandboxID,
-			TemplateID:       *build.EnvID,
-			TeamID:           teamInfo.Team.ID.String(),
-			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
-		},
-	)
-
-	sbxLogger.Debug("Started resuming sandbox")
+	sbxlogger.E(&sbxlogger.SandboxMetadata{
+		SandboxID:  sandboxID,
+		TemplateID: *build.EnvID,
+		TeamID:     teamInfo.Team.ID.String(),
+	}).Debug("Started resuming sandbox")
 
 	sbx, err := a.startSandbox(
 		ctx,
@@ -126,7 +116,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		"",
 		teamInfo,
 		build,
-		sbxLogger,
 		&c.Request.Header,
 		true,
 		&clientID,

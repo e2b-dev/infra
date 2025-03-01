@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"golang.org/x/mod/semver"
 )
@@ -50,7 +51,7 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 	var err error
 	defer func() {
-		s.Logger.Healthcheck(err == nil, alwaysReport)
+		sbxlogger.E(s).Healthcheck(err == nil, alwaysReport)
 	}()
 
 	address := fmt.Sprintf("http://%s:%d/health", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
