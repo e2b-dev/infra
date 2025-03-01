@@ -3,11 +3,13 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -150,4 +152,26 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	c.Set("nodeID", sandbox.ClientID)
 
 	c.JSON(http.StatusCreated, &sandbox)
+}
+
+func add(x, y int) int {
+
+	sbxlogger.I(&sbxlogger.SandboxMetadata{
+		SandboxID:  "test",
+		TemplateID: "test",
+		TeamID:     "test",
+	}).Info("adding %d and %d",
+		zapcore.Field{
+			Key:    "x",
+			Type:   zapcore.Int64Type,
+			String: strconv.Itoa(x),
+		},
+		zapcore.Field{
+			Key:    "y",
+			Type:   zapcore.Int64Type,
+			String: strconv.Itoa(y),
+		},
+	)
+
+	return x + y
 }
