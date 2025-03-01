@@ -21,6 +21,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -37,7 +39,17 @@ var commitSHA string
 var client = new(dns.Client)
 
 func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Request) {
+	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
+	if err != nil {
+		logger.Error("failed to create active connections counter", zap.Error(err))
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		if activeConnections != nil {
+			activeConnections.Add(r.Context(), 1)
+			defer func() {
+				activeConnections.Add(r.Context(), -1)
+			}()
+		}
 		logger.Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
 		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.dev)
@@ -152,6 +164,8 @@ func main() {
 	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusOK)
 	})
+	cleanupTelemetry := telemetry.InitOTLPExporter(context.TODO(), "client-proxy", commitSHA)
+	defer cleanupTelemetry(ctx)
 
 	wg.Add(1)
 	go func() {
@@ -212,6 +226,13 @@ func main() {
 
 		logger.Info("waiting 15 seconds before shutting down http service")
 		time.Sleep(15 * time.Second)
+
+		logger.Info("shutting down telemetry")
+
+		err := cleanupTelemetry(ctx)
+		if err != nil {
+			logger.Error("error shutting down telemetry", zap.Error(err))
+		}
 
 		logger.Info("shutting down http service", zap.Int("port", port))
 
