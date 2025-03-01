@@ -91,6 +91,15 @@ if !exists(.envID) {
 if !exists(.category) {
   .category = "default"
 }
+if !exists(.teamID) {
+  .teamID = "unknown"
+}
+if !exists(.sandboxID) {
+  .sandboxID = "unknown"
+}
+if !exists(.envID) {
+  .envID = "unknown"
+}
 """
 
 [transforms.internal_routing]
