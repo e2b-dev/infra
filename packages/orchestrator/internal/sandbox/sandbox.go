@@ -63,6 +63,7 @@ type Sandbox struct {
 // Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
 func NewSandbox(
 	ctx context.Context,
+	sbxCtx context.Context,
 	tracer trace.Tracer,
 	dns *dns.DNS,
 	networkPool *network.Pool,
@@ -215,14 +216,7 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
-	sbxContext, cancel := context.WithCancel(context.Background())
-	cleanup.Add(func() error {
-		cancel()
-
-		return nil
-	})
-
-	internalLogger := sbxlogger.NewSandboxLogger(sbxContext, sbxlogger.SandboxLoggerConfig{
+	internalLogger := sbxlogger.NewSandboxLogger(sbxCtx, sbxlogger.SandboxLoggerConfig{
 		ServiceName:   "sandbox",
 		IsInternal:    true,
 		IsDevelopment: true,

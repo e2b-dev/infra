@@ -46,8 +46,9 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
+	sbxCtx, sbxCtxCancel := context.WithCancel(context.Background())
 	sbxLogger := sbxlogger.NewSandboxLogger(
-		childCtx,
+		sbxCtx,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      ServiceName,
 			IsInternal:       false,
@@ -61,6 +62,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 
 	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
+		sbxCtx,
 		s.tracer,
 		s.dns,
 		s.networkPool,
@@ -73,6 +75,13 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.Sandbox.Snapshot,
 		req.Sandbox.BaseTemplateId,
 	)
+	cleanup.Add(func() error {
+		// Cancel sandbox context to close the logger
+		sbxCtxCancel()
+
+		return nil
+	})
+
 	if err != nil {
 		sbxLogger.Error("failed to create sandbox, cleaning up", zap.Error(err))
 		cleanupErr := cleanup.Run()

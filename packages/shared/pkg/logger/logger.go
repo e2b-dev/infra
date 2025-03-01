@@ -34,7 +34,7 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 		DisableStacktrace: false,
 		Sampling:          nil,
 		Encoding:          "json",
-		EncoderConfig:     GetEncoderConfig(),
+		EncoderConfig:     GetEncoderConfig(zapcore.DefaultLineEnding),
 		OutputPaths: []string{
 			"stdout",
 		},
@@ -74,7 +74,7 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 	return logger, nil
 }
 
-func GetEncoderConfig() zapcore.EncoderConfig {
+func GetEncoderConfig(lineEnding string) zapcore.EncoderConfig {
 	return zapcore.EncoderConfig{
 		TimeKey:       "timestamp",
 		MessageKey:    "message",
@@ -83,5 +83,6 @@ func GetEncoderConfig() zapcore.EncoderConfig {
 		NameKey:       "logger",
 		StacktraceKey: "stacktrace",
 		EncodeTime:    zapcore.RFC3339TimeEncoder,
+		LineEnding:    lineEnding,
 	}
 }
