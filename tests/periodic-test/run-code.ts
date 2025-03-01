@@ -24,7 +24,7 @@ try {
     // Output result
     console.log(execution.text);
 } catch (error) {
-    console.error('error running code', error)
+    throw new Error('error running code', error)
 } finally {
     console.log('killing sandbox')
     await sandbox?.kill()
