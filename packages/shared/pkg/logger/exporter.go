@@ -5,17 +5,18 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"sync"
 	"time"
 
 	"go.uber.org/zap/zapcore"
 )
 
-const flushTimeout = 30 * time.Second
-
 type HTTPWriter struct {
 	ctx        context.Context
 	url        string
 	httpClient *http.Client
+	wg         sync.WaitGroup
 }
 
 func NewHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSyncer {
@@ -23,8 +24,9 @@ func NewHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSyncer {
 		ctx: ctx,
 		url: endpoint,
 		httpClient: &http.Client{
-			Timeout: 5 * time.Second,
+			Timeout: 10 * time.Second,
 		},
+		wg: sync.WaitGroup{},
 	}
 }
 
@@ -34,6 +36,7 @@ func NewBufferedHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSy
 		Size:          256 * 1024, // 256 kB
 		FlushInterval: 5 * time.Second,
 	}
+
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -48,26 +51,23 @@ func NewBufferedHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSy
 
 // Write sends the logs to the HTTP endpoint.
 func (h *HTTPWriter) Write(p []byte) (n int, err error) {
-	ctx, cancel := context.WithTimeout(h.ctx, flushTimeout)
-	defer cancel()
-
-	// Create HTTP request
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, h.url, bytes.NewBuffer(p))
-	if err != nil || request == nil {
-		return 0, fmt.Errorf("error creating HTTP request: %w", err)
+	start := 0
+	for i, b := range p {
+		if b == '\n' {
+			if start < i { // Ignore empty lines
+				if err := h.sendLogLine(p[start:i]); err != nil {
+					return start, err
+				}
+			}
+			start = i + 1 // Move start to the next line
+		}
 	}
 
-	request.Header.Set("Content-Type", "application/json")
-
-	// Send HTTP request
-	response, err := h.httpClient.Do(request)
-	if err != nil {
-		return 0, fmt.Errorf("error sending logs: %w", err)
-	}
-
-	err = response.Body.Close()
-	if err != nil {
-		return 0, fmt.Errorf("error closing response body: %w", err)
+	// Handle last line if there’s no trailing newline
+	if start < len(p) {
+		if err := h.sendLogLine(p[start:]); err != nil {
+			return start, err
+		}
 	}
 
 	return len(p), nil
@@ -75,5 +75,32 @@ func (h *HTTPWriter) Write(p []byte) (n int, err error) {
 
 // Sync is required by zapcore.WriteSyncer.
 func (h *HTTPWriter) Sync() error {
+	h.wg.Wait()
+	return nil
+}
+
+// sendLog handles sending the log line as an HTTP request
+func (h *HTTPWriter) sendLogLine(line []byte) error {
+	h.wg.Add(1)
+	defer h.wg.Done()
+
+	fmt.Fprintf(os.Stderr, "Sending log line: %s\n", line)
+
+	request, err := http.NewRequestWithContext(h.ctx, http.MethodPost, h.url, bytes.NewReader(line))
+	if err != nil {
+		return fmt.Errorf("error sending logs: %w", err)
+	}
+
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := h.httpClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("error sending logs: %w", err)
+	}
+
+	err = response.Body.Close()
+	if err != nil {
+		return fmt.Errorf("error closing response body: %w", err)
+	}
 	return nil
 }
