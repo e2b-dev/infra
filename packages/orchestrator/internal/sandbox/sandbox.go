@@ -24,7 +24,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -49,9 +48,10 @@ type Sandbox struct {
 	StartedAt time.Time
 	EndAt     time.Time
 
-	Slot   network.Slot
-	Logger *sbxlogger.SandboxLogger
-	stats  *stats.Handle
+	Slot           network.Slot
+	Logger         *sbxlogger.SandboxLogger
+	InternalLogger *sbxlogger.SandboxLogger
+	stats          *stats.Handle
 
 	uffdExit chan error
 
@@ -215,16 +215,23 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
-	internalLogger := sbxlogger.NewSandboxLogger(childCtx, sbxlogger.SandboxLoggerConfig{
-		ServiceName:      server.ServiceName,
-		IsInternal:       true,
-		IsDevelopment:    true,
-		SandboxID:        config.SandboxId,
-		TemplateID:       config.TemplateId,
-		TeamID:           config.TeamId,
-		CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+	sbxContext, cancel := context.WithCancel(context.Background())
+	cleanup.Add(func() error {
+		cancel()
+
+		return nil
 	})
-	defer internalLogger.Sync()
+
+	internalLogger := sbxlogger.NewSandboxLogger(sbxContext, sbxlogger.SandboxLoggerConfig{
+		ServiceName:   "sandbox",
+		IsInternal:    true,
+		IsDevelopment: true,
+		SandboxID:     config.SandboxId,
+		TemplateID:    config.TemplateId,
+		TeamID:        config.TeamId,
+	})
+	cleanup.Add(internalLogger.Sync)
+
 	fcStartErr := fcHandle.Start(uffdStartCtx, tracer, internalLogger)
 	if fcStartErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to start FC: %w", fcStartErr)
@@ -246,6 +253,7 @@ func NewSandbox(
 		EndAt:          endAt,
 		rootfs:         rootfsOverlay,
 		Logger:         sbxLogger,
+		InternalLogger: internalLogger,
 		cleanup:        cleanup,
 		healthcheckCtx: healthcheckCtx,
 	}
