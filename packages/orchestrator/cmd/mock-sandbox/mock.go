@@ -111,6 +111,7 @@ func mockSandbox(
 
 	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
+		ctx,
 		tracer,
 		dns,
 		networkPool,

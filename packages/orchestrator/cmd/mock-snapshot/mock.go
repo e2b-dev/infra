@@ -122,6 +122,7 @@ func mockSnapshot(
 
 	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
+		ctx,
 		tracer,
 		dns,
 		networkPool,
@@ -223,6 +224,7 @@ func mockSnapshot(
 
 	sbx, cleanup2, err := sandbox.NewSandbox(
 		childCtx,
+		ctx,
 		tracer,
 		dns,
 		networkPool,
