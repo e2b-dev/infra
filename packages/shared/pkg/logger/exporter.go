@@ -49,43 +49,50 @@ func NewBufferedHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSy
 	return httpWriter
 }
 
-// Write sends the logs to the HTTP endpoint.
-func (h *HTTPWriter) Write(p []byte) (n int, err error) {
-	start := 0
-	for i, b := range p {
-		if b == '\n' {
-			if start < i { // Ignore empty lines
-				if err := h.sendLogLine(p[start:i]); err != nil {
-					return start, err
-				}
-			}
-			start = i + 1 // Move start to the next line
-		}
-	}
+func (h *HTTPWriter) Write(source []byte) (n int, err error) {
+	h.wg.Add(1)
 
-	// Handle last line if there’s no trailing newline
-	if start < len(p) {
-		if err := h.sendLogLine(p[start:]); err != nil {
-			return start, err
+	p := make([]byte, len(source))
+	copy(p, source)
+
+	// Run in a goroutine to avoid blocking the main thread
+	go func() {
+		defer h.wg.Done()
+
+		start := 0
+		for i, b := range p {
+			if b == '\n' {
+				if start < i { // Ignore empty lines
+					line := p[start:i]
+					if err := h.sendLogLine(line); err != nil {
+						fmt.Fprintf(os.Stderr, "Failed to send a log line: %s\n", line)
+						return
+					}
+				}
+				start = i + 1 // Move start to the next line
+			}
 		}
-	}
+
+		// Handle the last line if there’s no trailing newline
+		if start < len(p) {
+			line := p[start:]
+			if err := h.sendLogLine(line); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to send a log line: %s\n", line)
+				return
+			}
+		}
+	}()
 
 	return len(p), nil
 }
 
-// Sync is required by zapcore.WriteSyncer.
 func (h *HTTPWriter) Sync() error {
 	h.wg.Wait()
 	return nil
 }
 
-// sendLog handles sending the log line as an HTTP request
+// sendLogLine handles sending ONE log line as an HTTP request
 func (h *HTTPWriter) sendLogLine(line []byte) error {
-	h.wg.Add(1)
-	defer h.wg.Done()
-
-	fmt.Fprintf(os.Stderr, "Sending log line: %s\n", line)
-
 	request, err := http.NewRequestWithContext(h.ctx, http.MethodPost, h.url, bytes.NewReader(line))
 	if err != nil {
 		return fmt.Errorf("error sending logs: %w", err)
