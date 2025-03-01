@@ -2,17 +2,24 @@ package sbxlogger
 
 import (
 	"context"
-	"sync/atomic"
-
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var (
 	sandboxLoggerInternal LoggerBuilder
 	sandboxLoggerExternal LoggerBuilder
+)
+
+type HealthCheckAction int
+
+const (
+	Success HealthCheckAction = iota
+	Fail
+	ReportSuccess
+	ReportFail
 )
 
 type LoggerBuilder interface {
@@ -25,10 +32,8 @@ type Logger interface {
 	Warn(msg string, fields ...zap.Field)
 	Error(msg string, fields ...zap.Field)
 
-	Sync() error
-
 	Metrics(metrics SandboxMetricsFields)
-	Healthcheck(ok bool, alwaysReport bool)
+	Healthcheck(action HealthCheckAction)
 }
 
 type LoggerMetadata interface {
@@ -81,34 +86,38 @@ func E(m LoggerMetadata) Logger {
 }
 
 type sandboxLogger struct {
-	logger                *zap.Logger
-	healthCheckWasFailing atomic.Bool
-}
-
-type LoggerBuilderBase struct {
 	logger *zap.Logger
 }
 
-func (sl *LoggerBuilderBase) WithMetadata(m LoggerMetadata) Logger {
+type loggerBuilderBase struct {
+	logger *zap.Logger
+}
+
+func (sl *loggerBuilderBase) WithMetadata(m LoggerMetadata) Logger {
 	return &sandboxLogger{
-		logger:                sl.logger.With(m.LoggerMetadata().Fields()...),
-		healthCheckWasFailing: atomic.Bool{},
+		logger: sl.logger.With(m.LoggerMetadata().Fields()...),
 	}
+}
+
+func (sl *loggerBuilderBase) Sync() error {
+	return sl.logger.Sync()
 }
 
 func newSandboxLogger(ctx context.Context, config SandboxLoggerConfig) LoggerBuilder {
 	level := zap.NewAtomicLevelAt(zap.DebugLevel)
 
-	vectorCore := zapcore.NewNopCore()
+	core := zapcore.NewNopCore()
 	if !config.IsInternal && config.CollectorAddress != "" {
 		// Add Vector exporter to the core
 		vectorEncoder := zapcore.NewJSONEncoder(logger.GetEncoderConfig(zapcore.DefaultLineEnding))
 		httpWriter := logger.NewBufferedHTTPWriter(ctx, config.CollectorAddress)
-		vectorCore = zapcore.NewCore(
+		core = zapcore.NewCore(
 			vectorEncoder,
 			httpWriter,
 			level,
 		)
+	} else {
+		core = logger.GetOTELCore(config.ServiceName)
 	}
 
 	lg, err := logger.NewLogger(ctx, logger.LoggerConfig{
@@ -119,13 +128,13 @@ func newSandboxLogger(ctx context.Context, config SandboxLoggerConfig) LoggerBui
 		InitialFields: []zap.Field{
 			zap.String("logger", config.ServiceName),
 		},
-		Cores: []zapcore.Core{vectorCore},
+		Cores: []zapcore.Core{core},
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	return &LoggerBuilderBase{
+	return &loggerBuilderBase{
 		logger: lg,
 	}
 }
@@ -144,10 +153,6 @@ func (sl *sandboxLogger) Warn(msg string, fields ...zap.Field) {
 
 func (sl *sandboxLogger) Error(msg string, fields ...zap.Field) {
 	sl.logger.Error(msg, fields...)
-}
-
-func (sl *sandboxLogger) Sync() error {
-	return sl.logger.Sync()
 }
 
 type SandboxMetricsFields struct {
@@ -171,32 +176,20 @@ func (sl *sandboxLogger) Metrics(metrics SandboxMetricsFields) {
 	return
 }
 
-func (sl *sandboxLogger) Healthcheck(ok bool, alwaysReport bool) {
-	if !ok && !sl.healthCheckWasFailing.Load() {
-		sl.healthCheckWasFailing.Store(true)
-
-		sl.logger.Error("Sandbox healthcheck started failing",
-			zap.Bool("healthcheck", ok))
-
-		return
-	}
-	if ok && sl.healthCheckWasFailing.Load() {
-		sl.healthCheckWasFailing.Store(false)
-
+func (sl *sandboxLogger) Healthcheck(action HealthCheckAction) {
+	switch {
+	case action == Success:
 		sl.logger.Info("Sandbox healthcheck recovered",
-			zap.Bool("healthcheck", ok))
-
-		return
-	}
-
-	if alwaysReport {
-		if ok {
-			sl.logger.Info(
-				"Control sandbox healthcheck was successful",
-				zap.Bool("healthcheck", ok))
-		} else {
-			sl.logger.Error("Control sandbox healthcheck was unsuccessful",
-				zap.Bool("healthcheck", ok))
-		}
+			zap.Bool("healthcheck", true))
+	case action == Fail:
+		sl.logger.Error("Sandbox healthcheck started failing",
+			zap.Bool("healthcheck", false))
+	case action == ReportSuccess:
+		sl.logger.Info(
+			"Control sandbox healthcheck was successful",
+			zap.Bool("healthcheck", true))
+	case action == ReportFail:
+		sl.logger.Error("Control sandbox healthcheck was unsuccessful",
+			zap.Bool("healthcheck", false))
 	}
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/gin-gonic/gin"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -179,6 +180,7 @@ func main() {
 		IsInternal:    true,
 		IsDevelopment: env.IsLocal(),
 		IsDebug:       env.IsDebug(),
+		Cores:         []zapcore.Core{logger.GetOTELCore(serviceName)},
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)

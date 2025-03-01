@@ -44,14 +44,6 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 	}
 
 	cores := make([]zapcore.Core, 0)
-
-	if loggerConfig.IsInternal {
-		provider := global.GetLoggerProvider()
-		cores = append(cores,
-			otelzap.NewCore(loggerConfig.ServiceName, otelzap.WithLoggerProvider(provider)),
-		)
-	}
-
 	cores = append(cores, loggerConfig.Cores...)
 
 	logger, err := config.Build(
@@ -85,4 +77,10 @@ func GetEncoderConfig(lineEnding string) zapcore.EncoderConfig {
 		EncodeTime:    zapcore.ISO8601TimeEncoder,
 		LineEnding:    lineEnding,
 	}
+}
+
+func GetOTELCore(serviceName string) zapcore.Core {
+	provider := global.GetLoggerProvider()
+
+	return otelzap.NewCore(serviceName, otelzap.WithLoggerProvider(provider))
 }

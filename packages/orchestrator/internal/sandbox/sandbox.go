@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -56,6 +57,7 @@ type Sandbox struct {
 	template template.Template
 
 	healthcheckCtx *utils.LockableCancelableContext
+	healthy        atomic.Bool
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -242,6 +244,7 @@ func NewSandbox(
 		rootfs:         rootfsOverlay,
 		cleanup:        cleanup,
 		healthcheckCtx: healthcheckCtx,
+		healthy:        atomic.Bool{},
 	}
 
 	cleanup.AddPriority(func() error {

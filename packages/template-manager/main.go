@@ -8,7 +8,8 @@ import (
 	"net"
 
 	"go.uber.org/zap"
-	
+	"go.uber.org/zap/zapcore"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -63,6 +64,7 @@ func main() {
 		IsInternal:    true,
 		IsDevelopment: env.IsLocal(),
 		IsDebug:       true,
+		Cores:         []zapcore.Core{logger.GetOTELCore(constants.ServiceName)},
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)

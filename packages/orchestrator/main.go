@@ -12,12 +12,14 @@ import (
 	"sync/atomic"
 	"syscall"
 
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"go.uber.org/zap"
 )
 
 const (
@@ -65,6 +67,7 @@ func main() {
 		IsInternal:    true,
 		IsDevelopment: env.IsLocal(),
 		IsDebug:       env.IsDebug(),
+		Cores:         []zapcore.Core{logger.GetOTELCore(ServiceName)},
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)

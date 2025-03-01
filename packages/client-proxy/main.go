@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"math/rand"
 	"net/http"
 	"net/http/httputil"
@@ -19,9 +18,11 @@ import (
 
 	"github.com/miekg/dns"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -153,6 +154,7 @@ func main() {
 		IsInternal:    true,
 		IsDevelopment: env.IsLocal(),
 		IsDebug:       env.IsDebug(),
+		Cores:         []zapcore.Core{logger.GetOTELCore(ServiceName)},
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
