@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/loopholelabs/userfaultfd-go/pkg/constants"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
@@ -54,6 +55,8 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 			-1,
 		); err != nil {
 			if err == unix.EINTR {
+				zap.L().Debug("uffd: interrupted polling, going back to polling", zap.String("sandbox_id", sandboxId))
+
 				continue
 			}
 
@@ -80,6 +83,8 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 			// - https://elixir.bootlin.com/linux/v6.8.12/source/fs/userfaultfd.c
 			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
 			// TODO: Also check for data != 0 in the syscall.Read loop
+			zap.L().Debug("uffd: no data in fd, going back to polling", zap.String("sandbox_id", sandboxId))
+
 			continue
 		}
 
@@ -87,16 +92,26 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 
 		var i int
 
+	readLoop:
 		for {
-			_, err := syscall.Read(uffd, buf)
+			n, err := syscall.Read(uffd, buf)
 			if err == syscall.EINTR {
+				zap.L().Debug("uffd: interrupted read, going back to polling", zap.String("sandbox_id", sandboxId))
+
+				i = 0
+
 				continue
 			}
 
 			if err == nil {
-				i = 0
-
 				break
+			}
+
+			if n == 0 {
+				// If there is no data, go back to polling the fd.
+				zap.L().Debug("uffd: no data read from fd, going back to polling", zap.String("sandbox_id", sandboxId))
+
+				break readLoop
 			}
 
 			if err == syscall.EAGAIN {
