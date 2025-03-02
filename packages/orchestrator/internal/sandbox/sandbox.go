@@ -244,7 +244,7 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
-	fcHandle = fcHandle.WithLogger(externalLogger)
+	fcHandle = fcHandle.WithLogger(internalLogger)
 
 	fcStartErr := fcHandle.Start(uffdStartCtx, tracer)
 	if fcStartErr != nil {
