@@ -185,7 +185,7 @@ func main() {
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
 
-	sbxlogger.SetSandboxLoggerExternal(
+	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
@@ -194,8 +194,10 @@ func main() {
 			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
 		},
 	)
+	defer sbxLoggerExternal.Sync()
+	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
 
-	sbxlogger.SetSandboxLoggerInternal(
+	sbxLoggerInternal := sbxlogger.NewLogger(
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
@@ -204,6 +206,8 @@ func main() {
 			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
 		},
 	)
+	defer sbxLoggerInternal.Sync()
+	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
 	logger.Info("Starting API service...", zap.String("commit_sha", commitSHA))
 	if debug != "true" {

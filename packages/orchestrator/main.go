@@ -72,7 +72,7 @@ func main() {
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
 
-	sbxlogger.SetSandboxLoggerExternal(
+	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      ServiceName,
@@ -81,8 +81,10 @@ func main() {
 			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
 		},
 	)
+	defer sbxLoggerExternal.Sync()
+	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
 
-	sbxlogger.SetSandboxLoggerInternal(
+	sbxLoggerInternal := sbxlogger.NewLogger(
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      ServiceName,
@@ -91,6 +93,8 @@ func main() {
 			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
 		},
 	)
+	defer sbxLoggerInternal.Sync()
+	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
 	log.Println("Starting orchestrator", "commit", commitSHA)
 
