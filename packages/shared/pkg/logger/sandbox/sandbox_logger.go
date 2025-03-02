@@ -51,3 +51,7 @@ func (sl *SandboxLogger) Healthcheck(action HealthCheckAction) {
 			zap.Bool("healthcheck", false))
 	}
 }
+
+func (l *SandboxLogger) WithMetadata(m LoggerMetadata) *SandboxLogger {
+	return &SandboxLogger{l.With(m.LoggerMetadata().Fields()...)}
+}

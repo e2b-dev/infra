@@ -101,11 +101,13 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	sbxlogger.E(&sbxlogger.SandboxMetadata{
-		SandboxID:  sandboxID,
-		TemplateID: *build.EnvID,
-		TeamID:     teamInfo.Team.ID.String(),
-	}).Debug("Started resuming sandbox")
+	a.GetExternalSandboxLogger().WithMetadata(
+		&sbxlogger.SandboxMetadata{
+			SandboxID:  sandboxID,
+			TemplateID: *build.EnvID,
+			TeamID:     teamInfo.Team.ID.String(),
+		},
+	).Debug("Started resuming sandbox")
 
 	sbx, err := a.startSandbox(
 		ctx,

@@ -58,8 +58,28 @@ type Sandbox struct {
 
 	healthcheckCtx *utils.LockableCancelableContext
 	healthy        atomic.Bool
+
+	externalLogger *sbxlogger.SandboxLogger
+	internalLogger *sbxlogger.SandboxLogger
 }
 
+func (s *Sandbox) WithExternalLogger(logger *sbxlogger.SandboxLogger) *Sandbox {
+	s.externalLogger = logger.WithMetadata(s.LoggerMetadata())
+	return s
+}
+
+func (s *Sandbox) WithInternalLogger(logger *sbxlogger.SandboxLogger) *Sandbox {
+	s.internalLogger = logger.WithMetadata(s.LoggerMetadata())
+	return s
+}
+
+func (s *Sandbox) GetExternalLogger() *sbxlogger.SandboxLogger {
+	return s.externalLogger
+}
+
+func (s *Sandbox) GetInternalLogger() *sbxlogger.SandboxLogger {
+	return s.internalLogger
+}
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
 		SandboxID:  s.Config.SandboxId,
@@ -81,6 +101,8 @@ func NewSandbox(
 	endAt time.Time,
 	isSnapshot bool,
 	baseTemplateID string,
+	externalLogger *sbxlogger.SandboxLogger,
+	internalLogger *sbxlogger.SandboxLogger,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -222,6 +244,8 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
+	fcHandle = fcHandle.WithLogger(externalLogger)
+
 	fcStartErr := fcHandle.Start(uffdStartCtx, tracer)
 	if fcStartErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to start FC: %w", fcStartErr)
@@ -300,7 +324,7 @@ func NewSandbox(
 		return nil
 	})
 
-	go sbx.logHeathAndUsage(healthcheckCtx)
+	go sbx.logHeathAndUsage(healthcheckCtx, externalLogger, internalLogger)
 
 	return sbx, cleanup, nil
 }

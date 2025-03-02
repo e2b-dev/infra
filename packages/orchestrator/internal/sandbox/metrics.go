@@ -52,9 +52,9 @@ func (s *Sandbox) LogMetrics(ctx context.Context) {
 	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrcis) {
 		metrics, err := s.GetMetrics(ctx)
 		if err != nil {
-			sbxlogger.E(s).Warn("failed to get metrics", zap.Error(err))
+			s.externalLogger.Warn("failed to get metrics", zap.Error(err))
 		} else {
-			sbxlogger.E(s).Metrics(sbxlogger.SandboxMetricsFields{
+			s.externalLogger.Metrics(sbxlogger.SandboxMetricsFields{
 				Timestamp:      metrics.Timestamp,
 				CPUCount:       metrics.CPUCount,
 				CPUUsedPercent: metrics.CPUUsedPercent,
