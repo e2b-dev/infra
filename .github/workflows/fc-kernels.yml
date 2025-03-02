@@ -17,6 +17,10 @@ jobs:
         working-directory: ./packages/fc-kernels
         run: make build
 
+      - name: Install dependencies
+        working-directory: ./packages/fc-kernels
+        run: sudo apt update && sudo apt install libelf-dev
+
       - name: Upload kernel
         uses: actions/upload-artifact@v4
         with:
