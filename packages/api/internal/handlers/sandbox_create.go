@@ -153,8 +153,3 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, &sandbox)
 }
-
-func add(x, y int) int {
-
-	return x + y
-}
