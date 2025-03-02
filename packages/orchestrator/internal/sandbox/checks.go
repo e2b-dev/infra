@@ -21,11 +21,7 @@ const (
 	minEnvdVersionForMetrcis = "0.1.5"
 )
 
-func (s *Sandbox) logHeathAndUsage(
-	ctx *utils.LockableCancelableContext,
-	externalLogger *sbxlogger.SandboxLogger,
-	internalLogger *sbxlogger.SandboxLogger,
-) {
+func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	healthTicker := time.NewTicker(healthCheckInterval)
 	metricsTicker := time.NewTicker(metricsCheckInterval)
 	defer func() {
