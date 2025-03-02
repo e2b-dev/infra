@@ -13,13 +13,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Build kernels
-        working-directory: ./packages/fc-kernels
-        run: make build
-
       - name: Install dependencies
         working-directory: ./packages/fc-kernels
         run: sudo apt update && sudo apt install libelf-dev
+
+      - name: Build kernels
+        working-directory: ./packages/fc-kernels
+        run: make build
 
       - name: Upload kernel
         uses: actions/upload-artifact@v4
