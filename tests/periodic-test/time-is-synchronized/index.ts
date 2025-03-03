@@ -47,7 +47,7 @@ const buildStatus = await streamCommandOutput('npx', [
 ]);
 
 if (buildStatus.status.code !== 0) {
-    throw new Error(`Build failed with code ${buildStatus.status.code}`);
+    throw new Error(`❌ Build failed with code ${buildStatus.status.code}`);
 }
 
 log('Template built successfully')
@@ -57,15 +57,21 @@ const e2bToml = await Deno.readTextFile('e2b.toml')
 const templateID = e2bToml.match(/template_id = "(.*)"/)?.[1]
 
 if (!templateID) {
-    throw new Error('Template ID not found in e2b.toml')
+    throw new Error('❌ Template ID not found in e2b.toml')
 }
+
+// sleep for 5 seconds to create a time delta
+await new Promise(resolve => setTimeout(resolve, 5000))
+
+
+
 try {
 
     // remove the file to make script idempotent in local testing
     await Deno.remove('e2b.toml')
 
     if (!templateID) {
-        throw new Error('Template not found')
+        throw new Error('❌ Template not found')
     }
     log('creating sandbox')
     const sandbox = await Sandbox.create(templateID, { timeoutMs: 10000 })
@@ -79,6 +85,9 @@ try {
     const command = await sandbox.commands.run('echo hello;echo world')
     let out = command.stdout
 
+    console.log('date', date.stdout)
+    const dateUnix = parseInt(date.stdout)
+    console.log('ℹ️ comparing dates', dateUnix, localDate)
 
     log('Template deleted successfully')
 
@@ -111,7 +120,7 @@ try {
     log("template deleted")
 
     if (output.status.code !== 0) {
-        throw new Error(`Delete failed with code ${output.status.code}`);
+        throw new Error(`❌ Delete failed with code ${output.status.code}`);
     }
 
 }
