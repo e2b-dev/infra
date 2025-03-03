@@ -7,7 +7,7 @@ const execAsync = promisify(exec);
 
 async function runCliLogsCommand(sandboxId: string): Promise<{ stdout: string, stderr: string }> {
     // Run the CLI logs command with -f flag
-    return execAsync(`e2b sandbox logs -f ${sandboxId}`);
+    return execAsync(`npx @e2b/cli sandbox logs -f ${sandboxId}`);
 }
 
 console.log('Starting sandbox logs test');
