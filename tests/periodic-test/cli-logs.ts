@@ -23,7 +23,6 @@ try {
     const child = command.spawn();
 
     // Start collecting logs in background
-    cliProcess = runCliLogsCommand(strippedId);
     console.log('Started CLI logs collection');
 
     // Kill the sandbox
