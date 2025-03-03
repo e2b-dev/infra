@@ -137,7 +137,7 @@ echo "nameserver 8.8.8.8" >/etc/resolv.conf
 
 # Start systemd services
 systemctl enable envd
-# systemctl enable envd-v0.0.1
+systemctl enable envd-v0.0.1
 systemctl enable chrony 2>&1
 
 cat <<EOF >/etc/systemd/system/forward_ports.service
