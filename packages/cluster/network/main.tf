@@ -16,6 +16,7 @@ provider "cloudflare" {
 }
 
 locals {
+  domain_map = { for d in var.additional_domains : replace(d, ".", "-") => d }
   backends = {
     session = {
       protocol                        = "HTTP"
@@ -24,8 +25,10 @@ locals {
       timeout_sec                     = 86400
       connection_draining_timeout_sec = 1
       http_health_check = {
-        request_path = var.client_proxy_health_port.path
-        port         = var.client_proxy_health_port.port
+        request_path       = var.client_proxy_health_port.path
+        port               = var.client_proxy_health_port.port
+        timeout_sec        = 3
+        check_interval_sec = 3
       }
       groups = [{ group = var.api_instance_group }]
     }
@@ -36,8 +39,10 @@ locals {
       timeout_sec                     = 65
       connection_draining_timeout_sec = 1
       http_health_check = {
-        request_path = var.api_port.health_path
-        port         = var.api_port.port
+        request_path       = var.api_port.health_path
+        port               = var.api_port.port
+        timeout_sec        = 3
+        check_interval_sec = 3
       }
       groups = [{ group = var.api_instance_group }]
     }
@@ -51,7 +56,7 @@ locals {
         request_path = var.docker_reverse_proxy_port.health_path
         port         = var.docker_reverse_proxy_port.port
       }
-      groups = [{ group = var.api_instance_group }]
+      groups = [{ group = var.build_instance_group }]
     }
     nomad = {
       protocol                        = "HTTP"
@@ -108,6 +113,32 @@ resource "cloudflare_record" "a_star" {
   name    = "*"
   value   = google_compute_global_forwarding_rule.https.ip_address
   type    = "A"
+  comment = var.gcp_project_id
+}
+
+data "cloudflare_zone" "domains_additional" {
+  for_each = local.domain_map
+  name     = each.value
+}
+
+
+resource "cloudflare_record" "dns_auth_additional" {
+  for_each = local.domain_map
+  zone_id  = data.cloudflare_zone.domains_additional[each.key].id
+  name     = google_certificate_manager_dns_authorization.dns_auth_additional[each.key].dns_resource_record[0].name
+  value    = google_certificate_manager_dns_authorization.dns_auth_additional[each.key].dns_resource_record[0].data
+  type     = google_certificate_manager_dns_authorization.dns_auth_additional[each.key].dns_resource_record[0].type
+  ttl      = 3600
+}
+
+
+resource "cloudflare_record" "a_star_additional" {
+  for_each = local.domain_map
+  zone_id  = data.cloudflare_zone.domains_additional[each.key].id
+  name     = "*"
+  value    = google_compute_global_forwarding_rule.https.ip_address
+  type     = "A"
+  comment  = var.gcp_project_id
 }
 
 # =======================================
@@ -117,6 +148,15 @@ resource "google_certificate_manager_dns_authorization" "dns_auth" {
   name        = "${var.prefix}dns-auth"
   description = "The default dns auth"
   domain      = var.domain_name
+  labels      = var.labels
+}
+
+# Certificate
+resource "google_certificate_manager_dns_authorization" "dns_auth_additional" {
+  for_each    = local.domain_map
+  name        = "${var.prefix}dns-auth-${each.key}"
+  description = "The default dns auth"
+  domain      = each.value
   labels      = var.labels
 }
 
@@ -132,11 +172,23 @@ resource "google_certificate_manager_certificate" "root_cert" {
   labels = var.labels
 }
 
+resource "google_certificate_manager_certificate" "root_cert_additional" {
+  for_each    = local.domain_map
+  name        = "${var.prefix}root-cert-${each.key}"
+  description = "The wildcard cert"
+  managed {
+    domains = [each.value, "*.${each.value}"]
+    dns_authorizations = [
+      google_certificate_manager_dns_authorization.dns_auth_additional[each.key].id
+    ]
+  }
+  labels = var.labels
+}
+
 resource "google_certificate_manager_certificate_map" "certificate_map" {
   name        = "${var.prefix}cert-map"
   description = "${var.domain_name} certificate map"
   labels      = var.labels
-
 }
 
 resource "google_certificate_manager_certificate_map_entry" "top_level_map_entry" {
@@ -150,6 +202,18 @@ resource "google_certificate_manager_certificate_map_entry" "top_level_map_entry
   hostname     = var.domain_name
 }
 
+resource "google_certificate_manager_certificate_map_entry" "top_level_map_entry_additional" {
+  for_each    = local.domain_map
+  name        = "${var.prefix}top-level-${each.key}"
+  description = "Top level map entry"
+  map         = google_certificate_manager_certificate_map.certificate_map.name
+  labels      = var.labels
+
+
+  certificates = [google_certificate_manager_certificate.root_cert_additional[each.key].id]
+  hostname     = each.value
+}
+
 
 resource "google_certificate_manager_certificate_map_entry" "subdomains_map_entry" {
   name        = "${var.prefix}subdomains"
@@ -161,6 +225,19 @@ resource "google_certificate_manager_certificate_map_entry" "subdomains_map_entr
   hostname     = "*.${var.domain_name}"
 }
 
+resource "google_certificate_manager_certificate_map_entry" "subdomains_map_entry_additional" {
+  for_each    = local.domain_map
+  name        = "${var.prefix}subdomains-${each.key}"
+  description = "Subdomains map entry"
+  map         = google_certificate_manager_certificate_map.certificate_map.name
+  labels      = var.labels
+
+  certificates = [
+    google_certificate_manager_certificate.root_cert_additional[each.key].id
+  ]
+  hostname = "*.${each.value}"
+}
+
 # Load balancers
 
 resource "google_compute_url_map" "orch_map" {
@@ -168,37 +245,27 @@ resource "google_compute_url_map" "orch_map" {
   default_service = google_compute_backend_service.default["nomad"].self_link
 
   host_rule {
-    hosts = [
-      "api.${var.domain_name}",
-    ]
+    hosts        = concat(["api.${var.domain_name}"], [for d in var.additional_domains : "api.${d}"])
     path_matcher = "api-paths"
   }
 
   host_rule {
-    hosts = [
-      "docker.${var.domain_name}",
-    ]
+    hosts        = concat(["docker.${var.domain_name}"], [for d in var.additional_domains : "docker.${d}"])
     path_matcher = "docker-reverse-proxy-paths"
   }
 
   host_rule {
-    hosts = [
-      "nomad.${var.domain_name}",
-    ]
+    hosts        = concat(["nomad.${var.domain_name}"], [for d in var.additional_domains : "nomad.${d}"])
     path_matcher = "nomad-paths"
   }
 
   host_rule {
-    hosts = [
-      "consul.${var.domain_name}",
-    ]
+    hosts        = concat(["consul.${var.domain_name}"], [for d in var.additional_domains : "consul.${d}"])
     path_matcher = "consul-paths"
   }
 
   host_rule {
-    hosts = [
-      "*.${var.domain_name}",
-    ]
+    hosts        = concat(["*.${var.domain_name}"], [for d in var.additional_domains : "*.${d}"])
     path_matcher = "session-paths"
   }
 

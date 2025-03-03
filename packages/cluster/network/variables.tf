@@ -11,6 +11,10 @@ variable "domain_name" {
   type = string
 }
 
+variable "additional_domains" {
+  type = list(string)
+}
+
 variable "cluster_tag_name" {
   type = string
 }
@@ -79,6 +83,10 @@ variable "nomad_port" {
 }
 
 variable "api_instance_group" {
+  type = string
+}
+
+variable "build_instance_group" {
   type = string
 }
 

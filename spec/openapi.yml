@@ -257,6 +257,47 @@ components:
         metadata:
           $ref: "#/components/schemas/SandboxMetadata"
 
+    RunningSandboxWithMetrics:
+      required:
+        - templateID
+        - sandboxID
+        - clientID
+        - startedAt
+        - cpuCount
+        - memoryMB
+        - endAt
+      properties:
+        templateID:
+          type: string
+          description: Identifier of the template from which is the sandbox created
+        alias:
+          type: string
+          description: Alias of the template
+        sandboxID:
+          type: string
+          description: Identifier of the sandbox
+        clientID:
+          type: string
+          description: Identifier of the client
+        startedAt:
+          type: string
+          format: date-time
+          description: Time when the sandbox was started
+        endAt:
+          type: string
+          format: date-time
+          description: Time when the sandbox will expire
+        cpuCount:
+          $ref: "#/components/schemas/CPUCount"
+        memoryMB:
+          $ref: "#/components/schemas/MemoryMB"
+        metadata:
+          $ref: "#/components/schemas/SandboxMetadata"
+        metrics:
+          type: array
+          items:
+            $ref: "#/components/schemas/SandboxMetric"
+
     NewSandbox:
       required:
         - templateID
@@ -270,6 +311,10 @@ components:
           minimum: 0
           default: 15
           description: Time to live for the sandbox in seconds.
+        autoPause:
+          type: boolean
+          default: false
+          description: Automatically pauses the sandbox after the timeout
         metadata:
           $ref: "#/components/schemas/SandboxMetadata"
         envVars:
@@ -283,6 +328,10 @@ components:
           minimum: 0
           default: 15
           description: Time to live for the sandbox in seconds.
+        autoPause:
+          type: boolean
+          default: false
+          description: Automatically pauses the sandbox after the timeout
 
     Template:
       required:
@@ -395,6 +444,7 @@ components:
       enum:
         - ready
         - draining
+        - connecting
 
     NodeStatusChange:
       required:
@@ -410,6 +460,8 @@ components:
         - sandboxCount
         - allocatedCPU
         - allocatedMemoryMiB
+        - createFails
+        - sandboxStartingCount
       properties:
         nodeID:
           type: string
@@ -428,6 +480,14 @@ components:
           type: integer
           format: int32
           description: Amount of allocated memory in MiB
+        createFails:
+          type: integer
+          format: uint64
+          description: Number of sandbox create fails
+        sandboxStartingCount:
+          type: integer
+          format: int
+          description: Number of starting Sandboxes
 
     NodeDetail:
       required:
@@ -435,6 +495,7 @@ components:
         - status
         - sandboxes
         - cachedBuilds
+        - createFails
       properties:
         nodeID:
           type: string
@@ -451,6 +512,10 @@ components:
             description: List of cached builds id on the node
             items:
                 type: string
+        createFails:
+          type: integer
+          format: uint64
+          description: Number of sandbox create fails
 
 
     Error:
@@ -556,6 +621,36 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /sandboxes/metrics:
+    get:
+      description: List all running sandboxes with metrics
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: query
+          in: query
+          description: A query used to filter the sandboxes (e.g. "user=abc&app=prod"). Query and each key and values must be URL encoded.
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successfully returned all running sandboxes with metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: "#/components/schemas/RunningSandboxWithMetrics"
+        "401":
+          $ref: "#/components/responses/401"
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+          
   /sandboxes/{sandboxID}/logs:
     get:
       description: Get sandbox logs

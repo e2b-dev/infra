@@ -58,6 +58,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Cleaned template ID")
 
 	_, templateSpan := a.Tracer.Start(ctx, "get-template")
+	defer templateSpan.End()
+	
 	// Check if team has access to the environment
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
 	if checkErr != nil {
@@ -120,6 +122,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 	}
 
+	autoPause := instance.InstanceAutoPauseDefault
+	if body.AutoPause != nil {
+		autoPause = *body.AutoPause
+	}
+
 	sandbox, err := a.startSandbox(
 		ctx,
 		sandboxID,
@@ -134,6 +141,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		false,
 		nil,
 		env.TemplateID,
+		autoPause,
 	)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, err.Error())

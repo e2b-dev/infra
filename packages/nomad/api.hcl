@@ -24,8 +24,8 @@ job "api" {
         type     = "http"
         name     = "health"
         path     = "/health"
-        interval = "20s"
-        timeout  = "5s"
+        interval = "3s"
+        timeout  = "3s"
         port     = "${port_number}"
       }
     }
@@ -38,9 +38,9 @@ job "api" {
       # Allows to spawn new version of the service before killing the old one
       canary           = 1
       # Time to wait for the canary to be healthy
-      min_healthy_time = "15s"
+      min_healthy_time = "10s"
       # Time to wait for the canary to be healthy, if not it will be marked as failed
-      healthy_deadline = "60s"
+      healthy_deadline = "30s"
       # Whether to promote the canary if the rest of the group is not healthy
       auto_promote     = true
     }
@@ -50,13 +50,13 @@ job "api" {
       driver       = "docker"
       # If we need more than 30s we will need to update the max_kill_timeout in nomad
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
-      kill_timeout = "15s"
+      kill_timeout = "30s"
       kill_signal  = "SIGTERM"
 
       resources {
         memory_max = 4096
         memory     = 2048
-        cpu        = 1024
+        cpu        = 2000
       }
 
       env {

@@ -63,7 +63,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		StartedAt:  info.StartTime,
 		CpuCount:   cpuCount,
 		MemoryMB:   memoryMB,
-		EndAt:      info.EndTime,
+		EndAt:      info.GetEndTime(),
 	}
 
 	if info.Metadata != nil {

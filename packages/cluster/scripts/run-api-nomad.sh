@@ -159,6 +159,7 @@ client {
   meta {
     "node_pool" = "api"
   }
+  max_kill_timeout = "24h"
 }
 
 plugin_dir = "/opt/nomad/plugins"
