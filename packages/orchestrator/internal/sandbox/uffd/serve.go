@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"syscall"
-	"time"
 	"unsafe"
 
 	"github.com/loopholelabs/userfaultfd-go/pkg/constants"
@@ -14,11 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
-)
-
-const (
-	maxEagainAttempts = 4096
-	eagainDelay       = 50 * time.Microsecond
 )
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
@@ -50,10 +44,11 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 
 	var eg errgroup.Group
 
+outerLoop:
 	for {
 		if _, err := unix.Poll(
 			pollFds,
-			-1,
+			-1,ç
 		); err != nil {
 			if err == unix.EINTR {
 				zap.L().Debug("uffd: interrupted polling, going back to polling", zap.String("sandbox_id", sandboxId))
@@ -61,7 +56,13 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 				continue
 			}
 
-			zap.L().Info("UFFD serve polling error", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
+			if err == unix.EAGAIN {
+				zap.L().Debug("uffd: eagain during polling, going back to polling", zap.String("sandbox_id", sandboxId))
+
+				continue
+			}
+
+			zap.L().Error("UFFD serve polling error", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
 
 			return fmt.Errorf("failed polling: %w", err)
 		}
@@ -70,7 +71,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 		if exitFd.Revents&unix.POLLIN != 0 {
 			errMsg := eg.Wait()
 			if errMsg != nil {
-				zap.L().Info("UFFD fd exit error", zap.String("sandbox_id", sandboxId), zap.Error(errMsg), zap.String("node_id", consul.ClientID))
+				zap.L().Warn("UFFD fd exit error while waiting for goroutines to finish", zap.String("sandbox_id", sandboxId), zap.Error(errMsg), zap.String("node_id", consul.ClientID))
 
 				return fmt.Errorf("failed to handle uffd: %w", errMsg)
 			}
@@ -97,52 +98,34 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 
 		buf := make([]byte, unsafe.Sizeof(constants.UffdMsg{}))
 
-		var i int
-
-	readLoop:
 		for {
 			n, err := syscall.Read(uffd, buf)
 			if err == syscall.EINTR {
-				zap.L().Debug("uffd: interrupted read, going back to polling", zap.String("sandbox_id", sandboxId))
-
-				i = 0
+				zap.L().Debug("uffd: interrupted read, reading again", zap.String("sandbox_id", sandboxId))
 
 				continue
 			}
 
 			if err == nil {
+				// There is no error so we can proceed.
 				break
 			}
 
-			if n == 0 {
-				// If there is no data, go back to polling the fd.
-				zap.L().Debug("uffd: no data read from fd, going back to polling", zap.String("sandbox_id", sandboxId))
-
-				break readLoop
-			}
-
 			if err == syscall.EAGAIN {
-				if i > maxEagainAttempts {
-					zap.L().Info("UFFD serve read error, too many attempts", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
+				zap.L().Debug("uffd: eagain error, going back to polling", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID), zap.Int("read_bytes", n))
 
-					return fmt.Errorf("too many uffd read attempts, last error: %w\n", err)
-				}
-
-				i++
-
-				time.Sleep(eagainDelay)
-
-				continue
+				// Continue polling the fd.
+				continue outerLoop
 			}
 
-			zap.L().Info("UFFD serve read error", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
+			zap.L().Error("uffd: read error", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
 
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
 		msg := (*(*constants.UffdMsg)(unsafe.Pointer(&buf[0])))
 		if constants.GetMsgEvent(&msg) != constants.UFFD_EVENT_PAGEFAULT {
-			zap.L().Info("UFFD serve unexpected event type", zap.String("sandbox_id", sandboxId), zap.String("node_id", consul.ClientID), zap.Any("event_type", constants.GetMsgEvent(&msg)))
+			zap.L().Error("UFFD serve unexpected event type", zap.String("sandbox_id", sandboxId), zap.String("node_id", consul.ClientID), zap.Any("event_type", constants.GetMsgEvent(&msg)))
 
 			return ErrUnexpectedEventType
 		}
@@ -154,7 +137,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 
 		mapping, err := getMapping(uintptr(addr), mappings)
 		if err != nil {
-			zap.L().Info("UFFD serve get mapping error", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
+			zap.L().Error("UFFD serve get mapping error", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
 
 			return fmt.Errorf("failed to map: %w", err)
 		}
@@ -165,7 +148,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {
-					zap.L().Info("UFFD serve panic", zap.String("sandbox_id", sandboxId), zap.String("node_id", consul.ClientID), zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
+					zap.L().Error("UFFD serve panic", zap.String("sandbox_id", sandboxId), zap.String("node_id", consul.ClientID), zap.Any("offset", offset), zap.Any("pagesize", pagesize), zap.Any("panic", r))
 					fmt.Printf("[sandbox %s]: recovered from panic in uffd serve (offset: %d, pagesize: %d): %v\n", sandboxId, offset, pagesize, r)
 				}
 			}()
@@ -174,7 +157,7 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 			if err != nil {
 				stop()
 
-				zap.L().Info("UFFD serve slice error", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
+				zap.L().Error("UFFD serve slice error", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
 
 				return fmt.Errorf("failed to read from source: %w", err)
 			}
@@ -194,13 +177,15 @@ func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceD
 				uintptr(unsafe.Pointer(&cpy)),
 			); errno != 0 {
 				if errno == unix.EEXIST {
+					zap.L().Debug("UFFD serve page already mapped", zap.String("sandbox_id", sandboxId), zap.String("node_id", consul.ClientID), zap.Any("offset", offset), zap.Any("pagesize", pagesize))
+
 					// Page is already mapped
 					return nil
 				}
 
 				stop()
 
-				zap.L().Info("UFFD serve uffdio copy error", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
+				zap.L().Error("UFFD serve uffdio copy error", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
 
 				return fmt.Errorf("failed uffdio copy %w", errno)
 			}
