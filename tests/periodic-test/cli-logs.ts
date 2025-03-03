@@ -1,19 +1,9 @@
 import { Sandbox } from "npm:@e2b/code-interpreter";
 
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
-
-const execAsync = promisify(exec);
-
-async function runCliLogsCommand(sandboxId: string): Promise<{ stdout: string, stderr: string }> {
-    // Run the CLI logs command with -f flag
-    return execAsync(`npx @e2b/cli sandbox logs -f ${sandboxId}`);
-}
-
 console.log('Starting sandbox logs test');
 
 let sandbox: Sandbox | null = null;
-let cliProcess: Promise<{ stdout: string, stderr: string }> | null = null;
+let cliProcess: Promise<string> | null = null;
 
 try {
     // Create sandbox
@@ -24,6 +14,14 @@ try {
     let strippedId = sandbox.sandboxId.split('-')[0]
     console.log('strippedId:', strippedId)
 
+    const command = new Deno.Command("npx", {
+        args: ["@e2b/cli", "sandbox", "logs", "-f", strippedId],
+        stdout: "piped",
+        stderr: "piped",
+    });
+
+    const child = command.spawn();
+
     // Start collecting logs in background
     cliProcess = runCliLogsCommand(strippedId);
     console.log('Started CLI logs collection');
@@ -32,8 +30,10 @@ try {
     console.log('Killing sandbox');
     await sandbox.kill();
 
+    const output = await child.output();
+    const decoder = new TextDecoder();
     // Wait for CLI process to complete and get its output
-    const { stdout, stderr } = await cliProcess;
+    const stdout = decoder.decode(output.stdout);
     console.log('CLI process completed');
 
     // Assert that we got some logs
