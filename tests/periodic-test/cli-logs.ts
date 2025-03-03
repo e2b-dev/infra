@@ -21,8 +21,11 @@ try {
     sandbox = await Sandbox.create();
     console.log('Sandbox created with ID:', sandbox.sandboxId);
 
+    let strippedId = sandbox.sandboxId.split('-')[0]
+    console.log('strippedId:', strippedId)
+
     // Start collecting logs in background
-    cliProcess = runCliLogsCommand(sandbox.sandboxId);
+    cliProcess = runCliLogsCommand(strippedId);
     console.log('Started CLI logs collection');
 
     // Kill the sandbox
