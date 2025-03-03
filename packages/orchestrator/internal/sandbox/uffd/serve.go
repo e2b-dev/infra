@@ -157,8 +157,6 @@ outerLoop:
 			if err != nil {
 				stop()
 
-				stop()
-
 				zap.L().Error("UFFD serve slice error", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
 
 				return fmt.Errorf("failed to read from source: %w", err)
