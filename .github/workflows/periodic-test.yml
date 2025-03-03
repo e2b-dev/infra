@@ -92,10 +92,10 @@ jobs:
           SLACK_COLOR: "#ff0000"
           SLACK_USERNAME: "Periodic Check"
           MSG_MINIMAL: true
-          SLACK_FOOTER: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          SLACK_FOOTER: ""
           SLACKIFY_MARKDOWN: true
           # $name failed $link to workflow run
-          SLACK_MESSAGE: "Check for **${{ matrix.test-command.name }}** failed"
+          SLACK_MESSAGE: "Check for **${{ matrix.test-command.name }}** failed \n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           SLACK_TITLE: "[${{ matrix.e2b-domain }}] check failed"
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           # use this channel for dev
