@@ -100,6 +100,9 @@ if !exists(.sandboxID) {
 if !exists(.envID) {
   .envID = "unknown"
 }
+if !exists(.buildID) {
+  .buildID = "unknown"
+}
 """
 
 [transforms.internal_routing]
@@ -127,6 +130,7 @@ source = "logs-collector"
 service = "{{ service }}"
 teamID = "{{ teamID }}"
 envID = "{{ envID }}"
+buildID = "{{ buildID }}"
 sandboxID = "{{ sandboxID }}"
 category = "{{ category }}"
 
