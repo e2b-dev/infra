@@ -120,7 +120,6 @@ processors:
           - "nomad_nomad_job_summary_running"
           - "orchestrator.*"
           - "api.*"
-          - "client_proxy.*"
   metricstransform:
     transforms:
       - include: "nomad_client_host_cpu_idle"
@@ -173,14 +172,14 @@ service:
         - otlp
       processors: [batch]
       exporters:
-        -  otlphttp/grafana_cloud
+        - otlphttp/grafana_cloud
     logs:
       receivers:
       # - filelog/session-proxy
         - otlp
       processors: [batch]
       exporters:
-        -  otlphttp/grafana_cloud
+        - otlphttp/grafana_cloud
 EOF
 
         destination = "local/config/otel-collector-config.yaml"

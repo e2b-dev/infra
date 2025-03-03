@@ -12,7 +12,7 @@ import (
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
@@ -101,15 +101,11 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	sandboxLogger := logs.NewSandboxLogger(
-		sandboxID,
-		*build.EnvID,
-		teamInfo.Team.ID.String(),
-		build.Vcpu,
-		build.RAMMB,
-		false,
-	)
-	sandboxLogger.Debugf("Started resuming sandbox")
+	sbxlogger.E(&sbxlogger.SandboxMetadata{
+		SandboxID:  sandboxID,
+		TemplateID: *build.EnvID,
+		TeamID:     teamInfo.Team.ID.String(),
+	}).Debug("Started resuming sandbox")
 
 	sbx, err := a.startSandbox(
 		ctx,
@@ -120,7 +116,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		"",
 		teamInfo,
 		build,
-		sandboxLogger,
 		&c.Request.Header,
 		true,
 		&clientID,

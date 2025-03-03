@@ -11,6 +11,7 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/edsrzf/mmap-go"
+	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -96,7 +97,7 @@ func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
 
 		_, err := out.Write((*m.mmap)[key : key+m.blockSize])
 		if err != nil {
-			fmt.Printf("error writing to out: %v\n", err)
+			zap.L().Error("error writing to out", zap.Error(err))
 
 			return nil, err
 		}

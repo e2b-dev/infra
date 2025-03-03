@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"golang.org/x/mod/semver"
 )
@@ -50,7 +53,27 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 	var err error
 	defer func() {
-		s.Logger.Healthcheck(err == nil, alwaysReport)
+		ok := err == nil
+
+		if !ok && s.healthy.CompareAndSwap(true, false) {
+			sbxlogger.E(s).Healthcheck(sbxlogger.Fail)
+			sbxlogger.I(s).Error("healthcheck failed", zap.Error(err))
+			return
+		}
+
+		if ok && s.healthy.CompareAndSwap(false, true) {
+			sbxlogger.E(s).Healthcheck(sbxlogger.Success)
+			return
+		}
+
+		if alwaysReport {
+			if ok {
+				sbxlogger.E(s).Healthcheck(sbxlogger.ReportSuccess)
+			} else {
+				sbxlogger.E(s).Healthcheck(sbxlogger.ReportFail)
+				sbxlogger.I(s).Error("control healthcheck failed", zap.Error(err))
+			}
+		}
 	}()
 
 	address := fmt.Sprintf("http://%s:%d/health", s.Slot.HostIP(), consts.DefaultEnvdServerPort)

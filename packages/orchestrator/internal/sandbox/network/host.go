@@ -2,9 +2,9 @@ package network
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/vishvananda/netlink"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -36,7 +36,8 @@ func getDefaultGateway() (string, error) {
 	for _, route := range routes {
 		// 0.0.0.0/0
 		if route.Dst.String() == "0.0.0.0/0" && route.Gw != nil {
-			log.Printf("default gateway: %s", route.Gw.String())
+			zap.L().Info("default gateway", zap.String("gateway", route.Gw.String()))
+
 			link, linkErr := netlink.LinkByIndex(route.LinkIndex)
 
 			if linkErr != nil {

@@ -16,12 +16,10 @@ func updateClock() error {
 	ctx, cancel := context.WithTimeout(context.Background(), syncTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "/bin/bash", "-l", "-c", "date -s @$(/usr/sbin/phc_ctl /dev/ptp0 get | cut -d' ' -f5)")
-
-	// Capture both stdout and stderr
-	output, err := cmd.CombinedOutput()
+	// The chronyc -a makestep is not immediately stepping the clock
+	err := exec.CommandContext(ctx, "/bin/bash", "-l", "-c", "date -s @$(/usr/sbin/phc_ctl /dev/ptp0 get | cut -d' ' -f5)").Run()
 	if err != nil {
-		return fmt.Errorf("failed to update clock: %w\nCommand output: %s", err, string(output))
+		return fmt.Errorf("failed to update clock: %w", err)
 	}
 
 	return nil

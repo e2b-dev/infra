@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
@@ -33,7 +34,7 @@ func NewCache(ctx context.Context) (*Cache, error) {
 
 		err := template.Close()
 		if err != nil {
-			fmt.Printf("[template data cache]: failed to cleanup template data for item %s: %v\n", item.Key(), err)
+			zap.L().Warn("failed to cleanup template data", zap.String("item_key", item.Key()), zap.Error(err))
 		}
 	})
 
