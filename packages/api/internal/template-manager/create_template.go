@@ -71,18 +71,12 @@ func (tm *TemplateManager) CreateTemplate(
 
 	// Wait for the build to finish and save logs
 	for {
-		log, receiveErr := logs.Recv()
+		_, receiveErr := logs.Recv()
 		if receiveErr == io.EOF {
 			break
 		} else if receiveErr != nil {
 			// There was an error during the build
 			return fmt.Errorf("error when building env: %w", receiveErr)
-
-		}
-		logErr := buildCache.Append(templateID, buildID, log.Log)
-		if logErr != nil {
-			// There was an error saving the logs, the build wasn't found
-			return fmt.Errorf("error when saving docker build logs: %w", logErr)
 		}
 	}
 
