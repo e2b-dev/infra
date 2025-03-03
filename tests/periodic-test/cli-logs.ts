@@ -27,7 +27,7 @@ try {
 
     // Kill the sandbox
     console.log('Killing sandbox');
-    await sandbox.close();
+    await sandbox.kill();
 
     // Wait for CLI process to complete and get its output
     const { stdout, stderr } = await cliProcess;
@@ -47,7 +47,7 @@ try {
 } finally {
     if (sandbox) {
         try {
-            await sandbox.close();
+            await sandbox.kill();
         } catch (error) {
             console.error('Error closing sandbox:', error);
         }
