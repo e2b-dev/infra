@@ -48,7 +48,7 @@ outerLoop:
 	for {
 		if _, err := unix.Poll(
 			pollFds,
-			-1,ç
+			-1,
 		); err != nil {
 			if err == unix.EINTR {
 				zap.L().Debug("uffd: interrupted polling, going back to polling", zap.String("sandbox_id", sandboxId))
