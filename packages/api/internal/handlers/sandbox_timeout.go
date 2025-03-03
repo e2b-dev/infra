@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -37,11 +39,12 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 		duration = time.Duration(body.Timeout) * time.Second
 	}
 
-	err = a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, true)
-	if err != nil {
-		errMsg := fmt.Errorf("error setting sandbox timeout: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error setting sandbox timeout for sandbox '%s'", sandboxID))
+	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, true)
+	if apiErr != nil {
+		zap.L().Debug("Error when keeping sandbox alive", zap.Error(apiErr.Err), zap.String("sandbox_id", sandboxID))
+
+		telemetry.ReportCriticalError(ctx, apiErr.Err)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}
