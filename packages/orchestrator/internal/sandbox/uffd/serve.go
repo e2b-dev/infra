@@ -90,7 +90,8 @@ outerLoop:
 			// - https://docs.kernel.org/admin-guide/mm/userfaultfd.html
 			// - https://elixir.bootlin.com/linux/v6.8.12/source/fs/userfaultfd.c
 			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
-			// TODO: Also check for data != 0 in the syscall.Read loop
+			// It might be possible to just check for data != 0 in the syscall.Read loop
+			// but I don't feel confident about doing that.
 			zap.L().Debug("uffd: no data in fd, going back to polling", zap.String("sandbox_id", sandboxId))
 
 			continue
