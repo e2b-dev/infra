@@ -49,3 +49,7 @@ func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
 
 	return lg
 }
+
+func NewSandboxLogger(ctx context.Context, config SandboxLoggerConfig) *SandboxLogger {
+	return &SandboxLogger{NewLogger(ctx, config)}
+}

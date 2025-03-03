@@ -81,11 +81,13 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	c.Set("instanceID", sandboxID)
 
-	sbxlogger.E(&sbxlogger.SandboxMetadata{
-		SandboxID:  sandboxID,
-		TemplateID: env.TemplateID,
-		TeamID:     teamInfo.Team.ID.String(),
-	}).Debug("Started creating sandbox")
+	a.GetExternalSandboxLogger().WithMetadata(
+		&sbxlogger.SandboxMetadata{
+			SandboxID:  sandboxID,
+			TemplateID: env.TemplateID,
+			TeamID:     teamInfo.Team.ID.String(),
+		},
+	).Debug("Started creating sandbox")
 
 	var alias string
 	if env.Aliases != nil && len(*env.Aliases) > 0 {

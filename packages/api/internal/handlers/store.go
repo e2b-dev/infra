@@ -27,6 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
 type APIStore struct {
@@ -41,6 +42,27 @@ type APIStore struct {
 	templateCache        *templatecache.TemplateCache
 	authCache            *authcache.TeamAuthCache
 	templateSpawnCounter *utils.TemplateSpawnCounter
+
+	internalSandboxLogger *sbxlogger.SandboxLogger
+	externalSandboxLogger *sbxlogger.SandboxLogger
+}
+
+func (a *APIStore) WithInternalSandboxLogger(logger *sbxlogger.SandboxLogger) *APIStore {
+	a.internalSandboxLogger = logger
+	return a
+}
+
+func (a *APIStore) WithExternalSandboxLogger(logger *sbxlogger.SandboxLogger) *APIStore {
+	a.externalSandboxLogger = logger
+	return a
+}
+
+func (a *APIStore) GetInternalSandboxLogger() *sbxlogger.SandboxLogger {
+	return a.internalSandboxLogger
+}
+
+func (a *APIStore) GetExternalSandboxLogger() *sbxlogger.SandboxLogger {
+	return a.externalSandboxLogger
 }
 
 func NewAPIStore(ctx context.Context) *APIStore {

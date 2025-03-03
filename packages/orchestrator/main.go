@@ -72,7 +72,7 @@ func main() {
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
 
-	sbxLoggerExternal := sbxlogger.NewLogger(
+	sbxLoggerExternal := sbxlogger.NewSandboxLogger(
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      ServiceName,
@@ -82,9 +82,8 @@ func main() {
 		},
 	)
 	defer sbxLoggerExternal.Sync()
-	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
 
-	sbxLoggerInternal := sbxlogger.NewLogger(
+	sbxLoggerInternal := sbxlogger.NewSandboxLogger(
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      ServiceName,
@@ -94,7 +93,6 @@ func main() {
 		},
 	)
 	defer sbxLoggerInternal.Sync()
-	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
 	log.Println("Starting orchestrator", "commit", commitSHA)
 
@@ -102,6 +100,9 @@ func main() {
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
+
+	srv.WithInternalSandboxLogger(sbxLoggerInternal)
+	srv.WithExternalSandboxLogger(sbxLoggerExternal)
 
 	wg.Add(1)
 	go func() {

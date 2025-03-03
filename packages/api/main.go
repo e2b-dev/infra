@@ -185,7 +185,7 @@ func main() {
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
 
-	sbxLoggerExternal := sbxlogger.NewLogger(
+	sbxLoggerExternal := sbxlogger.NewSandboxLogger(
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
@@ -195,9 +195,8 @@ func main() {
 		},
 	)
 	defer sbxLoggerExternal.Sync()
-	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
 
-	sbxLoggerInternal := sbxlogger.NewLogger(
+	sbxLoggerInternal := sbxlogger.NewSandboxLogger(
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
@@ -207,7 +206,6 @@ func main() {
 		},
 	)
 	defer sbxLoggerInternal.Sync()
-	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
 	logger.Info("Starting API service...", zap.String("commit_sha", commitSHA))
 	if debug != "true" {
@@ -261,6 +259,8 @@ func main() {
 	//  (use the outer context rather than the signal handling
 	//   context so it doesn't exit first.)
 	apiStore := handlers.NewAPIStore(ctx)
+	apiStore.WithInternalSandboxLogger(sbxLoggerInternal)
+	apiStore.WithExternalSandboxLogger(sbxLoggerExternal)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	// pass the signal context so that handlers know when shutdown is happening.

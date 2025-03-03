@@ -50,6 +50,14 @@ type Process struct {
 	Exit chan error
 
 	client *apiClient
+
+	logger *sbxlogger.SandboxLogger
+}
+
+func (p *Process) WithLogger(logger *sbxlogger.SandboxLogger) *Process {
+	p.logger = logger.WithMetadata(p.LoggerMetadata())
+
+	return p
 }
 
 func (p *Process) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -71,6 +79,7 @@ func NewProcess(
 	uffdReady chan struct{},
 	baseTemplateID string,
 ) (*Process, error) {
+
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.String("sandbox.id", mmdsMetadata.SandboxId),
 		attribute.Int("sandbox.slot.index", slot.Idx),
@@ -138,6 +147,7 @@ func (p *Process) Start(
 	ctx context.Context,
 	tracer trace.Tracer,
 ) error {
+
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
 
@@ -154,12 +164,12 @@ func (p *Process) Start(
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			sbxlogger.I(p).Info("stdout: "+line, zap.String("sandbox_id", p.metadata.SandboxId))
+			p.logger.Info("stdout: "+line, zap.String("sandbox_id", p.metadata.SandboxId))
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			sbxlogger.I(p).Error("error reading fc stdout", zap.Error(readerErr))
+			p.logger.Error("error reading fc stdout", zap.Error(readerErr))
 		}
 	}()
 
@@ -175,12 +185,12 @@ func (p *Process) Start(
 
 		for scanner.Scan() {
 			line := scanner.Text()
-			sbxlogger.I(p).Error("stderr: "+line, zap.String("sandbox_id", p.metadata.SandboxId))
+			p.logger.Error("stderr: "+line, zap.String("sandbox_id", p.metadata.SandboxId))
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			sbxlogger.I(p).Error("error reading fc stderr", zap.Error(readerErr))
+			p.logger.Error("error reading fc stderr", zap.Error(readerErr))
 		}
 	}()
 

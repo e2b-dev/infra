@@ -111,15 +111,6 @@ func mockSnapshot(
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
 
-	loggerCfg := sbxlogger.SandboxLoggerConfig{
-		ServiceName:      "mock-snapshot",
-		IsInternal:       true,
-		IsDevelopment:    true,
-		CollectorAddress: "http://localhost:8080",
-	}
-	sbxlogger.SetSandboxLoggerInternal(sbxlogger.NewLogger(ctx, loggerCfg))
-	sbxlogger.SetSandboxLoggerExternal(sbxlogger.NewLogger(ctx, loggerCfg))
-
 	start := time.Now()
 
 	sbx, cleanup, err := sandbox.NewSandbox(
@@ -146,6 +137,8 @@ func mockSnapshot(
 		time.Now(),
 		false,
 		templateId,
+		sbxlogger.NewSandboxLogger(ctx, sbxlogger.SandboxLoggerConfig{}),
+		sbxlogger.NewSandboxLogger(ctx, sbxlogger.SandboxLoggerConfig{}),
 	)
 	defer func() {
 		cleanupErr := cleanup.Run()
@@ -246,6 +239,8 @@ func mockSnapshot(
 		time.Now(),
 		false,
 		templateId,
+		sbxlogger.NewSandboxLogger(ctx, sbxlogger.SandboxLoggerConfig{}),
+		sbxlogger.NewSandboxLogger(ctx, sbxlogger.SandboxLoggerConfig{}),
 	)
 	defer func() {
 		cleanupErr := cleanup2.Run()

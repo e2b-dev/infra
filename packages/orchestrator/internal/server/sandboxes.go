@@ -20,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -58,9 +57,11 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.EndTime.AsTime(),
 		req.Sandbox.Snapshot,
 		req.Sandbox.BaseTemplateId,
+		s.externalLogger,
+		s.internalLogger,
 	)
 	if err != nil {
-		sbxlogger.E(sbx).Error("failed to create sandbox, cleaning up", zap.Error(err))
+		sbx.GetExternalLogger().Error("failed to create sandbox, cleaning up", zap.Error(err))
 		cleanupErr := cleanup.Run()
 
 		errMsg := fmt.Errorf("failed to cleanup sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
@@ -74,17 +75,17 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	go func() {
 		waitErr := sbx.Wait()
 		if waitErr != nil {
-			sbxlogger.I(sbx).Error("failed to wait for sandbox, cleaning up", zap.Error(waitErr))
+			sbx.GetExternalLogger().Error("failed to wait for sandbox, cleaning up", zap.Error(waitErr))
 		}
 
 		cleanupErr := cleanup.Run()
 		if cleanupErr != nil {
-			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
+			sbx.GetExternalLogger().Error("failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
 		}
 
 		s.sandboxes.Remove(req.Sandbox.SandboxId)
 
-		sbxlogger.E(sbx).Info("Sandbox killed")
+		sbx.GetExternalLogger().Info("Sandbox killed")
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
@@ -157,6 +158,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	)
 
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
+
 	if !ok {
 		errMsg := fmt.Errorf("sandbox '%s' not found", in.SandboxId)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -182,7 +184,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	err := sbx.Stop()
 	if err != nil {
-		sbxlogger.I(sbx).Error("error stopping sandbox", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
+		sbx.GetExternalLogger().Error("error stopping sandbox", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 	}
 
 	return &emptypb.Empty{}, nil
@@ -210,6 +212,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	s.pauseMu.Lock()
 
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
+
 	if !ok {
 		s.pauseMu.Unlock()
 
@@ -244,7 +247,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		go func() {
 			err := sbx.Stop()
 			if err != nil {
-				sbxlogger.I(sbx).Error("error stopping sandbox after snapshot", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
+				sbx.GetExternalLogger().Error("error stopping sandbox after snapshot", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 			}
 		}()
 	}()
@@ -295,7 +298,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		default:
 			memfileLocalPath, err := r.CachePath()
 			if err != nil {
-				sbxlogger.I(sbx).Error("error getting memfile diff path", zap.Error(err))
+				sbx.GetInternalLogger().Error("error getting memfile diff path", zap.Error(err))
 
 				return
 			}
@@ -311,7 +314,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		default:
 			rootfsLocalPath, err := r.CachePath()
 			if err != nil {
-				sbxlogger.I(sbx).Error("error getting rootfs diff path", zap.Error(err))
+				sbx.GetInternalLogger().Error("error getting rootfs diff path", zap.Error(err))
 
 				return
 			}
@@ -332,7 +335,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			rootfsPath,
 		)
 		if err != nil {
-			sbxlogger.I(sbx).Error("error uploading sandbox snapshot", zap.Error(err))
+			sbx.GetInternalLogger().Error("error uploading sandbox snapshot", zap.Error(err))
 
 			return
 		}

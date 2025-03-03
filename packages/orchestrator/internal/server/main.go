@@ -20,26 +20,40 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
 const ServiceName = "orchestrator"
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
-	sandboxes     *smap.Map[*sandbox.Sandbox]
+	sandboxes     *MemSandboxStore
 	dns           *dns.DNS
 	tracer        trace.Tracer
 	networkPool   *network.Pool
 	templateCache *template.Cache
 
 	pauseMu sync.Mutex
+
+	internalLogger *sbxlogger.SandboxLogger
+	externalLogger *sbxlogger.SandboxLogger
+}
+
+// withInternalSandboxLogger sets the internal sandbox logger
+func (s *server) WithInternalSandboxLogger(logger *sbxlogger.SandboxLogger) *server {
+	s.internalLogger = logger
+	return s
+}
+
+// withExternalSandboxLogger sets the external sandbox logger
+func (s *server) WithExternalSandboxLogger(logger *sbxlogger.SandboxLogger) *server {
+	s.externalLogger = logger
+	return s
 }
 
 type Service struct {
@@ -100,7 +114,7 @@ func New(ctx context.Context, port uint) (*Service, error) {
 		srv.server = &server{
 			tracer:        otel.Tracer(ServiceName),
 			dns:           srv.dns,
-			sandboxes:     smap.New[*sandbox.Sandbox](),
+			sandboxes:     NewMemSandboxStore(srv.server),
 			networkPool:   networkPool,
 			templateCache: templateCache,
 		}
@@ -170,4 +184,14 @@ func (srv *Service) Close(ctx context.Context) error {
 		srv.shutdown.op = nil
 	})
 	return srv.shutdown.err
+}
+
+func (s *Service) WithInternalSandboxLogger(logger *sbxlogger.SandboxLogger) *Service {
+	s.server.WithInternalSandboxLogger(logger)
+	return s
+}
+
+func (s *Service) WithExternalSandboxLogger(logger *sbxlogger.SandboxLogger) *Service {
+	s.server.WithExternalSandboxLogger(logger)
+	return s
 }
