@@ -154,6 +154,8 @@ outerLoop:
 			b, err := src.Slice(offset, pagesize)
 			if err != nil {
 
+				stop()
+
 				zap.L().Error("UFFD serve slice error", zap.String("sandbox_id", sandboxId), zap.Error(err), zap.String("node_id", consul.ClientID))
 
 				return fmt.Errorf("failed to read from source: %w", err)
