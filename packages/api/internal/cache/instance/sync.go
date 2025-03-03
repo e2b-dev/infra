@@ -25,7 +25,7 @@ func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceL
 func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, allowShorter bool) (*InstanceInfo, *api.APIError) {
 	instance, err := c.Get(instanceID)
 	if err != nil {
-		return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("sandbox \"%s\" not found", instanceID), Err: err}
+		return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' not found", instanceID), Err: err}
 	}
 
 	now := time.Now()
@@ -38,7 +38,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 	if (time.Since(instance.StartTime)) > instance.MaxInstanceLength {
 		c.cache.Remove(instanceID)
 
-		msg := fmt.Sprintf("sandbox \"%s\" reached maximal allowed uptime", instanceID)
+		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", instanceID)
 		return nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: fmt.Errorf(msg)}
 	} else {
 		maxAllowedTTL := getMaxAllowedTTL(now, instance.StartTime, duration, instance.MaxInstanceLength)
