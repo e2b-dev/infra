@@ -163,59 +163,61 @@ func (r *Rootfs) dockerTag() string {
 	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.env.TemplateId, r.env.BuildId)
 }
 
+type PostProcessor struct {
+	errChan chan error
+	ctx     context.Context
+	writer  io.Writer
+}
+
+// Start starts the post-processing.
+func (p *PostProcessor) Start() {
+
+	now := time.Now()
+	for {
+		msg := []byte(fmt.Sprintf("Postprocessing (%s)       \r", time.Since(now).Round(time.Second)))
+
+		select {
+		case postprocessingErr := <-p.errChan:
+			if postprocessingErr != nil {
+				p.writer.Write([]byte(fmt.Sprintf("Postprocessing failed: %s\n", postprocessingErr)))
+
+				return
+			}
+
+			p.writer.Write(msg)
+			p.writer.Write([]byte("Postprocessing finished.                   \n"))
+
+			return
+		case <-p.ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+			p.writer.Write(msg)
+		}
+	}
+
+}
+
+func (p *PostProcessor) stop(err error) {
+	p.errChan <- err
+}
+
+func NewPostProcessor(ctx context.Context, writer io.Writer) *PostProcessor {
+	return &PostProcessor{
+		ctx:     ctx,
+		writer:  writer,
+		errChan: make(chan error),
+	}
+}
+
 func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-rootfs-file")
 	defer childSpan.End()
 
 	var err error
-	postprocessingFinished := make(chan error)
-	defer func() { postprocessingFinished <- err }()
+	PostProcessor := NewPostProcessor(childCtx, r.env.BuildLogsWriter)
+	go PostProcessor.Start()
+	defer PostProcessor.stop(err)
 
-	go func() {
-		now := time.Now()
-		for {
-			msg := []byte(fmt.Sprintf("Postprocessing (%s)       \r", time.Since(now).Round(time.Second)))
-
-			select {
-			case postprocessingErr := <-postprocessingFinished:
-				if postprocessingErr != nil {
-					r.env.BuildLogsWriter.Write([]byte(fmt.Sprintf("Postprocessing failed: %s\n", postprocessingErr)))
-
-					return
-				}
-
-				r.env.BuildLogsWriter.Write(msg)
-				r.env.BuildLogsWriter.Write([]byte("Postprocessing finished.                   \n"))
-
-				return
-			case <-childCtx.Done():
-				return
-			case <-time.After(100 * time.Millisecond):
-				r.env.BuildLogsWriter.Write(msg)
-			}
-		}
-	}()
-
-	//
-	//
-	//network, err := rootfs.client.NetworkCreate(childCtx, env.BuildID, types.NetworkCreate{})
-	//if err != nil {
-	//	errMsg := fmt.Errorf("error creating network: %w", err)
-	//	telemetry.ReportCriticalError(childCtx, errMsg)
-	//
-	//	return nil, errMsg
-	//}
-	//
-	//defer func() {
-	//	err = rootfs.client.NetworkRemove(childCtx, network.ID)
-	//	if err != nil {
-	//		errMsg := fmt.Errorf("error removing network: %w", err)
-	//		telemetry.ReportError(childCtx, errMsg)
-	//	} else {
-	//		telemetry.ReportEvent(childCtx, "removed network")
-	//	}
-	//}()
-	//
 	var scriptDef bytes.Buffer
 
 	err = EnvInstanceTemplate.Execute(&scriptDef, struct {

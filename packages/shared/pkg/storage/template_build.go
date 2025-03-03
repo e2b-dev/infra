@@ -27,7 +27,7 @@ func NewTemplateBuild(
 	files *TemplateFiles,
 ) *TemplateBuild {
 	return &TemplateBuild{
-		bucket:        gcs.TemplateBucket,
+		bucket:        gcs.GetTemplateBucket(),
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
 		files:         files,

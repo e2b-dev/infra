@@ -16,11 +16,13 @@ variable "gcp_zone" {
 variable "github_organization" {
   description = "The name of the github organization"
   type        = string
+  default     = "e2b-dev"
 }
 
 variable "github_repository" {
   description = "The name of the repository"
   type        = string
+  default     = "infra"
 }
 
 variable "prefix" {
@@ -30,16 +32,6 @@ variable "prefix" {
 
 variable "terraform_state_bucket" {
   description = "The name of the bucket to store terraform state in"
-  type        = string
-}
-
-variable "fc_versions_bucket" {
-  description = "The name of the bucket to store build fc versions"
-  type        = string
-}
-
-variable "kernel_bucket" {
-  description = "The name of the bucket to store built kernels"
   type        = string
 }
 

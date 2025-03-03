@@ -17,7 +17,9 @@ RUN go mod download
 COPY main.go main.go
 COPY internal internal
 
-RUN --mount=type=cache,target=/root/.cache/go-build make build
+ARG COMMIT_SHA
+RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA}
+
 RUN chmod +x /build/docker-reverse-proxy/bin/docker-reverse-proxy
 
 FROM alpine:3.17

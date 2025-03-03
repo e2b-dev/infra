@@ -24,10 +24,6 @@ terraform {
       source  = "hashicorp/nomad"
       version = "2.1.0"
     }
-    github = {
-      source  = "integrations/github"
-      version = "5.42.0"
-    }
     random = {
       source  = "hashicorp/random"
       version = "3.5.1"
@@ -78,24 +74,6 @@ module "buckets" {
   labels = var.labels
 }
 
-module "github_tf" {
-  source = "./github-tf"
-
-  gcp_project_id = var.gcp_project_id
-  gcp_region     = var.gcp_region
-  gcp_zone       = var.gcp_zone
-
-  github_organization = var.github_organization
-  github_repository   = var.github_repository
-
-  domain_name            = var.domain_name
-  terraform_state_bucket = var.terraform_state_bucket
-  kernel_bucket          = module.buckets.fc_kernels_bucket_name
-  fc_versions_bucket     = module.buckets.fc_versions_bucket_name
-
-  prefix = var.prefix
-}
-
 module "cluster" {
   source = "./packages/cluster"
 
@@ -107,13 +85,16 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
 
-  server_cluster_size = var.server_cluster_size
-  client_cluster_size = var.client_cluster_size
-  api_cluster_size    = var.api_cluster_size
+  server_cluster_size             = var.server_cluster_size
+  client_cluster_size             = var.client_cluster_size
+  client_cluster_auto_scaling_max = var.client_cluster_auto_scaling_max
+  api_cluster_size                = var.api_cluster_size
+  build_cluster_size              = var.build_cluster_size
 
   server_machine_type = var.server_machine_type
   client_machine_type = var.client_machine_type
   api_machine_type    = var.api_machine_type
+  build_machine_type  = var.build_machine_type
 
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
@@ -125,6 +106,7 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
+  additional_domains           = var.additional_domains != "" ? [for item in split(",", var.additional_domains) : trimspace(item)] : []
 
   docker_contexts_bucket_name = module.buckets.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.buckets.cluster_setup_bucket_name
@@ -177,6 +159,7 @@ module "client_proxy" {
 module "nomad" {
   source = "./packages/nomad"
 
+  prefix              = var.prefix
   gcp_project_id      = var.gcp_project_id
   gcp_region          = var.gcp_region
   gcp_zone            = var.gcp_zone
@@ -200,7 +183,7 @@ module "nomad" {
   posthog_api_key_secret_name               = module.api.posthog_api_key_secret_name
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
-  api_admin_token_name                      = module.api.api_admin_token_name
+  api_admin_token                           = module.api.api_admin_token
 
   # Proxies
   session_proxy_service_name = var.session_proxy_service_name
@@ -215,14 +198,6 @@ module "nomad" {
   # Telemetry
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
-
-  grafana_api_key_secret_name          = module.init.grafana_api_key_secret_name
-  grafana_logs_endpoint_secret_name    = module.init.grafana_logs_endpoint_secret_name
-  grafana_logs_username_secret_name    = module.init.grafana_logs_username_secret_name
-  grafana_metrics_endpoint_secret_name = module.init.grafana_metrics_endpoint_secret_name
-  grafana_metrics_username_secret_name = module.init.grafana_metrics_username_secret_name
-  grafana_traces_endpoint_secret_name  = module.init.grafana_traces_endpoint_secret_name
-  grafana_traces_username_secret_name  = module.init.grafana_traces_username_secret_name
 
   # Logs
   loki_bucket_name  = module.buckets.loki_bucket_name
@@ -244,3 +219,5 @@ module "nomad" {
   # Redis
   redis_port = var.redis_port
 }
+
+

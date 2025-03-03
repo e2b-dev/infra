@@ -1,6 +1,6 @@
 job "redis" {
   datacenters = ["${gcp_zone}"]
-  node_pool = "all"
+  node_pool = "api"
   type = "service"
   priority = 95
 
@@ -30,7 +30,7 @@ job "redis" {
       resources {
         memory_max = 4096
         memory     = 2048
-        cpu        = 1024
+        cpu        = 1000
       }
 
       config {

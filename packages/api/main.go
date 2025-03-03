@@ -35,12 +35,18 @@ import (
 )
 
 const (
-	serviceName          = "orchestration-api"
-	maxMultipartMemory   = 1 << 27 // 128 MiB
-	maxUploadLimit       = 1 << 28 // 256 MiB
+	serviceName        = "orchestration-api"
+	maxMultipartMemory = 1 << 27 // 128 MiB
+	maxUploadLimit     = 1 << 28 // 256 MiB
+
 	maxReadHeaderTimeout = 60 * time.Second
-	defaultPort          = 80
+	maxReadTimeout       = 75 * time.Second
+	maxWriteTimeout      = 75 * time.Second
+
+	defaultPort = 80
 )
+
+var commitSHA string
 
 func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
 	// Clear out the servers array in the swagger spec, that skips validating
@@ -122,6 +128,8 @@ func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *ope
 		Handler:           r,
 		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
 		ReadHeaderTimeout: maxReadHeaderTimeout,
+		ReadTimeout:       maxReadTimeout,
+		WriteTimeout:      maxWriteTimeout,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 	}
 
@@ -148,7 +156,7 @@ func main() {
 	flag.StringVar(&debug, "true", "false", "is debug")
 	flag.Parse()
 
-	log.Println("Starting API service...")
+	log.Println("Starting API service...", "commit_sha", commitSHA)
 	if debug != "true" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -217,7 +225,7 @@ func main() {
 	// pass the signal context so that handlers know when shutdown is happening.
 	s := NewGinServer(ctx, apiStore, swagger, port)
 
-	//////////////////////////
+	// ////////////////////////
 	//
 	// Start the HTTP service
 
@@ -268,6 +276,13 @@ func main() {
 	go func() {
 		defer wg.Done()
 		<-signalCtx.Done()
+
+		// Start returning 503s for health checks
+		// to signal that the service is shutting down.
+		// This is a bit of a hack, but this way we can properly propagate
+		// the health status to the load balancer.
+		apiStore.Healthy = false
+		time.Sleep(15 * time.Second)
 
 		// if the parent context `ctx` is canceled the
 		// shutdown will return early. This should only happen

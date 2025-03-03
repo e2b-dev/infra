@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/semaphore"
@@ -24,9 +25,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const maxParalellSnapshotting = 8
+const (
+	requestTimeout = 60 * time.Second
 
-func (s *server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
+	maxParalellSnapshotting = 8
+)
+
+func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
+	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, fmt.Errorf("request timed out"))
+	defer cancel()
+
 	childCtx, childSpan := s.tracer.Start(ctx, "sandbox-create")
 	defer childSpan.End()
 
@@ -146,7 +154,10 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 	}, nil
 }
 
-func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteRequest) (*emptypb.Empty, error) {
+func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteRequest) (*emptypb.Empty, error) {
+	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, fmt.Errorf("request timed out"))
+	defer cancel()
+
 	ctx, childSpan := s.tracer.Start(ctx, "sandbox-delete")
 	defer childSpan.End()
 
@@ -172,9 +183,12 @@ func (s *server) Delete(ctx context.Context, in *orchestrator.SandboxDeleteReque
 	// 	Ideally we would rely only on the goroutine defer.
 	s.sandboxes.Remove(in.SandboxId)
 
+	loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
+	defer cancelLogginCtx()
+
 	// Check health metrics before stopping the sandbox
-	sbx.Healthcheck(ctx, true)
-	sbx.LogMetrics(ctx)
+	sbx.Healthcheck(loggingCtx, true)
+	sbx.LogMetrics(loggingCtx)
 
 	err := sbx.Stop()
 	if err != nil {
