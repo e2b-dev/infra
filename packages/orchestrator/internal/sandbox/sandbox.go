@@ -82,7 +82,6 @@ func NewSandbox(
 		config.KernelVersion,
 		config.FirecrackerVersion,
 		config.HugePages,
-		isSnapshot,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get template snapshot data: %w", err)
@@ -389,7 +388,7 @@ func (s *Sandbox) Snapshot(
 		return nil, fmt.Errorf("failed to create memfile diff file: %w", err)
 	}
 
-	err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiffFile)
+	memfileDirtyPages, _, err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiffFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
 	}
@@ -401,9 +400,9 @@ func (s *Sandbox) Snapshot(
 	releaseLock()
 
 	memfileMapping := header.CreateMapping(
-		memfileMetadata,
 		&buildId,
 		memfileDirtyPages,
+		memfileMetadata.BlockSize,
 	)
 
 	telemetry.ReportEvent(ctx, "created memfile mapping")
@@ -475,9 +474,9 @@ func (s *Sandbox) Snapshot(
 	telemetry.ReportEvent(ctx, "exported rootfs")
 
 	rootfsMapping := header.CreateMapping(
-		rootfsMetadata,
 		&buildId,
 		rootfsDirtyBlocks,
+		rootfsMetadata.BlockSize,
 	)
 
 	telemetry.ReportEvent(ctx, "created rootfs mapping")

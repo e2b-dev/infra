@@ -2,6 +2,7 @@ package template
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -23,20 +24,23 @@ func NewStorage(
 	buildId string,
 	fileType build.DiffType,
 	blockSize int64,
-	isSnapshot bool,
 	h *header.Header,
 	bucket *gcs.BucketHandle,
 ) (*Storage, error) {
-	if isSnapshot && h == nil {
+	if h == nil {
 		headerObject := gcs.NewObject(ctx, bucket, buildId+"/"+string(fileType)+storage.HeaderSuffix)
 
 		diffHeader, err := header.Deserialize(headerObject)
-		if err != nil {
+		if err != nil && !errors.Is(err, gcs.ErrObjectNotExist) {
 			return nil, fmt.Errorf("failed to deserialize header: %w", err)
 		}
 
-		h = diffHeader
-	} else if h == nil {
+		if err == nil {
+			h = diffHeader
+		}
+	}
+
+	if h == nil {
 		object := gcs.NewObject(ctx, bucket, buildId+"/"+string(fileType))
 
 		size, err := object.Size()
