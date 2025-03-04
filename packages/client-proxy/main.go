@@ -227,13 +227,6 @@ func main() {
 		logger.Info("waiting 15 seconds before shutting down http service")
 		time.Sleep(15 * time.Second)
 
-		logger.Info("shutting down telemetry")
-
-		err := cleanupTelemetry(ctx)
-		if err != nil {
-			logger.Error("error shutting down telemetry", zap.Error(err))
-		}
-
 		logger.Info("shutting down http service", zap.Int("port", port))
 
 		if err := server.Shutdown(ctx); err != nil {
