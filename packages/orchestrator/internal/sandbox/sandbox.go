@@ -244,7 +244,7 @@ func NewSandbox(
 		rootfs:         rootfsOverlay,
 		cleanup:        cleanup,
 		healthcheckCtx: healthcheckCtx,
-		healthy:        atomic.Bool{},
+		healthy:        atomic.Bool{}, // defaults to `false`
 	}
 
 	cleanup.AddPriority(func() error {
