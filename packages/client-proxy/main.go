@@ -22,7 +22,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -150,7 +150,7 @@ func proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func main() {
+func run() int {
 	exitCode := atomic.Int32{}
 	wg := sync.WaitGroup{}
 
@@ -159,15 +159,25 @@ func main() {
 	defer sigCancel()
 
 	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA)
-	defer stopOtlp(ctx)
+	defer func() {
+		err := stopOtlp(ctx)
+		if err != nil {
+			log.Printf("telemetry shutdown:%v\n", err)
+		}
+	}()
 
-	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	logger := zap.Must(e2bLogger.NewLogger(ctx, e2bLogger.LoggerConfig{
 		ServiceName: ServiceName,
 		IsInternal:  true,
 		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{logger.GetOTELCore(ServiceName)},
+		Cores:       []zapcore.Core{e2bLogger.GetOTELCore(ServiceName)},
 	}))
-	defer logger.Sync()
+	defer func() {
+		err := logger.Sync()
+		if err != nil {
+			log.Printf("logger sync error: %v\n", err)
+		}
+	}()
 	zap.ReplaceGlobals(logger)
 
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA))
@@ -238,22 +248,18 @@ func main() {
 		time.Sleep(15 * time.Second)
 
 		logger.Info("shutting down http service", zap.Int("port", port))
-		// TODO: Add timeout for ctx
 		if err := server.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			logger.Error("http service shutdown error", zap.Int("port", port), zap.Error(err))
-		}
-
-		// TODO: Add timeout for ctx
-		logger.Info("shutting down telemetry")
-		err := stopOtlp(ctx)
-		if err != nil {
-			log.Printf("error shutting down telemetry: %v", err)
 		}
 	}()
 
 	wg.Wait()
 
+	return int(exitCode.Load())
+}
+
+func main() {
 	// Exit, with appropriate code.
-	os.Exit(int(exitCode.Load()))
+	os.Exit(run())
 }
