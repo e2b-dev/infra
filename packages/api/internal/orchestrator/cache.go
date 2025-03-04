@@ -19,6 +19,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const cacheSyncTime = 20 * time.Second
+
 func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, error) {
 	item, err := o.instanceCache.Get(sandboxID)
 	if err != nil {
@@ -36,7 +38,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 			o.logger.Info("Stopping keepInSync")
 
 			return
-		case <-time.After(instance.CacheSyncTime):
+		case <-time.After(cacheSyncTime):
 			// Sleep for a while before syncing again
 
 			o.syncNodes(ctx, instanceCache)
@@ -45,7 +47,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 }
 
 func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.InstanceCache) {
-	ctxTimeout, cancel := context.WithTimeout(ctx, 1*time.Minute)
+	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
 	spanCtx, span := o.tracer.Start(ctxTimeout, "keep-in-sync")
