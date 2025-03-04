@@ -129,6 +129,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		templateSpawnCounter: templateSpawnCounter,
 	}
 
+	// Wait till there's at least one, otherwise we can't create sandboxes yet
 	go func() {
 		for {
 			if orch.NodeCount() != 0 {
