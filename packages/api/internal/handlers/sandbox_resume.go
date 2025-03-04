@@ -7,6 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
@@ -14,8 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func getSandboxIDClient(sandboxID string) (string, bool) {
@@ -111,7 +113,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	)
 	sandboxLogger.Debugf("Started resuming sandbox")
 
-	sbx, err := a.startSandbox(
+	sbx, createErr := a.startSandbox(
 		ctx,
 		snapshot.SandboxID,
 		timeout,
@@ -127,8 +129,9 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		snapshot.BaseEnvID,
 		autoPause,
 	)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error resuming sandbox: %s", err))
+	if createErr != nil {
+		zap.L().Error("Failed to resume sandbox", zap.Error(createErr.Err))
+		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
 
 		return
 	}

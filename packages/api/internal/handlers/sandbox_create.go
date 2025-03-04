@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -59,7 +60,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	_, templateSpan := a.Tracer.Start(ctx, "get-template")
 	defer templateSpan.End()
-	
+
 	// Check if team has access to the environment
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
 	if checkErr != nil {
@@ -127,7 +128,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause = *body.AutoPause
 	}
 
-	sandbox, err := a.startSandbox(
+	sandbox, createErr := a.startSandbox(
 		ctx,
 		sandboxID,
 		timeout,
@@ -143,8 +144,9 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		env.TemplateID,
 		autoPause,
 	)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, err.Error())
+	if createErr != nil {
+		zap.L().Error("Failed to create sandbox", zap.Error(createErr.Err))
+		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
 
 		return
 	}
