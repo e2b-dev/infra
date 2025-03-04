@@ -69,7 +69,7 @@ func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
 	switch {
 	case d.remote != nil:
 		if err := d.remote.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
-			d.logger.Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox", sandboxID))
+			d.logger.Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
 		}
 	case d.local != nil:
 		d.local.RemoveCb(d.cacheKey(sandboxID), func(k string, v string, ok bool) bool { return v == ip })
@@ -82,9 +82,9 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 	case d.remote != nil:
 		if err := d.remote.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
 			if errors.Is(err, cache.ErrCacheMiss) {
-				d.logger.Warn("item missing in remote DNS cache", zap.String("sandbox", sandboxID))
+				d.logger.Warn("item missing in remote DNS cache", zap.String("sandbox_id", sandboxID))
 			} else {
-				d.logger.Error("resolving item from remote DNS cache", zap.String("sandbox", sandboxID), zap.Error(err))
+				d.logger.Error("resolving item from remote DNS cache", zap.String("sandbox_id", sandboxID), zap.Error(err))
 			}
 		}
 	case d.local != nil:

@@ -5,7 +5,7 @@ go 1.23
 require (
 	cloud.google.com/go/artifactregistry v1.16.0
 	github.com/Microsoft/hcsshim v0.12.9
-	github.com/docker/docker v27.3.1+incompatible
+	github.com/docker/docker v27.4.1+incompatible
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
 	github.com/fsouza/go-dockerclient v1.12.0

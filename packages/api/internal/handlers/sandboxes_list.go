@@ -125,7 +125,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, query *st
 			StartedAt:  info.StartTime,
 			CpuCount:   int32(buildsMap[*info.BuildID].Vcpu),
 			MemoryMB:   int32(buildsMap[*info.BuildID].RAMMB),
-			EndAt:      info.EndTime,
+			EndAt:      info.GetEndTime(),
 		}
 
 		if info.Metadata != nil {

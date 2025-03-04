@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -62,6 +63,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 		sbxsInProgress: smap.New[*sbxInProgress](),
 		status:         api.NodeStatusReady,
 		Info:           node,
+		createFails:    atomic.Uint64{},
 	}
 
 	o.nodes.Insert(n.Info.ID, n)

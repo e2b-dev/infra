@@ -48,6 +48,19 @@ variable "api_machine_type" {
   type = string
 }
 
+variable "build_image_family" {
+  type    = string
+  default = "e2b-orch"
+}
+
+variable "build_cluster_size" {
+  type = number
+}
+
+variable "build_machine_type" {
+  type = string
+}
+
 variable "client_proxy_health_port" {
   type = object({
     name = string
@@ -150,6 +163,11 @@ variable "docker_contexts_bucket_name" {
 variable "domain_name" {
   type        = string
   description = "The domain name where e2b will run"
+}
+
+variable "additional_domains" {
+  type        = list(string)
+  description = "Additional domains which can be used to access the e2b cluster"
 }
 
 variable "cluster_setup_bucket_name" {

@@ -21,6 +21,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -31,11 +33,23 @@ const (
 	maxRetries      = 3
 )
 
+var commitSHA string
+
 // Create a DNS client
 var client = new(dns.Client)
 
 func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Request) {
+	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
+	if err != nil {
+		logger.Error("failed to create active connections counter", zap.Error(err))
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		if activeConnections != nil {
+			activeConnections.Add(r.Context(), 1)
+			defer func() {
+				activeConnections.Add(r.Context(), -1)
+			}()
+		}
 		logger.Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
 		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.dev)
@@ -144,10 +158,14 @@ func main() {
 		panic(fmt.Errorf("error creating logger: %v", err))
 	}
 
+	logger.Info("Starting client proxy", zap.String("commit", commitSHA))
+
 	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
 	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusOK)
 	})
+	cleanupTelemetry := telemetry.InitOTLPExporter(context.TODO(), "client-proxy", commitSHA)
+	defer cleanupTelemetry(ctx)
 
 	wg.Add(1)
 	go func() {
@@ -158,13 +176,13 @@ func main() {
 		err := healthServer.ListenAndServe()
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
-			logger.Info("http service shutdown successfully", zap.Int("port", port))
+			logger.Info("http service shutdown successfully", zap.Int("port", healthCheckPort))
 		case err != nil:
 			exitCode.Add(1)
-			logger.Error("http service encountered error", zap.Int("port", port), zap.Error(err))
+			logger.Error("http service encountered error", zap.Int("port", healthCheckPort), zap.Error(err))
 		default:
 			// this probably shouldn't happen...
-			logger.Error("http service exited without error", zap.Int("port", port))
+			logger.Error("http service exited without error", zap.Int("port", healthCheckPort))
 		}
 	}()
 
@@ -200,7 +218,7 @@ func main() {
 	go func() {
 		defer wg.Done()
 		<-signalCtx.Done()
-		logger.Info("shutting down http service", zap.Int("port", port))
+		logger.Info("shutting down http service", zap.Int("port", healthCheckPort))
 		if err := healthServer.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			logger.Error("http service shutdown error", zap.Int("port", healthCheckPort), zap.Error(err))
@@ -208,6 +226,13 @@ func main() {
 
 		logger.Info("waiting 15 seconds before shutting down http service")
 		time.Sleep(15 * time.Second)
+
+		logger.Info("shutting down telemetry")
+
+		err := cleanupTelemetry(ctx)
+		if err != nil {
+			logger.Error("error shutting down telemetry", zap.Error(err))
+		}
 
 		logger.Info("shutting down http service", zap.Int("port", port))
 

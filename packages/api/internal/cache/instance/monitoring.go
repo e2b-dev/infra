@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-func (c *InstanceCache) UpdateCounters(instance InstanceInfo, value int64, newlyCreated bool) {
+func (c *InstanceCache) UpdateCounters(instance *InstanceInfo, value int64, newlyCreated bool) {
 	attributes := []attribute.KeyValue{
 		attribute.String("team_id", instance.TeamID.String()),
 	}

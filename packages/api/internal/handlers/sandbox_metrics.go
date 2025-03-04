@@ -45,6 +45,7 @@ func (a *APIStore) getSandboxesSandboxIDMetrics(
 			MemUsedMiB:  int64(m.MemUsedMiB),
 		}
 	}
+
 	return apiMetrics, nil
 }
 

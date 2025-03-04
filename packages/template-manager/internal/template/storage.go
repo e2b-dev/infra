@@ -14,7 +14,7 @@ type Storage struct {
 
 func NewStorage(ctx context.Context) *Storage {
 	return &Storage{
-		bucket: gcs.TemplateBucket,
+		bucket: gcs.GetTemplateBucket(),
 	}
 }
 

@@ -52,8 +52,8 @@ func main() {
 
 	ctx := context.Background()
 
-	baseObj := gcs.NewObject(ctx, gcs.TemplateBucket, baseStoragePath)
-	diffObj := gcs.NewObject(ctx, gcs.TemplateBucket, diffStoragePath)
+	baseObj := gcs.NewObject(ctx, gcs.GetTemplateBucket(), baseStoragePath)
+	diffObj := gcs.NewObject(ctx, gcs.GetTemplateBucket(), diffStoragePath)
 
 	baseHeader, err := header.Deserialize(baseObj)
 	if err != nil {
@@ -66,7 +66,7 @@ func main() {
 	}
 
 	fmt.Printf("\nBASE METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", gcs.TemplateBucket.BucketName(), baseStoragePath)
+	fmt.Printf("Storage path       %s/%s\n", gcs.GetTemplateBucket().BucketName(), baseStoragePath)
 	fmt.Printf("========\n")
 
 	for _, mapping := range baseHeader.Mapping {
@@ -97,7 +97,7 @@ func main() {
 	}
 
 	fmt.Printf("\nDIFF METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", gcs.TemplateBucket.BucketName(), diffStoragePath)
+	fmt.Printf("Storage path       %s/%s\n", gcs.GetTemplateBucket().BucketName(), diffStoragePath)
 	fmt.Printf("========\n")
 
 	onlyDiffMappings := make([]*header.BuildMap, 0)

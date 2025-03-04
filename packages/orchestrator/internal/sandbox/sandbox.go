@@ -20,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
@@ -51,7 +50,6 @@ type Sandbox struct {
 	Slot            network.Slot
 	Logger          *logs.SandboxLogger
 	ClickhouseStore chdb.Store
-	stats           *stats.Handle
 
 	uffdExit chan error
 
@@ -94,6 +92,7 @@ func NewSandbox(
 	}
 
 	networkCtx, networkSpan := tracer.Start(childCtx, "get-network-slot")
+	defer networkSpan.End()
 
 	ips, err := networkPool.Get(networkCtx)
 	if err != nil {
@@ -108,7 +107,6 @@ func NewSandbox(
 
 		return nil
 	})
-
 	networkSpan.End()
 
 	sandboxFiles := t.Files().NewSandboxFiles(config.SandboxId)
@@ -123,6 +121,7 @@ func NewSandbox(
 	})
 
 	_, overlaySpan := tracer.Start(childCtx, "create-rootfs-overlay")
+	defer overlaySpan.End()
 
 	readonlyRootfs, err := t.Rootfs()
 	if err != nil {
@@ -223,13 +222,6 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
-	pid, err := fcHandle.Pid()
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get FC PID: %w", err)
-	}
-
-	sandboxStats := stats.NewHandle(int32(pid))
-
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	sbx := &Sandbox{
@@ -243,7 +235,6 @@ func NewSandbox(
 		StartedAt:       startedAt,
 		EndAt:           endAt,
 		rootfs:          rootfsOverlay,
-		stats:           sandboxStats,
 		Logger:          logger,
 		ClickhouseStore: clickhouseStore,
 		cleanup:         cleanup,
