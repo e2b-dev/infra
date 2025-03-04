@@ -44,7 +44,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install deno
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
 
       - name: GitHub Action for npx
         uses: mikeal/npx@1.0.0
