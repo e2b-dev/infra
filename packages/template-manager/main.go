@@ -31,8 +31,6 @@ func main() {
 
 	port := flag.Int("port", defaultPort, "Port for test HTTP server")
 
-	log.Println("Starting template manager", "commit", commitSHA)
-
 	flag.Parse()
 
 	if err := constants.CheckRequired(); err != nil {
