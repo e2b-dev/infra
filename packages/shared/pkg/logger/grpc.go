@@ -21,7 +21,7 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 			"grpc.code":        "-",
 		}
 
-		for i := 0; i < len(fields); i += 2 {
+		for i := 0; i < len(fields)-1; i += 2 {
 			key := fields[i]
 			value := fields[i+1]
 
