@@ -114,8 +114,8 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	authCache := authcache.NewTeamAuthCache(dbClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
-	return &APIStore{
-		Healthy:              true,
+	a := &APIStore{
+		Healthy:              false,
 		orchestrator:         orch,
 		templateManager:      templateManager,
 		db:                   dbClient,
@@ -128,6 +128,19 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		authCache:            authCache,
 		templateSpawnCounter: templateSpawnCounter,
 	}
+
+	go func() {
+		for {
+			if orch.NodeCount() != 0 {
+				a.Healthy = true
+				break
+			}
+
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	return a
 }
 
 func (a *APIStore) Close(ctx context.Context) error {

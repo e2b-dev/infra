@@ -3,11 +3,12 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"google.golang.org/grpc/connectivity"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"google.golang.org/grpc/connectivity"
 
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/jellydator/ttlcache/v3"
@@ -182,4 +183,8 @@ func (t *Node) InsertBuild(buildID string) {
 	// Set the build in the cache for 2 minutes, it should get updated with the correct time from the orchestrator during sync
 	t.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 	return
+}
+
+func (o *Orchestrator) NodeCount() int {
+	return o.nodes.Count()
 }
