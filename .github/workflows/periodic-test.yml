@@ -44,11 +44,10 @@ jobs:
           fetch-depth: 0
 
       - name: Install deno
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
 
       - name: GitHub Action for npx
         uses: mikeal/npx@1.0.0
-
       # workaround for not being able to use secrets in matrix
       # each cluster has a different api key
       - name: Set API Key
