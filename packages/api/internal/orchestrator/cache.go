@@ -34,9 +34,12 @@ func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, err
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
 func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache) {
-	// Force to run the first sync immediately
-	firstSync := make(chan struct{})
-	firstSync <- struct{}{}
+	// Run the first sync immediately
+	zap.L().Info("Running the initial node sync")
+	o.syncNodes(ctx, instanceCache)
+
+	ticker := time.NewTicker(cacheSyncTime)
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -44,10 +47,8 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 			o.logger.Info("Stopping keepInSync")
 
 			return
-		// Sync nodes on the start of the API server
-		case <-firstSync:
-			o.syncNodes(ctx, instanceCache)
-		case <-time.After(cacheSyncTime):
+		case <-ticker.C:
+			o.logger.Info("Syncing nodes")
 			// Sleep for a while before syncing again
 
 			o.syncNodes(ctx, instanceCache)
