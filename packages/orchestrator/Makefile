@@ -35,6 +35,15 @@ build-local:
 build-debug:
 	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -race -gcflags=all="-N -l" -o bin/orchestrator .
 
+.PHONY: run-debug
+run-debug:
+	make build-debug
+	sudo -E GOTRACEBACK=crash \
+	GODEBUG=madvdontneed=1 \
+	NODE_ID="test-client" \
+	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
+	./bin/orchestrator
+
 .PHONY: upload
 upload:
 	./upload.sh $(GCP_PROJECT_ID)
