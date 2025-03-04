@@ -30,8 +30,9 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 		metricsTicker.Stop()
 	}()
 
-	// Get metrics on sandbox startup
+	// Get metrics and health status on sandbox startup
 	go s.LogMetrics(ctx)
+	go s.Healthcheck(ctx, false)
 
 	for {
 		select {
@@ -68,9 +69,12 @@ func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 		}
 
 		if alwaysReport {
+			fmt.Println("This was called alwaysReport")
 			if ok {
+				fmt.Println("This was called alwaysReport ok")
 				sbxlogger.E(s).Healthcheck(sbxlogger.ReportSuccess)
 			} else {
+				fmt.Println("This was called alwaysReport not ok")
 				sbxlogger.E(s).Healthcheck(sbxlogger.ReportFail)
 				sbxlogger.I(s).Error("control healthcheck failed", zap.Error(err))
 			}
