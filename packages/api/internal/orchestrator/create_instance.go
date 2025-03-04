@@ -240,6 +240,7 @@ func (o *Orchestrator) CreateSandbox(
 	return &sbx, nil
 }
 
+// getLeastBusyNode returns the least busy node, if there are no eligible nodes, it tries until one is available or the context timeouts
 func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded map[string]*Node) (leastBusyNode *Node, err error) {
 	ctx, cancel := context.WithTimeout(parentCtx, leastBusyNodeTimeout)
 	defer cancel()
@@ -247,47 +248,65 @@ func (o *Orchestrator) getLeastBusyNode(parentCtx context.Context, nodesExcluded
 	childCtx, childSpan := o.tracer.Start(ctx, "get-least-busy-node")
 	defer childSpan.End()
 
+	// Try to find a node without waiting
+	leastBusyNode, err = o.findLeastBusyNode(nodesExcluded)
+	if err == nil {
+		return leastBusyNode, nil
+	}
+
+	// If no node is available, wait for a bit and try again
+	ticker := time.NewTicker(10 * time.Millisecond)
 	for {
 		select {
 		case <-childCtx.Done():
 			return nil, childCtx.Err()
-		case <-time.After(10 * time.Millisecond):
+		case <-ticker.C:
 			// If no node is available, wait for a bit and try again
-
-			for _, node := range o.nodes.Items() {
-				// The node might be nil if it was removed from the list while iterating
-				if node == nil {
-					continue
-				}
-
-				// If the node is not ready, skip it
-				if node.Status() != api.NodeStatusReady {
-					continue
-				}
-
-				// Skip already tried nodes
-				if nodesExcluded[node.Info.ID] != nil {
-					continue
-				}
-
-				// To prevent overloading the node
-				if node.sbxsInProgress.Count() > maxStartingInstancesPerNode {
-					continue
-				}
-
-				cpuUsage := int64(0)
-				for _, sbx := range node.sbxsInProgress.Items() {
-					cpuUsage += sbx.CPUs
-				}
-
-				if leastBusyNode == nil || (node.CPUUsage.Load()+cpuUsage) < leastBusyNode.CPUUsage.Load() {
-					leastBusyNode = node
-				}
-			}
-
-			if leastBusyNode != nil {
+			leastBusyNode, err = o.findLeastBusyNode(nodesExcluded)
+			if err == nil {
 				return leastBusyNode, nil
 			}
 		}
 	}
+}
+
+// findLeastBusyNode finds the least busy node that is ready and not in the excluded list
+// if no node is available, returns an error
+func (o *Orchestrator) findLeastBusyNode(nodesExcluded map[string]*Node) (leastBusyNode *Node, err error) {
+	for _, node := range o.nodes.Items() {
+		// The node might be nil if it was removed from the list while iterating
+		if node == nil {
+			continue
+		}
+
+		// If the node is not ready, skip it
+		if node.Status() != api.NodeStatusReady {
+			continue
+		}
+
+		// Skip already tried nodes
+		if nodesExcluded[node.Info.ID] != nil {
+			continue
+		}
+
+		// To prevent overloading the node
+		if node.sbxsInProgress.Count() > maxStartingInstancesPerNode {
+			continue
+		}
+
+		cpuUsage := int64(0)
+		for _, sbx := range node.sbxsInProgress.Items() {
+			cpuUsage += sbx.CPUs
+		}
+
+		if leastBusyNode == nil || (node.CPUUsage.Load()+cpuUsage) < leastBusyNode.CPUUsage.Load() {
+			leastBusyNode = node
+		}
+	}
+
+	if leastBusyNode != nil {
+		return leastBusyNode, nil
+	}
+
+	return nil, fmt.Errorf("no node available")
 }
