@@ -138,6 +138,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 				return
 			case <-ticker.C:
 				if orch.NodeCount() != 0 {
+					zap.L().Info("Nodes are ready, setting API as healthy")
 					a.Healthy = true
 					break
 				}
