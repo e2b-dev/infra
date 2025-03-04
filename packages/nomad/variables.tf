@@ -1,3 +1,7 @@
+variable "prefix" {
+  type = string
+}
+
 variable "gcp_zone" {
   type = string
 }
@@ -134,34 +138,6 @@ variable "logs_health_proxy_port" {
     port        = number
     health_path = string
   })
-}
-
-variable "grafana_api_key_secret_name" {
-  type = string
-}
-
-variable "grafana_logs_username_secret_name" {
-  type = string
-}
-
-variable "grafana_traces_username_secret_name" {
-  type = string
-}
-
-variable "grafana_metrics_username_secret_name" {
-  type = string
-}
-
-variable "grafana_logs_endpoint_secret_name" {
-  type = string
-}
-
-variable "grafana_traces_endpoint_secret_name" {
-  type = string
-}
-
-variable "grafana_metrics_endpoint_secret_name" {
-  type = string
 }
 
 variable "analytics_collector_host_secret_name" {

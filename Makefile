@@ -5,7 +5,6 @@ ENV_FILE := $(PWD)/.env.${ENV}
 
 TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
 OTEL_TRACING_PRINT ?= false
-EXCLUDE_GITHUB ?= 1
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
 CLIENT_CLUSTER_AUTO_SCALING_MAX ?= 0
 
@@ -14,24 +13,21 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_auto_scaling_max=$(CLIENT_CLUSTER_AUTO_SCALING_MAX) \
 	TF_VAR_api_machine_type=$(API_MACHINE_TYPE) \
 	TF_VAR_api_cluster_size=$(API_CLUSTER_SIZE) \
+	TF_VAR_build_machine_type=$(BUILD_MACHINE_TYPE) \
+	TF_VAR_build_cluster_size=$(BUILD_CLUSTER_SIZE) \
 	TF_VAR_server_machine_type=$(SERVER_MACHINE_TYPE) \
 	TF_VAR_server_cluster_size=$(SERVER_CLUSTER_SIZE) \
 	TF_VAR_gcp_project_id=$(GCP_PROJECT_ID) \
 	TF_VAR_gcp_region=$(GCP_REGION) \
 	TF_VAR_gcp_zone=$(GCP_ZONE) \
 	TF_VAR_domain_name=$(DOMAIN_NAME) \
+	TF_VAR_additional_domains=$(ADDITIONAL_DOMAINS) \
 	TF_VAR_prefix=$(PREFIX) \
 	TF_VAR_terraform_state_bucket=$(TERRAFORM_STATE_BUCKET) \
 	TF_VAR_otel_tracing_print=$(OTEL_TRACING_PRINT) \
 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	TF_VAR_template_bucket_name=$(TEMPLATE_BUCKET_NAME) \
 	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION)
-
-ifeq ($(EXCLUDE_GITHUB),1)
-	ALL_MODULES := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | grep -v -e "github_tf")
-else
-	ALL_MODULES := $(shell cat main.tf | grep "^module" | awk '{print $$2}')
-endif
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
@@ -57,14 +53,12 @@ init:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	terraform fmt -recursive
-	$(eval TARGET := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | awk '{print "-target=module." $$0 ""}' | xargs))
-	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode $(TARGET)
+	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
 
 .PHONY: plan-only-jobs
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	terraform fmt -recursive
-	$(eval TARGET := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | awk '{print "-target=module." $$0 ""}' | xargs))
 	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad
 
 
@@ -84,7 +78,7 @@ apply:
 .PHONY: plan-without-jobs
 plan-without-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(eval TARGET := $(shell echo $(ALL_MODULES) | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
+	$(eval TARGET := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
 	$(tf_vars) \
 	terraform plan \
 	-out=.tfplan.$(ENV) \
@@ -150,3 +144,33 @@ setup-ssh:
 	@ gcloud compute config-ssh --remove
 	@ gcloud compute config-ssh --project $(GCP_PROJECT_ID) --quiet
 	@ printf "SSH setup complete\n"
+
+.PHONY: test
+test:
+	$(MAKE) -C packages/api test
+	$(MAKE) -C packages/client-proxy test
+	$(MAKE) -C packages/docker-reverse-proxy test
+	$(MAKE) -C packages/envd test
+	$(MAKE) -C packages/orchestrator test
+	$(MAKE) -C packages/shared test
+	$(MAKE) -C packages/template-manager test
+
+
+# $(MAKE) -C terraform/grafana init does not work b/c of the -include ${ENV_FILE} in the Makefile
+# so we need to call the Makefile directly
+# && cd - || cd - is used to handle the case where the command fails, we still want to cd -
+.PHONY: grafana-init
+grafana-init:
+	@ printf "Initializing Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	cd terraform/grafana && make init && cd - || cd -
+
+.PHONY: grafana-plan
+grafana-plan:
+	@ printf "Planning Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	cd terraform/grafana && make plan && cd - || cd -
+
+.PHONY: grafana-apply
+grafana-apply:
+	@ printf "Applying Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	cd terraform/grafana && make apply && cd - || cd -
+

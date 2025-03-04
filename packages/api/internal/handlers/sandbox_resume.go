@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -59,6 +60,11 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		}
 	}
 
+	autoPause := instance.InstanceAutoPauseDefault
+	if body.AutoPause != nil {
+		autoPause = *body.AutoPause
+	}
+
 	clientID, ok := getSandboxIDClient(sandboxID)
 	if !ok {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid sandbox ID — missing client ID part: %s", sandboxID))
@@ -73,6 +79,19 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
 
 		return
+	}
+
+	// Wait for any pausing for this sandbox in progress.
+	pausedOnNode, err := a.orchestrator.WaitForPause(ctx, sandboxID)
+	if err != nil && !errors.Is(err, instance.ErrPausingInstanceNotFound) {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error while pausing sandbox %s: %s", sandboxID, err))
+
+		return
+	}
+
+	if err == nil {
+		// If the pausing was in progress, prefer to restore on the node where the pausing happened.
+		clientID = pausedOnNode.ID
 	}
 
 	snapshot, build, err := a.db.GetLastSnapshot(ctx, sandboxID, teamInfo.Team.ID)
@@ -106,6 +125,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		true,
 		&clientID,
 		snapshot.BaseEnvID,
+		autoPause,
 	)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error resuming sandbox: %s", err))

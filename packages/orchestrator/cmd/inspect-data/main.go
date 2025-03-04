@@ -46,7 +46,7 @@ func main() {
 
 	ctx := context.Background()
 
-	obj := gcs.NewObject(ctx, gcs.TemplateBucket, storagePath)
+	obj := gcs.NewObject(ctx, gcs.GetTemplateBucket(), storagePath)
 
 	size, err := obj.Size()
 	if err != nil {
@@ -67,7 +67,7 @@ func main() {
 
 	fmt.Printf("\nMETADATA\n")
 	fmt.Printf("========\n")
-	fmt.Printf("Storage path       %s/%s\n", gcs.TemplateBucket.BucketName(), storagePath)
+	fmt.Printf("Storage path       %s/%s\n", gcs.GetTemplateBucket().BucketName(), storagePath)
 	fmt.Printf("Build ID           %s\n", *buildId)
 	fmt.Printf("Size               %d B (%d MiB)\n", size, size/1024/1024)
 	fmt.Printf("Block size         %d B\n", blockSize)

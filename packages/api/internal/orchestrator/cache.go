@@ -25,52 +25,63 @@ func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, err
 		return nil, fmt.Errorf("failed to get sandbox '%s': %w", sandboxID, err)
 	}
 
-	sbx := item.Value()
-
-	return &sbx, nil
+	return item, nil
 }
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
-func (o *Orchestrator) keepInSync(instanceCache *instance.InstanceCache) {
+func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache) {
 	for {
-		ctx, span := o.tracer.Start(context.Background(), "keep-in-sync")
-		nodes, err := o.listNomadNodes(ctx)
-		if err != nil {
-			o.logger.Errorf("Error listing nodes: %v", err)
-			span.End()
+		select {
+		case <-ctx.Done():
+			o.logger.Info("Stopping keepInSync")
 
-			continue
+			return
+		case <-time.After(instance.CacheSyncTime):
+			// Sleep for a while before syncing again
+
+			o.syncNodes(ctx, instanceCache)
 		}
+	}
+}
 
-		var wg sync.WaitGroup
-		for _, n := range nodes {
-			// If the node is not in the list, connect to it
-			if o.GetNode(n.ID) == nil {
-				wg.Add(1)
-				go func(n *node.NodeInfo) {
-					defer wg.Done()
-					err = o.connectToNode(ctx, n)
-					if err != nil {
-						o.logger.Errorf("Error connecting to node: %v", err)
-					}
-				}(n)
-			}
-		}
-		wg.Wait()
+func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.InstanceCache) {
+	ctxTimeout, cancel := context.WithTimeout(ctx, 1*time.Minute)
+	defer cancel()
 
-		for _, n := range o.nodes.Items() {
+	spanCtx, span := o.tracer.Start(ctxTimeout, "keep-in-sync")
+	defer span.End()
+
+	nodes, err := o.listNomadNodes(spanCtx)
+	if err != nil {
+		o.logger.Errorf("Error listing nodes: %v", err)
+
+		return
+	}
+
+	var wg sync.WaitGroup
+	for _, n := range nodes {
+		// If the node is not in the list, connect to it
+		if o.GetNode(n.ID) == nil {
 			wg.Add(1)
-			go func(n *Node) {
+			go func(n *node.NodeInfo) {
 				defer wg.Done()
-				o.syncNode(ctx, n, nodes, instanceCache)
+				err = o.connectToNode(spanCtx, n)
+				if err != nil {
+					o.logger.Errorf("Error connecting to node: %v", err)
+				}
 			}(n)
 		}
-		wg.Wait()
-
-		span.End()
-		// Sleep for a while before syncing again
-		time.Sleep(instance.CacheSyncTime)
 	}
+	wg.Wait()
+
+	for _, n := range o.nodes.Items() {
+		wg.Add(1)
+		go func(n *Node) {
+			defer wg.Done()
+			o.syncNode(spanCtx, n, nodes, instanceCache)
+		}(n)
+	}
+	wg.Wait()
 }
 
 func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.NodeInfo, instanceCache *instance.InstanceCache) {
@@ -117,8 +128,18 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 	node.SyncBuilds(builds)
 }
 
-func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogClient *analyticscollector.PosthogClient, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
-	return func(info instance.InstanceInfo) error {
+func (o *Orchestrator) getDeleteInstanceFunction(
+	parentCtx context.Context,
+	posthogClient *analyticscollector.PosthogClient,
+	logger *zap.SugaredLogger,
+	timeout time.Duration,
+) func(info *instance.InstanceInfo) error {
+	return func(info *instance.InstanceInfo) error {
+		ctx, cancel := context.WithTimeout(parentCtx, timeout)
+		defer cancel()
+
+		defer o.instanceCache.UnmarkAsPausing(info)
+
 		duration := time.Since(info.StartTime).Seconds()
 
 		_, err := o.analytics.Client.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
@@ -132,11 +153,19 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 			logger.Errorf("error sending Analytics event: %v", err)
 		}
 
+		var closeType string
+		if info.AutoPause.Load() {
+			closeType = "pause"
+		} else {
+			closeType = "delete"
+		}
+
 		posthogClient.CreateAnalyticsTeamEvent(
 			info.TeamID.String(),
 			"closed_instance", posthog.NewProperties().
 				Set("instance_id", info.Instance.SandboxID).
 				Set("environment", info.Instance.TemplateID).
+				Set("type", closeType).
 				Set("duration", duration),
 		)
 
@@ -150,7 +179,6 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 			o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
 		}
 
-		req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
 		if node == nil {
 			log.Printf("node '%s' not found", info.Instance.ClientID)
 			return fmt.Errorf("node '%s' not found", info.Instance.ClientID)
@@ -161,17 +189,36 @@ func (o *Orchestrator) getDeleteInstanceFunction(ctx context.Context, posthogCli
 			return fmt.Errorf("client for node '%s' not found", info.Instance.ClientID)
 		}
 
-		_, err = node.Client.Sandbox.Delete(ctx, req)
-		if err != nil {
-			return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
+		if info.AutoPause.Load() {
+			o.instanceCache.MarkAsPausing(info)
+
+			err = o.PauseInstance(ctx, o.tracer, info, *info.TeamID)
+			if err != nil {
+				info.PauseDone(err)
+				return fmt.Errorf("failed to auto pause sandbox '%s': %w", info.Instance.SandboxID, err)
+			}
+
+			// We explicitly unmark as pausing here to avoid a race condition
+			// where we are creating a new instance, and the pausing one is still in the pausing cache.
+			o.instanceCache.UnmarkAsPausing(info)
+			info.PauseDone(nil)
+		} else {
+			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
+			_, err = node.Client.Sandbox.Delete(ctx, req)
+			if err != nil {
+				return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
+			}
 		}
 
 		return nil
 	}
 }
 
-func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *zap.SugaredLogger) func(info instance.InstanceInfo) error {
-	return func(info instance.InstanceInfo) error {
+func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, logger *zap.SugaredLogger, timeout time.Duration) func(info *instance.InstanceInfo) error {
+	return func(info *instance.InstanceInfo) error {
+		ctx, cancel := context.WithTimeout(parentCtx, timeout)
+		defer cancel()
+
 		node := o.GetNode(info.Instance.ClientID)
 		if node == nil {
 			logger.Errorf("failed to get node '%s'", info.Instance.ClientID)
@@ -191,6 +238,10 @@ func (o *Orchestrator) getInsertInstanceFunction(ctx context.Context, logger *za
 		})
 		if err != nil {
 			logger.Errorf("Error sending Analytics event: %v", err)
+		}
+
+		if info.AutoPause.Load() {
+			o.instanceCache.MarkAsPausing(info)
 		}
 
 		return nil

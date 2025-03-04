@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/sync/semaphore"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -30,12 +29,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 )
-
-const (
-	defaultRequestLimit = 16
-)
-
-var sandboxStartRequestLimit = semaphore.NewWeighted(defaultRequestLimit)
 
 type APIStore struct {
 	Healthy              bool
@@ -96,7 +89,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		logger.Warn("REDIS_URL not set, using local caches")
 	}
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger.Desugar(), posthogClient, redisClient)
+	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger.Desugar(), posthogClient, redisClient, dbClient)
 	if err != nil {
 		logger.Panic("initializing Orchestrator client", zap.Error(err))
 	}

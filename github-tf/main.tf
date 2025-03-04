@@ -1,10 +1,28 @@
 terraform {
+  required_version = ">= 1.5.0, < 1.6.0"
+  backend "gcs" {
+    prefix = "terraform/github-cicd/state"
+  }
   required_providers {
     github = {
       source  = "integrations/github"
       version = "5.42.0"
     }
+    google = {
+      source  = "hashicorp/google"
+      version = "5.31.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "3.5.1"
+    }
   }
+}
+
+provider "google" {
+  project = var.gcp_project_id
+  region  = var.gcp_region
+  zone    = var.gcp_zone
 }
 
 resource "google_secret_manager_secret" "github_token" {
@@ -147,13 +165,13 @@ resource "google_storage_bucket_iam_member" "public_builds_bucket_iam" {
 }
 
 resource "google_storage_bucket_iam_member" "fc_kernels_bucket_iam" {
-  bucket = var.kernel_bucket
+  bucket = "${var.gcp_project_id}-fc-kernels"
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.github_action_service_account.email}"
 }
 
 resource "google_storage_bucket_iam_member" "fc_versions_bucket_iam" {
-  bucket = var.fc_versions_bucket
+  bucket = "${var.gcp_project_id}-fc-versions"
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.github_action_service_account.email}"
 }
