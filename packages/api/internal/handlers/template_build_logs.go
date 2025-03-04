@@ -79,7 +79,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	status := dockerBuild.GetStatus()
 
-	query := fmt.Sprintf("{source=\"logs-collector\", buildID=\"%s\", envID=\"%s\"}", buildUUID.String(), templateID)
+	query := fmt.Sprintf("{source=\"logs-collector\", service=\"template-manager\", buildID=\"%s\", envID=\"%s\"}", buildUUID.String(), templateID)
 	end := time.Now()
 	start := end.Add(-templateBuildOldestLogsLimit)
 
