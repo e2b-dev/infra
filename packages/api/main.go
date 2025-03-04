@@ -53,7 +53,7 @@ var (
 	commitSHA string
 )
 
-func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
+func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
 	// Clear out the servers array in the swagger spec, that skips validating
 	// that server names match. We don't know how this thing will be run.
 	swagger.Servers = nil
@@ -69,7 +69,7 @@ func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *ope
 			"/templates/:templateID/builds/:buildID/status",
 		),
 		customMiddleware.IncludeRoutes(metricsMiddleware.Middleware(serviceName), "/sandboxes"),
-		customMiddleware.ExcludeRoutes(ginzap.Ginzap(zap.L(), time.RFC3339Nano, true),
+		customMiddleware.ExcludeRoutes(ginzap.Ginzap(logger, time.RFC3339Nano, true),
 			"/health",
 			"/sandboxes/:sandboxID/refreshes",
 			"/templates/:templateID/builds/:buildID/logs",
@@ -261,7 +261,7 @@ func run() int {
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	// pass the signal context so that handlers know when shutdown is happening.
-	s := NewGinServer(ctx, apiStore, swagger, port)
+	s := NewGinServer(ctx, logger, apiStore, swagger, port)
 
 	// ////////////////////////
 	//
