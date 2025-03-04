@@ -34,7 +34,6 @@ try {
     stdout = stdout.split('\n').filter(line => !line.includes(`Logs for sandbox`)).join('\n');
     stdout = stdout.split('\n').filter(line => !line.includes('Stopped printing logs — sandbox not found')).join('\n');
 
-
     // Assert that we got some logs
     if (!stdout.trim()) {
         throw new Error('No logs were collected from the sandbox');
