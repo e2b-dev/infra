@@ -3,7 +3,6 @@ import { Sandbox } from "npm:@e2b/code-interpreter";
 console.log('Starting sandbox logs test');
 
 let sandbox: Sandbox | null = null;
-let cliProcess: Promise<string> | null = null;
 
 try {
     // Create sandbox
@@ -29,8 +28,12 @@ try {
     const output = await child.output();
     const decoder = new TextDecoder();
     // Wait for CLI process to complete and get its output
-    const stdout = decoder.decode(output.stdout);
+    let stdout = decoder.decode(output.stdout);
     console.log('CLI process completed');
+
+    stdout = stdout.split('\n').filter(line => !line.includes(`Logs for sandbox`)).join('\n');
+    stdout = stdout.split('\n').filter(line => !line.includes('Stopped printing logs — sandbox not found')).join('\n');
+
 
     // Assert that we got some logs
     if (!stdout.trim()) {
