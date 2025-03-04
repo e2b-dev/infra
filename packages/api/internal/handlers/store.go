@@ -132,12 +132,16 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
 	go func() {
 		for {
-			if orch.NodeCount() != 0 {
-				a.Healthy = true
-				break
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if orch.NodeCount() != 0 {
+					a.Healthy = true
+					break
+				}
+				time.Sleep(time.Millisecond)
 			}
-
-			time.Sleep(time.Millisecond)
 		}
 	}()
 
