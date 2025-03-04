@@ -10,6 +10,7 @@ import (
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
@@ -63,7 +64,8 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 	var wg sync.WaitGroup
 	for _, n := range nodes {
 		// If the node is not in the list, connect to it
-		if o.GetNode(n.ID) == nil {
+		orchNode := o.GetNode(n.ID)
+		if orchNode == nil {
 			wg.Add(1)
 			go func(n *node.NodeInfo) {
 				defer wg.Done()
@@ -72,7 +74,21 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 					o.logger.Errorf("Error connecting to node: %v", err)
 				}
 			}(n)
+		} else {
+			// Check if the node is healthy
+			health, err := orchNode.Client.Health.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+			if err != nil {
+				zap.L().Warn("Error checking node health:", zap.String("node_id", n.ID), zap.Error(err))
+				zap.L().Info("Removing node from list:", zap.String("node_id", n.ID))
+				o.nodes.Remove(n.ID)
+			}
+			if health.Status != grpc_health_v1.HealthCheckResponse_SERVING {
+				zap.L().Warn("Node is not healthy:", zap.String("node_id", n.ID), zap.String("status", health.Status.String()))
+				zap.L().Info("Removing node from list:", zap.String("node_id", n.ID))
+				o.nodes.Remove(n.ID)
+			}
 		}
+
 	}
 	wg.Wait()
 
