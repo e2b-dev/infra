@@ -30,6 +30,7 @@ type serverStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
 	server             *grpc.Server
 	tracer             trace.Tracer
+	logger             *zap.Logger
 	dockerClient       *client.Client
 	legacyDockerClient *docker.Client
 	artifactRegistry   *artifactregistry.Client
@@ -83,6 +84,7 @@ func New(logger *zap.Logger) *grpc.Server {
 
 	templatemanager.RegisterTemplateServiceServer(s, &serverStore{
 		tracer:             otel.Tracer(constants.ServiceName),
+		logger:             logger,
 		dockerClient:       dockerClient,
 		legacyDockerClient: legacyClient,
 		artifactRegistry:   artifactRegistry,

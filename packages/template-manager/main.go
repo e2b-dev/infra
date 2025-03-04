@@ -4,18 +4,17 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"log"
 	"net"
-
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+	"os"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/server"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/test"
+	"go.uber.org/zap"
 )
 
 const defaultPort = 5009
@@ -31,8 +30,6 @@ func main() {
 	buildID := flag.String("build", "", "build id")
 
 	port := flag.Int("port", defaultPort, "Port for test HTTP server")
-
-	log.Println("Starting template manager", "commit", commitSHA)
 
 	flag.Parse()
 
@@ -54,26 +51,31 @@ func main() {
 		defer shutdown(context.TODO())
 	}
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
+	logger := sbxlogger.NewLogger(
+		ctx,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      constants.ServiceName,
+			IsInternal:       false,
+			IsDevelopment:    env.IsLocal(),
+			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		},
+	)
 
-	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName:   constants.ServiceName,
-		IsInternal:    true,
-		IsDevelopment: env.IsLocal(),
-		IsDebug:       true,
-		Cores:         []zapcore.Core{logger.GetOTELCore(constants.ServiceName)},
-	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
+
+	logger.Info("Starting template manager", zap.String("commit", commitSHA))
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	if err != nil {
+		logger.Fatal("failed to listen", zap.Error(err))
+	}
 
 	// Create an instance of our handler which satisfies the generated interface
 	s := server.New(logger)
 
-	log.Printf("Starting server on port %d", *port)
+	logger.Info("Starting server", zap.Int("port", *port))
 	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		logger.Fatal("failed to serve", zap.Error(err))
 	}
 }
