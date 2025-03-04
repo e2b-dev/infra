@@ -174,14 +174,14 @@ func (n *Node) SyncBuilds(builds []*orchestrator.CachedBuildInfo) {
 	}
 }
 
-func (t *Node) InsertBuild(buildID string) {
-	exists := t.buildCache.Has(buildID)
+func (n *Node) InsertBuild(buildID string) {
+	exists := n.buildCache.Has(buildID)
 	if exists {
 		return
 	}
 
 	// Set the build in the cache for 2 minutes, it should get updated with the correct time from the orchestrator during sync
-	t.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
+	n.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 	return
 }
 
