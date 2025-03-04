@@ -202,3 +202,8 @@ variable "redis_port" {
     port = number
   })
 }
+
+variable "clickhouse_hmac_secret_name" {
+  description = "Name of the secret containing ClickHouse HMAC credentials"
+  type        = string
+}

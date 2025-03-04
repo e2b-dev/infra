@@ -377,3 +377,18 @@ resource "nomad_job" "loki" {
     }
   }
 }
+
+# Add this with your other data sources
+data "google_secret_manager_secret_version" "clickhouse_hmac" {
+  secret = var.clickhouse_hmac_secret_name
+}
+
+# Add this with your other Nomad jobs
+resource "nomad_job" "clickhouse" {
+  jobspec = templatefile("${path.module}/clickhouse.hcl", {
+    zone              = var.gcp_zone
+    clickhouse_version = "25.1.5.31" # Or make this a variable
+    gcs_bucket        = "your-clickhouse-bucket"
+    gcs_folder        = "clickhouse-data"
+  })
+}
