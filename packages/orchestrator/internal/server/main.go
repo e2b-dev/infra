@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 	"log"
 	"math"
 	"net"
+	"os"
 	"sync"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
@@ -24,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	e2blogging "github.com/e2b-dev/infra/packages/shared/pkg/logging"
@@ -34,9 +37,11 @@ const ServiceName = "orchestrator"
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
-	sandboxes     *smap.Map[*sandbox.Sandbox]
-	dns           *dns.DNS
-	tracer        trace.Tracer
+	sandboxes       *smap.Map[*sandbox.Sandbox]
+	dns             *dns.DNS
+	tracer          trace.Tracer
+	clickhouseStore chdb.Store
+
 	networkPool   *network.Pool
 	templateCache *template.Cache
 
@@ -96,12 +101,24 @@ func New(ctx context.Context, port uint) (*Service, error) {
 			),
 		)
 
+		clickhouseStore, err := chdb.NewStore(chdb.ClickHouseConfig{
+			ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+			Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+			Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+			Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+			Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
+		}
+
 		srv.server = &server{
-			tracer:        otel.Tracer(ServiceName),
-			dns:           srv.dns,
-			sandboxes:     smap.New[*sandbox.Sandbox](),
-			networkPool:   networkPool,
-			templateCache: templateCache,
+			tracer:          otel.Tracer(ServiceName),
+			dns:             srv.dns,
+			sandboxes:       smap.New[*sandbox.Sandbox](),
+			networkPool:     networkPool,
+			templateCache:   templateCache,
+			clickhouseStore: clickhouseStore,
 		}
 	}
 

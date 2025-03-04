@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -113,6 +114,8 @@ func mockSnapshot(
 
 	logger := logs.NewSandboxLogger(sandboxId, templateId, "test-team", 2, 512, false)
 
+	mockStore := chdb.NewMockStore()
+
 	start := time.Now()
 
 	sbx, cleanup, err := sandbox.NewSandbox(
@@ -138,6 +141,7 @@ func mockSnapshot(
 		time.Now(),
 		time.Now(),
 		logger,
+		mockStore,
 		false,
 		templateId,
 	)
@@ -239,6 +243,7 @@ func mockSnapshot(
 		time.Now(),
 		time.Now(),
 		logger,
+		mockStore,
 		false,
 		templateId,
 	)

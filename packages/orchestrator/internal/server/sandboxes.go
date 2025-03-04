@@ -66,6 +66,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
 		logger,
+		s.clickhouseStore,
 		req.Sandbox.Snapshot,
 		req.Sandbox.BaseTemplateId,
 	)
