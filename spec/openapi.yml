@@ -445,6 +445,7 @@ components:
         - ready
         - draining
         - connecting
+        - unhealthy
 
     NodeStatusChange:
       required:

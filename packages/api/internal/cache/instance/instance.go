@@ -25,7 +25,6 @@ const (
 	InstanceExpiration = time.Second * 15
 	// Should we auto pause the instance by default instead of killing it,
 	InstanceAutoPauseDefault = false
-	CacheSyncTime            = time.Minute
 )
 
 var (

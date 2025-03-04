@@ -10,14 +10,18 @@ import (
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+const cacheSyncTime = 20 * time.Second
 
 func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, error) {
 	item, err := o.instanceCache.Get(sandboxID)
@@ -30,22 +34,28 @@ func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, err
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
 func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache) {
+	// Run the first sync immediately
+	zap.L().Info("Running the initial node sync")
+	o.syncNodes(ctx, instanceCache)
+
+	// Sync the nodes every cacheSyncTime
+	ticker := time.NewTicker(cacheSyncTime)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			o.logger.Info("Stopping keepInSync")
 
 			return
-		case <-time.After(instance.CacheSyncTime):
-			// Sleep for a while before syncing again
-
+		case <-ticker.C:
 			o.syncNodes(ctx, instanceCache)
 		}
 	}
 }
 
 func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.InstanceCache) {
-	ctxTimeout, cancel := context.WithTimeout(ctx, 1*time.Minute)
+	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
 	spanCtx, span := o.tracer.Start(ctxTimeout, "keep-in-sync")
@@ -61,7 +71,8 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 	var wg sync.WaitGroup
 	for _, n := range nodes {
 		// If the node is not in the list, connect to it
-		if o.GetNode(n.ID) == nil {
+		orchNode := o.GetNode(n.ID)
+		if orchNode == nil {
 			wg.Add(1)
 			go func(n *node.NodeInfo) {
 				defer wg.Done()
@@ -70,7 +81,18 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 					o.logger.Errorf("Error connecting to node: %v", err)
 				}
 			}(n)
+		} else {
+			// Check if the node is healthy
+			health, err := orchNode.Client.Health.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+			if err != nil || health.Status != grpc_health_v1.HealthCheckResponse_SERVING {
+				orchNode.SetStatus(api.NodeStatusUnhealthy)
+			} else {
+				if orchNode.Status() == api.NodeStatusUnhealthy && health.Status == grpc_health_v1.HealthCheckResponse_SERVING {
+					orchNode.SetStatus(api.NodeStatusReady)
+				}
+			}
 		}
+
 	}
 	wg.Wait()
 
