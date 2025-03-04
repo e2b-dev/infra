@@ -38,6 +38,7 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 	zap.L().Info("Running the initial node sync")
 	o.syncNodes(ctx, instanceCache)
 
+	// Sync the nodes every cacheSyncTime
 	ticker := time.NewTicker(cacheSyncTime)
 	defer ticker.Stop()
 
@@ -48,9 +49,6 @@ func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.I
 
 			return
 		case <-ticker.C:
-			o.logger.Info("Syncing nodes")
-			// Sleep for a while before syncing again
-
 			o.syncNodes(ctx, instanceCache)
 		}
 	}
