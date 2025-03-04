@@ -157,7 +157,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query)
 	if err != nil {
-		a.logger.Error("Error fetching sandboxes", zap.Error(err))
+		zap.L().Error("Error fetching sandboxes", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
 
 		return

@@ -16,11 +16,13 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const InstanceIDPrefix = "i"
+const (
+	InstanceIDPrefix = "i"
+)
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -79,15 +81,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	c.Set("instanceID", sandboxID)
 
-	sandboxLogger := logs.NewSandboxLogger(
-		sandboxID,
-		env.TemplateID,
-		teamInfo.Team.ID.String(),
-		build.Vcpu,
-		build.RAMMB,
-		false,
-	)
-	sandboxLogger.Debugf("Started creating sandbox")
+	sbxlogger.E(&sbxlogger.SandboxMetadata{
+		SandboxID:  sandboxID,
+		TemplateID: env.TemplateID,
+		TeamID:     teamInfo.Team.ID.String(),
+	}).Debug("Started creating sandbox")
 
 	var alias string
 	if env.Aliases != nil && len(*env.Aliases) > 0 {
@@ -137,7 +135,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		alias,
 		teamInfo,
 		build,
-		sandboxLogger,
 		&c.Request.Header,
 		false,
 		nil,

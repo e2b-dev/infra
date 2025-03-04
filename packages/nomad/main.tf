@@ -91,6 +91,7 @@ resource "nomad_job" "client_proxy" {
       image_name = var.client_proxy_docker_image_digest
 
       otel_collector_grpc_endpoint = "localhost:4317"
+      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
   })
 }
 
@@ -355,6 +356,7 @@ resource "nomad_job" "template_manager" {
       otel_tracing_print           = var.otel_tracing_print
       template_bucket_name         = var.template_bucket_name
       otel_collector_grpc_endpoint = "localhost:4317"
+      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
     }
   }
 }

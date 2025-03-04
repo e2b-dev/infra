@@ -10,6 +10,7 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
@@ -81,7 +82,7 @@ func NewBuildCache() *BuildCache {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
 	counter, err := meters.GetUpDownCounter(meters.BuildCounterMeterName)
 	if err != nil {
-		fmt.Printf("error creating counter: %s", err)
+		zap.L().Error("error creating counter", zap.Error(err))
 	}
 
 	go cache.Start()

@@ -142,7 +142,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		)
 		if buildErr != nil {
 			buildErr = fmt.Errorf("error when building env: %w", buildErr)
-			a.logger.Error("build failed", zap.Error(buildErr))
+			zap.L().Error("build failed", zap.Error(buildErr))
 			telemetry.ReportCriticalError(buildContext, buildErr)
 
 			dbErr := a.db.EnvBuildSetStatus(buildContext, templateID, buildUUID, envbuild.StatusFailed)

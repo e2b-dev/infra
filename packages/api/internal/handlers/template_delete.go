@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
@@ -140,7 +141,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "deleted environment", properties.Set("environment", template.ID))
 
-	a.logger.Infof("Deleted env '%s' from team '%s'", template.ID, team.ID)
+	zap.L().Info("Deleted env", zap.String("env_id", template.ID), zap.String("team_id", team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
 }

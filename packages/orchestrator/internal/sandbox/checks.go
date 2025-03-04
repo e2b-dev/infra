@@ -7,9 +7,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	"go.uber.org/zap"
+
 	"golang.org/x/mod/semver"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -50,7 +54,27 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 	var err error
 	defer func() {
-		s.Logger.Healthcheck(err == nil, alwaysReport)
+		ok := err == nil
+
+		if !ok && s.healthy.CompareAndSwap(true, false) {
+			sbxlogger.E(s).Healthcheck(sbxlogger.Fail)
+			sbxlogger.I(s).Error("healthcheck failed", zap.Error(err))
+			return
+		}
+
+		if ok && s.healthy.CompareAndSwap(false, true) {
+			sbxlogger.E(s).Healthcheck(sbxlogger.Success)
+			return
+		}
+
+		if alwaysReport {
+			if ok {
+				sbxlogger.E(s).Healthcheck(sbxlogger.ReportSuccess)
+			} else {
+				sbxlogger.E(s).Healthcheck(sbxlogger.ReportFail)
+				sbxlogger.I(s).Error("control healthcheck failed", zap.Error(err))
+			}
+		}
 	}()
 
 	address := fmt.Sprintf("http://%s:%d/health", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
@@ -64,17 +88,20 @@ func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 	if err != nil {
 		return
 	}
-	defer response.Body.Close()
+	defer func() {
+		// Drain the response body to reuse the connection
+		// From response.Body docstring:
+		//  // The default HTTP client's Transport may not reuse HTTP/1.x "keep-alive" TCP connections
+		//  if the Body is not read to completion and closed.
+		io.Copy(io.Discard, response.Body)
+		response.Body.Close()
+	}()
 
 	if response.StatusCode != http.StatusNoContent {
 		err = fmt.Errorf("unexpected status code: %d", response.StatusCode)
 		return
 	}
 
-	_, err = io.Copy(io.Discard, response.Body)
-	if err != nil {
-		return
-	}
 }
 
 func isGTEVersion(curVersion, minVersion string) bool {

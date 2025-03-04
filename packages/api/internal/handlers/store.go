@@ -27,7 +27,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 )
 
 type APIStore struct {
@@ -39,7 +38,6 @@ type APIStore struct {
 	buildCache           *builds.BuildCache
 	db                   *db.DB
 	lokiClient           *loki.DefaultClient
-	logger               *zap.SugaredLogger
 	templateCache        *templatecache.TemplateCache
 	authCache            *authcache.TeamAuthCache
 	templateSpawnCounter *utils.TemplateSpawnCounter
@@ -48,23 +46,18 @@ type APIStore struct {
 func NewAPIStore(ctx context.Context) *APIStore {
 	tracer := otel.Tracer("api")
 
-	logger, err := logging.New(env.IsLocal())
-	if err != nil {
-		panic(fmt.Errorf("initializing logger: %w", err))
-	}
-
-	logger.Info("initializing API store and services")
+	zap.L().Info("initializing API store and services")
 
 	dbClient, err := db.NewClient()
 	if err != nil {
-		logger.Panic("initializing Supabase client", zap.Error(err))
+		zap.L().Fatal("initializing Supabase client", zap.Error(err))
 	}
 
-	logger.Info("created Supabase client")
+	zap.L().Info("created Supabase client")
 
-	posthogClient, posthogErr := analyticscollector.NewPosthogClient(logger)
+	posthogClient, posthogErr := analyticscollector.NewPosthogClient()
 	if posthogErr != nil {
-		logger.Panic("initializing Posthog client", zap.Error(posthogErr))
+		zap.L().Fatal("initializing Posthog client", zap.Error(posthogErr))
 	}
 
 	nomadConfig := &nomadapi.Config{
@@ -74,29 +67,29 @@ func NewAPIStore(ctx context.Context) *APIStore {
 
 	nomadClient, err := nomadapi.NewClient(nomadConfig)
 	if err != nil {
-		logger.Panic("initializing Nomad client", zap.Error(err))
+		zap.L().Fatal("initializing Nomad client", zap.Error(err))
 	}
 
 	var redisClient *redis.Client
 	if rurl := os.Getenv("REDIS_URL"); rurl != "" {
 		opts, err := redis.ParseURL(rurl)
 		if err != nil {
-			logger.Panic("invalid redis URL", zap.String("url", rurl), zap.Error(err))
+			zap.L().Fatal("invalid redis URL", zap.String("url", rurl), zap.Error(err))
 		}
 
 		redisClient = redis.NewClient(opts)
 	} else {
-		logger.Warn("REDIS_URL not set, using local caches")
+		zap.L().Warn("REDIS_URL not set, using local caches")
 	}
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger.Desugar(), posthogClient, redisClient, dbClient)
+	orch, err := orchestrator.New(ctx, tracer, nomadClient, posthogClient, redisClient, dbClient)
 	if err != nil {
-		logger.Panic("initializing Orchestrator client", zap.Error(err))
+		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
 
 	templateManager, err := template_manager.New()
 	if err != nil {
-		logger.Panic("initializing Template manager client", zap.Error(err))
+		zap.L().Fatal("initializing Template manager client", zap.Error(err))
 	}
 
 	var lokiClient *loki.DefaultClient
@@ -105,7 +98,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 			Address: laddr,
 		}
 	} else {
-		logger.Warn("LOKI_ADDRESS not set, disabling Loki client")
+		zap.L().Warn("LOKI_ADDRESS not set, disabling Loki client")
 	}
 
 	buildCache := builds.NewBuildCache()
@@ -122,7 +115,6 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		Tracer:               tracer,
 		posthog:              posthogClient,
 		buildCache:           buildCache,
-		logger:               logger,
 		lokiClient:           lokiClient,
 		templateCache:        templateCache,
 		authCache:            authCache,
