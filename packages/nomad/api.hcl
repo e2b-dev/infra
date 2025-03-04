@@ -40,7 +40,7 @@ job "api" {
       # Time to wait for the canary to be healthy
       min_healthy_time = "10s"
       # Time to wait for the canary to be healthy, if not it will be marked as failed
-      healthy_deadline = "60s"
+      healthy_deadline = "30s"
       # Whether to promote the canary if the rest of the group is not healthy
       auto_promote     = true
     }
