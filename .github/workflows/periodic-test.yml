@@ -34,6 +34,9 @@ jobs:
           - command: "index.ts"
             name: "build and delete template"
             dir: "tests/periodic-test/build-template/"
+          - command: "index.ts"
+            name: "time is synchronized"
+            dir: "tests/periodic-test/time-is-synchronized/"
           - command: "tests/periodic-test/snapshot-and-resume.ts"
             name: "pause and resume sandbox"
       fail-fast: false
