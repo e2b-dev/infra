@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"net/http"
 	"net/http/httputil"
@@ -157,7 +158,7 @@ func main() {
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 
-	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, "no")
+	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA)
 	defer stopOtlp(ctx)
 
 	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
@@ -175,8 +176,6 @@ func main() {
 	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusOK)
 	})
-	cleanupTelemetry := telemetry.InitOTLPExporter(context.TODO(), "client-proxy", commitSHA)
-	defer cleanupTelemetry(ctx)
 
 	wg.Add(1)
 	go func() {
@@ -238,18 +237,18 @@ func main() {
 		logger.Info("waiting 15 seconds before shutting down http service")
 		time.Sleep(15 * time.Second)
 
-		logger.Info("shutting down telemetry")
-
-		err := cleanupTelemetry(ctx)
-		if err != nil {
-			logger.Error("error shutting down telemetry", zap.Error(err))
-		}
-
 		logger.Info("shutting down http service", zap.Int("port", port))
-
+		// TODO: Add timeout for ctx
 		if err := server.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			logger.Error("http service shutdown error", zap.Int("port", port), zap.Error(err))
+		}
+
+		// TODO: Add timeout for ctx
+		logger.Info("shutting down telemetry")
+		err := stopOtlp(ctx)
+		if err != nil {
+			log.Printf("error shutting down telemetry: %v", err)
 		}
 	}()
 
