@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -65,7 +65,7 @@ func (h *HTTPWriter) Write(source []byte) (n int, err error) {
 				if start < i { // Ignore empty lines
 					line := p[start:i]
 					if err := h.sendLogLine(line); err != nil {
-						fmt.Fprintf(os.Stderr, "Failed to send a log line: %s\n", line)
+						log.Printf("Failed to send a log line: %s\n", line)
 						return
 					}
 				}
@@ -77,7 +77,7 @@ func (h *HTTPWriter) Write(source []byte) (n int, err error) {
 		if start < len(p) {
 			line := p[start:]
 			if err := h.sendLogLine(line); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to send a log line: %s\n", line)
+				log.Printf("Failed to send a log line: %s\n", line)
 				return
 			}
 		}
