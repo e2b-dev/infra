@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc/connectivity"
 
 	nomadapi "github.com/hashicorp/nomad/api"
@@ -61,6 +62,7 @@ func (n *Node) SetStatus(status api.NodeStatus) {
 	n.statusMu.Lock()
 	defer n.statusMu.Unlock()
 
+	zap.L().Info("Node status changed", zap.String("node_id", n.Info.ID), zap.String("status", string(status)))
 	n.status = status
 }
 
