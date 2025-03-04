@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -33,12 +34,19 @@ func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, err
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
 func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache) {
+	// Force to run the first sync immediately
+	firstSync := make(chan struct{})
+	firstSync <- struct{}{}
+
 	for {
 		select {
 		case <-ctx.Done():
 			o.logger.Info("Stopping keepInSync")
 
 			return
+		// Sync nodes on the start of the API server
+		case <-firstSync:
+			o.syncNodes(ctx, instanceCache)
 		case <-time.After(cacheSyncTime):
 			// Sleep for a while before syncing again
 
