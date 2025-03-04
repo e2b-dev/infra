@@ -11,11 +11,8 @@ try {
     sandbox = await Sandbox.create();
     console.log('Sandbox created with ID:', sandbox.sandboxId);
 
-    let strippedId = sandbox.sandboxId.split('-')[0]
-    console.log('strippedId:', strippedId)
-
     const command = new Deno.Command("npx", {
-        args: ["@e2b/cli", "sandbox", "logs", "-f", strippedId],
+        args: ["@e2b/cli", "sandbox", "logs", "-f", sandbox.sandboxId],
         stdout: "piped",
         stderr: "piped",
     });
