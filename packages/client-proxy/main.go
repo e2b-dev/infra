@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"net/http"
 	"net/http/httputil"
@@ -18,14 +19,16 @@ import (
 
 	"github.com/miekg/dns"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
+	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
+	ServiceName     = "client-proxy"
 	dnsServer       = "api.service.consul:5353"
 	healthCheckPort = 3001
 	port            = 3002
@@ -36,12 +39,14 @@ const (
 var commitSHA string
 
 // Create a DNS client
-var client = new(dns.Client)
+var (
+	client = new(dns.Client)
+)
 
-func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http.Request) {
+func proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
 	if err != nil {
-		logger.Error("failed to create active connections counter", zap.Error(err))
+		zap.L().Error("failed to create active connections counter", zap.Error(err))
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if activeConnections != nil {
@@ -50,12 +55,12 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 				activeConnections.Add(r.Context(), -1)
 			}()
 		}
-		logger.Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
+		zap.L().Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
 		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.dev)
 		hostSplit := strings.Split(r.Host, "-")
 		if len(hostSplit) < 2 {
-			logger.Warn("invalid host", zap.String("host", r.Host))
+			zap.L().Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)
 
 			return
@@ -76,7 +81,7 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 			// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
 			if dnsErr != nil || len(resp.Answer) == 0 {
 				err = dnsErr
-				logger.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxID, err), zap.String("sandbox_id", sandboxID), zap.Error(err), zap.Int("retry", i+1))
+				zap.L().Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxID, err), zap.String("sandbox_id", sandboxID), zap.Error(err), zap.Int("retry", i+1))
 				// Jitter
 				time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 
@@ -86,7 +91,7 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 			node = resp.Answer[0].(*dns.A).A.String()
 			// The sandbox was not found, we want to return this information to the user
 			if node == "127.0.0.1" {
-				logger.Warn("Sandbox not found", zap.String("sandbox_id", sandboxID))
+				zap.L().Warn("Sandbox not found", zap.String("sandbox_id", sandboxID))
 				w.WriteHeader(http.StatusBadGateway)
 				w.Write([]byte("Sandbox not found"))
 
@@ -98,13 +103,13 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 
 		// There's no answer, we can't proxy the request
 		if err != nil {
-			logger.Error("DNS resolving for failed", zap.String("sandbox_id", sandboxID), zap.Error(err))
+			zap.L().Error("DNS resolving for failed", zap.String("sandbox_id", sandboxID), zap.Error(err))
 			http.Error(w, "Host not found", http.StatusBadGateway)
 			return
 		}
 
 		// We've resolved the node to proxy the request to
-		logger.Debug("Proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
+		zap.L().Debug("Proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
 		targetUrl := &url.URL{
 			Scheme: "http",
 			Host:   fmt.Sprintf("%s:%d", node, sandboxPort),
@@ -115,16 +120,16 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 
 		// Custom error handler for logging proxy errors
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-			logger.Error("Reverse proxy error", zap.Error(err), zap.String("sandbox_id", sandboxID))
+			zap.L().Error("Reverse proxy error", zap.Error(err), zap.String("sandbox_id", sandboxID))
 			http.Error(w, "Proxy error", http.StatusBadGateway)
 		}
 
 		// Modify response for logging or additional processing
 		proxy.ModifyResponse = func(resp *http.Response) error {
 			if resp.StatusCode >= 500 {
-				logger.Error("Backend responded with error", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID))
+				zap.L().Error("Backend responded with error", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID))
 			} else {
-				logger.Info("Backend responded", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID), zap.String("node", node), zap.String("path", r.URL.Path))
+				zap.L().Info("Backend responded", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID), zap.String("node", node), zap.String("path", r.URL.Path))
 			}
 
 			return nil
@@ -145,7 +150,7 @@ func proxyHandler(logger *zap.SugaredLogger) func(w http.ResponseWriter, r *http
 	}
 }
 
-func main() {
+func run() int {
 	exitCode := atomic.Int32{}
 	wg := sync.WaitGroup{}
 
@@ -153,10 +158,27 @@ func main() {
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 
-	logger, err := logging.New(env.IsLocal())
-	if err != nil {
-		panic(fmt.Errorf("error creating logger: %v", err))
-	}
+	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA)
+	defer func() {
+		err := stopOtlp(ctx)
+		if err != nil {
+			log.Printf("telemetry shutdown:%v\n", err)
+		}
+	}()
+
+	logger := zap.Must(e2bLogger.NewLogger(ctx, e2bLogger.LoggerConfig{
+		ServiceName: ServiceName,
+		IsInternal:  true,
+		IsDebug:     env.IsDebug(),
+		Cores:       []zapcore.Core{e2bLogger.GetOTELCore(ServiceName)},
+	}))
+	defer func() {
+		err := logger.Sync()
+		if err != nil {
+			log.Printf("logger sync error: %v\n", err)
+		}
+	}()
+	zap.ReplaceGlobals(logger)
 
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA))
 
@@ -164,8 +186,6 @@ func main() {
 	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusOK)
 	})
-	cleanupTelemetry := telemetry.InitOTLPExporter(context.TODO(), "client-proxy", commitSHA)
-	defer cleanupTelemetry(ctx)
 
 	wg.Add(1)
 	go func() {
@@ -188,7 +208,7 @@ func main() {
 
 	// Proxy request to the correct node
 	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
-	server.Handler = http.HandlerFunc(proxyHandler(logger))
+	server.Handler = http.HandlerFunc(proxyHandler())
 
 	wg.Add(1)
 	go func() {
@@ -227,15 +247,7 @@ func main() {
 		logger.Info("waiting 15 seconds before shutting down http service")
 		time.Sleep(15 * time.Second)
 
-		logger.Info("shutting down telemetry")
-
-		err := cleanupTelemetry(ctx)
-		if err != nil {
-			logger.Error("error shutting down telemetry", zap.Error(err))
-		}
-
 		logger.Info("shutting down http service", zap.Int("port", port))
-
 		if err := server.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			logger.Error("http service shutdown error", zap.Int("port", port), zap.Error(err))
@@ -244,6 +256,10 @@ func main() {
 
 	wg.Wait()
 
+	return int(exitCode.Load())
+}
+
+func main() {
 	// Exit, with appropriate code.
-	os.Exit(int(exitCode.Load()))
+	os.Exit(run())
 }

@@ -7,8 +7,11 @@ import (
 	"log"
 	"net"
 
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/server"
@@ -56,13 +59,17 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	logger, err := logging.New(env.IsLocal())
-	if err != nil {
-		log.Fatalf("Error initializing logging\n: %v\n", err)
-	}
+	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+		ServiceName: constants.ServiceName,
+		IsInternal:  true,
+		IsDebug:     true,
+		Cores:       []zapcore.Core{logger.GetOTELCore(constants.ServiceName)},
+	}))
+	defer logger.Sync()
+	zap.ReplaceGlobals(logger)
 
 	// Create an instance of our handler which satisfies the generated interface
-	s := server.New(logger.Desugar())
+	s := server.New(logger)
 
 	log.Printf("Starting server on port %d", *port)
 	if err := s.Serve(lis); err != nil {
