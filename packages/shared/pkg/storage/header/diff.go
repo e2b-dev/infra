@@ -22,9 +22,14 @@ var (
 func CreateDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*bitset.BitSet, *bitset.BitSet, error) {
 	b := make([]byte, blockSize)
 
-	emptyBuf := EmptyBlock
-	if blockSize == HugepageSize {
+	var emptyBuf []byte
+	switch {
+	case blockSize == HugepageSize:
 		emptyBuf = EmptyHugePage
+	case blockSize == RootfsBlockSize:
+		emptyBuf = EmptyBlock
+	default:
+		return nil, nil, fmt.Errorf("block size not supported: %d", blockSize)
 	}
 
 	empty := bitset.New(0)
