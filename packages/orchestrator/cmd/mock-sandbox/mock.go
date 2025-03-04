@@ -106,7 +106,6 @@ func mockSandbox(
 	loggerCfg := sbxlogger.SandboxLoggerConfig{
 		ServiceName:      "mock-sandbox",
 		IsInternal:       true,
-		IsDevelopment:    true,
 		CollectorAddress: "http://localhost:8080",
 	}
 	sbxlogger.SetSandboxLoggerInternal(sbxlogger.NewLogger(ctx, loggerCfg))

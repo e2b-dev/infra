@@ -114,7 +114,6 @@ func mockSnapshot(
 	loggerCfg := sbxlogger.SandboxLoggerConfig{
 		ServiceName:      "mock-snapshot",
 		IsInternal:       true,
-		IsDevelopment:    true,
 		CollectorAddress: "http://localhost:8080",
 	}
 	sbxlogger.SetSandboxLoggerInternal(sbxlogger.NewLogger(ctx, loggerCfg))
