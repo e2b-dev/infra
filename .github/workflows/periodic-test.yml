@@ -49,12 +49,6 @@ jobs:
       - name: GitHub Action for npx
         uses: mikeal/npx@1.0.0
       
-      # setup node and install npm:@e2b/code-interpreter
-      - name: Setup node
-        uses: actions/setup-node@v3
-        with:
-          node-version: 20
-
       - name: Install npm:@e2b/code-interpreter
         run: npm install -g @e2b/code-interpreter
       # workaround for not being able to use secrets in matrix
