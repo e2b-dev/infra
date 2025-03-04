@@ -48,9 +48,6 @@ jobs:
 
       - name: GitHub Action for npx
         uses: mikeal/npx@1.0.0
-      
-      - name: Install npm:@e2b/code-interpreter
-        run: npm install -g @e2b/code-interpreter
       # workaround for not being able to use secrets in matrix
       # each cluster has a different api key
       - name: Set API Key
