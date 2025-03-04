@@ -36,6 +36,8 @@ jobs:
             dir: "tests/periodic-test/build-template/"
           - command: "tests/periodic-test/snapshot-and-resume.ts"
             name: "pause and resume sandbox"
+          - command: "tests/periodic-test/cli-logs.ts"
+            name: "cli logs"
       fail-fast: false
     steps:
       - name: Checkout repository
