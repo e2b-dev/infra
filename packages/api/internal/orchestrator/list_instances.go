@@ -15,8 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 )
 
-const ServiceName = "orchestration-api"
-
 func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) ([]*instance.InstanceInfo, error) {
 	childCtx, childSpan := o.tracer.Start(ctx, "get-sandboxes-from-orchestrator")
 	defer childSpan.End()

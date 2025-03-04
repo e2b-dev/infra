@@ -22,7 +22,6 @@ import (
 
 const (
 	InstanceIDPrefix = "i"
-	ServiceName      = "orchestration-api"
 )
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {

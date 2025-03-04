@@ -69,7 +69,7 @@ func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *ope
 			"/templates/:templateID/builds/:buildID/status",
 		),
 		customMiddleware.IncludeRoutes(metricsMiddleware.Middleware(serviceName), "/sandboxes"),
-		customMiddleware.ExcludeRoutes(ginzap.Ginzap(zap.L(), time.RFC3339, true),
+		customMiddleware.ExcludeRoutes(ginzap.Ginzap(zap.L(), time.RFC3339Nano, true),
 			"/health",
 			"/sandboxes/:sandboxID/refreshes",
 			"/templates/:templateID/builds/:buildID/logs",
@@ -141,7 +141,7 @@ func NewGinServer(ctx context.Context, apiStore *handlers.APIStore, swagger *ope
 	return s
 }
 
-func main() {
+func run() int {
 	ctx, cancel := context.WithCancel(context.Background()) // root context
 	defer cancel()
 
@@ -161,18 +161,9 @@ func main() {
 	flag.StringVar(&debug, "debug", "false", "is debug")
 	flag.Parse()
 
-	swagger, err := api.GetSwagger()
-	if err != nil {
-		// this will call os.Exit: defers won't run, but none
-		// need to yet. Change this if this is called later.
-		fmt.Fprintf(os.Stderr, "error loading swagger spec: %v\n", err)
-		return
-	}
-
-	var cleanupFns []func(context.Context) error
-
 	if !env.IsLocal() {
-		cleanupFns = append(cleanupFns, telemetry.InitOTLPExporter(ctx, serviceName, swagger.Info.Version))
+		otlpCleanup := telemetry.InitOTLPExporter(ctx, serviceName, commitSHA)
+		defer otlpCleanup(ctx)
 	}
 
 	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
@@ -211,6 +202,15 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	swagger, err := api.GetSwagger()
+	if err != nil {
+		// this will call os.Exit: defers won't run, but none
+		// need to yet. Change this if this is called later.
+		logger.Error("error loading swagger spec", zap.Error(err))
+		return 1
+	}
+
+	var cleanupFns []func(context.Context) error
 	exitCode := &atomic.Int32{}
 	cleanupOp := func() {
 		// some cleanup functions do work that requires a context. passing shutdown a
@@ -355,5 +355,9 @@ func main() {
 	// coordinator running to manage and track that work.
 
 	// Exit, with appropriate code.
-	os.Exit(int(exitCode.Load()))
+	return int(exitCode.Load())
+}
+
+func main() {
+	os.Exit(run())
 }
