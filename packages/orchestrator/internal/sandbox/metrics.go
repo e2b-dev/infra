@@ -51,7 +51,7 @@ func (s *Sandbox) LogMetrics(ctx context.Context) {
 	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrcis) {
 		metrics, err := s.GetMetrics(ctx)
 		if err != nil {
-			s.Logger.Warnf("failed to get metrics from envd: %w", err)
+			s.Logger.Warnf("failed to get metrics from envd: %v", err)
 		} else {
 			s.Logger.Metrics(
 				metrics.MemTotalMiB, metrics.MemUsedMiB, metrics.CPUCount, metrics.CPUUsedPercent)
@@ -63,7 +63,7 @@ func (s *Sandbox) SendMetrics(ctx context.Context) {
 	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrcis) {
 		envdMetrics, err := s.GetMetrics(ctx)
 		if err != nil {
-			s.Logger.Warnf("failed to get metrics from envd: %w", err)
+			s.Logger.Warnf("failed to get metrics from envd: %v", err)
 		} else {
 			// XXX update upstream types to avoid this conversion
 			metrics := chmodels.Metrics{
@@ -78,7 +78,7 @@ func (s *Sandbox) SendMetrics(ctx context.Context) {
 
 			err := s.ClickhouseStore.InsertMetrics(ctx, metrics)
 			if err != nil {
-				s.Logger.Warnf("failed to insert metrics in ClickHouse: %w", err)
+				s.Logger.Warnf("failed to insert metrics in ClickHouse: %v", err)
 			}
 		}
 	}
