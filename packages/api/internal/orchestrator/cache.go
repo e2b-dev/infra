@@ -85,7 +85,6 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 			// Check if the node is healthy
 			health, err := orchNode.Client.Health.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
 			if err != nil || health.Status != grpc_health_v1.HealthCheckResponse_SERVING {
-				zap.L().Warn("Node is unhealthy", zap.String("node_id", n.ID), zap.Error(err))
 				orchNode.SetStatus(api.NodeStatusUnhealthy)
 			} else {
 				if orchNode.Status() == api.NodeStatusUnhealthy && health.Status == grpc_health_v1.HealthCheckResponse_SERVING {
