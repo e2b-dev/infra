@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -48,29 +49,37 @@ func (o *Orchestrator) CreateSandbox(
 	clientID *string,
 	baseTemplateID string,
 	autoPause bool,
-) (*api.Sandbox, error) {
+) (*api.Sandbox, *api.APIError) {
 	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
 
-	// // Check if team has reached max instances
-	// err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, teamID, maxInstancesPerTeam)
-	// if err != nil {
-	// 	errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", teamID, maxInstancesPerTeam)
-	// 	telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
-	//
-	// 	return nil, fmt.Errorf(
-	// 		"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-	// 			"please contact us at 'https://e2b.dev/docs/getting-help'", maxInstancesPerTeam)
-	// }
-	//
-	// telemetry.ReportEvent(childCtx, "Reserved sandbox for team")
-	// defer releaseTeamSandboxReservation()
+	// Check if team has reached max instances
+	err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
+	if err != nil {
+		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances)
+		telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
+
+		return nil, &api.APIError{
+			Code: http.StatusTooManyRequests,
+			ClientMsg: fmt.Sprintf(
+				"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
+					"please contact us at 'https://e2b.dev/docs/getting-help'", team.Tier.ConcurrentInstances),
+			Err: errMsg,
+		}
+	}
+
+	telemetry.ReportEvent(childCtx, "Reserved sandbox for team")
+	defer releaseTeamSandboxReservation()
 
 	features, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get features for firecracker version '%s': %w", build.FirecrackerVersion, err)
 
-		return nil, errMsg
+		return nil, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Failed to get build information for the template",
+			Err:       errMsg,
+		}
 	}
 
 	telemetry.ReportEvent(childCtx, "Got FC version info")
@@ -115,13 +124,21 @@ func (o *Orchestrator) CreateSandbox(
 	for {
 		select {
 		case <-childCtx.Done():
-			return nil, sandboxCreateFailedError
+			return nil, &api.APIError{
+				Code:      http.StatusRequestTimeout,
+				ClientMsg: "Failed to create sandbox",
+				Err:       fmt.Errorf("timeout while creating sandbox, attempt #%d", attempt),
+			}
 		default:
 			// Continue
 		}
 
 		if attempt > maxNodeRetries {
-			return nil, sandboxCreateFailedError
+			return nil, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: "Failed to create sandbox",
+				Err:       sandboxCreateFailedError,
+			}
 		}
 
 		if node == nil {
@@ -130,7 +147,11 @@ func (o *Orchestrator) CreateSandbox(
 				errMsg := fmt.Errorf("failed to get least busy node: %w", err)
 				telemetry.ReportError(childCtx, errMsg)
 
-				return nil, errMsg
+				return nil, &api.APIError{
+					Code:      http.StatusInternalServerError,
+					ClientMsg: "Failed to get node to place sandbox on.",
+					Err:       errMsg,
+				}
 			}
 		}
 
@@ -209,7 +230,11 @@ func (o *Orchestrator) CreateSandbox(
 			telemetry.ReportEvent(ctx, "instance wasn't found in cache when deleting")
 		}
 
-		return nil, errMsg
+		return nil, &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "Failed to create sandbox",
+			Err:       errMsg,
+		}
 	}
 
 	return &sbx, nil

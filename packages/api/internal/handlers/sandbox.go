@@ -30,7 +30,7 @@ func (a *APIStore) startSandbox(
 	clientID *string,
 	baseTemplateID string,
 	autoPause bool,
-) (*api.Sandbox, error) {
+) (*api.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
 
@@ -52,10 +52,10 @@ func (a *APIStore) startSandbox(
 		autoPause,
 	)
 	if instanceErr != nil {
-		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
+		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr.Err)
 		telemetry.ReportCriticalError(ctx, errMsg)
 
-		return nil, errMsg
+		return nil, instanceErr
 	}
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
