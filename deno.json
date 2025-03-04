@@ -1,3 +1,5 @@
 {
-    "nodeModulesDir": "auto"
+    "compilerOptions": {
+        "nodeModulesDir": "auto"
+    }
 }
