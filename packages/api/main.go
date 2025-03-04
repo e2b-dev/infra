@@ -176,11 +176,10 @@ func main() {
 	}
 
 	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName:   serviceName,
-		IsInternal:    true,
-		IsDevelopment: env.IsLocal(),
-		IsDebug:       env.IsDebug(),
-		Cores:         []zapcore.Core{logger.GetOTELCore(serviceName)},
+		ServiceName: serviceName,
+		IsInternal:  true,
+		IsDebug:     env.IsDebug(),
+		Cores:       []zapcore.Core{logger.GetOTELCore(serviceName)},
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
@@ -190,7 +189,6 @@ func main() {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       false,
-			IsDevelopment:    true,
 			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
 		},
 	)
@@ -202,7 +200,6 @@ func main() {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       true,
-			IsDevelopment:    true,
 			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
 		},
 	)

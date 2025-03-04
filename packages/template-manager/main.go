@@ -60,11 +60,10 @@ func main() {
 	}
 
 	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName:   constants.ServiceName,
-		IsInternal:    true,
-		IsDevelopment: env.IsLocal(),
-		IsDebug:       true,
-		Cores:         []zapcore.Core{logger.GetOTELCore(constants.ServiceName)},
+		ServiceName: constants.ServiceName,
+		IsInternal:  true,
+		IsDebug:     true,
+		Cores:       []zapcore.Core{logger.GetOTELCore(constants.ServiceName)},
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)

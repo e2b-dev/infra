@@ -150,11 +150,10 @@ func main() {
 	defer stopOtlp(ctx)
 
 	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName:   ServiceName,
-		IsInternal:    true,
-		IsDevelopment: env.IsLocal(),
-		IsDebug:       env.IsDebug(),
-		Cores:         []zapcore.Core{logger.GetOTELCore(ServiceName)},
+		ServiceName: ServiceName,
+		IsInternal:  true,
+		IsDebug:     env.IsDebug(),
+		Cores:       []zapcore.Core{logger.GetOTELCore(ServiceName)},
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)

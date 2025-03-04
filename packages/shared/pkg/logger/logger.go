@@ -3,20 +3,26 @@ package logger
 import (
 	"context"
 	"fmt"
+	"os"
+
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel/log/global"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"os"
 )
 
 type LoggerConfig struct {
-	ServiceName   string
-	IsInternal    bool
-	IsDevelopment bool
-	IsDebug       bool
-	InitialFields []zap.Field
+	// ServiceName is the name of the service that the logger is being created for.
+	// The service name is added to every log entry.
+	ServiceName string
+	// IsInternal differentiates between our (internal) logs, and user accessible (external) logs.
+	IsInternal bool
+	// IsDebug enables debug level logging, otherwise zap.InfoLevel level is used.
+	IsDebug bool
 
+	// InitialFields fields that are added to every log entry.
+	InitialFields []zap.Field
+	// Cores additional processing cores for the logger.
 	Cores []zapcore.Core
 }
 
@@ -30,11 +36,12 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 
 	config := zap.Config{
 		Level:             level,
-		Development:       loggerConfig.IsDevelopment,
 		DisableStacktrace: false,
-		Sampling:          nil,
-		Encoding:          "json",
-		EncoderConfig:     GetEncoderConfig(zapcore.DefaultLineEnding),
+		// Taks stacktraces more liberally
+		Development:   true,
+		Sampling:      nil,
+		Encoding:      "json",
+		EncoderConfig: GetEncoderConfig(zapcore.DefaultLineEnding),
 		OutputPaths: []string{
 			"stdout",
 		},
