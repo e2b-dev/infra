@@ -55,10 +55,10 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 		case <-metricsTicker.C:
 			s.SendMetrics(ctx)
 			if useLokiMetrics {
-				go s.LogMetrics(ctx)
+				s.LogMetrics(ctx)
 			}
 			if useClickhouseMetrics {
-				go s.SendMetrics(ctx)
+				s.SendMetrics(ctx)
 			}
 		case <-ctx.Done():
 			return
