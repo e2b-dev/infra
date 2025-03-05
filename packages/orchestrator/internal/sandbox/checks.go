@@ -80,7 +80,9 @@ func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 
 	address := fmt.Sprintf("http://%s:%d/health", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
 
-	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
+	var request *http.Request
+
+	request, err = http.NewRequestWithContext(ctx, "GET", address, nil)
 	if err != nil {
 		return
 	}
