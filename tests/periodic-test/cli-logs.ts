@@ -4,44 +4,70 @@ console.log('Starting sandbox logs test');
 
 let sandbox: Sandbox | null = null;
 
+
+function getLogs(sandboxId: string): Record<string, any>[] {
+    const command = new Deno.Command("npx", {
+        args: ["@e2b/cli", "sandbox", "logs", "--format", "json", sandboxId],
+        stdout: "piped",
+        stderr: "piped",
+    });
+    const {stdout} = command.outputSync();
+    if (stdout.length === 0) {
+        return []
+    }
+
+    const decoder = new TextDecoder();
+
+    // Wait for CLI process to complete and get its output
+    const lines = decoder.decode(stdout).trim().split('\n');
+
+    console.log('Lines:', lines);
+    return lines.map((line) => JSON.parse(line));
+}
+
 try {
     // Create sandbox
     console.log('creating sandbox')
     sandbox = await Sandbox.create();
     console.log('Sandbox created with ID:', sandbox.sandboxId);
 
-    const command = new Deno.Command("npx", {
-        args: ["@e2b/cli", "sandbox", "logs", "-f", sandbox.sandboxId],
-        stdout: "piped",
-        stderr: "piped",
-    });
-
-    const child = command.spawn();
-
-    // Start collecting logs in background
-    console.log('Started CLI logs collection');
+    // Run a command in the sandbox, so we can test both
+    await sandbox.commands.run('echo "Hello, World!"');
 
     // Kill the sandbox
     console.log('Killing sandbox');
     await sandbox.kill();
 
-    const output = await child.output();
-    const decoder = new TextDecoder();
-    // Wait for CLI process to complete and get its output
-    let stdout = decoder.decode(output.stdout);
-    console.log('CLI process completed');
 
-    stdout = stdout.split('\n').filter(line => !line.includes(`Logs for sandbox`)).join('\n');
-    stdout = stdout.split('\n').filter(line => !line.includes('Stopped printing logs — sandbox not found')).join('\n');
+    // It takes some time for logs to be propagated to our log store
+    const timeout = 10_000;
+    const start = Date.now();
+    let logsFromAPI = false
+    let logsFromSandbox = false
+    let logs
+    let i = 1;
 
-    // Assert that we got some logs
-    if (!stdout.trim()) {
-        throw new Error('No logs were collected from the sandbox');
+    while (Date.now() - start < timeout && (!logsFromAPI || !logsFromSandbox)) {
+        console.log(`[${i}] Checking logs`);
+        logs = getLogs(sandbox.sandboxId);
+        for (const log of logs) {
+            if (log.logger === 'orchestration-api') {
+                logsFromAPI = true;
+            } else if (log.logger === 'process') {
+                logsFromSandbox = true;
+            }
+        }
+
+        i++;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    console.log('Collected logs:', stdout);
+    if (!logsFromAPI || !logsFromSandbox) {
+        console.log('Logs:', logs);
+        console.log('Logs from API:', logsFromAPI, 'Logs from sandbox:', logsFromSandbox);
+        throw new Error('Logs not collected');
+    }
     console.log('Test passed successfully');
-
 } catch (error) {
     console.error('Test failed:', error);
     throw error;
