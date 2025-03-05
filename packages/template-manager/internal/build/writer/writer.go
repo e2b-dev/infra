@@ -11,8 +11,9 @@ type BuildLogsWriter struct {
 }
 
 func (w BuildLogsWriter) Write(p []byte) (n int, err error) {
-	w.logger.Info(string(p))
-	err = w.stream.Send(&template_manager.TemplateBuildLog{Log: string(p)})
+	log := string(p)
+	w.logger.Info(log)
+	err = w.stream.Send(&template_manager.TemplateBuildLog{Log: log})
 	if err != nil {
 		return 0, err
 	}
