@@ -30,8 +30,9 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 		metricsTicker.Stop()
 	}()
 
-	// Get metrics on sandbox startup
+	// Get metrics and health status on sandbox startup
 	go s.LogMetrics(ctx)
+	go s.Healthcheck(ctx, false)
 
 	for {
 		select {
