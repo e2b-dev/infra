@@ -40,6 +40,9 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	if useClickhouseMetrics {
 		go s.SendMetrics(ctx)
 	}
+	if !useLokiMetrics && !useClickhouseMetrics { // ensure backward compatibility if neither are set
+		go s.LogMetrics(ctx)
+	}
 	go s.Healthcheck(ctx, false)
 
 	for {
@@ -58,6 +61,9 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 			}
 			if useClickhouseMetrics {
 				s.SendMetrics(ctx)
+			}
+			if !useLokiMetrics && !useClickhouseMetrics { // ensure backward compatibility if neither are set
+				s.LogMetrics(ctx)
 			}
 		case <-ctx.Done():
 			return
