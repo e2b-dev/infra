@@ -59,15 +59,15 @@ job "clickhouse" {
                 <support_batch_delete>false</support_batch_delete>
                 <type>s3</type>
                 <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/</endpoint>
-                <access_key_id>{{ with secret "gcp/key/clickhouse" }}{{ .Data.hmac_key }}{{ end }}</access_key_id>
-                <secret_access_key>{{ with secret "gcp/key/clickhouse" }}{{ .Data.hmac_secret }}{{ end }}</secret_access_key>
+                <access_key_id>${hmac_key}</access_key_id>
+                <secret_access_key>${hmac_secret}</secret_access_key>
                 <metadata_path>/var/lib/clickhouse/disks/gcs/</metadata_path>
             </gcs>
             <gcs_cache>
                 <type>cache</type>
                 <disk>gcs</disk>
                 <path>/var/lib/clickhouse/disks/gcs_cache/</path>
-                <max_size>10Gi</max_size>
+                <max_size>4Gi</max_size>
             </gcs_cache>
         </disks>
         <policies>
