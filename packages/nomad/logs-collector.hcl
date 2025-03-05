@@ -72,18 +72,17 @@ data_dir = "alloc/data/vector/"
 enabled = true
 address = "0.0.0.0:${logs_health_port_number}"
 
-[sources.envd]
+[sources.http_server]
 type = "http_server"
 address = "0.0.0.0:${logs_port_number}"
 encoding = "ndjson"
 path_key = "_path"
 
-[transforms.add_source_envd]
+[transforms.add_source_http_server]
 type = "remap"
-inputs = ["envd"]
+inputs = ["http_server"]
 source = """
 del(."_path")
-.service = "envd"
 .sandboxID = .instanceID
 .timestamp = parse_timestamp(.timestamp, format: "%Y-%m-%dT%H:%M:%S.%fZ") ?? now()
 if !exists(.envID) {
@@ -101,11 +100,17 @@ if !exists(.sandboxID) {
 if !exists(.envID) {
   .envID = "unknown"
 }
+if !exists(.buildID) {
+  .buildID = "unknown"
+}
+if !exists(.service) {
+  .service = "envd"
+ }
 """
 
 [transforms.internal_routing]
 type = "route"
-inputs = [ "add_source_envd" ]
+inputs = [ "add_source_http_server" ]
 
 [transforms.internal_routing.route]
 internal = '.internal == true'
@@ -128,6 +133,7 @@ source = "logs-collector"
 service = "{{ service }}"
 teamID = "{{ teamID }}"
 envID = "{{ envID }}"
+buildID = "{{ buildID }}"
 sandboxID = "{{ sandboxID }}"
 category = "{{ category }}"
 
