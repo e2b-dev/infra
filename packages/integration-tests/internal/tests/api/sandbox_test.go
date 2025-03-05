@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"net/http"
+	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/e2b-dev/infra/packages/integration-tests/internal/api"
@@ -12,51 +14,34 @@ import (
 )
 
 func TestSandboxCreate(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		t.Run(strconv.Itoa(i+1), func(t *testing.T) {
+			defer wg.Done()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-	c := setup.GetAPIClient(t)
+			c := setup.GetAPIClient(t)
 
-	sbxTimeout := int32(60)
-	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
-		TemplateID: setup.SandboxTemplateID,
-		Timeout:    &sbxTimeout,
-	}, setup.WithAPIKey())
+			sbxTimeout := int32(60)
+			resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
+				TemplateID: setup.SandboxTemplateID,
+				Timeout:    &sbxTimeout,
+			}, setup.WithAPIKey())
 
-	if err != nil {
-		t.Fatal(err)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			t.Cleanup(func() {
+				if t.Failed() {
+					t.Logf("Response: %s", string(resp.Body))
+				}
+			})
+
+			assert.Equal(t, http.StatusCreated, resp.StatusCode())
+		})
+		wg.Wait()
 	}
-
-	t.Cleanup(func() {
-		if t.Failed() {
-			t.Logf("Response: %s", string(resp.Body))
-		}
-	})
-
-	assert.Equal(t, http.StatusCreated, resp.StatusCode())
-}
-
-func TestSandboxCreate2(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	c := setup.GetAPIClient(t)
-
-	sbxTimeout := int32(60)
-	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
-		TemplateID: setup.SandboxTemplateID,
-		Timeout:    &sbxTimeout,
-	}, setup.WithAPIKey())
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Cleanup(func() {
-		if t.Failed() {
-			t.Logf("Response: %s", string(resp.Body))
-		}
-	})
-
-	assert.Equal(t, http.StatusCreated, resp.StatusCode())
 }

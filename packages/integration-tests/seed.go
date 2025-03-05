@@ -13,6 +13,7 @@ import (
 )
 
 type SeedData struct {
+	APIKey  string
 	EnvId   string
 	BuildId string
 }
@@ -44,6 +45,7 @@ func main() {
 
 	var parsed bytes.Buffer
 	err = tmpl.Execute(&parsed, SeedData{
+		APIKey:  os.Getenv("TESTS_E2B_API_KEY"),
 		EnvId:   os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
 		BuildId: os.Getenv("TESTS_SANDBOX_BUILD_ID"),
 	})

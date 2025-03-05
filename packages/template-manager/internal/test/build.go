@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
@@ -38,8 +39,8 @@ func Build(templateID, buildID string) {
 		TemplateFiles: storage.NewTemplateFiles(
 			templateID,
 			buildID,
-			"vmlinux-6.1.102",
-			"v1.10.1_1fcdaec",
+			schema.DefaultKernelVersion,
+			schema.DefaultFirecrackerVersion,
 			true,
 		),
 		VCpuCount:       2,

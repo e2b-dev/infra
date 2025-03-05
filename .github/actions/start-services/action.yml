@@ -5,6 +5,8 @@ runs:
   using: "composite"
   steps:
     - name: Run PostgreSQL Database
+      env:
+        TESTS_E2B_API_KEY: "e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057"
       run: |
         docker run -d --name postgres \
                       -e POSTGRES_USER=postgres \
@@ -19,6 +21,7 @@ runs:
         while [ "$(docker inspect -f '{{.State.Health.Status}}' postgres 2>/dev/null)" != "healthy" ]; do echo "Waiting for PostgreSQL to be healthy..."; sleep 2; done
         echo "PostgreSQL is healthy!"
         
+        echo "TESTS_E2B_API_KEY=${TESTS_E2B_API_KEY}" >> .env.test
         set -x
         make migrate
         make -C packages/integration-tests seed

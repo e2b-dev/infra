@@ -24,7 +24,7 @@ INSERT INTO "public"."team_api_keys" (
     "api_key", "created_at", "team_id", "updated_at", "name",
     "last_used", "created_by", "id"
 ) VALUES (
-             'e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057',
+             '{{ .APIKey }}',
              '2025-01-20 23:48:41.786327+00',
              team_id,
              NULL,
