@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
 	"time"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
@@ -28,14 +30,14 @@ import (
 
 type serverStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
-	server             *grpc.Server
-	tracer             trace.Tracer
-	logger             *zap.Logger
-	buildLogger        *zap.Logger
-	dockerClient       *client.Client
-	legacyDockerClient *docker.Client
-	artifactRegistry   *artifactregistry.Client
-	templateStorage    *template.Storage
+	server           *grpc.Server
+	tracer           trace.Tracer
+	logger           *zap.Logger
+	builder          *build.TemplateBuilder
+	buildCache       *cache.BuildCache
+	buildLogger      *zap.Logger
+	templateStorage  *template.Storage
+	artifactRegistry *artifactregistry.Client
 }
 
 func New(logger *zap.Logger, buildLogger *zap.Logger) *grpc.Server {
@@ -82,15 +84,17 @@ func New(logger *zap.Logger, buildLogger *zap.Logger) *grpc.Server {
 	}
 
 	templateStorage := template.NewStorage(ctx)
+	buildCache := cache.NewBuildCache()
+	builder := build.NewBuilder(logger, buildLogger, otel.Tracer(constants.ServiceName), dockerClient, legacyClient, templateStorage, buildCache)
 
 	templatemanager.RegisterTemplateServiceServer(s, &serverStore{
-		tracer:             otel.Tracer(constants.ServiceName),
-		logger:             logger,
-		buildLogger:        buildLogger,
-		dockerClient:       dockerClient,
-		legacyDockerClient: legacyClient,
-		artifactRegistry:   artifactRegistry,
-		templateStorage:    templateStorage,
+		tracer:           otel.Tracer(constants.ServiceName),
+		logger:           logger,
+		builder:          builder,
+		buildCache:       buildCache,
+		buildLogger:      buildLogger,
+		artifactRegistry: artifactRegistry,
+		templateStorage:  templateStorage,
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())
