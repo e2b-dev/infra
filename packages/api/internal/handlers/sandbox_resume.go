@@ -76,8 +76,15 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	sandboxID = utils.ShortID(sandboxID)
 
-	_, err = a.orchestrator.GetSandbox(sandboxID)
+	sbxCache, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
+		zap.L().Debug("Sandbox is already running",
+			zap.String("sandbox_id", sandboxID),
+			zap.Time("end_time", sbxCache.GetEndTime()),
+			zap.Bool("auto_pause", sbxCache.AutoPause.Load()),
+			zap.Time("start_time", sbxCache.StartTime),
+			zap.String("node_id", sbxCache.Node.ID),
+		)
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox %s is already running", sandboxID))
 
 		return
