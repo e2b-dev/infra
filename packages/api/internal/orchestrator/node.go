@@ -62,8 +62,10 @@ func (n *Node) SetStatus(status api.NodeStatus) {
 	n.statusMu.Lock()
 	defer n.statusMu.Unlock()
 
-	zap.L().Info("Node status changed", zap.String("node_id", n.Info.ID), zap.String("status", string(status)))
-	n.status = status
+	if n.status != status {
+		zap.L().Info("Node status changed", zap.String("node_id", n.Info.ID), zap.String("status", string(status)))
+		n.status = status
+	}
 }
 
 func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, error) {

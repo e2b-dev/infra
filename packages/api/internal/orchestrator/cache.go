@@ -10,11 +10,9 @@ import (
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
-	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -81,18 +79,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 					o.logger.Errorf("Error connecting to node: %v", err)
 				}
 			}(n)
-		} else {
-			// Check if the node is healthy
-			health, err := orchNode.Client.Health.Check(ctxTimeout, &grpc_health_v1.HealthCheckRequest{})
-			if err != nil || health.Status != grpc_health_v1.HealthCheckResponse_SERVING {
-				orchNode.SetStatus(api.NodeStatusUnhealthy)
-			} else {
-				if orchNode.Status() == api.NodeStatusUnhealthy && health.Status == grpc_health_v1.HealthCheckResponse_SERVING {
-					orchNode.SetStatus(api.NodeStatusReady)
-				}
-			}
 		}
-
 	}
 	wg.Wait()
 
