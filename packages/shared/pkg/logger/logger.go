@@ -81,7 +81,7 @@ func GetEncoderConfig(lineEnding string) zapcore.EncoderConfig {
 		EncodeLevel:   zapcore.LowercaseLevelEncoder,
 		NameKey:       "logger",
 		StacktraceKey: "stacktrace",
-		EncodeTime:    zapcore.ISO8601TimeEncoder,
+		EncodeTime:    zapcore.RFC3339NanoTimeEncoder,
 		LineEnding:    lineEnding,
 	}
 }
