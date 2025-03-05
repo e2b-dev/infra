@@ -20,8 +20,6 @@ function getLogs(sandboxId: string): Record<string, any>[] {
 
     // Wait for CLI process to complete and get its output
     const lines = decoder.decode(stdout).trim().split('\n');
-
-    console.log('Lines:', lines);
     return lines.map((line) => JSON.parse(line));
 }
 
