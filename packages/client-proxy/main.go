@@ -55,7 +55,6 @@ func proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 				activeConnections.Add(r.Context(), -1)
 			}()
 		}
-		zap.L().Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
 		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.dev)
 		hostSplit := strings.Split(r.Host, "-")
