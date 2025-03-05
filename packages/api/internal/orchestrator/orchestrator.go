@@ -81,7 +81,7 @@ func New(
 
   if env.IsLocal() {
     zap.L().Info("Skipping syncing sandboxes, running locally")
-		// Add a local node for local development
+		// Add a local node for local development, if there isn't any, it fails silently
 		o.connectToNode(ctx, &node.NodeInfo{
 			ID:                  "test-client",
 			OrchestratorAddress: fmt.Sprintf("%s:%s", "127.0.0.1", consts.OrchestratorPort),
