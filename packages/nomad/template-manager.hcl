@@ -60,9 +60,14 @@ variable "otel_collector_grpc_endpoint" {
   default = ""
 }
 
+variable "logs_collector_address" {
+  type    = string
+  default = ""
+}
+
 job "template-manager" {
   datacenters = [var.gcp_zone]
-
+  node_pool  = "build"
   priority = 70
 
   group "template-manager" {
@@ -104,6 +109,7 @@ job "template-manager" {
         ENVIRONMENT                   = var.environment
         TEMPLATE_BUCKET_NAME          = var.template_bucket_name
         OTEL_COLLECTOR_GRPC_ENDPOINT  = var.otel_collector_grpc_endpoint
+        LOGS_COLLECTOR_ADDRESS        = var.logs_collector_address
       }
 
       config {

@@ -315,6 +315,23 @@ function bootstrap {
   rm "/tmp/nomad.token"
 }
 
+function create_node_pools {
+  local readonly nomad_token="$1"
+  log_info "Creating node pools"
+  cat > "$config_dir/api_node_pool.hcl"  <<EOF
+node_pool "api" {
+  description = "Nodes for api."
+}
+EOF
+  nomad node pool apply -token "$nomad_token" "$config_dir/api_node_pool.hcl"
+  cat > "$config_dir/build_node_pool.hcl"  <<EOF
+node_pool "build" {
+  description = "Nodes for template builds."
+}
+EOF
+  nomad node pool apply -token "$nomad_token" "$config_dir/build_node_pool.hcl"
+}
+
 # Based on: http://unix.stackexchange.com/a/7732/215969
 function get_owner_of_path {
   local readonly path="$1"
@@ -475,6 +492,7 @@ function run {
 
   if [[ "$server" == "true" ]]; then
     bootstrap "$nomad_token"
+    create_node_pools "$nomad_token"
   fi
 }
 

@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -14,12 +13,13 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -39,9 +39,6 @@ type Process struct {
 
 	cmd *exec.Cmd
 
-	stdout *io.PipeReader
-	stderr *io.PipeReader
-
 	metadata *MmdsMetadata
 
 	uffdSocketPath        string
@@ -53,6 +50,14 @@ type Process struct {
 	Exit chan error
 
 	client *apiClient
+}
+
+func (p *Process) LoggerMetadata() sbxlogger.SandboxMetadata {
+	return sbxlogger.SandboxMetadata{
+		SandboxID:  p.metadata.SandboxId,
+		TemplateID: p.metadata.TemplateId,
+		TeamID:     p.metadata.TeamId,
+	}
 }
 
 func NewProcess(
@@ -112,23 +117,13 @@ func NewProcess(
 	)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		// Setsid:  true, // Create a new session
-		Setpgid: true,
-		Pgid:    0,
+		Setsid: true, // Create a new session
 	}
-
-	cmdStdoutReader, cmdStdoutWriter := io.Pipe()
-	cmd.Stdout = cmdStdoutWriter
-
-	cmdStderrReader, cmdStderrWriter := io.Pipe()
-	cmd.Stderr = cmdStderrWriter
 
 	return &Process{
 		Exit:                  make(chan error, 1),
 		uffdReady:             uffdReady,
 		cmd:                   cmd,
-		stdout:                cmdStdoutReader,
-		stderr:                cmdStderrReader,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		metadata:              mmdsMetadata,
 		uffdSocketPath:        files.SandboxUffdSocketPath(),
@@ -142,56 +137,54 @@ func NewProcess(
 func (p *Process) Start(
 	ctx context.Context,
 	tracer trace.Tracer,
-	logger *logs.SandboxLogger,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "start-fc")
 	defer childSpan.End()
 
-	go func() {
-		defer func() {
-			readerErr := p.stdout.Close()
-			if readerErr != nil {
-				logger.Errorf("[sandbox %s]: error closing fc stdout reader: %v\n", p.metadata.SandboxId, readerErr)
-			}
-		}()
+	stdoutReader, err := p.cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("error creating fc stdout pipe: %w", err)
+	}
 
-		scanner := bufio.NewScanner(p.stdout)
+	go func() {
+		// The stdout should be closed with the process cmd automatically, as it uses the StdoutPipe()
+		// TODO: Better handling of processing all logs before calling wait
+		scanner := bufio.NewScanner(stdoutReader)
 
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			logger.Infof("[sandbox %s]: stdout: %s\n", p.metadata.SandboxId, line)
+			sbxlogger.I(p).Info("stdout: "+line, zap.String("sandbox_id", p.metadata.SandboxId))
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			logger.Errorf("[sandbox %s]: error reading fc stdout: %v\n", p.metadata.SandboxId, readerErr)
+			sbxlogger.I(p).Error("error reading fc stdout", zap.Error(readerErr))
 		}
 	}()
 
-	go func() {
-		defer func() {
-			readerErr := p.stderr.Close()
-			if readerErr != nil {
-				logger.Errorf("[sandbox %s]: error closing fc stderr reader: %v\n", p.metadata.SandboxId, readerErr)
-			}
-		}()
+	stderrReader, err := p.cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("error creating fc stderr pipe: %w", err)
+	}
 
-		scanner := bufio.NewScanner(p.stderr)
+	go func() {
+		// The stderr should be closed with the process cmd automatically, as it uses the StderrPipe()
+		// TODO: Better handling of processing all logs before calling wait
+		scanner := bufio.NewScanner(stderrReader)
 
 		for scanner.Scan() {
 			line := scanner.Text()
-
-			logger.Warnf("[sandbox %s]: stderr: %s\n", p.metadata.SandboxId, line)
+			sbxlogger.I(p).Error("stderr: "+line, zap.String("sandbox_id", p.metadata.SandboxId))
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			logger.Errorf("[sandbox %s]: error reading fc stderr: %v\n", p.metadata.SandboxId, readerErr)
+			sbxlogger.I(p).Error("error reading fc stderr", zap.Error(readerErr))
 		}
 	}()
 
-	err := os.Symlink("/dev/null", p.files.SandboxCacheRootfsLinkPath())
+	err = os.Symlink("/dev/null", p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -298,12 +291,11 @@ func (p *Process) Pid() (int, error) {
 }
 
 func (p *Process) Stop() error {
-	pid, err := p.Pid()
-	if err != nil {
+	if p.cmd.Process == nil {
 		return fmt.Errorf("fc process not started")
 	}
 
-	err = syscall.Kill(-pid, syscall.SIGKILL)
+	err := p.cmd.Process.Kill()
 	if err != nil {
 		return fmt.Errorf("failed to send KILL to FC process: %w", err)
 	}

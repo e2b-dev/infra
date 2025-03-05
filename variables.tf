@@ -40,6 +40,14 @@ variable "api_machine_type" {
   type = string
 }
 
+variable "build_cluster_size" {
+  type = number
+}
+
+variable "build_machine_type" {
+  type = string
+}
+
 variable "client_proxy_health_port" {
   type = object({
     name = string
@@ -165,16 +173,6 @@ variable "otel_tracing_print" {
   description = "Whether to print OTEL traces to stdout"
   type        = bool
   default     = false
-}
-
-variable "github_organization" {
-  type    = string
-  default = "e2b-dev"
-}
-
-variable "github_repository" {
-  type    = string
-  default = "infra"
 }
 
 variable "domain_name" {

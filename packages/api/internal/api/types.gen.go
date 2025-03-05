@@ -17,8 +17,10 @@ const (
 
 // Defines values for NodeStatus.
 const (
-	NodeStatusDraining NodeStatus = "draining"
-	NodeStatusReady    NodeStatus = "ready"
+	NodeStatusConnecting NodeStatus = "connecting"
+	NodeStatusDraining   NodeStatus = "draining"
+	NodeStatusReady      NodeStatus = "ready"
+	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
 // Defines values for TemplateBuildStatus.
@@ -76,6 +78,9 @@ type Node struct {
 
 	// SandboxCount Number of sandboxes running on the node
 	SandboxCount int32 `json:"sandboxCount"`
+
+	// SandboxStartingCount Number of starting Sandboxes
+	SandboxStartingCount int `json:"sandboxStartingCount"`
 
 	// Status Status of the node
 	Status NodeStatus `json:"status"`

@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -68,7 +68,7 @@ func (o *CowDevice) Export(ctx context.Context, out io.Writer, stopSandbox func(
 		return nil, fmt.Errorf("error ejecting cache: %w", err)
 	}
 
-        // the error is already logged in go routine in SandboxCreate handler
+	// the error is already logged in go routine in SandboxCreate handler
 	go stopSandbox()
 
 	select {
@@ -120,13 +120,13 @@ func (o *CowDevice) Close() error {
 		return errors.Join(errs...)
 	}
 
-	counter := 0
+	attempts := 0
 	for {
-		counter++
+		attempts++
 		err := nbd.Pool.ReleaseDevice(slot)
 		if errors.Is(err, nbd.ErrDeviceInUse{}) {
-			if counter%100 == 0 {
-				log.Printf("[%dth try] error releasing overlay device: %v\n", counter, err)
+			if attempts%100 == 0 {
+				zap.L().Info("error releasing overlay device", zap.Int("attempts", attempts), zap.Error(err))
 			}
 
 			time.Sleep(500 * time.Millisecond)
@@ -141,7 +141,7 @@ func (o *CowDevice) Close() error {
 		break
 	}
 
-	fmt.Printf("overlay device released\n")
+	zap.L().Info("overlay device released")
 
 	return nil
 }

@@ -18,7 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -111,7 +111,13 @@ func mockSnapshot(
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
 
-	logger := logs.NewSandboxLogger(sandboxId, templateId, "test-team", 2, 512, false)
+	loggerCfg := sbxlogger.SandboxLoggerConfig{
+		ServiceName:      "mock-snapshot",
+		IsInternal:       true,
+		CollectorAddress: "http://localhost:8080",
+	}
+	sbxlogger.SetSandboxLoggerInternal(sbxlogger.NewLogger(ctx, loggerCfg))
+	sbxlogger.SetSandboxLoggerExternal(sbxlogger.NewLogger(ctx, loggerCfg))
 
 	start := time.Now()
 
@@ -137,7 +143,6 @@ func mockSnapshot(
 		"trace-test-1",
 		time.Now(),
 		time.Now(),
-		logger,
 		false,
 		templateId,
 	)
@@ -238,7 +243,6 @@ func mockSnapshot(
 		"trace-test-1",
 		time.Now(),
 		time.Now(),
-		logger,
 		false,
 		templateId,
 	)

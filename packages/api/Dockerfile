@@ -17,7 +17,9 @@ RUN go mod download
 COPY internal internal
 COPY main.go main.go
 
-RUN --mount=type=cache,target=/root/.cache/go-build make build
+ARG COMMIT_SHA
+RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA}
+
 RUN chmod +x /build/api/bin/api
 
 FROM alpine:3.17

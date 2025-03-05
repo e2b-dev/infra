@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const ExporterTimeout = 10 * time.Second
+
 type HTTPExporter struct {
 	ctx      context.Context
 	client   http.Client
@@ -23,7 +25,7 @@ type HTTPExporter struct {
 func NewHTTPLogsExporter(ctx context.Context, debug bool) *HTTPExporter {
 	exporter := &HTTPExporter{
 		client: http.Client{
-			Timeout: 2 * time.Second,
+			Timeout: ExporterTimeout,
 		},
 		triggers: make(chan struct{}, 1),
 		debug:    debug,
