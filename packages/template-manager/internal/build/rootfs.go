@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -110,6 +111,9 @@ func (r *Rootfs) pullDockerImage(ctx context.Context, tracer trace.Tracer) error
 	}
 
 	authConfigBase64 := base64.URLEncoding.EncodeToString(authConfigBytes)
+	if consts.DockerAuthConfig != "" {
+		authConfigBase64 = consts.DockerAuthConfig
+	}
 
 	logs, err := r.client.ImagePull(childCtx, r.dockerTag(), image.PullOptions{
 		RegistryAuth: authConfigBase64,
@@ -351,8 +355,9 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	pr, pw := io.Pipe()
 
 	go func() {
+		var errMsg error
 		defer func() {
-			closeErr := pw.Close()
+			closeErr := pw.CloseWithError(errMsg)
 			if closeErr != nil {
 				errMsg := fmt.Errorf("error closing pipe: %w", closeErr)
 				telemetry.ReportCriticalError(childCtx, errMsg)
@@ -365,7 +370,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		defer func() {
 			err = tw.Close()
 			if err != nil {
-				errMsg := fmt.Errorf("error closing tar writer: %w", err)
+				errMsg = fmt.Errorf("error closing tar writer: %w", errors.Join(err, errMsg))
 				telemetry.ReportCriticalError(childCtx, errMsg)
 			} else {
 				telemetry.ReportEvent(childCtx, "closed tar writer")
@@ -375,10 +380,10 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		for _, file := range filesToTar {
 			addErr := addFileToTarWriter(tw, file)
 			if addErr != nil {
-				errMsg := fmt.Errorf("error adding envd to tar writer: %w", addErr)
+				errMsg = fmt.Errorf("error adding envd to tar writer: %w", addErr)
 				telemetry.ReportCriticalError(childCtx, errMsg)
 
-				return
+				break
 			} else {
 				telemetry.ReportEvent(childCtx, "added envd to tar writer")
 			}

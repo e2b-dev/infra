@@ -14,35 +14,46 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-const maxRetries = 120
+const (
+	requestTimeout = 50 * time.Millisecond
+	loopDelay      = 5 * time.Millisecond
+)
+
+// doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
+// The parent context should have a deadline or a timeout.
+func doRequestWithInfiniteRetries(ctx context.Context, method, address string, body io.Reader) (*http.Response, error) {
+	for {
+		reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+		request, err := http.NewRequestWithContext(reqCtx, method, address, body)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+
+		response, err := httpClient.Do(request)
+		cancel()
+
+		if err == nil {
+			return response, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("%w with cause: %w", ctx.Err(), context.Cause(ctx))
+		case <-time.After(loopDelay):
+		}
+	}
+}
 
 func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
 	address := fmt.Sprintf("http://%s:%d/sync", s.Slot.HostIP(), consts.OldEnvdServerPort)
 
-	var response *http.Response
-	for i := 0; i < maxRetries; i++ {
-		reqCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
-		request, err := http.NewRequestWithContext(reqCtx, "POST", address, nil)
-		if err != nil {
-			cancel()
-			return err
-		}
-
-		response, err = httpClient.Do(request)
-		if err == nil {
-			cancel()
-			break
-		}
-
-		cancel()
-		time.Sleep(5 * time.Millisecond)
+	response, err := doRequestWithInfiniteRetries(ctx, "POST", address, nil)
+	if err != nil {
+		return fmt.Errorf("failed to sync envd: %w", err)
 	}
 
-	if response == nil {
-		return fmt.Errorf("failed to sync envd")
-	}
-
-	_, err := io.Copy(io.Discard, response.Body)
+	_, err = io.Copy(io.Discard, response.Body)
 	if err != nil {
 		return err
 	}
@@ -74,27 +85,9 @@ func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map
 		return err
 	}
 
-	var response *http.Response
-	for i := 0; i < maxRetries; i++ {
-		reqCtx, cancel := context.WithTimeout(childCtx, 50*time.Millisecond)
-		request, err := http.NewRequestWithContext(reqCtx, "POST", address, bytes.NewReader(envVarsJSON))
-		if err != nil {
-			cancel()
-			return err
-		}
-
-		response, err = httpClient.Do(request)
-		if err == nil {
-			cancel()
-			break
-		}
-
-		cancel()
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	if response == nil {
-		return fmt.Errorf("failed to init envd")
+	response, err := doRequestWithInfiniteRetries(childCtx, "POST", address, bytes.NewReader(envVarsJSON))
+	if err != nil {
+		return fmt.Errorf("failed to init envd: %w", err)
 	}
 
 	defer response.Body.Close()
