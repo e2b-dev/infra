@@ -15,9 +15,8 @@ function getLogs(sandboxId: string): Record<string, any>[] {
     return []
   }
 
+  // Parse JSON lines
   const decoder = new TextDecoder()
-
-  // Wait for CLI process to complete and get its output
   const lines = decoder.decode(stdout).trim().split('\n')
   return lines.map((line) => JSON.parse(line))
 }
