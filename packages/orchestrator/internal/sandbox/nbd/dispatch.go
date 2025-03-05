@@ -86,8 +86,6 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
 	d.writeLock.Lock()
 	defer d.writeLock.Unlock()
 
-	//	fmt.Printf("WriteResponse %v %x -> %d\n", d.fp, respHandle, len(chunk))
-
 	binary.BigEndian.PutUint32(d.responseHeader[4:], respError)
 	binary.BigEndian.PutUint64(d.responseHeader[8:], respHandle)
 

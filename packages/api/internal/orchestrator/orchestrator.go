@@ -32,7 +32,6 @@ type Orchestrator struct {
 	instanceCache *instance.InstanceCache
 	nodes         *smap.Map[*Node]
 	tracer        trace.Tracer
-	logger        *zap.SugaredLogger
 	analytics     *analyticscollector.Analytics
 	dns           *dns.DNS
 	dbClient      *db.DB
@@ -42,31 +41,27 @@ func New(
 	ctx context.Context,
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
-	logger *zap.Logger,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient *redis.Client,
 	dbClient *db.DB,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
 	if err != nil {
-		logger.Error("Error initializing Analytics client", zap.Error(err))
+		zap.L().Error("Error initializing Analytics client", zap.Error(err))
 	}
 
-	dnsServer := dns.New(ctx, redisClient, logger)
+	dnsServer := dns.New(ctx, redisClient)
 
 	if env.IsLocal() {
-		logger.Info("Running locally, skipping starting DNS server")
+		zap.L().Info("Running locally, skipping starting DNS server")
 	} else {
-		logger.Info("Starting DNS server")
+		zap.L().Info("Starting DNS server")
 		dnsServer.Start(ctx, "0.0.0.0", os.Getenv("DNS_PORT"))
 	}
-
-	slogger := logger.Sugar()
 
 	o := Orchestrator{
 		analytics:   analyticsInstance,
 		nomadClient: nomadClient,
-		logger:      slogger,
 		tracer:      tracer,
 		nodes:       smap.New[*Node](),
 		dns:         dnsServer,
@@ -76,15 +71,14 @@ func New(
 	cache := instance.NewCache(
 		ctx,
 		analyticsInstance.Client,
-		slogger,
-		o.getInsertInstanceFunction(ctx, slogger, cacheHookTimeout),
-		o.getDeleteInstanceFunction(ctx, posthogClient, slogger, cacheHookTimeout),
+		o.getInsertInstanceFunction(ctx, cacheHookTimeout),
+		o.getDeleteInstanceFunction(ctx, posthogClient, cacheHookTimeout),
 	)
 
 	o.instanceCache = cache
 
 	if env.IsLocal() {
-		logger.Info("Skipping syncing sandboxes, running locally")
+		zap.L().Info("Skipping syncing sandboxes, running locally")
 	} else {
 		go o.keepInSync(ctx, cache)
 	}
@@ -101,7 +95,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			o.logger.Infof("Stopping status logging")
+			zap.L().Info("Stopping status logging")
 
 			return
 		case <-ticker.C:
@@ -142,7 +136,7 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 		}
 	}
 
-	o.logger.Infof("shutting down node clients: %d of %d nodes had errors", len(errs), len(nodes))
+	zap.L().Info("shutting down node clients", zap.Int("error_count", len(errs)), zap.Int("node_count", len(nodes)))
 
 	if err := o.analytics.Close(); err != nil {
 		errs = append(errs, err)

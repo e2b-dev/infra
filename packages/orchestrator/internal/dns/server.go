@@ -3,12 +3,12 @@ package dns
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"sync"
 
 	resolver "github.com/miekg/dns"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -77,7 +77,7 @@ func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
 
 	err := w.WriteMsg(m)
 	if err != nil {
-		log.Printf("Failed to write message: %s\n", err.Error())
+		zap.L().Error("failed to write message", zap.Error(err))
 	}
 }
 

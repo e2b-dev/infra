@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -15,11 +16,13 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const InstanceIDPrefix = "i"
+const (
+	InstanceIDPrefix = "i"
+)
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -59,7 +62,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	_, templateSpan := a.Tracer.Start(ctx, "get-template")
 	defer templateSpan.End()
-	
+
 	// Check if team has access to the environment
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
 	if checkErr != nil {
@@ -78,15 +81,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	c.Set("instanceID", sandboxID)
 
-	sandboxLogger := logs.NewSandboxLogger(
-		sandboxID,
-		env.TemplateID,
-		teamInfo.Team.ID.String(),
-		build.Vcpu,
-		build.RAMMB,
-		false,
-	)
-	sandboxLogger.Debugf("Started creating sandbox")
+	sbxlogger.E(&sbxlogger.SandboxMetadata{
+		SandboxID:  sandboxID,
+		TemplateID: env.TemplateID,
+		TeamID:     teamInfo.Team.ID.String(),
+	}).Debug("Started creating sandbox")
 
 	var alias string
 	if env.Aliases != nil && len(*env.Aliases) > 0 {
@@ -127,7 +126,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause = *body.AutoPause
 	}
 
-	sandbox, err := a.startSandbox(
+	sandbox, createErr := a.startSandbox(
 		ctx,
 		sandboxID,
 		timeout,
@@ -136,15 +135,15 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		alias,
 		teamInfo,
 		build,
-		sandboxLogger,
 		&c.Request.Header,
 		false,
 		nil,
 		env.TemplateID,
 		autoPause,
 	)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, err.Error())
+	if createErr != nil {
+		zap.L().Error("Failed to create sandbox", zap.Error(createErr.Err))
+		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
 
 		return
 	}

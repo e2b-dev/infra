@@ -72,6 +72,7 @@ job "client-proxy" {
 
       env {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
+        LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
       }
 
       config {
