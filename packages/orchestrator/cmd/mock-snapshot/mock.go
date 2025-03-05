@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -119,6 +120,8 @@ func mockSnapshot(
 	sbxlogger.SetSandboxLoggerInternal(sbxlogger.NewLogger(ctx, loggerCfg))
 	sbxlogger.SetSandboxLoggerExternal(sbxlogger.NewLogger(ctx, loggerCfg))
 
+	mockStore := chdb.NewMockStore()
+
 	start := time.Now()
 
 	sbx, cleanup, err := sandbox.NewSandbox(
@@ -145,6 +148,7 @@ func mockSnapshot(
 		time.Now(),
 		false,
 		templateId,
+		mockStore,
 	)
 	defer func() {
 		cleanupErr := cleanup.Run()
@@ -245,6 +249,7 @@ func mockSnapshot(
 		time.Now(),
 		false,
 		templateId,
+		mockStore,
 	)
 	defer func() {
 		cleanupErr := cleanup2.Run()

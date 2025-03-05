@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
@@ -41,6 +42,7 @@ type APIStore struct {
 	templateCache        *templatecache.TemplateCache
 	authCache            *authcache.TeamAuthCache
 	templateSpawnCounter *utils.TemplateSpawnCounter
+	clickhouseStore      chdb.Store
 }
 
 func NewAPIStore(ctx context.Context) *APIStore {
@@ -54,6 +56,17 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	}
 
 	zap.L().Info("created Supabase client")
+
+	clickhouseStore, err := chdb.NewStore(chdb.ClickHouseConfig{
+		ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+		Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+		Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+		Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+		Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
+	})
+	if err != nil {
+		zap.L().Fatal("initializing ClickHouse store", zap.Error(err))
+	}
 
 	posthogClient, posthogErr := analyticscollector.NewPosthogClient()
 	if posthogErr != nil {
@@ -119,6 +132,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		templateCache:        templateCache,
 		authCache:            authCache,
 		templateSpawnCounter: templateSpawnCounter,
+		clickhouseStore:      clickhouseStore,
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet

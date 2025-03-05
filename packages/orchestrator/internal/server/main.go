@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"os"
 	"sync"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
@@ -23,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -39,7 +41,8 @@ type server struct {
 	networkPool   *network.Pool
 	templateCache *template.Cache
 
-	pauseMu sync.Mutex
+	pauseMu         sync.Mutex
+	clickhouseStore chdb.Store
 }
 
 type Service struct {
@@ -96,13 +99,23 @@ func New(ctx context.Context, port uint) (*Service, error) {
 				),
 			),
 		)
-
+		clickhouseStore, err := chdb.NewStore(chdb.ClickHouseConfig{
+			ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+			Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+			Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+			Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+			Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
+		}
 		srv.server = &server{
-			tracer:        otel.Tracer(ServiceName),
-			dns:           srv.dns,
-			sandboxes:     smap.New[*sandbox.Sandbox](),
-			networkPool:   networkPool,
-			templateCache: templateCache,
+			tracer:          otel.Tracer(ServiceName),
+			dns:             srv.dns,
+			sandboxes:       smap.New[*sandbox.Sandbox](),
+			networkPool:     networkPool,
+			templateCache:   templateCache,
+			clickhouseStore: clickhouseStore,
 		}
 	}
 
