@@ -104,8 +104,10 @@ resource "nomad_job" "session_proxy" {
       session_proxy_port_number  = var.session_proxy_port.port
       session_proxy_port_name    = var.session_proxy_port.name
       session_proxy_service_name = var.session_proxy_service_name
-      load_balancer_conf         = file("${path.module}/proxies/session.conf")
-      nginx_conf                 = file("${path.module}/proxies/nginx.conf")
+      load_balancer_conf = templatefile("${path.module}/proxies/session.conf", {
+        browser_502 = replace(file("${path.module}/proxies/browser_502.html"), "\n", "")
+      })
+      nginx_conf = file("${path.module}/proxies/nginx.conf")
     }
   }
 }
