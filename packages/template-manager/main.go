@@ -4,12 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"go.uber.org/zap"
 	"log"
 	"net"
 	"os"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/server"
@@ -67,6 +68,7 @@ func main() {
 	)
 	defer logger.Sync()
 	sbxlogger.SetSandboxLoggerExternal(logger)
+	zap.ReplaceGlobals(logger)
 
 	// used for logging template build output
 	buildLogger := sbxlogger.NewLogger(
