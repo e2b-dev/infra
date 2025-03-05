@@ -69,8 +69,7 @@ func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.In
 	var wg sync.WaitGroup
 	for _, n := range nodes {
 		// If the node is not in the list, connect to it
-		orchNode := o.GetNode(n.ID)
-		if orchNode == nil {
+		if o.GetNode(n.ID) == nil {
 			wg.Add(1)
 			go func(n *node.NodeInfo) {
 				defer wg.Done()
