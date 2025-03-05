@@ -25,7 +25,7 @@ func (f *fakeClickhouseStore) QueryMetrics(ctx context.Context, sandboxID, teamI
 
 var aTimestamp = time.Now().Add(-time.Hour * 24)
 
-func TestAPIStore_getSandboxesSandboxIDMetrics(t *testing.T) {
+func TestAPIStore_getSandboxesSandboxIDMetricsClickhouse(t *testing.T) {
 	type fields struct {
 		clickhouseStore chdb.Store
 	}
@@ -105,7 +105,7 @@ func TestAPIStore_getSandboxesSandboxIDMetrics(t *testing.T) {
 
 				clickhouseStore: tt.fields.clickhouseStore,
 			}
-			got, err := a.getSandboxesSandboxIDMetrics(tt.args.ctx, tt.args.sandboxID, tt.args.teamID, tt.args.limit, tt.args.duration)
+			got, err := a.getSandboxesSandboxIDMetricsFromClickhouse(tt.args.ctx, tt.args.sandboxID, tt.args.teamID, tt.args.limit, tt.args.duration)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("APIStore.getSandboxesSandboxIDMetrics() error = %v, wantErr %v", err, tt.wantErr)
 				return
