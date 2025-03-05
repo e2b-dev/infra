@@ -215,6 +215,12 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			}
 		}
 
+		sbxlogger.I(info).Debug("Deleted sandbox from cache hook",
+			zap.Time("start_time", info.StartTime),
+			zap.Time("end_time", info.GetEndTime()),
+			zap.Bool("auto_pause", info.AutoPause.Load()),
+		)
+
 		return nil
 	}
 }
@@ -254,6 +260,12 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 		if info.AutoPause.Load() {
 			o.instanceCache.MarkAsPausing(info)
 		}
+
+		sbxlogger.I(info).Debug("Inserted sandbox to cache hook",
+			zap.Time("start_time", info.StartTime),
+			zap.Time("end_time", info.GetEndTime()),
+			zap.Bool("auto_pause", info.AutoPause.Load()),
+		)
 
 		return nil
 	}
