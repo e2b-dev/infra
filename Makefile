@@ -119,9 +119,15 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
-@.PHONY: migrate
+.PHONY: migrate
 migrate:
 	$(MAKE) -C packages/shared migrate
+
+.PHONY: generate
+generate:generate/orchestrator/internal
+generate:generate/shared
+generate/%:
+	$(MAKE) -C packages/$(subst generate/,,$@) generate-models
 
 .PHONY: switch-env
 switch-env:
