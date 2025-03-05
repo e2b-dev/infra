@@ -52,7 +52,7 @@ func NewBufferedHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSy
 func (h *HTTPWriter) Write(source []byte) (n int, err error) {
 	h.wg.Add(1)
 
-        // zap is reusing the buffer, so since we're processing it in a Go routine, we need to make a copy.
+	// zap is reusing the buffer, so since we're processing it in a Go routine, we need to make a copy.
 	p := make([]byte, len(source))
 	copy(p, source)
 
