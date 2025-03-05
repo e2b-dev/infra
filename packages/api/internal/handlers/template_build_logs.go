@@ -80,12 +80,10 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	status := dockerBuild.GetStatus()
 
-	// Sanitize IDs
+	// Sanitize env ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
-	buildIdSanitized := strings.ReplaceAll(buildUUID.String(), "`", "")
 	templateIdSanitized := strings.ReplaceAll(templateID, "`", "")
-
-	query := fmt.Sprintf("{source=\"logs-collector\", service=\"template-manager\", buildID=`%s` envID=`%s`}", buildIdSanitized, templateIdSanitized)
+	query := fmt.Sprintf("{source=\"logs-collector\", service=\"template-manager\", buildID=\"%s\", envID=`%s`}", buildUUID.String(), templateIdSanitized)
 	end := time.Now()
 	start := end.Add(-templateBuildOldestLogsLimit)
 
