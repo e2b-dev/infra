@@ -178,12 +178,12 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	zap.L().Info("sandbox removed from cache (delete)", zap.String("sandbox_id", in.SandboxId))
 
-	// loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
-	// defer cancelLogginCtx()
+	loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
+	defer cancelLogginCtx()
 
 	// Check health metrics before stopping the sandbox
-	// sbx.Healthcheck(loggingCtx, true)
-	// sbx.LogMetrics(loggingCtx)
+	sbx.Healthcheck(loggingCtx, true)
+	sbx.LogMetrics(loggingCtx)
 
 	zap.L().Info("stopping sandbox (after healthcheck)", zap.String("sandbox_id", in.SandboxId))
 
