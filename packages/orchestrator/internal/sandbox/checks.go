@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"go.uber.org/zap"
@@ -31,9 +32,15 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	}()
 
 	// Get metrics and health status on sandbox startup
-	// go s.LogMetrics(ctx)
+	useLokiMetrics := os.Getenv("USE_LOKI_METRICS") == "true"
+	useClickhouseMetrics := os.Getenv("USE_CLICKHOUSE_METRICS") == "true"
+	if useLokiMetrics {
+		go s.LogMetrics(ctx)
+	}
+	if useClickhouseMetrics {
+		go s.SendMetrics(ctx)
+	}
 	go s.Healthcheck(ctx, false)
-	go s.SendMetrics(ctx)
 
 	for {
 		select {
@@ -47,6 +54,12 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 			cancel()
 		case <-metricsTicker.C:
 			s.SendMetrics(ctx)
+			if useLokiMetrics {
+				go s.LogMetrics(ctx)
+			}
+			if useClickhouseMetrics {
+				go s.SendMetrics(ctx)
+			}
 		case <-ctx.Done():
 			return
 		}
