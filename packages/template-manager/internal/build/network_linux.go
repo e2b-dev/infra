@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 package build
 
 import (
@@ -112,6 +115,7 @@ func (n *FCNetwork) setup(ctx context.Context, tracer trace.Tracer) error {
 	tapAttrs := netlink.NewLinkAttrs()
 	tapAttrs.Name = fcTapName
 	tapAttrs.Namespace = ns
+
 	tap := &netlink.Tuntap{
 		Mode:      netlink.TUNTAP_MODE_TAP,
 		LinkAttrs: tapAttrs,

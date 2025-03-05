@@ -16,7 +16,7 @@ provider "cloudflare" {
 }
 
 locals {
-  domain_map = { for d in var.additional_domains : split(".", d)[0] => d }
+  domain_map = { for d in var.additional_domains : replace(d, ".", "-") => d }
   backends = {
     session = {
       protocol                        = "HTTP"
@@ -56,7 +56,7 @@ locals {
         request_path = var.docker_reverse_proxy_port.health_path
         port         = var.docker_reverse_proxy_port.port
       }
-      groups = [{ group = var.api_instance_group }]
+      groups = [{ group = var.build_instance_group }]
     }
     nomad = {
       protocol                        = "HTTP"
@@ -167,6 +167,19 @@ resource "google_certificate_manager_certificate" "root_cert" {
     domains = [var.domain_name, "*.${var.domain_name}"]
     dns_authorizations = [
       google_certificate_manager_dns_authorization.dns_auth.id
+    ]
+  }
+  labels = var.labels
+}
+
+resource "google_certificate_manager_certificate" "root_cert_additional" {
+  for_each    = local.domain_map
+  name        = "${var.prefix}root-cert-${each.key}"
+  description = "The wildcard cert"
+  managed {
+    domains = [each.value, "*.${each.value}"]
+    dns_authorizations = [
+      google_certificate_manager_dns_authorization.dns_auth_additional[each.key].id
     ]
   }
   labels = var.labels

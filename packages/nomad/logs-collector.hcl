@@ -75,7 +75,7 @@ address = "0.0.0.0:${logs_health_port_number}"
 [sources.envd]
 type = "http_server"
 address = "0.0.0.0:${logs_port_number}"
-encoding = "json"
+encoding = "ndjson"
 path_key = "_path"
 
 [transforms.add_source_envd]
@@ -85,11 +85,21 @@ source = """
 del(."_path")
 .service = "envd"
 .sandboxID = .instanceID
+.timestamp = parse_timestamp(.timestamp, format: "%Y-%m-%dT%H:%M:%S.%fZ") ?? now()
 if !exists(.envID) {
   .envID = "unknown"
 }
 if !exists(.category) {
   .category = "default"
+}
+if !exists(.teamID) {
+  .teamID = "unknown"
+}
+if !exists(.sandboxID) {
+  .sandboxID = "unknown"
+}
+if !exists(.envID) {
+  .envID = "unknown"
 }
 """
 

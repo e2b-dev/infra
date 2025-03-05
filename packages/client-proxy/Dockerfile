@@ -16,7 +16,8 @@ RUN go mod download
 
 COPY main.go main.go
 
-RUN --mount=type=cache,target=/root/.cache/go-build make build
+ARG COMMIT_SHA
+RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA}
 RUN chmod +x /build/proxy/bin/client-proxy
 
 FROM alpine:3.17

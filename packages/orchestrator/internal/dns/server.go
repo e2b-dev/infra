@@ -1,13 +1,14 @@
 package dns
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"sync"
 
 	resolver "github.com/miekg/dns"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -15,8 +16,13 @@ import (
 const ttl = 0
 
 type DNS struct {
-	mu      sync.Mutex
 	records *smap.Map[string]
+
+	closer struct {
+		once sync.Once
+		op   func(context.Context) error
+		err  error
+	}
 }
 
 func New() *DNS {
@@ -71,7 +77,7 @@ func (d *DNS) handleDNSRequest(w resolver.ResponseWriter, r *resolver.Msg) {
 
 	err := w.WriteMsg(m)
 	if err != nil {
-		log.Printf("Failed to write message: %s\n", err.Error())
+		zap.L().Error("failed to write message", zap.Error(err))
 	}
 }
 
@@ -82,10 +88,16 @@ func (d *DNS) Start(address string, port int) error {
 
 	server := resolver.Server{Addr: fmt.Sprintf("%s:%d", address, port), Net: "udp", Handler: mux}
 
-	err := server.ListenAndServe()
-	if err != nil {
-		return fmt.Errorf("failed to start DNS server: %w", err)
+	if err := server.ListenAndServe(); err != nil {
+		return fmt.Errorf("DNS server encounterted error: %w", err)
 	}
 
+	d.closer.op = server.ShutdownContext
+
 	return nil
+}
+
+func (d *DNS) Close(ctx context.Context) error {
+	d.closer.once.Do(func() { d.closer.err = d.closer.op(ctx) })
+	return d.closer.err
 }

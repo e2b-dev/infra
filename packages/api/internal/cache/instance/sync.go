@@ -3,11 +3,14 @@ package instance
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
 func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
@@ -20,35 +23,32 @@ func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceL
 }
 
 // KeepAliveFor the instance's expiration timer.
-func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, allowShorter bool) (*InstanceInfo, error) {
-	item, err := c.Get(instanceID)
+func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, allowShorter bool) (*InstanceInfo, *api.APIError) {
+	instance, err := c.Get(instanceID)
 	if err != nil {
-		return nil, err
+		return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("Sandbox '%s' not found", instanceID), Err: err}
 	}
 
 	now := time.Now()
-	instance := item.Value()
-	if !allowShorter && instance.EndTime.After(now.Add(duration)) {
-		return &instance, nil
+
+	endTime := instance.GetEndTime()
+	if !allowShorter && endTime.After(now.Add(duration)) {
+		return instance, nil
 	}
 
 	if (time.Since(instance.StartTime)) > instance.MaxInstanceLength {
-		c.cache.Delete(instanceID)
+		c.cache.Remove(instanceID)
 
-		return nil, fmt.Errorf("instance \"%s\" reached maximal allowed uptime", instanceID)
+		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", instanceID)
+		return nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: fmt.Errorf(msg)}
 	} else {
 		maxAllowedTTL := getMaxAllowedTTL(now, instance.StartTime, duration, instance.MaxInstanceLength)
 
 		newEndTime := now.Add(maxAllowedTTL)
-		instance.EndTime = newEndTime
-
-		item = c.cache.Set(instanceID, instance, maxAllowedTTL)
-		if item == nil {
-			return nil, fmt.Errorf("instance \"%s\" doesn't exist", instanceID)
-		}
+		instance.SetEndTime(newEndTime)
 	}
 
-	return &instance, nil
+	return instance, nil
 }
 
 func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
@@ -61,20 +61,21 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 
 	// Delete instances that are not in Orchestrator anymore
 	for _, item := range c.cache.Items() {
-		if item.Value().Instance.ClientID == nodeID {
-			_, found := instanceMap[item.Key()]
-			if !found {
-				c.cache.Delete(item.Key())
-			}
+		if item.Instance.ClientID != nodeID {
+			continue
+		}
+		_, found := instanceMap[item.Instance.SandboxID]
+		if !found {
+			c.cache.Remove(item.Instance.SandboxID)
 		}
 	}
 
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
 		if !c.Exists(instance.Instance.SandboxID) {
-			err := c.Add(*instance, false)
+			err := c.Add(instance, false)
 			if err != nil {
-				fmt.Println(fmt.Errorf("error adding instance to cache: %w", err))
+				zap.L().Error("error adding instance to cache", zap.Error(err))
 			}
 		}
 	}
@@ -88,7 +89,7 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 	go func() {
 		_, err := c.analytics.RunningInstances(context.Background(), &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
 		if err != nil {
-			c.logger.Errorf("Error sending running instances event to analytics\n: %v", err)
+			zap.L().Error("error sending running instances event to analytics", zap.Error(err))
 		}
 	}()
 }

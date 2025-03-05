@@ -91,6 +91,7 @@ resource "nomad_job" "client_proxy" {
       image_name = var.client_proxy_docker_image_digest
 
       otel_collector_grpc_endpoint = "localhost:4317"
+      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
   })
 }
 
@@ -103,8 +104,10 @@ resource "nomad_job" "session_proxy" {
       session_proxy_port_number  = var.session_proxy_port.port
       session_proxy_port_name    = var.session_proxy_port.name
       session_proxy_service_name = var.session_proxy_service_name
-      load_balancer_conf         = file("${path.module}/proxies/session.conf")
-      nginx_conf                 = file("${path.module}/proxies/nginx.conf")
+      load_balancer_conf = templatefile("${path.module}/proxies/session.conf", {
+        browser_502 = replace(file("${path.module}/proxies/browser_502.html"), "\n", "")
+      })
+      nginx_conf = file("${path.module}/proxies/nginx.conf")
     }
   }
 }
@@ -355,6 +358,7 @@ resource "nomad_job" "template_manager" {
       otel_tracing_print           = var.otel_tracing_print
       template_bucket_name         = var.template_bucket_name
       otel_collector_grpc_endpoint = "localhost:4317"
+      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
     }
   }
 }

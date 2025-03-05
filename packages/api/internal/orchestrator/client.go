@@ -3,12 +3,14 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
@@ -18,7 +20,9 @@ import (
 )
 
 type GRPCClient struct {
-	Sandbox    orchestrator.SandboxServiceClient
+	Sandbox orchestrator.SandboxServiceClient
+	Health  grpc_health_v1.HealthClient
+
 	connection e2bgrpc.ClientConnInterface
 }
 
@@ -29,8 +33,9 @@ func NewClient(host string) (*GRPCClient, error) {
 	}
 
 	client := orchestrator.NewSandboxServiceClient(conn)
+	health := grpc_health_v1.NewHealthClient(conn)
 
-	return &GRPCClient{Sandbox: client, connection: conn}, nil
+	return &GRPCClient{Sandbox: client, Health: health, connection: conn}, nil
 }
 
 func (a *GRPCClient) Close() error {
@@ -62,6 +67,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 		sbxsInProgress: smap.New[*sbxInProgress](),
 		status:         api.NodeStatusReady,
 		Info:           node,
+		createFails:    atomic.Uint64{},
 	}
 
 	o.nodes.Insert(n.Info.ID, n)

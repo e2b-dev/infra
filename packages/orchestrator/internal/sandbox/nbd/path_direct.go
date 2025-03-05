@@ -2,8 +2,6 @@ package nbd
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"net"
 	"os"
 	"strings"
@@ -11,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Merovius/nbd/nbdnl"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
@@ -63,15 +62,14 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 		}
 		server.Close()
 
-		dis := NewDispatch(d.ctx, d.conn, d.Backend)
+		d.dispatcher = NewDispatch(d.ctx, d.conn, d.Backend)
 		// Start reading commands on the socket and dispatching them to our provider
 		go func() {
-			handleErr := dis.Handle()
+			handleErr := d.dispatcher.Handle()
 			if handleErr != nil {
-				log.Printf("Error handling NBD commands: %v", handleErr)
+				zap.L().Error("error handling NBD commands", zap.Error(handleErr))
 			}
 		}()
-		d.dispatcher = dis
 
 		var opts []nbdnl.ConnectOption
 		opts = append(opts, nbdnl.WithBlockSize(d.blockSize))
@@ -92,12 +90,12 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 
 		connErr := d.conn.Close()
 		if connErr != nil {
-			fmt.Printf("Error closing conn: %v\n", connErr)
+			zap.L().Error("error closing conn", zap.Error(connErr))
 		}
 
 		releaseErr := Pool.ReleaseDevice(d.deviceIndex)
 		if releaseErr != nil {
-			fmt.Printf("Error releasing device: %v\n", releaseErr)
+			zap.L().Error("error releasing device", zap.Error(releaseErr))
 		}
 
 		d.deviceIndex = 0
@@ -133,7 +131,9 @@ func (d *DirectPathMount) Close() error {
 	d.ctx.Done()
 
 	// Now wait for any pending responses to be sent
-	d.dispatcher.Wait()
+	if d.dispatcher != nil {
+		d.dispatcher.Wait()
+	}
 
 	// Now ask to disconnect
 	err := nbdnl.Disconnect(d.deviceIndex)
