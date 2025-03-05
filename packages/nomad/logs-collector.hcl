@@ -75,7 +75,7 @@ address = "0.0.0.0:${logs_health_port_number}"
 [sources.envd]
 type = "http_server"
 address = "0.0.0.0:${logs_port_number}"
-encoding = "json"
+encoding = "ndjson"
 path_key = "_path"
 
 [transforms.add_source_envd]
@@ -90,6 +90,15 @@ if !exists(.envID) {
 }
 if !exists(.category) {
   .category = "default"
+}
+if !exists(.teamID) {
+  .teamID = "unknown"
+}
+if !exists(.sandboxID) {
+  .sandboxID = "unknown"
+}
+if !exists(.envID) {
+  .envID = "unknown"
 }
 """
 

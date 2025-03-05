@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"sync"
+
+	"go.uber.org/zap"
 )
 
 type Provider interface {
@@ -52,7 +54,6 @@ type Dispatch struct {
 	responseHeader   []byte
 	writeLock        sync.Mutex
 	prov             Provider
-	fatal            chan error
 	pendingResponses sync.WaitGroup
 	pendingMu        sync.Mutex
 }
@@ -60,7 +61,6 @@ type Dispatch struct {
 func NewDispatch(ctx context.Context, fp io.ReadWriteCloser, prov Provider) *Dispatch {
 	d := &Dispatch{
 		responseHeader: make([]byte, 16),
-		fatal:          make(chan error, 8),
 		fp:             fp,
 		prov:           prov,
 		ctx:            ctx,
@@ -85,9 +85,7 @@ func (d *Dispatch) Wait() {
 func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []byte) error {
 	d.writeLock.Lock()
 	defer d.writeLock.Unlock()
-
-	//	fmt.Printf("WriteResponse %v %x -> %d\n", d.fp, respHandle, len(chunk))
-
+	
 	binary.BigEndian.PutUint32(d.responseHeader[4:], respError)
 	binary.BigEndian.PutUint64(d.responseHeader[8:], respHandle)
 
@@ -228,7 +226,7 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 	go func() {
 		err := performRead(cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
-			d.fatal <- err
+			zap.L().Error("nbd error cmd read", zap.Error(err))
 		}
 
 		d.pendingResponses.Done()
@@ -263,7 +261,7 @@ func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) er
 		}
 		err := d.writeResponse(errorValue, cmdHandle, []byte{})
 		if err != nil {
-			d.fatal <- err
+			zap.L().Error("nbd error cmd write", zap.Error(err))
 		}
 
 		d.pendingResponses.Done()

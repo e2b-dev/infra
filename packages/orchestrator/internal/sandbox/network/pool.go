@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
-	"os"
 
 	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -63,7 +62,7 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int) (*P
 	go func() {
 		err := pool.populate(ctx)
 		if err != nil {
-			log.Fatalf("error when populating network slot pool: %v\n", err)
+			zap.L().Fatal("error when populating network slot pool", zap.Error(err))
 		}
 	}()
 
@@ -95,7 +94,7 @@ func (p *Pool) populate(ctx context.Context) error {
 		default:
 			slot, err := p.createNetworkSlot()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "[network slot pool]: failed to create network: %v\n", err)
+				zap.L().Error("[network slot pool]: failed to create network", zap.Error(err))
 
 				continue
 			}

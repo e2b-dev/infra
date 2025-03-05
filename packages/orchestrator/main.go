@@ -12,12 +12,22 @@ import (
 	"sync/atomic"
 	"syscall"
 
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const defaultPort = 5008
+const (
+	defaultPort = 5008
+	ServiceName = "orchestrator"
+)
+
+var commitSHA string
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -52,9 +62,42 @@ func main() {
 		}()
 	}
 
+	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+		ServiceName: ServiceName,
+		IsInternal:  true,
+		IsDebug:     env.IsDebug(),
+		Cores:       []zapcore.Core{logger.GetOTELCore(ServiceName)},
+	}))
+	defer logger.Sync()
+	zap.ReplaceGlobals(logger)
+
+	sbxLoggerExternal := sbxlogger.NewLogger(
+		ctx,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      ServiceName,
+			IsInternal:       false,
+			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		},
+	)
+	defer sbxLoggerExternal.Sync()
+	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
+
+	sbxLoggerInternal := sbxlogger.NewLogger(
+		ctx,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      ServiceName,
+			IsInternal:       true,
+			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		},
+	)
+	defer sbxLoggerInternal.Sync()
+	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
+
+	log.Println("Starting orchestrator", "commit", commitSHA)
+
 	srv, err := server.New(ctx, port)
 	if err != nil {
-		log.Fatalf("failed to create server: %v", err)
+		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
 
 	wg.Add(1)

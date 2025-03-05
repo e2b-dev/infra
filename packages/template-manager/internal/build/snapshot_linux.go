@@ -368,6 +368,15 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 		Body:    machineConfig,
 	}
 
+	// hack for 16GB RAM templates
+	// todo fixme
+	// robert's (r33drichards) test template 3df60qm8cuefu2pub3mm
+	// customer template id raocbwn4f2mtdrjuajsx
+	if s.env.TemplateId == "3df60qm8cuefu2pub3mm" || s.env.TemplateId == "raocbwn4f2mtdrjuajsx" {
+		var sixteenGBRam int64 = 16384
+		machineConfig.MemSizeMib = &sixteenGBRam
+	}
+
 	_, err = s.client.Operations.PutMachineConfiguration(&machineConfigParams)
 	if err != nil {
 		errMsg := fmt.Errorf("error setting fc machine config: %w", err)

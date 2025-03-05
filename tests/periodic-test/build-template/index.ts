@@ -43,8 +43,6 @@ const buildStatus = await streamCommandOutput('npx', [
     'build',
     '--name',
     templateName,
-    '-c',
-    '/root/.jupyter/start-up.sh'
 ]);
 
 if (buildStatus.status.code !== 0) {
@@ -60,37 +58,55 @@ const templateID = e2bToml.match(/template_id = "(.*)"/)?.[1]
 if (!templateID) {
     throw new Error('Template ID not found in e2b.toml')
 }
+try {
 
-// remove the file to make script idempotent in local testing
-await Deno.remove('e2b.toml')
+    // remove the file to make script idempotent in local testing
+    await Deno.remove('e2b.toml')
 
-if (!templateID) {
-    throw new Error('Template not found')
+    if (!templateID) {
+        throw new Error('Template not found')
+    }
+    console.log('creating sandbox')
+    const sandbox = await Sandbox.create(templateID, { timeoutMs: 10000 })
+    console.log('sandbox created')
+
+
+    console.log('running command')
+
+    console.log('starting command')
+    // Start the command in the background
+    const command = await sandbox.commands.run('echo hello;echo world')
+    let out = command.stdout
+
+
+    console.log('Template deleted successfully')
+
+    // kill sandbox
+    await sandbox.kill()
+
+    console.log('checking output')
+    if (!out.includes('hello')) {
+        throw new Error('hello not found')
+    }
+
+    if (!out.includes('world')) {
+        throw new Error('world not found')
+    }
+} finally {
+    // delete template
+    const output = await streamCommandOutput('npx', [
+        '@e2b/cli',
+        'template',
+        'delete',
+        '-y',
+        templateID
+    ])
+
+    if (output.status.code !== 0) {
+        throw new Error(`Delete failed with code ${output.status.code}`);
+    }
+
 }
 
-const sandbox = await Sandbox.create({ id: templateID })
-
-// Execute JavaScript cells
-await sandbox.runCode('x = 1');
-const execution = await sandbox.runCode('x+=1; x');
-
-console.log('Execution result:', execution);
-// kill sandbox
-await sandbox.kill()
 
 
-// delete template
-const output = await streamCommandOutput('npx', [
-    '@e2b/cli',
-    'template',
-    'delete',
-    '-y',
-    templateID
-])
-
-
-if (output.status.code !== 0) {
-    throw new Error(`Delete failed with code ${output.status.code}`);
-}
-
-console.log('Template deleted successfully')
