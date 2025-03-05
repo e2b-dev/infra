@@ -175,16 +175,13 @@ type PostProcessor struct {
 
 // Start starts the post-processing.
 func (p *PostProcessor) Start() {
-
-	now := time.Now()
 	for {
-		msg := []byte(fmt.Sprintf("Postprocessing (%s)       \r", time.Since(now).Round(time.Second)))
+		msg := []byte(fmt.Sprintf("Postprocessing (%s)       \n", time.Now().Format(time.ANSIC)))
 
 		select {
 		case postprocessingErr := <-p.errChan:
 			if postprocessingErr != nil {
 				p.writer.Write([]byte(fmt.Sprintf("Postprocessing failed: %s\n", postprocessingErr)))
-
 				return
 			}
 
@@ -194,7 +191,7 @@ func (p *PostProcessor) Start() {
 			return
 		case <-p.ctx.Done():
 			return
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(5 * time.Second):
 			p.writer.Write(msg)
 		}
 	}
