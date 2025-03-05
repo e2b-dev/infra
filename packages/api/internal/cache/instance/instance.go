@@ -213,7 +213,7 @@ func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
 			return false
 		}
 
-		// We depend of the startTime not changing to uniquely identify instance in the cache.
+		// We depend on the startTime not changing to uniquely identify instance in the cache.
 		return v.Instance.SandboxID == instanceInfo.Instance.SandboxID && v.StartTime == instanceInfo.StartTime
 	})
 }

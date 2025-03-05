@@ -4,6 +4,9 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
+
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
 func (c *InstanceCache) Count() int {
@@ -59,6 +62,12 @@ func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []*InstanceIn
 // If the instance already exists we do nothing - it was loaded from Orchestrator.
 // TODO: Any error here should delete the sandbox
 func (c *InstanceCache) Add(instance *InstanceInfo, newlyCreated bool) error {
+	sbxlogger.I(instance).Debug("Adding sandbox to cache",
+		zap.Bool("newly_created", newlyCreated),
+		zap.Time("start_time", instance.StartTime),
+		zap.Time("end_time", instance.GetEndTime()),
+	)
+
 	if instance.Instance == nil {
 		return fmt.Errorf("instance doesn't contain info about inself")
 	}
