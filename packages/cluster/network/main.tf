@@ -185,19 +185,6 @@ resource "google_certificate_manager_certificate" "root_cert_additional" {
   labels = var.labels
 }
 
-resource "google_certificate_manager_certificate" "root_cert_additional" {
-  for_each    = local.domain_map
-  name        = "${var.prefix}root-cert-${each.key}"
-  description = "The wildcard cert"
-  managed {
-    domains = [each.value, "*.${each.value}"]
-    dns_authorizations = [
-      google_certificate_manager_dns_authorization.dns_auth_additional[each.key].id
-    ]
-  }
-  labels = var.labels
-}
-
 resource "google_certificate_manager_certificate_map" "certificate_map" {
   name        = "${var.prefix}cert-map"
   description = "${var.domain_name} certificate map"
