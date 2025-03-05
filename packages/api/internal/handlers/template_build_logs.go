@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	templateBuildLogsLimit       = 100
+	templateBuildLogsLimit       = 1_000
 	templateBuildOldestLogsLimit = 24 * time.Hour // 1 day
 )
 
