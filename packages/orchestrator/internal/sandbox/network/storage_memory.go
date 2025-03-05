@@ -3,8 +3,6 @@ package network
 import (
 	"fmt"
 	"sync"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 )
 
 type StorageMemory struct {
@@ -48,5 +46,5 @@ func (s *StorageMemory) Release(ips *Slot) error {
 }
 
 func getMemoryKey(slotIdx int) string {
-	return fmt.Sprintf("%s/%d", consul.ClientID, slotIdx)
+	return fmt.Sprintf("%d", slotIdx)
 }
