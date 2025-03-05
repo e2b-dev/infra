@@ -8,6 +8,7 @@ runs:
       uses: google-github-actions/auth@v2
       with:
         project_id: 'e2b-prod'
+        # TODO: Move the identity provider construction to Terraform (like secrets.workload_identity_provider)
         workload_identity_provider: 'projects/662973525644/locations/global/workloadIdentityPools/github-actions-e2b-prod-tests/providers/infra-integration-tests'
 
     - name: Set up Cloud SDK
