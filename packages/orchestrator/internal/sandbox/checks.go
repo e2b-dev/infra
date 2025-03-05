@@ -40,7 +40,9 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	if useClickhouseMetrics {
 		go s.SendMetrics(ctx)
 	}
-	go s.Healthcheck(ctx, false)
+	if !useLokiMetrics && !useClickhouseMetrics { // ensure backward compatibility if neither are set
+		go s.LogMetrics(ctx)
+	}
 
 	for {
 		select {
