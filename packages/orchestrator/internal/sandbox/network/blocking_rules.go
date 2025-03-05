@@ -2,11 +2,10 @@ package network
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/coreos/go-iptables/iptables"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 var blockedRanges = []string{
@@ -16,7 +15,7 @@ var blockedRanges = []string{
 	"172.16.0.0/12",
 }
 
-var logsCollectorIP = strings.Replace(logs.CollectorPublicIP, "http://", "", 1) + "/32"
+var logsCollectorIP = strings.Replace(os.Getenv("LOGS_COLLECTOR_PUBLIC_IP"), "http://", "", 1) + "/32"
 
 func getAllowRuleForLogs(slot *Slot) []string {
 	return []string{"-p", "all", "-i", slot.TapName(), "-d", logsCollectorIP, "-j", "ACCEPT"}
