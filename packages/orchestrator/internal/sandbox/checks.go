@@ -53,7 +53,6 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 
 			cancel()
 		case <-metricsTicker.C:
-			s.SendMetrics(ctx)
 			if useLokiMetrics {
 				s.LogMetrics(ctx)
 			}
