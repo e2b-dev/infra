@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"go.uber.org/zap"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -79,7 +80,12 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	status := dockerBuild.GetStatus()
 
-	query := fmt.Sprintf("{source=\"logs-collector\", service=\"template-manager\", buildID=\"%s\", envID=\"%s\"}", buildUUID.String(), templateID)
+	// Sanitize IDs
+	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
+	buildIdSanitized := strings.ReplaceAll(buildUUID.String(), "`", "")
+	templateIdSanitized := strings.ReplaceAll(templateID, "`", "")
+
+	query := fmt.Sprintf("{source=\"logs-collector\", service=\"template-manager\", buildID=`%s` envID=`%s`}", buildIdSanitized, templateIdSanitized)
 	end := time.Now()
 	start := end.Add(-templateBuildOldestLogsLimit)
 
@@ -87,6 +93,8 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	if err != nil {
 		errMsg := fmt.Errorf("error when returning logs for template build: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)
+		zap.L().Error("error when returning logs for template build", zap.Error(err), zap.String("buildID", buildID))
+
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning logs for template build '%s'", buildUUID.String()))
 		return
 	}
@@ -94,27 +102,28 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	logs := make([]string, 0)
 	logsSkippedOffset := 0
 
-	switch res.Data.Result.Type() {
-	case loghttp.ResultTypeStream:
-		value := res.Data.Result.(loghttp.Streams)
+	if res.Data.Result.Type() != loghttp.ResultTypeStream {
+		zap.L().Error("unexpected value type received from loki query fetch", zap.String("type", string(res.Data.Result.Type())))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Unexpected error during fetching logs")
+		return
+	}
 
-		for _, stream := range value {
-			for _, entry := range stream.Entries {
-				logsSkippedOffset++
+	for _, stream := range res.Data.Result.(loghttp.Streams) {
+		for _, entry := range stream.Entries {
+			logsSkippedOffset++
 
-				// loki does not support offset pagination, so we need to skip logs manually
-				if logsSkippedOffset < int(*params.LogsOffset) {
-					continue
-				}
-
-				line := make(map[string]interface{})
-				err := json.Unmarshal([]byte(entry.Line), &line)
-				if err != nil {
-					zap.L().Error("error parsing log line", zap.Error(err), zap.String("buildID", buildID), zap.String("line", entry.Line))
-				}
-
-				logs = append(logs, line["message"].(string))
+			// loki does not support offset pagination, so we need to skip logs manually
+			if params.LogsOffset != nil && logsSkippedOffset < int(*params.LogsOffset) {
+				continue
 			}
+
+			line := make(map[string]interface{})
+			err := json.Unmarshal([]byte(entry.Line), &line)
+			if err != nil {
+				zap.L().Error("error parsing log line", zap.Error(err), zap.String("buildID", buildID), zap.String("line", entry.Line))
+			}
+
+			logs = append(logs, line["message"].(string))
 		}
 	}
 
