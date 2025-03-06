@@ -47,7 +47,8 @@ job "clickhouse" {
 
         volumes = [
           "local/config.xml:/etc/clickhouse-server/config.d/gcs.xml",
-          "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
+          # disabled while testing but will pass password to orchestrator in the future
+          # "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
         ]
       }
 
