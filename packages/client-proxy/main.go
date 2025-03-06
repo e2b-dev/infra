@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"math/rand"
 	"net/http"
 	"net/http/httputil"
@@ -80,9 +79,15 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 			// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
 			if dnsErr != nil || len(resp.Answer) == 0 {
 				err = dnsErr
-				zap.L().Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxID, err), zap.String("sandbox_id", sandboxID), zap.Error(err), zap.Int("retry", i+1))
-				// Jitter
-				time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+				jitterMS := time.Duration(1+rand.Intn(11)) * time.Millisecond
+				zap.L().Warn("host for sandbox not found",
+					zap.String("sandbox_id", sandboxID),
+					zap.Error(err),
+					zap.Int("retry", i+1)
+					zap.Duration("jitter", jitterMS),
+				)
+
+				time.Sleep(jitterMS)
 
 				continue
 			}
@@ -143,18 +148,11 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 func run() int {
 	exitCode := atomic.Int32{}
 	wg := sync.WaitGroup{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	ctx := context.Background()
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
-
-	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA)
-	defer func() {
-		err := stopOtlp(ctx)
-		if err != nil {
-			log.Printf("telemetry shutdown:%v\n", err)
-		}
-	}()
 
 	logger := zap.Must(e2bLogger.NewLogger(ctx, e2bLogger.LoggerConfig{
 		ServiceName: ServiceName,
@@ -162,13 +160,20 @@ func run() int {
 		IsDebug:     env.IsDebug(),
 		Cores:       []zapcore.Core{e2bLogger.GetOTELCore(ServiceName)},
 	}))
+	zap.ReplaceGlobals(logger)
+
 	defer func() {
-		err := logger.Sync()
-		if err != nil {
-			log.Printf("logger sync error: %v\n", err)
+		if err := logger.Sync(); err != nil {
+			panic(fmt.Errorf("logger sync error: %w", err))
 		}
 	}()
-	zap.ReplaceGlobals(logger)
+
+	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA)
+	defer func() {
+		if err := stopOtlp(ctx); err != nil {
+			logger.Error("telemetry shutdown", zap.Error(err), zap.String("service", ServiceName))
+		}
+	}()
 
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA))
 
@@ -181,6 +186,7 @@ func run() int {
 	go func() {
 		// Health check
 		defer wg.Done()
+		defer cancel()
 
 		logger.Info("starting health check server", zap.Int("port", healthCheckPort))
 		err := healthServer.ListenAndServe()
@@ -219,7 +225,7 @@ func run() int {
 		// goroutine returns, so that in the case of a panic
 		// or error here, the other thread won't block until
 		// signaled.
-		defer sigCancel()
+		defer cancel()
 
 		logger.Info("http service starting", zap.Int("port", port))
 		err := server.ListenAndServe()
@@ -240,6 +246,7 @@ func run() int {
 	go func() {
 		defer wg.Done()
 		<-signalCtx.Done()
+
 		logger.Info("shutting down http service", zap.Int("port", healthCheckPort))
 		if err := healthServer.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
