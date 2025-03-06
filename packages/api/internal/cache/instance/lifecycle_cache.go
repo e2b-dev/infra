@@ -20,7 +20,7 @@ type lifecycleCache[T LifecycleCacheItem] struct {
 	running cmap.ConcurrentMap[string, T]
 	// evicting is used to track items in the process of evicting.
 	// This is to allow checking if an item is still in the process as that might take some time.
-	evicting cmap.ConcurrentMap[string, bool]
+	evicting cmap.ConcurrentMap[string, struct{}]
 	onEvict  func(ctx context.Context, instance T)
 
 	metrics lifecycleCacheMetrics
@@ -29,7 +29,7 @@ type lifecycleCache[T LifecycleCacheItem] struct {
 func newLifecycleCache[T LifecycleCacheItem]() *lifecycleCache[T] {
 	return &lifecycleCache[T]{
 		running:  cmap.New[T](),
-		evicting: cmap.New[bool](),
+		evicting: cmap.New[struct{}](),
 		onEvict:  func(ctx context.Context, instance T) {},
 		metrics: lifecycleCacheMetrics{
 			Evictions: 0,
@@ -62,7 +62,7 @@ func (c *lifecycleCache[T]) Start(ctx context.Context) {
 							return false
 						}
 
-						c.evicting.Set(key, false)
+						c.evicting.Set(key, struct{}{})
 						go func() {
 							c.onEvict(ctx, value)
 							c.evicting.Remove(key)
