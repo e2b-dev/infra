@@ -101,6 +101,11 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	logs := make([]string, 0)
 	logsCrawled := 0
 
+	offset := 0
+	if params.LogsOffset != nil {
+		offset = int(*params.LogsOffset)
+	}
+
 	if res.Data.Result.Type() != loghttp.ResultTypeStream {
 		zap.L().Error("unexpected value type received from loki query fetch", zap.String("type", string(res.Data.Result.Type())))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Unexpected error during fetching logs")
@@ -112,7 +117,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 			logsCrawled++
 
 			// loki does not support offset pagination, so we need to skip logs manually
-			if logsCrawled <= int(*params.LogsOffset) {
+			if logsCrawled <= offset {
 				continue
 			}
 
