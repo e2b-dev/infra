@@ -84,6 +84,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	templateIdSanitized := strings.ReplaceAll(templateID, "`", "")
 	query := fmt.Sprintf("{source=\"logs-collector\", service=\"template-manager\", buildID=\"%s\", envID=`%s`}", buildUUID.String(), templateIdSanitized)
+
 	end := time.Now()
 	start := end.Add(-templateBuildOldestLogsLimit)
 
@@ -98,7 +99,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	logs := make([]string, 0)
-	logsSkippedOffset := 0
+	logsCrawled := 0
 
 	if res.Data.Result.Type() != loghttp.ResultTypeStream {
 		zap.L().Error("unexpected value type received from loki query fetch", zap.String("type", string(res.Data.Result.Type())))
@@ -108,10 +109,10 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	for _, stream := range res.Data.Result.(loghttp.Streams) {
 		for _, entry := range stream.Entries {
-			logsSkippedOffset++
+			logsCrawled++
 
 			// loki does not support offset pagination, so we need to skip logs manually
-			if params.LogsOffset != nil && logsSkippedOffset < int(*params.LogsOffset) {
+			if logsCrawled <= int(*params.LogsOffset) {
 				continue
 			}
 
