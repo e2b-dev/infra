@@ -83,6 +83,10 @@ receivers:
   prometheus:
     config:
       scrape_configs:
+        - job_name: "loki"
+          scrape_interval: 10s
+          static_configs:
+          - targets: ["loki.service.consul:3100"]
         - job_name: nomad
           scrape_interval: 15s
           scrape_timeout: 5s
@@ -118,6 +122,7 @@ processors:
           - "nomad_client_host_memory_total"
           - "nomad_client_unallocated_memory"
           - "nomad_nomad_job_summary_running"
+          - "loki.*"
           - "orchestrator.*"
           - "api.*"
           - "client_proxy.*"
