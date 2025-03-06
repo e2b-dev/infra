@@ -100,16 +100,92 @@ resource "google_storage_bucket" "fc_template_bucket" {
   labels = var.labels
 }
 
+resource "google_storage_bucket" "media_bucket" {
+  location = var.gcp_region
+  name     = "${var.gcp_project_id}-media"
+
+  public_access_prevention    = "inherited"
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+
+  cors {
+    origin          = ["*"]
+    method          = ["GET", "HEAD", "OPTIONS"]
+    response_header = ["Content-Type", "Access-Control-Allow-Origin"]
+    max_age_seconds = 3600
+  }
+
+  labels = var.labels
+
+  soft_delete_policy {
+    retention_duration_seconds = 0
+  }
+}
+
+resource "google_project_iam_custom_role" "storage_object_get_only" {
+  role_id     = "storageObjectGetOnly"
+  title       = "Storage Object Get Only"
+  description = "Custom role that only allows getting objects from storage, without listing capabilities"
+  permissions = ["storage.objects.get"]
+  project     = var.gcp_project_id
+}
+
+resource "google_storage_bucket_iam_binding" "media_bucket_object_viewing" {
+  bucket  = google_storage_bucket.media_bucket.name
+  role    = "projects/${var.gcp_project_id}/roles/${google_project_iam_custom_role.storage_object_get_only.role_id}"
+  members = ["allUsers"]
+}
+
+resource "google_storage_bucket_iam_member" "dashboard_service_account_iam" {
+  bucket = google_storage_bucket.media_bucket.name
+  role   = "roles/storage.objectUser"
+  member = "serviceAccount:${google_service_account.dashboard_service_account.email}"
+}
+
+resource "google_storage_bucket_iam_member" "media_bucket_iam" {
+  bucket = google_storage_bucket.media_bucket.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${var.gcp_service_account_email}"
+}
+
 resource "google_storage_bucket_iam_member" "loki_storage_iam" {
   bucket = google_storage_bucket.loki_storage_bucket.name
   role   = "roles/storage.objectUser"
   member = "serviceAccount:${var.gcp_service_account_email}"
 }
 
+resource "google_service_account" "dashboard_service_account" {
+  account_id   = "${var.prefix}dashboard-sa"
+  display_name = "Dashboard Service Account"
+}
+
 resource "google_storage_bucket_iam_member" "envs_docker_context_iam" {
   bucket = google_storage_bucket.envs_docker_context.name
   role   = "roles/storage.objectUser"
   member = "serviceAccount:${var.gcp_service_account_email}"
+}
+
+resource "google_service_account_key" "dashboard_service_key" {
+  service_account_id = google_service_account.dashboard_service_account.id
+}
+
+resource "google_secret_manager_secret" "dashboard_service_account_key_secret" {
+  secret_id = "${var.prefix}dashboard-sa-key"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "dashboard_service_account_key_version" {
+  secret      = google_secret_manager_secret.dashboard_service_account_key_secret.id
+  secret_data = base64decode(google_service_account_key.dashboard_service_key.private_key)
+}
+
+resource "google_secret_manager_secret_iam_member" "dashboard_service_account_key_secret_accessor" {
+  secret_id = google_secret_manager_secret.dashboard_service_account_key_secret.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.gcp_service_account_email}"
 }
 
 resource "google_storage_bucket_iam_member" "envs_pipeline_iam" {
@@ -147,8 +223,6 @@ resource "google_storage_bucket_iam_member" "fc_template_bucket_iam_reader" {
   role   = "roles/storage.legacyBucketReader"
   member = "serviceAccount:${var.gcp_service_account_email}"
 }
-
-
 
 resource "google_storage_bucket" "public_builds_storage_bucket" {
   count    = var.gcp_project_id == "e2b-prod" ? 1 : 0

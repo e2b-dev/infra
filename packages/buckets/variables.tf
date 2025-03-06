@@ -27,3 +27,8 @@ variable "fc_template_bucket_name" {
   type        = string
   description = "The name of the FC template bucket"
 }
+
+variable "prefix" {
+  type    = string
+  default = "e2b-"
+}
