@@ -83,7 +83,7 @@ func (s *StorageKV) Acquire() (*Slot, error) {
 		// This is a fallback for the case when all slots are taken.
 		// There is no Consul lock so it's possible that multiple sandboxes will try to acquire the same slot.
 		// In this case, only one of them will succeed and other will try with different slots.
-		reservedKeys, _, keysErr := kv.Keys(consul.ClientID+"/", "", nil)
+		reservedKeys, _, keysErr := kv.Keys(consul.GetClientID()+"/", "", nil)
 		if keysErr != nil {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
@@ -143,5 +143,5 @@ func (s *StorageKV) Release(ips *Slot) error {
 }
 
 func getKVKey(slotIdx int) string {
-	return fmt.Sprintf("%s/%d", consul.ClientID, slotIdx)
+	return fmt.Sprintf("%s/%d", consul.GetClientID(), slotIdx)
 }

@@ -42,7 +42,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("template.id", req.Sandbox.TemplateId),
 		attribute.String("kernel.version", req.Sandbox.KernelVersion),
 		attribute.String("sandbox.id", req.Sandbox.SandboxId),
-		attribute.String("client.id", consul.ClientID),
+		attribute.String("client.id", consul.GetClientID()),
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
@@ -88,7 +88,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
-		ClientId: consul.ClientID,
+		ClientId: consul.GetClientID(),
 	}, nil
 }
 
@@ -98,7 +98,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	childSpan.SetAttributes(
 		attribute.String("sandbox.id", req.SandboxId),
-		attribute.String("client.id", consul.ClientID),
+		attribute.String("client.id", consul.GetClientID()),
 	)
 
 	item, ok := s.sandboxes.Get(req.SandboxId)
@@ -133,7 +133,7 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
 			Config:    sbx.Config,
-			ClientId:  consul.ClientID,
+			ClientId:  consul.GetClientID(),
 			StartTime: timestamppb.New(sbx.StartedAt),
 			EndTime:   timestamppb.New(sbx.EndAt),
 		})
@@ -153,7 +153,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	childSpan.SetAttributes(
 		attribute.String("sandbox.id", in.SandboxId),
-		attribute.String("client.id", consul.ClientID),
+		attribute.String("client.id", consul.GetClientID()),
 	)
 
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
