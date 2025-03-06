@@ -15,6 +15,8 @@ import (
 
 func TestSandboxCreate(t *testing.T) {
 	var wg sync.WaitGroup
+	// Two tests are run because the first one downloads the template to cache (so it's slow),
+	// and the second one uses the cached template (so it should be fast).
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
 		t.Run(strconv.Itoa(i+1), func(t *testing.T) {

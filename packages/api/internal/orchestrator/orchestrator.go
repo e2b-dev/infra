@@ -79,8 +79,8 @@ func New(
 
 	o.instanceCache = cache
 
-  if env.IsLocal() {
-    zap.L().Info("Skipping syncing sandboxes, running locally")
+	if env.IsLocal() {
+		zap.L().Info("Skipping syncing sandboxes, running locally")
 		// Add a local node for local development, if there isn't any, it fails silently
 		o.connectToNode(ctx, &node.NodeInfo{
 			ID:                  "test-client",

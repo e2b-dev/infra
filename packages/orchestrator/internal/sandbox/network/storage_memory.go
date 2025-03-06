@@ -2,6 +2,7 @@ package network
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 )
 
@@ -46,5 +47,5 @@ func (s *StorageMemory) Release(ips *Slot) error {
 }
 
 func getMemoryKey(slotIdx int) string {
-	return fmt.Sprintf("%d", slotIdx)
+	return strconv.Itoa(slotIdx)
 }
