@@ -5,7 +5,6 @@ package uffd
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
@@ -17,18 +16,6 @@ type GuestRegionUffdMapping struct {
 	Size             uintptr `json:"size"`
 	Offset           uintptr `json:"offset"`
 	PageSize         uintptr `json:"page_size_kib"`
-}
-
-func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUffdMapping, error) {
-	for _, m := range mappings {
-		if !(addr >= m.BaseHostVirtAddr && addr < m.BaseHostVirtAddr+m.Size) {
-			continue
-		}
-
-		return &m, nil
-	}
-
-	return nil, fmt.Errorf("address %d not found in any mapping", addr)
 }
 
 func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceDevice, fd uintptr, stop func() error, sandboxId string) error {

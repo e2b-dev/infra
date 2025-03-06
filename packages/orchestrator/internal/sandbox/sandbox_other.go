@@ -39,13 +39,13 @@ func (m *MockCleanup) Run() error {
 }
 
 type Sandbox struct {
-	Config    *orchestrator.SandboxConfig
-	process   MockProcess
-	uffdExit  chan error
-	cleanup   MockCleanup
-	healthy   atomic.Bool
-	Slot      network.Slot
-	EndAt     time.Time
+	Config   *orchestrator.SandboxConfig
+	process  MockProcess
+	uffdExit chan error
+	cleanup  MockCleanup
+	healthy  atomic.Bool
+	Slot     network.Slot
+	EndAt    time.Time
 	StartedAt time.Time
 }
 

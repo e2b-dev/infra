@@ -16,19 +16,19 @@ import (
 )
 
 func (a *APIStore) startSandbox(
-	ctx context.Context,
-	sandboxID string,
-	timeout time.Duration,
-	envVars,
-	metadata map[string]string,
-	alias string,
-	team authcache.AuthTeamInfo,
-	build *models.EnvBuild,
-	requestHeader *http.Header,
-	isResume bool,
-	clientID *string,
-	baseTemplateID string,
-	autoPause bool,
+	_ context.Context,
+	_ string,
+	_ time.Duration,
+	_,
+	_ map[string]string,
+	_ string,
+	_ authcache.AuthTeamInfo,
+	_ *models.EnvBuild,
+	_ *http.Header,
+	_ bool,
+	_ *string,
+	_ string,
+	_ bool,
 ) (*api.Sandbox, *api.APIError) {
 	return nil, &api.APIError{
 		Err: errors.New("sandbox creation not supported on this platform"),
