@@ -33,6 +33,9 @@ func (db *DB) NewSnapshotBuild(
 	teamID uuid.UUID,
 ) (*models.EnvBuild, error) {
 	tx, err := db.Client.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
 	defer tx.Rollback()
 
 	s, err := tx.
