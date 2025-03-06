@@ -4,12 +4,19 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+var (
+	startTime = time.Now()
+	endTime   = time.Now().Add(time.Hour)
 )
 
 func Test_server_List(t *testing.T) {
@@ -36,12 +43,17 @@ func Test_server_List(t *testing.T) {
 					Config: &orchestrator.SandboxConfig{
 						TemplateId: "template-id",
 					},
+					StartedAt: startTime,
+					EndAt:     endTime,
 				},
 			},
 			want: &orchestrator.SandboxListResponse{
 				Sandboxes: []*orchestrator.RunningSandbox{
 					{
 						Config: &orchestrator.SandboxConfig{TemplateId: "template-id"},
+						// ClientId:  "client-id",
+						StartTime: timestamppb.New(startTime),
+						EndTime:   timestamppb.New(endTime),
 					},
 				},
 			},

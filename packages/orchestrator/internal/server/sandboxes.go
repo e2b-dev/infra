@@ -16,7 +16,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -42,7 +41,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("template.id", req.Sandbox.TemplateId),
 		attribute.String("kernel.version", req.Sandbox.KernelVersion),
 		attribute.String("sandbox.id", req.Sandbox.SandboxId),
-		attribute.String("client.id", consul.GetClientID()),
+		attribute.String("client.id", s.clientID),
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
@@ -88,7 +87,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
-		ClientId: consul.GetClientID(),
+		ClientId: s.clientID,
 	}, nil
 }
 
@@ -98,7 +97,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	childSpan.SetAttributes(
 		attribute.String("sandbox.id", req.SandboxId),
-		attribute.String("client.id", consul.GetClientID()),
+		attribute.String("client.id", s.clientID),
 	)
 
 	item, ok := s.sandboxes.Get(req.SandboxId)
@@ -153,7 +152,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	childSpan.SetAttributes(
 		attribute.String("sandbox.id", in.SandboxId),
-		attribute.String("client.id", consul.GetClientID()),
+		attribute.String("client.id", s.clientID),
 	)
 
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
