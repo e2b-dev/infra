@@ -85,7 +85,7 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 
 		return nil, errMsg
 	}
-	_, _ = env.BuildLogsWriter.Write([]byte("Pulled Docker image.\n\n"))
+	_, _ = env.BuildLogsWriter.Write([]byte("Pulled Docker image.\n"))
 
 	err = rootfs.createRootfsFile(childCtx, tracer)
 	if err != nil {
@@ -175,26 +175,25 @@ type PostProcessor struct {
 
 // Start starts the post-processing.
 func (p *PostProcessor) Start() {
+	p.writer.Write([]byte(fmt.Sprintf("[%s] Start postprocessing\n", time.Now().Format(time.RFC3339))))
 
-	now := time.Now()
 	for {
-		msg := []byte(fmt.Sprintf("Postprocessing (%s)       \r", time.Since(now).Round(time.Second)))
+		msg := []byte(fmt.Sprintf("[%s] Postprocessing\n", time.Now().Format(time.RFC3339)))
 
 		select {
 		case postprocessingErr := <-p.errChan:
 			if postprocessingErr != nil {
-				p.writer.Write([]byte(fmt.Sprintf("Postprocessing failed: %s\n", postprocessingErr)))
-
+				p.writer.Write([]byte(fmt.Sprintf("[%s] Postprocessing failed: %s\n", time.Now().Format(time.RFC3339), postprocessingErr)))
 				return
 			}
 
 			p.writer.Write(msg)
-			p.writer.Write([]byte("Postprocessing finished.                   \n"))
+			p.writer.Write([]byte(fmt.Sprintf("[%s] Postprocessing finished.\n", time.Now().Format(time.RFC3339))))
 
 			return
 		case <-p.ctx.Done():
 			return
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(5 * time.Second):
 			p.writer.Write(msg)
 		}
 	}
