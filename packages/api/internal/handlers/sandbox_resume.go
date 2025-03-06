@@ -107,12 +107,37 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		clientID = pausedOnNode.ID
 	}
 
-	e, err := a.db.
+	snap, err := a.db.Client.Snapshot.Query().Where(snapshot.SandboxID(sandboxID)).Only(ctx)
+	if err != nil {
+		notFound := models.IsNotFound(err)
+
+		if notFound {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error resuming sandbox: %s", err))
+		} else {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during querying snapshot")
+		}
+
+		return
+	}
+
+	build, err := a.db.Client.EnvBuild.Query().Where(envbuild.StatusEQ(envbuild.StatusSuccess), envbuild.EnvID(snap.EnvID)).Order(models.Desc(envbuild.FieldFinishedAt)).First(ctx)
+	if err != nil {
+		notFound := models.IsNotFound(err)
+
+		if notFound {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error resuming sandbox: %s", err))
+		} else {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during querying build")
+		}
+
+		return
+	}
+
+	_, err = a.db.
 		Client.
 		Env.
 		Query().
 		Where(
-			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
 			env.HasSnapshotsWith(snapshot.SandboxID(sandboxID)),
 			env.TeamID(teamInfo.Team.ID),
 		).Only(ctx)
@@ -128,32 +153,6 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
-	build, err := a.db.Client.EnvBuild.Query().Where(envbuild.StatusEQ(envbuild.StatusSuccess), envbuild.EnvID(e.ID)).Order(models.Desc(envbuild.FieldFinishedAt)).Only(ctx)
-	if err != nil {
-		notFound := models.IsNotFound(err)
-
-		if notFound {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error resuming sandbox: %s", err))
-		} else {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during querying build")
-		}
-
-		return
-	}
-
-	snapshot, err := a.db.Client.Snapshot.Query().Where(snapshot.SandboxID(sandboxID)).Only(ctx)
-	if err != nil {
-		notFound := models.IsNotFound(err)
-
-		if notFound {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error resuming sandbox: %s", err))
-		} else {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during querying snapshot")
-		}
-
-		return
-	}
-
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
 		TemplateID: *build.EnvID,
@@ -162,17 +161,17 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	sbx, createErr := a.startSandbox(
 		ctx,
-		snapshot.SandboxID,
+		snap.SandboxID,
 		timeout,
 		nil,
-		snapshot.Metadata,
+		snap.Metadata,
 		"",
 		teamInfo,
 		build,
 		&c.Request.Header,
 		true,
 		&clientID,
-		snapshot.BaseEnvID,
+		snap.BaseEnvID,
 		autoPause,
 	)
 	if createErr != nil {
