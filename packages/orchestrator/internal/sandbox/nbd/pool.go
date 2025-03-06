@@ -56,7 +56,7 @@ type DevicePool struct {
 
 	slotCounter metric.Int64UpDownCounter
 }
-
+ 
 var Pool *DevicePool
 
 func init() {
