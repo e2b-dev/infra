@@ -28,7 +28,11 @@ runs:
       shell: bash
 
     - name: Start Services
+      env:
+        ENVD_TIMEOUT: "60s"
       run: |
+        echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test
+        
         mkdir -p ~/logs
         make -C packages/orchestrator run-debug 2>&1 | tee ~/logs/orchestrator.log &
         make -C packages/api run 2>&1 | tee ~/logs/api.log &

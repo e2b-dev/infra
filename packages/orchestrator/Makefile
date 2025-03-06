@@ -42,6 +42,7 @@ run-debug:
 	GODEBUG=madvdontneed=1 \
 	NODE_ID="test-client" \
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
+	ENVD_TIMEOUT=$(ENVD_TIMEOUT) \
 	./bin/orchestrator
 
 .PHONY: upload
