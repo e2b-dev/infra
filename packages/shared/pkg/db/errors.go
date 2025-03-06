@@ -1,19 +1,19 @@
 package db
 
-type NotFoundError error
-type TemplateNotFound struct{ NotFoundError }
+type ErrNotFound error
+type TemplateNotFound struct{ ErrNotFound }
 
 func (TemplateNotFound) Error() string {
 	return "Template not found"
 }
 
-type SnapshotNotFound struct{ NotFoundError }
+type SnapshotNotFound struct{ ErrNotFound }
 
 func (SnapshotNotFound) Error() string {
 	return "Snapshot not found"
 }
 
-type BuildNotFound struct{ NotFoundError }
+type BuildNotFound struct{ ErrNotFound }
 
 func (BuildNotFound) Error() string {
 	return "Build not found"
