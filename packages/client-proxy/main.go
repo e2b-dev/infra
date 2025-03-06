@@ -43,7 +43,7 @@ var (
 	client = new(dns.Client)
 )
 
-func proxyHandler() func(w http.ResponseWriter, r *http.Request) {
+func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
 	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
 	if err != nil {
 		zap.L().Error("failed to create active connections counter", zap.Error(err))
@@ -55,7 +55,6 @@ func proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 				activeConnections.Add(r.Context(), -1)
 			}()
 		}
-		zap.L().Debug(fmt.Sprintf("request for %s %s", r.Host, r.URL.Path))
 
 		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.dev)
 		hostSplit := strings.Split(r.Host, "-")
@@ -135,17 +134,8 @@ func proxyHandler() func(w http.ResponseWriter, r *http.Request) {
 			return nil
 		}
 
-		// Set the transport options (with values similar to our old the nginx configuration)
-		proxy.Transport = &http.Transport{
-			Proxy:                 http.ProxyFromEnvironment,
-			MaxIdleConns:          1024,              // Matches worker_connections
-			MaxIdleConnsPerHost:   8192,              // Matches keepalive_requests
-			IdleConnTimeout:       620 * time.Second, // Matches keepalive_timeout
-			TLSHandshakeTimeout:   10 * time.Second,  // Similar to client_header_timeout
-			ResponseHeaderTimeout: 24 * time.Hour,    // Matches proxy_read_timeout
-			DisableKeepAlives:     false,             // Allow keep-alives
-		}
-
+		// Set the transport
+		proxy.Transport = transport
 		proxy.ServeHTTP(w, r)
 	}
 }
@@ -208,7 +198,19 @@ func run() int {
 
 	// Proxy request to the correct node
 	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
-	server.Handler = http.HandlerFunc(proxyHandler())
+
+	// similar values to our old the nginx configuration
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		MaxIdleConns:          1024,              // Matches worker_connections
+		MaxIdleConnsPerHost:   8192,              // Matches keepalive_requests
+		IdleConnTimeout:       620 * time.Second, // Matches keepalive_timeout
+		TLSHandshakeTimeout:   10 * time.Second,  // Similar to client_header_timeout
+		ResponseHeaderTimeout: 24 * time.Hour,    // Matches proxy_read_timeout
+		DisableKeepAlives:     false,             // Allow keep-alives
+	}
+
+	server.Handler = http.HandlerFunc(proxyHandler(transport))
 
 	wg.Add(1)
 	go func() {

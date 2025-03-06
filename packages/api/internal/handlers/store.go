@@ -107,8 +107,8 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	authCache := authcache.NewTeamAuthCache(dbClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
-	return &APIStore{
-		Healthy:              true,
+	a := &APIStore{
+		Healthy:              false,
 		orchestrator:         orch,
 		templateManager:      templateManager,
 		db:                   dbClient,
@@ -120,6 +120,25 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		authCache:            authCache,
 		templateSpawnCounter: templateSpawnCounter,
 	}
+
+	// Wait till there's at least one, otherwise we can't create sandboxes yet
+	go func() {
+		ticker := time.NewTicker(5 * time.Millisecond)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if orch.NodeCount() != 0 {
+					zap.L().Info("Nodes are ready, setting API as healthy")
+					a.Healthy = true
+					return
+				}
+			}
+		}
+	}()
+
+	return a
 }
 
 func (a *APIStore) Close(ctx context.Context) error {

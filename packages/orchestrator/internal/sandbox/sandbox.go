@@ -246,6 +246,8 @@ func NewSandbox(
 		healthcheckCtx: healthcheckCtx,
 		healthy:        atomic.Bool{}, // defaults to `false`
 	}
+	// By default, the sandbox should be healthy, if the status change we report it.
+	sbx.healthy.Store(true)
 
 	cleanup.AddPriority(func() error {
 		var errs []error

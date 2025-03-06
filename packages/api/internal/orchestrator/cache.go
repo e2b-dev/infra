@@ -15,8 +15,11 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+const cacheSyncTime = 20 * time.Second
 
 func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, error) {
 	item, err := o.instanceCache.Get(sandboxID)
@@ -29,22 +32,28 @@ func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, err
 
 // keepInSync the cache with the actual instances in Orchestrator to handle instances that died.
 func (o *Orchestrator) keepInSync(ctx context.Context, instanceCache *instance.InstanceCache) {
+	// Run the first sync immediately
+	zap.L().Info("Running the initial node sync")
+	o.syncNodes(ctx, instanceCache)
+
+	// Sync the nodes every cacheSyncTime
+	ticker := time.NewTicker(cacheSyncTime)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			zap.L().Info("Stopping keepInSync")
 
 			return
-		case <-time.After(instance.CacheSyncTime):
-			// Sleep for a while before syncing again
-
+		case <-ticker.C:
 			o.syncNodes(ctx, instanceCache)
 		}
 	}
 }
 
 func (o *Orchestrator) syncNodes(ctx context.Context, instanceCache *instance.InstanceCache) {
-	ctxTimeout, cancel := context.WithTimeout(ctx, 1*time.Minute)
+	ctxTimeout, cancel := context.WithTimeout(ctx, cacheSyncTime)
 	defer cancel()
 
 	spanCtx, span := o.tracer.Start(ctxTimeout, "keep-in-sync")
@@ -136,6 +145,12 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		defer cancel()
 
+		sbxlogger.I(info).Debug("Deleting sandbox from cache hook",
+			zap.Time("start_time", info.StartTime),
+			zap.Time("end_time", info.GetEndTime()),
+			zap.Bool("auto_pause", info.AutoPause.Load()),
+		)
+
 		defer o.instanceCache.UnmarkAsPausing(info)
 
 		duration := time.Since(info.StartTime).Seconds()
@@ -208,6 +223,12 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			}
 		}
 
+		sbxlogger.I(info).Debug("Deleted sandbox from cache hook",
+			zap.Time("start_time", info.StartTime),
+			zap.Time("end_time", info.GetEndTime()),
+			zap.Bool("auto_pause", info.AutoPause.Load()),
+		)
+
 		return nil
 	}
 }
@@ -216,6 +237,12 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 	return func(info *instance.InstanceInfo) error {
 		ctx, cancel := context.WithTimeout(parentCtx, timeout)
 		defer cancel()
+
+		sbxlogger.I(info).Debug("Inserting sandbox to cache hook",
+			zap.Time("start_time", info.StartTime),
+			zap.Time("end_time", info.GetEndTime()),
+			zap.Bool("auto_pause", info.AutoPause.Load()),
+		)
 
 		node := o.GetNode(info.Instance.ClientID)
 		if node == nil {
@@ -241,6 +268,12 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 		if info.AutoPause.Load() {
 			o.instanceCache.MarkAsPausing(info)
 		}
+
+		sbxlogger.I(info).Debug("Inserted sandbox to cache hook",
+			zap.Time("start_time", info.StartTime),
+			zap.Time("end_time", info.GetEndTime()),
+			zap.Bool("auto_pause", info.AutoPause.Load()),
+		)
 
 		return nil
 	}

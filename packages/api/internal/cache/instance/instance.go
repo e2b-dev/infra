@@ -25,7 +25,6 @@ const (
 	InstanceExpiration = time.Second * 15
 	// Should we auto pause the instance by default instead of killing it,
 	InstanceAutoPauseDefault = false
-	CacheSyncTime            = time.Minute
 )
 
 var (
@@ -213,7 +212,7 @@ func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
 			return false
 		}
 
-		// We depend of the startTime not changing to uniquely identify instance in the cache.
+		// We depend on the startTime not changing to uniquely identify instance in the cache.
 		return v.Instance.SandboxID == instanceInfo.Instance.SandboxID && v.StartTime == instanceInfo.StartTime
 	})
 }

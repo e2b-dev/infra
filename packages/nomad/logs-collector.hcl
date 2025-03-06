@@ -85,6 +85,7 @@ source = """
 del(."_path")
 .service = "envd"
 .sandboxID = .instanceID
+.timestamp = parse_timestamp(.timestamp, format: "%Y-%m-%dT%H:%M:%S.%fZ") ?? now()
 if !exists(.envID) {
   .envID = "unknown"
 }
