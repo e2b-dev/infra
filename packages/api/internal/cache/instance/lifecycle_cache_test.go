@@ -125,6 +125,72 @@ func TestLifecycleCacheLen(t *testing.T) {
 	assert.Equal(t, 1, cache.Len())
 }
 
+func TestLifecycleCacheHasNonExpired(t *testing.T) {
+	cache, cancel := newCache(t)
+	defer cancel()
+
+	expired := false
+	cache.SetIfAbsent("test", &testLifecycleCacheItem{
+		expired: &expired,
+	})
+
+	assert.True(t, cache.Has("test", false))
+	assert.True(t, cache.Has("test", true))
+
+	// Check for a non-existent key
+	assert.False(t, cache.Has("non-existent", false))
+	assert.False(t, cache.Has("non-existent", true))
+}
+
+func TestLifecycleCacheHasExpired(t *testing.T) {
+	cache, cancel := newCache(t)
+	defer cancel()
+
+	expired := false
+	cache.SetIfAbsent("test", &testLifecycleCacheItem{
+		expired: &expired,
+	})
+
+	// Set the item as expired
+	expired = true
+
+	assert.False(t, cache.Has("test", false))
+	assert.True(t, cache.Has("test", true))
+}
+
+func TestLifecycleCacheHasEvicting(t *testing.T) {
+	cache, cancel := newCache(t)
+	defer cancel()
+
+	evictCalled := make(chan struct{})
+	cache.OnEviction(func(ctx context.Context, item *testLifecycleCacheItem) {
+		// Simulate a slow eviction process
+		time.Sleep(500 * time.Millisecond)
+		close(evictCalled)
+	})
+
+	expired := false
+	cache.SetIfAbsent("test", &testLifecycleCacheItem{
+		expired: &expired,
+	})
+
+	// Set the item as expired
+	expired = true
+
+	// Wait for the eviction process to start but not complete
+	time.Sleep(200 * time.Millisecond)
+
+	assert.True(t, cache.Has("test", true))
+	assert.False(t, cache.Has("test", false))
+
+	// Wait for eviction to complete
+	<-evictCalled
+	time.Sleep(100 * time.Millisecond)
+
+	assert.False(t, cache.Has("test", true))
+	assert.False(t, cache.Has("test", false))
+}
+
 func TestLifecycleCacheOnEvictionCalled(t *testing.T) {
 	cache, cancel := newCache(t)
 	defer cancel()
