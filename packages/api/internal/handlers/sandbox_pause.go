@@ -1,19 +1,19 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -31,21 +31,22 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err != nil {
-		ok, fErr := a.db.
-			Client.
-			Env.
-			Query().
-			Where(
-				env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
-				env.HasSnapshotsWith(snapshot.SandboxID(sandboxID)),
-				env.TeamID(teamID),
-			).Exist(ctx)
-		if fErr == nil && ok {
+		_, _, fErr := a.db.GetLastSnapshot(ctx, sandboxID, teamID)
+		if fErr == nil {
+			zap.L().Warn("Sandbox is already paused", zap.String("sandboxID", sandboxID))
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
 			return
 		}
 
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - sandbox '%s' was not found", sandboxID))
+		var notFoundErr db.NotFoundError
+		if errors.As(err, &notFoundErr) {
+			zap.L().Debug("Snapshot not found", zap.String("sandboxID", sandboxID))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - snapshot for sandbox '%s' was not found", sandboxID))
+			return
+		}
+
+		zap.L().Error("Error getting snapshot", zap.Error(fErr), zap.String("sandboxID", sandboxID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox"))
 		return
 	}
 

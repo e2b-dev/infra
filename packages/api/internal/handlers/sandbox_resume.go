@@ -16,11 +16,8 @@ import (
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -107,48 +104,18 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		clientID = pausedOnNode.ID
 	}
 
-	snap, err := a.db.Client.Snapshot.Query().Where(snapshot.SandboxID(sandboxID)).Only(ctx)
+	snap, build, err := a.db.GetLastSnapshot(ctx, sandboxID, teamInfo.Team.ID)
 	if err != nil {
-		notFound := models.IsNotFound(err)
+		var notFoundError db.NotFoundError
+		if errors.As(err, &notFoundError) {
+			zap.L().Debug("Snapshot not found", zap.String("sandboxID", sandboxID))
+			a.sendAPIStoreError(c, http.StatusNotFound, err.Error())
 
-		if notFound {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error resuming sandbox: %s", err))
-		} else {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during querying snapshot")
+			return
 		}
 
-		return
-	}
-
-	build, err := a.db.Client.EnvBuild.Query().Where(envbuild.StatusEQ(envbuild.StatusSuccess), envbuild.EnvID(snap.EnvID)).Order(models.Desc(envbuild.FieldFinishedAt)).First(ctx)
-	if err != nil {
-		notFound := models.IsNotFound(err)
-
-		if notFound {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error resuming sandbox: %s", err))
-		} else {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during querying build")
-		}
-
-		return
-	}
-
-	_, err = a.db.
-		Client.
-		Env.
-		Query().
-		Where(
-			env.HasSnapshotsWith(snapshot.SandboxID(sandboxID)),
-			env.TeamID(teamInfo.Team.ID),
-		).Only(ctx)
-	if err != nil {
-		notFound := models.IsNotFound(err)
-
-		if notFound {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Snapshot for sandbox '%s' was not found", sandboxID))
-		} else {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error during querying sandbox '%s'", sandboxID))
-		}
+		zap.L().Error("Error getting last snapshot", zap.String("sandboxID", sandboxID), zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting snapshot"))
 
 		return
 	}

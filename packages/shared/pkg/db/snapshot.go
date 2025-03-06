@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
-
-	"github.com/google/uuid"
 )
 
 type SnapshotInfo struct {
@@ -115,6 +115,55 @@ func (db *DB) NewSnapshotBuild(
 	}
 
 	return b, nil
+}
+
+func (db *DB) GetLastSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID) (
+	*models.Snapshot,
+	*models.EnvBuild,
+	error,
+) {
+
+	snap, err := db.Client.Snapshot.Query().Where(snapshot.SandboxID(sandboxID)).Only(ctx)
+	if err != nil {
+		notFound := models.IsNotFound(err)
+
+		if notFound {
+			return nil, nil, SnapshotNotFound{}
+		} else {
+			return nil, nil, fmt.Errorf("failed to get snapshot for '%s': %w", sandboxID, err)
+		}
+	}
+
+	build, err := db.Client.EnvBuild.Query().Where(envbuild.StatusEQ(envbuild.StatusSuccess), envbuild.EnvID(snap.EnvID)).Order(models.Desc(envbuild.FieldFinishedAt)).First(ctx)
+	if err != nil {
+		notFound := models.IsNotFound(err)
+
+		if notFound {
+			return snap, nil, BuildNotFound{}
+		} else {
+			return nil, nil, fmt.Errorf("failed to get build for '%s': %w", sandboxID, err)
+		}
+	}
+
+	_, err = db.
+		Client.
+		Env.
+		Query().
+		Where(
+			env.ID(snap.EnvID),
+			env.TeamID(teamID),
+		).Only(ctx)
+	if err != nil {
+		notFound := models.IsNotFound(err)
+
+		if notFound {
+			return nil, nil, TemplateNotFound{}
+		} else {
+			return nil, nil, fmt.Errorf("failed to get template for '%s': %w", sandboxID, err)
+		}
+	}
+
+	return snap, build, nil
 }
 
 func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uuid.UUID) (
