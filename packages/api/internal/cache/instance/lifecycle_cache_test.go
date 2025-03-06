@@ -185,7 +185,6 @@ func TestLifecycleCacheHasEvicting(t *testing.T) {
 
 	// Wait for eviction to complete
 	<-evictCalled
-	time.Sleep(100 * time.Millisecond)
 
 	assert.False(t, cache.Has("test", true))
 	assert.False(t, cache.Has("test", false))
