@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/integration-tests/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 
 	"github.com/stretchr/testify/assert"
 )

@@ -157,7 +157,7 @@ test:
 
 .PHONY: test-integration
 test-integration:
-	$(MAKE) -C packages/integration-tests test
+	$(MAKE) -C tests/integration test
 
 # $(MAKE) -C terraform/grafana init does not work b/c of the -include ${ENV_FILE} in the Makefile
 # so we need to call the Makefile directly

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/integration-tests/internal/api"
+	"github.com/e2b-dev/infra/tests/integration/internal/api"
 )
 
 func GetAPIClient(tb testing.TB) *api.ClientWithResponses {

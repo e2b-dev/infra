@@ -9,5 +9,5 @@ use (
 	./packages/shared
 	./packages/template-manager
 
-	./packages/integration-tests
+	./tests/integration
 )
