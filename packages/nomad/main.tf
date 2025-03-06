@@ -403,6 +403,12 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
   service_account_email = google_service_account.clickhouse_service_account.email
 }
 
+# generate password
+resource "random_password" "clickhouse_password" {
+  length  = 32
+  special = false
+}
+
 
 # Add this with your other Nomad jobs
 resource "nomad_job" "clickhouse" {
@@ -413,5 +419,7 @@ resource "nomad_job" "clickhouse" {
     gcs_folder         = "clickhouse-data"
     hmac_key           = google_storage_hmac_key.clickhouse_hmac_key.access_id
     hmac_secret        = google_storage_hmac_key.clickhouse_hmac_key.secret
+    username           = "clickhouse"
+    password           = sha256(random_password.clickhouse_password.result)
   })
 }
