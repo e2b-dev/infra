@@ -11,6 +11,9 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -28,8 +31,16 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err != nil {
-		_, _, fErr := a.db.GetLastSnapshot(ctx, sandboxID, teamID)
-		if fErr == nil {
+		ok, fErr := a.db.
+			Client.
+			Env.
+			Query().
+			Where(
+				env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
+				env.HasSnapshotsWith(snapshot.SandboxID(sandboxID)),
+				env.TeamID(teamID),
+			).Exist(ctx)
+		if fErr == nil && ok {
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
 			return
 		}

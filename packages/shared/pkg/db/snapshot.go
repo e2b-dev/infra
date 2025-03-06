@@ -117,40 +117,6 @@ func (db *DB) NewSnapshotBuild(
 	return b, nil
 }
 
-func (db *DB) GetLastSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID) (
-	*models.Snapshot,
-	*models.EnvBuild,
-	error,
-) {
-	e, err := db.
-		Client.
-		Env.
-		Query().
-		Where(
-			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
-			env.HasSnapshotsWith(snapshot.SandboxID(sandboxID)),
-			env.TeamID(teamID),
-		).
-		WithSnapshots(func(query *models.SnapshotQuery) {
-			query.Where(snapshot.SandboxID(sandboxID)).Only(ctx)
-		}).
-		WithBuilds(func(query *models.EnvBuildQuery) {
-			query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt)).Only(ctx)
-		}).Only(ctx)
-
-	notFound := models.IsNotFound(err)
-
-	if notFound {
-		return nil, nil, fmt.Errorf("no snapshot build found for '%s'", sandboxID)
-	}
-
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", sandboxID, err)
-	}
-
-	return e.Edges.Snapshots[0], e.Edges.Builds[0], nil
-}
-
 func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uuid.UUID) (
 	*models.Env,
 	[]*models.EnvBuild,

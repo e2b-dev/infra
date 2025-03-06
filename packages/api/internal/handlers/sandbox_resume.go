@@ -17,6 +17,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -103,9 +107,49 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		clientID = pausedOnNode.ID
 	}
 
-	snapshot, build, err := a.db.GetLastSnapshot(ctx, sandboxID, teamInfo.Team.ID)
+	e, err := a.db.
+		Client.
+		Env.
+		Query().
+		Where(
+			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
+			env.HasSnapshotsWith(snapshot.SandboxID(sandboxID)),
+			env.TeamID(teamInfo.Team.ID),
+		).Only(ctx)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error resuming sandbox: %s", err))
+		notFound := models.IsNotFound(err)
+
+		if notFound {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Snapshot for sandbox '%s' was not found", sandboxID))
+		} else {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error during querying sandbox '%s'", sandboxID))
+		}
+
+		return
+	}
+
+	build, err := a.db.Client.EnvBuild.Query().Where(envbuild.StatusEQ(envbuild.StatusSuccess), envbuild.EnvID(e.ID)).Order(models.Desc(envbuild.FieldFinishedAt)).Only(ctx)
+	if err != nil {
+		notFound := models.IsNotFound(err)
+
+		if notFound {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error resuming sandbox: %s", err))
+		} else {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during querying build")
+		}
+
+		return
+	}
+
+	snapshot, err := a.db.Client.Snapshot.Query().Where(snapshot.SandboxID(sandboxID)).Only(ctx)
+	if err != nil {
+		notFound := models.IsNotFound(err)
+
+		if notFound {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error resuming sandbox: %s", err))
+		} else {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during querying snapshot")
+		}
 
 		return
 	}
