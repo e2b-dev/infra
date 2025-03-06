@@ -67,7 +67,7 @@ job "otel-collector" {
       resources {
         memory_max = 4096
         memory = 1024
-        cpu    = 256
+        cpu    = 1000
       }
 
       template {
