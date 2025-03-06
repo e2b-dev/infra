@@ -28,7 +28,7 @@ try {
   console.log('Sandbox created with ID:', sandbox.sandboxId)
 
   // install ping
-  await sandbox.commands.run('sudo apt-get install -y ping')
+  await sandbox.commands.run('sudo apt-get install -y iputils-ping')
 
   const out = await sandbox.commands.run('ping -c 3 8.8.8.8')
 
