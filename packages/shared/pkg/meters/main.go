@@ -22,7 +22,6 @@ const (
 	ReusedNetworkSlotSPoolCounterMeterName                   = "orchestrator.network.slots_pool.reused"
 	NBDkSlotSReadyPoolCounterMeterName                       = "orchestrator.nbd.slots_pool.read"
 	ActiveConnectionsCounterMeterName                        = "client_proxy.connections.active"
-
 )
 
 var meter = otel.GetMeterProvider().Meter("nomad")
@@ -44,8 +43,7 @@ var upDownCounterDesc = map[UpDownCounterType]string{
 	ReusedNetworkSlotSPoolCounterMeterName: "Number of reused network slots ready to be used.",
 	NewNetworkSlotSPoolCounterMeterName:    "Number of new network slots ready to be used.",
 	NBDkSlotSReadyPoolCounterMeterName:     "Number of nbd slots ready to be used.",
-	ActiveConnectionsCounterMeterName:       "Number of active network connections in the client proxy.",
-
+	ActiveConnectionsCounterMeterName:      "Number of active network connections in the client proxy.",
 }
 
 var upDownCounterUnits = map[UpDownCounterType]string{
@@ -54,8 +52,7 @@ var upDownCounterUnits = map[UpDownCounterType]string{
 	ReusedNetworkSlotSPoolCounterMeterName: "{slot}",
 	NewNetworkSlotSPoolCounterMeterName:    "{slot}",
 	NBDkSlotSReadyPoolCounterMeterName:     "{slot}",
-	ActiveConnectionsCounterMeterName:       "{connection}",
-
+	ActiveConnectionsCounterMeterName:      "{connection}",
 }
 
 func GetCounter(name CounterType) (metric.Int64Counter, error) {

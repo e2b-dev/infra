@@ -16,7 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-
 const (
 	fcTapAddress        = "169.254.0.22"
 	fcTapMask           = "30"
