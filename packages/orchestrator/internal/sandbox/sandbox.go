@@ -275,8 +275,8 @@ func NewSandbox(
 		return errors.Join(errs...)
 	})
 
-	// Ensure the syncing takes at most 10 seconds.
-	syncCtx, syncCancel := context.WithTimeout(childCtx, 10*time.Second)
+	// Ensure the syncing takes at most 60 seconds.
+	syncCtx, syncCancel := context.WithTimeoutCause(childCtx, 60*time.Second, fmt.Errorf("syncing took too long"))
 	defer syncCancel()
 
 	// Sync envds.
