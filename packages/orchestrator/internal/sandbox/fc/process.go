@@ -106,6 +106,16 @@ func NewProcess(
 		attribute.String("sandbox.cmd", fcStartScript.String()),
 	)
 
+	_, err = os.Stat(files.FirecrackerPath())
+	if err != nil {
+		return nil, fmt.Errorf("error stating firecracker binary: %w", err)
+	}
+
+	_, err = os.Stat(files.CacheKernelPath())
+	if err != nil {
+		return nil, fmt.Errorf("error stating kernel file: %w", err)
+	}
+
 	cmd := exec.Command(
 		"unshare",
 		"-pfm",
