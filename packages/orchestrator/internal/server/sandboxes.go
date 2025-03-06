@@ -60,7 +60,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.Sandbox.BaseTemplateId,
 	)
 	if err != nil {
-		sbxlogger.E(sbx).Error("failed to create sandbox, cleaning up", zap.Error(err))
+		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))
 		cleanupErr := cleanup.Run()
 
 		errMsg := fmt.Errorf("failed to cleanup sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))

@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -79,6 +81,12 @@ func New(
 
 	if env.IsLocal() {
 		zap.L().Info("Skipping syncing sandboxes, running locally")
+		// Add a local node for local development, if there isn't any, it fails silently
+		o.connectToNode(ctx, &node.NodeInfo{
+			ID:                  "test-client",
+			OrchestratorAddress: fmt.Sprintf("%s:%s", "127.0.0.1", consts.OrchestratorPort),
+			IPAddress:           "127.0.0.1",
+		})
 	} else {
 		go o.keepInSync(ctx, cache)
 	}
