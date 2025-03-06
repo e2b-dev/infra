@@ -123,7 +123,7 @@ func (o *CowDevice) Close() error {
 	attempts := 0
 	for {
 		attempts++
-		err := nbd.Pool.ReleaseDevice(slot)
+		err := nbd.MustGetDevicePool().ReleaseDevice(slot)
 		if errors.Is(err, nbd.ErrDeviceInUse{}) {
 			if attempts%100 == 0 {
 				zap.L().Info("error releasing overlay device", zap.Int("attempts", attempts), zap.Error(err))

@@ -56,10 +56,8 @@ type DevicePool struct {
 
 	slotCounter metric.Int64UpDownCounter
 }
- 
-var Pool *DevicePool
 
-func init() {
+func MustGetDevicePool() *DevicePool {
 	maxDevices, err := getMaxDevices()
 	if err != nil {
 		panic(fmt.Errorf("failed to get current max devices: %w", err))
@@ -88,7 +86,7 @@ func init() {
 		}
 	}()
 
-	Pool = pool
+	return pool
 }
 
 func getMaxDevices() (uint, error) {

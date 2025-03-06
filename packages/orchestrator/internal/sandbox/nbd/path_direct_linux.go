@@ -45,7 +45,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 	}
 
 	for {
-		d.deviceIndex, err = Pool.GetDevice(ctx)
+		d.deviceIndex, err = MustGetDevicePool().GetDevice(ctx)
 		if err != nil {
 			return 0, err
 		}
@@ -96,7 +96,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 			zap.L().Error("error closing conn", zap.Error(connErr))
 		}
 
-		releaseErr := Pool.ReleaseDevice(d.deviceIndex)
+		releaseErr := MustGetDevicePool().ReleaseDevice(d.deviceIndex)
 		if releaseErr != nil {
 			zap.L().Error("error releasing device", zap.Error(releaseErr))
 		}
