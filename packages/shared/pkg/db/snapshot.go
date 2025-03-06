@@ -152,7 +152,7 @@ func (db *DB) GetLastSnapshot(ctx context.Context, sandboxID string, teamID uuid
 }
 
 func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uuid.UUID) (
-	[]*models.Env,
+	*models.Env,
 	error,
 ) {
 	e, err := db.
@@ -163,14 +163,13 @@ func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uu
 			env.HasSnapshotsWith(snapshot.SandboxID(sandboxID)),
 			env.TeamID(teamID),
 		).
-		WithSnapshots().
 		WithBuilds().
-		All(ctx)
+		Only(ctx)
 
 	notFound := models.IsNotFound(err)
 
 	if notFound {
-		return []*models.Env{}, nil
+		return nil, nil
 	}
 
 	if err != nil {

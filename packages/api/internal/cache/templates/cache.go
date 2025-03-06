@@ -119,9 +119,3 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 func (c *TemplateCache) Invalidate(templateID string) {
 	c.cache.Delete(templateID)
 }
-
-func (c *TemplateCache) InvalidateMultiple(templateIDs []string) {
-	for _, templateID := range templateIDs {
-		c.Invalidate(templateID)
-	}
-}
