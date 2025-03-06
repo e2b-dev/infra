@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -32,6 +33,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+var envdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
@@ -269,8 +272,8 @@ func NewSandbox(
 		return errors.Join(errs...)
 	})
 
-	// Ensure the syncing takes at most 60 seconds.
-	syncCtx, syncCancel := context.WithTimeoutCause(childCtx, 60*time.Second, fmt.Errorf("syncing took too long"))
+	// Ensure the syncing takes at most envdTimeout seconds.
+	syncCtx, syncCancel := context.WithTimeoutCause(childCtx, envdTimeout, fmt.Errorf("syncing took too long"))
 	defer syncCancel()
 
 	// Sync envds.
