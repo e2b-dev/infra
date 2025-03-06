@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"golang.org/x/mod/semver"
 	"golang.org/x/sys/unix"
 
@@ -24,7 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -47,15 +49,23 @@ type Sandbox struct {
 	StartedAt time.Time
 	EndAt     time.Time
 
-	Slot   network.Slot
-	Logger *logs.SandboxLogger
-	stats  *stats.Handle
+	Slot  network.Slot
+	stats *stats.Handle
 
 	uffdExit chan error
 
 	template template.Template
 
 	healthcheckCtx *utils.LockableCancelableContext
+	healthy        atomic.Bool
+}
+
+func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
+	return sbxlogger.SandboxMetadata{
+		SandboxID:  s.Config.SandboxId,
+		TemplateID: s.Config.TemplateId,
+		TeamID:     s.Config.TeamId,
+	}
 }
 
 // Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
@@ -69,7 +79,6 @@ func NewSandbox(
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
-	logger *logs.SandboxLogger,
 	isSnapshot bool,
 	baseTemplateID string,
 ) (*Sandbox, *Cleanup, error) {
@@ -91,6 +100,7 @@ func NewSandbox(
 	}
 
 	networkCtx, networkSpan := tracer.Start(childCtx, "get-network-slot")
+	defer networkSpan.End()
 
 	ips, err := networkPool.Get(networkCtx)
 	if err != nil {
@@ -105,7 +115,6 @@ func NewSandbox(
 
 		return nil
 	})
-
 	networkSpan.End()
 
 	sandboxFiles := t.Files().NewSandboxFiles(config.SandboxId)
@@ -120,6 +129,7 @@ func NewSandbox(
 	})
 
 	_, overlaySpan := tracer.Start(childCtx, "create-rootfs-overlay")
+	defer overlaySpan.End()
 
 	readonlyRootfs, err := t.Rootfs()
 	if err != nil {
@@ -144,7 +154,7 @@ func NewSandbox(
 	go func() {
 		runErr := rootfsOverlay.Start(childCtx)
 		if runErr != nil {
-			fmt.Fprintf(os.Stderr, "[sandbox %s]: rootfs overlay error: %v\n", config.SandboxId, runErr)
+			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
 	}()
 
@@ -199,7 +209,7 @@ func NewSandbox(
 		&fc.MmdsMetadata{
 			SandboxId:            config.SandboxId,
 			TemplateId:           config.TemplateId,
-			LogsCollectorAddress: logs.CollectorPublicIP,
+			LogsCollectorAddress: os.Getenv("LOGS_COLLECTOR_PUBLIC_IP"),
 			TraceId:              traceID,
 			TeamId:               config.TeamId,
 		},
@@ -212,20 +222,12 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
 
-	internalLogger := logger.GetInternalLogger()
-	fcStartErr := fcHandle.Start(uffdStartCtx, tracer, internalLogger)
+	fcStartErr := fcHandle.Start(uffdStartCtx, tracer)
 	if fcStartErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to start FC: %w", fcStartErr)
 	}
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
-
-	pid, err := fcHandle.Pid()
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get FC PID: %w", err)
-	}
-
-	sandboxStats := stats.NewHandle(int32(pid))
 
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
@@ -240,11 +242,12 @@ func NewSandbox(
 		StartedAt:      startedAt,
 		EndAt:          endAt,
 		rootfs:         rootfsOverlay,
-		stats:          sandboxStats,
-		Logger:         logger,
 		cleanup:        cleanup,
 		healthcheckCtx: healthcheckCtx,
+		healthy:        atomic.Bool{}, // defaults to `false`
 	}
+	// By default, the sandbox should be healthy, if the status change we report it.
+	sbx.healthy.Store(true)
 
 	cleanup.AddPriority(func() error {
 		var errs []error

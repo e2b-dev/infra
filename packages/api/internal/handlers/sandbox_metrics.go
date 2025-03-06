@@ -60,24 +60,23 @@ func (a *APIStore) getSandboxesSandboxIDMetrics(
 	for _, stream := range value {
 		for _, entry := range stream.Entries {
 
-				var metric struct {
-					Timestamp   time.Time `json:"timestamp"`
-					CPUUsedPct  float32   `json:"cpuUsedPct"`
-					CPUCount    int32     `json:"cpuCount"`
-					MemTotalMiB int64     `json:"memTotalMiB"`
-					MemUsedMiB  int64     `json:"memUsedMiB"`
-				}
+			var metric struct {
+				CPUUsedPct  float32 `json:"cpuUsedPct"`
+				CPUCount    int32   `json:"cpuCount"`
+				MemTotalMiB int64   `json:"memTotalMiB"`
+				MemUsedMiB  int64   `json:"memUsedMiB"`
+			}
 
 			err := json.Unmarshal([]byte(entry.Line), &metric)
 			if err != nil {
-				a.logger.Error("Failed to unmarshal metric", zap.String("sandbox", sandboxID), zap.Error(err))
+				zap.L().Error("Failed to unmarshal metric", zap.String("sandbox_id", sandboxID), zap.Error(err))
 				telemetry.ReportCriticalError(ctx, fmt.Errorf("failed to unmarshal metric: %w", err))
 
 				continue
 			}
 
 			metrics = append(metrics, api.SandboxMetric{
-				Timestamp:   metric.Timestamp,
+				Timestamp:   entry.Timestamp,
 				CpuUsedPct:  metric.CPUUsedPct,
 				CpuCount:    metric.CPUCount,
 				MemTotalMiB: metric.MemTotalMiB,
@@ -110,7 +109,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 
 	metrics, err := a.getSandboxesSandboxIDMetrics(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
 	if err != nil {
-		a.logger.Error("Error returning metrics for sandbox",
+		zap.L().Error("Error returning metrics for sandbox",
 			zap.Error(err),
 			zap.String("sandboxID", sandboxID),
 		)

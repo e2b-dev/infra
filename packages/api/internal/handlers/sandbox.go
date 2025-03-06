@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -25,34 +25,12 @@ func (a *APIStore) startSandbox(
 	alias string,
 	team authcache.AuthTeamInfo,
 	build *models.EnvBuild,
-	logger *logs.SandboxLogger,
 	requestHeader *http.Header,
 	isResume bool,
 	clientID *string,
 	baseTemplateID string,
-) (*api.Sandbox, error) {
-	_, rateSpan := a.Tracer.Start(ctx, "rate-limit")
-	counter, err := meters.GetUpDownCounter(meters.RateLimitCounterMeterName)
-	if err != nil {
-		a.logger.Errorf("error getting counter: %s", err)
-	}
-
-	counter.Add(ctx, 1)
-	limitErr := sandboxStartRequestLimit.Acquire(ctx, 1)
-	counter.Add(ctx, -1)
-	if limitErr != nil {
-		errMsg := fmt.Errorf("error when acquiring parallel lock: %w", limitErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return nil, errMsg
-	}
-
-	defer sandboxStartRequestLimit.Release(1)
-	telemetry.ReportEvent(ctx, "create sandbox parallel limit semaphore slot acquired")
-
-	rateSpan.End()
-	telemetry.ReportEvent(ctx, "Reserved team sandbox slot")
-
+	autoPause bool,
+) (*api.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
 
@@ -67,16 +45,16 @@ func (a *APIStore) startSandbox(
 		startTime,
 		endTime,
 		timeout,
-		logger,
 		isResume,
 		clientID,
 		baseTemplateID,
+		autoPause,
 	)
 	if instanceErr != nil {
-		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
+		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr.Err)
 		telemetry.ReportCriticalError(ctx, errMsg)
 
-		return nil, errMsg
+		return nil, instanceErr
 	}
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
@@ -102,7 +80,11 @@ func (a *APIStore) startSandbox(
 		attribute.String("instance.id", sandbox.SandboxID),
 	)
 
-	logger.Infof("Sandbox created with - end time: %s", endTime.Format("2006-01-02 15:04:05 -07:00"))
+	sbxlogger.E(&sbxlogger.SandboxMetadata{
+		SandboxID:  sandbox.SandboxID,
+		TemplateID: *build.EnvID,
+		TeamID:     team.Team.ID.String(),
+	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
 	return &api.Sandbox{
 		ClientID:    sandbox.ClientID,

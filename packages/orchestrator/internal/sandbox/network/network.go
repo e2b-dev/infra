@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"runtime"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
+	"go.uber.org/zap"
 )
 
 func (s *Slot) CreateNetwork() error {
@@ -26,12 +26,12 @@ func (s *Slot) CreateNetwork() error {
 	defer func() {
 		err = netns.Set(hostNS)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error resetting network namespace back to the host namespace: %v", err)
+			zap.L().Error("error resetting network namespace back to the host namespace", zap.Error(err))
 		}
 
 		err = hostNS.Close()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error closing host network namespace: %v", err)
+			zap.L().Error("error closing host network namespace", zap.Error(err))
 		}
 	}()
 

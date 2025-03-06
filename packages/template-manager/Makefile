@@ -19,7 +19,9 @@ generate:
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/template-manager .
+	# Allow for passing commit sha directly for docker builds
+	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/template-manager -ldflags "-X=main.commitSHA=$(COMMIT_SHA)"  .
 
 .PHONY: build-debug
 build-debug:
@@ -31,6 +33,10 @@ upload:
 
 .PHONY: build-and-upload
 build-and-upload: build upload
+
+.PHONY: test
+test:
+	go test -v ./...
 
 .PHONY: test-build
 test-build:

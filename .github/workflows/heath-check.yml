@@ -1,8 +1,7 @@
 name: Health check
 
-on:
-  schedule:
-    - cron: '*/20 * * * *'
+# TODO: Delete this workflow and all associated files.
+on: workflow_call
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

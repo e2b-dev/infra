@@ -180,26 +180,3 @@ variable "api_port" {
     health_path = string
   })
 }
-
-variable "docker_reverse_proxy_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}
-
-variable "logs_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
-}
-
-variable "logs_health_proxy_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}

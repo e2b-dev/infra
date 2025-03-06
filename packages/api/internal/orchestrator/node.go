@@ -8,6 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.uber.org/zap"
+	"google.golang.org/grpc/connectivity"
+
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/jellydator/ttlcache/v3"
 
@@ -36,11 +39,21 @@ type Node struct {
 	sbxsInProgress *smap.Map[*sbxInProgress]
 
 	buildCache *ttlcache.Cache[string, interface{}]
+
+	createFails atomic.Uint64
 }
 
 func (n *Node) Status() api.NodeStatus {
 	n.statusMu.RLock()
 	defer n.statusMu.RUnlock()
+
+	if n.status != api.NodeStatusReady {
+		return n.status
+	}
+
+	if n.Client.connection.GetState() != connectivity.Ready {
+		return api.NodeStatusConnecting
+	}
 
 	return n.status
 }
@@ -49,15 +62,21 @@ func (n *Node) SetStatus(status api.NodeStatus) {
 	n.statusMu.Lock()
 	defer n.statusMu.Unlock()
 
-	n.status = status
+	if n.status != status {
+		zap.L().Info("Node status changed", zap.String("node_id", n.Info.ID), zap.String("status", string(status)))
+		n.status = status
+	}
 }
 
 func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, error) {
 	_, listSpan := o.tracer.Start(ctx, "list-nomad-nodes")
 	defer listSpan.End()
 
-	// TODO: Use variable for node pool name ("default")
-	nomadNodes, _, err := o.nomadClient.Nodes().List(&nomadapi.QueryOptions{Filter: "Status == \"ready\" and NodePool == \"default\""})
+	options := &nomadapi.QueryOptions{
+		// TODO: Use variable for node pool name ("default")
+		Filter: "Status == \"ready\" and NodePool == \"default\"",
+	}
+	nomadNodes, _, err := o.nomadClient.Nodes().List(options.WithContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +101,12 @@ func (o *Orchestrator) GetNode(nodeID string) *Node {
 func (o *Orchestrator) GetNodes() []*api.Node {
 	nodes := make(map[string]*api.Node)
 	for key, n := range o.nodes.Items() {
-		nodes[key] = &api.Node{NodeID: key, Status: n.Status()}
+		nodes[key] = &api.Node{
+			NodeID:               key,
+			Status:               n.Status(),
+			CreateFails:          n.createFails.Load(),
+			SandboxStartingCount: n.sbxsInProgress.Count(),
+		}
 	}
 
 	for _, sbx := range o.instanceCache.Items() {
@@ -105,12 +129,18 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 	return result
 }
 
-func (o *Orchestrator) GetNodeDetail(nodeId string) *api.NodeDetail {
+func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 	var node *api.NodeDetail
+
 	for key, n := range o.nodes.Items() {
-		if key == nodeId {
+		if key == nodeID {
 			builds := n.buildCache.Keys()
-			node = &api.NodeDetail{NodeID: key, Status: n.Status(), CachedBuilds: builds}
+			node = &api.NodeDetail{
+				NodeID:       key,
+				Status:       n.Status(),
+				CachedBuilds: builds,
+				CreateFails:  n.createFails.Load(),
+			}
 		}
 	}
 
@@ -119,7 +149,7 @@ func (o *Orchestrator) GetNodeDetail(nodeId string) *api.NodeDetail {
 	}
 
 	for _, sbx := range o.instanceCache.Items() {
-		if sbx.Instance.ClientID == nodeId {
+		if sbx.Instance.ClientID == nodeID {
 			var metadata *api.SandboxMetadata
 			if sbx.Metadata != nil {
 				meta := api.SandboxMetadata(sbx.Metadata)
@@ -127,10 +157,10 @@ func (o *Orchestrator) GetNodeDetail(nodeId string) *api.NodeDetail {
 			}
 			node.Sandboxes = append(node.Sandboxes, api.RunningSandbox{
 				Alias:      sbx.Instance.Alias,
-				ClientID:   nodeId,
+				ClientID:   nodeID,
 				CpuCount:   api.CPUCount(sbx.VCpu),
 				MemoryMB:   api.MemoryMB(sbx.RamMB),
-				EndAt:      sbx.EndTime,
+				EndAt:      sbx.GetEndTime(),
 				Metadata:   metadata,
 				SandboxID:  sbx.Instance.SandboxID,
 				StartedAt:  sbx.StartTime,
@@ -148,13 +178,17 @@ func (n *Node) SyncBuilds(builds []*orchestrator.CachedBuildInfo) {
 	}
 }
 
-func (t *Node) InsertBuild(buildID string) {
-	exists := t.buildCache.Has(buildID)
+func (n *Node) InsertBuild(buildID string) {
+	exists := n.buildCache.Has(buildID)
 	if exists {
 		return
 	}
 
 	// Set the build in the cache for 2 minutes, it should get updated with the correct time from the orchestrator during sync
-	t.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
+	n.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 	return
+}
+
+func (o *Orchestrator) NodeCount() int {
+	return o.nodes.Count()
 }

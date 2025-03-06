@@ -1,41 +1,5 @@
-variable "gcp_zone" {
-  type = string
-}
-
-variable "logs_port_number" {
-  type = number
-}
-
-variable "logs_health_port_number" {
-  type = string
-}
-
-variable "logs_health_path" {
-  type = string
-}
-
-variable "logs_port_name" {
-  type = string
-}
-
-variable "grafana_api_key" {
-  type = string
-}
-
-variable "grafana_logs_username" {
-  type = string
-}
-
-variable "grafana_logs_endpoint" {
-  type = string
-}
-
-variable "loki_service_port_number" {
-  type = number
-}
-
 job "logs-collector" {
-  datacenters = [var.gcp_zone]
+  datacenters = ["${gcp_zone}"]
   type        = "system"
   node_pool    = "all"
 
@@ -44,10 +8,10 @@ job "logs-collector" {
   group "logs-collector" {
     network {
       port "health" {
-        to = var.logs_health_port_number
+        to = "${logs_health_port_number}"
       }
       port "logs" {
-        to = var.logs_port_number
+        to = "${logs_port_number}"
       }
     }
 
@@ -62,10 +26,10 @@ job "logs-collector" {
       check {
         type     = "http"
         name     = "health"
-        path     = var.logs_health_path
+        path     = "${logs_health_path}"
         interval = "20s"
         timeout  = "5s"
-        port     = var.logs_health_port_number
+        port     = "${logs_health_port_number}"
       }
     }
 
@@ -106,17 +70,13 @@ data_dir = "alloc/data/vector/"
 
 [api]
 enabled = true
-address = "0.0.0.0:${var.logs_health_port_number}"
+address = "0.0.0.0:${logs_health_port_number}"
 
 [sources.envd]
 type = "http_server"
-address = "0.0.0.0:${var.logs_port_number}"
-encoding = "json"
+address = "0.0.0.0:${logs_port_number}"
+encoding = "ndjson"
 path_key = "_path"
-
-
-[log_schema]
-  timestamp_key = "_timestamp" 
 
 [transforms.add_source_envd]
 type = "remap"
@@ -125,6 +85,19 @@ source = """
 del(."_path")
 .service = "envd"
 .sandboxID = .instanceID
+.timestamp = parse_timestamp(.timestamp, format: "%Y-%m-%dT%H:%M:%S.%fZ") ?? now()
+if !exists(.envID) {
+  .envID = "unknown"
+}
+if !exists(.category) {
+  .category = "default"
+}
+if !exists(.teamID) {
+  .teamID = "unknown"
+}
+if !exists(.sandboxID) {
+  .sandboxID = "unknown"
+}
 if !exists(.envID) {
   .envID = "unknown"
 }
@@ -144,17 +117,10 @@ source = '''
 del(.internal)
 '''
 
-[transforms.use_real_timestamp]
-type = "remap"
-inputs = [ "remove_internal" ]
-source = '''
-._timestamp = parse_timestamp(.timestamp, "%+") ?? now()
-'''
-
 [sinks.local_loki_logs]
 type = "loki"
-inputs = [ "use_real_timestamp" ]
-endpoint = "http://loki.service.consul:${var.loki_service_port_number}"
+inputs = [ "remove_internal" ]
+endpoint = "http://loki.service.consul:${loki_service_port_number}"
 encoding.codec = "json"
 
 [sinks.local_loki_logs.labels]
@@ -165,15 +131,15 @@ envID = "{{ envID }}"
 sandboxID = "{{ sandboxID }}"
 category = "{{ category }}"
 
-%{ if var.grafana_logs_endpoint != " " }
+%{ if grafana_logs_endpoint != " " }
 [sinks.grafana]
 type = "loki"
 inputs = [ "internal_routing.internal" ]
-endpoint = "${var.grafana_logs_endpoint}"
+endpoint = "${grafana_logs_endpoint}"
 encoding.codec = "json"
 auth.strategy = "basic"
-auth.user = "${var.grafana_logs_username}"
-auth.password = "${var.grafana_api_key}"
+auth.user = "${grafana_logs_user}"
+auth.password = "${grafana_api_key}"
 
 [sinks.grafana.labels]
 source = "logs-collector"

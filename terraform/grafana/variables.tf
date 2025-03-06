@@ -7,10 +7,6 @@ variable "gcp_project_id" {
   type = string
 }
 
-variable "grafana_cloud_organization_id" {
-  type = string
-}
-
 variable "gcp_region" {
   type = string
 }

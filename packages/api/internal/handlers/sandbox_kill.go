@@ -79,10 +79,10 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		}
 
 		// remove running sandbox from the orchestrator
-		sandboxExists := a.orchestrator.DeleteInstance(ctx, sandboxID)
+		sandboxExists := a.orchestrator.DeleteInstance(ctx, sandboxID, false)
 		if !sandboxExists {
-			telemetry.ReportError(ctx, fmt.Errorf("sandbox '%s' not found", sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error deleting sandbox - sandbox '%s' not found", sandboxID))
+      telemetry.ReportError(ctx, fmt.Errorf("sandbox '%s' not found", sandboxID))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error killing sandbox - sandbox '%s' was not found", sandboxID))
 
 			return
 		}

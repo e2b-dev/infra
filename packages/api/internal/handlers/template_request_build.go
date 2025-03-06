@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/constants"
@@ -357,7 +358,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		aliases = append(aliases, alias)
 	}
 
-	a.logger.Infof("Built template %s with build id %s", templateID, buildID.String())
+	zap.L().Info("Built template", zap.String("template_id", templateID), zap.String("build_id", buildID.String()))
 
 	return &api.Template{
 		TemplateID: templateID,

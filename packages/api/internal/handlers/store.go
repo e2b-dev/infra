@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/sync/semaphore"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -28,14 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 )
-
-const (
-	defaultRequestLimit = 16
-)
-
-var sandboxStartRequestLimit = semaphore.NewWeighted(defaultRequestLimit)
 
 type APIStore struct {
 	Healthy              bool
@@ -46,7 +38,6 @@ type APIStore struct {
 	buildCache           *builds.BuildCache
 	db                   *db.DB
 	lokiClient           *loki.DefaultClient
-	logger               *zap.SugaredLogger
 	templateCache        *templatecache.TemplateCache
 	authCache            *authcache.TeamAuthCache
 	templateSpawnCounter *utils.TemplateSpawnCounter
@@ -55,23 +46,18 @@ type APIStore struct {
 func NewAPIStore(ctx context.Context) *APIStore {
 	tracer := otel.Tracer("api")
 
-	logger, err := logging.New(env.IsLocal())
-	if err != nil {
-		panic(fmt.Errorf("initializing logger: %w", err))
-	}
-
-	logger.Info("initializing API store and services")
+	zap.L().Info("initializing API store and services")
 
 	dbClient, err := db.NewClient()
 	if err != nil {
-		logger.Panic("initializing Supabase client", zap.Error(err))
+		zap.L().Fatal("initializing Supabase client", zap.Error(err))
 	}
 
-	logger.Info("created Supabase client")
+	zap.L().Info("created Supabase client")
 
-	posthogClient, posthogErr := analyticscollector.NewPosthogClient(logger)
+	posthogClient, posthogErr := analyticscollector.NewPosthogClient()
 	if posthogErr != nil {
-		logger.Panic("initializing Posthog client", zap.Error(posthogErr))
+		zap.L().Fatal("initializing Posthog client", zap.Error(posthogErr))
 	}
 
 	nomadConfig := &nomadapi.Config{
@@ -81,29 +67,29 @@ func NewAPIStore(ctx context.Context) *APIStore {
 
 	nomadClient, err := nomadapi.NewClient(nomadConfig)
 	if err != nil {
-		logger.Panic("initializing Nomad client", zap.Error(err))
+		zap.L().Fatal("initializing Nomad client", zap.Error(err))
 	}
 
 	var redisClient *redis.Client
 	if rurl := os.Getenv("REDIS_URL"); rurl != "" {
 		opts, err := redis.ParseURL(rurl)
 		if err != nil {
-			logger.Panic("invalid redis URL", zap.String("url", rurl), zap.Error(err))
+			zap.L().Fatal("invalid redis URL", zap.String("url", rurl), zap.Error(err))
 		}
 
 		redisClient = redis.NewClient(opts)
 	} else {
-		logger.Warn("REDIS_URL not set, using local caches")
+		zap.L().Warn("REDIS_URL not set, using local caches")
 	}
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger.Desugar(), posthogClient, redisClient)
+	orch, err := orchestrator.New(ctx, tracer, nomadClient, posthogClient, redisClient, dbClient)
 	if err != nil {
-		logger.Panic("initializing Orchestrator client", zap.Error(err))
+		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
 
 	templateManager, err := template_manager.New()
 	if err != nil {
-		logger.Panic("initializing Template manager client", zap.Error(err))
+		zap.L().Fatal("initializing Template manager client", zap.Error(err))
 	}
 
 	var lokiClient *loki.DefaultClient
@@ -112,7 +98,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 			Address: laddr,
 		}
 	} else {
-		logger.Warn("LOKI_ADDRESS not set, disabling Loki client")
+		zap.L().Warn("LOKI_ADDRESS not set, disabling Loki client")
 	}
 
 	buildCache := builds.NewBuildCache()
@@ -121,20 +107,38 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	authCache := authcache.NewTeamAuthCache(dbClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
-	return &APIStore{
-		Healthy:              true,
+	a := &APIStore{
+		Healthy:              false,
 		orchestrator:         orch,
 		templateManager:      templateManager,
 		db:                   dbClient,
 		Tracer:               tracer,
 		posthog:              posthogClient,
 		buildCache:           buildCache,
-		logger:               logger,
 		lokiClient:           lokiClient,
 		templateCache:        templateCache,
 		authCache:            authCache,
 		templateSpawnCounter: templateSpawnCounter,
 	}
+
+	// Wait till there's at least one, otherwise we can't create sandboxes yet
+	go func() {
+		ticker := time.NewTicker(5 * time.Millisecond)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if orch.NodeCount() != 0 {
+					zap.L().Info("Nodes are ready, setting API as healthy")
+					a.Healthy = true
+					return
+				}
+			}
+		}
+	}()
+
+	return a
 }
 
 func (a *APIStore) Close(ctx context.Context) error {
