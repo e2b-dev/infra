@@ -16,8 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/pkg/models"
-	dbsandbox "github.com/e2b-dev/infra/packages/orchestrator/internal/pkg/models/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/pkg/database"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -73,12 +72,14 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	started := time.Now()
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
-	s.db.CreateSandbox(ctx, func(sc *models.SandboxCreate) {
-		sc.SetID(req.Sandbox.SandboxId)
-		sc.SetStatus(dbsandbox.Status(dbsandbox.StatusRunning))
-		sc.SetStartedAt(started)
-		sc.SetDeadline(req.EndTime.AsTime())
-	})
+	if err := s.db.CreateSandbox(ctx, database.CreateSandboxParams{
+		ID:        req.Sandbox.SandboxId,
+		Status:    database.SandboxStatusRunning,
+		StartedAt: started,
+		Deadline:  req.EndTime.AsTime(),
+	}); err != nil {
+		return nil, err
+	}
 
 	go func() {
 		if err := sbx.Wait(); err != nil {
@@ -91,12 +92,8 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		}
 
 		s.sandboxes.Remove(req.Sandbox.SandboxId)
-		if err := s.db.UpdateSandbox(ctx, req.Sandbox.SandboxId, func(sbu *models.SandboxUpdateOne) {
-			sbu.SetStatus(dbsandbox.StatusTerminated).
-				SetTerminatedAt(time.Now().Round(time.Millisecond)).
-				SetDurationMs(ended.Sub(started).Milliseconds())
-		}); err != nil {
-			sbxlogger.E(sbx).Info("failed to cleanup db record for sandbox", zap.Error(err))
+		if err := s.db.SetSandboxTerminated(ctx, req.Sandbox.SandboxId, ended.Sub(started)); err != nil {
+			sbxlogger.I(sbx).Error("failed to cleanup db record for sandbox", zap.Error(err))
 		}
 
 		sbxlogger.E(sbx).Info("sandbox killed")
@@ -125,10 +122,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	}
 
 	item.EndAt = req.EndTime.AsTime()
-
-	if err := s.db.UpdateSandbox(ctx, req.SandboxId, func(sbu *models.SandboxUpdateOne) {
-		sbu.SetDeadline(item.EndAt)
-	}); err != nil {
+	if err := s.db.UpdateSandboxDeadline(ctx, req.SandboxId, item.EndAt); err != nil {
 		return nil, status.New(codes.Internal, fmt.Sprintf("db update sandbox: %w", err)).Err()
 	}
 
@@ -201,15 +195,13 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	sbx.Healthcheck(loggingCtx, true)
 	sbx.LogMetrics(loggingCtx)
 
-	if err := s.db.UpdateSandbox(ctx, in.SandboxId, func(sbu *models.SandboxUpdateOne) {
-		sbu.SetTerminatedAt(time.Now()).SetStatus(dbsandbox.StatusTerminated)
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "error setting sandbox deleted '%s': %v\n", in.SandboxId, err)
-	}
-
 	err := sbx.Stop()
 	if err != nil {
 		sbxlogger.I(sbx).Error("error stopping sandbox", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
+	}
+
+	if err := s.db.SetSandboxTerminated(ctx, in.SandboxId, sbx.EndAt.Sub(sbx.StartedAt)); err != nil {
+		sbxlogger.I(sbx).Error("error setting sandbox deleted", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 	}
 
 	return &emptypb.Empty{}, nil
@@ -248,11 +240,8 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
 	s.sandboxes.Remove(in.SandboxId)
 
-	if err := s.db.UpdateSandbox(ctx, in.SandboxId, func(sbu *models.SandboxUpdateOne) {
-		// TODO: either stop accounting for duration or update duration in the wrapper.
-		sbu.SetDurationMs(time.Now().Sub(sbx.StartedAt).Milliseconds()).SetStatus(dbsandbox.StatusPaused)
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "error setting sandbox deleted '%s': %v\n", in.SandboxId, err)
+	if err := s.db.SetSandboxPaused(ctx, in.SandboxId, time.Now().Sub(sbx.StartedAt)); err != nil {
+		sbxlogger.I(sbx).Error("error setting sandbox deleted", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 	}
 
 	s.pauseMu.Unlock()

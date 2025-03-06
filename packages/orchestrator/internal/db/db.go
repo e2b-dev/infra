@@ -2,33 +2,47 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/pkg/models"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/pkg/models/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/pkg/database"
+	// "github.com/e2b-dev/infra/packages/orchestrator/internal/pkg/models"
+	// "github.com/e2b-dev/infra/packages/orchestrator/internal/pkg/models/sandbox"
 )
 
 type DB struct {
-	client *models.Client
+	client *sql.DB
+	ops    *database.Queries
 }
 
-func (db *DB) Close() error { return db.client.Close() }
+func (db *DB) Close() error {
+	// TODO write terminated state to the status table for
+	// forensics(?)
 
-func (db *DB) CreateSandbox(ctx context.Context, op func(*models.SandboxCreate)) error {
-	return db.WithTx(ctx, func(ctx context.Context) error {
-		now := time.Now()
-		tx := models.FromContext(ctx)
+	return db.client.Close()
+}
 
-		global, err := tx.Status.UpdateOneID(1).AddVersion(1).SetUpdatedAt(now).Save(ctx)
-		if err != nil {
+func (db *DB) CreateSandbox(ctx context.Context, params database.CreateSandboxParams) error {
+	return db.WithTx(ctx, func(ctx context.Context, op *database.Queries) error {
+		if _, err := op.IncGlobalVersion(ctx); err != nil {
 			return err
 		}
 
-		obj := tx.Sandbox.Create()
-		op(obj)
-		obj.SetVersion(1).SetGlobalVersion(global.Version).SetUpdatedAt(now)
-		if _, err := obj.Save(ctx); err != nil {
+		if err := op.CreateSandbox(ctx, params); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func (db *DB) UpdateSandboxDeadline(ctx context.Context, id string, deadline time.Time) error {
+	return db.WithTx(ctx, func(ctx context.Context, op *database.Queries) error {
+		if _, err := op.IncGlobalVersion(ctx); err != nil {
+			return err
+		}
+
+		if err := op.UpdateSandboxDeadline(ctx, database.UpdateSandboxDeadlineParams{ID: id, Deadline: deadline}); err != nil {
 			return err
 		}
 
@@ -36,34 +50,17 @@ func (db *DB) CreateSandbox(ctx context.Context, op func(*models.SandboxCreate))
 	})
 }
 
-func (db *DB) UpdateSandbox(ctx context.Context, id string, op func(*models.SandboxUpdateOne)) error {
-	return db.WithTx(ctx, func(ctx context.Context) error {
-		now := time.Now()
-		tx := models.FromContext(ctx)
-
-		global, err := tx.Status.UpdateOneID(1).AddVersion(1).SetUpdatedAt(now).Save(ctx)
-		if err != nil {
+func (db *DB) SetSandboxTerminated(ctx context.Context, id string, duration time.Duration) error {
+	return db.WithTx(ctx, func(ctx context.Context, op *database.Queries) error {
+		if _, err := op.IncGlobalVersion(ctx); err != nil {
 			return err
 		}
 
-		obj := tx.Sandbox.UpdateOneID(id)
-		if err != nil {
-			return err
-		}
-
-		prev, err := tx.Sandbox.Get(ctx, id)
-		if err != nil {
-			return err
-		}
-
-		op(obj)
-		obj = obj.SetUpdatedAt(now).SetGlobalVersion(global.Version).AddVersion(1)
-		switch prev.Status {
-		case sandbox.StatusPaused, sandbox.StatusPending, sandbox.StatusTerminated:
-			obj = obj.AddDurationMs(now.Sub(prev.UpdatedAt).Milliseconds())
-		}
-
-		if _, err := obj.Save(ctx); err != nil {
+		if err := op.ShutdownSandbox(ctx, database.ShutdownSandboxParams{
+			ID:         id,
+			DurationMs: duration.Milliseconds(),
+			Status:     database.SandboxStatusTerminated,
+		}); err != nil {
 			return err
 		}
 
@@ -71,13 +68,29 @@ func (db *DB) UpdateSandbox(ctx context.Context, id string, op func(*models.Sand
 	})
 }
 
-func (db *DB) WithTx(ctx context.Context, op func(context.Context) error) (err error) {
-	var tx *models.Tx
-	tx, err = db.client.Tx(ctx)
+func (db *DB) SetSandboxPaused(ctx context.Context, id string, duration time.Duration) error {
+	return db.WithTx(ctx, func(ctx context.Context, op *database.Queries) error {
+		if _, err := op.IncGlobalVersion(ctx); err != nil {
+			return err
+		}
+
+		if err := op.ShutdownSandbox(ctx, database.ShutdownSandboxParams{
+			ID:         id,
+			DurationMs: duration.Milliseconds(),
+			Status:     database.SandboxStatusPaused,
+		}); err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+func (db *DB) WithTx(ctx context.Context, op func(context.Context, *database.Queries) error) (err error) {
+	tx, err := db.client.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	ctx = models.NewTxContext(ctx, tx)
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, tx.Rollback())
@@ -95,5 +108,5 @@ func (db *DB) WithTx(ctx context.Context, op func(context.Context) error) (err e
 		}
 	}()
 
-	return op(ctx)
+	return op(ctx, db.ops.WithTx(tx))
 }

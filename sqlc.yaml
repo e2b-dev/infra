@@ -1,0 +1,24 @@
+version: "2"
+sql:
+  # ORCHESTRATOR PROCESS' LOCAL DATABASE
+  - engine: "sqlite"
+    queries: "packages/orchestrator/queries.sql"
+    schema: "packages/orchestrator/schema.sql"
+    # migrations are unnecessary right now because the DB never lives
+    # longer than the process.
+    gen:
+      go:
+        emit_pointers_for_null_types: true
+        package: "database"
+        out: "packages/orchestrator/internal/pkg/database"
+        overrides:
+          - db_type: "timestamp"
+            go_type:
+              import: "time"
+              type: "time.Time"
+          - db_type: "timestamp"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "time.Time"
+              pointer: true
