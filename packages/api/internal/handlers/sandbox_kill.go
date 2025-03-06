@@ -20,7 +20,10 @@ func (a *APIStore) deleteSnapshot(
 	sandboxID string,
 	teamID uuid.UUID,
 ) (*bool, error) {
-	env, err := a.db.GetSnapshotBuilds(ctx, sandboxID, teamID)
+	env, builds, err := a.db.GetSnapshotBuilds(ctx, sandboxID, teamID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting env builds for sandbox '%s': %w", sandboxID, err)
+	}
 
 	var found bool = true
 	if env == nil {
@@ -28,12 +31,8 @@ func (a *APIStore) deleteSnapshot(
 		return &found, nil
 	}
 
-	if err != nil {
-		return nil, fmt.Errorf("error getting env builds for sandbox '%s': %w", sandboxID, err)
-	}
-
 	envBuildIDs := make([]uuid.UUID, 0)
-	for _, build := range env.Edges.Builds {
+	for _, build := range builds {
 		envBuildIDs = append(envBuildIDs, build.ID)
 	}
 
