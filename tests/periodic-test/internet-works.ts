@@ -27,7 +27,9 @@ try {
   sandbox = await Sandbox.create()
   console.log('Sandbox created with ID:', sandbox.sandboxId)
 
-  // Run a command in the sandbox, so we can test both
+  // install ping
+  await sandbox.commands.run('sudo apt-get install -y ping')
+
   const out = await sandbox.commands.run('ping -c 3 8.8.8.8')
 
 
