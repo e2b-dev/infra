@@ -44,8 +44,10 @@ job "clickhouse" {
           nofile = "262144:262144"
         }
 
+
         volumes = [
           "local/config.xml:/etc/clickhouse-server/config.d/gcs.xml",
+          "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
         ]
       }
 
@@ -83,6 +85,26 @@ job "clickhouse" {
 </clickhouse>
 EOF
         destination = "local/config.xml"
+      }
+
+      template {
+        data = <<EOF
+<?xml version="1.0"?>
+<clickhouse>
+    <users>
+        <${username}>
+            <password_sha256_hex>${password_sha256_hex}</password_sha256_hex>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <profile>default</profile>
+            <quota>default</quota>
+            <access_management>1</access_management>
+        </${username}>
+    </users>
+</clickhouse>
+EOF
+        destination = "local/users.xml"
       }
 
       resources {
