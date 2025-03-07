@@ -124,6 +124,10 @@ type = "loki"
 inputs = [ "remove_internal" ]
 endpoint = "http://loki.service.consul:${loki_service_port_number}"
 encoding.codec = "json"
+# This is recommended behavior for Loki 2.4.0 and newer and is default in Vector 0.39.0 and newer
+# https://vector.dev/docs/reference/configuration/sinks/loki/#out_of_order_action
+# https://vector.dev/releases/0.39.0/
+out_of_order_action = "accept"
 
 [sinks.local_loki_logs.labels]
 source = "logs-collector"
@@ -143,6 +147,10 @@ encoding.codec = "json"
 auth.strategy = "basic"
 auth.user = "${grafana_logs_user}"
 auth.password = "${grafana_api_key}"
+# This is recommended behavior for Loki 2.4.0 and newer and is default in Vector 0.39.0 and newer
+# https://vector.dev/docs/reference/configuration/sinks/loki/#out_of_order_action
+# https://vector.dev/releases/0.39.0/
+out_of_order_action = "accept"
 
 [sinks.grafana.labels]
 source = "logs-collector"
