@@ -71,7 +71,7 @@ func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 		return nil, fmt.Errorf("failed to create template cache: %w", err)
 	}
 
-	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize)
+	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network pool: %w", err)
 	}

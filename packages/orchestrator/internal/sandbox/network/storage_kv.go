@@ -7,7 +7,6 @@ import (
 
 	consulApi "github.com/hashicorp/consul/api"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -21,9 +20,8 @@ func (s *StorageKV) getKVKey(slotIdx int) string {
 	return fmt.Sprintf("%s/%d", s.clientID, slotIdx)
 }
 
-func NewStorageKV(slotsSize int) (*StorageKV, error) {
+func NewStorageKV(slotsSize int, clientID string) (*StorageKV, error) {
 	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
-	clientID := consul.GetClientID()
 
 	consulClient, err := newConsulClient(consulToken)
 	if err != nil {

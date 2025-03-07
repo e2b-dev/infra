@@ -58,7 +58,7 @@ func main() {
 		return
 	}
 
-	networkPool, err := network.NewPool(ctx, *count, 0)
+	networkPool, err := network.NewPool(ctx, *count, 0, "mock-node")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create network pool: %v\n", err)
 
