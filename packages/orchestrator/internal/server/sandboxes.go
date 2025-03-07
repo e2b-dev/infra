@@ -12,17 +12,18 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/pkg/database"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/gogo/status"
 )
 
 const (
@@ -66,25 +67,36 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		errMsg := fmt.Errorf("failed to cleanup sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
 		telemetry.ReportCriticalError(ctx, errMsg)
 
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+		return nil, status.New(codes.Internal, err.Error()).Err()
 	}
+	started := time.Now()
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
+	if err := s.db.CreateSandbox(ctx, database.CreateSandboxParams{
+		ID:        req.Sandbox.SandboxId,
+		Status:    database.SandboxStatusRunning,
+		StartedAt: started,
+		Deadline:  req.EndTime.AsTime(),
+	}); err != nil {
+		return nil, err
+	}
 
 	go func() {
-		waitErr := sbx.Wait()
-		if waitErr != nil {
-			sbxlogger.I(sbx).Error("failed to wait for sandbox, cleaning up", zap.Error(waitErr))
+		if err := sbx.Wait(); err != nil {
+			sbxlogger.I(sbx).Error("failed to wait for sandbox, cleaning up", zap.Error(err))
 		}
+		ended := time.Now()
 
-		cleanupErr := cleanup.Run()
-		if cleanupErr != nil {
-			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
+		if err := cleanup.Run(); err != nil {
+			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(err))
 		}
 
 		s.sandboxes.Remove(req.Sandbox.SandboxId)
+		if err := s.db.SetSandboxTerminated(ctx, req.Sandbox.SandboxId, ended.Sub(started)); err != nil {
+			sbxlogger.I(sbx).Error("failed to cleanup db record for sandbox", zap.Error(err))
+		}
 
-		sbxlogger.E(sbx).Info("Sandbox killed")
+		sbxlogger.E(sbx).Info("sandbox killed")
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
@@ -110,6 +122,9 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	}
 
 	item.EndAt = req.EndTime.AsTime()
+	if err := s.db.UpdateSandboxDeadline(ctx, req.SandboxId, item.EndAt); err != nil {
+		return nil, status.New(codes.Internal, fmt.Sprintf("db update sandbox: %w", err)).Err()
+	}
 
 	return &emptypb.Empty{}, nil
 }
@@ -185,6 +200,10 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		sbxlogger.I(sbx).Error("error stopping sandbox", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 	}
 
+	if err := s.db.SetSandboxTerminated(ctx, in.SandboxId, sbx.EndAt.Sub(sbx.StartedAt)); err != nil {
+		sbxlogger.I(sbx).Error("error setting sandbox deleted", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -208,7 +227,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	defer releaseOnce()
 
 	s.pauseMu.Lock()
-
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
 	if !ok {
 		s.pauseMu.Unlock()
@@ -221,6 +239,10 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
 	s.sandboxes.Remove(in.SandboxId)
+
+	if err := s.db.SetSandboxPaused(ctx, in.SandboxId, time.Now().Sub(sbx.StartedAt)); err != nil {
+		sbxlogger.I(sbx).Error("error setting sandbox deleted", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
+	}
 
 	s.pauseMu.Unlock()
 
