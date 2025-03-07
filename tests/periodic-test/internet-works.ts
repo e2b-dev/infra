@@ -4,22 +4,6 @@ console.log('Starting sandbox logs test')
 
 let sandbox: Sandbox | null = null
 
-function getLogs(sandboxId: string): Record<string, any>[] {
-  const command = new Deno.Command('npx', {
-    args: ['@e2b/cli', 'sandbox', 'logs', '--format', 'json', sandboxId],
-    stdout: 'piped',
-    stderr: 'piped',
-  })
-  const { stdout } = command.outputSync()
-  if (stdout.length === 0) {
-    return []
-  }
-
-  // Parse JSON lines
-  const decoder = new TextDecoder()
-  const lines = decoder.decode(stdout).trim().split('\n')
-  return lines.map((line) => JSON.parse(line))
-}
 
 try {
   // Create sandbox
