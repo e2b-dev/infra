@@ -21,6 +21,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
@@ -39,8 +40,9 @@ type server struct {
 	networkPool   *network.Pool
 	templateCache *template.Cache
 
-	pauseMu  sync.Mutex
-	clientID string // nomad node id
+	pauseMu    sync.Mutex
+	clientID   string // nomad node id
+	devicePool *nbd.DevicePool
 }
 
 type Service struct {
@@ -109,6 +111,7 @@ func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 			networkPool:   networkPool,
 			templateCache: templateCache,
 			clientID:      clientID,
+			devicePool:    nbd.MustGetDevicePool(),
 		}
 	}
 

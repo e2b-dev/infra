@@ -47,6 +47,7 @@ func main() {
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)
+	devicePool := nbd.MustGetDevicePool()
 
 	go func() {
 		<-done
@@ -63,7 +64,7 @@ func main() {
 		fmt.Printf("----------------------------------------\n")
 		fmt.Printf("[%d] starting mock nbd server\n", i)
 
-		readData, err := MockNbd(ctx, device, i)
+		readData, err := MockNbd(ctx, device, i, devicePool)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[%d] failed to mock nbd: %v\n", i, err)
 
@@ -78,7 +79,7 @@ func main() {
 	}
 }
 
-func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, error) {
+func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool *nbd.DevicePool) ([]byte, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -87,7 +88,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, e
 		return nil, fmt.Errorf("failed to get size: %w", err)
 	}
 
-	deviceIndex, err := nbd.MustGetDevicePool().GetDevice(ctx)
+	deviceIndex, err := devicePool.GetDevice(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get device: %w", err)
 	}
@@ -99,7 +100,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, e
 
 		for {
 			counter += 1
-			err = nbd.MustGetDevicePool().ReleaseDevice(deviceIndex)
+			err = devicePool.ReleaseDevice(deviceIndex)
 			if err != nil {
 				if counter%10 == 0 {
 					fmt.Printf("[%d] failed to release device: %v\n", index, err)
@@ -118,7 +119,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int) ([]byte, e
 		}
 	}()
 
-	mnt = nbd.NewDirectPathMount(device)
+	mnt = nbd.NewDirectPathMount(device, devicePool)
 
 	go func() {
 		<-ctx.Done()

@@ -14,8 +14,7 @@ type DirectPathMount struct {
 	Backend block.Device
 }
 
-func NewDirectPathMount(b block.Device) *DirectPathMount {
-
+func NewDirectPathMount(b block.Device, devicePool *DevicePool) *DirectPathMount {
 	return nil
 }
 

@@ -15,6 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -67,6 +68,7 @@ func NewSandbox(
 	isSnapshot bool,
 	baseTemplateID string,
 	clientID string,
+	devicePool *nbd.DevicePool,
 ) (*Sandbox, *Cleanup, error) {
 	return nil, nil, errors.New("platform does not support sandbox")
 }

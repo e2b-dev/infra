@@ -14,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -26,6 +27,8 @@ func main() {
 	sandboxId := flag.String("sandbox", "", "sandbox id")
 	keepAlive := flag.Int("alive", 0, "keep alive")
 	count := flag.Int("count", 1, "number of serially spawned sandboxes")
+
+	devicePool := nbd.MustGetDevicePool()
 
 	flag.Parse()
 
@@ -81,6 +84,7 @@ func main() {
 			time.Duration(*keepAlive)*time.Second,
 			networkPool,
 			templateCache,
+			devicePool,
 		)
 		if err != nil {
 			break
@@ -97,6 +101,7 @@ func mockSandbox(
 	keepAlive time.Duration,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
+	devicePool *nbd.DevicePool,
 ) error {
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
@@ -138,6 +143,7 @@ func mockSandbox(
 		true,
 		templateId,
 		"test-client",
+		devicePool,
 	)
 	defer func() {
 		cleanupErr := cleanup.Run()

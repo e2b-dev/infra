@@ -25,16 +25,18 @@ type DirectPathMount struct {
 	deviceIndex uint32
 	blockSize   uint64
 	cancelfn    context.CancelFunc
+	devicePool  *DevicePool
 }
 
-func NewDirectPathMount(b block.Device) *DirectPathMount {
+func NewDirectPathMount(b block.Device, devicePool *DevicePool) *DirectPathMount {
 	ctx, cancelfn := context.WithCancel(context.Background())
 
 	return &DirectPathMount{
-		Backend:   b,
-		ctx:       ctx,
-		cancelfn:  cancelfn,
-		blockSize: 4096,
+		Backend:    b,
+		ctx:        ctx,
+		cancelfn:   cancelfn,
+		blockSize:  4096,
+		devicePool: devicePool,
 	}
 }
 
@@ -96,7 +98,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 			zap.L().Error("error closing conn", zap.Error(connErr))
 		}
 
-		releaseErr := MustGetDevicePool().ReleaseDevice(d.deviceIndex)
+		releaseErr := d.devicePool.ReleaseDevice(d.deviceIndex)
 		if releaseErr != nil {
 			zap.L().Error("error releasing device", zap.Error(releaseErr))
 		}
