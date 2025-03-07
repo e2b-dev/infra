@@ -97,9 +97,6 @@ if !exists(.teamID) {
 if !exists(.sandboxID) {
   .sandboxID = "unknown"
 }
-if !exists(.envID) {
-  .envID = "unknown"
-}
 if !exists(.buildID) {
   .buildID = "unknown"
 }
@@ -127,6 +124,11 @@ type = "loki"
 inputs = [ "remove_internal" ]
 endpoint = "http://loki.service.consul:${loki_service_port_number}"
 encoding.codec = "json"
+# This is recommended behavior for Loki 2.4.0 and newer and is default in 0.39.0 and newer
+# https://vector.dev/docs/reference/configuration/sinks/loki/#out_of_order_action
+out_of_order_action = "accept"
+# Remove labels from the log line, they are use for filtering
+remove_label_fields = true
 
 [sinks.local_loki_logs.labels]
 source = "logs-collector"
