@@ -66,6 +66,7 @@ func NewSandbox(
 	endAt time.Time,
 	isSnapshot bool,
 	baseTemplateID string,
+	clientID string,
 ) (*Sandbox, *Cleanup, error) {
 	return nil, nil, errors.New("platform does not support sandbox")
 }

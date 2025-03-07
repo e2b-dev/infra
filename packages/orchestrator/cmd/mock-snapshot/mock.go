@@ -145,6 +145,7 @@ func mockSnapshot(
 		time.Now(),
 		false,
 		templateId,
+		"test-client",
 	)
 	defer func() {
 		cleanupErr := cleanup.Run()
@@ -243,8 +244,9 @@ func mockSnapshot(
 		"trace-test-1",
 		time.Now(),
 		time.Now(),
-		false,
+		 false,
 		templateId,
+		"test-client",
 	)
 	defer func() {
 		cleanupErr := cleanup2.Run()

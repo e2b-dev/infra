@@ -87,6 +87,7 @@ func NewSandbox(
 	endAt time.Time,
 	isSnapshot bool,
 	baseTemplateID string,
+	clientID string,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -170,7 +171,7 @@ func NewSandbox(
 	}
 	overlaySpan.End()
 
-	fcUffd, uffdErr := uffd.New(memfile, sandboxFiles.SandboxUffdSocketPath(), sandboxFiles.MemfilePageSize())
+	fcUffd, uffdErr := uffd.New(memfile, sandboxFiles.SandboxUffdSocketPath(), sandboxFiles.MemfilePageSize(), clientID)
 	if uffdErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to create uffd: %w", uffdErr)
 	}

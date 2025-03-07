@@ -57,6 +57,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.EndTime.AsTime(),
 		req.Sandbox.Snapshot,
 		req.Sandbox.BaseTemplateId,
+		s.clientID,
 	)
 	if err != nil {
 		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))

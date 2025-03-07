@@ -39,7 +39,15 @@ func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUf
 	return nil, fmt.Errorf("address %d not found in any mapping", addr)
 }
 
-func Serve(uffd int, mappings []GuestRegionUffdMapping, src *block.TrackedSliceDevice, fd uintptr, stop func() error, sandboxId string) error {
+func Serve(
+	uffd int,
+	mappings []GuestRegionUffdMapping,
+	src *block.TrackedSliceDevice,
+	fd uintptr,
+	stop func() error,
+	sandboxId string,
+	nodeID string,
+) error {
 	pollFds := []unix.PollFd{
 		{Fd: int32(uffd), Events: unix.POLLIN},
 		{Fd: int32(fd), Events: unix.POLLIN},
