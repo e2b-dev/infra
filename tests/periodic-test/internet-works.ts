@@ -5,6 +5,11 @@ console.log('Starting sandbox logs test')
 let sandbox: Sandbox | null = null
 
 
+if (Deno.env.get('E2B_DOMAIN') === 'e2b-juliett.dev') {
+  console.log('Skipping test on juliett.dev b/c internet is disabled')
+  Deno.exit(0)
+}
+
 try {
   // Create sandbox
   console.log('creating sandbox')
