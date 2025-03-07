@@ -38,6 +38,13 @@ job "clickhouse" {
     task "clickhouse-server" {
       driver = "docker"
 
+
+      resources {
+        cpu    = 500
+        memory = 1024
+        max_memory = 2048
+      }
+
       config {
         image = "clickhouse/clickhouse-server:${clickhouse_version}"
         ports = ["clickhouse", "clickhouse_http"]
@@ -110,10 +117,6 @@ EOF
         destination = "local/users.xml"
       }
 
-      resources {
-        cpu    = 500
-        memory = 1024
-      }
     }
   }
 } 
