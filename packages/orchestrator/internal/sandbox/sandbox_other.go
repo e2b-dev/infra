@@ -35,26 +35,22 @@ type MockCleanup struct {
 }
 
 func (m *MockCleanup) Run() error {
-	return nil
+	return errors.New("platform does not support sandbox")
 }
 
 type Sandbox struct {
-	Config   *orchestrator.SandboxConfig
-	process  MockProcess
-	uffdExit chan error
-	cleanup  MockCleanup
-	healthy  atomic.Bool
-	Slot     network.Slot
-	EndAt    time.Time
+	Config    *orchestrator.SandboxConfig
+	process   MockProcess
+	uffdExit  chan error
+	cleanup   MockCleanup
+	healthy   atomic.Bool
+	Slot      network.Slot
+	EndAt     time.Time
 	StartedAt time.Time
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
-	return sbxlogger.SandboxMetadata{
-		SandboxID:  s.Config.SandboxId,
-		TemplateID: s.Config.TemplateId,
-		TeamID:     s.Config.TeamId,
-	}
+	panic("platform does not support sandbox")
 }
 
 // Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
@@ -75,18 +71,7 @@ func NewSandbox(
 }
 
 func (s *Sandbox) Wait() error {
-	select {
-	case fcErr := <-s.process.Exit:
-		stopErr := s.Stop()
-		uffdErr := <-s.uffdExit
-
-		return errors.Join(fcErr, stopErr, uffdErr)
-	case uffdErr := <-s.uffdExit:
-		stopErr := s.Stop()
-		fcErr := <-s.process.Exit
-
-		return errors.Join(uffdErr, stopErr, fcErr)
-	}
+	return errors.New("platform does not support sandbox")
 }
 
 func (s *Sandbox) Stop() error {
