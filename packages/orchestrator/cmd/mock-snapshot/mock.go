@@ -32,7 +32,11 @@ func main() {
 
 	flag.Parse()
 
-	devicePool := nbd.MustGetDevicePool()
+	devicePool, err := nbd.NewDevicePool()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create device pool: %v\n", err)
+		return
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

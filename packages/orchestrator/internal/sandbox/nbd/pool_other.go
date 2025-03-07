@@ -6,7 +6,6 @@ package nbd
 import (
 	"context"
 	"errors"
-	"sync"
 )
 
 type ErrDeviceInUse struct{}
@@ -22,9 +21,9 @@ type (
 
 type DevicePool struct{}
 
-var MustGetDevicePool = sync.OnceValue(func() *DevicePool {
-	panic("nbd module is not supported on this platform")
-})
+func NewDevicePool() (*DevicePool, error) {
+	return nil, errors.New("nbd module is not supported on this platform")
+}
 
 func (d *DevicePool) Populate() error {
 	return errors.New("platform does not support nbd")

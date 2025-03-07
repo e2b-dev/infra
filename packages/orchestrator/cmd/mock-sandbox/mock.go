@@ -28,7 +28,12 @@ func main() {
 	keepAlive := flag.Int("alive", 0, "keep alive")
 	count := flag.Int("count", 1, "number of serially spawned sandboxes")
 
-	devicePool := nbd.MustGetDevicePool()
+	devicePool, err := nbd.NewDevicePool()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create device pool: %v\n", err)
+
+		return
+	}
 
 	flag.Parse()
 

@@ -60,19 +60,19 @@ type DevicePool struct {
 	slotCounter metric.Int64UpDownCounter
 }
 
-var MustGetDevicePool = sync.OnceValue(func() *DevicePool {
+func NewDevicePool() (*DevicePool, error) {
 	maxDevices, err := getMaxDevices()
 	if err != nil {
-		panic(fmt.Errorf("failed to get current max devices: %w", err))
+		return nil, fmt.Errorf("failed to get max devices: %w", err)
 	}
 
 	if maxDevices == 0 {
-		panic(fmt.Errorf("nbd module is not loaded or max devices is set to 0"))
+		return nil, errors.New("max devices is 0")
 	}
 
 	counter, err := meters.GetUpDownCounter(meters.NBDkSlotSReadyPoolCounterMeterName)
 	if err != nil {
-		panic(fmt.Errorf("failed to get nbd slot pool counter: %w", err))
+		return nil, fmt.Errorf("failed to get slot pool counter: %w", err)
 	}
 
 	pool := &DevicePool{
@@ -89,8 +89,8 @@ var MustGetDevicePool = sync.OnceValue(func() *DevicePool {
 		}
 	}()
 
-	return pool
-})
+	return pool, nil
+}
 
 func getMaxDevices() (uint, error) {
 	data, err := os.ReadFile("/sys/module/nbd/parameters/nbds_max")

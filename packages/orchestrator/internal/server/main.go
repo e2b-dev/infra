@@ -104,6 +104,11 @@ func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 			),
 		)
 
+		devicePool, err := nbd.NewDevicePool()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create device pool: %w", err)
+		}
+
 		srv.server = &server{
 			tracer:        otel.Tracer(ServiceName),
 			dns:           srv.dns,
@@ -111,7 +116,7 @@ func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 			networkPool:   networkPool,
 			templateCache: templateCache,
 			clientID:      clientID,
-			devicePool:    nbd.MustGetDevicePool(),
+			devicePool:    devicePool,
 		}
 	}
 
