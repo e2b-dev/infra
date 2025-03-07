@@ -19,7 +19,6 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -56,9 +55,13 @@ type Service struct {
 	}
 }
 
-func New(ctx context.Context, port uint) (*Service, error) {
+func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 	if port > math.MaxUint16 {
 		return nil, fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
+	}
+
+	if clientID == "" {
+		return nil, errors.New("clientID is required")
 	}
 
 	srv := &Service{port: uint16(port)}
@@ -105,7 +108,7 @@ func New(ctx context.Context, port uint) (*Service, error) {
 			sandboxes:     smap.New[*sandbox.Sandbox](),
 			networkPool:   networkPool,
 			templateCache: templateCache,
-			clientID:      consul.GetClientID(),
+			clientID:      clientID,
 		}
 	}
 
