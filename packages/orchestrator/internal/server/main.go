@@ -21,8 +21,6 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	// "entgo.io/ent/dialect"
-	// "entgo.io/ent/dialect/sql"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/db"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
