@@ -21,10 +21,12 @@ const (
 
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
 // The parent context should have a deadline or a timeout.
-func doRequestWithInfiniteRetries(ctx context.Context, method, address string, body io.Reader) (*http.Response, error) {
+func doRequestWithInfiniteRetries(ctx context.Context, method, address string, requestBody []byte) (*http.Response, error) {
 	for {
 		reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
-		request, err := http.NewRequestWithContext(reqCtx, method, address, body)
+		reqBody := bytes.NewReader(requestBody)
+		request, err := http.NewRequestWithContext(reqCtx, method, address, reqBody)
+
 		if err != nil {
 			cancel()
 			return nil, err
@@ -85,7 +87,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map
 		return err
 	}
 
-	response, err := doRequestWithInfiniteRetries(childCtx, "POST", address, bytes.NewReader(envVarsJSON))
+	response, err := doRequestWithInfiniteRetries(childCtx, "POST", address, envVarsJSON)
 	if err != nil {
 		return fmt.Errorf("failed to init envd: %w", err)
 	}
