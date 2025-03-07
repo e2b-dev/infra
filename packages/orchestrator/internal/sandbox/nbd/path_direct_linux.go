@@ -47,7 +47,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 	}
 
 	for {
-		d.deviceIndex, err = MustGetDevicePool().GetDevice(ctx)
+		d.deviceIndex, err = d.devicePool.GetDevice(ctx)
 		if err != nil {
 			return 0, err
 		}
