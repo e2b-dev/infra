@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"fmt"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -39,7 +41,13 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		attribute.Bool("env.huge_pages", config.HugePages),
 	)
 
-	logsWriter := writer.New(stream)
+	logsWriter := writer.New(
+		stream,
+		s.buildLogger.
+			With(zap.Field{Type: zapcore.StringType, Key: "envID", String: config.TemplateID}).
+			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: config.BuildID}),
+	)
+
 	template := &build.Env{
 		TemplateFiles: storage.NewTemplateFiles(
 			config.TemplateID,

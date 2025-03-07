@@ -1,0 +1,45 @@
+name: "Host Initialization"
+description: "Sets up the host environment, including authentication and dependencies."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Service Account
+      uses: google-github-actions/auth@v2
+      with:
+        project_id: 'e2b-prod'
+        # TODO: Get rid of the GCP storage bucket dependency and use local storage only
+        workload_identity_provider: 'projects/662973525644/locations/global/workloadIdentityPools/github-actions-e2b-prod-tests/providers/infra-integration-tests'
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Setup Environment Variables
+      env:
+        GCP_REGION: "us-central1"
+        GCP_PROJECT_ID: "e2b-prod"
+        POSTGRES_CONNECTION_STRING: "postgresql://postgres:local@localhost:5432/mydatabase?sslmode=disable"
+        TEMPLATE_BUCKET_NAME: "e2b-tests-fc-templates"
+      run: |
+        echo "test" > .last_used_env
+        printenv > .env.test
+        
+        echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Set up Docker
+      run: |
+        export ACCESS_TOKEN=$(gcloud auth print-access-token)
+        export DOCKER_AUTH_BASE64=$(echo -n "{\"username\":\"oauth2accesstoken\",\"password\":\"$ACCESS_TOKEN\"}" | base64 -w 0)
+        
+        echo "::add-mask::$DOCKER_AUTH_BASE64"
+        echo "DOCKER_AUTH_BASE64=${DOCKER_AUTH_BASE64}" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Initialize Host
+      env:
+        INIT_SCRIPT_PATH: "./.github/actions/host-init/init-client.sh"
+      run: |
+        chmod +x "${INIT_SCRIPT_PATH}"
+        sudo -E bash -c "${INIT_SCRIPT_PATH}"
+      shell: bash

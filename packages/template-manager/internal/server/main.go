@@ -30,13 +30,15 @@ type serverStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
 	server             *grpc.Server
 	tracer             trace.Tracer
+	logger             *zap.Logger
+	buildLogger        *zap.Logger
 	dockerClient       *client.Client
 	legacyDockerClient *docker.Client
 	artifactRegistry   *artifactregistry.Client
 	templateStorage    *template.Storage
 }
 
-func New(logger *zap.Logger) *grpc.Server {
+func New(logger *zap.Logger, buildLogger *zap.Logger) *grpc.Server {
 	ctx := context.Background()
 	logger.Info("Initializing template manager")
 
@@ -83,6 +85,8 @@ func New(logger *zap.Logger) *grpc.Server {
 
 	templatemanager.RegisterTemplateServiceServer(s, &serverStore{
 		tracer:             otel.Tracer(constants.ServiceName),
+		logger:             logger,
+		buildLogger:        buildLogger,
 		dockerClient:       dockerClient,
 		legacyDockerClient: legacyClient,
 		artifactRegistry:   artifactRegistry,

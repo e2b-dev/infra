@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
@@ -23,7 +24,7 @@ func Build(templateID, buildID string) {
 
 	tracer := otel.Tracer("test")
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		panic(err)
 	}
@@ -38,8 +39,8 @@ func Build(templateID, buildID string) {
 		TemplateFiles: storage.NewTemplateFiles(
 			templateID,
 			buildID,
-			"vmlinux-5.10.186",
-			"v1.7.0-dev_8bb88311",
+			schema.DefaultKernelVersion,
+			schema.DefaultFirecrackerVersion,
 			true,
 		),
 		VCpuCount:       2,
