@@ -7,7 +7,6 @@ import (
 
 	consulApi "github.com/hashicorp/consul/api"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -89,7 +88,7 @@ func (s *StorageKV) Acquire() (*Slot, error) {
 		// This is a fallback for the case when all slots are taken.
 		// There is no Consul lock so it's possible that multiple sandboxes will try to acquire the same slot.
 		// In this case, only one of them will succeed and other will try with different slots.
-		reservedKeys, _, keysErr := kv.Keys(consul.GetClientID()+"/", "", nil)
+		reservedKeys, _, keysErr := kv.Keys(s.clientID+"/", "", nil)
 		if keysErr != nil {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
