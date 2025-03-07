@@ -413,13 +413,13 @@ resource "random_password" "clickhouse_password" {
 # Add this with your other Nomad jobs
 resource "nomad_job" "clickhouse" {
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
-    zone               = var.gcp_zone
-    clickhouse_version = "25.1.5.31" # Or make this a variable
-    gcs_bucket         = google_storage_bucket.clickhouse_bucket.name
-    gcs_folder         = "clickhouse-data"
-    hmac_key           = google_storage_hmac_key.clickhouse_hmac_key.access_id
-    hmac_secret        = google_storage_hmac_key.clickhouse_hmac_key.secret
-    username           = "clickhouse"
-    password           = sha256(random_password.clickhouse_password.result)
+    zone                = var.gcp_zone
+    clickhouse_version  = "25.1.5.31" # Or make this a variable
+    gcs_bucket          = google_storage_bucket.clickhouse_bucket.name
+    gcs_folder          = "clickhouse-data"
+    hmac_key            = google_storage_hmac_key.clickhouse_hmac_key.access_id
+    hmac_secret         = google_storage_hmac_key.clickhouse_hmac_key.secret
+    username            = "clickhouse"
+    password_sha256_hex = sha256(random_password.clickhouse_password.result)
   })
 }
