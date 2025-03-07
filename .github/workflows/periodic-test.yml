@@ -36,7 +36,7 @@ jobs:
           - command: "tests/periodic-test/snapshot-and-resume.ts"
             name: "pause and resume sandbox"
           - command: "tests/periodic-test/internet-works.ts"
-            name: "internet connectivity"
+            name: "internet connectivity inside of sandbox"
           # - command: "tests/periodic-test/cli-logs.ts"
           #   name: "cli logs"
       fail-fast: false
