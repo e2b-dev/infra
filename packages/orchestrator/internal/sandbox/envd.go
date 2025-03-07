@@ -24,8 +24,7 @@ const (
 func doRequestWithInfiniteRetries(ctx context.Context, method, address string, requestBody []byte) (*http.Response, error) {
 	for {
 		reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
-		reqBody := bytes.NewReader(requestBody)
-		request, err := http.NewRequestWithContext(reqCtx, method, address, reqBody)
+		request, err := http.NewRequestWithContext(reqCtx, method, address, bytes.NewReader(requestBody))
 
 		if err != nil {
 			cancel()
