@@ -16,11 +16,18 @@ type DB struct {
 	ops    *database.Queries
 }
 
-func (db *DB) Close() error {
-	// TODO write terminated state to the status table for
-	// forensics(?)
+func New(ctx context.Context, client *sql.DB) (*DB, error) {
+	db := &DB{client: client, ops: database.New(client)}
 
-	return db.client.Close()
+	if err := db.ops.SetOrchestratorStatusRunning(ctx); err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
+func (db *DB) Close(ctx context.Context) error {
+	return errors.Join(db.ops.SetOrchestratorStatusTerminated(ctx), db.client.Close())
 }
 
 func (db *DB) CreateSandbox(ctx context.Context, params database.CreateSandboxParams) error {

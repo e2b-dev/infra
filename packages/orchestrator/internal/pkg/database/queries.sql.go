@@ -55,7 +55,7 @@ SET
    version = version + 1,
    updated_at = current_timestamp()
 WHERE
-   id = 1
+   id = 1 AND status != 'terminated'
 RETURNING version
 `
 
@@ -66,22 +66,34 @@ func (q *Queries) IncGlobalVersion(ctx context.Context) (int64, error) {
 	return version, err
 }
 
-const setGlobalStatus = `-- name: SetGlobalStatus :one
+const setOrchestratorStatusRunning = `-- name: SetOrchestratorStatusRunning :exec
 UPDATE status
 SET
    version = version + 1,
    updated_at = current_timestamp(),
-   status = ?1
+   status = 'running'
 WHERE
-   id = 1
-RETURNING version
+   id = 1 AND status = 'initializing'
 `
 
-func (q *Queries) SetGlobalStatus(ctx context.Context, status string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, setGlobalStatus, status)
-	var version int64
-	err := row.Scan(&version)
-	return version, err
+func (q *Queries) SetOrchestratorStatusRunning(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, setOrchestratorStatusRunning)
+	return err
+}
+
+const setOrchestratorStatusTerminated = `-- name: SetOrchestratorStatusTerminated :exec
+UPDATE status
+SET
+   version = version + 1,
+   updated_at = current_timestamp(),
+   status = 'terminated'
+WHERE
+   id = 1 AND status != 'terminated'
+`
+
+func (q *Queries) SetOrchestratorStatusTerminated(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, setOrchestratorStatusTerminated)
+	return err
 }
 
 const shutdownSandbox = `-- name: ShutdownSandbox :exec

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -20,8 +21,8 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"entgo.io/ent/dialect"
-	"entgo.io/ent/dialect/sql"
+	// "entgo.io/ent/dialect"
+	// "entgo.io/ent/dialect/sql"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/db"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -30,7 +31,6 @@ import (
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -53,7 +53,7 @@ type Service struct {
 	grpc     *grpc.Server
 	dns      *dns.DNS
 	port     uint16
-	db       *models.Client
+	db       *db.DB
 	started  atomic.Bool
 	shutdown struct {
 		once sync.Once
@@ -117,12 +117,15 @@ func New(ctx context.Context, port uint) (*Service, error) {
 	// BLOCK: setup database
 	{
 		const dbConnStr = "file:./db/sandboxes.db?_journal_mode=wal"
-		drv, err := sql.Open(dialect.SQLite, dbConnStr)
+		drv, err := sql.Open("sqlite3", dbConnStr)
 		if err != nil {
 			return nil, fmt.Errorf("connecting to %q: %w", dbConnStr, err)
 		}
 
-		srv.db = models.NewClient(models.Driver(drv))
+		srv.db, err = db.New(drv)
+		if err != nil {
+			return nil, fmt.Errorf("using database at %q: %w", dbConnStr, err)
+		}
 	}
 
 	orchestrator.RegisterSandboxServiceServer(srv.grpc, srv.server)

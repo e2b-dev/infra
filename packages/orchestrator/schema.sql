@@ -21,7 +21,7 @@ CREATE TABLE status (
   version         INTEGER     NOT NULL     DEFAULT 0,
   updated_at      TIMESTAMP   NOT NULL     DEFAULT current_timestamp,
   status          TEXT        CHECK( status IN ('initializing', 'running', 'draining', 'quarantined ', 'terminated'))
-                              NOT NULL     DEFAULT 'running'
+                              NOT NULL     DEFAULT 'initializing'
 );
 
 INSERT INTO status(id) VALUES(1);

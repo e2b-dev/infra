@@ -1,23 +1,31 @@
 -- name: GlobalVersion :one
 SELECT version FROM status WHERE id = 1;
 
+-- name: SetOrchestratorStatusRunning :exec
+UPDATE status
+SET
+   version = version + 1,
+   updated_at = current_timestamp(),
+   status = 'running'
+WHERE
+   id = 1 AND status = 'initializing';
+
+-- name: SetOrchestratorStatusTerminated :exec
+UPDATE status
+SET
+   version = version + 1,
+   updated_at = current_timestamp(),
+   status = 'terminated'
+WHERE
+   id = 1 AND status != 'terminated';
+
 -- name: IncGlobalVersion :one
 UPDATE status
 SET
    version = version + 1,
    updated_at = current_timestamp()
 WHERE
-   id = 1
-RETURNING version;
-
--- name: SetGlobalStatus :one
-UPDATE status
-SET
-   version = version + 1,
-   updated_at = current_timestamp(),
-   status = sqlc.arg('status')
-WHERE
-   id = 1
+   id = 1 AND status != 'terminated'
 RETURNING version;
 
 -- name: CreateSandbox :exec
