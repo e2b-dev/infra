@@ -97,9 +97,6 @@ if !exists(.teamID) {
 if !exists(.sandboxID) {
   .sandboxID = "unknown"
 }
-if !exists(.envID) {
-  .envID = "unknown"
-}
 if !exists(.buildID) {
   .buildID = "unknown"
 }
