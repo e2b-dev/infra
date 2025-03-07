@@ -3,19 +3,22 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"go.uber.org/zap"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 const (
@@ -83,7 +86,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	// Sanitize env ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	templateIdSanitized := strings.ReplaceAll(templateID, "`", "")
-	query := fmt.Sprintf("{source=\"logs-collector\", service=\"template-manager\", buildID=\"%s\", envID=`%s`}", buildUUID.String(), templateIdSanitized)
+	query := fmt.Sprintf("{service=\"template-manager\", buildID=\"%s\", envID=`%s`}", buildUUID.String(), templateIdSanitized)
 
 	end := time.Now()
 	start := end.Add(-templateBuildOldestLogsLimit)

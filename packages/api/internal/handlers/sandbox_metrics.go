@@ -43,7 +43,7 @@ func (a *APIStore) getSandboxesSandboxIDMetrics(
 	// equivalent CLI query:
 	// logcli query '{source="logs-collector", service="envd", teamID="65d165ab-69f6-4b5c-9165-6b93cd341503", sandboxID="izuhqjlfabd8ataeixrtl", category="metrics"}' --from="2025-01-19T10:00:00Z"
 	query := fmt.Sprintf(
-		"{source=\"logs-collector\", service=\"envd\", teamID=`%s`, sandboxID=`%s`, category=\"metrics\"}", teamID, id)
+		"{teamID=`%s`, sandboxID=`%s`, category=\"metrics\"}", teamID, id)
 
 	res, err := a.lokiClient.QueryRange(query, limit, start, end, logproto.BACKWARD, time.Duration(0), time.Duration(0), true)
 	if err != nil {

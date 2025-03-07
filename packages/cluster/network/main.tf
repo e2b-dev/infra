@@ -81,7 +81,8 @@ locals {
         port         = 8500
       }
       groups = [
-      { group = var.server_instance_group }]
+        { group = var.server_instance_group }
+      ]
     }
   }
   health_checked_backends = { for backend_index, backend_value in local.backends : backend_index => backend_value }

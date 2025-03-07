@@ -34,10 +34,13 @@ var (
 	// These vars are automatically set by goreleaser.
 	Version = "0.1.5"
 
+	commitSHA string
+
 	debug bool
 	port  int64
 
 	versionFlag  bool
+	commitFlag   bool
 	startCmdFlag string
 )
 
@@ -54,6 +57,13 @@ func parseFlags() {
 		"version",
 		false,
 		"print envd version",
+	)
+
+	flag.BoolVar(
+		&commitFlag,
+		"commit",
+		false,
+		"print envd source commit",
 	)
 
 	flag.Int64Var(
@@ -111,7 +121,11 @@ func main() {
 
 	if versionFlag {
 		fmt.Printf("%s\n", Version)
+		return
+	}
 
+	if commitFlag {
+		fmt.Printf("%s\n", commitSHA)
 		return
 	}
 
