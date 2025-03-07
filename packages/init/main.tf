@@ -183,6 +183,8 @@ resource "google_artifact_registry_repository" "orchestration_repository" {
   format        = "DOCKER"
   repository_id = "e2b-orchestration"
   labels        = var.labels
+
+  depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
 }
 
 resource "time_sleep" "artifact_registry_api_wait_90_seconds" {
