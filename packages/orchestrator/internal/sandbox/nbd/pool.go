@@ -57,7 +57,7 @@ type DevicePool struct {
 	slotCounter metric.Int64UpDownCounter
 }
 
-func MustGetDevicePool() *DevicePool {
+var MustGetDevicePool = sync.OnceValue(func() *DevicePool {
 	maxDevices, err := getMaxDevices()
 	if err != nil {
 		panic(fmt.Errorf("failed to get current max devices: %w", err))
@@ -87,7 +87,7 @@ func MustGetDevicePool() *DevicePool {
 	}()
 
 	return pool
-}
+})
 
 func getMaxDevices() (uint, error) {
 	data, err := os.ReadFile("/sys/module/nbd/parameters/nbds_max")
