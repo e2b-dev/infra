@@ -27,22 +27,22 @@ var httpClient = http.Client{
 	Timeout: 10 * time.Second,
 }
 
-type MockProcess struct {
+type NoOpProcess struct {
 	Exit chan error
 }
 
-type MockCleanup struct {
+type NoOpCleanup struct {
 }
 
-func (m *MockCleanup) Run() error {
+func (m *NoOpCleanup) Run() error {
 	return errors.New("platform does not support sandbox")
 }
 
 type Sandbox struct {
 	Config    *orchestrator.SandboxConfig
-	process   MockProcess
+	process   NoOpProcess
 	uffdExit  chan error
-	cleanup   MockCleanup
+	cleanup   NoOpCleanup
 	healthy   atomic.Bool
 	Slot      network.Slot
 	EndAt     time.Time
