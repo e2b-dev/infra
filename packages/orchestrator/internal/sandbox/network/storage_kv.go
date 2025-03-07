@@ -7,6 +7,7 @@ import (
 
 	consulApi "github.com/hashicorp/consul/api"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -22,7 +23,8 @@ func (s *StorageKV) getKVKey(slotIdx int) string {
 
 func NewStorageKV(slotsSize int) (*StorageKV, error) {
 	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
-	clientID := utils.RequiredEnv("NODE_ID", "Consul node ID")
+	clientID := consul.GetClientID()
+
 	consulClient, err := newConsulClient(consulToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init StorageKV consul client: %w", err)
