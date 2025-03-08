@@ -49,7 +49,7 @@ if (buildStatus.status.code !== 0) {
     throw new Error(`Build failed with code ${buildStatus.status.code}`);
 }
 
-console.log('Template built successfully')
+console.log('✅ Template built successfully')
 
 // read template id from e2b.toml
 const e2bToml = await Deno.readTextFile('e2b.toml')
@@ -93,7 +93,7 @@ try {
         throw new Error('Date is not synchronized')
     }
 
-    console.log('date is synchronized')
+    console.log('✅ date is synchronized')
 
     // kill sandbox
     await sandbox.kill()
