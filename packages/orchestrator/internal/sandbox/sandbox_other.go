@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -40,14 +41,15 @@ func (m *NoOpCleanup) Run() error {
 }
 
 type Sandbox struct {
-	Config    *orchestrator.SandboxConfig
-	process   NoOpProcess
-	uffdExit  chan error
-	cleanup   NoOpCleanup
-	healthy   atomic.Bool
-	Slot      network.Slot
-	EndAt     time.Time
-	StartedAt time.Time
+	Config          *orchestrator.SandboxConfig
+	process         NoOpProcess
+	uffdExit        chan error
+	cleanup         NoOpCleanup
+	healthy         atomic.Bool
+	Slot            network.Slot
+	EndAt           time.Time
+	StartedAt       time.Time
+	ClickhouseStore *chdb.Store
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -69,6 +71,7 @@ func NewSandbox(
 	baseTemplateID string,
 	clientID string,
 	devicePool *nbd.DevicePool,
+	clickhouseStore chdb.Store,
 ) (*Sandbox, *Cleanup, error) {
 	return nil, nil, errors.New("platform does not support sandbox")
 }
