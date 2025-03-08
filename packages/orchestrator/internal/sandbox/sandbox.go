@@ -336,7 +336,7 @@ func (s *Sandbox) Wait() error {
 func (s *Sandbox) Stop() error {
 	err := s.cleanup.Run()
 	if err != nil {
-		return fmt.Errorf("failed to stop sandbox: %w", err)
+		return fmt.Errorf("failed to stop sandbox: %w %v %v", err, s.Config.SandboxId, s)
 	}
 
 	return nil
