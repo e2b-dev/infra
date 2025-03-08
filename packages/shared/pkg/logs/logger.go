@@ -1,7 +1,6 @@
 package logs
 
 import (
-	"context"
 	"io"
 	"math"
 	"os"
@@ -10,8 +9,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/logs/exporter"
 )
 
 const (
@@ -31,8 +28,8 @@ func newSandboxLogExporter(serviceName string) *sandboxLogExporter {
 	zerolog.TimestampFieldName = "timestamp"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
-	ctx := context.Background()
-	exporters := []io.Writer{exporter.NewHTTPLogsExporter(ctx, CollectorAddress)}
+	// ctx := context.Background()
+	exporters := []io.Writer{}
 
 	l := zerolog.
 		New(io.MultiWriter(exporters...)).
