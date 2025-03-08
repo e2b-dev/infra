@@ -111,6 +111,7 @@ build-and-upload:build-and-upload/envd
 build/%:
 	$(MAKE) -C packages/$(notdir $@) build
 build-and-upload/%:
+	./scripts/confirm.sh $(ENV)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
 
 .PHONY: copy-public-builds
