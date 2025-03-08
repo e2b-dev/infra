@@ -44,6 +44,10 @@ resource "nomad_job" "api" {
     admin_token                   = var.api_admin_token
     redis_url                     = "redis://redis.service.consul:${var.redis_port.port}"
     dns_port_number               = var.api_dns_port_number
+    clickhouse_connection_string  = var.clickhouse_connection_string
+    clickhouse_username           = var.clickhouse_username
+    clickhouse_password           = var.clickhouse_password
+    clickhouse_database           = var.clickhouse_database
   })
 }
 
@@ -322,6 +326,10 @@ resource "nomad_job" "orchestrator" {
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
+    clickhouse_connection_string = var.clickhouse_connection_string
+    clickhouse_username          = var.clickhouse_username
+    clickhouse_password          = var.clickhouse_password
+    clickhouse_database          = var.clickhouse_database
   })
 }
 
