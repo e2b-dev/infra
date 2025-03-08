@@ -20,7 +20,6 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -35,7 +34,6 @@ type APIStore struct {
 	Tracer               trace.Tracer
 	orchestrator         *orchestrator.Orchestrator
 	templateManager      *template_manager.TemplateManager
-	buildCache           *builds.BuildCache
 	db                   *db.DB
 	lokiClient           *loki.DefaultClient
 	templateCache        *templatecache.TemplateCache
@@ -101,8 +99,6 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Warn("LOKI_ADDRESS not set, disabling Loki client")
 	}
 
-	buildCache := builds.NewBuildCache()
-
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache(dbClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
@@ -114,7 +110,6 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		db:                   dbClient,
 		Tracer:               tracer,
 		posthog:              posthogClient,
-		buildCache:           buildCache,
 		lokiClient:           lokiClient,
 		templateCache:        templateCache,
 		authCache:            authCache,
