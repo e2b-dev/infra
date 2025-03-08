@@ -8,15 +8,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 )
 
-type fakeMetricLogger struct {
+type fakeMetricStore struct {
 	calls []string
 }
 
-func (l *fakeMetricLogger) LogMetrics(ctx context.Context) {
+func (l *fakeMetricStore) LogMetrics(ctx context.Context) {
 	l.calls = append(l.calls, "LogMetrics")
 }
 
-func (l *fakeMetricLogger) SendMetrics(ctx context.Context) {
+func (l *fakeMetricStore) SendMetrics(ctx context.Context) {
 	l.calls = append(l.calls, "SendMetrics")
 }
 
@@ -28,7 +28,7 @@ func TestSandbox_logMetricsBasedOnConfig(t *testing.T) {
 	}
 	type args struct {
 		ctx    context.Context
-		logger *fakeMetricLogger
+		logger *fakeMetricStore
 		want   []string
 	}
 	tests := []struct {
@@ -43,7 +43,7 @@ func TestSandbox_logMetricsBasedOnConfig(t *testing.T) {
 				useLokiMetrics: "true",
 			},
 			args: args{
-				logger: &fakeMetricLogger{},
+				logger: &fakeMetricStore{},
 				want:   []string{"LogMetrics"},
 			},
 		},
@@ -53,7 +53,7 @@ func TestSandbox_logMetricsBasedOnConfig(t *testing.T) {
 				useClickhouseMetrics: "true",
 			},
 			args: args{
-				logger: &fakeMetricLogger{},
+				logger: &fakeMetricStore{},
 				want:   []string{"SendMetrics"},
 			},
 		},
@@ -64,7 +64,7 @@ func TestSandbox_logMetricsBasedOnConfig(t *testing.T) {
 				useClickhouseMetrics: "false",
 			},
 			args: args{
-				logger: &fakeMetricLogger{},
+				logger: &fakeMetricStore{},
 				want:   []string{"LogMetrics"},
 			},
 		},
@@ -75,7 +75,7 @@ func TestSandbox_logMetricsBasedOnConfig(t *testing.T) {
 				useClickhouseMetrics: "true",
 			},
 			args: args{
-				logger: &fakeMetricLogger{},
+				logger: &fakeMetricStore{},
 				want:   []string{"LogMetrics", "SendMetrics"},
 			},
 		},

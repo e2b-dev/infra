@@ -22,12 +22,12 @@ const (
 	minEnvdVersionForMetrcis = "0.1.5"
 )
 
-type metricLogger interface {
+type metricStore interface {
 	LogMetrics(ctx context.Context)
 	SendMetrics(ctx context.Context)
 }
 
-func (s *Sandbox) logMetricsBasedOnConfig(ctx context.Context, logger metricLogger) {
+func (s *Sandbox) logMetricsBasedOnConfig(ctx context.Context, logger metricStore) {
 	if s.useLokiMetrics == "true" {
 		logger.LogMetrics(ctx)
 	}
