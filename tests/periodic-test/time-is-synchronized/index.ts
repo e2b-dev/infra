@@ -33,7 +33,7 @@ async function streamCommandOutput(command: string, args: string[]) {
 
 const uniqueID = crypto.randomUUID();
 const templateName = `test-template-${uniqueID}`
-console.log('templateName:', templateName)
+console.log('ℹ️ templateName:', templateName)
 
 // Build template command with streaming output
 console.log(`Building template ${templateName}...`);
@@ -46,7 +46,7 @@ const buildStatus = await streamCommandOutput('npx', [
 ]);
 
 if (buildStatus.status.code !== 0) {
-    throw new Error(`Build failed with code ${buildStatus.status.code}`);
+    throw new Error(`❌ Build failed with code ${buildStatus.status.code}`);
 }
 
 console.log('✅ Template built successfully')
@@ -56,7 +56,7 @@ const e2bToml = await Deno.readTextFile('e2b.toml')
 const templateID = e2bToml.match(/template_id = "(.*)"/)?.[1]
 
 if (!templateID) {
-    throw new Error('Template ID not found in e2b.toml')
+    throw new Error('❌ Template ID not found in e2b.toml')
 }
 
 // sleep for 5 seconds to create a time delta
@@ -70,27 +70,27 @@ try {
     await Deno.remove('e2b.toml')
 
     if (!templateID) {
-        throw new Error('Template not found')
+        throw new Error('❌ Template not found')
     }
-    console.log('creating sandbox')
+    console.log('ℹ️ creating sandbox')
     const sandbox = await Sandbox.create(templateID, { timeoutMs: 10000 })
-    console.log('sandbox created')
+    console.log('ℹ️ sandbox created')
 
 
-    console.log('running command')
+    console.log('ℹ️ running command')
 
-    console.log('starting command')
+    console.log('ℹ️ starting command')
     const localDate = new Date().getTime() / 1000
     const date = await sandbox.commands.run('date +%s')
     console.log('localDate', localDate)
 
     console.log('date', date.stdout)
     const dateUnix = parseInt(date.stdout)
-    console.log('comparing dates', dateUnix, localDate)
+    console.log('ℹ️ comparing dates', dateUnix, localDate)
 
     // compare the dates, should be within 1 second
     if (Math.abs(dateUnix - localDate) > 1000) {
-        throw new Error('Date is not synchronized')
+        throw new Error('❌ Date is not synchronized')
     }
 
     console.log('✅ date is synchronized')
@@ -109,7 +109,7 @@ try {
     ])
 
     if (output.status.code !== 0) {
-        throw new Error(`Delete failed with code ${output.status.code}`);
+        throw new Error(`❌ Delete failed with code ${output.status.code}`);
     }
 
 }
