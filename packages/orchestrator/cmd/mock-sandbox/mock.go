@@ -153,6 +153,8 @@ func mockSandbox(
 		"test-client",
 		devicePool,
 		mockStore,
+		"true",
+		"true",
 	)
 	defer func() {
 		cleanupErr := cleanup.Run()

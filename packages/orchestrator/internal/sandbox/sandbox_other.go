@@ -41,6 +41,10 @@ func (m *NoOpCleanup) Run() error {
 }
 
 type Sandbox struct {
+
+	// YOU ARE IN SANDBOX_OTHER.GO
+	// YOU PROBABLY WANT TO BE IN SANDBOX_LINUX.GO
+
 	Config          *orchestrator.SandboxConfig
 	process         NoOpProcess
 	uffdExit        chan error
@@ -50,6 +54,9 @@ type Sandbox struct {
 	EndAt           time.Time
 	StartedAt       time.Time
 	ClickhouseStore chdb.Store
+
+	useLokiMetrics       string
+	useClickhouseMetrics string
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -58,6 +65,10 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 
 // Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
 func NewSandbox(
+
+	// YOU ARE IN SANDBOX_OTHER.GO
+	// YOU PROBABLY WANT TO BE IN SANDBOX_LINUX.GO
+
 	ctx context.Context,
 	tracer trace.Tracer,
 	dns *dns.DNS,
@@ -72,6 +83,8 @@ func NewSandbox(
 	clientID string,
 	devicePool *nbd.DevicePool,
 	clickhouseStore chdb.Store,
+	useLokiMetrics string,
+	useClickhouseMetrics string,
 ) (*Sandbox, *Cleanup, error) {
 	return nil, nil, errors.New("platform does not support sandbox")
 }

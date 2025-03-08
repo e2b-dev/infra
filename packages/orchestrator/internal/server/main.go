@@ -45,6 +45,9 @@ type server struct {
 	clientID        string // nomad node id
 	devicePool      *nbd.DevicePool
 	clickhouseStore chdb.Store
+
+	useLokiMetrics       string
+	useClickhouseMetrics string
 }
 
 type Service struct {
@@ -57,6 +60,12 @@ type Service struct {
 		op   func(context.Context) error
 		err  error
 	}
+	// there really should be a config struct for this
+	// using something like viper to read the config
+	// but for now this is just a quick hack
+	// see https://linear.app/e2b/issue/E2B-1731/use-viper-to-read-env-vars
+	useLokiMetrics       string
+	useClickhouseMetrics string
 }
 
 func New(ctx context.Context, port uint, clientID string) (*Service, error) {
@@ -124,15 +133,20 @@ func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 			return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
 		}
 
+		useLokiMetrics := os.Getenv("USE_LOKI_METRICS")
+		useClickhouseMetrics := os.Getenv("USE_CLICKHOUSE_METRICS")
+
 		srv.server = &server{
-			tracer:          otel.Tracer(ServiceName),
-			dns:             srv.dns,
-			sandboxes:       smap.New[*sandbox.Sandbox](),
-			networkPool:     networkPool,
-			templateCache:   templateCache,
-			clientID:        clientID,
-			devicePool:      devicePool,
-			clickhouseStore: clickhouseStore,
+			tracer:               otel.Tracer(ServiceName),
+			dns:                  srv.dns,
+			sandboxes:            smap.New[*sandbox.Sandbox](),
+			networkPool:          networkPool,
+			templateCache:        templateCache,
+			clientID:             clientID,
+			devicePool:           devicePool,
+			clickhouseStore:      clickhouseStore,
+			useLokiMetrics:       useLokiMetrics,
+			useClickhouseMetrics: useClickhouseMetrics,
 		}
 	}
 

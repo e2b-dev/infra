@@ -68,6 +68,11 @@ type Sandbox struct {
 	healthy        atomic.Bool
 
 	ClickhouseStore chdb.Store
+
+	// 
+	useLokiMetrics       string
+	useClickhouseMetrics string
+	
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -94,6 +99,8 @@ func NewSandbox(
 	clientID string,
 	devicePool *nbd.DevicePool,
 	clickhouseStore chdb.Store,
+	useLokiMetrics string,
+	useClickhouseMetrics string,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()

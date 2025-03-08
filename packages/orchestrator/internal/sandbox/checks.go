@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"go.uber.org/zap"
@@ -23,6 +22,23 @@ const (
 	minEnvdVersionForMetrcis = "0.1.5"
 )
 
+type metricLogger interface {
+	LogMetrics(ctx context.Context)
+	SendMetrics(ctx context.Context)
+}
+
+func (s *Sandbox) logMetricsBasedOnConfig(ctx context.Context, logger metricLogger) {
+	if s.useLokiMetrics == "true" {
+		logger.LogMetrics(ctx)
+	}
+	if s.useClickhouseMetrics == "true" {
+		logger.SendMetrics(ctx)
+	}
+	if !(s.useClickhouseMetrics == "true") && !(s.useLokiMetrics == "true") { // ensure backward compatibility if neither are set
+		logger.LogMetrics(ctx)
+	}
+}
+
 func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	healthTicker := time.NewTicker(healthCheckInterval)
 	metricsTicker := time.NewTicker(metricsCheckInterval)
@@ -32,17 +48,8 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	}()
 
 	// Get metrics and health status on sandbox startup
-	useLokiMetrics := os.Getenv("USE_LOKI_METRICS") == "true"
-	useClickhouseMetrics := os.Getenv("USE_CLICKHOUSE_METRICS") == "true"
-	if useLokiMetrics {
-		go s.LogMetrics(ctx)
-	}
-	if useClickhouseMetrics {
-		go s.SendMetrics(ctx)
-	}
-	if !useLokiMetrics && !useClickhouseMetrics { // ensure backward compatibility if neither are set
-		go s.LogMetrics(ctx)
-	}
+
+	go s.logMetricsBasedOnConfig(ctx, s)
 	go s.Healthcheck(ctx, false)
 
 	for {
@@ -56,15 +63,7 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 
 			cancel()
 		case <-metricsTicker.C:
-			if useLokiMetrics {
-				s.LogMetrics(ctx)
-			}
-			if useClickhouseMetrics {
-				s.SendMetrics(ctx)
-			}
-			if !useLokiMetrics && !useClickhouseMetrics { // ensure backward compatibility if neither are set
-				s.LogMetrics(ctx)
-			}
+			s.logHeathAndUsage(ctx)
 		case <-ctx.Done():
 			return
 		}

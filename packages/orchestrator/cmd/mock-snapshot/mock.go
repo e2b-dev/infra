@@ -160,6 +160,8 @@ func mockSnapshot(
 		"test-client",
 		devicePool,
 		mockStore,
+		"true",
+		"true",
 	)
 	defer func() {
 		cleanupErr := cleanup.Run()
@@ -263,6 +265,8 @@ func mockSnapshot(
 		"test-client",
 		devicePool,
 		mockStore,
+		"true",
+		"true",
 	)
 	defer func() {
 		cleanupErr := cleanup2.Run()
