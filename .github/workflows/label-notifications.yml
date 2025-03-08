@@ -2,7 +2,7 @@ name: Label Notifications
 
 on:
   label:
-    types: [created, deleted]
+    types: [created]
   pull_request:
     types: [labeled]
 
