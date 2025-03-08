@@ -84,7 +84,7 @@ func (a *APIStore) getSandboxesMetrics(
 			defer sem.Release(1)
 
 			// Get metrics for this sandbox
-			metrics, err := a.getSandboxesSandboxIDMetrics(
+			metrics, err := a.LegacyGetSandboxIDMetrics(
 				ctx,
 				s.SandboxID,
 				teamID.String(),

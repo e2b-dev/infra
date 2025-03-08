@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -25,7 +24,7 @@ import (
 
 const defaultLimit = 100
 
-func (a *APIStore) getSandboxesSandboxIDMetrics(
+func (a *APIStore) LegacyGetSandboxIDMetrics(
 	ctx context.Context,
 	sandboxID string,
 	teamID string,
@@ -94,7 +93,7 @@ func (a *APIStore) getSandboxesSandboxIDMetrics(
 	return metrics, nil
 }
 
-func (a *APIStore) getSandboxesSandboxIDMetricsFromClickhouse(
+func (a *APIStore) GetSandboxesSandboxIDMetricsFromClickhouse(
 	ctx context.Context,
 	sandboxID string,
 	teamID string,
@@ -124,6 +123,39 @@ func (a *APIStore) getSandboxesSandboxIDMetricsFromClickhouse(
 	return apiMetrics, nil
 }
 
+type metricReader interface {
+	LegacyGetSandboxIDMetrics(
+		ctx context.Context,
+		sandboxID string,
+		teamID string,
+		limit int,
+		duration time.Duration,
+	) ([]api.SandboxMetric, error)
+	GetSandboxesSandboxIDMetricsFromClickhouse(
+		ctx context.Context,
+		sandboxID string,
+		teamID string,
+		limit int,
+		duration time.Duration,
+	) ([]api.SandboxMetric, error)
+}
+
+func (a *APIStore) readMetricsBasedOnConfig(
+	ctx context.Context,
+	sandboxID string,
+	teamID string,
+	reader metricReader,
+) ([]api.SandboxMetric, error) {
+	// Get metrics and health status on sandbox startup
+	readMetricsFromClickhouse := a.readMetricsFromClickHouse == "true"
+
+	if readMetricsFromClickhouse {
+		return reader.GetSandboxesSandboxIDMetricsFromClickhouse(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
+	}
+
+	return reader.LegacyGetSandboxIDMetrics(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
+}
+
 func (a *APIStore) GetSandboxesSandboxIDMetrics(
 	c *gin.Context,
 	sandboxID string,
@@ -138,17 +170,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 		attribute.String("team.id", teamID),
 	)
 
-	// Get metrics and health status on sandbox startup
-	readMetricsFromClickhouse := os.Getenv("READ_METRICS_FROM_CLICKHOUSE") == "true"
-
-	var metrics []api.SandboxMetric
-	var err error
-
-	if readMetricsFromClickhouse {
-		metrics, err = a.getSandboxesSandboxIDMetricsFromClickhouse(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
-	} else {
-		metrics, err = a.getSandboxesSandboxIDMetrics(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
-	}
+	metrics, err := a.readMetricsBasedOnConfig(ctx, sandboxID, teamID, a)
 
 	if err != nil {
 		zap.L().Error("Error returning metrics for sandbox",

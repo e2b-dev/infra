@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -105,7 +106,7 @@ func TestAPIStore_getSandboxesSandboxIDMetricsClickhouse(t *testing.T) {
 
 				clickhouseStore: tt.fields.clickhouseStore,
 			}
-			got, err := a.getSandboxesSandboxIDMetricsFromClickhouse(tt.args.ctx, tt.args.sandboxID, tt.args.teamID, tt.args.limit, tt.args.duration)
+			got, err := a.GetSandboxesSandboxIDMetricsFromClickhouse(tt.args.ctx, tt.args.sandboxID, tt.args.teamID, tt.args.limit, tt.args.duration)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("APIStore.getSandboxesSandboxIDMetrics() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -113,6 +114,120 @@ func TestAPIStore_getSandboxesSandboxIDMetricsClickhouse(t *testing.T) {
 
 			if out := cmp.Diff(got, tt.want); out != "" {
 				t.Errorf("APIStore.getSandboxesSandboxIDMetrics() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// fake metric reader
+type fakeMetricReader struct {
+	legacyMetrics     []api.SandboxMetric
+	legacyErr         error
+	clickhouseMetrics []api.SandboxMetric
+	clickhouseErr     error
+}
+
+func (f *fakeMetricReader) LegacyGetSandboxIDMetrics(ctx context.Context, sandboxID, teamID string, limit int, duration time.Duration) ([]api.SandboxMetric, error) {
+	return f.legacyMetrics, f.legacyErr
+}
+
+func (f *fakeMetricReader) GetSandboxesSandboxIDMetricsFromClickhouse(ctx context.Context, sandboxID, teamID string, limit int, duration time.Duration) ([]api.SandboxMetric, error) {
+	return f.clickhouseMetrics, f.clickhouseErr
+}
+
+func TestAPIStore_readMetricsBasedOnConfig(t *testing.T) {
+	type fields struct {
+		readMetricsFromClickHouse string
+	}
+	type args struct {
+		ctx       context.Context
+		sandboxID string
+		teamID    string
+		reader    metricReader
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    []api.SandboxMetric
+		wantErr bool
+	}{
+		// todo test all combinations of legacy and clickhouse metrics
+		{
+			name: "test legacy metrics",
+			fields: fields{
+				readMetricsFromClickHouse: "",
+			},
+			args: args{
+				reader: &fakeMetricReader{
+					legacyMetrics: []api.SandboxMetric{
+						{
+							Timestamp: aTimestamp,
+						},
+					},
+				},
+			},
+			want: []api.SandboxMetric{
+				{
+					Timestamp: aTimestamp,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test clickhouse metrics",
+			fields: fields{
+				readMetricsFromClickHouse: "true",
+			},
+			args: args{
+				reader: &fakeMetricReader{
+					clickhouseMetrics: []api.SandboxMetric{
+						{
+							Timestamp: aTimestamp,
+						},
+					},
+				},
+			},
+			want: []api.SandboxMetric{
+				{
+					Timestamp: aTimestamp,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test random string",
+			fields: fields{
+				readMetricsFromClickHouse: "random string",
+			},
+			args: args{
+				reader: &fakeMetricReader{
+					legacyMetrics: []api.SandboxMetric{
+						{
+							Timestamp: aTimestamp,
+						},
+					},
+				},
+			},
+			want: []api.SandboxMetric{
+				{
+					Timestamp: aTimestamp,
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &APIStore{
+				readMetricsFromClickHouse: tt.fields.readMetricsFromClickHouse,
+			}
+			got, err := a.readMetricsBasedOnConfig(tt.args.ctx, tt.args.sandboxID, tt.args.teamID, tt.args.reader)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("APIStore.readMetricsBasedOnConfig() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("APIStore.readMetricsBasedOnConfig() = %v, want %v", got, tt.want)
 			}
 		})
 	}

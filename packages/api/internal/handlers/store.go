@@ -43,6 +43,9 @@ type APIStore struct {
 	authCache            *authcache.TeamAuthCache
 	templateSpawnCounter *utils.TemplateSpawnCounter
 	clickhouseStore      chdb.Store
+	// should use something like this: https://github.com/spf13/viper
+	// but for now this is good
+	readMetricsFromClickHouse string
 }
 
 func NewAPIStore(ctx context.Context) *APIStore {
@@ -121,18 +124,19 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
 	a := &APIStore{
-		Healthy:              false,
-		orchestrator:         orch,
-		templateManager:      templateManager,
-		db:                   dbClient,
-		Tracer:               tracer,
-		posthog:              posthogClient,
-		buildCache:           buildCache,
-		lokiClient:           lokiClient,
-		templateCache:        templateCache,
-		authCache:            authCache,
-		templateSpawnCounter: templateSpawnCounter,
-		clickhouseStore:      clickhouseStore,
+		Healthy:                   false,
+		orchestrator:              orch,
+		templateManager:           templateManager,
+		db:                        dbClient,
+		Tracer:                    tracer,
+		posthog:                   posthogClient,
+		buildCache:                buildCache,
+		lokiClient:                lokiClient,
+		templateCache:             templateCache,
+		authCache:                 authCache,
+		templateSpawnCounter:      templateSpawnCounter,
+		clickhouseStore:           clickhouseStore,
+		readMetricsFromClickHouse: os.Getenv("READ_METRICS_FROM_CLICKHOUSE"),
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
