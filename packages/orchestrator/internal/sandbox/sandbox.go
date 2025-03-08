@@ -178,7 +178,7 @@ func NewSandbox(
 	cleanup.Add(func() error {
 		stopErr := fcUffd.Stop()
 		if stopErr != nil {
-			return fmt.Errorf("failed to stop uffd: %w", stopErr)
+			return fmt.Errorf("failed to stop uffd in cleanup: %w", stopErr)
 		}
 
 		return nil
@@ -262,7 +262,7 @@ func NewSandbox(
 
 		uffdStopErr := fcUffd.Stop()
 		if uffdStopErr != nil {
-			errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
+			errs = append(errs, fmt.Errorf("failed to stop uffd in priority cleanup: %w", uffdStopErr))
 		}
 
 		// go func() {
