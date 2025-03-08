@@ -49,7 +49,7 @@ type Sandbox struct {
 	Slot            network.Slot
 	EndAt           time.Time
 	StartedAt       time.Time
-	ClickhouseStore *chdb.Store
+	ClickhouseStore chdb.Store
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
