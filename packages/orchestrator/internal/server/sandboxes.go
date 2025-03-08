@@ -174,23 +174,26 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// Old comment:
 	// 	Ensure the sandbox is removed from cache.
 	// 	Ideally we would rely only on the goroutine defer.
+
 	s.sandboxes.Remove(in.SandboxId)
 
-	zap.L().Info("sandbox removed from cache (delete)", zap.String("sandbox_id", in.SandboxId))
+	zap.L().Info("sandbox removed from cache (delete)", zap.String("sandbox_id", in.SandboxId), zap.String("node_id", consul.ClientID))
 
-	loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
-	defer cancelLogginCtx()
+	// loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
+	// defer cancelLogginCtx()
 
 	// Check health metrics before stopping the sandbox
-	sbx.Healthcheck(loggingCtx, true)
-	sbx.LogMetrics(loggingCtx)
+	// sbx.Healthcheck(loggingCtx, true)
+	// sbx.LogMetrics(loggingCtx)
 
-	zap.L().Info("stopping sandbox (after healthcheck)", zap.String("sandbox_id", in.SandboxId))
+	zap.L().Info("stopping sandbox (after healthcheck)", zap.String("sandbox_id", in.SandboxId), zap.String("node_id", consul.ClientID))
 
 	err := sbx.Stop()
 	if err != nil {
 		sbxlogger.I(sbx).Error("error stopping sandbox", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 	}
+
+	zap.L().Info("sandbox stopped", zap.String("sandbox_id", in.SandboxId), zap.String("node_id", consul.ClientID))
 
 	return &emptypb.Empty{}, nil
 }
@@ -229,7 +232,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
 	s.sandboxes.Remove(in.SandboxId)
 
-	zap.L().Info("sandbox removed from cache (pause)", zap.String("sandbox_id", in.SandboxId))
+	// zap.L().Info("sandbox removed from cache (pause)", zap.String("sandbox_id", in.SandboxId))
 
 	s.pauseMu.Unlock()
 

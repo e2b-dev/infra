@@ -22,7 +22,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -52,8 +51,7 @@ type Sandbox struct {
 	StartedAt time.Time
 	EndAt     time.Time
 
-	Slot  network.Slot
-	stats *stats.Handle
+	Slot network.Slot
 
 	uffdExit chan error
 
@@ -195,7 +193,7 @@ func NewSandbox(
 		uffdWaitErr := <-fcUffd.Exit
 		uffdExit <- uffdWaitErr
 
-		zap.L().Info("UFFD exited in wait goroutine", zap.String("sandbox_id", config.SandboxId), zap.Error(uffdWaitErr))
+		// zap.L().Info("UFFD exited in wait goroutine", zap.String("sandbox_id", config.SandboxId), zap.Error(uffdWaitErr))
 
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
@@ -267,13 +265,13 @@ func NewSandbox(
 			errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
 		}
 
-		go func() {
-			zap.L().Info("stopping healthcheck during cleanup", zap.String("sandbox_id", config.SandboxId))
-			healthcheckCtx.Lock()
-			healthcheckCtx.Cancel()
-			healthcheckCtx.Unlock()
-			zap.L().Info("stopped healthcheck during cleanup", zap.String("sandbox_id", config.SandboxId))
-		}()
+		// go func() {
+		// 	zap.L().Info("stopping healthcheck during cleanup", zap.String("sandbox_id", config.SandboxId))
+		// 	healthcheckCtx.Lock()
+		// 	healthcheckCtx.Cancel()
+		// 	healthcheckCtx.Unlock()
+		// 	zap.L().Info("stopped healthcheck during cleanup", zap.String("sandbox_id", config.SandboxId))
+		// }()
 
 		return errors.Join(errs...)
 	})
@@ -319,13 +317,13 @@ func NewSandbox(
 func (s *Sandbox) Wait() error {
 	select {
 	case fcErr := <-s.process.Exit:
-		zap.L().Info("FC exited—sandbox will be stopped", zap.String("sandbox_id", s.Config.SandboxId))
+		// zap.L().Info("FC exited—sandbox will be stopped", zap.String("sandbox_id", s.Config.SandboxId))
 		stopErr := s.Stop()
 		uffdErr := <-s.uffdExit
 
 		return errors.Join(fcErr, stopErr, uffdErr)
 	case uffdErr := <-s.uffdExit:
-		zap.L().Info("UFFD exited—sandbox will be stopped", zap.String("sandbox_id", s.Config.SandboxId))
+		// zap.L().Info("UFFD exited—sandbox will be stopped", zap.String("sandbox_id", s.Config.SandboxId))
 		stopErr := s.Stop()
 		fcErr := <-s.process.Exit
 

@@ -17,39 +17,39 @@ import (
 )
 
 const (
-	healthCheckInterval      = 20 * time.Second
-	metricsCheckInterval     = 10 * time.Second
+	healthCheckInterval      = 3000 * time.Second
+	metricsCheckInterval     = 3000 * time.Second
 	minEnvdVersionForMetrcis = "0.1.5"
 )
 
 func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
-	healthTicker := time.NewTicker(healthCheckInterval)
-	metricsTicker := time.NewTicker(metricsCheckInterval)
-	defer func() {
-		healthTicker.Stop()
-		metricsTicker.Stop()
-	}()
+	// healthTicker := time.NewTicker(healthCheckInterval)
+	// metricsTicker := time.NewTicker(metricsCheckInterval)
+	// defer func() {
+	// 	healthTicker.Stop()
+	// 	metricsTicker.Stop()
+	// }()
 
 	// Get metrics and health status on sandbox startup
-	go s.LogMetrics(ctx)
-	go s.Healthcheck(ctx, false)
+	// go s.LogMetrics(ctx)
+	// go s.Healthcheck(ctx, false)
 
-	for {
-		select {
-		case <-healthTicker.C:
-			childCtx, cancel := context.WithTimeout(ctx, time.Second)
+	// for {
+	// 	select {
+	// 	case <-healthTicker.C:
+	// 		childCtx, cancel := context.WithTimeout(ctx, time.Second)
 
-			ctx.Lock()
-			s.Healthcheck(childCtx, false)
-			ctx.Unlock()
+	// 		ctx.Lock()
+	// 		s.Healthcheck(childCtx, false)
+	// 		ctx.Unlock()
 
-			cancel()
-		case <-metricsTicker.C:
-			s.LogMetrics(ctx)
-		case <-ctx.Done():
-			return
-		}
-	}
+	// 		cancel()
+	// 	case <-metricsTicker.C:
+	// 		s.LogMetrics(ctx)
+	// 	case <-ctx.Done():
+	// 		return
+	// 	}
+	// }
 }
 
 func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
