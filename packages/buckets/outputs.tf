@@ -26,3 +26,23 @@ output "fc_versions_bucket_name" {
 output "fc_template_bucket_name" {
   value = google_storage_bucket.fc_template_bucket.name
 }
+
+output "media_bucket_name" {
+  value = google_storage_bucket.media_bucket.name
+}
+
+output "dashboard_service_account_email" {
+  description = "The email of the service account for dashboard operations"
+  value       = google_service_account.dashboard_service_account.email
+}
+
+output "dashboard_service_account_key" {
+  description = "The private key of the service account for dashboard operations"
+  value       = google_service_account_key.dashboard_service_key.private_key
+  sensitive   = true
+}
+
+output "dashboard_service_account_key_secret_name" {
+  description = "The name of the Secret Manager secret containing the dashboard service account key"
+  value       = google_secret_manager_secret.dashboard_service_account_key_secret.name
+}
