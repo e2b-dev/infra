@@ -60,8 +60,8 @@ func TestSandbox_logMetricsBasedOnConfig(t *testing.T) {
 		{
 			name: "should call LogMetrics neither are set",
 			fields: fields{
-				useLokiMetrics:       "false",
-				useClickhouseMetrics: "false",
+				useLokiMetrics:       "",
+				useClickhouseMetrics: "",
 			},
 			args: args{
 				logger: &fakeMetricStore{},
