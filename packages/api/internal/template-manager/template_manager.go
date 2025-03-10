@@ -46,12 +46,6 @@ func (tm *TemplateManager) Close() error {
 }
 
 func (tm *TemplateManager) BuildsStatusPeriodicalSync() {
-	// todo: disabled debugging
-	
-	// todo: implement different timeout for different states
-	// todo: how to do not fast-cancel new build?
-	return
-
 	for {
 		buildsRunning, err := tm.db.GetRunningEnvBuilds(context.Background())
 		if err != nil {
@@ -68,6 +62,7 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync() {
 	}
 }
 
+// BuildStatusSync todo: implement failing build when there is build in some state for too long
 func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string) {
 	childCtx, childCtxCancel := context.WithTimeout(ctx, syncTimeout)
 	defer childCtxCancel()
