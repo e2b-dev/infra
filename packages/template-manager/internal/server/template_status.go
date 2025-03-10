@@ -24,7 +24,6 @@ func (s *serverStore) TemplateBuildStatus(in *template_manager.TemplateStatusReq
 	for {
 		buildInfo, err := s.buildCache.Get(in.BuildID)
 		if err != nil {
-			logger.Error("error while getting build info from cache", zap.Error(err))
 			return fmt.Errorf("error while getting build info, maybe already expired")
 		}
 
@@ -34,6 +33,11 @@ func (s *serverStore) TemplateBuildStatus(in *template_manager.TemplateStatusReq
 				RootfsSizeKey:  buildInfo.GetRootFsSizeKey(),
 				EnvdVersionKey: buildInfo.GetEnvdVersionKey(),
 			}
+		}
+
+		if buildInfo.IsFailed() {
+			logger.Error("Template build failed")
+			return fmt.Errorf("template build failed")
 		}
 
 		err = stream.Send(
@@ -50,14 +54,9 @@ func (s *serverStore) TemplateBuildStatus(in *template_manager.TemplateStatusReq
 			return err
 		}
 
-		if buildInfo.IsFailed() {
-			logger.Error("Template build failed")
-			return fmt.Errorf("template build failed")
-		}
-
 		if !buildInfo.IsRunning() {
 			logger.Info("Template build finished")
-			break
+			return nil
 		}
 
 		time.Sleep(time.Second * 5)

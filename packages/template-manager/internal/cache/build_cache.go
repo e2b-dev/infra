@@ -124,8 +124,9 @@ func (c *BuildCache) Create(buildID string, envID string) error {
 	}
 
 	info := BuildInfo{
-		envID: envID,
-		ended: false,
+		envID:  envID,
+		ended:  false,
+		failed: false,
 	}
 
 	c.cache.Set(buildID, &info, buildInfoExpiration)
@@ -134,40 +135,35 @@ func (c *BuildCache) Create(buildID string, envID string) error {
 	return nil
 }
 
-// SetDone marks the build as ended.
-func (c *BuildCache) SetDone(envID string, buildID string) error {
+func (c *BuildCache) SetSucceeded(envID string, buildID string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	item, err := c.Get(buildID)
 	if err != nil {
 		return fmt.Errorf("build %s not found in cache: %w", buildID, err)
-	}
-
-	if !item.IsRunning() {
-		return fmt.Errorf("build %s is already marked as done", buildID)
 	}
 
 	item.ended = true
 	item.failed = false
 
 	c.updateCounter(envID, buildID, -1)
-
 	return nil
 }
 
-func (c *BuildCache) SetSucceeded(envID string, buildID string) error {
+func (c *BuildCache) SetFailed(envID string, buildID string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	item, err := c.Get(buildID)
 	if err != nil {
 		return fmt.Errorf("build %s not found in cache: %w", buildID, err)
-	}
-
-	if !item.IsRunning() {
-		return fmt.Errorf("build %s is already marked as done", buildID)
 	}
 
 	item.ended = true
 	item.failed = true
 
 	c.updateCounter(envID, buildID, -1)
-
 	return nil
 }
 
