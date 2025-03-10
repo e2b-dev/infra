@@ -22,7 +22,7 @@ import (
 // cacheSyncTime if this value is updated, it should be correctly updated in analytics too.
 const cacheSyncTime = 3 * time.Minute
 
-// reportTimeout is the timeout for the analytics report on instance close
+// reportTimeout is the timeout for the analytics report
 // This timeout is also set in the CloudRun for Analytics Collector, there it is 3 minutes.
 const reportTimeout = 4 * time.Minute
 
@@ -295,20 +295,20 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 			o.dns.Add(ctx, info.Instance.SandboxID, node.Info.IPAddress)
 		}
 
-		_, err := o.analytics.Client.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
-			InstanceId:    info.Instance.SandboxID,
-			EnvironmentId: info.Instance.TemplateID,
-			BuildId:       info.BuildID.String(),
-			TeamId:        info.TeamID.String(),
-			Timestamp:     timestamppb.Now(),
-		})
-		if err != nil {
-			zap.L().Error("Error sending Analytics event", zap.Error(err))
-		}
-
 		if info.AutoPause.Load() {
 			o.instanceCache.MarkAsPausing(info)
 		}
+
+		// Run in separate goroutine to not block sandbox creation
+		// Also use parentCtx to not cancel the request with this hook timeout
+		go reportInstanceStartAnalytics(
+			parentCtx,
+			o.analytics,
+			info.TeamID.String(),
+			info.Instance.SandboxID,
+			info.Instance.TemplateID,
+			info.BuildID.String(),
+		)
 
 		sbxlogger.I(info).Debug("Inserted sandbox to cache hook",
 			zap.Time("start_time", info.StartTime),
@@ -317,5 +317,28 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 		)
 
 		return nil
+	}
+}
+
+func reportInstanceStartAnalytics(
+	ctx context.Context,
+	analytics *analyticscollector.Analytics,
+	teamID string,
+	sandboxID string,
+	templateID string,
+	buildID string,
+) {
+	childCtx, cancel := context.WithTimeout(ctx, reportTimeout)
+	defer cancel()
+
+	_, err := analytics.Client.InstanceStarted(childCtx, &analyticscollector.InstanceStartedEvent{
+		InstanceId:    sandboxID,
+		EnvironmentId: templateID,
+		BuildId:       buildID,
+		TeamId:        teamID,
+		Timestamp:     timestamppb.Now(),
+	})
+	if err != nil {
+		zap.L().Error("Error sending Analytics event", zap.Error(err))
 	}
 }
