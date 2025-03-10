@@ -19,14 +19,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// cacheSyncTime is the time to sync the cache with the actual instances in Orchestrator
+// cacheSyncTime is the time to sync the cache with the actual instances in Orchestrator.
 const cacheSyncTime = 20 * time.Second
-
-// syncAnalyticsTime if this value is updated, it should be correctly updated in analytics too.
-const syncAnalyticsTime = 3 * time.Minute
-
-// lastSyncAnalyticsTime is the last time the analytics were synced, global variable for now
-var lastSyncAnalyticsTime = time.Now()
 
 // reportTimeout is the timeout for the analytics report
 // This timeout is also set in the CloudRun for Analytics Collector, there it is 3 minutes.
@@ -152,12 +146,6 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 	}
 
 	node.SyncBuilds(builds)
-
-	// Sync the analytics only every syncAnalyticsTime, as sync nodes are run more often
-	if lastSyncAnalyticsTime.Add(syncAnalyticsTime).Before(time.Now()) {
-		lastSyncAnalyticsTime = time.Now()
-		instanceCache.ReportNodeAnalytics(ctx, activeInstances)
-	}
 }
 
 func (o *Orchestrator) getDeleteInstanceFunction(

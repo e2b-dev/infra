@@ -6,9 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
@@ -78,18 +76,5 @@ func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nod
 				zap.L().Error("error adding instance to cache", zap.Error(err))
 			}
 		}
-	}
-}
-
-// ReportNodeAnalytics sends running instances event to analytics
-func (c *InstanceCache) ReportNodeAnalytics(ctx context.Context, instances []*InstanceInfo) {
-	instanceIds := make([]string, len(instances))
-	for i, instance := range instances {
-		instanceIds[i] = instance.Instance.SandboxID
-	}
-
-	_, err := c.analytics.RunningInstances(ctx, &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
-	if err != nil {
-		zap.L().Error("error sending running instances event to analytics", zap.Error(err))
 	}
 }
