@@ -121,20 +121,24 @@ func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 			return nil, fmt.Errorf("failed to create device pool: %w", err)
 		}
 
-		clickhouseStore, err := chdb.NewStore(chdb.ClickHouseConfig{
-			ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
-			Username:         os.Getenv("CLICKHOUSE_USERNAME"),
-			Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
-			Database:         os.Getenv("CLICKHOUSE_DATABASE"),
-			Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
-		})
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
-		}
-
 		useLokiMetrics := os.Getenv("WRITE_LOKI_METRICS")
 		useClickhouseMetrics := os.Getenv("WRITE_CLICKHOUSE_METRICS")
+		readClickhouseMetrics := os.Getenv("READ_CLICKHOUSE_METRICS")
+
+		var clickhouseStore chdb.Store = nil
+
+		if readClickhouseMetrics == "true" || useClickhouseMetrics == "true" {
+			clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
+				ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+				Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+				Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+				Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+				Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
+			}
+		}
 
 		srv.server = &server{
 			tracer:               otel.Tracer(ServiceName),
