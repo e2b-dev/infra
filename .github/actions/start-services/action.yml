@@ -34,11 +34,14 @@ runs:
         echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test
         
         mkdir -p ~/logs
+
         make -C packages/orchestrator run-debug 2>&1 | tee ~/logs/orchestrator.log &
+        ORCH_PID=$!
         sleep 30
-        echo "Orchestrator started, starting API now..."
+        if ps -p $ORCH_PID > /dev/null; then echo "Orchestrator started, starting API now..."; else exit 1; fi
 
         make -C packages/api run 2>&1 | tee ~/logs/api.log &
+        API_PID=$!
         sleep 30
-        echo "API service started"
+        if ps -p $API_PID > /dev/null; then echo "API service started"; else exit 1; fi
       shell: bash
