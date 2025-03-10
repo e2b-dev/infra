@@ -148,6 +148,8 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		telemetry.ReportCriticalError(ctx, err)
 	}
 
+	telemetry.ReportEvent(ctx, "created new environment", attribute.String("env.id", templateID))
+
 	// Do not wait for global build sync trigger it immediately
 	go func() {
 		a.templateManager.BuildStatusSync(context.Background(), buildUUID, templateID)
@@ -155,19 +157,6 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		// Invalidate the cache
 		a.templateCache.Invalidate(templateID)
 	}()
-
-	// todo
-	//telemetry.ReportEvent(childCtx, "created new environment", attribute.String("env.id", templateID))
-
-	// todo
-	//// status building must be set after build is triggered because then
-	//// it's possible build status job will be triggered before build cache on template manager is created and build will fail
-	//err = a.db.EnvBuildSetStatus(ctx, envDB.ID, buildUUID, envbuild.StatusBuilding)
-	//if err != nil {
-	//	err = fmt.Errorf("error when setting build status: %w", err)
-	//	telemetry.ReportCriticalError(ctx, err)
-	//	return
-	//}
 
 	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "built environment", posthog.NewProperties().
 		Set("user_id", userID).
