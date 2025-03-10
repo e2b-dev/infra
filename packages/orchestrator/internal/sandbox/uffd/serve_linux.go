@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 )
 
@@ -86,7 +87,7 @@ outerLoop:
 				return fmt.Errorf("failed to handle uffd: %w", errMsg)
 			}
 
-			zap.L().Info("UFFD fd exit", zap.String("sandbox_id", sandboxId), zap.Error(errMsg), zap.String("node_id", consul.ClientID))
+			zap.L().Info("UFFD fd exit", zap.String("sandbox_id", sandboxId), zap.Error(errMsg), zap.String("node_id", consul.GetClientID()))
 
 			return nil
 		}
