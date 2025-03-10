@@ -19,7 +19,19 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+// cacheSyncTime is the time to sync the cache with the actual instances in Orchestrator.
 const cacheSyncTime = 20 * time.Second
+
+// reportTimeout is the timeout for the analytics report
+// This timeout is also set in the CloudRun for Analytics Collector, there it is 3 minutes.
+const reportTimeout = 4 * time.Minute
+
+type closeType string
+
+const (
+	ClosePause  closeType = "pause"
+	CloseDelete closeType = "delete"
+)
 
 func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, error) {
 	item, err := o.instanceCache.Get(sandboxID)
@@ -125,7 +137,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 		return
 	}
 
-	instanceCache.Sync(activeInstances, node.Info.ID)
+	instanceCache.Sync(ctx, activeInstances, node.Info.ID)
 
 	builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
 	if buildsErr != nil {
@@ -154,60 +166,54 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		defer o.instanceCache.UnmarkAsPausing(info)
 
 		duration := time.Since(info.StartTime).Seconds()
+		stopTime := time.Now()
 
-		_, err := o.analytics.Client.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
-			TeamId:        info.TeamID.String(),
-			EnvironmentId: info.Instance.TemplateID,
-			InstanceId:    info.Instance.SandboxID,
-			Timestamp:     timestamppb.Now(),
-			Duration:      float32(duration),
-		})
-		if err != nil {
-			zap.L().Error("error sending Analytics event", zap.Error(err))
-		}
-
-		var closeType string
+		var ct closeType
 		if info.AutoPause.Load() {
-			closeType = "pause"
+			ct = ClosePause
 		} else {
-			closeType = "delete"
+			ct = CloseDelete
 		}
 
-		posthogClient.CreateAnalyticsTeamEvent(
+		// Run in separate goroutine to not block sandbox deletion
+		// Also use parentCtx to not cancel the request with this hook timeout
+		go reportInstanceStopAnalytics(
+			parentCtx,
+			posthogClient,
+			o.analytics,
 			info.TeamID.String(),
-			"closed_instance", posthog.NewProperties().
-				Set("instance_id", info.Instance.SandboxID).
-				Set("environment", info.Instance.TemplateID).
-				Set("type", closeType).
-				Set("duration", duration),
+			info.Instance.SandboxID,
+			info.Instance.TemplateID,
+			stopTime,
+			ct,
+			duration,
 		)
 
 		node := o.GetNode(info.Instance.ClientID)
 		if node == nil {
 			zap.L().Error("failed to get node", zap.String("node_id", info.Instance.ClientID))
-		} else {
-			node.CPUUsage.Add(-info.VCpu)
-			node.RamUsage.Add(-info.RamMB)
 
-			o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
-		}
-
-		if node == nil {
-			zap.L().Error("node not found", zap.String("node_id", info.Instance.ClientID))
 			return fmt.Errorf("node '%s' not found", info.Instance.ClientID)
 		}
 
+		node.CPUUsage.Add(-info.VCpu)
+		node.RamUsage.Add(-info.RamMB)
+
+		o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
+
 		if node.Client == nil {
 			zap.L().Error("client for node not found", zap.String("node_id", info.Instance.ClientID))
+
 			return fmt.Errorf("client for node '%s' not found", info.Instance.ClientID)
 		}
 
-		if info.AutoPause.Load() {
+		if ct == ClosePause {
 			o.instanceCache.MarkAsPausing(info)
 
-			err = o.PauseInstance(ctx, o.tracer, info, *info.TeamID)
+			err := o.PauseInstance(ctx, o.tracer, info, *info.TeamID)
 			if err != nil {
 				info.PauseDone(err)
+
 				return fmt.Errorf("failed to auto pause sandbox '%s': %w", info.Instance.SandboxID, err)
 			}
 
@@ -217,7 +223,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			info.PauseDone(nil)
 		} else {
 			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
-			_, err = node.Client.Sandbox.Delete(ctx, req)
+			_, err := node.Client.Sandbox.Delete(ctx, req)
 			if err != nil {
 				return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
 			}
@@ -230,6 +236,41 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		)
 
 		return nil
+	}
+}
+
+func reportInstanceStopAnalytics(
+	ctx context.Context,
+	posthogClient *analyticscollector.PosthogClient,
+	analytics *analyticscollector.Analytics,
+	teamID string,
+	sandboxID string,
+	templateID string,
+	stopTime time.Time,
+	ct closeType,
+	duration float64,
+) {
+	childCtx, cancel := context.WithTimeout(ctx, reportTimeout)
+	defer cancel()
+
+	posthogClient.CreateAnalyticsTeamEvent(
+		teamID,
+		"closed_instance", posthog.NewProperties().
+			Set("instance_id", sandboxID).
+			Set("environment", templateID).
+			Set("type", ct).
+			Set("duration", duration),
+	)
+
+	_, err := analytics.Client.InstanceStopped(childCtx, &analyticscollector.InstanceStoppedEvent{
+		TeamId:        teamID,
+		EnvironmentId: templateID,
+		InstanceId:    sandboxID,
+		Timestamp:     timestamppb.New(stopTime),
+		Duration:      float32(duration),
+	})
+	if err != nil {
+		zap.L().Error("error sending Analytics event", zap.Error(err))
 	}
 }
 
@@ -254,20 +295,20 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 			o.dns.Add(ctx, info.Instance.SandboxID, node.Info.IPAddress)
 		}
 
-		_, err := o.analytics.Client.InstanceStarted(ctx, &analyticscollector.InstanceStartedEvent{
-			InstanceId:    info.Instance.SandboxID,
-			EnvironmentId: info.Instance.TemplateID,
-			BuildId:       info.BuildID.String(),
-			TeamId:        info.TeamID.String(),
-			Timestamp:     timestamppb.Now(),
-		})
-		if err != nil {
-			zap.L().Error("Error sending Analytics event", zap.Error(err))
-		}
-
 		if info.AutoPause.Load() {
 			o.instanceCache.MarkAsPausing(info)
 		}
+
+		// Run in separate goroutine to not block sandbox creation
+		// Also use parentCtx to not cancel the request with this hook timeout
+		go reportInstanceStartAnalytics(
+			parentCtx,
+			o.analytics,
+			info.TeamID.String(),
+			info.Instance.SandboxID,
+			info.Instance.TemplateID,
+			info.BuildID.String(),
+		)
 
 		sbxlogger.I(info).Debug("Inserted sandbox to cache hook",
 			zap.Time("start_time", info.StartTime),
@@ -276,5 +317,28 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 		)
 
 		return nil
+	}
+}
+
+func reportInstanceStartAnalytics(
+	ctx context.Context,
+	analytics *analyticscollector.Analytics,
+	teamID string,
+	sandboxID string,
+	templateID string,
+	buildID string,
+) {
+	childCtx, cancel := context.WithTimeout(ctx, reportTimeout)
+	defer cancel()
+
+	_, err := analytics.Client.InstanceStarted(childCtx, &analyticscollector.InstanceStartedEvent{
+		InstanceId:    sandboxID,
+		EnvironmentId: templateID,
+		BuildId:       buildID,
+		TeamId:        teamID,
+		Timestamp:     timestamppb.Now(),
+	})
+	if err != nil {
+		zap.L().Error("Error sending Analytics event", zap.Error(err))
 	}
 }

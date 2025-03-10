@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -101,7 +102,9 @@ func main() {
 
 	log.Println("Starting orchestrator", "commit", commitSHA)
 
-	srv, err := server.New(ctx, port)
+	clientID := consul.GetClientID()
+
+	srv, err := server.New(ctx, port, clientID)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
