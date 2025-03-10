@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 package sandbox
 
 import (
@@ -20,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
@@ -84,6 +88,8 @@ func NewSandbox(
 	endAt time.Time,
 	isSnapshot bool,
 	baseTemplateID string,
+	clientID string,
+	devicePool *nbd.DevicePool,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -143,6 +149,7 @@ func NewSandbox(
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 		sandboxFiles.RootfsBlockSize(),
+		devicePool,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create overlay file: %w", err)
@@ -167,7 +174,7 @@ func NewSandbox(
 	}
 	overlaySpan.End()
 
-	fcUffd, uffdErr := uffd.New(memfile, sandboxFiles.SandboxUffdSocketPath(), sandboxFiles.MemfilePageSize())
+	fcUffd, uffdErr := uffd.New(memfile, sandboxFiles.SandboxUffdSocketPath(), sandboxFiles.MemfilePageSize(), clientID)
 	if uffdErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to create uffd: %w", uffdErr)
 	}

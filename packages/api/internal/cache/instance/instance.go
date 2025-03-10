@@ -176,7 +176,7 @@ func NewCache(
 			zap.L().Error("Error deleting instance", zap.Error(err))
 		}
 
-		instanceCache.UpdateCounters(instanceInfo, -1, false)
+		instanceCache.UpdateCounters(ctx, instanceInfo, -1, false)
 	})
 
 	go cache.Start(ctx)

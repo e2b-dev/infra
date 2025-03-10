@@ -21,6 +21,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
@@ -39,7 +40,9 @@ type server struct {
 	networkPool   *network.Pool
 	templateCache *template.Cache
 
-	pauseMu sync.Mutex
+	pauseMu    sync.Mutex
+	clientID   string // nomad node id
+	devicePool *nbd.DevicePool
 }
 
 type Service struct {
@@ -54,9 +57,13 @@ type Service struct {
 	}
 }
 
-func New(ctx context.Context, port uint) (*Service, error) {
+func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 	if port > math.MaxUint16 {
 		return nil, fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
+	}
+
+	if clientID == "" {
+		return nil, errors.New("clientID is required")
 	}
 
 	srv := &Service{port: uint16(port)}
@@ -66,7 +73,7 @@ func New(ctx context.Context, port uint) (*Service, error) {
 		return nil, fmt.Errorf("failed to create template cache: %w", err)
 	}
 
-	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize)
+	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network pool: %w", err)
 	}
@@ -97,12 +104,19 @@ func New(ctx context.Context, port uint) (*Service, error) {
 			),
 		)
 
+		devicePool, err := nbd.NewDevicePool()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create device pool: %w", err)
+		}
+
 		srv.server = &server{
 			tracer:        otel.Tracer(ServiceName),
 			dns:           srv.dns,
 			sandboxes:     smap.New[*sandbox.Sandbox](),
 			networkPool:   networkPool,
 			templateCache: templateCache,
+			clientID:      clientID,
+			devicePool:    devicePool,
 		}
 	}
 

@@ -7,16 +7,20 @@ import (
 
 	consulApi "github.com/hashicorp/consul/api"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type StorageKV struct {
 	slotsSize    int
 	consulClient *consulApi.Client
+	clientID     string
 }
 
-func NewStorageKV(slotsSize int) (*StorageKV, error) {
+func (s *StorageKV) getKVKey(slotIdx int) string {
+	return fmt.Sprintf("%s/%d", s.clientID, slotIdx)
+}
+
+func NewStorageKV(slotsSize int, clientID string) (*StorageKV, error) {
 	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
 
 	consulClient, err := newConsulClient(consulToken)
@@ -27,6 +31,7 @@ func NewStorageKV(slotsSize int) (*StorageKV, error) {
 	return &StorageKV{
 		slotsSize:    slotsSize,
 		consulClient: consulClient,
+		clientID:     clientID,
 	}, nil
 }
 
@@ -65,7 +70,7 @@ func (s *StorageKV) Acquire() (*Slot, error) {
 
 	for randomTry := 1; randomTry <= 10; randomTry++ {
 		slotIdx := rand.Intn(s.slotsSize)
-		key := getKVKey(slotIdx)
+		key := s.getKVKey(slotIdx)
 
 		maybeSlot, err := trySlot(slotIdx, key)
 		if err != nil {
@@ -83,13 +88,13 @@ func (s *StorageKV) Acquire() (*Slot, error) {
 		// This is a fallback for the case when all slots are taken.
 		// There is no Consul lock so it's possible that multiple sandboxes will try to acquire the same slot.
 		// In this case, only one of them will succeed and other will try with different slots.
-		reservedKeys, _, keysErr := kv.Keys(consul.ClientID+"/", "", nil)
+		reservedKeys, _, keysErr := kv.Keys(s.clientID+"/", "", nil)
 		if keysErr != nil {
 			return nil, fmt.Errorf("failed to read Consul KV: %w", keysErr)
 		}
 
 		for slotIdx := 0; slotIdx < s.slotsSize; slotIdx++ {
-			key := getKVKey(slotIdx)
+			key := s.getKVKey(slotIdx)
 
 			if slices.Contains(reservedKeys, key) {
 				continue
@@ -140,8 +145,4 @@ func (s *StorageKV) Release(ips *Slot) error {
 	}
 
 	return nil
-}
-
-func getKVKey(slotIdx int) string {
-	return fmt.Sprintf("%s/%d", consul.ClientID, slotIdx)
 }

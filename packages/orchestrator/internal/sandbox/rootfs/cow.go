@@ -26,9 +26,10 @@ type CowDevice struct {
 	BaseBuildId string
 
 	finishedOperations chan struct{}
+	devicePool         *nbd.DevicePool
 }
 
-func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64) (*CowDevice, error) {
+func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64, devicePool *nbd.DevicePool) (*CowDevice, error) {
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
@@ -41,7 +42,7 @@ func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64) (
 
 	overlay := block.NewOverlay(rootfs, cache, blockSize)
 
-	mnt := nbd.NewDirectPathMount(overlay)
+	mnt := nbd.NewDirectPathMount(overlay, devicePool)
 
 	return &CowDevice{
 		mnt:                mnt,
@@ -50,6 +51,7 @@ func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64) (
 		blockSize:          blockSize,
 		finishedOperations: make(chan struct{}, 1),
 		BaseBuildId:        rootfs.Header().Metadata.BaseBuildId.String(),
+		devicePool:         devicePool,
 	}, nil
 }
 
@@ -123,7 +125,7 @@ func (o *CowDevice) Close() error {
 	attempts := 0
 	for {
 		attempts++
-		err := nbd.Pool.ReleaseDevice(slot)
+		err := o.devicePool.ReleaseDevice(slot)
 		if errors.Is(err, nbd.ErrDeviceInUse{}) {
 			if attempts%100 == 0 {
 				zap.L().Info("error releasing overlay device", zap.Int("attempts", attempts), zap.Error(err))

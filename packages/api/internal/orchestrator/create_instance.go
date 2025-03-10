@@ -217,7 +217,7 @@ func (o *Orchestrator) CreateSandbox(
 		autoPause,
 	)
 
-	cacheErr := o.instanceCache.Add(instanceInfo, true)
+	cacheErr := o.instanceCache.Add(childCtx, instanceInfo, true)
 	if cacheErr != nil {
 		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
 		telemetry.ReportError(ctx, errMsg)

@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks
+	// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks.
 	cacheHookTimeout = 5 * time.Minute
 
 	statusLogInterval = time.Second * 20
@@ -82,13 +82,19 @@ func New(
 	if env.IsLocal() {
 		zap.L().Info("Skipping syncing sandboxes, running locally")
 		// Add a local node for local development, if there isn't any, it fails silently
-		o.connectToNode(ctx, &node.NodeInfo{
+		err := o.connectToNode(ctx, &node.NodeInfo{
 			ID:                  "test-client",
 			OrchestratorAddress: fmt.Sprintf("%s:%s", "127.0.0.1", consts.OrchestratorPort),
 			IPAddress:           "127.0.0.1",
 		})
+
+		if err != nil {
+			zap.L().Error("Error connecting to local node", zap.Error(err))
+			return nil, err
+		}
 	} else {
 		go o.keepInSync(ctx, cache)
+		go o.startNodeAnalytics(ctx)
 	}
 
 	go o.startStatusLogging(ctx)
