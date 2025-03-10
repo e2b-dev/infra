@@ -11,13 +11,13 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -138,8 +138,21 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		Logs:       logs,
 		TemplateID: templateID,
 		BuildID:    buildID,
-		Status:     api.TemplateBuildStatus(buildDB.Status),
+		Status:     getCorrespondingTemplateBuildStatus(buildDB.Status),
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+func getCorrespondingTemplateBuildStatus(s envbuild.Status) api.TemplateBuildStatus {
+	switch s {
+	case envbuild.StatusWaiting:
+		return api.TemplateBuildStatusBuilding
+	case envbuild.StatusFailed:
+		return api.TemplateBuildStatusError
+	case envbuild.StatusUploaded:
+		return api.TemplateBuildStatusReady
+	default:
+		return api.TemplateBuildStatusBuilding
+	}
 }
