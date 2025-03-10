@@ -2,13 +2,12 @@ package server
 
 import (
 	"context"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
 	"time"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
+
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
@@ -24,6 +23,9 @@ import (
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+
+	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
