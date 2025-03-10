@@ -4,14 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"go.uber.org/zap"
 	"log"
 	"net"
-
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+	"os"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/server"
@@ -59,17 +58,32 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName: constants.ServiceName,
-		IsInternal:  true,
-		IsDebug:     true,
-		Cores:       []zapcore.Core{logger.GetOTELCore(constants.ServiceName)},
-	}))
+	logger := sbxlogger.NewLogger(
+		ctx,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      constants.ServiceName,
+			IsInternal:       true,
+			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		},
+	)
 	defer logger.Sync()
+	sbxlogger.SetSandboxLoggerExternal(logger)
 	zap.ReplaceGlobals(logger)
 
+	// used for logging template build output
+	buildLogger := sbxlogger.NewLogger(
+		ctx,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      constants.ServiceName,
+			IsInternal:       false,
+			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		},
+	)
+	defer buildLogger.Sync()
+	sbxlogger.SetSandboxLoggerExternal(buildLogger)
+
 	// Create an instance of our handler which satisfies the generated interface
-	s := server.New(logger)
+	s := server.New(logger, buildLogger)
 
 	log.Printf("Starting server on port %d", *port)
 	if err := s.Serve(lis); err != nil {

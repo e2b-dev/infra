@@ -41,7 +41,7 @@ func TestPostProcessor_Start(t *testing.T) {
 			name: "test success",
 			fields: fields{
 				testErr:       nil,
-				shouldContain: "Postprocessing finished.  ",
+				shouldContain: "Postprocessing finished.",
 			},
 		},
 	}

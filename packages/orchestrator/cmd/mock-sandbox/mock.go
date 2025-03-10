@@ -14,10 +14,11 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
 func main() {
@@ -26,6 +27,13 @@ func main() {
 	sandboxId := flag.String("sandbox", "", "sandbox id")
 	keepAlive := flag.Int("alive", 0, "keep alive")
 	count := flag.Int("count", 1, "number of serially spawned sandboxes")
+
+	devicePool, err := nbd.NewDevicePool()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create device pool: %v\n", err)
+
+		return
+	}
 
 	flag.Parse()
 
@@ -58,7 +66,7 @@ func main() {
 		return
 	}
 
-	networkPool, err := network.NewPool(ctx, *count, 0)
+	networkPool, err := network.NewPool(ctx, *count, 0, "mock-node")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create network pool: %v\n", err)
 
@@ -81,6 +89,7 @@ func main() {
 			time.Duration(*keepAlive)*time.Second,
 			networkPool,
 			templateCache,
+			devicePool,
 		)
 		if err != nil {
 			break
@@ -97,6 +106,7 @@ func mockSandbox(
 	keepAlive time.Duration,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
+	devicePool *nbd.DevicePool,
 ) error {
 	tracer := otel.Tracer(fmt.Sprintf("sandbox-%s", sandboxId))
 	childCtx, _ := tracer.Start(ctx, "mock-sandbox")
@@ -137,6 +147,8 @@ func mockSandbox(
 		time.Now(),
 		true,
 		templateId,
+		"test-client",
+		devicePool,
 	)
 	defer func() {
 		cleanupErr := cleanup.Run()

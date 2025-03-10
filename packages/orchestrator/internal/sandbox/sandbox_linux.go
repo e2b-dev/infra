@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 package sandbox
 
 import (
@@ -20,11 +23,13 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/stats"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -32,6 +37,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+var envdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
@@ -81,6 +88,8 @@ func NewSandbox(
 	endAt time.Time,
 	isSnapshot bool,
 	baseTemplateID string,
+	clientID string,
+	devicePool *nbd.DevicePool,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -140,6 +149,7 @@ func NewSandbox(
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 		sandboxFiles.RootfsBlockSize(),
+		devicePool,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create overlay file: %w", err)
@@ -164,7 +174,7 @@ func NewSandbox(
 	}
 	overlaySpan.End()
 
-	fcUffd, uffdErr := uffd.New(memfile, sandboxFiles.SandboxUffdSocketPath(), sandboxFiles.MemfilePageSize())
+	fcUffd, uffdErr := uffd.New(memfile, sandboxFiles.SandboxUffdSocketPath(), sandboxFiles.MemfilePageSize(), clientID)
 	if uffdErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to create uffd: %w", uffdErr)
 	}
@@ -269,8 +279,8 @@ func NewSandbox(
 		return errors.Join(errs...)
 	})
 
-	// Ensure the syncing takes at most 10 seconds.
-	syncCtx, syncCancel := context.WithTimeout(childCtx, 10*time.Second)
+	// Ensure the syncing takes at most envdTimeout seconds.
+	syncCtx, syncCancel := context.WithTimeoutCause(childCtx, envdTimeout, fmt.Errorf("syncing took too long"))
 	defer syncCancel()
 
 	// Sync envds.

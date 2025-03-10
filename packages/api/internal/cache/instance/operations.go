@@ -29,11 +29,9 @@ func (c *InstanceCache) CountForTeam(teamID uuid.UUID) (count uint) {
 	return count
 }
 
-// Exists Check if the instance exists in the cache.
+// Exists Check if the instance exists in the cache or is being evicted.
 func (c *InstanceCache) Exists(instanceID string) bool {
-	_, exists := c.cache.Get(instanceID)
-
-	return exists
+	return c.cache.Has(instanceID, true)
 }
 
 // Get the item from the cache.

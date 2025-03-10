@@ -111,6 +111,7 @@ build-and-upload:build-and-upload/envd
 build/%:
 	$(MAKE) -C packages/$(notdir $@) build
 build-and-upload/%:
+	./scripts/confirm.sh $(ENV)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
 
 .PHONY: copy-public-builds
@@ -155,6 +156,9 @@ test:
 	$(MAKE) -C packages/shared test
 	$(MAKE) -C packages/template-manager test
 
+.PHONY: test-integration
+test-integration:
+	$(MAKE) -C tests/integration test
 
 # $(MAKE) -C terraform/grafana init does not work b/c of the -include ${ENV_FILE} in the Makefile
 # so we need to call the Makefile directly
