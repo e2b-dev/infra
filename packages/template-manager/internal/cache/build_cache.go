@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	buildInfoExpiration = time.Minute * 30 // 30 minutes
+	buildInfoExpiration = time.Minute * 10 // 10 minutes
 )
 
 type BuildInfo struct {
