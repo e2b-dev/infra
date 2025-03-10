@@ -57,29 +57,15 @@ func (s *serverStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
 
-
 	go func() {
-
 		err = s.builder.Builder(childCtx, template, config.TemplateID, config.BuildID)
 		if err != nil {
 			s.logger.Error("Error while building template", zap.Error(err))
 			telemetry.ReportEvent(childCtx, "Environment built failed")
 		}
 
-		cacheIn, cacheErr := s.buildCache.Get(config.BuildID)
-		if cacheErr != nil {
-			zap.L().Error("template creation cache fetch failed", zap.Error(cacheErr))
-		}
-
 		telemetry.ReportEvent(childCtx, "Environment built")
 	}()
-
-	cacheIn, cacheErr := s.buildCache.Get(config.BuildID)
-	if cacheErr != nil {
-		zap.L().Error("template creation cache fetch failed", zap.Error(cacheErr))
-		return nil, fmt.Errorf("error while getting build info, maybe already expired")
-	}
-
 
 	return nil, nil
 }
