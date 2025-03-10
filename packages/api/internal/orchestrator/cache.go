@@ -137,7 +137,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 		return
 	}
 
-	instanceCache.Sync(activeInstances, node.Info.ID)
+	instanceCache.Sync(ctx, activeInstances, node.Info.ID)
 
 	builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
 	if buildsErr != nil {
@@ -146,6 +146,8 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 	}
 
 	node.SyncBuilds(builds)
+
+	instanceCache.ReportNodeAnalytics(ctx, activeInstances)
 }
 
 func (o *Orchestrator) getDeleteInstanceFunction(

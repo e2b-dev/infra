@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
+	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
@@ -51,7 +51,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 	return instance, nil
 }
 
-func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
+func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nodeID string) {
 	instanceMap := make(map[string]*InstanceInfo)
 
 	// Use map for faster lookup
@@ -73,23 +73,23 @@ func (c *InstanceCache) Sync(instances []*InstanceInfo, nodeID string) {
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
 		if !c.Exists(instance.Instance.SandboxID) {
-			err := c.Add(instance, false)
+			err := c.Add(ctx, instance, false)
 			if err != nil {
 				zap.L().Error("error adding instance to cache", zap.Error(err))
 			}
 		}
 	}
+}
 
-	// Send running instances event to analytics
+// ReportNodeAnalytics sends running instances event to analytics
+func (c *InstanceCache) ReportNodeAnalytics(ctx context.Context, instances []*InstanceInfo) {
 	instanceIds := make([]string, len(instances))
 	for i, instance := range instances {
 		instanceIds[i] = instance.Instance.SandboxID
 	}
 
-	go func() {
-		_, err := c.analytics.RunningInstances(context.Background(), &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
-		if err != nil {
-			zap.L().Error("error sending running instances event to analytics", zap.Error(err))
-		}
-	}()
+	_, err := c.analytics.RunningInstances(ctx, &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, Timestamp: timestamppb.Now()})
+	if err != nil {
+		zap.L().Error("error sending running instances event to analytics", zap.Error(err))
+	}
 }
