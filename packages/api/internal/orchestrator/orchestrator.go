@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks
+	// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks.
 	cacheHookTimeout = 5 * time.Minute
 
 	statusLogInterval = time.Second * 20
@@ -89,6 +89,7 @@ func New(
 		})
 	} else {
 		go o.keepInSync(ctx, cache)
+		go o.startNodeAnalytics(ctx)
 	}
 
 	go o.startStatusLogging(ctx)
