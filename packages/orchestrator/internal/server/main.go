@@ -133,8 +133,8 @@ func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 			return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
 		}
 
-		useLokiMetrics := os.Getenv("USE_LOKI_METRICS")
-		useClickhouseMetrics := os.Getenv("USE_CLICKHOUSE_METRICS")
+		useLokiMetrics := os.Getenv("WRITE_LOKI_METRICS")
+		useClickhouseMetrics := os.Getenv("WRITE_CLICKHOUSE_METRICS")
 
 		srv.server = &server{
 			tracer:               otel.Tracer(ServiceName),
