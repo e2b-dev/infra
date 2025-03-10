@@ -25,7 +25,7 @@ import (
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
-	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -122,10 +122,13 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
 
-	templateManager, err := template_manager.New()
+	templateManager, err := template_manager.New(dbClient)
 	if err != nil {
 		zap.L().Fatal("initializing Template manager client", zap.Error(err))
 	}
+
+	// Start the periodic sync of template builds statuses
+	go templateManager.BuildsStatusPeriodicalSync()
 
 	var lokiClient *loki.DefaultClient
 	if laddr := os.Getenv("LOKI_ADDRESS"); laddr != "" {
