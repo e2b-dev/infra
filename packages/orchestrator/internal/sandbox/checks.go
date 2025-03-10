@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	healthCheckInterval      = 20 * time.Second
+	healthCheckInterval      = 60 * time.Second
 	metricsCheckInterval     = 10 * time.Second
 	minEnvdVersionForMetrcis = "0.1.5"
 )
@@ -44,8 +44,8 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 			ctx.Unlock()
 
 			cancel()
-		case <-metricsTicker.C:
-			s.LogMetrics(ctx)
+		// case <-metricsTicker.C:
+		// 	s.LogMetrics(ctx)
 		case <-ctx.Done():
 			return
 		}
