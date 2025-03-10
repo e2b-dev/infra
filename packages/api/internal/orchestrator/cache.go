@@ -19,7 +19,19 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const cacheSyncTime = 20 * time.Second
+// cacheSyncTime if this value is updated, it should be correctly updated in analytics too.
+const cacheSyncTime = 3 * time.Minute
+
+// reportTimeout is the timeout for the analytics report on instance close
+// This timeout is also set in the CloudRun for Analytics Collector, there it is 3 minutes.
+const reportTimeout = 4 * time.Minute
+
+type closeType string
+
+const (
+	ClosePause  closeType = "pause"
+	CloseDelete closeType = "delete"
+)
 
 func (o *Orchestrator) GetSandbox(sandboxID string) (*instance.InstanceInfo, error) {
 	item, err := o.instanceCache.Get(sandboxID)
@@ -154,60 +166,54 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		defer o.instanceCache.UnmarkAsPausing(info)
 
 		duration := time.Since(info.StartTime).Seconds()
+		stopTime := time.Now()
 
-		_, err := o.analytics.Client.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
-			TeamId:        info.TeamID.String(),
-			EnvironmentId: info.Instance.TemplateID,
-			InstanceId:    info.Instance.SandboxID,
-			Timestamp:     timestamppb.Now(),
-			Duration:      float32(duration),
-		})
-		if err != nil {
-			zap.L().Error("error sending Analytics event", zap.Error(err))
-		}
-
-		var closeType string
+		var ct closeType
 		if info.AutoPause.Load() {
-			closeType = "pause"
+			ct = ClosePause
 		} else {
-			closeType = "delete"
+			ct = CloseDelete
 		}
 
-		posthogClient.CreateAnalyticsTeamEvent(
+		// Run in separate goroutine to not block sandbox deletion
+		// Also use parentCtx to not cancel the request with this hook timeout
+		go reportInstanceStopAnalytics(
+			parentCtx,
+			posthogClient,
+			o.analytics,
 			info.TeamID.String(),
-			"closed_instance", posthog.NewProperties().
-				Set("instance_id", info.Instance.SandboxID).
-				Set("environment", info.Instance.TemplateID).
-				Set("type", closeType).
-				Set("duration", duration),
+			info.Instance.SandboxID,
+			info.Instance.TemplateID,
+			stopTime,
+			ct,
+			duration,
 		)
 
 		node := o.GetNode(info.Instance.ClientID)
 		if node == nil {
 			zap.L().Error("failed to get node", zap.String("node_id", info.Instance.ClientID))
-		} else {
-			node.CPUUsage.Add(-info.VCpu)
-			node.RamUsage.Add(-info.RamMB)
 
-			o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
-		}
-
-		if node == nil {
-			zap.L().Error("node not found", zap.String("node_id", info.Instance.ClientID))
 			return fmt.Errorf("node '%s' not found", info.Instance.ClientID)
 		}
 
+		node.CPUUsage.Add(-info.VCpu)
+		node.RamUsage.Add(-info.RamMB)
+
+		o.dns.Remove(ctx, info.Instance.SandboxID, node.Info.IPAddress)
+
 		if node.Client == nil {
 			zap.L().Error("client for node not found", zap.String("node_id", info.Instance.ClientID))
+
 			return fmt.Errorf("client for node '%s' not found", info.Instance.ClientID)
 		}
 
-		if info.AutoPause.Load() {
+		if ct == ClosePause {
 			o.instanceCache.MarkAsPausing(info)
 
-			err = o.PauseInstance(ctx, o.tracer, info, *info.TeamID)
+			err := o.PauseInstance(ctx, o.tracer, info, *info.TeamID)
 			if err != nil {
 				info.PauseDone(err)
+
 				return fmt.Errorf("failed to auto pause sandbox '%s': %w", info.Instance.SandboxID, err)
 			}
 
@@ -217,7 +223,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			info.PauseDone(nil)
 		} else {
 			req := &orchestrator.SandboxDeleteRequest{SandboxId: info.Instance.SandboxID}
-			_, err = node.Client.Sandbox.Delete(ctx, req)
+			_, err := node.Client.Sandbox.Delete(ctx, req)
 			if err != nil {
 				return fmt.Errorf("failed to delete sandbox '%s': %w", info.Instance.SandboxID, err)
 			}
@@ -230,6 +236,41 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 		)
 
 		return nil
+	}
+}
+
+func reportInstanceStopAnalytics(
+	ctx context.Context,
+	posthogClient *analyticscollector.PosthogClient,
+	analytics *analyticscollector.Analytics,
+	teamID string,
+	sandboxID string,
+	templateID string,
+	stopTime time.Time,
+	ct closeType,
+	duration float64,
+) {
+	childCtx, cancel := context.WithTimeout(ctx, reportTimeout)
+	defer cancel()
+
+	posthogClient.CreateAnalyticsTeamEvent(
+		teamID,
+		"closed_instance", posthog.NewProperties().
+			Set("instance_id", sandboxID).
+			Set("environment", templateID).
+			Set("type", ct).
+			Set("duration", duration),
+	)
+
+	_, err := analytics.Client.InstanceStopped(childCtx, &analyticscollector.InstanceStoppedEvent{
+		TeamId:        teamID,
+		EnvironmentId: templateID,
+		InstanceId:    sandboxID,
+		Timestamp:     timestamppb.New(stopTime),
+		Duration:      float32(duration),
+	})
+	if err != nil {
+		zap.L().Error("error sending Analytics event", zap.Error(err))
 	}
 }
 
