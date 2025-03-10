@@ -28,6 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -63,6 +64,13 @@ type Sandbox struct {
 
 	healthcheckCtx *utils.LockableCancelableContext
 	healthy        atomic.Bool
+
+	ClickhouseStore chdb.Store
+
+	// 
+	useLokiMetrics       string
+	useClickhouseMetrics string
+	
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -88,6 +96,9 @@ func NewSandbox(
 	baseTemplateID string,
 	clientID string,
 	devicePool *nbd.DevicePool,
+	clickhouseStore chdb.Store,
+	useLokiMetrics string,
+	useClickhouseMetrics string,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -240,19 +251,20 @@ func NewSandbox(
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	sbx := &Sandbox{
-		uffdExit:       uffdExit,
-		files:          sandboxFiles,
-		Slot:           ips,
-		template:       t,
-		process:        fcHandle,
-		uffd:           fcUffd,
-		Config:         config,
-		StartedAt:      startedAt,
-		EndAt:          endAt,
-		rootfs:         rootfsOverlay,
-		cleanup:        cleanup,
-		healthcheckCtx: healthcheckCtx,
-		healthy:        atomic.Bool{}, // defaults to `false`
+		uffdExit:        uffdExit,
+		files:           sandboxFiles,
+		Slot:            ips,
+		template:        t,
+		process:         fcHandle,
+		uffd:            fcUffd,
+		Config:          config,
+		StartedAt:       startedAt,
+		EndAt:           endAt,
+		rootfs:          rootfsOverlay,
+		cleanup:         cleanup,
+		healthcheckCtx:  healthcheckCtx,
+		healthy:         atomic.Bool{}, // defaults to `false`
+		ClickhouseStore: clickhouseStore,
 	}
 	// By default, the sandbox should be healthy, if the status change we report it.
 	sbx.healthy.Store(true)
