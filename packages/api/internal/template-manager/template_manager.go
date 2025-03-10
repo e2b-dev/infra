@@ -44,20 +44,24 @@ func (tm *TemplateManager) Close() error {
 	return tm.grpc.Close()
 }
 
-func (tm *TemplateManager) BuildsStatusPeriodicalSync() {
+func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 	for {
-		buildsRunning, err := tm.db.GetRunningEnvBuilds(context.Background())
-		if err != nil {
-			zap.L().Error("Error getting running builds for periodical sync", zap.Error(err))
-			continue
-		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(syncInterval):
+			buildsRunning, err := tm.db.GetRunningEnvBuilds(ctx)
+			if err != nil {
+				zap.L().Error("Error getting running builds for periodical sync", zap.Error(err))
+				time.Sleep(time.Second) // just not hammer database if there is an error
+				continue
+			}
 
-		zap.L().Info("Running periodical sync of builds statuses", zap.Int("count", len(buildsRunning)))
-		for _, buildDB := range buildsRunning {
-			go tm.BuildStatusSync(context.Background(), buildDB.ID, *buildDB.EnvID)
+			zap.L().Info("Running periodical sync of builds statuses", zap.Int("count", len(buildsRunning)))
+			for _, buildDB := range buildsRunning {
+				go tm.BuildStatusSync(ctx, buildDB.ID, *buildDB.EnvID)
+			}
 		}
-
-		time.Sleep(syncInterval)
 	}
 }
 

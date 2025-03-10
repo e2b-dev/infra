@@ -128,7 +128,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	}
 
 	// Start the periodic sync of template builds statuses
-	go templateManager.BuildsStatusPeriodicalSync()
+	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	var lokiClient *loki.DefaultClient
 	if laddr := os.Getenv("LOKI_ADDRESS"); laddr != "" {
