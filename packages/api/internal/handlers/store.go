@@ -60,15 +60,20 @@ func NewAPIStore(ctx context.Context) *APIStore {
 
 	zap.L().Info("created Supabase client")
 
-	clickhouseStore, err := chdb.NewStore(chdb.ClickHouseConfig{
-		ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
-		Username:         os.Getenv("CLICKHOUSE_USERNAME"),
-		Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
-		Database:         os.Getenv("CLICKHOUSE_DATABASE"),
-		Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
-	})
-	if err != nil {
-		zap.L().Fatal("initializing ClickHouse store", zap.Error(err))
+	readMetricsFromClickHouse := os.Getenv("READ_METRICS_FROM_CLICKHOUSE")
+	var clickhouseStore chdb.Store = nil
+
+	if readMetricsFromClickHouse == "true" {
+		clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
+			ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+			Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+			Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+			Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+			Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
+		})
+		if err != nil {
+			zap.L().Fatal("initializing ClickHouse store", zap.Error(err))
+		}
 	}
 
 	posthogClient, posthogErr := analyticscollector.NewPosthogClient()
@@ -136,7 +141,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		authCache:                 authCache,
 		templateSpawnCounter:      templateSpawnCounter,
 		clickhouseStore:           clickhouseStore,
-		readMetricsFromClickHouse: os.Getenv("READ_METRICS_FROM_CLICKHOUSE"),
+		readMetricsFromClickHouse: readMetricsFromClickHouse,
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
