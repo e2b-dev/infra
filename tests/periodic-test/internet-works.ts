@@ -19,11 +19,10 @@ try {
   const out = await sandbox.commands.run('wget https://e2b.dev', {
     requestTimeoutMs: 10000,
   })
-  console.log('wget output', out.stdout)
+  console.log('wget output', out.stderr)
 
-  const stdout = out.stdout
 
-  const internetWorking = stdout.includes('200 OK')
+  const internetWorking = out.stderr.includes('200 OK')
   // verify internet is working 
   if (!internetWorking) {
     throw new Error('Internet is not working')
