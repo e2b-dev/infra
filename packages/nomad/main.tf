@@ -388,10 +388,9 @@ resource "nomad_job" "loki" {
 
 # create a bucket for clickhouse
 resource "google_storage_bucket" "clickhouse_bucket" {
-  name     = "${var.prefix}clickhouse-bucket"
+  name     = "${var.gcp_project_id}-clickhouse-bucket"
   location = var.gcp_region
 }
-
 
 // create service account for bucket
 resource "google_service_account" "clickhouse_service_account" {
