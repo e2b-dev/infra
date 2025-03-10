@@ -23,20 +23,37 @@ message TemplateCreateRequest {
   TemplateConfig template = 1;
 }
 
+message TemplateStatusRequest {
+  string templateID = 1;
+  string buildID = 2;
+}
+
 // Data required for deleting a template.
 message TemplateBuildDeleteRequest {
   string buildID = 1;
 }
 
+message TemplateBuildMetadata {
+  int32 rootfsSizeKey = 3;
+  string envdVersionKey = 4;
+}
+
 // Logs from template build
-message TemplateBuildLog {
-  string log = 1;
+message TemplateBuildStatusResponse {
+  bool done = 1;
+  bool failed = 2;
+
+  TemplateBuildMetadata metadata = 3;
 }
 
 // Interface exported by the server.
 service TemplateService {
   // TemplateCreate is a gRPC service that creates a new template
-  rpc TemplateCreate (TemplateCreateRequest) returns (stream TemplateBuildLog);
+  rpc TemplateCreate (TemplateCreateRequest) returns (google.protobuf.Empty);
+
+  // TemplateStatus is a gRPC service that streams the status of a template build
+  rpc TemplateBuildStatus (TemplateStatusRequest) returns (stream TemplateBuildStatusResponse);
+
   // TemplateBuildDelete is a gRPC service that deletes files associated with a template build
   rpc TemplateBuildDelete (TemplateBuildDeleteRequest) returns (google.protobuf.Empty);
 }

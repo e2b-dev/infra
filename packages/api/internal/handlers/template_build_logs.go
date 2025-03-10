@@ -11,13 +11,13 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -46,27 +46,21 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	if err != nil {
 		errMsg := fmt.Errorf("error when parsing build id: %w", err)
 		telemetry.ReportError(ctx, errMsg)
-
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid build id")
-
 		return
 	}
 
-	dockerBuild, err := a.buildCache.Get(templateID, buildUUID)
+	templateDB, _, err := a.db.GetEnv(ctx, templateID)
 	if err != nil {
-		msg := fmt.Errorf("error finding cache for env %s and build %s", templateID, buildID)
-		telemetry.ReportError(ctx, msg)
-
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Build (%s) not found", buildID))
-
+		errMsg := fmt.Errorf("error when getting env: %w", err)
+		telemetry.ReportError(ctx, errMsg)
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", templateID))
 		return
 	}
-
-	templateTeamID := dockerBuild.GetTeamID()
 
 	var team *models.Team
 	for _, t := range teams {
-		if t.ID == templateTeamID {
+		if t.ID == templateDB.TeamID {
 			team = t
 			break
 		}
@@ -81,7 +75,13 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	status := dockerBuild.GetStatus()
+	buildDB, err := a.db.GetEnvBuild(ctx, buildUUID)
+	if err != nil {
+		errMsg := fmt.Errorf("error when getting build: %w", err)
+		telemetry.ReportError(ctx, errMsg)
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Build '%s' not found", buildID))
+		return
+	}
 
 	// Sanitize env ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
@@ -138,8 +138,21 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		Logs:       logs,
 		TemplateID: templateID,
 		BuildID:    buildID,
-		Status:     status,
+		Status:     getCorrespondingTemplateBuildStatus(buildDB.Status),
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+func getCorrespondingTemplateBuildStatus(s envbuild.Status) api.TemplateBuildStatus {
+	switch s {
+	case envbuild.StatusWaiting:
+		return api.TemplateBuildStatusBuilding
+	case envbuild.StatusFailed:
+		return api.TemplateBuildStatusError
+	case envbuild.StatusUploaded:
+		return api.TemplateBuildStatusReady
+	default:
+		return api.TemplateBuildStatusBuilding
+	}
 }
