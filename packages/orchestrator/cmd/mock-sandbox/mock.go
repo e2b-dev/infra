@@ -147,7 +147,7 @@ func mockSandbox(
 		time.Now(),
 		true,
 		templateId,
-		"test-client",
+		"testclient",
 		devicePool,
 	)
 	defer func() {

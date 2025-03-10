@@ -154,7 +154,7 @@ func mockSnapshot(
 		time.Now(),
 		false,
 		templateId,
-		"test-client",
+		"testclient",
 		devicePool,
 	)
 	defer func() {
@@ -256,7 +256,7 @@ func mockSnapshot(
 		time.Now(),
 		false,
 		templateId,
-		"test-client",
+		"testclient",
 		devicePool,
 	)
 	defer func() {
