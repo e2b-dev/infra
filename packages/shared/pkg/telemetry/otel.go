@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
@@ -42,6 +43,7 @@ func InitOTLPExporter(ctx context.Context, serviceName, serviceVersion string) f
 		semconv.ServiceName(serviceName),
 		semconv.ServiceVersion(serviceVersion),
 		semconv.TelemetrySDKName("otel"),
+		semconv.ServiceInstanceID(uuid.New().String()),
 		semconv.TelemetrySDKLanguageGo,
 	}
 
