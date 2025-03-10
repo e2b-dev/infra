@@ -25,6 +25,7 @@ var (
 	// todo: just for testing
 	syncInterval = time.Second * 10
 	syncTimeout  = time.Minute * 5
+	syncWaitingStateDeadline = time.Minute * 10
 )
 
 func New(db *db.DB) (*TemplateManager, error) {
@@ -76,6 +77,27 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	defer tm.removeFromProcessingQueue(buildID)
 
 	logger := zap.L().With(zap.String("buildID", buildID.String()), zap.String("envID", templateID))
+
+	envBuildDb, err := tm.db.GetEnvBuild(childCtx, buildID)
+	if err != nil {
+		logger.Error("Error when fetching env build for background sync", zap.Error(err))
+		return
+	}
+
+	// waiting for build to start, local docker build and push can take some time
+	// so just check if it's not too long
+	if envBuildDb.Status == envbuild.StatusWaiting {
+		// if waiting for too long, fail the build
+		if time.Since(envBuildDb.CreatedAt) > syncWaitingStateDeadline {
+			logger.Error("Build is in waiting state for too long, failing it")
+
+			dbErr := tm.db.EnvBuildSetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
+			if dbErr != nil {
+				logger.Error("Error when setting build status", zap.Error(dbErr))
+			}
+			return
+		}
+	}
 
 	// stream build status
 	stream, err := tm.grpc.Client.TemplateBuildStatus(childCtx, &template_manager.TemplateStatusRequest{BuildID: buildID.String(), TemplateID: templateID})
