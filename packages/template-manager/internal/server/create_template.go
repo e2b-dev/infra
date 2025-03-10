@@ -60,8 +60,14 @@ func (s *serverStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	go func() {
 		err = s.builder.Builder(childCtx, template, config.TemplateID, config.BuildID)
 		if err != nil {
+			cacheErr := s.buildCache.SetFailed(config.TemplateID, config.BuildID)
+			if cacheErr != nil {
+				s.logger.Error("Error during failing template build in cache", zap.Error(err))
+			}
+
 			s.logger.Error("Error while building template", zap.Error(err))
 			telemetry.ReportEvent(childCtx, "Environment built failed")
+			return
 		}
 
 		telemetry.ReportEvent(childCtx, "Environment built")
