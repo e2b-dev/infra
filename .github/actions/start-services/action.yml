@@ -35,8 +35,10 @@ runs:
         
         mkdir -p ~/logs
         make -C packages/orchestrator run-debug 2>&1 | tee ~/logs/orchestrator.log &
+        sleep 30
+        echo "Orchestrator started, waiting 30s before starting API..."
+
         make -C packages/api run 2>&1 | tee ~/logs/api.log &
-        
-        sleep 30 # Wait for services to start
-        echo "Services started"
+        sleep 30
+        echo "API service started"
       shell: bash
