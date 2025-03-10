@@ -51,7 +51,7 @@ func main() {
 	defer wg.Wait()
 
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(ctx, server.ServiceName, "no")
+		shutdown := telemetry.InitOTLPExporter(ctx, server.ServiceName, commitSHA)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

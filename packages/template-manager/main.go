@@ -4,10 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"go.uber.org/zap"
 	"log"
 	"net"
 	"os"
+
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -49,7 +50,7 @@ func main() {
 	}
 
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(ctx, constants.ServiceName, "no")
+		shutdown := telemetry.InitOTLPExporter(ctx, constants.ServiceName, commitSHA)
 		defer shutdown(context.TODO())
 	}
 
