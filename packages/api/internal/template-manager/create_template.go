@@ -7,6 +7,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -55,6 +56,8 @@ func (tm *TemplateManager) CreateTemplate(
 	if utils.UnwrapGRPCError(err) != nil {
 		return fmt.Errorf("failed to create template '%s': %w", templateID, err)
 	}
+
+	telemetry.ReportEvent(childCtx, "Template build started")
 
 	return nil
 }
