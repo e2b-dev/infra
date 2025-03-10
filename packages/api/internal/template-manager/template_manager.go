@@ -21,10 +21,8 @@ type TemplateManager struct {
 }
 
 var (
-	//syncInterval = time.Minute * 1
-	// todo: just for testing
-	syncInterval = time.Second * 10
-	syncTimeout  = time.Minute * 5
+	syncInterval             = time.Minute * 1
+	syncTimeout              = time.Minute * 5
 	syncWaitingStateDeadline = time.Minute * 10
 )
 
