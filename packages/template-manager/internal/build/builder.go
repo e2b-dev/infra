@@ -68,7 +68,7 @@ func (b *TemplateBuilder) Builder(ctx context.Context, template *Env, envID stri
 		_, _ = logsWriter.Write([]byte(fmt.Sprintf("Error building environment: %v", err)))
 		telemetry.ReportCriticalError(ctx, err)
 
-		buildStateErr := b.buildCache.SetSucceeded(envID, buildID)
+		buildStateErr := b.buildCache.SetFailed(envID, buildID)
 		if buildStateErr != nil {
 			b.logger.Error("Error while setting build state to failed", zap.Error(buildStateErr))
 			telemetry.ReportError(ctx, buildStateErr)
@@ -85,12 +85,6 @@ func (b *TemplateBuilder) Builder(ctx context.Context, template *Env, envID stri
 			if removeErr != nil {
 				b.logger.Error("Error while removing build files", zap.Error(removeErr))
 				telemetry.ReportError(ctx, removeErr)
-			}
-
-			buildStateErr := b.buildCache.SetSucceeded(envID, buildID)
-			if buildStateErr != nil {
-				b.logger.Error("Error while setting build state to failed", zap.Error(buildStateErr))
-				telemetry.ReportError(ctx, buildStateErr)
 			}
 		}
 	}()
@@ -111,7 +105,7 @@ func (b *TemplateBuilder) Builder(ctx context.Context, template *Env, envID stri
 		_, _ = logsWriter.Write([]byte(fmt.Sprintf("Error while getting envd version: %v", err)))
 		telemetry.ReportError(ctx, err)
 
-		buildStateErr := b.buildCache.SetSucceeded(envID, buildID)
+		buildStateErr := b.buildCache.SetFailed(envID, buildID)
 		if buildStateErr != nil {
 			b.logger.Error("Error while setting build state to failed", zap.Error(buildStateErr))
 			telemetry.ReportError(ctx, buildStateErr)
@@ -124,7 +118,7 @@ func (b *TemplateBuilder) Builder(ctx context.Context, template *Env, envID stri
 		_, _ = logsWriter.Write([]byte(errMsg))
 		telemetry.ReportError(ctx, uploadErr)
 
-		buildStateErr := b.buildCache.SetSucceeded(envID, buildID)
+		buildStateErr := b.buildCache.SetFailed(envID, buildID)
 		if buildStateErr != nil {
 			b.logger.Error("Error while setting build state to failed", zap.Error(buildStateErr))
 			telemetry.ReportError(ctx, buildStateErr)
