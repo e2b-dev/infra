@@ -126,7 +126,7 @@ copy-public-builds:
 .PHONY: migrate
 migrate:
 	$(MAKE) -C packages/shared migrate-postgres
-	$(MAKE) -C packages/shared migrate-clickhouse/up
+	# $(MAKE) -C packages/shared migrate-clickhouse/up
 
 .PHONY: switch-env
 switch-env:
