@@ -49,6 +49,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		childCtx,
 		s.tracer,
 		s.dns,
+		s.proxy,
 		s.networkPool,
 		s.templateCache,
 		req.Sandbox,
@@ -182,6 +183,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	// Don't allow connecting to the sandbox anymore.
 	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
+	s.proxy.RemoveSandbox(in.SandboxId)
 
 	// Remove the sandbox from the cache to prevent loading it again in API during the time the instance is stopping.
 	// Old comment:

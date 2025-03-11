@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"log"
 	"os"
 	"os/signal"
@@ -104,6 +105,7 @@ func mockSandbox(
 	buildId,
 	sandboxId string,
 	dns *dns.DNS,
+	proxy *proxy.SessionProxy,
 	keepAlive time.Duration,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
@@ -128,6 +130,7 @@ func mockSandbox(
 		childCtx,
 		tracer,
 		dns,
+		proxy,
 		networkPool,
 		templateCache,
 		&orchestrator.SandboxConfig{
