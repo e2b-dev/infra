@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -40,14 +41,24 @@ func (m *NoOpCleanup) Run() error {
 }
 
 type Sandbox struct {
-	Config    *orchestrator.SandboxConfig
-	process   NoOpProcess
-	uffdExit  chan error
-	cleanup   NoOpCleanup
-	healthy   atomic.Bool
-	Slot      network.Slot
-	EndAt     time.Time
-	StartedAt time.Time
+
+	// YOU ARE IN SANDBOX_OTHER.GO
+	// YOU PROBABLY WANT TO BE IN SANDBOX_LINUX.GO
+
+	Config          *orchestrator.SandboxConfig
+	process         NoOpProcess
+	uffdExit        chan error
+	cleanup         NoOpCleanup
+	healthy         atomic.Bool
+	Slot            network.Slot
+	EndAt           time.Time
+	StartedAt       time.Time
+	ClickhouseStore chdb.Store
+
+	useLokiMetrics       string
+	useClickhouseMetrics string
+
+	CleanupID string
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -56,6 +67,10 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 
 // Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
 func NewSandbox(
+
+	// YOU ARE IN SANDBOX_OTHER.GO
+	// YOU PROBABLY WANT TO BE IN SANDBOX_LINUX.GO
+
 	ctx context.Context,
 	tracer trace.Tracer,
 	dns *dns.DNS,
@@ -69,6 +84,9 @@ func NewSandbox(
 	baseTemplateID string,
 	clientID string,
 	devicePool *nbd.DevicePool,
+	clickhouseStore chdb.Store,
+	useLokiMetrics string,
+	useClickhouseMetrics string,
 ) (*Sandbox, *Cleanup, error) {
 	return nil, nil, errors.New("platform does not support sandbox")
 }

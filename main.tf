@@ -170,6 +170,12 @@ module "nomad" {
   nomad_port              = var.nomad_port
   otel_tracing_print      = var.otel_tracing_print
 
+  # Clickhouse
+  clickhouse_connection_string = var.clickhouse_connection_string
+  clickhouse_username          = var.clickhouse_username
+  clickhouse_password          = var.clickhouse_password
+  clickhouse_database          = var.clickhouse_database
+
   # API
   api_machine_count                         = var.api_cluster_size
   logs_proxy_address                        = "http://${module.cluster.logs_proxy_ip}"
