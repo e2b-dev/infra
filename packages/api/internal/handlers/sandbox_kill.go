@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -19,16 +21,14 @@ func (a *APIStore) deleteSnapshot(
 	ctx context.Context,
 	sandboxID string,
 	teamID uuid.UUID,
-) (*bool, error) {
+) (bool, error) {
 	env, builds, err := a.db.GetSnapshotBuilds(ctx, sandboxID, teamID)
 	if err != nil {
-		return nil, fmt.Errorf("error getting env builds for sandbox '%s': %w", sandboxID, err)
-	}
+		if errors.Is(err, db.EnvNotFound{}) {
+			return false, nil
+		}
 
-	var found bool = true
-	if env == nil {
-		found = false
-		return &found, nil
+		return true, fmt.Errorf("error getting env builds for sandbox '%s': %w", sandboxID, err)
 	}
 
 	envBuildIDs := make([]uuid.UUID, 0)
@@ -38,17 +38,17 @@ func (a *APIStore) deleteSnapshot(
 
 	dbErr := a.db.DeleteEnv(ctx, env.ID)
 	if dbErr != nil {
-		return nil, fmt.Errorf("error deleting env from db: %w", dbErr)
+		return true, fmt.Errorf("error deleting env from db: %w", dbErr)
+	}
+
+	deleteJobErr := a.templateManager.DeleteBuilds(ctx, envBuildIDs)
+	if deleteJobErr != nil {
+		return true, fmt.Errorf("error deleting builds from storage: %w", deleteJobErr)
 	}
 
 	a.templateCache.Invalidate(env.ID)
 
-	deleteJobErr := a.templateManager.DeleteBuilds(ctx, envBuildIDs)
-	if deleteJobErr != nil {
-		return nil, fmt.Errorf("error deleting builds from storage: %w", deleteJobErr)
-	}
-
-	return &found, nil
+	return true, nil
 }
 
 func (a *APIStore) DeleteSandboxesSandboxID(
@@ -81,8 +81,8 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		// remove running sandbox from the orchestrator
 		sandboxExists := a.orchestrator.DeleteInstance(ctx, sandboxID, false)
 		if !sandboxExists {
-      telemetry.ReportError(ctx, fmt.Errorf("sandbox '%s' not found", sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error killing sandbox - sandbox '%s' was not found", sandboxID))
+			telemetry.ReportError(ctx, fmt.Errorf("sandbox '%s' not found", sandboxID))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error deleting sandbox - sandbox '%s' was not found", sandboxID))
 
 			return
 		}
@@ -105,7 +105,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 
 	// remove any snapshots when the sandbox is not running
 	snapshotExists, deleteSnapshotErr := a.deleteSnapshot(ctx, sandboxID, teamID)
-	if snapshotExists != nil && !*snapshotExists {
+	if !snapshotExists {
 		telemetry.ReportError(ctx, fmt.Errorf("snapshot for sandbox '%s' not found", sandboxID))
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error deleting sandbox - sandbox '%s' not found", sandboxID))
 
