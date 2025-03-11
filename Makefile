@@ -183,3 +183,11 @@ grafana-apply:
 	@ printf "Applying Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	cd terraform/grafana && make apply && cd - || cd -
 
+.PHONY: connect-orchestrator
+connect-orchestrator:
+	CLIENT_IG=$$(gcloud compute instance-groups list \
+		--filter="name~'^.*client.*'" \
+		--format='value(name)' \
+		--zones=$(GCP_ZONE) | head -n1) && \
+	INSTANCE_ID=$$(gcloud compute instance-groups list-instances "$$CLIENT_IG" --zone=$(GCP_ZONE) --format='value(instance)' | head -n1) && \
+	gcloud compute ssh "$$INSTANCE_ID" --zone=$(GCP_ZONE) -- -NL 5008:localhost:5008  -o PermitLocalCommand=yes -o LocalCommand="echo 'SSH tunnel established'"
