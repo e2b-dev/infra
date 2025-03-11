@@ -119,6 +119,9 @@ module "cluster" {
 
   labels = var.labels
   prefix = var.prefix
+
+  clickhouse_cluster_size = var.clickhouse_cluster_size
+  clickhouse_machine_type = var.clickhouse_machine_type
 }
 
 module "api" {

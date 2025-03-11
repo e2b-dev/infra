@@ -16,6 +16,7 @@ variable "gcp_zone" {
 variable "cluster_name" {
   description = "The name of the Nomad cluster (e.g. nomad-stage). This variable is used to namespace all resources created by this module."
   type        = string
+  default     = "clickhouse"
 }
 
 variable "machine_type" {

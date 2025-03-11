@@ -48,6 +48,23 @@ variable "api_machine_type" {
   type = string
 }
 
+variable "clickhouse_image_family" {
+  type    = string
+  default = "e2b-orch"
+}
+
+variable "clickhouse_cluster_size" {
+  type = number
+}
+
+variable "clickhouse_machine_type" {
+  type = string
+}
+variable "clickhouse_cluster_name" {
+  type    = string
+  default = "clickhouse"
+}
+
 variable "build_image_family" {
   type    = string
   default = "e2b-orch"

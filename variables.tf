@@ -246,3 +246,13 @@ variable "clickhouse_database" {
   type        = string
   description = "The database for the ClickHouse database"
 }
+
+variable "clickhouse_cluster_size" {
+  type        = number
+  description = "The size of the ClickHouse cluster"
+}
+
+variable "clickhouse_machine_type" {
+  type        = string
+  description = "The machine type for the ClickHouse cluster"
+}

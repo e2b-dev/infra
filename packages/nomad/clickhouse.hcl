@@ -1,7 +1,7 @@
 job "clickhouse" {
   datacenters = ["${zone}"]
   type        = "service"
-  node_pool = "api"
+  node_pool = "clickhouse"
 
 
   group "clickhouse" {
