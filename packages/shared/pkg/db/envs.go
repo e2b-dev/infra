@@ -194,8 +194,11 @@ func (db *DB) GetRunningEnvBuild(ctx context.Context, envID string, excludedBuil
 		Order(models.Desc(envbuild.FieldCreatedAt)).
 		First(ctx)
 
-	if err != nil {
-		return nil, fmt.Errorf("failed to get latest env builds '%s': %w", envID, err)
+	notFound := models.IsNotFound(err)
+	if notFound {
+		return nil, TemplateBuildNotFound{}
+	} else if err != nil {
+		return nil, fmt.Errorf("error during env build fetch '%s': %w", envID, err)
 	}
 
 	return dbBuild, nil
