@@ -182,3 +182,6 @@ grafana-apply:
 	@ printf "Applying Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	cd terraform/grafana && make apply && cd - || cd -
 
+.PHONY: connect-orchestrator
+connect-orchestrator:
+	$(MAKE) -C tests/integration connect-orchestrator
