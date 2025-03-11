@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -47,8 +46,7 @@ type SandboxesListResult struct {
 }
 
 func generateCursor(sandbox api.ListedSandbox) string {
-	// Use RFC3339Nano format for consistent timestamp formatting
-	cursor := fmt.Sprintf("%s__%s", sandbox.StartedAt.Format(time.RFC3339Nano), sandbox.SandboxID)
+	cursor := fmt.Sprintf("%s__%s", sandbox.StartedAt, sandbox.SandboxID)
 	return base64.URLEncoding.EncodeToString([]byte(cursor))
 }
 
