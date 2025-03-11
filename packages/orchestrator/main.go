@@ -98,7 +98,7 @@ func main() {
 
 	clientID := consul.GetClientID()
 
-	srv, err := server.New(ctx, port, clientID)
+	srv, err := server.New(ctx, port, clientID, commitSHA)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
