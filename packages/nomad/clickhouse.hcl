@@ -7,10 +7,9 @@ job "clickhouse" {
   group "clickhouse" {
 
     update {
-      max_parallel = 1
-
-      min_healthy_time = "10s"
-      healthy_deadline = "30s"
+      max_parallel     = 2
+      min_healthy_time = "30s"
+      healthy_deadline = "4m"
 
       auto_revert = true
     }
@@ -50,6 +49,7 @@ job "clickhouse" {
     task "clickhouse-server" {
       driver = "docker"
 
+      kill_timeout = "120s"
 
       resources {
         cpu    = 500
