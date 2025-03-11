@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"log"
 	"os"
 	"os/signal"
@@ -14,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -52,6 +52,8 @@ func main() {
 	}()
 
 	dnsServer := dns.New()
+	proxyServer := proxy.New(3333)
+
 	go func() {
 		log.Printf("Starting DNS server")
 
@@ -88,6 +90,7 @@ func main() {
 			*buildId,
 			*sandboxId+"-"+strconv.Itoa(v),
 			dnsServer,
+			proxyServer,
 			time.Duration(*keepAlive)*time.Second,
 			networkPool,
 			templateCache,
