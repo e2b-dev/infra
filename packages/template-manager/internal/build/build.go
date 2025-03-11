@@ -52,7 +52,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 
 	logsWriter := template.BuildLogsWriter
 
-	// Remove local template files if build fails
+	// Remove local template files when exiting
 	defer func() {
 		removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 		defer cancel()
