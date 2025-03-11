@@ -57,6 +57,8 @@ type Sandbox struct {
 
 	useLokiMetrics       string
 	useClickhouseMetrics string
+
+	CleanupID string
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {

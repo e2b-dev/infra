@@ -74,7 +74,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
-
 	go func() {
 		waitErr := sbx.Wait()
 		if waitErr != nil {
@@ -86,7 +85,19 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
 		}
 
-		s.sandboxes.Remove(req.Sandbox.SandboxId)
+		// Remove the sandbox from cache only if the start time is the same as the requested start time.
+		// This prevents us from accidentally removing started sandbox (via resume) from the cache if cleanup is taking longer than the request timeout.
+		s.sandboxes.RemoveCb(req.Sandbox.SandboxId, func(_ string, v *sandbox.Sandbox, exists bool) bool {
+			if !exists {
+				return false
+			}
+
+			if v == nil {
+				return false
+			}
+
+			return sbx.CleanupID == v.CleanupID
+		})
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
 	}()
