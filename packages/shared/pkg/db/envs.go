@@ -192,7 +192,6 @@ func (db *DB) GetRunningEnvBuild(ctx context.Context, envID string, excludedBuil
 			),
 		).
 		Order(models.Desc(envbuild.FieldCreatedAt)).
-		Limit(10).
 		First(ctx)
 
 	if err != nil {
@@ -208,7 +207,6 @@ func (db *DB) GetEnvBuild(ctx context.Context, buildID uuid.UUID) (build *models
 		EnvBuild.
 		Query().
 		Where(envbuild.ID(buildID)).
-		Limit(1).
 		First(ctx)
 
 	notFound := models.IsNotFound(err)
