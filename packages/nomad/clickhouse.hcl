@@ -20,9 +20,11 @@ job "clickhouse" {
     network {
       port "clickhouse" {
         to = 9000
+        static = 9000
       }
       
       port "clickhouse_http" {
+        static = 8123
         to = 8123
       }
     }
@@ -51,7 +53,7 @@ job "clickhouse" {
 
       resources {
         cpu    = 500
-        memory = 1024
+        memory = 2048
       }
 
       config {
@@ -66,7 +68,7 @@ job "clickhouse" {
         volumes = [
           "local/config.xml:/etc/clickhouse-server/config.d/gcs.xml",
           # disabled while testing but will pass password to orchestrator in the future
-          # "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
+          "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
         ]
       }
 
