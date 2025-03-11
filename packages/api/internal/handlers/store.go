@@ -50,7 +50,6 @@ type APIStore struct {
 	Tracer               trace.Tracer
 	orchestrator         *orchestrator.Orchestrator
 	templateManager      *template_manager.TemplateManager
-	buildCache           *builds.BuildCache
 	db                   *db.DB
 	lokiClient           *loki.DefaultClient
 	templateCache        *templatecache.TemplateCache
