@@ -263,13 +263,13 @@ module "clickhouse_cluster" {
 
   environment = var.environment
 
-  cluster_name     = "${var.prefix}orch-api"
-  cluster_size     = var.api_cluster_size
+  cluster_name     = "${var.prefix}clickhouse"
+  cluster_size     = var.clickhouse_cluster_size
   cluster_tag_name = var.cluster_tag_name
   gcp_zone         = var.gcp_zone
 
-  machine_type = var.api_machine_type
-  image_family = var.api_image_family
+  machine_type = var.clickhouse_machine_type
+  image_family = var.clickhouse_image_family
 
   network_name = var.network_name
 
