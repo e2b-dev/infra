@@ -431,11 +431,3 @@ resource "nomad_job" "clickhouse" {
   })
 }
 
-resource "nomad_job" "clickhouse_load_test" {
-  jobspec = templatefile("${path.module}/clickhouse-load-test.hcl", {
-    username = "clickhouse"
-    password = random_password.clickhouse_password.result
-    zone     = var.gcp_zone
-
-  })
-}
