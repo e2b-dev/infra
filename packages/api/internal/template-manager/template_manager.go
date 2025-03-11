@@ -129,24 +129,21 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 			return
 		}
 
-		if status.Done {
-			// marked as finished but failed
-			if status.Failed {
-				err = tm.db.EnvBuildSetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
-				if err != nil {
-					logger.Error("Error when setting build status", zap.Error(err))
-				}
-
-				logger.Error("Template build failed according to status")
-				return
+		// build failed
+		if status.GetStatus() == template_manager.TemplateBuildState_Failed {
+			err = tm.db.EnvBuildSetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
+			if err != nil {
+				logger.Error("Error when setting build status", zap.Error(err))
 			}
 
-			if status.Metadata == nil {
-				logger.Error("Metadata not found in template build status")
-				return
-			}
+			logger.Error("Template build failed according to status")
+			return
+		}
 
-			err = tm.db.FinishEnvBuild(childCtx, templateID, buildID, int64(status.Metadata.RootfsSizeKey), status.Metadata.EnvdVersionKey)
+		// build completed
+		if status.GetStatus() == template_manager.TemplateBuildState_Completed {
+			meta := status.GetMetadata()
+			err = tm.db.FinishEnvBuild(childCtx, templateID, buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
 			if err != nil {
 				logger.Error("Error when finishing build", zap.Error(err))
 				return

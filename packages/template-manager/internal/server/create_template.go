@@ -58,7 +58,7 @@ func (s *serverStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 
 	go func() {
-		err = s.builder.Builder(childCtx, template, config.TemplateID, config.BuildID)
+		err = s.builder.Build(childCtx, template, config.TemplateID, config.BuildID)
 		if err != nil {
 			cacheErr := s.buildCache.SetFailed(config.TemplateID, config.BuildID)
 			if cacheErr != nil {
