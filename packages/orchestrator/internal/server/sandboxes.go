@@ -74,7 +74,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
-
 	go func() {
 		waitErr := sbx.Wait()
 		if waitErr != nil {
@@ -97,7 +96,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 				return false
 			}
 
-			return req.StartTime.AsTime().Equal(sbx.StartedAt)
+			return sbx.CleanupID == v.CleanupID
 		})
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
