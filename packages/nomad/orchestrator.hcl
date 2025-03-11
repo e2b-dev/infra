@@ -25,6 +25,11 @@ job "orchestrator" {
       }
     }
 
+    service {
+      name = "orchestrator-proxy"
+      port = "${proxy_port}"
+    }
+
     task "start" {
       driver = "raw_exec"
 
@@ -45,7 +50,7 @@ job "orchestrator" {
 
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port}"]
+        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port} --proxy-port ${proxy_port}"]
       }
 
       artifact {
