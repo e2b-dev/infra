@@ -89,7 +89,7 @@ func New(
 		})
 
 		if err != nil {
-			zap.L().Error("Error connecting to local node, make sure to run 'make connect-orchestrator' to connect to the node remotely before starting the local API server", zap.Error(err))
+			zap.L().Error("Error connecting to local node. If you're starting the API server locally, make sure you run 'make connect-orchestrator' to connect to the node remotely before starting the local API server.", zap.Error(err))
 			return nil, err
 		}
 	} else {
