@@ -104,7 +104,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 			return sbx.CleanupID == v.CleanupID
 		})
 
-		sbxlogger.E(sbx).Info("Sandbox killed")
+		sbxlogger.E(sbx).Info("sandbox removed from cache (lifecycle/process)", zap.String("sandbox_id", req.Sandbox.SandboxId), zap.String("node_id", consul.GetClientID()))
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
