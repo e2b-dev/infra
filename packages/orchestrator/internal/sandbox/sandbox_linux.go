@@ -65,6 +65,8 @@ type Sandbox struct {
 
 	healthcheckCtx *utils.LockableCancelableContext
 	healthy        atomic.Bool
+
+	CleanupID string
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -255,6 +257,7 @@ func NewSandbox(
 		cleanup:        cleanup,
 		healthcheckCtx: healthcheckCtx,
 		healthy:        atomic.Bool{}, // defaults to `false`
+		CleanupID:      uuid.New().String(),
 	}
 	// By default, the sandbox should be healthy, if the status change we report it.
 	sbx.healthy.Store(true)

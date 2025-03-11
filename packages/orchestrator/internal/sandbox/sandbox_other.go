@@ -40,6 +40,9 @@ func (m *NoOpCleanup) Run() error {
 }
 
 type Sandbox struct {
+	// YOU ARE IN SANDBOX_OTHER.GO
+	// YOU PROBABLY WANT TO BE IN SANDBOX_LINUX.GO
+
 	Config    *orchestrator.SandboxConfig
 	process   NoOpProcess
 	uffdExit  chan error
@@ -48,6 +51,11 @@ type Sandbox struct {
 	Slot      network.Slot
 	EndAt     time.Time
 	StartedAt time.Time
+
+	useLokiMetrics       string
+	useClickhouseMetrics string
+
+	CleanupID string
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
