@@ -37,10 +37,11 @@ type client struct {
 }
 
 // InitOTLPExporter initializes an OTLP exporter, and configures the corresponding trace providers.
-func InitOTLPExporter(ctx context.Context, serviceName, serviceVersion string) func(ctx context.Context) error {
+func InitOTLPExporter(ctx context.Context, serviceName, serviceVersion string, instanceID string) func(ctx context.Context) error {
 	attributes := []attribute.KeyValue{
 		semconv.ServiceName(serviceName),
 		semconv.ServiceVersion(serviceVersion),
+		semconv.ServiceInstanceID(instanceID),
 		semconv.TelemetrySDKName("otel"),
 		semconv.TelemetrySDKLanguageGo,
 	}
