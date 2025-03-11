@@ -410,13 +410,6 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
   service_account_email = google_service_account.clickhouse_service_account.email
 }
 
-# generate password
-resource "random_password" "clickhouse_password" {
-  length  = 32
-  special = false
-}
-
-
 # Add this with your other Nomad jobs
 resource "nomad_job" "clickhouse" {
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
