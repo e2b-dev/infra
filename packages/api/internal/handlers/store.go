@@ -320,6 +320,13 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) 
 	userID := a.GetUserID(middleware.GetGinContext(ctx))
 
 	team, tier, err := a.db.GetTeamByIDAndUserIDAuth(ctx, teamID, userID)
+	if errors.Is(err, &db.TeamUsageError{}) {
+		return authcache.AuthTeamInfo{}, &api.APIError{
+			Err:       fmt.Errorf("failed getting team: %w", err),
+			ClientMsg: "Team is blocked",
+			Code:      http.StatusUnauthorized,
+		}
+	}
 	if err != nil {
 		return authcache.AuthTeamInfo{}, &api.APIError{
 			Err:       fmt.Errorf("failed getting team: %w", err),

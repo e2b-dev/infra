@@ -10,23 +10,25 @@ import (
 	"github.com/google/uuid"
 )
 
+type TeamUsageError struct {
+	message string
+}
+
+func (e *TeamUsageError) Error() string {
+	return e.message
+}
+
 func validateTeamUsage(team *models.Team) error {
 	if team.IsBanned {
-		errMsg := fmt.Errorf("team is banned")
-
-		return errMsg
+		return &TeamUsageError{message: "team is banned"}
 	}
 
 	if team.IsBlocked {
 		if team.BlockedReason == nil {
-			errMsg := fmt.Errorf("team was blocked")
-
-			return errMsg
+			return &TeamUsageError{message: "team was blocked"}
 		}
 
-		errMsg := fmt.Errorf("team was blocked, reason: %s", *team.BlockedReason)
-
-		return errMsg
+		return &TeamUsageError{message: fmt.Sprintf("team was blocked, reason: %s", *team.BlockedReason)}
 	}
 
 	return nil
