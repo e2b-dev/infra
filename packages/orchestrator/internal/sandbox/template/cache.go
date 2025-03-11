@@ -18,9 +18,12 @@ import (
 const (
 	templateExpiration = time.Hour * 25
 
-	buildCacheTTL               = time.Hour * 25
-	buildCacheDelayEviction     = time.Second * 60
-	buildCacheMaxUsedPercentage = 90.0
+	buildCacheTTL           = time.Hour * 25
+	buildCacheDelayEviction = time.Second * 60
+
+	// buildCacheMaxUsedPercentage the maximum percentage of the cache disk storage
+	// that can be used before the cache starts evicting items.
+	buildCacheMaxUsedPercentage = 75.0
 )
 
 type Cache struct {
