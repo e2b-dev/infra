@@ -45,16 +45,16 @@ resource "google_secret_manager_secret" "postgres_connection_string" {
   }
 }
 
-resource "google_secret_manager_secret" "supabase_jwt_secret" {
-  secret_id = "${var.prefix}supabase-jwt-secret"
+resource "google_secret_manager_secret" "supabase_jwt_secrets" {
+  secret_id = "${var.prefix}supabase-jwt-secrets"
 
   replication {
     auto {}
   }
 }
 
-resource "google_secret_manager_secret_version" "supabase_jwt_secret" {
-  secret      = google_secret_manager_secret.supabase_jwt_secret.name
+resource "google_secret_manager_secret_version" "supabase_jwt_secrets" {
+  secret      = google_secret_manager_secret.supabase_jwt_secrets.name
   secret_data = " "
 
   lifecycle {

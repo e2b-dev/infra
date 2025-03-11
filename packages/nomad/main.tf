@@ -3,8 +3,8 @@ data "google_secret_manager_secret_version" "postgres_connection_string" {
   secret = var.postgres_connection_string_secret_name
 }
 
-data "google_secret_manager_secret_version" "supabase_jwt_secret" {
-  secret = var.supabase_jwt_secret_secret_name
+data "google_secret_manager_secret_version" "supabase_jwt_secrets" {
+  secret = var.supabase_jwt_secrets_secret_name
 }
 
 data "google_secret_manager_secret_version" "posthog_api_key" {
@@ -39,7 +39,7 @@ resource "nomad_job" "api" {
     port_number                   = var.api_port.port
     api_docker_image              = var.api_docker_image_digest
     postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-    supabase_jwt_secret           = data.google_secret_manager_secret_version.supabase_jwt_secret.secret_data
+    supabase_jwt_secrets          = data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data
     posthog_api_key               = data.google_secret_manager_secret_version.posthog_api_key.secret_data
     environment                   = var.environment
     analytics_collector_host      = data.google_secret_manager_secret_version.analytics_collector_host.secret_data

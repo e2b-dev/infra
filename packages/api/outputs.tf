@@ -10,8 +10,8 @@ output "postgres_connection_string_secret_name" {
   value = google_secret_manager_secret.postgres_connection_string.name
 }
 
-output "supabase_jwt_secret_secret_name" {
-  value = google_secret_manager_secret.supabase_jwt_secret.name
+output "supabase_jwt_secrets_secret_name" {
+  value = google_secret_manager_secret.supabase_jwt_secrets.name
 }
 
 output "posthog_api_key_secret_name" {
