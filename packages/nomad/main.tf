@@ -419,6 +419,7 @@ resource "random_password" "clickhouse_password" {
 
 # Add this with your other Nomad jobs
 resource "nomad_job" "clickhouse" {
+
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
     zone                = var.gcp_zone
     clickhouse_version  = "25.1.5.31" # Or make this a variable
