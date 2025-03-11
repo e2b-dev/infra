@@ -113,13 +113,6 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		telemetry.ReportCriticalError(ctx, err)
 	}
 
-	// Trigger the build in the background
-	buildContext, childSpan := a.Tracer.Start(
-		trace.ContextWithSpanContext(context.Background(), span.SpanContext()),
-		"background-build-env",
-	)
-	defer childSpan.End()
-
 	startTime := time.Now()
 	build := envDB.Edges.Builds[0]
 	startCmd := ""
@@ -130,7 +123,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	// Call the Template Manager to build the environment
 	buildErr := a.templateManager.CreateTemplate(
 		a.Tracer,
-		buildContext,
+		span.SpanContext(),
 		templateID,
 		buildUUID,
 		build.KernelVersion,
@@ -144,11 +137,11 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if buildErr != nil {
 		buildErr = fmt.Errorf("error when building env: %w", buildErr)
 		zap.L().Error("build failed", zap.Error(buildErr))
-		telemetry.ReportCriticalError(buildContext, buildErr)
+		telemetry.ReportCriticalError(ctx, buildErr)
 
-		dbErr := a.db.EnvBuildSetStatus(buildContext, templateID, buildUUID, envbuild.StatusFailed)
+		dbErr := a.db.EnvBuildSetStatus(ctx, templateID, buildUUID, envbuild.StatusFailed)
 		if dbErr != nil {
-			telemetry.ReportCriticalError(buildContext, fmt.Errorf("error when setting build status: %w", dbErr))
+			telemetry.ReportCriticalError(ctx, fmt.Errorf("error when setting build status: %w", dbErr))
 		}
 
 		return

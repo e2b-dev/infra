@@ -15,7 +15,7 @@ import (
 
 func (tm *TemplateManager) CreateTemplate(
 	t trace.Tracer,
-	ctx context.Context,
+	span trace.SpanContext,
 	templateID string,
 	buildID uuid.UUID,
 	kernelVersion,
@@ -25,12 +25,14 @@ func (tm *TemplateManager) CreateTemplate(
 	diskSizeMB,
 	memoryMB int64,
 ) error {
-	childCtx, childSpan := t.Start(ctx, "create-template",
+	ctx, ctxSpan := t.Start(
+		trace.ContextWithSpanContext(context.Background(), span),
+		"background-build-env",
 		trace.WithAttributes(
 			attribute.String("env.id", templateID),
 		),
 	)
-	defer childSpan.End()
+	defer ctxSpan.End()
 
 	features, err := sandbox.NewVersionInfo(firecrackerVersion)
 	if err != nil {
@@ -39,7 +41,7 @@ func (tm *TemplateManager) CreateTemplate(
 		return errMsg
 	}
 
-	_, err = tm.grpc.Client.TemplateCreate(childCtx, &template_manager.TemplateCreateRequest{
+	_, err = tm.grpc.Client.TemplateCreate(ctx, &template_manager.TemplateCreateRequest{
 		Template: &template_manager.TemplateConfig{
 			TemplateID:         templateID,
 			BuildID:            buildID.String(),
@@ -57,7 +59,7 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("failed to create template '%s': %w", templateID, err)
 	}
 
-	telemetry.ReportEvent(childCtx, "Template build started")
+	telemetry.ReportEvent(ctx, "Template build started")
 
 	return nil
 }
