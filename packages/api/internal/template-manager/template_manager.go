@@ -13,11 +13,15 @@ import (
 	"time"
 )
 
+type processingBuilds struct {
+	templateID string
+}
+
 type TemplateManager struct {
 	grpc       *GRPCClient
 	db         *db.DB
 	lock       sync.Mutex
-	processing map[uuid.UUID]struct{ templateID string }
+	processing map[uuid.UUID]processingBuilds
 }
 
 var (
@@ -36,7 +40,7 @@ func New(db *db.DB) (*TemplateManager, error) {
 		grpc:       client,
 		db:         db,
 		lock:       sync.Mutex{},
-		processing: make(map[uuid.UUID]struct{ templateID string }),
+		processing: make(map[uuid.UUID]processingBuilds),
 	}, nil
 }
 
@@ -168,6 +172,6 @@ func (tm *TemplateManager) createInProcessingQueue(buildID uuid.UUID, templateID
 		return true
 	}
 
-	tm.processing[buildID] = struct{ templateID string }{templateID: templateID}
+	tm.processing[buildID] = processingBuilds{templateID: templateID}
 	return false
 }
