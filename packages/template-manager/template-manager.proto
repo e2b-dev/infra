@@ -34,8 +34,8 @@ message TemplateBuildDeleteRequest {
 }
 
 message TemplateBuildMetadata {
-  int32 rootfsSizeKey = 3;
-  string envdVersionKey = 4;
+  int32 rootfsSizeKey = 1;
+  string envdVersionKey = 2;
 }
 
 // Logs from template build
