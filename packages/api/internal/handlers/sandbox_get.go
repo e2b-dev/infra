@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -28,7 +29,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	if err == nil {
 		// Check if sandbox belongs to the team
 		if *info.TeamID != team.ID {
-			a.logger.Errorf("sandbox %s doesn't exist or you don't have access to it", id)
+			zap.L().Error("sandbox %s doesn't exist or you don't have access to it", zap.String("sandbox_id", id))
 			c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 			return
 		}
@@ -57,7 +58,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			StartedAt:  info.StartTime,
 			CpuCount:   cpuCount,
 			MemoryMB:   memoryMB,
-			EndAt:      info.EndTime,
+			EndAt:      info.GetEndTime(),
 			State:      api.Running,
 		}
 
@@ -73,7 +74,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	// If sandbox not found try to get the latest snapshot
 	snapshot, build, err := a.db.GetLastSnapshot(ctx, sandboxId, team.ID)
 	if err != nil {
-		a.logger.Errorf("error getting last snapshot for sandbox %s: %s", id, err)
+		zap.L().Error("error getting last snapshot for sandbox", zap.String("sandbox_id", id), zap.Error(err))
 		c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 		return
 	}

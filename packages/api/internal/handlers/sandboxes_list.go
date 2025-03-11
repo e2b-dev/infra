@@ -85,7 +85,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 				StartedAt:  info.StartTime,
 				CpuCount:   cpuCount,
 				MemoryMB:   memoryMB,
-				EndAt:      info.EndTime,
+				EndAt:      info.GetEndTime(),
 				State:      api.Running,
 			}
 
@@ -194,7 +194,7 @@ func filterSandboxes(sandboxes []api.ListedSandbox, filter SandboxesListFilter) 
 		}
 
 		// Trim slice
-		sandboxes = sandboxes[:n]		
+		sandboxes = sandboxes[:n]
 	}
 
 	return sandboxes, nil
@@ -215,7 +215,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		State: params.State,
 	})
 	if err != nil {
-		a.logger.Error("Error fetching sandboxes", zap.Error(err))
+		zap.L().Error("Error fetching sandboxes", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
 
 		return
