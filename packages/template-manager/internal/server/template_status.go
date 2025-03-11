@@ -15,8 +15,8 @@ func (s *serverStore) TemplateBuildStatus(in *template_manager.TemplateStatusReq
 	ctx, cancel := context.WithTimeout(stream.Context(), statusTimeout)
 	defer cancel()
 
-	childCtx, childSpan := s.tracer.Start(ctx, "template-build-status-request")
-	defer childSpan.End()
+	ctx, ctxSpan := s.tracer.Start(ctx, "template-build-status-request")
+	defer ctxSpan.End()
 
 	logger := s.logger.With(zap.String("buildID", in.BuildID), zap.String("envID", in.TemplateID))
 
@@ -50,7 +50,7 @@ func (s *serverStore) TemplateBuildStatus(in *template_manager.TemplateStatusReq
 
 		if err != nil {
 			logger.Error("Error while sending status stream back to API", zap.Error(err))
-			telemetry.ReportError(childCtx, err)
+			telemetry.ReportError(ctx, err)
 			return err
 		}
 
