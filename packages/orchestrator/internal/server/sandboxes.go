@@ -85,8 +85,9 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
 		}
 
-		// Remove the sandbox from cache only if the start time is the same as the requested start time.
+		// Remove the sandbox from cache only if the cleanup IDs match.
 		// This prevents us from accidentally removing started sandbox (via resume) from the cache if cleanup is taking longer than the request timeout.
+		// This could have caused the "invisible" sandboxes that are not in orchestrator or API, but are still on client.
 		s.sandboxes.RemoveCb(req.Sandbox.SandboxId, func(_ string, v *sandbox.Sandbox, exists bool) bool {
 			if !exists {
 				return false
