@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"net/http"
 	"os"
 	"sync/atomic"
@@ -86,6 +87,7 @@ func NewSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
 	dns *dns.DNS,
+	proxy *proxy.SessionProxy,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,
@@ -314,11 +316,13 @@ func NewSandbox(
 	sbx.StartedAt = time.Now()
 
 	dns.Add(config.SandboxId, ips.HostIP())
+	proxy.AddSandbox(config.SandboxId, ips.HostIP())
 
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
 
 	cleanup.Add(func() error {
 		dns.Remove(config.SandboxId, ips.HostIP())
+		proxy.RemoveSandbox(config.SandboxId)
 
 		return nil
 	})

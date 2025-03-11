@@ -5,12 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -24,8 +26,9 @@ import (
 )
 
 const (
-	defaultPort = 5008
-	ServiceName = "orchestrator"
+	defaultPort      = 5008
+	defaultProxyPort = 5007
+	ServiceName      = "orchestrator"
 )
 
 var commitSHA string
@@ -38,8 +41,10 @@ func main() {
 	defer sigCancel()
 
 	var port uint
-
 	flag.UintVar(&port, "port", defaultPort, "orchestrator server port")
+
+	var proxyPort uint
+	flag.UintVar(&proxyPort, "proxy-port", defaultProxyPort, "orchestrator proxy port")
 	flag.Parse()
 
 	wg := &sync.WaitGroup{}
@@ -97,8 +102,9 @@ func main() {
 	log.Println("Starting orchestrator", "commit", commitSHA)
 
 	clientID := consul.GetClientID()
+	sessionProxy := proxy.New(proxyPort)
 
-	srv, err := server.New(ctx, port, clientID)
+	srv, err := server.New(ctx, port, clientID, sessionProxy)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -147,6 +153,32 @@ func main() {
 			log.Printf("grpc service: %v", err)
 			exitCode.Add(1)
 		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		errChan := make(chan error, 1)
+		go func() {
+			err := sessionProxy.Start()
+			errChan <- err
+		}()
+
+		select {
+		case <-ctx.Done():
+		case <-errChan:
+			if err != nil {
+				zap.L().Error("session proxy failed", zap.Error(err))
+				exitCode.Add(1)
+				cancel()
+			}
+		}
+
+		// close session proxy, wait 5 seconds until all connections are closed
+		shutdownCtx, shutdownCtxCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCtxCancel()
+		defer sessionProxy.Shutdown(shutdownCtx)
 	}()
 
 	wg.Wait()

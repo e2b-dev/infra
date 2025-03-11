@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"log"
 	"os"
 	"os/signal"
@@ -113,6 +114,7 @@ func mockSnapshot(
 	buildId,
 	sandboxId string,
 	dns *dns.DNS,
+	proxy *proxy.SessionProxy,
 	keepAlive time.Duration,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
@@ -137,6 +139,7 @@ func mockSnapshot(
 		childCtx,
 		tracer,
 		dns,
+		proxy,
 		networkPool,
 		templateCache,
 		&orchestrator.SandboxConfig{
@@ -234,7 +237,7 @@ func mockSnapshot(
 		return fmt.Errorf("failed to add snapshot to template cache: %w", err)
 	}
 
-	fmt.Println("Add snapshot to template cache time: ", time.Since(snapshotTime).Milliseconds())
+	fmt.Println("AddSandbox snapshot to template cache time: ", time.Since(snapshotTime).Milliseconds())
 
 	start = time.Now()
 
@@ -242,6 +245,7 @@ func mockSnapshot(
 		childCtx,
 		tracer,
 		dns,
+		proxy,
 		networkPool,
 		templateCache,
 		&orchestrator.SandboxConfig{

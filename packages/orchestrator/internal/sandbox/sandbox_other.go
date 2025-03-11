@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"net/http"
 	"sync/atomic"
 	"time"
@@ -74,6 +75,7 @@ func NewSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
 	dns *dns.DNS,
+	proxy *proxy.SessionProxy,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,
