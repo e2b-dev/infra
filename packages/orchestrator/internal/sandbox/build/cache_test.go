@@ -243,11 +243,12 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	assert.True(t, found)
 
 	// Delete oldest item
-	store.deleteOldestFromCache()
+	_, err = store.deleteOldestFromCache()
+	assert.NoError(t, err)
 
 	assert.True(t, store.isBeingDeleted(diff.CacheKey()))
 	// Wait for removal trigger of diff
-	time.Sleep(delay + time.Microsecond)
+	time.Sleep(delay + time.Second)
 
 	// Verify oldest item is deleted
 	found = store.Has(diff)
@@ -261,11 +262,12 @@ func TestDiffStoreOldestFromCache(t *testing.T) {
 	store.Add(diff3)
 
 	// Delete oldest item
-	store.deleteOldestFromCache()
+	_, err = store.deleteOldestFromCache()
+	assert.NoError(t, err)
 
 	assert.True(t, store.isBeingDeleted(diff2.CacheKey()))
 	// Wait for removal trigger of diff
-	time.Sleep(delay + time.Microsecond)
+	time.Sleep(delay + time.Second)
 
 	// Verify oldest item is deleted
 	found = store.Has(diff2)
