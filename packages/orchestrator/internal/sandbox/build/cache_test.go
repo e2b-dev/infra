@@ -215,3 +215,62 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	found = store.Has(diff)
 	assert.True(t, found)
 }
+
+func TestDiffStoreOldestFromCache(t *testing.T) {
+	cachePath := createTempDir(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	ttl := 60 * time.Second
+	delay := 4 * time.Second
+	store, err := NewDiffStore(
+		ctx,
+		cachePath,
+		ttl,
+		delay,
+		100.0,
+	)
+	t.Cleanup(store.Close)
+	assert.NoError(t, err)
+
+	// Add items to the cache
+	diff := newDiff(t, cachePath, "build-test-id", Rootfs, blockSize)
+	store.Add(diff)
+	diff2 := newDiff(t, cachePath, "build-test-id-2", Rootfs, blockSize)
+	store.Add(diff2)
+
+	found := store.Has(diff)
+	assert.True(t, found)
+
+	// Delete oldest item
+	store.deleteOldestFromCache()
+
+	assert.True(t, store.isBeingDeleted(diff.CacheKey()))
+	// Wait for removal trigger of diff
+	time.Sleep(delay + time.Microsecond)
+
+	// Verify oldest item is deleted
+	found = store.Has(diff)
+	assert.False(t, found)
+
+	found = store.Has(diff2)
+	assert.True(t, found)
+
+	// Add another item to the cache
+	diff3 := newDiff(t, cachePath, "build-test-id-3", Rootfs, blockSize)
+	store.Add(diff3)
+
+	// Delete oldest item
+	store.deleteOldestFromCache()
+
+	assert.True(t, store.isBeingDeleted(diff2.CacheKey()))
+	// Wait for removal trigger of diff
+	time.Sleep(delay + time.Microsecond)
+
+	// Verify oldest item is deleted
+	found = store.Has(diff2)
+	assert.False(t, found)
+
+	found = store.Has(diff3)
+	assert.True(t, found)
+}

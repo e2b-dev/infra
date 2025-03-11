@@ -23,6 +23,7 @@ type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[string, Diff]
 	ctx       context.Context
+	close     chan struct{}
 
 	// pdSizes is used to keep track of the diff sizes
 	// that are scheduled for deletion, as this won't show up in the disk usage.
@@ -45,12 +46,14 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 		cachePath: cachePath,
 		cache:     cache,
 		ctx:       ctx,
+		close:     make(chan struct{}),
 		pdSizes:   make(map[string]*deleteDiff),
 		pdDelay:   delay,
 	}
 
 	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, Diff]) {
 		buildData := item.Value()
+		// buildData will be deleted by calling buildData.Close()
 		defer ds.resetDelete(item.Key())
 
 		err = buildData.Close()
@@ -66,6 +69,7 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 }
 
 func (s *DiffStore) Close() {
+	close(s.close)
 	s.cache.Stop()
 }
 
@@ -116,6 +120,8 @@ func (s *DiffStore) startDiskSpaceEviction(threshold float64) {
 	for {
 		select {
 		case <-s.ctx.Done():
+			return
+		case <-s.close:
 			return
 		case <-timer.C:
 			dUsed, dTotal, err := diskUsage(s.cachePath)
