@@ -128,11 +128,6 @@ variable "root_volume_disk_type" {
 
 # Update Policy
 
-variable "instance_group_update_policy_type" {
-  description = "The type of update process. You can specify either PROACTIVE so that the instance group manager proactively executes actions in order to bring instances to their target versions or OPPORTUNISTIC so that no action is proactively executed but the update will be performed as part of other actions (for example, resizes or recreateInstances calls)."
-  type        = string
-  default     = "OPPORTUNISTIC"
-}
 
 variable "instance_group_update_policy_minimal_action" {
   description = "Minimal action to be taken on an instance. You can specify either 'RESTART' to restart existing instances or 'REPLACE' to delete and create new instances from the target template. If you specify a 'RESTART', the Updater will attempt to perform that action only. However, if the Updater determines that the minimal action you specify is not enough to perform the update, it might perform a more disruptive action."

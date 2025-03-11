@@ -83,7 +83,7 @@ resource "google_compute_instance_template" "server" {
 
   labels = merge(
     var.labels,
-    (var.environment == "prod" ? {
+    (var.environment != "dev" ? {
       goog-ops-agent-policy = "v2-x86-template-1-2-0-${var.gcp_zone}"
     } : {})
   )

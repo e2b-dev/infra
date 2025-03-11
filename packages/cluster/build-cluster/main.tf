@@ -37,7 +37,7 @@ resource "google_compute_instance_group_manager" "build_cluster" {
   # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
   # a rolling update.
   update_policy {
-    type                    = var.environment == "prod" ? "OPPORUNISTIC" : "PROACTIVE"
+    type                    = var.environment == "dev" ? "PROACTIVE" : "OPPORUNISTIC"
     minimal_action          = var.instance_group_update_policy_minimal_action
     max_surge_fixed         = var.instance_group_update_policy_max_surge_fixed
     max_surge_percent       = var.instance_group_update_policy_max_surge_percent
@@ -69,7 +69,7 @@ resource "google_compute_instance_template" "build" {
 
   labels = merge(
     var.labels,
-    (var.environment == "prod" ? {
+    (var.environment != "dev" ? {
       goog-ops-agent-policy = "v2-x86-template-1-2-0-${var.gcp_zone}"
     } : {})
   )
