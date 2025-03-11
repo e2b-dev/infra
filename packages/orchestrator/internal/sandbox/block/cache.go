@@ -7,8 +7,8 @@ import (
 	"os"
 	"sort"
 	"sync"
-	"syscall"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/edsrzf/mmap-go"
@@ -224,17 +224,6 @@ func (m *Cache) dirtySortedKeys() []int64 {
 	})
 
 	return keys
-}
-
-// DirtySize returns the size of the dirty blocks in bytes.
-func (m *Cache) DirtySize() (int64, error) {
-	var blocks int64
-	m.dirty.Range(func(key, value any) bool {
-		blocks += 1
-		return true
-	})
-
-	return blocks * m.blockSize, nil
 }
 
 // FileSize returns the size of the cache on disk.
