@@ -211,7 +211,7 @@ func (db *DB) GetEnvBuild(ctx context.Context, buildID uuid.UUID) (build *models
 
 	notFound := models.IsNotFound(err)
 	if notFound {
-		return nil, fmt.Errorf("template build '%s' not found", buildID)
+		return nil, TemplateBuildNotFound{}
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to get env build '%s': %w", buildID, err)
 	}

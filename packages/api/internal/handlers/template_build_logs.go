@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"net/http"
 	"strings"
 	"time"
@@ -79,7 +81,13 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	if err != nil {
 		errMsg := fmt.Errorf("error when getting build: %w", err)
 		telemetry.ReportError(ctx, errMsg)
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Build '%s' not found", buildID))
+
+		if errors.Is(err, db.TemplateBuildNotFound{}) {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Build '%s' not found", buildID))
+			return
+		}
+
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error during build '%s'", buildID))
 		return
 	}
 
