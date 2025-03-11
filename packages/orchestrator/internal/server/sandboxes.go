@@ -76,6 +76,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		waitErr := sbx.Wait()
 		if waitErr != nil {
 			sbxlogger.I(sbx).Error("failed to wait for sandbox, cleaning up", zap.Error(waitErr))
+			s.redisClient.Set(ctx, fmt.Sprintf("sbx:%s:error", req.Sandbox.SandboxId), waitErr.Error(), 0)
 		}
 
 		cleanupErr := cleanup.Run()
@@ -166,7 +167,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	}
 
 	// Don't allow connecting to the sandbox anymore.
-	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
+	s.dns.Remove(ctx, in.SandboxId, sbx.Slot.HostIP())
 
 	// Remove the sandbox from the cache to prevent loading it again in API during the time the instance is stopping.
 	// Old comment:
@@ -220,7 +221,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
 
-	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
+	s.dns.Remove(ctx, in.SandboxId, sbx.Slot.HostIP())
 	s.sandboxes.Remove(in.SandboxId)
 
 	s.pauseMu.Unlock()

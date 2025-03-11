@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"os"
 	"sync"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
@@ -43,6 +45,8 @@ type server struct {
 	pauseMu    sync.Mutex
 	clientID   string // nomad node id
 	devicePool *nbd.DevicePool
+
+	redisClient *redis.Client
 }
 
 type Service struct {
@@ -80,7 +84,19 @@ func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 
 	// BLOCK: initialize services
 	{
-		srv.dns = dns.New()
+		var redisClient *redis.Client
+		if rurl := os.Getenv("REDIS_URL"); rurl != "" {
+			opts, err := redis.ParseURL(rurl)
+			if err != nil {
+				zap.L().Fatal("invalid redis URL", zap.String("url", rurl), zap.Error(err))
+			}
+
+			redisClient = redis.NewClient(opts)
+		} else {
+			zap.L().Warn("REDIS_URL not set, using local caches")
+		}
+
+		srv.dns = dns.New(redisClient)
 
 		opts := []logging.Option{
 			logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
@@ -117,6 +133,7 @@ func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 			templateCache: templateCache,
 			clientID:      clientID,
 			devicePool:    devicePool,
+			redisClient:   redisClient,
 		}
 	}
 
