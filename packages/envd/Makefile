@@ -2,7 +2,7 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
 BUILD := $(shell git rev-parse --short HEAD)
-LDFLAGS=-ldflags "-X=main.commit=$(BUILD)"
+LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
 
 .PHONY: init
 init:
@@ -58,3 +58,7 @@ init-generate:
 	go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
+
+.PHONY: test
+test:
+	go test -v ./...

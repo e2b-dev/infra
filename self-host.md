@@ -47,8 +47,7 @@ Check if you can use config for terraform state management
 2. Create `.env.prod`, `.env.staging`, or `.env.dev` from [`.env.template`](.env.template). You can pick any of them. Make sure to fill in the values. All are required.
 3. Run `make switch-env ENV={prod,staging,dev}` to start using your env
 4. Run `make login-gcloud` to login to `gcloud`
-5. [Create a storage bucket in Google Cloud](https://cloud.google.com/storage/docs/creating-buckets). This is the source of truth for the terraform state: Go to `console.cloud.google.com` -> Storage -> Create Bucket -> Bucket name: `e2b-terraform-state` -> Location: `US` -> Default storage class: `Standard` -> Location type: `Multi-region` -> Bucket location: `US` -> Create
-6. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
+5. Run `make init`. If this errors, run it a second time--it's due to a race condition on Terraform enabling API access for the various GCP services; this can take several seconds. A full list of services that will be enabled for API access:
    - [Secret Manager API](https://console.cloud.google.com/apis/library/secretmanager.googleapis.com)
    - [Certificate Manager API](https://console.cloud.google.com/apis/library/certificatemanager.googleapis.com)
    - [Compute Engine API](https://console.cloud.google.com/apis/library/compute.googleapis.com)
@@ -56,20 +55,20 @@ Check if you can use config for terraform state management
    - [OS Config API](https://console.cloud.google.com/apis/library/osconfig.googleapis.com)
    - [Stackdriver Monitoring API](https://console.cloud.google.com/apis/library/monitoring.googleapis.com)
    - [Stackdriver Logging API](https://console.cloud.google.com/apis/library/logging.googleapis.com)
-7. Run `make build-and-upload`
-8. Run `make copy-public-builds`. This will copy kernel and rootfs builds for Firecracker to your bucket. You can [build your own](#building-firecracker-and-uffd-from-source) kernel and Firecracker roots.
-9. Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
-10. Get Postgres database connection string from your database 
-    - e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct 
-11. Run `make migrate`
-12. Secrets are created and stored in GCP Secrets Manager. Once created, that is the source of truth--you will need to update values there to make changes. Create a secret value for the following secrets:
+6. Run `make build-and-upload`
+7. Run `make copy-public-builds`. This will copy kernel and rootfs builds for Firecracker to your bucket. You can [build your own](#building-firecracker-and-uffd-from-source) kernel and Firecracker roots.
+8. Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
+9. Get Postgres database connection string from your database 
+   - e.g. [from Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres#direct-connection): Create a new project in Supabase and go to your project in Supabase -> Settings -> Database -> Connection Strings -> Postgres -> Direct 
+10. Run `make migrate`
+11. Secrets are created and stored in GCP Secrets Manager. Once created, that is the source of truth--you will need to update values there to make changes. Create a secret value for the following secrets:
 - e2b-cloudflare-api-token
 - e2b-postgres-connection-string
-- Grafana secrets (optional)
+- e2b-grafana-api-key (optional) - read more in [grafana README](./terraform/grafana/README.md)
 - Posthog API keys for monitoring (optional)
-13. Run `make plan-without-jobs` and then `make apply`
-14. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It1 can take some time; you can check the status in the Google Cloud Console
-15. Either run 
+12. Run `make plan-without-jobs` and then `make apply`
+13. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It1 can take some time; you can check the status in the Google Cloud Console
+14. Setup data in the cluster by following one of the two 
     - `make prep-cluster` in `packages/shared` to create an initial user, etc. (You need to be logged in via [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli)). It will create a user with same information (access token, api key, etc.) as you have in E2B. 
     - You can also create a user in database, it will automatically also create a team, an API key and an access token. You will need to build template(s) for your cluster. Use [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli?activetab=versions)) and run `E2B_DOMAIN=<your-domain> e2b template build`.
 

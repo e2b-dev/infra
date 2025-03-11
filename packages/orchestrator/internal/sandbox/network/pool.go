@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
-	"os"
 
 	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -26,9 +25,11 @@ type Pool struct {
 	reusedSlots       chan Slot
 	newSlotCounter    metric.Int64UpDownCounter
 	reusedSlotCounter metric.Int64UpDownCounter
+
+	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int) (*Pool, error) {
+func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, clientID string) (*Pool, error) {
 	newSlots := make(chan Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan Slot, reusedSlotsPoolSize)
 
@@ -42,6 +43,11 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int) (*P
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}
 
+	slotStorage, err := NewStorage(slotsSize, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create slot storage: %w", err)
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	pool := &Pool{
 		newSlots:          newSlots,
@@ -50,12 +56,13 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int) (*P
 		reusedSlotCounter: reusedSlotsCounter,
 		ctx:               ctx,
 		cancel:            cancel,
+		slotStorage:       slotStorage,
 	}
 
 	go func() {
 		err := pool.populate(ctx)
 		if err != nil {
-			log.Fatalf("error when populating network slot pool: %v\n", err)
+			zap.L().Fatal("error when populating network slot pool", zap.Error(err))
 		}
 	}()
 
@@ -63,14 +70,14 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int) (*P
 }
 
 func (p *Pool) createNetworkSlot() (*Slot, error) {
-	ips, err := NewSlot()
+	ips, err := p.slotStorage.Acquire()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network: %w", err)
 	}
 
 	err = ips.CreateNetwork()
 	if err != nil {
-		releaseErr := ips.Release()
+		releaseErr := p.slotStorage.Release(ips)
 		err = errors.Join(err, releaseErr)
 
 		return nil, fmt.Errorf("failed to create network: %w", err)
@@ -87,7 +94,7 @@ func (p *Pool) populate(ctx context.Context) error {
 		default:
 			slot, err := p.createNetworkSlot()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "[network slot pool]: failed to create network: %v\n", err)
+				zap.L().Error("[network slot pool]: failed to create network", zap.Error(err))
 
 				continue
 			}
@@ -123,7 +130,7 @@ func (p *Pool) Return(slot Slot) error {
 	case p.reusedSlots <- slot:
 		p.reusedSlotCounter.Add(context.Background(), 1)
 	default:
-		err := cleanup(slot)
+		err := p.cleanup(slot)
 		if err != nil {
 			return fmt.Errorf("failed to return slot '%d': %w", slot.Idx, err)
 		}
@@ -132,7 +139,7 @@ func (p *Pool) Return(slot Slot) error {
 	return nil
 }
 
-func cleanup(slot Slot) error {
+func (p *Pool) cleanup(slot Slot) error {
 	var errs []error
 
 	err := slot.RemoveNetwork()
@@ -140,7 +147,7 @@ func cleanup(slot Slot) error {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
 	}
 
-	err = slot.Release()
+	err = p.slotStorage.Release(&slot)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("failed to release slot '%d': %w", slot.Idx, err))
 	}
@@ -152,14 +159,14 @@ func (p *Pool) Close() error {
 	p.cancel()
 
 	for slot := range p.newSlots {
-		err := cleanup(slot)
+		err := p.cleanup(slot)
 		if err != nil {
 			return fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err)
 		}
 	}
 
 	for slot := range p.reusedSlots {
-		err := cleanup(slot)
+		err := p.cleanup(slot)
 		if err != nil {
 			return fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err)
 		}

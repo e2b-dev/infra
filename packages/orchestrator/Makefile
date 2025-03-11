@@ -19,18 +19,31 @@ generate:
 
 .PHONY: build
 build:
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	@rm -rf .shared/
 	@cp -r ../shared .shared/
-	@docker build --platform linux/amd64 --output=bin .
+	@docker build --platform linux/amd64 --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" .
 	@rm -rf .shared/
 
 .PHONY: build-local
 build-local:
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/orchestrator .
+	# Allow for passing commit sha directly for docker builds
+	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
 
 .PHONY: build-debug
 build-debug:
 	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -race -gcflags=all="-N -l" -o bin/orchestrator .
+
+.PHONY: run-debug
+run-debug:
+	make build-debug
+	sudo -E GOTRACEBACK=crash \
+	GODEBUG=madvdontneed=1 \
+	NODE_ID="test-client" \
+	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
+	ENVD_TIMEOUT=$(ENVD_TIMEOUT) \
+	./bin/orchestrator
 
 .PHONY: upload
 upload:
@@ -68,3 +81,7 @@ kill-old:
 .PHONY: mock-snapshot
 mock-snapshot:
 	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="test-client" go run cmd/mock-snapshot/mock.go  -template 5wzg6c91u51yaebviysf -build "f0370054-b669-4d7e-b33b-573d5287c6ef" -alive 1 -count 1
+
+.PHONY: test
+test:
+	go test -v ./...

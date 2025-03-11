@@ -24,8 +24,8 @@ job "client-proxy" {
         type     = "http"
         name     = "health"
         path     = "/"
-        interval = "20s"
-        timeout  = "5s"
+        interval = "3s"
+        timeout  = "3s"
         port     = "health"
       }
     }
@@ -65,6 +65,7 @@ job "client-proxy" {
 
       env {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
+        LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
       }
 
       config {

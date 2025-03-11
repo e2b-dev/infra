@@ -40,6 +40,14 @@ variable "api_machine_type" {
   type = string
 }
 
+variable "build_cluster_size" {
+  type = number
+}
+
+variable "build_machine_type" {
+  type = string
+}
+
 variable "client_proxy_health_port" {
   type = object({
     name = string
@@ -167,19 +175,15 @@ variable "otel_tracing_print" {
   default     = false
 }
 
-variable "github_organization" {
-  type    = string
-  default = "e2b-dev"
-}
-
-variable "github_repository" {
-  type    = string
-  default = "infra"
-}
-
 variable "domain_name" {
   type        = string
   description = "The domain name where e2b will run"
+}
+
+variable "additional_domains" {
+  type        = string
+  description = "Additional domains which can be used to access the e2b cluster, separated by commas"
+  default     = ""
 }
 
 variable "prefix" {
@@ -221,4 +225,24 @@ variable "template_bucket_location" {
 variable "template_bucket_name" {
   type        = string
   description = "The name of the FC template bucket"
+}
+
+variable "clickhouse_connection_string" {
+  type        = string
+  description = "The connection string for the ClickHouse database"
+}
+
+variable "clickhouse_username" {
+  type        = string
+  description = "The username for the ClickHouse database"
+}
+
+variable "clickhouse_password" {
+  type        = string
+  description = "The password for the ClickHouse database"
+}
+
+variable "clickhouse_database" {
+  type        = string
+  description = "The database for the ClickHouse database"
 }

@@ -93,7 +93,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		StartedAt:  snapshot.SandboxStartedAt,
 		CpuCount:   cpuCount,
 		MemoryMB:   memoryMB,
-		EndAt:      snapshot.CreatedAt,
+		EndAt:      info.GetEndTime(),
 		State:      api.Paused,
 	}
 

@@ -1,0 +1,47 @@
+name: "Start Services"
+description: "Sets up and starts the required services, including PostgreSQL."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run PostgreSQL Database
+      env:
+        TESTS_E2B_API_KEY: "e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057"
+      run: |
+        docker run -d --name postgres \
+                      -e POSTGRES_USER=postgres \
+                      -e POSTGRES_PASSWORD=local \
+                      -e POSTGRES_DB=mydatabase \
+                      -p 5432:5432 \
+                      --health-cmd="pg_isready -U postgres" \
+                      --health-interval=5s \
+                      --health-timeout=2s \
+                      --health-retries=5 \
+                      postgres:latest
+        while [ "$(docker inspect -f '{{.State.Health.Status}}' postgres 2>/dev/null)" != "healthy" ]; do echo "Waiting for PostgreSQL to be healthy..."; sleep 2; done
+        echo "PostgreSQL is healthy!"
+        
+        echo "TESTS_E2B_API_KEY=${TESTS_E2B_API_KEY}" >> .env.test
+        set -x
+        make migrate
+        make -C tests/integration seed
+      shell: bash
+
+    - name: Start Services
+      env:
+        ENVD_TIMEOUT: "60s"
+      run: |
+        echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test
+        
+        mkdir -p ~/logs
+
+        make -C packages/orchestrator run-debug 2>&1 | tee ~/logs/orchestrator.log &
+        ORCH_PID=$!
+        sleep 30
+        if ps -p $ORCH_PID > /dev/null; then echo "Orchestrator started, starting API now..."; else exit 1; fi
+
+        make -C packages/api run 2>&1 | tee ~/logs/api.log &
+        API_PID=$!
+        sleep 30
+        if ps -p $API_PID > /dev/null; then echo "API service started"; else exit 1; fi
+      shell: bash

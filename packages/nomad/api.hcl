@@ -24,8 +24,8 @@ job "api" {
         type     = "http"
         name     = "health"
         path     = "/health"
-        interval = "5s"
-        timeout  = "5s"
+        interval = "3s"
+        timeout  = "3s"
         port     = "${port_number}"
       }
     }
@@ -63,6 +63,10 @@ job "api" {
         ORCHESTRATOR_PORT             = "${orchestrator_port}"
         TEMPLATE_MANAGER_ADDRESS      = "${template_manager_address}"
         POSTGRES_CONNECTION_STRING    = "${postgres_connection_string}"
+        CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
+        CLICKHOUSE_USERNAME           = "${clickhouse_username}"
+        CLICKHOUSE_PASSWORD           = "${clickhouse_password}"
+        CLICKHOUSE_DATABASE           = "${clickhouse_database}"
         ENVIRONMENT                   = "${environment}"
         POSTHOG_API_KEY               = "${posthog_api_key}"
         ANALYTICS_COLLECTOR_HOST      = "${analytics_collector_host}"

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"regexp"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 )
@@ -57,21 +57,19 @@ type DevicePool struct {
 	slotCounter metric.Int64UpDownCounter
 }
 
-var Pool *DevicePool
-
-func init() {
+func NewDevicePool() (*DevicePool, error) {
 	maxDevices, err := getMaxDevices()
 	if err != nil {
-		panic(fmt.Errorf("failed to get current max devices: %w", err))
+		return nil, fmt.Errorf("failed to get max devices: %w", err)
 	}
 
 	if maxDevices == 0 {
-		panic(fmt.Errorf("nbd module is not loaded or max devices is set to 0"))
+		return nil, errors.New("max devices is 0")
 	}
 
 	counter, err := meters.GetUpDownCounter(meters.NBDkSlotSReadyPoolCounterMeterName)
 	if err != nil {
-		panic(fmt.Errorf("failed to get nbd slot pool counter: %w", err))
+		return nil, fmt.Errorf("failed to get slot pool counter: %w", err)
 	}
 
 	pool := &DevicePool{
@@ -84,11 +82,11 @@ func init() {
 	go func() {
 		err = pool.Populate()
 		if err != nil {
-			log.Fatalf("failed during populating device pool: %v\n", err)
+			zap.L().Fatal("failed during populating device pool", zap.Error(err))
 		}
 	}()
 
-	Pool = pool
+	return pool, nil
 }
 
 func getMaxDevices() (uint, error) {
@@ -120,7 +118,7 @@ func (d *DevicePool) Populate() error {
 		default:
 			device, err := d.getFreeDeviceSlot()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "[nbd pool]: failed to create network: %v\n", err)
+				zap.L().Error("[nbd pool]: failed to create network", zap.Error(err))
 
 				continue
 			}

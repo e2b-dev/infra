@@ -6,8 +6,8 @@ import (
 
 const shortNodeIDLength = 8
 
-var (
-	nodeID = utils.RequiredEnv("NODE_ID", "Nomad ID of the instance node")
-	// Node ID must be at least 8 characters long.
-	ClientID = nodeID[:shortNodeIDLength]
-)
+func GetClientID() string {
+	nodeID := utils.RequiredEnv("NODE_ID", "Nomad ID of the instance node")
+
+	return nodeID[:shortNodeIDLength]
+}

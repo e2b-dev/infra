@@ -19,7 +19,9 @@ generate:
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/template-manager .
+	# Allow for passing commit sha directly for docker builds
+	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/template-manager -ldflags "-X=main.commitSHA=$(COMMIT_SHA)"  .
 
 .PHONY: build-debug
 build-debug:
@@ -31,6 +33,24 @@ upload:
 
 .PHONY: build-and-upload
 build-and-upload: build upload
+
+.PHONY: build-template
+build-template:
+	sudo -E TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
+	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
+	DOCKER_AUTH_BASE64=$(DOCKER_AUTH_BASE64) \
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) \
+	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
+	GCP_REGION=$(GCP_REGION) \
+	go run cmd/build-template/main.go \
+	-template $(TEMPLATE_ID) \
+	-build $(BUILD_ID) \
+	-kernel $(KERNEL_VERSION) \
+	-firecracker $(FIRECRACKER_VERSION)
+
+.PHONY: test
+test:
+	go test -v ./...
 
 .PHONY: test-build
 test-build:

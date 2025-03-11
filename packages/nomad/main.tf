@@ -8,34 +8,6 @@ data "google_secret_manager_secret_version" "posthog_api_key" {
 }
 
 # Telemetry
-data "google_secret_manager_secret_version" "grafana_api_key" {
-  secret = var.grafana_api_key_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_traces_endpoint" {
-  secret = var.grafana_traces_endpoint_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_logs_endpoint" {
-  secret = var.grafana_logs_endpoint_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_metrics_endpoint" {
-  secret = var.grafana_metrics_endpoint_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_traces_username" {
-  secret = var.grafana_traces_username_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_logs_username" {
-  secret = var.grafana_logs_username_secret_name
-}
-
-data "google_secret_manager_secret_version" "grafana_metrics_username" {
-  secret = var.grafana_metrics_username_secret_name
-}
-
 data "google_secret_manager_secret_version" "analytics_collector_host" {
   secret = var.analytics_collector_host_secret_name
 }
@@ -56,7 +28,7 @@ resource "nomad_job" "api" {
     orchestrator_port             = var.orchestrator_port
     template_manager_address      = "http://template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint  = "localhost:4317"
-    loki_address                  = "http://localhost:${var.loki_service_port.port}"
+    loki_address                  = "http://loki.service.consul:${var.loki_service_port.port}"
     logs_collector_address        = "http://localhost:${var.logs_proxy_port.port}"
     gcp_zone                      = var.gcp_zone
     port_name                     = var.api_port.name
@@ -72,6 +44,10 @@ resource "nomad_job" "api" {
     admin_token                   = var.api_admin_token
     redis_url                     = "redis://redis.service.consul:${var.redis_port.port}"
     dns_port_number               = var.api_dns_port_number
+    clickhouse_connection_string  = var.clickhouse_connection_string
+    clickhouse_username           = var.clickhouse_username
+    clickhouse_password           = var.clickhouse_password
+    clickhouse_database           = var.clickhouse_database
   })
 }
 
@@ -119,6 +95,7 @@ resource "nomad_job" "client_proxy" {
       image_name = var.client_proxy_docker_image_digest
 
       otel_collector_grpc_endpoint = "localhost:4317"
+      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
   })
 }
 
@@ -131,53 +108,189 @@ resource "nomad_job" "session_proxy" {
       session_proxy_port_number  = var.session_proxy_port.port
       session_proxy_port_name    = var.session_proxy_port.name
       session_proxy_service_name = var.session_proxy_service_name
-      load_balancer_conf         = file("${path.module}/proxies/session.conf")
-      nginx_conf                 = file("${path.module}/proxies/nginx.conf")
+      load_balancer_conf = templatefile("${path.module}/proxies/session.conf", {
+        browser_502 = replace(file("${path.module}/proxies/browser_502.html"), "\n", "")
+      })
+      nginx_conf = file("${path.module}/proxies/nginx.conf")
     }
   }
+}
+
+# grafana otel collector url
+resource "google_secret_manager_secret" "grafana_otlp_url" {
+  secret_id = "${var.prefix}grafana-otlp-url"
+
+  replication {
+    auto {}
+  }
+
+}
+
+resource "google_secret_manager_secret_version" "grafana_otlp_url" {
+  secret      = google_secret_manager_secret.grafana_otlp_url.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+data "google_secret_manager_secret_version" "grafana_otlp_url" {
+  secret = google_secret_manager_secret.grafana_otlp_url.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_otlp_url]
+}
+
+
+# grafana otel collector token
+resource "google_secret_manager_secret" "grafana_otel_collector_token" {
+  secret_id = "${var.prefix}grafana-otel-collector-token"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "grafana_otel_collector_token" {
+  secret      = google_secret_manager_secret.grafana_otel_collector_token.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+data "google_secret_manager_secret_version" "grafana_otel_collector_token" {
+  secret = google_secret_manager_secret.grafana_otel_collector_token.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_otel_collector_token]
+}
+
+
+# grafana username
+resource "google_secret_manager_secret" "grafana_username" {
+  secret_id = "${var.prefix}grafana-username"
+
+  replication {
+    auto {}
+  }
+}
+
+
+resource "google_secret_manager_secret_version" "grafana_username" {
+  secret      = google_secret_manager_secret.grafana_username.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+data "google_secret_manager_secret_version" "grafana_username" {
+  secret = google_secret_manager_secret.grafana_username.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_username]
 }
 
 resource "nomad_job" "otel_collector" {
-  jobspec = file("${path.module}/otel-collector.hcl")
+  jobspec = templatefile("${path.module}/otel-collector.hcl", {
+    grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+    grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
+    grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+    consul_token                 = var.consul_acl_token_secret
 
-  hcl2 {
-    vars = {
-      grafana_traces_endpoint  = data.google_secret_manager_secret_version.grafana_traces_endpoint.secret_data
-      grafana_logs_endpoint    = data.google_secret_manager_secret_version.grafana_logs_endpoint.secret_data
-      grafana_metrics_endpoint = data.google_secret_manager_secret_version.grafana_metrics_endpoint.secret_data
+    gcp_zone = var.gcp_zone
+  })
+}
 
-      grafana_traces_username  = data.google_secret_manager_secret_version.grafana_traces_username.secret_data
-      grafana_logs_username    = data.google_secret_manager_secret_version.grafana_logs_username.secret_data
-      grafana_metrics_username = data.google_secret_manager_secret_version.grafana_metrics_username.secret_data
 
-      grafana_api_key = data.google_secret_manager_secret_version.grafana_api_key.secret_data
+resource "google_secret_manager_secret" "grafana_logs_user" {
+  secret_id = "${var.prefix}grafana-logs-user"
 
-      consul_token = var.consul_acl_token_secret
-
-      gcp_zone = var.gcp_zone
-    }
+  replication {
+    auto {}
   }
 }
 
-resource "nomad_job" "logs_collector" {
-  jobspec = file("${path.module}/logs-collector.hcl")
+resource "google_secret_manager_secret_version" "grafana_logs_user" {
+  secret      = google_secret_manager_secret.grafana_logs_user.name
+  secret_data = " "
 
-  hcl2 {
-    vars = {
-      gcp_zone = var.gcp_zone
-
-      logs_port_number        = var.logs_proxy_port.port
-      logs_health_port_number = var.logs_health_proxy_port.port
-      logs_health_path        = var.logs_health_proxy_port.health_path
-      logs_port_name          = var.logs_proxy_port.name
-
-      loki_service_port_number = var.loki_service_port.port
-
-      grafana_api_key       = data.google_secret_manager_secret_version.grafana_api_key.secret_data
-      grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_endpoint.secret_data
-      grafana_logs_username = data.google_secret_manager_secret_version.grafana_logs_username.secret_data
-    }
+  lifecycle {
+    ignore_changes = [secret_data]
   }
+}
+
+data "google_secret_manager_secret_version" "grafana_logs_user" {
+  secret = google_secret_manager_secret.grafana_logs_user.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_logs_user]
+}
+
+resource "google_secret_manager_secret" "grafana_logs_url" {
+  secret_id = "${var.prefix}grafana-logs-url"
+
+  replication {
+    auto {}
+  }
+
+}
+
+resource "google_secret_manager_secret_version" "grafana_logs_url" {
+  secret      = google_secret_manager_secret.grafana_logs_url.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+data "google_secret_manager_secret_version" "grafana_logs_url" {
+  secret = google_secret_manager_secret.grafana_logs_url.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_logs_url]
+}
+
+
+resource "google_secret_manager_secret" "grafana_logs_collector_api_token" {
+  secret_id = "${var.prefix}grafana-api-key-logs-collector"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
+  secret      = google_secret_manager_secret.grafana_logs_collector_api_token.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+data "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
+  secret = google_secret_manager_secret.grafana_logs_collector_api_token.name
+
+  depends_on = [google_secret_manager_secret_version.grafana_logs_collector_api_token]
+}
+
+
+resource "nomad_job" "logs_collector" {
+  jobspec = templatefile("${path.module}/logs-collector.hcl", {
+    gcp_zone = var.gcp_zone
+
+    logs_port_number        = var.logs_proxy_port.port
+    logs_health_port_number = var.logs_health_proxy_port.port
+    logs_health_path        = var.logs_health_proxy_port.health_path
+    logs_port_name          = var.logs_proxy_port.name
+
+    loki_service_port_number = var.loki_service_port.port
+
+    grafana_logs_user     = data.google_secret_manager_secret_version.grafana_logs_user.secret_data
+    grafana_logs_endpoint = data.google_secret_manager_secret_version.grafana_logs_url.secret_data
+    grafana_api_key       = data.google_secret_manager_secret_version.grafana_logs_collector_api_token.secret_data
+  })
 }
 
 data "google_storage_bucket_object" "orchestrator" {
@@ -213,6 +326,10 @@ resource "nomad_job" "orchestrator" {
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
+    clickhouse_connection_string = var.clickhouse_connection_string
+    clickhouse_username          = var.clickhouse_username
+    clickhouse_password          = var.clickhouse_password
+    clickhouse_database          = var.clickhouse_database
   })
 }
 
@@ -249,6 +366,7 @@ resource "nomad_job" "template_manager" {
       otel_tracing_print           = var.otel_tracing_print
       template_bucket_name         = var.template_bucket_name
       otel_collector_grpc_endpoint = "localhost:4317"
+      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
     }
   }
 }
@@ -266,4 +384,49 @@ resource "nomad_job" "loki" {
       loki_service_port_name   = var.loki_service_port.name
     }
   }
+}
+
+# create a bucket for clickhouse
+resource "google_storage_bucket" "clickhouse_bucket" {
+  name     = "${var.gcp_project_id}-clickhouse-bucket"
+  location = var.gcp_region
+}
+
+// create service account for bucket
+resource "google_service_account" "clickhouse_service_account" {
+  account_id   = "${var.prefix}clickhouse-service-account"
+  display_name = "${var.prefix}clickhouse-service-account"
+}
+
+# attach service account to bucket 
+resource "google_storage_bucket_iam_member" "clickhouse_service_account_iam" {
+  bucket = google_storage_bucket.clickhouse_bucket.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.clickhouse_service_account.email}"
+}
+
+# hmac key for service account
+resource "google_storage_hmac_key" "clickhouse_hmac_key" {
+  service_account_email = google_service_account.clickhouse_service_account.email
+}
+
+# generate password
+resource "random_password" "clickhouse_password" {
+  length  = 32
+  special = false
+}
+
+
+# Add this with your other Nomad jobs
+resource "nomad_job" "clickhouse" {
+  jobspec = templatefile("${path.module}/clickhouse.hcl", {
+    zone                = var.gcp_zone
+    clickhouse_version  = "25.1.5.31" # Or make this a variable
+    gcs_bucket          = google_storage_bucket.clickhouse_bucket.name
+    gcs_folder          = "clickhouse-data"
+    hmac_key            = google_storage_hmac_key.clickhouse_hmac_key.access_id
+    hmac_secret         = google_storage_hmac_key.clickhouse_hmac_key.secret
+    username            = "clickhouse"
+    password_sha256_hex = sha256(random_password.clickhouse_password.result)
+  })
 }

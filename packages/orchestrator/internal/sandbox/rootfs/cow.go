@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -26,9 +26,10 @@ type CowDevice struct {
 	BaseBuildId string
 
 	finishedOperations chan struct{}
+	devicePool         *nbd.DevicePool
 }
 
-func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64) (*CowDevice, error) {
+func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64, devicePool *nbd.DevicePool) (*CowDevice, error) {
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
@@ -41,7 +42,7 @@ func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64) (
 
 	overlay := block.NewOverlay(rootfs, cache, blockSize)
 
-	mnt := nbd.NewDirectPathMount(overlay)
+	mnt := nbd.NewDirectPathMount(overlay, devicePool)
 
 	return &CowDevice{
 		mnt:                mnt,
@@ -50,6 +51,7 @@ func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64) (
 		blockSize:          blockSize,
 		finishedOperations: make(chan struct{}, 1),
 		BaseBuildId:        rootfs.Header().Metadata.BaseBuildId.String(),
+		devicePool:         devicePool,
 	}, nil
 }
 
@@ -68,7 +70,7 @@ func (o *CowDevice) Export(ctx context.Context, out io.Writer, stopSandbox func(
 		return nil, fmt.Errorf("error ejecting cache: %w", err)
 	}
 
-        // the error is already logged in go routine in SandboxCreate handler
+	// the error is already logged in go routine in SandboxCreate handler
 	go stopSandbox()
 
 	select {
@@ -120,13 +122,13 @@ func (o *CowDevice) Close() error {
 		return errors.Join(errs...)
 	}
 
-	counter := 0
+	attempts := 0
 	for {
-		counter++
-		err := nbd.Pool.ReleaseDevice(slot)
+		attempts++
+		err := o.devicePool.ReleaseDevice(slot)
 		if errors.Is(err, nbd.ErrDeviceInUse{}) {
-			if counter%100 == 0 {
-				log.Printf("[%dth try] error releasing overlay device: %v\n", counter, err)
+			if attempts%100 == 0 {
+				zap.L().Info("error releasing overlay device", zap.Int("attempts", attempts), zap.Error(err))
 			}
 
 			time.Sleep(500 * time.Millisecond)
@@ -141,7 +143,7 @@ func (o *CowDevice) Close() error {
 		break
 	}
 
-	fmt.Printf("overlay device released\n")
+	zap.L().Info("overlay device released")
 
 	return nil
 }

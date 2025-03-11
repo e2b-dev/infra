@@ -15,7 +15,9 @@ generate:
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 go build -o bin/api .
+	# Allow for passing commit sha directly for docker builds
+	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
+	CGO_ENABLED=0 go build -o bin/api -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
 
 .PHONY: build-debug
 build-debug:
@@ -29,6 +31,7 @@ run:
 	GODEBUG=madvdontneed=1 \
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	ENVIRONMENT=$(ENVIRONMENT) \
+	ORCHESTRATOR_PORT=5008 \
 	./bin/api --port 3000
 
 
@@ -40,8 +43,13 @@ profiler:
 
 .PHONY: build-and-upload
 build-and-upload:
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	@rm -rf .shared/
 	@cp -r ../shared .shared/
 	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
-	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push .
+	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" .
 	@rm -rf .shared/
+
+.PHONY: test
+test:
+	go test -v ./...

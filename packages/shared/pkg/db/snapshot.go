@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/snapshot"
-
-	"github.com/google/uuid"
 )
 
 type SnapshotInfo struct {
@@ -35,6 +35,9 @@ func (db *DB) NewSnapshotBuild(
 	teamID uuid.UUID,
 ) (*models.EnvBuild, error) {
 	tx, err := db.Client.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
 	defer tx.Rollback()
 
 	s, err := tx.
@@ -126,33 +129,48 @@ func (db *DB) GetLastSnapshot(ctx context.Context, sandboxID string, teamID uuid
 	*models.EnvBuild,
 	error,
 ) {
-	e, err := db.
+
+	snap, err := db.Client.Snapshot.Query().Where(snapshot.SandboxID(sandboxID)).Only(ctx)
+	if err != nil {
+		notFound := models.IsNotFound(err)
+
+		if notFound {
+			return nil, nil, SnapshotNotFound{}
+		} else {
+			return nil, nil, fmt.Errorf("failed to get snapshot for '%s': %w", sandboxID, err)
+		}
+	}
+
+	build, err := db.Client.EnvBuild.Query().Where(envbuild.StatusEQ(envbuild.StatusSuccess), envbuild.EnvID(snap.EnvID)).Order(models.Desc(envbuild.FieldFinishedAt)).First(ctx)
+	if err != nil {
+		notFound := models.IsNotFound(err)
+
+		if notFound {
+			return snap, nil, BuildNotFound{}
+		} else {
+			return nil, nil, fmt.Errorf("failed to get build for '%s': %w", sandboxID, err)
+		}
+	}
+
+	_, err = db.
 		Client.
 		Env.
 		Query().
 		Where(
-			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
-			env.HasSnapshotsWith(snapshot.SandboxID(sandboxID)),
+			env.ID(snap.EnvID),
 			env.TeamID(teamID),
-		).
-		WithSnapshots(func(query *models.SnapshotQuery) {
-			query.Where(snapshot.SandboxID(sandboxID)).Only(ctx)
-		}).
-		WithBuilds(func(query *models.EnvBuildQuery) {
-			query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt)).Only(ctx)
-		}).Only(ctx)
-
-	notFound := models.IsNotFound(err)
-
+		).Only(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", sandboxID, err)
+		notFound := models.IsNotFound(err)
+
+		if notFound {
+			return nil, nil, TemplateNotFound{}
+		} else {
+			return nil, nil, fmt.Errorf("failed to get template for '%s': %w", sandboxID, err)
+		}
 	}
 
-	if notFound {
-		return nil, nil, fmt.Errorf("no snapshot build found for '%s'", sandboxID)
-	}
-
-	return e.Edges.Snapshots[0], e.Edges.Builds[0], nil
+	return snap, build, nil
 }
 
 func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uuid.UUID) (

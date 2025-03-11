@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.SandboxID) {
@@ -31,9 +31,22 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - sandbox '%s' was not found", sandboxID))
+		_, _, fErr := a.db.GetLastSnapshot(ctx, sandboxID, teamID)
+		if fErr == nil {
+			zap.L().Warn("Sandbox is already paused", zap.String("sandboxID", sandboxID))
+			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
+			return
+		}
 
-		// TODO: Check if sandbox is already paused to return 409
+		var errNotFound db.ErrNotFound
+		if errors.Is(err, errNotFound) {
+			zap.L().Debug("Snapshot not found", zap.String("sandboxID", sandboxID))
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - snapshot for sandbox '%s' was not found", sandboxID))
+			return
+		}
+
+		zap.L().Error("Error getting snapshot", zap.Error(fErr), zap.String("sandboxID", sandboxID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox"))
 		return
 	}
 
@@ -46,46 +59,13 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		return
 	}
 
-	snapshotConfig := &db.SnapshotInfo{
-		BaseTemplateID:     sbx.Instance.TemplateID,
-		SandboxID:          sandboxID,
-		SandboxStartedAt:   sbx.StartTime,
-		VCPU:               sbx.VCpu,
-		RAMMB:              sbx.RamMB,
-		TotalDiskSizeMB:    sbx.TotalDiskSizeMB,
-		Metadata:           sbx.Metadata,
-		KernelVersion:      sbx.KernelVersion,
-		FirecrackerVersion: sbx.FirecrackerVersion,
-		EnvdVersion:        sbx.Instance.EnvdVersion,
-	}
-
-	envBuild, err := a.db.NewSnapshotBuild(
-		ctx,
-		snapshotConfig,
-		teamID,
-	)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
-
+	found := a.orchestrator.DeleteInstance(ctx, sandboxID, true)
+	if !found {
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - sandbox '%s' was not found", sandboxID))
 		return
 	}
 
-	err = a.orchestrator.PauseInstance(ctx, sbx, *envBuild.EnvID, envBuild.ID.String())
-	if errors.Is(err, orchestrator.ErrPauseQueueExhausted{}) {
-		a.sendAPIStoreError(c, http.StatusTooManyRequests, "Too many pause requests in progress, please retry later.")
-
-		return
-	}
-
-	defer a.orchestrator.DeleteInstance(ctx, sbx.Instance.SandboxID)
-
-	if err != nil && !errors.Is(err, orchestrator.ErrPauseQueueExhausted{}) {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
-
-		return
-	}
-
-	err = a.db.EnvBuildSetStatus(ctx, *envBuild.EnvID, envBuild.ID, envbuild.StatusSuccess)
+	_, err = sbx.Pausing.WaitWithContext(ctx)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox: %s", err))
 
