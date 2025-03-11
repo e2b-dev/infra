@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -46,7 +47,7 @@ type SandboxesListResult struct {
 }
 
 func generateCursor(sandbox api.ListedSandbox) string {
-	cursor := fmt.Sprintf("%s__%s", sandbox.StartedAt, sandbox.SandboxID)
+	cursor := fmt.Sprintf("%s__%s", sandbox.StartedAt.Format(time.RFC3339Nano), sandbox.SandboxID)
 	return base64.URLEncoding.EncodeToString([]byte(cursor))
 }
 
@@ -62,6 +63,12 @@ func parseCursor(cursor string) (string, string, error) {
 	parts := strings.Split(string(decoded), "__")
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("invalid cursor format")
+	}
+
+	// Validate timestamp format
+	_, err = time.Parse(time.RFC3339Nano, parts[0])
+	if err != nil {
+		return "", "", fmt.Errorf("invalid timestamp format in cursor: %w", err)
 	}
 
 	return parts[0], parts[1], nil
@@ -245,54 +252,84 @@ func filterSandboxes(sandboxes []api.ListedSandbox, filter SandboxesListFilter) 
 }
 
 func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPaginate) (SandboxesListResult, error) {
-	// If no sandboxes, return empty slice
 	if len(sandboxes) == 0 {
 		return SandboxesListResult{
 			Sandboxes:   []api.ListedSandbox{},
 			HasNextPage: false,
-			HasPrevious: paginate.Cursor != nil,
+			HasPrevious: false,
 		}, nil
 	}
 
-	// If cursor is provided, filter sandboxes after the cursor
+	// Default max items if not specified
+	maxItems := int32(10)
+	if paginate.MaxItems != nil {
+		maxItems = *paginate.MaxItems
+	}
+
+	// Find start index based on cursor
+	startIdx := 0
 	if paginate.Cursor != nil {
-		startTime, sandboxID, err := parseCursor(*paginate.Cursor)
+		cursorTimeStr, cursorID, err := parseCursor(*paginate.Cursor)
 		if err != nil {
 			return SandboxesListResult{}, fmt.Errorf("invalid cursor: %w", err)
 		}
 
-		// Filter sandboxes after the cursor
-		n := 0
-		for _, sandbox := range sandboxes {
-			timeComparison := sandbox.StartedAt.String()
-			if timeComparison > startTime || (timeComparison == startTime && sandbox.SandboxID > sandboxID) {
-				sandboxes[n] = sandbox
-				n++
+		cursorTime, err := time.Parse(time.RFC3339Nano, cursorTimeStr)
+		if err != nil {
+			return SandboxesListResult{}, fmt.Errorf("invalid cursor timestamp: %w", err)
+		}
+
+		// Find the index of the sandbox after the cursor
+		found := false
+		for i, sandbox := range sandboxes {
+			// Check if this is the cursor sandbox
+			if sandbox.StartedAt.Equal(cursorTime) && sandbox.SandboxID == cursorID {
+				// Start from the next sandbox
+				startIdx = i + 1
+				found = true
+				break
 			}
 		}
-		sandboxes = sandboxes[:n]
-	}
 
-	hasNextPage := false
-	if paginate.MaxItems != nil {
-		if int(*paginate.MaxItems) < len(sandboxes) {
-			hasNextPage = true
-			sandboxes = sandboxes[:*paginate.MaxItems]
+		// If we didn't find the exact cursor, use the timestamp and ID as a reference point
+		if !found {
+			for i, sandbox := range sandboxes {
+				// Find the first sandbox that comes after the cursor in chronological order
+				// or if same time, by ID
+				if sandbox.StartedAt.After(cursorTime) ||
+					(sandbox.StartedAt.Equal(cursorTime) && sandbox.SandboxID > cursorID) {
+					startIdx = i
+					break
+				}
+			}
 		}
 	}
 
-	sandboxesResult := SandboxesListResult{
-		Sandboxes:   sandboxes,
-		HasNextPage: hasNextPage,
-		HasPrevious: paginate.Cursor != nil,
+	// Calculate end index
+	endIdx := startIdx + int(maxItems)
+	if endIdx > len(sandboxes) {
+		endIdx = len(sandboxes)
 	}
 
-	if len(sandboxes) > 0 {
-		sandboxesResult.StartCursor = sandboxes[0].Cursor
-		sandboxesResult.EndCursor = sandboxes[len(sandboxes)-1].Cursor
+	// Get the page of sandboxes
+	pagedSandboxes := sandboxes[startIdx:endIdx]
+
+	// Generate cursors for the result
+	var startCursor, endCursor *string
+	if len(pagedSandboxes) > 0 {
+		start := generateCursor(pagedSandboxes[0])
+		end := generateCursor(pagedSandboxes[len(pagedSandboxes)-1])
+		startCursor = &start
+		endCursor = &end
 	}
 
-	return sandboxesResult, nil
+	return SandboxesListResult{
+		Sandboxes:   pagedSandboxes,
+		StartCursor: startCursor,
+		EndCursor:   endCursor,
+		HasNextPage: endIdx < len(sandboxes),
+		HasPrevious: startIdx > 0,
+	}, nil
 }
 
 func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
@@ -351,11 +388,6 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	c.Header("X-Has-Next-Page", strconv.FormatBool(result.HasNextPage))
 	c.Header("X-Has-Previous-Page", strconv.FormatBool(result.HasPrevious))
 	c.Header("X-Total-Count", strconv.Itoa(len(sandboxes)))
-
-	// Sort by startedAt descending
-	// slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
-	// 	return b.StartedAt.Compare(a.StartedAt)
-	// })
 
 	c.JSON(http.StatusOK, sandboxes)
 }
