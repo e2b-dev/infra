@@ -8,10 +8,8 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
-	"golang.org/x/sys/unix"
 	"go.uber.org/zap"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
+	"golang.org/x/sys/unix"
 )
 
 const DefaultCachePath = "/orchestrator/build"
