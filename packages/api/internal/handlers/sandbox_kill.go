@@ -21,14 +21,10 @@ func (a *APIStore) deleteSnapshot(
 	ctx context.Context,
 	sandboxID string,
 	teamID uuid.UUID,
-) (bool, error) {
+) error {
 	env, builds, err := a.db.GetSnapshotBuilds(ctx, sandboxID, teamID)
 	if err != nil {
-		if errors.Is(err, db.EnvNotFound{}) {
-			return false, nil
-		}
-
-		return true, fmt.Errorf("error getting env builds for sandbox '%s': %w", sandboxID, err)
+		return err
 	}
 
 	envBuildIDs := make([]uuid.UUID, 0)
@@ -38,17 +34,17 @@ func (a *APIStore) deleteSnapshot(
 
 	dbErr := a.db.DeleteEnv(ctx, env.ID)
 	if dbErr != nil {
-		return true, fmt.Errorf("error deleting env from db: %w", dbErr)
+		return fmt.Errorf("error deleting env from db: %w", dbErr)
 	}
 
 	deleteJobErr := a.templateManager.DeleteBuilds(ctx, envBuildIDs)
 	if deleteJobErr != nil {
-		return true, fmt.Errorf("error deleting builds from storage: %w", deleteJobErr)
+		return fmt.Errorf("error deleting builds from storage: %w", deleteJobErr)
 	}
 
 	a.templateCache.Invalidate(env.ID)
 
-	return true, nil
+	return nil
 }
 
 func (a *APIStore) DeleteSandboxesSandboxID(
@@ -88,7 +84,14 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		}
 
 		// remove any snapshots of the sandbox
-		_, err := a.deleteSnapshot(ctx, sandboxID, teamID)
+		err := a.deleteSnapshot(ctx, sandboxID, teamID)
+		if errors.Is(err, db.EnvNotFound{}) {
+			telemetry.ReportError(ctx, err)
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error deleting sandbox - sandbox '%s' not found", sandboxID))
+
+			return
+		}
+
 		if err != nil {
 			telemetry.ReportError(ctx, err)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error deleting sandbox: %s", err))
@@ -104,8 +107,8 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	}
 
 	// remove any snapshots when the sandbox is not running
-	snapshotExists, deleteSnapshotErr := a.deleteSnapshot(ctx, sandboxID, teamID)
-	if !snapshotExists {
+	deleteSnapshotErr := a.deleteSnapshot(ctx, sandboxID, teamID)
+	if errors.Is(deleteSnapshotErr, db.EnvNotFound{}) {
 		telemetry.ReportError(ctx, fmt.Errorf("snapshot for sandbox '%s' not found", sandboxID))
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error deleting sandbox - sandbox '%s' not found", sandboxID))
 
