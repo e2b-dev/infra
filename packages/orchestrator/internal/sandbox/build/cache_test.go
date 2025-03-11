@@ -192,7 +192,7 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 	store.Add(diff)
 
 	// Wait for removal trigger of diff
-	time.Sleep(2 * time.Second)
+	time.Sleep(delay / 2)
 
 	// Verify still in cache
 	found := store.Has(diff)
@@ -211,7 +211,7 @@ func TestDiffStoreDelayEvictionAbort(t *testing.T) {
 
 	// Check insufficient delay cancellation of diff and verify it's still in the cache
 	// after the delay period
-	time.Sleep(delay)
+	time.Sleep(delay/2 + time.Second)
 	found = store.Has(diff)
 	assert.True(t, found)
 }
