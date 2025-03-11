@@ -194,7 +194,7 @@ func (srv *Service) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to listen on port %d: %w", srv.port, err)
 	}
 
-	// New HTTP server mux
+	// Reuse the same TCP port between grpc and HTTP requests
 	m := cmux.New(lis)
 	// Match HTTP requests.
 	httpL := m.Match(cmux.HTTP1Fast())
