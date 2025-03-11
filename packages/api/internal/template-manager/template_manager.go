@@ -23,7 +23,7 @@ type TemplateManager struct {
 var (
 	syncInterval             = time.Minute * 1
 	syncTimeout              = time.Minute * 5
-	syncWaitingStateDeadline = time.Minute * 10
+	syncWaitingStateDeadline = time.Minute * 20
 )
 
 func New(db *db.DB) (*TemplateManager, error) {
