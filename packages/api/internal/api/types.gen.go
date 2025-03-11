@@ -62,6 +62,9 @@ type ListedSandbox struct {
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
 
+	// Cursor Pagination cursor of the sandbox
+	Cursor *string `json:"cursor,omitempty"`
+
 	// EndAt Time when the sandbox will expire
 	EndAt time.Time `json:"endAt"`
 
@@ -385,6 +388,12 @@ type GetSandboxesParams struct {
 
 	// State Filter sandboxes by one or more states
 	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
+
+	// After Cursor to start the list from
+	After *string `form:"after,omitempty" json:"after,omitempty"`
+
+	// First Maximum number of items to return
+	First *int32 `form:"first,omitempty" json:"first,omitempty"`
 }
 
 // GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.

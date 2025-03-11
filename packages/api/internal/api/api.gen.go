@@ -199,6 +199,22 @@ func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 		return
 	}
 
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "after", c.Request.URL.Query(), &params.After)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter after: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "first" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "first", c.Request.URL.Query(), &params.First)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter first: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {

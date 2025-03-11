@@ -2,11 +2,15 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -27,6 +31,42 @@ type SandboxesListParams struct {
 
 type SandboxesListFilter struct {
 	Query *string
+}
+
+type SandboxesListPaginate struct {
+	Cursor   *string
+	MaxItems *int32
+}
+
+type SandboxesListResult struct {
+	Sandboxes   []api.ListedSandbox
+	StartCursor *string
+	EndCursor   *string
+	HasNextPage bool
+	HasPrevious bool
+}
+
+func generateCursor(sandbox api.ListedSandbox) string {
+	// Use RFC3339Nano format for consistent timestamp formatting
+	cursor := fmt.Sprintf("%s__%s", sandbox.StartedAt.Format(time.RFC3339Nano), sandbox.SandboxID)
+	return base64.URLEncoding.EncodeToString([]byte(cursor))
+}
+
+func parseCursor(cursor string) (string, string, error) {
+	// Use URL-safe base64 decoding
+	decoded, err := base64.URLEncoding.DecodeString(cursor)
+	if err != nil {
+		return "", "", fmt.Errorf("error decoding cursor: %w", err)
+	}
+
+	log.Println("cursor decoded", string(decoded))
+
+	parts := strings.Split(string(decoded), "__")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid cursor format")
+	}
+
+	return parts[0], parts[1], nil
 }
 
 func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams) ([]api.ListedSandbox, error) {
@@ -94,6 +134,9 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 				sandbox.Metadata = &meta
 			}
 
+			cursor := generateCursor(sandbox)
+			sandbox.Cursor = &cursor
+
 			sandboxes = append(sandboxes, sandbox)
 		}
 	}
@@ -133,6 +176,9 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 				meta := api.SandboxMetadata(snapshot.Metadata)
 				sandbox.Metadata = &meta
 			}
+
+			cursor := generateCursor(sandbox)
+			sandbox.Cursor = &cursor
 
 			sandboxes = append(sandboxes, sandbox)
 		}
@@ -200,6 +246,57 @@ func filterSandboxes(sandboxes []api.ListedSandbox, filter SandboxesListFilter) 
 	return sandboxes, nil
 }
 
+func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPaginate) (SandboxesListResult, error) {
+	// If no sandboxes, return empty slice
+	if len(sandboxes) == 0 {
+		return SandboxesListResult{
+			Sandboxes:   []api.ListedSandbox{},
+			HasNextPage: false,
+			HasPrevious: paginate.Cursor != nil,
+		}, nil
+	}
+
+	// If cursor is provided, filter sandboxes after the cursor
+	if paginate.Cursor != nil {
+		startTime, sandboxID, err := parseCursor(*paginate.Cursor)
+		if err != nil {
+			return SandboxesListResult{}, fmt.Errorf("invalid cursor: %w", err)
+		}
+
+		// Filter sandboxes after the cursor
+		n := 0
+		for _, sandbox := range sandboxes {
+			timeComparison := sandbox.StartedAt.String()
+			if timeComparison > startTime || (timeComparison == startTime && sandbox.SandboxID > sandboxID) {
+				sandboxes[n] = sandbox
+				n++
+			}
+		}
+		sandboxes = sandboxes[:n]
+	}
+
+	hasNextPage := false
+	if paginate.MaxItems != nil {
+		if int(*paginate.MaxItems) < len(sandboxes) {
+			hasNextPage = true
+			sandboxes = sandboxes[:*paginate.MaxItems]
+		}
+	}
+
+	sandboxesResult := SandboxesListResult{
+		Sandboxes:   sandboxes,
+		HasNextPage: hasNextPage,
+		HasPrevious: paginate.Cursor != nil,
+	}
+
+	if len(sandboxes) > 0 {
+		sandboxesResult.StartCursor = sandboxes[0].Cursor
+		sandboxesResult.EndCursor = sandboxes[len(sandboxes)-1].Cursor
+	}
+
+	return sandboxesResult, nil
+}
+
 func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list running instances")
@@ -221,6 +318,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return
 	}
 
+	// Filter sandboxes
 	sandboxes, err = filterSandboxes(sandboxes, SandboxesListFilter{
 		Query: params.Query,
 	})
@@ -231,10 +329,35 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return
 	}
 
-	// Sort by startedAt descending
-	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
-		return b.StartedAt.Compare(a.StartedAt)
+	// Paginate sandboxes
+	result, err := paginateSandboxes(sandboxes, SandboxesListPaginate{
+		Cursor:   params.After,
+		MaxItems: params.First,
 	})
+	if err != nil {
+		zap.L().Error("Error fetching sandboxes", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error paginating sandboxes for team '%s'", team.ID))
+
+		return
+	}
+
+	sandboxes = result.Sandboxes
+
+	// add pagination info to headers
+	if result.EndCursor != nil {
+		c.Header("X-Next-Cursor", *result.EndCursor)
+	}
+	if result.StartCursor != nil {
+		c.Header("X-Previous-Cursor", *result.StartCursor)
+	}
+	c.Header("X-Has-Next-Page", strconv.FormatBool(result.HasNextPage))
+	c.Header("X-Has-Previous-Page", strconv.FormatBool(result.HasPrevious))
+	c.Header("X-Total-Count", strconv.Itoa(len(sandboxes)))
+
+	// Sort by startedAt descending
+	// slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
+	// 	return b.StartedAt.Compare(a.StartedAt)
+	// })
 
 	c.JSON(http.StatusOK, sandboxes)
 }
