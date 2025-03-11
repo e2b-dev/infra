@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"net/http"
 	"time"
 
@@ -90,13 +92,25 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	// Check if some other build from same template is in process, excludes currently created build
 	envBuildDB, err := a.db.GetRunningEnvBuild(ctx, envDB.ID, []uuid.UUID{buildUUID})
-	if err == nil && envBuildDB != nil {
-		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("there's already running build for %s", templateID))
 
+	// error is present but different from not found
+	if err != nil && !errors.Is(err, db.TemplateBuildNotFound{}) {
+		zap.L().Error("Error when getting running build", zap.Error(err))
+
+		dbErr := a.db.EnvBuildSetStatus(ctx, templateID, buildUUID, envbuild.StatusFailed)
+		if dbErr != nil {
+			zap.L().Error("Error when setting build status", zap.Error(dbErr))
+		}
+
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "error during template build request")
+		return
+	}
+
+	// we found conflicting build for same env
+	if envBuildDB != nil {
+		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("there's already running build for %s", templateID))
 		err = fmt.Errorf("build is already running build for %s", templateID)
 		telemetry.ReportCriticalError(ctx, err)
-
-		return
 	}
 
 	// Trigger the build in the background
