@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/docker/docker/client"
+	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
@@ -42,9 +43,9 @@ func NewBuilder(logger *zap.Logger, buildLogger *zap.Logger, tracer trace.Tracer
 	}
 }
 
-func (b *TemplateBuilder) Builder(ctx context.Context, template *Env, envID string, buildID string) error {
+func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string, buildID string) error {
 	buildStorage := b.templateStorage.NewBuild(template.TemplateFiles)
-	buildEntry, err := b.buildCache.Get(buildID)
+	_, err := b.buildCache.Get(buildID)
 	if err != nil {
 		return err
 	}
@@ -125,10 +126,8 @@ func (b *TemplateBuilder) Builder(ctx context.Context, template *Env, envID stri
 		}
 	}
 
-	buildEntry.SetEnvdVersionKey(strings.TrimSpace(string(out)))
-	buildEntry.SetRootFsSizeKey(int32(template.RootfsSizeMB()))
-
-	err = b.buildCache.SetSucceeded(envID, buildID)
+	buildMetadata := &template_manager.TemplateBuildMetadata{RootfsSizeKey: int32(template.RootfsSizeMB()), EnvdVersionKey: strings.TrimSpace(string(out))}
+	err = b.buildCache.SetSucceeded(envID, buildID, buildMetadata)
 	if err != nil {
 		b.logger.Error("Error while setting build state to succeeded", zap.Error(err))
 		telemetry.ReportError(ctx, err)

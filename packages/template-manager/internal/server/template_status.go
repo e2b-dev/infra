@@ -27,14 +27,6 @@ func (s *serverStore) TemplateBuildStatus(in *template_manager.TemplateStatusReq
 			return fmt.Errorf("error while getting build info, maybe already expired")
 		}
 
-		var metadata *template_manager.TemplateBuildMetadata = nil
-		if !buildInfo.IsRunning() {
-			metadata = &template_manager.TemplateBuildMetadata{
-				RootfsSizeKey:  buildInfo.GetRootFsSizeKey(),
-				EnvdVersionKey: buildInfo.GetEnvdVersionKey(),
-			}
-		}
-
 		if buildInfo.IsFailed() {
 			logger.Error("Template build failed")
 			return fmt.Errorf("template build failed")
@@ -42,9 +34,8 @@ func (s *serverStore) TemplateBuildStatus(in *template_manager.TemplateStatusReq
 
 		err = stream.Send(
 			&template_manager.TemplateBuildStatusResponse{
-				Done:     !buildInfo.IsRunning(),
-				Failed:   buildInfo.IsFailed(),
-				Metadata: metadata,
+				Status:   buildInfo.GetStatus(),
+				Metadata: buildInfo.GetMetadata(),
 			},
 		)
 

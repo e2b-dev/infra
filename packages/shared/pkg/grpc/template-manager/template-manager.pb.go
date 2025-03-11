@@ -21,6 +21,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type TemplateBuildState int32
+
+const (
+	TemplateBuildState_Building  TemplateBuildState = 0
+	TemplateBuildState_Failed    TemplateBuildState = 1
+	TemplateBuildState_Completed TemplateBuildState = 2
+)
+
+// Enum value maps for TemplateBuildState.
+var (
+	TemplateBuildState_name = map[int32]string{
+		0: "Building",
+		1: "Failed",
+		2: "Completed",
+	}
+	TemplateBuildState_value = map[string]int32{
+		"Building":  0,
+		"Failed":    1,
+		"Completed": 2,
+	}
+)
+
+func (x TemplateBuildState) Enum() *TemplateBuildState {
+	p := new(TemplateBuildState)
+	*p = x
+	return p
+}
+
+func (x TemplateBuildState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TemplateBuildState) Descriptor() protoreflect.EnumDescriptor {
+	return file_template_manager_proto_enumTypes[0].Descriptor()
+}
+
+func (TemplateBuildState) Type() protoreflect.EnumType {
+	return &file_template_manager_proto_enumTypes[0]
+}
+
+func (x TemplateBuildState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TemplateBuildState.Descriptor instead.
+func (TemplateBuildState) EnumDescriptor() ([]byte, []int) {
+	return file_template_manager_proto_rawDescGZIP(), []int{0}
+}
+
 type TemplateConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -343,9 +392,8 @@ type TemplateBuildStatusResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Done     bool                   `protobuf:"varint,1,opt,name=done,proto3" json:"done,omitempty"`
-	Failed   bool                   `protobuf:"varint,2,opt,name=failed,proto3" json:"failed,omitempty"`
-	Metadata *TemplateBuildMetadata `protobuf:"bytes,3,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	Status   TemplateBuildState     `protobuf:"varint,1,opt,name=status,proto3,enum=TemplateBuildState" json:"status,omitempty"`
+	Metadata *TemplateBuildMetadata `protobuf:"bytes,2,opt,name=metadata,proto3" json:"metadata,omitempty"`
 }
 
 func (x *TemplateBuildStatusResponse) Reset() {
@@ -380,18 +428,11 @@ func (*TemplateBuildStatusResponse) Descriptor() ([]byte, []int) {
 	return file_template_manager_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *TemplateBuildStatusResponse) GetDone() bool {
+func (x *TemplateBuildStatusResponse) GetStatus() TemplateBuildState {
 	if x != nil {
-		return x.Done
+		return x.Status
 	}
-	return false
-}
-
-func (x *TemplateBuildStatusResponse) GetFailed() bool {
-	if x != nil {
-		return x.Failed
-	}
-	return false
+	return TemplateBuildState_Building
 }
 
 func (x *TemplateBuildStatusResponse) GetMetadata() *TemplateBuildMetadata {
@@ -446,15 +487,19 @@ var file_template_manager_proto_rawDesc = []byte{
 	0x01, 0x20, 0x01, 0x28, 0x05, 0x52, 0x0d, 0x72, 0x6f, 0x6f, 0x74, 0x66, 0x73, 0x53, 0x69, 0x7a,
 	0x65, 0x4b, 0x65, 0x79, 0x12, 0x26, 0x0a, 0x0e, 0x65, 0x6e, 0x76, 0x64, 0x56, 0x65, 0x72, 0x73,
 	0x69, 0x6f, 0x6e, 0x4b, 0x65, 0x79, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0e, 0x65, 0x6e,
-	0x76, 0x64, 0x56, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x4b, 0x65, 0x79, 0x22, 0x7d, 0x0a, 0x1b,
+	0x76, 0x64, 0x56, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x4b, 0x65, 0x79, 0x22, 0x7e, 0x0a, 0x1b,
 	0x54, 0x65, 0x6d, 0x70, 0x6c, 0x61, 0x74, 0x65, 0x42, 0x75, 0x69, 0x6c, 0x64, 0x53, 0x74, 0x61,
-	0x74, 0x75, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x64,
-	0x6f, 0x6e, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x04, 0x64, 0x6f, 0x6e, 0x65, 0x12,
-	0x16, 0x0a, 0x06, 0x66, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52,
-	0x06, 0x66, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x12, 0x32, 0x0a, 0x08, 0x6d, 0x65, 0x74, 0x61, 0x64,
-	0x61, 0x74, 0x61, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x16, 0x2e, 0x54, 0x65, 0x6d, 0x70,
-	0x6c, 0x61, 0x74, 0x65, 0x42, 0x75, 0x69, 0x6c, 0x64, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74,
-	0x61, 0x52, 0x08, 0x6d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x32, 0xee, 0x01, 0x0a, 0x0f,
+	0x74, 0x75, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2b, 0x0a, 0x06, 0x73,
+	0x74, 0x61, 0x74, 0x75, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x13, 0x2e, 0x54, 0x65,
+	0x6d, 0x70, 0x6c, 0x61, 0x74, 0x65, 0x42, 0x75, 0x69, 0x6c, 0x64, 0x53, 0x74, 0x61, 0x74, 0x65,
+	0x52, 0x06, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73, 0x12, 0x32, 0x0a, 0x08, 0x6d, 0x65, 0x74, 0x61,
+	0x64, 0x61, 0x74, 0x61, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x16, 0x2e, 0x54, 0x65, 0x6d,
+	0x70, 0x6c, 0x61, 0x74, 0x65, 0x42, 0x75, 0x69, 0x6c, 0x64, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61,
+	0x74, 0x61, 0x52, 0x08, 0x6d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x2a, 0x3d, 0x0a, 0x12,
+	0x54, 0x65, 0x6d, 0x70, 0x6c, 0x61, 0x74, 0x65, 0x42, 0x75, 0x69, 0x6c, 0x64, 0x53, 0x74, 0x61,
+	0x74, 0x65, 0x12, 0x0c, 0x0a, 0x08, 0x42, 0x75, 0x69, 0x6c, 0x64, 0x69, 0x6e, 0x67, 0x10, 0x00,
+	0x12, 0x0a, 0x0a, 0x06, 0x46, 0x61, 0x69, 0x6c, 0x65, 0x64, 0x10, 0x01, 0x12, 0x0d, 0x0a, 0x09,
+	0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x64, 0x10, 0x02, 0x32, 0xee, 0x01, 0x0a, 0x0f,
 	0x54, 0x65, 0x6d, 0x70, 0x6c, 0x61, 0x74, 0x65, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12,
 	0x40, 0x0a, 0x0e, 0x54, 0x65, 0x6d, 0x70, 0x6c, 0x61, 0x74, 0x65, 0x43, 0x72, 0x65, 0x61, 0x74,
 	0x65, 0x12, 0x16, 0x2e, 0x54, 0x65, 0x6d, 0x70, 0x6c, 0x61, 0x74, 0x65, 0x43, 0x72, 0x65, 0x61,
@@ -488,30 +533,33 @@ func file_template_manager_proto_rawDescGZIP() []byte {
 	return file_template_manager_proto_rawDescData
 }
 
+var file_template_manager_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_template_manager_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_template_manager_proto_goTypes = []interface{}{
-	(*TemplateConfig)(nil),              // 0: TemplateConfig
-	(*TemplateCreateRequest)(nil),       // 1: TemplateCreateRequest
-	(*TemplateStatusRequest)(nil),       // 2: TemplateStatusRequest
-	(*TemplateBuildDeleteRequest)(nil),  // 3: TemplateBuildDeleteRequest
-	(*TemplateBuildMetadata)(nil),       // 4: TemplateBuildMetadata
-	(*TemplateBuildStatusResponse)(nil), // 5: TemplateBuildStatusResponse
-	(*emptypb.Empty)(nil),               // 6: google.protobuf.Empty
+	(TemplateBuildState)(0),             // 0: TemplateBuildState
+	(*TemplateConfig)(nil),              // 1: TemplateConfig
+	(*TemplateCreateRequest)(nil),       // 2: TemplateCreateRequest
+	(*TemplateStatusRequest)(nil),       // 3: TemplateStatusRequest
+	(*TemplateBuildDeleteRequest)(nil),  // 4: TemplateBuildDeleteRequest
+	(*TemplateBuildMetadata)(nil),       // 5: TemplateBuildMetadata
+	(*TemplateBuildStatusResponse)(nil), // 6: TemplateBuildStatusResponse
+	(*emptypb.Empty)(nil),               // 7: google.protobuf.Empty
 }
 var file_template_manager_proto_depIdxs = []int32{
-	0, // 0: TemplateCreateRequest.template:type_name -> TemplateConfig
-	4, // 1: TemplateBuildStatusResponse.metadata:type_name -> TemplateBuildMetadata
-	1, // 2: TemplateService.TemplateCreate:input_type -> TemplateCreateRequest
-	2, // 3: TemplateService.TemplateBuildStatus:input_type -> TemplateStatusRequest
-	3, // 4: TemplateService.TemplateBuildDelete:input_type -> TemplateBuildDeleteRequest
-	6, // 5: TemplateService.TemplateCreate:output_type -> google.protobuf.Empty
-	5, // 6: TemplateService.TemplateBuildStatus:output_type -> TemplateBuildStatusResponse
-	6, // 7: TemplateService.TemplateBuildDelete:output_type -> google.protobuf.Empty
-	5, // [5:8] is the sub-list for method output_type
-	2, // [2:5] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	1, // 0: TemplateCreateRequest.template:type_name -> TemplateConfig
+	0, // 1: TemplateBuildStatusResponse.status:type_name -> TemplateBuildState
+	5, // 2: TemplateBuildStatusResponse.metadata:type_name -> TemplateBuildMetadata
+	2, // 3: TemplateService.TemplateCreate:input_type -> TemplateCreateRequest
+	3, // 4: TemplateService.TemplateBuildStatus:input_type -> TemplateStatusRequest
+	4, // 5: TemplateService.TemplateBuildDelete:input_type -> TemplateBuildDeleteRequest
+	7, // 6: TemplateService.TemplateCreate:output_type -> google.protobuf.Empty
+	6, // 7: TemplateService.TemplateBuildStatus:output_type -> TemplateBuildStatusResponse
+	7, // 8: TemplateService.TemplateBuildDelete:output_type -> google.protobuf.Empty
+	6, // [6:9] is the sub-list for method output_type
+	3, // [3:6] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_template_manager_proto_init() }
@@ -598,13 +646,14 @@ func file_template_manager_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_template_manager_proto_rawDesc,
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_template_manager_proto_goTypes,
 		DependencyIndexes: file_template_manager_proto_depIdxs,
+		EnumInfos:         file_template_manager_proto_enumTypes,
 		MessageInfos:      file_template_manager_proto_msgTypes,
 	}.Build()
 	File_template_manager_proto = out.File

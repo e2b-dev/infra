@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,56 +18,24 @@ const (
 )
 
 type BuildInfo struct {
-	envID  string
-	ended  bool
-	failed bool
-
-	rootfsSizeKey  int32
-	envdVersionKey string
-
-	mu sync.RWMutex
+	envID    string
+	status   template_manager.TemplateBuildState
+	metadata *template_manager.TemplateBuildMetadata
+	mu       sync.RWMutex
 }
 
 func (b *BuildInfo) IsRunning() bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	return !b.ended
+	return b.status == template_manager.TemplateBuildState_Building
 }
 
 func (b *BuildInfo) IsFailed() bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	return b.failed
-}
-
-func (b *BuildInfo) SetRootFsSizeKey(size int32) {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	b.rootfsSizeKey = size
-}
-
-func (b *BuildInfo) GetRootFsSizeKey() int32 {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.rootfsSizeKey
-}
-
-func (b *BuildInfo) SetEnvdVersionKey(version string) {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	b.envdVersionKey = version
-}
-
-func (b *BuildInfo) GetEnvdVersionKey() string {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.envdVersionKey
+	return b.status == template_manager.TemplateBuildState_Failed
 }
 
 func (b *BuildInfo) GetBuildEnvID() string {
@@ -74,6 +43,20 @@ func (b *BuildInfo) GetBuildEnvID() string {
 	defer b.mu.RUnlock()
 
 	return b.envID
+}
+
+func (b *BuildInfo) GetMetadata() *template_manager.TemplateBuildMetadata {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	return b.metadata
+}
+
+func (b *BuildInfo) GetStatus() template_manager.TemplateBuildState {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	return b.status
 }
 
 type BuildCache struct {
@@ -124,9 +107,9 @@ func (c *BuildCache) Create(buildID string, envID string) error {
 	}
 
 	info := BuildInfo{
-		envID:  envID,
-		ended:  false,
-		failed: false,
+		envID:    envID,
+		status:   template_manager.TemplateBuildState_Building,
+		metadata: nil,
 	}
 
 	c.cache.Set(buildID, &info, buildInfoExpiration)
@@ -135,7 +118,7 @@ func (c *BuildCache) Create(buildID string, envID string) error {
 	return nil
 }
 
-func (c *BuildCache) SetSucceeded(envID string, buildID string) error {
+func (c *BuildCache) SetSucceeded(envID string, buildID string, metadata *template_manager.TemplateBuildMetadata) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -144,9 +127,8 @@ func (c *BuildCache) SetSucceeded(envID string, buildID string) error {
 		return fmt.Errorf("build %s not found in cache: %w", buildID, err)
 	}
 
-	item.ended = true
-	item.failed = false
-
+	item.status = template_manager.TemplateBuildState_Completed
+	item.metadata = metadata
 	c.updateCounter(envID, buildID, -1)
 	return nil
 }
@@ -160,9 +142,7 @@ func (c *BuildCache) SetFailed(envID string, buildID string) error {
 		return fmt.Errorf("build %s not found in cache: %w", buildID, err)
 	}
 
-	item.ended = true
-	item.failed = true
-
+	item.status = template_manager.TemplateBuildState_Failed
 	c.updateCounter(envID, buildID, -1)
 	return nil
 }

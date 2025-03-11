@@ -38,12 +38,16 @@ message TemplateBuildMetadata {
   string envdVersionKey = 2;
 }
 
+enum TemplateBuildState {
+  Building = 0;
+  Failed = 1;
+  Completed = 2;
+}
+
 // Logs from template build
 message TemplateBuildStatusResponse {
-  bool done = 1;
-  bool failed = 2;
-
-  TemplateBuildMetadata metadata = 3;
+  TemplateBuildState status = 1;
+  TemplateBuildMetadata metadata = 2;
 }
 
 // Interface exported by the server.
