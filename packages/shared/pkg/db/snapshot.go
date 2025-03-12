@@ -192,7 +192,7 @@ func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uu
 	}
 
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", teamID, err)
+		return nil, nil, fmt.Errorf("failed to get snapshot build for '%s': %w", sandboxID, err)
 	}
 
 	return e, e.Edges.Builds, nil
