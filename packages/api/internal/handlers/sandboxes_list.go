@@ -380,10 +380,10 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	// add pagination info to headers
 	if result.EndCursor != nil {
-		c.Header("X-Next-Cursor", *result.EndCursor)
+		c.Header("X-Next-Page-Cursor", *result.EndCursor)
 	}
 	if result.StartCursor != nil {
-		c.Header("X-Previous-Cursor", *result.StartCursor)
+		c.Header("X-Previous-Page-Cursor", *result.StartCursor)
 	}
 	c.Header("X-Has-Next-Page", strconv.FormatBool(result.HasNextPage))
 	c.Header("X-Has-Previous-Page", strconv.FormatBool(result.HasPrevious))
