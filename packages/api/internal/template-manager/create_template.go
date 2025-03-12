@@ -15,7 +15,7 @@ import (
 
 func (tm *TemplateManager) CreateTemplate(
 	t trace.Tracer,
-	span trace.SpanContext,
+	ctx context.Context,
 	templateID string,
 	buildID uuid.UUID,
 	kernelVersion,
@@ -25,14 +25,12 @@ func (tm *TemplateManager) CreateTemplate(
 	diskSizeMB,
 	memoryMB int64,
 ) error {
-	ctx, ctxSpan := t.Start(
-		trace.ContextWithSpanContext(context.Background(), span),
-		"background-build-env",
+	ctx, span := t.Start(ctx, "create-template",
 		trace.WithAttributes(
 			attribute.String("env.id", templateID),
 		),
 	)
-	defer ctxSpan.End()
+	defer span.End()
 
 	features, err := sandbox.NewVersionInfo(firecrackerVersion)
 	if err != nil {
