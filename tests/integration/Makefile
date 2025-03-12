@@ -17,15 +17,12 @@ build-debug:
 
 @.PHONY: seed
 seed:
-	@echo "Generating seeds..."
-	@cat ./seeds/* > ./seed.sql
 	@echo "Applying seeds"
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) \
 		TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY) \
 		TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID) \
 		TESTS_SANDBOX_BUILD_ID=$(TESTS_SANDBOX_BUILD_ID) \
-		go run seed.go -file ./seed.sql
-	@rm ./seed.sql
+		go run seed.go
 	@echo "Done"
 
 .PHONY: test
