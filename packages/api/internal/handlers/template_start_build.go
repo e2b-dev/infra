@@ -2,9 +2,7 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"net/http"
 	"time"
 
@@ -90,27 +88,30 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		attribute.String("template.id", templateID),
 	)
 
-	// Check if some other build from same template is in process, excludes currently created build
-	envBuildDB, err := a.db.GetRunningEnvBuild(ctx, envDB.ID, []uuid.UUID{buildUUID})
-
-	// error is present but different from not found
-	if err != nil && !errors.Is(err, db.TemplateBuildNotFound{}) {
-		zap.L().Error("Error when getting running build", zap.Error(err))
-
-		dbErr := a.db.EnvBuildSetStatus(ctx, templateID, buildUUID, envbuild.StatusFailed)
-		if dbErr != nil {
-			zap.L().Error("Error when setting build status", zap.Error(dbErr))
-		}
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "error during template build request")
+	concurrentlyRunningBuilds, err := a.db.
+		Client.
+		EnvBuild.
+		Query().
+		Where(
+			envbuild.And(
+				envbuild.EnvID(envDB.ID),
+				envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding),
+				envbuild.IDNotIn(buildUUID),
+			),
+		).
+		Count(ctx)
+	if err != nil {
+		zap.L().Error("Error when getting count of running builds", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
 		return
 	}
 
-	// we found conflicting build for same env
-	if envBuildDB != nil {
-		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("there's already running build for %s", templateID))
-		err = fmt.Errorf("build is already running build for %s", templateID)
+	// make sure there is no other build in progress for the same template
+	if concurrentlyRunningBuilds > 0 {
+		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("There is already a build in progress for the template"))
+		err = fmt.Errorf("there is already a build in progress for the template '%s'", templateID)
 		telemetry.ReportCriticalError(ctx, err)
+		return
 	}
 
 	startTime := time.Now()

@@ -179,31 +179,6 @@ func (db *DB) GetRunningEnvBuilds(ctx context.Context) ([]*models.EnvBuild, erro
 	return envBuilds, nil
 }
 
-func (db *DB) GetRunningEnvBuild(ctx context.Context, envID string, excludedBuildUUIDs []uuid.UUID) (build *models.EnvBuild, err error) {
-	dbBuild, err := db.
-		Client.
-		EnvBuild.
-		Query().
-		Where(
-			envbuild.And(
-				envbuild.EnvID(envID),
-				envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding),
-				envbuild.IDNotIn(excludedBuildUUIDs...),
-			),
-		).
-		Order(models.Desc(envbuild.FieldCreatedAt)).
-		First(ctx)
-
-	notFound := models.IsNotFound(err)
-	if notFound {
-		return nil, TemplateBuildNotFound{}
-	} else if err != nil {
-		return nil, fmt.Errorf("error during env build fetch '%s': %w", envID, err)
-	}
-
-	return dbBuild, nil
-}
-
 func (db *DB) GetEnvBuild(ctx context.Context, buildID uuid.UUID) (build *models.EnvBuild, err error) {
 	dbBuild, err := db.
 		Client.
