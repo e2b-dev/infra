@@ -55,7 +55,8 @@ func (tm *TemplateManager) CreateTemplate(
 		},
 	})
 
-	if utils.UnwrapGRPCError(err) != nil {
+	err = utils.UnwrapGRPCError(err)
+	if err != nil {
 		return fmt.Errorf("failed to create template '%s': %w", templateID, err)
 	}
 
