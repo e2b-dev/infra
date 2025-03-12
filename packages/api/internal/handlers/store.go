@@ -31,6 +31,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 )
 
 var supabaseJWTSecretsString = strings.TrimSpace(os.Getenv("SUPABASE_JWT_SECRETS"))
@@ -135,7 +136,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	buildCache := builds.NewBuildCache()
 
 	templateCache := templatecache.NewTemplateCache(dbClient)
-	authCache := authcache.NewTeamAuthCache(dbClient)
+	authCache := authcache.NewTeamAuthCache()
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
 	a := &APIStore{
@@ -220,7 +221,9 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 }
 
 func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authcache.AuthTeamInfo, *api.APIError) {
-	team, tier, err := a.authCache.Get(ctx, apiKey)
+	team, tier, err := a.authCache.GetOrSet(ctx, apiKey, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
+		return a.db.GetTeamAuth(ctx, key)
+	})
 	if err != nil {
 		return authcache.AuthTeamInfo{}, &api.APIError{
 			Err:       fmt.Errorf("failed to get the team from db for an api key: %w", err),
@@ -319,7 +322,9 @@ func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (authcache.AuthTeamInfo, *api.APIError) {
 	userID := a.GetUserID(middleware.GetGinContext(ctx))
 
-	team, tier, err := a.db.GetTeamByIDAndUserIDAuth(ctx, teamID, userID)
+	team, tier, err := a.authCache.GetOrSet(ctx, teamID, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
+		return a.db.GetTeamByIDAndUserIDAuth(ctx, teamID, userID)
+	})
 	if errors.Is(err, &db.TeamUsageError{}) {
 		return authcache.AuthTeamInfo{}, &api.APIError{
 			Err:       fmt.Errorf("failed getting team: %w", err),
