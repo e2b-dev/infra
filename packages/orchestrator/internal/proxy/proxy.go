@@ -23,29 +23,29 @@ var browserIdentityKeywords = []string{
 	"mozilla", "chrome", "safari", "firefox", "edge", "opera", "msie",
 }
 
-type SessionProxy struct {
+type SandboxProxy struct {
 	sandboxes *smap.Map[string]
 	server    *http.Server
 }
 
-func New(port uint) *SessionProxy {
+func New(port uint) *SandboxProxy {
 	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
 
-	return &SessionProxy{
+	return &SandboxProxy{
 		server:    server,
 		sandboxes: smap.New[string](),
 	}
 }
 
-func (p *SessionProxy) AddSandbox(sandboxID, ip string) {
+func (p *SandboxProxy) AddSandbox(sandboxID, ip string) {
 	p.sandboxes.Insert(sandboxID, ip)
 }
 
-func (p *SessionProxy) RemoveSandbox(sandboxID string) {
+func (p *SandboxProxy) RemoveSandbox(sandboxID string) {
 	p.sandboxes.Remove(sandboxID)
 }
 
-func (p *SessionProxy) Start() error {
+func (p *SandboxProxy) Start() error {
 	// similar values to our old the nginx configuration
 	serverTransport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
@@ -61,14 +61,14 @@ func (p *SessionProxy) Start() error {
 	return p.server.ListenAndServe()
 }
 
-func (p *SessionProxy) Shutdown(ctx context.Context) {
+func (p *SandboxProxy) Shutdown(ctx context.Context) {
 	err := p.server.Shutdown(ctx)
 	if err != nil {
 		zap.L().Error("failed to shutdown proxy server", zap.Error(err))
 	}
 }
 
-func (p *SessionProxy) proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
+func (p *SandboxProxy) proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
 	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
 	if err != nil {
 		zap.L().Error("failed to create active connections counter", zap.Error(err))
@@ -146,7 +146,7 @@ func (p *SessionProxy) proxyHandler(transport *http.Transport) func(w http.Respo
 	}
 }
 
-func (p *SessionProxy) buildHtmlClosedPortError(sandboxId string, host string, port uint64) []byte {
+func (p *SandboxProxy) buildHtmlClosedPortError(sandboxId string, host string, port uint64) []byte {
 	replacements := map[string]string{
 		"{{sandbox_id}}":   sandboxId,
 		"{{sandbox_port}}": strconv.FormatUint(port, 10),
@@ -161,7 +161,7 @@ func (p *SessionProxy) buildHtmlClosedPortError(sandboxId string, host string, p
 	return []byte(adjustedErrTemplate)
 }
 
-func (p *SessionProxy) buildJsonClosedPortError(sandboxId string, port uint64) []byte {
+func (p *SandboxProxy) buildJsonClosedPortError(sandboxId string, port uint64) []byte {
 	response := map[string]interface{}{
 		"error":      "The sandbox is running but port is not open",
 		"sandbox_id": sandboxId,
@@ -172,7 +172,7 @@ func (p *SessionProxy) buildJsonClosedPortError(sandboxId string, port uint64) [
 	return responseBytes
 }
 
-func (p *SessionProxy) isBrowser(userAgent string) bool {
+func (p *SandboxProxy) isBrowser(userAgent string) bool {
 	userAgent = strings.ToLower(userAgent)
 	for _, keyword := range browserIdentityKeywords {
 		if strings.Contains(userAgent, keyword) {

@@ -87,7 +87,7 @@ func NewSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
 	dns *dns.DNS,
-	proxy *proxy.SessionProxy,
+	proxy *proxy.SandboxProxy,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,

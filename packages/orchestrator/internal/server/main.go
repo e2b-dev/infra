@@ -39,7 +39,7 @@ type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	sandboxes       *smap.Map[*sandbox.Sandbox]
 	dns             *dns.DNS
-	proxy           *proxy.SessionProxy
+	proxy           *proxy.SandboxProxy
 	tracer          trace.Tracer
 	networkPool     *network.Pool
 	templateCache   *template.Cache
@@ -56,7 +56,7 @@ type Service struct {
 	server   *server
 	grpc     *grpc.Server
 	dns      *dns.DNS
-	proxy    *proxy.SessionProxy
+	proxy    *proxy.SandboxProxy
 	port     uint16
 	shutdown struct {
 		once sync.Once
@@ -71,7 +71,7 @@ type Service struct {
 	useClickhouseMetrics string
 }
 
-func New(ctx context.Context, port uint, clientID string, proxy *proxy.SessionProxy) (*Service, error) {
+func New(ctx context.Context, port uint, clientID string, proxy *proxy.SandboxProxy) (*Service, error) {
 	if port > math.MaxUint16 {
 		return nil, fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
 	}
