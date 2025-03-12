@@ -7,6 +7,8 @@ runs:
     - name: Run PostgreSQL Database
       env:
         TESTS_E2B_API_KEY: "e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057"
+        TESTS_SANDBOX_TEAM_ID: "834777bd-9956-45ca-b088-9bac9290e2ac"
+        TESTS_SUPABASE_TOKEN: "TODO"
       run: |
         docker run -d --name postgres \
                       -e POSTGRES_USER=postgres \
@@ -22,6 +24,8 @@ runs:
         echo "PostgreSQL is healthy!"
         
         echo "TESTS_E2B_API_KEY=${TESTS_E2B_API_KEY}" >> .env.test
+        echo "TESTS_SANDBOX_TEAM_ID=${TESTS_SANDBOX_TEAM_ID}" >> .env.test
+        echo "TESTS_SUPABASE_TOKEN=${TESTS_SUPABASE_TOKEN}" >> .env.test
         set -x
         make migrate
         make -C tests/integration seed
@@ -30,8 +34,10 @@ runs:
     - name: Start Services
       env:
         ENVD_TIMEOUT: "60s"
+        SUPABASE_JWT_SECRETS: "supabasejwtsecretsupabasejwtsecret"
       run: |
         echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test
+        echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRETS}" >> .env.test
         
         mkdir -p ~/logs
 

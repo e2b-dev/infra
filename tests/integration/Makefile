@@ -34,6 +34,8 @@ test:
 	export TESTS_ORCHESTRATOR_HOST=$(TESTS_ORCHESTRATOR_HOST); \
 	export TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID); \
 	export TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY); \
+	export TESTS_SUPABASE_TOKEN=$(TESTS_SUPABASE_TOKEN); \
+	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
 	go test -v ./internal/main_test.go -count=1 && \
 	go test -v ./internal/tests/... -count=1
 

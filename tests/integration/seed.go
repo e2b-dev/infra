@@ -16,6 +16,7 @@ type SeedData struct {
 	APIKey  string
 	EnvId   string
 	BuildId string
+	TeamId  string
 }
 
 func main() {
@@ -48,6 +49,7 @@ func main() {
 		APIKey:  os.Getenv("TESTS_E2B_API_KEY"),
 		EnvId:   os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
 		BuildId: os.Getenv("TESTS_SANDBOX_BUILD_ID"),
+		TeamId:  os.Getenv("TESTS_SANDBOX_TEAM_ID"),
 	})
 
 	if err != nil {

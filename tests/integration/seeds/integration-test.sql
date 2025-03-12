@@ -1,6 +1,6 @@
 DO $$ 
 DECLARE
-    team_id UUID := '834777bd-9956-45ca-b088-9bac9290e2ac';
+    team_id UUID := '{{ .TeamId }}';
     env_id TEXT := '{{ .EnvId }}';
     build_id UUID := '{{ .BuildId }}';
 BEGIN
