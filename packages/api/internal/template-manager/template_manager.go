@@ -69,7 +69,6 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 	}
 }
 
-// BuildStatusSync todo: implement failing build when there is build in some state for too long
 func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUID, templateID string) {
 	childCtx, childCtxCancel := context.WithTimeout(ctx, syncTimeout)
 	defer childCtxCancel()

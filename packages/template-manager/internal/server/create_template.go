@@ -16,7 +16,7 @@ import (
 )
 
 func (s *serverStore) TemplateCreate(ctx context.Context, templateRequest *template_manager.TemplateCreateRequest) (*emptypb.Empty, error) {
-	childCtx, childSpan := s.tracer.Start(context.Background(), "template-create")
+	childCtx, childSpan := s.tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
 	config := templateRequest.Template
