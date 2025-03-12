@@ -51,8 +51,8 @@ job "orchestrator" {
       artifact {
         source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator"
 
-        %{ if environment == "staging" }
-        // Checksum in only available for staging to increase development speed in prod use rolling updates
+        %{ if environment == "dev" }
+        // Checksum in only available for dev to increase development speed in prod use rolling updates
         options {
           checksum = "md5:${orchestrator_checksum}"
         }
