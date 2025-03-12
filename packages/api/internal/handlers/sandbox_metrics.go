@@ -24,7 +24,7 @@ import (
 
 const defaultLimit = 100
 
-func (a *APIStore) getSandboxesSandboxIDMetrics(
+func (a *APIStore) LegacyGetSandboxIDMetrics(
 	ctx context.Context,
 	sandboxID string,
 	teamID string,
@@ -93,6 +93,69 @@ func (a *APIStore) getSandboxesSandboxIDMetrics(
 	return metrics, nil
 }
 
+func (a *APIStore) GetSandboxesSandboxIDMetricsFromClickhouse(
+	ctx context.Context,
+	sandboxID string,
+	teamID string,
+	limit int,
+	duration time.Duration,
+) ([]api.SandboxMetric, error) {
+	end := time.Now().UTC()
+	start := end.Add(-duration)
+
+	metrics, err := a.clickhouseStore.QueryMetrics(ctx, sandboxID, teamID, start.Unix(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("error when returning metrics for sandbox: %w", err)
+	}
+
+	// XXX avoid this conversion to be more efficient
+	apiMetrics := make([]api.SandboxMetric, len(metrics))
+	for i, m := range metrics {
+		apiMetrics[i] = api.SandboxMetric{
+			Timestamp:   m.Timestamp,
+			CpuUsedPct:  m.CPUUsedPercent,
+			CpuCount:    int32(m.CPUCount),
+			MemTotalMiB: int64(m.MemTotalMiB),
+			MemUsedMiB:  int64(m.MemUsedMiB),
+		}
+	}
+
+	return apiMetrics, nil
+}
+
+type metricReader interface {
+	LegacyGetSandboxIDMetrics(
+		ctx context.Context,
+		sandboxID string,
+		teamID string,
+		limit int,
+		duration time.Duration,
+	) ([]api.SandboxMetric, error)
+	GetSandboxesSandboxIDMetricsFromClickhouse(
+		ctx context.Context,
+		sandboxID string,
+		teamID string,
+		limit int,
+		duration time.Duration,
+	) ([]api.SandboxMetric, error)
+}
+
+func (a *APIStore) readMetricsBasedOnConfig(
+	ctx context.Context,
+	sandboxID string,
+	teamID string,
+	reader metricReader,
+) ([]api.SandboxMetric, error) {
+	// Get metrics and health status on sandbox startup
+	readMetricsFromClickhouse := a.readMetricsFromClickHouse == "true"
+
+	if readMetricsFromClickhouse {
+		return reader.GetSandboxesSandboxIDMetricsFromClickhouse(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
+	}
+
+	return reader.LegacyGetSandboxIDMetrics(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
+}
+
 func (a *APIStore) GetSandboxesSandboxIDMetrics(
 	c *gin.Context,
 	sandboxID string,
@@ -107,7 +170,8 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 		attribute.String("team.id", teamID),
 	)
 
-	metrics, err := a.getSandboxesSandboxIDMetrics(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
+	metrics, err := a.readMetricsBasedOnConfig(ctx, sandboxID, teamID, a)
+
 	if err != nil {
 		zap.L().Error("Error returning metrics for sandbox",
 			zap.Error(err),

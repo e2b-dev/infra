@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
@@ -121,6 +122,8 @@ func mockSandbox(
 	sbxlogger.SetSandboxLoggerInternal(sbxlogger.NewLogger(ctx, loggerCfg))
 	sbxlogger.SetSandboxLoggerExternal(sbxlogger.NewLogger(ctx, loggerCfg))
 
+	mockStore := chdb.NewMockStore()
+
 	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
 		tracer,
@@ -149,6 +152,9 @@ func mockSandbox(
 		templateId,
 		"testclient",
 		devicePool,
+		mockStore,
+		"true",
+		"true",
 	)
 	defer func() {
 		cleanupErr := cleanup.Run()
