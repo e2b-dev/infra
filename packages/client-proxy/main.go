@@ -28,13 +28,13 @@ import (
 )
 
 const (
-	ServiceName      = "client-proxy"
-	dnsServer        = "api.service.consul:5353"
-	healthCheckPort  = 3001
-	port             = 3002
-	sandboxPort      = 3003 // legacy session proxy port
-	sandboxProxyPort = 5007 // orchestrator proxy port
-	maxRetries       = 3
+	ServiceName           = "client-proxy"
+	dnsServer             = "api.service.consul:5353"
+	healthCheckPort       = 3001
+	port                  = 3002
+	sandboxPort           = 3003 // legacy session proxy port
+	orchestratorProxyPort = 5007 // orchestrator proxy port
+	maxRetries            = 3
 )
 
 var commitSHA string
@@ -112,7 +112,7 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 		zap.L().Debug("Proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
 		targetUrl := &url.URL{
 			Scheme: "http",
-			Host:   fmt.Sprintf("%s:%d", node, sandboxProxyPort),
+			Host:   fmt.Sprintf("%s:%d", node, orchestratorProxyPort),
 		}
 
 		// Proxy the request
