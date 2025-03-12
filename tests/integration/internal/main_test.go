@@ -18,9 +18,12 @@ func TestMain(m *testing.M) {
 
 // TestCacheTemplate starts a sandbox before all tests to cache the necessary files for the base template.
 func TestCacheTemplate(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	c := setup.GetAPIClient()
 	sbxTimeout := int32(60)
-	_, err := c.PostSandboxesWithResponse(context.Background(), api.NewSandbox{
+	_, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
 	}, setup.WithAPIKey())
