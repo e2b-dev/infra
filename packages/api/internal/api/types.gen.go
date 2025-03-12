@@ -62,15 +62,15 @@ type ListedSandbox struct {
 	// CpuCount CPU cores for the sandbox
 	CpuCount CPUCount `json:"cpuCount"`
 
-	// Cursor Pagination cursor of the sandbox
-	Cursor *string `json:"cursor,omitempty"`
-
 	// EndAt Time when the sandbox will expire
 	EndAt time.Time `json:"endAt"`
 
 	// MemoryMB Memory for the sandbox in MB
 	MemoryMB MemoryMB         `json:"memoryMB"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
+
+	// PaginationCursor Pagination cursor of the sandbox
+	PaginationCursor *string `json:"paginationCursor,omitempty"`
 
 	// SandboxID Identifier of the sandbox
 	SandboxID string `json:"sandboxID"`
@@ -389,11 +389,11 @@ type GetSandboxesParams struct {
 	// State Filter sandboxes by one or more states
 	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
 
-	// After Cursor to start the list from
-	After *string `form:"after,omitempty" json:"after,omitempty"`
+	// NextPageCursor Cursor to start the list from
+	NextPageCursor *string `form:"nextPageCursor,omitempty" json:"nextPageCursor,omitempty"`
 
-	// First Maximum number of items to return
-	First *int32 `form:"first,omitempty" json:"first,omitempty"`
+	// PageSize Maximum number of items to return per page
+	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.

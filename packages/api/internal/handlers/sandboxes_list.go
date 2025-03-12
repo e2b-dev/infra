@@ -34,8 +34,8 @@ type SandboxesListFilter struct {
 }
 
 type SandboxesListPaginate struct {
-	Cursor   *string
-	MaxItems *int32
+	NextPageCursor *string
+	PageSize       *int32
 }
 
 type SandboxesListResult struct {
@@ -140,7 +140,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 			}
 
 			cursor := generateCursor(sandbox)
-			sandbox.Cursor = &cursor
+			sandbox.PaginationCursor = &cursor
 
 			sandboxes = append(sandboxes, sandbox)
 		}
@@ -183,7 +183,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 			}
 
 			cursor := generateCursor(sandbox)
-			sandbox.Cursor = &cursor
+			sandbox.PaginationCursor = &cursor
 
 			sandboxes = append(sandboxes, sandbox)
 		}
@@ -261,15 +261,15 @@ func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPagi
 	}
 
 	// Default max items if not specified
-	maxItems := int32(10)
-	if paginate.MaxItems != nil {
-		maxItems = *paginate.MaxItems
+	limit := int32(10)
+	if paginate.PageSize != nil {
+		limit = *paginate.PageSize
 	}
 
 	// Find start index based on cursor
 	startIdx := 0
-	if paginate.Cursor != nil {
-		cursorTimeStr, cursorID, err := parseCursor(*paginate.Cursor)
+	if paginate.NextPageCursor != nil {
+		cursorTimeStr, cursorID, err := parseCursor(*paginate.NextPageCursor)
 		if err != nil {
 			return SandboxesListResult{}, fmt.Errorf("invalid cursor: %w", err)
 		}
@@ -306,7 +306,7 @@ func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPagi
 	}
 
 	// Calculate end index
-	endIdx := startIdx + int(maxItems)
+	endIdx := startIdx + int(limit)
 	if endIdx > len(sandboxes) {
 		endIdx = len(sandboxes)
 	}
@@ -366,8 +366,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	// Paginate sandboxes
 	result, err := paginateSandboxes(sandboxes, SandboxesListPaginate{
-		Cursor:   params.After,
-		MaxItems: params.First,
+		NextPageCursor: params.NextPageCursor,
+		PageSize:       params.PageSize,
 	})
 	if err != nil {
 		zap.L().Error("Error fetching sandboxes", zap.Error(err))

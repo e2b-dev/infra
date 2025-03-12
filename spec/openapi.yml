@@ -266,7 +266,7 @@ components:
           $ref: "#/components/schemas/SandboxMetadata"
         state:
           $ref: "#/components/schemas/SandboxState"
-        cursor:
+        paginationCursor:
           type: string
           description: Pagination cursor of the sandbox
 
@@ -604,15 +604,15 @@ paths:
               $ref: "#/components/schemas/SandboxState"
           style: form
           explode: false
-        - name: after
+        - name: nextPageCursor
           in: query
           description: Cursor to start the list from
           required: false
           schema:
             type: string
-        - name: first
+        - name: pageSize
           in: query
-          description: Maximum number of items to return
+          description: Maximum number of items to return per page
           required: false
           schema:
             type: integer

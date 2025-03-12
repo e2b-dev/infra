@@ -199,19 +199,19 @@ func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 		return
 	}
 
-	// ------------- Optional query parameter "after" -------------
+	// ------------- Optional query parameter "nextPageCursor" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "after", c.Request.URL.Query(), &params.After)
+	err = runtime.BindQueryParameter("form", true, false, "nextPageCursor", c.Request.URL.Query(), &params.NextPageCursor)
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter after: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nextPageCursor: %w", err), http.StatusBadRequest)
 		return
 	}
 
-	// ------------- Optional query parameter "first" -------------
+	// ------------- Optional query parameter "pageSize" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "first", c.Request.URL.Query(), &params.First)
+	err = runtime.BindQueryParameter("form", true, false, "pageSize", c.Request.URL.Query(), &params.PageSize)
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter first: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter pageSize: %w", err), http.StatusBadRequest)
 		return
 	}
 
