@@ -49,15 +49,17 @@ func (tm *TemplateManager) Close() error {
 }
 
 func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
+	ticker := time.NewTicker(syncInterval)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(syncInterval):
-			buildsRunning, err := tm.db.GetRunningEnvBuilds(ctx)
+		case <-ticker.C:
+			dbCtx, dbxCtxCancel := context.WithTimeout(ctx, 5*time.Second)
+			buildsRunning, err := tm.db.GetRunningEnvBuilds(dbCtx)
 			if err != nil {
 				zap.L().Error("Error getting running builds for periodical sync", zap.Error(err))
-				time.Sleep(time.Second) // just not hammer database if there is an error
+				dbxCtxCancel()
 				continue
 			}
 
@@ -65,6 +67,8 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 			for _, buildDB := range buildsRunning {
 				go tm.BuildStatusSync(ctx, buildDB.ID, *buildDB.EnvID)
 			}
+
+			dbxCtxCancel()
 		}
 	}
 }
