@@ -120,6 +120,14 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		startCmd = *build.StartCmd
 	}
 
+	// only waiting builds can be triggered
+	if build.Status != envbuild.StatusWaiting {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
+		err = fmt.Errorf("build is not in waiting state: %s", build.Status)
+		telemetry.ReportCriticalError(ctx, err)
+		return
+	}
+
 	// Call the Template Manager to build the environment
 	buildErr := a.templateManager.CreateTemplate(
 		a.Tracer,
