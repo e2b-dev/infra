@@ -1,7 +1,6 @@
 package chdb
 
 import (
-	"crypto/tls"
 	"embed"
 	"fmt"
 
@@ -78,7 +77,6 @@ func NewMigrator(config ClickHouseConfig) (*ClickhouseMigrator, error) {
 	db := clickhouse.OpenDB(&clickhouse.Options{
 		Addr:     []string{config.ConnectionString},
 		Protocol: clickhouse.Native,
-		TLS:      &tls.Config{}, // Not using TLS for now
 		Auth: clickhouse.Auth{
 			Database: config.Database,
 			Username: config.Username,
@@ -87,12 +85,12 @@ func NewMigrator(config ClickHouseConfig) (*ClickhouseMigrator, error) {
 	})
 
 	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS schema_migrations (
+		CREATE TABLE IF NOT EXISTS default.schema_migrations (
 			version    Int64,
 			dirty      UInt8,
 			sequence   UInt64
 		)
-		ENGINE = ReplicatedMergeTree
+		ENGINE = MergeTree()
 		ORDER BY tuple();
 	`)
 	if err != nil {

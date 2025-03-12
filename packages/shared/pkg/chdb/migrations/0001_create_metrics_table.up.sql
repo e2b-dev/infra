@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS metrics (
+CREATE TABLE IF NOT EXISTS default.metrics (
 	timestamp DateTime('UTC'),
 	sandbox_id String,
 	team_id String,

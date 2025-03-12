@@ -35,5 +35,5 @@ output "cloudflare_api_token_secret_name" {
 }
 
 output "clickhouse_password_secret_data" {
-  value = google_secret_manager_secret_version.clickhouse_password_value.secret_data
+  value = random_password.clickhouse_password.result
 }

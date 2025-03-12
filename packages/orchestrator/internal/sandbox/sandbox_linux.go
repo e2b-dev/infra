@@ -251,21 +251,23 @@ func NewSandbox(
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	sbx := &Sandbox{
-		uffdExit:        uffdExit,
-		files:           sandboxFiles,
-		Slot:            ips,
-		template:        t,
-		process:         fcHandle,
-		uffd:            fcUffd,
-		Config:          config,
-		StartedAt:       startedAt,
-		EndAt:           endAt,
-		rootfs:          rootfsOverlay,
-		cleanup:         cleanup,
-		healthcheckCtx:  healthcheckCtx,
-		healthy:         atomic.Bool{}, // defaults to `false`
-		ClickhouseStore: clickhouseStore,
-		CleanupID:       uuid.New().String(),
+		uffdExit:             uffdExit,
+		files:                sandboxFiles,
+		Slot:                 ips,
+		template:             t,
+		process:              fcHandle,
+		uffd:                 fcUffd,
+		Config:               config,
+		StartedAt:            startedAt,
+		EndAt:                endAt,
+		rootfs:               rootfsOverlay,
+		cleanup:              cleanup,
+		healthcheckCtx:       healthcheckCtx,
+		healthy:              atomic.Bool{}, // defaults to `false`
+		ClickhouseStore:      clickhouseStore,
+		CleanupID:            uuid.New().String(),
+		useLokiMetrics:       useLokiMetrics,
+		useClickhouseMetrics: useClickhouseMetrics,
 	}
 	// By default, the sandbox should be healthy, if the status change we report it.
 	sbx.healthy.Store(true)
