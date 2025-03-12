@@ -24,7 +24,7 @@ func TestSandboxCreate(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			c := setup.GetAPIClient(t)
+			c := setup.GetAPIClient()
 
 			sbxTimeout := int32(60)
 			resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
