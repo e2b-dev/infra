@@ -69,13 +69,13 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 // Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
 func NewSandbox(
 
-// YOU ARE IN SANDBOX_OTHER.GO
-// YOU PROBABLY WANT TO BE IN SANDBOX_LINUX.GO
+	// YOU ARE IN SANDBOX_OTHER.GO
+	// YOU PROBABLY WANT TO BE IN SANDBOX_LINUX.GO
 
 	ctx context.Context,
 	tracer trace.Tracer,
 	dns *dns.DNS,
-	proxy *proxy.SessionProxy,
+	proxy *proxy.SandboxProxy,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,

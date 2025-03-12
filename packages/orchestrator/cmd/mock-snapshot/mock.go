@@ -116,7 +116,7 @@ func mockSnapshot(
 	buildId,
 	sandboxId string,
 	dns *dns.DNS,
-	proxy *proxy.SessionProxy,
+	proxy *proxy.SandboxProxy,
 	keepAlive time.Duration,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
