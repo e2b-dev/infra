@@ -2,6 +2,7 @@ package templatecache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -118,4 +119,71 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 // Invalidate invalidates the cache for the given templateID
 func (c *TemplateCache) Invalidate(templateID string) {
 	c.cache.Delete(templateID)
+}
+
+type TemplateBuildInfo struct {
+	TeamID     uuid.UUID
+	TemplateID string
+}
+
+type TemplateBuildInfoNotFound struct{ error }
+
+func (TemplateBuildInfoNotFound) Error() string {
+	return "Template build info not found"
+}
+
+type TemplatesBuildCache struct {
+	cache *ttlcache.Cache[uuid.UUID, *TemplateBuildInfo]
+	db    *db.DB
+}
+
+func NewTemplateBuildCache(db *db.DB) *TemplatesBuildCache {
+	cache := ttlcache.New(ttlcache.WithTTL[uuid.UUID, *TemplateBuildInfo](templateInfoExpiration))
+	go cache.Start()
+
+	return &TemplatesBuildCache{
+		cache: cache,
+		db:    db,
+	}
+}
+
+func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (*TemplateBuildInfo, error) {
+	item := c.cache.Get(buildID)
+	if item == nil {
+		print("build cache: not present in cache")
+
+		envDB, _, envDBErr := c.db.GetEnv(ctx, templateID)
+		if envDBErr != nil {
+			if errors.Is(envDBErr, db.TemplateNotFound{}) {
+				return nil, TemplateBuildInfoNotFound{}
+			}
+
+			return nil, fmt.Errorf("failed to get template '%s': %w", buildID, envDBErr)
+		}
+
+		// making sure associated template build really exists
+		_, envBuildDBErr := c.db.GetEnvBuild(ctx, buildID)
+		if envBuildDBErr != nil {
+			if errors.Is(envBuildDBErr, db.TemplateBuildNotFound{}) {
+				return nil, TemplateBuildInfoNotFound{}
+			}
+
+			return nil, fmt.Errorf("failed to get template build '%s': %w", buildID, envBuildDBErr)
+		}
+
+		item = c.cache.Set(
+			buildID,
+			&TemplateBuildInfo{
+				TeamID:     envDB.TeamID,
+				TemplateID: envDB.TemplateID,
+			},
+			templateInfoExpiration,
+		)
+
+		return item.Value(), nil
+	}
+
+	print("build cache: hitting")
+
+	return item.Value(), nil
 }
