@@ -93,11 +93,9 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		EnvBuild.
 		Query().
 		Where(
-			envbuild.And(
-				envbuild.EnvID(envDB.ID),
-				envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding),
-				envbuild.IDNotIn(buildUUID),
-			),
+			envbuild.EnvID(envDB.ID),
+			envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding),
+			envbuild.IDNotIn(buildUUID),
 		).
 		Count(ctx)
 	if err != nil {
