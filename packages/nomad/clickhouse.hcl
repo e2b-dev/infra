@@ -76,7 +76,8 @@ job "clickhouse" {
         data = <<EOF
 <?xml version="1.0"?>
 <clickhouse>
-    <shutdown_wait_unfinished_queries>60</shutdown_wait_unfinished_queries>
+    <shutdown_wait_unfinished>30</shutdown_wait_unfinished>
+    <shutdown_wait_unfinished_queries>1</shutdown_wait_unfinished_queries>
     <storage_configuration>
         <disks>
             <gcs>
