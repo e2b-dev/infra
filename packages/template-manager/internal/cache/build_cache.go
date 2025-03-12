@@ -155,6 +155,9 @@ func (c *BuildCache) updateCounter(envID string, buildID string, value int64) {
 }
 
 func (c *BuildCache) Delete(envID string, buildID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.cache.Delete(envID)
 	c.updateCounter(envID, buildID, -1)
 }
