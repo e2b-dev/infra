@@ -423,3 +423,4 @@ resource "nomad_job" "clickhouse" {
     password_sha256_hex = sha256(var.clickhouse_password)
   })
 }
+
