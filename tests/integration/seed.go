@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/google/uuid"
-	
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 )
 
@@ -49,6 +49,15 @@ func main() {
 
 func seed(db *db.DB, data SeedData) error {
 	ctx := context.Background()
+
+	// User
+	_, err := db.Client.User.Create().
+		SetID(data.UserID).
+		SetEmail("user-test-integration@e2b.dev").
+		Save(ctx)
+	if err != nil {
+		return err
+	}
 
 	// Team
 	t, err := db.Client.Team.Create().
