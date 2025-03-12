@@ -161,3 +161,7 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 func (c *Chunker) Close() error {
 	return c.cache.Close()
 }
+
+func (c *Chunker) FileSize() (int64, error) {
+	return c.cache.FileSize()
+}
