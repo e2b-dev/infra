@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const statusTimeout = time.Minute * 5
+const statusTimeout = time.Minute * 10
 
 func (s *serverStore) TemplateBuildStatus(in *template_manager.TemplateStatusRequest, stream template_manager.TemplateService_TemplateBuildStatusServer) error {
 	ctx, cancel := context.WithTimeout(stream.Context(), statusTimeout)
