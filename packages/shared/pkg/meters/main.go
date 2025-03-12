@@ -63,11 +63,11 @@ var upDownCounterUnits = map[UpDownCounterType]string{
 	ActiveConnectionsCounterMeterName:      "{connection}",
 }
 
-var gaugeDesc = map[ObservableUpDownCounterType]string{
+var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName: "Counter of running sandboxes on the orchestrator.",
 }
 
-var gaugeUnits = map[ObservableUpDownCounterType]string{
+var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName: "{sandbox}",
 }
 
@@ -115,7 +115,7 @@ func GetObservableUpDownCounter(name ObservableUpDownCounterType, callback metri
 		return counter, nil
 	}
 
-	counter, err := meter.Int64ObservableUpDownCounter(string(name), metric.WithDescription(gaugeDesc[name]), metric.WithUnit(gaugeUnits[name]), metric.WithInt64Callback(callback))
+	counter, err := meter.Int64ObservableUpDownCounter(string(name), metric.WithDescription(observableUpDownCounterDesc[name]), metric.WithUnit(observableUpDownCounterUnits[name]), metric.WithInt64Callback(callback))
 	if err != nil {
 		return nil, err
 	}
