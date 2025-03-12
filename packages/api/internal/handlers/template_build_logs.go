@@ -52,17 +52,27 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	templateDB, _, err := a.db.GetEnv(ctx, templateID)
+	buildInfo, err := a.templateBuildsCache.Get(ctx, buildUUID, templateID)
 	if err != nil {
-		errMsg := fmt.Errorf("error when getting env: %w", err)
+		if errors.Is(err, db.TemplateBuildNotFound{}) {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Build '%s' not found", buildUUID))
+			return
+		}
+
+		if errors.Is(err, db.TemplateNotFound{}) {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Template '%s' not found", templateID))
+			return
+		}
+
+		errMsg := fmt.Errorf("error when getting template: %w", err)
 		telemetry.ReportError(ctx, errMsg)
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Template '%s' not found", templateID))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
 		return
 	}
 
 	var team *models.Team
 	for _, t := range teams {
-		if t.ID == templateDB.TeamID {
+		if t.ID == buildInfo.TeamID {
 			team = t
 			break
 		}
@@ -71,9 +81,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	if team == nil {
 		msg := fmt.Errorf("user doesn't have access to env '%s'", templateID)
 		telemetry.ReportError(ctx, msg)
-
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID))
-
 		return
 	}
 

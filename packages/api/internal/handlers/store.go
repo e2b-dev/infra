@@ -53,6 +53,7 @@ type APIStore struct {
 	db                   *db.DB
 	lokiClient           *loki.DefaultClient
 	templateCache        *templatecache.TemplateCache
+	templateBuildsCache  *templatecache.TemplatesBuildCache
 	authCache            *authcache.TeamAuthCache
 	templateSpawnCounter *utils.TemplateSpawnCounter
 	clickhouseStore      chdb.Store
@@ -138,8 +139,9 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Warn("LOKI_ADDRESS not set, disabling Loki client")
 	}
 
+	authCache := authcache.NewTeamAuthCache(dbClient)
 	templateCache := templatecache.NewTemplateCache(dbClient)
-	authCache := authcache.NewTeamAuthCache()
+	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
 	a := &APIStore{
@@ -151,6 +153,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		posthog:                   posthogClient,
 		lokiClient:                lokiClient,
 		templateCache:             templateCache,
+		templateBuildsCache:       templateBuildsCache,
 		authCache:                 authCache,
 		templateSpawnCounter:      templateSpawnCounter,
 		clickhouseStore:           clickhouseStore,
