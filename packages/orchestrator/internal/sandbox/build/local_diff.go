@@ -13,6 +13,7 @@ import (
 type LocalDiffFile struct {
 	*os.File
 	cachePath string
+	cacheKey  string
 }
 
 func NewLocalDiffFile(
@@ -22,6 +23,7 @@ func NewLocalDiffFile(
 ) (*LocalDiffFile, error) {
 	cachePathSuffix := id.Generate()
 
+	cacheKey := fmt.Sprintf("%s/%s", buildId, diffType)
 	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
 	cachePath := filepath.Join(basePath, cacheFile)
 
@@ -33,6 +35,7 @@ func NewLocalDiffFile(
 	return &LocalDiffFile{
 		File:      f,
 		cachePath: cachePath,
+		cacheKey:  cacheKey,
 	}, nil
 }
 
@@ -55,7 +58,12 @@ func (f *LocalDiffFile) ToDiff(
 		return &NoDiff{}, nil
 	}
 
-	return newLocalDiff(f.cachePath, size.Size(), blockSize)
+	return newLocalDiff(
+		f.cacheKey,
+		f.cachePath,
+		size.Size(),
+		blockSize,
+	)
 }
 
 type localDiff struct {
@@ -63,9 +71,11 @@ type localDiff struct {
 	blockSize int64
 	cachePath string
 	cache     *block.Cache
+	cacheKey  string
 }
 
 func newLocalDiff(
+	cacheKey string,
 	cachePath string,
 	size int64,
 	blockSize int64,
@@ -80,6 +90,7 @@ func newLocalDiff(
 		blockSize: blockSize,
 		cachePath: cachePath,
 		cache:     cache,
+		cacheKey:  cacheKey,
 	}, nil
 }
 
@@ -104,7 +115,7 @@ func (b *localDiff) FileSize() (int64, error) {
 }
 
 func (b *localDiff) CacheKey() string {
-	return b.cachePath
+	return b.cacheKey
 }
 
 func (b *localDiff) Init(ctx context.Context) error {

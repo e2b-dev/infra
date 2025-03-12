@@ -126,7 +126,7 @@ func (s *DiffStore) startDiskSpaceEviction(threshold float64) {
 		case <-timer.C:
 			dUsed, dTotal, err := diskUsage(s.cachePath)
 			if err != nil {
-				fmt.Printf("[build data cache]: failed to get disk usage: %v\n", err)
+				zap.L().Error("failed to get disk usage", zap.Error(err))
 				timer.Reset(getDelay(false))
 				continue
 			}
@@ -142,7 +142,7 @@ func (s *DiffStore) startDiskSpaceEviction(threshold float64) {
 
 			succ, err := s.deleteOldestFromCache()
 			if err != nil {
-				fmt.Printf("[build data cache]: failed to delete oldest item from cache: %v\n", err)
+				zap.L().Error("failed to delete oldest item from cache", zap.Error(err))
 				timer.Reset(getDelay(false))
 				continue
 			}
@@ -164,7 +164,7 @@ func (s *DiffStore) getPendingDeletesSize() int64 {
 	return pendingSize
 }
 
-// deleteOldestFromCache deletes the oldest item (smallest TTL) from the cache
+// deleteOldestFromCache deletes the oldest item (smallest TTL) from the cache.
 // ttlcache has items in order by TTL
 func (s *DiffStore) deleteOldestFromCache() (bool, error) {
 	success := false
