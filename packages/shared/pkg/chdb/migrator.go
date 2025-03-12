@@ -86,6 +86,13 @@ func NewMigrator(config ClickHouseConfig) (*ClickhouseMigrator, error) {
 		},
 	})
 
+	_, err = db.Exec(fmt.Sprintf(`
+		CREATE DATABASE IF NOT EXISTS %s;
+	`, config.Database))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create `%s` database: %w", config.Database, err)
+	}
+
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version    Int64,

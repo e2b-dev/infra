@@ -1,1 +1,1 @@
-DROP TABLE IF EXISTS metrics;
+DROP TABLE IF EXISTS default.metrics;
