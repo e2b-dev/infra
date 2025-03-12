@@ -91,7 +91,7 @@ job "clickhouse" {
                 <type>cache</type>
                 <disk>gcs</disk>
                 <path>/var/lib/clickhouse/disks/gcs_cache/</path>
-                <max_size>4Gi</max_size>
+                <max_size>1Gi</max_size>
             </gcs_cache>
         </disks>
         <policies>
