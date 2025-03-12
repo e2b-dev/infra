@@ -130,7 +130,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	// Call the Template Manager to build the environment
 	buildErr := a.templateManager.CreateTemplate(
 		a.Tracer,
-		span.SpanContext(),
+		ctx,
 		templateID,
 		buildUUID,
 		build.KernelVersion,
@@ -166,7 +166,13 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	// Do not wait for global build sync trigger it immediately
 	go func() {
-		a.templateManager.BuildStatusSync(context.Background(), buildUUID, templateID)
+		buildContext, buildSpan := a.Tracer.Start(
+			trace.ContextWithSpanContext(context.Background(), span.SpanContext()),
+			"template-background-build-env",
+		)
+		defer buildSpan.End()
+
+		a.templateManager.BuildStatusSync(buildContext, buildUUID, templateID)
 
 		// Invalidate the cache
 		a.templateCache.Invalidate(templateID)
