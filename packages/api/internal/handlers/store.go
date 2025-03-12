@@ -256,10 +256,10 @@ type supabaseClaims struct {
 	jwt.RegisteredClaims
 }
 
-func getJWTClaims(token string) (*supabaseClaims, error) {
+func getJWTClaims(secrets []string, token string) (*supabaseClaims, error) {
 	errs := make([]error, 0)
 
-	for _, secret := range supabaseJWTSecrets {
+	for _, secret := range secrets {
 		// Parse the token with the custom claims.
 		token, err := jwt.ParseWithClaims(token, &supabaseClaims{}, func(token *jwt.Token) (interface{}, error) {
 			// Verify that the signing method is HMAC (HS256)
@@ -289,7 +289,7 @@ func getJWTClaims(token string) (*supabaseClaims, error) {
 }
 
 func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
-	claims, err := getJWTClaims(supabaseToken)
+	claims, err := getJWTClaims(supabaseJWTSecrets, supabaseToken)
 	if err != nil {
 		return uuid.UUID{}, &api.APIError{
 			Err:       err,
