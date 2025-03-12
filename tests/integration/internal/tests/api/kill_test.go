@@ -12,7 +12,7 @@ import (
 )
 
 func TestSandboxKill(t *testing.T) {
-	c := setup.GetAPIClient(t)
+	c := setup.GetAPIClient()
 
 	t.Run("kill a non-existing sandbox", func(t *testing.T) {
 		killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(context.Background(), "non-existing", setup.WithAPIKey())
