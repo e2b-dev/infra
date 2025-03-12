@@ -81,6 +81,16 @@ resource "google_secret_manager_secret_version" "api_secret_value" {
   secret_data = random_password.api_secret.result
 }
 
+resource "google_secret_manager_secret" "clickhouse_password" {
+  secret_id = "${var.prefix}clickhouse-db-password"
+
+  replication {
+    auto {}
+  }
+}
+
+
+
 resource "random_password" "api_admin_secret" {
   length  = 32
   special = true

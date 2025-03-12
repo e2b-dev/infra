@@ -173,7 +173,7 @@ module "nomad" {
   # Clickhouse
   clickhouse_connection_string = var.clickhouse_connection_string
   clickhouse_username          = var.clickhouse_username
-  clickhouse_password          = var.clickhouse_password
+  clickhouse_password          = module.init.clickhouse_password_secret_data
   clickhouse_database          = var.clickhouse_database
 
   # API
