@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -16,7 +17,7 @@ import (
 )
 
 func (s *serverStore) TemplateCreate(ctx context.Context, templateRequest *template_manager.TemplateCreateRequest) (*emptypb.Empty, error) {
-	childCtx, childSpan := s.tracer.Start(ctx, "template-create")
+	_, childSpan := s.tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
 	config := templateRequest.Template
@@ -58,7 +59,13 @@ func (s *serverStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 
 	go func() {
-		err = s.builder.Build(childCtx, template, config.TemplateID, config.BuildID)
+		buildContext, buildSpan := s.tracer.Start(
+			trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
+			"template-background-build",
+		)
+		defer buildSpan.End()
+
+		err = s.builder.Build(buildContext, template, config.TemplateID, config.BuildID)
 		if err != nil {
 			cacheErr := s.buildCache.SetFailed(config.TemplateID, config.BuildID)
 			if cacheErr != nil {
@@ -66,11 +73,11 @@ func (s *serverStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			}
 
 			s.logger.Error("Error while building template", zap.Error(err))
-			telemetry.ReportEvent(childCtx, "Environment built failed")
+			telemetry.ReportEvent(buildContext, "Environment built failed")
 			return
 		}
 
-		telemetry.ReportEvent(childCtx, "Environment built")
+		telemetry.ReportEvent(buildContext, "Environment built")
 	}()
 
 	return nil, nil
