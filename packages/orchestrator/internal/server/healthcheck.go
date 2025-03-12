@@ -9,13 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 )
 
 const healthcheckFrequency = 5 * time.Second
@@ -38,27 +35,18 @@ type Healthcheck struct {
 	status  Status
 	lastRun time.Time
 	mu      sync.RWMutex
-
-	sandboxCounter metric.Int64Gauge
 }
 
 func NewHealthcheck(server *server, grpc *grpc.Server, grpcHealth *health.Server, version string) (*Healthcheck, error) {
-	sandboxCounter, err := meters.GetGauge(meters.OrchestratorSandboxCountMeterName)
-	if err != nil {
-		return nil, err
-	}
-
 	return &Healthcheck{
 		version:    version,
 		server:     server,
 		grpc:       grpc,
 		grpcHealth: grpcHealth,
 
-		status:  Unhealthy,
 		lastRun: time.Now(),
+		status:  Unhealthy,
 		mu:      sync.RWMutex{},
-
-		sandboxCounter: sandboxCounter,
 	}, nil
 }
 
@@ -66,6 +54,7 @@ func (h *Healthcheck) Start(ctx context.Context, listener net.Listener) {
 	ticker := time.NewTicker(healthcheckFrequency)
 	defer ticker.Stop()
 
+	// Start /health HTTP server
 	routeMux := http.NewServeMux()
 	routeMux.HandleFunc("/health", h.healthHandler)
 	httpServer := &http.Server{
@@ -102,18 +91,14 @@ func (h *Healthcheck) report(ctx context.Context) error {
 	// Update last run on report
 	h.lastRun = time.Now()
 
-	// Report sandbox count
-	sbxCount := h.server.sandboxes.Count()
-	h.sandboxCounter.Record(childCtx, int64(sbxCount))
-
 	// Report health
 	c, err := h.grpcHealth.Check(childCtx, &healthpb.HealthCheckRequest{
 		// Empty string is the default service name
 		Service: "",
 	})
-	zap.L().Info("grpc health", zap.Any("c", c), zap.Error(err))
 	if err != nil {
 		h.status = Unhealthy
+
 		return err
 	}
 

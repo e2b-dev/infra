@@ -25,17 +25,17 @@ const (
 	OrchestratorProxyActiveConnectionsCounterMeterName UpDownCounterType = "orchestrator.proxy.connections.active"
 )
 
-type GaugeType string
+type ObservableUpDownCounterType string
 
 const (
-	OrchestratorSandboxCountMeterName GaugeType = "orchestrator.env.sandbox.running"
+	OrchestratorSandboxCountMeterName ObservableUpDownCounterType = "orchestrator.env.sandbox.running"
 )
 
 var meter = otel.GetMeterProvider().Meter("nomad")
 var meterLock = sync.Mutex{}
 var counters = make(map[CounterType]metric.Int64Counter)
 var upDownCounters = make(map[UpDownCounterType]metric.Int64UpDownCounter)
-var gauges = make(map[GaugeType]metric.Int64Gauge)
+var observableUpDownCounters = make(map[ObservableUpDownCounterType]metric.Int64ObservableUpDownCounter)
 
 var counterDesc = map[CounterType]string{
 	SandboxCreateMeterName: "Number of currently waiting requests to create a new sandbox",
@@ -63,11 +63,11 @@ var upDownCounterUnits = map[UpDownCounterType]string{
 	ActiveConnectionsCounterMeterName:      "{connection}",
 }
 
-var gaugeDesc = map[GaugeType]string{
+var gaugeDesc = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName: "Counter of running sandboxes on the orchestrator.",
 }
 
-var gaugeUnits = map[GaugeType]string{
+var gaugeUnits = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName: "{sandbox}",
 }
 
@@ -107,20 +107,20 @@ func GetUpDownCounter(name UpDownCounterType) (metric.Int64UpDownCounter, error)
 	return counter, nil
 }
 
-func GetGauge(name GaugeType) (metric.Int64Gauge, error) {
+func GetObservableUpDownCounter(name ObservableUpDownCounterType, callback metric.Int64Callback) (metric.Int64ObservableUpDownCounter, error) {
 	meterLock.Lock()
 	defer meterLock.Unlock()
 
-	if counter, ok := gauges[name]; ok {
+	if counter, ok := observableUpDownCounters[name]; ok {
 		return counter, nil
 	}
 
-	counter, err := meter.Int64Gauge(string(name), metric.WithDescription(gaugeDesc[name]), metric.WithUnit(gaugeUnits[name]))
+	counter, err := meter.Int64ObservableUpDownCounter(string(name), metric.WithDescription(gaugeDesc[name]), metric.WithUnit(gaugeUnits[name]), metric.WithInt64Callback(callback))
 	if err != nil {
 		return nil, err
 	}
 
-	gauges[name] = counter
+	observableUpDownCounters[name] = counter
 
 	return counter, nil
 }

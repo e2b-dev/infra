@@ -15,6 +15,7 @@ import (
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -31,6 +32,7 @@ import (
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -159,6 +161,15 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 			clickhouseStore:      clickhouseStore,
 			useLokiMetrics:       useLokiMetrics,
 			useClickhouseMetrics: useClickhouseMetrics,
+		}
+		_, err = meters.GetObservableUpDownCounter(meters.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+			observer.Observe(int64(srv.server.sandboxes.Count()))
+
+			return nil
+		})
+
+		if err != nil {
+			zap.L().Error("Error registering sandbox count metric", zap.Any("metric_name", meters.OrchestratorSandboxCountMeterName), zap.Error(err))
 		}
 	}
 
