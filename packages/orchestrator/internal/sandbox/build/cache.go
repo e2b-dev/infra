@@ -21,13 +21,13 @@ type deleteDiff struct {
 
 type DiffStore struct {
 	cachePath string
-	cache     *ttlcache.Cache[string, Diff]
+	cache     *ttlcache.Cache[DiffStoreKey, Diff]
 	ctx       context.Context
 	close     chan struct{}
 
 	// pdSizes is used to keep track of the diff sizes
 	// that are scheduled for deletion, as this won't show up in the disk usage.
-	pdSizes map[string]*deleteDiff
+	pdSizes map[DiffStoreKey]*deleteDiff
 	pdMu    sync.RWMutex
 	pdDelay time.Duration
 }
@@ -39,7 +39,7 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 	}
 
 	cache := ttlcache.New(
-		ttlcache.WithTTL[string, Diff](ttl),
+		ttlcache.WithTTL[DiffStoreKey, Diff](ttl),
 	)
 
 	ds := &DiffStore{
@@ -47,18 +47,18 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 		cache:     cache,
 		ctx:       ctx,
 		close:     make(chan struct{}),
-		pdSizes:   make(map[string]*deleteDiff),
+		pdSizes:   make(map[DiffStoreKey]*deleteDiff),
 		pdDelay:   delay,
 	}
 
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, Diff]) {
+	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
 		buildData := item.Value()
 		// buildData will be deleted by calling buildData.Close()
 		defer ds.resetDelete(item.Key())
 
 		err = buildData.Close()
 		if err != nil {
-			zap.L().Warn("failed to cleanup build data cache for item", zap.String("item_key", item.Key()), zap.Error(err))
+			zap.L().Warn("failed to cleanup build data cache for item", zap.Any("item_key", item.Key()), zap.Error(err))
 		}
 	})
 
@@ -66,6 +66,12 @@ func NewDiffStore(ctx context.Context, cachePath string, ttl, delay time.Duratio
 	go ds.startDiskSpaceEviction(maxUsedPercentage)
 
 	return ds, nil
+}
+
+type DiffStoreKey string
+
+func GetDiffStoreKey(buildID string, diffType DiffType) DiffStoreKey {
+	return DiffStoreKey(fmt.Sprintf("%s/%s", buildID, diffType))
 }
 
 func (s *DiffStore) Close() {
@@ -78,7 +84,7 @@ func (s *DiffStore) Get(diff Diff) (Diff, error) {
 	source, found := s.cache.GetOrSet(
 		diff.CacheKey(),
 		diff,
-		ttlcache.WithTTL[string, Diff](ttlcache.DefaultTTL),
+		ttlcache.WithTTL[DiffStoreKey, Diff](ttlcache.DefaultTTL),
 	)
 
 	value := source.Value()
@@ -169,7 +175,7 @@ func (s *DiffStore) getPendingDeletesSize() int64 {
 func (s *DiffStore) deleteOldestFromCache() (bool, error) {
 	success := false
 	var e error
-	s.cache.RangeBackwards(func(item *ttlcache.Item[string, Diff]) bool {
+	s.cache.RangeBackwards(func(item *ttlcache.Item[DiffStoreKey, Diff]) bool {
 		isDeleted := s.isBeingDeleted(item.Key())
 		if isDeleted {
 			return true
@@ -190,7 +196,7 @@ func (s *DiffStore) deleteOldestFromCache() (bool, error) {
 	return success, e
 }
 
-func (s *DiffStore) resetDelete(key string) {
+func (s *DiffStore) resetDelete(key DiffStoreKey) {
 	s.pdMu.Lock()
 	defer s.pdMu.Unlock()
 
@@ -203,7 +209,7 @@ func (s *DiffStore) resetDelete(key string) {
 	delete(s.pdSizes, key)
 }
 
-func (s *DiffStore) isBeingDeleted(key string) bool {
+func (s *DiffStore) isBeingDeleted(key DiffStoreKey) bool {
 	s.pdMu.RLock()
 	defer s.pdMu.RUnlock()
 
@@ -211,7 +217,7 @@ func (s *DiffStore) isBeingDeleted(key string) bool {
 	return f
 }
 
-func (s *DiffStore) scheduleDelete(key string, dSize int64) {
+func (s *DiffStore) scheduleDelete(key DiffStoreKey, dSize int64) {
 	s.pdMu.Lock()
 	defer s.pdMu.Unlock()
 

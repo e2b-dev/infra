@@ -24,7 +24,7 @@ type Diff interface {
 	io.Closer
 	io.ReaderAt
 	Slice(off, length int64) ([]byte, error)
-	CacheKey() string
+	CacheKey() DiffStoreKey
 	CachePath() (string, error)
 	FileSize() (int64, error)
 	Init(ctx context.Context) error
@@ -52,7 +52,7 @@ func (n *NoDiff) FileSize() (int64, error) {
 	return 0, ErrNoDiff{}
 }
 
-func (n *NoDiff) CacheKey() string {
+func (n *NoDiff) CacheKey() DiffStoreKey {
 	return ""
 }
 
