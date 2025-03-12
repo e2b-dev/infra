@@ -93,15 +93,15 @@ func NewMigrator(config ClickHouseConfig) (*ClickhouseMigrator, error) {
 		return nil, fmt.Errorf("failed to create `%s` database: %w", config.Database, err)
 	}
 
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS schema_migrations (
+	_, err = db.Exec(fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.schema_migrations (
 			version    Int64,
 			dirty      UInt8,
 			sequence   UInt64
 		)
 		ENGINE = ReplicatedMergeTree
 		ORDER BY tuple();
-	`)
+	`, config.Database))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create schema_migrations table: %w", err)
 	}
