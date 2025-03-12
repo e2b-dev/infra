@@ -56,7 +56,7 @@ func seed(db *db.DB, data SeedData) error {
 		SetEmail("user-test-integration@e2b.dev").
 		Save(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create user: %w", err)
 	}
 
 	// Team
@@ -67,7 +67,7 @@ func seed(db *db.DB, data SeedData) error {
 		SetTier("base_v1").
 		Save(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create team: %w", err)
 	}
 
 	// User-Team
@@ -77,7 +77,7 @@ func seed(db *db.DB, data SeedData) error {
 		SetIsDefault(true).
 		Save(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create user-team: %w", err)
 	}
 
 	// Team API Key
@@ -87,7 +87,7 @@ func seed(db *db.DB, data SeedData) error {
 		SetName("Integration Tests API Key").
 		Save(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create team api key: %w", err)
 	}
 
 	// Base image build
@@ -99,7 +99,7 @@ func seed(db *db.DB, data SeedData) error {
 		SetSpawnCount(0).
 		Save(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create env: %w", err)
 	}
 
 	_, err = db.Client.EnvBuild.Create().
@@ -116,7 +116,7 @@ func seed(db *db.DB, data SeedData) error {
 		SetEnvdVersion("0.1.5").
 		Save(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create env build: %w", err)
 	}
 
 	_, err = db.Client.EnvAlias.Create().
@@ -125,7 +125,7 @@ func seed(db *db.DB, data SeedData) error {
 		SetEnvID(data.EnvID).
 		Save(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create env alias: %w", err)
 	}
 
 	return nil

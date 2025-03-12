@@ -29,6 +29,10 @@ runs:
         while [ "$(docker inspect -f '{{.State.Health.Status}}' postgres 2>/dev/null)" != "healthy" ]; do echo "Waiting for PostgreSQL to be healthy..."; sleep 2; done
         echo "PostgreSQL is healthy!"
         
+        # Install pgcrypto extension
+        docker exec postgres psql -U postgres -d mydatabase -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+        echo "pgcrypto extension installed"
+        
         echo "TESTS_E2B_API_KEY=${TESTS_E2B_API_KEY}" >> .env.test
         echo "TESTS_SANDBOX_TEAM_ID=${TESTS_SANDBOX_TEAM_ID}" >> .env.test
         echo "TESTS_SANDBOX_USER_ID=${TESTS_SANDBOX_USER_ID}" >> .env.test
