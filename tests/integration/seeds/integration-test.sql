@@ -3,7 +3,21 @@ DECLARE
     team_id UUID := '{{ .TeamId }}';
     env_id TEXT := '{{ .EnvId }}';
     build_id UUID := '{{ .BuildId }}';
+    user_id UUID := '{{ .UserId }}';
 BEGIN
+
+-- User
+INSERT INTO "auth"."users" ("instance_id", "id", "aud", "role", "email", "encrypted_password",
+        "email_confirmed_at", "invited_at", "confirmation_token", "confirmation_sent_at", "recovery_token", "recovery_sent_at", "email_change_token_new", "email_change", "email_change_sent_at", "last_sign_in_at", "raw_app_meta_data", "raw_user_meta_data", "is_super_admin", "created_at", "updated_at", "phone", "phone_confirmed_at", "phone_change", "phone_change_token", "phone_change_sent_at", "confirmed_at", "email_change_token_current", "email_change_confirm_status", "banned_until", "reauthentication_token", "reauthentication_sent_at", "is_sso_user", "deleted_at", "is_anonymous"
+) VALUES (
+             null,
+             user_id,
+             null,
+             null,
+             'user-test-integration@e2b.dev',
+             null,
+             null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, '', '', null, null, '', '0', null, '', null, 'false', null, 'false'
+         );
 
 -- Team
 INSERT INTO "public"."teams" (
@@ -17,6 +31,19 @@ INSERT INTO "public"."teams" (
              'test-integration@e2b.dev',
              'false',
              NULL
+         );
+
+
+-- User-Team
+INSERT INTO "public"."users_teams" (
+    "id", "user_id", "team_id", "is_default", "added_by", "created_at"
+) VALUES (
+             '1',
+             user_id,
+             team_id,
+             'true',
+             null,
+             '2025-02-11 21:34:41+00'
          );
 
 -- Team API Key

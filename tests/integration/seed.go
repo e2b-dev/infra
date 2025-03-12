@@ -17,6 +17,7 @@ type SeedData struct {
 	EnvId   string
 	BuildId string
 	TeamId  string
+	UserId  string
 }
 
 func main() {
@@ -50,6 +51,7 @@ func main() {
 		EnvId:   os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
 		BuildId: os.Getenv("TESTS_SANDBOX_BUILD_ID"),
 		TeamId:  os.Getenv("TESTS_SANDBOX_TEAM_ID"),
+		UserId:  os.Getenv("TESTS_SANDBOX_USER_ID"),
 	})
 
 	if err != nil {
