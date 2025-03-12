@@ -74,6 +74,8 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 			b.logger.Error("Error while setting build state to failed", zap.Error(buildStateErr))
 			telemetry.ReportError(ctx, buildStateErr)
 		}
+
+		return err
 	}
 
 	// Remove build files if build fails or times out
@@ -111,6 +113,8 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 			b.logger.Error("Error while setting build state to failed", zap.Error(buildStateErr))
 			telemetry.ReportError(ctx, buildStateErr)
 		}
+
+		return err
 	}
 
 	uploadErr := <-upload
@@ -124,6 +128,8 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 			b.logger.Error("Error while setting build state to failed", zap.Error(buildStateErr))
 			telemetry.ReportError(ctx, buildStateErr)
 		}
+
+		return uploadErr
 	}
 
 	buildMetadata := &template_manager.TemplateBuildMetadata{RootfsSizeKey: int32(template.RootfsSizeMB()), EnvdVersionKey: strings.TrimSpace(string(out))}
