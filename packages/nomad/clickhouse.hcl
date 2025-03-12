@@ -76,6 +76,8 @@ job "clickhouse" {
         data = <<EOF
 <?xml version="1.0"?>
 <clickhouse>
+     # this is undocumented but needed to enable waiting for for shutdown for a custom amount of time 
+     # see https://github.com/ClickHouse/ClickHouse/pull/77515 for more details
     <shutdown_wait_unfinished>60</shutdown_wait_unfinished>
     <shutdown_wait_unfinished_queries>1</shutdown_wait_unfinished_queries>
     <storage_configuration>
