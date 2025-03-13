@@ -8,4 +8,4 @@ if (result !== 'Hello World') {
     throw new Error('Failed to create file')
 }
 
-console.log('File created successfully')
+console.log(new Date().toISOString(), 'File created successfully')

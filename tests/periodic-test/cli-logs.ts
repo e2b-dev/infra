@@ -1,6 +1,6 @@
 import { Sandbox } from 'npm:@e2b/code-interpreter'
 
-console.log('Starting sandbox logs test')
+console.log(new Date().toISOString(), 'Starting sandbox logs test')
 
 let sandbox: Sandbox | null = null
 
@@ -23,15 +23,15 @@ function getLogs(sandboxId: string): Record<string, any>[] {
 
 try {
   // Create sandbox
-  console.log('creating sandbox')
+  console.log(new Date().toISOString(), 'creating sandbox')
   sandbox = await Sandbox.create()
-  console.log('Sandbox created with ID:', sandbox.sandboxId)
+  console.log(new Date().toISOString(), 'Sandbox created with ID:', sandbox.sandboxId)
 
   // Run a command in the sandbox, so we can test both
   await sandbox.commands.run('echo "Hello, World!"')
 
   // Kill the sandbox
-  console.log('Killing sandbox')
+  console.log(new Date().toISOString(), 'Killing sandbox')
   await sandbox.kill()
 
   // It takes some time for logs to be propagated to our log store
@@ -43,7 +43,7 @@ try {
   let i = 1
 
   while (Date.now() - start < timeout && (!logsFromAPI || !logsFromSandbox)) {
-    console.log(`[${i}] Checking logs`)
+    console.log(new Date().toISOString(), `[${i}] Checking logs`)
     logs = getLogs(sandbox.sandboxId)
     for (const log of logs) {
       if (log.logger === 'orchestration-api') {
@@ -58,8 +58,8 @@ try {
   }
 
   if (!logsFromAPI || !logsFromSandbox) {
-    console.log('Logs:', logs)
-    console.log(
+    console.log(new Date().toISOString(), 'Logs:', logs)
+    console.log(new Date().toISOString(), 
       'Logs from API:',
       logsFromAPI,
       'Logs from sandbox:',
@@ -67,7 +67,7 @@ try {
     )
     throw new Error('Logs not collected')
   }
-  console.log('Test passed successfully')
+  console.log(new Date().toISOString(), 'Test passed successfully')
 } catch (error) {
   console.error('Test failed:', error)
   throw error

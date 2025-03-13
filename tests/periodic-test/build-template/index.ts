@@ -16,7 +16,7 @@ async function streamCommandOutput(command: string, args: string[]) {
 
     // Stream stdout
     for await (const chunk of process.stdout) {
-        console.log(decoder.decode(chunk));
+        console.log(new Date().toISOString(), decoder.decode(chunk));
         output += decoder.decode(chunk)
     }
 
@@ -33,10 +33,10 @@ async function streamCommandOutput(command: string, args: string[]) {
 
 const uniqueID = crypto.randomUUID();
 const templateName = `test-template-${uniqueID}`
-console.log('templateName:', templateName)
+console.log(new Date().toISOString(), 'templateName:', templateName)
 
 // Build template command with streaming output
-console.log(`Building template ${templateName}...`);
+console.log(new Date().toISOString(), `Building template ${templateName}...`);
 const buildStatus = await streamCommandOutput('npx', [
     '@e2b/cli',
     'template',
@@ -49,7 +49,7 @@ if (buildStatus.status.code !== 0) {
     throw new Error(`Build failed with code ${buildStatus.status.code}`);
 }
 
-console.log('Template built successfully')
+console.log(new Date().toISOString(), 'Template built successfully')
 
 // read template id from e2b.toml
 const e2bToml = await Deno.readTextFile('e2b.toml')
@@ -66,25 +66,25 @@ try {
     if (!templateID) {
         throw new Error('Template not found')
     }
-    console.log('creating sandbox')
+    console.log(new Date().toISOString(), 'creating sandbox')
     const sandbox = await Sandbox.create(templateID, { timeoutMs: 10000 })
-    console.log('sandbox created')
+    console.log(new Date().toISOString(), 'sandbox created')
 
 
-    console.log('running command')
+    console.log(new Date().toISOString(), 'running command')
 
-    console.log('starting command')
+    console.log(new Date().toISOString(), 'starting command')
     // Start the command in the background
     const command = await sandbox.commands.run('echo hello;echo world')
     let out = command.stdout
 
 
-    console.log('Template deleted successfully')
+    console.log(new Date().toISOString(), 'Template deleted successfully')
 
     // kill sandbox
     await sandbox.kill()
 
-    console.log('checking output')
+    console.log(new Date().toISOString(), 'checking output')
     if (!out.includes('hello')) {
         throw new Error('hello not found')
     }
