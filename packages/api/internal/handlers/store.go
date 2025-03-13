@@ -36,6 +36,10 @@ import (
 
 var supabaseJWTSecretsString = strings.TrimSpace(os.Getenv("SUPABASE_JWT_SECRETS"))
 
+// minSupabaseJWTSecretLength is the minimum length of a secret used to verify the Supabase JWT.
+// This is a security measure to prevent the use of weak secrets (like empty).
+const minSupabaseJWTSecretLength = 16
+
 // supabaseJWTSecrets is a list of secrets used to verify the Supabase JWT.
 // More secrets are possible in the case of JWT secret rotation where we need to accept
 // tokens signed with the old secret for some time.
@@ -260,6 +264,12 @@ func getJWTClaims(secrets []string, token string) (*supabaseClaims, error) {
 	errs := make([]error, 0)
 
 	for _, secret := range secrets {
+		if len(secret) < minSupabaseJWTSecretLength {
+			zap.L().Warn("jwt secret is too short and will be ignored", zap.Int("min_length", minSupabaseJWTSecretLength), zap.String("secret_start", secret[:min(3, len(secret))]))
+
+			continue
+		}
+
 		// Parse the token with the custom claims.
 		token, err := jwt.ParseWithClaims(token, &supabaseClaims{}, func(token *jwt.Token) (interface{}, error) {
 			// Verify that the signing method is HMAC (HS256)
