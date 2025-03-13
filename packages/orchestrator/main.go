@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"log"
 	"os"
 	"os/signal"
@@ -18,6 +17,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -161,13 +161,12 @@ func main() {
 
 		errChan := make(chan error, 1)
 		go func() {
-			err := sessionProxy.Start()
-			errChan <- err
+			errChan <- sessionProxy.Start()
 		}()
 
 		select {
 		case <-ctx.Done():
-		case <-errChan:
+		case err = <-errChan:
 			if err != nil {
 				zap.L().Error("session proxy failed", zap.Error(err))
 				exitCode.Add(1)
