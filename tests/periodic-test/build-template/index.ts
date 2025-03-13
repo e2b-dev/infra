@@ -94,8 +94,7 @@ try {
     }
 } catch (error) {
     console.error(new Date().toISOString(), 'Test failed:', error)
-}
-finally {
+} finally {
     // delete template
     console.log(new Date().toISOString(), 'deleting template')
 
