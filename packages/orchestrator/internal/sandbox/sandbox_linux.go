@@ -322,7 +322,7 @@ func NewSandbox(
 
 	cleanup.Add(func() error {
 		dns.Remove(config.SandboxId, ips.HostIP())
-		proxy.RemoveSandbox(config.SandboxId)
+		proxy.RemoveSandbox(config.SandboxId, ips.HostIP())
 
 		return nil
 	})

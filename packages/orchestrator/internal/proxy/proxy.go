@@ -43,8 +43,8 @@ func (p *SandboxProxy) AddSandbox(sandboxID, ip string) {
 	p.sandboxes.Insert(sandboxID, ip)
 }
 
-func (p *SandboxProxy) RemoveSandbox(sandboxID string) {
-	p.sandboxes.Remove(sandboxID)
+func (p *SandboxProxy) RemoveSandbox(sandboxID string, ip string) {
+	p.sandboxes.RemoveCb(sandboxID, func(k string, v string, ok bool) bool { return ok && v == ip })
 }
 
 func (p *SandboxProxy) Start() error {
