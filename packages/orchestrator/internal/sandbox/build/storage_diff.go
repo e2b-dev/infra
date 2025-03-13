@@ -19,6 +19,7 @@ func storagePath(buildId string, diffType DiffType) string {
 type StorageDiff struct {
 	chunker     *utils.SetOnce[*block.Chunker]
 	cachePath   string
+	cacheKey    DiffStoreKey
 	storagePath string
 	blockSize   int64
 	bucket      *gcs.BucketHandle
@@ -43,11 +44,12 @@ func newStorageDiff(
 		chunker:     utils.NewSetOnce[*block.Chunker](),
 		blockSize:   blockSize,
 		bucket:      bucket,
+		cacheKey:    GetDiffStoreKey(buildId, diffType),
 	}
 }
 
-func (b *StorageDiff) CacheKey() string {
-	return b.storagePath
+func (b *StorageDiff) CacheKey() DiffStoreKey {
+	return b.cacheKey
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
