@@ -27,8 +27,8 @@ func signToken(t *testing.T, secret string, subject string) string {
 }
 
 func TestGetJWTClaims(t *testing.T) {
-	secret1 := "testsecret1"
-	secret2 := "testsecret2"
+	secret1 := "testsecret1testsecret1"
+	secret2 := "testsecret2testsecret2"
 
 	token1 := signToken(t, secret1, "1")
 	token2 := signToken(t, secret2, "2")
