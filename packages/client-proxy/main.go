@@ -112,7 +112,7 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 		zap.L().Debug("Proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
 		targetUrl := &url.URL{
 			Scheme: "http",
-			Host:   fmt.Sprintf("%s:%d", node, orchestratorProxyPort),
+			Host:   fmt.Sprintf("%s:%d", node, sandboxPort),
 		}
 
 		// Proxy the request
