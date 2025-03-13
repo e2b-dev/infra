@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"go.uber.org/zap"
+	"html/template"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -120,9 +122,16 @@ func (p *SandboxProxy) proxyHandler(transport *http.Transport) func(w http.Respo
 			logger.Error("Reverse proxy error")
 
 			if p.isBrowser(r.UserAgent()) {
+				res, resErr := p.buildHtmlClosedPortError(sandboxID, r.Host, sandboxPort)
+				if resErr != nil {
+					logger.Error("Failed to build HTML error response", zap.Error(resErr))
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+
 				w.WriteHeader(http.StatusBadGateway)
 				w.Header().Add("Content-Type", "text/html")
-				w.Write(p.buildHtmlClosedPortError(sandboxID, r.Host, sandboxPort))
+				w.Write(res)
 				return
 			}
 
@@ -146,19 +155,19 @@ func (p *SandboxProxy) proxyHandler(transport *http.Transport) func(w http.Respo
 	}
 }
 
-func (p *SandboxProxy) buildHtmlClosedPortError(sandboxId string, host string, port uint64) []byte {
-	replacements := map[string]string{
-		"{{sandbox_id}}":   sandboxId,
-		"{{sandbox_port}}": strconv.FormatUint(port, 10),
-		"{{sandbox_host}}": host,
+func (p *SandboxProxy) buildHtmlClosedPortError(sandboxId string, host string, port uint64) ([]byte, error) {
+	htmlResponse := new(bytes.Buffer)
+	htmlTmpl, err := template.New("template").Parse(proxyBrowser502PageHtml)
+	if err != nil {
+		return nil, err
 	}
 
-	adjustedErrTemplate := proxyBrowser502PageHtml
-	for placeholder, value := range replacements {
-		adjustedErrTemplate = strings.ReplaceAll(adjustedErrTemplate, placeholder, value)
+	err = htmlTmpl.Execute(htmlResponse, map[string]string{"sandboxId": sandboxId, "sandboxHost": host, "sandboxPort": fmt.Sprintf("%d", port)})
+	if err != nil {
+		return nil, err
 	}
 
-	return []byte(adjustedErrTemplate)
+	return htmlResponse.Bytes(), nil
 }
 
 func (p *SandboxProxy) buildJsonClosedPortError(sandboxId string, port uint64) []byte {

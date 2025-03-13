@@ -10,11 +10,11 @@
     <img src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Symbol%20Gradient-Kr5pnWlK3ZhzBcRGf6Am4cNbJvY1Ge.svg" alt="Logo" class="logo">
     <div class="error-header">
         <h1 class="error-title">Closed Port Error</h1>
-        <p class="error-message">The sandbox <span class="highlight" id="sandbox-id">{{sandbox_id}}</span> is running but there&#39s no service running on port <span class="highlight" id="port-number">{{sandbox_port}}</span>.</p>
+        <p class="error-message">The sandbox <span class="highlight" id="sandbox-id">{{.sandboxId}}</span> is running but there&#39s no service running on port <span class="highlight" id="port-number">{{.sandboxPort}}</span>.</p>
     </div>
     <div class="error-details">
-        <span class="sandbox-url">{{sandbox_host}}</span>
-        <div class="error-code">Connection refused on port <span class="highlight" id="port-number-code">{{sandbox_port}}</span></div>
+        <span class="sandbox-url">{{.sandboxHost}}</span>
+        <div class="error-code">Connection refused on port <span class="highlight" id="port-number-code">{{.sandboxPort}}</span></div>
     </div>
     <p class="help-text">Please ensure that your service is properly configured and running on the specified port.</p>
     <a class="debug-link" href="https://e2b.dev/docs/sdk-reference/cli/v1.0.9/sandbox#e2b-sandbox-logs">Check the sandbox logs for more information →</a>
