@@ -6,6 +6,6 @@ CREATE TABLE IF NOT EXISTS default.metrics (
 	cpu_used_pct Float32,
 	mem_total_mib UInt64,
 	mem_used_mib UInt64
-) Engine ReplacingMergeTree()
+) Engine ReplicatedMergeTree()
 ORDER BY (timestamp)
 PRIMARY KEY timestamp;
