@@ -4,7 +4,8 @@ set -euo pipefail
 STRICT_MODE=${STRICT_MODE:-0}
 
 # go mod tidy
-find packages tests -type f -name "go.sum" -exec dirname {} \; | sort -u | while read -r dir; do
+modules=$(go work edit -json | jq -r '.Use[].DiskPath')
+for dir in $modules; do
   echo "Running 'go mod tidy' in $dir"
   (cd "$dir" && go mod tidy)
 done
