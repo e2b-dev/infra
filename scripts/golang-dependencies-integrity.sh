@@ -16,7 +16,7 @@ go work sync
 
 # in strict mode check if go.mod or go.sum files have changed and optionally fail
 if [[ "$STRICT_MODE" -eq 1 ]]; then
-  if ! git diff --exit-code -- '**/go.mod' '**/go.sum'; then
+  if ! git diff --exit-code; then
     echo
     echo "❌ Unexpected changes in go.mod or go.sum files!"
     echo "Run 'go mod tidy' and 'go work sync' manually and commit the changes."
