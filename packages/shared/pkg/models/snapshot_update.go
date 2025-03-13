@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
@@ -75,6 +76,20 @@ func (su *SnapshotUpdate) SetNillableSandboxID(s *string) *SnapshotUpdate {
 // SetMetadata sets the "metadata" field.
 func (su *SnapshotUpdate) SetMetadata(m map[string]string) *SnapshotUpdate {
 	su.mutation.SetMetadata(m)
+	return su
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (su *SnapshotUpdate) SetSandboxStartedAt(t time.Time) *SnapshotUpdate {
+	su.mutation.SetSandboxStartedAt(t)
+	return su
+}
+
+// SetNillableSandboxStartedAt sets the "sandbox_started_at" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableSandboxStartedAt(t *time.Time) *SnapshotUpdate {
+	if t != nil {
+		su.SetSandboxStartedAt(*t)
+	}
 	return su
 }
 
@@ -155,6 +170,9 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := su.mutation.Metadata(); ok {
 		_spec.SetField(snapshot.FieldMetadata, field.TypeJSON, value)
+	}
+	if value, ok := su.mutation.SandboxStartedAt(); ok {
+		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
 	}
 	if su.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -256,6 +274,20 @@ func (suo *SnapshotUpdateOne) SetNillableSandboxID(s *string) *SnapshotUpdateOne
 // SetMetadata sets the "metadata" field.
 func (suo *SnapshotUpdateOne) SetMetadata(m map[string]string) *SnapshotUpdateOne {
 	suo.mutation.SetMetadata(m)
+	return suo
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (suo *SnapshotUpdateOne) SetSandboxStartedAt(t time.Time) *SnapshotUpdateOne {
+	suo.mutation.SetSandboxStartedAt(t)
+	return suo
+}
+
+// SetNillableSandboxStartedAt sets the "sandbox_started_at" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableSandboxStartedAt(t *time.Time) *SnapshotUpdateOne {
+	if t != nil {
+		suo.SetSandboxStartedAt(*t)
+	}
 	return suo
 }
 
@@ -366,6 +398,9 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 	}
 	if value, ok := suo.mutation.Metadata(); ok {
 		_spec.SetField(snapshot.FieldMetadata, field.TypeJSON, value)
+	}
+	if value, ok := suo.mutation.SandboxStartedAt(); ok {
+		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
 	}
 	if suo.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
