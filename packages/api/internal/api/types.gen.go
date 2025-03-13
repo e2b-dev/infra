@@ -389,11 +389,11 @@ type GetSandboxesParams struct {
 	// State Filter sandboxes by one or more states
 	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
 
-	// NextPageCursor Cursor to start the list from
-	NextPageCursor *string `form:"nextPageCursor,omitempty" json:"nextPageCursor,omitempty"`
+	// Cursor Cursor to start the list from
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// PageSize Maximum number of items to return per page
-	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	// Limit Maximum number of items to return per page
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.

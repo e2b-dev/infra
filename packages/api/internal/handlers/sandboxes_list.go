@@ -34,16 +34,14 @@ type SandboxesListFilter struct {
 }
 
 type SandboxesListPaginate struct {
-	NextPageCursor *string
-	PageSize       *int32
+	Cursor *string
+	Limit  *int32
 }
 
 type SandboxesListResult struct {
 	Sandboxes   []api.ListedSandbox
-	StartCursor *string
 	EndCursor   *string
 	HasNextPage bool
-	HasPrevious bool
 }
 
 func generateCursor(sandbox api.ListedSandbox) string {
@@ -256,20 +254,19 @@ func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPagi
 		return SandboxesListResult{
 			Sandboxes:   []api.ListedSandbox{},
 			HasNextPage: false,
-			HasPrevious: false,
 		}, nil
 	}
 
 	// Default max items if not specified
-	limit := int32(10)
-	if paginate.PageSize != nil {
-		limit = *paginate.PageSize
+	limit := int32(1000)
+	if paginate.Limit != nil {
+		limit = *paginate.Limit
 	}
 
 	// Find start index based on cursor
 	startIdx := 0
-	if paginate.NextPageCursor != nil {
-		cursorTimeStr, cursorID, err := parseCursor(*paginate.NextPageCursor)
+	if paginate.Cursor != nil {
+		cursorTimeStr, cursorID, err := parseCursor(*paginate.Cursor)
 		if err != nil {
 			return SandboxesListResult{}, fmt.Errorf("invalid cursor: %w", err)
 		}
@@ -315,20 +312,16 @@ func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPagi
 	pagedSandboxes := sandboxes[startIdx:endIdx]
 
 	// Generate cursors for the result
-	var startCursor, endCursor *string
+	var endCursor *string
 	if len(pagedSandboxes) > 0 {
-		start := generateCursor(pagedSandboxes[0])
 		end := generateCursor(pagedSandboxes[len(pagedSandboxes)-1])
-		startCursor = &start
 		endCursor = &end
 	}
 
 	return SandboxesListResult{
 		Sandboxes:   pagedSandboxes,
-		StartCursor: startCursor,
 		EndCursor:   endCursor,
 		HasNextPage: endIdx < len(sandboxes),
-		HasPrevious: startIdx > 0,
 	}, nil
 }
 
@@ -366,8 +359,8 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	// Paginate sandboxes
 	result, err := paginateSandboxes(sandboxes, SandboxesListPaginate{
-		NextPageCursor: params.NextPageCursor,
-		PageSize:       params.PageSize,
+		Cursor: params.Cursor,
+		Limit:  params.Limit,
 	})
 	if err != nil {
 		zap.L().Error("Error fetching sandboxes", zap.Error(err))
@@ -378,21 +371,17 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	sandboxes = result.Sandboxes
 
-	// Sort sandboxes by started at
+	// Sort sandboxes by started at descending (newest first)
 	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
-		return a.StartedAt.Compare(b.StartedAt)
+		return b.StartedAt.Compare(a.StartedAt)
 	})
 
 	// add pagination info to headers
 	if result.EndCursor != nil {
-		c.Header("X-Next-Page-Cursor", *result.EndCursor)
+		c.Header("X-Next-Cursor", *result.EndCursor)
 	}
-	if result.StartCursor != nil {
-		c.Header("X-Previous-Page-Cursor", *result.StartCursor)
-	}
-	c.Header("X-Has-Next-Page", strconv.FormatBool(result.HasNextPage))
-	c.Header("X-Has-Previous-Page", strconv.FormatBool(result.HasPrevious))
-	c.Header("X-Total-Count", strconv.Itoa(len(sandboxes)))
+	c.Header("X-Has-More", strconv.FormatBool(result.HasNextPage))
+	c.Header("X-Total-Items", strconv.Itoa(len(sandboxes)))
 
 	c.JSON(http.StatusOK, sandboxes)
 }
