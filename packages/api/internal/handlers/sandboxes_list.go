@@ -351,7 +351,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	if result.Cursor != nil {
 		c.Header("X-Cursor", *result.Cursor)
 	}
-	c.Header("X-Has-More", strconv.FormatBool(result.HasMore))
+	c.Header("X-Has-More-Items", strconv.FormatBool(result.HasMore))
 	c.Header("X-Total-Items", strconv.Itoa(len(sandboxes)))
 
 	c.JSON(http.StatusOK, sandboxes)
