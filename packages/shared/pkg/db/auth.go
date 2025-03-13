@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
-	"github.com/google/uuid"
 )
 
 func (db *DB) GetTeamByIDAndUserIDAuth(ctx context.Context, teamID string, userID uuid.UUID) (*models.Team, *models.Tier, error) {
@@ -22,7 +23,6 @@ func (db *DB) GetTeamByIDAndUserIDAuth(ctx context.Context, teamID string, userI
 		Client.
 		Team.
 		Query().
-		WithUsersTeams().
 		Where(
 			team.ID(teamIDParsed),
 			team.HasUsersTeamsWith(
