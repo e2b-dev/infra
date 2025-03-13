@@ -45,3 +45,8 @@ func (lcc *LockableCancelableContext) Cancel() {
 func (lcc *LockableCancelableContext) Deadline() (deadline time.Time, ok bool) {
 	return lcc.ctx.Deadline()
 }
+
+func (lcc *LockableCancelableContext) WithTimeout(timeout time.Duration) (context.Context, context.CancelFunc) {
+
+	return context.WithTimeout(lcc.ctx, timeout)
+}

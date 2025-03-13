@@ -27,7 +27,7 @@ type metricStore interface {
 	SendMetrics(ctx context.Context)
 }
 
-func (s *Sandbox) logMetricsBasedOnConfig(ctx context.Context, logger metricStore) {
+func (s *Sandbox) LogMetricsBasedOnConfig(ctx context.Context, logger metricStore) {
 	if s.useLokiMetrics == "true" {
 		logger.LogMetrics(ctx)
 	}
@@ -39,7 +39,12 @@ func (s *Sandbox) logMetricsBasedOnConfig(ctx context.Context, logger metricStor
 	}
 }
 
-func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
+type LogHealthAndUsage interface {
+	LogMetricsBasedOnConfig(ctx context.Context, logger metricStore)
+	Healthcheck(ctx context.Context, alwaysReport bool)
+}
+
+func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext, state LogHealthAndUsage) {
 	healthTicker := time.NewTicker(healthCheckInterval)
 	metricsTicker := time.NewTicker(metricsCheckInterval)
 	defer func() {
@@ -49,28 +54,29 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 
 	// Get metrics and health status on sandbox startup
 
-	go s.logMetricsBasedOnConfig(ctx, s)
-	go s.Healthcheck(ctx, false)
+	go state.LogMetricsBasedOnConfig(ctx, s)
+	go state.Healthcheck(ctx, false)
 
 	for {
 		select {
 		case <-healthTicker.C:
-			childCtx, cancel := context.WithTimeout(ctx, time.Second)
+			childCtx, cancel := ctx.WithTimeout(time.Second)
 
-			ctx.Lock()
-			s.Healthcheck(childCtx, false)
-			ctx.Unlock()
+			state.Healthcheck(childCtx, false)
 
 			cancel()
 		case <-metricsTicker.C:
-			go s.logMetricsBasedOnConfig(ctx, s)
+			go state.LogMetricsBasedOnConfig(ctx, s)
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
+func (s *Sandbox) Healthcheck(ctx *utils.LockableCancelableContext, alwaysReport bool) {
+	ctx.Lock()
+	defer ctx.Unlock()
+
 	var err error
 	defer func() {
 		ok := err == nil

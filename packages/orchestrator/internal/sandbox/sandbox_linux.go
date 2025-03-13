@@ -323,7 +323,7 @@ func NewSandbox(
 		return nil
 	})
 
-	go sbx.logHeathAndUsage(healthcheckCtx)
+	go sbx.logHeathAndUsage(healthcheckCtx, healthCheckInterval, metricsCheckInterval)
 
 	return sbx, cleanup, nil
 }
