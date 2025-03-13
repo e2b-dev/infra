@@ -82,26 +82,18 @@ job "clickhouse" {
     <shutdown_wait_unfinished_queries>1</shutdown_wait_unfinished_queries>
     <storage_configuration>
         <disks>
-            <gcs>
-                <support_batch_delete>false</support_batch_delete>
-                <type>s3</type>
+            <s3_plain>
+                <type>s3_plain</type>
                 <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/</endpoint>
                 <access_key_id>${hmac_key}</access_key_id>
                 <secret_access_key>${hmac_secret}</secret_access_key>
-                <metadata_path>/var/lib/clickhouse/disks/gcs/</metadata_path>
-            </gcs>
-            <gcs_cache>
-                <type>cache</type>
-                <disk>gcs</disk>
-                <path>/var/lib/clickhouse/disks/gcs_cache/</path>
-                <max_size>1Gi</max_size>
-            </gcs_cache>
+            </s3_plain>
         </disks>
         <policies>
             <gcs_main>
                 <volumes>
                     <main>
-                        <disk>gcs_cache</disk>
+                        <disk>gcs</disk>
                     </main>
                 </volumes>
             </gcs_main>

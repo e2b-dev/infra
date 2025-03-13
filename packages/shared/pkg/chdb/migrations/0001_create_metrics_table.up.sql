@@ -8,4 +8,4 @@ CREATE TABLE IF NOT EXISTS default.metrics (
 	mem_used_mib UInt64
 ) Engine MergeTree()
  ORDER BY (timestamp)
- SETTINGS storage_policy='gcs_main';
+ SETTINGS storage_policy='gcs';
