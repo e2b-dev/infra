@@ -15,7 +15,7 @@ generate-models:
 .PHONY: prep-cluster
 prep-cluster:
 	@echo "Seeding database..."
-	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed/postgres/main.go
+	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed/postgres/seed-db.go
 	@echo "Building base template..."
 	@E2B_DOMAIN=$(DOMAIN_NAME) e2b tpl build -p scripts
 	@echo "Done"
