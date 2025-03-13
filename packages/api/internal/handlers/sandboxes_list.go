@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"slices"
@@ -49,27 +48,23 @@ func generateCursor(sandbox api.ListedSandbox) string {
 	return base64.URLEncoding.EncodeToString([]byte(cursor))
 }
 
-func parseCursor(cursor string) (string, string, error) {
-	// Use URL-safe base64 decoding
+func parseCursor(cursor string) (time.Time, string, error) {
 	decoded, err := base64.URLEncoding.DecodeString(cursor)
 	if err != nil {
-		return "", "", fmt.Errorf("error decoding cursor: %w", err)
+		return time.Time{}, "", fmt.Errorf("error decoding cursor: %w", err)
 	}
-
-	log.Println("cursor decoded", string(decoded))
 
 	parts := strings.Split(string(decoded), "__")
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid cursor format")
+		return time.Time{}, "", fmt.Errorf("invalid cursor format")
 	}
 
-	// Validate timestamp format
-	_, err = time.Parse(time.RFC3339Nano, parts[0])
+	cursorTime, err := time.Parse(time.RFC3339Nano, parts[0])
 	if err != nil {
-		return "", "", fmt.Errorf("invalid timestamp format in cursor: %w", err)
+		return time.Time{}, "", fmt.Errorf("invalid timestamp format in cursor: %w", err)
 	}
 
-	return parts[0], parts[1], nil
+	return cursorTime, parts[1], nil
 }
 
 func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams) ([]api.ListedSandbox, error) {
@@ -251,13 +246,9 @@ func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPagi
 		HasMore:   false,
 	}
 
-	// Sort sandboxes by started_at (newest first) and sandbox_id for consistent ordering
+	// Sort sandboxes by descending created_at
 	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
-		timeComp := b.StartedAt.Compare(a.StartedAt)
-		if timeComp != 0 {
-			return timeComp
-		}
-		return strings.Compare(a.SandboxID, b.SandboxID)
+		return b.StartedAt.Compare(a.StartedAt)
 	})
 
 	// If cursor is provided, find the starting position
@@ -271,8 +262,8 @@ func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPagi
 		// Find the sandbox that matches the cursor
 		found := false
 		for i, sandbox := range sandboxes {
-			sandboxTime := sandbox.StartedAt.Format(time.RFC3339Nano)
-			if sandboxTime < cursorTime || (sandboxTime == cursorTime && sandbox.SandboxID > cursorID) {
+			sandboxTime := sandbox.StartedAt
+			if sandboxTime.Before(cursorTime) || (sandboxTime.Equal(cursorTime) && sandbox.SandboxID > cursorID) {
 				startIndex = i
 				found = true
 				break
