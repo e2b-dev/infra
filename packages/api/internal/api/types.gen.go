@@ -69,9 +69,6 @@ type ListedSandbox struct {
 	MemoryMB MemoryMB         `json:"memoryMB"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
 
-	// PaginationCursor Pagination cursor of the sandbox
-	PaginationCursor *string `json:"paginationCursor,omitempty"`
-
 	// SandboxID Identifier of the sandbox
 	SandboxID string `json:"sandboxID"`
 

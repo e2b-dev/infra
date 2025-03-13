@@ -137,9 +137,6 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 				sandbox.Metadata = &meta
 			}
 
-			cursor := generateCursor(sandbox)
-			sandbox.PaginationCursor = &cursor
-
 			sandboxes = append(sandboxes, sandbox)
 		}
 	}
@@ -179,9 +176,6 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 				meta := api.SandboxMetadata(snapshot.Metadata)
 				sandbox.Metadata = &meta
 			}
-
-			cursor := generateCursor(sandbox)
-			sandbox.PaginationCursor = &cursor
 
 			sandboxes = append(sandboxes, sandbox)
 		}
@@ -300,7 +294,8 @@ func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPagi
 
 	if len(result.Sandboxes) > 0 && result.HasNextPage {
 		lastSandbox := result.Sandboxes[len(result.Sandboxes)-1]
-		result.EndCursor = lastSandbox.PaginationCursor
+		cursor := generateCursor(lastSandbox)
+		result.EndCursor = &cursor
 	}
 
 	return result, nil

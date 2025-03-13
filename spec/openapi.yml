@@ -266,9 +266,6 @@ components:
           $ref: "#/components/schemas/SandboxMetadata"
         state:
           $ref: "#/components/schemas/SandboxState"
-        paginationCursor:
-          type: string
-          description: Pagination cursor of the sandbox
 
     RunningSandboxWithMetrics:
       required:
