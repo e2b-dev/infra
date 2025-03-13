@@ -32,6 +32,7 @@ func TestGetJWTClaims(t *testing.T) {
 
 	token1 := signToken(t, secret1, "1")
 	token2 := signToken(t, secret2, "2")
+	tokenEmpty := signToken(t, "", "3")
 
 	t.Run("valid token for first secret", func(t *testing.T) {
 		claims, err := getJWTClaims([]string{secret1, secret2}, token1)
@@ -53,6 +54,12 @@ func TestGetJWTClaims(t *testing.T) {
 
 	t.Run("no secrets", func(t *testing.T) {
 		claims, err := getJWTClaims([]string{}, token1)
+		assert.Error(t, err)
+		assert.Nil(t, claims)
+	})
+
+	t.Run("empty secret", func(t *testing.T) {
+		claims, err := getJWTClaims([]string{""}, tokenEmpty)
 		assert.Error(t, err)
 		assert.Nil(t, claims)
 	})
