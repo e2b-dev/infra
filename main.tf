@@ -171,10 +171,10 @@ module "nomad" {
   otel_tracing_print      = var.otel_tracing_print
 
   # Clickhouse
-  clickhouse_connection_string = var.clickhouse_connection_string
-  clickhouse_username          = var.clickhouse_username
+  clickhouse_connection_string = "clickhouse.service.consul:9000"
+  clickhouse_username          = "clickhouse"
   clickhouse_password          = module.init.clickhouse_password_secret_data
-  clickhouse_database          = var.clickhouse_database
+  clickhouse_database          = "default"
 
   # API
   api_machine_count                         = var.api_cluster_size
