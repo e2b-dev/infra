@@ -50,8 +50,10 @@ func main() {
 	// there's a panic.
 	defer wg.Wait()
 
+	clientID := consul.GetClientID()
+
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(ctx, server.ServiceName, "no")
+		shutdown := telemetry.InitOTLPExporter(ctx, server.ServiceName, commitSHA, clientID)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -96,9 +98,7 @@ func main() {
 
 	log.Println("Starting orchestrator", "commit", commitSHA)
 
-	clientID := consul.GetClientID()
-
-	srv, err := server.New(ctx, port, clientID)
+	srv, err := server.New(ctx, port, clientID, commitSHA)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
