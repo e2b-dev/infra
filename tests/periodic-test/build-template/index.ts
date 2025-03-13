@@ -92,8 +92,13 @@ try {
     if (!out.includes('world')) {
         throw new Error('world not found')
     }
-} finally {
+} catch (error) {
+    console.error(new Date().toISOString(), 'Test failed:', error)
+}
+finally {
     // delete template
+    console.log(new Date().toISOString(), 'deleting template')
+
     const output = await streamCommandOutput('npx', [
         '@e2b/cli',
         'template',
@@ -101,6 +106,8 @@ try {
         '-y',
         templateID
     ])
+
+    console.log(new Date().toISOString(), "template deleted")
 
     if (output.status.code !== 0) {
         throw new Error(`Delete failed with code ${output.status.code}`);
