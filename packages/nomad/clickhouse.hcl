@@ -93,7 +93,7 @@ job "clickhouse" {
             <gcs_main>
                 <volumes>
                     <main>
-                        <disk>gcs</disk>
+                        <disk>s3_plain</disk>
                     </main>
                 </volumes>
             </gcs_main>
