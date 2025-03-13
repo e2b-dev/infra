@@ -150,7 +150,7 @@ func mockSandbox(
 		time.Now(),
 		true,
 		templateId,
-		"test-client",
+		"testclient",
 		devicePool,
 		mockStore,
 		"true",
