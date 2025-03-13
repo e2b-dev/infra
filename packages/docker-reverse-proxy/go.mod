@@ -6,7 +6,7 @@ replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 
 require (
 	github.com/e2b-dev/infra/packages/shared v0.0.0
-	github.com/jellydator/ttlcache/v3 v3.3.0
+	github.com/jellydator/ttlcache/v3 v3.3.1-0.20250207140243-aefc35918359
 )
 
 require (
