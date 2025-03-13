@@ -39,9 +39,9 @@ type SandboxesListPaginate struct {
 }
 
 type SandboxesListResult struct {
-	Sandboxes   []api.ListedSandbox
-	EndCursor   *string
-	HasNextPage bool
+	Sandboxes []api.ListedSandbox
+	Cursor    *string
+	HasMore   bool
 }
 
 func generateCursor(sandbox api.ListedSandbox) string {
@@ -246,9 +246,9 @@ func filterSandboxes(sandboxes []api.ListedSandbox, filter SandboxesListFilter) 
 // Paginate sandboxes
 func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPaginate) (SandboxesListResult, error) {
 	result := SandboxesListResult{
-		Sandboxes:   make([]api.ListedSandbox, 0),
-		EndCursor:   nil,
-		HasNextPage: false,
+		Sandboxes: make([]api.ListedSandbox, 0),
+		Cursor:    nil,
+		HasMore:   false,
 	}
 
 	// Sort sandboxes by started_at (newest first) and sandbox_id for consistent ordering
@@ -290,12 +290,12 @@ func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPagi
 	}
 
 	result.Sandboxes = sandboxes[startIndex:endIndex]
-	result.HasNextPage = endIndex < len(sandboxes)
+	result.HasMore = endIndex < len(sandboxes)
 
-	if len(result.Sandboxes) > 0 && result.HasNextPage {
+	if len(result.Sandboxes) > 0 && result.HasMore {
 		lastSandbox := result.Sandboxes[len(result.Sandboxes)-1]
 		cursor := generateCursor(lastSandbox)
-		result.EndCursor = &cursor
+		result.Cursor = &cursor
 	}
 
 	return result, nil
@@ -348,10 +348,10 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	sandboxes = result.Sandboxes
 
 	// add pagination info to headers
-	if result.EndCursor != nil {
-		c.Header("X-Next-Cursor", *result.EndCursor)
+	if result.Cursor != nil {
+		c.Header("X-Cursor", *result.Cursor)
 	}
-	c.Header("X-Has-More", strconv.FormatBool(result.HasNextPage))
+	c.Header("X-Has-More", strconv.FormatBool(result.HasMore))
 	c.Header("X-Total-Items", strconv.Itoa(len(sandboxes)))
 
 	c.JSON(http.StatusOK, sandboxes)
