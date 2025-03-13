@@ -378,6 +378,11 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	sandboxes = result.Sandboxes
 
+	// Sort sandboxes by started at
+	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
+		return a.StartedAt.Compare(b.StartedAt)
+	})
+
 	// add pagination info to headers
 	if result.EndCursor != nil {
 		c.Header("X-Next-Page-Cursor", *result.EndCursor)
