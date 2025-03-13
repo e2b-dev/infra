@@ -36,7 +36,7 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/sync v0.11.0
 	google.golang.org/api v0.214.0
-	google.golang.org/grpc v1.69.4
+	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.4
 )
 
@@ -64,9 +64,9 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
-	github.com/cncf/xds/go v0.0.0-20240905190251-b4127c9b8d78 // indirect
+	github.com/cncf/xds/go v0.0.0-20241223141626-cff3c89139a3 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/envoyproxy/go-control-plane/envoy v1.32.3 // indirect
+	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.6 // indirect
@@ -123,7 +123,7 @@ require (
 	go.mongodb.org/mongo-driver v1.17.1 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
-	go.opentelemetry.io/contrib/detectors/gcp v1.32.0 // indirect
+	go.opentelemetry.io/contrib/detectors/gcp v1.34.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.57.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.57.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.34.0 // indirect
@@ -134,7 +134,7 @@ require (
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/mod v0.23.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/oauth2 v0.24.0 // indirect
+	golang.org/x/oauth2 v0.25.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
