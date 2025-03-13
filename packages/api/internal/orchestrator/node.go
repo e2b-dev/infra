@@ -53,9 +53,9 @@ func (n *Node) Status() api.NodeStatus {
 
 	switch n.Client.connection.GetState() {
 	case connectivity.Shutdown:
-		fallthrough
+		return api.NodeStatusUnhealthy
 	case connectivity.TransientFailure:
-		fallthrough
+		return api.NodeStatusConnecting
 	case connectivity.Connecting:
 		return api.NodeStatusConnecting
 	default:
