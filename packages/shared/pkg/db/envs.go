@@ -113,7 +113,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 }
 
 func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template, build *models.EnvBuild, err error) {
-	dbEnv, err := db.
+	template, err := db.
 		Client.
 		Env.
 		Query().
@@ -126,9 +126,6 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 		).
 		WithEnvAliases(func(query *models.EnvAliasQuery) {
 			query.Order(models.Asc(envalias.FieldID)) // TODO: remove once we have only 1 alias per env
-		}).
-		WithBuilds(func(query *models.EnvBuildQuery) {
-			query.Where(envbuild.StatusEQ(envbuild.StatusUploaded)).Order(models.Desc(envbuild.FieldFinishedAt)).Limit(1)
 		}).Only(ctx)
 
 	notFound := models.IsNotFound(err)
@@ -138,26 +135,33 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 		return nil, nil, fmt.Errorf("failed to get env '%s': %w", aliasOrEnvID, err)
 	}
 
-	aliases := make([]string, len(dbEnv.Edges.EnvAliases))
-	for i, alias := range dbEnv.Edges.EnvAliases {
+	build, err = db.Client.EnvBuild.Query().Where(envbuild.EnvID(template.ID), envbuild.StatusEQ(envbuild.StatusUploaded)).Order(models.Desc(envbuild.FieldFinishedAt)).Limit(1).Only(ctx)
+	notFound = models.IsNotFound(err)
+	if notFound {
+		return nil, nil, fmt.Errorf("build for '%s' not found: %w", aliasOrEnvID, err)
+	} else if err != nil {
+		return nil, nil, fmt.Errorf("failed to get env '%s': %w", aliasOrEnvID, err)
+	}
+
+	aliases := make([]string, len(template.Edges.EnvAliases))
+	for i, alias := range template.Edges.EnvAliases {
 		aliases[i] = alias.ID
 	}
 
-	build = dbEnv.Edges.Builds[0]
 	return &Template{
-		TemplateID:    dbEnv.ID,
+		TemplateID:    template.ID,
 		BuildID:       build.ID.String(),
 		VCPU:          build.Vcpu,
 		RAMMB:         build.RAMMB,
 		DiskMB:        build.FreeDiskSizeMB,
-		Public:        dbEnv.Public,
+		Public:        template.Public,
 		Aliases:       &aliases,
-		TeamID:        dbEnv.TeamID,
-		CreatedAt:     dbEnv.CreatedAt,
-		UpdatedAt:     dbEnv.UpdatedAt,
-		LastSpawnedAt: dbEnv.LastSpawnedAt,
-		SpawnCount:    dbEnv.SpawnCount,
-		BuildCount:    dbEnv.BuildCount,
+		TeamID:        template.TeamID,
+		CreatedAt:     template.CreatedAt,
+		UpdatedAt:     template.UpdatedAt,
+		LastSpawnedAt: template.LastSpawnedAt,
+		SpawnCount:    template.SpawnCount,
+		BuildCount:    template.BuildCount,
 	}, build, nil
 }
 
