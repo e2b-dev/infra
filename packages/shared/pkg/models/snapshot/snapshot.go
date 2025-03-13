@@ -16,6 +16,8 @@ const (
 	FieldID = "id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
+	// FieldSandboxStartedAt holds the string denoting the sandbox_started_at field in the database.
+	FieldSandboxStartedAt = "sandbox_started_at"
 	// FieldBaseEnvID holds the string denoting the base_env_id field in the database.
 	FieldBaseEnvID = "base_env_id"
 	// FieldEnvID holds the string denoting the env_id field in the database.
@@ -41,6 +43,7 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldCreatedAt,
+	FieldSandboxStartedAt,
 	FieldBaseEnvID,
 	FieldEnvID,
 	FieldSandboxID,
@@ -73,6 +76,11 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
+}
+
+// BySandboxStartedAt orders the results by the sandbox_started_at field.
+func BySandboxStartedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSandboxStartedAt, opts...).ToFunc()
 }
 
 // ByBaseEnvID orders the results by the base_env_id field.
