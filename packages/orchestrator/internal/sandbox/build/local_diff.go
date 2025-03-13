@@ -13,6 +13,7 @@ import (
 type LocalDiffFile struct {
 	*os.File
 	cachePath string
+	cacheKey  DiffStoreKey
 }
 
 func NewLocalDiffFile(
@@ -33,6 +34,7 @@ func NewLocalDiffFile(
 	return &LocalDiffFile{
 		File:      f,
 		cachePath: cachePath,
+		cacheKey:  GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
 
@@ -55,17 +57,24 @@ func (f *LocalDiffFile) ToDiff(
 		return &NoDiff{}, nil
 	}
 
-	return newLocalDiff(f.cachePath, size.Size(), blockSize)
+	return newLocalDiff(
+		f.cacheKey,
+		f.cachePath,
+		size.Size(),
+		blockSize,
+	)
 }
 
 type localDiff struct {
 	size      int64
 	blockSize int64
+	cacheKey  DiffStoreKey
 	cachePath string
 	cache     *block.Cache
 }
 
 func newLocalDiff(
+	cacheKey DiffStoreKey,
 	cachePath string,
 	size int64,
 	blockSize int64,
@@ -78,6 +87,7 @@ func newLocalDiff(
 	return &localDiff{
 		size:      size,
 		blockSize: blockSize,
+		cacheKey:  cacheKey,
 		cachePath: cachePath,
 		cache:     cache,
 	}, nil
@@ -103,8 +113,8 @@ func (b *localDiff) FileSize() (int64, error) {
 	return b.cache.FileSize()
 }
 
-func (b *localDiff) CacheKey() string {
-	return b.cachePath
+func (b *localDiff) CacheKey() DiffStoreKey {
+	return b.cacheKey
 }
 
 func (b *localDiff) Init(ctx context.Context) error {

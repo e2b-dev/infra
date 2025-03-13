@@ -18,3 +18,9 @@ type BuildNotFound struct{ ErrNotFound }
 func (BuildNotFound) Error() string {
 	return "Build not found"
 }
+
+type EnvNotFound struct{ ErrNotFound }
+
+func (EnvNotFound) Error() string {
+	return "Env not found"
+}

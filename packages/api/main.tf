@@ -45,6 +45,23 @@ resource "google_secret_manager_secret" "postgres_connection_string" {
   }
 }
 
+resource "google_secret_manager_secret" "supabase_jwt_secrets" {
+  secret_id = "${var.prefix}supabase-jwt-secrets"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "supabase_jwt_secrets" {
+  secret      = google_secret_manager_secret.supabase_jwt_secrets.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
 resource "google_secret_manager_secret" "posthog_api_key" {
   secret_id = "${var.prefix}posthog-api-key"
 
