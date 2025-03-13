@@ -24,7 +24,10 @@ provider "nomad" {
 
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/api.hcl", {
-    update_stanza                 = var.api_machine_count > 1
+    update_stanza = var.api_machine_count > 1
+    // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
+    // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
+    prevent_colocation            = var.api_machine_count > 2
     orchestrator_port             = var.orchestrator_port
     template_manager_address      = "http://template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint  = "localhost:4317"
@@ -370,20 +373,18 @@ resource "nomad_job" "template_manager" {
     }
   }
 }
-
 resource "nomad_job" "loki" {
-  jobspec = file("${path.module}/loki.hcl")
+  jobspec = templatefile("${path.module}/loki.hcl", {
+    gcp_zone = var.gcp_zone
 
-  hcl2 {
-    vars = {
-      gcp_zone = var.gcp_zone
+    // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
+    // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
+    prevent_colocation = var.api_machine_count > 2
+    loki_bucket_name   = var.loki_bucket_name
 
-      loki_bucket_name = var.loki_bucket_name
-
-      loki_service_port_number = var.loki_service_port.port
-      loki_service_port_name   = var.loki_service_port.name
-    }
-  }
+    loki_service_port_number = var.loki_service_port.port
+    loki_service_port_name   = var.loki_service_port.name
+  })
 }
 
 # create a bucket for clickhouse
