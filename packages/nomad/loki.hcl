@@ -27,6 +27,12 @@ job "loki" {
       port "loki" {
         to = var.loki_service_port_number
       }
+
+      port "scheduling-block" {
+        // This port is used to block scheduling of jobs with the same block on the same node.
+        // We use this to block API and Loki from being scheduled on the same node.
+        static = 40234
+      }
     }
 
     service {
