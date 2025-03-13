@@ -63,6 +63,12 @@ func (sc *SnapshotCreate) SetMetadata(m map[string]string) *SnapshotCreate {
 	return sc
 }
 
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (sc *SnapshotCreate) SetSandboxStartedAt(t time.Time) *SnapshotCreate {
+	sc.mutation.SetSandboxStartedAt(t)
+	return sc
+}
+
 // SetID sets the "id" field.
 func (sc *SnapshotCreate) SetID(u uuid.UUID) *SnapshotCreate {
 	sc.mutation.SetID(u)
@@ -132,6 +138,9 @@ func (sc *SnapshotCreate) check() error {
 	if _, ok := sc.mutation.Metadata(); !ok {
 		return &ValidationError{Name: "metadata", err: errors.New(`models: missing required field "Snapshot.metadata"`)}
 	}
+	if _, ok := sc.mutation.SandboxStartedAt(); !ok {
+		return &ValidationError{Name: "sandbox_started_at", err: errors.New(`models: missing required field "Snapshot.sandbox_started_at"`)}
+	}
 	if _, ok := sc.mutation.EnvID(); !ok {
 		return &ValidationError{Name: "env", err: errors.New(`models: missing required edge "Snapshot.env"`)}
 	}
@@ -187,6 +196,10 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.Metadata(); ok {
 		_spec.SetField(snapshot.FieldMetadata, field.TypeJSON, value)
 		_node.Metadata = value
+	}
+	if value, ok := sc.mutation.SandboxStartedAt(); ok {
+		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
+		_node.SandboxStartedAt = value
 	}
 	if nodes := sc.mutation.EnvIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -306,6 +319,18 @@ func (u *SnapshotUpsert) UpdateMetadata() *SnapshotUpsert {
 	return u
 }
 
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (u *SnapshotUpsert) SetSandboxStartedAt(v time.Time) *SnapshotUpsert {
+	u.Set(snapshot.FieldSandboxStartedAt, v)
+	return u
+}
+
+// UpdateSandboxStartedAt sets the "sandbox_started_at" field to the value that was provided on create.
+func (u *SnapshotUpsert) UpdateSandboxStartedAt() *SnapshotUpsert {
+	u.SetExcluded(snapshot.FieldSandboxStartedAt)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
 // Using this option is equivalent to using:
 //
@@ -410,6 +435,20 @@ func (u *SnapshotUpsertOne) SetMetadata(v map[string]string) *SnapshotUpsertOne 
 func (u *SnapshotUpsertOne) UpdateMetadata() *SnapshotUpsertOne {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateMetadata()
+	})
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (u *SnapshotUpsertOne) SetSandboxStartedAt(v time.Time) *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetSandboxStartedAt(v)
+	})
+}
+
+// UpdateSandboxStartedAt sets the "sandbox_started_at" field to the value that was provided on create.
+func (u *SnapshotUpsertOne) UpdateSandboxStartedAt() *SnapshotUpsertOne {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateSandboxStartedAt()
 	})
 }
 
@@ -684,6 +723,20 @@ func (u *SnapshotUpsertBulk) SetMetadata(v map[string]string) *SnapshotUpsertBul
 func (u *SnapshotUpsertBulk) UpdateMetadata() *SnapshotUpsertBulk {
 	return u.Update(func(s *SnapshotUpsert) {
 		s.UpdateMetadata()
+	})
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (u *SnapshotUpsertBulk) SetSandboxStartedAt(v time.Time) *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.SetSandboxStartedAt(v)
+	})
+}
+
+// UpdateSandboxStartedAt sets the "sandbox_started_at" field to the value that was provided on create.
+func (u *SnapshotUpsertBulk) UpdateSandboxStartedAt() *SnapshotUpsertBulk {
+	return u.Update(func(s *SnapshotUpsert) {
+		s.UpdateSandboxStartedAt()
 	})
 }
 

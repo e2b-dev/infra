@@ -30,6 +30,8 @@ type Snapshot struct {
 	SandboxID string `json:"sandbox_id,omitempty"`
 	// Metadata holds the value of the "metadata" field.
 	Metadata map[string]string `json:"metadata,omitempty"`
+	// SandboxStartedAt holds the value of the "sandbox_started_at" field.
+	SandboxStartedAt time.Time `json:"sandbox_started_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the SnapshotQuery when eager-loading is set.
 	Edges        SnapshotEdges `json:"edges"`
@@ -67,7 +69,7 @@ func (*Snapshot) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case snapshot.FieldBaseEnvID, snapshot.FieldEnvID, snapshot.FieldSandboxID:
 			values[i] = new(sql.NullString)
-		case snapshot.FieldCreatedAt:
+		case snapshot.FieldCreatedAt, snapshot.FieldSandboxStartedAt:
 			values[i] = new(sql.NullTime)
 		case snapshot.FieldID:
 			values[i] = new(uuid.UUID)
@@ -124,6 +126,12 @@ func (s *Snapshot) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field metadata: %w", err)
 				}
 			}
+		case snapshot.FieldSandboxStartedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field sandbox_started_at", values[i])
+			} else if value.Valid {
+				s.SandboxStartedAt = value.Time
+			}
 		default:
 			s.selectValues.Set(columns[i], values[i])
 		}
@@ -179,6 +187,9 @@ func (s *Snapshot) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("metadata=")
 	builder.WriteString(fmt.Sprintf("%v", s.Metadata))
+	builder.WriteString(", ")
+	builder.WriteString("sandbox_started_at=")
+	builder.WriteString(s.SandboxStartedAt.Format(time.ANSIC))
 	builder.WriteByte(')')
 	return builder.String()
 }
