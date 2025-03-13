@@ -1,36 +1,38 @@
 import { Sandbox } from 'npm:@e2b/code-interpreter'
+import { log } from "./utils.ts";
 
-console.log(new Date().toISOString(), 'Starting sandbox logs test')
+log('Starting sandbox logs test')
 
 let sandbox: Sandbox | null = null
 
 
 if (Deno.env.get('E2B_DOMAIN') === 'e2b-juliett.dev') {
-  console.log(new Date().toISOString(), 'Skipping test on juliett.dev b/c internet is disabled')
+  log('Skipping test on juliett.dev b/c internet is disabled')
   Deno.exit(0)
 }
 
 try {
   // Create sandbox
-  console.log(new Date().toISOString(), 'creating sandbox')
+  log('creating sandbox')
   sandbox = await Sandbox.create()
-  console.log(new Date().toISOString(), 'Sandbox created with ID:', sandbox.sandboxId)
+  log('Sandbox created with ID:', sandbox.sandboxId)
 
   const out = await sandbox.commands.run('wget https://google.com', {
     requestTimeoutMs: 10000,
   })
-  console.log(new Date().toISOString(), 'wget output', out.stderr)
+  log('wget output', out.stderr)
 
 
   const internetWorking = out.stderr.includes('200 OK')
   // verify internet is working 
   if (!internetWorking) {
+    log('Internet is not working')
     throw new Error('Internet is not working')
   }
 
-  console.log(new Date().toISOString(), 'Test passed successfully')
+  log('Test passed successfully')
 } catch (error) {
-  console.error('Test failed:', error)
+  log('Test failed:', error)
   throw error
 } finally {
   if (sandbox) {
