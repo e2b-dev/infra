@@ -59,6 +59,7 @@ runs:
         
         mkdir -p ~/logs
 
+        make -C packages/template-manager run-debug 2>&1 | tee ~/logs/template-manager.log &
         make -C packages/orchestrator run-debug 2>&1 | tee ~/logs/orchestrator.log &
         ORCH_PID=$!
         sleep 30

@@ -27,6 +27,12 @@ build:
 build-debug:
 	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -race -gcflags=all="-N -l" -o bin/template-manager .
 
+.PHONY: run-debug
+run-debug:
+	make build-debug
+	./bin/template-manager
+
+
 .PHONY: upload
 upload:
 	./upload.sh $(GCP_PROJECT_ID)
