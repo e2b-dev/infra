@@ -104,6 +104,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		if time.Since(envBuildDb.CreatedAt) > syncWaitingStateDeadline {
 			logger.Error("Build is in waiting state for too long, failing it")
 
+			tm.buildCache.SetStatus(buildID, envbuild.StatusFailed)
 			dbErr := tm.db.EnvBuildSetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
 			if dbErr != nil {
 				logger.Error("Error when setting build status", zap.Error(dbErr))
