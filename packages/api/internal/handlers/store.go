@@ -139,7 +139,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Warn("LOKI_ADDRESS not set, disabling Loki client")
 	}
 
-	authCache := authcache.NewTeamAuthCache(dbClient)
+	authCache := authcache.NewTeamAuthCache()
 	templateCache := templatecache.NewTemplateCache(dbClient)
 	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
