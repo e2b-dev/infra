@@ -5,16 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"sync/atomic"
 	"syscall"
-	"time"
-
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -174,10 +172,8 @@ func main() {
 			}
 		}
 
-		// close session proxy, wait 5 seconds until all connections are closed
-		shutdownCtx, shutdownCtxCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCtxCancel()
-		defer sessionProxy.Shutdown(shutdownCtx)
+		// close sandbox proxy, this will wait until all sessions are closed
+		defer sessionProxy.Shutdown(context.Background())
 	}()
 
 	wg.Wait()
