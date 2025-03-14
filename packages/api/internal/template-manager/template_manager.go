@@ -2,15 +2,17 @@ package template_manager
 
 import (
 	"context"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"io"
 	"sync"
 	"time"
+
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
 
 type processingBuilds struct {
@@ -22,6 +24,7 @@ type TemplateManager struct {
 	db         *db.DB
 	lock       sync.Mutex
 	processing map[uuid.UUID]processingBuilds
+	buildCache *templatecache.TemplatesBuildCache
 }
 
 var (
@@ -30,7 +33,7 @@ var (
 	syncWaitingStateDeadline = time.Minute * 20
 )
 
-func New(db *db.DB) (*TemplateManager, error) {
+func New(db *db.DB, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
 	client, err := NewClient()
 	if err != nil {
 		return nil, err
@@ -41,6 +44,7 @@ func New(db *db.DB) (*TemplateManager, error) {
 		db:         db,
 		lock:       sync.Mutex{},
 		processing: make(map[uuid.UUID]processingBuilds),
+		buildCache: buildCache,
 	}, nil
 }
 
@@ -113,6 +117,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	if utils.UnwrapGRPCError(err) != nil {
 		logger.Error("Error when fetching template build status", zap.Error(err))
 
+		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed)
 		dbErr := tm.db.EnvBuildSetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
 		if dbErr != nil {
 			logger.Error("Error when setting build status", zap.Error(dbErr))
@@ -128,6 +133,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		} else if receiveErr != nil {
 			logger.Error("Error when receiving template build status", zap.Error(receiveErr))
 
+			tm.buildCache.SetStatus(buildID, envbuild.StatusFailed)
 			err = tm.db.EnvBuildSetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
 			if err != nil {
 				logger.Error("Error when setting build status", zap.Error(err))
@@ -138,6 +144,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 
 		// build failed
 		if status.GetStatus() == template_manager.TemplateBuildState_Failed {
+			tm.buildCache.SetStatus(buildID, envbuild.StatusFailed)
 			err = tm.db.EnvBuildSetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
 			if err != nil {
 				logger.Error("Error when setting build status", zap.Error(err))

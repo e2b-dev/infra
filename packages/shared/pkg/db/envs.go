@@ -112,7 +112,32 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 	return result, nil
 }
 
-func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template, build *models.EnvBuild, err error) {
+func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *models.Env, err error) {
+	template, err := db.
+		Client.
+		Env.
+		Query().
+		Where(
+			env.Or(
+				env.HasEnvAliasesWith(envalias.ID(aliasOrEnvID)),
+				env.ID(aliasOrEnvID),
+			),
+		).
+		WithEnvAliases(func(query *models.EnvAliasQuery) {
+			query.Order(models.Asc(envalias.FieldID)) // TODO: remove once we have only 1 alias per env
+		}).Only(ctx)
+
+	notFound := models.IsNotFound(err)
+	if notFound {
+		return nil, TemplateNotFound{}
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to get template '%s': %w", aliasOrEnvID, err)
+	}
+
+	return template, nil
+}
+
+func (db *DB) GetEnvWithBuild(ctx context.Context, aliasOrEnvID string) (result *Template, build *models.EnvBuild, err error) {
 	template, err := db.
 		Client.
 		Env.

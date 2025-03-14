@@ -85,20 +85,6 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	buildDB, err := a.db.GetEnvBuild(ctx, buildUUID)
-	if err != nil {
-		errMsg := fmt.Errorf("error when getting build: %w", err)
-		telemetry.ReportError(ctx, errMsg)
-
-		if errors.Is(err, db.TemplateBuildNotFound{}) {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Build '%s' not found", buildID))
-			return
-		}
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error during build '%s'", buildID))
-		return
-	}
-
 	// Sanitize env ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	templateIdSanitized := strings.ReplaceAll(templateID, "`", "")
@@ -154,7 +140,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		Logs:       logs,
 		TemplateID: templateID,
 		BuildID:    buildID,
-		Status:     getCorrespondingTemplateBuildStatus(buildDB.Status),
+		Status:     getCorrespondingTemplateBuildStatus(buildInfo.BuildStatus),
 	}
 
 	c.JSON(http.StatusOK, result)
