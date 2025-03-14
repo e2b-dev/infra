@@ -24,16 +24,13 @@ job "clickhouse-cluster" {
         volumes = [
           "local/keeper_config.xml:/etc/clickhouse-server/config.d/keeper_config.xml",
           "local/storage_config.xml:/etc/clickhouse-server/config.d/storage.xml",
-          "local/keeper_storage:/var/lib/clickhouse/coordination"
         ]
-        # args = ["--config-file=/etc/clickhouse-server/config.xml"]
       }
 
       template {
         data = <<EOH
 <clickhouse>
     <logger>
-        <level>trace</level>
         <console>1</console>
     </logger>
     <keeper_server>
