@@ -85,6 +85,19 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
+	// early return if still waiting for build start
+	if buildInfo.BuildStatus == envbuild.StatusWaiting {
+		result := api.TemplateBuild{
+			Logs:       make([]string, 0),
+			TemplateID: templateID,
+			BuildID:    buildID,
+			Status:     api.TemplateBuildStatusWaiting,
+		}
+
+		c.JSON(http.StatusOK, result)
+		return
+	}
+
 	// Sanitize env ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	templateIdSanitized := strings.ReplaceAll(templateID, "`", "")
