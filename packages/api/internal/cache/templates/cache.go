@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.uber.org/zap"
 	"net/http"
 	"time"
 
@@ -150,7 +151,7 @@ func NewTemplateBuildCache(db *db.DB) *TemplatesBuildCache {
 func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (*TemplateBuildInfo, error) {
 	item := c.cache.Get(buildID)
 	if item == nil {
-		print("build cache: not present in cache")
+		zap.L().Debug("Template build info not found in cache, fetching from DB", zap.String("buildID", buildID.String()))
 
 		envDB, _, envDBErr := c.db.GetEnv(ctx, templateID)
 		if envDBErr != nil {
@@ -182,8 +183,6 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 
 		return item.Value(), nil
 	}
-
-	print("build cache: hitting")
 
 	return item.Value(), nil
 }
