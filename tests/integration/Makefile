@@ -37,6 +37,7 @@ test:
 	export TESTS_SUPABASE_TOKEN=$(TESTS_SUPABASE_TOKEN); \
 	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
 	export TESTS_SANDBOX_BUILD_ID_TO_BE_BUILD=$(TESTS_SANDBOX_BUILD_ID_TO_BE_BUILD); \
+	export TESTS_RUN_BUILD_TEST=$(TESTS_RUN_BUILD_TEST); \
 	go test -v ./internal/main_test.go -count=1 && \
 	go test -v ./internal/tests/... -count=1
 

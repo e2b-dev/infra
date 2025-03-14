@@ -23,4 +23,5 @@ var (
 
 	OrchestratorHost    = os.Getenv("TESTS_ORCHESTRATOR_HOST")
 	TemplateManagerHost = os.Getenv("TESTS_TEMPLATE_MANAGER_HOST")
+	RunBuildTest        = os.Getenv("TESTS_RUN_BUILD_TEST")
 )

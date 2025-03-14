@@ -14,6 +14,9 @@ import (
 )
 
 func TestTemplateBuild(t *testing.T) {
+	if setup.RunBuildTest == "" {
+		t.Skip("Build test is disabled")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
