@@ -1,6 +1,8 @@
 module github.com/e2b-dev/infra/packages/api
 
-go 1.23
+go 1.23.0
+
+toolchain go1.23.7
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1

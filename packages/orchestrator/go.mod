@@ -1,6 +1,8 @@
 module github.com/e2b-dev/infra/packages/orchestrator
 
-go 1.23
+go 1.23.0
+
+toolchain go1.23.7
 
 require (
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
