@@ -14,6 +14,7 @@ const (
 var (
 	APIServerURL      = utils.RequiredEnv("TESTS_API_SERVER_URL", "e.g. https://api.great-innovations.dev")
 	SandboxTemplateID = utils.RequiredEnv("TESTS_SANDBOX_TEMPLATE_ID", "e.g. base")
+	BuildIDToBeBuild  = utils.RequiredEnv("TESTS_SANDBOX_BUILD_ID_TO_BE_BUILD", "e.g. base")
 	APIKey            = utils.RequiredEnv("TESTS_E2B_API_KEY", "your Team API key")
 	AccessToken       = utils.RequiredEnv("TESTS_E2B_ACCESS_TOKEN", "your access token")
 

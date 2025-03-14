@@ -41,12 +41,11 @@ func TestTemplateRequestBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	templateID := data.TemplateID
-
-	resp2, err := c.GetTemplatesTemplateIDBuildsBuildIDStatusWithResponse(ctx, templateID, data.BuildID, nil, setup.WithAccessToken())
+	resp2, err := c.GetTemplatesTemplateIDBuildsBuildIDStatusWithResponse(ctx, data.TemplateID, data.BuildID, nil, setup.WithAccessToken())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() {
 		if t.Failed() {
 			t.Logf("Response: %s", string(resp2.Body))
