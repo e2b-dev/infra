@@ -118,6 +118,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		}
 
 		c.JSON(http.StatusOK, result)
+		return
 	}
 	res, err := a.lokiClient.QueryRange(query, templateBuildLogsLimit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
 	if err != nil {
