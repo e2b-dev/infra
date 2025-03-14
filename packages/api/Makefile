@@ -35,11 +35,11 @@ run:
 	ORCHESTRATOR_PORT=5008 \
 	./bin/api --port 3000
 
+# Run the API using air
 .PHONY: dev-init
 dev-init:
 	go install github.com/air-verse/air@latest
 
-# Run the API using air
 .PHONY: dev
 dev:
 	go tool air
