@@ -199,17 +199,41 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 			return nil, fmt.Errorf("error getting running sandboxes: %w", err)
 		}
 
-		// We request limit+1 to check if there are more results
-		effectiveLimit := *paginationParams.Limit
-		if len(runningSandboxList) < int(effectiveLimit) {
-			// If we have fewer running sandboxes than the limit, we can request more paused sandboxes
-			effectiveLimit = effectiveLimit - int32(len(runningSandboxList))
-		} else {
-			// If we have more running sandboxes than the limit, we don't need to request any paused sandboxes
-			effectiveLimit = 0
+		// Filter running sandboxes by cursor if provided
+		if cursorTime != nil && cursorID != nil {
+			filteredList := make([]api.ListedSandbox, 0)
+			for _, sandbox := range runningSandboxList {
+				// Skip sandboxes that are before or equal to the cursor
+				timeCompare := sandbox.StartedAt.Compare(*cursorTime)
+				if timeCompare > 0 || (timeCompare == 0 && sandbox.SandboxID > *cursorID) {
+					filteredList = append(filteredList, sandbox)
+				}
+			}
+			runningSandboxList = filteredList
 		}
 
-		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, params.Query, &effectiveLimit, cursorTime, cursorID)
+		// We request limit+1 to check if there are more results
+		effectiveLimit := *paginationParams.Limit
+
+		// If we have more running sandboxes than the limit, we need to trim them
+		// and we don't need to request any paused sandboxes
+		if len(runningSandboxList) > int(effectiveLimit) {
+			// We have more running sandboxes than the limit, so we'll return limit+1
+			// to indicate there are more results
+			return runningSandboxList[:int(effectiveLimit)+1], nil
+		}
+
+		// If we have fewer running sandboxes than the limit, we can request more paused sandboxes
+		remainingLimit := effectiveLimit - int32(len(runningSandboxList))
+
+		// If we've already reached the limit with running sandboxes, we don't need paused ones
+		if remainingLimit <= 0 {
+			return runningSandboxList, nil
+		}
+
+		// Request limit+1 paused sandboxes to check if there are more results
+		pausedLimit := remainingLimit + 1
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, params.Query, &pausedLimit, cursorTime, cursorID)
 		if err != nil {
 			return nil, fmt.Errorf("error getting paused sandboxes: %w", err)
 		}
@@ -227,6 +251,26 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 		if err != nil {
 			return nil, fmt.Errorf("error getting running sandboxes: %w", err)
 		}
+
+		// Filter running sandboxes by cursor if provided
+		if cursorTime != nil && cursorID != nil {
+			filteredList := make([]api.ListedSandbox, 0)
+			for _, sandbox := range runningSandboxList {
+				// Skip sandboxes that are before or equal to the cursor
+				timeCompare := sandbox.StartedAt.Compare(*cursorTime)
+				if timeCompare > 0 || (timeCompare == 0 && sandbox.SandboxID > *cursorID) {
+					filteredList = append(filteredList, sandbox)
+				}
+			}
+			runningSandboxList = filteredList
+		}
+
+		// If we have more running sandboxes than the limit, trim them to limit+1
+		// to indicate there are more results
+		if paginationParams.Limit != nil && len(runningSandboxList) > int(*paginationParams.Limit) {
+			runningSandboxList = runningSandboxList[:int(*paginationParams.Limit)+1]
+		}
+
 		sandboxes = append(sandboxes, runningSandboxList...)
 	}
 
