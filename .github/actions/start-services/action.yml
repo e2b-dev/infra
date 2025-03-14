@@ -53,10 +53,14 @@ runs:
         ENVD_TIMEOUT: "60s"
         SUPABASE_JWT_SECRETS: "supabasejwtsecretsupabasejwtsecret"
         TEMPLATE_MANAGER_ADDRESS: "http://127.0.0.1:5009"
+        GCP_PROJECT_ID: "e2b-prod"
+        GCP_DOCKER_REPOSITORY_NAME: "custom-environments-tests"
+        GOOGLE_SERVICE_ACCOUNT_BASE64: "required-but-not-needed"
       run: |
         echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test
         echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRETS}" >> .env.test
         echo "TEMPLATE_MANAGER_ADDRESS=${TEMPLATE_MANAGER_ADDRESS}" >> .env.test
+        echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> .env.test
 
         mkdir -p ~/logs
 

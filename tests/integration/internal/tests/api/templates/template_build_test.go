@@ -3,6 +3,7 @@ package templates
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -33,6 +34,7 @@ func TestTemplateBuild(t *testing.T) {
 		}
 	})
 
+	fmt.Printf("Resp build test: %s\n", resp.HTTPResponse.Request.URL.String())
 	assert.Equal(t, http.StatusAccepted, resp.StatusCode())
 
 	var finished bool
