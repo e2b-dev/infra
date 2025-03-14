@@ -3,6 +3,7 @@ data "google_secret_manager_secret_version" "postgres_connection_string" {
   secret = var.postgres_connection_string_secret_name
 }
 
+
 data "google_secret_manager_secret_version" "posthog_api_key" {
   secret = var.posthog_api_key_secret_name
 }
@@ -38,6 +39,7 @@ resource "nomad_job" "api" {
     port_number                   = var.api_port.port
     api_docker_image              = var.api_docker_image_digest
     postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    supabase_jwt_secrets          = var.supabase_jwt_secrets_secret_data
     posthog_api_key               = data.google_secret_manager_secret_version.posthog_api_key.secret_data
     environment                   = var.environment
     analytics_collector_host      = data.google_secret_manager_secret_version.analytics_collector_host.secret_data
@@ -420,7 +422,7 @@ resource "nomad_job" "clickhouse" {
     gcs_folder          = "clickhouse-data"
     hmac_key            = google_storage_hmac_key.clickhouse_hmac_key.access_id
     hmac_secret         = google_storage_hmac_key.clickhouse_hmac_key.secret
-    username            = "clickhouse"
+    username            = var.clickhouse_username
     password_sha256_hex = sha256(var.clickhouse_password)
   })
 }
