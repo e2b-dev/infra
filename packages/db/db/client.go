@@ -34,7 +34,7 @@ func NewClient(ctx context.Context) (*Client, error) {
 	}
 
 	// Set the maximum number of connections
-	config.MaxConns = 10 // Replace 10 with your desired max connections
+	config.MaxConns = 100
 
 	// Create the connection pool
 	pool, err := pgxpool.NewWithConfig(ctx, config)
