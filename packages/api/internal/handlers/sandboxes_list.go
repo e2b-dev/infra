@@ -264,7 +264,7 @@ func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPagi
 
 	result.Sandboxes = sandboxes[startIndex:endIndex]
 
-	if len(result.Sandboxes) > 0 {
+	if endIndex < len(sandboxes) {
 		lastSandbox := result.Sandboxes[len(result.Sandboxes)-1]
 		cursor := generateCursor(lastSandbox)
 		result.NextToken = &cursor
