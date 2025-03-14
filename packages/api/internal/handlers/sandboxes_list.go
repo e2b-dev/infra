@@ -60,7 +60,7 @@ func parseCursor(cursor string) (time.Time, string, error) {
 	return cursorTime, parts[1], nil
 }
 
-func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string) ([]api.ListedSandbox, error) {
+func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string, cursorTime *time.Time, cursorID *string, limit *int32) ([]api.ListedSandbox, error) {
 	sandboxes := make([]api.ListedSandbox, 0)
 
 	// Get build IDs for running sandboxes
@@ -105,6 +105,25 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 		}
 
 		sandboxes = filteredSandboxes
+	}
+
+	// Filter running sandboxes by cursor if provided
+	if cursorTime != nil && cursorID != nil {
+		filteredList := make([]api.ListedSandbox, 0)
+		for _, sandbox := range sandboxes {
+			// Skip sandboxes that are before or equal to the cursor
+			timeCompare := sandbox.StartedAt.Compare(*cursorTime)
+			if timeCompare > 0 || (timeCompare == 0 && sandbox.SandboxID > *cursorID) {
+				filteredList = append(filteredList, sandbox)
+			}
+		}
+		sandboxes = filteredList
+	}
+
+	// If we have more running sandboxes than the limit, trim them to limit+1
+	// to indicate there are more results
+	if limit != nil && len(sandboxes) > int(*limit) {
+		sandboxes = sandboxes[:int(*limit)+1]
 	}
 
 	return sandboxes, nil
@@ -193,23 +212,9 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 	// If we're requesting both running and paused sandboxes (or neither is specified),
 	// we need to handle pagination carefully to ensure consistent ordering
 	if params.State == nil || (slices.Contains(*params.State, api.Running) && slices.Contains(*params.State, api.Paused)) {
-		// Get all running sandboxes
-		runningSandboxList, err := a.getRunningSandboxes(runningSandboxes, params.Query)
+		runningSandboxList, err := a.getRunningSandboxes(runningSandboxes, params.Query, cursorTime, cursorID, paginationParams.Limit)
 		if err != nil {
 			return nil, fmt.Errorf("error getting running sandboxes: %w", err)
-		}
-
-		// Filter running sandboxes by cursor if provided
-		if cursorTime != nil && cursorID != nil {
-			filteredList := make([]api.ListedSandbox, 0)
-			for _, sandbox := range runningSandboxList {
-				// Skip sandboxes that are before or equal to the cursor
-				timeCompare := sandbox.StartedAt.Compare(*cursorTime)
-				if timeCompare > 0 || (timeCompare == 0 && sandbox.SandboxID > *cursorID) {
-					filteredList = append(filteredList, sandbox)
-				}
-			}
-			runningSandboxList = filteredList
 		}
 
 		// We request limit+1 to check if there are more results
@@ -247,28 +252,9 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 
 	// If we're only requesting running sandboxes
 	if params.State != nil && slices.Contains(*params.State, api.Running) {
-		runningSandboxList, err := a.getRunningSandboxes(runningSandboxes, params.Query)
+		runningSandboxList, err := a.getRunningSandboxes(runningSandboxes, params.Query, cursorTime, cursorID, paginationParams.Limit)
 		if err != nil {
 			return nil, fmt.Errorf("error getting running sandboxes: %w", err)
-		}
-
-		// Filter running sandboxes by cursor if provided
-		if cursorTime != nil && cursorID != nil {
-			filteredList := make([]api.ListedSandbox, 0)
-			for _, sandbox := range runningSandboxList {
-				// Skip sandboxes that are before or equal to the cursor
-				timeCompare := sandbox.StartedAt.Compare(*cursorTime)
-				if timeCompare > 0 || (timeCompare == 0 && sandbox.SandboxID > *cursorID) {
-					filteredList = append(filteredList, sandbox)
-				}
-			}
-			runningSandboxList = filteredList
-		}
-
-		// If we have more running sandboxes than the limit, trim them to limit+1
-		// to indicate there are more results
-		if paginationParams.Limit != nil && len(runningSandboxList) > int(*paginationParams.Limit) {
-			runningSandboxList = runningSandboxList[:int(*paginationParams.Limit)+1]
 		}
 
 		sandboxes = append(sandboxes, runningSandboxList...)
