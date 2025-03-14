@@ -122,7 +122,8 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
 
-	templateManager, err := template_manager.New(dbClient)
+	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
+	templateManager, err := template_manager.New(dbClient, templateBuildsCache)
 	if err != nil {
 		zap.L().Fatal("initializing Template manager client", zap.Error(err))
 	}
@@ -141,7 +142,6 @@ func NewAPIStore(ctx context.Context) *APIStore {
 
 	authCache := authcache.NewTeamAuthCache()
 	templateCache := templatecache.NewTemplateCache(dbClient)
-	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
 	a := &APIStore{

@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"go.uber.org/zap"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -78,7 +80,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 	}
 
 	if item == nil {
-		envDB, build, err = c.db.GetEnv(ctx, aliasOrEnvID)
+		envDB, build, err = c.db.GetEnvWithBuild(ctx, aliasOrEnvID)
 		if err != nil {
 			if models.IsNotFound(err) == true {
 				return nil, nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("template '%s' not found", aliasOrEnvID), Err: err}
@@ -123,8 +125,9 @@ func (c *TemplateCache) Invalidate(templateID string) {
 }
 
 type TemplateBuildInfo struct {
-	TeamID     uuid.UUID
-	TemplateID string
+	TeamID      uuid.UUID
+	TemplateID  string
+	BuildStatus envbuild.Status
 }
 
 type TemplateBuildInfoNotFound struct{ error }
@@ -136,6 +139,7 @@ func (TemplateBuildInfoNotFound) Error() string {
 type TemplatesBuildCache struct {
 	cache *ttlcache.Cache[uuid.UUID, *TemplateBuildInfo]
 	db    *db.DB
+	mx    sync.Mutex
 }
 
 func NewTemplateBuildCache(db *db.DB) *TemplatesBuildCache {
@@ -148,12 +152,26 @@ func NewTemplateBuildCache(db *db.DB) *TemplatesBuildCache {
 	}
 }
 
+func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status) {
+	c.mx.Lock()
+	defer c.mx.Unlock()
+
+	item := c.cache.Get(buildID)
+	if item == nil {
+		return
+	}
+
+	zap.L().Debug("Setting template build status", zap.String("buildID", buildID.String()), zap.String("status", status.String()))
+
+	item.Value().BuildStatus = status
+}
+
 func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (*TemplateBuildInfo, error) {
 	item := c.cache.Get(buildID)
 	if item == nil {
 		zap.L().Debug("Template build info not found in cache, fetching from DB", zap.String("buildID", buildID.String()))
 
-		envDB, _, envDBErr := c.db.GetEnv(ctx, templateID)
+		envDB, envDBErr := c.db.GetEnv(ctx, templateID)
 		if envDBErr != nil {
 			if errors.Is(envDBErr, db.TemplateNotFound{}) {
 				return nil, TemplateBuildInfoNotFound{}
@@ -163,7 +181,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 		}
 
 		// making sure associated template build really exists
-		_, envBuildDBErr := c.db.GetEnvBuild(ctx, buildID)
+		envBuildDB, envBuildDBErr := c.db.GetEnvBuild(ctx, buildID)
 		if envBuildDBErr != nil {
 			if errors.Is(envBuildDBErr, db.TemplateBuildNotFound{}) {
 				return nil, TemplateBuildInfoNotFound{}
@@ -175,8 +193,9 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 		item = c.cache.Set(
 			buildID,
 			&TemplateBuildInfo{
-				TeamID:     envDB.TeamID,
-				TemplateID: envDB.TemplateID,
+				TeamID:      envDB.TeamID,
+				TemplateID:  envDB.ID,
+				BuildStatus: envBuildDB.Status,
 			},
 			templateInfoExpiration,
 		)
