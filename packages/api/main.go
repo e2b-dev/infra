@@ -218,6 +218,11 @@ func run() int {
 	var cleanupFns []func(context.Context) error
 	exitCode := &atomic.Int32{}
 	cleanupOp := func() {
+		if env.IsLocal() {
+			logger.Info("skipping cleanup operations in local environment")
+			return
+		}
+
 		// some cleanup functions do work that requires a context. passing shutdown a
 		// specific context here so that all timeout configuration is in one place.
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -325,7 +330,11 @@ func run() int {
 		// This is a bit of a hack, but this way we can properly propagate
 		// the health status to the load balancer.
 		apiStore.Healthy = false
-		time.Sleep(15 * time.Second)
+
+		// Skip the delay in local environment for instant shutdown
+		if !env.IsLocal() {
+			time.Sleep(15 * time.Second)
+		}
 
 		// if the parent context `ctx` is canceled the
 		// shutdown will return early. This should only happen
