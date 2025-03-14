@@ -104,40 +104,41 @@ func seed(db *db.DB, data SeedData) error {
 		return fmt.Errorf("failed to create env: %w", err)
 	}
 
-	_, err = db.Client.EnvBuild.Create().
-		SetID(data.BuildID).
-		SetEnvID(data.EnvID).
-		SetDockerfile("FROM e2bdev/base:latest").
-		SetStatus(envbuild.StatusUploaded).
-		SetVcpu(2).
-		SetRAMMB(512).
-		SetFreeDiskSizeMB(512).
-		SetTotalDiskSizeMB(1982).
-		SetKernelVersion("vmlinux-6.1.102").
-		SetFirecrackerVersion("v1.10.1_1fcdaec").
-		SetEnvdVersion("0.1.5").
-		Save(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create env build: %w", err)
+	type buildData struct {
+		id        uuid.UUID
+		createdAt *time.Time
 	}
 
-	// Create an older build, so we have multiple builds
-	_, err = db.Client.EnvBuild.Create().
-		SetID(uuid.New()).
-		SetEnvID(data.EnvID).
-		SetDockerfile("FROM e2bdev/base:latest").
-		SetStatus(envbuild.StatusUploaded).
-		SetVcpu(2).
-		SetRAMMB(512).
-		SetFreeDiskSizeMB(512).
-		SetTotalDiskSizeMB(1982).
-		SetKernelVersion("vmlinux-6.1.102").
-		SetFirecrackerVersion("v1.10.1_1fcdaec").
-		SetEnvdVersion("0.1.5").
-		SetCreatedAt(time.Now().Add(-time.Hour)).
-		Save(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create env build: %w", err)
+	oldBuildTime := time.Now().Add(-time.Hour)
+	builds := []buildData{
+		{
+			id:        data.BuildID,
+			createdAt: nil,
+		},
+		// An older build, so we have multiple builds
+		{
+			id:        uuid.New(),
+			createdAt: &oldBuildTime,
+		},
+	}
+
+	for _, build := range builds {
+		_, err = db.Client.EnvBuild.Create().
+			SetID(build.id).
+			SetEnvID(data.EnvID).
+			SetDockerfile("FROM e2bdev/base:latest").
+			SetStatus(envbuild.StatusUploaded).
+			SetVcpu(2).
+			SetRAMMB(512).
+			SetFreeDiskSizeMB(512).
+			SetTotalDiskSizeMB(1982).
+			SetKernelVersion("vmlinux-6.1.102").
+			SetFirecrackerVersion("v1.10.1_1fcdaec").
+			SetEnvdVersion("0.1.5").
+			SetNillableCreatedAt(build.createdAt).Save(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create env build: %w", err)
+		}
 	}
 
 	_, err = db.Client.EnvAlias.Create().
