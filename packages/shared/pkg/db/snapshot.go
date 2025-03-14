@@ -206,49 +206,6 @@ func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uu
 	return e, e.Edges.Builds, nil
 }
 
-func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSandboxIDs []string, limit *int32, metadata *map[string]string) (
-	[]*models.Snapshot,
-	error,
-) {
-	query := db.
-		Client.
-		Snapshot.
-		Query().
-		Where(
-			snapshot.HasEnvWith(env.TeamID(teamID)),
-		).
-		WithEnv(func(query *models.EnvQuery) {
-			query.WithBuilds(func(query *models.EnvBuildQuery) {
-				query.Where(envbuild.StatusEQ(envbuild.StatusSuccess))
-				query.Order(models.Desc(envbuild.FieldFinishedAt))
-			})
-		}).
-		// Order first by sandbox_started_at (descending), then by sandbox_id (ascending) for stability
-		Order(models.Desc(snapshot.FieldSandboxStartedAt), models.Asc(snapshot.FieldSandboxID))
-
-	if metadata != nil {
-		query = query.Where(snapshot.MetadataEq(*metadata))
-	}
-
-	if limit != nil {
-		query = query.Limit(int(*limit))
-	}
-
-	snapshots, err := query.All(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get snapshots for team '%s': %w", teamID, err)
-	}
-
-	// remove snapshots with excludeSandboxIDs
-	for i := len(snapshots) - 1; i >= 0; i-- {
-		if slices.Contains(excludeSandboxIDs, snapshots[i].SandboxID) {
-			snapshots = slices.Delete(snapshots, i, i+1)
-		}
-	}
-
-	return snapshots, nil
-}
-
 // GetTeamSnapshotsWithCursor gets team snapshots with cursor-based pagination
 func (db *DB) GetTeamSnapshotsWithCursor(
 	ctx context.Context,
