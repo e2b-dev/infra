@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -65,6 +66,119 @@ func parseCursor(cursor string) (time.Time, string, error) {
 	return cursorTime, parts[1], nil
 }
 
+func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, query *string) ([]api.ListedSandbox, error) {
+	sandboxes := make([]api.ListedSandbox, 0)
+
+	// Get build IDs for running sandboxes
+	buildIDs := make([]uuid.UUID, 0)
+	for _, info := range runningSandboxes {
+		if info.BuildID != nil {
+			buildIDs = append(buildIDs, *info.BuildID)
+		}
+	}
+
+	// Add running sandboxes to results
+	for _, info := range runningSandboxes {
+		if info.BuildID == nil {
+			continue
+		}
+
+		sandbox := api.ListedSandbox{
+			ClientID:   info.Instance.ClientID,
+			TemplateID: info.Instance.TemplateID,
+			Alias:      info.Instance.Alias,
+			SandboxID:  info.Instance.SandboxID,
+			StartedAt:  info.StartTime,
+			CpuCount:   api.CPUCount(info.VCpu),
+			MemoryMB:   api.MemoryMB(info.RamMB),
+			EndAt:      info.GetEndTime(),
+			State:      api.Running,
+		}
+
+		if info.Metadata != nil {
+			meta := api.SandboxMetadata(info.Metadata)
+			sandbox.Metadata = &meta
+		}
+
+		sandboxes = append(sandboxes, sandbox)
+	}
+
+	// filter sandboxes by metadata
+	if query != nil {
+		filters, err := parseFilters(*query)
+		if err != nil {
+			return nil, fmt.Errorf("error when parsing filters: %w", err)
+		}
+
+		filteredSandboxes, err := filterSandboxes(sandboxes, filters)
+		if err != nil {
+			return nil, fmt.Errorf("error when filtering sandboxes: %w", err)
+		}
+
+		sandboxes = filteredSandboxes
+	}
+
+	return sandboxes, nil
+}
+
+func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, query *string, runningSandboxesIDs []string, limit *int32) ([]api.ListedSandbox, error) {
+	sandboxes := make([]api.ListedSandbox, 0)
+
+	var filters *map[string]string
+	if query != nil {
+		parsedFilters, err := parseFilters(*query)
+		if err != nil {
+			return nil, fmt.Errorf("error when parsing filters: %w", err)
+		}
+
+		filters = &parsedFilters
+	}
+
+	snapshots, err := a.db.GetTeamSnapshots(ctx, teamID, runningSandboxesIDs, limit, filters)
+	if err != nil {
+		return nil, fmt.Errorf("error getting team snapshots: %s", err)
+	}
+
+	// Add snapshots to results
+	for _, snapshot := range snapshots {
+		env := snapshot.Edges.Env
+		if env == nil {
+			continue
+		}
+
+		snapshotBuilds := env.Edges.Builds
+		if len(snapshotBuilds) == 0 {
+			continue
+		}
+
+		memoryMB := int32(-1)
+		cpuCount := int32(-1)
+
+		memoryMB = int32(snapshotBuilds[0].RAMMB)
+		cpuCount = int32(snapshotBuilds[0].Vcpu)
+
+		sandbox := api.ListedSandbox{
+			ClientID:   "00000000", // for backwards compatibility we need to return a client id
+			TemplateID: env.ID,
+			SandboxID:  snapshot.SandboxID,
+			StartedAt:  snapshot.SandboxStartedAt,
+			CpuCount:   cpuCount,
+			MemoryMB:   memoryMB,
+			EndAt:      snapshot.CreatedAt,
+			State:      api.Paused,
+		}
+
+		if snapshot.Metadata != nil {
+			meta := api.SandboxMetadata(snapshot.Metadata)
+			sandbox.Metadata = &meta
+		}
+
+		sandboxes = append(sandboxes, sandbox)
+	}
+
+	return sandboxes, nil
+}
+
 func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams, limit *int32) ([]api.ListedSandbox, error) {
 	// Initialize empty slice for results
 	sandboxes := make([]api.ListedSandbox, 0)
@@ -80,104 +194,20 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 
 	// Only fetch running sandboxes if we need them (state is nil or "running")
 	if params.State == nil || slices.Contains(*params.State, api.Running) {
-		// Get build IDs for running sandboxes
-		buildIDs := make([]uuid.UUID, 0)
-		for _, info := range runningSandboxes {
-			if info.BuildID != nil {
-				buildIDs = append(buildIDs, *info.BuildID)
-			}
+		runningSandboxList, err := a.getRunningSandboxes(runningSandboxes, params.Query)
+		if err != nil {
+			return nil, fmt.Errorf("error getting running sandboxes: %w", err)
 		}
-
-		// Add running sandboxes to results
-		for _, info := range runningSandboxes {
-			if info.BuildID == nil {
-				continue
-			}
-
-			sandbox := api.ListedSandbox{
-				ClientID:   info.Instance.ClientID,
-				TemplateID: info.Instance.TemplateID,
-				Alias:      info.Instance.Alias,
-				SandboxID:  info.Instance.SandboxID,
-				StartedAt:  info.StartTime,
-				CpuCount:   api.CPUCount(info.VCpu),
-				MemoryMB:   api.MemoryMB(info.RamMB),
-				EndAt:      info.GetEndTime(),
-				State:      api.Running,
-			}
-
-			if info.Metadata != nil {
-				meta := api.SandboxMetadata(info.Metadata)
-				sandbox.Metadata = &meta
-			}
-
-			sandboxes = append(sandboxes, sandbox)
-
-			// filter sandboxes by metadata
-			if params.Query != nil {
-				filteredSandboxes, err := filterSandboxes(sandboxes, *params.Query)
-				if err != nil {
-					return nil, fmt.Errorf("error when filtering sandboxes: %w", err)
-				}
-
-				sandboxes = filteredSandboxes
-			}
-		}
+		sandboxes = append(sandboxes, runningSandboxList...)
 	}
 
 	// Only fetch snapshots if we need them (state is nil or "paused")
 	if params.State == nil || slices.Contains(*params.State, api.Paused) {
-		var filters *map[string]string
-		if params.Query != nil {
-			parsedFilters, err := parseFilters(*params.Query)
-			if err != nil {
-				return nil, fmt.Errorf("error when parsing filters: %w", err)
-			}
-
-			filters = &parsedFilters
-		}
-
-		snapshots, err := a.db.GetTeamSnapshots(ctx, teamID, runningSandboxesIDs, limit, filters)
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, params.Query, runningSandboxesIDs, limit)
 		if err != nil {
-			return nil, fmt.Errorf("error getting team snapshots: %s", err)
+			return nil, fmt.Errorf("error getting paused sandboxes: %w", err)
 		}
-
-		// Add snapshots to results
-		for _, snapshot := range snapshots {
-			env := snapshot.Edges.Env
-			if env == nil {
-				continue
-			}
-
-			snapshotBuilds := env.Edges.Builds
-			if len(snapshotBuilds) == 0 {
-				continue
-			}
-
-			memoryMB := int32(-1)
-			cpuCount := int32(-1)
-
-			memoryMB = int32(snapshotBuilds[0].RAMMB)
-			cpuCount = int32(snapshotBuilds[0].Vcpu)
-
-			sandbox := api.ListedSandbox{
-				ClientID:   "00000000", // for backwards compatibility we need to return a client id
-				TemplateID: env.ID,
-				SandboxID:  snapshot.SandboxID,
-				StartedAt:  snapshot.SandboxStartedAt,
-				CpuCount:   cpuCount,
-				MemoryMB:   memoryMB,
-				EndAt:      snapshot.CreatedAt,
-				State:      api.Paused,
-			}
-
-			if snapshot.Metadata != nil {
-				meta := api.SandboxMetadata(snapshot.Metadata)
-				sandbox.Metadata = &meta
-			}
-
-			sandboxes = append(sandboxes, sandbox)
-		}
+		sandboxes = append(sandboxes, pausedSandboxList...)
 	}
 
 	return sandboxes, nil
@@ -214,12 +244,7 @@ func parseFilters(query string) (map[string]string, error) {
 	return filters, nil
 }
 
-func filterSandboxes(sandboxes []api.ListedSandbox, query string) ([]api.ListedSandbox, error) {
-	filters, err := parseFilters(query)
-	if err != nil {
-		return nil, fmt.Errorf("error when parsing filters: %w", err)
-	}
-
+func filterSandboxes(sandboxes []api.ListedSandbox, filters map[string]string) ([]api.ListedSandbox, error) {
 	// Filter instances to match all filters
 	n := 0
 	for _, instance := range sandboxes {
