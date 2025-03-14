@@ -52,7 +52,7 @@ runs:
       env:
         ENVD_TIMEOUT: "60s"
         SUPABASE_JWT_SECRETS: "supabasejwtsecretsupabasejwtsecret"
-        TEMPLATE_MANAGER_ADDRESS: "localhost:5009"
+        TEMPLATE_MANAGER_ADDRESS: "http://127.0.0.1:5009"
       run: |
         echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test
         echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRETS}" >> .env.test
