@@ -295,5 +295,3 @@ replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.
 
 // https://github.com/grafana/loki/issues/2826
 replace github.com/grafana/loki/pkg/push => github.com/grafana/loki/pkg/push v0.0.0-20231124145642-d62d4e37d1f3
-
-tool github.com/air-verse/air
