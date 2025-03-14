@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -214,7 +215,6 @@ func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSan
 		Snapshot.
 		Query().
 		Where(
-			snapshot.SandboxIDNotIn(excludeSandboxIDs...),
 			snapshot.HasEnvWith(env.TeamID(teamID)),
 		).
 		WithEnv(func(query *models.EnvQuery) {
@@ -228,6 +228,13 @@ func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSan
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapshots for team '%s': %w", teamID, err)
+	}
+
+	// remove snapshots with excludeSandboxIDs
+	for i, snapshot := range snapshots {
+		if slices.Contains(excludeSandboxIDs, snapshot.SandboxID) {
+			snapshots = slices.Delete(snapshots, i, i+1)
+		}
 	}
 
 	return snapshots, nil
