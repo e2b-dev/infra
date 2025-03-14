@@ -35,6 +35,7 @@ jobs:
           ls -l ~/logs
           tail -f ~/logs/orchestrator.log -n 0 &
           tail -f ~/logs/api.log -n 0 &
+          tail -f ~/logs/template-manager.log -n 0 &
 
           # Run the integration tests
           make test-integration
