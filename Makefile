@@ -184,7 +184,3 @@ grafana-apply:
 .PHONY: connect-orchestrator
 connect-orchestrator:
 	$(MAKE) -C tests/integration connect-orchestrator
-
-.PHONY: connect-template-manager
-connect-template-manager:
-	$(MAKE) -C tests/integration connect-template-manager

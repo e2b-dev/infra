@@ -49,12 +49,3 @@ connect-orchestrator:
 		--zones=$(GCP_ZONE) | head -n1) && \
 	INSTANCE_ID=$$(gcloud compute instance-groups list-instances "$$CLIENT_IG" --zone=$(GCP_ZONE) --format='value(instance)' | head -n1) && \
 	gcloud compute ssh "$$INSTANCE_ID" --zone=$(GCP_ZONE) -- -NL 5008:localhost:5008  -o PermitLocalCommand=yes -o LocalCommand="echo 'SSH tunnel established'"
-
-.PHONY: connect-template-manager
-connect-template-manager:
-	VM_INSTANCE_ID=$$(gcloud compute instance-groups list \
-		--filter="name~'^.*build.*'" \
-		--format='value(name)' \
-		--zones=$(GCP_ZONE) | head -n1) && \
-	INSTANCE_ID=$$(gcloud compute instance-groups list-instances "$$VM_INSTANCE_ID" --zone=$(GCP_ZONE) --format='value(instance)' | head -n1) && \
-	gcloud compute ssh "$$INSTANCE_ID" --zone=$(GCP_ZONE) -- -NL 5009:localhost:5009  -o PermitLocalCommand=yes -o LocalCommand="echo 'SSH tunnel established'"

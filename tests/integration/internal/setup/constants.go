@@ -21,7 +21,6 @@ var (
 	SupabaseToken  = os.Getenv("TESTS_SUPABASE_TOKEN")
 	SupabaseTeamID = os.Getenv("TESTS_SANDBOX_TEAM_ID")
 
-	OrchestratorHost    = os.Getenv("TESTS_ORCHESTRATOR_HOST")
-	TemplateManagerHost = os.Getenv("TESTS_TEMPLATE_MANAGER_HOST")
-	RunBuildTest        = os.Getenv("TESTS_RUN_BUILD_TEST")
+	OrchestratorHost = os.Getenv("TESTS_ORCHESTRATOR_HOST")
+	RunBuildTest     = os.Getenv("TESTS_RUN_BUILD_TEST")
 )
