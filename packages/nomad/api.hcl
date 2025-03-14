@@ -8,6 +8,14 @@ job "api" {
       port "api" {
         static = "${port_number}"
       }
+
+      %{ if prevent_colocation }
+      port "scheduling-block" {
+        // This port is used to block scheduling of jobs with the same block on the same node.
+        // We use this to block API and Loki from being scheduled on the same node.
+        static = 40234
+      }
+      %{ endif }
     }
 
     constraint {
