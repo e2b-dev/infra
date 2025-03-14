@@ -56,6 +56,7 @@ runs:
         GCP_PROJECT_ID: "e2b-prod"
         GCP_DOCKER_REPOSITORY_NAME: "custom-environments-tests"
         GOOGLE_SERVICE_ACCOUNT_BASE64: "required-but-not-needed"
+        TEMPLATE_BUCKET_NAME: "e2b-tests-fc-templates"
       run: |
         echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test
         echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRETS}" >> .env.test
@@ -63,6 +64,7 @@ runs:
         echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> .env.test
         echo "GCP_DOCKER_REPOSITORY_NAME=${GCP_DOCKER_REPOSITORY_NAME}" >> .env.test
         echo "GOOGLE_SERVICE_ACCOUNT_BASE64=${GOOGLE_SERVICE_ACCOUNT_BASE64}" >> .env.test
+        echo "TEMPLATE_BUCKET_NAME=${TEMPLATE_BUCKET_NAME}" >> .env.test
 
         mkdir -p ~/logs
 
