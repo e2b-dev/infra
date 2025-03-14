@@ -1,4 +1,4 @@
-package pkg
+package db
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	_ "github.com/lib/pq"
 
-	database "github.com/e2b-dev/infra/packages/db/pkg/queries"
+	database "github.com/e2b-dev/infra/packages/db/db/queries"
 )
 
 type Client struct {

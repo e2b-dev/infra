@@ -125,7 +125,7 @@ copy-public-builds:
 
 .PHONY: generate
 generate:
-	rm -rf packages/db/pkg/queries/*
+	rm -rf packages/db/db/queries/*
 	sqlc generate
 
 .PHONY: migrate
