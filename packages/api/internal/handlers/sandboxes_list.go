@@ -116,27 +116,32 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 
 	// Only fetch snapshots if we need them (state is nil or "paused")
 	if params.State == nil || slices.Contains(*params.State, api.Paused) {
-		snapshotEnvs, err := a.db.GetTeamSnapshots(ctx, teamID, runningSandboxesIDs)
+		snapshots, err := a.db.GetTeamSnapshots(ctx, teamID, runningSandboxesIDs)
 		if err != nil {
 			return nil, fmt.Errorf("error getting team snapshots: %s", err)
 		}
 
 		// Add snapshots to results
-		for _, e := range snapshotEnvs {
-			snapshotBuilds := e.Edges.Builds
-			snapshot := e.Edges.Snapshots[0]
+		for _, snapshot := range snapshots {
+			env := snapshot.Edges.Env
+			if env == nil {
+				continue
+			}
+
+			snapshotBuilds := env.Edges.Builds
+			if len(snapshotBuilds) == 0 {
+				continue
+			}
 
 			memoryMB := int32(-1)
 			cpuCount := int32(-1)
 
-			if len(snapshotBuilds) > 0 {
-				memoryMB = int32(snapshotBuilds[0].RAMMB)
-				cpuCount = int32(snapshotBuilds[0].Vcpu)
-			}
+			memoryMB = int32(snapshotBuilds[0].RAMMB)
+			cpuCount = int32(snapshotBuilds[0].Vcpu)
 
 			sandbox := api.ListedSandbox{
 				ClientID:   "00000000", // for backwards compatibility we need to return a client id
-				TemplateID: e.ID,
+				TemplateID: env.ID,
 				SandboxID:  snapshot.SandboxID,
 				StartedAt:  snapshot.SandboxStartedAt,
 				CpuCount:   cpuCount,

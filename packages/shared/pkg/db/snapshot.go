@@ -206,27 +206,29 @@ func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uu
 }
 
 func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSandboxIDs []string) (
-	[]*models.Env,
+	[]*models.Snapshot,
 	error,
 ) {
-	e, err := db.
+	snapshots, err := db.
 		Client.
-		Env.
+		Snapshot.
 		Query().
 		Where(
-			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
-			env.HasSnapshotsWith(snapshot.SandboxIDNotIn(excludeSandboxIDs...)),
-			env.TeamID(teamID),
+			snapshot.SandboxIDNotIn(excludeSandboxIDs...),
+			snapshot.HasEnvWith(env.TeamID(teamID)),
 		).
-		WithSnapshots().
-		WithBuilds(func(query *models.EnvBuildQuery) {
-			query.Where(envbuild.StatusEQ(envbuild.StatusSuccess)).Order(models.Desc(envbuild.FieldFinishedAt))
+		WithEnv(func(query *models.EnvQuery) {
+			query.WithBuilds(func(query *models.EnvBuildQuery) {
+				query.Where(envbuild.StatusEQ(envbuild.StatusSuccess))
+				query.Order(models.Desc(envbuild.FieldFinishedAt))
+			})
 		}).
+		Order(models.Desc(snapshot.FieldCreatedAt)).
 		All(ctx)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to get snapshot build for '%s': %w", teamID, err)
+		return nil, fmt.Errorf("failed to get snapshots for team '%s': %w", teamID, err)
 	}
 
-	return e, nil
+	return snapshots, nil
 }
