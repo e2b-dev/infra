@@ -32,17 +32,8 @@ type SandboxesListFilter struct {
 	Query *string
 }
 
-type SandboxesListPaginate struct {
-	NextToken *string
-	Limit     *int32
-}
-
-type SandboxesListResult struct {
-	Sandboxes []api.ListedSandbox
-	NextToken *string
-}
-
 func generateCursor(sandbox api.ListedSandbox) string {
+	// Format: timestamp__sandboxID
 	cursor := fmt.Sprintf("%s__%s", sandbox.StartedAt.Format(time.RFC3339Nano), sandbox.SandboxID)
 	return base64.URLEncoding.EncodeToString([]byte(cursor))
 }
@@ -121,7 +112,7 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 	return sandboxes, nil
 }
 
-func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, query *string, limit *int32) ([]api.ListedSandbox, error) {
+func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, query *string, limit *int32, cursorTime *time.Time, cursorID *string) ([]api.ListedSandbox, error) {
 	sandboxes := make([]api.ListedSandbox, 0)
 
 	var filters *map[string]string
@@ -134,7 +125,14 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 		filters = &parsedFilters
 	}
 
-	snapshots, err := a.db.GetTeamSnapshots(ctx, teamID, runningSandboxesIDs, limit, filters)
+	// Use default limit if not provided
+	effectiveLimit := int32(100)
+	if limit != nil {
+		effectiveLimit = *limit
+	}
+
+	// Use the new cursor-based pagination function
+	snapshots, err := a.db.GetTeamSnapshotsWithCursor(ctx, teamID, runningSandboxesIDs, effectiveLimit, filters, cursorTime, cursorID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting team snapshots: %s", err)
 	}
@@ -179,9 +177,21 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	return sandboxes, nil
 }
 
-func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams, limit *int32) ([]api.ListedSandbox, error) {
+func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams, limit *int32, nextToken *string) ([]api.ListedSandbox, error) {
 	// Initialize empty slice for results
 	sandboxes := make([]api.ListedSandbox, 0)
+
+	// Parse cursor if provided
+	var cursorTime *time.Time
+	var cursorID *string
+	if nextToken != nil && *nextToken != "" {
+		parsedTime, parsedID, err := parseCursor(*nextToken)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cursor: %w", err)
+		}
+		cursorTime = &parsedTime
+		cursorID = &parsedID
+	}
 
 	// Get all sandbox instances
 	runningSandboxes := a.orchestrator.GetSandboxes(ctx, &teamID)
@@ -192,8 +202,40 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.Instance.SandboxID))
 	}
 
-	// Only fetch running sandboxes if we need them (state is nil or "running")
-	if params.State == nil || slices.Contains(*params.State, api.Running) {
+	// If we're requesting both running and paused sandboxes (or neither is specified),
+	// we need to handle pagination carefully to ensure consistent ordering
+	if params.State == nil || (slices.Contains(*params.State, api.Running) && slices.Contains(*params.State, api.Paused)) {
+		// Get all running sandboxes
+		runningSandboxList, err := a.getRunningSandboxes(runningSandboxes, params.Query)
+		if err != nil {
+			return nil, fmt.Errorf("error getting running sandboxes: %w", err)
+		}
+
+		// Get paused sandboxes with cursor-based pagination
+		// We request limit+1 to check if there are more results
+		effectiveLimit := *limit
+		if len(runningSandboxList) < int(effectiveLimit) {
+			// If we have fewer running sandboxes than the limit, we can request more paused sandboxes
+			effectiveLimit = effectiveLimit - int32(len(runningSandboxList))
+		} else {
+			// If we have more running sandboxes than the limit, we don't need to request any paused sandboxes
+			effectiveLimit = 0
+		}
+
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, params.Query, &effectiveLimit, cursorTime, cursorID)
+		if err != nil {
+			return nil, fmt.Errorf("error getting paused sandboxes: %w", err)
+		}
+
+		// Combine the results
+		sandboxes = append(sandboxes, runningSandboxList...)
+		sandboxes = append(sandboxes, pausedSandboxList...)
+
+		return sandboxes, nil
+	}
+
+	// If we're only requesting running sandboxes
+	if params.State != nil && slices.Contains(*params.State, api.Running) {
 		runningSandboxList, err := a.getRunningSandboxes(runningSandboxes, params.Query)
 		if err != nil {
 			return nil, fmt.Errorf("error getting running sandboxes: %w", err)
@@ -201,9 +243,9 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 		sandboxes = append(sandboxes, runningSandboxList...)
 	}
 
-	// Only fetch snapshots if we need them (state is nil or "paused")
-	if params.State == nil || slices.Contains(*params.State, api.Paused) {
-		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, params.Query, limit)
+	// If we're only requesting paused sandboxes
+	if params.State != nil && slices.Contains(*params.State, api.Paused) {
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, params.Query, limit, cursorTime, cursorID)
 		if err != nil {
 			return nil, fmt.Errorf("error getting paused sandboxes: %w", err)
 		}
@@ -272,58 +314,6 @@ func filterSandboxes(sandboxes []api.ListedSandbox, filters map[string]string) (
 	return sandboxes, nil
 }
 
-// Paginate sandboxes
-func paginateSandboxes(sandboxes []api.ListedSandbox, paginate SandboxesListPaginate) (SandboxesListResult, error) {
-	result := SandboxesListResult{
-		Sandboxes: make([]api.ListedSandbox, 0),
-		NextToken: nil,
-	}
-
-	// Sort sandboxes by descending created_at
-	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
-		return b.StartedAt.Compare(a.StartedAt)
-	})
-
-	// If cursor is provided, find the starting position
-	startIndex := 0
-	if paginate.NextToken != nil && *paginate.NextToken != "" {
-		cursorTime, cursorID, err := parseCursor(*paginate.NextToken)
-		if err != nil {
-			return result, fmt.Errorf("invalid cursor: %w", err)
-		}
-
-		// Find the sandbox that matches the cursor
-		found := false
-		for i, sandbox := range sandboxes {
-			sandboxTime := sandbox.StartedAt
-			if sandboxTime.Before(cursorTime) || (sandboxTime.Equal(cursorTime) && sandbox.SandboxID > cursorID) {
-				startIndex = i
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			startIndex = 0
-		}
-	}
-
-	endIndex := startIndex + int(*paginate.Limit)
-	if endIndex > len(sandboxes) {
-		endIndex = len(sandboxes)
-	}
-
-	result.Sandboxes = sandboxes[startIndex:endIndex]
-
-	if endIndex < len(sandboxes) {
-		lastSandbox := result.Sandboxes[len(result.Sandboxes)-1]
-		cursor := generateCursor(lastSandbox)
-		result.NextToken = &cursor
-	}
-
-	return result, nil
-}
-
 func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list running instances")
@@ -335,34 +325,54 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances", properties)
 
+	// Ensure we have a valid limit
+	limit := int32(100) // Default limit
+	if params.Limit != nil && *params.Limit > 0 {
+		limit = *params.Limit
+	}
+
+	// Get sandboxes with pagination
 	sandboxes, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
 		State: params.State,
 		Query: params.Query,
-	}, params.Limit)
+	}, &limit, params.NextToken)
 	if err != nil {
 		zap.L().Error("Error fetching sandboxes", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
-
 		return
 	}
 
-	// Paginate sandboxes
-	result, err := paginateSandboxes(sandboxes, SandboxesListPaginate{
-		NextToken: params.NextToken,
-		Limit:     params.Limit,
+	// Sort sandboxes by descending started_at, then by sandbox ID for stability
+	slices.SortFunc(sandboxes, func(a, b api.ListedSandbox) int {
+		// First compare by timestamp (newest first)
+		timeCompare := b.StartedAt.Compare(a.StartedAt)
+		if timeCompare != 0 {
+			return timeCompare
+		}
+		// If timestamps are equal, sort by sandbox ID (lexicographically)
+		if a.SandboxID < b.SandboxID {
+			return -1
+		} else if a.SandboxID > b.SandboxID {
+			return 1
+		}
+		return 0
 	})
-	if err != nil {
-		zap.L().Error("Error fetching sandboxes", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error paginating sandboxes for team '%s'", team.ID))
 
-		return
+	// Apply limit and determine if there are more results
+	var nextToken *string
+	if len(sandboxes) > int(limit) {
+		// We have more results than the limit, so we need to set the nextToken
+		lastSandbox := sandboxes[limit-1]
+		cursor := generateCursor(lastSandbox)
+		nextToken = &cursor
+
+		// Trim to the requested limit
+		sandboxes = sandboxes[:limit]
 	}
 
-	sandboxes = result.Sandboxes
-
-	// add pagination info to headers
-	if result.NextToken != nil {
-		c.Header("X-Next-Token", *result.NextToken)
+	// Add pagination info to headers
+	if nextToken != nil {
+		c.Header("X-Next-Token", *nextToken)
 	}
 	c.Header("X-Total-Items", strconv.Itoa(len(sandboxes)))
 

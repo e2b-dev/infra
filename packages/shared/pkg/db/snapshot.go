@@ -223,7 +223,8 @@ func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSan
 				query.Order(models.Desc(envbuild.FieldFinishedAt))
 			})
 		}).
-		Order(models.Desc(snapshot.FieldCreatedAt))
+		// Order first by sandbox_started_at (descending), then by sandbox_id (ascending) for stability
+		Order(models.Desc(snapshot.FieldSandboxStartedAt), models.Asc(snapshot.FieldSandboxID))
 
 	if metadata != nil {
 		query = query.Where(snapshot.MetadataEq(*metadata))
@@ -239,8 +240,77 @@ func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSan
 	}
 
 	// remove snapshots with excludeSandboxIDs
-	for i, snapshot := range snapshots {
-		if slices.Contains(excludeSandboxIDs, snapshot.SandboxID) {
+	for i := len(snapshots) - 1; i >= 0; i-- {
+		if slices.Contains(excludeSandboxIDs, snapshots[i].SandboxID) {
+			snapshots = slices.Delete(snapshots, i, i+1)
+		}
+	}
+
+	return snapshots, nil
+}
+
+// GetTeamSnapshotsWithCursor gets team snapshots with cursor-based pagination
+func (db *DB) GetTeamSnapshotsWithCursor(
+	ctx context.Context,
+	teamID uuid.UUID,
+	excludeSandboxIDs []string,
+	limit int32,
+	metadata *map[string]string,
+	cursorTime *time.Time,
+	cursorID *string,
+) (
+	[]*models.Snapshot,
+	error,
+) {
+	query := db.
+		Client.
+		Snapshot.
+		Query().
+		Where(
+			snapshot.HasEnvWith(env.TeamID(teamID)),
+		).
+		WithEnv(func(query *models.EnvQuery) {
+			query.WithBuilds(func(query *models.EnvBuildQuery) {
+				query.Where(envbuild.StatusEQ(envbuild.StatusSuccess))
+				query.Order(models.Desc(envbuild.FieldFinishedAt))
+			})
+		})
+
+	// Apply cursor-based filtering if cursor is provided
+	if cursorTime != nil && cursorID != nil {
+		// Get snapshots that are either:
+		// 1. Older than the cursor timestamp, or
+		// 2. Have the same timestamp but a lexicographically greater sandbox ID
+		query = query.Where(
+			snapshot.Or(
+				snapshot.SandboxStartedAtLT(*cursorTime),
+				snapshot.And(
+					snapshot.SandboxStartedAtEQ(*cursorTime),
+					snapshot.SandboxIDGT(*cursorID),
+				),
+			),
+		)
+	}
+
+	// Apply metadata filtering
+	if metadata != nil {
+		query = query.Where(snapshot.MetadataEq(*metadata))
+	}
+
+	// Order by sandbox_started_at (descending), then by sandbox_id (ascending) for stability
+	query = query.Order(models.Desc(snapshot.FieldSandboxStartedAt), models.Asc(snapshot.FieldSandboxID))
+
+	// Apply limit + 1 to check if there are more results
+	query = query.Limit(int(limit) + 1)
+
+	snapshots, err := query.All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get snapshots for team '%s': %w", teamID, err)
+	}
+
+	// Remove snapshots with excludeSandboxIDs
+	for i := len(snapshots) - 1; i >= 0; i-- {
+		if slices.Contains(excludeSandboxIDs, snapshots[i].SandboxID) {
 			snapshots = slices.Delete(snapshots, i, i+1)
 		}
 	}
