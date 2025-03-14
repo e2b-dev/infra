@@ -206,7 +206,6 @@ func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uu
 	return e, e.Edges.Builds, nil
 }
 
-// GetTeamSnapshotsWithCursor gets team snapshots with cursor-based pagination
 func (db *DB) GetTeamSnapshotsWithCursor(
 	ctx context.Context,
 	teamID uuid.UUID,
@@ -235,9 +234,6 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 
 	// Apply cursor-based filtering if cursor is provided
 	if cursorTime != nil && cursorID != nil {
-		// Get snapshots that are either:
-		// 1. Older than the cursor timestamp, or
-		// 2. Have the same timestamp but a lexicographically greater sandbox ID
 		query = query.Where(
 			snapshot.Or(
 				snapshot.SandboxStartedAtLT(*cursorTime),
@@ -251,7 +247,7 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 
 	// Apply metadata filtering
 	if metadata != nil {
-		query = query.Where(snapshot.MetadataEq(*metadata))
+		query = query.Where(snapshot.MetadataEQ(*metadata))
 	}
 
 	// Order by sandbox_started_at (descending), then by sandbox_id (ascending) for stability

@@ -2,20 +2,17 @@ package snapshot
 
 import (
 	"encoding/json"
-	"log"
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
+	"go.uber.org/zap"
 )
 
-func MetadataEq(metadata map[string]string) predicate.Snapshot {
+func MetadataEQ(metadata map[string]string) predicate.Snapshot {
 	return predicate.Snapshot(func(s *sql.Selector) {
-		// Convert the metadata map to JSON
 		metadataJSON, err := json.Marshal(metadata)
 		if err != nil {
-			// Log the error but continue with an empty predicate
-			// This will effectively match no records if there's a marshaling error
-			log.Printf("Error marshaling metadata to JSON: %v", err)
+			zap.L().Error("Error marshaling metadata to JSON", zap.Error(err))
 			s.Where(sql.False())
 			return
 		}
