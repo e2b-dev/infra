@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -106,6 +107,18 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	end := time.Now()
 	start := end.Add(-templateBuildOldestLogsLimit)
 
+	logs := make([]string, 0)
+
+	if a.lokiClient == nil {
+		result := api.TemplateBuild{
+			Logs:       logs,
+			TemplateID: templateID,
+			BuildID:    buildID,
+			Status:     getCorrespondingTemplateBuildStatus(buildInfo.BuildStatus),
+		}
+
+		c.JSON(http.StatusOK, result)
+	}
 	res, err := a.lokiClient.QueryRange(query, templateBuildLogsLimit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
 	if err != nil {
 		errMsg := fmt.Errorf("error when returning logs for template build: %w", err)
@@ -116,7 +129,6 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	logs := make([]string, 0)
 	logsCrawled := 0
 
 	offset := 0
