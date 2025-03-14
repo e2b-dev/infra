@@ -35,29 +35,14 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 
 		// Sandbox exists and belongs to the team - return running sandbox info
-		_, build, err := a.templateCache.Get(ctx, info.Instance.TemplateID, team.ID, true)
-		if err != nil {
-			telemetry.ReportCriticalError(ctx, err.Err)
-			a.sendAPIStoreError(c, err.Code, err.ClientMsg)
-			return
-		}
-
-		cpuCount := int32(-1)
-		memoryMB := int32(-1)
-
-		if build != nil {
-			cpuCount = int32(build.Vcpu)
-			memoryMB = int32(build.RAMMB)
-		}
-
 		sandbox := api.ListedSandbox{
 			ClientID:   info.Instance.ClientID,
 			TemplateID: info.Instance.TemplateID,
 			Alias:      info.Instance.Alias,
 			SandboxID:  info.Instance.SandboxID,
 			StartedAt:  info.StartTime,
-			CpuCount:   cpuCount,
-			MemoryMB:   memoryMB,
+			CpuCount:   api.CPUCount(info.VCpu),
+			MemoryMB:   api.MemoryMB(info.RamMB),
 			EndAt:      info.GetEndTime(),
 			State:      api.Running,
 		}

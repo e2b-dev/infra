@@ -19,8 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -89,29 +87,10 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 			}
 		}
 
-		// Fetch builds for running sandboxes
-		builds, err := a.db.Client.EnvBuild.Query().Where(envbuild.IDIn(buildIDs...)).All(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("error getting builds for running sandboxes: %s", err)
-		}
-
-		buildsMap := make(map[uuid.UUID]*models.EnvBuild, len(builds))
-		for _, build := range builds {
-			buildsMap[build.ID] = build
-		}
-
 		// Add running sandboxes to results
 		for _, info := range runningSandboxes {
 			if info.BuildID == nil {
 				continue
-			}
-
-			memoryMB := int32(-1)
-			cpuCount := int32(-1)
-
-			if buildsMap[*info.BuildID] != nil {
-				memoryMB = int32(buildsMap[*info.BuildID].RAMMB)
-				cpuCount = int32(buildsMap[*info.BuildID].Vcpu)
 			}
 
 			sandbox := api.ListedSandbox{
@@ -120,8 +99,8 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 				Alias:      info.Instance.Alias,
 				SandboxID:  info.Instance.SandboxID,
 				StartedAt:  info.StartTime,
-				CpuCount:   cpuCount,
-				MemoryMB:   memoryMB,
+				CpuCount:   api.CPUCount(info.VCpu),
+				MemoryMB:   api.MemoryMB(info.RamMB),
 				EndAt:      info.GetEndTime(),
 				State:      api.Running,
 			}
