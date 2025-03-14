@@ -239,7 +239,7 @@ func mockSnapshot(
 		return fmt.Errorf("failed to add snapshot to template cache: %w", err)
 	}
 
-	fmt.Println("AddSandbox snapshot to template cache time: ", time.Since(snapshotTime).Milliseconds())
+	fmt.Println("Add snapshot to template cache time: ", time.Since(snapshotTime).Milliseconds())
 
 	start = time.Now()
 
