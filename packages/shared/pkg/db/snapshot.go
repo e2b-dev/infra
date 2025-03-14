@@ -211,7 +211,7 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 	ctx context.Context,
 	teamID uuid.UUID,
 	excludeSandboxIDs []string,
-	limit int32,
+	limit int,
 	metadata *map[string]string,
 	cursorTime *time.Time,
 	cursorID *string,
@@ -258,7 +258,7 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 	query = query.Order(models.Desc(snapshot.FieldSandboxStartedAt), models.Asc(snapshot.FieldSandboxID))
 
 	// Apply limit + 1 to check if there are more results
-	query = query.Limit(int(limit) + 1)
+	query = query.Limit(limit + 1)
 
 	snapshots, err := query.All(ctx)
 	if err != nil {
@@ -266,11 +266,12 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 	}
 
 	// Remove snapshots with excludeSandboxIDs
-	for i := len(snapshots) - 1; i >= 0; i-- {
-		if slices.Contains(excludeSandboxIDs, snapshots[i].SandboxID) {
-			snapshots = slices.Delete(snapshots, i, i+1)
+	filteredSnapshots := make([]*models.Snapshot, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		if !slices.Contains(excludeSandboxIDs, snapshot.SandboxID) {
+			filteredSnapshots = append(filteredSnapshots, snapshot)
 		}
 	}
 
-	return snapshots, nil
+	return filteredSnapshots, nil
 }

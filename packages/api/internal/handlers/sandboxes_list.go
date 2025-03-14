@@ -23,6 +23,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const defaultSandboxesListLimit = 100
+
 type SandboxesListParams struct {
 	State *[]api.SandboxState
 	Query *string
@@ -126,9 +128,9 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	}
 
 	// Use default limit if not provided
-	effectiveLimit := int32(100)
+	effectiveLimit := defaultSandboxesListLimit
 	if limit != nil {
-		effectiveLimit = *limit
+		effectiveLimit = int(*limit)
 	}
 
 	// Use the new cursor-based pagination function
@@ -326,7 +328,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances", properties)
 
 	// Ensure we have a valid limit
-	limit := int32(100) // Default limit
+	limit := int32(defaultSandboxesListLimit) // Default limit
 	if params.Limit != nil && *params.Limit > 0 {
 		limit = *params.Limit
 	}

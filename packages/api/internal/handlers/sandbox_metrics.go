@@ -22,8 +22,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const defaultLimit = 100
-
 func (a *APIStore) LegacyGetSandboxIDMetrics(
 	ctx context.Context,
 	sandboxID string,
@@ -62,10 +60,10 @@ func (a *APIStore) LegacyGetSandboxIDMetrics(
 
 			var metric struct {
 				Timestamp   time.Time `json:"timestamp"`
-				CPUUsedPct  float32 `json:"cpuUsedPct"`
-				CPUCount    int32   `json:"cpuCount"`
-				MemTotalMiB int64   `json:"memTotalMiB"`
-				MemUsedMiB  int64   `json:"memUsedMiB"`
+				CPUUsedPct  float32   `json:"cpuUsedPct"`
+				CPUCount    int32     `json:"cpuCount"`
+				MemTotalMiB int64     `json:"memTotalMiB"`
+				MemUsedMiB  int64     `json:"memUsedMiB"`
 			}
 
 			err := json.Unmarshal([]byte(entry.Line), &metric)
@@ -151,10 +149,10 @@ func (a *APIStore) readMetricsBasedOnConfig(
 	readMetricsFromClickhouse := a.readMetricsFromClickHouse == "true"
 
 	if readMetricsFromClickhouse {
-		return reader.GetSandboxesSandboxIDMetricsFromClickhouse(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
+		return reader.GetSandboxesSandboxIDMetricsFromClickhouse(ctx, sandboxID, teamID, defaultSandboxesListLimit, oldestLogsLimit)
 	}
 
-	return reader.LegacyGetSandboxIDMetrics(ctx, sandboxID, teamID, defaultLimit, oldestLogsLimit)
+	return reader.LegacyGetSandboxIDMetrics(ctx, sandboxID, teamID, defaultSandboxesListLimit, oldestLogsLimit)
 }
 
 func (a *APIStore) GetSandboxesSandboxIDMetrics(
