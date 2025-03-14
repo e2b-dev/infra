@@ -28,12 +28,13 @@ import (
 )
 
 const (
-	ServiceName     = "client-proxy"
-	dnsServer       = "api.service.consul:5353"
-	healthCheckPort = 3001
-	port            = 3002
-	sandboxPort     = 3003
-	maxRetries      = 3
+	ServiceName           = "client-proxy"
+	dnsServer             = "api.service.consul:5353"
+	healthCheckPort       = 3001
+	port                  = 3002
+	sandboxPort           = 3003 // legacy session proxy port
+	orchestratorProxyPort = 5007 // orchestrator proxy port
+	maxRetries            = 3
 )
 
 var commitSHA string
