@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 
@@ -59,5 +58,5 @@ func TestTemplateRequestBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, envbuild.StatusWaiting, statusData.Status)
+	assert.Equal(t, api.TemplateBuildStatusWaiting, statusData.Status)
 }
