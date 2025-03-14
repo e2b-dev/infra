@@ -149,7 +149,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 func getCorrespondingTemplateBuildStatus(s envbuild.Status) api.TemplateBuildStatus {
 	switch s {
 	case envbuild.StatusWaiting:
-		return api.TemplateBuildStatusBuilding
+		return api.TemplateBuildStatusWaiting
 	case envbuild.StatusFailed:
 		return api.TemplateBuildStatusError
 	case envbuild.StatusUploaded:
