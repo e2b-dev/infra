@@ -90,15 +90,18 @@ job "clickhouse" {
             </s3_plain>
         </disks>
         <policies>
-            <gcs_main>
+            <s3_plain>
                 <volumes>
                     <main>
                         <disk>s3_plain</disk>
                     </main>
                 </volumes>
-            </gcs_main>
+            </s3_plain>
         </policies>
     </storage_configuration>
+    <merge_tree>
+        <storage_policy>s3_plain</storage_policy>
+    </merge_tree>
 </clickhouse>
 EOF
         destination = "local/config.xml"
