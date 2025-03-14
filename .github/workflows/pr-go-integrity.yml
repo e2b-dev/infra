@@ -1,0 +1,22 @@
+name: Run Go Deps Integrity Check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  run-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Run integrity check
+        run: STRICT_MODE=1 bash ./scripts/golang-dependencies-integrity.sh

@@ -5,14 +5,25 @@ job "clickhouse" {
 
 
   group "clickhouse" {
+
+    update {
+      max_parallel     = 2
+      min_healthy_time = "30s"
+      healthy_deadline = "4m"
+
+      auto_revert = true
+    }
+
     count = 1
 
     network {
       port "clickhouse" {
         to = 9000
+        static = 9000
       }
       
       port "clickhouse_http" {
+        static = 8123
         to = 8123
       }
     }
@@ -38,10 +49,11 @@ job "clickhouse" {
     task "clickhouse-server" {
       driver = "docker"
 
+      kill_timeout = "120s"
 
       resources {
         cpu    = 500
-        memory = 1024
+        memory = 2048
       }
 
       config {
@@ -56,7 +68,7 @@ job "clickhouse" {
         volumes = [
           "local/config.xml:/etc/clickhouse-server/config.d/gcs.xml",
           # disabled while testing but will pass password to orchestrator in the future
-          # "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
+          "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
         ]
       }
 
@@ -64,6 +76,10 @@ job "clickhouse" {
         data = <<EOF
 <?xml version="1.0"?>
 <clickhouse>
+     # this is undocumented but needed to enable waiting for for shutdown for a custom amount of time 
+     # see https://github.com/ClickHouse/ClickHouse/pull/77515 for more details
+    <shutdown_wait_unfinished>60</shutdown_wait_unfinished>
+    <shutdown_wait_unfinished_queries>1</shutdown_wait_unfinished_queries>
     <storage_configuration>
         <disks>
             <gcs>
@@ -78,7 +94,7 @@ job "clickhouse" {
                 <type>cache</type>
                 <disk>gcs</disk>
                 <path>/var/lib/clickhouse/disks/gcs_cache/</path>
-                <max_size>4Gi</max_size>
+                <max_size>1Gi</max_size>
             </gcs_cache>
         </disks>
         <policies>

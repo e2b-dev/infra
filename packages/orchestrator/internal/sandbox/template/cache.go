@@ -15,7 +15,16 @@ import (
 
 // How long to keep the template in the cache since the last access.
 // Should be longer than the maximum possible sandbox lifetime.
-const templateExpiration = time.Hour * 25
+const (
+	templateExpiration = time.Hour * 25
+
+	buildCacheTTL           = time.Hour * 25
+	buildCacheDelayEviction = time.Second * 60
+
+	// buildCacheMaxUsedPercentage the maximum percentage of the cache disk storage
+	// that can be used before the cache starts evicting items.
+	buildCacheMaxUsedPercentage = 75.0
+)
 
 type Cache struct {
 	cache      *ttlcache.Cache[string, Template]
@@ -40,7 +49,13 @@ func NewCache(ctx context.Context) (*Cache, error) {
 
 	go cache.Start()
 
-	buildStore, err := build.NewDiffStore(gcs.GetTemplateBucket(), ctx)
+	buildStore, err := build.NewDiffStore(
+		ctx,
+		build.DefaultCachePath,
+		buildCacheTTL,
+		buildCacheDelayEviction,
+		buildCacheMaxUsedPercentage,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
 	}
@@ -110,14 +125,14 @@ func (c *Cache) AddSnapshot(
 	case *build.NoDiff:
 		break
 	default:
-		c.buildStore.Add(buildId, build.Memfile, memfileDiff)
+		c.buildStore.Add(memfileDiff)
 	}
 
 	switch rootfsDiff.(type) {
 	case *build.NoDiff:
 		break
 	default:
-		c.buildStore.Add(buildId, build.Rootfs, rootfsDiff)
+		c.buildStore.Add(rootfsDiff)
 	}
 
 	storageTemplate, err := newTemplateFromStorage(

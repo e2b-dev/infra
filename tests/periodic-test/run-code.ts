@@ -1,34 +1,35 @@
 import { Sandbox } from "npm:@e2b/code-interpreter";
+import { log } from "./utils.ts";
 
-console.log('creating sandbox')
 
 let sandbox: Sandbox | null = null
 
 try {
     // Create a E2B Code Interpreter with JavaScript kernel
+    log('creating sandbox')
     sandbox = await Sandbox.create();
 } catch (error) {
+    log('Test failed:', error)
     throw new Error('error creating sandbox', error)
 }
+log('sandbox created')
 
-
-console.log('sandbox created')
-
-console.log('running code')
 
 try {
     // Execute JavaScript cells
+    log('running code')
     await sandbox.runCode('x = 1');
     const execution = await sandbox.runCode('x+=1; x');
-    console.log('code executed')
+    log('code executed')
     // Output result
-    console.log(execution.text);
+    log(execution.text);
 } catch (error) {
+    log('Test failed:', error)
     throw new Error('error running code', error)
 } finally {
-    console.log('killing sandbox')
+    log('killing sandbox')
     await sandbox?.kill()
-    console.log('sandbox killed')
+    log('sandbox killed')
 }
 
-console.log('done') 
+log('done') 

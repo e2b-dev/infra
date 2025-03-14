@@ -1,4 +1,5 @@
 import { Sandbox } from "npm:@e2b/code-interpreter";
+import { log } from "../utils.ts";
 
 
 // Helper function to stream command output
@@ -16,7 +17,7 @@ async function streamCommandOutput(command: string, args: string[]) {
 
     // Stream stdout
     for await (const chunk of process.stdout) {
-        console.log(decoder.decode(chunk));
+        log(decoder.decode(chunk));
         output += decoder.decode(chunk)
     }
 
@@ -33,10 +34,10 @@ async function streamCommandOutput(command: string, args: string[]) {
 
 const uniqueID = crypto.randomUUID();
 const templateName = `test-template-${uniqueID}`
-console.log('templateName:', templateName)
+log('templateName:', templateName)
 
 // Build template command with streaming output
-console.log(`Building template ${templateName}...`);
+log(`Building template ${templateName}...`);
 const buildStatus = await streamCommandOutput('npx', [
     '@e2b/cli',
     'template',
@@ -49,7 +50,7 @@ if (buildStatus.status.code !== 0) {
     throw new Error(`Build failed with code ${buildStatus.status.code}`);
 }
 
-console.log('Template built successfully')
+log('Template built successfully')
 
 // read template id from e2b.toml
 const e2bToml = await Deno.readTextFile('e2b.toml')
@@ -66,25 +67,25 @@ try {
     if (!templateID) {
         throw new Error('Template not found')
     }
-    console.log('creating sandbox')
+    log('creating sandbox')
     const sandbox = await Sandbox.create(templateID, { timeoutMs: 10000 })
-    console.log('sandbox created')
+    log('sandbox created')
 
 
-    console.log('running command')
+    log('running command')
 
-    console.log('starting command')
+    log('starting command')
     // Start the command in the background
     const command = await sandbox.commands.run('echo hello;echo world')
     let out = command.stdout
 
 
-    console.log('Template deleted successfully')
+    log('Template deleted successfully')
 
     // kill sandbox
     await sandbox.kill()
 
-    console.log('checking output')
+    log('checking output')
     if (!out.includes('hello')) {
         throw new Error('hello not found')
     }
@@ -92,8 +93,13 @@ try {
     if (!out.includes('world')) {
         throw new Error('world not found')
     }
+} catch (error) {
+    log('Test failed:', error)
+    throw error
 } finally {
     // delete template
+    log('deleting template')
+
     const output = await streamCommandOutput('npx', [
         '@e2b/cli',
         'template',
@@ -101,6 +107,8 @@ try {
         '-y',
         templateID
     ])
+
+    log("template deleted")
 
     if (output.status.code !== 0) {
         throw new Error(`Delete failed with code ${output.status.code}`);

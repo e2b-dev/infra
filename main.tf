@@ -170,6 +170,12 @@ module "nomad" {
   nomad_port              = var.nomad_port
   otel_tracing_print      = var.otel_tracing_print
 
+  # Clickhouse
+  clickhouse_connection_string = "clickhouse.service.consul:9000"
+  clickhouse_username          = "clickhouse"
+  clickhouse_password          = module.init.clickhouse_password_secret_data
+  clickhouse_database          = "default"
+
   # API
   api_machine_count                         = var.api_cluster_size
   logs_proxy_address                        = "http://${module.cluster.logs_proxy_ip}"
@@ -180,6 +186,7 @@ module "nomad" {
   api_secret                                = module.api.api_secret
   custom_envs_repository_name               = module.api.custom_envs_repository_name
   postgres_connection_string_secret_name    = module.api.postgres_connection_string_secret_name
+  supabase_jwt_secrets_secret_data          = module.api.supabase_jwt_secrets_secret_data
   posthog_api_key_secret_name               = module.api.posthog_api_key_secret_name
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name

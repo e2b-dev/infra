@@ -17,23 +17,23 @@ build-debug:
 
 @.PHONY: seed
 seed:
-	@echo "Generating seeds..."
-	@cat ./seeds/* > ./seed.sql
 	@echo "Applying seeds"
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) \
 		TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY) \
 		TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID) \
 		TESTS_SANDBOX_BUILD_ID=$(TESTS_SANDBOX_BUILD_ID) \
-		go run seed.go -file ./seed.sql
-	@rm ./seed.sql
+		go run seed.go
 	@echo "Done"
 
 .PHONY: test
 test:
-	TESTS_API_SERVER_URL=$(TESTS_API_SERVER_URL) \
-	TESTS_ORCHESTRATOR_HOST=$(TESTS_ORCHESTRATOR_HOST) \
-	TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID) \
-	TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY) \
+	export TESTS_API_SERVER_URL=$(TESTS_API_SERVER_URL); \
+	export TESTS_ORCHESTRATOR_HOST=$(TESTS_ORCHESTRATOR_HOST); \
+	export TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID); \
+	export TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY); \
+	export TESTS_SUPABASE_TOKEN=$(TESTS_SUPABASE_TOKEN); \
+	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
+	go test -v ./internal/main_test.go -count=1 && \
 	go test -v ./internal/tests/... -count=1
 
 .PHONY: connect-orchestrator

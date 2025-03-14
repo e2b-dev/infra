@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"os"
 	"sync"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
@@ -24,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -34,15 +36,18 @@ const ServiceName = "orchestrator"
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
-	sandboxes     *smap.Map[*sandbox.Sandbox]
-	dns           *dns.DNS
-	tracer        trace.Tracer
-	networkPool   *network.Pool
-	templateCache *template.Cache
+	sandboxes       *smap.Map[*sandbox.Sandbox]
+	dns             *dns.DNS
+	tracer          trace.Tracer
+	networkPool     *network.Pool
+	templateCache   *template.Cache
+	pauseMu         sync.Mutex
+	clientID        string // nomad node id
+	devicePool      *nbd.DevicePool
+	clickhouseStore chdb.Store
 
-	pauseMu    sync.Mutex
-	clientID   string // nomad node id
-	devicePool *nbd.DevicePool
+	useLokiMetrics       string
+	useClickhouseMetrics string
 }
 
 type Service struct {
@@ -55,6 +60,12 @@ type Service struct {
 		op   func(context.Context) error
 		err  error
 	}
+	// there really should be a config struct for this
+	// using something like viper to read the config
+	// but for now this is just a quick hack
+	// see https://linear.app/e2b/issue/E2B-1731/use-viper-to-read-env-vars
+	useLokiMetrics       string
+	useClickhouseMetrics string
 }
 
 func New(ctx context.Context, port uint, clientID string) (*Service, error) {
@@ -105,18 +116,41 @@ func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 		)
 
 		devicePool, err := nbd.NewDevicePool()
+
 		if err != nil {
 			return nil, fmt.Errorf("failed to create device pool: %w", err)
 		}
 
+		useLokiMetrics := os.Getenv("WRITE_LOKI_METRICS")
+		useClickhouseMetrics := os.Getenv("WRITE_CLICKHOUSE_METRICS")
+		readClickhouseMetrics := os.Getenv("READ_CLICKHOUSE_METRICS")
+
+		var clickhouseStore chdb.Store = nil
+
+		if readClickhouseMetrics == "true" || useClickhouseMetrics == "true" {
+			clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
+				ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+				Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+				Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+				Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+				Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
+			}
+		}
+
 		srv.server = &server{
-			tracer:        otel.Tracer(ServiceName),
-			dns:           srv.dns,
-			sandboxes:     smap.New[*sandbox.Sandbox](),
-			networkPool:   networkPool,
-			templateCache: templateCache,
-			clientID:      clientID,
-			devicePool:    devicePool,
+			tracer:               otel.Tracer(ServiceName),
+			dns:                  srv.dns,
+			sandboxes:            smap.New[*sandbox.Sandbox](),
+			networkPool:          networkPool,
+			templateCache:        templateCache,
+			clientID:             clientID,
+			devicePool:           devicePool,
+			clickhouseStore:      clickhouseStore,
+			useLokiMetrics:       useLokiMetrics,
+			useClickhouseMetrics: useClickhouseMetrics,
 		}
 	}
 
