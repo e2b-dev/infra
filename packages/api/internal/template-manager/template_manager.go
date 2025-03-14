@@ -156,6 +156,8 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 
 		// build completed
 		if status.GetStatus() == template_manager.TemplateBuildState_Completed {
+			tm.buildCache.SetStatus(buildID, envbuild.StatusUploaded)
+
 			meta := status.GetMetadata()
 			err = tm.db.FinishEnvBuild(childCtx, templateID, buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
 			if err != nil {
