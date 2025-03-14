@@ -42,7 +42,7 @@ dev-init:
 
 .PHONY: dev
 dev:
-	go tool air
+	${GOPATH}/bin/air
 
 # You run the parametrized command like this:
 # make metric=heap interval=90 profiler
