@@ -50,7 +50,7 @@ func (s *serverStore) TemplateBuildStatus(in *template_manager.TemplateStatusReq
 			return nil
 		}
 
-		time.Sleep(time.Second * 5)
+		time.Sleep(time.Second)
 	}
 
 	return nil
