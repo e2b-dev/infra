@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,8 +32,8 @@ func TestTemplateBuild(t *testing.T) {
 
 	assert.Equal(t, http.StatusAccepted, resp.StatusCode())
 
-	var finished atomic.Bool
-	for !finished.Load() {
+	var finished bool
+	for !finished {
 		resp2, err := c.GetTemplatesTemplateIDBuildsBuildIDStatusWithResponse(ctx, setup.SandboxTemplateID, setup.BuildIDToBeBuild, nil, setup.WithAccessToken())
 		if err != nil {
 			t.Fatal(err)
@@ -57,10 +56,11 @@ func TestTemplateBuild(t *testing.T) {
 
 		switch statusData.Status {
 		case api.TemplateBuildStatusReady:
-			finished.Store(true)
-
+			finished = true
 		case api.TemplateBuildStatusError:
 			t.Fatal("Build failed")
 		}
 	}
+
+	assert.True(t, finished)
 }
