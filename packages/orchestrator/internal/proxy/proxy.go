@@ -23,6 +23,18 @@ var proxyBrowser502PageHtml string
 
 var browserIdentityKeywords = []string{
 	"mozilla", "chrome", "safari", "firefox", "edge", "opera", "msie",
+var browserTemplate = template.Must(template.New("template").Parse(proxyBrowser502PageHtml))
+
+type htmlTemplateData struct {
+	sandboxId   string
+	sandboxHost string
+	sandboxPort string
+}
+
+type jsonTemplateData struct {
+	error      string
+	sandbox_id string
+	port       uint64
 }
 
 type SandboxProxy struct {
@@ -157,12 +169,9 @@ func (p *SandboxProxy) proxyHandler(transport *http.Transport) func(w http.Respo
 
 func (p *SandboxProxy) buildHtmlClosedPortError(sandboxId string, host string, port uint64) ([]byte, error) {
 	htmlResponse := new(bytes.Buffer)
-	htmlTmpl, err := template.New("template").Parse(proxyBrowser502PageHtml)
-	if err != nil {
-		return nil, err
-	}
+	htmlVars := htmlTemplateData{sandboxId: sandboxId, sandboxHost: host, sandboxPort: strconv.FormatUint(port, 10)}
 
-	err = htmlTmpl.Execute(htmlResponse, map[string]string{"sandboxId": sandboxId, "sandboxHost": host, "sandboxPort": fmt.Sprintf("%d", port)})
+	err := browserTemplate.Execute(htmlResponse, htmlVars)
 	if err != nil {
 		return nil, err
 	}
@@ -171,10 +180,10 @@ func (p *SandboxProxy) buildHtmlClosedPortError(sandboxId string, host string, p
 }
 
 func (p *SandboxProxy) buildJsonClosedPortError(sandboxId string, port uint64) []byte {
-	response := map[string]interface{}{
-		"error":      "The sandbox is running but port is not open",
-		"sandbox_id": sandboxId,
-		"port":       port,
+	response := jsonTemplateData{
+		error:      "The sandbox is running but port is not open",
+		sandbox_id: sandboxId,
+		port:       port,
 	}
 
 	responseBytes, _ := json.Marshal(response)
