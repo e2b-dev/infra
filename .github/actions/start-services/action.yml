@@ -56,7 +56,8 @@ runs:
       run: |
         echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test
         echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRETS}" >> .env.test
-        
+        echo "TEMPLATE_MANAGER_ADDRESS=${TEMPLATE_MANAGER_ADDRESS}" >> .env.test
+
         mkdir -p ~/logs
 
         make -C packages/template-manager run-debug 2>&1 | tee ~/logs/template-manager.log &
