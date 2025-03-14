@@ -122,7 +122,6 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 				env.HasEnvAliasesWith(envalias.ID(aliasOrEnvID)),
 				env.ID(aliasOrEnvID),
 			),
-			env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusUploaded)),
 		).
 		WithEnvAliases(func(query *models.EnvAliasQuery) {
 			query.Order(models.Asc(envalias.FieldID)) // TODO: remove once we have only 1 alias per env
@@ -132,15 +131,15 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 	if notFound {
 		return nil, nil, fmt.Errorf("template '%s' not found: %w", aliasOrEnvID, err)
 	} else if err != nil {
-		return nil, nil, fmt.Errorf("failed to get env '%s': %w", aliasOrEnvID, err)
+		return nil, nil, fmt.Errorf("failed to get template '%s': %w", aliasOrEnvID, err)
 	}
 
-	build, err = db.Client.EnvBuild.Query().Where(envbuild.EnvID(template.ID), envbuild.StatusEQ(envbuild.StatusUploaded)).Order(models.Desc(envbuild.FieldFinishedAt)).Limit(1).Only(ctx)
+	build, err = db.Client.EnvBuild.Query().Where(envbuild.EnvID(template.ID), envbuild.StatusEQ(envbuild.StatusUploaded)).Order(models.Desc(envbuild.FieldFinishedAt)).First(ctx)
 	notFound = models.IsNotFound(err)
 	if notFound {
 		return nil, nil, fmt.Errorf("build for '%s' not found: %w", aliasOrEnvID, err)
 	} else if err != nil {
-		return nil, nil, fmt.Errorf("failed to get env '%s': %w", aliasOrEnvID, err)
+		return nil, nil, fmt.Errorf("failed to get template build '%s': %w", aliasOrEnvID, err)
 	}
 
 	aliases := make([]string, len(template.Edges.EnvAliases))
@@ -188,7 +187,7 @@ func (db *DB) FinishEnvBuild(
 		SetEnvdVersion(envdVersion).
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to finish env build '%s': %w", buildID, err)
+		return fmt.Errorf("failed to finish template build '%s': %w", buildID, err)
 	}
 
 	return nil
@@ -203,7 +202,7 @@ func (db *DB) EnvBuildSetStatus(
 	err := db.Client.EnvBuild.Update().Where(envbuild.ID(buildID), envbuild.EnvID(envID)).
 		SetStatus(status).SetFinishedAt(time.Now()).Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to set env build status %s for '%s': %w", status, buildID, err)
+		return fmt.Errorf("failed to set template build status %s for '%s': %w", status, buildID, err)
 	}
 
 	return nil
