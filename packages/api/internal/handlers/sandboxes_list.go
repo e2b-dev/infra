@@ -121,7 +121,7 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 	return sandboxes, nil
 }
 
-func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, query *string, runningSandboxesIDs []string, limit *int32) ([]api.ListedSandbox, error) {
+func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, query *string, limit *int32) ([]api.ListedSandbox, error) {
 	sandboxes := make([]api.ListedSandbox, 0)
 
 	var filters *map[string]string
@@ -203,7 +203,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 
 	// Only fetch snapshots if we need them (state is nil or "paused")
 	if params.State == nil || slices.Contains(*params.State, api.Paused) {
-		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, params.Query, runningSandboxesIDs, limit)
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, params.Query, limit)
 		if err != nil {
 			return nil, fmt.Errorf("error getting paused sandboxes: %w", err)
 		}
