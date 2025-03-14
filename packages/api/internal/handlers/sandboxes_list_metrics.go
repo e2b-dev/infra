@@ -191,9 +191,22 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
 
+	// Parse metadata filter (query) if provided
+	var metadataFilter *map[string]string
+	if params.Query != nil {
+		parsedMetadataFilter, err := parseFilters(*params.Query)
+		if err != nil {
+			zap.L().Error("Error parsing query", zap.Error(err))
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error parsing query: %s", err))
+			return
+		}
+
+		metadataFilter = &parsedMetadataFilter
+	}
+
 	sandboxes, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
 		State: &[]api.SandboxState{api.Running},
-		Query: params.Query,
+		Query: metadataFilter,
 	}, SandboxListPaginationParams{
 		Limit:     nil,
 		NextToken: nil,

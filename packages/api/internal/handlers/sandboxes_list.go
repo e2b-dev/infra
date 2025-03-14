@@ -23,20 +23,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const defaultSandboxesListLimit = 100
+const defaultSandboxesListLimit = 1000
 
 type SandboxesListParams struct {
 	State *[]api.SandboxState
-	Query *string
+	Query *map[string]string
 }
 
 type SandboxListPaginationParams struct {
 	Limit     *int32
 	NextToken *string
-}
-
-type SandboxesListFilter struct {
-	Query *string
 }
 
 func generateCursor(sandbox api.ListedSandbox) string {
@@ -64,7 +60,7 @@ func parseCursor(cursor string) (time.Time, string, error) {
 	return cursorTime, parts[1], nil
 }
 
-func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, query *string) ([]api.ListedSandbox, error) {
+func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string) ([]api.ListedSandbox, error) {
 	sandboxes := make([]api.ListedSandbox, 0)
 
 	// Get build IDs for running sandboxes
@@ -102,13 +98,8 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 	}
 
 	// filter sandboxes by metadata
-	if query != nil {
-		filters, err := parseFilters(*query)
-		if err != nil {
-			return nil, fmt.Errorf("error when parsing filters: %w", err)
-		}
-
-		filteredSandboxes, err := filterSandboxes(sandboxes, filters)
+	if metadataFilter != nil {
+		filteredSandboxes, err := filterSandboxes(sandboxes, *metadataFilter)
 		if err != nil {
 			return nil, fmt.Errorf("error when filtering sandboxes: %w", err)
 		}
@@ -119,18 +110,8 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 	return sandboxes, nil
 }
 
-func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, query *string, limit *int32, cursorTime *time.Time, cursorID *string) ([]api.ListedSandbox, error) {
+func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit *int32, cursorTime *time.Time, cursorID *string) ([]api.ListedSandbox, error) {
 	sandboxes := make([]api.ListedSandbox, 0)
-
-	var filters *map[string]string
-	if query != nil {
-		parsedFilters, err := parseFilters(*query)
-		if err != nil {
-			return nil, fmt.Errorf("error when parsing filters: %w", err)
-		}
-
-		filters = &parsedFilters
-	}
 
 	// Use default limit if not provided
 	effectiveLimit := defaultSandboxesListLimit
@@ -139,7 +120,7 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	}
 
 	// Use the new cursor-based pagination function
-	snapshots, err := a.db.GetTeamSnapshotsWithCursor(ctx, teamID, runningSandboxesIDs, effectiveLimit, filters, cursorTime, cursorID)
+	snapshots, err := a.db.GetTeamSnapshotsWithCursor(ctx, teamID, runningSandboxesIDs, effectiveLimit, metadataFilter, cursorTime, cursorID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting team snapshots: %s", err)
 	}
@@ -218,7 +199,6 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 			return nil, fmt.Errorf("error getting running sandboxes: %w", err)
 		}
 
-		// Get paused sandboxes with cursor-based pagination
 		// We request limit+1 to check if there are more results
 		effectiveLimit := *paginationParams.Limit
 		if len(runningSandboxList) < int(effectiveLimit) {
@@ -338,10 +318,22 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		limit = *params.Limit
 	}
 
+	// Parse metadata filter (query) if provided
+	var metadataFilter *map[string]string
+	if params.Query != nil {
+		parsedMetadataFilter, err := parseFilters(*params.Query)
+		if err != nil {
+			zap.L().Error("Error parsing query", zap.Error(err))
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error parsing query: %s", err))
+		}
+
+		metadataFilter = &parsedMetadataFilter
+	}
+
 	// Get sandboxes with pagination
 	sandboxes, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
 		State: params.State,
-		Query: params.Query,
+		Query: metadataFilter,
 	}, SandboxListPaginationParams{
 		Limit:     &limit,
 		NextToken: params.NextToken,

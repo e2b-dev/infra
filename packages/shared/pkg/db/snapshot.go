@@ -211,7 +211,7 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 	teamID uuid.UUID,
 	excludeSandboxIDs []string,
 	limit int,
-	metadata *map[string]string,
+	metadataFilter *map[string]string,
 	cursorTime *time.Time,
 	cursorID *string,
 ) (
@@ -246,8 +246,8 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 	}
 
 	// Apply metadata filtering
-	if metadata != nil {
-		query = query.Where(snapshot.MetadataEQ(*metadata))
+	if metadataFilter != nil {
+		query = query.Where(snapshot.MetadataEQ(*metadataFilter))
 	}
 
 	// Order by sandbox_started_at (descending), then by sandbox_id (ascending) for stability
