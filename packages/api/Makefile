@@ -42,6 +42,10 @@ dev-init:
 
 .PHONY: dev
 dev:
+	@if [ ! -f "${GOPATH}/bin/air" ]; then \
+		echo "air not found in ${GOPATH}/bin/air, please run 'make dev-init' first"; \
+		exit 1; \
+	fi
 	${GOPATH}/bin/air
 
 # You run the parametrized command like this:
