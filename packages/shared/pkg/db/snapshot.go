@@ -206,11 +206,11 @@ func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uu
 	return e, e.Edges.Builds, nil
 }
 
-func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSandboxIDs []string) (
+func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSandboxIDs []string, limit *int32, metadata *map[string]string) (
 	[]*models.Snapshot,
 	error,
 ) {
-	snapshots, err := db.
+	query := db.
 		Client.
 		Snapshot.
 		Query().
@@ -223,9 +223,17 @@ func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSan
 				query.Order(models.Desc(envbuild.FieldFinishedAt))
 			})
 		}).
-		Order(models.Desc(snapshot.FieldCreatedAt)).
-		All(ctx)
+		Order(models.Desc(snapshot.FieldCreatedAt))
 
+	if metadata != nil {
+		query = query.Where(snapshot.MetadataEq(*metadata))
+	}
+
+	if limit != nil {
+		query = query.Limit(int(*limit))
+	}
+
+	snapshots, err := query.All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapshots for team '%s': %w", teamID, err)
 	}

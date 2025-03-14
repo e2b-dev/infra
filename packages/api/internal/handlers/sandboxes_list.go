@@ -24,6 +24,7 @@ import (
 
 type SandboxesListParams struct {
 	State *[]api.SandboxState
+	Query *string
 }
 
 type SandboxesListFilter struct {
@@ -64,7 +65,7 @@ func parseCursor(cursor string) (time.Time, string, error) {
 	return cursorTime, parts[1], nil
 }
 
-func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams) ([]api.ListedSandbox, error) {
+func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams, limit *int32) ([]api.ListedSandbox, error) {
 	// Initialize empty slice for results
 	sandboxes := make([]api.ListedSandbox, 0)
 
@@ -111,12 +112,32 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 			}
 
 			sandboxes = append(sandboxes, sandbox)
+
+			// filter sandboxes by metadata
+			if params.Query != nil {
+				filteredSandboxes, err := filterSandboxes(sandboxes, *params.Query)
+				if err != nil {
+					return nil, fmt.Errorf("error when filtering sandboxes: %w", err)
+				}
+
+				sandboxes = filteredSandboxes
+			}
 		}
 	}
 
 	// Only fetch snapshots if we need them (state is nil or "paused")
 	if params.State == nil || slices.Contains(*params.State, api.Paused) {
-		snapshots, err := a.db.GetTeamSnapshots(ctx, teamID, runningSandboxesIDs)
+		var filters *map[string]string
+		if params.Query != nil {
+			parsedFilters, err := parseFilters(*params.Query)
+			if err != nil {
+				return nil, fmt.Errorf("error when parsing filters: %w", err)
+			}
+
+			filters = &parsedFilters
+		}
+
+		snapshots, err := a.db.GetTeamSnapshots(ctx, teamID, runningSandboxesIDs, limit, filters)
 		if err != nil {
 			return nil, fmt.Errorf("error getting team snapshots: %s", err)
 		}
@@ -162,61 +183,66 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 	return sandboxes, nil
 }
 
-func filterSandboxes(sandboxes []api.ListedSandbox, filter SandboxesListFilter) ([]api.ListedSandbox, error) {
-	// filter sandboxes by metadata
-	if filter.Query != nil {
-		// Unescape query
-		query, err := url.QueryUnescape(*filter.Query)
-		if err != nil {
-			return nil, fmt.Errorf("error when unescaping query: %w", err)
-		}
-
-		// Parse filters, both key and value are also unescaped
-		filters := make(map[string]string)
-
-		for _, filter := range strings.Split(query, "&") {
-			parts := strings.Split(filter, "=")
-			if len(parts) != 2 {
-				return nil, fmt.Errorf("invalid key value pair in query")
-			}
-
-			key, err := url.QueryUnescape(parts[0])
-			if err != nil {
-				return nil, fmt.Errorf("error when unescaping key: %w", err)
-			}
-
-			value, err := url.QueryUnescape(parts[1])
-			if err != nil {
-				return nil, fmt.Errorf("error when unescaping value: %w", err)
-			}
-
-			filters[key] = value
-		}
-
-		// Filter instances to match all filters
-		n := 0
-		for _, instance := range sandboxes {
-			if instance.Metadata == nil {
-				continue
-			}
-
-			matchesAll := true
-			for key, value := range filters {
-				if metadataValue, ok := (*instance.Metadata)[key]; !ok || metadataValue != value {
-					matchesAll = false
-					break
-				}
-			}
-
-			if matchesAll {
-				sandboxes[n] = instance
-				n++
-			}
-		}
-
-		// Trim slice
-		sandboxes = sandboxes[:n]
+func parseFilters(query string) (map[string]string, error) {
+	query, err := url.QueryUnescape(query)
+	if err != nil {
+		return nil, fmt.Errorf("error when unescaping query: %w", err)
 	}
+
+	// Parse filters, both key and value are also unescaped
+	filters := make(map[string]string)
+
+	for _, filter := range strings.Split(query, "&") {
+		parts := strings.Split(filter, "=")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid key value pair in query")
+		}
+
+		key, err := url.QueryUnescape(parts[0])
+		if err != nil {
+			return nil, fmt.Errorf("error when unescaping key: %w", err)
+		}
+
+		value, err := url.QueryUnescape(parts[1])
+		if err != nil {
+			return nil, fmt.Errorf("error when unescaping value: %w", err)
+		}
+
+		filters[key] = value
+	}
+
+	return filters, nil
+}
+
+func filterSandboxes(sandboxes []api.ListedSandbox, query string) ([]api.ListedSandbox, error) {
+	filters, err := parseFilters(query)
+	if err != nil {
+		return nil, fmt.Errorf("error when parsing filters: %w", err)
+	}
+
+	// Filter instances to match all filters
+	n := 0
+	for _, instance := range sandboxes {
+		if instance.Metadata == nil {
+			continue
+		}
+
+		matchesAll := true
+		for key, value := range filters {
+			if metadataValue, ok := (*instance.Metadata)[key]; !ok || metadataValue != value {
+				matchesAll = false
+				break
+			}
+		}
+
+		if matchesAll {
+			sandboxes[n] = instance
+			n++
+		}
+	}
+
+	// Trim slice
+	sandboxes = sandboxes[:n]
 
 	return sandboxes, nil
 }
@@ -286,21 +312,11 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	sandboxes, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
 		State: params.State,
-	})
+		Query: params.Query,
+	}, params.Limit)
 	if err != nil {
 		zap.L().Error("Error fetching sandboxes", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
-
-		return
-	}
-
-	// Filter sandboxes
-	sandboxes, err = filterSandboxes(sandboxes, SandboxesListFilter{
-		Query: params.Query,
-	})
-	if err != nil {
-		zap.L().Error("Error fetching sandboxes", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
 
 		return
 	}

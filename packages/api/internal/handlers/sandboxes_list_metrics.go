@@ -193,21 +193,11 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 
 	sandboxes, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
 		State: &[]api.SandboxState{api.Running},
-	})
+		Query: params.Query,
+	}, nil)
 	if err != nil {
 		zap.L().Error("Error fetching sandboxes", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
-
-		return
-	}
-
-	sandboxes, err = filterSandboxes(sandboxes, SandboxesListFilter{
-		Query: params.Query,
-	})
-	if err != nil {
-		zap.L().Error("Error fetching sandboxes", zap.Error(err))
-		telemetry.ReportCriticalError(ctx, err)
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
 
 		return
 	}
