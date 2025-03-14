@@ -83,7 +83,7 @@ func (p *SandboxProxy) Shutdown(ctx context.Context) {
 }
 
 func (p *SandboxProxy) proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
-	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
+	activeConnections, err := meters.GetUpDownCounter(meters.OrchestratorProxyActiveConnectionsCounterMeterName)
 	if err != nil {
 		zap.L().Error("failed to create active connections counter", zap.Error(err))
 	}

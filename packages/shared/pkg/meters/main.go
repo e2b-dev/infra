@@ -16,12 +16,13 @@ const (
 type UpDownCounterType string
 
 const (
-	SandboxCountMeterName                  UpDownCounterType = "api.env.instance.running"
-	BuildCounterMeterName                                    = "api.env.build.running"
-	NewNetworkSlotSPoolCounterMeterName                      = "orchestrator.network.slots_pool.new"
-	ReusedNetworkSlotSPoolCounterMeterName                   = "orchestrator.network.slots_pool.reused"
-	NBDkSlotSReadyPoolCounterMeterName                       = "orchestrator.nbd.slots_pool.read"
-	ActiveConnectionsCounterMeterName                        = "client_proxy.connections.active"
+	SandboxCountMeterName                              UpDownCounterType = "api.env.instance.running"
+	BuildCounterMeterName                                                = "api.env.build.running"
+	NewNetworkSlotSPoolCounterMeterName                                  = "orchestrator.network.slots_pool.new"
+	ReusedNetworkSlotSPoolCounterMeterName                               = "orchestrator.network.slots_pool.reused"
+	NBDkSlotSReadyPoolCounterMeterName                                   = "orchestrator.nbd.slots_pool.read"
+	ActiveConnectionsCounterMeterName                                    = "client_proxy.connections.active"
+	OrchestratorProxyActiveConnectionsCounterMeterName                   = "orchestrator.proxy.connections.active"
 )
 
 var meter = otel.GetMeterProvider().Meter("nomad")
