@@ -92,7 +92,7 @@ chunk_store_config:
   chunk_cache_config:
     embedded_cache:
       enabled: true
-      max_size_mb: 512
+      max_size_mb: 2048
       ttl: 30m
 
 query_range:
@@ -103,7 +103,7 @@ query_range:
     cache:
       embedded_cache:
         enabled: true
-        max_size_mb: 512
+        max_size_mb: 2048
         ttl: 30m
 
 ingester_client:
@@ -112,7 +112,7 @@ ingester_client:
     max_send_msg_size: 104857600  # 100 Mb
 
 ingester:
-  chunk_idle_period: 1m
+  chunk_idle_period: 10m
   chunk_encoding: snappy
   max_chunk_age: 15m
   chunk_target_size: 1048576  # 1MB
@@ -147,6 +147,7 @@ limits_config:
   per_stream_rate_limit: "80MB"
   per_stream_rate_limit_burst: "240MB"
   max_streams_per_user: 0
+  split_queries_by_interval: 30m
   max_global_streams_per_user: 0
   unordered_writes: true
   reject_old_samples_max_age: 168h
