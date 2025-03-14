@@ -61,6 +61,8 @@ runs:
         echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRETS}" >> .env.test
         echo "TEMPLATE_MANAGER_ADDRESS=${TEMPLATE_MANAGER_ADDRESS}" >> .env.test
         echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> .env.test
+        echo "GCP_DOCKER_REPOSITORY_NAME=${GCP_DOCKER_REPOSITORY_NAME}" >> .env.test
+        echo "GOOGLE_SERVICE_ACCOUNT_BASE64=${GOOGLE_SERVICE_ACCOUNT_BASE64}" >> .env.test
 
         mkdir -p ~/logs
 
