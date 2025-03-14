@@ -35,6 +35,14 @@ run:
 	ORCHESTRATOR_PORT=5008 \
 	./bin/api --port 3000
 
+.PHONY: dev-init
+dev-init:
+	go install github.com/air-verse/air@latest
+
+# Run the API using air
+.PHONY: dev
+dev:
+	go tool air
 
 # You run the parametrized command like this:
 # make metric=heap interval=90 profiler
