@@ -386,8 +386,8 @@ type GetSandboxesParams struct {
 	// State Filter sandboxes by one or more states
 	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
 
-	// Cursor Cursor to start the list from
-	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	// NextToken Cursor to start the list from
+	NextToken *string `form:"nextToken,omitempty" json:"nextToken,omitempty"`
 
 	// Limit Maximum number of items to return per page
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
