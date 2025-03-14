@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -21,8 +22,7 @@ import (
 //go:embed proxy_browser_502.html
 var proxyBrowser502PageHtml string
 
-var browserIdentityKeywords = []string{
-	"mozilla", "chrome", "safari", "firefox", "edge", "opera", "msie",
+var browserRegex = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|opera|msie`)
 var browserTemplate = template.Must(template.New("template").Parse(proxyBrowser502PageHtml))
 
 type htmlTemplateData struct {
@@ -191,12 +191,5 @@ func (p *SandboxProxy) buildJsonClosedPortError(sandboxId string, port uint64) [
 }
 
 func (p *SandboxProxy) isBrowser(userAgent string) bool {
-	userAgent = strings.ToLower(userAgent)
-	for _, keyword := range browserIdentityKeywords {
-		if strings.Contains(userAgent, keyword) {
-			return true
-		}
-	}
-
-	return false
+	return browserRegex.MatchString(userAgent)
 }
