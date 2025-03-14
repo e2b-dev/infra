@@ -7,6 +7,8 @@ runs:
     - name: Run PostgreSQL Database
       env:
         TESTS_E2B_API_KEY: "e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057"
+        TESTS_E2B_ACCESS_TOKEN: "sk_e2b_acce55acce55acce55acce55acce55acce55acce"
+        TESTS_SANDBOX_BUILD_ID_TO_BE_BUILD: "e2b00e2b-e4fe-47af-8ff6-187bca92f3f9"
         TESTS_SANDBOX_TEAM_ID: "834777bd-9956-45ca-b088-9bac9290e2ac"
         TESTS_SANDBOX_USER_ID: "2a5a9fc5-db8d-4af7-ac9e-d0f9272463bc"
         # Signed token using "supabasejwtsecretsupabasejwtsecret" with data
@@ -34,6 +36,8 @@ runs:
         echo "extensions installed"
         
         echo "TESTS_E2B_API_KEY=${TESTS_E2B_API_KEY}" >> .env.test
+        echo "TESTS_E2B_ACCESS_TOKEN=${TESTS_E2B_ACCESS_TOKEN}" >> .env.test
+        echo "TESTS_SANDBOX_BUILD_ID_TO_BE_BUILD=${TESTS_SANDBOX_BUILD_ID_TO_BE_BUILD}" >> .env.test
         echo "TESTS_SANDBOX_TEAM_ID=${TESTS_SANDBOX_TEAM_ID}" >> .env.test
         echo "TESTS_SANDBOX_USER_ID=${TESTS_SANDBOX_USER_ID}" >> .env.test
         echo "TESTS_SUPABASE_TOKEN=${TESTS_SUPABASE_TOKEN}" >> .env.test

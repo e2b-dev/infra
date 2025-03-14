@@ -20,8 +20,10 @@ seed:
 	@echo "Applying seeds"
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) \
 		TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY) \
+		TESTS_E2B_ACCESS_TOKEN=$(TESTS_E2B_ACCESS_TOKEN) \
 		TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID) \
 		TESTS_SANDBOX_BUILD_ID=$(TESTS_SANDBOX_BUILD_ID) \
+		TESTS_SANDBOX_BUILD_ID_TO_BE_BUILD=$(TESTS_SANDBOX_BUILD_ID_TO_BE_BUILD) \
 		go run seed.go
 	@echo "Done"
 
@@ -31,8 +33,10 @@ test:
 	export TESTS_ORCHESTRATOR_HOST=$(TESTS_ORCHESTRATOR_HOST); \
 	export TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID); \
 	export TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY); \
+	export TESTS_E2B_ACCESS_TOKEN=$(TESTS_E2B_ACCESS_TOKEN); \
 	export TESTS_SUPABASE_TOKEN=$(TESTS_SUPABASE_TOKEN); \
 	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
+	export TESTS_SANDBOX_BUILD_ID_TO_BE_BUILD=$(TESTS_SANDBOX_BUILD_ID_TO_BE_BUILD); \
 	go test -v ./internal/main_test.go -count=1 && \
 	go test -v ./internal/tests/... -count=1
 
@@ -44,3 +48,12 @@ connect-orchestrator:
 		--zones=$(GCP_ZONE) | head -n1) && \
 	INSTANCE_ID=$$(gcloud compute instance-groups list-instances "$$CLIENT_IG" --zone=$(GCP_ZONE) --format='value(instance)' | head -n1) && \
 	gcloud compute ssh "$$INSTANCE_ID" --zone=$(GCP_ZONE) -- -NL 5008:localhost:5008  -o PermitLocalCommand=yes -o LocalCommand="echo 'SSH tunnel established'"
+
+.PHONY: connect-template-manager
+connect-template-manager:
+	VM_INSTANCE_ID=$$(gcloud compute instance-groups list \
+		--filter="name~'^.*build.*'" \
+		--format='value(name)' \
+		--zones=$(GCP_ZONE) | head -n1) && \
+	INSTANCE_ID=$$(gcloud compute instance-groups list-instances "$$VM_INSTANCE_ID" --zone=$(GCP_ZONE) --format='value(instance)' | head -n1) && \
+	gcloud compute ssh "$$INSTANCE_ID" --zone=$(GCP_ZONE) -- -NL 5009:localhost:5009  -o PermitLocalCommand=yes -o LocalCommand="echo 'SSH tunnel established'"
