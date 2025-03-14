@@ -30,6 +30,11 @@ type SandboxesListParams struct {
 	Query *string
 }
 
+type SandboxListPaginationParams struct {
+	Limit     *int32
+	NextToken *string
+}
+
 type SandboxesListFilter struct {
 	Query *string
 }
@@ -179,15 +184,15 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	return sandboxes, nil
 }
 
-func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams, limit *int32, nextToken *string) ([]api.ListedSandbox, error) {
+func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams, paginationParams SandboxListPaginationParams) ([]api.ListedSandbox, error) {
 	// Initialize empty slice for results
 	sandboxes := make([]api.ListedSandbox, 0)
 
 	// Parse cursor if provided
 	var cursorTime *time.Time
 	var cursorID *string
-	if nextToken != nil && *nextToken != "" {
-		parsedTime, parsedID, err := parseCursor(*nextToken)
+	if paginationParams.NextToken != nil && *paginationParams.NextToken != "" {
+		parsedTime, parsedID, err := parseCursor(*paginationParams.NextToken)
 		if err != nil {
 			return nil, fmt.Errorf("invalid cursor: %w", err)
 		}
@@ -215,7 +220,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 
 		// Get paused sandboxes with cursor-based pagination
 		// We request limit+1 to check if there are more results
-		effectiveLimit := *limit
+		effectiveLimit := *paginationParams.Limit
 		if len(runningSandboxList) < int(effectiveLimit) {
 			// If we have fewer running sandboxes than the limit, we can request more paused sandboxes
 			effectiveLimit = effectiveLimit - int32(len(runningSandboxList))
@@ -247,7 +252,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 
 	// If we're only requesting paused sandboxes
 	if params.State != nil && slices.Contains(*params.State, api.Paused) {
-		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, params.Query, limit, cursorTime, cursorID)
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, params.Query, paginationParams.Limit, cursorTime, cursorID)
 		if err != nil {
 			return nil, fmt.Errorf("error getting paused sandboxes: %w", err)
 		}
@@ -337,7 +342,10 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	sandboxes, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
 		State: params.State,
 		Query: params.Query,
-	}, &limit, params.NextToken)
+	}, SandboxListPaginationParams{
+		Limit:     &limit,
+		NextToken: params.NextToken,
+	})
 	if err != nil {
 		zap.L().Error("Error fetching sandboxes", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
