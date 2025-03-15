@@ -13,7 +13,7 @@ func (s *serverStore) TemplateBuildDelete(ctx context.Context, in *template_mana
 	childCtx, childSpan := s.tracer.Start(ctx, "template-delete-request")
 	defer childSpan.End()
 
-	err := template.Delete(childCtx, s.tracer, s.artifactRegistry, s.templateStorage, in.BuildID)
+	err := template.Delete(childCtx, s.tracer, s.artifactRegistry, s.templateBuild, in.BuildID)
 	if err != nil {
 		return nil, err
 	}

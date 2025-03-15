@@ -3,14 +3,14 @@ package server
 import (
 	"context"
 	"fmt"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/metadata"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -63,7 +63,7 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		BuildLogsWriter: logsWriter,
 	}
 
-	buildStorage := s.templateStorage.NewBuild(template.TemplateFiles)
+	buildStorage := storage.NewTemplateBuild(nil, nil, template.TemplateFiles)
 
 	var err error
 
