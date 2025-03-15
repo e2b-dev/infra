@@ -16,7 +16,7 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *template_mana
 	s.wg.Add(1)
 	defer s.wg.Done()
 
-	err := template.Delete(childCtx, s.tracer, s.artifactRegistry, s.templateStorage, in.BuildID)
+	err := template.Delete(childCtx, s.tracer, s.artifactRegistry, s.templateBuild, in.BuildID)
 	if err != nil {
 		return nil, err
 	}

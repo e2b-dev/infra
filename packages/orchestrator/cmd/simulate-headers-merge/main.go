@@ -7,10 +7,11 @@ import (
 	"log"
 	"os"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
-	"github.com/google/uuid"
 )
 
 func main() {

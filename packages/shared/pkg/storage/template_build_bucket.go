@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-type TemplateBuild struct {
+type TemplateBucketBuild struct {
 	files *TemplateFiles
 
 	memfileHeader *header.Header
@@ -21,20 +21,7 @@ type TemplateBuild struct {
 	bucket *gcs.BucketHandle
 }
 
-func NewTemplateBuild(
-	memfileHeader *header.Header,
-	rootfsHeader *header.Header,
-	files *TemplateFiles,
-) *TemplateBuild {
-	return &TemplateBuild{
-		bucket:        gcs.GetTemplateBucket(),
-		memfileHeader: memfileHeader,
-		rootfsHeader:  rootfsHeader,
-		files:         files,
-	}
-}
-
-func (t *TemplateBuild) Remove(ctx context.Context) error {
+func (t *TemplateBucketBuild) Remove(ctx context.Context) error {
 	err := gcs.RemoveDir(ctx, t.bucket, t.files.StorageDir())
 	if err != nil {
 		return fmt.Errorf("error when removing template build '%s': %w", t.files.StorageDir(), err)
@@ -43,7 +30,7 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 	return nil
 }
 
-func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *header.Header) error {
+func (t *TemplateBucketBuild) uploadMemfileHeader(ctx context.Context, h *header.Header) error {
 	object := gcs.NewObject(ctx, t.bucket, t.files.StorageMemfileHeaderPath())
 
 	serialized, err := header.Serialize(h.Metadata, h.Mapping)
@@ -59,7 +46,7 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *header.Heade
 	return nil
 }
 
-func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
+func (t *TemplateBucketBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
 	object := gcs.NewObject(ctx, t.bucket, t.files.StorageMemfilePath())
 
 	err := object.UploadWithCli(ctx, memfilePath)
@@ -70,7 +57,7 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 	return nil
 }
 
-func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *header.Header) error {
+func (t *TemplateBucketBuild) uploadRootfsHeader(ctx context.Context, h *header.Header) error {
 	object := gcs.NewObject(ctx, t.bucket, t.files.StorageRootfsHeaderPath())
 
 	serialized, err := header.Serialize(h.Metadata, h.Mapping)
@@ -86,7 +73,7 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *header.Header
 	return nil
 }
 
-func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
+func (t *TemplateBucketBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
 	object := gcs.NewObject(ctx, t.bucket, t.files.StorageRootfsPath())
 
 	err := object.UploadWithCli(ctx, rootfsPath)
@@ -98,7 +85,7 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 }
 
 // Snapfile is small enough so we dont use composite upload.
-func (t *TemplateBuild) uploadSnapfile(ctx context.Context, snapfile io.Reader) error {
+func (t *TemplateBucketBuild) uploadSnapfile(ctx context.Context, snapfile io.Reader) error {
 	object := gcs.NewObject(ctx, t.bucket, t.files.StorageSnapfilePath())
 
 	n, err := object.ReadFrom(snapfile)
@@ -109,7 +96,7 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, snapfile io.Reader) 
 	return nil
 }
 
-func (t *TemplateBuild) Upload(
+func (t *TemplateBucketBuild) Upload(
 	ctx context.Context,
 	snapfilePath string,
 	memfilePath *string,

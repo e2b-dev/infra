@@ -10,9 +10,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/gogo/status"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func GetDockerImageURL(templateID string) string {
@@ -24,13 +26,13 @@ func Delete(
 	ctx context.Context,
 	tracer trace.Tracer,
 	artifactRegistry *artifactregistry.Client,
-	templateStorage *Storage,
+	templateBuild storage.TemplateBuild,
 	buildId string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "delete-template")
 	defer childSpan.End()
 
-	err := templateStorage.Remove(ctx, buildId)
+	err := templateBuild.Remove(ctx)
 	if err != nil {
 		return fmt.Errorf("error when deleting template objects: %w", err)
 	}
