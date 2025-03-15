@@ -28,6 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	sqlc_db "github.com/e2b-dev/infra/packages/db/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -53,6 +54,7 @@ type APIStore struct {
 	templateManager      *template_manager.TemplateManager
 	buildCache           *builds.BuildCache
 	db                   *db.DB
+	sqlcDB               *sqlc_db.Client
 	lokiClient           *loki.DefaultClient
 	templateCache        *templatecache.TemplateCache
 	authCache            *authcache.TeamAuthCache
@@ -71,6 +73,11 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	dbClient, err := db.NewClient()
 	if err != nil {
 		zap.L().Fatal("initializing Supabase client", zap.Error(err))
+	}
+
+	sqlcDB, err := sqlc_db.NewClient(ctx)
+	if err != nil {
+		zap.L().Fatal("initializing SQLC client", zap.Error(err))
 	}
 
 	zap.L().Info("created Supabase client")
@@ -148,6 +155,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		orchestrator:              orch,
 		templateManager:           templateManager,
 		db:                        dbClient,
+		sqlcDB:                    sqlcDB,
 		Tracer:                    tracer,
 		posthog:                   posthogClient,
 		buildCache:                buildCache,
@@ -193,6 +201,10 @@ func (a *APIStore) Close(ctx context.Context) error {
 	}
 	if err := a.templateManager.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing Template manager client: %w", err))
+	}
+
+	if err := a.sqlcDB.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))
 	}
 
 	if err := a.db.Close(); err != nil {
