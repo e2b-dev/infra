@@ -1,10 +1,17 @@
 package db
 
 type ErrNotFound error
+
 type TemplateNotFound struct{ ErrNotFound }
 
 func (TemplateNotFound) Error() string {
 	return "Template not found"
+}
+
+type TemplateBuildNotFound struct{ ErrNotFound }
+
+func (TemplateBuildNotFound) Error() string {
+	return "Template build not found"
 }
 
 type SnapshotNotFound struct{ ErrNotFound }
