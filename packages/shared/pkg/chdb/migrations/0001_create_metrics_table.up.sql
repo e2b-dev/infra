@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS metrics (
+CREATE TABLE IF NOT EXISTS default.metrics (
 	timestamp DateTime('UTC'),
 	sandbox_id String,
 	team_id String,
@@ -7,5 +7,5 @@ CREATE TABLE IF NOT EXISTS metrics (
 	mem_total_mib UInt64,
 	mem_used_mib UInt64
 ) Engine MergeTree()
- ORDER BY (timestamp)
- PRIMARY KEY timestamp;
+ORDER BY (timestamp)
+PRIMARY KEY timestamp;
