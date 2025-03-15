@@ -241,6 +241,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	s.pauseMu.Unlock()
 
 	snapshotTemplateFiles, err := storage.NewTemplateFiles(
+		storage.BucketStorage,
 		in.TemplateId,
 		in.BuildId,
 		sbx.Config.KernelVersion,

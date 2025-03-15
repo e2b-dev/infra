@@ -7,6 +7,7 @@ import (
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
+
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
@@ -22,8 +23,8 @@ import (
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
 type serverStore struct {
@@ -35,7 +36,7 @@ type serverStore struct {
 	dockerClient       *client.Client
 	legacyDockerClient *docker.Client
 	artifactRegistry   *artifactregistry.Client
-	templateStorage    *template.Storage
+	templateBuild      storage.TemplateBuild
 }
 
 func New(logger *zap.Logger, buildLogger *zap.Logger) *grpc.Server {
@@ -81,8 +82,6 @@ func New(logger *zap.Logger, buildLogger *zap.Logger) *grpc.Server {
 		panic(err)
 	}
 
-	templateStorage := template.NewStorage(ctx)
-
 	templatemanager.RegisterTemplateServiceServer(s, &serverStore{
 		tracer:             otel.Tracer(constants.ServiceName),
 		logger:             logger,
@@ -90,7 +89,6 @@ func New(logger *zap.Logger, buildLogger *zap.Logger) *grpc.Server {
 		dockerClient:       dockerClient,
 		legacyDockerClient: legacyClient,
 		artifactRegistry:   artifactRegistry,
-		templateStorage:    templateStorage,
 	})
 
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())

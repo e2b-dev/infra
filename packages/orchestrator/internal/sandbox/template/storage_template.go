@@ -42,6 +42,7 @@ func newTemplateFromStorage(
 	localSnapfile *LocalFile,
 ) (*storageTemplate, error) {
 	files, err := storage.NewTemplateFiles(
+		storage.BucketStorage,
 		templateId,
 		buildId,
 		kernelVersion,

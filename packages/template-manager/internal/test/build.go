@@ -15,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
 func Build(templateID, buildID string) {
@@ -37,6 +36,7 @@ func Build(templateID, buildID string) {
 	var buf bytes.Buffer
 	t := build.Env{
 		TemplateFiles: storage.NewTemplateFiles(
+			storage.BucketStorage,
 			templateID,
 			buildID,
 			schema.DefaultKernelVersion,
@@ -59,14 +59,12 @@ func Build(templateID, buildID string) {
 		return
 	}
 
-	tempStorage := template.NewStorage(ctx)
-
-	buildStorage := tempStorage.NewBuild(t.TemplateFiles)
+	templateBuild := storage.NewTemplateBuild(nil, nil, t.TemplateFiles)
 
 	memfilePath := t.BuildMemfilePath()
 	rootfsPath := t.BuildRootfsPath()
 
-	upload := buildStorage.Upload(
+	upload := templateBuild.Upload(
 		ctx,
 		t.BuildSnapfilePath(),
 		&memfilePath,

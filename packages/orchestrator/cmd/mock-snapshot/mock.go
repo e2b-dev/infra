@@ -187,6 +187,7 @@ func mockSnapshot(
 	snapshotTime := time.Now()
 
 	snapshotTemplateFiles, err := storage.NewTemplateFiles(
+		storage.BucketStorage,
 		"snapshot-template",
 		"f0370054-b669-eee4-b33b-573d5287c6ef",
 		sbx.Config.KernelVersion,
