@@ -80,6 +80,7 @@ func NewProcess(
 	var fcStartScript bytes.Buffer
 
 	baseBuild := storage.NewTemplateFiles(
+		storage.BucketStorage,
 		baseTemplateID,
 		rootfs.BaseBuildId,
 		files.KernelVersion,
