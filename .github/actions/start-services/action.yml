@@ -55,7 +55,7 @@ runs:
         TEMPLATE_MANAGER_ADDRESS: "http://127.0.0.1:5009"
         GCP_PROJECT_ID: "e2b-prod"
         GCP_DOCKER_REPOSITORY_NAME: "custom-environments-tests"
-        GOOGLE_SERVICE_ACCOUNT_BASE64: ${{ secrets.TESTS_GOOGLE_SERVICE_ACCOUNT_BASE64 }}
+        GOOGLE_SERVICE_ACCOUNT_BASE64: ${{ env.GOOGLE_SERVICE_ACCOUNT_BASE64 }}
         TEMPLATE_BUCKET_NAME: "e2b-tests-fc-templates"
       run: |
         echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test

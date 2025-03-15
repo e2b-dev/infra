@@ -24,6 +24,8 @@ jobs:
         uses: ./.github/actions/build-sandbox-template
 
       - name: Start Services
+        env:
+          GOOGLE_SERVICE_ACCOUNT_BASE64: ${{ secrets.TESTS_GOOGLE_SERVICE_ACCOUNT_BASE64 }}
         uses: ./.github/actions/start-services
 
       - name: Run Integration Tests
