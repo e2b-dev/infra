@@ -20,6 +20,7 @@ func main() {
 	flag.Parse()
 
 	template := storage.NewTemplateFiles(
+		storage.BucketStorage,
 		"",
 		*buildId,
 		"",
