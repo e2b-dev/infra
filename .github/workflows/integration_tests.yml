@@ -2,7 +2,6 @@ name: Integration Tests
 
 on:
   pull_request:
-    branches: [ main ]
 
 jobs:
   integration_tests:
@@ -25,6 +24,8 @@ jobs:
         uses: ./.github/actions/build-sandbox-template
 
       - name: Start Services
+        env:
+          GOOGLE_SERVICE_ACCOUNT_BASE64: ${{ secrets.TESTS_GOOGLE_SERVICE_ACCOUNT_BASE64 }}
         uses: ./.github/actions/start-services
 
       - name: Run Integration Tests
@@ -36,6 +37,7 @@ jobs:
           ls -l ~/logs
           tail -f ~/logs/orchestrator.log -n 0 &
           tail -f ~/logs/api.log -n 0 &
+          tail -f ~/logs/template-manager.log -n 0 &
 
           # Run the integration tests
           make test-integration

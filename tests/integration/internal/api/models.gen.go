@@ -10,15 +10,19 @@ import (
 )
 
 const (
-	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
-	AdminTokenAuthScopes  = "AdminTokenAuth.Scopes"
-	ApiKeyAuthScopes      = "ApiKeyAuth.Scopes"
+	AccessTokenAuthScopes    = "AccessTokenAuth.Scopes"
+	AdminTokenAuthScopes     = "AdminTokenAuth.Scopes"
+	ApiKeyAuthScopes         = "ApiKeyAuth.Scopes"
+	Supabase1TokenAuthScopes = "Supabase1TokenAuth.Scopes"
+	Supabase2TeamAuthScopes  = "Supabase2TeamAuth.Scopes"
 )
 
 // Defines values for NodeStatus.
 const (
-	NodeStatusDraining NodeStatus = "draining"
-	NodeStatusReady    NodeStatus = "ready"
+	NodeStatusConnecting NodeStatus = "connecting"
+	NodeStatusDraining   NodeStatus = "draining"
+	NodeStatusReady      NodeStatus = "ready"
+	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
 // Defines values for TemplateBuildStatus.
@@ -26,6 +30,7 @@ const (
 	TemplateBuildStatusBuilding TemplateBuildStatus = "building"
 	TemplateBuildStatusError    TemplateBuildStatus = "error"
 	TemplateBuildStatusReady    TemplateBuildStatus = "ready"
+	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
 
 // CPUCount CPU cores for the sandbox
@@ -48,8 +53,10 @@ type MemoryMB = int32
 
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
-	EnvVars  *EnvVars         `json:"envVars,omitempty"`
-	Metadata *SandboxMetadata `json:"metadata,omitempty"`
+	// AutoPause Automatically pauses the sandbox after the timeout
+	AutoPause *bool            `json:"autoPause,omitempty"`
+	EnvVars   *EnvVars         `json:"envVars,omitempty"`
+	Metadata  *SandboxMetadata `json:"metadata,omitempty"`
 
 	// TemplateID Identifier of the required template
 	TemplateID string `json:"templateID"`
@@ -66,11 +73,17 @@ type Node struct {
 	// AllocatedMemoryMiB Amount of allocated memory in MiB
 	AllocatedMemoryMiB int32 `json:"allocatedMemoryMiB"`
 
+	// CreateFails Number of sandbox create fails
+	CreateFails uint64 `json:"createFails"`
+
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
 
 	// SandboxCount Number of sandboxes running on the node
 	SandboxCount int32 `json:"sandboxCount"`
+
+	// SandboxStartingCount Number of starting Sandboxes
+	SandboxStartingCount int `json:"sandboxStartingCount"`
 
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
@@ -80,6 +93,9 @@ type Node struct {
 type NodeDetail struct {
 	// CachedBuilds List of cached builds id on the node
 	CachedBuilds []string `json:"cachedBuilds"`
+
+	// CreateFails Number of sandbox create fails
+	CreateFails uint64 `json:"createFails"`
 
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
@@ -102,6 +118,9 @@ type NodeStatusChange struct {
 
 // ResumedSandbox defines model for ResumedSandbox.
 type ResumedSandbox struct {
+	// AutoPause Automatically pauses the sandbox after the timeout
+	AutoPause *bool `json:"autoPause,omitempty"`
+
 	// Timeout Time to live for the sandbox in seconds.
 	Timeout *int32 `json:"timeout,omitempty"`
 }

@@ -14,11 +14,13 @@ import (
 )
 
 type SeedData struct {
-	APIKey  string
-	EnvID   string
-	BuildID uuid.UUID
-	TeamID  uuid.UUID
-	UserID  uuid.UUID
+	APIKey           string
+	EnvID            string
+	BuildID          uuid.UUID
+	BuildIDToBeBuild uuid.UUID
+	TeamID           uuid.UUID
+	UserID           uuid.UUID
+	AccessToken      string
 }
 
 func main() {
@@ -34,11 +36,13 @@ func main() {
 	defer database.Close()
 
 	data := SeedData{
-		APIKey:  os.Getenv("TESTS_E2B_API_KEY"),
-		EnvID:   os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
-		BuildID: uuid.MustParse(os.Getenv("TESTS_SANDBOX_BUILD_ID")),
-		TeamID:  uuid.MustParse(os.Getenv("TESTS_SANDBOX_TEAM_ID")),
-		UserID:  uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID")),
+		APIKey:           os.Getenv("TESTS_E2B_API_KEY"),
+		EnvID:            os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
+		BuildID:          uuid.MustParse(os.Getenv("TESTS_SANDBOX_BUILD_ID")),
+		BuildIDToBeBuild: uuid.MustParse(os.Getenv("TESTS_SANDBOX_BUILD_ID_TO_BE_BUILD")),
+		TeamID:           uuid.MustParse(os.Getenv("TESTS_SANDBOX_TEAM_ID")),
+		UserID:           uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID")),
+		AccessToken:      os.Getenv("TESTS_E2B_ACCESS_TOKEN"),
 	}
 
 	err = seed(database, data)
@@ -56,6 +60,15 @@ func seed(db *db.DB, data SeedData) error {
 	_, err := db.Client.User.Create().
 		SetID(data.UserID).
 		SetEmail("user-test-integration@e2b.dev").
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// Access Token
+	_, err = db.Client.AccessToken.Create().
+		SetID(data.AccessToken).
+		SetUserID(data.UserID).
 		Save(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create user: %w", err)
@@ -107,6 +120,7 @@ func seed(db *db.DB, data SeedData) error {
 	type buildData struct {
 		id        uuid.UUID
 		createdAt *time.Time
+		status    envbuild.Status
 	}
 
 	oldBuildTime := time.Now().Add(-time.Hour)
@@ -114,11 +128,18 @@ func seed(db *db.DB, data SeedData) error {
 		{
 			id:        data.BuildID,
 			createdAt: nil,
+			status:    envbuild.StatusUploaded,
 		},
 		// An older build, so we have multiple builds
 		{
 			id:        uuid.New(),
 			createdAt: &oldBuildTime,
+			status:    envbuild.StatusUploaded,
+		},
+		{
+			id:        data.BuildIDToBeBuild,
+			createdAt: nil,
+			status:    envbuild.StatusWaiting,
 		},
 	}
 
@@ -127,7 +148,7 @@ func seed(db *db.DB, data SeedData) error {
 			SetID(build.id).
 			SetEnvID(data.EnvID).
 			SetDockerfile("FROM e2bdev/base:latest").
-			SetStatus(envbuild.StatusUploaded).
+			SetStatus(build.status).
 			SetVcpu(2).
 			SetRAMMB(512).
 			SetFreeDiskSizeMB(512).

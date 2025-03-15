@@ -27,3 +27,11 @@ func WithAPIKey() func(ctx context.Context, req *http.Request) error {
 		return nil
 	}
 }
+
+func WithAccessToken() func(ctx context.Context, req *http.Request) error {
+	return func(ctx context.Context, req *http.Request) error {
+		req.Header.Set("Authorization", "Bearer "+AccessToken)
+
+		return nil
+	}
+}
