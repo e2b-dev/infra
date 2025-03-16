@@ -541,7 +541,7 @@ resource "google_compute_firewall" "internal_remote_connection_firewall_ingress"
     ports    = ["22", "3389"]
   }
 
-  priority = 0
+  priority = 900
 
   direction     = "INGRESS"
   target_tags   = [var.cluster_tag_name]
@@ -559,7 +559,7 @@ resource "google_compute_firewall" "remote_connection_firewall_ingress" {
 
 
 
-  priority = 0
+  priority = 1000
 
   direction     = "INGRESS"
   target_tags   = [var.cluster_tag_name]
