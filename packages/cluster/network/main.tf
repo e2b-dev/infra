@@ -543,19 +543,20 @@ resource "google_compute_firewall" "internal_remote_connection_firewall_ingress"
 
   priority = 900
 
-  direction     = "INGRESS"
-  target_tags   = [var.cluster_tag_name]
-  source_ranges = var.environment == "dev" ? ["0.0.0.0/0"] : ["10.128.0.0/9"]
+  direction   = "INGRESS"
+  target_tags = [var.cluster_tag_name]
+  # https://googlecloudplatform.github.io/iap-desktop/setup-iap/
+  source_ranges = var.environment == "dev" ? ["0.0.0.0/0"] : ["35.235.240.0/20"]
 }
 
 resource "google_compute_firewall" "remote_connection_firewall_ingress" {
   name    = "${var.prefix}${var.cluster_tag_name}-remote-connection-firewall-ingress"
   network = var.network_name
 
-    deny {
-      protocol = "tcp"
-      ports    = ["22", "3389"]
-    }
+  deny {
+    protocol = "tcp"
+    ports    = ["22", "3389"]
+  }
 
 
 
