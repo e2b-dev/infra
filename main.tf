@@ -117,6 +117,8 @@ module "cluster" {
   consul_acl_token_secret = module.init.consul_acl_token_secret
   nomad_acl_token_secret  = module.init.nomad_acl_token_secret
 
+  notification_email_secret_version = module.init.notification_email_secret_version
+
   labels = var.labels
   prefix = var.prefix
 }

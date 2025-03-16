@@ -273,3 +273,11 @@ module "network" {
   labels = var.labels
   prefix = var.prefix
 }
+
+module "security" {
+  source = "./security"
+
+  gcp_project_id                    = var.gcp_project_id
+  notification_email_secret_version = var.notification_email_secret_version
+  prefix                            = var.prefix
+}

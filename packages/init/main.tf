@@ -221,3 +221,20 @@ resource "google_secret_manager_secret_version" "clickhouse_password_value" {
   secret_data = random_password.clickhouse_password.result
 }
 
+
+
+resource "google_secret_manager_secret" "notification_email" {
+  secret_id = "${var.prefix}notification-email"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "notification_email_value" {
+  secret = google_secret_manager_secret.notification_email.id
+
+  secret_data = " "
+}
+
+
