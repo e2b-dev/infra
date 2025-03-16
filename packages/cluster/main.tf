@@ -277,7 +277,12 @@ module "network" {
 module "security" {
   source = "./security"
 
-  gcp_project_id                    = var.gcp_project_id
+  gcp_project_id = var.gcp_project_id
+  gcp_zone       = var.gcp_zone
+
+  environment = var.environment
+  prefix      = var.prefix
+
+  vpc_network_name                  = var.network_name
   notification_email_secret_version = var.notification_email_secret_version
-  prefix                            = var.prefix
 }

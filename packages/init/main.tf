@@ -46,6 +46,19 @@ resource "google_project_service" "monitoring_api" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "cloud_ids" {
+  service = "ids.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+
+resource "time_sleep" "cloud_ids_api_wait_60_seconds" {
+  depends_on = [google_project_service.cloud_ids]
+
+  create_duration = "60s"
+}
+
 # Enable Stackdriver Logging API
 resource "google_project_service" "logging_api" {
   #project = var.gcp_project_id
@@ -213,6 +226,8 @@ resource "google_secret_manager_secret" "clickhouse_password" {
   replication {
     auto {}
   }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
 resource "google_secret_manager_secret_version" "clickhouse_password_value" {
@@ -229,12 +244,14 @@ resource "google_secret_manager_secret" "notification_email" {
   replication {
     auto {}
   }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds, time_sleep.cloud_ids_api_wait_60_seconds]
 }
 
 resource "google_secret_manager_secret_version" "notification_email_value" {
   secret = google_secret_manager_secret.notification_email.id
 
-  secret_data = " "
+  secret_data = "placeholder@example.com"
 }
 
 

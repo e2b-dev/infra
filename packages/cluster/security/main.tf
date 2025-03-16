@@ -12,7 +12,8 @@ data "google_secret_manager_secret_version" "notification_email_address" {
 }
 
 resource "google_monitoring_notification_channel" "email_channel" {
-  project = var.gcp_project_id
+  project      = var.gcp_project_id
+  display_name = "Email Notification Channel"
 
   type = "email"
   labels = {
@@ -29,7 +30,7 @@ resource "google_monitoring_alert_policy" "ids_threat_alert" {
   conditions {
     display_name = "IDS Threat Condition"
     condition_threshold {
-      filter          = "metric.type=\"logging.googleapis.com/user/${var.prefix}ids_threat_detection_metric\""
+      filter          = "metric.type=\"logging.googleapis.com/user/${var.prefix}ids_threat_detection_metric\" AND resource.type=\"ids.googleapis.com/Endpoint\""
       comparison      = "COMPARISON_GT"
       threshold_value = 0
       duration        = "0s"
