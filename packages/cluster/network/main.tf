@@ -532,6 +532,27 @@ resource "google_compute_firewall" "client_proxy_firewall_ingress" {
 }
 
 
+resource "google_compute_firewall" "remote_connection_firewall_ingress" {
+  name    = "${var.prefix}${var.cluster_tag_name}-remote-connection-firewall-ingress"
+  network = var.network_name
+
+  dynamic "deny" {
+    for_each = var.environment != "dev" ? toset(["22", "3389"]) : toset(["3389"])
+    content {
+      protocol = "tcp"
+      ports    = [deny.value]
+    }
+  }
+
+
+  priority = 0
+
+  direction     = "INGRESS"
+  target_tags   = [var.cluster_tag_name]
+  source_ranges = ["0.0.0.0/0"]
+}
+
+
 resource "google_compute_firewall" "orch_firewall_egress" {
   name    = "${var.prefix}${var.cluster_tag_name}-firewall-egress"
   network = var.network_name
