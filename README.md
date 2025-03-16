@@ -6,7 +6,7 @@ This repository contains the infrastructure that powers the E2B platform.
 
 ## Self-hosting
 
-Read the [self-hosting guide](./self-host.md) to learn how to set up the infrastructure on your own. The infrastructure is deployed using Terraform. The process is not perfect yet, but we are working on it.
+Read the [self-hosting guide](./self-host.md) to learn how to set up the infrastructure on your own. The infrastructure is deployed using Terraform.
 
 Supported cloud providers:
 - 🟢 GCP
