@@ -115,7 +115,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	// stream build status
+	// poll build status
 	for {
 		select {
 		case <-ctx.Done():
