@@ -23,10 +23,9 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
-	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
@@ -51,10 +50,10 @@ type APIStore struct {
 	Tracer               trace.Tracer
 	orchestrator         *orchestrator.Orchestrator
 	templateManager      *template_manager.TemplateManager
-	buildCache           *builds.BuildCache
 	db                   *db.DB
 	lokiClient           *loki.DefaultClient
 	templateCache        *templatecache.TemplateCache
+	templateBuildsCache  *templatecache.TemplatesBuildCache
 	authCache            *authcache.TeamAuthCache
 	templateSpawnCounter *utils.TemplateSpawnCounter
 	clickhouseStore      chdb.Store
@@ -123,10 +122,14 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
 
-	templateManager, err := template_manager.New()
+	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
+	templateManager, err := template_manager.New(dbClient, templateBuildsCache)
 	if err != nil {
 		zap.L().Fatal("initializing Template manager client", zap.Error(err))
 	}
+
+	// Start the periodic sync of template builds statuses
+	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	var lokiClient *loki.DefaultClient
 	if laddr := os.Getenv("LOKI_ADDRESS"); laddr != "" {
@@ -137,10 +140,8 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Warn("LOKI_ADDRESS not set, disabling Loki client")
 	}
 
-	buildCache := builds.NewBuildCache()
-
-	templateCache := templatecache.NewTemplateCache(dbClient)
 	authCache := authcache.NewTeamAuthCache()
+	templateCache := templatecache.NewTemplateCache(dbClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
 	a := &APIStore{
@@ -150,9 +151,9 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		db:                        dbClient,
 		Tracer:                    tracer,
 		posthog:                   posthogClient,
-		buildCache:                buildCache,
 		lokiClient:                lokiClient,
 		templateCache:             templateCache,
+		templateBuildsCache:       templateBuildsCache,
 		authCache:                 authCache,
 		templateSpawnCounter:      templateSpawnCounter,
 		clickhouseStore:           clickhouseStore,
