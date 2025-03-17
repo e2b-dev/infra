@@ -13,7 +13,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	loki "github.com/grafana/loki/pkg/logcli/client"
+	loki "github.com/grafana/loki/v3/pkg/logcli/client"
 	nomadapi "github.com/hashicorp/nomad/api"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.opentelemetry.io/otel"
