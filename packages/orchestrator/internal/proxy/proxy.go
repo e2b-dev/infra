@@ -26,9 +26,9 @@ var browserRegex = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|op
 var browserTemplate = template.Must(template.New("template").Parse(proxyBrowser502PageHtml))
 
 type htmlTemplateData struct {
-	sandboxId   string
-	sandboxHost string
-	sandboxPort string
+	SandboxId   string
+	SandboxHost string
+	SandboxPort string
 }
 
 type jsonTemplateData struct {
@@ -169,7 +169,7 @@ func (p *SandboxProxy) proxyHandler(transport *http.Transport) func(w http.Respo
 
 func (p *SandboxProxy) buildHtmlClosedPortError(sandboxId string, host string, port uint64) ([]byte, error) {
 	htmlResponse := new(bytes.Buffer)
-	htmlVars := htmlTemplateData{sandboxId: sandboxId, sandboxHost: host, sandboxPort: strconv.FormatUint(port, 10)}
+	htmlVars := htmlTemplateData{SandboxId: sandboxId, SandboxHost: host, SandboxPort: strconv.FormatUint(port, 10)}
 
 	err := browserTemplate.Execute(htmlResponse, htmlVars)
 	if err != nil {
