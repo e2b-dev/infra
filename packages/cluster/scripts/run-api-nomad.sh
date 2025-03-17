@@ -166,7 +166,8 @@ plugin_dir = "/opt/nomad/plugins"
 
 plugin "docker" {
   config {
-    privileged = true
+  allow_privileged = true
+
     volumes {
       enabled = true
     }

@@ -1,8 +1,7 @@
 job "gcp-csi-controller" {
-
   datacenters = ["${zone}"]
   type        = "service"
-  node_pool = "api"
+  node_pool   = "api"
 
   group "controller" {
     task "plugin" {
