@@ -1,44 +1,35 @@
-variable "gcp_zone" {
-  type = string
-}
-
-variable "loki_service_port_name" {
-  type = string
-}
-
-variable "loki_service_port_number" {
-  type = number
-}
-
-variable "loki_bucket_name" {
-  type = string
-}
-
 job "loki" {
-  datacenters = [var.gcp_zone]
+  datacenters = ["${gcp_zone}"]
   type        = "service"
   node_pool = "api"
-
 
   priority = 75
 
   group "loki-service" {
     network {
       port "loki" {
-        to = var.loki_service_port_number
+        to = "${loki_service_port_number}"
       }
+
+      %{ if prevent_colocation }
+      port "scheduling-block" {
+        // This port is used to block scheduling of jobs with the same block on the same node.
+        // We use this to block API and Loki from being scheduled on the same node.
+        static = 40234
+      }
+      %{ endif }
     }
 
     service {
       name = "loki"
-      port = var.loki_service_port_name
+      port = "${loki_service_port_name}"
 
       check {
         type     = "http"
         path     = "/ready"
         interval = "20s"
         timeout  = "2s"
-        port     = var.loki_service_port_number
+        port     = "${loki_service_port_number}"
       }
     }
 
@@ -66,7 +57,7 @@ job "loki" {
 auth_enabled: false
 
 server:
-  http_listen_port: ${var.loki_service_port_number}
+  http_listen_port: ${loki_service_port_number}
   log_level: "warn"
   grpc_server_max_recv_msg_size: 104857600  # 100 Mb
   grpc_server_max_send_msg_size: 104857600  # 100 Mb
@@ -80,7 +71,7 @@ common:
 
 storage_config:
   gcs:
-    bucket_name: "${var.loki_bucket_name}"
+    bucket_name: "${loki_bucket_name}"
     chunk_buffer_size: 2097152  # 2MB
   tsdb_shipper:
     active_index_directory: /loki/tsdb-shipper-active
