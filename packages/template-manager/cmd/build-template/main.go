@@ -15,7 +15,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
 func main() {
@@ -72,9 +71,7 @@ func Build(ctx context.Context, kernelVersion, fcVersion, templateID, buildID st
 		return fmt.Errorf("error building template: %w", err)
 	}
 
-	tempStorage := template.NewStorage(ctx)
-
-	buildStorage := tempStorage.NewBuild(t.TemplateFiles)
+	buildStorage := storage.NewTemplateBuild(nil, nil, t.TemplateFiles)
 
 	memfilePath := t.BuildMemfilePath()
 	rootfsPath := t.BuildRootfsPath()

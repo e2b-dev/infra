@@ -2,13 +2,15 @@ package storage
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const (
-	EnvsDisk = "/mnt/disks/fc-envs/v1"
+	EnvsDisk        = "/mnt/disks/fc-envs/v1"
+	LocalStorageDir = "/tmp"
 
 	KernelsDir     = "/fc-kernels"
 	KernelMountDir = "/fc-vm"
@@ -37,13 +39,21 @@ const (
 // Path to the directory where the kernel can be accessed inside when the dirs are mounted.
 var KernelMountedPath = filepath.Join(KernelMountDir, KernelName)
 
+type Type string
+
+const (
+	LocalStorage  Type = "local"
+	BucketStorage Type = "bucket"
+)
+
 type TemplateFiles struct {
 	TemplateId         string
 	BuildId            string
 	KernelVersion      string
 	FirecrackerVersion string
 
-	hugePages bool
+	hugePages   bool
+	StorageType Type
 }
 
 func NewTemplateFiles(
@@ -53,12 +63,22 @@ func NewTemplateFiles(
 	firecrackerVersion string,
 	hugePages bool,
 ) *TemplateFiles {
+	// Choose where are the template build data stored. Default to bucket storage.
+	var storageType Type
+	switch os.Getenv("TEMPLATE_STORAGE") {
+	case "local":
+		storageType = LocalStorage
+	default:
+		storageType = BucketStorage
+	}
+
 	return &TemplateFiles{
 		TemplateId:         templateId,
 		BuildId:            buildId,
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
 		hugePages:          hugePages,
+		StorageType:        storageType,
 	}
 }
 
@@ -112,7 +132,15 @@ func (t *TemplateFiles) StorageSnapfilePath() string {
 }
 
 func (t *TemplateFiles) BuildDir() string {
-	return filepath.Join(EnvsDisk, t.TemplateId, buildDirName, t.BuildId)
+	var baseDir string
+	switch t.StorageType {
+	case LocalStorage:
+		baseDir = LocalStorageDir
+	default:
+		baseDir = EnvsDisk
+	}
+
+	return filepath.Join(baseDir, t.TemplateId, buildDirName, t.BuildId)
 }
 
 func (t *TemplateFiles) BuildMemfilePath() string {
