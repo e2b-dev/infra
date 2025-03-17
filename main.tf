@@ -186,7 +186,7 @@ module "nomad" {
   api_secret                                = module.api.api_secret
   custom_envs_repository_name               = module.api.custom_envs_repository_name
   postgres_connection_string_secret_name    = module.api.postgres_connection_string_secret_name
-  supabase_jwt_secrets_secret_data          = module.api.supabase_jwt_secrets_secret_data
+  supabase_jwt_secrets_secret_name          = module.api.supabase_jwt_secrets_secret_name
   posthog_api_key_secret_name               = module.api.posthog_api_key_secret_name
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
