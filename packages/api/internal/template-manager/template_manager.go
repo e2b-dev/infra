@@ -110,6 +110,9 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 			}
 			return
 		}
+
+		// just wait for next sync
+		return
 	}
 
 	ticker := time.NewTicker(time.Second)
@@ -159,7 +162,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 					return
 				}
 
-				logger.Error("Template build finished")
+				logger.Info("Template build finished")
 				return
 			}
 		}
