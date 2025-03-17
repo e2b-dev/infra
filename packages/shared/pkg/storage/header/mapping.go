@@ -2,9 +2,10 @@ package header
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
-	"os"
 )
 
 // Start, Length and SourceStart are in bytes of the data file

@@ -39,7 +39,8 @@ func NewStorage(
 			h = diffHeader
 		}
 	}
-  // If we can't find the diff header in storage we try to find the "old" style template without header as a fallback.
+
+	// If we can't find the diff header in storage, we try to find the "old" style template without a header as a fallback.
 	if h == nil {
 		object := gcs.NewObject(ctx, bucket, buildId+"/"+string(fileType))
 
