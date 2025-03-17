@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-	"io"
 	"sync"
 	"time"
 
@@ -113,56 +112,54 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		}
 	}
 
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
 	// stream build status
-	stream, err := tm.grpc.Client.TemplateBuildStatus(childCtx, &template_manager.TemplateStatusRequest{BuildID: buildID.String(), TemplateID: templateID})
-	if utils.UnwrapGRPCError(err) != nil {
-		logger.Error("Error when fetching template build status", zap.Error(err))
-
-		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed)
-		dbErr := tm.db.EnvBuildSetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
-		if dbErr != nil {
-			logger.Error("Error when setting build status", zap.Error(dbErr))
-		}
-
-		return
-	}
-
 	for {
-		status, receiveErr := stream.Recv()
-		if receiveErr == io.EOF {
-			break
-		} else if receiveErr != nil {
-			logger.Error("Error when receiving template build status", zap.Error(receiveErr))
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			logger.Info("Checking template build status")
 
-			tm.buildCache.SetStatus(buildID, envbuild.StatusFailed)
-			err = tm.db.EnvBuildSetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
-			if err != nil {
-				logger.Error("Error when setting build status", zap.Error(err))
+			status, err := tm.grpc.Client.TemplateBuildStatus(childCtx, &template_manager.TemplateStatusRequest{TemplateID: templateID, BuildID: buildID.String()})
+			if utils.UnwrapGRPCError(err) != nil {
+				logger.Error("Error when fetching template build status", zap.Error(err))
+
+				tm.buildCache.SetStatus(buildID, envbuild.StatusFailed)
+				dbErr := tm.db.EnvBuildSetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
+				if dbErr != nil {
+					logger.Error("Error when setting build status", zap.Error(dbErr))
+				}
+
+				return
 			}
 
-			return
-		}
+			// build failed
+			if status.GetStatus() == template_manager.TemplateBuildState_Failed {
+				tm.buildCache.SetStatus(buildID, envbuild.StatusFailed)
+				err = tm.db.EnvBuildSetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
+				if err != nil {
+					logger.Error("Error when setting build status", zap.Error(err))
+				}
 
-		// build failed
-		if status.GetStatus() == template_manager.TemplateBuildState_Failed {
-			tm.buildCache.SetStatus(buildID, envbuild.StatusFailed)
-			err = tm.db.EnvBuildSetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
-			if err != nil {
-				logger.Error("Error when setting build status", zap.Error(err))
+				logger.Error("Template build failed according to status")
+				return
 			}
 
-			logger.Error("Template build failed according to status")
-			return
-		}
+			// build completed
+			if status.GetStatus() == template_manager.TemplateBuildState_Completed {
+				tm.buildCache.SetStatus(buildID, envbuild.StatusUploaded)
 
-		// build completed
-		if status.GetStatus() == template_manager.TemplateBuildState_Completed {
-			tm.buildCache.SetStatus(buildID, envbuild.StatusUploaded)
+				meta := status.GetMetadata()
+				err = tm.db.FinishEnvBuild(childCtx, templateID, buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
+				if err != nil {
+					logger.Error("Error when finishing build", zap.Error(err))
+					return
+				}
 
-			meta := status.GetMetadata()
-			err = tm.db.FinishEnvBuild(childCtx, templateID, buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
-			if err != nil {
-				logger.Error("Error when finishing build", zap.Error(err))
+				logger.Error("Template build finished")
 				return
 			}
 		}

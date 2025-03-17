@@ -26,7 +26,7 @@ type TemplateServiceClient interface {
 	// TemplateCreate is a gRPC service that creates a new template
 	TemplateCreate(ctx context.Context, in *TemplateCreateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// TemplateStatus is a gRPC service that streams the status of a template build
-	TemplateBuildStatus(ctx context.Context, in *TemplateStatusRequest, opts ...grpc.CallOption) (TemplateService_TemplateBuildStatusClient, error)
+	TemplateBuildStatus(ctx context.Context, in *TemplateStatusRequest, opts ...grpc.CallOption) (*TemplateBuildStatusResponse, error)
 	// TemplateBuildDelete is a gRPC service that deletes files associated with a template build
 	TemplateBuildDelete(ctx context.Context, in *TemplateBuildDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
@@ -48,36 +48,13 @@ func (c *templateServiceClient) TemplateCreate(ctx context.Context, in *Template
 	return out, nil
 }
 
-func (c *templateServiceClient) TemplateBuildStatus(ctx context.Context, in *TemplateStatusRequest, opts ...grpc.CallOption) (TemplateService_TemplateBuildStatusClient, error) {
-	stream, err := c.cc.NewStream(ctx, &TemplateService_ServiceDesc.Streams[0], "/TemplateService/TemplateBuildStatus", opts...)
+func (c *templateServiceClient) TemplateBuildStatus(ctx context.Context, in *TemplateStatusRequest, opts ...grpc.CallOption) (*TemplateBuildStatusResponse, error) {
+	out := new(TemplateBuildStatusResponse)
+	err := c.cc.Invoke(ctx, "/TemplateService/TemplateBuildStatus", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &templateServiceTemplateBuildStatusClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-type TemplateService_TemplateBuildStatusClient interface {
-	Recv() (*TemplateBuildStatusResponse, error)
-	grpc.ClientStream
-}
-
-type templateServiceTemplateBuildStatusClient struct {
-	grpc.ClientStream
-}
-
-func (x *templateServiceTemplateBuildStatusClient) Recv() (*TemplateBuildStatusResponse, error) {
-	m := new(TemplateBuildStatusResponse)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
+	return out, nil
 }
 
 func (c *templateServiceClient) TemplateBuildDelete(ctx context.Context, in *TemplateBuildDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
@@ -96,7 +73,7 @@ type TemplateServiceServer interface {
 	// TemplateCreate is a gRPC service that creates a new template
 	TemplateCreate(context.Context, *TemplateCreateRequest) (*emptypb.Empty, error)
 	// TemplateStatus is a gRPC service that streams the status of a template build
-	TemplateBuildStatus(*TemplateStatusRequest, TemplateService_TemplateBuildStatusServer) error
+	TemplateBuildStatus(context.Context, *TemplateStatusRequest) (*TemplateBuildStatusResponse, error)
 	// TemplateBuildDelete is a gRPC service that deletes files associated with a template build
 	TemplateBuildDelete(context.Context, *TemplateBuildDeleteRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedTemplateServiceServer()
@@ -109,8 +86,8 @@ type UnimplementedTemplateServiceServer struct {
 func (UnimplementedTemplateServiceServer) TemplateCreate(context.Context, *TemplateCreateRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TemplateCreate not implemented")
 }
-func (UnimplementedTemplateServiceServer) TemplateBuildStatus(*TemplateStatusRequest, TemplateService_TemplateBuildStatusServer) error {
-	return status.Errorf(codes.Unimplemented, "method TemplateBuildStatus not implemented")
+func (UnimplementedTemplateServiceServer) TemplateBuildStatus(context.Context, *TemplateStatusRequest) (*TemplateBuildStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TemplateBuildStatus not implemented")
 }
 func (UnimplementedTemplateServiceServer) TemplateBuildDelete(context.Context, *TemplateBuildDeleteRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TemplateBuildDelete not implemented")
@@ -146,25 +123,22 @@ func _TemplateService_TemplateCreate_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
-func _TemplateService_TemplateBuildStatus_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(TemplateStatusRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
+func _TemplateService_TemplateBuildStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TemplateStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
 	}
-	return srv.(TemplateServiceServer).TemplateBuildStatus(m, &templateServiceTemplateBuildStatusServer{stream})
-}
-
-type TemplateService_TemplateBuildStatusServer interface {
-	Send(*TemplateBuildStatusResponse) error
-	grpc.ServerStream
-}
-
-type templateServiceTemplateBuildStatusServer struct {
-	grpc.ServerStream
-}
-
-func (x *templateServiceTemplateBuildStatusServer) Send(m *TemplateBuildStatusResponse) error {
-	return x.ServerStream.SendMsg(m)
+	if interceptor == nil {
+		return srv.(TemplateServiceServer).TemplateBuildStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/TemplateService/TemplateBuildStatus",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TemplateServiceServer).TemplateBuildStatus(ctx, req.(*TemplateStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _TemplateService_TemplateBuildDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -197,16 +171,14 @@ var TemplateService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _TemplateService_TemplateCreate_Handler,
 		},
 		{
+			MethodName: "TemplateBuildStatus",
+			Handler:    _TemplateService_TemplateBuildStatus_Handler,
+		},
+		{
 			MethodName: "TemplateBuildDelete",
 			Handler:    _TemplateService_TemplateBuildDelete_Handler,
 		},
 	},
-	Streams: []grpc.StreamDesc{
-		{
-			StreamName:    "TemplateBuildStatus",
-			Handler:       _TemplateService_TemplateBuildStatus_Handler,
-			ServerStreams: true,
-		},
-	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "template-manager.proto",
 }

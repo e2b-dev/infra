@@ -56,7 +56,7 @@ service TemplateService {
   rpc TemplateCreate (TemplateCreateRequest) returns (google.protobuf.Empty);
 
   // TemplateStatus is a gRPC service that streams the status of a template build
-  rpc TemplateBuildStatus (TemplateStatusRequest) returns (stream TemplateBuildStatusResponse);
+  rpc TemplateBuildStatus (TemplateStatusRequest) returns (TemplateBuildStatusResponse);
 
   // TemplateBuildDelete is a gRPC service that deletes files associated with a template build
   rpc TemplateBuildDelete (TemplateBuildDeleteRequest) returns (google.protobuf.Empty);
