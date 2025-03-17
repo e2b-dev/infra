@@ -3,11 +3,13 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"google.golang.org/grpc/connectivity"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"go.uber.org/zap"
+	"google.golang.org/grpc/connectivity"
 
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/jellydator/ttlcache/v3"
@@ -49,8 +51,15 @@ func (n *Node) Status() api.NodeStatus {
 		return n.status
 	}
 
-	if n.Client.connection.GetState() != connectivity.Ready {
+	switch n.Client.connection.GetState() {
+	case connectivity.Shutdown:
+		return api.NodeStatusUnhealthy
+	case connectivity.TransientFailure:
 		return api.NodeStatusConnecting
+	case connectivity.Connecting:
+		return api.NodeStatusConnecting
+	default:
+		break
 	}
 
 	return n.status
@@ -60,7 +69,10 @@ func (n *Node) SetStatus(status api.NodeStatus) {
 	n.statusMu.Lock()
 	defer n.statusMu.Unlock()
 
-	n.status = status
+	if n.status != status {
+		zap.L().Info("Node status changed", zap.String("node_id", n.Info.ID), zap.String("status", string(status)))
+		n.status = status
+	}
 }
 
 func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, error) {
@@ -173,13 +185,17 @@ func (n *Node) SyncBuilds(builds []*orchestrator.CachedBuildInfo) {
 	}
 }
 
-func (t *Node) InsertBuild(buildID string) {
-	exists := t.buildCache.Has(buildID)
+func (n *Node) InsertBuild(buildID string) {
+	exists := n.buildCache.Has(buildID)
 	if exists {
 		return
 	}
 
 	// Set the build in the cache for 2 minutes, it should get updated with the correct time from the orchestrator during sync
-	t.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
+	n.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 	return
+}
+
+func (o *Orchestrator) NodeCount() int {
+	return o.nodes.Count()
 }

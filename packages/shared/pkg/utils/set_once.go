@@ -15,7 +15,7 @@ type SetOnce[T any] struct {
 	setDone func()
 	done    chan struct{}
 	res     *result[T]
-	mu     sync.RWMutex
+	mu      sync.RWMutex
 }
 
 func NewSetOnce[T any]() *SetOnce[T] {

@@ -1,0 +1,34 @@
+name: Run Dependabot Cleanup
+
+on:
+  push:
+    branches:
+      - dependabot/go_modules/**
+  pull_request:
+    branches:
+      - dependabot/go_modules/**
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.work'
+
+      - name: Run deps cleanup
+        run: bash ./scripts/golang-dependencies-integrity.sh
+
+      # https://github.com/marketplace/actions/git-auto-commit
+      - uses: stefanzweifel/git-auto-commit-action@e348103e9026cc0eee72ae06630dbe30c8bf7a79 # v5.1.0
+        with:
+          commit_message: Dependency cleanup
+          branch: ${{ github.head_ref }}

@@ -72,30 +72,42 @@ data_dir = "alloc/data/vector/"
 enabled = true
 address = "0.0.0.0:${logs_health_port_number}"
 
-[sources.envd]
+[sources.http_server]
 type = "http_server"
 address = "0.0.0.0:${logs_port_number}"
-encoding = "json"
+encoding = "ndjson"
 path_key = "_path"
 
-[transforms.add_source_envd]
+[transforms.add_source_http_server]
 type = "remap"
-inputs = ["envd"]
+inputs = ["http_server"]
 source = """
 del(."_path")
-.service = "envd"
 .sandboxID = .instanceID
+.timestamp = parse_timestamp(.timestamp, format: "%Y-%m-%dT%H:%M:%S.%fZ") ?? now()
 if !exists(.envID) {
   .envID = "unknown"
 }
 if !exists(.category) {
   .category = "default"
 }
+if !exists(.teamID) {
+  .teamID = "unknown"
+}
+if !exists(.sandboxID) {
+  .sandboxID = "unknown"
+}
+if !exists(.buildID) {
+  .buildID = "unknown"
+}
+if !exists(.service) {
+  .service = "envd"
+ }
 """
 
 [transforms.internal_routing]
 type = "route"
-inputs = [ "add_source_envd" ]
+inputs = [ "add_source_http_server" ]
 
 [transforms.internal_routing.route]
 internal = '.internal == true'
@@ -112,12 +124,17 @@ type = "loki"
 inputs = [ "remove_internal" ]
 endpoint = "http://loki.service.consul:${loki_service_port_number}"
 encoding.codec = "json"
+# This is recommended behavior for Loki 2.4.0 and newer and is default in Vector 0.39.0 and newer
+# https://vector.dev/docs/reference/configuration/sinks/loki/#out_of_order_action
+# https://vector.dev/releases/0.39.0/
+out_of_order_action = "accept"
 
 [sinks.local_loki_logs.labels]
 source = "logs-collector"
 service = "{{ service }}"
 teamID = "{{ teamID }}"
 envID = "{{ envID }}"
+buildID = "{{ buildID }}"
 sandboxID = "{{ sandboxID }}"
 category = "{{ category }}"
 
@@ -130,6 +147,10 @@ encoding.codec = "json"
 auth.strategy = "basic"
 auth.user = "${grafana_logs_user}"
 auth.password = "${grafana_api_key}"
+# This is recommended behavior for Loki 2.4.0 and newer and is default in Vector 0.39.0 and newer
+# https://vector.dev/docs/reference/configuration/sinks/loki/#out_of_order_action
+# https://vector.dev/releases/0.39.0/
+out_of_order_action = "accept"
 
 [sinks.grafana.labels]
 source = "logs-collector"

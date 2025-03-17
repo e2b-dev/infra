@@ -27,7 +27,10 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_otel_tracing_print=$(OTEL_TRACING_PRINT) \
 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	TF_VAR_template_bucket_name=$(TEMPLATE_BUCKET_NAME) \
-	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION)
+	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION) \
+	TF_VAR_clickhouse_connection_string=$(CLICKHOUSE_CONNECTION_STRING) \
+	TF_VAR_clickhouse_username=$(CLICKHOUSE_USERNAME) \
+	TF_VAR_clickhouse_database=$(CLICKHOUSE_DATABASE) 
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
@@ -37,7 +40,6 @@ login-gcloud:
 	gcloud config set project "$(GCP_PROJECT_ID)"
 	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
 	gcloud --quiet auth application-default login
-	gcloud auth configure-docker "us-west-1-docker.pkg.dev"
 
 .PHONY: init
 init:
@@ -111,6 +113,7 @@ build-and-upload:build-and-upload/envd
 build/%:
 	$(MAKE) -C packages/$(notdir $@) build
 build-and-upload/%:
+	./scripts/confirm.sh $(ENV)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
 
 .PHONY: copy-public-builds
@@ -119,9 +122,10 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
-@.PHONY: migrate
+.PHONY: migrate
 migrate:
-	$(MAKE) -C packages/shared migrate
+	$(MAKE) -C packages/shared migrate-postgres
+	# $(MAKE) -C packages/shared migrate-clickhouse/up
 
 .PHONY: switch-env
 switch-env:
@@ -155,6 +159,9 @@ test:
 	$(MAKE) -C packages/shared test
 	$(MAKE) -C packages/template-manager test
 
+.PHONY: test-integration
+test-integration:
+	$(MAKE) -C tests/integration test
 
 # $(MAKE) -C terraform/grafana init does not work b/c of the -include ${ENV_FILE} in the Makefile
 # so we need to call the Makefile directly
@@ -174,3 +181,6 @@ grafana-apply:
 	@ printf "Applying Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	cd terraform/grafana && make apply && cd - || cd -
 
+.PHONY: connect-orchestrator
+connect-orchestrator:
+	$(MAKE) -C tests/integration connect-orchestrator

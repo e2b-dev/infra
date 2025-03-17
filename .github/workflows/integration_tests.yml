@@ -1,0 +1,45 @@
+name: Integration Tests
+
+on:
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration_tests:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Packages
+        uses: ./.github/actions/build-packages
+
+      - name: Initialize Host
+        uses: ./.github/actions/host-init
+
+      - name: Build Template
+        uses: ./.github/actions/build-sandbox-template
+
+      - name: Start Services
+        uses: ./.github/actions/start-services
+
+      - name: Run Integration Tests
+        env:
+          TESTS_API_SERVER_URL: "http://localhost:3000"
+          TESTS_ORCHESTRATOR_HOST: "localhost:5008"
+        run: |
+          # Monitor logs of the services
+          ls -l ~/logs
+          tail -f ~/logs/orchestrator.log -n 0 &
+          tail -f ~/logs/api.log -n 0 &
+
+          # Run the integration tests
+          make test-integration

@@ -3,6 +3,7 @@ data "google_secret_manager_secret_version" "postgres_connection_string" {
   secret = var.postgres_connection_string_secret_name
 }
 
+
 data "google_secret_manager_secret_version" "posthog_api_key" {
   secret = var.posthog_api_key_secret_name
 }
@@ -35,6 +36,7 @@ resource "nomad_job" "api" {
     port_number                   = var.api_port.port
     api_docker_image              = var.api_docker_image_digest
     postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    supabase_jwt_secrets          = var.supabase_jwt_secrets_secret_data
     posthog_api_key               = data.google_secret_manager_secret_version.posthog_api_key.secret_data
     environment                   = var.environment
     analytics_collector_host      = data.google_secret_manager_secret_version.analytics_collector_host.secret_data
@@ -44,6 +46,10 @@ resource "nomad_job" "api" {
     admin_token                   = var.api_admin_token
     redis_url                     = "redis://redis.service.consul:${var.redis_port.port}"
     dns_port_number               = var.api_dns_port_number
+    clickhouse_connection_string  = var.clickhouse_connection_string
+    clickhouse_username           = var.clickhouse_username
+    clickhouse_password           = var.clickhouse_password
+    clickhouse_database           = var.clickhouse_database
   })
 }
 
@@ -91,6 +97,7 @@ resource "nomad_job" "client_proxy" {
       image_name = var.client_proxy_docker_image_digest
 
       otel_collector_grpc_endpoint = "localhost:4317"
+      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
   })
 }
 
@@ -103,8 +110,10 @@ resource "nomad_job" "session_proxy" {
       session_proxy_port_number  = var.session_proxy_port.port
       session_proxy_port_name    = var.session_proxy_port.name
       session_proxy_service_name = var.session_proxy_service_name
-      load_balancer_conf         = file("${path.module}/proxies/session.conf")
-      nginx_conf                 = file("${path.module}/proxies/nginx.conf")
+      load_balancer_conf = templatefile("${path.module}/proxies/session.conf", {
+        browser_502 = replace(file("${path.module}/proxies/browser_502.html"), "\n", "")
+      })
+      nginx_conf = file("${path.module}/proxies/nginx.conf")
     }
   }
 }
@@ -319,6 +328,10 @@ resource "nomad_job" "orchestrator" {
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
+    clickhouse_connection_string = var.clickhouse_connection_string
+    clickhouse_username          = var.clickhouse_username
+    clickhouse_password          = var.clickhouse_password
+    clickhouse_database          = var.clickhouse_database
   })
 }
 
@@ -355,6 +368,7 @@ resource "nomad_job" "template_manager" {
       otel_tracing_print           = var.otel_tracing_print
       template_bucket_name         = var.template_bucket_name
       otel_collector_grpc_endpoint = "localhost:4317"
+      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
     }
   }
 }
@@ -373,3 +387,42 @@ resource "nomad_job" "loki" {
     }
   }
 }
+
+# create a bucket for clickhouse
+resource "google_storage_bucket" "clickhouse_bucket" {
+  name     = "${var.gcp_project_id}-clickhouse-bucket"
+  location = var.gcp_region
+}
+
+// create service account for bucket
+resource "google_service_account" "clickhouse_service_account" {
+  account_id   = "${var.prefix}clickhouse-service-account"
+  display_name = "${var.prefix}clickhouse-service-account"
+}
+
+# attach service account to bucket 
+resource "google_storage_bucket_iam_member" "clickhouse_service_account_iam" {
+  bucket = google_storage_bucket.clickhouse_bucket.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.clickhouse_service_account.email}"
+}
+
+# hmac key for service account
+resource "google_storage_hmac_key" "clickhouse_hmac_key" {
+  service_account_email = google_service_account.clickhouse_service_account.email
+}
+
+# Add this with your other Nomad jobs
+resource "nomad_job" "clickhouse" {
+  jobspec = templatefile("${path.module}/clickhouse.hcl", {
+    zone                = var.gcp_zone
+    clickhouse_version  = "25.1.5.31" # Or make this a variable
+    gcs_bucket          = google_storage_bucket.clickhouse_bucket.name
+    gcs_folder          = "clickhouse-data"
+    hmac_key            = google_storage_hmac_key.clickhouse_hmac_key.access_id
+    hmac_secret         = google_storage_hmac_key.clickhouse_hmac_key.secret
+    username            = var.clickhouse_username
+    password_sha256_hex = sha256(var.clickhouse_password)
+  })
+}
+

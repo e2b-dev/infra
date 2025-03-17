@@ -45,6 +45,23 @@ resource "google_secret_manager_secret" "postgres_connection_string" {
   }
 }
 
+resource "google_secret_manager_secret" "supabase_jwt_secrets" {
+  secret_id = "${var.prefix}supabase-jwt-secrets"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "supabase_jwt_secrets" {
+  secret      = google_secret_manager_secret.supabase_jwt_secrets.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
 resource "google_secret_manager_secret" "posthog_api_key" {
   secret_id = "${var.prefix}posthog-api-key"
 
@@ -80,6 +97,16 @@ resource "google_secret_manager_secret_version" "api_secret_value" {
 
   secret_data = random_password.api_secret.result
 }
+
+resource "google_secret_manager_secret" "clickhouse_password" {
+  secret_id = "${var.prefix}clickhouse-db-password"
+
+  replication {
+    auto {}
+  }
+}
+
+
 
 resource "random_password" "api_admin_secret" {
   length  = 32

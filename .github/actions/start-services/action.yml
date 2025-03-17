@@ -1,0 +1,64 @@
+name: "Start Services"
+description: "Sets up and starts the required services, including PostgreSQL."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run PostgreSQL Database
+      env:
+        TESTS_E2B_API_KEY: "e2b_5ec17bd3933af21f80dc10bba686691c4fcd7057"
+        TESTS_SANDBOX_TEAM_ID: "834777bd-9956-45ca-b088-9bac9290e2ac"
+        TESTS_SANDBOX_USER_ID: "2a5a9fc5-db8d-4af7-ac9e-d0f9272463bc"
+        # Signed token using "supabasejwtsecretsupabasejwtsecret" with data
+        # {
+        #  "sub": "2a5a9fc5-db8d-4af7-ac9e-d0f9272463bc",
+        #  "exp": 1741780982000
+        # }
+        TESTS_SUPABASE_TOKEN: "eyJhbGciOiJIUzI1NiIsImtpZCI6ImFDUkNKVXY0bzJVSlRUa08iLCJ0eXAiOiJKV1QifQ.eyJzdWIiOiIyYTVhOWZjNS1kYjhkLTRhZjctYWM5ZS1kMGY5MjcyNDYzYmMiLCJleHAiOjE3NDE3ODA5ODIwMDB9.VfkYd6Xn920vtbuDuXnKBPhxpNw6r8PESvJXMD6q8Cs"
+      run: |
+        docker run -d --name postgres \
+                      -e POSTGRES_USER=postgres \
+                      -e POSTGRES_PASSWORD=local \
+                      -e POSTGRES_DB=mydatabase \
+                      -p 5432:5432 \
+                      --health-cmd="pg_isready -U postgres" \
+                      --health-interval=5s \
+                      --health-timeout=2s \
+                      --health-retries=5 \
+                      postgres:latest
+        while [ "$(docker inspect -f '{{.State.Health.Status}}' postgres 2>/dev/null)" != "healthy" ]; do echo "Waiting for PostgreSQL to be healthy..."; sleep 2; done
+        echo "PostgreSQL is healthy!"
+        
+        # Install extensions
+        docker exec postgres psql -U postgres -d mydatabase -c "CREATE SCHEMA extensions; CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA extensions;"
+        echo "extensions installed"
+        
+        echo "TESTS_E2B_API_KEY=${TESTS_E2B_API_KEY}" >> .env.test
+        echo "TESTS_SANDBOX_TEAM_ID=${TESTS_SANDBOX_TEAM_ID}" >> .env.test
+        echo "TESTS_SANDBOX_USER_ID=${TESTS_SANDBOX_USER_ID}" >> .env.test
+        echo "TESTS_SUPABASE_TOKEN=${TESTS_SUPABASE_TOKEN}" >> .env.test
+        set -x
+        make migrate
+        make -C tests/integration seed
+      shell: bash
+
+    - name: Start Services
+      env:
+        ENVD_TIMEOUT: "60s"
+        SUPABASE_JWT_SECRETS: "supabasejwtsecretsupabasejwtsecret"
+      run: |
+        echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test
+        echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRETS}" >> .env.test
+        
+        mkdir -p ~/logs
+
+        make -C packages/orchestrator run-debug 2>&1 | tee ~/logs/orchestrator.log &
+        ORCH_PID=$!
+        sleep 30
+        if ps -p $ORCH_PID > /dev/null; then echo "Orchestrator started, starting API now..."; else exit 1; fi
+
+        make -C packages/api run 2>&1 | tee ~/logs/api.log &
+        API_PID=$!
+        sleep 30
+        if ps -p $API_PID > /dev/null; then echo "API service started"; else exit 1; fi
+      shell: bash

@@ -81,7 +81,8 @@ locals {
         port         = 8500
       }
       groups = [
-      { group = var.server_instance_group }]
+        { group = var.server_instance_group }
+      ]
     }
   }
   health_checked_backends = { for backend_index, backend_value in local.backends : backend_index => backend_value }
@@ -344,7 +345,7 @@ resource "google_compute_backend_service" "default" {
   security_policy = google_compute_security_policy.default[each.key].self_link
 
   log_config {
-    enable = var.environment == "prod"
+    enable = var.environment != "dev"
   }
 
   dynamic "backend" {

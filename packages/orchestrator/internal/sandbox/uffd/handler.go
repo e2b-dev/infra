@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"go.uber.org/zap"
 
 	"github.com/bits-and-blooms/bitset"
 )
@@ -43,6 +44,7 @@ type Uffd struct {
 
 	memfile    *block.TrackedSliceDevice
 	socketPath string
+	clientID   string
 }
 
 func (u *Uffd) Disable() error {
@@ -53,7 +55,7 @@ func (u *Uffd) Dirty() *bitset.BitSet {
 	return u.memfile.Dirty()
 }
 
-func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
+func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64, clientID string) (*Uffd, error) {
 	pRead, pWrite, err := os.Pipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exit fd: %w", err)
@@ -79,6 +81,7 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uff
 
 			return nil
 		}),
+		clientID: clientID,
 	}, nil
 }
 
@@ -174,13 +177,21 @@ func (u *Uffd) handle(sandboxId string) (err error) {
 	defer func() {
 		closeErr := syscall.Close(int(uffd))
 		if closeErr != nil {
-			fmt.Fprintf(os.Stderr, "[sandbox %s]: failed to close uffd at path %s: %v\n", sandboxId, u.socketPath, closeErr)
+			zap.L().Error("failed to close uffd", zap.String("sandbox_id", sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
 	}()
 
 	u.Ready <- struct{}{}
 
-	err = Serve(int(uffd), setup.Mappings, u.memfile, u.exitReader.Fd(), u.Stop, sandboxId)
+	err = Serve(
+		int(uffd),
+		setup.Mappings,
+		u.memfile,
+		u.exitReader.Fd(),
+		u.Stop,
+		sandboxId,
+		u.clientID,
+	)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}

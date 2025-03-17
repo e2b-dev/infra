@@ -68,7 +68,7 @@ Check if you can use config for terraform state management
 - Posthog API keys for monitoring (optional)
 12. Run `make plan-without-jobs` and then `make apply`
 13. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It1 can take some time; you can check the status in the Google Cloud Console
-14. Either run 
+14. Setup data in the cluster by following one of the two 
     - `make prep-cluster` in `packages/shared` to create an initial user, etc. (You need to be logged in via [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli)). It will create a user with same information (access token, api key, etc.) as you have in E2B. 
     - You can also create a user in database, it will automatically also create a team, an API key and an access token. You will need to build template(s) for your cluster. Use [`e2b` CLI](https://www.npmjs.com/package/@e2b/cli?activetab=versions)) and run `E2B_DOMAIN=<your-domain> e2b template build`.
 
@@ -144,3 +144,4 @@ gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-e
 - `make switch-env ENV={prod,staging,dev}` - switches the environment
 - `make import TARGET={resource} ID={resource_id}` - imports the already created resources into the terraform state
 - `make setup-ssh` - sets up the ssh key for the environment (useful for remote-debugging)
+- `make connect-orchestrator` - establish the ssh connection to the remote orchestrator (for testing API locally)

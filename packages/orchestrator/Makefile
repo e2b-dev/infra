@@ -35,6 +35,16 @@ build-local:
 build-debug:
 	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -race -gcflags=all="-N -l" -o bin/orchestrator .
 
+.PHONY: run-debug
+run-debug:
+	make build-debug
+	sudo -E GOTRACEBACK=crash \
+	GODEBUG=madvdontneed=1 \
+	NODE_ID="testclient" \
+	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
+	ENVD_TIMEOUT=$(ENVD_TIMEOUT) \
+	./bin/orchestrator
+
 .PHONY: upload
 upload:
 	./upload.sh $(GCP_PROJECT_ID)
@@ -44,7 +54,7 @@ build-and-upload: build upload
 
 .PHONY: mock
 mock:
-	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="test-client" go run cmd/mock-sandbox/mock.go -template 5wzg6c91u51yaebviysf -build "f0370054-b669-eeee-b33b-573d5287c6ef" -alive 1 -count 2
+	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="testclient" go run cmd/mock-sandbox/mock.go -template 5wzg6c91u51yaebviysf -build "f0370054-b669-eeee-b33b-573d5287c6ef" -alive 1 -count 2
 
 .PHONY: mock-nbd
 mock-nbd:
@@ -70,7 +80,7 @@ kill-old:
 
 .PHONY: mock-snapshot
 mock-snapshot:
-	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="test-client" go run cmd/mock-snapshot/mock.go  -template 5wzg6c91u51yaebviysf -build "f0370054-b669-4d7e-b33b-573d5287c6ef" -alive 1 -count 1
+	sudo TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) CONSUL_TOKEN=$(CONSUL_TOKEN) NODE_ID="testclient" go run cmd/mock-snapshot/mock.go  -template 5wzg6c91u51yaebviysf -build "f0370054-b669-4d7e-b33b-573d5287c6ef" -alive 1 -count 1
 
 .PHONY: test
 test:

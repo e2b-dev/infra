@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -118,8 +119,7 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 		eg.Go(func() (err error) {
 			defer func() {
 				if r := recover(); r != nil {
-					fmt.Println("Recovered from panic in the fetch handler:", r)
-
+					zap.L().Error("recovered from panic in the fetch handler", zap.Any("error", r))
 					err = fmt.Errorf("recovered from panic in the fetch handler: %v", r)
 				}
 			}()
@@ -160,4 +160,8 @@ func (c *Chunker) fetchToCache(off, length int64) error {
 
 func (c *Chunker) Close() error {
 	return c.cache.Close()
+}
+
+func (c *Chunker) FileSize() (int64, error) {
+	return c.cache.FileSize()
 }

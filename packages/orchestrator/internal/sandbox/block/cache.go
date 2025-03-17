@@ -8,9 +8,11 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/edsrzf/mmap-go"
+	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -96,7 +98,7 @@ func (m *Cache) Export(out io.Writer) (*bitset.BitSet, error) {
 
 		_, err := out.Write((*m.mmap)[key : key+m.blockSize])
 		if err != nil {
-			fmt.Printf("error writing to out: %v\n", err)
+			zap.L().Error("error writing to out", zap.Error(err))
 
 			return nil, err
 		}
@@ -222,4 +224,22 @@ func (m *Cache) dirtySortedKeys() []int64 {
 	})
 
 	return keys
+}
+
+// FileSize returns the size of the cache on disk.
+// The size might differ from the dirty size, as it may not be fully on disk.
+func (m *Cache) FileSize() (int64, error) {
+	var stat syscall.Stat_t
+	err := syscall.Stat(m.filePath, &stat)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get file stats: %w", err)
+	}
+
+	var fsStat syscall.Statfs_t
+	err = syscall.Statfs(m.filePath, &fsStat)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get disk stats for path %s: %w", m.filePath, err)
+	}
+
+	return stat.Blocks * int64(fsStat.Bsize), nil
 }

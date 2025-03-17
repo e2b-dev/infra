@@ -5,8 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
 )
 
 type SandboxMetrics struct {
@@ -49,10 +54,40 @@ func (s *Sandbox) LogMetrics(ctx context.Context) {
 	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrcis) {
 		metrics, err := s.GetMetrics(ctx)
 		if err != nil {
-			s.Logger.Warnf("failed to get metrics: %s", err)
+			sbxlogger.E(s).Warn("failed to get metrics", zap.Error(err))
 		} else {
-			s.Logger.Metrics(
-				metrics.MemTotalMiB, metrics.MemUsedMiB, metrics.CPUCount, metrics.CPUUsedPercent)
+			sbxlogger.E(s).Metrics(sbxlogger.SandboxMetricsFields{
+				Timestamp:      metrics.Timestamp,
+				CPUCount:       metrics.CPUCount,
+				CPUUsedPercent: metrics.CPUUsedPercent,
+				MemTotalMiB:    metrics.MemTotalMiB,
+				MemUsedMiB:     metrics.MemUsedMiB,
+			})
+		}
+	}
+}
+
+func (s *Sandbox) SendMetrics(ctx context.Context) {
+	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrcis) {
+		envdMetrics, err := s.GetMetrics(ctx)
+		if err != nil {
+			sbxlogger.E(s).Warn("failed to get metrics from envd", zap.Error(err))
+		} else {
+			// XXX update upstream types to avoid this conversion
+			metrics := chmodels.Metrics{
+				SandboxID:      s.Config.SandboxId,
+				TeamID:         s.Config.TeamId,
+				Timestamp:      time.Unix(envdMetrics.Timestamp, 0),
+				MemTotalMiB:    envdMetrics.MemTotalMiB,
+				MemUsedMiB:     envdMetrics.MemUsedMiB,
+				CPUCount:       envdMetrics.CPUCount,
+				CPUUsedPercent: envdMetrics.CPUUsedPercent,
+			}
+
+			err := s.ClickhouseStore.InsertMetrics(ctx, metrics)
+			if err != nil {
+				sbxlogger.E(s).Warn("failed to insert metrics in ClickHouse", zap.Error(err))
+			}
 		}
 	}
 }

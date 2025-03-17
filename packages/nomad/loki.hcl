@@ -56,9 +56,9 @@ job "loki" {
       }
 
       resources {
-        memory_max = 2048
-        memory = 1024
-        cpu    = 500
+        memory_max = 4096
+        memory = 2048
+        cpu    = 1000
       }
 
       template {
@@ -145,7 +145,7 @@ limits_config:
   per_stream_rate_limit: "80MB"
   per_stream_rate_limit_burst: "240MB"
   max_streams_per_user: 0
-  max_global_streams_per_user: 10000
+  max_global_streams_per_user: 0
   unordered_writes: true
   reject_old_samples_max_age: 168h
 EOF

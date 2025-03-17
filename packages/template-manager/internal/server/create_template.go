@@ -12,6 +12,8 @@ import (
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/metadata"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -43,7 +45,13 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		attribute.Bool("env.huge_pages", config.HugePages),
 	)
 
-	logsWriter := writer.New(stream)
+	logsWriter := writer.New(
+		stream,
+		s.buildLogger.
+			With(zap.Field{Type: zapcore.StringType, Key: "envID", String: config.TemplateID}).
+			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: config.BuildID}),
+	)
+
 	template := &build.Env{
 		TemplateFiles: storage.NewTemplateFiles(
 			config.TemplateID,

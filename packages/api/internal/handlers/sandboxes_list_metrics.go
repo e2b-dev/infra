@@ -84,7 +84,7 @@ func (a *APIStore) getSandboxesMetrics(
 			defer sem.Release(1)
 
 			// Get metrics for this sandbox
-			metrics, err := a.getSandboxesSandboxIDMetrics(
+			metrics, err := a.LegacyGetSandboxIDMetrics(
 				ctx,
 				s.SandboxID,
 				teamID.String(),
@@ -148,7 +148,7 @@ func (a *APIStore) getSandboxesMetrics(
 
 	// Log operation summary
 	if len(metricsErrors) == 0 {
-		a.logger.Info("Completed fetching sandbox metrics without errors",
+		zap.L().Info("Completed fetching sandbox metrics without errors",
 			zap.String("team_id", teamID.String()),
 			zap.Int32("total_sandboxes", int32(len(sandboxes))),
 			zap.Int32("successful_fetches", successCount.Load()),
@@ -163,7 +163,7 @@ func (a *APIStore) getSandboxesMetrics(
 
 		err := errors.Join(metricsErrors...)
 
-		a.logger.Error("Received errors while fetching metrics for some sandboxes",
+		zap.L().Error("Received errors while fetching metrics for some sandboxes",
 			zap.String("team_id", teamID.String()),
 			zap.Int32("total_sandboxes", int32(len(sandboxes))),
 			zap.Int32("successful_fetches", successCount.Load()),
@@ -193,7 +193,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 
 	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query)
 	if err != nil {
-		a.logger.Error("Error fetching sandboxes", zap.Error(err))
+		zap.L().Error("Error fetching sandboxes", zap.Error(err))
 		telemetry.ReportCriticalError(ctx, err)
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
 
@@ -202,7 +202,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 
 	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, sandboxes)
 	if err != nil {
-		a.logger.Error("Error fetching metrics for sandboxes", zap.Error(err))
+		zap.L().Error("Error fetching metrics for sandboxes", zap.Error(err))
 		telemetry.ReportCriticalError(ctx, err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning metrics for sandboxes for team '%s'", team.ID))
 

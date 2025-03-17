@@ -10,9 +10,11 @@ import (
 )
 
 const (
-	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
-	AdminTokenAuthScopes  = "AdminTokenAuth.Scopes"
-	ApiKeyAuthScopes      = "ApiKeyAuth.Scopes"
+	AccessTokenAuthScopes    = "AccessTokenAuth.Scopes"
+	AdminTokenAuthScopes     = "AdminTokenAuth.Scopes"
+	ApiKeyAuthScopes         = "ApiKeyAuth.Scopes"
+	Supabase1TokenAuthScopes = "Supabase1TokenAuth.Scopes"
+	Supabase2TeamAuthScopes  = "Supabase2TeamAuth.Scopes"
 )
 
 // Defines values for NodeStatus.
@@ -20,6 +22,7 @@ const (
 	NodeStatusConnecting NodeStatus = "connecting"
 	NodeStatusDraining   NodeStatus = "draining"
 	NodeStatusReady      NodeStatus = "ready"
+	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
 // Defines values for TemplateBuildStatus.
