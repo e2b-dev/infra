@@ -38,9 +38,9 @@ func CreateMapping(
 
 		if blockLength > 0 {
 			m := &BuildMap{
-				Offset:             uint64(int64(startBlock) * int64(blockSize)),
+				Offset:             uint64(startBlock) * blockSize,
 				BuildId:            *buildId,
-				Length:             uint64(blockLength) * uint64(blockSize),
+				Length:             uint64(blockLength) * blockSize,
 				BuildStorageOffset: buildStorageOffset,
 			}
 
