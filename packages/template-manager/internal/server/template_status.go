@@ -19,11 +19,6 @@ func (s *serverStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 		return nil, fmt.Errorf("error while getting build info, maybe already expired")
 	}
 
-	if buildInfo.IsFailed() {
-		logger.Error("Template build failed")
-		return nil, fmt.Errorf("template build failed")
-	}
-
 	return &template_manager.TemplateBuildStatusResponse{
 		Status:   buildInfo.GetStatus(),
 		Metadata: buildInfo.GetMetadata(),
