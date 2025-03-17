@@ -131,7 +131,7 @@ func (p *SandboxProxy) proxyHandler(transport *http.Transport) func(w http.Respo
 		// Proxy the request
 		proxy := httputil.NewSingleHostReverseProxy(targetUrl)
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-			logger.Error("Reverse proxy error")
+			logger.Error("Reverse proxy error", zap.Error(err))
 
 			if p.isBrowser(r.UserAgent()) {
 				res, resErr := p.buildHtmlClosedPortError(sandboxID, r.Host, sandboxPort)
