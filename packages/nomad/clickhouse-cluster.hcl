@@ -144,7 +144,7 @@ EOH
           "local/macros.xml:/etc/clickhouse-server/config.d/macros.xml",
           "local/storage_config.xml:/etc/clickhouse-server/config.d/storage.xml",
           "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
-          "local/storage:/var/lib/clickhouse"
+          "/var/lib/clickhouse:/var/lib/clickhouse"
         ]
       }
 
