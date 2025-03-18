@@ -7,6 +7,11 @@ variable "environment" {
   type        = string
 }
 
+variable "notification_email_secret_version" {
+  # we're just using this variable to propagate the whole dependency
+  type = any
+}
+
 variable "cloudflare_api_token_secret_name" {
   type = string
 }

@@ -213,6 +213,8 @@ resource "google_secret_manager_secret" "clickhouse_password" {
   replication {
     auto {}
   }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
 resource "google_secret_manager_secret_version" "clickhouse_password_value" {
@@ -220,4 +222,23 @@ resource "google_secret_manager_secret_version" "clickhouse_password_value" {
 
   secret_data = random_password.clickhouse_password.result
 }
+
+
+
+resource "google_secret_manager_secret" "notification_email" {
+  secret_id = "${var.prefix}notification-email"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "notification_email_value" {
+  secret = google_secret_manager_secret.notification_email.id
+
+  secret_data = "placeholder@example.com"
+}
+
 
