@@ -32,18 +32,22 @@ job "clickhouse" {
       name = "clickhouse"
       port = "clickhouse"
 
-      check {
-        type     = "http"
-        path     = "/ping"
-        port     = "clickhouse_http"
-        interval = "10s"
-        timeout  = "5s"
-      }
 
       tags = [
         "traefik.enable=true",
         "traefik.http.routers.clickhouse.rule=Host(`clickhouse.service.consul`)",
       ]
+
+      check {
+        type     = "script"
+        command  = "/bin/sh"
+        args     = ["-c", "go run github.com/e2b-dev/infra/packages/shared@4cef36598aac3e82117c8414896384ba8a23e892 -direction up"]
+        interval = "10s"
+        timeout  = "300s"
+        task     = "migrate-clickhouse"
+      
+
+      }
     }
 
     task "clickhouse-server" {
@@ -139,8 +143,6 @@ EOF
         sidecar = false
       }
 
-
-
       env {
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
         CLICKHOUSE_USERNAME          = "${clickhouse_username}"
@@ -151,9 +153,18 @@ EOF
       config {
         network_mode = "host"
         image        = "golang:1.23"
-        command      = "go"
-        args         = ["run", "github.com/e2b-dev/infra/packages/shared@store-clickhouse-table-metadata-e2b-1787", "-direction", "up"]
+        command      = "/bin/sh"
+        args = [
+          "-c",
+          "go run github.com/e2b-dev/infra/packages/shared@4cef36598aac3e82117c8414896384ba8a23e892 -direction up"
+        ]
 
+        mount {
+          type     = "bind"
+          target   = "/output"
+          source   = "/tmp"
+          readonly = false
+        }
       }
 
       resources {
