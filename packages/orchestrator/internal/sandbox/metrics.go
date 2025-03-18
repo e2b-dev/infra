@@ -57,13 +57,13 @@ func (s *Sandbox) LogMetricsLoki(ctx context.Context) {
 		if err != nil {
 			sbxlogger.E(s).Warn("failed to get metrics", zap.Error(err))
 		} else {
-			sbxlogger.E(s).Metrics(sbxlogger.SandboxMetricsFields{
-				Timestamp:      m.Timestamp,
-				CPUCount:       uint32(m.CPUCount),
-				CPUUsedPercent: float32(m.CPUUsedPercent),
-				MemTotalMiB:    uint64(m.MemTotalMiB),
-				MemUsedMiB:     uint64(m.MemUsedMiB),
-			})
+			// sbxlogger.E(s).Metrics(sbxlogger.SandboxMetricsFields{
+			// 	Timestamp:      metrics.Timestamp,
+			// 	CPUCount:       metrics.CPUCount,
+			// 	CPUUsedPercent: metrics.CPUUsedPercent,
+			// 	MemTotalMiB:    metrics.MemTotalMiB,
+			// 	MemUsedMiB:     metrics.MemUsedMiB,
+			// })
 
 			// Round percentage to 2 decimal places
 			memUsedPct := float32(math.Floor(float64(m.MemUsedMiB)/float64(m.MemTotalMiB)*10000) / 100)
