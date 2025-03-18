@@ -108,7 +108,7 @@ job "clickhouse" {
         </policies>
     </storage_configuration>
     <merge_tree>
-        <storage_policy>s3_plain</storage_policy>
+        <storage_policy>gcs_main</storage_policy>
     </merge_tree>
 </clickhouse>
 EOF
