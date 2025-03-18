@@ -35,6 +35,8 @@ linters-settings:
     confidence: 0
   stylecheck:
     checks: [all, -ST1000, -ST1020]
+  usetesting:
+    os-setenv: true
 
 linters:
   enable:
@@ -67,12 +69,11 @@ linters:
     - importas
     - reassign
     - tagalign
-    - tenv
     - predeclared
-    - interfacer
     - unconvert
     - unparam
     - usestdlibvars
+    - usetesting
     - wastedassign
     - wsl
     - gofmt
