@@ -11,9 +11,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -78,10 +78,10 @@ func (a *APIStore) GetApikeys(c *gin.Context) {
 			}
 		}
 
-		keyValue := strings.Split(apiKey.APIKey, auth.ApiKeyPrefix)[1]
+		keyValue := strings.Split(apiKey.APIKey, keys.ApiKeyPrefix)[1]
 
 		// TODO: remove this once we migrate to hashed API keys
-		KeyMask, err := auth.MaskKey(auth.ApiKeyPrefix, keyValue)
+		KeyMask, err := keys.MaskKey(keys.ApiKeyPrefix, keyValue)
 		if err != nil {
 			fmt.Printf("masking API key failed %d: %v", apiKey.ID, err)
 			continue

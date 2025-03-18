@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
 
@@ -83,9 +85,21 @@ func seed(db *db.DB, data SeedData) error {
 	}
 
 	// Team API Key
+	hasher := keys.NewSHA256Hashing()
+	apiKeyBytes, err := hex.DecodeString(data.APIKey)
+	if err != nil {
+		return fmt.Errorf("failed to decode api key: %w", err)
+	}
+	hash := hasher.Hash(apiKeyBytes)
+	mask, err := keys.MaskKey(keys.ApiKeyPrefix, data.APIKey)
+	if err != nil {
+		return fmt.Errorf("failed to mask api key: %w", err)
+	}
 	_, err = db.Client.TeamAPIKey.Create().
 		SetTeam(t).
 		SetAPIKey(data.APIKey).
+		SetAPIKeyHash(hash).
+		SetAPIKeyMask(mask).
 		SetName("Integration Tests API Key").
 		Save(ctx)
 	if err != nil {

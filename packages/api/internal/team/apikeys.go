@@ -7,14 +7,14 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func CreateAPIKey(ctx context.Context, db *db.DB, teamID uuid.UUID, userID uuid.UUID, name string) (*models.TeamAPIKey, error) {
-	teamApiKey, err := auth.GenerateKey(auth.ApiKeyPrefix)
+	teamApiKey, err := keys.GenerateKey(keys.ApiKeyPrefix)
 	if err != nil {
 		errMsg := fmt.Errorf("error when generating team API key: %w", err)
 		telemetry.ReportCriticalError(ctx, errMsg)

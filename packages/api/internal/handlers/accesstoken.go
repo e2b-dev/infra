@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -30,7 +30,7 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 		return
 	}
 
-	accessToken, err := auth.GenerateKey(auth.AccessTokenPrefix)
+	accessToken, err := keys.GenerateKey(keys.AccessTokenPrefix)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when generating access token: %s", err))
 

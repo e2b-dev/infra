@@ -1,4 +1,4 @@
-package auth
+package keys
 
 import (
 	"crypto/sha256"
@@ -6,14 +6,14 @@ import (
 	"fmt"
 )
 
-type sha256Hashing struct {
+type Sha256Hashing struct {
 }
 
-func NewSHA256Hashing() *sha256Hashing {
-	return &sha256Hashing{}
+func NewSHA256Hashing() *Sha256Hashing {
+	return &Sha256Hashing{}
 }
 
-func (h *sha256Hashing) Hash(key []byte) string {
+func (h *Sha256Hashing) Hash(key []byte) string {
 	hashBytes := sha256.Sum256(key)
 
 	hash64 := base64.RawStdEncoding.EncodeToString(hashBytes[:])
