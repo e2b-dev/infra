@@ -24,12 +24,15 @@ job "clickhouse-cluster" {
         volumes = [
           "local/keeper_config.xml:/etc/clickhouse-server/config.d/keeper_config.xml",
           "local/storage_config.xml:/etc/clickhouse-server/config.d/storage.xml",
+          "/var/lib/clickhouse-keeper:/var/lib/clickhouse-keeper",
         ]
       }
 
       template {
         data = <<EOH
 <clickhouse>
+
+    <config_path>/var/lib/clickhouse-keeper</config_path>
 
     <logger>
         <console>1</console>
@@ -54,18 +57,7 @@ job "clickhouse-cluster" {
 
     <storage_configuration>
         <disks>
-            <log_s3_plain>
-                <type>s3_plain</type>
-                <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/keeper/logs/</endpoint>
-                <access_key_id>${hmac_key}</access_key_id>
-                <secret_access_key>${hmac_secret}</secret_access_key>
-            </log_s3_plain>
-            <snapshot_s3_plain>
-                <type>s3_plain</type>
-                <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/keeper/snapshots/</endpoint>
-                <access_key_id>${hmac_key}</access_key_id>
-                <secret_access_key>${hmac_secret}</secret_access_key>
-            </snapshot_s3_plain>
+
         </disks>
         <policies>
             <keeper_logs>
@@ -118,7 +110,7 @@ EOH
       }
       port "tcp" {
         to = 9000
-                static = 9000
+        static = 9000
 
       }
       port "interserver" {
@@ -151,6 +143,7 @@ EOH
       template {
         data = <<EOH
 <clickhouse>
+    
     <logger>
         <console>1</console>
     </logger>

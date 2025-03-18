@@ -138,7 +138,7 @@ EOF
         sidecar = false
       }
 
-            env {
+      env {
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
         CLICKHOUSE_USERNAME           = "${clickhouse_username}"
         CLICKHOUSE_PASSWORD           = "${clickhouse_password}"
