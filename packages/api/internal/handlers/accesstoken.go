@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -47,7 +46,6 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 		SetAccessToken(accessToken.PrefixedRawValue).
 		SetAccessTokenHash(accessToken.HashedValue).
 		SetAccessTokenMask(accessToken.MaskedValue).
-		SetCreatedAt(time.Now()).
 		SetName(body.Name).
 		Save(ctx)
 

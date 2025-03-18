@@ -31,7 +31,6 @@ func CreateAPIKey(ctx context.Context, db *db.DB, teamID uuid.UUID, userID uuid.
 		SetAPIKey(teamApiKey.PrefixedRawValue).
 		SetAPIKeyMask(teamApiKey.MaskedValue).
 		SetAPIKeyHash(teamApiKey.HashedValue).
-		SetCreatedAt(time.Now()).
 		SetName(name).
 		Save(ctx)
 	if err != nil {
