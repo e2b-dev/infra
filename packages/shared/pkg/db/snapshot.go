@@ -226,7 +226,7 @@ func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSan
 		Order(models.Desc(snapshot.FieldCreatedAt))
 
 	if metadata != nil {
-		query = query.Where(snapshot.MetadataEq(*metadata))
+		query = query.Where(snapshot.MetadataEQ(*metadata))
 	}
 
 	if limit != nil {
