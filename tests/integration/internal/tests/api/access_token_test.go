@@ -20,7 +20,7 @@ func TestCreateAccessToken(t *testing.T) {
 
 	c := setup.GetAPIClient()
 
-	resp, err := c.PostAccesstokensWithResponse(ctx, api.PostAccesstokensJSONRequestBody{
+	resp, err := c.PostAccessTokensWithResponse(ctx, api.PostAccessTokensJSONRequestBody{
 		Name: "test",
 	}, setup.WithSupabaseToken(t))
 	if err != nil {
@@ -40,7 +40,7 @@ func TestDeleteAccessToken(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	t.Run("succeeds", func(t *testing.T) {
-		respC, err := c.PostAccesstokensWithResponse(ctx, api.PostAccesstokensJSONRequestBody{
+		respC, err := c.PostAccessTokensWithResponse(ctx, api.PostAccessTokensJSONRequestBody{
 			Name: "test",
 		}, setup.WithSupabaseToken(t))
 		if err != nil {
@@ -48,7 +48,7 @@ func TestDeleteAccessToken(t *testing.T) {
 		}
 		assert.Equal(t, http.StatusCreated, respC.StatusCode())
 
-		respD, err := c.DeleteAccesstokensAccessTokenIDWithResponse(ctx, respC.JSON201.Id.String(), setup.WithSupabaseToken(t))
+		respD, err := c.DeleteAccessTokensAccessTokenIDWithResponse(ctx, respC.JSON201.Id.String(), setup.WithSupabaseToken(t))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -56,7 +56,7 @@ func TestDeleteAccessToken(t *testing.T) {
 	})
 
 	t.Run("id does not exist", func(t *testing.T) {
-		respD, err := c.DeleteAccesstokensAccessTokenIDWithResponse(ctx, uuid.New().String(), setup.WithSupabaseToken(t))
+		respD, err := c.DeleteAccessTokensAccessTokenIDWithResponse(ctx, uuid.New().String(), setup.WithSupabaseToken(t))
 		if err != nil {
 			t.Fatal(err)
 		}

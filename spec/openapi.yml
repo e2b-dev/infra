@@ -679,8 +679,8 @@ tags:
   - name: templates
   - name: sandboxes
   - name: auth
-  - name: accesstokens
-  - name: apikeys
+  - name: access-tokens
+  - name: api-keys
 
 paths:
   /health:
@@ -1261,10 +1261,10 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /accesstokens:
+  /access-tokens:
     post:
       description: Create a new access token
-      tags: [accesstokens]
+      tags: [access-tokens]
       security:
         - Supabase1TokenAuth: []
       requestBody:
@@ -1285,10 +1285,10 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /accesstokens/{accessTokenID}:
+  /access-tokens/{accessTokenID}:
     delete:
       description: Delete an access token
-      tags: [accesstokens]
+      tags: [access-tokens]
       security:
         - Supabase1TokenAuth: []
       parameters:
@@ -1303,10 +1303,10 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /apikeys:
+  /api-keys:
     get:
       description: List all team API keys
-      tags: [apikeys]
+      tags: [api-keys]
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
@@ -1325,7 +1325,7 @@ paths:
           $ref: "#/components/responses/500"
     post:
       description: Create a new team API key
-      tags: [apikeys]
+      tags: [api-keys]
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
@@ -1347,10 +1347,10 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /apikeys/{apiKeyID}:
+  /api-keys/{apiKeyID}:
     patch:
       description: Update a team API key
-      tags: [apikeys]
+      tags: [api-keys]
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
@@ -1373,7 +1373,7 @@ paths:
           $ref: "#/components/responses/500"
     delete:
       description: Delete a team API key
-      tags: [apikeys]
+      tags: [api-keys]
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []

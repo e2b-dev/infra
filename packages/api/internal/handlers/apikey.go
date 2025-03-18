@@ -19,7 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) PatchApikeysApiKeyID(c *gin.Context, apiKeyID string) {
+func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 	ctx := c.Request.Context()
 
 	body, err := utils.ParseBody[api.UpdateTeamAPIKey](ctx, c)
@@ -55,7 +55,7 @@ func (a *APIStore) PatchApikeysApiKeyID(c *gin.Context, apiKeyID string) {
 	c.Status(http.StatusAccepted)
 }
 
-func (a *APIStore) GetApikeys(c *gin.Context) {
+func (a *APIStore) GetApiKeys(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	teamID := a.GetTeamInfo(c).Team.ID
@@ -103,7 +103,7 @@ func (a *APIStore) GetApikeys(c *gin.Context) {
 	c.JSON(http.StatusOK, teamAPIKeys)
 }
 
-func (a *APIStore) DeleteApikeysApiKeyID(c *gin.Context, apiKeyID string) {
+func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 	ctx := c.Request.Context()
 
 	apiKeyIDParsed, err := uuid.Parse(apiKeyID)
@@ -130,7 +130,7 @@ func (a *APIStore) DeleteApikeysApiKeyID(c *gin.Context, apiKeyID string) {
 	c.Status(http.StatusNoContent)
 }
 
-func (a *APIStore) PostApikeys(c *gin.Context) {
+func (a *APIStore) PostApiKeys(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	userID := a.GetUserID(c)

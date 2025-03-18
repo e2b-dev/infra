@@ -14,23 +14,23 @@ import (
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
-	// (POST /accesstokens)
-	PostAccesstokens(c *gin.Context)
+	// (POST /access-tokens)
+	PostAccessTokens(c *gin.Context)
 
-	// (DELETE /accesstokens/{accessTokenID})
-	DeleteAccesstokensAccessTokenID(c *gin.Context, accessTokenID AccessTokenID)
+	// (DELETE /access-tokens/{accessTokenID})
+	DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID AccessTokenID)
 
-	// (GET /apikeys)
-	GetApikeys(c *gin.Context)
+	// (GET /api-keys)
+	GetApiKeys(c *gin.Context)
 
-	// (POST /apikeys)
-	PostApikeys(c *gin.Context)
+	// (POST /api-keys)
+	PostApiKeys(c *gin.Context)
 
-	// (DELETE /apikeys/{apiKeyID})
-	DeleteApikeysApiKeyID(c *gin.Context, apiKeyID ApiKeyID)
+	// (DELETE /api-keys/{apiKeyID})
+	DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID ApiKeyID)
 
-	// (PATCH /apikeys/{apiKeyID})
-	PatchApikeysApiKeyID(c *gin.Context, apiKeyID ApiKeyID)
+	// (PATCH /api-keys/{apiKeyID})
+	PatchApiKeysApiKeyID(c *gin.Context, apiKeyID ApiKeyID)
 
 	// (GET /health)
 	GetHealth(c *gin.Context)
@@ -111,8 +111,8 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(c *gin.Context)
 
-// PostAccesstokens operation middleware
-func (siw *ServerInterfaceWrapper) PostAccesstokens(c *gin.Context) {
+// PostAccessTokens operation middleware
+func (siw *ServerInterfaceWrapper) PostAccessTokens(c *gin.Context) {
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
@@ -123,11 +123,11 @@ func (siw *ServerInterfaceWrapper) PostAccesstokens(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.PostAccesstokens(c)
+	siw.Handler.PostAccessTokens(c)
 }
 
-// DeleteAccesstokensAccessTokenID operation middleware
-func (siw *ServerInterfaceWrapper) DeleteAccesstokensAccessTokenID(c *gin.Context) {
+// DeleteAccessTokensAccessTokenID operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAccessTokensAccessTokenID(c *gin.Context) {
 
 	var err error
 
@@ -149,11 +149,11 @@ func (siw *ServerInterfaceWrapper) DeleteAccesstokensAccessTokenID(c *gin.Contex
 		}
 	}
 
-	siw.Handler.DeleteAccesstokensAccessTokenID(c, accessTokenID)
+	siw.Handler.DeleteAccessTokensAccessTokenID(c, accessTokenID)
 }
 
-// GetApikeys operation middleware
-func (siw *ServerInterfaceWrapper) GetApikeys(c *gin.Context) {
+// GetApiKeys operation middleware
+func (siw *ServerInterfaceWrapper) GetApiKeys(c *gin.Context) {
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
@@ -166,11 +166,11 @@ func (siw *ServerInterfaceWrapper) GetApikeys(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetApikeys(c)
+	siw.Handler.GetApiKeys(c)
 }
 
-// PostApikeys operation middleware
-func (siw *ServerInterfaceWrapper) PostApikeys(c *gin.Context) {
+// PostApiKeys operation middleware
+func (siw *ServerInterfaceWrapper) PostApiKeys(c *gin.Context) {
 
 	c.Set(Supabase1TokenAuthScopes, []string{})
 
@@ -183,11 +183,11 @@ func (siw *ServerInterfaceWrapper) PostApikeys(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.PostApikeys(c)
+	siw.Handler.PostApiKeys(c)
 }
 
-// DeleteApikeysApiKeyID operation middleware
-func (siw *ServerInterfaceWrapper) DeleteApikeysApiKeyID(c *gin.Context) {
+// DeleteApiKeysApiKeyID operation middleware
+func (siw *ServerInterfaceWrapper) DeleteApiKeysApiKeyID(c *gin.Context) {
 
 	var err error
 
@@ -211,11 +211,11 @@ func (siw *ServerInterfaceWrapper) DeleteApikeysApiKeyID(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteApikeysApiKeyID(c, apiKeyID)
+	siw.Handler.DeleteApiKeysApiKeyID(c, apiKeyID)
 }
 
-// PatchApikeysApiKeyID operation middleware
-func (siw *ServerInterfaceWrapper) PatchApikeysApiKeyID(c *gin.Context) {
+// PatchApiKeysApiKeyID operation middleware
+func (siw *ServerInterfaceWrapper) PatchApiKeysApiKeyID(c *gin.Context) {
 
 	var err error
 
@@ -239,7 +239,7 @@ func (siw *ServerInterfaceWrapper) PatchApikeysApiKeyID(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.PatchApikeysApiKeyID(c, apiKeyID)
+	siw.Handler.PatchApiKeysApiKeyID(c, apiKeyID)
 }
 
 // GetHealth operation middleware
@@ -920,12 +920,12 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
-	router.POST(options.BaseURL+"/accesstokens", wrapper.PostAccesstokens)
-	router.DELETE(options.BaseURL+"/accesstokens/:accessTokenID", wrapper.DeleteAccesstokensAccessTokenID)
-	router.GET(options.BaseURL+"/apikeys", wrapper.GetApikeys)
-	router.POST(options.BaseURL+"/apikeys", wrapper.PostApikeys)
-	router.DELETE(options.BaseURL+"/apikeys/:apiKeyID", wrapper.DeleteApikeysApiKeyID)
-	router.PATCH(options.BaseURL+"/apikeys/:apiKeyID", wrapper.PatchApikeysApiKeyID)
+	router.POST(options.BaseURL+"/access-tokens", wrapper.PostAccessTokens)
+	router.DELETE(options.BaseURL+"/access-tokens/:accessTokenID", wrapper.DeleteAccessTokensAccessTokenID)
+	router.GET(options.BaseURL+"/api-keys", wrapper.GetApiKeys)
+	router.POST(options.BaseURL+"/api-keys", wrapper.PostApiKeys)
+	router.DELETE(options.BaseURL+"/api-keys/:apiKeyID", wrapper.DeleteApiKeysApiKeyID)
+	router.PATCH(options.BaseURL+"/api-keys/:apiKeyID", wrapper.PatchApiKeysApiKeyID)
 	router.GET(options.BaseURL+"/health", wrapper.GetHealth)
 	router.GET(options.BaseURL+"/nodes", wrapper.GetNodes)
 	router.GET(options.BaseURL+"/nodes/:nodeID", wrapper.GetNodesNodeID)

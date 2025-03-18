@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) PostAccesstokens(c *gin.Context) {
+func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	userID := a.GetUserID(c)
@@ -67,7 +67,7 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 	})
 }
 
-func (a *APIStore) DeleteAccesstokensAccessTokenID(c *gin.Context, accessTokenID string) {
+func (a *APIStore) DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID string) {
 	ctx := c.Request.Context()
 
 	userID := a.GetUserID(c)

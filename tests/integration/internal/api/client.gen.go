@@ -89,29 +89,29 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
-	// PostAccesstokensWithBody request with any body
-	PostAccesstokensWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PostAccessTokensWithBody request with any body
+	PostAccessTokensWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	PostAccesstokens(ctx context.Context, body PostAccesstokensJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PostAccessTokens(ctx context.Context, body PostAccessTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeleteAccesstokensAccessTokenID request
-	DeleteAccesstokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// DeleteAccessTokensAccessTokenID request
+	DeleteAccessTokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetApikeys request
-	GetApikeys(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetApiKeys request
+	GetApiKeys(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PostApikeysWithBody request with any body
-	PostApikeysWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PostApiKeysWithBody request with any body
+	PostApiKeysWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	PostApikeys(ctx context.Context, body PostApikeysJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PostApiKeys(ctx context.Context, body PostApiKeysJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeleteApikeysApiKeyID request
-	DeleteApikeysApiKeyID(ctx context.Context, apiKeyID ApiKeyID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// DeleteApiKeysApiKeyID request
+	DeleteApiKeysApiKeyID(ctx context.Context, apiKeyID ApiKeyID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PatchApikeysApiKeyIDWithBody request with any body
-	PatchApikeysApiKeyIDWithBody(ctx context.Context, apiKeyID ApiKeyID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PatchApiKeysApiKeyIDWithBody request with any body
+	PatchApiKeysApiKeyIDWithBody(ctx context.Context, apiKeyID ApiKeyID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	PatchApikeysApiKeyID(ctx context.Context, apiKeyID ApiKeyID, body PatchApikeysApiKeyIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PatchApiKeysApiKeyID(ctx context.Context, apiKeyID ApiKeyID, body PatchApiKeysApiKeyIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -199,8 +199,8 @@ type ClientInterface interface {
 	GetTemplatesTemplateIDBuildsBuildIDStatus(ctx context.Context, templateID TemplateID, buildID BuildID, params *GetTemplatesTemplateIDBuildsBuildIDStatusParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-func (c *Client) PostAccesstokensWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostAccesstokensRequestWithBody(c.Server, contentType, body)
+func (c *Client) PostAccessTokensWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostAccessTokensRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -211,8 +211,8 @@ func (c *Client) PostAccesstokensWithBody(ctx context.Context, contentType strin
 	return c.Client.Do(req)
 }
 
-func (c *Client) PostAccesstokens(ctx context.Context, body PostAccesstokensJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostAccesstokensRequest(c.Server, body)
+func (c *Client) PostAccessTokens(ctx context.Context, body PostAccessTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostAccessTokensRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -223,8 +223,8 @@ func (c *Client) PostAccesstokens(ctx context.Context, body PostAccesstokensJSON
 	return c.Client.Do(req)
 }
 
-func (c *Client) DeleteAccesstokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteAccesstokensAccessTokenIDRequest(c.Server, accessTokenID)
+func (c *Client) DeleteAccessTokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAccessTokensAccessTokenIDRequest(c.Server, accessTokenID)
 	if err != nil {
 		return nil, err
 	}
@@ -235,8 +235,8 @@ func (c *Client) DeleteAccesstokensAccessTokenID(ctx context.Context, accessToke
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetApikeys(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetApikeysRequest(c.Server)
+func (c *Client) GetApiKeys(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiKeysRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -247,8 +247,8 @@ func (c *Client) GetApikeys(ctx context.Context, reqEditors ...RequestEditorFn) 
 	return c.Client.Do(req)
 }
 
-func (c *Client) PostApikeysWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostApikeysRequestWithBody(c.Server, contentType, body)
+func (c *Client) PostApiKeysWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiKeysRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -259,8 +259,8 @@ func (c *Client) PostApikeysWithBody(ctx context.Context, contentType string, bo
 	return c.Client.Do(req)
 }
 
-func (c *Client) PostApikeys(ctx context.Context, body PostApikeysJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostApikeysRequest(c.Server, body)
+func (c *Client) PostApiKeys(ctx context.Context, body PostApiKeysJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiKeysRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -271,8 +271,8 @@ func (c *Client) PostApikeys(ctx context.Context, body PostApikeysJSONRequestBod
 	return c.Client.Do(req)
 }
 
-func (c *Client) DeleteApikeysApiKeyID(ctx context.Context, apiKeyID ApiKeyID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteApikeysApiKeyIDRequest(c.Server, apiKeyID)
+func (c *Client) DeleteApiKeysApiKeyID(ctx context.Context, apiKeyID ApiKeyID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiKeysApiKeyIDRequest(c.Server, apiKeyID)
 	if err != nil {
 		return nil, err
 	}
@@ -283,8 +283,8 @@ func (c *Client) DeleteApikeysApiKeyID(ctx context.Context, apiKeyID ApiKeyID, r
 	return c.Client.Do(req)
 }
 
-func (c *Client) PatchApikeysApiKeyIDWithBody(ctx context.Context, apiKeyID ApiKeyID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPatchApikeysApiKeyIDRequestWithBody(c.Server, apiKeyID, contentType, body)
+func (c *Client) PatchApiKeysApiKeyIDWithBody(ctx context.Context, apiKeyID ApiKeyID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchApiKeysApiKeyIDRequestWithBody(c.Server, apiKeyID, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -295,8 +295,8 @@ func (c *Client) PatchApikeysApiKeyIDWithBody(ctx context.Context, apiKeyID ApiK
 	return c.Client.Do(req)
 }
 
-func (c *Client) PatchApikeysApiKeyID(ctx context.Context, apiKeyID ApiKeyID, body PatchApikeysApiKeyIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPatchApikeysApiKeyIDRequest(c.Server, apiKeyID, body)
+func (c *Client) PatchApiKeysApiKeyID(ctx context.Context, apiKeyID ApiKeyID, body PatchApiKeysApiKeyIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchApiKeysApiKeyIDRequest(c.Server, apiKeyID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -679,19 +679,19 @@ func (c *Client) GetTemplatesTemplateIDBuildsBuildIDStatus(ctx context.Context, 
 	return c.Client.Do(req)
 }
 
-// NewPostAccesstokensRequest calls the generic PostAccesstokens builder with application/json body
-func NewPostAccesstokensRequest(server string, body PostAccesstokensJSONRequestBody) (*http.Request, error) {
+// NewPostAccessTokensRequest calls the generic PostAccessTokens builder with application/json body
+func NewPostAccessTokensRequest(server string, body PostAccessTokensJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewPostAccesstokensRequestWithBody(server, "application/json", bodyReader)
+	return NewPostAccessTokensRequestWithBody(server, "application/json", bodyReader)
 }
 
-// NewPostAccesstokensRequestWithBody generates requests for PostAccesstokens with any type of body
-func NewPostAccesstokensRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewPostAccessTokensRequestWithBody generates requests for PostAccessTokens with any type of body
+func NewPostAccessTokensRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -699,7 +699,7 @@ func NewPostAccesstokensRequestWithBody(server string, contentType string, body 
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/accesstokens")
+	operationPath := fmt.Sprintf("/access-tokens")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -719,8 +719,8 @@ func NewPostAccesstokensRequestWithBody(server string, contentType string, body 
 	return req, nil
 }
 
-// NewDeleteAccesstokensAccessTokenIDRequest generates requests for DeleteAccesstokensAccessTokenID
-func NewDeleteAccesstokensAccessTokenIDRequest(server string, accessTokenID AccessTokenID) (*http.Request, error) {
+// NewDeleteAccessTokensAccessTokenIDRequest generates requests for DeleteAccessTokensAccessTokenID
+func NewDeleteAccessTokensAccessTokenIDRequest(server string, accessTokenID AccessTokenID) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -735,7 +735,7 @@ func NewDeleteAccesstokensAccessTokenIDRequest(server string, accessTokenID Acce
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/accesstokens/%s", pathParam0)
+	operationPath := fmt.Sprintf("/access-tokens/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -753,8 +753,8 @@ func NewDeleteAccesstokensAccessTokenIDRequest(server string, accessTokenID Acce
 	return req, nil
 }
 
-// NewGetApikeysRequest generates requests for GetApikeys
-func NewGetApikeysRequest(server string) (*http.Request, error) {
+// NewGetApiKeysRequest generates requests for GetApiKeys
+func NewGetApiKeysRequest(server string) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -762,7 +762,7 @@ func NewGetApikeysRequest(server string) (*http.Request, error) {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/apikeys")
+	operationPath := fmt.Sprintf("/api-keys")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -780,19 +780,19 @@ func NewGetApikeysRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
-// NewPostApikeysRequest calls the generic PostApikeys builder with application/json body
-func NewPostApikeysRequest(server string, body PostApikeysJSONRequestBody) (*http.Request, error) {
+// NewPostApiKeysRequest calls the generic PostApiKeys builder with application/json body
+func NewPostApiKeysRequest(server string, body PostApiKeysJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewPostApikeysRequestWithBody(server, "application/json", bodyReader)
+	return NewPostApiKeysRequestWithBody(server, "application/json", bodyReader)
 }
 
-// NewPostApikeysRequestWithBody generates requests for PostApikeys with any type of body
-func NewPostApikeysRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewPostApiKeysRequestWithBody generates requests for PostApiKeys with any type of body
+func NewPostApiKeysRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -800,7 +800,7 @@ func NewPostApikeysRequestWithBody(server string, contentType string, body io.Re
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/apikeys")
+	operationPath := fmt.Sprintf("/api-keys")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -820,8 +820,8 @@ func NewPostApikeysRequestWithBody(server string, contentType string, body io.Re
 	return req, nil
 }
 
-// NewDeleteApikeysApiKeyIDRequest generates requests for DeleteApikeysApiKeyID
-func NewDeleteApikeysApiKeyIDRequest(server string, apiKeyID ApiKeyID) (*http.Request, error) {
+// NewDeleteApiKeysApiKeyIDRequest generates requests for DeleteApiKeysApiKeyID
+func NewDeleteApiKeysApiKeyIDRequest(server string, apiKeyID ApiKeyID) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -836,7 +836,7 @@ func NewDeleteApikeysApiKeyIDRequest(server string, apiKeyID ApiKeyID) (*http.Re
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/apikeys/%s", pathParam0)
+	operationPath := fmt.Sprintf("/api-keys/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -854,19 +854,19 @@ func NewDeleteApikeysApiKeyIDRequest(server string, apiKeyID ApiKeyID) (*http.Re
 	return req, nil
 }
 
-// NewPatchApikeysApiKeyIDRequest calls the generic PatchApikeysApiKeyID builder with application/json body
-func NewPatchApikeysApiKeyIDRequest(server string, apiKeyID ApiKeyID, body PatchApikeysApiKeyIDJSONRequestBody) (*http.Request, error) {
+// NewPatchApiKeysApiKeyIDRequest calls the generic PatchApiKeysApiKeyID builder with application/json body
+func NewPatchApiKeysApiKeyIDRequest(server string, apiKeyID ApiKeyID, body PatchApiKeysApiKeyIDJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewPatchApikeysApiKeyIDRequestWithBody(server, apiKeyID, "application/json", bodyReader)
+	return NewPatchApiKeysApiKeyIDRequestWithBody(server, apiKeyID, "application/json", bodyReader)
 }
 
-// NewPatchApikeysApiKeyIDRequestWithBody generates requests for PatchApikeysApiKeyID with any type of body
-func NewPatchApikeysApiKeyIDRequestWithBody(server string, apiKeyID ApiKeyID, contentType string, body io.Reader) (*http.Request, error) {
+// NewPatchApiKeysApiKeyIDRequestWithBody generates requests for PatchApiKeysApiKeyID with any type of body
+func NewPatchApiKeysApiKeyIDRequestWithBody(server string, apiKeyID ApiKeyID, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -881,7 +881,7 @@ func NewPatchApikeysApiKeyIDRequestWithBody(server string, apiKeyID ApiKeyID, co
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/apikeys/%s", pathParam0)
+	operationPath := fmt.Sprintf("/api-keys/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1914,29 +1914,29 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
-	// PostAccesstokensWithBodyWithResponse request with any body
-	PostAccesstokensWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAccesstokensResponse, error)
+	// PostAccessTokensWithBodyWithResponse request with any body
+	PostAccessTokensWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAccessTokensResponse, error)
 
-	PostAccesstokensWithResponse(ctx context.Context, body PostAccesstokensJSONRequestBody, reqEditors ...RequestEditorFn) (*PostAccesstokensResponse, error)
+	PostAccessTokensWithResponse(ctx context.Context, body PostAccessTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*PostAccessTokensResponse, error)
 
-	// DeleteAccesstokensAccessTokenIDWithResponse request
-	DeleteAccesstokensAccessTokenIDWithResponse(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*DeleteAccesstokensAccessTokenIDResponse, error)
+	// DeleteAccessTokensAccessTokenIDWithResponse request
+	DeleteAccessTokensAccessTokenIDWithResponse(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*DeleteAccessTokensAccessTokenIDResponse, error)
 
-	// GetApikeysWithResponse request
-	GetApikeysWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApikeysResponse, error)
+	// GetApiKeysWithResponse request
+	GetApiKeysWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiKeysResponse, error)
 
-	// PostApikeysWithBodyWithResponse request with any body
-	PostApikeysWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApikeysResponse, error)
+	// PostApiKeysWithBodyWithResponse request with any body
+	PostApiKeysWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiKeysResponse, error)
 
-	PostApikeysWithResponse(ctx context.Context, body PostApikeysJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApikeysResponse, error)
+	PostApiKeysWithResponse(ctx context.Context, body PostApiKeysJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiKeysResponse, error)
 
-	// DeleteApikeysApiKeyIDWithResponse request
-	DeleteApikeysApiKeyIDWithResponse(ctx context.Context, apiKeyID ApiKeyID, reqEditors ...RequestEditorFn) (*DeleteApikeysApiKeyIDResponse, error)
+	// DeleteApiKeysApiKeyIDWithResponse request
+	DeleteApiKeysApiKeyIDWithResponse(ctx context.Context, apiKeyID ApiKeyID, reqEditors ...RequestEditorFn) (*DeleteApiKeysApiKeyIDResponse, error)
 
-	// PatchApikeysApiKeyIDWithBodyWithResponse request with any body
-	PatchApikeysApiKeyIDWithBodyWithResponse(ctx context.Context, apiKeyID ApiKeyID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchApikeysApiKeyIDResponse, error)
+	// PatchApiKeysApiKeyIDWithBodyWithResponse request with any body
+	PatchApiKeysApiKeyIDWithBodyWithResponse(ctx context.Context, apiKeyID ApiKeyID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchApiKeysApiKeyIDResponse, error)
 
-	PatchApikeysApiKeyIDWithResponse(ctx context.Context, apiKeyID ApiKeyID, body PatchApikeysApiKeyIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchApikeysApiKeyIDResponse, error)
+	PatchApiKeysApiKeyIDWithResponse(ctx context.Context, apiKeyID ApiKeyID, body PatchApiKeysApiKeyIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchApiKeysApiKeyIDResponse, error)
 
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
@@ -2024,7 +2024,7 @@ type ClientWithResponsesInterface interface {
 	GetTemplatesTemplateIDBuildsBuildIDStatusWithResponse(ctx context.Context, templateID TemplateID, buildID BuildID, params *GetTemplatesTemplateIDBuildsBuildIDStatusParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDBuildsBuildIDStatusResponse, error)
 }
 
-type PostAccesstokensResponse struct {
+type PostAccessTokensResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON201      *CreatedAccessToken
@@ -2033,7 +2033,7 @@ type PostAccesstokensResponse struct {
 }
 
 // Status returns HTTPResponse.Status
-func (r PostAccesstokensResponse) Status() string {
+func (r PostAccessTokensResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -2041,14 +2041,14 @@ func (r PostAccesstokensResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r PostAccesstokensResponse) StatusCode() int {
+func (r PostAccessTokensResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type DeleteAccesstokensAccessTokenIDResponse struct {
+type DeleteAccessTokensAccessTokenIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON401      *N401
@@ -2057,7 +2057,7 @@ type DeleteAccesstokensAccessTokenIDResponse struct {
 }
 
 // Status returns HTTPResponse.Status
-func (r DeleteAccesstokensAccessTokenIDResponse) Status() string {
+func (r DeleteAccessTokensAccessTokenIDResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -2065,14 +2065,14 @@ func (r DeleteAccesstokensAccessTokenIDResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r DeleteAccesstokensAccessTokenIDResponse) StatusCode() int {
+func (r DeleteAccessTokensAccessTokenIDResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type GetApikeysResponse struct {
+type GetApiKeysResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *[]TeamAPIKey
@@ -2081,7 +2081,7 @@ type GetApikeysResponse struct {
 }
 
 // Status returns HTTPResponse.Status
-func (r GetApikeysResponse) Status() string {
+func (r GetApiKeysResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -2089,14 +2089,14 @@ func (r GetApikeysResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetApikeysResponse) StatusCode() int {
+func (r GetApiKeysResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type PostApikeysResponse struct {
+type PostApiKeysResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON201      *CreatedTeamAPIKey
@@ -2105,7 +2105,7 @@ type PostApikeysResponse struct {
 }
 
 // Status returns HTTPResponse.Status
-func (r PostApikeysResponse) Status() string {
+func (r PostApiKeysResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -2113,14 +2113,14 @@ func (r PostApikeysResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r PostApikeysResponse) StatusCode() int {
+func (r PostApiKeysResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type DeleteApikeysApiKeyIDResponse struct {
+type DeleteApiKeysApiKeyIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON401      *N401
@@ -2129,7 +2129,7 @@ type DeleteApikeysApiKeyIDResponse struct {
 }
 
 // Status returns HTTPResponse.Status
-func (r DeleteApikeysApiKeyIDResponse) Status() string {
+func (r DeleteApiKeysApiKeyIDResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -2137,14 +2137,14 @@ func (r DeleteApikeysApiKeyIDResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r DeleteApikeysApiKeyIDResponse) StatusCode() int {
+func (r DeleteApiKeysApiKeyIDResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type PatchApikeysApiKeyIDResponse struct {
+type PatchApiKeysApiKeyIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON401      *N401
@@ -2153,7 +2153,7 @@ type PatchApikeysApiKeyIDResponse struct {
 }
 
 // Status returns HTTPResponse.Status
-func (r PatchApikeysApiKeyIDResponse) Status() string {
+func (r PatchApiKeysApiKeyIDResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -2161,7 +2161,7 @@ func (r PatchApikeysApiKeyIDResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r PatchApikeysApiKeyIDResponse) StatusCode() int {
+func (r PatchApiKeysApiKeyIDResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2726,82 +2726,82 @@ func (r GetTemplatesTemplateIDBuildsBuildIDStatusResponse) StatusCode() int {
 	return 0
 }
 
-// PostAccesstokensWithBodyWithResponse request with arbitrary body returning *PostAccesstokensResponse
-func (c *ClientWithResponses) PostAccesstokensWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAccesstokensResponse, error) {
-	rsp, err := c.PostAccesstokensWithBody(ctx, contentType, body, reqEditors...)
+// PostAccessTokensWithBodyWithResponse request with arbitrary body returning *PostAccessTokensResponse
+func (c *ClientWithResponses) PostAccessTokensWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAccessTokensResponse, error) {
+	rsp, err := c.PostAccessTokensWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePostAccesstokensResponse(rsp)
+	return ParsePostAccessTokensResponse(rsp)
 }
 
-func (c *ClientWithResponses) PostAccesstokensWithResponse(ctx context.Context, body PostAccesstokensJSONRequestBody, reqEditors ...RequestEditorFn) (*PostAccesstokensResponse, error) {
-	rsp, err := c.PostAccesstokens(ctx, body, reqEditors...)
+func (c *ClientWithResponses) PostAccessTokensWithResponse(ctx context.Context, body PostAccessTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*PostAccessTokensResponse, error) {
+	rsp, err := c.PostAccessTokens(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePostAccesstokensResponse(rsp)
+	return ParsePostAccessTokensResponse(rsp)
 }
 
-// DeleteAccesstokensAccessTokenIDWithResponse request returning *DeleteAccesstokensAccessTokenIDResponse
-func (c *ClientWithResponses) DeleteAccesstokensAccessTokenIDWithResponse(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*DeleteAccesstokensAccessTokenIDResponse, error) {
-	rsp, err := c.DeleteAccesstokensAccessTokenID(ctx, accessTokenID, reqEditors...)
+// DeleteAccessTokensAccessTokenIDWithResponse request returning *DeleteAccessTokensAccessTokenIDResponse
+func (c *ClientWithResponses) DeleteAccessTokensAccessTokenIDWithResponse(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*DeleteAccessTokensAccessTokenIDResponse, error) {
+	rsp, err := c.DeleteAccessTokensAccessTokenID(ctx, accessTokenID, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseDeleteAccesstokensAccessTokenIDResponse(rsp)
+	return ParseDeleteAccessTokensAccessTokenIDResponse(rsp)
 }
 
-// GetApikeysWithResponse request returning *GetApikeysResponse
-func (c *ClientWithResponses) GetApikeysWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApikeysResponse, error) {
-	rsp, err := c.GetApikeys(ctx, reqEditors...)
+// GetApiKeysWithResponse request returning *GetApiKeysResponse
+func (c *ClientWithResponses) GetApiKeysWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiKeysResponse, error) {
+	rsp, err := c.GetApiKeys(ctx, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetApikeysResponse(rsp)
+	return ParseGetApiKeysResponse(rsp)
 }
 
-// PostApikeysWithBodyWithResponse request with arbitrary body returning *PostApikeysResponse
-func (c *ClientWithResponses) PostApikeysWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApikeysResponse, error) {
-	rsp, err := c.PostApikeysWithBody(ctx, contentType, body, reqEditors...)
+// PostApiKeysWithBodyWithResponse request with arbitrary body returning *PostApiKeysResponse
+func (c *ClientWithResponses) PostApiKeysWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiKeysResponse, error) {
+	rsp, err := c.PostApiKeysWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePostApikeysResponse(rsp)
+	return ParsePostApiKeysResponse(rsp)
 }
 
-func (c *ClientWithResponses) PostApikeysWithResponse(ctx context.Context, body PostApikeysJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApikeysResponse, error) {
-	rsp, err := c.PostApikeys(ctx, body, reqEditors...)
+func (c *ClientWithResponses) PostApiKeysWithResponse(ctx context.Context, body PostApiKeysJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiKeysResponse, error) {
+	rsp, err := c.PostApiKeys(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePostApikeysResponse(rsp)
+	return ParsePostApiKeysResponse(rsp)
 }
 
-// DeleteApikeysApiKeyIDWithResponse request returning *DeleteApikeysApiKeyIDResponse
-func (c *ClientWithResponses) DeleteApikeysApiKeyIDWithResponse(ctx context.Context, apiKeyID ApiKeyID, reqEditors ...RequestEditorFn) (*DeleteApikeysApiKeyIDResponse, error) {
-	rsp, err := c.DeleteApikeysApiKeyID(ctx, apiKeyID, reqEditors...)
+// DeleteApiKeysApiKeyIDWithResponse request returning *DeleteApiKeysApiKeyIDResponse
+func (c *ClientWithResponses) DeleteApiKeysApiKeyIDWithResponse(ctx context.Context, apiKeyID ApiKeyID, reqEditors ...RequestEditorFn) (*DeleteApiKeysApiKeyIDResponse, error) {
+	rsp, err := c.DeleteApiKeysApiKeyID(ctx, apiKeyID, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseDeleteApikeysApiKeyIDResponse(rsp)
+	return ParseDeleteApiKeysApiKeyIDResponse(rsp)
 }
 
-// PatchApikeysApiKeyIDWithBodyWithResponse request with arbitrary body returning *PatchApikeysApiKeyIDResponse
-func (c *ClientWithResponses) PatchApikeysApiKeyIDWithBodyWithResponse(ctx context.Context, apiKeyID ApiKeyID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchApikeysApiKeyIDResponse, error) {
-	rsp, err := c.PatchApikeysApiKeyIDWithBody(ctx, apiKeyID, contentType, body, reqEditors...)
+// PatchApiKeysApiKeyIDWithBodyWithResponse request with arbitrary body returning *PatchApiKeysApiKeyIDResponse
+func (c *ClientWithResponses) PatchApiKeysApiKeyIDWithBodyWithResponse(ctx context.Context, apiKeyID ApiKeyID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchApiKeysApiKeyIDResponse, error) {
+	rsp, err := c.PatchApiKeysApiKeyIDWithBody(ctx, apiKeyID, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePatchApikeysApiKeyIDResponse(rsp)
+	return ParsePatchApiKeysApiKeyIDResponse(rsp)
 }
 
-func (c *ClientWithResponses) PatchApikeysApiKeyIDWithResponse(ctx context.Context, apiKeyID ApiKeyID, body PatchApikeysApiKeyIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchApikeysApiKeyIDResponse, error) {
-	rsp, err := c.PatchApikeysApiKeyID(ctx, apiKeyID, body, reqEditors...)
+func (c *ClientWithResponses) PatchApiKeysApiKeyIDWithResponse(ctx context.Context, apiKeyID ApiKeyID, body PatchApiKeysApiKeyIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchApiKeysApiKeyIDResponse, error) {
+	rsp, err := c.PatchApiKeysApiKeyID(ctx, apiKeyID, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePatchApikeysApiKeyIDResponse(rsp)
+	return ParsePatchApiKeysApiKeyIDResponse(rsp)
 }
 
 // GetHealthWithResponse request returning *GetHealthResponse
@@ -3075,15 +3075,15 @@ func (c *ClientWithResponses) GetTemplatesTemplateIDBuildsBuildIDStatusWithRespo
 	return ParseGetTemplatesTemplateIDBuildsBuildIDStatusResponse(rsp)
 }
 
-// ParsePostAccesstokensResponse parses an HTTP response from a PostAccesstokensWithResponse call
-func ParsePostAccesstokensResponse(rsp *http.Response) (*PostAccesstokensResponse, error) {
+// ParsePostAccessTokensResponse parses an HTTP response from a PostAccessTokensWithResponse call
+func ParsePostAccessTokensResponse(rsp *http.Response) (*PostAccessTokensResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &PostAccesstokensResponse{
+	response := &PostAccessTokensResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -3115,15 +3115,15 @@ func ParsePostAccesstokensResponse(rsp *http.Response) (*PostAccesstokensRespons
 	return response, nil
 }
 
-// ParseDeleteAccesstokensAccessTokenIDResponse parses an HTTP response from a DeleteAccesstokensAccessTokenIDWithResponse call
-func ParseDeleteAccesstokensAccessTokenIDResponse(rsp *http.Response) (*DeleteAccesstokensAccessTokenIDResponse, error) {
+// ParseDeleteAccessTokensAccessTokenIDResponse parses an HTTP response from a DeleteAccessTokensAccessTokenIDWithResponse call
+func ParseDeleteAccessTokensAccessTokenIDResponse(rsp *http.Response) (*DeleteAccessTokensAccessTokenIDResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &DeleteAccesstokensAccessTokenIDResponse{
+	response := &DeleteAccessTokensAccessTokenIDResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -3155,15 +3155,15 @@ func ParseDeleteAccesstokensAccessTokenIDResponse(rsp *http.Response) (*DeleteAc
 	return response, nil
 }
 
-// ParseGetApikeysResponse parses an HTTP response from a GetApikeysWithResponse call
-func ParseGetApikeysResponse(rsp *http.Response) (*GetApikeysResponse, error) {
+// ParseGetApiKeysResponse parses an HTTP response from a GetApiKeysWithResponse call
+func ParseGetApiKeysResponse(rsp *http.Response) (*GetApiKeysResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetApikeysResponse{
+	response := &GetApiKeysResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -3195,15 +3195,15 @@ func ParseGetApikeysResponse(rsp *http.Response) (*GetApikeysResponse, error) {
 	return response, nil
 }
 
-// ParsePostApikeysResponse parses an HTTP response from a PostApikeysWithResponse call
-func ParsePostApikeysResponse(rsp *http.Response) (*PostApikeysResponse, error) {
+// ParsePostApiKeysResponse parses an HTTP response from a PostApiKeysWithResponse call
+func ParsePostApiKeysResponse(rsp *http.Response) (*PostApiKeysResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &PostApikeysResponse{
+	response := &PostApiKeysResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -3235,15 +3235,15 @@ func ParsePostApikeysResponse(rsp *http.Response) (*PostApikeysResponse, error) 
 	return response, nil
 }
 
-// ParseDeleteApikeysApiKeyIDResponse parses an HTTP response from a DeleteApikeysApiKeyIDWithResponse call
-func ParseDeleteApikeysApiKeyIDResponse(rsp *http.Response) (*DeleteApikeysApiKeyIDResponse, error) {
+// ParseDeleteApiKeysApiKeyIDResponse parses an HTTP response from a DeleteApiKeysApiKeyIDWithResponse call
+func ParseDeleteApiKeysApiKeyIDResponse(rsp *http.Response) (*DeleteApiKeysApiKeyIDResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &DeleteApikeysApiKeyIDResponse{
+	response := &DeleteApiKeysApiKeyIDResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -3275,15 +3275,15 @@ func ParseDeleteApikeysApiKeyIDResponse(rsp *http.Response) (*DeleteApikeysApiKe
 	return response, nil
 }
 
-// ParsePatchApikeysApiKeyIDResponse parses an HTTP response from a PatchApikeysApiKeyIDWithResponse call
-func ParsePatchApikeysApiKeyIDResponse(rsp *http.Response) (*PatchApikeysApiKeyIDResponse, error) {
+// ParsePatchApiKeysApiKeyIDResponse parses an HTTP response from a PatchApiKeysApiKeyIDWithResponse call
+func ParsePatchApiKeysApiKeyIDResponse(rsp *http.Response) (*PatchApiKeysApiKeyIDResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &PatchApikeysApiKeyIDResponse{
+	response := &PatchApiKeysApiKeyIDResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

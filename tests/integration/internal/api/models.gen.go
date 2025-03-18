@@ -496,14 +496,14 @@ type GetTemplatesTemplateIDBuildsBuildIDStatusParams struct {
 	LogsOffset *int32 `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
 }
 
-// PostAccesstokensJSONRequestBody defines body for PostAccesstokens for application/json ContentType.
-type PostAccesstokensJSONRequestBody = NewAccessToken
+// PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.
+type PostAccessTokensJSONRequestBody = NewAccessToken
 
-// PostApikeysJSONRequestBody defines body for PostApikeys for application/json ContentType.
-type PostApikeysJSONRequestBody = NewTeamAPIKey
+// PostApiKeysJSONRequestBody defines body for PostApiKeys for application/json ContentType.
+type PostApiKeysJSONRequestBody = NewTeamAPIKey
 
-// PatchApikeysApiKeyIDJSONRequestBody defines body for PatchApikeysApiKeyID for application/json ContentType.
-type PatchApikeysApiKeyIDJSONRequestBody = UpdateTeamAPIKey
+// PatchApiKeysApiKeyIDJSONRequestBody defines body for PatchApiKeysApiKeyID for application/json ContentType.
+type PatchApiKeysApiKeyIDJSONRequestBody = UpdateTeamAPIKey
 
 // PostNodesNodeIDJSONRequestBody defines body for PostNodesNodeID for application/json ContentType.
 type PostNodesNodeIDJSONRequestBody = NodeStatusChange

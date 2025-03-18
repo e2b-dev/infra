@@ -14,12 +14,6 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
-/*
-// Required headers: X-Supabase-Token, X-Supabase-Team
-GET /apikeys - list of all team api keys
-PATCH /apikeys/{api_key_id} - update team api key name
-*/
-
 func TestCreateAPIKey(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -27,7 +21,7 @@ func TestCreateAPIKey(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create the API key
-	resp, err := c.PostApikeysWithResponse(ctx, api.PostApikeysJSONRequestBody{
+	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 		Name: "test",
 	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 	if err != nil {
@@ -48,7 +42,7 @@ func TestDeleteAPIKey(t *testing.T) {
 
 	t.Run("succeeds", func(t *testing.T) {
 		// Create the API key
-		respC, err := c.PostApikeysWithResponse(ctx, api.PostApikeysJSONRequestBody{
+		respC, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 			Name: "test",
 		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 		if err != nil {
@@ -57,7 +51,7 @@ func TestDeleteAPIKey(t *testing.T) {
 		assert.Equal(t, http.StatusCreated, respC.StatusCode())
 
 		// Delete the API key
-		respD, err := c.DeleteApikeysApiKeyIDWithResponse(ctx, respC.JSON201.Id.String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+		respD, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, respC.JSON201.Id.String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -65,7 +59,7 @@ func TestDeleteAPIKey(t *testing.T) {
 	})
 
 	t.Run("id does not exist", func(t *testing.T) {
-		respD, err := c.DeleteApikeysApiKeyIDWithResponse(ctx, uuid.New().String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+		respD, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, uuid.New().String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +73,7 @@ func TestListAPIKeys(t *testing.T) {
 
 	c := setup.GetAPIClient()
 
-	resp, err := c.GetApikeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+	resp, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,14 +89,14 @@ func TestPatchAPIKey(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create the first API key
-	respC, err := c.PostApikeysWithResponse(ctx, api.PostApikeysJSONRequestBody{
+	respC, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 		Name: "test-patch-1",
 	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	respList1, err := c.GetApikeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+	respList1, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +111,7 @@ func TestPatchAPIKey(t *testing.T) {
 
 	t.Run("succeeds", func(t *testing.T) {
 		// Rename the API key
-		respP, err := c.PatchApikeysApiKeyIDWithResponse(ctx, respC.JSON201.Id.String(), api.PatchApikeysApiKeyIDJSONRequestBody{
+		respP, err := c.PatchApiKeysApiKeyIDWithResponse(ctx, respC.JSON201.Id.String(), api.PatchApiKeysApiKeyIDJSONRequestBody{
 			Name: "test-patch-2",
 		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 		if err != nil {
@@ -126,7 +120,7 @@ func TestPatchAPIKey(t *testing.T) {
 
 		assert.Equal(t, http.StatusAccepted, respP.StatusCode())
 
-		respList2, err := c.GetApikeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
+		respList2, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -141,7 +135,7 @@ func TestPatchAPIKey(t *testing.T) {
 	})
 
 	t.Run("id does not exist", func(t *testing.T) {
-		respP, err := c.PatchApikeysApiKeyIDWithResponse(ctx, uuid.New().String(), api.PatchApikeysApiKeyIDJSONRequestBody{
+		respP, err := c.PatchApiKeysApiKeyIDWithResponse(ctx, uuid.New().String(), api.PatchApiKeysApiKeyIDJSONRequestBody{
 			Name: "test-patch-3",
 		}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 		if err != nil {
