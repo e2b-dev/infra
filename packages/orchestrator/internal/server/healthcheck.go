@@ -81,6 +81,10 @@ func (h *Healthcheck) Start(ctx context.Context, listener net.Listener) {
 	}
 }
 
+// report updates the health status.
+// This function is run in a goroutine every healthcheckFrequency for the reason of having
+// longer running tasks that might me too slow or resource intensive to be run
+// in the healthcheck http handler directly.
 func (h *Healthcheck) report(ctx context.Context) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -91,25 +95,32 @@ func (h *Healthcheck) report(ctx context.Context) error {
 	// Update last run on report
 	h.lastRun = time.Now()
 
-	// Report health
-	c, err := h.grpcHealth.Check(childCtx, &healthpb.HealthCheckRequest{
+	// Report health of the gRPC
+	var err error
+	h.status, err = h.getGRPCHealth(childCtx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// getGRPCHealth returns the health status of the grpc.Server by calling the health service check.
+func (h *Healthcheck) getGRPCHealth(ctx context.Context) (Status, error) {
+	c, err := h.grpcHealth.Check(ctx, &healthpb.HealthCheckRequest{
 		// Empty string is the default service name
 		Service: "",
 	})
 	if err != nil {
-		h.status = Unhealthy
-
-		return err
+		return Unhealthy, err
 	}
 
 	switch c.GetStatus() {
 	case healthpb.HealthCheckResponse_SERVING:
-		h.status = Healthy
+		return Healthy, nil
 	default:
-		h.status = Unhealthy
+		return Unhealthy, nil
 	}
-
-	return nil
 }
 
 type HealthResponse struct {
