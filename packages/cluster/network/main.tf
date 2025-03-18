@@ -427,26 +427,6 @@ resource "google_compute_security_policy" "default" {
   }
 }
 
-resource "google_compute_firewall" "default-hc" {
-  name    = "${var.prefix}load-balancer-hc"
-  network = var.network_name
-  source_ranges = [
-    "130.211.0.0/22",
-    "35.191.0.0/16"
-  ]
-  target_tags = [var.cluster_tag_name]
-
-  priority = 999
-
-  dynamic "allow" {
-    for_each = local.health_checked_backends
-    content {
-      protocol = "tcp"
-      ports    = [allow.value["http_health_check"].port]
-    }
-  }
-}
-
 module "gce_lb_http_logs" {
   source            = "GoogleCloudPlatform/lb-http/google"
   version           = "~> 9.3"
@@ -515,13 +495,33 @@ module "gce_lb_http_logs" {
 }
 
 # Firewalls
-resource "google_compute_firewall" "orch_firewall_ingress" {
-  name    = "${var.prefix}${var.cluster_tag_name}-firewall-ingress"
+resource "google_compute_firewall" "default-hc" {
+  name    = "${var.prefix}load-balancer-hc"
+  network = var.network_name
+  source_ranges = [
+    "130.211.0.0/22",
+    "35.191.0.0/16"
+  ]
+  target_tags = [var.cluster_tag_name]
+
+  priority = 999
+
+  dynamic "allow" {
+    for_each = local.health_checked_backends
+    content {
+      protocol = "tcp"
+      ports    = [allow.value["http_health_check"].port]
+    }
+  }
+}
+
+resource "google_compute_firewall" "client_proxy_firewall_ingress" {
+  name    = "${var.prefix}${var.cluster_tag_name}-client-proxy-firewall-ingress"
   network = var.network_name
 
   allow {
     protocol = "tcp"
-    ports    = ["80", "8080", var.nomad_port, "3001", "3002", "3003", "30006", "44313", "50001", "8500"]
+    ports    = ["3002"]
   }
 
   priority = 999
@@ -530,6 +530,43 @@ resource "google_compute_firewall" "orch_firewall_ingress" {
   target_tags   = [var.cluster_tag_name]
   source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
 }
+
+
+resource "google_compute_firewall" "internal_remote_connection_firewall_ingress" {
+  name    = "${var.prefix}${var.cluster_tag_name}-internal-remote-connection-firewall-ingress"
+  network = var.network_name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22", "3389"]
+  }
+
+  priority = 900
+
+  direction   = "INGRESS"
+  target_tags = [var.cluster_tag_name]
+  # https://googlecloudplatform.github.io/iap-desktop/setup-iap/
+  source_ranges = var.environment == "dev" ? ["0.0.0.0/0"] : ["35.235.240.0/20"]
+}
+
+resource "google_compute_firewall" "remote_connection_firewall_ingress" {
+  name    = "${var.prefix}${var.cluster_tag_name}-remote-connection-firewall-ingress"
+  network = var.network_name
+
+  deny {
+    protocol = "tcp"
+    ports    = ["22", "3389"]
+  }
+
+
+
+  priority = 1000
+
+  direction     = "INGRESS"
+  target_tags   = [var.cluster_tag_name]
+  source_ranges = ["0.0.0.0/0"]
+}
+
 
 resource "google_compute_firewall" "orch_firewall_egress" {
   name    = "${var.prefix}${var.cluster_tag_name}-firewall-egress"
