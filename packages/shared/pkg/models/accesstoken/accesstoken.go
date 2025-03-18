@@ -11,9 +11,9 @@ const (
 	// Label holds the string label denoting the accesstoken type in the database.
 	Label = "access_token"
 	// FieldID holds the string denoting the id field in the database.
-	FieldID = "access_token"
-	// FieldUniqueID holds the string denoting the unique_id field in the database.
-	FieldUniqueID = "id"
+	FieldID = "id"
+	// FieldAccessToken holds the string denoting the access_token field in the database.
+	FieldAccessToken = "access_token"
 	// FieldAccessTokenHash holds the string denoting the access_token_hash field in the database.
 	FieldAccessTokenHash = "access_token_hash"
 	// FieldAccessTokenMask holds the string denoting the access_token_mask field in the database.
@@ -26,8 +26,6 @@ const (
 	FieldCreatedAt = "created_at"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
-	// UserFieldID holds the string denoting the ID field of the User.
-	UserFieldID = "id"
 	// Table holds the table name of the accesstoken in the database.
 	Table = "access_tokens"
 	// UserTable is the table that holds the user relation/edge.
@@ -42,7 +40,7 @@ const (
 // Columns holds all SQL columns for accesstoken fields.
 var Columns = []string{
 	FieldID,
-	FieldUniqueID,
+	FieldAccessToken,
 	FieldAccessTokenHash,
 	FieldAccessTokenMask,
 	FieldName,
@@ -73,9 +71,9 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldID, opts...).ToFunc()
 }
 
-// ByUniqueID orders the results by the unique_id field.
-func ByUniqueID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldUniqueID, opts...).ToFunc()
+// ByAccessToken orders the results by the access_token field.
+func ByAccessToken(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAccessToken, opts...).ToFunc()
 }
 
 // ByAccessTokenHash orders the results by the access_token_hash field.
@@ -112,7 +110,7 @@ func ByUserField(field string, opts ...sql.OrderTermOption) OrderOption {
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(UserInverseTable, UserFieldID),
+		sqlgraph.To(UserInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, UserTable, UserColumn),
 	)
 }

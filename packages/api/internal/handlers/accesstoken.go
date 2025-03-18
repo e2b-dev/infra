@@ -42,9 +42,9 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 
 	accessTokenDB, err := a.db.Client.AccessToken.
 		Create().
-		SetUniqueID(uuid.New()).
+		SetID(uuid.New()).
 		SetUserID(userID).
-		SetID(accessToken.PrefixedRawValue).
+		SetAccessToken(accessToken.PrefixedRawValue).
 		SetAccessTokenHash(accessToken.HashedValue).
 		SetAccessTokenMask(accessToken.MaskedValue).
 		SetCreatedAt(time.Now()).
@@ -61,7 +61,7 @@ func (a *APIStore) PostAccesstokens(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, api.CreatedAccessToken{
-		Id:        accessTokenDB.UniqueID,
+		Id:        accessTokenDB.ID,
 		Token:     accessToken.PrefixedRawValue,
 		TokenMask: accessTokenDB.AccessTokenMask,
 		Name:      accessTokenDB.Name,
@@ -84,7 +84,7 @@ func (a *APIStore) DeleteAccesstokensAccessTokenID(c *gin.Context, accessTokenID
 	}
 
 	n, err := a.db.Client.AccessToken.Delete().
-		Where(accesstoken.UniqueIDEQ(accessTokenIDParsed), accesstoken.UserIDEQ(userID)).
+		Where(accesstoken.IDEQ(accessTokenIDParsed), accesstoken.UserIDEQ(userID)).
 		Exec(ctx)
 	if n < 1 {
 		c.String(http.StatusNotFound, "id not found")

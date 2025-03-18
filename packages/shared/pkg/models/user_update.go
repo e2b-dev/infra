@@ -80,14 +80,14 @@ func (uu *UserUpdate) AddCreatedEnvs(e ...*Env) *UserUpdate {
 }
 
 // AddAccessTokenIDs adds the "access_tokens" edge to the AccessToken entity by IDs.
-func (uu *UserUpdate) AddAccessTokenIDs(ids ...string) *UserUpdate {
+func (uu *UserUpdate) AddAccessTokenIDs(ids ...uuid.UUID) *UserUpdate {
 	uu.mutation.AddAccessTokenIDs(ids...)
 	return uu
 }
 
 // AddAccessTokens adds the "access_tokens" edges to the AccessToken entity.
 func (uu *UserUpdate) AddAccessTokens(a ...*AccessToken) *UserUpdate {
-	ids := make([]string, len(a))
+	ids := make([]uuid.UUID, len(a))
 	for i := range a {
 		ids[i] = a[i].ID
 	}
@@ -178,14 +178,14 @@ func (uu *UserUpdate) ClearAccessTokens() *UserUpdate {
 }
 
 // RemoveAccessTokenIDs removes the "access_tokens" edge to AccessToken entities by IDs.
-func (uu *UserUpdate) RemoveAccessTokenIDs(ids ...string) *UserUpdate {
+func (uu *UserUpdate) RemoveAccessTokenIDs(ids ...uuid.UUID) *UserUpdate {
 	uu.mutation.RemoveAccessTokenIDs(ids...)
 	return uu
 }
 
 // RemoveAccessTokens removes "access_tokens" edges to AccessToken entities.
 func (uu *UserUpdate) RemoveAccessTokens(a ...*AccessToken) *UserUpdate {
-	ids := make([]string, len(a))
+	ids := make([]uuid.UUID, len(a))
 	for i := range a {
 		ids[i] = a[i].ID
 	}
@@ -408,7 +408,7 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Columns: []string{user.AccessTokensColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uu.schemaConfig.AccessToken
@@ -422,7 +422,7 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Columns: []string{user.AccessTokensColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uu.schemaConfig.AccessToken
@@ -439,7 +439,7 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Columns: []string{user.AccessTokensColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uu.schemaConfig.AccessToken
@@ -613,14 +613,14 @@ func (uuo *UserUpdateOne) AddCreatedEnvs(e ...*Env) *UserUpdateOne {
 }
 
 // AddAccessTokenIDs adds the "access_tokens" edge to the AccessToken entity by IDs.
-func (uuo *UserUpdateOne) AddAccessTokenIDs(ids ...string) *UserUpdateOne {
+func (uuo *UserUpdateOne) AddAccessTokenIDs(ids ...uuid.UUID) *UserUpdateOne {
 	uuo.mutation.AddAccessTokenIDs(ids...)
 	return uuo
 }
 
 // AddAccessTokens adds the "access_tokens" edges to the AccessToken entity.
 func (uuo *UserUpdateOne) AddAccessTokens(a ...*AccessToken) *UserUpdateOne {
-	ids := make([]string, len(a))
+	ids := make([]uuid.UUID, len(a))
 	for i := range a {
 		ids[i] = a[i].ID
 	}
@@ -711,14 +711,14 @@ func (uuo *UserUpdateOne) ClearAccessTokens() *UserUpdateOne {
 }
 
 // RemoveAccessTokenIDs removes the "access_tokens" edge to AccessToken entities by IDs.
-func (uuo *UserUpdateOne) RemoveAccessTokenIDs(ids ...string) *UserUpdateOne {
+func (uuo *UserUpdateOne) RemoveAccessTokenIDs(ids ...uuid.UUID) *UserUpdateOne {
 	uuo.mutation.RemoveAccessTokenIDs(ids...)
 	return uuo
 }
 
 // RemoveAccessTokens removes "access_tokens" edges to AccessToken entities.
 func (uuo *UserUpdateOne) RemoveAccessTokens(a ...*AccessToken) *UserUpdateOne {
-	ids := make([]string, len(a))
+	ids := make([]uuid.UUID, len(a))
 	for i := range a {
 		ids[i] = a[i].ID
 	}
@@ -971,7 +971,7 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 			Columns: []string{user.AccessTokensColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uuo.schemaConfig.AccessToken
@@ -985,7 +985,7 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 			Columns: []string{user.AccessTokensColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uuo.schemaConfig.AccessToken
@@ -1002,7 +1002,7 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 			Columns: []string{user.AccessTokensColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uuo.schemaConfig.AccessToken

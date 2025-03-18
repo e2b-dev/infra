@@ -64,7 +64,7 @@ func (db *DB) GetUserID(ctx context.Context, token string) (*uuid.UUID, error) {
 		Client.
 		AccessToken.
 		Query().
-		Where(accesstoken.ID(token)).
+		Where(accesstoken.AccessToken(token)).
 		Only(ctx)
 
 	if err != nil {

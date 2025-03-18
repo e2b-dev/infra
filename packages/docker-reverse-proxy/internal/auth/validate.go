@@ -15,7 +15,7 @@ import (
 )
 
 func Validate(ctx context.Context, db *models.Client, token, envID string) (bool, error) {
-	u, err := db.User.Query().Where(user.HasAccessTokensWith(accesstoken.ID(token))).WithTeams().Only(ctx)
+	u, err := db.User.Query().Where(user.HasAccessTokensWith(accesstoken.AccessToken(token))).WithTeams().Only(ctx)
 	if err != nil {
 		return false, err
 	}

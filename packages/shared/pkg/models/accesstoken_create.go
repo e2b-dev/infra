@@ -25,9 +25,9 @@ type AccessTokenCreate struct {
 	conflict []sql.ConflictOption
 }
 
-// SetUniqueID sets the "unique_id" field.
-func (atc *AccessTokenCreate) SetUniqueID(u uuid.UUID) *AccessTokenCreate {
-	atc.mutation.SetUniqueID(u)
+// SetAccessToken sets the "access_token" field.
+func (atc *AccessTokenCreate) SetAccessToken(s string) *AccessTokenCreate {
+	atc.mutation.SetAccessToken(s)
 	return atc
 }
 
@@ -78,8 +78,8 @@ func (atc *AccessTokenCreate) SetNillableCreatedAt(t *time.Time) *AccessTokenCre
 }
 
 // SetID sets the "id" field.
-func (atc *AccessTokenCreate) SetID(s string) *AccessTokenCreate {
-	atc.mutation.SetID(s)
+func (atc *AccessTokenCreate) SetID(u uuid.UUID) *AccessTokenCreate {
+	atc.mutation.SetID(u)
 	return atc
 }
 
@@ -131,8 +131,8 @@ func (atc *AccessTokenCreate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (atc *AccessTokenCreate) check() error {
-	if _, ok := atc.mutation.UniqueID(); !ok {
-		return &ValidationError{Name: "unique_id", err: errors.New(`models: missing required field "AccessToken.unique_id"`)}
+	if _, ok := atc.mutation.AccessToken(); !ok {
+		return &ValidationError{Name: "access_token", err: errors.New(`models: missing required field "AccessToken.access_token"`)}
 	}
 	if _, ok := atc.mutation.AccessTokenHash(); !ok {
 		return &ValidationError{Name: "access_token_hash", err: errors.New(`models: missing required field "AccessToken.access_token_hash"`)}
@@ -164,10 +164,10 @@ func (atc *AccessTokenCreate) sqlSave(ctx context.Context) (*AccessToken, error)
 		return nil, err
 	}
 	if _spec.ID.Value != nil {
-		if id, ok := _spec.ID.Value.(string); ok {
-			_node.ID = id
-		} else {
-			return nil, fmt.Errorf("unexpected AccessToken.ID type: %T", _spec.ID.Value)
+		if id, ok := _spec.ID.Value.(*uuid.UUID); ok {
+			_node.ID = *id
+		} else if err := _node.ID.Scan(_spec.ID.Value); err != nil {
+			return nil, err
 		}
 	}
 	atc.mutation.id = &_node.ID
@@ -178,17 +178,17 @@ func (atc *AccessTokenCreate) sqlSave(ctx context.Context) (*AccessToken, error)
 func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) {
 	var (
 		_node = &AccessToken{config: atc.config}
-		_spec = sqlgraph.NewCreateSpec(accesstoken.Table, sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeString))
+		_spec = sqlgraph.NewCreateSpec(accesstoken.Table, sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID))
 	)
 	_spec.Schema = atc.schemaConfig.AccessToken
 	_spec.OnConflict = atc.conflict
 	if id, ok := atc.mutation.ID(); ok {
 		_node.ID = id
-		_spec.ID.Value = id
+		_spec.ID.Value = &id
 	}
-	if value, ok := atc.mutation.UniqueID(); ok {
-		_spec.SetField(accesstoken.FieldUniqueID, field.TypeUUID, value)
-		_node.UniqueID = value
+	if value, ok := atc.mutation.AccessToken(); ok {
+		_spec.SetField(accesstoken.FieldAccessToken, field.TypeString, value)
+		_node.AccessToken = value
 	}
 	if value, ok := atc.mutation.AccessTokenHash(); ok {
 		_spec.SetField(accesstoken.FieldAccessTokenHash, field.TypeString, value)
@@ -231,7 +231,7 @@ func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) 
 // of the `INSERT` statement. For example:
 //
 //	client.AccessToken.Create().
-//		SetUniqueID(v).
+//		SetAccessToken(v).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -240,7 +240,7 @@ func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) 
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.AccessTokenUpsert) {
-//			SetUniqueID(v+v).
+//			SetAccessToken(v+v).
 //		}).
 //		Exec(ctx)
 func (atc *AccessTokenCreate) OnConflict(opts ...sql.ConflictOption) *AccessTokenUpsertOne {
@@ -317,8 +317,8 @@ func (u *AccessTokenUpsertOne) UpdateNewValues() *AccessTokenUpsertOne {
 		if _, exists := u.create.mutation.ID(); exists {
 			s.SetIgnore(accesstoken.FieldID)
 		}
-		if _, exists := u.create.mutation.UniqueID(); exists {
-			s.SetIgnore(accesstoken.FieldUniqueID)
+		if _, exists := u.create.mutation.AccessToken(); exists {
+			s.SetIgnore(accesstoken.FieldAccessToken)
 		}
 		if _, exists := u.create.mutation.AccessTokenHash(); exists {
 			s.SetIgnore(accesstoken.FieldAccessTokenHash)
@@ -404,7 +404,7 @@ func (u *AccessTokenUpsertOne) ExecX(ctx context.Context) {
 }
 
 // Exec executes the UPSERT query and returns the inserted/updated ID.
-func (u *AccessTokenUpsertOne) ID(ctx context.Context) (id string, err error) {
+func (u *AccessTokenUpsertOne) ID(ctx context.Context) (id uuid.UUID, err error) {
 	if u.create.driver.Dialect() == dialect.MySQL {
 		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
 		// fields from the database since MySQL does not support the RETURNING clause.
@@ -418,7 +418,7 @@ func (u *AccessTokenUpsertOne) ID(ctx context.Context) (id string, err error) {
 }
 
 // IDX is like ID, but panics if an error occurs.
-func (u *AccessTokenUpsertOne) IDX(ctx context.Context) string {
+func (u *AccessTokenUpsertOne) IDX(ctx context.Context) uuid.UUID {
 	id, err := u.ID(ctx)
 	if err != nil {
 		panic(err)
@@ -524,7 +524,7 @@ func (atcb *AccessTokenCreateBulk) ExecX(ctx context.Context) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.AccessTokenUpsert) {
-//			SetUniqueID(v+v).
+//			SetAccessToken(v+v).
 //		}).
 //		Exec(ctx)
 func (atcb *AccessTokenCreateBulk) OnConflict(opts ...sql.ConflictOption) *AccessTokenUpsertBulk {
@@ -571,8 +571,8 @@ func (u *AccessTokenUpsertBulk) UpdateNewValues() *AccessTokenUpsertBulk {
 			if _, exists := b.mutation.ID(); exists {
 				s.SetIgnore(accesstoken.FieldID)
 			}
-			if _, exists := b.mutation.UniqueID(); exists {
-				s.SetIgnore(accesstoken.FieldUniqueID)
+			if _, exists := b.mutation.AccessToken(); exists {
+				s.SetIgnore(accesstoken.FieldAccessToken)
 			}
 			if _, exists := b.mutation.AccessTokenHash(); exists {
 				s.SetIgnore(accesstoken.FieldAccessTokenHash)
