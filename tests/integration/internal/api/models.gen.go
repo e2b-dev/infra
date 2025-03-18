@@ -10,15 +10,19 @@ import (
 )
 
 const (
-	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
-	AdminTokenAuthScopes  = "AdminTokenAuth.Scopes"
-	ApiKeyAuthScopes      = "ApiKeyAuth.Scopes"
+	AccessTokenAuthScopes    = "AccessTokenAuth.Scopes"
+	AdminTokenAuthScopes     = "AdminTokenAuth.Scopes"
+	ApiKeyAuthScopes         = "ApiKeyAuth.Scopes"
+	Supabase1TokenAuthScopes = "Supabase1TokenAuth.Scopes"
+	Supabase2TeamAuthScopes  = "Supabase2TeamAuth.Scopes"
 )
 
 // Defines values for NodeStatus.
 const (
-	NodeStatusDraining NodeStatus = "draining"
-	NodeStatusReady    NodeStatus = "ready"
+	NodeStatusConnecting NodeStatus = "connecting"
+	NodeStatusDraining   NodeStatus = "draining"
+	NodeStatusReady      NodeStatus = "ready"
+	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
 // Defines values for TemplateBuildStatus.
@@ -26,10 +30,51 @@ const (
 	TemplateBuildStatusBuilding TemplateBuildStatus = "building"
 	TemplateBuildStatusError    TemplateBuildStatus = "error"
 	TemplateBuildStatusReady    TemplateBuildStatus = "ready"
+	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
 
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
+
+// CreatedAccessToken defines model for CreatedAccessToken.
+type CreatedAccessToken struct {
+	// CreatedAt Timestamp of access token creation
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id Identifier of the access token
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the access token
+	Name string `json:"name"`
+
+	// Token Raw value of the access token
+	Token string `json:"token"`
+
+	// TokenMask Mask of the access token
+	TokenMask string `json:"tokenMask"`
+}
+
+// CreatedTeamAPIKey defines model for CreatedTeamAPIKey.
+type CreatedTeamAPIKey struct {
+	// CreatedAt Timestamp of API key creation
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy *TeamUser `json:"createdBy"`
+
+	// Id Identifier of the API key
+	Id openapi_types.UUID `json:"id"`
+
+	// Key Raw value of the API key
+	Key string `json:"key"`
+
+	// KeyMask Mask of the API key
+	KeyMask string `json:"keyMask"`
+
+	// LastUsed Last time this API key was used
+	LastUsed *time.Time `json:"lastUsed"`
+
+	// Name Name of the API key
+	Name string `json:"name"`
+}
 
 // EnvVars defines model for EnvVars.
 type EnvVars map[string]string
@@ -46,16 +91,30 @@ type Error struct {
 // MemoryMB Memory for the sandbox in MB
 type MemoryMB = int32
 
+// NewAccessToken defines model for NewAccessToken.
+type NewAccessToken struct {
+	// Name Name of the access token
+	Name string `json:"name"`
+}
+
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
-	EnvVars  *EnvVars         `json:"envVars,omitempty"`
-	Metadata *SandboxMetadata `json:"metadata,omitempty"`
+	// AutoPause Automatically pauses the sandbox after the timeout
+	AutoPause *bool            `json:"autoPause,omitempty"`
+	EnvVars   *EnvVars         `json:"envVars,omitempty"`
+	Metadata  *SandboxMetadata `json:"metadata,omitempty"`
 
 	// TemplateID Identifier of the required template
 	TemplateID string `json:"templateID"`
 
 	// Timeout Time to live for the sandbox in seconds.
 	Timeout *int32 `json:"timeout,omitempty"`
+}
+
+// NewTeamAPIKey defines model for NewTeamAPIKey.
+type NewTeamAPIKey struct {
+	// Name Name of the API key
+	Name string `json:"name"`
 }
 
 // Node defines model for Node.
@@ -66,11 +125,17 @@ type Node struct {
 	// AllocatedMemoryMiB Amount of allocated memory in MiB
 	AllocatedMemoryMiB int32 `json:"allocatedMemoryMiB"`
 
+	// CreateFails Number of sandbox create fails
+	CreateFails uint64 `json:"createFails"`
+
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
 
 	// SandboxCount Number of sandboxes running on the node
 	SandboxCount int32 `json:"sandboxCount"`
+
+	// SandboxStartingCount Number of starting Sandboxes
+	SandboxStartingCount int `json:"sandboxStartingCount"`
 
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
@@ -80,6 +145,9 @@ type Node struct {
 type NodeDetail struct {
 	// CachedBuilds List of cached builds id on the node
 	CachedBuilds []string `json:"cachedBuilds"`
+
+	// CreateFails Number of sandbox create fails
+	CreateFails uint64 `json:"createFails"`
 
 	// NodeID Identifier of the node
 	NodeID string `json:"nodeID"`
@@ -102,6 +170,9 @@ type NodeStatusChange struct {
 
 // ResumedSandbox defines model for ResumedSandbox.
 type ResumedSandbox struct {
+	// AutoPause Automatically pauses the sandbox after the timeout
+	AutoPause *bool `json:"autoPause,omitempty"`
+
 	// Timeout Time to live for the sandbox in seconds.
 	Timeout *int32 `json:"timeout,omitempty"`
 }
@@ -232,6 +303,25 @@ type Team struct {
 	TeamID string `json:"teamID"`
 }
 
+// TeamAPIKey defines model for TeamAPIKey.
+type TeamAPIKey struct {
+	// CreatedAt Timestamp of API key creation
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy *TeamUser `json:"createdBy"`
+
+	// Id Identifier of the API key
+	Id openapi_types.UUID `json:"id"`
+
+	// KeyMask Mask of the API key
+	KeyMask string `json:"keyMask"`
+
+	// LastUsed Last time this API key was used
+	LastUsed *time.Time `json:"lastUsed"`
+
+	// Name Name of the API key
+	Name string `json:"name"`
+}
+
 // TeamUser defines model for TeamUser.
 type TeamUser struct {
 	// Email Email of the user
@@ -323,6 +413,18 @@ type TemplateUpdateRequest struct {
 	Public *bool `json:"public,omitempty"`
 }
 
+// UpdateTeamAPIKey defines model for UpdateTeamAPIKey.
+type UpdateTeamAPIKey struct {
+	// Name New name for the API key
+	Name string `json:"name"`
+}
+
+// AccessTokenID defines model for accessTokenID.
+type AccessTokenID = string
+
+// ApiKeyID defines model for apiKeyID.
+type ApiKeyID = string
+
 // BuildID defines model for buildID.
 type BuildID = string
 
@@ -393,6 +495,15 @@ type GetTemplatesTemplateIDBuildsBuildIDStatusParams struct {
 	// LogsOffset Index of the starting build log that should be returned with the template
 	LogsOffset *int32 `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
 }
+
+// PostAccesstokensJSONRequestBody defines body for PostAccesstokens for application/json ContentType.
+type PostAccesstokensJSONRequestBody = NewAccessToken
+
+// PostApikeysJSONRequestBody defines body for PostApikeys for application/json ContentType.
+type PostApikeysJSONRequestBody = NewTeamAPIKey
+
+// PatchApikeysApiKeyIDJSONRequestBody defines body for PatchApikeysApiKeyID for application/json ContentType.
+type PatchApikeysApiKeyIDJSONRequestBody = UpdateTeamAPIKey
 
 // PostNodesNodeIDJSONRequestBody defines body for PostNodesNodeID for application/json ContentType.
 type PostNodesNodeIDJSONRequestBody = NodeStatusChange

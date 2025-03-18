@@ -83,10 +83,13 @@ func (a *APIStore) DeleteAccesstokensAccessTokenID(c *gin.Context, accessTokenID
 		return
 	}
 
-	_, err = a.db.Client.AccessToken.Delete().
+	n, err := a.db.Client.AccessToken.Delete().
 		Where(accesstoken.UniqueIDEQ(accessTokenIDParsed), accesstoken.UserIDEQ(userID)).
 		Exec(ctx)
-	if err != nil {
+	if n < 1 {
+		c.String(http.StatusNotFound, "id not found")
+		return
+	} else if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting access token: %s", err))
 
 		errMsg := fmt.Errorf("error when deleting access token: %w", err)

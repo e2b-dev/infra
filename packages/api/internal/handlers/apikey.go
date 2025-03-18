@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -40,7 +41,10 @@ func (a *APIStore) PatchApikeysApiKeyID(c *gin.Context, apiKeyID string) {
 	}
 
 	err = a.db.Client.TeamAPIKey.UpdateOneID(apiKeyIDParsed).SetName(body.Name).SetUpdatedAt(time.Now()).Exec(ctx)
-	if err != nil {
+	if models.IsNotFound(err) {
+		c.String(http.StatusNotFound, "id not found")
+		return
+	} else if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating team API key name: %s", err))
 
 		errMsg := fmt.Errorf("error when updating team API key name: %w", err)
@@ -63,7 +67,7 @@ func (a *APIStore) GetApikeys(c *gin.Context) {
 		All(ctx)
 	if err != nil {
 		log.Println("Error when getting team API keys: ", err)
-		c.JSON(http.StatusInternalServerError, "Error when getting team API keys")
+		c.String(http.StatusInternalServerError, "Error when getting team API keys")
 
 		return
 	}
@@ -112,7 +116,10 @@ func (a *APIStore) DeleteApikeysApiKeyID(c *gin.Context, apiKeyID string) {
 	}
 
 	err = a.db.Client.TeamAPIKey.DeleteOneID(apiKeyIDParsed).Exec(ctx)
-	if err != nil {
+	if models.IsNotFound(err) {
+		c.String(http.StatusNotFound, "id not found")
+		return
+	} else if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting API key: %s", err))
 
 		errMsg := fmt.Errorf("error when deleting API key: %w", err)
