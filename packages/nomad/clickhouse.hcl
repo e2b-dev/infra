@@ -56,6 +56,8 @@ job "clickhouse" {
         memory = 2048
       }
 
+
+
       config {
         image = "clickhouse/clickhouse-server:${clickhouse_version}"
         ports = ["clickhouse", "clickhouse_http"]
@@ -126,7 +128,35 @@ EOF
 EOF
         destination = "local/users.xml"
       }
+    }
 
+    task "metrics-collector" {
+      driver = "docker"
+
+      lifecycle {
+        hook = "poststart"
+        sidecar = false
+      }
+
+            env {
+        CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
+        CLICKHOUSE_USERNAME           = "${clickhouse_username}"
+        CLICKHOUSE_PASSWORD           = "${clickhouse_password}"
+        CLICKHOUSE_DATABASE           = "${clickhouse_database}"
+       
+      }
+
+      config {
+        image = "golang:1.23"
+        # go run github.com/e2b-dev/infra/packages/shared@test-collecting-clickhouse-metrics-on-local-cluster-e2b-1756 -direction up 
+        command = "go"
+        args = ["run", "github.com/e2b-dev/infra/packages/shared@test-collecting-clickhouse-metrics-on-local-cluster-e2b-1756", "-direction", "up"]
+      }
+
+      resources {
+        cpu    = 500
+        memory = 2048
+      }
     }
   }
 } 
