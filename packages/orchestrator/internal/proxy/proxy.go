@@ -6,8 +6,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"go.uber.org/zap"
 	"html/template"
 	"net/http"
@@ -17,6 +15,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 //go:embed proxy_browser_502.html
@@ -32,9 +33,9 @@ type htmlTemplateData struct {
 }
 
 type jsonTemplateData struct {
-	error      string
-	sandbox_id string
-	port       uint64
+	Error     string `json:"error"`
+	SandboxId string `json:"sandbox_id"`
+	Port      uint64 `json:"port"`
 }
 
 type SandboxProxy struct {
@@ -181,9 +182,9 @@ func (p *SandboxProxy) buildHtmlClosedPortError(sandboxId string, host string, p
 
 func (p *SandboxProxy) buildJsonClosedPortError(sandboxId string, port uint64) []byte {
 	response := jsonTemplateData{
-		error:      "The sandbox is running but port is not open",
-		sandbox_id: sandboxId,
-		port:       port,
+		Error:     "The sandbox is running but port is not open",
+		SandboxId: sandboxId,
+		Port:      port,
 	}
 
 	responseBytes, _ := json.Marshal(response)
