@@ -8,8 +8,7 @@ variable "environment" {
 }
 
 variable "notification_email_secret_version" {
-  # the value doesn't matter; we're just using this variable
-  # to propagate dependencies.
+  # we're just using this variable to propagate the whole dependency
   type = any
 }
 
