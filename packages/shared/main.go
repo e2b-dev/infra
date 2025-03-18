@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 )
@@ -34,6 +35,10 @@ func main() {
 	}
 
 	if err != nil {
+		if strings.Contains(err.Error(), "no change") {
+			fmt.Println("No change")
+			return
+		}
 		log.Fatalf("Failed to execute migration: %v", err)
 	}
 

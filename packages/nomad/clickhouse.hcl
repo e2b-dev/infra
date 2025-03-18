@@ -7,14 +7,14 @@ job "clickhouse" {
   group "clickhouse" {
 
     update {
-      max_parallel     = 2
+      max_parallel     = 1
       min_healthy_time = "30s"
       healthy_deadline = "4m"
 
       auto_revert = true
     }
 
-    count = 1
+    count = 2
 
     network {
       port "clickhouse" {
@@ -55,9 +55,10 @@ job "clickhouse" {
         cpu    = 500
         memory = 2048
       }
-
       config {
-        image = "clickhouse/clickhouse-server:${clickhouse_version}"
+        image = "clickhouse/clickhouse-server:25.1.5.31"
+
+        # image = "clickhouse/clickhouse-server:25.2.2.39"
         ports = ["clickhouse", "clickhouse_http"]
 
         ulimit {
@@ -67,7 +68,6 @@ job "clickhouse" {
 
         volumes = [
           "local/config.xml:/etc/clickhouse-server/config.d/gcs.xml",
-          # disabled while testing but will pass password to orchestrator in the future
           "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
         ]
       }
@@ -139,7 +139,7 @@ EOF
         sidecar = false
       }
 
-      
+
 
       env {
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
@@ -150,15 +150,15 @@ EOF
 
       config {
         network_mode = "host"
-        image   = "golang:1.23"
-        command = "go"
-        args    = ["run", "github.com/e2b-dev/infra/packages/shared@store-clickhouse-table-metadata-e2b-1787", "-direction", "up"]
+        image        = "golang:1.23"
+        command      = "go"
+        args         = ["run", "github.com/e2b-dev/infra/packages/shared@store-clickhouse-table-metadata-e2b-1787", "-direction", "up"]
 
       }
 
       resources {
         cpu    = 500
-        memory = 2048
+        memory = 1536
       }
     }
   }
