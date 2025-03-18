@@ -206,7 +206,15 @@ func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uu
 	return e, e.Edges.Builds, nil
 }
 
-func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSandboxIDs []string, limit *int32, metadata *map[string]string) (
+func (db *DB) GetTeamSnapshotsWithCursor(
+	ctx context.Context,
+	teamID uuid.UUID,
+	excludeSandboxIDs []string,
+	limit int,
+	metadataFilter *map[string]string,
+	cursorTime *time.Time,
+	cursorID *string,
+) (
 	[]*models.Snapshot,
 	error,
 ) {
@@ -215,35 +223,55 @@ func (db *DB) GetTeamSnapshots(ctx context.Context, teamID uuid.UUID, excludeSan
 		Snapshot.
 		Query().
 		Where(
-			snapshot.HasEnvWith(env.TeamID(teamID)),
+			snapshot.HasEnvWith(
+				env.And(
+					env.TeamID(teamID),
+					env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
+				),
+			),
 		).
 		WithEnv(func(query *models.EnvQuery) {
 			query.WithBuilds(func(query *models.EnvBuildQuery) {
-				query.Where(envbuild.StatusEQ(envbuild.StatusSuccess))
 				query.Order(models.Desc(envbuild.FieldFinishedAt))
 			})
-		}).
-		Order(models.Desc(snapshot.FieldCreatedAt))
+		})
 
-	if metadata != nil {
-		query = query.Where(snapshot.MetadataEQ(*metadata))
+	// Apply cursor-based filtering if cursor is provided
+	if cursorTime != nil && cursorID != nil {
+		query = query.Where(
+			snapshot.Or(
+				snapshot.SandboxStartedAtLT(*cursorTime),
+				snapshot.And(
+					snapshot.SandboxStartedAtEQ(*cursorTime),
+					snapshot.SandboxIDGT(*cursorID),
+				),
+			),
+		)
 	}
 
-	if limit != nil {
-		query = query.Limit(int(*limit))
+	// Apply metadata filtering
+	if metadataFilter != nil {
+		query = query.Where(snapshot.MetadataEQ(*metadataFilter))
 	}
+
+	// Order by sandbox_started_at (descending), then by sandbox_id (ascending) for stability
+	query = query.Order(models.Desc(snapshot.FieldSandboxStartedAt), models.Asc(snapshot.FieldSandboxID))
+
+	// Apply limit + 1 to check if there are more results
+	query = query.Limit(limit + 1)
 
 	snapshots, err := query.All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapshots for team '%s': %w", teamID, err)
 	}
 
-	// remove snapshots with excludeSandboxIDs
-	for i, snapshot := range snapshots {
-		if slices.Contains(excludeSandboxIDs, snapshot.SandboxID) {
-			snapshots = slices.Delete(snapshots, i, i+1)
+	// Remove snapshots with excludeSandboxIDs
+	filteredSnapshots := make([]*models.Snapshot, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		if !slices.Contains(excludeSandboxIDs, snapshot.SandboxID) {
+			filteredSnapshots = append(filteredSnapshots, snapshot)
 		}
 	}
 
-	return snapshots, nil
+	return filteredSnapshots, nil
 }
