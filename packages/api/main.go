@@ -320,7 +320,7 @@ func run() int {
 		// This is a bit of a hack, but this way we can properly propagate
 		// the health status to the load balancer.
 		apiStore.Healthy = false
-		// time.Sleep(15 * time.Second)
+		time.Sleep(15 * time.Second)
 
 		// if the parent context `ctx` is canceled the
 		// shutdown will return early. This should only happen
