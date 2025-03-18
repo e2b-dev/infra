@@ -204,8 +204,6 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.Instance.SandboxID))
 	}
 
-	// If we're requesting both running and paused sandboxes (or neither is specified),
-	// we need to handle pagination carefully to ensure consistent ordering
 	if params.State == nil || (slices.Contains(*params.State, api.Running) && slices.Contains(*params.State, api.Paused)) {
 		runningSandboxList, err := a.getRunningSandboxes(runningSandboxes, metadataFilter, parsedCursorTime, parsedCursorID, paginationParams.Limit)
 		if err != nil {
@@ -219,21 +217,13 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 
 		sandboxes = append(sandboxes, runningSandboxList...)
 		sandboxes = append(sandboxes, pausedSandboxList...)
-
-		return sandboxes, nil, nil
-	}
-
-	// If we're only requesting running sandboxes
-	if params.State != nil && slices.Contains(*params.State, api.Running) {
+	} else if params.State != nil && slices.Contains(*params.State, api.Running) {
 		runningSandboxList, err := a.getRunningSandboxes(runningSandboxes, metadataFilter, parsedCursorTime, parsedCursorID, paginationParams.Limit)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error getting running sandboxes: %w", err)
 		}
 		sandboxes = append(sandboxes, runningSandboxList...)
-	}
-
-	// If we're only requesting paused sandboxes
-	if params.State != nil && slices.Contains(*params.State, api.Paused) {
+	} else if params.State != nil && slices.Contains(*params.State, api.Paused) {
 		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, metadataFilter, paginationParams.Limit, parsedCursorTime, parsedCursorID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error getting paused sandboxes: %w", err)
