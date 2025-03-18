@@ -69,7 +69,7 @@ func (p *SandboxProxy) Start() error {
 		IdleConnTimeout:       620 * time.Second, // Matches keepalive_timeout
 		TLSHandshakeTimeout:   10 * time.Second,  // Similar to client_header_timeout
 		ResponseHeaderTimeout: 24 * time.Hour,    // Matches proxy_read_timeout
-		DisableKeepAlives:     false,             // Allow keep-alive
+		DisableKeepAlives:     true,              // Disable keep-alives, envd doesn't support idle connections
 	}
 
 	p.server.Handler = http.HandlerFunc(p.proxyHandler(serverTransport))
