@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -102,6 +103,25 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 		}
 
 		sandboxes = filteredSandboxes
+	}
+
+	// Apply cursor-based filtering if cursor is provided
+	if cursorTime != nil && cursorID != nil {
+		var filteredSandboxes []api.ListedSandbox
+		for _, sandbox := range sandboxes {
+			// Take sandboxes with start time before cursor time OR
+			// same start time but sandboxID greater than cursor ID (for stability)
+			if sandbox.StartedAt.Before(*cursorTime) ||
+				(sandbox.StartedAt.Equal(*cursorTime) && sandbox.SandboxID > *cursorID) {
+				filteredSandboxes = append(filteredSandboxes, sandbox)
+			}
+		}
+		sandboxes = filteredSandboxes
+	}
+
+	// Apply limit if provided (get limit + 1 for pagination if possible)
+	if limit != nil && len(sandboxes) > int(*limit) {
+		sandboxes = sandboxes[:int(*limit)+1]
 	}
 
 	return sandboxes, nil
@@ -220,6 +240,14 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 		}
 		sandboxes = append(sandboxes, pausedSandboxList...)
 	}
+
+	// Sort by StartedAt (descending), then by SandboxID (ascending) for stability
+	sort.Slice(sandboxes, func(a, b int) bool {
+		if !sandboxes[a].StartedAt.Equal(sandboxes[b].StartedAt) {
+			return sandboxes[a].StartedAt.After(sandboxes[b].StartedAt)
+		}
+		return sandboxes[a].SandboxID < sandboxes[b].SandboxID
+	})
 
 	var nextToken *string
 	if len(sandboxes) > int(*paginationParams.Limit) {
