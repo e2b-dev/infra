@@ -1,7 +1,7 @@
 job "clickhouse" {
   datacenters = ["${zone}"]
   type        = "service"
-  node_pool = "api"
+  node_pool   = "api"
 
 
   group "clickhouse" {
@@ -18,13 +18,13 @@ job "clickhouse" {
 
     network {
       port "clickhouse" {
-        to = 9000
+        to     = 9000
         static = 9000
       }
-      
+
       port "clickhouse_http" {
         static = 8123
-        to = 8123
+        to     = 8123
       }
     }
 
@@ -73,7 +73,7 @@ job "clickhouse" {
       }
 
       template {
-        data = <<EOF
+        data        = <<EOF
 <?xml version="1.0"?>
 <clickhouse>
      # this is undocumented but needed to enable waiting for for shutdown for a custom amount of time 
@@ -107,13 +107,16 @@ job "clickhouse" {
             </gcs_main>
         </policies>
     </storage_configuration>
+    <merge_tree>
+        <storage_policy>s3_plain</storage_policy>
+    </merge_tree>
 </clickhouse>
 EOF
         destination = "local/config.xml"
       }
 
       template {
-        data = <<EOF
+        data        = <<EOF
 <?xml version="1.0"?>
 <clickhouse>
     <users>
@@ -133,5 +136,34 @@ EOF
       }
 
     }
+
+    # task "migrate-clickhouse" {
+    #   driver = "docker"
+
+    #   lifecycle {
+    #     hook    = "poststart"
+    #     sidecar = false
+    #   }
+
+    #   env {
+    #     CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
+    #     CLICKHOUSE_USERNAME          = "${clickhouse_username}"
+    #     CLICKHOUSE_PASSWORD          = "${clickhouse_password}"
+    #     CLICKHOUSE_DATABASE          = "${clickhouse_database}"
+
+    #   }
+
+    #   config {
+    #     image = "golang:1.23"
+    #     # go run github.com/e2b-dev/infra/packages/shared@test-collecting-clickhouse-metrics-on-local-cluster-e2b-1756 -direction up 
+    #     command = "go"
+    #     args    = ["run", "github.com/e2b-dev/infra/packages/shared@store-clickhouse-table-metadata-e2b-1787", "-direction", "up"]
+    #   }
+
+    #   resources {
+    #     cpu    = 500
+    #     memory = 2048
+    #   }
+    # }
   }
 } 
