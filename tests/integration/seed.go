@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -86,12 +87,13 @@ func seed(db *db.DB, data SeedData) error {
 
 	// Team API Key
 	hasher := keys.NewSHA256Hashing()
-	apiKeyBytes, err := hex.DecodeString(data.APIKey)
+	keyWithoutPrefix := strings.TrimPrefix(data.APIKey, keys.ApiKeyPrefix)
+	apiKeyBytes, err := hex.DecodeString(keyWithoutPrefix)
 	if err != nil {
 		return fmt.Errorf("failed to decode api key: %w", err)
 	}
 	hash := hasher.Hash(apiKeyBytes)
-	mask, err := keys.MaskKey(keys.ApiKeyPrefix, data.APIKey)
+	mask, err := keys.MaskKey(keys.ApiKeyPrefix, keyWithoutPrefix)
 	if err != nil {
 		return fmt.Errorf("failed to mask api key: %w", err)
 	}
