@@ -1,6 +1,6 @@
 resource "google_logging_metric" "ids_threat_detection" {
   project = var.gcp_project_id
-  name    = "${var.prefix}ids_threat_detection_metric"
+  name    = "${var.prefix}ids-threat-detection-metric"
 
   filter = "logName=\"projects/${var.gcp_project_id}/logs/ids.googleapis.com%2Fthreat\" AND resource.type=\"ids.googleapis.com/Endpoint\" AND jsonPayload.alert_severity=(\"HIGH\" OR \"CRITICAL\")"
 }
@@ -30,7 +30,7 @@ resource "google_monitoring_alert_policy" "ids_threat_alert" {
   conditions {
     display_name = "IDS Threat Condition"
     condition_threshold {
-      filter          = "metric.type=\"logging.googleapis.com/user/${var.prefix}ids_threat_detection_metric\" AND resource.type=\"ids.googleapis.com/Endpoint\""
+      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.ids_threat_detection.name}\" AND resource.type=\"ids.googleapis.com/Endpoint\""
       comparison      = "COMPARISON_GT"
       threshold_value = 0
       duration        = "0s"
