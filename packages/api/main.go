@@ -218,11 +218,6 @@ func run() int {
 	var cleanupFns []func(context.Context) error
 	exitCode := &atomic.Int32{}
 	cleanupOp := func() {
-		if env.IsLocal() {
-			logger.Info("skipping cleanup operations in local environment")
-			return
-		}
-
 		// some cleanup functions do work that requires a context. passing shutdown a
 		// specific context here so that all timeout configuration is in one place.
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
