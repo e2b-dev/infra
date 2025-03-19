@@ -2,11 +2,6 @@ name: Deploy Staging
 
 on:
   pull_request:
-  workflow_dispatch:
-    inputs:
-      staging_postgres_connection_string:
-        required: true
-        description: Postgres connection string
 
 concurrency:
   group: deploy-staging
@@ -35,7 +30,10 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Set up Docker
+        env:
+          GCP_REGION: us-west1
         run: |
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
           export ACCESS_TOKEN=$(gcloud auth print-access-token)
           export DOCKER_AUTH_BASE64=$(echo -n "{\"username\":\"oauth2accesstoken\",\"password\":\"$ACCESS_TOKEN\"}" | base64 -w 0)
           
@@ -60,7 +58,7 @@ jobs:
           BUILD_MACHINE_TYPE: n1-standard-8
           BUILD_CLUSTER_SIZE: 1
           DOMAIN_NAME: e2b-staging.dev
-          POSTGRES_CONNECTION_STRING: ${{ inputs.staging_postgres_connection_string }}
+          POSTGRES_CONNECTION_STRING: ${{ secrets.staging_postgres_connection_string }}
         run: |
           echo "staging" > .last_used_env
           printenv > .env.staging
