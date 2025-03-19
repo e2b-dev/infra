@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"os/user"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
@@ -55,8 +57,12 @@ func (p *Handler) Pid() uint32 {
 	return uint32(p.cmd.Process.Pid)
 }
 
-func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars *utils.Map[string, string]) (*Handler, error) {
-	cmd := exec.Command(req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
+func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars *utils.Map[string, string], timeout time.Duration) (*Handler, error) {
+	ctx := context.Background()
+	if timeout > 0 { // zero timeout means no timeout
+		ctx, _ = context.WithTimeout(ctx, timeout)
+	}
+	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
 
 	uid, gid, err := permissions.GetUserIds(user)
 	if err != nil {

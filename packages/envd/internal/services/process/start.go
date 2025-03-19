@@ -3,7 +3,10 @@ package process
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os/user"
+	"strconv"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -13,6 +16,8 @@ import (
 
 	"connectrpc.com/connect"
 )
+
+const DefaultProcessTimeout = 60 * time.Second
 
 func (s *Service) InitializeStartProcess(ctx context.Context, user *user.User, req *rpc.StartRequest) error {
 	var err error
@@ -27,7 +32,7 @@ func (s *Service) InitializeStartProcess(ctx context.Context, user *user.User, r
 
 	handlerL := s.logger.With().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Logger()
 
-	proc, err := handler.New(user, req, &handlerL, nil)
+	proc, err := handler.New(user, req, &handlerL, nil, 0)
 	if err != nil {
 		return err
 	}
@@ -67,7 +72,11 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		return err
 	}
 
-	proc, err := handler.New(u, req.Msg, &handlerL, s.envs)
+	timeout, err := determineTimeoutFromHeader(stream.Conn().RequestHeader())
+	if err != nil {
+		s.logger.Warn().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Err(err).Msg("Failed to determine timeout from GRPC request header")
+	}
+	proc, err := handler.New(u, req.Msg, &handlerL, s.envs, timeout)
 	if err != nil {
 		return err
 	}
@@ -203,4 +212,19 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 	case <-exitChan:
 		return nil
 	}
+}
+
+func determineTimeoutFromHeader(header http.Header) (time.Duration, error) {
+	timeoutHeader := header.Get("Connect-Timeout-Ms")
+
+	if timeoutHeader == "" {
+		return DefaultProcessTimeout, nil
+	}
+
+	timeout, err := strconv.Atoi(timeoutHeader)
+	if err != nil {
+		return DefaultProcessTimeout, err
+	}
+
+	return time.Duration(timeout-500) * time.Millisecond, nil
 }
