@@ -1,6 +1,7 @@
 name: Deploy Staging
 
 on:
+  pull_request:
   workflow_dispatch:
     inputs:
       staging_postgres_connection_string:
