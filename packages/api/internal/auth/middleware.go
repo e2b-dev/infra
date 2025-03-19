@@ -152,7 +152,7 @@ func CreateAuthenticationFunc(
 			},
 			validationFunction: userValidationFunction,
 			contextKey:         UserIDContextKey,
-			errorMessage:       "Invalid Access token, try to login again by running `e2b login`.",
+			errorMessage:       "Invalid Access token, try to login again by running `e2b auth login`.",
 		},
 		&commonAuthenticator[uuid.UUID]{
 			securitySchemeName: "Supabase1TokenAuth",
