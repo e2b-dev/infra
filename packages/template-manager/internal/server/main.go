@@ -47,7 +47,7 @@ type ServerStore struct {
 	wg               *sync.WaitGroup // wait group for running builds
 }
 
-func New(logger *zap.Logger, buildLogger *zap.Logger) (*grpc.Server, *ServerStore) {
+func New(logger *zap.Logger, buildLogger *zap.Logger) *grpc.Server {
 	ctx := context.Background()
 	logger.Info("Initializing template manager")
 

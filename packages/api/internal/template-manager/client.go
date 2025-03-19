@@ -86,6 +86,9 @@ func (a *GRPCClient) healthCheckSync(ctx context.Context) {
 }
 
 func (a *GRPCClient) Close() error {
+	// signal to background health check to stop
+	close(a.healthSyncStop)
+
 	err := a.connection.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close connection: %w", err)
