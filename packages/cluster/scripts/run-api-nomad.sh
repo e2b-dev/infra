@@ -136,6 +136,11 @@ function generate_nomad_config {
   instance_region=$(get_instance_region)
   zone=$(get_instance_zone)
 
+  # Create a directory for ClickHouse data if it doesn't exist
+  # since this config is dependent on the volume being present
+  clickhouse_data_dir="/opt/clickhouse/data"
+  mkdir -p "$clickhouse_data_dir"
+
 
   log_info "Creating default Nomad config file in $config_path"
   cat >"$config_path" <<EOF
@@ -154,6 +159,11 @@ leave_on_interrupt = true
 leave_on_terminate = true
 
 client {
+
+  host_volume "clickhouse" {
+    path      = "$clickhouse_data_dir"
+    read_only = false
+  }
   enabled = true
   node_pool = "api"
   meta {

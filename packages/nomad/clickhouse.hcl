@@ -38,16 +38,12 @@ job "clickhouse" {
         "traefik.http.routers.clickhouse.rule=Host(`clickhouse.service.consul`)",
       ]
 
-      check {
-        type     = "script"
-        command  = "/bin/sh"
-        args     = ["-c", "go run github.com/e2b-dev/infra/packages/shared@4cef36598aac3e82117c8414896384ba8a23e892 -direction up"]
-        interval = "10s"
-        timeout  = "300s"
-        task     = "migrate-clickhouse"
-      
+    }
 
-      }
+    volume "clickhouse" {
+      type      = "host"
+      read_only = false
+      source    = "clickhouse"
     }
 
     task "clickhouse-server" {
@@ -74,6 +70,11 @@ job "clickhouse" {
           "local/config.xml:/etc/clickhouse-server/config.d/gcs.xml",
           "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
         ]
+        volume_mount {
+          volume      = "clickhouse"
+          destination = "/var/lib/clickhouse"
+          read_only   = false
+        }
       }
 
       template {
@@ -135,42 +136,5 @@ EOF
 
     }
 
-    task "migrate-clickhouse" {
-      driver = "docker"
-
-      lifecycle {
-        hook    = "poststart"
-        sidecar = false
-      }
-
-      env {
-        CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
-        CLICKHOUSE_USERNAME          = "${clickhouse_username}"
-        CLICKHOUSE_PASSWORD          = "${clickhouse_password}"
-        CLICKHOUSE_DATABASE          = "${clickhouse_database}"
-      }
-
-      config {
-        network_mode = "host"
-        image        = "golang:1.23"
-        command      = "/bin/sh"
-        args = [
-          "-c",
-          "go run github.com/e2b-dev/infra/packages/shared@4cef36598aac3e82117c8414896384ba8a23e892 -direction up"
-        ]
-
-        mount {
-          type     = "bind"
-          target   = "/output"
-          source   = "/tmp"
-          readonly = false
-        }
-      }
-
-      resources {
-        cpu    = 500
-        memory = 1536
-      }
-    }
   }
 } 
