@@ -11,7 +11,7 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
 
@@ -103,7 +103,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		// if waiting for too long, fail the build
 		if time.Since(envBuildDb.CreatedAt) > syncWaitingStateDeadline {
 			logger.Error("Build is in waiting state for too long, failing it")
-			err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
+			err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed, "build is in waiting state for too long")
 			if err != nil {
 				logger.Error("Error when setting build status", zap.Error(err))
 			}
@@ -129,7 +129,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 			status, err := tm.grpc.Client.TemplateBuildStatus(childCtx, &template_manager.TemplateStatusRequest{TemplateID: templateID, BuildID: buildID.String()})
 			if utils.UnwrapGRPCError(err) != nil {
 				logger.Error("Error when fetching template build status", zap.Error(err))
-				err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
+				err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed, "error when fetching template build status")
 				if err != nil {
 					logger.Error("Error when setting build status", zap.Error(err))
 				}
@@ -140,7 +140,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 			// build failed
 			if status.GetStatus() == template_manager.TemplateBuildState_Failed {
 				logger.Error("Template build failed according to status")
-				err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed)
+				err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed, "template build failed according to status")
 				if err != nil {
 					logger.Error("Error when setting build status", zap.Error(err))
 				}
@@ -150,7 +150,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 
 			// build completed
 			if status.GetStatus() == template_manager.TemplateBuildState_Completed {
-				tm.buildCache.SetStatus(buildID, envbuild.StatusUploaded)
+				tm.buildCache.SetStatus(buildID, envbuild.StatusUploaded, "template build completed")
 
 				meta := status.GetMetadata()
 				err = tm.SetFinished(childCtx, templateID, buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
@@ -186,10 +186,10 @@ func (tm *TemplateManager) createInProcessingQueue(buildID uuid.UUID, templateID
 	return false
 }
 
-func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status) error {
+func (tm *TemplateManager) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason string) error {
 	// first do database update to prevent race condition while calling status
 	err := tm.db.EnvBuildSetStatus(ctx, templateID, buildID, status)
-	tm.buildCache.SetStatus(buildID, status)
+	tm.buildCache.SetStatus(buildID, status, reason)
 	return err
 }
 
@@ -198,11 +198,11 @@ func (tm *TemplateManager) SetFinished(ctx context.Context, templateID string, b
 	err := tm.db.FinishEnvBuild(ctx, templateID, buildID, rootfsSize, envdVersion)
 
 	if err != nil {
-		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed)
+		tm.buildCache.SetStatus(buildID, envbuild.StatusFailed, "error when finishing build")
 		return err
 	}
 
-	tm.buildCache.SetStatus(buildID, envbuild.StatusUploaded)
+	tm.buildCache.SetStatus(buildID, envbuild.StatusUploaded, "build finished")
 
 	return nil
 }
