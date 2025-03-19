@@ -34,7 +34,7 @@ type htmlTemplateData struct {
 
 type jsonTemplateData struct {
 	Error     string `json:"error"`
-	SandboxId string `json:"sandbox_id"`
+	SandboxId string `json:"sandboxId"`
 	Port      uint64 `json:"port"`
 }
 
