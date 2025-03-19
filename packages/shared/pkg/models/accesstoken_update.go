@@ -31,6 +31,20 @@ func (atu *AccessTokenUpdate) Where(ps ...predicate.AccessToken) *AccessTokenUpd
 	return atu
 }
 
+// SetName sets the "name" field.
+func (atu *AccessTokenUpdate) SetName(s string) *AccessTokenUpdate {
+	atu.mutation.SetName(s)
+	return atu
+}
+
+// SetNillableName sets the "name" field if the given value is not nil.
+func (atu *AccessTokenUpdate) SetNillableName(s *string) *AccessTokenUpdate {
+	if s != nil {
+		atu.SetName(*s)
+	}
+	return atu
+}
+
 // SetUserID sets the "user_id" field.
 func (atu *AccessTokenUpdate) SetUserID(u uuid.UUID) *AccessTokenUpdate {
 	atu.mutation.SetUserID(u)
@@ -106,13 +120,16 @@ func (atu *AccessTokenUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if err := atu.check(); err != nil {
 		return n, err
 	}
-	_spec := sqlgraph.NewUpdateSpec(accesstoken.Table, accesstoken.Columns, sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeString))
+	_spec := sqlgraph.NewUpdateSpec(accesstoken.Table, accesstoken.Columns, sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID))
 	if ps := atu.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := atu.mutation.Name(); ok {
+		_spec.SetField(accesstoken.FieldName, field.TypeString, value)
 	}
 	if atu.mutation.CreatedAtCleared() {
 		_spec.ClearField(accesstoken.FieldCreatedAt, field.TypeTime)
@@ -170,6 +187,20 @@ type AccessTokenUpdateOne struct {
 	hooks     []Hook
 	mutation  *AccessTokenMutation
 	modifiers []func(*sql.UpdateBuilder)
+}
+
+// SetName sets the "name" field.
+func (atuo *AccessTokenUpdateOne) SetName(s string) *AccessTokenUpdateOne {
+	atuo.mutation.SetName(s)
+	return atuo
+}
+
+// SetNillableName sets the "name" field if the given value is not nil.
+func (atuo *AccessTokenUpdateOne) SetNillableName(s *string) *AccessTokenUpdateOne {
+	if s != nil {
+		atuo.SetName(*s)
+	}
+	return atuo
 }
 
 // SetUserID sets the "user_id" field.
@@ -260,7 +291,7 @@ func (atuo *AccessTokenUpdateOne) sqlSave(ctx context.Context) (_node *AccessTok
 	if err := atuo.check(); err != nil {
 		return _node, err
 	}
-	_spec := sqlgraph.NewUpdateSpec(accesstoken.Table, accesstoken.Columns, sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeString))
+	_spec := sqlgraph.NewUpdateSpec(accesstoken.Table, accesstoken.Columns, sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID))
 	id, ok := atuo.mutation.ID()
 	if !ok {
 		return nil, &ValidationError{Name: "id", err: errors.New(`models: missing "AccessToken.id" for update`)}
@@ -284,6 +315,9 @@ func (atuo *AccessTokenUpdateOne) sqlSave(ctx context.Context) (_node *AccessTok
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := atuo.mutation.Name(); ok {
+		_spec.SetField(accesstoken.FieldName, field.TypeString, value)
 	}
 	if atuo.mutation.CreatedAtCleared() {
 		_spec.ClearField(accesstoken.FieldCreatedAt, field.TypeTime)

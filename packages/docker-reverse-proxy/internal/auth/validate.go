@@ -15,7 +15,7 @@ import (
 )
 
 func Validate(ctx context.Context, db *models.Client, token, envID string) (bool, error) {
-	u, err := db.User.Query().Where(user.HasAccessTokensWith(accesstoken.ID(token))).WithTeams().Only(ctx)
+	u, err := db.User.Query().Where(user.HasAccessTokensWith(accesstoken.AccessToken(token))).WithTeams().Only(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -38,7 +38,7 @@ func Validate(ctx context.Context, db *models.Client, token, envID string) (bool
 }
 
 func ValidateAccessToken(ctx context.Context, db *models.Client, accessToken string) bool {
-	exists, err := db.AccessToken.Query().Where(accesstoken.ID(accessToken)).Exist(ctx)
+	exists, err := db.AccessToken.Query().Where(accesstoken.AccessToken(accessToken)).Exist(ctx)
 	if err != nil {
 		log.Printf("Error while checking access token: %s\n", err.Error())
 		return false

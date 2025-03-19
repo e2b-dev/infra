@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func createSandbox(t *testing.T, reqEditor api.RequestEditorFn) int {
+func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) int {
 	t.Helper()
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -23,7 +23,7 @@ func createSandbox(t *testing.T, reqEditor api.RequestEditorFn) int {
 	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
-	}, reqEditor)
+	}, reqEditors...)
 	assert.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -45,41 +45,27 @@ func TestSandboxCreateWithSupabaseToken(t *testing.T) {
 	}
 
 	t.Run("Create sandbox with Supabase token", func(t *testing.T) {
-		statusCode := createSandbox(t, func(ctx context.Context, req *http.Request) error {
-			req.Header.Set("X-Supabase-Token", setup.SupabaseToken)
-			req.Header.Set("X-Supabase-Team", setup.SupabaseTeamID)
-
-			return nil
-		})
+		statusCode := createSandbox(t, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 
 		assert.Equal(t, http.StatusCreated, statusCode)
 	})
 
 	t.Run("Fail creation with missing teamID", func(t *testing.T) {
-		statusCode := createSandbox(t, func(ctx context.Context, req *http.Request) error {
-			req.Header.Set("X-Supabase-Token", setup.SupabaseToken)
-
-			return nil
-		})
+		statusCode := createSandbox(t, setup.WithSupabaseToken(t))
 		assert.Equal(t, http.StatusUnauthorized, statusCode)
 	})
 
 	t.Run("Fail creation with missing token", func(t *testing.T) {
-		statusCode := createSandbox(t, func(ctx context.Context, req *http.Request) error {
-			req.Header.Set("X-Supabase-Team", setup.SupabaseTeamID)
-
-			return nil
-		})
+		statusCode := createSandbox(t, setup.WithSupabaseTeam(t))
 		assert.Equal(t, http.StatusUnauthorized, statusCode)
 	})
 
 	t.Run("Fail creation with invalid token", func(t *testing.T) {
 		statusCode := createSandbox(t, func(ctx context.Context, req *http.Request) error {
 			req.Header.Set("X-Supabase-Token", "invalid")
-			req.Header.Set("X-Supabase-Team", setup.SupabaseTeamID)
 
 			return nil
-		})
+		}, setup.WithSupabaseTeam(t))
 		assert.Equal(t, http.StatusUnauthorized, statusCode)
 	})
 }

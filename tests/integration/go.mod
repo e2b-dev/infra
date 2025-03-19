@@ -4,8 +4,10 @@ go 1.23.0
 
 toolchain go1.23.7
 
+replace github.com/e2b-dev/infra/packages/shared => ../../packages/shared
+
 require (
-	github.com/e2b-dev/infra/packages/shared v0.0.0-20250313092626-839587f503a6
+	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.4.1
 	github.com/oapi-codegen/runtime v1.1.1
