@@ -49,6 +49,12 @@ job "clickhouse" {
     task "clickhouse-server" {
       driver = "docker"
 
+      volume_mount {
+        volume      = "clickhouse"
+        destination = "/var/lib/clickhouse"
+        read_only   = false
+      }
+
       kill_timeout = "120s"
 
       resources {
@@ -70,11 +76,7 @@ job "clickhouse" {
           "local/config.xml:/etc/clickhouse-server/config.d/gcs.xml",
           "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
         ]
-        volume_mount {
-          volume      = "clickhouse"
-          destination = "/var/lib/clickhouse"
-          read_only   = false
-        }
+
       }
 
       template {
