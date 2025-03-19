@@ -112,7 +112,7 @@ func (db *DB) GetEnvs(ctx context.Context, teamID uuid.UUID) (result []*Template
 	return result, nil
 }
 
-func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template, build *models.EnvBuild, err error) {
+func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *models.Env, err error) {
 	template, err := db.
 		Client.
 		Env.
@@ -129,7 +129,32 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 
 	notFound := models.IsNotFound(err)
 	if notFound {
-		return nil, nil, fmt.Errorf("template '%s' not found: %w", aliasOrEnvID, err)
+		return nil, TemplateNotFound{}
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to get template '%s': %w", aliasOrEnvID, err)
+	}
+
+	return template, nil
+}
+
+func (db *DB) GetEnvWithBuild(ctx context.Context, aliasOrEnvID string) (result *Template, build *models.EnvBuild, err error) {
+	template, err := db.
+		Client.
+		Env.
+		Query().
+		Where(
+			env.Or(
+				env.HasEnvAliasesWith(envalias.ID(aliasOrEnvID)),
+				env.ID(aliasOrEnvID),
+			),
+		).
+		WithEnvAliases(func(query *models.EnvAliasQuery) {
+			query.Order(models.Asc(envalias.FieldID)) // TODO: remove once we have only 1 alias per env
+		}).Only(ctx)
+
+	notFound := models.IsNotFound(err)
+	if notFound {
+		return nil, nil, TemplateNotFound{}
 	} else if err != nil {
 		return nil, nil, fmt.Errorf("failed to get template '%s': %w", aliasOrEnvID, err)
 	}
@@ -162,6 +187,39 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *Template
 		SpawnCount:    template.SpawnCount,
 		BuildCount:    template.BuildCount,
 	}, build, nil
+}
+
+func (db *DB) GetRunningEnvBuilds(ctx context.Context) ([]*models.EnvBuild, error) {
+	envBuilds, err := db.
+		Client.
+		EnvBuild.
+		Query().
+		Where(envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding)).
+		Order(models.Desc(envbuild.FieldCreatedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get running env builds: %w", err)
+	}
+
+	return envBuilds, nil
+}
+
+func (db *DB) GetEnvBuild(ctx context.Context, buildID uuid.UUID) (build *models.EnvBuild, err error) {
+	dbBuild, err := db.
+		Client.
+		EnvBuild.
+		Query().
+		Where(envbuild.ID(buildID)).
+		First(ctx)
+
+	notFound := models.IsNotFound(err)
+	if notFound {
+		return nil, TemplateBuildNotFound{}
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to get env build '%s': %w", buildID, err)
+	}
+
+	return dbBuild, nil
 }
 
 func (db *DB) CheckBaseEnvHasSnapshots(ctx context.Context, envID string) (result bool, err error) {
