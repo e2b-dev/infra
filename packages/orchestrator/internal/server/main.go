@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"math"
 	"net"
 	"os"
@@ -38,6 +39,7 @@ type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	sandboxes       *smap.Map[*sandbox.Sandbox]
 	dns             *dns.DNS
+	proxy           *proxy.SandboxProxy
 	tracer          trace.Tracer
 	networkPool     *network.Pool
 	templateCache   *template.Cache
@@ -54,6 +56,7 @@ type Service struct {
 	server   *server
 	grpc     *grpc.Server
 	dns      *dns.DNS
+	proxy    *proxy.SandboxProxy
 	port     uint16
 	shutdown struct {
 		once sync.Once
@@ -68,7 +71,7 @@ type Service struct {
 	useClickhouseMetrics string
 }
 
-func New(ctx context.Context, port uint, clientID string) (*Service, error) {
+func New(ctx context.Context, port uint, clientID string, proxy *proxy.SandboxProxy) (*Service, error) {
 	if port > math.MaxUint16 {
 		return nil, fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
 	}
@@ -92,6 +95,7 @@ func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 	// BLOCK: initialize services
 	{
 		srv.dns = dns.New()
+		srv.proxy = proxy
 
 		opts := []logging.Option{
 			logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
@@ -143,6 +147,7 @@ func New(ctx context.Context, port uint, clientID string) (*Service, error) {
 		srv.server = &server{
 			tracer:               otel.Tracer(ServiceName),
 			dns:                  srv.dns,
+			proxy:                srv.proxy,
 			sandboxes:            smap.New[*sandbox.Sandbox](),
 			networkPool:          networkPool,
 			templateCache:        templateCache,

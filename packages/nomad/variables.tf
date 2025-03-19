@@ -185,6 +185,10 @@ variable "orchestrator_port" {
   type = number
 }
 
+variable "orchestrator_proxy_port" {
+  type = number
+}
+
 variable "fc_env_pipeline_bucket_name" {
   type = string
 }
