@@ -58,7 +58,7 @@ jobs:
           BUILD_MACHINE_TYPE: n1-standard-8
           BUILD_CLUSTER_SIZE: 1
           DOMAIN_NAME: e2b-staging.dev
-          POSTGRES_CONNECTION_STRING: ${{ secrets.staging_postgres_connection_string }}
+          POSTGRES_CONNECTION_STRING: ${{ secrets.STAGING_POSTGRES_CONNECTION_STRING }}
         run: |
           echo "staging" > .last_used_env
           printenv > .env.staging
@@ -75,9 +75,9 @@ jobs:
         run: |
           make copy-public-builds
 
-      - name: Migrate database
-        run: |
-          make migrate
+      #- name: Migrate database
+      #  run: |
+      #    make migrate
 
       - name: Terraform init
         run: |
