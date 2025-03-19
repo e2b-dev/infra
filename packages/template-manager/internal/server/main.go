@@ -121,6 +121,9 @@ func (s *ServerStore) Close(ctx context.Context) error {
 		// wait for all builds to finish
 		s.wg.Wait()
 
+		// give some time so all connected services can check build status
+		time.Sleep(15 * time.Second)
+
 		// mark service as unhealthy so now new request will be accepted
 		s.healthyStatus = templatemanager.HealthState_Unhealthy
 		s.server.GracefulStop()
