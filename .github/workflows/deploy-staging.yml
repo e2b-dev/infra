@@ -29,6 +29,7 @@ jobs:
         with:
           project_id: 'e2b-staging'
           workload_identity_provider: 'projects/850279079955/locations/global/workloadIdentityPools/github-staging/providers/infra-staging'
+          service_account: 'github-staging@e2b-staging.iam.gserviceaccount.com'
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
