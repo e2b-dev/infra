@@ -32,6 +32,18 @@ func (takc *TeamAPIKeyCreate) SetAPIKey(s string) *TeamAPIKeyCreate {
 	return takc
 }
 
+// SetAPIKeyHash sets the "api_key_hash" field.
+func (takc *TeamAPIKeyCreate) SetAPIKeyHash(s string) *TeamAPIKeyCreate {
+	takc.mutation.SetAPIKeyHash(s)
+	return takc
+}
+
+// SetAPIKeyMask sets the "api_key_mask" field.
+func (takc *TeamAPIKeyCreate) SetAPIKeyMask(s string) *TeamAPIKeyCreate {
+	takc.mutation.SetAPIKeyMask(s)
+	return takc
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (takc *TeamAPIKeyCreate) SetCreatedAt(t time.Time) *TeamAPIKeyCreate {
 	takc.mutation.SetCreatedAt(t)
@@ -188,6 +200,12 @@ func (takc *TeamAPIKeyCreate) check() error {
 	if _, ok := takc.mutation.APIKey(); !ok {
 		return &ValidationError{Name: "api_key", err: errors.New(`models: missing required field "TeamAPIKey.api_key"`)}
 	}
+	if _, ok := takc.mutation.APIKeyHash(); !ok {
+		return &ValidationError{Name: "api_key_hash", err: errors.New(`models: missing required field "TeamAPIKey.api_key_hash"`)}
+	}
+	if _, ok := takc.mutation.APIKeyMask(); !ok {
+		return &ValidationError{Name: "api_key_mask", err: errors.New(`models: missing required field "TeamAPIKey.api_key_mask"`)}
+	}
 	if _, ok := takc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`models: missing required field "TeamAPIKey.created_at"`)}
 	}
@@ -240,6 +258,14 @@ func (takc *TeamAPIKeyCreate) createSpec() (*TeamAPIKey, *sqlgraph.CreateSpec) {
 	if value, ok := takc.mutation.APIKey(); ok {
 		_spec.SetField(teamapikey.FieldAPIKey, field.TypeString, value)
 		_node.APIKey = value
+	}
+	if value, ok := takc.mutation.APIKeyHash(); ok {
+		_spec.SetField(teamapikey.FieldAPIKeyHash, field.TypeString, value)
+		_node.APIKeyHash = value
+	}
+	if value, ok := takc.mutation.APIKeyMask(); ok {
+		_spec.SetField(teamapikey.FieldAPIKeyMask, field.TypeString, value)
+		_node.APIKeyMask = value
 	}
 	if value, ok := takc.mutation.CreatedAt(); ok {
 		_spec.SetField(teamapikey.FieldCreatedAt, field.TypeTime, value)
@@ -354,6 +380,30 @@ func (u *TeamAPIKeyUpsert) SetAPIKey(v string) *TeamAPIKeyUpsert {
 // UpdateAPIKey sets the "api_key" field to the value that was provided on create.
 func (u *TeamAPIKeyUpsert) UpdateAPIKey() *TeamAPIKeyUpsert {
 	u.SetExcluded(teamapikey.FieldAPIKey)
+	return u
+}
+
+// SetAPIKeyHash sets the "api_key_hash" field.
+func (u *TeamAPIKeyUpsert) SetAPIKeyHash(v string) *TeamAPIKeyUpsert {
+	u.Set(teamapikey.FieldAPIKeyHash, v)
+	return u
+}
+
+// UpdateAPIKeyHash sets the "api_key_hash" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsert) UpdateAPIKeyHash() *TeamAPIKeyUpsert {
+	u.SetExcluded(teamapikey.FieldAPIKeyHash)
+	return u
+}
+
+// SetAPIKeyMask sets the "api_key_mask" field.
+func (u *TeamAPIKeyUpsert) SetAPIKeyMask(v string) *TeamAPIKeyUpsert {
+	u.Set(teamapikey.FieldAPIKeyMask, v)
+	return u
+}
+
+// UpdateAPIKeyMask sets the "api_key_mask" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsert) UpdateAPIKeyMask() *TeamAPIKeyUpsert {
+	u.SetExcluded(teamapikey.FieldAPIKeyMask)
 	return u
 }
 
@@ -497,6 +547,34 @@ func (u *TeamAPIKeyUpsertOne) SetAPIKey(v string) *TeamAPIKeyUpsertOne {
 func (u *TeamAPIKeyUpsertOne) UpdateAPIKey() *TeamAPIKeyUpsertOne {
 	return u.Update(func(s *TeamAPIKeyUpsert) {
 		s.UpdateAPIKey()
+	})
+}
+
+// SetAPIKeyHash sets the "api_key_hash" field.
+func (u *TeamAPIKeyUpsertOne) SetAPIKeyHash(v string) *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetAPIKeyHash(v)
+	})
+}
+
+// UpdateAPIKeyHash sets the "api_key_hash" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertOne) UpdateAPIKeyHash() *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateAPIKeyHash()
+	})
+}
+
+// SetAPIKeyMask sets the "api_key_mask" field.
+func (u *TeamAPIKeyUpsertOne) SetAPIKeyMask(v string) *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetAPIKeyMask(v)
+	})
+}
+
+// UpdateAPIKeyMask sets the "api_key_mask" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertOne) UpdateAPIKeyMask() *TeamAPIKeyUpsertOne {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateAPIKeyMask()
 	})
 }
 
@@ -820,6 +898,34 @@ func (u *TeamAPIKeyUpsertBulk) SetAPIKey(v string) *TeamAPIKeyUpsertBulk {
 func (u *TeamAPIKeyUpsertBulk) UpdateAPIKey() *TeamAPIKeyUpsertBulk {
 	return u.Update(func(s *TeamAPIKeyUpsert) {
 		s.UpdateAPIKey()
+	})
+}
+
+// SetAPIKeyHash sets the "api_key_hash" field.
+func (u *TeamAPIKeyUpsertBulk) SetAPIKeyHash(v string) *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetAPIKeyHash(v)
+	})
+}
+
+// UpdateAPIKeyHash sets the "api_key_hash" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertBulk) UpdateAPIKeyHash() *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateAPIKeyHash()
+	})
+}
+
+// SetAPIKeyMask sets the "api_key_mask" field.
+func (u *TeamAPIKeyUpsertBulk) SetAPIKeyMask(v string) *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.SetAPIKeyMask(v)
+	})
+}
+
+// UpdateAPIKeyMask sets the "api_key_mask" field to the value that was provided on create.
+func (u *TeamAPIKeyUpsertBulk) UpdateAPIKeyMask() *TeamAPIKeyUpsertBulk {
+	return u.Update(func(s *TeamAPIKeyUpsert) {
+		s.UpdateAPIKeyMask()
 	})
 }
 

@@ -64,7 +64,7 @@ func (db *DB) GetUserID(ctx context.Context, token string) (*uuid.UUID, error) {
 		Client.
 		AccessToken.
 		Query().
-		Where(accesstoken.ID(token)).
+		Where(accesstoken.AccessToken(token)).
 		Only(ctx)
 
 	if err != nil {
@@ -74,4 +74,21 @@ func (db *DB) GetUserID(ctx context.Context, token string) (*uuid.UUID, error) {
 	}
 
 	return &result.UserID, nil
+}
+
+func (db *DB) GetTeamAPIKeys(ctx context.Context, teamID uuid.UUID) ([]*models.TeamAPIKey, error) {
+	result, err := db.
+		Client.
+		TeamAPIKey.
+		Query().
+		Where(teamapikey.TeamID(teamID)).
+		All(ctx)
+
+	if err != nil {
+		errMsg := fmt.Errorf("failed to get team API keys: %w", err)
+
+		return nil, errMsg
+	}
+
+	return result, nil
 }
