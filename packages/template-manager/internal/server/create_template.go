@@ -16,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 )
 
-func (s *serverStore) TemplateCreate(ctx context.Context, templateRequest *template_manager.TemplateCreateRequest) (*emptypb.Empty, error) {
+func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *template_manager.TemplateCreateRequest) (*emptypb.Empty, error) {
 	_, childSpan := s.tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
@@ -58,7 +58,10 @@ func (s *serverStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
 
+	s.wg.Add(1)
 	go func() {
+		defer s.wg.Done()
+
 		buildContext, buildSpan := s.tracer.Start(
 			trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
 			"template-background-build",

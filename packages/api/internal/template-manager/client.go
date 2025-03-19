@@ -1,7 +1,9 @@
 package template_manager
 
 import (
+	"context"
 	"fmt"
+	"go.uber.org/zap"
 	"os"
 	"time"
 
@@ -14,12 +16,17 @@ import (
 )
 
 var (
-	host = os.Getenv("TEMPLATE_MANAGER_ADDRESS")
+	host                = os.Getenv("TEMPLATE_MANAGER_ADDRESS")
+	healthCheckInterval = 5 * time.Second
 )
 
 type GRPCClient struct {
 	Client     template_manager.TemplateServiceClient
 	connection e2bgrpc.ClientConnInterface
+
+	lastHealthCheckAt *time.Time
+	healthy           template_manager.HealthState
+	healthSyncStop    chan struct{}
 }
 
 func NewClient() (*GRPCClient, error) {
@@ -34,16 +41,66 @@ func NewClient() (*GRPCClient, error) {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
 
-	client := template_manager.NewTemplateServiceClient(conn)
+	client := &GRPCClient{
+		Client:            template_manager.NewTemplateServiceClient(conn),
+		healthy:           template_manager.HealthState_Healthy,
+		lastHealthCheckAt: nil,
+		connection:        conn,
+	}
 
-	return &GRPCClient{Client: client, connection: conn}, nil
+	// periodically check for health status
+	go client.healthCheckSync()
+
+	return client, nil
+}
+
+func (a *GRPCClient) healthCheckSync() {
+	ticker := time.NewTicker(healthCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			ctx, ctxCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			healthStatus, err := a.Client.HealthStatus(ctx, nil)
+			healthCheckAt := time.Now()
+			ctxCancel()
+
+			if err != nil {
+				zap.L().Error("failed to get health status of template manager", zap.Error(err))
+
+				a.lastHealthCheckAt = &healthCheckAt
+				a.healthy = template_manager.HealthState_Unhealthy
+				continue
+			}
+
+			zap.L().Debug("template manager health status", zap.String("status", healthStatus.Status.String()))
+
+			a.lastHealthCheckAt = &healthCheckAt
+			a.healthy = healthStatus.Status
+		case <-a.healthSyncStop:
+			zap.L().Info("stopping health check sync")
+			return
+		}
+	}
 }
 
 func (a *GRPCClient) Close() error {
+	// signal to background health check to stop
+	close(a.healthSyncStop)
+
 	err := a.connection.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close connection: %w", err)
 	}
 
 	return nil
+}
+
+func (a *GRPCClient) IsReadyForBuildPlacement() bool {
+	return a.healthy == template_manager.HealthState_Healthy
+}
+
+func (a *GRPCClient) IsAvailable() bool {
+	return a.healthy == template_manager.HealthState_Healthy || a.healthy == template_manager.HealthState_Draining
 }

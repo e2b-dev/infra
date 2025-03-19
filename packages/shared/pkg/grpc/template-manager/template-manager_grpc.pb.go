@@ -29,6 +29,7 @@ type TemplateServiceClient interface {
 	TemplateBuildStatus(ctx context.Context, in *TemplateStatusRequest, opts ...grpc.CallOption) (*TemplateBuildStatusResponse, error)
 	// TemplateBuildDelete is a gRPC service that deletes files associated with a template build
 	TemplateBuildDelete(ctx context.Context, in *TemplateBuildDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	HealthStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*HealthStatusResponse, error)
 }
 
 type templateServiceClient struct {
@@ -66,6 +67,15 @@ func (c *templateServiceClient) TemplateBuildDelete(ctx context.Context, in *Tem
 	return out, nil
 }
 
+func (c *templateServiceClient) HealthStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*HealthStatusResponse, error) {
+	out := new(HealthStatusResponse)
+	err := c.cc.Invoke(ctx, "/TemplateService/HealthStatus", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TemplateServiceServer is the server API for TemplateService service.
 // All implementations must embed UnimplementedTemplateServiceServer
 // for forward compatibility
@@ -76,6 +86,7 @@ type TemplateServiceServer interface {
 	TemplateBuildStatus(context.Context, *TemplateStatusRequest) (*TemplateBuildStatusResponse, error)
 	// TemplateBuildDelete is a gRPC service that deletes files associated with a template build
 	TemplateBuildDelete(context.Context, *TemplateBuildDeleteRequest) (*emptypb.Empty, error)
+	HealthStatus(context.Context, *emptypb.Empty) (*HealthStatusResponse, error)
 	mustEmbedUnimplementedTemplateServiceServer()
 }
 
@@ -91,6 +102,9 @@ func (UnimplementedTemplateServiceServer) TemplateBuildStatus(context.Context, *
 }
 func (UnimplementedTemplateServiceServer) TemplateBuildDelete(context.Context, *TemplateBuildDeleteRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TemplateBuildDelete not implemented")
+}
+func (UnimplementedTemplateServiceServer) HealthStatus(context.Context, *emptypb.Empty) (*HealthStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HealthStatus not implemented")
 }
 func (UnimplementedTemplateServiceServer) mustEmbedUnimplementedTemplateServiceServer() {}
 
@@ -159,6 +173,24 @@ func _TemplateService_TemplateBuildDelete_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TemplateService_HealthStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TemplateServiceServer).HealthStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/TemplateService/HealthStatus",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TemplateServiceServer).HealthStatus(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TemplateService_ServiceDesc is the grpc.ServiceDesc for TemplateService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -177,6 +209,10 @@ var TemplateService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TemplateBuildDelete",
 			Handler:    _TemplateService_TemplateBuildDelete_Handler,
+		},
+		{
+			MethodName: "HealthStatus",
+			Handler:    _TemplateService_HealthStatus_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

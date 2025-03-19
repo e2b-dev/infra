@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (s *serverStore) TemplateBuildStatus(ctx context.Context, in *template_manager.TemplateStatusRequest) (*template_manager.TemplateBuildStatusResponse, error) {
+func (s *ServerStore) TemplateBuildStatus(ctx context.Context, in *template_manager.TemplateStatusRequest) (*template_manager.TemplateBuildStatusResponse, error) {
 	ctx, ctxSpan := s.tracer.Start(ctx, "template-build-status-request")
 	defer ctxSpan.End()
 
