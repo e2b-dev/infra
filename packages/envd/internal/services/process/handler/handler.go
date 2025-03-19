@@ -43,6 +43,8 @@ type Handler struct {
 	cmd *exec.Cmd
 	tty *os.File
 
+	SignalChan chan syscall.Signal
+
 	outWg *sync.WaitGroup
 	stdin io.WriteCloser
 
@@ -62,6 +64,17 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+
+	signalChan := make(chan syscall.Signal, 1)
+	shutdownChan := make(chan bool)
+
+	go func() {
+		signal := <-signalChan
+		if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
+			// closing the shutdownChan allows us to broadcast the signal to all the read loops below
+			close(shutdownChan)
+		}
+	}()
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
 	cmd.SysProcAttr.Credential = &syscall.Credential{
@@ -172,14 +185,26 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 
 	outWg.Add(1)
 	go func() {
-		defer outWg.Done()
-
 		stdoutLogs := make(chan []byte, outputBufferSize)
 		defer close(stdoutLogs)
 
+		readOver := make(chan bool, 1)
 		stdoutLogger := logger.With().Str("event_type", "stdout").Logger()
 
 		go logs.LogBufferedDataEvents(stdoutLogs, &stdoutLogger, "data")
+
+		go func() {
+			select {
+			case <-readOver:
+				outWg.Done()
+				break
+			case _, ok := <-shutdownChan:
+				if !ok {
+					outWg.Done()
+				}
+				break
+			}
+		}()
 
 		for {
 			buf := make([]byte, stdChunkSize)
@@ -208,6 +233,8 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 				break
 			}
 		}
+
+		readOver <- true
 	}()
 
 	stderr, err := cmd.StderrPipe()
@@ -217,14 +244,27 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 
 	outWg.Add(1)
 	go func() {
-		defer outWg.Done()
-
 		stderrLogs := make(chan []byte, outputBufferSize)
 		defer close(stderrLogs)
+
+		readOver := make(chan bool, 1)
 
 		stderrLogger := logger.With().Str("event_type", "stderr").Logger()
 
 		go logs.LogBufferedDataEvents(stderrLogs, &stderrLogger, "data")
+
+		go func() {
+			select {
+			case <-readOver:
+				outWg.Done()
+				break
+			case _, ok := <-shutdownChan:
+				if !ok {
+					outWg.Done()
+				}
+				break
+			}
+		}()
 
 		for {
 			buf := make([]byte, stdChunkSize)
@@ -253,17 +293,20 @@ func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars
 				break
 			}
 		}
+
+		readOver <- true
 	}()
 
 	return &Handler{
-		Config:    req.GetProcess(),
-		cmd:       cmd,
-		stdin:     stdin,
-		Tag:       req.Tag,
-		DataEvent: outMultiplex,
-		outWg:     &outWg,
-		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-		logger:    logger,
+		Config:     req.GetProcess(),
+		cmd:        cmd,
+		stdin:      stdin,
+		Tag:        req.Tag,
+		DataEvent:  outMultiplex,
+		outWg:      &outWg,
+		EndEvent:   NewMultiplexedChannel[rpc.ProcessEvent_End](0),
+		SignalChan: signalChan,
+		logger:     logger,
 	}, nil
 }
 
