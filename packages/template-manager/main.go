@@ -84,6 +84,7 @@ func main() {
 
 	// Create an instance of our handler which satisfies the generated interface
 	s := server.New(logger, buildLogger)
+	s, _ := server.New(logger, buildLogger)
 
 	log.Printf("Starting server on port %d", *port)
 	if err := s.Serve(lis); err != nil {
