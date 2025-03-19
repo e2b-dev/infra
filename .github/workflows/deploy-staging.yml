@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_postgres_connection_string:
+        required: true
+        description: Postgres connection string
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to the staging environment
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Service Account
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: 'e2b-staging'
+          workload_identity_provider: 'projects/850279079955/locations/global/workloadIdentityPools/github-staging/providers/infra-staging'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set up Docker
+        run: |
+          export ACCESS_TOKEN=$(gcloud auth print-access-token)
+          export DOCKER_AUTH_BASE64=$(echo -n "{\"username\":\"oauth2accesstoken\",\"password\":\"$ACCESS_TOKEN\"}" | base64 -w 0)
+          
+          echo "::add-mask::$DOCKER_AUTH_BASE64"
+          echo "DOCKER_AUTH_BASE64=${DOCKER_AUTH_BASE64}" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Setup Environment Variables
+        env:
+          PREFIX: "e2b-"
+          GCP_PROJECT_ID: e2b-staging
+          GCP_REGION: us-west1
+          GCP_ZONE: us-west1-c
+          TERRAFORM_ENVIRONMENT: prod
+          TERRAFORM_STATE_BUCKET: e2b-staging-terraform-state
+          CLIENT_MACHINE_TYPE: n1-standard-8
+          CLIENT_CLUSTER_SIZE: 3
+          SERVER_MACHINE_TYPE: e2-standard-2
+          SERVER_CLUSTER_SIZE: 3
+          API_MACHINE_TYPE: e2-standard-8
+          API_CLUSTER_SIZE: 1
+          BUILD_MACHINE_TYPE: n1-standard-8
+          BUILD_CLUSTER_SIZE: 1
+          DOMAIN_NAME: e2b-staging.dev
+          POSTGRES_CONNECTION_STRING: ${{ inputs.staging_postgres_connection_string }}
+        run: |
+          echo "staging" > .last_used_env
+          printenv > .env.staging
+          
+          echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
+          echo "TERRAFORM_STATE_BUCKET=${TERRAFORM_STATE_BUCKET}" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Build and upload
+        run: |
+          make build-and-upload
+
+      - name: Copy public builds
+        run: |
+          make copy-public-builds
+
+      - name: Migrate database
+        run: |
+          make migrate
+
+      - name: Terraform init
+        run: |
+          terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+
+      - name: Deploy infrastructure
+        run: |
+          make plan-without-jobs
+          make apply
+
+      - name: Deploy jobs
+        run: |
+          make plan-only-jobs
+          make apply
+        
