@@ -1,8 +1,6 @@
 name: Firecracker VM CI
 
-on:
-  workflow_call:
-    branches: [ main ]
+on: workflow_call
 
 jobs:
   firecracker:
