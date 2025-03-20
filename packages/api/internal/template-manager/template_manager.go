@@ -2,11 +2,12 @@ package template_manager
 
 import (
 	"context"
-	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
+	"github.com/flowchartsman/retry"
 )
 
 type processingBuilds struct {
@@ -117,19 +119,25 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		return
 	}
 
-	checker := &BuildStatusChecker{
-		statusClient:          tm.grpc.Client,
-		ctx:                   childCtx,
-		tickChannel:           make(chan struct{}),
+	checker := &PollBuildStatus{
+		statusClient: tm.grpc.Client,
+		ctx:          childCtx,
+		// Before Go 1.23, the garbage collector did not recover
+		// tickers that had not yet expired or been stopped, so code often
+		// immediately deferred t.Stop after calling NewTicker, to make
+		// the ticker recoverable when it was no longer needed.
+		// As of Go 1.23, the garbage collector can recover unreferenced
+		// tickers, even if they haven't been stopped.
+		// The Stop method is no longer necessary to help the garbage collector.
+		// (Code may of course still want to call Stop to stop the ticker for other reasons.)
+		tickChannel:           time.NewTicker(time.Second).C,
 		logger:                logger,
 		templateID:            templateID,
 		buildID:               buildID,
 		templateManagerClient: tm,
-		retries:               5,
-		retryInterval:         time.Second,
 	}
 
-	checker.run()
+	checker.poll()
 
 }
 
@@ -142,10 +150,10 @@ type templateManagerClient interface {
 	SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error
 }
 
-type BuildStatusChecker struct {
+type PollBuildStatus struct {
 	retries               int
 	retryInterval         time.Duration
-	tickChannel           chan struct{}
+	tickChannel           <-chan time.Time
 	ctx                   context.Context
 	statusClient          statusClient
 	logger                *zap.Logger
@@ -154,76 +162,89 @@ type BuildStatusChecker struct {
 	templateManagerClient templateManagerClient
 }
 
-func (c *BuildStatusChecker) run() {
-
-	ticker := time.NewTicker(c.retryInterval)
-	defer ticker.Stop()
+func (c *PollBuildStatus) poll() {
 
 	// poll build status
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
-		case <-ticker.C:
-			c.logger.Info("Checking template build status")
-
-			status, err := c.statusClient.TemplateBuildStatus(c.ctx, &template_manager.TemplateStatusRequest{TemplateID: c.templateID, BuildID: c.buildID.String()})
+		case <-c.tickChannel:
+			err := c.setBuildStatus()
 			if utils.UnwrapGRPCError(err) != nil {
-				c.logger.Error("Error when fetching template build status", zap.Error(err))
-				c.retries--
-				if c.retries == 0 {
-					err = c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, fmt.Sprintf("error when fetching template build status: %s", err))
-					if err != nil {
-						c.logger.Error("Error when setting build status", zap.Error(err))
-					}
-
-					return
-				}
-				continue
-			}
-			if err == nil && status != nil {
-				// reset retries when we get a valid status
-				c.retries = 5
-			}
-
-			// defensive against nil pointer dereference
-			if status == nil {
-				c.retries--
-				if c.retries == 0 {
-					err = c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, "error when fetching template build status: nil status")
-					if err != nil {
-						c.logger.Error("Error when setting build status", zap.Error(err))
-					}
-				}
-				continue
-			}
-
-			// build failed
-			if status.GetStatus() == template_manager.TemplateBuildState_Failed {
-				c.logger.Error("Template build failed according to status")
-				err = c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, "template build failed according to status")
+				c.logger.Error("Error when polling build status", zap.Error(err))
+				err = c.templateManagerClient.SetStatus(
+					c.ctx,
+					c.templateID,
+					c.buildID,
+					envbuild.StatusFailed,
+					err.Error(),
+				)
 				if err != nil {
 					c.logger.Error("Error when setting build status", zap.Error(err))
 				}
-
 				return
 			}
 
-			// build completed
-			if status.GetStatus() == template_manager.TemplateBuildState_Completed {
-				meta := status.GetMetadata()
-				err = c.templateManagerClient.SetFinished(c.ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
-				if err != nil {
-					c.logger.Error("Error when finishing build", zap.Error(err))
-					return
-				}
-
-				c.logger.Info("Template build finished")
-				return
-			}
 		}
 	}
 }
+
+func (c *PollBuildStatus) getFuncToRetry(s *template_manager.TemplateBuildStatusResponse) func() error {
+	return func() error {
+		if c.statusClient == nil {
+			return errors.New("status client is nil")
+		}
+		status, err := c.statusClient.TemplateBuildStatus(c.ctx, &template_manager.TemplateStatusRequest{TemplateID: c.templateID, BuildID: c.buildID.String()})
+
+		if err != nil && strings.Contains(err.Error(), "context deadline exceeded") {
+			return err
+		} else if err != nil { // retry only on context deadline exceeded
+			return retry.Stop(errors.Wrap(err, "error when polling build status"))
+		}
+
+		if status == nil {
+			return errors.New("nil status") // this should never happen
+		}
+
+		s = status // update the status pointer if we got a new one
+
+		return nil
+	}
+}
+
+func (c *PollBuildStatus) setBuildStatus() error {
+	c.logger.Info("Checking template build status")
+
+	retrier := retry.NewRetrier(c.retries, 100*time.Millisecond, time.Second)
+	var status *template_manager.TemplateBuildStatusResponse
+	err := retrier.Run(c.getFuncToRetry(status))
+	if err != nil {
+		return errors.Wrap(err, "error when polling build status")
+	}
+
+	switch status.GetStatus() {
+	case template_manager.TemplateBuildState_Failed:
+		// build failed
+		err = c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, "template build failed according to status")
+		return errors.Wrap(err, "error when setting build status")
+
+	case template_manager.TemplateBuildState_Completed:
+		// build completed
+		meta := status.GetMetadata()
+		err = c.templateManagerClient.SetFinished(c.ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
+		if err != nil {
+			return errors.Wrap(err, "error when finishing build")
+		}
+		return nil
+
+	default:
+		// don't error on unknown build status so things don't randomly break
+		return nil
+	}
+
+}
+
 func (tm *TemplateManager) removeFromProcessingQueue(buildID uuid.UUID) {
 	tm.lock.Lock()
 	delete(tm.processing, buildID)
