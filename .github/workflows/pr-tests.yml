@@ -57,7 +57,4 @@ jobs:
 
       - name: Run tests and print coverage
         working-directory: ${{ matrix.package }}
-        run: go test -v ${{ matrix.test_path }} -coverprofile=coverage.out -covermode=atomic
-
-      - name: Print coverage
-        run: go tool cover -func=coverage.out
+        run: go test -v ${{ matrix.test_path }}
