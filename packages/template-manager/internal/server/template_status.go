@@ -2,8 +2,9 @@ package server
 
 import (
 	"context"
-	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+
+	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -16,7 +17,7 @@ func (s *serverStore) TemplateBuildStatus(ctx context.Context, in *template_mana
 
 	buildInfo, err := s.buildCache.Get(in.BuildID)
 	if err != nil {
-		return nil, fmt.Errorf("error while getting build info, maybe already expired")
+		return nil, errors.WithMessage(errors.WithStack(err), "error while getting build info, maybe already expired")
 	}
 
 	return &template_manager.TemplateBuildStatusResponse{
