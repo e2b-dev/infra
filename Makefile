@@ -3,6 +3,7 @@ ENV_FILE := $(PWD)/.env.${ENV}
 
 -include ${ENV_FILE}
 
+TF := $(shell which terraform)
 TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
 OTEL_TRACING_PRINT ?= false
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
@@ -54,13 +55,13 @@ init:
 .PHONY: plan
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	terraform fmt -recursive
+	$(TF) fmt -recursive
 	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
 
 .PHONY: plan-only-jobs
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	terraform fmt -recursive
+	$(TF) fmt -recursive
 	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad
 
 
@@ -82,7 +83,7 @@ plan-without-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(eval TARGET := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
 	$(tf_vars) \
-	terraform plan \
+	$(TF) plan \
 	-out=.tfplan.$(ENV) \
 	-input=false \
 	-compact-warnings \
@@ -94,7 +95,7 @@ destroy:
 	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
 	$(tf_vars) \
-	terraform destroy \
+	$(TF) destroy \
 	-compact-warnings \
 	-parallelism=20 \
 	$$(terraform state list | grep module | cut -d'.' -f1,2 | grep -v -e "buckets" | uniq | awk '{print "-target=" $$0 ""}' | xargs)
