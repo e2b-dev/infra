@@ -129,7 +129,7 @@ func TestPollBuildStatus_getSetStatusFn(t *testing.T) {
 					t.Errorf("PollBuildStatus.getSetStatusFn() = %v", err)
 				}
 			}
-			if tt.status != nil && tt.status.GetStatus() != c.status.GetStatus() {
+			if tt.status.GetStatus() != c.status.GetStatus() {
 				t.Errorf("PollBuildStatus.getSetStatusFn() = %v, want %v", c.status, tt.status)
 			}
 		})
