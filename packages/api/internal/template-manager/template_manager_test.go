@@ -212,6 +212,62 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		// should not get error when no error setting status
+		{
+			name: "should not get error when no error setting status",
+			fields: fields{
+				templateManagerClient: &fakeTemplateManagerClient{},
+			},
+			args: args{
+				status: &template_manager.TemplateBuildStatusResponse{
+					Status: template_manager.TemplateBuildState_Building,
+				},
+			},
+			wantErr: false,
+		},
+		// should not get error when no error setting finished
+		{
+			name: "should not get error when no error setting finished",
+			fields: fields{
+				templateManagerClient: &fakeTemplateManagerClient{},
+			},
+			args: args{
+				status: &template_manager.TemplateBuildStatusResponse{
+					Status: template_manager.TemplateBuildState_Completed,
+					Metadata: &template_manager.TemplateBuildMetadata{
+						RootfsSizeKey:  100,
+						EnvdVersionKey: "1.0.0",
+					},
+				},
+			},
+			wantErr: false,
+		},
+		// should error when nil metadata
+		{
+			name: "should error when nil metadata",
+			fields: fields{
+				templateManagerClient: &fakeTemplateManagerClient{},
+			},
+			args: args{
+				status: &template_manager.TemplateBuildStatusResponse{
+					Status: template_manager.TemplateBuildState_Completed,
+				},
+			},
+			wantErr: true,
+		},
+		// should not error when status is failure
+		{
+			name: "should not error when status is failure",
+			fields: fields{
+				templateManagerClient: &fakeTemplateManagerClient{},
+			},
+			args: args{
+				status: &template_manager.TemplateBuildStatusResponse{
+					Status: template_manager.TemplateBuildState_Failed,
+				},
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
