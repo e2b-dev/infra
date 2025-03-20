@@ -66,6 +66,15 @@ jobs:
           echo "TERRAFORM_STATE_BUCKET=${TERRAFORM_STATE_BUCKET}" >> $GITHUB_ENV
         shell: bash
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+
+      - name: Terraform init
+        run: |
+          terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+
       - name: Build and upload
         run: |
           make build-and-upload
@@ -77,15 +86,6 @@ jobs:
       #- name: Migrate database
       #  run: |
       #    make migrate
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.5.7
-
-      - name: Terraform init
-        run: |
-          terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 
       - name: Deploy infrastructure
         run: |
