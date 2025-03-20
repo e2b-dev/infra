@@ -30,6 +30,7 @@ jobs:
         env:
           TESTS_API_SERVER_URL: "http://localhost:3000"
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
+          TESTS_ENVD_PROXY: "http://localhost:5007"
         with:
           timeout_minutes: 60
           max_attempts: 3
