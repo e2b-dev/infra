@@ -160,6 +160,7 @@ type PollBuildStatus struct {
 	templateID            string
 	buildID               uuid.UUID
 	templateManagerClient templateManagerClient
+	done                  chan error
 }
 
 func (c *PollBuildStatus) poll() {
@@ -170,7 +171,9 @@ func (c *PollBuildStatus) poll() {
 		case <-c.ctx.Done():
 			return
 		case <-c.tickChannel:
-			err := c.setBuildStatus()
+			c.setBuildStatus()
+
+		case err := <-c.done:
 			if utils.UnwrapGRPCError(err) != nil {
 				c.logger.Error("Error when polling build status", zap.Error(err))
 				err = c.templateManagerClient.SetStatus(
@@ -183,9 +186,8 @@ func (c *PollBuildStatus) poll() {
 				if err != nil {
 					c.logger.Error("Error when setting build status", zap.Error(err))
 				}
-				return
 			}
-
+			return
 		}
 	}
 }
@@ -213,41 +215,45 @@ func (c *PollBuildStatus) getFuncToRetry(s *template_manager.TemplateBuildStatus
 	}
 }
 
-func (c *PollBuildStatus) dispatchBasedOnStatus(status *template_manager.TemplateBuildStatusResponse) error {
+func (c *PollBuildStatus) dispatchBasedOnStatus(status *template_manager.TemplateBuildStatusResponse) {
 	if status == nil {
-		return errors.New("nil status")
+		c.done <- errors.New("nil status")
+		return
 	}
 	switch status.GetStatus() {
 	case template_manager.TemplateBuildState_Failed:
 		// build failed
 		err := c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, "template build failed according to status")
-		return errors.Wrap(err, "error when setting build status")
-
+		c.done <- errors.Wrap(err, "error when setting build status")
+		return
 	case template_manager.TemplateBuildState_Completed:
 		// build completed
 		meta := status.GetMetadata()
 		if meta == nil {
-			return errors.New("nil metadata")
+			c.done <- errors.New("nil metadata")
+			return
 		}
 		err := c.templateManagerClient.SetFinished(c.ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
-		return errors.Wrap(err, "error when finishing build")
+		c.done <- errors.Wrap(err, "error when finishing build")
+		return
 	default:
-		// don't error on unknown build status so things don't randomly break
-		return nil
+		// continue polling
+		return
 	}
 }
 
-func (c *PollBuildStatus) setBuildStatus() error {
+func (c *PollBuildStatus) setBuildStatus() {
 	c.logger.Info("Checking template build status")
 
 	retrier := retry.NewRetrier(c.retries, 100*time.Millisecond, time.Second)
 	var status *template_manager.TemplateBuildStatusResponse
 	err := retrier.Run(c.getFuncToRetry(status))
 	if err != nil {
-		return errors.Wrap(err, "error when polling build status")
+		c.done <- errors.Wrap(err, "error when polling build status")
+		return
 	}
 
-	return c.dispatchBasedOnStatus(status)
+	c.dispatchBasedOnStatus(status)
 }
 
 func (tm *TemplateManager) removeFromProcessingQueue(buildID uuid.UUID) {

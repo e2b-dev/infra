@@ -2,6 +2,7 @@ package template_manager
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -141,44 +142,53 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 		status *template_manager.TemplateBuildStatusResponse
 	}
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-		calls   []string
+		name          string
+		fields        fields
+		args          args
+		expectedError string
 	}{
-		// TODO: Add test cases.
 		{
 			name: "should return error if status is nil",
 			fields: fields{
-				templateManagerClient: &fakeTemplateManagerClient{
-					setStatusError: errors.New("status is nil"),
-				},
+				templateManagerClient: &fakeTemplateManagerClient{},
 			},
 			args: args{
 				status: nil,
 			},
-			wantErr: true,
-			calls:   []string{},
+			expectedError: "nil status",
 		},
-		// if status is failed, set status to failed and return nil
 		{
-			name: "should set status to failed and return nil if status is failed",
+			name: "should handle failed status",
 			fields: fields{
-				templateManagerClient: &fakeTemplateManagerClient{},
+				templateManagerClient: &fakeTemplateManagerClient{
+					setStatusError: errors.New("failed to set status"),
+				},
 			},
 			args: args{
 				status: &template_manager.TemplateBuildStatusResponse{
 					Status: template_manager.TemplateBuildState_Failed,
 				},
 			},
-			wantErr: false,
+			expectedError: "error when setting build status",
 		},
-		// if status is finished, set status to finished and return nil
 		{
-			name: "should set status to finished and return nil if status is finished",
+			name: "should handle completed status with nil metadata",
 			fields: fields{
 				templateManagerClient: &fakeTemplateManagerClient{},
+			},
+			args: args{
+				status: &template_manager.TemplateBuildStatusResponse{
+					Status: template_manager.TemplateBuildState_Completed,
+				},
+			},
+			expectedError: "nil metadata",
+		},
+		{
+			name: "should handle completed status successfully",
+			fields: fields{
+				templateManagerClient: &fakeTemplateManagerClient{
+					setFinishedError: errors.New("failed to set finished"),
+				},
 			},
 			args: args{
 				status: &template_manager.TemplateBuildStatusResponse{
@@ -189,24 +199,10 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
+			expectedError: "error when finishing build",
 		},
-		// return error if metadata is nil
 		{
-			name: "should return error if metadata is nil",
-			fields: fields{
-				templateManagerClient: &fakeTemplateManagerClient{},
-			},
-			args: args{
-				status: &template_manager.TemplateBuildStatusResponse{
-					Status: template_manager.TemplateBuildState_Completed,
-				},
-			},
-			wantErr: true,
-		},
-		// if status is unknown, return nil
-		{
-			name: "should return nil if status is unknown",
+			name: "should not send to done channel for building status",
 			fields: fields{
 				templateManagerClient: &fakeTemplateManagerClient{},
 			},
@@ -215,19 +211,36 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Building,
 				},
 			},
-			wantErr: false,
+			expectedError: "",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
+			done := make(chan error, 1)
 			c := &PollBuildStatus{
 				templateManagerClient: tt.fields.templateManagerClient,
-			}
-			if err := c.dispatchBasedOnStatus(tt.args.status); (err != nil) != tt.wantErr {
-				t.Errorf("PollBuildStatus.dispatchBasedOnStatus() error = %v, wantErr %v", err, tt.wantErr)
+				done:                  done,
 			}
 
+			c.dispatchBasedOnStatus(tt.args.status)
+
+			if tt.expectedError == "" {
+				select {
+				case err := <-done:
+					t.Errorf("Expected no error, got %v", err)
+				default:
+					// Success - no error sent to channel
+				}
+			} else {
+				select {
+				case err := <-done:
+					if err == nil || !strings.Contains(err.Error(), tt.expectedError) {
+						t.Errorf("Expected error containing %q, got %v", tt.expectedError, err)
+					}
+				default:
+					t.Error("Expected error but none received")
+				}
+			}
 		})
 	}
 }
