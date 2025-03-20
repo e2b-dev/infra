@@ -41,12 +41,6 @@ func (f fakeTemplateManagerClient) SetFinished(ctx context.Context, templateID s
 	return f.setFinishedError
 }
 
-func logCallingfakeTemplateManagerClient(calls []string) func(s string) {
-	return func(s string) {
-		calls = append(calls, s)
-	}
-}
-
 func TestPollBuildStatus_getFuncToRetry(t *testing.T) {
 	type fields struct {
 		statusClient testStatusClient
