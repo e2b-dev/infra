@@ -164,7 +164,7 @@ func (c *PollBuildStatus) getPollRetryFunction(_ context.Context) func(context.C
 }
 
 func (c *PollBuildStatus) poll() {
-	retrier := retry.NewRetrier(1000, time.Second, time.Second*30)
+	retrier := retry.NewRetrier(2400, time.Second, time.Second)
 
 	err := retrier.RunContext(c.ctx, c.getPollRetryFunction(c.ctx))
 
