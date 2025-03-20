@@ -55,6 +55,6 @@ jobs:
           path: ${{ steps.go-cache-paths.outputs.go-mod }}
           key: ${{ runner.os }}-go-mod-${{ matrix.package }}-${{ hashFiles('**/go.sum') }}
 
-      - name: Run tests and print coverage
+      - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: go test -v ${{ matrix.test_path }} -coverprofile=coverage.out -covermode=atomic && go tool cover -func=coverage.out
+        run: go test -v ${{ matrix.test_path }}
