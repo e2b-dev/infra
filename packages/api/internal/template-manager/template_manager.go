@@ -143,6 +143,10 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 				}
 				continue
 			}
+			if err == nil && status != nil {
+				// reset retries when we get a valid status
+				retries = 5
+			}
 
 			// defensive against nil pointer dereference
 			if status == nil {
