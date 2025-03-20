@@ -16,7 +16,7 @@ generate:
 	cp -r ../../packages/envd/internal/services/spec/ internal/envd/.
 	find internal/. -type f -exec perl -pi -e 's|github.com/e2b-dev/infra/packages/envd/internal/services/spec/|github.com/e2b-dev/infra/tests/integration/internal/envd/|g' {} +
 
-	# Copy the envd HTTP client
+	# Create envd HTTP client
 	mkdir -p internal/envd/api/
 	$(codegen) -generate client --package api $(openapi_envd) > internal/envd/api/client.gen.go
 	$(codegen) -generate models --package api $(openapi_envd) > internal/envd/api/models.gen.go
