@@ -32,15 +32,12 @@ func (f *fakeStatusClient) TemplateBuildStatus(ctx context.Context, in *template
 type fakeTemplateManagerClient struct {
 	setStatusError   error
 	setFinishedError error
-	logcalls         func(string)
 }
 
 func (f fakeTemplateManagerClient) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason string) error {
-	f.logcalls("SetStatus")
 	return f.setStatusError
 }
 func (f fakeTemplateManagerClient) SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
-	f.logcalls("SetFinished")
 	return f.setFinishedError
 }
 
