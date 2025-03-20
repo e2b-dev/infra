@@ -153,34 +153,16 @@ type buildStatusSetter interface {
 	setBuildStatus() error
 }
 
-func (c *PollBuildStatus) getPollRetryFunction(bss buildStatusSetter) func() error {
-	return func() error {
-		if c.ctx == nil {
-			return retry.Stop(errors.New("context is nil"))
-		}
-
-		select {
-		case <-c.ctx.Done():
-			err := c.ctx.Err()
-			if err != nil {
-				return retry.Stop(errors.Wrap(err, "context done"))
-			}
-			return retry.Stop(errors.New("context done"))
-		default:
-
-			err := bss.setBuildStatus()
-			if err != nil {
-				return err
-			}
-			return nil
-		}
+func (c *PollBuildStatus) getPollRetryFunction(_ context.Context) func(context.Context) error {
+	return func(_ context.Context) error {
+		return c.setBuildStatus()
 	}
 }
 
 func (c *PollBuildStatus) poll() {
 	retrier := retry.NewRetrier(120, time.Second, time.Second*30)
 
-	err := retrier.Run(c.getPollRetryFunction(c))
+	err := retrier.RunContext(c.ctx, c.getPollRetryFunction(c.ctx))
 
 	if err != nil {
 		c.logger.Error("Polling timed out", zap.Error(err))
