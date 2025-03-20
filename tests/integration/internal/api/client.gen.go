@@ -720,6 +720,54 @@ func NewGetSandboxesRequest(server string, params *GetSandboxesParams) (*http.Re
 
 		}
 
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", false, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.NextToken != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "nextToken", runtime.ParamLocationQuery, *params.NextToken); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -1744,7 +1792,7 @@ func (r PostNodesNodeIDResponse) StatusCode() int {
 type GetSandboxesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *[]RunningSandbox
+	JSON200      *[]ListedSandbox
 	JSON400      *N400
 	JSON401      *N401
 	JSON500      *N500
@@ -1843,7 +1891,7 @@ func (r DeleteSandboxesSandboxIDResponse) StatusCode() int {
 type GetSandboxesSandboxIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *RunningSandbox
+	JSON200      *ListedSandbox
 	JSON401      *N401
 	JSON404      *N404
 	JSON500      *N500
@@ -2643,7 +2691,7 @@ func ParseGetSandboxesResponse(rsp *http.Response) (*GetSandboxesResponse, error
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []RunningSandbox
+		var dest []ListedSandbox
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -2824,7 +2872,7 @@ func ParseGetSandboxesSandboxIDResponse(rsp *http.Response) (*GetSandboxesSandbo
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest RunningSandbox
+		var dest ListedSandbox
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

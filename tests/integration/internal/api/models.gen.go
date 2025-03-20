@@ -17,8 +17,16 @@ const (
 
 // Defines values for NodeStatus.
 const (
-	NodeStatusDraining NodeStatus = "draining"
-	NodeStatusReady    NodeStatus = "ready"
+	NodeStatusConnecting NodeStatus = "connecting"
+	NodeStatusDraining   NodeStatus = "draining"
+	NodeStatusReady      NodeStatus = "ready"
+	NodeStatusUnhealthy  NodeStatus = "unhealthy"
+)
+
+// Defines values for SandboxState.
+const (
+	Paused  SandboxState = "paused"
+	Running SandboxState = "running"
 )
 
 // Defines values for TemplateBuildStatus.
@@ -43,71 +51,8 @@ type Error struct {
 	Message string `json:"message"`
 }
 
-// MemoryMB Memory for the sandbox in MB
-type MemoryMB = int32
-
-// NewSandbox defines model for NewSandbox.
-type NewSandbox struct {
-	EnvVars  *EnvVars         `json:"envVars,omitempty"`
-	Metadata *SandboxMetadata `json:"metadata,omitempty"`
-
-	// TemplateID Identifier of the required template
-	TemplateID string `json:"templateID"`
-
-	// Timeout Time to live for the sandbox in seconds.
-	Timeout *int32 `json:"timeout,omitempty"`
-}
-
-// Node defines model for Node.
-type Node struct {
-	// AllocatedCPU Number of allocated CPU cores
-	AllocatedCPU int32 `json:"allocatedCPU"`
-
-	// AllocatedMemoryMiB Amount of allocated memory in MiB
-	AllocatedMemoryMiB int32 `json:"allocatedMemoryMiB"`
-
-	// NodeID Identifier of the node
-	NodeID string `json:"nodeID"`
-
-	// SandboxCount Number of sandboxes running on the node
-	SandboxCount int32 `json:"sandboxCount"`
-
-	// Status Status of the node
-	Status NodeStatus `json:"status"`
-}
-
-// NodeDetail defines model for NodeDetail.
-type NodeDetail struct {
-	// CachedBuilds List of cached builds id on the node
-	CachedBuilds []string `json:"cachedBuilds"`
-
-	// NodeID Identifier of the node
-	NodeID string `json:"nodeID"`
-
-	// Sandboxes List of sandboxes running on the node
-	Sandboxes []RunningSandbox `json:"sandboxes"`
-
-	// Status Status of the node
-	Status NodeStatus `json:"status"`
-}
-
-// NodeStatus Status of the node
-type NodeStatus string
-
-// NodeStatusChange defines model for NodeStatusChange.
-type NodeStatusChange struct {
-	// Status Status of the node
-	Status NodeStatus `json:"status"`
-}
-
-// ResumedSandbox defines model for ResumedSandbox.
-type ResumedSandbox struct {
-	// Timeout Time to live for the sandbox in seconds.
-	Timeout *int32 `json:"timeout,omitempty"`
-}
-
-// RunningSandbox defines model for RunningSandbox.
-type RunningSandbox struct {
+// ListedSandbox defines model for ListedSandbox.
+type ListedSandbox struct {
 	// Alias Alias of the template
 	Alias *string `json:"alias,omitempty"`
 
@@ -130,8 +75,88 @@ type RunningSandbox struct {
 	// StartedAt Time when the sandbox was started
 	StartedAt time.Time `json:"startedAt"`
 
+	// State State of the sandbox
+	State SandboxState `json:"state"`
+
 	// TemplateID Identifier of the template from which is the sandbox created
 	TemplateID string `json:"templateID"`
+}
+
+// MemoryMB Memory for the sandbox in MB
+type MemoryMB = int32
+
+// NewSandbox defines model for NewSandbox.
+type NewSandbox struct {
+	// AutoPause Automatically pauses the sandbox after the timeout
+	AutoPause *bool            `json:"autoPause,omitempty"`
+	EnvVars   *EnvVars         `json:"envVars,omitempty"`
+	Metadata  *SandboxMetadata `json:"metadata,omitempty"`
+
+	// TemplateID Identifier of the required template
+	TemplateID string `json:"templateID"`
+
+	// Timeout Time to live for the sandbox in seconds.
+	Timeout *int32 `json:"timeout,omitempty"`
+}
+
+// Node defines model for Node.
+type Node struct {
+	// AllocatedCPU Number of allocated CPU cores
+	AllocatedCPU int32 `json:"allocatedCPU"`
+
+	// AllocatedMemoryMiB Amount of allocated memory in MiB
+	AllocatedMemoryMiB int32 `json:"allocatedMemoryMiB"`
+
+	// CreateFails Number of sandbox create fails
+	CreateFails uint64 `json:"createFails"`
+
+	// NodeID Identifier of the node
+	NodeID string `json:"nodeID"`
+
+	// SandboxCount Number of sandboxes running on the node
+	SandboxCount int32 `json:"sandboxCount"`
+
+	// SandboxStartingCount Number of starting Sandboxes
+	SandboxStartingCount int `json:"sandboxStartingCount"`
+
+	// Status Status of the node
+	Status NodeStatus `json:"status"`
+}
+
+// NodeDetail defines model for NodeDetail.
+type NodeDetail struct {
+	// CachedBuilds List of cached builds id on the node
+	CachedBuilds []string `json:"cachedBuilds"`
+
+	// CreateFails Number of sandbox create fails
+	CreateFails uint64 `json:"createFails"`
+
+	// NodeID Identifier of the node
+	NodeID string `json:"nodeID"`
+
+	// Sandboxes List of sandboxes running on the node
+	Sandboxes []ListedSandbox `json:"sandboxes"`
+
+	// Status Status of the node
+	Status NodeStatus `json:"status"`
+}
+
+// NodeStatus Status of the node
+type NodeStatus string
+
+// NodeStatusChange defines model for NodeStatusChange.
+type NodeStatusChange struct {
+	// Status Status of the node
+	Status NodeStatus `json:"status"`
+}
+
+// ResumedSandbox defines model for ResumedSandbox.
+type ResumedSandbox struct {
+	// AutoPause Automatically pauses the sandbox after the timeout
+	AutoPause *bool `json:"autoPause,omitempty"`
+
+	// Timeout Time to live for the sandbox in seconds.
+	Timeout *int32 `json:"timeout,omitempty"`
 }
 
 // RunningSandboxWithMetrics defines model for RunningSandboxWithMetrics.
@@ -216,6 +241,9 @@ type SandboxMetric struct {
 	// Timestamp Timestamp of the metric entry
 	Timestamp time.Time `json:"timestamp"`
 }
+
+// SandboxState State of the sandbox
+type SandboxState string
 
 // Team defines model for Team.
 type Team struct {
@@ -354,6 +382,15 @@ type N500 = Error
 type GetSandboxesParams struct {
 	// Query A query used to filter the sandboxes (e.g. "user=abc&app=prod"). Query and each key and values must be URL encoded.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// State Filter sandboxes by one or more states
+	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
+
+	// NextToken Cursor to start the list from
+	NextToken *string `form:"nextToken,omitempty" json:"nextToken,omitempty"`
+
+	// Limit Maximum number of items to return per page
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.
