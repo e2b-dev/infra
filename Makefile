@@ -47,8 +47,8 @@ init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
 	gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
-	terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
-	$(tf_vars) terraform apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
+	$(TF) init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
 	$(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
@@ -56,13 +56,13 @@ init:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
+	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
 
 .PHONY: plan-only-jobs
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad
+	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad
 
 
 .PHONY: apply
@@ -70,7 +70,7 @@ apply:
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
 	$(tf_vars) \
-	terraform apply \
+	$(TF) apply \
 	-auto-approve \
 	-input=false \
 	-compact-warnings \
@@ -141,7 +141,7 @@ switch-env:
 import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
-	$(tf_vars) terraform import $(TARGET) $(ID)
+	$(tf_vars) $(TF) import $(TARGET) $(ID)
 
 .PHONY: setup-ssh
 setup-ssh:
