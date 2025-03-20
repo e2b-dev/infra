@@ -8,6 +8,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
@@ -115,9 +116,9 @@ func TestPollBuildStatus_getSetStatusFn(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &PollBuildStatus{
 				statusClient: tt.fields.statusClient,
+				logger:       zap.NewNop(),
 			}
-			var status *template_manager.TemplateBuildStatusResponse
-			retryFunc := c.getSetStatusFn(status)
+			retryFunc := c.getSetStatusFn()
 			err := retryFunc()
 			if tt.wantErr {
 				if err == nil {
@@ -128,6 +129,9 @@ func TestPollBuildStatus_getSetStatusFn(t *testing.T) {
 				if err != nil {
 					t.Errorf("PollBuildStatus.getSetStatusFn() = %v", err)
 				}
+			}
+			if tt.status.GetStatus() != c.status.GetStatus() {
+				t.Errorf("PollBuildStatus.getSetStatusFn() = %v, want %v", c.status, tt.status)
 			}
 		})
 	}
@@ -273,6 +277,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &PollBuildStatus{
 				templateManagerClient: tt.fields.templateManagerClient,
+				logger:                zap.NewNop(),
 			}
 
 			err := c.dispatchBasedOnStatus(tt.args.status)
