@@ -251,7 +251,7 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 
 	// Apply metadata filtering
 	if metadataFilter != nil {
-		query = query.Where(snapshot.MetadataEQ(*metadataFilter))
+		query = query.Where(snapshot.MetadataContains(*metadataFilter))
 	}
 
 	// Order by sandbox_started_at (descending), then by sandbox_id (ascending) for stability

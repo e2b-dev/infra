@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func MetadataEQ(metadata map[string]string) predicate.Snapshot {
+func MetadataContains(metadata map[string]string) predicate.Snapshot {
 	return predicate.Snapshot(func(s *sql.Selector) {
 		metadataJSON, err := json.Marshal(metadata)
 		if err != nil {
