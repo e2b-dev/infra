@@ -191,7 +191,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
 
-	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Query)
+	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Metadata)
 	if err != nil {
 		zap.L().Error("Error fetching sandboxes", zap.Error(err))
 		telemetry.ReportCriticalError(ctx, err)
