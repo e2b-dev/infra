@@ -155,7 +155,6 @@ type BuildStatusChecker struct {
 }
 
 func (c *BuildStatusChecker) run() {
-	retries := c.retries
 
 	ticker := time.NewTicker(c.retryInterval)
 	defer ticker.Stop()
@@ -171,8 +170,8 @@ func (c *BuildStatusChecker) run() {
 			status, err := c.statusClient.TemplateBuildStatus(c.ctx, &template_manager.TemplateStatusRequest{TemplateID: c.templateID, BuildID: c.buildID.String()})
 			if utils.UnwrapGRPCError(err) != nil {
 				c.logger.Error("Error when fetching template build status", zap.Error(err))
-				retries--
-				if retries == 0 {
+				c.retries--
+				if c.retries == 0 {
 					err = c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, fmt.Sprintf("error when fetching template build status: %s", err))
 					if err != nil {
 						c.logger.Error("Error when setting build status", zap.Error(err))
@@ -184,13 +183,13 @@ func (c *BuildStatusChecker) run() {
 			}
 			if err == nil && status != nil {
 				// reset retries when we get a valid status
-				retries = 5
+				c.retries = 5
 			}
 
 			// defensive against nil pointer dereference
 			if status == nil {
-				retries--
-				if retries == 0 {
+				c.retries--
+				if c.retries == 0 {
 					err = c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, "error when fetching template build status: nil status")
 					if err != nil {
 						c.logger.Error("Error when setting build status", zap.Error(err))
