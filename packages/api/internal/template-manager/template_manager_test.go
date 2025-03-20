@@ -32,14 +32,22 @@ func (f *fakeStatusClient) TemplateBuildStatus(ctx context.Context, in *template
 type fakeTemplateManagerClient struct {
 	setStatusError   error
 	setFinishedError error
+	logcalls         func(string)
 }
 
-func (f *fakeTemplateManagerClient) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason string) error {
+func (f fakeTemplateManagerClient) SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason string) error {
+	f.logcalls("SetStatus")
 	return f.setStatusError
 }
-
-func (f *fakeTemplateManagerClient) SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
+func (f fakeTemplateManagerClient) SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
+	f.logcalls("SetFinished")
 	return f.setFinishedError
+}
+
+func logCallingfakeTemplateManagerClient(calls []string) func(s string) {
+	return func(s string) {
+		calls = append(calls, s)
+	}
 }
 
 func TestPollBuildStatus_getFuncToRetry(t *testing.T) {
@@ -130,6 +138,107 @@ func TestPollBuildStatus_getFuncToRetry(t *testing.T) {
 					t.Errorf("PollBuildStatus.getFuncToRetry() = %v", err)
 				}
 			}
+		})
+	}
+}
+
+func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
+	type fields struct {
+		templateManagerClient *fakeTemplateManagerClient
+	}
+	type args struct {
+		status *template_manager.TemplateBuildStatusResponse
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+		calls   []string
+	}{
+		// TODO: Add test cases.
+		{
+			name: "should return error if status is nil",
+			fields: fields{
+				templateManagerClient: &fakeTemplateManagerClient{
+					setStatusError: errors.New("status is nil"),
+				},
+			},
+			args: args{
+				status: nil,
+			},
+			wantErr: true,
+			calls:   []string{},
+		},
+		// if status is failed, set status to failed and return nil
+		{
+			name: "should set status to failed and return nil if status is failed",
+			fields: fields{
+				templateManagerClient: &fakeTemplateManagerClient{},
+			},
+			args: args{
+				status: &template_manager.TemplateBuildStatusResponse{
+					Status: template_manager.TemplateBuildState_Failed,
+				},
+			},
+			wantErr: false,
+		},
+		// if status is finished, set status to finished and return nil
+		{
+			name: "should set status to finished and return nil if status is finished",
+			fields: fields{
+				templateManagerClient: &fakeTemplateManagerClient{},
+			},
+			args: args{
+				status: &template_manager.TemplateBuildStatusResponse{
+					Status: template_manager.TemplateBuildState_Completed,
+					Metadata: &template_manager.TemplateBuildMetadata{
+						RootfsSizeKey:  100,
+						EnvdVersionKey: "1.0.0",
+					},
+				},
+			},
+			wantErr: false,
+		},
+		// return error if metadata is nil
+		{
+			name: "should return error if metadata is nil",
+			fields: fields{
+				templateManagerClient: &fakeTemplateManagerClient{},
+			},
+			args: args{
+				status: &template_manager.TemplateBuildStatusResponse{
+					Status: template_manager.TemplateBuildState_Completed,
+				},
+			},
+			wantErr: true,
+		},
+		// if status is unknown, return nil
+		{
+			name: "should return nil if status is unknown",
+			fields: fields{
+				templateManagerClient: &fakeTemplateManagerClient{},
+			},
+			args: args{
+				status: &template_manager.TemplateBuildStatusResponse{
+					Status: template_manager.TemplateBuildState_Building,
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := []string{}
+			client := tt.fields.templateManagerClient
+			client.logcalls = logCallingfakeTemplateManagerClient(calls)
+			c := &PollBuildStatus{
+				templateManagerClient: tt.fields.templateManagerClient,
+			}
+			if err := c.dispatchBasedOnStatus(tt.args.status); (err != nil) != tt.wantErr {
+				t.Errorf("PollBuildStatus.dispatchBasedOnStatus() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
 		})
 	}
 }

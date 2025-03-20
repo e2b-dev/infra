@@ -213,6 +213,30 @@ func (c *PollBuildStatus) getFuncToRetry(s *template_manager.TemplateBuildStatus
 	}
 }
 
+func (c *PollBuildStatus) dispatchBasedOnStatus(status *template_manager.TemplateBuildStatusResponse) error {
+	if status == nil {
+		return errors.New("nil status")
+	}
+	switch status.GetStatus() {
+	case template_manager.TemplateBuildState_Failed:
+		// build failed
+		err := c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, "template build failed according to status")
+		return errors.Wrap(err, "error when setting build status")
+
+	case template_manager.TemplateBuildState_Completed:
+		// build completed
+		meta := status.GetMetadata()
+		if meta == nil {
+			return errors.New("nil metadata")
+		}
+		err := c.templateManagerClient.SetFinished(c.ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
+		return errors.Wrap(err, "error when finishing build")
+	default:
+		// don't error on unknown build status so things don't randomly break
+		return nil
+	}
+}
+
 func (c *PollBuildStatus) setBuildStatus() error {
 	c.logger.Info("Checking template build status")
 
@@ -223,26 +247,7 @@ func (c *PollBuildStatus) setBuildStatus() error {
 		return errors.Wrap(err, "error when polling build status")
 	}
 
-	switch status.GetStatus() {
-	case template_manager.TemplateBuildState_Failed:
-		// build failed
-		err = c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, "template build failed according to status")
-		return errors.Wrap(err, "error when setting build status")
-
-	case template_manager.TemplateBuildState_Completed:
-		// build completed
-		meta := status.GetMetadata()
-		err = c.templateManagerClient.SetFinished(c.ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
-		if err != nil {
-			return errors.Wrap(err, "error when finishing build")
-		}
-		return nil
-
-	default:
-		// don't error on unknown build status so things don't randomly break
-		return nil
-	}
-
+	return c.dispatchBasedOnStatus(status)
 }
 
 func (tm *TemplateManager) removeFromProcessingQueue(buildID uuid.UUID) {
