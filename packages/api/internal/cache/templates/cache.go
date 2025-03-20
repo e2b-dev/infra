@@ -4,18 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.uber.org/zap"
 	"net/http"
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
 
 const templateInfoExpiration = 5 * time.Minute
@@ -152,7 +153,7 @@ func NewTemplateBuildCache(db *db.DB) *TemplatesBuildCache {
 	}
 }
 
-func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status) {
+func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Status, reason string) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
@@ -161,7 +162,12 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 		return
 	}
 
-	zap.L().Debug("Setting template build status", zap.String("buildID", buildID.String()), zap.String("status", status.String()))
+	zap.L().Info("Setting template build status",
+		zap.String("buildID", buildID.String()),
+		zap.String("to_status", status.String()),
+		zap.String("from_status", item.Value().BuildStatus.String()),
+		zap.String("reason", reason),
+	)
 
 	item.Value().BuildStatus = status
 }

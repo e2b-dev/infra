@@ -324,6 +324,7 @@ resource "nomad_job" "orchestrator" {
   jobspec = templatefile("${path.module}/orchestrator.hcl", {
     gcp_zone         = var.gcp_zone
     port             = var.orchestrator_port
+    proxy_port       = var.orchestrator_proxy_port
     environment      = var.environment
     consul_acl_token = var.consul_acl_token_secret
 

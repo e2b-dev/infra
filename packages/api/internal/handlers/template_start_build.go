@@ -146,10 +146,15 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		zap.L().Error("build failed", zap.Error(buildErr))
 		telemetry.ReportCriticalError(ctx, buildErr)
 
-		a.templateBuildsCache.SetStatus(buildUUID, envbuild.StatusFailed)
-		dbErr := a.db.EnvBuildSetStatus(ctx, templateID, buildUUID, envbuild.StatusFailed)
-		if dbErr != nil {
-			telemetry.ReportCriticalError(ctx, fmt.Errorf("error when setting build status: %w", dbErr))
+		err = a.templateManager.SetStatus(
+			ctx,
+			templateID,
+			buildUUID,
+			envbuild.StatusFailed,
+			fmt.Sprintf("error when building env: %s", buildErr),
+		)
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, fmt.Errorf("error when setting build status: %w", err))
 		}
 
 		return
@@ -157,11 +162,17 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	// status building must be set after build is triggered because then
 	// it's possible build status job will be triggered before build cache on template manager is created and build will fail
-	a.templateBuildsCache.SetStatus(buildUUID, envbuild.StatusBuilding)
-	err = a.db.EnvBuildSetStatus(ctx, templateID, buildUUID, envbuild.StatusBuilding)
+	err = a.templateManager.SetStatus(
+		ctx,
+		templateID,
+		buildUUID,
+		envbuild.StatusBuilding,
+		"starting build",
+	)
 	if err != nil {
-		err = fmt.Errorf("error when setting build status: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, fmt.Errorf("error when setting build status: %w", err))
+
+		return
 	}
 
 	telemetry.ReportEvent(ctx, "created new environment", attribute.String("env.id", templateID))

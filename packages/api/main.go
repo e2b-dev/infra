@@ -167,7 +167,7 @@ func run() int {
 	flag.Parse()
 
 	if !env.IsLocal() {
-		otlpCleanup := telemetry.InitOTLPExporter(ctx, serviceName, commitSHA)
+		otlpCleanup := telemetry.InitOTLPExporter(ctx, serviceName, commitSHA, "no")
 		defer otlpCleanup(ctx)
 	}
 

@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -51,6 +52,8 @@ func main() {
 	}()
 
 	dnsServer := dns.New()
+	proxyServer := proxy.New(3333)
+
 	go func() {
 		log.Printf("Starting DNS server")
 
@@ -87,6 +90,7 @@ func main() {
 			*buildId,
 			*sandboxId+"-"+strconv.Itoa(v),
 			dnsServer,
+			proxyServer,
 			time.Duration(*keepAlive)*time.Second,
 			networkPool,
 			templateCache,
@@ -104,6 +108,7 @@ func mockSandbox(
 	buildId,
 	sandboxId string,
 	dns *dns.DNS,
+	proxy *proxy.SandboxProxy,
 	keepAlive time.Duration,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
@@ -128,6 +133,7 @@ func mockSandbox(
 		childCtx,
 		tracer,
 		dns,
+		proxy,
 		networkPool,
 		templateCache,
 		&orchestrator.SandboxConfig{
