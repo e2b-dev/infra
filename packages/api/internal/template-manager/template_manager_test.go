@@ -229,9 +229,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			calls := []string{}
-			client := tt.fields.templateManagerClient
-			client.logcalls = logCallingfakeTemplateManagerClient(calls)
+
 			c := &PollBuildStatus{
 				templateManagerClient: tt.fields.templateManagerClient,
 			}
