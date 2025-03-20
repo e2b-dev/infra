@@ -118,8 +118,7 @@ func TestPollBuildStatus_getSetStatusFn(t *testing.T) {
 				statusClient: tt.fields.statusClient,
 				logger:       zap.NewNop(),
 			}
-			retryFunc := c.getSetStatusFn()
-			err := retryFunc()
+			err := c.setStatus()
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("PollBuildStatus.getSetStatusFn() = %v", err)

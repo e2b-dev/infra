@@ -177,28 +177,27 @@ func (c *PollBuildStatus) poll() {
 	}
 }
 
-func (c *PollBuildStatus) getSetStatusFn() func() error {
-	return func() error {
-		if c.statusClient == nil {
-			return errors.New("status client is nil")
-		}
-		status, err := c.statusClient.TemplateBuildStatus(c.ctx, &template_manager.TemplateStatusRequest{TemplateID: c.templateID, BuildID: c.buildID.String()})
-
-		if err != nil && strings.Contains(err.Error(), "context deadline exceeded") {
-			return errors.Wrap(err, "context deadline exceeded")
-		} else if err != nil { // retry only on context deadline exceeded
-			return retry.Stop(errors.Wrap(err, "error when polling build status"))
-		}
-
-		if status == nil {
-			return errors.New("nil status") // this should never happen
-		}
-		// debug log the status
-		c.logger.Debug("setting status pointer", zap.Any("status", status))
-
-		c.status = status
-		return nil
+func (c *PollBuildStatus) setStatus() error {
+	if c.statusClient == nil {
+		return errors.New("status client is nil")
 	}
+	status, err := c.statusClient.TemplateBuildStatus(c.ctx, &template_manager.TemplateStatusRequest{TemplateID: c.templateID, BuildID: c.buildID.String()})
+
+	if err != nil && strings.Contains(err.Error(), "context deadline exceeded") {
+		return errors.Wrap(err, "context deadline exceeded")
+	} else if err != nil { // retry only on context deadline exceeded
+		return retry.Stop(errors.Wrap(err, "error when polling build status"))
+	}
+
+	if status == nil {
+		return errors.New("nil status") // this should never happen
+	}
+	// debug log the status
+	c.logger.Debug("setting status pointer", zap.Any("status", status))
+
+	c.status = status
+	return nil
+
 }
 
 func (c *PollBuildStatus) dispatchBasedOnStatus(status *template_manager.TemplateBuildStatusResponse) error {
@@ -238,7 +237,7 @@ func (c *PollBuildStatus) setBuildStatus() error {
 		100*time.Millisecond,
 		time.Second,
 	)
-	err := retrier.Run(c.getSetStatusFn())
+	err := retrier.Run(c.setStatus)
 	if err != nil {
 		return errors.Wrap(err, "error when polling build status")
 	}
