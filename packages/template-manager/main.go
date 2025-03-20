@@ -49,7 +49,7 @@ func main() {
 	}
 
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(ctx, constants.ServiceName, "no")
+		shutdown := telemetry.InitOTLPExporter(ctx, constants.ServiceName, "no", "no")
 		defer shutdown(context.TODO())
 	}
 

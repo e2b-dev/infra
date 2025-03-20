@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"math"
 	"net"
 	"os"
@@ -13,8 +12,10 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
+	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -22,6 +23,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -30,6 +32,7 @@ import (
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -53,12 +56,14 @@ type server struct {
 }
 
 type Service struct {
-	server   *server
-	grpc     *grpc.Server
-	dns      *dns.DNS
-	proxy    *proxy.SandboxProxy
-	port     uint16
-	shutdown struct {
+	version    string
+	server     *server
+	grpc       *grpc.Server
+	grpcHealth *health.Server
+	dns        *dns.DNS
+	proxy      *proxy.SandboxProxy
+	port       uint16
+	shutdown   struct {
 		once sync.Once
 		op   func(context.Context) error
 		err  error
@@ -71,7 +76,7 @@ type Service struct {
 	useClickhouseMetrics string
 }
 
-func New(ctx context.Context, port uint, clientID string, proxy *proxy.SandboxProxy) (*Service, error) {
+func New(ctx context.Context, port uint, clientID string, version string, proxy *proxy.SandboxProxy) (*Service, error) {
 	if port > math.MaxUint16 {
 		return nil, fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
 	}
@@ -80,7 +85,7 @@ func New(ctx context.Context, port uint, clientID string, proxy *proxy.SandboxPr
 		return nil, errors.New("clientID is required")
 	}
 
-	srv := &Service{port: uint16(port)}
+	srv := &Service{version: version, port: uint16(port)}
 
 	templateCache, err := template.NewCache(ctx)
 	if err != nil {
@@ -157,18 +162,34 @@ func New(ctx context.Context, port uint, clientID string, proxy *proxy.SandboxPr
 			useLokiMetrics:       useLokiMetrics,
 			useClickhouseMetrics: useClickhouseMetrics,
 		}
+		_, err = meters.GetObservableUpDownCounter(meters.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+			observer.Observe(int64(srv.server.sandboxes.Count()))
+
+			return nil
+		})
+
+		if err != nil {
+			zap.L().Error("Error registering sandbox count metric", zap.Any("metric_name", meters.OrchestratorSandboxCountMeterName), zap.Error(err))
+		}
 	}
 
 	orchestrator.RegisterSandboxServiceServer(srv.grpc, srv.server)
-	grpc_health_v1.RegisterHealthServer(srv.grpc, health.NewServer())
+
+	srv.grpcHealth = health.NewServer()
+	grpc_health_v1.RegisterHealthServer(srv.grpc, srv.grpcHealth)
 
 	return srv, nil
 }
 
 // Start launches
-func (srv *Service) Start(context.Context) error {
+func (srv *Service) Start(ctx context.Context) error {
 	if srv.server == nil || srv.dns == nil || srv.grpc == nil {
 		return errors.New("orchestrator services are not initialized")
+	}
+
+	healthcheck, err := NewHealthcheck(srv.server, srv.grpc, srv.grpcHealth, srv.version)
+	if err != nil {
+		return fmt.Errorf("failed to create healthcheck: %w", err)
 	}
 
 	go func() {
@@ -184,11 +205,27 @@ func (srv *Service) Start(context.Context) error {
 		return fmt.Errorf("failed to listen on port %d: %w", srv.port, err)
 	}
 
+	// Reuse the same TCP port between grpc and HTTP requests
+	m := cmux.New(lis)
+	// Match HTTP requests.
+	httpL := m.Match(cmux.HTTP1Fast())
+	// Match gRPC requests.
+	grpcL := m.Match(cmux.Any())
+
 	zap.L().Info("Starting orchestrator server", zap.Uint16("port", srv.port))
 
 	go func() {
-		if err := srv.grpc.Serve(lis); err != nil {
+		if err := srv.grpc.Serve(grpcL); err != nil {
 			zap.L().Fatal("grpc server failed to serve", zap.Error(err))
+		}
+	}()
+
+	go healthcheck.Start(ctx, httpL)
+
+	// Start serving traffic
+	go func() {
+		if err := m.Serve(); err != nil {
+			zap.L().Fatal("failed to serve", zap.Error(err))
 		}
 	}()
 
@@ -196,6 +233,8 @@ func (srv *Service) Start(context.Context) error {
 		var errs []error
 
 		srv.grpc.GracefulStop()
+
+		m.Close()
 
 		if err := lis.Close(); err != nil {
 			errs = append(errs, err)
