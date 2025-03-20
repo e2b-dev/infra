@@ -17,18 +17,25 @@ type UpDownCounterType string
 
 const (
 	SandboxCountMeterName                              UpDownCounterType = "api.env.instance.running"
-	BuildCounterMeterName                                                = "api.env.build.running"
-	NewNetworkSlotSPoolCounterMeterName                                  = "orchestrator.network.slots_pool.new"
-	ReusedNetworkSlotSPoolCounterMeterName                               = "orchestrator.network.slots_pool.reused"
-	NBDkSlotSReadyPoolCounterMeterName                                   = "orchestrator.nbd.slots_pool.read"
-	ActiveConnectionsCounterMeterName                                    = "client_proxy.connections.active"
-	OrchestratorProxyActiveConnectionsCounterMeterName                   = "orchestrator.proxy.connections.active"
+	BuildCounterMeterName                              UpDownCounterType = "api.env.build.running"
+	NewNetworkSlotSPoolCounterMeterName                UpDownCounterType = "orchestrator.network.slots_pool.new"
+	ReusedNetworkSlotSPoolCounterMeterName             UpDownCounterType = "orchestrator.network.slots_pool.reused"
+	NBDkSlotSReadyPoolCounterMeterName                 UpDownCounterType = "orchestrator.nbd.slots_pool.read"
+	ActiveConnectionsCounterMeterName                  UpDownCounterType = "client_proxy.connections.active"
+	OrchestratorProxyActiveConnectionsCounterMeterName UpDownCounterType = "orchestrator.proxy.connections.active"
+)
+
+type ObservableUpDownCounterType string
+
+const (
+	OrchestratorSandboxCountMeterName ObservableUpDownCounterType = "orchestrator.env.sandbox.running"
 )
 
 var meter = otel.GetMeterProvider().Meter("nomad")
 var meterLock = sync.Mutex{}
 var counters = make(map[CounterType]metric.Int64Counter)
 var upDownCounters = make(map[UpDownCounterType]metric.Int64UpDownCounter)
+var observableUpDownCounters = make(map[ObservableUpDownCounterType]metric.Int64ObservableUpDownCounter)
 
 var counterDesc = map[CounterType]string{
 	SandboxCreateMeterName: "Number of currently waiting requests to create a new sandbox",
@@ -54,6 +61,14 @@ var upDownCounterUnits = map[UpDownCounterType]string{
 	NewNetworkSlotSPoolCounterMeterName:    "{slot}",
 	NBDkSlotSReadyPoolCounterMeterName:     "{slot}",
 	ActiveConnectionsCounterMeterName:      "{connection}",
+}
+
+var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
+	OrchestratorSandboxCountMeterName: "Counter of running sandboxes on the orchestrator.",
+}
+
+var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
+	OrchestratorSandboxCountMeterName: "{sandbox}",
 }
 
 func GetCounter(name CounterType) (metric.Int64Counter, error) {
@@ -88,6 +103,24 @@ func GetUpDownCounter(name UpDownCounterType) (metric.Int64UpDownCounter, error)
 	}
 
 	upDownCounters[name] = counter
+
+	return counter, nil
+}
+
+func GetObservableUpDownCounter(name ObservableUpDownCounterType, callback metric.Int64Callback) (metric.Int64ObservableUpDownCounter, error) {
+	meterLock.Lock()
+	defer meterLock.Unlock()
+
+	if counter, ok := observableUpDownCounters[name]; ok {
+		return counter, nil
+	}
+
+	counter, err := meter.Int64ObservableUpDownCounter(string(name), metric.WithDescription(observableUpDownCounterDesc[name]), metric.WithUnit(observableUpDownCounterUnits[name]), metric.WithInt64Callback(callback))
+	if err != nil {
+		return nil, err
+	}
+
+	observableUpDownCounters[name] = counter
 
 	return counter, nil
 }
