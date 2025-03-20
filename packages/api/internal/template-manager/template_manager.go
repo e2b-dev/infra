@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -116,27 +117,65 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		return
 	}
 
-	retries := 5
+	checker := &BuildStatusChecker{
+		statusClient:          tm.grpc.Client,
+		ctx:                   childCtx,
+		tickChannel:           make(chan struct{}),
+		logger:                logger,
+		templateID:            templateID,
+		buildID:               buildID,
+		templateManagerClient: tm,
+		retries:               5,
+		retryInterval:         time.Second,
+	}
 
-	ticker := time.NewTicker(time.Second)
+	checker.run()
+
+}
+
+type statusClient interface {
+	TemplateBuildStatus(ctx context.Context, in *template_manager.TemplateStatusRequest, opts ...grpc.CallOption) (*template_manager.TemplateBuildStatusResponse, error)
+}
+
+type templateManagerClient interface {
+	SetStatus(ctx context.Context, templateID string, buildID uuid.UUID, status envbuild.Status, reason string) error
+	SetFinished(ctx context.Context, templateID string, buildID uuid.UUID, rootfsSize int64, envdVersion string) error
+}
+
+type BuildStatusChecker struct {
+	retries               int
+	retryInterval         time.Duration
+	tickChannel           chan struct{}
+	ctx                   context.Context
+	statusClient          statusClient
+	logger                *zap.Logger
+	templateID            string
+	buildID               uuid.UUID
+	templateManagerClient templateManagerClient
+}
+
+func (c *BuildStatusChecker) run() {
+	retries := c.retries
+
+	ticker := time.NewTicker(c.retryInterval)
 	defer ticker.Stop()
 
 	// poll build status
 	for {
 		select {
-		case <-ctx.Done():
+		case <-c.ctx.Done():
 			return
 		case <-ticker.C:
-			logger.Info("Checking template build status")
+			c.logger.Info("Checking template build status")
 
-			status, err := tm.grpc.Client.TemplateBuildStatus(childCtx, &template_manager.TemplateStatusRequest{TemplateID: templateID, BuildID: buildID.String()})
+			status, err := c.statusClient.TemplateBuildStatus(c.ctx, &template_manager.TemplateStatusRequest{TemplateID: c.templateID, BuildID: c.buildID.String()})
 			if utils.UnwrapGRPCError(err) != nil {
-				logger.Error("Error when fetching template build status", zap.Error(err))
+				c.logger.Error("Error when fetching template build status", zap.Error(err))
 				retries--
 				if retries == 0 {
-					err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed, fmt.Sprintf("error when fetching template build status: %s", err))
+					err = c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, fmt.Sprintf("error when fetching template build status: %s", err))
 					if err != nil {
-						logger.Error("Error when setting build status", zap.Error(err))
+						c.logger.Error("Error when setting build status", zap.Error(err))
 					}
 
 					return
@@ -152,9 +191,9 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 			if status == nil {
 				retries--
 				if retries == 0 {
-					err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed, "error when fetching template build status: nil status")
+					err = c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, "error when fetching template build status: nil status")
 					if err != nil {
-						logger.Error("Error when setting build status", zap.Error(err))
+						c.logger.Error("Error when setting build status", zap.Error(err))
 					}
 				}
 				continue
@@ -162,10 +201,10 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 
 			// build failed
 			if status.GetStatus() == template_manager.TemplateBuildState_Failed {
-				logger.Error("Template build failed according to status")
-				err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed, "template build failed according to status")
+				c.logger.Error("Template build failed according to status")
+				err = c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, "template build failed according to status")
 				if err != nil {
-					logger.Error("Error when setting build status", zap.Error(err))
+					c.logger.Error("Error when setting build status", zap.Error(err))
 				}
 
 				return
@@ -174,19 +213,18 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 			// build completed
 			if status.GetStatus() == template_manager.TemplateBuildState_Completed {
 				meta := status.GetMetadata()
-				err = tm.SetFinished(childCtx, templateID, buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
+				err = c.templateManagerClient.SetFinished(c.ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
 				if err != nil {
-					logger.Error("Error when finishing build", zap.Error(err))
+					c.logger.Error("Error when finishing build", zap.Error(err))
 					return
 				}
 
-				logger.Info("Template build finished")
+				c.logger.Info("Template build finished")
 				return
 			}
 		}
 	}
 }
-
 func (tm *TemplateManager) removeFromProcessingQueue(buildID uuid.UUID) {
 	tm.lock.Lock()
 	delete(tm.processing, buildID)
