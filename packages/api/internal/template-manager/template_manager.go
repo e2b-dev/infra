@@ -182,8 +182,8 @@ func (c *PollBuildStatus) poll() {
 
 	err := retrier.Run(c.getPollRetryFunction(c))
 
-	if err != nil && err != c.ctx.Err() {
-		c.logger.Error("Polling stopped with error", zap.Error(err))
+	if err != nil {
+		c.logger.Error("Polling timed out", zap.Error(err))
 	}
 }
 
