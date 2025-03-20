@@ -1,19 +1,25 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-openapi := ../../spec/openapi.yml
+openapi_api := ../../spec/openapi.yml
+openapi_envd := ../../packages/envd/spec/envd.yaml
 codegen := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
 
 .PHONY: generate
 generate:
-	$(codegen) -old-config-style -generate client --package api $(openapi) > internal/api/client.gen.go
-	$(codegen) -old-config-style -generate models --package api $(openapi) > internal/api/models.gen.go
+	$(codegen) -old-config-style -generate client --package api $(openapi_api) > internal/api/client.gen.go
+	$(codegen) -old-config-style -generate models --package api $(openapi_api) > internal/api/models.gen.go
 
-	# Copy the envd client to the tests
+	# Copy the envd grpc clients
 	rm -rf internal/envd/
 	mkdir -p internal/envd/
 	cp -r ../../packages/envd/internal/services/spec/ internal/envd/.
-	find . -type f -exec perl -pi -e 's|github.com/e2b-dev/infra/tests/integration/internal/envd/|github.com/e2b-dev/infra/tests/integration/internal/envd/|g' {} +
+	find internal/. -type f -exec perl -pi -e 's|github.com/e2b-dev/infra/packages/envd/internal/services/spec/|github.com/e2b-dev/infra/tests/integration/internal/envd/|g' {} +
+
+	# Copy the envd HTTP client
+	mkdir -p internal/envd/api/
+	$(codegen) -generate client --package api $(openapi_envd) > internal/envd/api/client.gen.go
+	$(codegen) -generate models --package api $(openapi_envd) > internal/envd/api/models.gen.go
 
 .PHONY: build-debug
 build-debug:
