@@ -83,7 +83,7 @@ func (h *Healthcheck) Start(ctx context.Context, listener net.Listener) {
 
 // report updates the health status.
 // This function is run in a goroutine every healthcheckFrequency for the reason of having
-// longer running tasks that might me too slow or resource intensive to be run
+// longer running tasks that might be too slow or resource intensive to be run
 // in the healthcheck http handler directly.
 func (h *Healthcheck) report(ctx context.Context) error {
 	h.mu.Lock()
