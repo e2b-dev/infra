@@ -2,12 +2,16 @@ package setup
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem/filesystemconnect"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/process/processconnect"
+
+	"connectrpc.com/connect"
 )
 
 const envdPort = 49983
@@ -20,7 +24,6 @@ type EnvdClient struct {
 func GetEnvdClient(tb testing.TB, ctx context.Context) *EnvdClient {
 	tb.Helper()
 
-	//host := getHost(envdPort, sandboxId, "localhost.debug")
 	hc := http.Client{
 		Timeout: apiTimeout,
 	}
@@ -34,6 +37,25 @@ func GetEnvdClient(tb testing.TB, ctx context.Context) *EnvdClient {
 	}
 }
 
-func GetEnvdHost(sandboxID string, clientID string) string {
-	return fmt.Sprintf("%d-%s-%s.%s", envdPort, sandboxID, clientID, "localhost.debug")
+func WithSandbox[T any](req *connect.Request[T], sandboxID string, clientID string) {
+	domain := extractDomain(EnvdProxy)
+	host := fmt.Sprintf("%d-%s-%s.%s", envdPort, sandboxID, clientID, domain)
+
+	req.Header().Set("Host", host)
+}
+
+func WithUser[T any](req *connect.Request[T], user string) {
+	userString := fmt.Sprintf("user:%s", user)
+	userBase64 := base64.StdEncoding.EncodeToString([]byte(userString))
+	basic := fmt.Sprintf("Basic %s", userBase64)
+	req.Header().Set("Authorization", basic)
+}
+
+func extractDomain(input string) string {
+	parsedURL, err := url.Parse(input)
+	if err != nil || parsedURL.Host == "" {
+		panic(fmt.Errorf("invalid URL: %s", input))
+	}
+
+	return parsedURL.Hostname()
 }

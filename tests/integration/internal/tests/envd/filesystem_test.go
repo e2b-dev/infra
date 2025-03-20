@@ -2,8 +2,6 @@ package envd
 
 import (
 	"context"
-	"encoding/base64"
-	"fmt"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -14,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestFileCreate(t *testing.T) {
+func TestListDirs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -42,12 +40,10 @@ func TestFileCreate(t *testing.T) {
 	req := connect.NewRequest(&filesystem.ListDirRequest{
 		Path: "/",
 	})
-	host := setup.GetEnvdHost(resp.JSON201.SandboxID, resp.JSON201.ClientID)
-	t.Logf("Host: %s", host)
-	req.Header().Set("Host", host)
-	req.Header().Set("Authorization", fmt.Sprintf("Basic %s", base64.StdEncoding.EncodeToString([]byte("user:"))))
+	setup.WithSandbox(req, resp.JSON201.SandboxID, resp.JSON201.ClientID)
+	setup.WithUser(req, "user")
 	folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
 	assert.NoError(t, err)
 
-	t.Logf("Folder list response: %v", folderListResp.Msg)
+	assert.NotEmpty(t, folderListResp.Msg)
 }
