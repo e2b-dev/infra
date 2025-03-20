@@ -19,6 +19,7 @@ require (
 	github.com/loopholelabs/userfaultfd-go v0.1.2
 	github.com/miekg/dns v1.1.63
 	github.com/pojntfx/go-nbd v0.3.2
+	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.10.0
 	github.com/vishvananda/netlink v1.3.0
 	github.com/vishvananda/netns v0.0.5

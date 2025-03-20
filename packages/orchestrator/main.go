@@ -5,14 +5,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"sync/atomic"
 	"syscall"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -53,8 +54,10 @@ func main() {
 	// there's a panic.
 	defer wg.Wait()
 
+	clientID := consul.GetClientID()
+
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(ctx, server.ServiceName, "no")
+		shutdown := telemetry.InitOTLPExporter(ctx, server.ServiceName, commitSHA, clientID)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -99,10 +102,9 @@ func main() {
 
 	log.Println("Starting orchestrator", "commit", commitSHA)
 
-	clientID := consul.GetClientID()
 	sessionProxy := proxy.New(proxyPort)
 
-	srv, err := server.New(ctx, port, clientID, sessionProxy)
+	srv, err := server.New(ctx, port, clientID, commitSHA, sessionProxy)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
