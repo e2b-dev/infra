@@ -47,13 +47,14 @@ func WithSandbox(sandboxID string, clientID string) func(ctx context.Context, re
 	return func(ctx context.Context, req *http.Request) error {
 		SetSandboxHeader(req.Header, sandboxID, clientID)
 		req.Host = req.Header.Get("Host")
-		
+
 		return nil
 	}
 }
 
 func SetSandboxHeader(header http.Header, sandboxID string, clientID string) {
 	domain := extractDomain(EnvdProxy)
+	// Construct the host (<port>-<sandbox id>-<old client id>.e2b.dev)
 	host := fmt.Sprintf("%d-%s-%s.%s", envdPort, sandboxID, clientID, domain)
 
 	header.Set("Host", host)
