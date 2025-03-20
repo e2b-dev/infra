@@ -185,7 +185,7 @@ func (c *PollBuildStatus) getSetStatusFn() func() error {
 		status, err := c.statusClient.TemplateBuildStatus(c.ctx, &template_manager.TemplateStatusRequest{TemplateID: c.templateID, BuildID: c.buildID.String()})
 
 		if err != nil && strings.Contains(err.Error(), "context deadline exceeded") {
-			return err
+			return errors.Wrap(err, "context deadline exceeded")
 		} else if err != nil { // retry only on context deadline exceeded
 			return retry.Stop(errors.Wrap(err, "error when polling build status"))
 		}
