@@ -116,6 +116,8 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 		return
 	}
 
+	retries := 5
+
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
@@ -130,12 +132,28 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 			status, err := tm.grpc.Client.TemplateBuildStatus(childCtx, &template_manager.TemplateStatusRequest{TemplateID: templateID, BuildID: buildID.String()})
 			if utils.UnwrapGRPCError(err) != nil {
 				logger.Error("Error when fetching template build status", zap.Error(err))
-				err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed, fmt.Sprintf("error when fetching template build status: %s", err))
-				if err != nil {
-					logger.Error("Error when setting build status", zap.Error(err))
-				}
+				retries--
+				if retries == 0 {
+					err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed, fmt.Sprintf("error when fetching template build status: %s", err))
+					if err != nil {
+						logger.Error("Error when setting build status", zap.Error(err))
+					}
 
-				return
+					return
+				}
+				continue
+			}
+
+			// defensive against nil pointer dereference
+			if status == nil {
+				retries--
+				if retries == 0 {
+					err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed, "error when fetching template build status: nil status")
+					if err != nil {
+						logger.Error("Error when setting build status", zap.Error(err))
+					}
+				}
+				continue
 			}
 
 			// build failed
@@ -151,8 +169,6 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 
 			// build completed
 			if status.GetStatus() == template_manager.TemplateBuildState_Completed {
-				tm.buildCache.SetStatus(buildID, envbuild.StatusUploaded, "template build completed")
-
 				meta := status.GetMetadata()
 				err = tm.SetFinished(childCtx, templateID, buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
 				if err != nil {
