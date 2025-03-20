@@ -8,15 +8,15 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem/filesystemconnect"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/process/processconnect"
-
-	"connectrpc.com/connect"
 )
 
 const envdPort = 49983
 
 type EnvdClient struct {
+	HTTPClient       *api.ClientWithResponses
 	FilesystemClient filesystemconnect.FilesystemClient
 	ProcessClient    processconnect.ProcessClient
 }
@@ -28,27 +28,42 @@ func GetEnvdClient(tb testing.TB, ctx context.Context) *EnvdClient {
 		Timeout: apiTimeout,
 	}
 
+	httpC, err := api.NewClientWithResponses(EnvdProxy, api.WithHTTPClient(&hc))
+	if err != nil {
+		panic(err)
+	}
+
 	fileC := filesystemconnect.NewFilesystemClient(&hc, EnvdProxy)
 	processC := processconnect.NewProcessClient(&hc, EnvdProxy)
 
 	return &EnvdClient{
+		HTTPClient:       httpC,
 		FilesystemClient: fileC,
 		ProcessClient:    processC,
 	}
 }
 
-func WithSandbox[T any](req *connect.Request[T], sandboxID string, clientID string) {
+func WithSandbox(sandboxID string, clientID string) func(ctx context.Context, req *http.Request) error {
+	return func(ctx context.Context, req *http.Request) error {
+		SetSandboxHeader(req.Header, sandboxID, clientID)
+		req.Host = req.Header.Get("Host")
+		
+		return nil
+	}
+}
+
+func SetSandboxHeader(header http.Header, sandboxID string, clientID string) {
 	domain := extractDomain(EnvdProxy)
 	host := fmt.Sprintf("%d-%s-%s.%s", envdPort, sandboxID, clientID, domain)
 
-	req.Header().Set("Host", host)
+	header.Set("Host", host)
 }
 
-func WithUser[T any](req *connect.Request[T], user string) {
+func SetUserHeader(header http.Header, user string) {
 	userString := fmt.Sprintf("user:%s", user)
 	userBase64 := base64.StdEncoding.EncodeToString([]byte(userString))
 	basic := fmt.Sprintf("Basic %s", userBase64)
-	req.Header().Set("Authorization", basic)
+	header.Set("Authorization", basic)
 }
 
 func extractDomain(input string) string {
