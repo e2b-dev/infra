@@ -9,6 +9,11 @@ generate:
 	$(codegen) -old-config-style -generate client --package api $(openapi) > internal/api/client.gen.go
 	$(codegen) -old-config-style -generate models --package api $(openapi) > internal/api/models.gen.go
 
+	# Copy the envd client to the tests
+	rm -rf internal/envd/
+	mkdir -p internal/envd/
+	cp -r ../../packages/envd/internal/services/spec/ internal/envd/.
+	find . -type f -exec perl -pi -e 's|github.com/e2b-dev/infra/tests/integration/internal/envd/|github.com/e2b-dev/infra/tests/integration/internal/envd/|g' {} +
 
 .PHONY: build-debug
 build-debug:
@@ -29,6 +34,7 @@ seed:
 test:
 	export TESTS_API_SERVER_URL=$(TESTS_API_SERVER_URL); \
 	export TESTS_ORCHESTRATOR_HOST=$(TESTS_ORCHESTRATOR_HOST); \
+	export TESTS_ENVD_PROXY=$(TESTS_ENVD_PROXY); \
 	export TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID); \
 	export TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY); \
 	export TESTS_SUPABASE_TOKEN=$(TESTS_SUPABASE_TOKEN); \
