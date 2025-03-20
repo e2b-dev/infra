@@ -58,6 +58,8 @@ func (p *Handler) Pid() uint32 {
 }
 
 func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars *utils.Map[string, string], timeout time.Duration) (*Handler, error) {
+	// Create a new context with a timeout if provided.
+	// We do not want the command to be killed if the request context is cancelled
 	ctx := context.Background()
 	if timeout > 0 { // zero timeout means no timeout
 		ctx, _ = context.WithTimeout(ctx, timeout)
