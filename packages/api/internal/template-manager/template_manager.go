@@ -154,6 +154,7 @@ type buildStatusSetter interface {
 }
 
 func (c *PollBuildStatus) getPollRetryFunction(_ context.Context) func(context.Context) error {
+	// satisfies the type signature of retry.RunContext
 	return func(_ context.Context) error {
 		return c.setBuildStatus()
 	}
