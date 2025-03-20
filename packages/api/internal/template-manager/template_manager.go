@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc"
 
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -120,17 +119,8 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	}
 
 	checker := &PollBuildStatus{
-		statusClient: tm.grpc.Client,
-		ctx:          childCtx,
-		// Before Go 1.23, the garbage collector did not recover
-		// tickers that had not yet expired or been stopped, so code often
-		// immediately deferred t.Stop after calling NewTicker, to make
-		// the ticker recoverable when it was no longer needed.
-		// As of Go 1.23, the garbage collector can recover unreferenced
-		// tickers, even if they haven't been stopped.
-		// The Stop method is no longer necessary to help the garbage collector.
-		// (Code may of course still want to call Stop to stop the ticker for other reasons.)
-		tickChannel:           time.NewTicker(time.Second).C,
+		statusClient:          tm.grpc.Client,
+		ctx:                   childCtx,
 		logger:                logger,
 		templateID:            templateID,
 		buildID:               buildID,
@@ -151,44 +141,49 @@ type templateManagerClient interface {
 }
 
 type PollBuildStatus struct {
-	retries               int
-	retryInterval         time.Duration
-	tickChannel           <-chan time.Time
 	ctx                   context.Context
 	statusClient          statusClient
 	logger                *zap.Logger
 	templateID            string
 	buildID               uuid.UUID
 	templateManagerClient templateManagerClient
-	done                  chan error
+}
+
+type buildStatusSetter interface {
+	setBuildStatus() error
+}
+
+func (c *PollBuildStatus) getPollRetryFunction(bss buildStatusSetter) func() error {
+	return func() error {
+		if c.ctx == nil {
+			return retry.Stop(errors.New("context is nil"))
+		}
+
+		select {
+		case <-c.ctx.Done():
+			err := c.ctx.Err()
+			if err != nil {
+				return retry.Stop(errors.Wrap(err, "context done"))
+			}
+			return retry.Stop(errors.New("context done"))
+		default:
+
+			err := bss.setBuildStatus()
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+	}
 }
 
 func (c *PollBuildStatus) poll() {
+	retrier := retry.NewRetrier(120, time.Second, time.Second*30)
 
-	// poll build status
-	for {
-		select {
-		case <-c.ctx.Done():
-			return
-		case <-c.tickChannel:
-			c.setBuildStatus()
+	err := retrier.Run(c.getPollRetryFunction(c))
 
-		case err := <-c.done:
-			if utils.UnwrapGRPCError(err) != nil {
-				c.logger.Error("Error when polling build status", zap.Error(err))
-				err = c.templateManagerClient.SetStatus(
-					c.ctx,
-					c.templateID,
-					c.buildID,
-					envbuild.StatusFailed,
-					err.Error(),
-				)
-				if err != nil {
-					c.logger.Error("Error when setting build status", zap.Error(err))
-				}
-			}
-			return
-		}
+	if err != nil && err != c.ctx.Err() {
+		c.logger.Error("Polling stopped with error", zap.Error(err))
 	}
 }
 
@@ -215,45 +210,55 @@ func (c *PollBuildStatus) getFuncToRetry(s *template_manager.TemplateBuildStatus
 	}
 }
 
-func (c *PollBuildStatus) dispatchBasedOnStatus(status *template_manager.TemplateBuildStatusResponse) {
+func (c *PollBuildStatus) dispatchBasedOnStatus(status *template_manager.TemplateBuildStatusResponse) error {
 	if status == nil {
-		c.done <- errors.New("nil status")
-		return
+		return errors.New("nil status")
 	}
 	switch status.GetStatus() {
 	case template_manager.TemplateBuildState_Failed:
 		// build failed
 		err := c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, "template build failed according to status")
-		c.done <- errors.Wrap(err, "error when setting build status")
-		return
+		if err != nil {
+			return errors.Wrap(err, "error when setting build status")
+		}
+		return nil
 	case template_manager.TemplateBuildState_Completed:
 		// build completed
 		meta := status.GetMetadata()
 		if meta == nil {
-			c.done <- errors.New("nil metadata")
-			return
+			return errors.New("nil metadata")
 		}
 		err := c.templateManagerClient.SetFinished(c.ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
-		c.done <- errors.Wrap(err, "error when finishing build")
-		return
+		if err != nil {
+			return errors.Wrap(err, "error when finishing build")
+		}
+		return nil
 	default:
 		// continue polling
-		return
+		return nil
 	}
 }
 
-func (c *PollBuildStatus) setBuildStatus() {
+func (c *PollBuildStatus) setBuildStatus() error {
 	c.logger.Info("Checking template build status")
 
-	retrier := retry.NewRetrier(c.retries, 100*time.Millisecond, time.Second)
+	retrier := retry.NewRetrier(
+		10,
+		100*time.Millisecond,
+		time.Second,
+	)
 	var status *template_manager.TemplateBuildStatusResponse
 	err := retrier.Run(c.getFuncToRetry(status))
 	if err != nil {
-		c.done <- errors.Wrap(err, "error when polling build status")
-		return
+		return errors.Wrap(err, "error when polling build status")
 	}
 
-	c.dispatchBasedOnStatus(status)
+	err = c.dispatchBasedOnStatus(status)
+	if err != nil {
+		return errors.Wrap(err, "error when dispatching build status")
+	}
+
+	return nil
 }
 
 func (tm *TemplateManager) removeFromProcessingQueue(buildID uuid.UUID) {

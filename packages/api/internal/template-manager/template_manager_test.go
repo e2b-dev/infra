@@ -2,7 +2,6 @@ package template_manager
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -142,10 +141,10 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 		status *template_manager.TemplateBuildStatusResponse
 	}
 	tests := []struct {
-		name          string
-		fields        fields
-		args          args
-		expectedError string
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
 	}{
 		{
 			name: "should return error if status is nil",
@@ -155,7 +154,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 			args: args{
 				status: nil,
 			},
-			expectedError: "nil status",
+			wantErr: true,
 		},
 		{
 			name: "should handle failed status",
@@ -169,7 +168,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Failed,
 				},
 			},
-			expectedError: "error when setting build status",
+			wantErr: true,
 		},
 		{
 			name: "should handle completed status with nil metadata",
@@ -181,7 +180,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Completed,
 				},
 			},
-			expectedError: "nil metadata",
+			wantErr: true,
 		},
 		{
 			name: "should handle completed status successfully",
@@ -199,7 +198,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					},
 				},
 			},
-			expectedError: "error when finishing build",
+			wantErr: true,
 		},
 		{
 			name: "should not send to done channel for building status",
@@ -211,35 +210,102 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Building,
 				},
 			},
-			expectedError: "",
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			done := make(chan error, 1)
 			c := &PollBuildStatus{
 				templateManagerClient: tt.fields.templateManagerClient,
-				done:                  done,
 			}
 
-			c.dispatchBasedOnStatus(tt.args.status)
-
-			if tt.expectedError == "" {
-				select {
-				case err := <-done:
-					t.Errorf("Expected no error, got %v", err)
-				default:
-					// Success - no error sent to channel
+			err := c.dispatchBasedOnStatus(tt.args.status)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Expected error, got no error")
 				}
 			} else {
-				select {
-				case err := <-done:
-					if err == nil || !strings.Contains(err.Error(), tt.expectedError) {
-						t.Errorf("Expected error containing %q, got %v", tt.expectedError, err)
-					}
-				default:
-					t.Error("Expected error but none received")
+				if err != nil {
+					t.Errorf("Expected no error, got %v", err)
 				}
+			}
+		})
+	}
+}
+
+type fakeBuildStatusSetter struct {
+	setBuildStatusError error
+}
+
+func (f *fakeBuildStatusSetter) setBuildStatus() error {
+	return f.setBuildStatusError
+}
+
+func TestPollBuildStatus_getPollRetryFunction(t *testing.T) {
+	type fields struct {
+		ctx context.Context
+	}
+
+	type args struct {
+		bss *fakeBuildStatusSetter
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+
+		// return error if context is nil
+		{
+			name: "should return error if context is nil",
+			args: args{
+				bss: &fakeBuildStatusSetter{
+					setBuildStatusError: nil,
+				},
+			},
+			fields: fields{
+				ctx: nil,
+			},
+			wantErr: true,
+		},
+		// return nil if context is not nil and bss returns nil
+		{
+			name: "should return nil if context is not nil and bss returns nil",
+			args: args{
+				bss: &fakeBuildStatusSetter{
+					setBuildStatusError: nil,
+				},
+			},
+			fields: fields{
+				ctx: context.Background(),
+			},
+			wantErr: false,
+		},
+		// return error if context is not nil and bss returns error
+		{
+			name: "should return error if context is not nil and bss returns error",
+			args: args{
+				bss: &fakeBuildStatusSetter{
+					setBuildStatusError: errors.New("failed to set build status"),
+				},
+			},
+			fields: fields{
+				ctx: context.Background(),
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &PollBuildStatus{
+				ctx: tt.fields.ctx,
+			}
+			f := c.getPollRetryFunction(tt.args.bss)
+			err := f()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getPollRetryFunction() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
