@@ -2,6 +2,7 @@ package template_manager
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -108,7 +109,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 			logger.Error("Build is in waiting state for too long, failing it")
 			err = tm.SetStatus(childCtx, templateID, buildID, envbuild.StatusFailed, "build is in waiting state for too long")
 			if err != nil {
-				logger.Error("Error when setting build status", zap.Error(err))
+				logger.Error("error when setting build status", zap.Error(err))
 			}
 
 			return
@@ -147,6 +148,7 @@ type PollBuildStatus struct {
 	templateID            string
 	buildID               uuid.UUID
 	templateManagerClient templateManagerClient
+	status                *template_manager.TemplateBuildStatusResponse
 }
 
 type buildStatusSetter interface {
@@ -156,21 +158,26 @@ type buildStatusSetter interface {
 func (c *PollBuildStatus) getPollRetryFunction(_ context.Context) func(context.Context) error {
 	// satisfies the type signature of retry.RunContext
 	return func(_ context.Context) error {
+		c.logger.Info("Polling build status")
 		return c.setBuildStatus()
 	}
 }
 
 func (c *PollBuildStatus) poll() {
-	retrier := retry.NewRetrier(120, time.Second, time.Second*30)
+	retrier := retry.NewRetrier(1000, time.Second, time.Second*30)
 
 	err := retrier.RunContext(c.ctx, c.getPollRetryFunction(c.ctx))
 
 	if err != nil {
 		c.logger.Error("Polling timed out", zap.Error(err))
+		err := c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, fmt.Sprintf("polling timed out: %s", err))
+		if err != nil {
+			c.logger.Error("error when setting build status", zap.Error(err))
+		}
 	}
 }
 
-func (c *PollBuildStatus) getFuncToRetry(s *template_manager.TemplateBuildStatusResponse) func() error {
+func (c *PollBuildStatus) getSetStatusFn() func() error {
 	return func() error {
 		if c.statusClient == nil {
 			return errors.New("status client is nil")
@@ -186,9 +193,10 @@ func (c *PollBuildStatus) getFuncToRetry(s *template_manager.TemplateBuildStatus
 		if status == nil {
 			return errors.New("nil status") // this should never happen
 		}
+		// debug log the status
+		c.logger.Debug("setting status pointer", zap.Any("status", status))
 
-		s = status // update the status pointer if we got a new one
-
+		c.status = status
 		return nil
 	}
 }
@@ -217,7 +225,7 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(status *template_manager.Templat
 		}
 		return nil
 	default:
-		// continue polling
+		c.logger.Debug("skipping status", zap.Any("status", status))
 		return nil
 	}
 }
@@ -230,13 +238,14 @@ func (c *PollBuildStatus) setBuildStatus() error {
 		100*time.Millisecond,
 		time.Second,
 	)
-	var status *template_manager.TemplateBuildStatusResponse
-	err := retrier.Run(c.getFuncToRetry(status))
+	err := retrier.Run(c.getSetStatusFn())
 	if err != nil {
 		return errors.Wrap(err, "error when polling build status")
 	}
 
-	err = c.dispatchBasedOnStatus(status)
+	c.logger.Debug("dispatching based on status", zap.Any("status", c.status))
+
+	err = c.dispatchBasedOnStatus(c.status)
 	if err != nil {
 		return errors.Wrap(err, "error when dispatching build status")
 	}

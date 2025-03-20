@@ -41,7 +41,7 @@ func (f fakeTemplateManagerClient) SetFinished(ctx context.Context, templateID s
 	return f.setFinishedError
 }
 
-func TestPollBuildStatus_getFuncToRetry(t *testing.T) {
+func TestPollBuildStatus_getSetStatusFn(t *testing.T) {
 	type fields struct {
 		statusClient testStatusClient
 		buildID      uuid.UUID
@@ -117,16 +117,16 @@ func TestPollBuildStatus_getFuncToRetry(t *testing.T) {
 				statusClient: tt.fields.statusClient,
 			}
 			var status *template_manager.TemplateBuildStatusResponse
-			retryFunc := c.getFuncToRetry(status)
+			retryFunc := c.getSetStatusFn(status)
 			err := retryFunc()
 			if tt.wantErr {
 				if err == nil {
-					t.Errorf("PollBuildStatus.getFuncToRetry() = %v", err)
+					t.Errorf("PollBuildStatus.getSetStatusFn() = %v", err)
 				}
 			}
 			if !tt.wantErr {
 				if err != nil {
-					t.Errorf("PollBuildStatus.getFuncToRetry() = %v", err)
+					t.Errorf("PollBuildStatus.getSetStatusFn() = %v", err)
 				}
 			}
 		})
