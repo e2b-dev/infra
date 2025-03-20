@@ -102,7 +102,6 @@ func main() {
 
 	log.Println("Starting orchestrator", "commit", commitSHA)
 
-	clientID := consul.GetClientID()
 	sessionProxy := proxy.New(proxyPort)
 
 	srv, err := server.New(ctx, port, clientID, commitSHA, sessionProxy)
