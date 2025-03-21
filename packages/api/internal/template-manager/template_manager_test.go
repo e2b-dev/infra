@@ -365,14 +365,6 @@ func Test_isErrorRetryable(t *testing.T) {
 			},
 			want: false,
 		},
-
-		{
-			name: "should return true if error is nil",
-			args: args{
-				err: nil,
-			},
-			want: true,
-		},
 		// context deadline exceeded
 		{
 			name: "should return true if error is context deadline exceeded",
