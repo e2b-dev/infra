@@ -32,7 +32,7 @@ const (
 
 var commitSHA string
 
-func main() {
+func run() int32 {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -180,5 +180,9 @@ func main() {
 
 	wg.Wait()
 
-	os.Exit(int(exitCode.Load()))
+	return exitCode.Load()
+}
+
+func main() {
+	os.Exit(int(run()))
 }
