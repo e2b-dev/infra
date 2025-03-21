@@ -2,8 +2,6 @@ module github.com/e2b-dev/infra/packages/template-manager
 
 go 1.23.7
 
-toolchain go1.23.7
-
 require (
 	cloud.google.com/go/artifactregistry v1.16.0
 	github.com/Microsoft/hcsshim v0.12.9

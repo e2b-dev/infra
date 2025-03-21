@@ -2,8 +2,6 @@ module github.com/e2b-dev/infra/packages/api
 
 go 1.23.7
 
-toolchain go1.23.7
-
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/dchest/uniuri v1.2.0 // indirect

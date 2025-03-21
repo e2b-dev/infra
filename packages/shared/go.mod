@@ -2,8 +2,6 @@ module github.com/e2b-dev/infra/packages/shared
 
 go 1.23.7
 
-toolchain go1.23.7
-
 require (
 	cloud.google.com/go/storage v1.50.0
 	entgo.io/ent v0.12.5

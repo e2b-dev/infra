@@ -2,8 +2,6 @@ module github.com/e2b-dev/infra/packages/proxy
 
 go 1.23.7
 
-toolchain go1.23.7
-
 require (
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/miekg/dns v1.1.63

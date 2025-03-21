@@ -2,8 +2,6 @@ module github.com/e2b-dev/infra/packages/envd
 
 go 1.23.7
 
-toolchain go1.23.7
-
 require (
 	connectrpc.com/authn v0.1.0
 	connectrpc.com/connect v1.16.2
