@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"log"
 	"os"
@@ -25,22 +26,26 @@ func main() {
 		log.Fatalf("Failed to create migrator: %v", err)
 	}
 	defer migrator.Close()
-	log.Printf("Migration direction: %s\n", *direction)
 
 	version, dirty, err := migrator.Version()
-	if err == nil {
+	if errors.Is(err, db.ErrNoVersion) {
+		log.Printf("No migration version found, initializing to the latest\n")
+	} else if err == nil {
 		log.Printf("Current version: %d, dirty: %t\n", version, dirty)
 	} else {
-		log.Printf("Failed to get current version: %v\n", err)
+		log.Fatalf("Failed to get current version: %v", err)
 	}
 
+	log.Printf("Migration direction: %s\n", *direction)
 	if *direction == "up" {
 		err = migrator.Up()
 	} else {
 		err = migrator.Down()
 	}
 
-	if err != nil {
+	if errors.Is(err, db.ErrNoChange) {
+		log.Printf("Latest version already applied\n")
+	} else if err != nil {
 		log.Fatalf("Failed to execute migration: %v", err)
 	}
 
@@ -50,6 +55,6 @@ func main() {
 		log.Printf("Migration completed successfully.")
 	} else {
 		log.Printf("Failed to get final version: %v\n", err)
-		log.Printf("Migration failed.")
+		log.Fatalf("Migration failed.")
 	}
 }

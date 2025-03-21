@@ -15,6 +15,9 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+var ErrNoVersion = migrate.ErrNilVersion
+var ErrNoChange = migrate.ErrNoChange
+
 type DatabaseMigrator struct {
 	m *migrate.Migrate
 }
@@ -37,6 +40,10 @@ func (dm *DatabaseMigrator) To(version uint) error {
 
 func (dm *DatabaseMigrator) Force(version int) error {
 	return dm.m.Force(version)
+}
+
+func (dm *DatabaseMigrator) Steps(steps int) error {
+	return dm.m.Steps(steps)
 }
 
 func (dm *DatabaseMigrator) List() ([]string, error) {
