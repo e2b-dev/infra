@@ -62,12 +62,10 @@ func (a *GRPCClient) healthCheckSync(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			reqCtx, reqCtxCancel := context.WithTimeout(ctx, 5*time.Second)
+			reqCtx, reqCtxCancel := context.WithTimeout(ctx, 2*time.Second)
 			healthStatus, err := a.Client.HealthStatus(reqCtx, nil)
-			reqCtxCancel()
-
 			healthCheckAt := time.Now()
-			a.lastHealthCheckAt = &healthCheckAt
+			reqCtxCancel()
 
 			if err != nil {
 				zap.L().Error("failed to get health status of template manager", zap.Error(err))
@@ -86,9 +84,6 @@ func (a *GRPCClient) healthCheckSync(ctx context.Context) {
 }
 
 func (a *GRPCClient) Close() error {
-	// signal to background health check to stop
-	close(a.healthSyncStop)
-
 	err := a.connection.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close connection: %w", err)
