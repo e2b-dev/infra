@@ -1,10 +1,6 @@
 name: Run Go Deps Integrity Check
 
-on:
-  pull_request:
-  push:
-    branches:
-      - main
+on: [workflow_call]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,6 +17,19 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.work'
+          cache: false
+
+      - name: Go Cache Paths
+        id: go-cache-paths
+        run: |
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Go Mod Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-mod }}
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
 
       - name: Run integrity check
         run: STRICT_MODE=1 bash ./scripts/golang-dependencies-integrity.sh

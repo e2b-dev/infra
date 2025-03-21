@@ -1,0 +1,23 @@
+name: "Go Setup"
+description: "Sets up go and gets modules from the cache"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Golang
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.work'
+        cache: false
+
+    - name: Go Cache Paths
+      id: go-cache-paths
+      run: |
+        echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Go Mod Cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.go-cache-paths.outputs.go-mod }}
+        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
