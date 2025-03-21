@@ -28,7 +28,6 @@ type metricStore interface {
 }
 
 func (s *Sandbox) logMetricsBasedOnConfig(ctx context.Context, logger metricStore) {
-	sbxlogger.I(s).Info("logMetricsBasedOnConfig", zap.String("useLokiMetrics", s.useLokiMetrics), zap.String("useClickhouseMetrics", s.useClickhouseMetrics))
 
 	if s.useLokiMetrics == "true" {
 		sbxlogger.I(s).Info("Sending metrics to Loki")
