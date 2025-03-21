@@ -23,6 +23,11 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.work'
+          cache: true
+          cache-dependency-path: |
+            **/go.sum
+            **/go.mod
+            go.work
 
       - name: Run deps cleanup
         run: bash ./scripts/golang-dependencies-integrity.sh
