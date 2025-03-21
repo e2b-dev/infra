@@ -72,8 +72,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 
 	timeout, err := determineTimeoutFromHeader(stream.Conn().RequestHeader())
 	if err != nil {
-		cancel(connect.NewError(connect.CodeInvalidArgument, err))
-		return err
+		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
 	// Create a new context with a timeout if provided.
