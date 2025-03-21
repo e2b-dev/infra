@@ -53,7 +53,6 @@ message TemplateBuildStatusResponse {
 enum HealthState {
   Healthy = 0;
   Draining = 1;
-  Unhealthy = 2;
 }
 
 message HealthStatusResponse {
