@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 type fakeMetricStore struct {
@@ -86,6 +87,7 @@ func TestSandbox_logMetricsBasedOnConfig(t *testing.T) {
 				ClickhouseStore:      tt.fields.ClickhouseStore,
 				useLokiMetrics:       tt.fields.useLokiMetrics,
 				useClickhouseMetrics: tt.fields.useClickhouseMetrics,
+				Config:               *orchestrator.SandboxConfig{},
 			}
 			s.logMetricsBasedOnConfig(tt.args.ctx, tt.args.logger)
 			if !reflect.DeepEqual(tt.args.logger.calls, tt.args.want) {
