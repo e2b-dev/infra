@@ -29,7 +29,7 @@ func main() {
 
 	version, dirty, err := migrator.Version()
 	if errors.Is(err, db.ErrNoVersion) {
-		log.Printf("No migration version found, initializing to the latest\n")
+		log.Printf("No migration version found, initializing...\n")
 	} else if err == nil {
 		log.Printf("Current version: %d, dirty: %t\n", version, dirty)
 	} else {
