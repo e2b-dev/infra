@@ -5,7 +5,7 @@ on: [workflow_call]
 jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         include:
