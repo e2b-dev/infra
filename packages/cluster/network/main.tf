@@ -528,8 +528,8 @@ resource "google_compute_firewall" "client_proxy_firewall_ingress" {
 
   priority = 999
 
-  direction     = "INGRESS"
-  target_tags   = [var.cluster_tag_name]
+  direction   = "INGRESS"
+  target_tags = [var.cluster_tag_name]
   # Load balancer health check IP ranges
   # https://cloud.google.com/load-balancing/docs/health-check-concepts
   source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
@@ -542,13 +542,13 @@ resource "google_compute_firewall" "logs_collector_firewall_ingress" {
   allow {
     protocol = "tcp"
     # Health end point is already added by load balancer module automatically, but also adding it here just to make sure we don't remove it by accident
-    ports    = [var.logs_proxy_port.port, var.logs_health_proxy_port.port]
+    ports = [var.logs_proxy_port.port, var.logs_health_proxy_port.port]
   }
 
   priority = 999
 
-  direction     = "INGRESS"
-  target_tags   = [var.cluster_tag_name]
+  direction   = "INGRESS"
+  target_tags = [var.cluster_tag_name]
   # Load balancer health check IP ranges
   # https://cloud.google.com/load-balancing/docs/health-check-concepts
   source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
