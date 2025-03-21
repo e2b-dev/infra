@@ -28,7 +28,7 @@ job "template-manager" {
       driver = "raw_exec"
 
 %{ if update_stanza }
-      # If we need more than 30s we will need to update the max_kill_timeout in nomad
+      # If we need more than 10m we will need to update the max_kill_timeout in nomad
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
       kill_timeout = "10m"
 %{ endif }
