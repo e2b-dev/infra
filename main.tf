@@ -223,8 +223,9 @@ module "nomad" {
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name
 
   # Template manager
-  template_manager_port = var.template_manager_port
-  template_bucket_name  = module.buckets.fc_template_bucket_name
+  template_manager_port          = var.template_manager_port
+  template_bucket_name           = module.buckets.fc_template_bucket_name
+  template_manager_machine_count = var.build_cluster_size
 
   # Redis
   redis_port = var.redis_port

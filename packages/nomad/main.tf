@@ -357,27 +357,25 @@ data "external" "template_manager" {
 }
 
 resource "nomad_job" "template_manager" {
-  jobspec = file("${path.module}/template-manager.hcl")
+  jobspec = templatefile("${path.module}/template-manager.hcl", {
+    update_stanza = var.template_manager_machine_count > 1
 
-  hcl2 {
-    vars = {
-      gcp_project = var.gcp_project_id
-      gcp_region  = var.gcp_region
-      gcp_zone    = var.gcp_zone
-      port        = var.template_manager_port
-      environment = var.environment
+    gcp_project = var.gcp_project_id
+    gcp_region  = var.gcp_region
+    gcp_zone    = var.gcp_zone
+    port        = var.template_manager_port
+    environment = var.environment
 
-      api_secret                   = var.api_secret
-      bucket_name                  = var.fc_env_pipeline_bucket_name
-      docker_registry              = var.custom_envs_repository_name
-      google_service_account_key   = var.google_service_account_key
-      template_manager_checksum    = data.external.template_manager.result.hex
-      otel_tracing_print           = var.otel_tracing_print
-      template_bucket_name         = var.template_bucket_name
-      otel_collector_grpc_endpoint = "localhost:4317"
-      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-    }
-  }
+    api_secret                   = var.api_secret
+    bucket_name                  = var.fc_env_pipeline_bucket_name
+    docker_registry              = var.custom_envs_repository_name
+    google_service_account_key   = var.google_service_account_key
+    template_manager_checksum    = data.external.template_manager.result.hex
+    otel_tracing_print           = var.otel_tracing_print
+    template_bucket_name         = var.template_bucket_name
+    otel_collector_grpc_endpoint = "localhost:4317"
+    logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+  })
 }
 resource "nomad_job" "loki" {
   jobspec = templatefile("${path.module}/loki.hcl", {

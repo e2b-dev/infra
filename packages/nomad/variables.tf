@@ -104,7 +104,6 @@ variable "session_proxy_port" {
   })
 }
 
-
 variable "client_proxy_docker_image_digest" {
   type = string
 }
@@ -200,6 +199,10 @@ variable "client_machine_type" {
 
 # Template manager
 variable "template_manager_port" {
+  type = number
+}
+
+variable "template_manager_machine_count" {
   type = number
 }
 
