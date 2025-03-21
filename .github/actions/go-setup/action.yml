@@ -10,14 +10,12 @@ runs:
         go-version-file: 'go.work'
         cache: false
 
-    - name: Go Cache Paths
-      id: go-cache-paths
-      run: |
-        echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
-      shell: bash
-
     - name: Go Mod Cache
       uses: actions/cache/restore@v4
       with:
-        path: ${{ steps.go-cache-paths.outputs.go-mod }}
-        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+        fail-on-cache-miss: true
+        path: |
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum', '**/go.mod', 'go.work') }}
+        restore-keys: |
+          ${{ runner.os }}-go-mod-
