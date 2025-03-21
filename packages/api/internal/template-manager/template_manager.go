@@ -187,6 +187,7 @@ func (c *PollBuildStatus) setStatus() error {
 	if err != nil && errors.Is(err, context.DeadlineExceeded) {
 		return errors.Wrap(err, "context deadline exceeded")
 	} else if err != nil { // retry only on context deadline exceeded
+		c.logger.Error("terminal error when polling build status", zap.Error(err))
 		return terminalError
 	}
 
