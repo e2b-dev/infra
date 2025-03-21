@@ -53,8 +53,8 @@ runs:
         mkdir -p ~/logs
         
         # Start orchestrator
-        ./scripts/start_service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
+        bash ./scripts/start-service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
         
         # Start API
-        ./scripts/start_service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
+        bash ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
       shell: bash
