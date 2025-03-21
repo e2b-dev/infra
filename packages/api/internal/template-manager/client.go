@@ -26,10 +26,9 @@ type GRPCClient struct {
 
 	lastHealthCheckAt *time.Time
 	healthy           template_manager.HealthState
-	healthSyncStop    chan struct{}
 }
 
-func NewClient() (*GRPCClient, error) {
+func NewClient(ctx context.Context) (*GRPCClient, error) {
 	keepaliveParam := grpc.WithKeepaliveParams(keepalive.ClientParameters{
 		Time:                10 * time.Second, // Send ping every 10s
 		Timeout:             2 * time.Second,  // Wait 2s for response
@@ -49,28 +48,30 @@ func NewClient() (*GRPCClient, error) {
 	}
 
 	// periodically check for health status
-	go client.healthCheckSync()
+	go client.healthCheckSync(ctx)
 
 	return client, nil
 }
 
-func (a *GRPCClient) healthCheckSync() {
+func (a *GRPCClient) healthCheckSync(ctx context.Context) {
 	ticker := time.NewTicker(healthCheckInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-ticker.C:
-			ctx, ctxCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			healthStatus, err := a.Client.HealthStatus(ctx, nil)
+			reqCtx, reqCtxCancel := context.WithTimeout(ctx, 2*time.Second)
+			healthStatus, err := a.Client.HealthStatus(reqCtx, nil)
 			healthCheckAt := time.Now()
-			ctxCancel()
+			reqCtxCancel()
 
 			if err != nil {
 				zap.L().Error("failed to get health status of template manager", zap.Error(err))
 
 				a.lastHealthCheckAt = &healthCheckAt
-				a.healthy = template_manager.HealthState_Unhealthy
+				a.healthy = template_manager.HealthState_Draining
 				continue
 			}
 
@@ -78,17 +79,11 @@ func (a *GRPCClient) healthCheckSync() {
 
 			a.lastHealthCheckAt = &healthCheckAt
 			a.healthy = healthStatus.Status
-		case <-a.healthSyncStop:
-			zap.L().Info("stopping health check sync")
-			return
 		}
 	}
 }
 
 func (a *GRPCClient) Close() error {
-	// signal to background health check to stop
-	close(a.healthSyncStop)
-
 	err := a.connection.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close connection: %w", err)

@@ -123,7 +123,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	}
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(dbClient, templateBuildsCache)
+	templateManager, err := template_manager.New(ctx, dbClient, templateBuildsCache)
 	if err != nil {
 		zap.L().Fatal("initializing Template manager client", zap.Error(err))
 	}
@@ -190,8 +190,8 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 	if err := a.orchestrator.Close(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("closing Orchestrator client: %w", err))
-
 	}
+
 	if err := a.templateManager.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing Template manager client: %w", err))
 	}
