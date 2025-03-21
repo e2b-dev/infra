@@ -182,7 +182,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 	}
 
 	var parsedCursorTime time.Time = time.Now()
-	var parsedCursorID string = "zzzzzzzzzzzzzzzzzzzz"
+	var parsedCursorID string = "zzzzzzzzzzzzzzzzzzzz" // always lexically after any sandbox ID
 	if paginationParams.NextToken != nil && *paginationParams.NextToken != "" {
 		cursorTime, cursorID, err := parseCursor(*paginationParams.NextToken)
 		if err != nil {
