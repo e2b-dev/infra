@@ -39,26 +39,26 @@ func generateCursor(sandbox api.ListedSandbox) string {
 	return base64.URLEncoding.EncodeToString([]byte(cursor))
 }
 
-func parseCursor(cursor string) (*time.Time, *string, error) {
+func parseCursor(cursor string) (time.Time, string, error) {
 	decoded, err := base64.URLEncoding.DecodeString(cursor)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error decoding cursor: %w", err)
+		return time.Time{}, "", fmt.Errorf("error decoding cursor: %w", err)
 	}
 
 	parts := strings.Split(string(decoded), "__")
 	if len(parts) != 2 {
-		return nil, nil, fmt.Errorf("invalid cursor format")
+		return time.Time{}, "", fmt.Errorf("invalid cursor format")
 	}
 
 	cursorTime, err := time.Parse(time.RFC3339Nano, parts[0])
 	if err != nil {
-		return nil, nil, fmt.Errorf("invalid timestamp format in cursor: %w", err)
+		return time.Time{}, "", fmt.Errorf("invalid timestamp format in cursor: %w", err)
 	}
 
-	return &cursorTime, &parts[1], nil
+	return cursorTime, parts[1], nil
 }
 
-func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string, cursorTime *time.Time, cursorID *string, limit *int32) ([]api.ListedSandbox, error) {
+func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string, cursorTime time.Time, cursorID string, limit *int32) ([]api.ListedSandbox, error) {
 	sandboxes := make([]api.ListedSandbox, 0)
 
 	// Get build IDs for running sandboxes
@@ -106,18 +106,16 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 	}
 
 	// Apply cursor-based filtering if cursor is provided
-	if cursorTime != nil && cursorID != nil {
-		var filteredSandboxes []api.ListedSandbox
-		for _, sandbox := range sandboxes {
-			// Take sandboxes with start time before cursor time OR
-			// same start time but sandboxID greater than cursor ID (for stability)
-			if sandbox.StartedAt.Before(*cursorTime) ||
-				(sandbox.StartedAt.Equal(*cursorTime) && sandbox.SandboxID > *cursorID) {
-				filteredSandboxes = append(filteredSandboxes, sandbox)
-			}
+	var filteredSandboxes []api.ListedSandbox
+	for _, sandbox := range sandboxes {
+		// Take sandboxes with start time before cursor time OR
+		// same start time but sandboxID greater than cursor ID (for stability)
+		if sandbox.StartedAt.Before(cursorTime) ||
+			(sandbox.StartedAt.Equal(cursorTime) && sandbox.SandboxID > cursorID) {
+			filteredSandboxes = append(filteredSandboxes, sandbox)
 		}
-		sandboxes = filteredSandboxes
 	}
+	sandboxes = filteredSandboxes
 
 	// Apply limit if provided (get limit + 1 for pagination if possible)
 	if limit != nil && len(sandboxes) > int(*limit) {
@@ -127,7 +125,7 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 	return sandboxes, nil
 }
 
-func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit *int32, cursorTime *time.Time, cursorID *string) ([]api.ListedSandbox, error) {
+func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit *int32, cursorTime time.Time, cursorID string) ([]api.ListedSandbox, error) {
 	sandboxes := make([]api.ListedSandbox, 0)
 	snapshots, err := a.db.GetTeamSnapshotsWithCursor(ctx, teamID, runningSandboxesIDs, int(*limit), metadataFilter, cursorTime, cursorID)
 	if err != nil {
@@ -183,8 +181,8 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 		metadataFilter = &parsedMetadataFilter
 	}
 
-	var parsedCursorTime *time.Time
-	var parsedCursorID *string
+	var parsedCursorTime time.Time = time.Now()
+	var parsedCursorID string = "00000000"
 	if paginationParams.NextToken != nil && *paginationParams.NextToken != "" {
 		cursorTime, cursorID, err := parseCursor(*paginationParams.NextToken)
 		if err != nil {

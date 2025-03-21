@@ -212,8 +212,8 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 	excludeSandboxIDs []string,
 	limit int,
 	metadataFilter *map[string]string,
-	cursorTime *time.Time,
-	cursorID *string,
+	cursorTime time.Time,
+	cursorID string,
 ) (
 	[]*models.Snapshot,
 	error,
@@ -237,17 +237,15 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 		})
 
 	// Apply cursor-based filtering if cursor is provided
-	if cursorTime != nil && cursorID != nil {
-		query = query.Where(
-			snapshot.Or(
-				snapshot.SandboxStartedAtLT(*cursorTime),
-				snapshot.And(
-					snapshot.SandboxStartedAtEQ(*cursorTime),
-					snapshot.SandboxIDGT(*cursorID),
-				),
+	query = query.Where(
+		snapshot.Or(
+			snapshot.SandboxStartedAtLT(cursorTime),
+			snapshot.And(
+				snapshot.SandboxStartedAtEQ(cursorTime),
+				snapshot.SandboxIDGT(cursorID),
 			),
-		)
-	}
+		),
+	)
 
 	// Apply metadata filtering
 	if metadataFilter != nil {
