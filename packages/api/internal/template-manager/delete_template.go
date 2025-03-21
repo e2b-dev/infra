@@ -10,10 +10,6 @@ import (
 )
 
 func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildId uuid.UUID) error {
-	if !tm.grpc.IsAvailable() {
-		return fmt.Errorf("template manager is not available")
-	}
-
 	_, err := tm.grpc.Client.TemplateBuildDelete(
 		ctx, &template_manager.TemplateBuildDeleteRequest{
 			BuildID: buildId.String(),
