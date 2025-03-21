@@ -1,3 +1,5 @@
+BEGIN;
+
 -- Modify "teams" table
 ALTER TABLE "public"."teams" ADD COLUMN "email" character varying(255) NULL;
 
@@ -18,3 +20,5 @@ $create_default_team$ SECURITY DEFINER SET search_path = public;
 UPDATE "public"."teams" SET "email" = "name";
 
 ALTER TABLE "public"."teams" ALTER COLUMN "email" SET NOT NULL;
+
+COMMIT; 

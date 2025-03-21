@@ -1,3 +1,5 @@
+BEGIN;
+
 -- Create "snapshots" table
 CREATE TABLE "public"."snapshots"
 (
@@ -10,3 +12,5 @@ CREATE TABLE "public"."snapshots"
     constraint snapshots_pkey primary key (id)
 );
 ALTER TABLE "public"."snapshots" ENABLE ROW LEVEL SECURITY;
+
+COMMIT;

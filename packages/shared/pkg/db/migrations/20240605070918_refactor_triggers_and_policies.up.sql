@@ -1,3 +1,5 @@
+BEGIN;
+
 DROP TRIGGER create_default_team ON auth.users;
 DROP FUNCTION generate_default_team_trigger();
 DROP TRIGGER team_api_keys_trigger ON public.teams;
@@ -138,4 +140,5 @@ DO $$
 
         END;
     END $$;
-;
+
+COMMIT; 

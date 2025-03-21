@@ -1,6 +1,7 @@
--- Modify "access_tokens" table
-ALTER TABLE "public"."users_teams" ADD COLUMN "is_default" boolean NOT NULL DEFAULT false;
-UPDATE "public"."users_teams" ut SET "is_default" = t."is_default" FROM "public"."teams" t WHERE ut."team_id" = t."id";
+BEGIN;
+
+-- Alter "teams" table
+ALTER TABLE "public"."teams" DROP COLUMN "is_default";
 
 CREATE OR REPLACE FUNCTION public.post_user_signup()
     RETURNS TRIGGER
@@ -10,7 +11,7 @@ DECLARE
     team_id                 uuid;
 BEGIN
     RAISE NOTICE 'Creating default team for user %', NEW.id;
-    INSERT INTO public.teams(name, is_default, tier, email) VALUES (NEW.email, true, 'base_v1', NEW.email) RETURNING id INTO team_id;
+    INSERT INTO public.teams(name, tier, email) VALUES (NEW.email, 'base_v1', NEW.email) RETURNING id INTO team_id;
     INSERT INTO public.users_teams(user_id, team_id, is_default) VALUES (NEW.id, team_id, true);
     RAISE NOTICE 'Created default team for user % and team %', NEW.id, team_id;
 
@@ -27,4 +28,4 @@ BEGIN
 END
 $post_user_signup$ SECURITY DEFINER SET search_path = public;
 
-ALTER FUNCTION public.post_user_signup() OWNER TO trigger_user;
+COMMIT; 

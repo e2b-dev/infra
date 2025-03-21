@@ -1,3 +1,5 @@
+BEGIN;
+
 -- Modify "env_aliases" table
 ALTER TABLE "public"."env_aliases" RENAME COLUMN "is_name" TO "is_renamable";
 ALTER TABLE "public"."env_aliases" ALTER COLUMN "env_id" SET NOT NULL;
@@ -13,3 +15,5 @@ FROM "public"."envs";
 
 -- Modify "envs" table
 ALTER TABLE "public"."envs" DROP COLUMN "dockerfile", DROP COLUMN "build_id", DROP COLUMN "vcpu", DROP COLUMN "ram_mb", DROP COLUMN "free_disk_size_mb", DROP COLUMN "total_disk_size_mb", DROP COLUMN "kernel_version", DROP COLUMN "firecracker_version";
+
+COMMIT; 
