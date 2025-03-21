@@ -176,6 +176,8 @@ func (c *PollBuildStatus) poll() {
 	}
 }
 
+// terminalError is a terminal error that should not be retried
+// set like this so that we can check for it using errors.Is
 var terminalError = retry.Stop(errors.WithStack(errors.New("terminal error")))
 
 func (c *PollBuildStatus) setStatus() error {
