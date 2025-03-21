@@ -2,10 +2,6 @@ name: Run Go Deps Integrity Check
 
 on: [workflow_call]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   run-check:
     runs-on: ubuntu-latest
