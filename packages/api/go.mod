@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/api
 
-go 1.23.0
+go 1.23.7
 
 toolchain go1.23.7
 
