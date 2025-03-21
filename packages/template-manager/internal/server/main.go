@@ -42,7 +42,7 @@ type ServerStore struct {
 	buildLogger      *zap.Logger
 	templateStorage  *template.Storage
 	artifactRegistry *artifactregistry.Client
-	healthyStatus    templatemanager.HealthState
+	healthStatus     templatemanager.HealthState
 	wg               *sync.WaitGroup // wait group for running builds
 }
 
@@ -100,7 +100,7 @@ func New(logger *zap.Logger, buildLogger *zap.Logger) (*grpc.Server, *ServerStor
 		buildLogger:      buildLogger,
 		artifactRegistry: artifactRegistry,
 		templateStorage:  templateStorage,
-		healthyStatus:    templatemanager.HealthState_Healthy,
+		healthStatus:     templatemanager.HealthState_Healthy,
 		wg:               &sync.WaitGroup{},
 	}
 
@@ -116,7 +116,7 @@ func (s *ServerStore) Close(ctx context.Context) error {
 		return errors.New("context cancelled during server graceful shutdown")
 	default:
 		// no new jobs should be started
-		s.healthyStatus = templatemanager.HealthState_Draining
+		s.healthStatus = templatemanager.HealthState_Draining
 
 		// wait for all builds to finish
 		s.wg.Wait()
@@ -125,7 +125,6 @@ func (s *ServerStore) Close(ctx context.Context) error {
 		time.Sleep(15 * time.Second)
 
 		// mark service as unhealthy so now new request will be accepted
-		s.healthyStatus = templatemanager.HealthState_Unhealthy
 		s.server.GracefulStop()
 		return nil
 	}
