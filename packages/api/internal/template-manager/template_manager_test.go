@@ -42,7 +42,7 @@ func (f fakeTemplateManagerClient) SetFinished(ctx context.Context, templateID s
 	return f.setFinishedError
 }
 
-func TestPollBuildStatus_getSetStatusFn(t *testing.T) {
+func TestPollBuildStatus_setStatus(t *testing.T) {
 	type fields struct {
 		statusClient testStatusClient
 		buildID      uuid.UUID
@@ -299,4 +299,86 @@ type fakeBuildStatusSetter struct {
 
 func (f *fakeBuildStatusSetter) setBuildStatus() error {
 	return f.setBuildStatusError
+}
+
+func TestPollBuildStatus_setStatusReturnsCorrectErrorType(t *testing.T) {
+	// TemplateBuildStatus returns context deadline exceeded, return a normal (retryable) error
+	// otherwise return a non-retryable error
+	type testCase struct {
+		name         string
+		isRetryable  bool
+		statusClient *fakeStatusClient
+	}
+
+	tests := []testCase{
+		{
+			name:        "should return retryable error if context deadline exceeded",
+			isRetryable: true,
+			statusClient: &fakeStatusClient{
+				err: context.DeadlineExceeded,
+			},
+		},
+		{
+			name:        "should return non-retryable error if error is not context deadline exceeded",
+			isRetryable: false,
+			statusClient: &fakeStatusClient{
+				err: errors.New("some other error"),
+			},
+		},
+	}
+	for _, tt := range tests {
+		c := &PollBuildStatus{
+			statusClient: tt.statusClient,
+			logger:       zap.NewNop(),
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			err := c.setStatus()
+			// compare error types
+			retryable := isErrorRetryable(err)
+			if retryable != tt.isRetryable {
+				t.Errorf("Expected retryable error %v, got %v", tt.isRetryable, retryable)
+			}
+		})
+	}
+}
+
+func Test_isErrorRetryable(t *testing.T) {
+	type args struct {
+		err error
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "should return true if normal error",
+			args: args{
+				err: errors.New("some other error"),
+			},
+			want: true,
+		},
+		{
+			name: "should return false if error is not retryable",
+			args: args{
+				err: terminalError,
+			},
+			want: false,
+		},
+		// context deadline exceeded
+		{
+			name: "should return true if error is context deadline exceeded",
+			args: args{
+				err: context.DeadlineExceeded,
+			},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isErrorRetryable(tt.args.err); got != tt.want {
+				t.Errorf("isErrorRetryable() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

@@ -3,7 +3,6 @@ package template_manager
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -177,16 +176,21 @@ func (c *PollBuildStatus) poll() {
 	}
 }
 
+// terminalError is a terminal error that should not be retried
+// set like this so that we can check for it using errors.Is
+var terminalError = retry.Stop(errors.WithStack(errors.New("terminal error")))
+
 func (c *PollBuildStatus) setStatus() error {
 	if c.statusClient == nil {
 		return errors.New("status client is nil")
 	}
 	status, err := c.statusClient.TemplateBuildStatus(c.ctx, &template_manager.TemplateStatusRequest{TemplateID: c.templateID, BuildID: c.buildID.String()})
 
-	if err != nil && strings.Contains(err.Error(), "context deadline exceeded") {
+	if err != nil && errors.Is(err, context.DeadlineExceeded) {
 		return errors.Wrap(err, "context deadline exceeded")
 	} else if err != nil { // retry only on context deadline exceeded
-		return retry.Stop(errors.Wrap(err, "error when polling build status"))
+		c.logger.Error("terminal error when polling build status", zap.Error(err))
+		return terminalError
 	}
 
 	if status == nil {
@@ -229,6 +233,10 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(status *template_manager.Templat
 	}
 }
 
+func isErrorRetryable(err error) bool {
+	return !errors.Is(err, terminalError)
+}
+
 func (c *PollBuildStatus) setBuildStatus() error {
 	c.logger.Info("Checking template build status")
 
@@ -238,8 +246,12 @@ func (c *PollBuildStatus) setBuildStatus() error {
 		time.Second,
 	)
 	err := retrier.Run(c.setStatus)
+
 	if err != nil {
-		return errors.Wrap(err, "error when polling build status")
+		if isErrorRetryable(err) {
+			return errors.Wrap(err, "error when polling build status")
+		}
+		return retry.Stop(errors.WithStack(err))
 	}
 
 	c.logger.Debug("dispatching based on status", zap.Any("status", c.status))
