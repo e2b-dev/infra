@@ -1,18 +1,13 @@
 name: Integration Tests
 
-on:
-  pull_request:
-    branches: [ main ]
+on: [workflow_call]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  integrity-check:
-    uses: ./.github/workflows/pr-go-integrity.yml
   integration_tests:
-    needs: [integrity-check]
     runs-on: ubuntu-24.04
     permissions:
       contents: read

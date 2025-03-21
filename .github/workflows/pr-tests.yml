@@ -1,18 +1,13 @@
 name: Run tests on PRs
-on:
-  pull_request:
-    branches:
-      - main
+
+on: [workflow_call]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  integrity-check:
-    uses: ./.github/workflows/pr-go-integrity.yml
   run-tests:
-    needs: [integrity-check]
     name: Run tests for ${{ matrix.package }}
     runs-on: ubuntu-latest
     strategy:
