@@ -138,7 +138,7 @@ function generate_nomad_config {
 
   # Create a directory for ClickHouse data if it doesn't exist
   # since this config is dependent on the volume being present
-  clickhouse_data_dir="/opt/clickhouse/data"
+  clickhouse_data_dir="/mnt/nfs/clickhouse/data"
   mkdir -p "$clickhouse_data_dir"
 
 

@@ -46,8 +46,6 @@ job "orchestrator" {
         CLICKHOUSE_USERNAME          = "${clickhouse_username}"
         CLICKHOUSE_PASSWORD          = "${clickhouse_password}"
         CLICKHOUSE_DATABASE          = "${clickhouse_database}"
-        WRITE_CLICKHOUSE_METRICS     = "true"
-        READ_METRICS_FROM_CLICKHOUSE = "true"
       }
 
       config {

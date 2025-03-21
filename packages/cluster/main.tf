@@ -154,6 +154,29 @@ module "client_cluster" {
   depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
 }
 
+# Add Filestore instance for NFS
+resource "google_filestore_instance" "api_nfs" {
+  name     = "${var.prefix}-api-nfs"
+  tier     = "BASIC_HDD"
+  location = var.gcp_zone
+
+  file_shares {
+    name        = "api_share"
+    capacity_gb = 1024
+    nfs_export_options {
+      ip_ranges   = ["10.0.0.0/8"] # VPC network range - adjust as needed
+      access_mode = "READ_WRITE"
+      squash_mode = "NO_ROOT_SQUASH"
+    }
+  }
+
+  networks {
+    network = var.network_name
+    modes   = ["MODE_IPV4"]
+  }
+}
+
+
 module "api_cluster" {
   source = "./api-cluster"
 
@@ -172,6 +195,9 @@ module "api_cluster" {
     RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-api-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
+    NFS_IP                       = google_filestore_instance.api_nfs.networks[0].ip_addresses[0]
+    NFS_SHARE                    = "/api_share"
+    NFS_MOUNT_PATH               = "/mnt/nfs"
   })
 
   environment = var.environment

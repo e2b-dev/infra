@@ -173,3 +173,21 @@ variable "api_port" {
     health_path = string
   })
 }
+
+variable "enable_nfs" {
+  description = "Whether to enable NFS storage using Filestore"
+  type        = bool
+  default     = false
+}
+
+variable "nfs_tier" {
+  description = "The service tier of the Filestore instance"
+  type        = string
+  default     = "BASIC_HDD"
+}
+
+variable "nfs_capacity_gb" {
+  description = "The capacity of the Filestore instance in GB"
+  type        = number
+  default     = 1024
+}
