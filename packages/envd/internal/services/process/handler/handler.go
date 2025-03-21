@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -57,8 +58,8 @@ func (p *Handler) Pid() uint32 {
 	return uint32(p.cmd.Process.Pid)
 }
 
-func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars *utils.Map[string, string]) (*Handler, error) {
-	cmd := exec.Command(req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
+func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars *utils.Map[string, string]) (*Handler, error) {
+	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
 
 	uid, gid, err := permissions.GetUserIds(user)
 	if err != nil {
