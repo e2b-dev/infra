@@ -10,7 +10,6 @@ import (
 	"os/user"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
@@ -57,13 +56,7 @@ func (p *Handler) Pid() uint32 {
 	return uint32(p.cmd.Process.Pid)
 }
 
-func New(user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars *utils.Map[string, string], timeout time.Duration) (*Handler, error) {
-	// Create a new context with a timeout if provided.
-	// We do not want the command to be killed if the request context is cancelled
-	ctx := context.Background()
-	if timeout > 0 { // zero timeout means no timeout
-		ctx, _ = context.WithTimeout(ctx, timeout)
-	}
+func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars *utils.Map[string, string]) (*Handler, error) {
 	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
 
 	uid, gid, err := permissions.GetUserIds(user)
