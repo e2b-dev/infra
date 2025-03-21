@@ -70,10 +70,14 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 	shutdownChan := make(chan bool)
 
 	go func() {
-		signal := <-signalChan
-		if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
-			// closing the shutdownChan allows us to broadcast the signal to all the read loops below
+		select {
+		case <-ctx.Done():
 			close(shutdownChan)
+		case signal := <-signalChan:
+			if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
+				// closing the shutdownChan allows us to broadcast the signal to all the read loops below
+				close(shutdownChan)
+			}
 		}
 	}()
 
