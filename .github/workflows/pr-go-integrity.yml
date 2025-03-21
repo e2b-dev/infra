@@ -1,18 +1,10 @@
 name: Run Go Deps Integrity Check
 
-on:
-  pull_request:
-  push:
-    branches:
-      - main
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+on: [workflow_call]
 
 jobs:
   run-check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,6 +13,16 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.work'
+          cache: false
+
+      - name: Go Mod Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum', '**/go.mod', 'go.work') }}
+          restore-keys: |
+            ${{ runner.os }}-go-mod-
 
       - name: Run integrity check
         run: STRICT_MODE=1 bash ./scripts/golang-dependencies-integrity.sh

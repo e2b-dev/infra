@@ -1,8 +1,6 @@
 module github.com/e2b-dev/infra/packages/template-manager
 
-go 1.23.0
-
-toolchain go1.23.7
+go 1.23.7
 
 require (
 	cloud.google.com/go/artifactregistry v1.16.0
