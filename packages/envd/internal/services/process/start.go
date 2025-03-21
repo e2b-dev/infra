@@ -3,7 +3,9 @@ package process
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os/user"
+	"strconv"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
@@ -70,7 +72,19 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		return err
 	}
 
-	proc, err := handler.New(ctx, u, req.Msg, &handlerL, s.envs)
+	timeout, err := determineTimeoutFromHeader(stream.Conn().RequestHeader())
+	if err != nil {
+		cancel(connect.NewError(connect.CodeInvalidArgument, err))
+		return err
+	}
+
+	// Create a new context with a timeout if provided.
+	// We do not want the command to  be killed if the request context is cancelled
+	procCtx := context.Background()
+	if timeout > 0 { // zero timeout means no timeout
+		procCtx, _ = context.WithTimeout(procCtx, timeout)
+	}
+	proc, err := handler.New(procCtx, u, req.Msg, &handlerL, s.envs)
 	if err != nil {
 		return err
 	}
@@ -206,4 +220,19 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 	case <-exitChan:
 		return nil
 	}
+}
+
+func determineTimeoutFromHeader(header http.Header) (time.Duration, error) {
+	timeoutHeader := header.Get("Connect-Timeout-Ms")
+
+	if timeoutHeader == "" {
+		return DefaultProcessTimeout, nil
+	}
+
+	timeout, err := strconv.Atoi(timeoutHeader)
+	if err != nil {
+		return DefaultProcessTimeout, err
+	}
+
+	return time.Duration(timeout) * time.Millisecond, nil
 }
