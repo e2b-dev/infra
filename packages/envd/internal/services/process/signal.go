@@ -26,7 +26,6 @@ func (s *Service) SendSignal(ctx context.Context, req *connect.Request[rpc.SendS
 		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("invalid signal: %s", req.Msg.GetSignal()))
 	}
 
-	handler.SignalChan <- signal
 	err = handler.SendSignal(signal)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error sending signal: %w", err))

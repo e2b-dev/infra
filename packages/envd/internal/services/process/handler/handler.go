@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
-	"sync"
 	"syscall"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -44,9 +43,9 @@ type Handler struct {
 	cmd *exec.Cmd
 	tty *os.File
 
-	SignalChan chan syscall.Signal
+	ctx    context.Context
+	cancel context.CancelFunc
 
-	outWg *sync.WaitGroup
 	stdin io.WriteCloser
 
 	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
@@ -58,28 +57,20 @@ func (p *Handler) Pid() uint32 {
 	return uint32(p.cmd.Process.Pid)
 }
 
-func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars *utils.Map[string, string]) (*Handler, error) {
+func New(
+	ctx context.Context,
+	user *user.User,
+	req *rpc.StartRequest,
+	logger *zerolog.Logger,
+	envVars *utils.Map[string, string],
+	cancel context.CancelFunc,
+) (*Handler, error) {
 	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
 
 	uid, gid, err := permissions.GetUserIds(user)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-
-	signalChan := make(chan syscall.Signal, 1)
-	shutdownChan := make(chan bool)
-
-	go func() {
-		select {
-		case <-ctx.Done():
-			close(shutdownChan)
-		case signal := <-signalChan:
-			if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
-				// closing the shutdownChan allows us to broadcast the signal to all the read loops below
-				close(shutdownChan)
-			}
-		}
-	}()
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
 	cmd.SysProcAttr.Credential = &syscall.Credential{
@@ -121,7 +112,6 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 	cmd.Env = formattedVars
 
 	outMultiplex := NewMultiplexedChannel[rpc.ProcessEvent_Data](outputBufferSize)
-	var outWg sync.WaitGroup
 
 	if req.GetPty() != nil {
 		// The pty should ideally start only in the Start method, but the package does not support that and we would have to code it manually.
@@ -134,10 +124,8 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", cmd, cmd.Dir, req.GetPty().GetSize().Cols, req.GetPty().GetSize().Rows, err))
 		}
 
-		outWg.Add(1)
-
 		go func() {
-			defer outWg.Done()
+			defer cancel()
 
 			for {
 				buf := make([]byte, ptyChunkSize)
@@ -172,7 +160,8 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 			tty:       tty,
 			Tag:       req.Tag,
 			DataEvent: outMultiplex,
-			outWg:     &outWg,
+			ctx:       ctx,
+			cancel:    cancel,
 			EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
 			logger:    logger,
 		}, nil
@@ -188,28 +177,15 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdout pipe for command '%s': %w", cmd, err))
 	}
 
-	outWg.Add(1)
 	go func() {
+		defer cancel()
+
 		stdoutLogs := make(chan []byte, outputBufferSize)
 		defer close(stdoutLogs)
 
-		readOver := make(chan bool, 1)
 		stdoutLogger := logger.With().Str("event_type", "stdout").Logger()
 
 		go logs.LogBufferedDataEvents(stdoutLogs, &stdoutLogger, "data")
-
-		go func() {
-			select {
-			case <-readOver:
-				outWg.Done()
-				break
-			case _, ok := <-shutdownChan:
-				if !ok {
-					outWg.Done()
-				}
-				break
-			}
-		}()
 
 		for {
 			buf := make([]byte, stdChunkSize)
@@ -238,8 +214,6 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 				break
 			}
 		}
-
-		readOver <- true
 	}()
 
 	stderr, err := cmd.StderrPipe()
@@ -247,29 +221,15 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stderr pipe for command '%s': %w", cmd, err))
 	}
 
-	outWg.Add(1)
 	go func() {
+		defer cancel()
+
 		stderrLogs := make(chan []byte, outputBufferSize)
 		defer close(stderrLogs)
-
-		readOver := make(chan bool, 1)
 
 		stderrLogger := logger.With().Str("event_type", "stderr").Logger()
 
 		go logs.LogBufferedDataEvents(stderrLogs, &stderrLogger, "data")
-
-		go func() {
-			select {
-			case <-readOver:
-				outWg.Done()
-				break
-			case _, ok := <-shutdownChan:
-				if !ok {
-					outWg.Done()
-				}
-				break
-			}
-		}()
 
 		for {
 			buf := make([]byte, stdChunkSize)
@@ -298,26 +258,28 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 				break
 			}
 		}
-
-		readOver <- true
 	}()
 
 	return &Handler{
-		Config:     req.GetProcess(),
-		cmd:        cmd,
-		stdin:      stdin,
-		Tag:        req.Tag,
-		DataEvent:  outMultiplex,
-		outWg:      &outWg,
-		EndEvent:   NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-		SignalChan: signalChan,
-		logger:     logger,
+		Config:    req.GetProcess(),
+		cmd:       cmd,
+		stdin:     stdin,
+		Tag:       req.Tag,
+		DataEvent: outMultiplex,
+		ctx:       ctx,
+		cancel:    cancel,
+		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
+		logger:    logger,
 	}, nil
 }
 
 func (p *Handler) SendSignal(signal syscall.Signal) error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("process not started")
+	}
+
+	if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
+		p.cancel()
 	}
 
 	return p.cmd.Process.Signal(signal)
@@ -382,7 +344,7 @@ func (p *Handler) Start() (uint32, error) {
 }
 
 func (p *Handler) Wait() {
-	p.outWg.Wait()
+	<-p.ctx.Done()
 
 	close(p.DataEvent.Source)
 
