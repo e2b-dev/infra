@@ -723,9 +723,9 @@ paths:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
       parameters:
-        - name: query
+        - name: metadata
           in: query
-          description: A query used to filter the sandboxes (e.g. "user=abc&app=prod"). Query and each key and values must be URL encoded.
+          description: Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
           required: false
           schema:
             type: string
@@ -779,9 +779,9 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: query
+        - name: metadata
           in: query
-          description: A query used to filter the sandboxes (e.g. "user=abc&app=prod"). Query and each key and values must be URL encoded.
+          description: Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
           required: false
           schema:
             type: string

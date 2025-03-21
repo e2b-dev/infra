@@ -149,7 +149,7 @@ func run() int {
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 
-	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA)
+	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA, "no")
 	defer func() {
 		err := stopOtlp(ctx)
 		if err != nil {

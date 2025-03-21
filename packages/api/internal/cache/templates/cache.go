@@ -162,7 +162,7 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 		return
 	}
 
-	zap.L().Debug("Setting template build status",
+	zap.L().Info("Setting template build status",
 		zap.String("buildID", buildID.String()),
 		zap.String("to_status", status.String()),
 		zap.String("from_status", item.Value().BuildStatus.String()),

@@ -336,11 +336,11 @@ func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesParams
 
-	// ------------- Optional query parameter "query" -------------
+	// ------------- Optional query parameter "metadata" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "query", c.Request.URL.Query(), &params.Query)
+	err = runtime.BindQueryParameter("form", true, false, "metadata", c.Request.URL.Query(), &params.Metadata)
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter query: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter metadata: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -383,11 +383,11 @@ func (siw *ServerInterfaceWrapper) GetSandboxesMetrics(c *gin.Context) {
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSandboxesMetricsParams
 
-	// ------------- Optional query parameter "query" -------------
+	// ------------- Optional query parameter "metadata" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "query", c.Request.URL.Query(), &params.Query)
+	err = runtime.BindQueryParameter("form", true, false, "metadata", c.Request.URL.Query(), &params.Metadata)
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter query: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter metadata: %w", err), http.StatusBadRequest)
 		return
 	}
 
