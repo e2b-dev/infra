@@ -17,8 +17,6 @@ import (
 	"connectrpc.com/connect"
 )
 
-const DefaultProcessTimeout = 60 * time.Second
-
 func (s *Service) InitializeStartProcess(ctx context.Context, user *user.User, req *rpc.StartRequest) error {
 	var err error
 
@@ -226,12 +224,12 @@ func determineTimeoutFromHeader(header http.Header) (time.Duration, error) {
 	timeoutHeader := header.Get("Connect-Timeout-Ms")
 
 	if timeoutHeader == "" {
-		return DefaultProcessTimeout, nil
+		return 0, nil
 	}
 
 	timeout, err := strconv.Atoi(timeoutHeader)
 	if err != nil {
-		return DefaultProcessTimeout, err
+		return 0, err
 	}
 
 	return time.Duration(timeout) * time.Millisecond, nil
