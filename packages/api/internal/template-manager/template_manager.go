@@ -151,10 +151,6 @@ type PollBuildStatus struct {
 	status                *template_manager.TemplateBuildStatusResponse
 }
 
-type buildStatusSetter interface {
-	setBuildStatus() error
-}
-
 func (c *PollBuildStatus) getPollRetryFunction(_ context.Context) func(context.Context) error {
 	// satisfies the type signature of retry.RunContext
 	return func(_ context.Context) error {
