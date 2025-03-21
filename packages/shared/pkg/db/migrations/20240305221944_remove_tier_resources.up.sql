@@ -1,6 +1,10 @@
 BEGIN;
 
 -- Modify "tiers" table
-ALTER TABLE "public"."tiers" DROP CONSTRAINT "tiers_ram_mb_check", DROP CONSTRAINT "tiers_vcpu_check", DROP COLUMN "vcpu", DROP COLUMN "ram_mb";
+ALTER TABLE "public"."tiers" 
+    DROP CONSTRAINT IF EXISTS "tiers_ram_mb_check",
+    DROP CONSTRAINT IF EXISTS "tiers_vcpu_check",
+    DROP COLUMN IF EXISTS "vcpu",
+    DROP COLUMN IF EXISTS "ram_mb";
 
 COMMIT; 

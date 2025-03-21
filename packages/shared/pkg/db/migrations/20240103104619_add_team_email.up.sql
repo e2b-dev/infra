@@ -1,7 +1,7 @@
 BEGIN;
 
 -- Modify "teams" table
-ALTER TABLE "public"."teams" ADD COLUMN "email" character varying(255) NULL;
+ALTER TABLE "public"."teams" ADD COLUMN IF NOT EXISTS "email" character varying(255) NULL;
 
 
 CREATE OR REPLACE FUNCTION public.generate_default_team() RETURNS TRIGGER
@@ -17,7 +17,7 @@ BEGIN
 END
 $create_default_team$ SECURITY DEFINER SET search_path = public;
 
-UPDATE "public"."teams" SET "email" = "name";
+UPDATE "public"."teams" SET "email" = "name" WHERE "email" IS NULL;
 
 ALTER TABLE "public"."teams" ALTER COLUMN "email" SET NOT NULL;
 

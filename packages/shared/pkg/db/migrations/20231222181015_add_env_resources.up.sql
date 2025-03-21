@@ -1,6 +1,10 @@
 BEGIN;
 
 -- Modify "envs" table
-ALTER TABLE "public"."envs" ADD COLUMN "vcpu" bigint NOT NULL, ADD COLUMN "ram_mb" bigint NOT NULL, ADD COLUMN "free_disk_size_mb" bigint NOT NULL, ADD COLUMN "total_disk_size_mb" bigint NOT NULL;
+ALTER TABLE "public"."envs"
+    ADD COLUMN IF NOT EXISTS "vcpu" bigint NULL,
+    ADD COLUMN IF NOT EXISTS "ram_mb" bigint NULL,
+    ADD COLUMN IF NOT EXISTS "free_disk_size_mb" bigint NULL,
+    ADD COLUMN IF NOT EXISTS "total_disk_size_mb" bigint NULL;
 
 COMMIT; 

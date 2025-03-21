@@ -1,8 +1,9 @@
 BEGIN;
 
 -- Alter "teams" table
-ALTER TABLE "public"."teams" DROP COLUMN "is_default";
+ALTER TABLE "public"."teams" DROP COLUMN IF EXISTS "is_default";
 
+-- Create or replace function
 CREATE OR REPLACE FUNCTION public.post_user_signup()
     RETURNS TRIGGER
     LANGUAGE plpgsql
