@@ -36,8 +36,8 @@ var (
 	syncWaitingStateDeadline = time.Minute * 20
 )
 
-func New(db *db.DB, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
-	client, err := NewClient()
+func New(ctx context.Context, db *db.DB, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
+	client, err := NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -95,7 +95,3 @@ func (a *GRPCClient) Close() error {
 func (a *GRPCClient) IsReadyForBuildPlacement() bool {
 	return a.healthy == template_manager.HealthState_Healthy
 }
-
-func (a *GRPCClient) IsAvailable() bool {
-	return a.healthy == template_manager.HealthState_Healthy || a.healthy == template_manager.HealthState_Draining
-}
