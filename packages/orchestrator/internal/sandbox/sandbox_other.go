@@ -63,7 +63,7 @@ type Sandbox struct {
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
-	panic("platform does not support sandbox")
+	return sbxlogger.SandboxMetadata{}
 }
 
 // Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
