@@ -5,7 +5,7 @@ runs:
   using: "composite"
   steps:
     - name: Setup Go
-      uses: ./.github/actions/go-setup
+      uses: ./.github/actions/go-setup-cache
 
     - name: Go Build Cache Path
       id: go-cache-paths
