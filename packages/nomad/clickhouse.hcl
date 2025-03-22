@@ -56,6 +56,8 @@ job "clickhouse" {
         memory = 2048
       }
 
+
+
       config {
         image = "clickhouse/clickhouse-server:${clickhouse_version}"
         ports = ["clickhouse", "clickhouse_http"]
@@ -82,31 +84,26 @@ job "clickhouse" {
     <shutdown_wait_unfinished_queries>1</shutdown_wait_unfinished_queries>
     <storage_configuration>
         <disks>
-            <gcs>
-                <support_batch_delete>false</support_batch_delete>
-                <type>s3</type>
+            <s3_plain>
+                <type>s3_plain</type>
                 <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/</endpoint>
                 <access_key_id>${hmac_key}</access_key_id>
                 <secret_access_key>${hmac_secret}</secret_access_key>
-                <metadata_path>/var/lib/clickhouse/disks/gcs/</metadata_path>
-            </gcs>
-            <gcs_cache>
-                <type>cache</type>
-                <disk>gcs</disk>
-                <path>/var/lib/clickhouse/disks/gcs_cache/</path>
-                <max_size>1Gi</max_size>
-            </gcs_cache>
+            </s3_plain>
         </disks>
         <policies>
-            <gcs_main>
+            <s3_plain>
                 <volumes>
                     <main>
-                        <disk>gcs_cache</disk>
+                        <disk>s3_plain</disk>
                     </main>
                 </volumes>
-            </gcs_main>
+            </s3_plain>
         </policies>
     </storage_configuration>
+    <merge_tree>
+        <storage_policy>s3_plain</storage_policy>
+    </merge_tree>
 </clickhouse>
 EOF
         destination = "local/config.xml"
@@ -131,7 +128,35 @@ EOF
 EOF
         destination = "local/users.xml"
       }
+    }
 
+    task "metrics-collector" {
+      driver = "docker"
+
+      lifecycle {
+        hook = "poststart"
+        sidecar = false
+      }
+
+      env {
+        CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
+        CLICKHOUSE_USERNAME           = "${clickhouse_username}"
+        CLICKHOUSE_PASSWORD           = "${clickhouse_password}"
+        CLICKHOUSE_DATABASE           = "${clickhouse_database}"
+       
+      }
+
+      config {
+        image = "golang:1.23"
+        # go run github.com/e2b-dev/infra/packages/shared@test-collecting-clickhouse-metrics-on-local-cluster-e2b-1756 -direction up 
+        command = "go"
+        args = ["run", "github.com/e2b-dev/infra/packages/shared@test-collecting-clickhouse-metrics-on-local-cluster-e2b-1756", "-direction", "up"]
+      }
+
+      resources {
+        cpu    = 500
+        memory = 2048
+      }
     }
   }
 } 

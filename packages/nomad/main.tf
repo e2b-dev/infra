@@ -417,17 +417,113 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
   service_account_email = google_service_account.clickhouse_service_account.email
 }
 
+resource "google_compute_disk" "nomad_csi_disk" {
+  name = "nomad-csi-disk"
+  type = "pd-ssd" # SSD persistent disk
+  size = 50       # Size in GB
+  zone = var.gcp_zone
+
+  # Optional: create from snapshot or image
+  # image = "debian-cloud/debian-10"
+  # snapshot = "snapshot-name"
+
+  # Optional: disk encryption
+  # disk_encryption_key {}
+
+  # Labels for better organization
+  labels = {
+    environment = var.environment
+    managed-by  = "terraform"
+  }
+}
+
+
+# Create the Nomad volume with the disk information
+resource "nomad_volume" "gcp_pd_volume" {
+  external_id = google_compute_disk.nomad_csi_disk.id
+  depends_on  = [google_compute_disk.nomad_csi_disk]
+
+  type      = "csi"
+  plugin_id = "gcp-pd"
+  volume_id = "gcp-pd-volume"
+  name      = "gcp-pd-volume"
+
+  capability {
+    access_mode     = "single-node-writer"
+    attachment_mode = "file-system"
+  }
+
+  mount_options {
+    fs_type     = "ext4"
+    mount_flags = ["noatime"]
+  }
+
+  parameters = {
+    "type" = "pd-ssd"
+    "disk" = google_compute_disk.nomad_csi_disk.name
+  }
+
+  context = {
+    "node" = "nomad-client-1" # Replace with your Nomad client node name
+  }
+}
+
 # Add this with your other Nomad jobs
 resource "nomad_job" "clickhouse" {
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
-    zone                = var.gcp_zone
-    clickhouse_version  = "25.1.5.31" # Or make this a variable
-    gcs_bucket          = google_storage_bucket.clickhouse_bucket.name
-    gcs_folder          = "clickhouse-data"
-    hmac_key            = google_storage_hmac_key.clickhouse_hmac_key.access_id
-    hmac_secret         = google_storage_hmac_key.clickhouse_hmac_key.secret
-    username            = var.clickhouse_username
-    password_sha256_hex = sha256(var.clickhouse_password)
+    zone                         = var.gcp_zone
+    clickhouse_version           = "25.1.5.31" # Or make this a variable
+    gcs_bucket                   = google_storage_bucket.clickhouse_bucket.name
+    gcs_folder                   = "clickhouse-data"
+    hmac_key                     = google_storage_hmac_key.clickhouse_hmac_key.access_id
+    hmac_secret                  = google_storage_hmac_key.clickhouse_hmac_key.secret
+    username                     = var.clickhouse_username
+    password_sha256_hex          = sha256(var.clickhouse_password)
+    clickhouse_connection_string = var.clickhouse_connection_string
+    clickhouse_username          = var.clickhouse_username
+    clickhouse_password          = var.clickhouse_password
+    clickhouse_database          = var.clickhouse_database
+
   })
 }
 
+resource "nomad_job" "clickhouse_cluster" {
+  jobspec = templatefile("${path.module}/clickhouse-cluster.hcl", {
+    zone                         = var.gcp_zone
+    clickhouse_version           = "25.1.5.31" # Or make this a variable
+    gcs_bucket                   = google_storage_bucket.clickhouse_bucket.name
+    gcs_folder                   = "clickhouse-data"
+    hmac_key                     = google_storage_hmac_key.clickhouse_hmac_key.access_id
+    hmac_secret                  = google_storage_hmac_key.clickhouse_hmac_key.secret
+    username                     = var.clickhouse_username
+    password_sha256_hex          = sha256(var.clickhouse_password)
+    clickhouse_connection_string = var.clickhouse_connection_string
+    clickhouse_username          = var.clickhouse_username
+    clickhouse_password          = var.clickhouse_password
+    clickhouse_database          = var.clickhouse_database
+  })
+}
+
+resource "nomad_job" "clickhouse_load_test" {
+  jobspec = templatefile("${path.module}/clickhouse-load-test.hcl", {
+    username = var.clickhouse_username
+    password = var.clickhouse_password
+    zone     = var.gcp_zone
+  })
+}
+
+resource "nomad_job" "gcp_csi_controller" {
+  jobspec = templatefile("${path.module}/gcp-csi-controller.hcl",
+    {
+      zone = var.gcp_zone
+    }
+  )
+}
+
+resource "nomad_job" "gcp_csi_node" {
+  jobspec = templatefile("${path.module}/gcp-csi-node.hcl",
+    {
+      zone = var.gcp_zone
+    }
+  )
+}
