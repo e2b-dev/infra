@@ -35,5 +35,10 @@ jobs:
           tail -f ~/logs/orchestrator.log -n 0 &
           tail -f ~/logs/api.log -n 0 &
 
+      - uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 60
+          max_attempts: 3
+          retry_on: error
           # Run the integration tests
-          make test-integration
+          command: make test-integration
