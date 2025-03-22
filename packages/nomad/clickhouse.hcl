@@ -1,30 +1,30 @@
 job "clickhouse" {
   datacenters = ["${zone}"]
   type        = "service"
-  node_pool = "api"
+  node_pool   = "api"
 
 
   group "clickhouse" {
 
     update {
-      max_parallel     = 2
+      max_parallel     = 1
       min_healthy_time = "30s"
       healthy_deadline = "4m"
 
       auto_revert = true
     }
 
-    count = 1
+    count = 2
 
     network {
       port "clickhouse" {
-        to = 9000
+        to     = 9000
         static = 9000
       }
-      
+
       port "clickhouse_http" {
         static = 8123
-        to = 8123
+        to     = 8123
       }
     }
 
@@ -32,22 +32,28 @@ job "clickhouse" {
       name = "clickhouse"
       port = "clickhouse"
 
-      check {
-        type     = "http"
-        path     = "/ping"
-        port     = "clickhouse_http"
-        interval = "10s"
-        timeout  = "5s"
-      }
 
       tags = [
         "traefik.enable=true",
         "traefik.http.routers.clickhouse.rule=Host(`clickhouse.service.consul`)",
       ]
+
+    }
+
+    volume "clickhouse" {
+      type      = "host"
+      read_only = false
+      source    = "clickhouse"
     }
 
     task "clickhouse-server" {
       driver = "docker"
+
+      volume_mount {
+        volume      = "clickhouse"
+        destination = "/var/lib/clickhouse"
+        read_only   = false
+      }
 
       kill_timeout = "120s"
 
@@ -55,9 +61,10 @@ job "clickhouse" {
         cpu    = 500
         memory = 2048
       }
-
       config {
-        image = "clickhouse/clickhouse-server:${clickhouse_version}"
+        image = "clickhouse/clickhouse-server:25.1.5.31"
+
+        # image = "clickhouse/clickhouse-server:25.2.2.39"
         ports = ["clickhouse", "clickhouse_http"]
 
         ulimit {
@@ -67,13 +74,13 @@ job "clickhouse" {
 
         volumes = [
           "local/config.xml:/etc/clickhouse-server/config.d/gcs.xml",
-          # disabled while testing but will pass password to orchestrator in the future
           "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
         ]
+
       }
 
       template {
-        data = <<EOF
+        data        = <<EOF
 <?xml version="1.0"?>
 <clickhouse>
      # this is undocumented but needed to enable waiting for for shutdown for a custom amount of time 
@@ -90,30 +97,27 @@ job "clickhouse" {
                 <secret_access_key>${hmac_secret}</secret_access_key>
                 <metadata_path>/var/lib/clickhouse/disks/gcs/</metadata_path>
             </gcs>
-            <gcs_cache>
-                <type>cache</type>
-                <disk>gcs</disk>
-                <path>/var/lib/clickhouse/disks/gcs_cache/</path>
-                <max_size>1Gi</max_size>
-            </gcs_cache>
         </disks>
         <policies>
             <gcs_main>
                 <volumes>
                     <main>
-                        <disk>gcs_cache</disk>
+                        <disk>gcs</disk>
                     </main>
                 </volumes>
             </gcs_main>
         </policies>
     </storage_configuration>
+    <merge_tree>
+        <storage_policy>gcs_main</storage_policy>
+    </merge_tree>
 </clickhouse>
 EOF
         destination = "local/config.xml"
       }
 
       template {
-        data = <<EOF
+        data        = <<EOF
 <?xml version="1.0"?>
 <clickhouse>
     <users>
@@ -133,5 +137,6 @@ EOF
       }
 
     }
+
   }
 } 
