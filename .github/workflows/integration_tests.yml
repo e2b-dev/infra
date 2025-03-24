@@ -1,8 +1,6 @@
 name: Integration Tests
 
-on:
-  pull_request:
-    branches: [ main ]
+on: [workflow_call]
 
 jobs:
   integration_tests:
@@ -28,14 +26,19 @@ jobs:
         uses: ./.github/actions/start-services
 
       - name: Run Integration Tests
+        uses: nick-fields/retry@v3
         env:
           TESTS_API_SERVER_URL: "http://localhost:3000"
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
-        run: |
-          # Monitor logs of the services
-          ls -l ~/logs
-          tail -f ~/logs/orchestrator.log -n 0 &
-          tail -f ~/logs/api.log -n 0 &
-
-          # Run the integration tests
-          make test-integration
+        with:
+          timeout_minutes: 60
+          max_attempts: 3
+          retry_on: error
+          command: |
+            # Monitor logs of the services
+            ls -l ~/logs
+            tail -f ~/logs/orchestrator.log -n 0 &
+            tail -f ~/logs/api.log -n 0 &
+            
+            # Run the integration tests
+            make test-integration

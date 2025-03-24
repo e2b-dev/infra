@@ -25,6 +25,11 @@ job "orchestrator" {
       }
     }
 
+    service {
+      name = "orchestrator-proxy"
+      port = "${proxy_port}"
+    }
+
     task "start" {
       driver = "raw_exec"
 
@@ -45,14 +50,14 @@ job "orchestrator" {
 
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port}"]
+        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port} --proxy-port ${proxy_port}"]
       }
 
       artifact {
         source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator"
 
-        %{ if environment == "staging" }
-        // Checksum in only available for staging to increase development speed in prod use rolling updates
+        %{ if environment == "dev" }
+        // Checksum in only available for dev to increase development speed in prod use rolling updates
         options {
           checksum = "md5:${orchestrator_checksum}"
         }

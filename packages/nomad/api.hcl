@@ -8,6 +8,14 @@ job "api" {
       port "api" {
         static = "${port_number}"
       }
+
+      %{ if prevent_colocation }
+      port "scheduling-block" {
+        // This port is used to block scheduling of jobs with the same block on the same node.
+        // We use this to block API and Loki from being scheduled on the same node.
+        static = 40234
+      }
+      %{ endif }
     }
 
     constraint {
@@ -63,6 +71,7 @@ job "api" {
         ORCHESTRATOR_PORT             = "${orchestrator_port}"
         TEMPLATE_MANAGER_ADDRESS      = "${template_manager_address}"
         POSTGRES_CONNECTION_STRING    = "${postgres_connection_string}"
+        SUPABASE_JWT_SECRETS          = "${supabase_jwt_secrets}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
         CLICKHOUSE_USERNAME           = "${clickhouse_username}"
         CLICKHOUSE_PASSWORD           = "${clickhouse_password}"

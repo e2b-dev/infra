@@ -3,6 +3,10 @@ data "google_secret_manager_secret_version" "postgres_connection_string" {
   secret = var.postgres_connection_string_secret_name
 }
 
+data "google_secret_manager_secret_version" "supabase_jwt_secrets" {
+  secret = var.supabase_jwt_secrets_secret_name
+}
+
 data "google_secret_manager_secret_version" "posthog_api_key" {
   secret = var.posthog_api_key_secret_name
 }
@@ -24,7 +28,10 @@ provider "nomad" {
 
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/api.hcl", {
-    update_stanza                 = var.api_machine_count > 1
+    update_stanza = var.api_machine_count > 1
+    // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
+    // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
+    prevent_colocation            = var.api_machine_count > 2
     orchestrator_port             = var.orchestrator_port
     template_manager_address      = "http://template-manager.service.consul:${var.template_manager_port}"
     otel_collector_grpc_endpoint  = "localhost:4317"
@@ -35,6 +42,7 @@ resource "nomad_job" "api" {
     port_number                   = var.api_port.port
     api_docker_image              = var.api_docker_image_digest
     postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    supabase_jwt_secrets          = data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data
     posthog_api_key               = data.google_secret_manager_secret_version.posthog_api_key.secret_data
     environment                   = var.environment
     analytics_collector_host      = data.google_secret_manager_secret_version.analytics_collector_host.secret_data
@@ -316,6 +324,7 @@ resource "nomad_job" "orchestrator" {
   jobspec = templatefile("${path.module}/orchestrator.hcl", {
     gcp_zone         = var.gcp_zone
     port             = var.orchestrator_port
+    proxy_port       = var.orchestrator_proxy_port
     environment      = var.environment
     consul_acl_token = var.consul_acl_token_secret
 
@@ -370,20 +379,18 @@ resource "nomad_job" "template_manager" {
     }
   }
 }
-
 resource "nomad_job" "loki" {
-  jobspec = file("${path.module}/loki.hcl")
+  jobspec = templatefile("${path.module}/loki.hcl", {
+    gcp_zone = var.gcp_zone
 
-  hcl2 {
-    vars = {
-      gcp_zone = var.gcp_zone
+    // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
+    // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
+    prevent_colocation = var.api_machine_count > 2
+    loki_bucket_name   = var.loki_bucket_name
 
-      loki_bucket_name = var.loki_bucket_name
-
-      loki_service_port_number = var.loki_service_port.port
-      loki_service_port_name   = var.loki_service_port.name
-    }
-  }
+    loki_service_port_number = var.loki_service_port.port
+    loki_service_port_name   = var.loki_service_port.name
+  })
 }
 
 # create a bucket for clickhouse
@@ -410,13 +417,6 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
   service_account_email = google_service_account.clickhouse_service_account.email
 }
 
-# generate password
-resource "random_password" "clickhouse_password" {
-  length  = 32
-  special = false
-}
-
-
 # Add this with your other Nomad jobs
 resource "nomad_job" "clickhouse" {
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
@@ -426,7 +426,8 @@ resource "nomad_job" "clickhouse" {
     gcs_folder          = "clickhouse-data"
     hmac_key            = google_storage_hmac_key.clickhouse_hmac_key.access_id
     hmac_secret         = google_storage_hmac_key.clickhouse_hmac_key.secret
-    username            = "clickhouse"
-    password_sha256_hex = sha256(random_password.clickhouse_password.result)
+    username            = var.clickhouse_username
+    password_sha256_hex = sha256(var.clickhouse_password)
   })
 }
+

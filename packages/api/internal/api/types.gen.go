@@ -10,9 +10,11 @@ import (
 )
 
 const (
-	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
-	AdminTokenAuthScopes  = "AdminTokenAuth.Scopes"
-	ApiKeyAuthScopes      = "ApiKeyAuth.Scopes"
+	AccessTokenAuthScopes    = "AccessTokenAuth.Scopes"
+	AdminTokenAuthScopes     = "AdminTokenAuth.Scopes"
+	ApiKeyAuthScopes         = "ApiKeyAuth.Scopes"
+	Supabase1TokenAuthScopes = "Supabase1TokenAuth.Scopes"
+	Supabase2TeamAuthScopes  = "Supabase2TeamAuth.Scopes"
 )
 
 // Defines values for NodeStatus.
@@ -34,10 +36,51 @@ const (
 	TemplateBuildStatusBuilding TemplateBuildStatus = "building"
 	TemplateBuildStatusError    TemplateBuildStatus = "error"
 	TemplateBuildStatusReady    TemplateBuildStatus = "ready"
+	TemplateBuildStatusWaiting  TemplateBuildStatus = "waiting"
 )
 
 // CPUCount CPU cores for the sandbox
 type CPUCount = int32
+
+// CreatedAccessToken defines model for CreatedAccessToken.
+type CreatedAccessToken struct {
+	// CreatedAt Timestamp of access token creation
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id Identifier of the access token
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the access token
+	Name string `json:"name"`
+
+	// Token Raw value of the access token
+	Token string `json:"token"`
+
+	// TokenMask Mask of the access token
+	TokenMask string `json:"tokenMask"`
+}
+
+// CreatedTeamAPIKey defines model for CreatedTeamAPIKey.
+type CreatedTeamAPIKey struct {
+	// CreatedAt Timestamp of API key creation
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy *TeamUser `json:"createdBy"`
+
+	// Id Identifier of the API key
+	Id openapi_types.UUID `json:"id"`
+
+	// Key Raw value of the API key
+	Key string `json:"key"`
+
+	// KeyMask Mask of the API key
+	KeyMask string `json:"keyMask"`
+
+	// LastUsed Last time this API key was used
+	LastUsed *time.Time `json:"lastUsed"`
+
+	// Name Name of the API key
+	Name string `json:"name"`
+}
 
 // EnvVars defines model for EnvVars.
 type EnvVars map[string]string
@@ -85,6 +128,12 @@ type ListedSandbox struct {
 // MemoryMB Memory for the sandbox in MB
 type MemoryMB = int32
 
+// NewAccessToken defines model for NewAccessToken.
+type NewAccessToken struct {
+	// Name Name of the access token
+	Name string `json:"name"`
+}
+
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
@@ -97,6 +146,12 @@ type NewSandbox struct {
 
 	// Timeout Time to live for the sandbox in seconds.
 	Timeout *int32 `json:"timeout,omitempty"`
+}
+
+// NewTeamAPIKey defines model for NewTeamAPIKey.
+type NewTeamAPIKey struct {
+	// Name Name of the API key
+	Name string `json:"name"`
 }
 
 // Node defines model for Node.
@@ -260,6 +315,25 @@ type Team struct {
 	TeamID string `json:"teamID"`
 }
 
+// TeamAPIKey defines model for TeamAPIKey.
+type TeamAPIKey struct {
+	// CreatedAt Timestamp of API key creation
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy *TeamUser `json:"createdBy"`
+
+	// Id Identifier of the API key
+	Id openapi_types.UUID `json:"id"`
+
+	// KeyMask Mask of the API key
+	KeyMask string `json:"keyMask"`
+
+	// LastUsed Last time this API key was used
+	LastUsed *time.Time `json:"lastUsed"`
+
+	// Name Name of the API key
+	Name string `json:"name"`
+}
+
 // TeamUser defines model for TeamUser.
 type TeamUser struct {
 	// Email Email of the user
@@ -351,6 +425,18 @@ type TemplateUpdateRequest struct {
 	Public *bool `json:"public,omitempty"`
 }
 
+// UpdateTeamAPIKey defines model for UpdateTeamAPIKey.
+type UpdateTeamAPIKey struct {
+	// Name New name for the API key
+	Name string `json:"name"`
+}
+
+// AccessTokenID defines model for accessTokenID.
+type AccessTokenID = string
+
+// ApiKeyID defines model for apiKeyID.
+type ApiKeyID = string
+
 // BuildID defines model for buildID.
 type BuildID = string
 
@@ -380,9 +466,6 @@ type N500 = Error
 
 // GetSandboxesParams defines parameters for GetSandboxes.
 type GetSandboxesParams struct {
-	// Query A query used to filter the sandboxes (e.g. "user=abc&app=prod"). Query and each key and values must be URL encoded.
-	Query *string `form:"query,omitempty" json:"query,omitempty"`
-
 	// State Filter sandboxes by one or more states
 	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
 
@@ -391,12 +474,15 @@ type GetSandboxesParams struct {
 
 	// Limit Maximum number of items to return per page
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+
+  // Metadata Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
+	Metadata *string `form:"metadata,omitempty" json:"metadata,omitempty"`
 }
 
 // GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.
 type GetSandboxesMetricsParams struct {
-	// Query A query used to filter the sandboxes (e.g. "user=abc&app=prod"). Query and each key and values must be URL encoded.
-	Query *string `form:"query,omitempty" json:"query,omitempty"`
+	// Metadata Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
+	Metadata *string `form:"metadata,omitempty" json:"metadata,omitempty"`
 }
 
 // GetSandboxesSandboxIDLogsParams defines parameters for GetSandboxesSandboxIDLogs.
@@ -430,6 +516,15 @@ type GetTemplatesTemplateIDBuildsBuildIDStatusParams struct {
 	// LogsOffset Index of the starting build log that should be returned with the template
 	LogsOffset *int32 `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
 }
+
+// PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.
+type PostAccessTokensJSONRequestBody = NewAccessToken
+
+// PostApiKeysJSONRequestBody defines body for PostApiKeys for application/json ContentType.
+type PostApiKeysJSONRequestBody = NewTeamAPIKey
+
+// PatchApiKeysApiKeyIDJSONRequestBody defines body for PatchApiKeysApiKeyID for application/json ContentType.
+type PatchApiKeysApiKeyIDJSONRequestBody = UpdateTeamAPIKey
 
 // PostNodesNodeIDJSONRequestBody defines body for PostNodesNodeID for application/json ContentType.
 type PostNodesNodeIDJSONRequestBody = NodeStatusChange

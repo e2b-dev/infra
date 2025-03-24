@@ -88,6 +88,10 @@ variable "postgres_connection_string_secret_name" {
   type = string
 }
 
+variable "supabase_jwt_secrets_secret_name" {
+  type = string
+}
+
 # Proxies
 variable "session_proxy_service_name" {
   type = string
@@ -178,6 +182,10 @@ variable "docker_reverse_proxy_service_account_key" {
 
 # Orchestrator
 variable "orchestrator_port" {
+  type = number
+}
+
+variable "orchestrator_proxy_port" {
   type = number
 }
 

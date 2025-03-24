@@ -64,7 +64,6 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 			cancel()
 		case <-metricsTicker.C:
 			go s.logMetricsBasedOnConfig(ctx, s)
-			s.logHeathAndUsage(ctx)
 		case <-ctx.Done():
 			return
 		}

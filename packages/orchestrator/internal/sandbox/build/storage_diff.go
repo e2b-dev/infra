@@ -19,35 +19,41 @@ func storagePath(buildId string, diffType DiffType) string {
 type StorageDiff struct {
 	chunker     *utils.SetOnce[*block.Chunker]
 	cachePath   string
+	cacheKey    DiffStoreKey
 	storagePath string
 	blockSize   int64
+	bucket      *gcs.BucketHandle
 }
 
 func newStorageDiff(
+	basePath string,
 	buildId string,
 	diffType DiffType,
 	blockSize int64,
+	bucket *gcs.BucketHandle,
 ) *StorageDiff {
 	cachePathSuffix := id.Generate()
 
 	storagePath := storagePath(buildId, diffType)
 	cacheFile := fmt.Sprintf("%s-%s-%s", buildId, diffType, cachePathSuffix)
-	cachePath := filepath.Join(cachePath, cacheFile)
+	cachePath := filepath.Join(basePath, cacheFile)
 
 	return &StorageDiff{
 		storagePath: storagePath,
 		cachePath:   cachePath,
 		chunker:     utils.NewSetOnce[*block.Chunker](),
 		blockSize:   blockSize,
+		bucket:      bucket,
+		cacheKey:    GetDiffStoreKey(buildId, diffType),
 	}
 }
 
-func (b *StorageDiff) CacheKey() string {
-	return b.storagePath
+func (b *StorageDiff) CacheKey() DiffStoreKey {
+	return b.cacheKey
 }
 
-func (b *StorageDiff) Init(ctx context.Context, bucket *gcs.BucketHandle) error {
-	obj := gcs.NewObject(ctx, bucket, b.storagePath)
+func (b *StorageDiff) Init(ctx context.Context) error {
+	obj := gcs.NewObject(ctx, b.bucket, b.storagePath)
 
 	size, err := obj.Size()
 	if err != nil {
@@ -109,4 +115,13 @@ func (b *StorageDiff) WriteTo(w io.Writer) (int64, error) {
 // The local file might not be synced.
 func (b *StorageDiff) CachePath() (string, error) {
 	return b.cachePath, nil
+}
+
+func (b *StorageDiff) FileSize() (int64, error) {
+	c, err := b.chunker.Wait()
+	if err != nil {
+		return 0, err
+	}
+
+	return c.FileSize()
 }

@@ -159,6 +159,11 @@ variable "orchestrator_port" {
   default = 5008
 }
 
+variable "orchestrator_proxy_port" {
+  type    = number
+  default = 5007
+}
+
 variable "template_manager_port" {
   type    = number
   default = 5009
@@ -225,24 +230,4 @@ variable "template_bucket_location" {
 variable "template_bucket_name" {
   type        = string
   description = "The name of the FC template bucket"
-}
-
-variable "clickhouse_connection_string" {
-  type        = string
-  description = "The connection string for the ClickHouse database"
-}
-
-variable "clickhouse_username" {
-  type        = string
-  description = "The username for the ClickHouse database"
-}
-
-variable "clickhouse_password" {
-  type        = string
-  description = "The password for the ClickHouse database"
-}
-
-variable "clickhouse_database" {
-  type        = string
-  description = "The database for the ClickHouse database"
 }

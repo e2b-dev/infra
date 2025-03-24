@@ -22,6 +22,10 @@ type TeamAPIKey struct {
 	ID uuid.UUID `json:"id,omitempty"`
 	// APIKey holds the value of the "api_key" field.
 	APIKey string `json:"-"`
+	// APIKeyHash holds the value of the "api_key_hash" field.
+	APIKeyHash string `json:"-"`
+	// APIKeyMask holds the value of the "api_key_mask" field.
+	APIKeyMask string `json:"api_key_mask,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -84,7 +88,7 @@ func (*TeamAPIKey) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case teamapikey.FieldCreatedBy:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
-		case teamapikey.FieldAPIKey, teamapikey.FieldName:
+		case teamapikey.FieldAPIKey, teamapikey.FieldAPIKeyHash, teamapikey.FieldAPIKeyMask, teamapikey.FieldName:
 			values[i] = new(sql.NullString)
 		case teamapikey.FieldCreatedAt, teamapikey.FieldUpdatedAt, teamapikey.FieldLastUsed:
 			values[i] = new(sql.NullTime)
@@ -116,6 +120,18 @@ func (tak *TeamAPIKey) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field api_key", values[i])
 			} else if value.Valid {
 				tak.APIKey = value.String
+			}
+		case teamapikey.FieldAPIKeyHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field api_key_hash", values[i])
+			} else if value.Valid {
+				tak.APIKeyHash = value.String
+			}
+		case teamapikey.FieldAPIKeyMask:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field api_key_mask", values[i])
+			} else if value.Valid {
+				tak.APIKeyMask = value.String
 			}
 		case teamapikey.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -203,6 +219,11 @@ func (tak *TeamAPIKey) String() string {
 	builder.WriteString("TeamAPIKey(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", tak.ID))
 	builder.WriteString("api_key=<sensitive>")
+	builder.WriteString(", ")
+	builder.WriteString("api_key_hash=<sensitive>")
+	builder.WriteString(", ")
+	builder.WriteString("api_key_mask=")
+	builder.WriteString(tak.APIKeyMask)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(tak.CreatedAt.Format(time.ANSIC))

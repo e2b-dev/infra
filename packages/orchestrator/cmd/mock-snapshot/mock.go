@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -51,6 +52,7 @@ func main() {
 		cancel()
 	}()
 
+	proxyServer := proxy.New(3333)
 	dnsServer := dns.New()
 	go func() {
 		log.Printf("Starting DNS server")
@@ -90,6 +92,7 @@ func main() {
 			*buildId,
 			*sandboxId+"-"+strconv.Itoa(v),
 			dnsServer,
+			proxyServer,
 			time.Duration(*keepAlive)*time.Second,
 			networkPool,
 			templateCache,
@@ -113,6 +116,7 @@ func mockSnapshot(
 	buildId,
 	sandboxId string,
 	dns *dns.DNS,
+	proxy *proxy.SandboxProxy,
 	keepAlive time.Duration,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
@@ -137,6 +141,7 @@ func mockSnapshot(
 		childCtx,
 		tracer,
 		dns,
+		proxy,
 		networkPool,
 		templateCache,
 		&orchestrator.SandboxConfig{
@@ -157,7 +162,7 @@ func mockSnapshot(
 		time.Now(),
 		false,
 		templateId,
-		"test-client",
+		"testclient",
 		devicePool,
 		mockStore,
 		"true",
@@ -242,6 +247,7 @@ func mockSnapshot(
 		childCtx,
 		tracer,
 		dns,
+		proxy,
 		networkPool,
 		templateCache,
 		&orchestrator.SandboxConfig{
@@ -262,7 +268,7 @@ func mockSnapshot(
 		time.Now(),
 		false,
 		templateId,
-		"test-client",
+		"testclient",
 		devicePool,
 		mockStore,
 		"true",

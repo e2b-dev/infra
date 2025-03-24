@@ -21,6 +21,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -86,6 +87,7 @@ func NewSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
 	dns *dns.DNS,
+	proxy *proxy.SandboxProxy,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,
@@ -314,11 +316,13 @@ func NewSandbox(
 	sbx.StartedAt = time.Now()
 
 	dns.Add(config.SandboxId, ips.HostIP())
+	proxy.AddSandbox(config.SandboxId, ips.HostIP())
 
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
 
 	cleanup.Add(func() error {
 		dns.Remove(config.SandboxId, ips.HostIP())
+		proxy.RemoveSandbox(config.SandboxId, ips.HostIP())
 
 		return nil
 	})
@@ -415,6 +419,7 @@ func (s *Sandbox) Snapshot(
 	}
 
 	memfileDiffFile, err := build.NewLocalDiffFile(
+		build.DefaultCachePath,
 		buildId.String(),
 		build.Memfile,
 	)
@@ -495,7 +500,7 @@ func (s *Sandbox) Snapshot(
 
 	telemetry.ReportEvent(ctx, "synced rootfs")
 
-	rootfsDiffFile, err := build.NewLocalDiffFile(buildId.String(), build.Rootfs)
+	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath, buildId.String(), build.Rootfs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
