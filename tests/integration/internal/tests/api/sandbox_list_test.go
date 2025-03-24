@@ -32,7 +32,7 @@ func teardownSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string)
 }
 
 func TestSandboxList(t *testing.T) {
-	c := setup.GetAPIClient(t)
+	c := setup.GetAPIClient()
 
 	t.Run("list running sandboxes", func(t *testing.T) {
 		// Setup: create a new sandbox
