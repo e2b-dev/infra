@@ -1,3 +1,5 @@
+BEGIN;
+
 -- Add base tier
 INSERT INTO public.tiers (id, name, vcpu, ram_mb, disk_mb, concurrent_instances) VALUES ('base_v1', 'Base tier', 2, 512, 512, 20);
 
@@ -117,3 +119,5 @@ CREATE POLICY "Allow to create a team api key to new user"
     FOR INSERT
     TO trigger_user
     WITH CHECK (TRUE);
+
+COMMIT; 

@@ -1,9 +1,11 @@
-DROP TRIGGER create_default_team ON auth.users;
-DROP FUNCTION generate_default_team_trigger();
-DROP TRIGGER team_api_keys_trigger ON public.teams;
-DROP FUNCTION generate_teams_api_keys_trigger();
-DROP TRIGGER create_access_token ON auth.users;
-DROP FUNCTION generate_access_token_trigger();
+BEGIN;
+
+DROP TRIGGER IF EXISTS create_default_team ON auth.users;
+DROP FUNCTION IF EXISTS generate_default_team_trigger();
+DROP TRIGGER IF EXISTS team_api_keys_trigger ON public.teams;
+DROP FUNCTION IF EXISTS generate_teams_api_keys_trigger();
+DROP TRIGGER IF EXISTS create_access_token ON auth.users;
+DROP FUNCTION IF EXISTS generate_access_token_trigger();
 
 CREATE OR REPLACE FUNCTION public.extra_for_post_user_signup(user_id uuid, team_id uuid)
     RETURNS void
@@ -75,11 +77,9 @@ $post_user_signup$ SECURITY DEFINER SET search_path = public;
 
 ALTER FUNCTION public.post_user_signup() OWNER TO trigger_user;
 
-
 CREATE OR REPLACE TRIGGER post_user_signup
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION post_user_signup();
-
 
 CREATE OR REPLACE FUNCTION is_member_of_team(_user_id uuid, _team_id uuid) RETURNS bool AS $$
 SELECT EXISTS (
@@ -138,4 +138,5 @@ DO $$
 
         END;
     END $$;
-;
+
+COMMIT; 

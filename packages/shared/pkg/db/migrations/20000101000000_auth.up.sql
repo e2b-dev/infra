@@ -1,3 +1,5 @@
+BEGIN;
+
 CREATE SCHEMA IF NOT EXISTS auth;
 
 -- Create RLS policies for user management
@@ -41,3 +43,5 @@ CREATE TABLE IF NOT EXISTS "auth"."users"
     "email"                text              NOT NULL,
     PRIMARY KEY ("id")
 );
+
+COMMIT;

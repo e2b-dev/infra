@@ -1,6 +1,8 @@
+BEGIN;
+
 -- Modify "env_aliases" table
-ALTER TABLE "public"."env_aliases" RENAME COLUMN "is_name" TO "is_renamable";
-ALTER TABLE "public"."env_aliases" ALTER COLUMN "env_id" SET NOT NULL;
+ALTER TABLE IF EXISTS "public"."env_aliases" RENAME COLUMN "is_name" TO "is_renamable";
+ALTER TABLE IF EXISTS "public"."env_aliases" ALTER COLUMN "env_id" SET NOT NULL;
 
 -- Create "env_builds" table
 CREATE TABLE "public"."env_builds" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "created_at" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" timestamptz NOT NULL, "finished_at" timestamptz NULL, "status" text NOT NULL DEFAULT 'waiting', "dockerfile" text NULL, "start_cmd" text NULL, "vcpu" bigint NOT NULL, "ram_mb" bigint NOT NULL, "free_disk_size_mb" bigint NOT NULL, "total_disk_size_mb" bigint NULL, "kernel_version" text NOT NULL DEFAULT 'vmlinux-5.10.186', "firecracker_version" text NOT NULL DEFAULT 'v1.7.0-dev_8bb88311', "env_id" text NULL, PRIMARY KEY ("id"), CONSTRAINT "env_builds_envs_builds" FOREIGN KEY ("env_id") REFERENCES "public"."envs" ("id") ON UPDATE NO ACTION ON DELETE CASCADE);
@@ -12,4 +14,14 @@ SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'success', dockerfile, NULL, vcpu, 
 FROM "public"."envs";
 
 -- Modify "envs" table
-ALTER TABLE "public"."envs" DROP COLUMN "dockerfile", DROP COLUMN "build_id", DROP COLUMN "vcpu", DROP COLUMN "ram_mb", DROP COLUMN "free_disk_size_mb", DROP COLUMN "total_disk_size_mb", DROP COLUMN "kernel_version", DROP COLUMN "firecracker_version";
+ALTER TABLE IF EXISTS "public"."envs" 
+    DROP COLUMN IF EXISTS "dockerfile",
+    DROP COLUMN IF EXISTS "build_id",
+    DROP COLUMN IF EXISTS "vcpu",
+    DROP COLUMN IF EXISTS "ram_mb",
+    DROP COLUMN IF EXISTS "free_disk_size_mb",
+    DROP COLUMN IF EXISTS "total_disk_size_mb",
+    DROP COLUMN IF EXISTS "kernel_version",
+    DROP COLUMN IF EXISTS "firecracker_version";
+
+COMMIT; 

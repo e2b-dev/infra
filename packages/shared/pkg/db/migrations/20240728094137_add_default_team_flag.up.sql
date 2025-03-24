@@ -1,7 +1,16 @@
--- Modify "access_tokens" table
-ALTER TABLE "public"."users_teams" ADD COLUMN "is_default" boolean NOT NULL DEFAULT false;
-UPDATE "public"."users_teams" ut SET "is_default" = t."is_default" FROM "public"."teams" t WHERE ut."team_id" = t."id";
+BEGIN;
 
+-- Modify "users_teams" table
+ALTER TABLE "public"."users_teams" ADD COLUMN IF NOT EXISTS "is_default" boolean NOT NULL DEFAULT false;
+
+-- Update existing records
+UPDATE "public"."users_teams" ut 
+SET "is_default" = t."is_default" 
+FROM "public"."teams" t 
+WHERE ut."team_id" = t."id"
+AND ut."is_default" = false;
+
+-- Create or replace function
 CREATE OR REPLACE FUNCTION public.post_user_signup()
     RETURNS TRIGGER
     LANGUAGE plpgsql
@@ -28,3 +37,5 @@ END
 $post_user_signup$ SECURITY DEFINER SET search_path = public;
 
 ALTER FUNCTION public.post_user_signup() OWNER TO trigger_user;
+
+COMMIT; 
