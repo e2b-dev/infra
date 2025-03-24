@@ -26,8 +26,8 @@ func (dm *DatabaseMigrator) Up() error {
 	return dm.m.Up()
 }
 
-func (dm *DatabaseMigrator) Down() error {
-	return dm.m.Down()
+func (dm *DatabaseMigrator) RollbackVersion() error {
+	return dm.m.Steps(-1)
 }
 
 func (dm *DatabaseMigrator) Version() (uint, bool, error) {

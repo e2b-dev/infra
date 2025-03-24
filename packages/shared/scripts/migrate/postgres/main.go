@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	direction := flag.String("direction", "up", "Migration direction (up/down)")
+	direction := flag.String("direction", "up", "Migration direction (up - all the way up/down - by one version)")
 	flag.Parse()
 
 	connectionString := os.Getenv("POSTGRES_CONNECTION_STRING")
@@ -40,7 +40,7 @@ func main() {
 	if *direction == "up" {
 		err = migrator.Up()
 	} else {
-		err = migrator.Down()
+		err = migrator.RollbackVersion()
 	}
 
 	if errors.Is(err, db.ErrNoChange) {
@@ -50,7 +50,10 @@ func main() {
 	}
 
 	version, dirty, err = migrator.Version()
-	if err == nil {
+	if errors.Is(err, db.ErrNoVersion) {
+		log.Printf("No final version found\n")
+		log.Printf("Migration completed successfully.")
+	} else if err == nil {
 		log.Printf("Final version: %d, dirty: %t\n", version, dirty)
 		log.Printf("Migration completed successfully.")
 	} else {
