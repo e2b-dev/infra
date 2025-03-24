@@ -154,7 +154,17 @@ func (c *PollBuildStatus) getPollRetryFunction(_ context.Context) func(context.C
 	// satisfies the type signature of retry.RunContext
 	return func(_ context.Context) error {
 		c.logger.Info("Polling build status")
-		return c.setBuildStatus()
+		err := c.setBuildStatus()
+		c.logger.Debug("got error when polling build status", zap.Error(err))
+		if err != nil {
+			if isErrorRetryable(err) {
+				c.logger.Debug("got retryable error when polling build status", zap.Error(err))
+				return errors.Wrap(err, "error when polling build status")
+			}
+			c.logger.Error("got terminal error when polling build status", zap.Error(err))
+			return retry.Stop(errors.WithStack(err))
+		}
+		return nil
 	}
 }
 
@@ -230,7 +240,7 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(status *template_manager.Templat
 }
 
 func isErrorRetryable(err error) bool {
-	return !errors.Is(err, terminalError)
+	return !errors.As(err, &terminalError)
 }
 
 func (c *PollBuildStatus) setBuildStatus() error {
@@ -244,10 +254,8 @@ func (c *PollBuildStatus) setBuildStatus() error {
 	err := retrier.Run(c.setStatus)
 
 	if err != nil {
-		if isErrorRetryable(err) {
-			return errors.Wrap(err, "error when polling build status")
-		}
-		return retry.Stop(errors.WithStack(err))
+		c.logger.Error("error when calling setStatus", zap.Error(err))
+		return err
 	}
 
 	c.logger.Debug("dispatching based on status", zap.Any("status", c.status))
