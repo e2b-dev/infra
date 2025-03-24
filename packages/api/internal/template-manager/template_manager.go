@@ -150,24 +150,23 @@ type PollBuildStatus struct {
 	status                *template_manager.TemplateBuildStatusResponse
 }
 
-func (c *PollBuildStatus) getPollRetryFunction(_ context.Context) func(context.Context) error {
-	// satisfies the type signature of retry.RunContext
-	return func(_ context.Context) error {
-		c.logger.Info("Polling build status")
-		err := c.setBuildStatus()
-		if !isErrorRetryable(err) {
-			c.logger.Error("got terminal error when polling build status", zap.Error(err))
-			return retry.Stop(err)
-		}
-		c.logger.Debug("got retryable error or nil when polling build status", zap.Error(err))
-		return err
+// satisfies the type signature of retry.RunContext even though we don't use the context
+func (c *PollBuildStatus) getPollRetryFunction(_ context.Context) error {
+	c.logger.Info("Polling build status")
+	err := c.setBuildStatus()
+	if !isErrorRetryable(err) {
+		c.logger.Error("got terminal error when polling build status", zap.Error(err))
+		return retry.Stop(err)
 	}
+	c.logger.Debug("got retryable error or nil when polling build status", zap.Error(err))
+	return err
+
 }
 
 func (c *PollBuildStatus) poll() {
 	retrier := retry.NewRetrier(2400, time.Second, time.Second)
 
-	err := retrier.RunContext(c.ctx, c.getPollRetryFunction(c.ctx))
+	err := retrier.RunContext(c.ctx, c.getPollRetryFunction)
 
 	if err != nil {
 		c.logger.Error("Polling timed out", zap.Error(err))
@@ -179,15 +178,19 @@ func (c *PollBuildStatus) poll() {
 }
 
 // terminalError is a terminal error that should not be retried
-// set like this so that we can check for it using errors.Is
-// var terminalError = retry.Stop(errors.WithStack(errors.New("terminal error")))
-
+// set like this so that we can check for it using errors.As
 type terminalError struct {
 	err error
 }
 
 func (e terminalError) Error() string {
 	return e.err.Error()
+}
+
+func newTerminalError(err error) error {
+	return terminalError{
+		err: retry.Stop(errors.WithStack(err)),
+	}
 }
 
 func (c *PollBuildStatus) setStatus() error {
@@ -200,9 +203,7 @@ func (c *PollBuildStatus) setStatus() error {
 		return errors.Wrap(err, "context deadline exceeded")
 	} else if err != nil { // retry only on context deadline exceeded
 		c.logger.Error("terminal error when polling build status", zap.Error(err))
-		return terminalError{
-			err: retry.Stop(errors.WithStack(err)),
-		}
+		return newTerminalError(err)
 	}
 
 	if status == nil {
