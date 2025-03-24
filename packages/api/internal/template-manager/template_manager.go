@@ -155,16 +155,12 @@ func (c *PollBuildStatus) getPollRetryFunction(_ context.Context) func(context.C
 	return func(_ context.Context) error {
 		c.logger.Info("Polling build status")
 		err := c.setBuildStatus()
-		c.logger.Debug("got error when polling build status", zap.Error(err))
-		if err != nil {
-			if isErrorRetryable(err) {
-				c.logger.Debug("got retryable error when polling build status", zap.Error(err))
-				return errors.Wrap(err, "error when polling build status")
-			}
+		if !isErrorRetryable(err) {
 			c.logger.Error("got terminal error when polling build status", zap.Error(err))
-			return retry.Stop(errors.WithStack(err))
+			return retry.Stop(err)
 		}
-		return nil
+		c.logger.Debug("got retryable error or nil when polling build status", zap.Error(err))
+		return err
 	}
 }
 
@@ -184,7 +180,15 @@ func (c *PollBuildStatus) poll() {
 
 // terminalError is a terminal error that should not be retried
 // set like this so that we can check for it using errors.Is
-var terminalError = retry.Stop(errors.WithStack(errors.New("terminal error")))
+// var terminalError = retry.Stop(errors.WithStack(errors.New("terminal error")))
+
+type terminalError struct {
+	err error
+}
+
+func (e terminalError) Error() string {
+	return e.err.Error()
+}
 
 func (c *PollBuildStatus) setStatus() error {
 	if c.statusClient == nil {
@@ -196,7 +200,9 @@ func (c *PollBuildStatus) setStatus() error {
 		return errors.Wrap(err, "context deadline exceeded")
 	} else if err != nil { // retry only on context deadline exceeded
 		c.logger.Error("terminal error when polling build status", zap.Error(err))
-		return terminalError
+		return terminalError{
+			err: retry.Stop(errors.WithStack(err)),
+		}
 	}
 
 	if status == nil {
@@ -240,7 +246,10 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(status *template_manager.Templat
 }
 
 func isErrorRetryable(err error) bool {
-	return !errors.As(err, &terminalError)
+	if err == nil {
+		return true
+	}
+	return !errors.As(err, &terminalError{})
 }
 
 func (c *PollBuildStatus) setBuildStatus() error {
