@@ -29,7 +29,7 @@ const (
 func (a *APIStore) getSandboxesMetrics(
 	ctx context.Context,
 	teamID uuid.UUID,
-	sandboxes []api.ListedSandbox,
+	sandboxes []PaginatedSandbox,
 ) ([]api.RunningSandboxWithMetrics, error) {
 	// Add operation telemetry
 	telemetry.ReportEvent(ctx, "fetch metrics for sandboxes")
@@ -48,7 +48,7 @@ func (a *APIStore) getSandboxesMetrics(
 	}()
 
 	type metricsResult struct {
-		sandbox api.ListedSandbox
+		sandbox PaginatedSandbox
 		metrics []api.SandboxMetric
 		err     error
 	}
@@ -66,7 +66,7 @@ func (a *APIStore) getSandboxesMetrics(
 	// Fetch metrics for each sandbox concurrently with rate limiting
 	for _, sandbox := range sandboxes {
 		wg.Add(1)
-		go func(s api.ListedSandbox) {
+		go func(s PaginatedSandbox) {
 			defer wg.Done()
 
 			err := sem.Acquire(ctx, 1)

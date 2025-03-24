@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -239,9 +238,9 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 	// Apply cursor-based filtering if cursor is provided
 	query = query.Where(
 		snapshot.Or(
-			snapshot.SandboxStartedAtLT(cursorTime),
+			snapshot.CreatedAtLT(cursorTime),
 			snapshot.And(
-				snapshot.SandboxStartedAtEQ(cursorTime),
+				snapshot.CreatedAtEQ(cursorTime),
 				snapshot.SandboxIDGT(cursorID),
 			),
 		),
@@ -252,8 +251,8 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 		query = query.Where(snapshot.MetadataContains(*metadataFilter))
 	}
 
-	// Order by sandbox_started_at (descending), then by sandbox_id (ascending) for stability
-	query = query.Order(models.Desc(snapshot.FieldSandboxStartedAt), models.Asc(snapshot.FieldSandboxID))
+	// Order by created_at (descending), then by sandbox_id (ascending) for stability
+	query = query.Order(models.Desc(snapshot.FieldCreatedAt), models.Asc(snapshot.FieldSandboxID))
 
 	// Apply limit + 1 to check if there are more results
 	query = query.Limit(limit + 1)
@@ -264,9 +263,14 @@ func (db *DB) GetTeamSnapshotsWithCursor(
 	}
 
 	// Remove snapshots with excludeSandboxIDs
+	excludeMap := make(map[string]struct{}, len(excludeSandboxIDs))
+	for _, id := range excludeSandboxIDs {
+		excludeMap[id] = struct{}{}
+	}
+
 	filteredSnapshots := make([]*models.Snapshot, 0, len(snapshots))
 	for _, snapshot := range snapshots {
-		if !slices.Contains(excludeSandboxIDs, snapshot.SandboxID) {
+		if _, excluded := excludeMap[snapshot.SandboxID]; !excluded {
 			filteredSnapshots = append(filteredSnapshots, snapshot)
 		}
 	}

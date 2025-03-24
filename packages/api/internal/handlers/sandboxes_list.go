@@ -24,6 +24,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+// extend the api.ListedSandbox with a timestamp to use for pagination
+type PaginatedSandbox struct {
+	api.ListedSandbox
+	PaginationTimestamp time.Time `json:"-"`
+}
+
 type SandboxesListParams struct {
 	State *[]api.SandboxState
 	Query *string
@@ -34,8 +40,8 @@ type SandboxListPaginationParams struct {
 	NextToken *string
 }
 
-func generateCursor(sandbox api.ListedSandbox) string {
-	cursor := fmt.Sprintf("%s__%s", sandbox.StartedAt.Format(time.RFC3339Nano), sandbox.SandboxID)
+func (p *PaginatedSandbox) GenerateCursor() string {
+	cursor := fmt.Sprintf("%s__%s", p.PaginationTimestamp.Format(time.RFC3339Nano), p.SandboxID)
 	return base64.URLEncoding.EncodeToString([]byte(cursor))
 }
 
@@ -58,8 +64,8 @@ func parseCursor(cursor string) (time.Time, string, error) {
 	return cursorTime, parts[1], nil
 }
 
-func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string, cursorTime time.Time, cursorID string, limit *int32) ([]api.ListedSandbox, error) {
-	sandboxes := make([]api.ListedSandbox, 0)
+func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string, cursorTime time.Time, cursorID string, limit *int32) ([]PaginatedSandbox, error) {
+	sandboxes := make([]PaginatedSandbox, 0)
 
 	// Get build IDs for running sandboxes
 	buildIDs := make([]uuid.UUID, 0)
@@ -75,16 +81,19 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 			continue
 		}
 
-		sandbox := api.ListedSandbox{
-			ClientID:   info.Instance.ClientID,
-			TemplateID: info.Instance.TemplateID,
-			Alias:      info.Instance.Alias,
-			SandboxID:  info.Instance.SandboxID,
-			StartedAt:  info.StartTime,
-			CpuCount:   api.CPUCount(info.VCpu),
-			MemoryMB:   api.MemoryMB(info.RamMB),
-			EndAt:      info.GetEndTime(),
-			State:      api.Running,
+		sandbox := PaginatedSandbox{
+			ListedSandbox: api.ListedSandbox{
+				ClientID:   info.Instance.ClientID,
+				TemplateID: info.Instance.TemplateID,
+				Alias:      info.Instance.Alias,
+				SandboxID:  info.Instance.SandboxID,
+				StartedAt:  info.StartTime,
+				CpuCount:   api.CPUCount(info.VCpu),
+				MemoryMB:   api.MemoryMB(info.RamMB),
+				EndAt:      info.GetEndTime(),
+				State:      api.Running,
+			},
+			PaginationTimestamp: info.StartTime,
 		}
 
 		if info.Metadata != nil {
@@ -106,7 +115,7 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 	}
 
 	// Apply cursor-based filtering if cursor is provided
-	var filteredSandboxes []api.ListedSandbox
+	var filteredSandboxes []PaginatedSandbox
 	for _, sandbox := range sandboxes {
 		// Take sandboxes with start time before cursor time OR
 		// same start time but sandboxID greater than cursor ID (for stability)
@@ -125,8 +134,8 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 	return sandboxes, nil
 }
 
-func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit *int32, cursorTime time.Time, cursorID string) ([]api.ListedSandbox, error) {
-	sandboxes := make([]api.ListedSandbox, 0)
+func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit *int32, cursorTime time.Time, cursorID string) ([]PaginatedSandbox, error) {
+	sandboxes := make([]PaginatedSandbox, 0)
 	snapshots, err := a.db.GetTeamSnapshotsWithCursor(ctx, teamID, runningSandboxesIDs, int(*limit), metadataFilter, cursorTime, cursorID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting team snapshots: %s", err)
@@ -144,15 +153,18 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 			continue
 		}
 
-		sandbox := api.ListedSandbox{
-			ClientID:   "00000000", // for backwards compatibility we need to return a client id
-			TemplateID: env.ID,
-			SandboxID:  snapshot.SandboxID,
-			StartedAt:  snapshot.SandboxStartedAt,
-			CpuCount:   int32(snapshotBuilds[0].Vcpu),
-			MemoryMB:   int32(snapshotBuilds[0].RAMMB),
-			EndAt:      snapshot.CreatedAt,
-			State:      api.Paused,
+		sandbox := PaginatedSandbox{
+			ListedSandbox: api.ListedSandbox{
+				ClientID:   "00000000", // for backwards compatibility we need to return a client id
+				TemplateID: env.ID,
+				SandboxID:  snapshot.SandboxID,
+				StartedAt:  snapshot.SandboxStartedAt,
+				CpuCount:   int32(snapshotBuilds[0].Vcpu),
+				MemoryMB:   int32(snapshotBuilds[0].RAMMB),
+				EndAt:      snapshot.CreatedAt,
+				State:      api.Paused,
+			},
+			PaginationTimestamp: snapshot.CreatedAt,
 		}
 
 		if snapshot.Metadata != nil {
@@ -166,8 +178,8 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	return sandboxes, nil
 }
 
-func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams, paginationParams SandboxListPaginationParams) ([]api.ListedSandbox, *string, error) {
-	sandboxes := make([]api.ListedSandbox, 0)
+func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params SandboxesListParams, paginationParams SandboxListPaginationParams) ([]PaginatedSandbox, *string, error) {
+	sandboxes := make([]PaginatedSandbox, 0)
 
 	// Parse metadata filter (query) if provided
 	var metadataFilter *map[string]string
@@ -241,7 +253,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 	if len(sandboxes) > int(*paginationParams.Limit) {
 		// We have more results than the limit, so we need to set the nextToken
 		lastSandbox := sandboxes[*paginationParams.Limit-1]
-		cursor := generateCursor(lastSandbox)
+		cursor := lastSandbox.GenerateCursor()
 		nextToken = &cursor
 
 		// Trim to the requested limit
@@ -282,7 +294,7 @@ func parseFilters(query string) (map[string]string, error) {
 	return filters, nil
 }
 
-func filterSandboxes(sandboxes []api.ListedSandbox, filters map[string]string) ([]api.ListedSandbox, error) {
+func filterSandboxes(sandboxes []PaginatedSandbox, filters map[string]string) ([]PaginatedSandbox, error) {
 	// Filter instances to match all filters
 	n := 0
 	for _, instance := range sandboxes {
