@@ -31,8 +31,8 @@ type PaginatedSandbox struct {
 }
 
 type SandboxesListParams struct {
-	State *[]api.SandboxState
-	Query *string
+	State    *[]api.SandboxState
+	Metadata *string
 }
 
 type SandboxListPaginationParams struct {
@@ -183,11 +183,11 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 
 	// Parse metadata filter (query) if provided
 	var metadataFilter *map[string]string
-	if params.Query != nil {
-		parsedMetadataFilter, err := parseFilters(*params.Query)
+	if params.Metadata != nil {
+		parsedMetadataFilter, err := parseFilters(*params.Metadata)
 		if err != nil {
-			zap.L().Error("Error parsing query", zap.Error(err))
-			return nil, nil, fmt.Errorf("error parsing query: %w", err)
+			zap.L().Error("Error parsing metadata", zap.Error(err))
+			return nil, nil, fmt.Errorf("error parsing metadata: %w", err)
 		}
 
 		metadataFilter = &parsedMetadataFilter
@@ -335,14 +335,14 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 
 	// Get sandboxes with pagination
 	sandboxes, nextToken, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
-		State: params.State,
-		Query: params.Query,
+		State:    params.State,
+		Metadata: params.Metadata,
 	}, SandboxListPaginationParams{
 		Limit:     params.Limit,
 		NextToken: params.NextToken,
 	})
 
-  if err != nil {
+	if err != nil {
 		zap.L().Error("Error fetching sandboxes", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
 		return

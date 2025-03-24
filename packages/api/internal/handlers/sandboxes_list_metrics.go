@@ -192,8 +192,8 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
 
 	sandboxes, _, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
-		State: &[]api.SandboxState{api.Running},
-		Query: params.Query,
+		State:    &[]api.SandboxState{api.Running},
+		Metadata: params.Metadata,
 	}, SandboxListPaginationParams{
 		Limit:     nil,
 		NextToken: nil,

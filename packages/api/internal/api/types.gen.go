@@ -466,6 +466,9 @@ type N500 = Error
 
 // GetSandboxesParams defines parameters for GetSandboxes.
 type GetSandboxesParams struct {
+	// Metadata Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
+	Metadata *string `form:"metadata,omitempty" json:"metadata,omitempty"`
+
 	// State Filter sandboxes by one or more states
 	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
 
@@ -474,9 +477,6 @@ type GetSandboxesParams struct {
 
 	// Limit Maximum number of items to return per page
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
-
-  // Metadata Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
-	Metadata *string `form:"metadata,omitempty" json:"metadata,omitempty"`
 }
 
 // GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.
