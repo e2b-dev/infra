@@ -20,4 +20,5 @@ var (
 	SupabaseTeamID = os.Getenv("TESTS_SANDBOX_TEAM_ID")
 
 	OrchestratorHost = os.Getenv("TESTS_ORCHESTRATOR_HOST")
+	EnvdProxy        = os.Getenv("TESTS_ENVD_PROXY")
 )
