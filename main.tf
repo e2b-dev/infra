@@ -117,6 +117,8 @@ module "cluster" {
   consul_acl_token_secret = module.init.consul_acl_token_secret
   nomad_acl_token_secret  = module.init.nomad_acl_token_secret
 
+  notification_email_secret_version = module.init.notification_email_secret_version
+
   labels = var.labels
   prefix = var.prefix
 }
@@ -186,7 +188,7 @@ module "nomad" {
   api_secret                                = module.api.api_secret
   custom_envs_repository_name               = module.api.custom_envs_repository_name
   postgres_connection_string_secret_name    = module.api.postgres_connection_string_secret_name
-  supabase_jwt_secrets_secret_data          = module.api.supabase_jwt_secrets_secret_data
+  supabase_jwt_secrets_secret_name          = module.api.supabase_jwt_secrets_secret_name
   posthog_api_key_secret_name               = module.api.posthog_api_key_secret_name
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
@@ -217,6 +219,7 @@ module "nomad" {
 
   # Orchestrator
   orchestrator_port           = var.orchestrator_port
+  orchestrator_proxy_port     = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name
 
   # Template manager

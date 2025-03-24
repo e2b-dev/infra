@@ -1,8 +1,6 @@
 module github.com/e2b-dev/infra/packages/proxy
 
-go 1.23.0
-
-toolchain go1.23.7
+go 1.23.7
 
 require (
 	github.com/e2b-dev/infra/packages/shared v0.0.0

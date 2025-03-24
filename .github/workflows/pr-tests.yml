@@ -1,17 +1,11 @@
 name: Run tests on PRs
-on:
-  pull_request:
-    branches:
-      - main
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+on: [workflow_call]
 
 jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         include:
@@ -31,29 +25,19 @@ jobs:
             test_path: ./...
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Golang
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.23
-          cache: true
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
 
-      - name: Go Cache Paths
+      - name: Go Build Cache Path
         id: go-cache-paths
         run: |
           echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
-          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
       - name: Go Build Cache
         uses: actions/cache@v4
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
           key: ${{ runner.os }}-go-build-${{ matrix.package }}-${{ hashFiles('**/go.sum') }}
-
-      - name: Go Mod Cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-mod-${{ matrix.package }}-${{ hashFiles('**/go.sum') }}
 
       - name: Run tests
         working-directory: ${{ matrix.package }}

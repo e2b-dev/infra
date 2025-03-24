@@ -51,14 +51,10 @@ runs:
         echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRETS}" >> .env.test
         
         mkdir -p ~/logs
-
-        make -C packages/orchestrator run-debug 2>&1 | tee ~/logs/orchestrator.log &
-        ORCH_PID=$!
-        sleep 30
-        if ps -p $ORCH_PID > /dev/null; then echo "Orchestrator started, starting API now..."; else exit 1; fi
-
-        make -C packages/api run 2>&1 | tee ~/logs/api.log &
-        API_PID=$!
-        sleep 30
-        if ps -p $API_PID > /dev/null; then echo "API service started"; else exit 1; fi
+        
+        # Start orchestrator
+        bash ./scripts/start-service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
+        
+        # Start API
+        bash ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
       shell: bash

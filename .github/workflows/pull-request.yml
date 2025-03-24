@@ -1,0 +1,24 @@
+name: Pull Request
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  integrity-check:
+    uses: ./.github/workflows/pr-go-integrity.yml
+  unit-tests:
+    needs: [ integrity-check ]
+    uses: ./.github/workflows/pr-tests.yml
+  integration-tests:
+    needs: [ integrity-check ]
+    uses: ./.github/workflows/integration_tests.yml

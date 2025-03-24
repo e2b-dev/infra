@@ -1,8 +1,6 @@
 module github.com/e2b-dev/infra/packages/orchestrator
 
-go 1.23.0
-
-toolchain go1.23.7
+go 1.23.7
 
 require (
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
@@ -19,6 +17,7 @@ require (
 	github.com/loopholelabs/userfaultfd-go v0.1.2
 	github.com/miekg/dns v1.1.63
 	github.com/pojntfx/go-nbd v0.3.2
+	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.10.0
 	github.com/vishvananda/netlink v1.3.0
 	github.com/vishvananda/netns v0.0.5

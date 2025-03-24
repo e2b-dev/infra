@@ -28,12 +28,13 @@ import (
 )
 
 const (
-	ServiceName     = "client-proxy"
-	dnsServer       = "api.service.consul:5353"
-	healthCheckPort = 3001
-	port            = 3002
-	sandboxPort     = 3003
-	maxRetries      = 3
+	ServiceName           = "client-proxy"
+	dnsServer             = "api.service.consul:5353"
+	healthCheckPort       = 3001
+	port                  = 3002
+	sandboxPort           = 3003 // legacy session proxy port
+	orchestratorProxyPort = 5007 // orchestrator proxy port
+	maxRetries            = 3
 )
 
 var commitSHA string
@@ -148,7 +149,7 @@ func run() int {
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 
-	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA)
+	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA, "no")
 	defer func() {
 		err := stopOtlp(ctx)
 		if err != nil {

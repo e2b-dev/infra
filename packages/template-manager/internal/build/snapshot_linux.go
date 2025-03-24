@@ -26,10 +26,12 @@ import (
 )
 
 const (
-	fcMaskLong   = "255.255.255.252"
 	fcMacAddress = "02:FC:00:00:00:05"
-	fcAddr       = "169.254.0.21"
-	fcMask       = "/30"
+
+	// IPv4 configuration
+	fcAddr     = "169.254.0.21"
+	fcMaskLong = "255.255.255.252"
+	fcDNS      = "8.8.8.8" // Google DNS
 
 	fcIfaceID  = "eth0"
 	tmpDirPath = "/tmp"
@@ -139,7 +141,7 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 	if env.StartCmd != "" {
 		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
 		// TODO: Remove this after we can add customizable wait time for building templates.
-		if env.TemplateId == "zegbt9dl3l2ixqem82mm" || env.TemplateId == "ot5bidkk3j2so2j02uuz" {
+		if env.TemplateId == "zegbt9dl3l2ixqem82mm" || env.TemplateId == "ot5bidkk3j2so2j02uuz" || env.TemplateId == "0zeou1s7agaytqitvmzc" {
 			time.Sleep(120 * time.Second)
 		} else {
 			time.Sleep(waitTimeForStartCmd)
@@ -279,8 +281,9 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 	childCtx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
 
-	ip := fmt.Sprintf("%s::%s:%s:instance:eth0:off:8.8.8.8", fcAddr, fcTapAddress, fcMaskLong)
-	kernelArgs := fmt.Sprintf("quiet loglevel=1 ip=%s reboot=k panic=1 pci=off nomodules i8042.nokbd i8042.noaux ipv6.disable=1 random.trust_cpu=on", ip)
+	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
+	ipv4 := fmt.Sprintf("%s::%s:%s:instance:%s:off:%s", fcAddr, fcTapAddress, fcMaskLong, fcIfaceID, fcDNS)
+	kernelArgs := fmt.Sprintf("quiet loglevel=1 ip=%s ipv6.disable=0 ipv6.autoconf=1 reboot=k panic=1 pci=off nomodules i8042.nokbd i8042.noaux random.trust_cpu=on", ipv4)
 	kernelImagePath := storage.KernelMountedPath
 	bootSourceConfig := operations.PutGuestBootSourceParams{
 		Context: childCtx,
