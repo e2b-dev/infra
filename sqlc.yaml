@@ -7,7 +7,7 @@ sql:
       go:
         emit_pointers_for_null_types: true
         package: "queries"
-        out: "packages/db/db/queries/"
+        out: "packages/db/pkg/queries/"
         sql_package: "pgx/v5"
         overrides:
           - db_type: "uuid"

@@ -125,12 +125,12 @@ copy-public-builds:
 
 .PHONY: generate
 generate:
-	rm -rf packages/db/db/queries/*
+	rm -rf packages/db/pkg/queries/*
 	sqlc generate
 
 .PHONY: migrate
 migrate:
-	$(MAKE) -C packages/shared migrate-postgres/up
+	$(MAKE) -C packages/db migrate-postgres/up
 	# $(MAKE) -C packages/shared migrate-clickhouse/up
 
 .PHONY: switch-env

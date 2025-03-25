@@ -1,8 +1,7 @@
-package db
+package client
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -10,7 +9,7 @@ import (
 
 	_ "github.com/lib/pq"
 
-	database "github.com/e2b-dev/infra/packages/db/db/queries"
+	database "github.com/e2b-dev/infra/packages/db/pkg/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -20,12 +19,8 @@ type Client struct {
 	conn *pgxpool.Pool
 }
 
-var databaseURL = utils.RequiredEnv("POSTGRES_CONNECTION_STRING", "Postgres connection string")
-
 func NewClient(ctx context.Context) (*Client, error) {
-	if databaseURL == "" {
-		return nil, fmt.Errorf("database URL is empty")
-	}
+	databaseURL := utils.RequiredEnv("POSTGRES_CONNECTION_STRING", "Postgres connection string")
 
 	// Parse the connection pool configuration
 	config, err := pgxpool.ParseConfig(databaseURL)
@@ -43,6 +38,7 @@ func NewClient(ctx context.Context) (*Client, error) {
 	if err != nil {
 		zap.L().Error("Unable to create connection pool", zap.Error(err))
 	}
+
 	queries := database.New(pool)
 
 	return &Client{Queries: queries, ctx: ctx, conn: pool}, nil

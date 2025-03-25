@@ -27,7 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	sqlc_db "github.com/e2b-dev/infra/packages/db/db"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/pkg/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -52,7 +52,7 @@ type APIStore struct {
 	orchestrator         *orchestrator.Orchestrator
 	templateManager      *template_manager.TemplateManager
 	db                   *db.DB
-	sqlcDB               *sqlc_db.Client
+	sqlcDB               *sqlcdb.Client
 	lokiClient           *loki.DefaultClient
 	templateCache        *templatecache.TemplateCache
 	templateBuildsCache  *templatecache.TemplatesBuildCache
@@ -74,7 +74,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Fatal("initializing Supabase client", zap.Error(err))
 	}
 
-	sqlcDB, err := sqlc_db.NewClient(ctx)
+	sqlcDB, err := sqlcdb.NewClient(ctx)
 	if err != nil {
 		zap.L().Fatal("initializing SQLC client", zap.Error(err))
 	}
