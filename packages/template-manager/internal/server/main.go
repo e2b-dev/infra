@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"sync"
 	"time"
 
