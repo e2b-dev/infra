@@ -51,6 +51,13 @@ job "clickhouse" {
       ]
     }
 
+
+    volume "clickhouse" {
+      type      = "host"
+      read_only = false
+      source    = "clickhouse"
+    }
+
     task "clickhouse-server" {
       driver = "docker"
 
