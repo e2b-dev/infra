@@ -32,6 +32,11 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		attribute.Bool("env.huge_pages", config.HugePages),
 	)
 
+	if s.healthStatus == template_manager.HealthState_Draining {
+		s.logger.Error("Requesting template creation while server is draining is not possible", zap.String("envID", config.TemplateID))
+		return nil, fmt.Errorf("server is draining")
+	}
+
 	logsWriter := writer.New(
 		s.buildLogger.
 			With(zap.Field{Type: zapcore.StringType, Key: "envID", String: config.TemplateID}).
