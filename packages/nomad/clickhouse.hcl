@@ -144,10 +144,10 @@ job "clickhouse" {
                     <host>clickhouse-1</host>
                     <port>9000</port>
                 </replica>
-                <replica>
-                    <host>clickhouse-2</host>
-                    <port>9000</port>
-                </replica>
+                # <replica>
+                #     <host>clickhouse-2</host>
+                #     <port>9000</port>
+                # </replica>
             </shard>
         </cluster_1>
     </remote_servers>
