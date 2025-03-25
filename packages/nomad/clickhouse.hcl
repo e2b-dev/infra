@@ -286,4 +286,5 @@ EOF
         destination = "local/keeper.xml"
       }
     }
-  } 
+  }
+} 
