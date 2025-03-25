@@ -25,7 +25,7 @@ type GRPCClient struct {
 	connection e2bgrpc.ClientConnInterface
 
 	lastHealthCheckAt *time.Time
-	healthy           template_manager.HealthState
+	health            template_manager.HealthState
 }
 
 func NewClient(ctx context.Context) (*GRPCClient, error) {
@@ -42,7 +42,7 @@ func NewClient(ctx context.Context) (*GRPCClient, error) {
 
 	client := &GRPCClient{
 		Client:            template_manager.NewTemplateServiceClient(conn),
-		healthy:           template_manager.HealthState_Healthy,
+		health:            template_manager.HealthState_Healthy,
 		lastHealthCheckAt: nil,
 		connection:        conn,
 	}
@@ -63,22 +63,24 @@ func (a *GRPCClient) healthCheckSync(ctx context.Context) {
 			return
 		case <-ticker.C:
 			reqCtx, reqCtxCancel := context.WithTimeout(ctx, 2*time.Second)
+			reqCtxCancel()
+
 			healthStatus, err := a.Client.HealthStatus(reqCtx, nil)
 			healthCheckAt := time.Now()
-			reqCtxCancel()
+			a.lastHealthCheckAt = &healthCheckAt
 
 			if err != nil {
 				zap.L().Error("failed to get health status of template manager", zap.Error(err))
 
 				a.lastHealthCheckAt = &healthCheckAt
-				a.healthy = template_manager.HealthState_Draining
+				a.health = template_manager.HealthState_Draining
 				continue
 			}
 
 			zap.L().Debug("template manager health status", zap.String("status", healthStatus.Status.String()))
 
 			a.lastHealthCheckAt = &healthCheckAt
-			a.healthy = healthStatus.Status
+			a.health = healthStatus.Status
 		}
 	}
 }
@@ -93,5 +95,5 @@ func (a *GRPCClient) Close() error {
 }
 
 func (a *GRPCClient) IsReadyForBuildPlacement() bool {
-	return a.healthy == template_manager.HealthState_Healthy
+	return a.health == template_manager.HealthState_Healthy
 }
