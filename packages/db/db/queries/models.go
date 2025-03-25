@@ -15,6 +15,11 @@ type AccessToken struct {
 	AccessToken string
 	UserID      uuid.UUID
 	CreatedAt   time.Time
+	ID          *uuid.UUID
+	// sensitive
+	AccessTokenHash *string
+	AccessTokenMask *string
+	Name            string
 }
 
 type AuthUser struct {
@@ -89,6 +94,9 @@ type TeamApiKey struct {
 	LastUsed  *time.Time
 	CreatedBy *uuid.UUID
 	ID        uuid.UUID
+	// sensitive
+	ApiKeyHash *string
+	ApiKeyMask *string
 }
 
 type Tier struct {
