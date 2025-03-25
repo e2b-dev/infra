@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"sync"
 	"time"
 
@@ -117,12 +118,17 @@ func (s *ServerStore) Close(ctx context.Context) error {
 	default:
 		// no new jobs should be started
 		s.healthStatus = templatemanager.HealthState_Draining
+		if !env.IsLocal() {
+			time.Sleep(5 * time.Second)
+		}
 
 		// wait for all builds to finish
 		s.wg.Wait()
 
-		// give some time so all connected services can check build status
-		time.Sleep(15 * time.Second)
+		if !env.IsLocal() {
+			// give some time so all connected services can check build status
+			time.Sleep(15 * time.Second)
+		}
 
 		// mark service as unhealthy so now new request will be accepted
 		s.server.GracefulStop()
