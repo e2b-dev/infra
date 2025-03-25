@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"sync"
 	"time"
 
@@ -27,6 +26,7 @@ import (
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
