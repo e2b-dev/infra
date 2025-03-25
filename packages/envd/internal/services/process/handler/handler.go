@@ -116,11 +116,6 @@ func New(
 
 	var outWg sync.WaitGroup
 
-	go func() {
-		outWg.Wait()
-		cancel()
-	}()
-
 	if req.GetPty() != nil {
 		// The pty should ideally start only in the Start method, but the package does not support that and we would have to code it manually.
 		// The output of the pty should correctly be passed though.
@@ -188,6 +183,7 @@ func New(
 
 	outWg.Add(1)
 	go func() {
+		defer outWg.Done()
 		stdoutLogs := make(chan []byte, outputBufferSize)
 		defer close(stdoutLogs)
 
@@ -229,9 +225,9 @@ func New(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stderr pipe for command '%s': %w", cmd, err))
 	}
 
+	outWg.Add(1)
 	go func() {
 		defer outWg.Done()
-
 		stderrLogs := make(chan []byte, outputBufferSize)
 		defer close(stderrLogs)
 
@@ -266,6 +262,12 @@ func New(
 				break
 			}
 		}
+	}()
+
+	go func() {
+		outWg.Wait()
+		close(outMultiplex.Source)
+		cancel()
 	}()
 
 	return &Handler{
@@ -357,7 +359,6 @@ func (p *Handler) Wait() {
 	err := p.cmd.Wait()
 
 	p.tty.Close()
-	close(p.DataEvent.Source)
 
 	var errMsg *string
 
