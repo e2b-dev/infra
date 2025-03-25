@@ -8,6 +8,15 @@ function install_dependencies {
     apt install -y bc flex bison gcc make libelf-dev libssl-dev squashfs-tools busybox-static tree cpio curl patch
 }
 
+# From above mentioned script
+# prints the git tag corresponding to the newest and best matching the provided kernel version $1
+# this means that if a microvm kernel exists, the tag returned will be of the form
+#
+#    microvm-kernel-$1.<patch number>.amzn2[023]
+#
+# otherwise choose the newest tag matching
+#
+#    kernel-$1.<patch number>.amzn2[023]
 function get_tag {
     local KERNEL_VERSION=$1
 
