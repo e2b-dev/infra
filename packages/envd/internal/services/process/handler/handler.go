@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"sync"
 	"syscall"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -113,6 +114,13 @@ func New(
 
 	outMultiplex := NewMultiplexedChannel[rpc.ProcessEvent_Data](outputBufferSize)
 
+	var outWg sync.WaitGroup
+
+	go func() {
+		outWg.Wait()
+		cancel()
+	}()
+
 	if req.GetPty() != nil {
 		// The pty should ideally start only in the Start method, but the package does not support that and we would have to code it manually.
 		// The output of the pty should correctly be passed though.
@@ -124,8 +132,9 @@ func New(
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", cmd, cmd.Dir, req.GetPty().GetSize().Cols, req.GetPty().GetSize().Rows, err))
 		}
 
+		outWg.Add(1)
 		go func() {
-			defer cancel()
+			defer outWg.Done()
 
 			for {
 				buf := make([]byte, ptyChunkSize)
@@ -177,9 +186,8 @@ func New(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdout pipe for command '%s': %w", cmd, err))
 	}
 
+	outWg.Add(1)
 	go func() {
-		defer cancel()
-
 		stdoutLogs := make(chan []byte, outputBufferSize)
 		defer close(stdoutLogs)
 
@@ -222,7 +230,7 @@ func New(
 	}
 
 	go func() {
-		defer cancel()
+		defer outWg.Done()
 
 		stderrLogs := make(chan []byte, outputBufferSize)
 		defer close(stderrLogs)
@@ -346,11 +354,10 @@ func (p *Handler) Start() (uint32, error) {
 func (p *Handler) Wait() {
 	<-p.ctx.Done()
 
-	close(p.DataEvent.Source)
+	err := p.cmd.Wait()
 
 	p.tty.Close()
-
-	err := p.cmd.Wait()
+	close(p.DataEvent.Source)
 
 	var errMsg *string
 
