@@ -122,6 +122,12 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
+
+.PHONY: generate
+generate:
+	rm -rf packages/db/db/queries/*
+	sqlc generate
+
 .PHONY: migrate
 migrate:
 	$(MAKE) -C packages/shared migrate-postgres/up
