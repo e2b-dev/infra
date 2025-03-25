@@ -63,9 +63,11 @@ func (a *GRPCClient) healthCheckSync(ctx context.Context) {
 			return
 		case <-ticker.C:
 			reqCtx, reqCtxCancel := context.WithTimeout(ctx, 2*time.Second)
+			reqCtxCancel()
+
 			healthStatus, err := a.Client.HealthStatus(reqCtx, nil)
 			healthCheckAt := time.Now()
-			reqCtxCancel()
+			a.lastHealthCheckAt = &healthCheckAt
 
 			if err != nil {
 				zap.L().Error("failed to get health status of template manager", zap.Error(err))
