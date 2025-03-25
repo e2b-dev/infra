@@ -31,6 +31,11 @@ job "clickhouse" {
         static = 9181
         to     = 9181
       }
+
+      port "clickhouse-keeper-raft" {
+        static = 9234
+        to     = 9234
+      }
     }
 
     service {
@@ -217,7 +222,6 @@ EOF
         data        = <<EOF
 <?xml version="1.0"?>
 <clickhouse>
-    <path>/clickhouse/data</path>
 
     <logger>
         <console>1</console>
@@ -241,7 +245,7 @@ EOF
          <raft_configuration>
             <server>
                 <id>1</id>
-                <hostname>clickhouse-keeper</hostname>
+                <hostname>clickhouse.service.consul</hostname>
                 <port>9234</port>
             </server>
         </raft_configuration>
