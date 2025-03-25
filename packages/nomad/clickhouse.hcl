@@ -56,6 +56,27 @@ job "clickhouse" {
       ]
     }
 
+    service {
+      name = "clickhouse-keeper"
+      port = "clickhouse-keeper"
+
+      check {
+        type     = "tcp"
+        interval = "10s"
+        timeout  = "5s"
+      }
+    }
+
+    service {
+      name = "clickhouse-keeper-raft"
+      port = "clickhouse-keeper-raft"
+
+      check {
+        type     = "tcp"
+        interval = "10s"
+        timeout  = "5s"
+      }
+    }
 
     volume "clickhouse" {
       type      = "host"
@@ -116,7 +137,7 @@ job "clickhouse" {
 
     <zookeeper>
         <node>
-            <host>clickhouse-keeper</host>
+            <host>clickhouse-keeper.service.consul</host>
             <port>9181</port>
         </node>
     </zookeeper>
@@ -149,10 +170,7 @@ job "clickhouse" {
                     <host>clickhouse-1</host>
                     <port>9000</port>
                 </replica>
-                # <replica>
-                #     <host>clickhouse-2</host>
-                #     <port>9000</port>
-                # </replica>
+
             </shard>
         </cluster_1>
     </remote_servers>
@@ -211,7 +229,7 @@ EOF
       config {
         image = "clickhouse/clickhouse-server:latest"
 
-        ports = ["clickhouse-keeper"]
+        ports = ["clickhouse-keeper", "clickhouse-keeper-raft"]
 
         volumes = [
           "local/keeper.xml:/etc/clickhouse-server/config.d/keeper.xml",
@@ -245,7 +263,7 @@ EOF
          <raft_configuration>
             <server>
                 <id>1</id>
-                <hostname>clickhouse.service.consul</hostname>
+                <hostname>clickhouse-keeper.service.consul</hostname>
                 <port>9234</port>
             </server>
         </raft_configuration>
