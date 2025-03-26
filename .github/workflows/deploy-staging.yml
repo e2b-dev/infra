@@ -1,7 +1,9 @@
 name: Deploy Staging
 
 on:
-  pull_request:
+  push:
+    branches:
+      - main
 
 concurrency:
   group: deploy-staging
