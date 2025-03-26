@@ -28,6 +28,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -514,6 +515,12 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 			attribute.String("error", inspection.State.Error),
 			attribute.Bool("oom", inspection.State.OOMKilled),
 		)
+
+		sbxlogger.E(
+			sbxlogger.SandboxMetadata{
+				SandboxID: "howdy",
+			},
+		).Sugar().Errorf("container exited with status %d: %s\nlogs:\n %s", inspection.State.ExitCode, inspection.State.Error, logBuffer.String())
 
 		return errMsg
 	}
