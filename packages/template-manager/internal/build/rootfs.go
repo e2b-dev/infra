@@ -415,14 +415,14 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 
 	telemetry.ReportEvent(childCtx, "started container")
 
-	buf := bytes.NewBuffer(nil)
+	logBuffer := &bytes.Buffer{}
 
 	err = r.legacyClient.Logs(docker.LogsOptions{
 		Stdout:       true,
 		Stderr:       true,
 		RawTerminal:  false,
-		OutputStream: buf,
-		ErrorStream:  buf,
+		OutputStream: logBuffer,
+		ErrorStream:  logBuffer,
 		Context:      childCtx,
 		Container:    cont.ID,
 		Follow:       true,
@@ -479,7 +479,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		}
 	case response := <-wait:
 		if response.Error != nil {
-			errMsg := fmt.Errorf("error waiting for container - code %d: %s\nlogs:\n %s", response.StatusCode, response.Error.Message, buf.String())
+			errMsg := fmt.Errorf("error waiting for container - code %d: %s\nlogs:\n %s", response.StatusCode, response.Error.Message, logBuffer.String())
 			telemetry.ReportCriticalError(childCtx, errMsg)
 
 			return errMsg
