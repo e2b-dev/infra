@@ -101,6 +101,10 @@ func run() int {
 	go func() {
 		defer exitWg.Done()
 
+		// in case of server error, we want to cancel the context
+		// so we are not waiting for kill signal with a broken server
+		defer cancel()
+
 		zap.L().Info(fmt.Sprintf("starting server on port %d", *port))
 		if err := s.Serve(lis); err != nil {
 			zap.L().Error("failed to serve: %v", zap.Error(err))
@@ -112,14 +116,17 @@ func run() int {
 	go func() {
 		defer exitWg.Done()
 
-		<-sigs
-		zap.L().Info("received signal, shutting down server")
+		select {
+		case <-ctx.Done():
+		case <-sigs:
+			zap.L().Info("received signal, shutting down server")
 
-		// shutting down the server, wait for all builds to finish
-		err := serverStore.Close(context.TODO())
-		if err != nil {
-			zap.L().Error("error while shutting down server", zap.Error(err))
-			exitCode.Add(1)
+			// shutting down the server, wait for all builds to finish
+			err := serverStore.Close(context.TODO())
+			if err != nil {
+				zap.L().Error("error while shutting down server", zap.Error(err))
+				exitCode.Add(1)
+			}
 		}
 	}()
 
