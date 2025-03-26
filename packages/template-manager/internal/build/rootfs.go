@@ -415,6 +415,24 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 
 	telemetry.ReportEvent(childCtx, "started container")
 
+	buf := bytes.NewBuffer(nil)
+
+	err = r.legacyClient.Logs(docker.LogsOptions{
+		Stdout:       true,
+		Stderr:       true,
+		RawTerminal:  false,
+		OutputStream: buf,
+		ErrorStream:  buf,
+		Context:      childCtx,
+		Container:    cont.ID,
+		Follow:       true,
+		Timestamps:   false,
+	})
+	if err != nil {
+		errMsg := fmt.Errorf("error getting container logs: %w", err)
+		telemetry.ReportError(childCtx, errMsg)
+	}
+
 	go func() {
 		anonymousChildCtx, anonymousChildSpan := tracer.Start(childCtx, "handle-container-logs", trace.WithSpanKind(trace.SpanKindConsumer))
 		defer anonymousChildSpan.End()
@@ -461,7 +479,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		}
 	case response := <-wait:
 		if response.Error != nil {
-			errMsg := fmt.Errorf("error waiting for container - code %d: %s", response.StatusCode, response.Error.Message)
+			errMsg := fmt.Errorf("error waiting for container - code %d: %s\nlogs:\n %s", response.StatusCode, response.Error.Message, buf.String())
 			telemetry.ReportCriticalError(childCtx, errMsg)
 
 			return errMsg
