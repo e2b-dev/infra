@@ -8,3 +8,9 @@ migrate-postgres/%:
 	@echo "Applying Postgres migration *$(notdir $@)*"
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/migrate/postgres/main.go -direction $(notdir $@)
 	@echo "Done"
+
+
+.PHONY: generate
+generate:
+	rm -rf packages/db/queries/*.go
+	sqlc generate

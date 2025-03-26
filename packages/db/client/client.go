@@ -9,7 +9,7 @@ import (
 
 	_ "github.com/lib/pq"
 
-	database "github.com/e2b-dev/infra/packages/db/pkg/queries"
+	database "github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
