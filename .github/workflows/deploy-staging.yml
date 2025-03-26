@@ -83,9 +83,9 @@ jobs:
         run: |
           make copy-public-builds
 
-      #- name: Migrate database
-      #  run: |
-      #    make migrate
+      - name: Migrate database
+        run: |
+          make migrate
 
       - name: Deploy infrastructure
         run: |
