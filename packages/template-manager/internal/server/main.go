@@ -14,12 +14,12 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc/keepalive"
+	"sync"
+	"time"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
-	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
