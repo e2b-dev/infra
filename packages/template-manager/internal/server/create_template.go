@@ -16,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 )
 
-func (s *serverStore) TemplateCreate(ctx context.Context, templateRequest *template_manager.TemplateCreateRequest) (*emptypb.Empty, error) {
+func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *template_manager.TemplateCreateRequest) (*emptypb.Empty, error) {
 	_, childSpan := s.tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
@@ -31,6 +31,11 @@ func (s *serverStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		attribute.Int64("env.vcpu_count", int64(config.VCpuCount)),
 		attribute.Bool("env.huge_pages", config.HugePages),
 	)
+
+	if s.healthStatus == template_manager.HealthState_Draining {
+		s.logger.Error("Requesting template creation while server is draining is not possible", zap.String("envID", config.TemplateID))
+		return nil, fmt.Errorf("server is draining")
+	}
 
 	logsWriter := writer.New(
 		s.buildLogger.
@@ -58,7 +63,10 @@ func (s *serverStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
 
+	s.wg.Add(1)
 	go func() {
+		defer s.wg.Done()
+
 		buildContext, buildSpan := s.tracer.Start(
 			trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
 			"template-background-build",

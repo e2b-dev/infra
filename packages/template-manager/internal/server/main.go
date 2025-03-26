@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"time"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
@@ -24,13 +26,14 @@ import (
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
-type serverStore struct {
+type ServerStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
 	server           *grpc.Server
 	tracer           trace.Tracer
@@ -40,9 +43,11 @@ type serverStore struct {
 	buildLogger      *zap.Logger
 	templateStorage  *template.Storage
 	artifactRegistry *artifactregistry.Client
+	healthStatus     templatemanager.HealthState
+	wg               *sync.WaitGroup // wait group for running builds
 }
 
-func New(logger *zap.Logger, buildLogger *zap.Logger) *grpc.Server {
+func New(logger *zap.Logger, buildLogger *zap.Logger) (*grpc.Server, *ServerStore) {
 	ctx := context.Background()
 	logger.Info("Initializing template manager")
 
@@ -88,8 +93,7 @@ func New(logger *zap.Logger, buildLogger *zap.Logger) *grpc.Server {
 	templateStorage := template.NewStorage(ctx)
 	buildCache := cache.NewBuildCache()
 	builder := build.NewBuilder(logger, buildLogger, otel.Tracer(constants.ServiceName), dockerClient, legacyClient, templateStorage, buildCache)
-
-	templatemanager.RegisterTemplateServiceServer(s, &serverStore{
+	store := &ServerStore{
 		tracer:           otel.Tracer(constants.ServiceName),
 		logger:           logger,
 		builder:          builder,
@@ -97,8 +101,37 @@ func New(logger *zap.Logger, buildLogger *zap.Logger) *grpc.Server {
 		buildLogger:      buildLogger,
 		artifactRegistry: artifactRegistry,
 		templateStorage:  templateStorage,
-	})
+		healthStatus:     templatemanager.HealthState_Healthy,
+		wg:               &sync.WaitGroup{},
+	}
 
+	templatemanager.RegisterTemplateServiceServer(s, store)
 	grpc_health_v1.RegisterHealthServer(s, health.NewServer())
-	return s
+
+	return s, store
+}
+
+func (s *ServerStore) Close(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return errors.New("context cancelled during server graceful shutdown")
+	default:
+		// no new jobs should be started
+		s.healthStatus = templatemanager.HealthState_Draining
+		if !env.IsLocal() {
+			time.Sleep(5 * time.Second)
+		}
+
+		// wait for all builds to finish
+		s.wg.Wait()
+
+		if !env.IsLocal() {
+			// give some time so all connected services can check build status
+			time.Sleep(15 * time.Second)
+		}
+
+		// mark service as unhealthy so now new request will be accepted
+		s.server.GracefulStop()
+		return nil
+	}
 }
