@@ -62,10 +62,10 @@ func (a *GRPCClient) healthCheckSync(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			reqCtx, reqCtxCancel := context.WithTimeout(ctx, 2*time.Second)
+			reqCtx, reqCtxCancel := context.WithTimeout(ctx, 5*time.Second)
+			healthStatus, err := a.Client.HealthStatus(reqCtx, nil)
 			reqCtxCancel()
 
-			healthStatus, err := a.Client.HealthStatus(reqCtx, nil)
 			healthCheckAt := time.Now()
 			a.lastHealthCheckAt = &healthCheckAt
 
