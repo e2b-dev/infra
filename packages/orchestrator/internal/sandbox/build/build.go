@@ -105,6 +105,7 @@ func (b *File) Slice(off, length int64) ([]byte, error) {
 		return nil, fmt.Errorf("failed to get mapping: %w", err)
 	}
 
+	// Pass empty huge page when the build id is nil.
 	if *buildID == uuid.Nil {
 		return header.EmptyHugePage, nil
 	}

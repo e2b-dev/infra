@@ -3,14 +3,18 @@ package build
 import (
 	"context"
 	"fmt"
+	"github.com/bits-and-blooms/bitset"
 	"github.com/docker/docker/client"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
+	"os"
 
 	"go.uber.org/zap"
 	"os/exec"
@@ -44,8 +48,12 @@ func NewBuilder(logger *zap.Logger, buildLogger *zap.Logger, tracer trace.Tracer
 }
 
 func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string, buildID string) error {
-	buildStorage := b.templateStorage.NewBuild(template.TemplateFiles)
-	_, err := b.buildCache.Get(buildID)
+	buildIDParsed, err := uuid.Parse(buildID)
+	if err != nil {
+		return fmt.Errorf("error parsing build ID: %w", err)
+	}
+
+	_, err = b.buildCache.Get(buildID)
 	if err != nil {
 		return err
 	}
@@ -84,7 +92,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 			removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 			defer cancel()
 
-			removeErr := buildStorage.Remove(removeCtx)
+			removeErr := b.templateStorage.Remove(removeCtx, buildID)
 			if removeErr != nil {
 				b.logger.Error("Error while removing build files", zap.Error(removeErr))
 				telemetry.ReportError(ctx, removeErr)
@@ -92,14 +100,132 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		}
 	}()
 
+	// MEMFILE
 	memfilePath := template.BuildMemfilePath()
-	rootfsPath := template.BuildRootfsPath()
+	memfileDiffPath := template.BuildMemfileDiffPath()
 
-	upload := buildStorage.Upload(
+	memfileSource, err := os.Open(memfilePath)
+	if err != nil {
+		return fmt.Errorf("error opening memfile source: %w", err)
+	}
+
+	memfileInfo, err := memfileSource.Stat()
+	if err != nil {
+		return fmt.Errorf("error getting memfile size: %w", err)
+	}
+
+	memfileDiffFile, err := os.Create(memfileDiffPath)
+	if err != nil {
+		return fmt.Errorf("error creating memfile diff file: %w", err)
+	}
+
+	memfileDirtyPages := bitset.New(0)
+	memfileDirtyPages.FlipRange(0, uint(header.TotalBlocks(memfileInfo.Size(), template.MemfilePageSize())))
+
+	memfileDirtyPages, emptyDirtyPages, err := header.CreateDiff(
+		memfileSource,
+		template.MemfilePageSize(),
+		memfileDirtyPages,
+		memfileDiffFile,
+	)
+
+	memfileDirtyMappings := header.CreateMapping(
+		&buildIDParsed,
+		memfileDirtyPages,
+		uint64(template.MemfilePageSize()),
+	)
+
+	memfileEmptyMappings := header.CreateMapping(
+		&uuid.Nil,
+		emptyDirtyPages,
+		uint64(template.MemfilePageSize()),
+	)
+
+	memfileMappings := header.MergeMappings(memfileDirtyMappings, memfileEmptyMappings)
+
+	memfileMetadata := &header.Metadata{
+		Version:     1,
+		Generation:  0,
+		BlockSize:   uint64(template.MemfilePageSize()),
+		Size:        uint64(memfileInfo.Size()),
+		BuildId:     buildIDParsed,
+		BaseBuildId: buildIDParsed,
+	}
+
+	memfileHeader := header.NewHeader(
+		memfileMetadata,
+		memfileMappings,
+	)
+
+	// ROOTFS
+	rootfsPath := template.BuildRootfsPath()
+	rootfsDiffPath := template.BuildRootfsDiffPath()
+
+	rootfsSource, err := os.Open(rootfsPath)
+	if err != nil {
+		return fmt.Errorf("error opening rootfs source: %w", err)
+	}
+
+	rootfsInfo, err := rootfsSource.Stat()
+	if err != nil {
+		return fmt.Errorf("error getting rootfs size: %w", err)
+	}
+
+	rootfsDiffFile, err := os.Create(rootfsDiffPath)
+	if err != nil {
+		return fmt.Errorf("error creating rootfs diff file: %w", err)
+	}
+
+	rootfsDirtyBlocks := bitset.New(0)
+	rootfsDirtyBlocks.FlipRange(0, uint(header.TotalBlocks(rootfsInfo.Size(), template.RootfsBlockSize())))
+
+	rootfsDirtyBlocks, emptyDirtyBlocks, err := header.CreateDiff(
+		rootfsSource,
+		template.RootfsBlockSize(),
+		rootfsDirtyBlocks,
+		rootfsDiffFile,
+	)
+
+	rootfsDirtyMappings := header.CreateMapping(
+		&buildIDParsed,
+		rootfsDirtyBlocks,
+		uint64(template.RootfsBlockSize()),
+	)
+
+	rootfsEmptyMappings := header.CreateMapping(
+		&uuid.Nil,
+		emptyDirtyBlocks,
+		uint64(template.RootfsBlockSize()),
+	)
+
+	rootfsMappings := header.MergeMappings(rootfsDirtyMappings, rootfsEmptyMappings)
+
+	rootfsMetadata := &header.Metadata{
+		Version:     1,
+		Generation:  0,
+		BlockSize:   uint64(template.RootfsBlockSize()),
+		Size:        uint64(rootfsInfo.Size()),
+		BuildId:     buildIDParsed,
+		BaseBuildId: buildIDParsed,
+	}
+
+	rootfsHeader := header.NewHeader(
+		rootfsMetadata,
+		rootfsMappings,
+	)
+
+	// UPLOAD
+	templateBuild := storage.NewTemplateBuild(
+		memfileHeader,
+		rootfsHeader,
+		template.TemplateFiles,
+	)
+
+	upload := templateBuild.Upload(
 		ctx,
 		template.BuildSnapfilePath(),
-		&memfilePath,
-		&rootfsPath,
+		&memfileDiffPath,
+		&rootfsDiffPath,
 	)
 
 	cmd := exec.Command(storage.HostEnvdPath, "-version")
