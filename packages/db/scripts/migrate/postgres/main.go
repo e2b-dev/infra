@@ -8,7 +8,7 @@ import (
 
 	_ "github.com/lib/pq"
 
-	db "github.com/e2b-dev/infra/packages/db/pkg/migrator"
+	db "github.com/e2b-dev/infra/packages/db/migrator"
 )
 
 func main() {
