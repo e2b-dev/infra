@@ -12,5 +12,5 @@ migrate-postgres/%:
 
 .PHONY: generate
 generate:
-	rm -rf packages/db/queries/*.go
+	rm -rf queries/*.go
 	sqlc generate

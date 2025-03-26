@@ -15,7 +15,7 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 
 	userID := a.GetUserID(c)
 
-	results, err := a.sqlcDB.TeamsListForUser(ctx, userID)
+	results, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
 	if err != nil {
 		log.Println("Error when starting transaction: ", err)
 		c.JSON(http.StatusInternalServerError, "Error when starting transaction")
