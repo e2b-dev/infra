@@ -84,8 +84,16 @@ job "clickhouse" {
       source    = "clickhouse"
     }
 
+
+
     task "clickhouse-server" {
       driver = "docker"
+
+      volume_mount {
+        volume      = "clickhouse"
+        destination = "/var/lib/clickhouse"
+        read_only   = false
+      }
 
       kill_timeout = "120s"
 
@@ -137,7 +145,7 @@ job "clickhouse" {
 
     <zookeeper>
         <node>
-            <host>clickhouse-keeper.service.consul</host>
+            <host>{{ env "NOMAD_IP_clickhouse_keeper" }}</host>
             <port>9181</port>
         </node>
     </zookeeper>
@@ -221,6 +229,12 @@ EOF
     task "clickhouse-keeper" {
       driver = "docker"
 
+      volume_mount {
+        volume      = "clickhouse"
+        destination = "/var/lib/clickhouse"
+        read_only   = false
+      }
+
       resources {
         cpu    = 500
         memory = 2048
@@ -263,7 +277,7 @@ EOF
          <raft_configuration>
             <server>
                 <id>1</id>
-                <hostname>clickhouse-keeper.service.consul</hostname>
+                <hostname>{{ env "NOMAD_IP_clickhouse_keeper" }}</hostname>
                 <port>9234</port>
             </server>
         </raft_configuration>
