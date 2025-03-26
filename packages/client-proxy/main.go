@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -58,13 +57,11 @@ var (
 type htmlTemplateData struct {
 	SandboxId   string
 	SandboxHost string
-	SandboxPort string
 }
 
 type jsonTemplateData struct {
 	Error     string `json:"error"`
 	SandboxId string `json:"sandboxId"`
-	Port      uint64 `json:"port"`
 }
 
 func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +114,7 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 				zap.L().Warn("Sandbox not found", zap.String("sandbox_id", sandboxID))
 
 				if isBrowser(r.UserAgent()) {
-					res, resErr := buildHtmlNotFoundError(sandboxID, r.Host, sandboxPort)
+					res, resErr := buildHtmlNotFoundError(sandboxID, r.Host)
 					if resErr != nil {
 						zap.L().Error("Failed to build sandbox not found HTML error response", zap.Error(resErr))
 						w.WriteHeader(http.StatusInternalServerError)
@@ -128,9 +125,9 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 					w.Write(res)
 					return
 				} else {
-					res, resErr := buildJsonNotFoundError(sandboxID, sandboxPort)
+					res, resErr := buildJsonNotFoundError(sandboxID)
 					if resErr != nil {
-						zap.L().Error("Failed to build sandbox not found JSON error response", zap.Error(resErr))
+						zap.L().Error("Failed to build JSON error response", zap.Error(resErr))
 						w.WriteHeader(http.StatusInternalServerError)
 						return
 					}
@@ -305,9 +302,9 @@ func run() int {
 	return int(exitCode.Load())
 }
 
-func buildHtmlNotFoundError(sandboxId string, host string, port uint64) ([]byte, error) {
+func buildHtmlNotFoundError(sandboxId string, host string) ([]byte, error) {
 	htmlResponse := new(bytes.Buffer)
-	htmlVars := htmlTemplateData{SandboxId: sandboxId, SandboxHost: host, SandboxPort: strconv.FormatUint(port, 10)}
+	htmlVars := htmlTemplateData{SandboxId: sandboxId, SandboxHost: host}
 
 	err := sandboxNotFound502HtmlTemplate.Execute(htmlResponse, htmlVars)
 	if err != nil {
@@ -317,11 +314,10 @@ func buildHtmlNotFoundError(sandboxId string, host string, port uint64) ([]byte,
 	return htmlResponse.Bytes(), nil
 }
 
-func buildJsonNotFoundError(sandboxId string, port uint64) ([]byte, error) {
+func buildJsonNotFoundError(sandboxId string) ([]byte, error) {
 	response := jsonTemplateData{
 		Error:     "Sandbox not found",
 		SandboxId: sandboxId,
-		Port:      port,
 	}
 
 	responseBytes, err := json.Marshal(response)
