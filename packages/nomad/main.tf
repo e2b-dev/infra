@@ -37,7 +37,6 @@ resource "nomad_job" "api" {
     otel_collector_grpc_endpoint  = "localhost:4317"
     loki_address                  = "http://loki.service.consul:${var.loki_service_port.port}"
     logs_collector_address        = "http://localhost:${var.logs_proxy_port.port}"
-    gcp_zone                      = var.gcp_zone
     port_name                     = var.api_port.name
     port_number                   = var.api_port.port
     api_docker_image              = var.api_docker_image_digest
@@ -62,7 +61,6 @@ resource "nomad_job" "api" {
 resource "nomad_job" "redis" {
   jobspec = templatefile("${path.module}/redis.hcl",
     {
-      gcp_zone    = var.gcp_zone
       port_number = var.redis_port.port
       port_name   = var.redis_port.name
     }
@@ -74,7 +72,6 @@ resource "nomad_job" "docker_reverse_proxy" {
 
   hcl2 {
     vars = {
-      gcp_zone                      = var.gcp_zone
       image_name                    = var.docker_reverse_proxy_docker_image_digest
       postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
       google_service_account_secret = var.docker_reverse_proxy_service_account_key
@@ -94,7 +91,6 @@ resource "nomad_job" "client_proxy" {
     {
       update_stanza = var.api_machine_count > 1
 
-      gcp_zone           = var.gcp_zone
       port_name          = var.client_proxy_port.name
       port_number        = var.client_proxy_port.port
       health_port_number = var.client_proxy_health_port.port
@@ -112,7 +108,6 @@ resource "nomad_job" "session_proxy" {
 
   hcl2 {
     vars = {
-      gcp_zone                   = var.gcp_zone
       session_proxy_port_number  = var.session_proxy_port.port
       session_proxy_port_name    = var.session_proxy_port.name
       session_proxy_service_name = var.session_proxy_service_name
@@ -206,8 +201,6 @@ resource "nomad_job" "otel_collector" {
     grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
     grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
     consul_token                 = var.consul_acl_token_secret
-
-    gcp_zone = var.gcp_zone
   })
 }
 
@@ -286,8 +279,6 @@ data "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
 
 resource "nomad_job" "logs_collector" {
   jobspec = templatefile("${path.module}/logs-collector.hcl", {
-    gcp_zone = var.gcp_zone
-
     logs_port_number        = var.logs_proxy_port.port
     logs_health_port_number = var.logs_health_proxy_port.port
     logs_health_path        = var.logs_health_proxy_port.health_path
@@ -306,12 +297,6 @@ data "google_storage_bucket_object" "orchestrator" {
   bucket = var.fc_env_pipeline_bucket_name
 }
 
-
-data "google_compute_machine_types" "client" {
-  zone   = var.gcp_zone
-  filter = "name = \"${var.client_machine_type}\""
-}
-
 data "external" "orchestrator_checksum" {
   program = ["bash", "${path.module}/checksum.sh"]
 
@@ -322,7 +307,6 @@ data "external" "orchestrator_checksum" {
 
 resource "nomad_job" "orchestrator" {
   jobspec = templatefile("${path.module}/orchestrator.hcl", {
-    gcp_zone         = var.gcp_zone
     port             = var.orchestrator_port
     proxy_port       = var.orchestrator_proxy_port
     environment      = var.environment
@@ -379,10 +363,9 @@ resource "nomad_job" "template_manager" {
     }
   }
 }
+
 resource "nomad_job" "loki" {
   jobspec = templatefile("${path.module}/loki.hcl", {
-    gcp_zone = var.gcp_zone
-
     // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
     // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
     prevent_colocation = var.api_machine_count > 2
@@ -420,7 +403,6 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
 # Add this with your other Nomad jobs
 resource "nomad_job" "clickhouse" {
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
-    zone                = var.gcp_zone
     clickhouse_version  = "25.1.5.31" # Or make this a variable
     gcs_bucket          = google_storage_bucket.clickhouse_bucket.name
     gcs_folder          = "clickhouse-data"

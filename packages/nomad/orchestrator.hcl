@@ -1,6 +1,5 @@
 job "orchestrator" {
   type = "system"
-  datacenters = ["${gcp_zone}"]
 
   priority = 90
 

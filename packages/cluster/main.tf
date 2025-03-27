@@ -136,7 +136,9 @@ module "client_cluster" {
   cluster_auto_scaling_max = var.client_cluster_auto_scaling_max
   cluster_size             = var.client_cluster_size
   cluster_tag_name         = var.cluster_tag_name
-  gcp_zone                 = var.gcp_zone
+
+  gcp_region = var.gcp_region
+  gcp_zone   = var.gcp_zone
 
   machine_type = var.client_machine_type
   image_family = var.client_image_family

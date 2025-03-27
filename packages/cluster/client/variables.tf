@@ -8,6 +8,11 @@ variable "environment" {
   type        = string
 }
 
+variable "gcp_region" {
+  description = "The GCP region in which the server cluster will be created (e.g. us-central1-a)."
+  type        = string
+}
+
 variable "gcp_zone" {
   description = "The GCP zone in which the server cluster will be created (e.g. us-central1-a)."
   type        = string
