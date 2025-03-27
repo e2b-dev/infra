@@ -9,3 +9,4 @@ terraform.tfstate
 terraform.tfstate.backup
 **/.tfplan.*
 tests/periodic-test/build-template/e2b.toml
+.air

@@ -22,6 +22,23 @@ const (
 	minEnvdVersionForMetrcis = "0.1.5"
 )
 
+type metricStore interface {
+	LogMetrics(ctx context.Context)
+	SendMetrics(ctx context.Context)
+}
+
+func (s *Sandbox) logMetricsBasedOnConfig(ctx context.Context, logger metricStore) {
+	if s.useLokiMetrics == "true" {
+		logger.LogMetrics(ctx)
+	}
+	if s.useClickhouseMetrics == "true" {
+		logger.SendMetrics(ctx)
+	}
+	if !(s.useClickhouseMetrics == "true") && !(s.useLokiMetrics == "true") { // ensure backward compatibility if neither are set
+		logger.LogMetrics(ctx)
+	}
+}
+
 func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	healthTicker := time.NewTicker(healthCheckInterval)
 	metricsTicker := time.NewTicker(metricsCheckInterval)
@@ -31,7 +48,8 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 	}()
 
 	// Get metrics and health status on sandbox startup
-	go s.LogMetrics(ctx)
+
+	go s.logMetricsBasedOnConfig(ctx, s)
 	go s.Healthcheck(ctx, false)
 
 	for {
@@ -45,7 +63,7 @@ func (s *Sandbox) logHeathAndUsage(ctx *utils.LockableCancelableContext) {
 
 			cancel()
 		case <-metricsTicker.C:
-			s.LogMetrics(ctx)
+			go s.logMetricsBasedOnConfig(ctx, s)
 		case <-ctx.Done():
 			return
 		}

@@ -33,3 +33,11 @@ output "orchestration_repository_name" {
 output "cloudflare_api_token_secret_name" {
   value = google_secret_manager_secret.cloudflare_api_token.name
 }
+
+output "clickhouse_password_secret_data" {
+  value = google_secret_manager_secret_version.clickhouse_password_value.secret_data
+}
+
+output "notification_email_secret_version" {
+  value = google_secret_manager_secret_version.notification_email_value
+}

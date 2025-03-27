@@ -3,15 +3,11 @@ package server
 import (
 	"context"
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"os/exec"
-	"strconv"
-	"strings"
-	"time"
-
-	"go.opentelemetry.io/otel/attribute"
-	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -20,16 +16,11 @@ import (
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 )
 
-const cleanupTimeout = time.Second * 10
-
-func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateCreateRequest, stream template_manager.TemplateService_TemplateCreateServer) error {
-	ctx := stream.Context()
-
-	childCtx, childSpan := s.tracer.Start(ctx, "template-create")
+func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *template_manager.TemplateCreateRequest) (*emptypb.Empty, error) {
+	_, childSpan := s.tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
 	config := templateRequest.Template
-
 	childSpan.SetAttributes(
 		attribute.String("env.id", config.TemplateID),
 		attribute.String("env.build.id", config.BuildID),
@@ -41,8 +32,12 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		attribute.Bool("env.huge_pages", config.HugePages),
 	)
 
+	if s.healthStatus == template_manager.HealthState_Draining {
+		s.logger.Error("Requesting template creation while server is draining is not possible", zap.String("envID", config.TemplateID))
+		return nil, fmt.Errorf("server is draining")
+	}
+
 	logsWriter := writer.New(
-		stream,
 		s.buildLogger.
 			With(zap.Field{Type: zapcore.StringType, Key: "envID", String: config.TemplateID}).
 			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: config.BuildID}),
@@ -63,79 +58,35 @@ func (s *serverStore) TemplateCreate(templateRequest *template_manager.TemplateC
 		BuildLogsWriter: logsWriter,
 	}
 
-	buildStorage := s.templateStorage.NewBuild(template.TemplateFiles)
-
-	var err error
-
-	// Remove local template files if build fails
-	defer func() {
-		removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
-		defer cancel()
-
-		removeErr := template.Remove(removeCtx, s.tracer)
-		if removeErr != nil {
-			telemetry.ReportError(childCtx, removeErr)
-		}
-	}()
-
-	err = template.Build(childCtx, s.tracer, s.dockerClient, s.legacyDockerClient)
+	err := s.buildCache.Create(config.BuildID, config.TemplateID)
 	if err != nil {
-		_, _ = logsWriter.Write([]byte(fmt.Sprintf("Error building environment: %v", err)))
-
-		telemetry.ReportCriticalError(childCtx, err)
-
-		return err
+		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
 
-	// Remove build files if build fails or times out
-	defer func() {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+
+		buildContext, buildSpan := s.tracer.Start(
+			trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
+			"template-background-build",
+		)
+		defer buildSpan.End()
+
+		err = s.builder.Build(buildContext, template, config.TemplateID, config.BuildID)
 		if err != nil {
-			removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
-			defer cancel()
-
-			removeErr := buildStorage.Remove(removeCtx)
-			if removeErr != nil {
-				telemetry.ReportError(childCtx, removeErr)
+			cacheErr := s.buildCache.SetFailed(config.TemplateID, config.BuildID)
+			if cacheErr != nil {
+				s.logger.Error("Error during failing template build in cache", zap.Error(err))
 			}
+
+			s.logger.Error("Error while building template", zap.Error(err))
+			telemetry.ReportEvent(buildContext, "Environment built failed")
+			return
 		}
+
+		telemetry.ReportEvent(buildContext, "Environment built")
 	}()
 
-	memfilePath := template.BuildMemfilePath()
-	rootfsPath := template.BuildRootfsPath()
-
-	upload := buildStorage.Upload(
-		childCtx,
-		template.BuildSnapfilePath(),
-		&memfilePath,
-		&rootfsPath,
-	)
-
-	cmd := exec.Command(storage.HostEnvdPath, "-version")
-
-	out, err := cmd.Output()
-	if err != nil {
-		_, _ = logsWriter.Write([]byte(fmt.Sprintf("Error while getting envd version: %v", err)))
-
-		return err
-	}
-
-	uploadErr := <-upload
-	if uploadErr != nil {
-		errMsg := fmt.Sprintf("Error while uploading build files: %v", uploadErr)
-		_, _ = logsWriter.Write([]byte(errMsg))
-
-		return uploadErr
-	}
-
-	version := strings.TrimSpace(string(out))
-	trailerMetadata := metadata.Pairs(
-		storage.RootfsSizeKey, strconv.FormatInt(template.RootfsSizeMB(), 10),
-		storage.EnvdVersionKey, version,
-	)
-
-	stream.SetTrailer(trailerMetadata)
-
-	telemetry.ReportEvent(childCtx, "Environment built")
-
-	return nil
+	return nil, nil
 }

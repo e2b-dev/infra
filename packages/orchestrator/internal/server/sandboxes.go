@@ -12,10 +12,10 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/internal/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/pkg/database"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
@@ -23,7 +23,6 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/gogo/status"
 )
 
 const (
@@ -43,7 +42,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("template.id", req.Sandbox.TemplateId),
 		attribute.String("kernel.version", req.Sandbox.KernelVersion),
 		attribute.String("sandbox.id", req.Sandbox.SandboxId),
-		attribute.String("client.id", consul.ClientID),
+		attribute.String("client.id", s.clientID),
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
@@ -51,6 +50,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		childCtx,
 		s.tracer,
 		s.dns,
+		s.proxy,
 		s.networkPool,
 		s.templateCache,
 		req.Sandbox,
@@ -59,6 +59,11 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.EndTime.AsTime(),
 		req.Sandbox.Snapshot,
 		req.Sandbox.BaseTemplateId,
+		s.clientID,
+		s.devicePool,
+		s.clickhouseStore,
+		s.useLokiMetrics,
+		s.useClickhouseMetrics,
 	)
 	if err != nil {
 		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))
@@ -91,7 +96,21 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(err))
 		}
 
-		s.sandboxes.Remove(req.Sandbox.SandboxId)
+		// Remove the sandbox from cache only if the cleanup IDs match.
+		// This prevents us from accidentally removing started sandbox (via resume) from the cache if cleanup is taking longer than the request timeout.
+		// This could have caused the "invisible" sandboxes that are not in orchestrator or API, but are still on client.
+		s.sandboxes.RemoveCb(req.Sandbox.SandboxId, func(_ string, v *sandbox.Sandbox, exists bool) bool {
+			if !exists {
+				return false
+			}
+
+			if v == nil {
+				return false
+			}
+
+			return sbx.CleanupID == v.CleanupID
+		})
+
 		if err := s.db.SetSandboxTerminated(ctx, req.Sandbox.SandboxId, ended.Sub(started)); err != nil {
 			sbxlogger.I(sbx).Error("failed to cleanup db record for sandbox", zap.Error(err))
 		}
@@ -100,7 +119,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
-		ClientId: consul.ClientID,
+		ClientId: s.clientID,
 	}, nil
 }
 
@@ -110,7 +129,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	childSpan.SetAttributes(
 		attribute.String("sandbox.id", req.SandboxId),
-		attribute.String("client.id", consul.ClientID),
+		attribute.String("client.id", s.clientID),
 	)
 
 	item, ok := s.sandboxes.Get(req.SandboxId)
@@ -148,7 +167,7 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
 			Config:    sbx.Config,
-			ClientId:  consul.ClientID,
+			ClientId:  s.clientID,
 			StartTime: timestamppb.New(sbx.StartedAt),
 			EndTime:   timestamppb.New(sbx.EndAt),
 		})
@@ -168,7 +187,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	childSpan.SetAttributes(
 		attribute.String("sandbox.id", in.SandboxId),
-		attribute.String("client.id", consul.ClientID),
+		attribute.String("client.id", s.clientID),
 	)
 
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
@@ -181,6 +200,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	// Don't allow connecting to the sandbox anymore.
 	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
+	s.proxy.RemoveSandbox(in.SandboxId, sbx.Slot.HostIP())
 
 	// Remove the sandbox from the cache to prevent loading it again in API during the time the instance is stopping.
 	// Old comment:

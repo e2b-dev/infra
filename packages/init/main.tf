@@ -183,6 +183,8 @@ resource "google_artifact_registry_repository" "orchestration_repository" {
   format        = "DOCKER"
   repository_id = "e2b-orchestration"
   labels        = var.labels
+
+  depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
 }
 
 resource "time_sleep" "artifact_registry_api_wait_90_seconds" {
@@ -199,4 +201,44 @@ resource "google_artifact_registry_repository_iam_member" "orchestration_reposit
 
   depends_on = [time_sleep.artifact_registry_api_wait_90_seconds]
 }
+
+resource "random_password" "clickhouse_password" {
+  length  = 32
+  special = false
+}
+
+resource "google_secret_manager_secret" "clickhouse_password" {
+  secret_id = "${var.prefix}clickhouse-password"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "clickhouse_password_value" {
+  secret = google_secret_manager_secret.clickhouse_password.id
+
+  secret_data = random_password.clickhouse_password.result
+}
+
+
+
+resource "google_secret_manager_secret" "notification_email" {
+  secret_id = "${var.prefix}notification-email"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "notification_email_value" {
+  secret = google_secret_manager_secret.notification_email.id
+
+  secret_data = "placeholder@example.com"
+}
+
 

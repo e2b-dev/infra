@@ -24,8 +24,6 @@ const (
 	EdgeCreatedAPIKeys = "created_api_keys"
 	// EdgeUsersTeams holds the string denoting the users_teams edge name in mutations.
 	EdgeUsersTeams = "users_teams"
-	// AccessTokenFieldID holds the string denoting the ID field of the AccessToken.
-	AccessTokenFieldID = "access_token"
 	// Table holds the table name of the user in the database.
 	Table = "users"
 	// TeamsTable is the table that holds the teams relation/edge. The primary key declared below.
@@ -189,7 +187,7 @@ func newCreatedEnvsStep() *sqlgraph.Step {
 func newAccessTokensStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(AccessTokensInverseTable, AccessTokenFieldID),
+		sqlgraph.To(AccessTokensInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, AccessTokensTable, AccessTokensColumn),
 	)
 }

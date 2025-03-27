@@ -7,14 +7,17 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
+	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -23,12 +26,16 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/db"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -36,43 +43,62 @@ const ServiceName = "orchestrator"
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
-	sandboxes     *smap.Map[*sandbox.Sandbox]
-	dns           *dns.DNS
-	db            *db.DB
-	tracer        trace.Tracer
-	networkPool   *network.Pool
-	templateCache *template.Cache
+	sandboxes       *smap.Map[*sandbox.Sandbox]
+	dns             *dns.DNS
+	db              *db.DB
+	proxy           *proxy.SandboxProxy
+	tracer          trace.Tracer
+	networkPool     *network.Pool
+	templateCache   *template.Cache
+	pauseMu         sync.Mutex
+	clientID        string // nomad node id
+	devicePool      *nbd.DevicePool
+	clickhouseStore chdb.Store
 
-	pauseMu sync.Mutex
+	useLokiMetrics       string
+	useClickhouseMetrics string
 }
 
 type Service struct {
-	server   *server
-	grpc     *grpc.Server
-	dns      *dns.DNS
-	port     uint16
-	db       *db.DB
-	started  atomic.Bool
-	shutdown struct {
+	version    string
+	server     *server
+	grpc       *grpc.Server
+	grpcHealth *health.Server
+	dns        *dns.DNS
+	db         *db.DB
+	proxy      *proxy.SandboxProxy
+	port       uint16
+	started    atomic.Bool
+	shutdown   struct {
 		once sync.Once
 		op   func(context.Context) error
 		err  error
 	}
+	// there really should be a config struct for this
+	// using something like viper to read the config
+	// but for now this is just a quick hack
+	// see https://linear.app/e2b/issue/E2B-1731/use-viper-to-read-env-vars
+	useLokiMetrics       string
+	useClickhouseMetrics string
 }
 
-func New(ctx context.Context, port uint) (*Service, error) {
+func New(ctx context.Context, port uint, clientID string, version string, proxy *proxy.SandboxProxy) (*Service, error) {
 	if port > math.MaxUint16 {
 		return nil, fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
 	}
 
-	srv := &Service{port: uint16(port)}
+	if clientID == "" {
+		return nil, errors.New("clientID is required")
+	}
+
+	srv := &Service{version: version, port: uint16(port)}
 
 	templateCache, err := template.NewCache(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache: %w", err)
 	}
 
-	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize)
+	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network pool: %w", err)
 	}
@@ -80,6 +106,7 @@ func New(ctx context.Context, port uint) (*Service, error) {
 	// BLOCK: initialize services
 	{
 		srv.dns = dns.New()
+		srv.proxy = proxy
 
 		opts := []logging.Option{
 			logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
@@ -103,12 +130,52 @@ func New(ctx context.Context, port uint) (*Service, error) {
 			),
 		)
 
+		devicePool, err := nbd.NewDevicePool()
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to create device pool: %w", err)
+		}
+
+		useLokiMetrics := os.Getenv("WRITE_LOKI_METRICS")
+		useClickhouseMetrics := os.Getenv("WRITE_CLICKHOUSE_METRICS")
+		readClickhouseMetrics := os.Getenv("READ_CLICKHOUSE_METRICS")
+
+		var clickhouseStore chdb.Store = nil
+
+		if readClickhouseMetrics == "true" || useClickhouseMetrics == "true" {
+			clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
+				ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+				Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+				Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+				Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+				Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
+			}
+		}
+
 		srv.server = &server{
-			tracer:        otel.Tracer(ServiceName),
-			dns:           srv.dns,
-			sandboxes:     smap.New[*sandbox.Sandbox](),
-			networkPool:   networkPool,
-			templateCache: templateCache,
+			tracer:               otel.Tracer(ServiceName),
+			dns:                  srv.dns,
+			proxy:                srv.proxy,
+			sandboxes:            smap.New[*sandbox.Sandbox](),
+			networkPool:          networkPool,
+			templateCache:        templateCache,
+			clientID:             clientID,
+			devicePool:           devicePool,
+			clickhouseStore:      clickhouseStore,
+			useLokiMetrics:       useLokiMetrics,
+			useClickhouseMetrics: useClickhouseMetrics,
+		}
+		_, err = meters.GetObservableUpDownCounter(meters.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+			observer.Observe(int64(srv.server.sandboxes.Count()))
+
+			return nil
+		})
+
+		if err != nil {
+			zap.L().Error("Error registering sandbox count metric", zap.Any("metric_name", meters.OrchestratorSandboxCountMeterName), zap.Error(err))
 		}
 	}
 
@@ -120,20 +187,22 @@ func New(ctx context.Context, port uint) (*Service, error) {
 			return nil, fmt.Errorf("connecting to %q: %w", dbConnStr, err)
 		}
 
-		srv.db, err = db.New(drv)
+		srv.db, err = db.New(ctx, drv)
 		if err != nil {
 			return nil, fmt.Errorf("using database at %q: %w", dbConnStr, err)
 		}
 	}
 
 	orchestrator.RegisterSandboxServiceServer(srv.grpc, srv.server)
-	grpc_health_v1.RegisterHealthServer(srv.grpc, health.NewServer())
+
+	srv.grpcHealth = health.NewServer()
+	grpc_health_v1.RegisterHealthServer(srv.grpc, srv.grpcHealth)
 
 	return srv, nil
 }
 
 // Start launches
-func (srv *Service) Start(context.Context) error {
+func (srv *Service) Start(ctx context.Context) error {
 	if srv.server == nil || srv.dns == nil || srv.grpc == nil {
 		return errors.New("orchestrator services are not initialized")
 	}
@@ -146,6 +215,12 @@ func (srv *Service) Start(context.Context) error {
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
+
+	healthcheck, err := NewHealthcheck(srv.server, srv.grpc, srv.grpcHealth, srv.version)
+	if err != nil {
+		return fmt.Errorf("failed to create healthcheck: %w", err)
+	}
+
 	go func() {
 		defer zap.L().Info("DNS server returned")
 		defer wg.Done()
@@ -162,15 +237,40 @@ func (srv *Service) Start(context.Context) error {
 		return fmt.Errorf("failed to listen on port %d: %w", srv.port, err)
 	}
 
+	// Reuse the same TCP port between grpc and HTTP requests
+	m := cmux.New(lis)
+	// Match HTTP requests.
+	httpL := m.Match(cmux.HTTP1Fast())
+	// Match gRPC requests.
+	grpcL := m.Match(cmux.Any())
+
+	zap.L().Info("Starting orchestrator server", zap.Uint16("port", srv.port))
+
 	wg.Add(1)
 	go func() {
 		defer zap.L().Info("gRPC service returned")
 		defer wg.Done()
 
 		zap.L().Info("starting orchestrator server", zap.Uint16("port", srv.port))
+		if err := srv.grpc.Serve(grpcL); err != nil {
+			zap.L().Panic("grpc server failed to serve", zap.Error(err))
+		}
+	}()
 
-		if err := srv.grpc.Serve(lis); err != nil {
-			zap.L().Fatal("grpc server failed to serve", zap.Error(err))
+	wg.Add(1)
+	go func() {
+		defer zap.L().Info("healthcheck service returned")
+		defer wg.Done()
+
+		if err := healthcheck.Start(ctx, httpL); err != nil {
+			zap.L().Panic("healthcheck server failed", zap.Error(err))
+		}
+	}()
+
+	// Start serving traffic
+	go func() {
+		if err := m.Serve(); err != nil {
+			zap.L().Panic("failed to serve", zap.Error(err))
 		}
 	}()
 
@@ -181,13 +281,15 @@ func (srv *Service) Start(context.Context) error {
 
 		srv.grpc.GracefulStop()
 
+		m.Close()
+
 		if err := lis.Close(); err != nil {
 			errs = append(errs, err)
 		}
 
 		wg.Wait()
 
-		if err := srv.db.Close(); err != nil {
+		if err := srv.db.Close(ctx); err != nil {
 			errs = append(errs, err)
 		}
 

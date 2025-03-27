@@ -159,6 +159,11 @@ variable "orchestrator_port" {
   default = 5008
 }
 
+variable "orchestrator_proxy_port" {
+  type    = number
+  default = 5007
+}
+
 variable "template_manager_port" {
   type    = number
   default = 5009

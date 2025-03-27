@@ -27,6 +27,7 @@ build-debug:
 run:
 	make build-debug
 	POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) \
+	SUPABASE_JWT_SECRETS=$(SUPABASE_JWT_SECRETS) \
 	GOTRACEBACK=crash \
 	GODEBUG=madvdontneed=1 \
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
@@ -34,6 +35,18 @@ run:
 	ORCHESTRATOR_PORT=5008 \
 	./bin/api --port 3000
 
+# Run the API using air
+.PHONY: dev-init
+dev-init:
+	go install github.com/air-verse/air@latest
+
+.PHONY: dev
+dev:
+	@if [ ! -f "${GOPATH}/bin/air" ]; then \
+		echo "air not found in ${GOPATH}/bin/air, please run 'make dev-init' first"; \
+		exit 1; \
+	fi
+	${GOPATH}/bin/air
 
 # You run the parametrized command like this:
 # make metric=heap interval=90 profiler
@@ -44,11 +57,13 @@ profiler:
 .PHONY: build-and-upload
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@rm -rf .shared/
+	@rm -rf .shared/ .db/
 	@cp -r ../shared .shared/
+	@cp -r ../db .db/
 	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
 	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" .
 	@rm -rf .shared/
+	@rm -rf .db/
 
 .PHONY: test
 test:

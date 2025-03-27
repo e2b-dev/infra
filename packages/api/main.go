@@ -27,11 +27,11 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
+	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
+	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
+	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	customMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/gin_utils/middleware"
-	metricsMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/gin_utils/middleware/otel/metrics"
-	tracingMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/gin_utils/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -109,6 +109,8 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.AP
 		apiStore.Tracer,
 		apiStore.GetTeamFromAPIKey,
 		apiStore.GetUserFromAccessToken,
+		apiStore.GetUserIDFromSupabaseToken,
+		apiStore.GetTeamFromSupabaseToken,
 	)
 
 	// Use our validation middleware to check all requests against the
@@ -117,9 +119,12 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.AP
 		limits.RequestSizeLimiter(maxUploadLimit),
 		middleware.OapiRequestValidatorWithOptions(swagger,
 			&middleware.Options{
-				ErrorHandler: utils.ErrorHandler,
+				ErrorHandler:      utils.ErrorHandler,
+				MultiErrorHandler: utils.MultiErrorHandler,
 				Options: openapi3filter.Options{
 					AuthenticationFunc: AuthenticationFunc,
+					// Handle multiple errors as MultiError type
+					MultiError: true,
 				},
 			}),
 	)
@@ -162,7 +167,7 @@ func run() int {
 	flag.Parse()
 
 	if !env.IsLocal() {
-		otlpCleanup := telemetry.InitOTLPExporter(ctx, serviceName, commitSHA)
+		otlpCleanup := telemetry.InitOTLPExporter(ctx, serviceName, commitSHA, "no")
 		defer otlpCleanup(ctx)
 	}
 
@@ -320,7 +325,11 @@ func run() int {
 		// This is a bit of a hack, but this way we can properly propagate
 		// the health status to the load balancer.
 		apiStore.Healthy = false
-		time.Sleep(15 * time.Second)
+
+		// Skip the delay in local environment for instant shutdown
+		if !env.IsLocal() {
+			time.Sleep(15 * time.Second)
+		}
 
 		// if the parent context `ctx` is canceled the
 		// shutdown will return early. This should only happen

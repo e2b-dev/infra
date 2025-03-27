@@ -3,6 +3,7 @@ ENV_FILE := $(PWD)/.env.${ENV}
 
 -include ${ENV_FILE}
 
+TF := $(shell which terraform)
 TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
 OTEL_TRACING_PRINT ?= false
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
@@ -27,7 +28,10 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_otel_tracing_print=$(OTEL_TRACING_PRINT) \
 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	TF_VAR_template_bucket_name=$(TEMPLATE_BUCKET_NAME) \
-	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION)
+	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION) \
+	TF_VAR_clickhouse_connection_string=$(CLICKHOUSE_CONNECTION_STRING) \
+	TF_VAR_clickhouse_username=$(CLICKHOUSE_USERNAME) \
+	TF_VAR_clickhouse_database=$(CLICKHOUSE_DATABASE)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
@@ -37,29 +41,28 @@ login-gcloud:
 	gcloud config set project "$(GCP_PROJECT_ID)"
 	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
 	gcloud --quiet auth application-default login
-	gcloud auth configure-docker "us-west-1-docker.pkg.dev"
 
 .PHONY: init
 init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
 	gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
-	terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
-	$(tf_vars) terraform apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
+	$(TF) init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
 	$(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
 .PHONY: plan
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	terraform fmt -recursive
-	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
+	$(TF) fmt -recursive
+	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
 
 .PHONY: plan-only-jobs
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	terraform fmt -recursive
-	$(tf_vars) terraform plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad
+	$(TF) fmt -recursive
+	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad
 
 
 .PHONY: apply
@@ -67,7 +70,7 @@ apply:
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
 	$(tf_vars) \
-	terraform apply \
+	$(TF) apply \
 	-auto-approve \
 	-input=false \
 	-compact-warnings \
@@ -80,7 +83,7 @@ plan-without-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(eval TARGET := $(shell cat main.tf | grep "^module" | awk '{print $$2}' | tr ' ' '\n' | grep -v -e "nomad" | awk '{print "-target=module." $$0 ""}' | xargs))
 	$(tf_vars) \
-	terraform plan \
+	$(TF) plan \
 	-out=.tfplan.$(ENV) \
 	-input=false \
 	-compact-warnings \
@@ -92,7 +95,7 @@ destroy:
 	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
 	$(tf_vars) \
-	terraform destroy \
+	$(TF) destroy \
 	-compact-warnings \
 	-parallelism=20 \
 	$$(terraform state list | grep module | cut -d'.' -f1,2 | grep -v -e "buckets" | uniq | awk '{print "-target=" $$0 ""}' | xargs)
@@ -111,6 +114,7 @@ build-and-upload:build-and-upload/envd
 build/%:
 	$(MAKE) -C packages/$(notdir $@) build
 build-and-upload/%:
+	./scripts/confirm.sh $(ENV)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
 
 .PHONY: copy-public-builds
@@ -119,14 +123,31 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
+
 .PHONY: migrate
 migrate:
-	$(MAKE) -C packages/shared migrate
+	$(MAKE) -C packages/db migrate-postgres/up
+	# $(MAKE) -C packages/shared migrate-clickhouse/up
+
 
 .PHONY: generate
+generate:
+generate/%:
+	$(MAKE) -C packages/$(notdir $@) generate
+	@printf "\n\n"
+
+
+
+.PHONY: generate
+generate:generate/api
+generate:generate/orchestrator
+generate:generate/template-manager
+generate:generate/envd
+generate:generate/db
 generate:generate/orchestrator/internal
 generate:generate/shared
 generate/%:
+	@echo "Generating code for *$(notdir $@)*"
 	$(MAKE) -C packages/$(subst generate/,,$@) generate-models
 
 .PHONY: switch-env
@@ -142,7 +163,7 @@ switch-env:
 import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
-	$(tf_vars) terraform import $(TARGET) $(ID)
+	$(tf_vars) $(TF) import $(TARGET) $(ID)
 
 .PHONY: setup-ssh
 setup-ssh:
@@ -183,3 +204,6 @@ grafana-apply:
 	@ printf "Applying Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	cd terraform/grafana && make apply && cd - || cd -
 
+.PHONY: connect-orchestrator
+connect-orchestrator:
+	$(MAKE) -C tests/integration connect-orchestrator

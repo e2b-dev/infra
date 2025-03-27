@@ -88,6 +88,10 @@ variable "postgres_connection_string_secret_name" {
   type = string
 }
 
+variable "supabase_jwt_secrets_secret_name" {
+  type = string
+}
+
 # Proxies
 variable "session_proxy_service_name" {
   type = string
@@ -181,6 +185,10 @@ variable "orchestrator_port" {
   type = number
 }
 
+variable "orchestrator_proxy_port" {
+  type = number
+}
+
 variable "fc_env_pipeline_bucket_name" {
   type = string
 }
@@ -201,4 +209,21 @@ variable "redis_port" {
     name = string
     port = number
   })
+}
+
+# Clickhouse
+variable "clickhouse_connection_string" {
+  type = string
+}
+
+variable "clickhouse_username" {
+  type = string
+}
+
+variable "clickhouse_password" {
+  type = string
+}
+
+variable "clickhouse_database" {
+  type = string
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -14,17 +15,20 @@ type File struct {
 	header   *header.Header
 	store    *DiffStore
 	fileType DiffType
+	bucket   *gcs.BucketHandle
 }
 
 func NewFile(
 	header *header.Header,
 	store *DiffStore,
 	fileType DiffType,
+	bucket *gcs.BucketHandle,
 ) *File {
 	return &File{
 		header:   header,
 		store:    store,
 		fileType: fileType,
+		bucket:   bucket,
 	}
 }
 
@@ -101,6 +105,7 @@ func (b *File) Slice(off, length int64) ([]byte, error) {
 		return nil, fmt.Errorf("failed to get mapping: %w", err)
 	}
 
+	// Pass empty huge page when the build id is nil.
 	if *buildID == uuid.Nil {
 		return header.EmptyHugePage, nil
 	}
@@ -114,11 +119,15 @@ func (b *File) Slice(off, length int64) ([]byte, error) {
 }
 
 func (b *File) getBuild(buildID *uuid.UUID) (Diff, error) {
-	source, err := b.store.Get(
+	storageDiff := newStorageDiff(
+		b.store.cachePath,
 		buildID.String(),
 		b.fileType,
 		int64(b.header.Metadata.BlockSize),
+		b.bucket,
 	)
+
+	source, err := b.store.Get(storageDiff)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build from store: %w", err)
 	}

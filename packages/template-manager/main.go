@@ -49,7 +49,7 @@ func main() {
 	}
 
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(ctx, constants.ServiceName, "no")
+		shutdown := telemetry.InitOTLPExporter(ctx, constants.ServiceName, "no", "no")
 		defer shutdown(context.TODO())
 	}
 
@@ -83,7 +83,7 @@ func main() {
 	sbxlogger.SetSandboxLoggerExternal(buildLogger)
 
 	// Create an instance of our handler which satisfies the generated interface
-	s := server.New(logger, buildLogger)
+	s, _ := server.New(logger, buildLogger)
 
 	log.Printf("Starting server on port %d", *port)
 	if err := s.Serve(lis); err != nil {

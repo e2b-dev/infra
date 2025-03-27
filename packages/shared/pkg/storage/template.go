@@ -123,6 +123,14 @@ func (t *TemplateFiles) BuildRootfsPath() string {
 	return filepath.Join(t.BuildDir(), RootfsName)
 }
 
+func (t *TemplateFiles) BuildMemfileDiffPath() string {
+	return filepath.Join(t.BuildDir(), fmt.Sprintf("%s.diff", MemfileName))
+}
+
+func (t *TemplateFiles) BuildRootfsDiffPath() string {
+	return filepath.Join(t.BuildDir(), fmt.Sprintf("%s.diff", RootfsName))
+}
+
 func (t *TemplateFiles) BuildSnapfilePath() string {
 	return filepath.Join(t.BuildDir(), SnapfileName)
 }

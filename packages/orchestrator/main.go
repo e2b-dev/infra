@@ -15,6 +15,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -23,8 +25,9 @@ import (
 )
 
 const (
-	defaultPort = 5008
-	ServiceName = "orchestrator"
+	defaultPort      = 5008
+	defaultProxyPort = 5007
+	ServiceName      = "orchestrator"
 )
 
 var commitSHA string
@@ -37,8 +40,10 @@ func main() {
 	defer sigCancel()
 
 	var port uint
-
 	flag.UintVar(&port, "port", defaultPort, "orchestrator server port")
+
+	var proxyPort uint
+	flag.UintVar(&proxyPort, "proxy-port", defaultProxyPort, "orchestrator proxy port")
 	flag.Parse()
 
 	wg := &sync.WaitGroup{}
@@ -49,8 +54,10 @@ func main() {
 	// there's a panic.
 	defer wg.Wait()
 
+	clientID := consul.GetClientID()
+
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(ctx, server.ServiceName, "no")
+		shutdown := telemetry.InitOTLPExporter(ctx, server.ServiceName, commitSHA, clientID)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -95,7 +102,9 @@ func main() {
 
 	logger.Info("Starting orchestrator", zap.String("commit", commitSHA))
 
-	srv, err := server.New(ctx, port)
+	sessionProxy := proxy.New(proxyPort)
+
+	srv, err := server.New(ctx, port, clientID, commitSHA, sessionProxy)
 	if err != nil {
 		zap.L().Panic("failed to create server", zap.Error(err))
 	}
@@ -144,6 +153,29 @@ func main() {
 			log.Printf("grpc service: %v", err)
 			exitCode.Add(1)
 		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		errChan := make(chan error, 1)
+		go func() {
+			errChan <- sessionProxy.Start()
+		}()
+
+		select {
+		case <-ctx.Done():
+		case err = <-errChan:
+			if err != nil {
+				zap.L().Error("session proxy failed", zap.Error(err))
+				exitCode.Add(1)
+				cancel()
+			}
+		}
+
+		// close sandbox proxy, this will wait until all sessions are closed
+		defer sessionProxy.Shutdown(context.Background())
 	}()
 
 	wg.Wait()

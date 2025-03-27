@@ -88,93 +88,116 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		attribute.String("template.id", templateID),
 	)
 
-	// Create a new build cache for storing logs
-	err = a.buildCache.Create(templateID, buildUUID, team.ID)
+	concurrentlyRunningBuilds, err := a.db.
+		Client.
+		EnvBuild.
+		Query().
+		Where(
+			envbuild.EnvID(envDB.ID),
+			envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding),
+			envbuild.IDNotIn(buildUUID),
+		).
+		Count(ctx)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("there's already running build for %s", templateID))
-
-		err = fmt.Errorf("build is already running build for %s", templateID)
-		telemetry.ReportCriticalError(ctx, err)
-
+		zap.L().Error("Error when getting count of running builds", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
 		return
 	}
 
-	// Set the build status to building
-	err = a.db.EnvBuildSetStatus(ctx, envDB.ID, buildUUID, envbuild.StatusBuilding)
-	if err != nil {
-		err = fmt.Errorf("error when setting build status: %w", err)
+	// make sure there is no other build in progress for the same template
+	if concurrentlyRunningBuilds > 0 {
+		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("There is already a build in progress for the template"))
+		err = fmt.Errorf("there is already a build in progress for the template '%s'", templateID)
 		telemetry.ReportCriticalError(ctx, err)
-
-		a.buildCache.Delete(templateID, buildUUID, team.ID)
-
 		return
 	}
 
-	// Trigger the build in the background
-	go func() {
-		buildContext, childSpan := a.Tracer.Start(
-			trace.ContextWithSpanContext(context.Background(), span.SpanContext()),
-			"background-build-env",
-		)
-		defer childSpan.End()
+	startTime := time.Now()
+	build := envDB.Edges.Builds[0]
+	startCmd := ""
+	if build.StartCmd != nil {
+		startCmd = *build.StartCmd
+	}
 
-		startTime := time.Now()
-		build := envDB.Edges.Builds[0]
-		startCmd := ""
-		if build.StartCmd != nil {
-			startCmd = *build.StartCmd
-		}
+	// only waiting builds can be triggered
+	if build.Status != envbuild.StatusWaiting {
+		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
+		err = fmt.Errorf("build is not in waiting state: %s", build.Status)
+		telemetry.ReportCriticalError(ctx, err)
+		return
+	}
 
-		// Call the Template Manager to build the environment
-		buildErr := a.templateManager.CreateTemplate(
-			a.Tracer,
-			buildContext,
-			a.db,
-			a.buildCache,
+	// Call the Template Manager to build the environment
+	buildErr := a.templateManager.CreateTemplate(
+		a.Tracer,
+		ctx,
+		templateID,
+		buildUUID,
+		build.KernelVersion,
+		build.FirecrackerVersion,
+		startCmd,
+		build.Vcpu,
+		build.FreeDiskSizeMB,
+		build.RAMMB,
+	)
+
+	if buildErr != nil {
+		buildErr = fmt.Errorf("error when building env: %w", buildErr)
+		zap.L().Error("build failed", zap.Error(buildErr))
+		telemetry.ReportCriticalError(ctx, buildErr)
+
+		err = a.templateManager.SetStatus(
+			ctx,
 			templateID,
 			buildUUID,
-			build.KernelVersion,
-			build.FirecrackerVersion,
-			startCmd,
-			build.Vcpu,
-			build.FreeDiskSizeMB,
-			build.RAMMB,
+			envbuild.StatusFailed,
+			fmt.Sprintf("error when building env: %s", buildErr),
 		)
-		if buildErr != nil {
-			buildErr = fmt.Errorf("error when building env: %w", buildErr)
-			zap.L().Error("build failed", zap.Error(buildErr))
-			telemetry.ReportCriticalError(buildContext, buildErr)
-
-			dbErr := a.db.EnvBuildSetStatus(buildContext, templateID, buildUUID, envbuild.StatusFailed)
-			if dbErr != nil {
-				telemetry.ReportCriticalError(buildContext, fmt.Errorf("error when setting build status: %w", dbErr))
-			}
-
-			// Save the error in the logs
-			buildCacheErr := a.buildCache.Append(templateID, buildUUID, fmt.Sprintf("Build failed: %s\n", buildErr))
-			if buildCacheErr != nil {
-				telemetry.ReportCriticalError(buildContext, fmt.Errorf("error when appending build logs: %w", buildCacheErr))
-			}
-
-			cacheErr := a.buildCache.SetDone(templateID, buildUUID, api.TemplateBuildStatusError)
-			if cacheErr != nil {
-				telemetry.ReportCriticalError(buildContext, fmt.Errorf("error when setting build done in logs: %w", cacheErr))
-			}
-
-			return
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, fmt.Errorf("error when setting build status: %w", err))
 		}
+
+		return
+	}
+
+	// status building must be set after build is triggered because then
+	// it's possible build status job will be triggered before build cache on template manager is created and build will fail
+	err = a.templateManager.SetStatus(
+		ctx,
+		templateID,
+		buildUUID,
+		envbuild.StatusBuilding,
+		"starting build",
+	)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, fmt.Errorf("error when setting build status: %w", err))
+
+		return
+	}
+
+	telemetry.ReportEvent(ctx, "created new environment", attribute.String("env.id", templateID))
+
+	// Do not wait for global build sync trigger it immediately
+	go func() {
+		buildContext, buildSpan := a.Tracer.Start(
+			trace.ContextWithSpanContext(context.Background(), span.SpanContext()),
+			"template-background-build-env",
+		)
+		defer buildSpan.End()
+
+		a.templateManager.BuildStatusSync(buildContext, buildUUID, templateID)
 
 		// Invalidate the cache
 		a.templateCache.Invalidate(templateID)
-
-		a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "built environment", posthog.NewProperties().
-			Set("user_id", userID).
-			Set("environment", templateID).
-			Set("build_id", buildID).
-			Set("duration", time.Since(startTime).String()).
-			Set("success", err != nil),
-		)
 	}()
+
+	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "built environment", posthog.NewProperties().
+		Set("user_id", userID).
+		Set("environment", templateID).
+		Set("build_id", buildID).
+		Set("duration", time.Since(startTime).String()).
+		Set("success", err != nil),
+	)
 
 	c.Status(http.StatusAccepted)
 }

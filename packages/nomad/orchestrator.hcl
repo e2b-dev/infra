@@ -25,6 +25,11 @@ job "orchestrator" {
       }
     }
 
+    service {
+      name = "orchestrator-proxy"
+      port = "${proxy_port}"
+    }
+
     task "start" {
       driver = "raw_exec"
 
@@ -37,18 +42,22 @@ job "orchestrator" {
         ENVIRONMENT                  = "${environment}"
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
+        CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
+        CLICKHOUSE_USERNAME          = "${clickhouse_username}"
+        CLICKHOUSE_PASSWORD          = "${clickhouse_password}"
+        CLICKHOUSE_DATABASE          = "${clickhouse_database}"
       }
 
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port}"]
+        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port} --proxy-port ${proxy_port}"]
       }
 
       artifact {
         source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator"
 
-        %{ if environment == "staging" }
-        // Checksum in only available for staging to increase development speed in prod use rolling updates
+        %{ if environment == "dev" }
+        // Checksum in only available for dev to increase development speed in prod use rolling updates
         options {
           checksum = "md5:${orchestrator_checksum}"
         }

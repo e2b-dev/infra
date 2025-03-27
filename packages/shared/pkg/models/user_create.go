@@ -71,14 +71,14 @@ func (uc *UserCreate) AddCreatedEnvs(e ...*Env) *UserCreate {
 }
 
 // AddAccessTokenIDs adds the "access_tokens" edge to the AccessToken entity by IDs.
-func (uc *UserCreate) AddAccessTokenIDs(ids ...string) *UserCreate {
+func (uc *UserCreate) AddAccessTokenIDs(ids ...uuid.UUID) *UserCreate {
 	uc.mutation.AddAccessTokenIDs(ids...)
 	return uc
 }
 
 // AddAccessTokens adds the "access_tokens" edges to the AccessToken entity.
 func (uc *UserCreate) AddAccessTokens(a ...*AccessToken) *UserCreate {
-	ids := make([]string, len(a))
+	ids := make([]uuid.UUID, len(a))
 	for i := range a {
 		ids[i] = a[i].ID
 	}
@@ -244,7 +244,7 @@ func (uc *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Columns: []string{user.AccessTokensColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeString),
+				IDSpec: sqlgraph.NewFieldSpec(accesstoken.FieldID, field.TypeUUID),
 			},
 		}
 		edge.Schema = uc.schemaConfig.AccessToken

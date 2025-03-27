@@ -1,8 +1,11 @@
-go 1.23
+go 1.23.7
+
+toolchain go1.23.7
 
 use (
 	./packages/api
 	./packages/client-proxy
+	./packages/db
 	./packages/docker-reverse-proxy
 	./packages/envd
 	./packages/orchestrator
