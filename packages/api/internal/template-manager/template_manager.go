@@ -32,7 +32,7 @@ type TemplateManager struct {
 
 var (
 	syncInterval             = time.Minute * 1
-	syncTimeout              = time.Minute * 5
+	syncTimeout              = time.Minute * 15
 	syncWaitingStateDeadline = time.Minute * 20
 )
 
@@ -120,15 +120,13 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 
 	checker := &PollBuildStatus{
 		statusClient:          tm.grpc.Client,
-		ctx:                   childCtx,
 		logger:                logger,
 		templateID:            templateID,
 		buildID:               buildID,
 		templateManagerClient: tm,
 	}
 
-	checker.poll()
-
+	checker.poll(ctx)
 }
 
 type statusClient interface {
@@ -141,7 +139,6 @@ type templateManagerClient interface {
 }
 
 type PollBuildStatus struct {
-	ctx                   context.Context
 	statusClient          statusClient
 	logger                *zap.Logger
 	templateID            string
@@ -150,29 +147,33 @@ type PollBuildStatus struct {
 	status                *template_manager.TemplateBuildStatusResponse
 }
 
-// satisfies the type signature of retry.RunContext even though we don't use the context
-func (c *PollBuildStatus) getPollRetryFunction(_ context.Context) error {
-	c.logger.Info("Polling build status")
-	err := c.setBuildStatus()
-	if !isErrorRetryable(err) {
-		c.logger.Error("got terminal error when polling build status", zap.Error(err))
-		return retry.Stop(err)
-	}
-	c.logger.Debug("got retryable error or nil when polling build status", zap.Error(err))
-	return err
+func (c *PollBuildStatus) poll(ctx context.Context) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 
-}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			c.logger.Info("Checking template build status")
 
-func (c *PollBuildStatus) poll() {
-	retrier := retry.NewRetrier(2400, time.Second, time.Second)
+			err, buildSucceed := c.checkBuildStatus(ctx)
+			if err != nil {
+				c.logger.Error("Build status polling received unrecoverable error", zap.Error(err))
 
-	err := retrier.RunContext(c.ctx, c.getPollRetryFunction)
+				statusErr := c.templateManagerClient.SetStatus(ctx, c.templateID, c.buildID, envbuild.StatusFailed, fmt.Sprintf("polling received unrecoverable error: %s", err))
+				if statusErr != nil {
+					c.logger.Error("error when setting build status", zap.Error(statusErr))
+				}
+				return
+			}
 
-	if err != nil {
-		c.logger.Error("Polling timed out", zap.Error(err))
-		err := c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, fmt.Sprintf("polling timed out: %s", err))
-		if err != nil {
-			c.logger.Error("error when setting build status", zap.Error(err))
+			// build status can return empty error when build is still in progress
+			// this will cause fast return to avoid pooling when build is already finished
+			if buildSucceed {
+				return
+			}
 		}
 	}
 }
@@ -193,11 +194,12 @@ func newTerminalError(err error) error {
 	}
 }
 
-func (c *PollBuildStatus) setStatus() error {
+func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 	if c.statusClient == nil {
 		return errors.New("status client is nil")
 	}
-	status, err := c.statusClient.TemplateBuildStatus(c.ctx, &template_manager.TemplateStatusRequest{TemplateID: c.templateID, BuildID: c.buildID.String()})
+
+	status, err := c.statusClient.TemplateBuildStatus(ctx, &template_manager.TemplateStatusRequest{TemplateID: c.templateID, BuildID: c.buildID.String()})
 
 	if err != nil && errors.Is(err, context.DeadlineExceeded) {
 		return errors.Wrap(err, "context deadline exceeded")
@@ -217,43 +219,37 @@ func (c *PollBuildStatus) setStatus() error {
 
 }
 
-func (c *PollBuildStatus) dispatchBasedOnStatus(status *template_manager.TemplateBuildStatusResponse) error {
+func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *template_manager.TemplateBuildStatusResponse) (error, bool) {
 	if status == nil {
-		return errors.New("nil status")
+		return errors.New("nil status"), false
 	}
 	switch status.GetStatus() {
 	case template_manager.TemplateBuildState_Failed:
 		// build failed
-		err := c.templateManagerClient.SetStatus(c.ctx, c.templateID, c.buildID, envbuild.StatusFailed, "template build failed according to status")
+		err := c.templateManagerClient.SetStatus(ctx, c.templateID, c.buildID, envbuild.StatusFailed, "template build failed according to status")
 		if err != nil {
-			return errors.Wrap(err, "error when setting build status")
+			return errors.Wrap(err, "error when setting build status"), false
 		}
-		return nil
+		return nil, false
 	case template_manager.TemplateBuildState_Completed:
 		// build completed
 		meta := status.GetMetadata()
 		if meta == nil {
-			return errors.New("nil metadata")
+			return errors.New("nil metadata"), false
 		}
-		err := c.templateManagerClient.SetFinished(c.ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
+
+		err := c.templateManagerClient.SetFinished(ctx, c.templateID, c.buildID, int64(meta.RootfsSizeKey), meta.EnvdVersionKey)
 		if err != nil {
-			return errors.Wrap(err, "error when finishing build")
+			return errors.Wrap(err, "error when finishing build"), false
 		}
-		return nil
+		return nil, true
 	default:
 		c.logger.Debug("skipping status", zap.Any("status", status))
-		return nil
+		return nil, false
 	}
 }
 
-func isErrorRetryable(err error) bool {
-	if err == nil {
-		return true
-	}
-	return !errors.As(err, &terminalError{})
-}
-
-func (c *PollBuildStatus) setBuildStatus() error {
+func (c *PollBuildStatus) checkBuildStatus(ctx context.Context) (error, bool) {
 	c.logger.Info("Checking template build status")
 
 	retrier := retry.NewRetrier(
@@ -261,21 +257,21 @@ func (c *PollBuildStatus) setBuildStatus() error {
 		100*time.Millisecond,
 		time.Second,
 	)
-	err := retrier.Run(c.setStatus)
 
+	err := retrier.RunContext(ctx, c.setStatus)
 	if err != nil {
 		c.logger.Error("error when calling setStatus", zap.Error(err))
-		return err
+		return err, false
 	}
 
 	c.logger.Debug("dispatching based on status", zap.Any("status", c.status))
 
-	err = c.dispatchBasedOnStatus(c.status)
+	err, successStatus := c.dispatchBasedOnStatus(ctx, c.status)
 	if err != nil {
-		return errors.Wrap(err, "error when dispatching build status")
+		return errors.Wrap(err, "error when dispatching build status"), false
 	}
 
-	return nil
+	return nil, successStatus
 }
 
 func (tm *TemplateManager) removeFromProcessingQueue(buildID uuid.UUID) {
