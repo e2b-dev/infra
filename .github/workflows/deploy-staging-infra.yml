@@ -1,4 +1,4 @@
-name: Deploy Staging
+name: Deploy Staging Infra
 
 on: workflow_dispatch
 
