@@ -1,6 +1,16 @@
 name: Deploy Staging Jobs
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Specific commit SHA to checkout'
+        required: true
+        type: string
+      tracking_id:
+        description: 'Unique tracking ID used for identifying the workflow run'
+        required: false
+        type: string
 
 concurrency:
   group: deploy-staging
@@ -15,8 +25,15 @@ jobs:
       id-token: write
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+
       - name: Setup environment
         uses: ./.github/actions/deploy-setup-staging
+        with:
+          postgres_connection_string: ${{ secrets.STAGING_POSTGRES_CONNECTION_STRING }}
 
       - name: Deploy remaining jobs
         run: |
