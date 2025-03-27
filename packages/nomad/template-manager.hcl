@@ -1,5 +1,4 @@
 job "template-manager" {
-  datacenters = ["${gcp_zone}"]
   node_pool  = "build"
   priority = 70
 

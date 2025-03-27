@@ -13,6 +13,7 @@ GRAFANA_MANAGED ?= false
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
+	TF_VAR_client_regional_cluster_size=$(CLIENT_REGIONAL_CLUSTER_SIZE) \
 	TF_VAR_client_cluster_auto_scaling_max=$(CLIENT_CLUSTER_AUTO_SCALING_MAX) \
 	TF_VAR_api_machine_type=$(API_MACHINE_TYPE) \
 	TF_VAR_api_cluster_size=$(API_CLUSTER_SIZE) \

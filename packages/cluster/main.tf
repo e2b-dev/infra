@@ -138,8 +138,11 @@ module "client_cluster" {
   cluster_name             = "${var.prefix}${var.client_cluster_name}"
   cluster_auto_scaling_max = var.client_cluster_auto_scaling_max
   cluster_size             = var.client_cluster_size
+  regional_cluster_size    = var.client_regional_cluster_size
   cluster_tag_name         = var.cluster_tag_name
-  gcp_zone                 = var.gcp_zone
+
+  gcp_region = var.gcp_region
+  gcp_zone   = var.gcp_zone
 
   machine_type = var.client_machine_type
   image_family = var.client_image_family
@@ -302,9 +305,10 @@ module "network" {
   domain_name               = var.domain_name
   additional_domains        = var.additional_domains
 
-  client_instance_group    = module.client_cluster.instance_group
-  client_proxy_port        = var.client_proxy_port
-  client_proxy_health_port = var.client_proxy_health_port
+  client_instance_group          = module.client_cluster.instance_group
+  client_regional_instance_group = module.client_cluster.regional_instance_group
+  client_proxy_port              = var.client_proxy_port
+  client_proxy_health_port       = var.client_proxy_health_port
 
   api_instance_group    = module.api_cluster.instance_group
   build_instance_group  = module.build_cluster.instance_group
