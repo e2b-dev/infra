@@ -98,14 +98,14 @@ func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 
 	address := fmt.Sprintf("http://%s:%d/health", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
 
-	var request *http.Request
-
+	var request *http.Request // declare before use rather than := so that the defer works
 	request, err = http.NewRequestWithContext(ctx, "GET", address, nil)
 	if err != nil {
 		return
 	}
 
-	response, err := httpClient.Do(request)
+	var response *http.Response // declare before use rather than := so that the defer works
+	response, err = httpClient.Do(request)
 	if err != nil {
 		return
 	}
@@ -123,6 +123,7 @@ func (s *Sandbox) Healthcheck(ctx context.Context, alwaysReport bool) {
 		return
 	}
 
+	// additional checks as needed ...
 }
 
 func isGTEVersion(curVersion, minVersion string) bool {
