@@ -55,11 +55,18 @@ func Middleware(service string) gin.HandlerFunc {
 	}
 	return func(c *gin.Context) {
 		c.Set(tracerKey, tracer)
-		savedCtx := c.Request.Context()
+		ctx := c.Request.Context()
 		defer func() {
-			c.Request = c.Request.WithContext(savedCtx)
+			c.Request = c.Request.WithContext(ctx)
 		}()
-		ctx := cfg.Propagators.Extract(savedCtx, propagation.HeaderCarrier(c.Request.Header))
+
+		// Remove traceparent (it's coming from our users and it can cause multiple calls share the same trace ID)
+		if c.Request.Header.Get("traceparent") != "" {
+			c.Request.Header.Del("traceparent")
+		}
+		// No need for calling Extract, as we are not expecting any incoming trace
+		// ctx := cfg.Propagators.Extract(savedCtx, propagation.HeaderCarrier(c.Request.Header))
+
 		opts := []oteltrace.SpanStartOption{
 			oteltrace.WithAttributes(semconv.NetAttributesFromHTTPRequest("tcp", c.Request)...),
 			oteltrace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(c.Request)...),

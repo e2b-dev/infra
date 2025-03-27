@@ -50,6 +50,15 @@ message TemplateBuildStatusResponse {
   TemplateBuildMetadata metadata = 2;
 }
 
+enum HealthState {
+  Healthy = 0;
+  Draining = 1;
+}
+
+message HealthStatusResponse {
+  HealthState status = 1;
+}
+
 // Interface exported by the server.
 service TemplateService {
   // TemplateCreate is a gRPC service that creates a new template
@@ -60,4 +69,6 @@ service TemplateService {
 
   // TemplateBuildDelete is a gRPC service that deletes files associated with a template build
   rpc TemplateBuildDelete (TemplateBuildDeleteRequest) returns (google.protobuf.Empty);
+
+  rpc HealthStatus (google.protobuf.Empty) returns (HealthStatusResponse);
 }

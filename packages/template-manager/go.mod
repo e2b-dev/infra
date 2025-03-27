@@ -5,12 +5,14 @@ go 1.23.7
 require (
 	cloud.google.com/go/artifactregistry v1.16.0
 	github.com/Microsoft/hcsshim v0.12.9
+	github.com/bits-and-blooms/bitset v1.17.0
 	github.com/docker/docker v27.5.1+incompatible
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
 	github.com/fsouza/go-dockerclient v1.12.0
 	github.com/go-openapi/strfmt v0.23.0
 	github.com/gogo/status v1.1.1
+	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
 	github.com/jellydator/ttlcache/v3 v3.3.1-0.20250207140243-aefc35918359
 	github.com/opencontainers/image-spec v1.1.0
@@ -45,7 +47,6 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.49.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/bits-and-blooms/bitset v1.17.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20241223141626-cff3c89139a3 // indirect
@@ -77,7 +78,6 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.25.1 // indirect

@@ -2,6 +2,7 @@ FROM golang:1.23-alpine3.20 AS builder
 
 RUN apk add --no-cache make
 
+# Shared
 WORKDIR /build/shared
 
 COPY .shared/go.mod .shared/go.sum ./
@@ -9,6 +10,15 @@ RUN go mod download
 
 COPY .shared/pkg pkg
 
+# DB
+WORKDIR /build/db
+
+COPY .db/go.mod .db/go.sum ./
+RUN go mod download
+
+COPY .db/pkg pkg
+
+# API
 WORKDIR /build/api
 
 COPY go.mod go.sum Makefile ./

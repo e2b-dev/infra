@@ -5,6 +5,7 @@ go 1.23.7
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/dchest/uniuri v1.2.0 // indirect
+	github.com/e2b-dev/infra/packages/db v0.0.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/getkin/kin-openapi v0.127.0
 	github.com/gin-contrib/cors v1.6.0
@@ -21,7 +22,7 @@ require (
 	github.com/oapi-codegen/gin-middleware v1.0.1
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/orcaman/concurrent-map/v2 v2.0.1
-	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.57.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.57.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.57.0
 	go.opentelemetry.io/otel v1.34.0
 	go.opentelemetry.io/otel/trace v1.34.0
@@ -31,7 +32,7 @@ require (
 require (
 	github.com/flowchartsman/retry v1.2.0
 	github.com/gin-contrib/zap v1.1.4
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/go-cmp v0.6.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.10.0
@@ -119,6 +120,10 @@ require (
 	github.com/hashicorp/serf v0.10.1 // indirect
 	github.com/huandu/xstrings v1.4.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgx/v5 v5.7.2 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
@@ -244,7 +249,11 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
+// Internal packages
+replace (
+	github.com/e2b-dev/infra/packages/db v0.0.0 => ../db
+	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
+)
 
 // https://github.com/grafana/loki/issues/2826
 replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5

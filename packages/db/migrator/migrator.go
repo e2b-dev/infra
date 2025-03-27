@@ -1,9 +1,9 @@
-package db
+package migrator
 
 import (
 	"database/sql"
-	"embed"
 	"fmt"
+	"os"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -11,9 +11,6 @@ import (
 )
 
 // Thin wrapper around the migrate package to make it easier to use.
-
-//go:embed migrations/*.sql
-var migrationsFS embed.FS
 
 var ErrNoVersion = migrate.ErrNilVersion
 var ErrNoChange = migrate.ErrNoChange
@@ -47,7 +44,7 @@ func (dm *DatabaseMigrator) Steps(steps int) error {
 }
 
 func (dm *DatabaseMigrator) List() ([]string, error) {
-	dirEntries, err := migrationsFS.ReadDir("migrations")
+	dirEntries, err := os.ReadDir("./migrations")
 	if err != nil {
 		return nil, err
 	}
@@ -56,6 +53,7 @@ func (dm *DatabaseMigrator) List() ([]string, error) {
 	for _, entry := range dirEntries {
 		migrationFiles = append(migrationFiles, entry.Name())
 	}
+
 	return migrationFiles, nil
 }
 
@@ -72,7 +70,7 @@ func (dm *DatabaseMigrator) SetLogger(logger migrate.Logger) {
 }
 
 func NewMigrator(connectionString string) (*DatabaseMigrator, error) {
-	d, err := iofs.New(migrationsFS, "migrations")
+	d, err := iofs.New(os.DirFS("."), "migrations")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database migrations iofs: %w", err)
 	}

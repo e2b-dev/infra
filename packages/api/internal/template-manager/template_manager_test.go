@@ -361,7 +361,9 @@ func Test_isErrorRetryable(t *testing.T) {
 		{
 			name: "should return false if error is not retryable",
 			args: args{
-				err: terminalError,
+				err: terminalError{
+					err: errors.New("some other error"),
+				},
 			},
 			want: false,
 		},

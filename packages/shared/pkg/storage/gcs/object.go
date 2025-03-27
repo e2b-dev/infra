@@ -27,6 +27,8 @@ type Object struct {
 	ctx    context.Context
 }
 
+var ErrObjectNotExist = storage.ErrObjectNotExist
+
 func NewObject(ctx context.Context, bucket *storage.BucketHandle, objectPath string) *Object {
 	obj := bucket.Object(objectPath).Retryer(
 		storage.WithMaxAttempts(maxAttempts),
@@ -50,7 +52,7 @@ func (o *Object) WriteTo(dst io.Writer) (int64, error) {
 
 	reader, err := o.object.NewReader(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create GCS reader: %w", err)
+		return 0, err
 	}
 
 	defer reader.Close()
