@@ -144,10 +144,11 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 		status *template_manager.TemplateBuildStatusResponse
 	}
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
+		name             string
+		fields           fields
+		args             args
+		wantSuccessState bool
+		wantErr          bool
 	}{
 		{
 			name: "should return error if status is nil",
@@ -157,7 +158,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 			args: args{
 				status: nil,
 			},
-			wantErr: true,
+			wantSuccessState: false,
+			wantErr:          true,
 		},
 		{
 			name: "should handle failed status",
@@ -171,7 +173,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Failed,
 				},
 			},
-			wantErr: true,
+			wantSuccessState: false,
+			wantErr:          true,
 		},
 		{
 			name: "should handle completed status with nil metadata",
@@ -183,7 +186,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Completed,
 				},
 			},
-			wantErr: true,
+			wantSuccessState: false,
+			wantErr:          true,
 		},
 		{
 			name: "should handle completed status successfully",
@@ -201,7 +205,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			wantSuccessState: false,
+			wantErr:          true,
 		},
 		{
 			name: "should not send to done channel for building status",
@@ -213,7 +218,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Building,
 				},
 			},
-			wantErr: false,
+			wantSuccessState: false,
+			wantErr:          false,
 		},
 		// should not get error when no error setting status
 		{
@@ -226,7 +232,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Building,
 				},
 			},
-			wantErr: false,
+			wantErr:          false,
+			wantSuccessState: false,
 		},
 		// should not get error when no error setting finished
 		{
@@ -243,7 +250,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
+			wantErr:          false,
+			wantSuccessState: true,
 		},
 		// should error when nil metadata
 		{
@@ -256,7 +264,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Completed,
 				},
 			},
-			wantErr: true,
+			wantErr:          true,
+			wantSuccessState: false,
 		},
 		// should not error when status is failure
 		{
@@ -269,7 +278,9 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Failed,
 				},
 			},
-			wantErr: false,
+
+			wantErr:          false,
+			wantSuccessState: false,
 		},
 	}
 	for _, tt := range tests {
@@ -279,7 +290,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 				logger:                zap.NewNop(),
 			}
 
-			err := c.dispatchBasedOnStatus(context.TODO(), tt.args.status)
+			err, success := c.dispatchBasedOnStatus(context.TODO(), tt.args.status)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Expected error, got no error")
@@ -287,6 +298,16 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 			} else {
 				if err != nil {
 					t.Errorf("Expected no error, got %v", err)
+				}
+			}
+
+			if tt.wantSuccessState {
+				if !success {
+					t.Errorf("Expected success, got failure")
+				}
+			} else {
+				if success {
+					t.Errorf("Expected failure, got success")
 				}
 			}
 		})
