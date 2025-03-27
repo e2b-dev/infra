@@ -118,7 +118,7 @@ func TestPollBuildStatus_setStatus(t *testing.T) {
 				statusClient: tt.fields.statusClient,
 				logger:       zap.NewNop(),
 			}
-			err := c.setStatus()
+			err := c.setStatus(context.TODO())
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("PollBuildStatus.getSetStatusFn() = %v", err)
@@ -144,10 +144,11 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 		status *template_manager.TemplateBuildStatusResponse
 	}
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
+		name             string
+		fields           fields
+		args             args
+		wantSuccessState bool
+		wantErr          bool
 	}{
 		{
 			name: "should return error if status is nil",
@@ -157,7 +158,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 			args: args{
 				status: nil,
 			},
-			wantErr: true,
+			wantSuccessState: false,
+			wantErr:          true,
 		},
 		{
 			name: "should handle failed status",
@@ -171,7 +173,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Failed,
 				},
 			},
-			wantErr: true,
+			wantSuccessState: false,
+			wantErr:          true,
 		},
 		{
 			name: "should handle completed status with nil metadata",
@@ -183,7 +186,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Completed,
 				},
 			},
-			wantErr: true,
+			wantSuccessState: false,
+			wantErr:          true,
 		},
 		{
 			name: "should handle completed status successfully",
@@ -201,7 +205,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			wantSuccessState: false,
+			wantErr:          true,
 		},
 		{
 			name: "should not send to done channel for building status",
@@ -213,7 +218,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Building,
 				},
 			},
-			wantErr: false,
+			wantSuccessState: false,
+			wantErr:          false,
 		},
 		// should not get error when no error setting status
 		{
@@ -226,7 +232,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Building,
 				},
 			},
-			wantErr: false,
+			wantErr:          false,
+			wantSuccessState: false,
 		},
 		// should not get error when no error setting finished
 		{
@@ -243,7 +250,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
+			wantErr:          false,
+			wantSuccessState: true,
 		},
 		// should error when nil metadata
 		{
@@ -256,7 +264,8 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Completed,
 				},
 			},
-			wantErr: true,
+			wantErr:          true,
+			wantSuccessState: false,
 		},
 		// should not error when status is failure
 		{
@@ -269,7 +278,9 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					Status: template_manager.TemplateBuildState_Failed,
 				},
 			},
-			wantErr: false,
+
+			wantErr:          false,
+			wantSuccessState: false,
 		},
 	}
 	for _, tt := range tests {
@@ -279,7 +290,7 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 				logger:                zap.NewNop(),
 			}
 
-			err := c.dispatchBasedOnStatus(tt.args.status)
+			err, success := c.dispatchBasedOnStatus(context.TODO(), tt.args.status)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Expected error, got no error")
@@ -289,97 +300,15 @@ func TestPollBuildStatus_dispatchBasedOnStatus(t *testing.T) {
 					t.Errorf("Expected no error, got %v", err)
 				}
 			}
-		})
-	}
-}
 
-type fakeBuildStatusSetter struct {
-	setBuildStatusError error
-}
-
-func (f *fakeBuildStatusSetter) setBuildStatus() error {
-	return f.setBuildStatusError
-}
-
-func TestPollBuildStatus_setStatusReturnsCorrectErrorType(t *testing.T) {
-	// TemplateBuildStatus returns context deadline exceeded, return a normal (retryable) error
-	// otherwise return a non-retryable error
-	type testCase struct {
-		name         string
-		isRetryable  bool
-		statusClient *fakeStatusClient
-	}
-
-	tests := []testCase{
-		{
-			name:        "should return retryable error if context deadline exceeded",
-			isRetryable: true,
-			statusClient: &fakeStatusClient{
-				err: context.DeadlineExceeded,
-			},
-		},
-		{
-			name:        "should return non-retryable error if error is not context deadline exceeded",
-			isRetryable: false,
-			statusClient: &fakeStatusClient{
-				err: errors.New("some other error"),
-			},
-		},
-	}
-	for _, tt := range tests {
-		c := &PollBuildStatus{
-			statusClient: tt.statusClient,
-			logger:       zap.NewNop(),
-		}
-		t.Run(tt.name, func(t *testing.T) {
-			err := c.setStatus()
-			// compare error types
-			retryable := isErrorRetryable(err)
-			if retryable != tt.isRetryable {
-				t.Errorf("Expected retryable error %v, got %v", tt.isRetryable, retryable)
-			}
-		})
-	}
-}
-
-func Test_isErrorRetryable(t *testing.T) {
-	type args struct {
-		err error
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
-	}{
-		{
-			name: "should return true if normal error",
-			args: args{
-				err: errors.New("some other error"),
-			},
-			want: true,
-		},
-		{
-			name: "should return false if error is not retryable",
-			args: args{
-				err: terminalError{
-					err: errors.New("some other error"),
-				},
-			},
-			want: false,
-		},
-		// context deadline exceeded
-		{
-			name: "should return true if error is context deadline exceeded",
-			args: args{
-				err: context.DeadlineExceeded,
-			},
-			want: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := isErrorRetryable(tt.args.err); got != tt.want {
-				t.Errorf("isErrorRetryable() = %v, want %v", got, tt.want)
+			if tt.wantSuccessState {
+				if !success {
+					t.Errorf("Expected success, got failure")
+				}
+			} else {
+				if success {
+					t.Errorf("Expected failure, got success")
+				}
 			}
 		})
 	}

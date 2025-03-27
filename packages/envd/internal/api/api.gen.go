@@ -44,6 +44,15 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// Metrics Resource usage metrics
+type Metrics struct {
+	// CpuUsedPct CPU usage percentage
+	CpuUsedPct *float32 `json:"cpu_used_pct,omitempty"`
+
+	// MemBytes Total virtual memory usage in bytes
+	MemBytes *int `json:"mem_bytes,omitempty"`
+}
+
 // FilePath defines model for FilePath.
 type FilePath = string
 
