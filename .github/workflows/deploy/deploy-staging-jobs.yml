@@ -1,0 +1,25 @@
+name: Deploy Staging
+
+on: workflow_dispatch
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy remaining jobs to the staging environment
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Setup environment
+        uses: ./.github/actions/deploy-setup-staging
+
+      - name: Deploy remaining jobs
+        run: |
+          make plan-only-jobs
+          make apply
+        

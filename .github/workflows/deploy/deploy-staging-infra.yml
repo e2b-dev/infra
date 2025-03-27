@@ -1,0 +1,37 @@
+name: Deploy Staging
+
+on: workflow_dispatch
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Infra to the staging environment
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Setup environment
+        uses: ./.github/actions/deploy-setup-staging
+
+      - name: Build and upload
+        run: |
+          make build-and-upload
+
+      - name: Copy public builds
+        run: |
+          make copy-public-builds
+
+      - name: Migrate database
+        run: |
+          make migrate
+
+      - name: Deploy infrastructure
+        run: |
+          make plan-without-jobs
+          make apply
+        
