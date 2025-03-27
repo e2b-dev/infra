@@ -32,7 +32,7 @@ require (
 require (
 	github.com/flowchartsman/retry v1.2.0
 	github.com/gin-contrib/zap v1.1.4
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/go-cmp v0.6.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.10.0
