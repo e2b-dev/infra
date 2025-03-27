@@ -104,95 +104,92 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 	}
 
 	// BLOCK: initialize services
-	{
-		srv.dns = dns.New()
-		srv.proxy = proxy
+	srv.dns = dns.New()
+	srv.proxy = proxy
 
-		opts := []logging.Option{
-			logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
-			logging.WithLevels(logging.DefaultServerCodeToLevel),
-			logging.WithFieldsFromContext(logging.ExtractFields),
-		}
-		srv.grpc = grpc.NewServer(
-			grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
-			grpc.ChainUnaryInterceptor(
-				recovery.UnaryServerInterceptor(),
-				selector.UnaryServerInterceptor(
-					logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-					logger.WithoutHealthCheck(),
-				),
+	opts := []logging.Option{
+		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
+		logging.WithLevels(logging.DefaultServerCodeToLevel),
+		logging.WithFieldsFromContext(logging.ExtractFields),
+	}
+	srv.grpc = grpc.NewServer(
+		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
+		grpc.ChainUnaryInterceptor(
+			recovery.UnaryServerInterceptor(),
+			selector.UnaryServerInterceptor(
+				logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
+				logger.WithoutHealthCheck(),
 			),
-			grpc.ChainStreamInterceptor(
-				selector.StreamServerInterceptor(
-					logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-					logger.WithoutHealthCheck(),
-				),
+		),
+		grpc.ChainStreamInterceptor(
+			selector.StreamServerInterceptor(
+				logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
+				logger.WithoutHealthCheck(),
 			),
-		)
+		),
+	)
 
-		devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool()
 
-		if err != nil {
-			return nil, fmt.Errorf("failed to create device pool: %w", err)
-		}
+	if err != nil {
+		return nil, fmt.Errorf("failed to create device pool: %w", err)
+	}
 
-		useLokiMetrics := os.Getenv("WRITE_LOKI_METRICS")
-		useClickhouseMetrics := os.Getenv("WRITE_CLICKHOUSE_METRICS")
-		readClickhouseMetrics := os.Getenv("READ_CLICKHOUSE_METRICS")
+	useLokiMetrics := os.Getenv("WRITE_LOKI_METRICS")
+	useClickhouseMetrics := os.Getenv("WRITE_CLICKHOUSE_METRICS")
+	readClickhouseMetrics := os.Getenv("READ_CLICKHOUSE_METRICS")
 
-		var clickhouseStore chdb.Store = nil
+	var clickhouseStore chdb.Store = nil
 
-		if readClickhouseMetrics == "true" || useClickhouseMetrics == "true" {
-			clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
-				ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
-				Username:         os.Getenv("CLICKHOUSE_USERNAME"),
-				Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
-				Database:         os.Getenv("CLICKHOUSE_DATABASE"),
-				Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
-			}
-		}
-
-		srv.server = &server{
-			tracer:               otel.Tracer(ServiceName),
-			dns:                  srv.dns,
-			proxy:                srv.proxy,
-			sandboxes:            smap.New[*sandbox.Sandbox](),
-			networkPool:          networkPool,
-			templateCache:        templateCache,
-			clientID:             clientID,
-			devicePool:           devicePool,
-			clickhouseStore:      clickhouseStore,
-			useLokiMetrics:       useLokiMetrics,
-			useClickhouseMetrics: useClickhouseMetrics,
-		}
-		_, err = meters.GetObservableUpDownCounter(meters.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
-			observer.Observe(int64(srv.server.sandboxes.Count()))
-
-			return nil
+	if readClickhouseMetrics == "true" || useClickhouseMetrics == "true" {
+		clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
+			ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+			Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+			Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+			Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+			Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
 		})
-
 		if err != nil {
-			zap.L().Error("Error registering sandbox count metric", zap.Any("metric_name", meters.OrchestratorSandboxCountMeterName), zap.Error(err))
+			return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
 		}
+	}
+
+	srv.server = &server{
+		tracer:               otel.Tracer(ServiceName),
+		dns:                  srv.dns,
+		proxy:                srv.proxy,
+		sandboxes:            smap.New[*sandbox.Sandbox](),
+		networkPool:          networkPool,
+		templateCache:        templateCache,
+		clientID:             clientID,
+		devicePool:           devicePool,
+		clickhouseStore:      clickhouseStore,
+		useLokiMetrics:       useLokiMetrics,
+		useClickhouseMetrics: useClickhouseMetrics,
+	}
+	_, err = meters.GetObservableUpDownCounter(meters.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+		observer.Observe(int64(srv.server.sandboxes.Count()))
+
+		return nil
+	})
+
+	if err != nil {
+		zap.L().Error("Error registering sandbox count metric", zap.Any("metric_name", meters.OrchestratorSandboxCountMeterName), zap.Error(err))
 	}
 
 	// BLOCK: setup database
-	{
-		const dbConnStr = "file:./db/sandboxes.db?_journal_mode=wal"
-		drv, err := sql.Open("sqlite3", dbConnStr)
-		if err != nil {
-			return nil, fmt.Errorf("connecting to %q: %w", dbConnStr, err)
-		}
-
-		srv.db, err = db.New(ctx, drv)
-		if err != nil {
-			return nil, fmt.Errorf("using database at %q: %w", dbConnStr, err)
-		}
+	const dbConnStr = "file:./db/sandboxes.db?_journal_mode=wal"
+	drv, err := sql.Open("sqlite3", dbConnStr)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to %q: %w", dbConnStr, err)
 	}
 
+	srv.db, err = db.New(ctx, drv)
+	if err != nil {
+		return nil, fmt.Errorf("using database at %q: %w", dbConnStr, err)
+	}
+
+	// BLOCK: register services and return
 	orchestrator.RegisterSandboxServiceServer(srv.grpc, srv.server)
 
 	srv.grpcHealth = health.NewServer()
