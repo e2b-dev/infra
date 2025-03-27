@@ -1,5 +1,9 @@
 name: "Deploy Staging Setup"
 description: "Sets the environment for deploying to staging"
+inputs:
+  postgres_connection_string:
+    description: 'PostgreSQL connection string'
+    required: true
 
 runs:
   using: "composite"
@@ -45,7 +49,7 @@ runs:
         BUILD_MACHINE_TYPE: n1-standard-8
         BUILD_CLUSTER_SIZE: 1
         DOMAIN_NAME: e2b-staging.dev
-        POSTGRES_CONNECTION_STRING: ${{ secrets.STAGING_POSTGRES_CONNECTION_STRING }}
+        POSTGRES_CONNECTION_STRING: ${{ inputs.postgres_connection_string }}
       run: |
         echo "staging" > .last_used_env
         printenv > .env.staging

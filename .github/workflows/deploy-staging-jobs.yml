@@ -18,6 +18,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Setup environment
         uses: ./.github/actions/deploy-setup-staging
+        with:
+          postgres_connection_string: ${{ secrets.STAGING_POSTGRES_CONNECTION_STRING }}
 
       - name: Deploy remaining jobs
         run: |
