@@ -7,6 +7,10 @@ on:
         description: 'Specific commit SHA to checkout'
         required: true
         type: string
+      tracking_id:
+        description: 'Unique tracking ID used for identifying the workflow run'
+        required: false
+        type: string
 
 concurrency:
   group: deploy-staging
