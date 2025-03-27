@@ -8,9 +8,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
     - name: Setup Service Account
       uses: google-github-actions/auth@v2
       with:
