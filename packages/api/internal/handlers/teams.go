@@ -8,10 +8,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
-	teamDB "github.com/e2b-dev/infra/packages/shared/pkg/models/team"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/user"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/usersteams"
 )
 
 func (a *APIStore) GetTeams(c *gin.Context) {
@@ -19,13 +15,7 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 
 	userID := a.GetUserID(c)
 
-	teamsDB, err := a.db.Client.Team.Query().
-		Where(teamDB.HasUsersWith(user.ID(userID))).
-		WithTeamAPIKeys().
-		WithUsersTeams(func(query *models.UsersTeamsQuery) {
-			query.Where(usersteams.UserID(userID))
-		}).
-		All(ctx)
+	results, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
 	if err != nil {
 		log.Println("Error when starting transaction: ", err)
 		c.JSON(http.StatusInternalServerError, "Error when starting transaction")
@@ -33,9 +23,10 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 		return
 	}
 
-	teams := make([]api.Team, len(teamsDB))
-	for i, teamDB := range teamsDB {
-		apiKey, err := team.CreateAPIKey(ctx, a.db, teamDB.ID, userID, "CLI login/configure")
+	teams := make([]api.Team, len(results))
+	for i, row := range results {
+
+		apiKey, err := team.CreateAPIKey(ctx, a.db, row.Team.ID, userID, "CLI login/configure")
 		if err != nil {
 			log.Println("Error when creating API key: ", err)
 			c.JSON(http.StatusInternalServerError, "Error when creating API key")
@@ -44,11 +35,12 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 		}
 
 		teams[i] = api.Team{
-			TeamID:    teamDB.ID.String(),
-			Name:      teamDB.Name,
+			TeamID:    row.Team.ID.String(),
+			Name:      row.Team.Name,
 			ApiKey:    apiKey.APIKey,
-			IsDefault: teamDB.Edges.UsersTeams[0].IsDefault,
+			IsDefault: row.UsersTeam.IsDefault,
 		}
 	}
+
 	c.JSON(http.StatusOK, teams)
 }
