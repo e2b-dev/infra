@@ -1,7 +1,3 @@
-variable "gcp_zone" {
-  type = string
-}
-
 variable "session_proxy_port_number" {
   type = number
 }
@@ -24,7 +20,6 @@ variable "nginx_conf" {
 
 job "session-proxy" {
   type = "system"
-  datacenters = [var.gcp_zone]
 
   priority = 80
 

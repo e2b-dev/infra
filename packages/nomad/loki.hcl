@@ -1,5 +1,4 @@
 job "loki" {
-  datacenters = ["${gcp_zone}"]
   type        = "service"
   node_pool = "api"
 

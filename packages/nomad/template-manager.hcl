@@ -66,7 +66,6 @@ variable "logs_collector_address" {
 }
 
 job "template-manager" {
-  datacenters = [var.gcp_zone]
   node_pool  = "build"
   priority = 70
 

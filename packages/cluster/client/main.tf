@@ -20,7 +20,7 @@ resource "google_compute_autoscaler" "default" {
 
   name   = "${var.cluster_name}-autoscaler"
   zone   = var.gcp_zone
-  target = google_compute_instance_group_manager.client_cluster.id
+  target = google_compute_region_instance_group_manager.client_cluster.id
 
   autoscaling_policy {
     max_replicas    = var.cluster_size + var.cluster_auto_scaling_max
@@ -34,8 +34,9 @@ resource "google_compute_autoscaler" "default" {
   }
 }
 
-resource "google_compute_instance_group_manager" "client_cluster" {
-  name = "${var.cluster_name}-ig"
+resource "google_compute_region_instance_group_manager" "client_cluster" {
+  name   = "${var.cluster_name}-rig"
+  region = var.gcp_region
 
   version {
     name              = google_compute_instance_template.client.id
