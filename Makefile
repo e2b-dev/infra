@@ -131,14 +131,6 @@ migrate:
 
 
 .PHONY: generate
-generate:
-generate/%:
-	$(MAKE) -C packages/$(notdir $@) generate
-	@printf "\n\n"
-
-
-
-.PHONY: generate
 generate:generate/api
 generate:generate/orchestrator
 generate:generate/template-manager
@@ -147,8 +139,9 @@ generate:generate/db
 generate:generate/orchestrator/internal
 generate:generate/shared
 generate/%:
-	@echo "Generating code for *$(notdir $@)*"
-	$(MAKE) -C packages/$(subst generate/,,$@) generate-models
+	$(MAKE) -C packages/$(notdir $@) generate
+	@printf "\n\n"
+
 
 .PHONY: switch-env
 switch-env:

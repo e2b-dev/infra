@@ -11,12 +11,13 @@ import (
 )
 
 const createSandbox = `-- name: CreateSandbox :exec
-INSERT INTO sandboxes(id, status, started_at, deadline, global_version)
+INSERT INTO sandboxes(id, status, started_at, deadline, config, global_version)
 VALUES (
    ?1,
    ?2,
    ?3,
    ?4,
+   ?5,
    (SELECT version FROM status WHERE status.id = 1)
 )
 `
@@ -26,6 +27,7 @@ type CreateSandboxParams struct {
 	Status    string
 	StartedAt time.Time
 	Deadline  time.Time
+	Config    []byte
 }
 
 func (q *Queries) CreateSandbox(ctx context.Context, arg CreateSandboxParams) error {
@@ -34,6 +36,7 @@ func (q *Queries) CreateSandbox(ctx context.Context, arg CreateSandboxParams) er
 		arg.Status,
 		arg.StartedAt,
 		arg.Deadline,
+		arg.Config,
 	)
 	return err
 }

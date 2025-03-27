@@ -29,12 +29,13 @@ WHERE
 RETURNING version;
 
 -- name: CreateSandbox :exec
-INSERT INTO sandboxes(id, status, started_at, deadline, global_version)
+INSERT INTO sandboxes(id, status, started_at, deadline, config, global_version)
 VALUES (
    sqlc.arg('id'),
    sqlc.arg('status'),
    sqlc.arg('started_at'),
    sqlc.arg('deadline'),
+   sqlc.arg('config'),
    (SELECT version FROM status WHERE status.id = 1)
 );
 

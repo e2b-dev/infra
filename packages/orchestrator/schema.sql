@@ -13,7 +13,8 @@ CREATE TABLE sandboxes (
   version         INTEGER     CHECK( version > 0 )
                               NOT NULL,
   global_version  INTEGER     CHECK( global_version > 0 )
-                              NOT NULL
+                              NOT NULL,
+  config          BLOB
 );
 
 CREATE TABLE status (

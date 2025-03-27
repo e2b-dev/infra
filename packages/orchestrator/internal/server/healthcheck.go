@@ -81,14 +81,13 @@ func (h *Healthcheck) Start(ctx context.Context, listener net.Listener) error {
 		}
 	}()
 
-
-	shutdownErr := make(chan err)
+	shutdownErr := make(chan error)
 	go func() {
 		defer close(shutdownErr)
 		<-ctx.Done()
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCtx
+		defer shutdownCancel()
 
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			select {

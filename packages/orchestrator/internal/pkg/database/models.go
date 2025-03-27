@@ -17,6 +17,7 @@ type Sandbox struct {
 	DurationMs    int64
 	Version       int64
 	GlobalVersion int64
+	Config        []byte
 }
 
 type Status struct {

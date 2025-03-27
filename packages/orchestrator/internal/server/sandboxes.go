@@ -11,8 +11,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/internal/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -68,13 +69,18 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	if err != nil {
 		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))
 		cleanupErr := cleanup.Run()
+		err = grpc.Errorf(codes.Internal, "failed to cleanup sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
 
-		errMsg := fmt.Errorf("failed to cleanup sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, status.New(codes.Internal, err.Error()).Err()
+		return nil, err
 	}
 	started := time.Now()
+
+	confProto, err := proto.Marshal(sbx.Config)
+	if err != nil {
+		sbxlogger.I(sbx).Error("failed to marshal sandbox config for the database", zap.Error(err))
+	}
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
 	if err := s.db.CreateSandbox(ctx, database.CreateSandboxParams{
@@ -82,6 +88,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		Status:    database.SandboxStatusRunning,
 		StartedAt: started,
 		Deadline:  req.EndTime.AsTime(),
+		Config:    confProto,
 	}); err != nil {
 		return nil, err
 	}
@@ -134,15 +141,14 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	item, ok := s.sandboxes.Get(req.SandboxId)
 	if !ok {
-		errMsg := fmt.Errorf("sandbox not found")
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
+		err := grpc.Errorf(codes.NotFound, "sandbox not found")
+		telemetry.ReportCriticalError(ctx, err)
+		return nil, err
 	}
 
 	item.EndAt = req.EndTime.AsTime()
 	if err := s.db.UpdateSandboxDeadline(ctx, req.SandboxId, item.EndAt); err != nil {
-		return nil, status.New(codes.Internal, fmt.Sprintf("db update sandbox: %w", err)).Err()
+		return nil, grpc.Errorf(codes.Internal, fmt.Sprintf("db update sandbox: %w", err))
 	}
 
 	return &emptypb.Empty{}, nil
@@ -192,10 +198,10 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
 	if !ok {
-		errMsg := fmt.Errorf("sandbox '%s' not found", in.SandboxId)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		err := fmt.Errorf("sandbox '%s' not found", in.SandboxId)
+		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
+		return nil, grpc.Errorf(codes.NotFound, err.Error())
 	}
 
 	// Don't allow connecting to the sandbox anymore.
@@ -237,7 +243,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, status.New(codes.ResourceExhausted, err.Error()).Err()
+		return nil, grpc.Errorf(codes.ResourceExhausted, err.Error())
 	}
 
 	releaseOnce := sync.OnceFunc(func() {
@@ -251,10 +257,10 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	if !ok {
 		s.pauseMu.Unlock()
 
-		errMsg := fmt.Errorf("sandbox not found")
-		telemetry.ReportCriticalError(ctx, errMsg)
+		err := fmt.Errorf("sandbox not found")
+		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
+		return nil, grpc.Errorf(codes.NotFound, err.Error())
 	}
 
 	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
@@ -274,18 +280,17 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		sbx.Config.HugePages,
 	).NewTemplateCacheFiles()
 	if err != nil {
-		errMsg := fmt.Errorf("error creating template files: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		err = fmt.Errorf("error creating template files: %w", err)
+		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+		return nil, grpc.Errorf(codes.Internal, err.Error())
 	}
 
 	defer func() {
 		// sbx.Stop sometimes blocks for several seconds,
 		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and DNS.
 		go func() {
-			err := sbx.Stop()
-			if err != nil {
+			if err := sbx.Stop(); err != nil {
 				sbxlogger.I(sbx).Error("error stopping sandbox after snapshot", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 			}
 		}()
@@ -293,18 +298,18 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
 	if err != nil {
-		errMsg := fmt.Errorf("error creating sandbox cache dir '%s': %w", snapshotTemplateFiles.CacheDir(), err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		err = fmt.Errorf("error creating sandbox cache dir '%s': %w", snapshotTemplateFiles.CacheDir(), err)
+		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+		return nil, grpc.Errorf(codes.Internal, err.Error())
 	}
 
 	snapshot, err := sbx.Snapshot(ctx, s.tracer, snapshotTemplateFiles, releaseOnce)
 	if err != nil {
-		errMsg := fmt.Errorf("error snapshotting sandbox '%s': %w", in.SandboxId, err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		err = fmt.Errorf("error snapshotting sandbox '%s': %w", in.SandboxId, err)
+		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+		return nil, grpc.Errorf(codes.Internal, err.Error())
 	}
 
 	err = s.templateCache.AddSnapshot(
@@ -320,10 +325,10 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		snapshot.RootfsDiff,
 	)
 	if err != nil {
-		errMsg := fmt.Errorf("error adding snapshot to template cache: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		err = fmt.Errorf("error adding snapshot to template cache: %w", err)
+		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
+		return nil, grpc.Errorf(codes.Internal, err.Error())
 	}
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
