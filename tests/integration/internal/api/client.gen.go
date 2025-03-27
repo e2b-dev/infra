@@ -1058,9 +1058,9 @@ func NewGetSandboxesRequest(server string, params *GetSandboxesParams) (*http.Re
 	if params != nil {
 		queryValues := queryURL.Query()
 
-		if params.Query != nil {
+		if params.Metadata != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "query", runtime.ParamLocationQuery, *params.Query); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "metadata", runtime.ParamLocationQuery, *params.Metadata); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -1195,9 +1195,9 @@ func NewGetSandboxesMetricsRequest(server string, params *GetSandboxesMetricsPar
 	if params != nil {
 		queryValues := queryURL.Query()
 
-		if params.Query != nil {
+		if params.Metadata != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "query", runtime.ParamLocationQuery, *params.Query); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "metadata", runtime.ParamLocationQuery, *params.Metadata); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

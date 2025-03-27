@@ -2,10 +2,8 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -14,10 +12,12 @@ import (
 )
 
 // setupSandbox creates a new sandbox and returns its ID
-func setupSandbox(t *testing.T, c *api.ClientWithResponses, metadata *map[string]string) string {
+func setupSandbox(t *testing.T, c *api.ClientWithResponses) string {
 	createSandboxResponse, err := c.PostSandboxesWithResponse(context.Background(), api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
-		Metadata:   (*api.SandboxMetadata)(metadata),
+		Metadata: &api.SandboxMetadata{
+			"sandboxType": "test",
+		},
 	}, setup.WithAPIKey())
 
 	assert.NoError(t, err)
@@ -38,14 +38,14 @@ func pauseSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
 	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(context.Background(), sandboxID, setup.WithAPIKey())
 
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, pauseSandboxResponse.StatusCode())
+	assert.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
 }
 
 func TestSandboxList(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create a sandbox for testing
-	sandboxID := setupSandbox(t, c, nil)
+	sandboxID := setupSandbox(t, c)
 	defer teardownSandbox(t, c, sandboxID)
 
 	// Test basic list functionality
@@ -68,19 +68,14 @@ func TestSandboxList(t *testing.T) {
 func TestSandboxListWithFilter(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	uniqueID := fmt.Sprintf("%d", time.Now().UnixNano())
-	metadata := map[string]string{
-		"uniqueId": uniqueID,
-	}
-
-	metadataString := fmt.Sprintf("uniqueId=%s", uniqueID)
-
-	sandboxID := setupSandbox(t, c, &metadata)
+	sandboxID := setupSandbox(t, c)
 	defer teardownSandbox(t, c, sandboxID)
+
+	metadataString := "sandboxType=test"
 
 	// List with filter
 	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
-		Query: &metadataString,
+		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
@@ -92,12 +87,15 @@ func TestSandboxListRunning(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create a sandbox
-	sandboxID := setupSandbox(t, c, nil)
+	sandboxID := setupSandbox(t, c)
 	defer teardownSandbox(t, c, sandboxID)
+
+	metadataString := "sandboxType=test"
 
 	// List running sandboxes
 	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
-		State: &[]api.SandboxState{api.Running},
+		State:    &[]api.SandboxState{api.Running},
+		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
@@ -119,14 +117,17 @@ func TestSandboxListPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create and pause a sandbox
-	sandboxID := setupSandbox(t, c, nil)
+	sandboxID := setupSandbox(t, c)
 	pauseSandbox(t, c, sandboxID)
 
 	defer teardownSandbox(t, c, sandboxID)
 
+	metadataString := "sandboxType=test"
+
 	// List paused sandboxes
 	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
-		State: &[]api.SandboxState{api.Paused},
+		State:    &[]api.SandboxState{api.Paused},
+		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
@@ -148,17 +149,20 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create two sandboxes
-	sandbox1ID := setupSandbox(t, c, nil)
+	sandbox1ID := setupSandbox(t, c)
 	defer teardownSandbox(t, c, sandbox1ID)
 
-	sandbox2ID := setupSandbox(t, c, nil)
+	sandbox2ID := setupSandbox(t, c)
 	defer teardownSandbox(t, c, sandbox2ID)
 
 	// Test pagination with limit
 	var limit int32 = 1
+	metadataString := "sandboxType=test"
+
 	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
-		Limit: &limit,
-		State: &[]api.SandboxState{api.Running},
+		Limit:    &limit,
+		State:    &[]api.SandboxState{api.Running},
+		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 
 	assert.NoError(t, err)
@@ -167,13 +171,14 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
 
 	// Get second page using the next token from first response
-	nextToken := listResponse.HTTPResponse.Header.Get("Next-Token")
+	nextToken := listResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.NotEmpty(t, nextToken)
 
 	secondPageResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
 		Limit:     &limit,
 		NextToken: &nextToken,
 		State:     &[]api.SandboxState{api.Running},
+		Metadata:  &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
@@ -181,7 +186,7 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
 
 	// No more pages
-	nextToken = secondPageResponse.HTTPResponse.Header.Get("Next-Token")
+	nextToken = secondPageResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.Empty(t, nextToken)
 }
 
@@ -189,21 +194,24 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create two paused sandboxes
-	sandbox1ID := setupSandbox(t, c, nil)
+	sandbox1ID := setupSandbox(t, c)
 	pauseSandbox(t, c, sandbox1ID)
 
 	defer teardownSandbox(t, c, sandbox1ID)
 
-	sandbox2ID := setupSandbox(t, c, nil)
+	sandbox2ID := setupSandbox(t, c)
 	pauseSandbox(t, c, sandbox2ID)
 
 	defer teardownSandbox(t, c, sandbox2ID)
 
 	// Test pagination with limit
 	var limit int32 = 1
+	metadataString := "sandboxType=test"
+
 	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
-		Limit: &limit,
-		State: &[]api.SandboxState{api.Paused},
+		Limit:    &limit,
+		State:    &[]api.SandboxState{api.Paused},
+		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 
 	assert.NoError(t, err)
@@ -212,13 +220,14 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
 
 	// Get second page using the next token from first response
-	nextToken := listResponse.HTTPResponse.Header.Get("Next-Token")
+	nextToken := listResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.NotEmpty(t, nextToken)
 
 	secondPageResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
 		Limit:     &limit,
 		NextToken: &nextToken,
 		State:     &[]api.SandboxState{api.Paused},
+		Metadata:  &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
@@ -226,7 +235,7 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
 
 	// No more pages
-	nextToken = secondPageResponse.HTTPResponse.Header.Get("Next-Token")
+	nextToken = secondPageResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.Empty(t, nextToken)
 }
 
@@ -234,10 +243,10 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create two sandboxes
-	sandbox1ID := setupSandbox(t, c, nil)
+	sandbox1ID := setupSandbox(t, c)
 	defer teardownSandbox(t, c, sandbox1ID)
 
-	sandbox2ID := setupSandbox(t, c, nil)
+	sandbox2ID := setupSandbox(t, c)
 	defer teardownSandbox(t, c, sandbox2ID)
 
 	// Pause the second sandbox
@@ -245,9 +254,12 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 
 	// Test pagination with limit
 	var limit int32 = 1
+	metadataString := "sandboxType=test"
+
 	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
-		Limit: &limit,
-		State: &[]api.SandboxState{api.Running, api.Paused},
+		Limit:    &limit,
+		State:    &[]api.SandboxState{api.Running, api.Paused},
+		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 
 	assert.NoError(t, err)
@@ -256,13 +268,14 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
 
 	// Get second page using the next token from first response
-	nextToken := listResponse.HTTPResponse.Header.Get("Next-Token")
+	nextToken := listResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.NotEmpty(t, nextToken)
 
 	secondPageResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
 		Limit:     &limit,
 		NextToken: &nextToken,
 		State:     &[]api.SandboxState{api.Running, api.Paused},
+		Metadata:  &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
@@ -270,6 +283,6 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
 
 	// No more pages
-	nextToken = secondPageResponse.HTTPResponse.Header.Get("Next-Token")
+	nextToken = secondPageResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.Empty(t, nextToken)
 }
