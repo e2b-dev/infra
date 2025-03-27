@@ -16,7 +16,7 @@ WORKDIR /build/db
 COPY .db/go.mod .db/go.sum ./
 RUN go mod download
 
-COPY .db/pkg pkg
+COPY .db .
 
 # API
 WORKDIR /build/api
