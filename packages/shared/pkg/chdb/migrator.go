@@ -85,13 +85,16 @@ func NewMigrator(config ClickHouseConfig) (*ClickhouseMigrator, error) {
 	})
 
 	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS default.schema_migrations (
+	CREATE TABLE IF NOT EXISTS default.schema_migrations
+   ON CLUSTER cluster_1
+   (
 			version    Int64,
 			dirty      UInt8,
 			sequence   UInt64
-		)
-		ENGINE = ReplicatedMergeTree()
-		ORDER BY tuple();
+   )
+   ENGINE = ReplicatedMergeTree
+   ORDER BY id
+   SETTINGS storage_policy = 's3';
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create schema_migrations table: %w", err)
