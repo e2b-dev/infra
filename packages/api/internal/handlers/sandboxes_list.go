@@ -144,9 +144,6 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	// Add snapshots to results
 	for _, snapshot := range snapshots {
 		env := snapshot.Edges.Env
-		if env == nil {
-			continue
-		}
 
 		snapshotBuilds := env.Edges.Builds
 		if len(snapshotBuilds) == 0 {
@@ -324,14 +321,14 @@ func filterSandboxes(sandboxes []PaginatedSandbox, filters map[string]string) ([
 
 func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	ctx := c.Request.Context()
-	telemetry.ReportEvent(ctx, "list running instances")
+	telemetry.ReportEvent(ctx, "list sandboxes")
 
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
 	team := teamInfo.Team
 
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
-	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances", properties)
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed sandboxes", properties)
 
 	// Get sandboxes with pagination
 	sandboxes, nextToken, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
