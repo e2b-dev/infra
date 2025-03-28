@@ -31,7 +31,7 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION) \
 	TF_VAR_clickhouse_connection_string=$(CLICKHOUSE_CONNECTION_STRING) \
 	TF_VAR_clickhouse_username=$(CLICKHOUSE_USERNAME) \
-	TF_VAR_clickhouse_database=$(CLICKHOUSE_DATABASE) 
+	TF_VAR_clickhouse_database=$(CLICKHOUSE_DATABASE)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
@@ -124,17 +124,24 @@ copy-public-builds:
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
 
-.PHONY: generate
-generate: generate/api generate/orchestrator generate/template-manager generate/envd generate/db
-generate/%:
-	@echo "Generating code for *$(notdir $@)*"
-	$(MAKE) -C packages/$(notdir $@) generate
-	@printf "\n\n"
-
 .PHONY: migrate
 migrate:
 	$(MAKE) -C packages/db migrate-postgres/up
 	# $(MAKE) -C packages/shared migrate-clickhouse/up
+
+
+.PHONY: generate
+generate:generate/api
+generate:generate/orchestrator
+generate:generate/template-manager
+generate:generate/envd
+generate:generate/db
+generate:generate/orchestrator/internal
+generate:generate/shared
+generate/%:
+	$(MAKE) -C packages/$(notdir $@) generate
+	@printf "\n\n"
+
 
 .PHONY: switch-env
 switch-env:

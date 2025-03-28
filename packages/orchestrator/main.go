@@ -100,13 +100,13 @@ func run() int32 {
 	defer sbxLoggerInternal.Sync()
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
-	log.Println("Starting orchestrator", "commit", commitSHA)
+	logger.Info("Starting orchestrator", zap.String("commit", commitSHA))
 
 	sessionProxy := proxy.New(proxyPort)
 
 	srv, err := server.New(ctx, port, clientID, commitSHA, sessionProxy)
 	if err != nil {
-		zap.L().Fatal("failed to create server", zap.Error(err))
+		zap.L().Panic("failed to create server", zap.Error(err))
 	}
 
 	wg.Add(1)

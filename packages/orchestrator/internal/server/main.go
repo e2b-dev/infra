@@ -2,12 +2,14 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math"
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
@@ -22,6 +24,7 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/db"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -42,6 +45,7 @@ type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	sandboxes       *smap.Map[*sandbox.Sandbox]
 	dns             *dns.DNS
+	db              *db.DB
 	proxy           *proxy.SandboxProxy
 	tracer          trace.Tracer
 	networkPool     *network.Pool
@@ -61,8 +65,10 @@ type Service struct {
 	grpc       *grpc.Server
 	grpcHealth *health.Server
 	dns        *dns.DNS
+	db         *db.DB
 	proxy      *proxy.SandboxProxy
 	port       uint16
+	started    atomic.Bool
 	shutdown   struct {
 		once sync.Once
 		op   func(context.Context) error
@@ -98,81 +104,92 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 	}
 
 	// BLOCK: initialize services
-	{
-		srv.dns = dns.New()
-		srv.proxy = proxy
+	srv.dns = dns.New()
+	srv.proxy = proxy
 
-		opts := []logging.Option{
-			logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
-			logging.WithLevels(logging.DefaultServerCodeToLevel),
-			logging.WithFieldsFromContext(logging.ExtractFields),
-		}
-		srv.grpc = grpc.NewServer(
-			grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
-			grpc.ChainUnaryInterceptor(
-				recovery.UnaryServerInterceptor(),
-				selector.UnaryServerInterceptor(
-					logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-					logger.WithoutHealthCheck(),
-				),
+	opts := []logging.Option{
+		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
+		logging.WithLevels(logging.DefaultServerCodeToLevel),
+		logging.WithFieldsFromContext(logging.ExtractFields),
+	}
+	srv.grpc = grpc.NewServer(
+		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
+		grpc.ChainUnaryInterceptor(
+			recovery.UnaryServerInterceptor(),
+			selector.UnaryServerInterceptor(
+				logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
+				logger.WithoutHealthCheck(),
 			),
-			grpc.ChainStreamInterceptor(
-				selector.StreamServerInterceptor(
-					logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-					logger.WithoutHealthCheck(),
-				),
+		),
+		grpc.ChainStreamInterceptor(
+			selector.StreamServerInterceptor(
+				logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
+				logger.WithoutHealthCheck(),
 			),
-		)
+		),
+	)
 
-		devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool()
 
-		if err != nil {
-			return nil, fmt.Errorf("failed to create device pool: %w", err)
-		}
+	if err != nil {
+		return nil, fmt.Errorf("failed to create device pool: %w", err)
+	}
 
-		useLokiMetrics := os.Getenv("WRITE_LOKI_METRICS")
-		useClickhouseMetrics := os.Getenv("WRITE_CLICKHOUSE_METRICS")
-		readClickhouseMetrics := os.Getenv("READ_CLICKHOUSE_METRICS")
+	useLokiMetrics := os.Getenv("WRITE_LOKI_METRICS")
+	useClickhouseMetrics := os.Getenv("WRITE_CLICKHOUSE_METRICS")
+	readClickhouseMetrics := os.Getenv("READ_CLICKHOUSE_METRICS")
 
-		var clickhouseStore chdb.Store = nil
+	var clickhouseStore chdb.Store = nil
 
-		if readClickhouseMetrics == "true" || useClickhouseMetrics == "true" {
-			clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
-				ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
-				Username:         os.Getenv("CLICKHOUSE_USERNAME"),
-				Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
-				Database:         os.Getenv("CLICKHOUSE_DATABASE"),
-				Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
-			}
-		}
-
-		srv.server = &server{
-			tracer:               otel.Tracer(ServiceName),
-			dns:                  srv.dns,
-			proxy:                srv.proxy,
-			sandboxes:            smap.New[*sandbox.Sandbox](),
-			networkPool:          networkPool,
-			templateCache:        templateCache,
-			clientID:             clientID,
-			devicePool:           devicePool,
-			clickhouseStore:      clickhouseStore,
-			useLokiMetrics:       useLokiMetrics,
-			useClickhouseMetrics: useClickhouseMetrics,
-		}
-		_, err = meters.GetObservableUpDownCounter(meters.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
-			observer.Observe(int64(srv.server.sandboxes.Count()))
-
-			return nil
+	if readClickhouseMetrics == "true" || useClickhouseMetrics == "true" {
+		clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
+			ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
+			Username:         os.Getenv("CLICKHOUSE_USERNAME"),
+			Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
+			Database:         os.Getenv("CLICKHOUSE_DATABASE"),
+			Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
 		})
-
 		if err != nil {
-			zap.L().Error("Error registering sandbox count metric", zap.Any("metric_name", meters.OrchestratorSandboxCountMeterName), zap.Error(err))
+			return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
 		}
 	}
 
+	srv.server = &server{
+		tracer:               otel.Tracer(ServiceName),
+		dns:                  srv.dns,
+		proxy:                srv.proxy,
+		sandboxes:            smap.New[*sandbox.Sandbox](),
+		networkPool:          networkPool,
+		templateCache:        templateCache,
+		clientID:             clientID,
+		devicePool:           devicePool,
+		clickhouseStore:      clickhouseStore,
+		useLokiMetrics:       useLokiMetrics,
+		useClickhouseMetrics: useClickhouseMetrics,
+	}
+	_, err = meters.GetObservableUpDownCounter(meters.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+		observer.Observe(int64(srv.server.sandboxes.Count()))
+
+		return nil
+	})
+
+	if err != nil {
+		zap.L().Error("Error registering sandbox count metric", zap.Any("metric_name", meters.OrchestratorSandboxCountMeterName), zap.Error(err))
+	}
+
+	// BLOCK: setup database
+	const dbConnStr = "file:./db/sandboxes.db?_journal_mode=wal"
+	drv, err := sql.Open("sqlite3", dbConnStr)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to %q: %w", dbConnStr, err)
+	}
+
+	srv.db, err = db.New(ctx, drv)
+	if err != nil {
+		return nil, fmt.Errorf("using database at %q: %w", dbConnStr, err)
+	}
+
+	// BLOCK: register services and return
 	orchestrator.RegisterSandboxServiceServer(srv.grpc, srv.server)
 
 	srv.grpcHealth = health.NewServer()
@@ -187,12 +204,24 @@ func (srv *Service) Start(ctx context.Context) error {
 		return errors.New("orchestrator services are not initialized")
 	}
 
+	if !srv.started.CompareAndSwap(false, true) {
+		return errors.New("cannot start the orchestrator service more than once")
+	}
+
+	zap.L().Info("starting orchestrator service")
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
 	healthcheck, err := NewHealthcheck(srv.server, srv.grpc, srv.grpcHealth, srv.version)
 	if err != nil {
 		return fmt.Errorf("failed to create healthcheck: %w", err)
 	}
 
 	go func() {
+		defer zap.L().Info("DNS server returned")
+		defer wg.Done()
+
 		zap.L().Info("Starting DNS server")
 		if err := srv.dns.Start("127.0.0.4", 53); err != nil {
 			zap.L().Fatal("Failed running DNS server", zap.Error(err))
@@ -214,22 +243,37 @@ func (srv *Service) Start(ctx context.Context) error {
 
 	zap.L().Info("Starting orchestrator server", zap.Uint16("port", srv.port))
 
+	wg.Add(1)
 	go func() {
+		defer zap.L().Info("gRPC service returned")
+		defer wg.Done()
+
+		zap.L().Info("starting orchestrator server", zap.Uint16("port", srv.port))
 		if err := srv.grpc.Serve(grpcL); err != nil {
-			zap.L().Fatal("grpc server failed to serve", zap.Error(err))
+			zap.L().Panic("grpc server failed to serve", zap.Error(err))
 		}
 	}()
 
-	go healthcheck.Start(ctx, httpL)
+	wg.Add(1)
+	go func() {
+		defer zap.L().Info("healthcheck service returned")
+		defer wg.Done()
+
+		if err := healthcheck.Start(ctx, httpL); err != nil {
+			zap.L().Panic("healthcheck server failed", zap.Error(err))
+		}
+	}()
 
 	// Start serving traffic
 	go func() {
 		if err := m.Serve(); err != nil {
-			zap.L().Fatal("failed to serve", zap.Error(err))
+			zap.L().Panic("failed to serve", zap.Error(err))
 		}
 	}()
 
 	srv.shutdown.op = func(ctx context.Context) error {
+		defer zap.L().Info("orchestrator service has completed shutdown")
+
 		var errs []error
 
 		srv.grpc.GracefulStop()
@@ -237,6 +281,12 @@ func (srv *Service) Start(ctx context.Context) error {
 		m.Close()
 
 		if err := lis.Close(); err != nil {
+			errs = append(errs, err)
+		}
+
+		wg.Wait()
+
+		if err := srv.db.Close(ctx); err != nil {
 			errs = append(errs, err)
 		}
 
