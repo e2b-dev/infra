@@ -1,11 +1,9 @@
-CREATE TABLE IF NOT EXISTS default.metrics (
-	timestamp DateTime('UTC'),
-	sandbox_id String,
-	team_id String,
-	cpu_count UInt32,
-	cpu_used_pct Float32,
-	mem_total_mib UInt64,
-	mem_used_mib UInt64
-) Engine MergeTree()
-ORDER BY (timestamp)
-PRIMARY KEY timestamp;
+CREATE TABLE my_s3_table 
+   ON CLUSTER cluster_1
+   (
+       `id` UInt64,
+       `column1` String
+   )
+   ENGINE = ReplicatedMergeTree
+   ORDER BY id
+   SETTINGS storage_policy = 's3';
