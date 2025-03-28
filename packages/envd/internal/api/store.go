@@ -1,8 +1,11 @@
 package api
 
 import (
+	"connectrpc.com/authn"
+	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 
 	"github.com/rs/zerolog"
 
@@ -10,13 +13,33 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
+var (
+	accessTokenHeader = "X-Access-Token"
+
+	// todo: include HTTP method here!
+	alwaysAllowedProcedures = []string{"/health", "/files"}
+)
+
 type API struct {
-	logger  *zerolog.Logger
-	envVars *utils.Map[string, string]
+	logger      *zerolog.Logger
+	accessToken *string
+	envVars     *utils.Map[string, string]
 }
 
 func New(l *zerolog.Logger, envVars *utils.Map[string, string]) *API {
 	return &API{logger: l, envVars: envVars}
+}
+
+func (a *API) AuthenticateAccessToken(_ context.Context, req authn.Request) (any, error) {
+	// access token is required and it's not procedure with auth exception
+	if a.accessToken != nil && !slices.Contains(alwaysAllowedProcedures, req.Procedure()) {
+		authHeader := req.Header().Get(accessTokenHeader)
+		if authHeader != *a.accessToken {
+			return nil, authn.Errorf("invalid access token")
+		}
+	}
+
+	return nil, nil
 }
 
 func (a *API) GetHealth(w http.ResponseWriter, r *http.Request) {

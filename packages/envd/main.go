@@ -141,18 +141,20 @@ func main() {
 	filesystemRpc.Handle(m, &fsLogger)
 
 	envVars := utils.NewMap[string, string]()
-
 	envVars.Store("E2B_SANDBOX", "true")
 
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, envVars)
 
-	handler := api.HandlerFromMux(api.New(&envLogger, envVars), m)
+	service := api.New(&envLogger, envVars)
+	handler := api.HandlerFromMux(service, m)
 
-	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
+	userMiddleware := authn.NewMiddleware(permissions.AuthenticateUsername)
+	authMiddleware := authn.NewMiddleware(service.AuthenticateAccessToken)
 
 	s := &http.Server{
-		Handler:           withCORS(middleware.Wrap(handler)),
+		Handler: withCORS(authMiddleware.Wrap(userMiddleware.Wrap(handler))),
+		//Handler:           withCORS(userMiddleware.Wrap(handler)),
 		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       maxTimeout,

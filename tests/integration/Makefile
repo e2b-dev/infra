@@ -46,7 +46,7 @@ test:
 	export TESTS_SUPABASE_TOKEN=$(TESTS_SUPABASE_TOKEN); \
 	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
 	go test -v ./internal/main_test.go -count=1 && \
-	go test -v ./internal/tests/... -count=1
+	go test -v ./internal/tests/envd/... -count=1
 
 .PHONY: connect-orchestrator
 connect-orchestrator:
@@ -56,4 +56,4 @@ connect-orchestrator:
 		--format='value(name)' \
 		--zones=$(GCP_ZONE) | head -n1) && \
 	INSTANCE_ID=$$(gcloud compute instance-groups list-instances "$$CLIENT_IG" --project=$(GCP_PROJECT_ID) --zone=$(GCP_ZONE) --format='value(instance)' | head -n1) && \
-	gcloud compute ssh "$$INSTANCE_ID" --project=$(GCP_PROJECT_ID) --zone=$(GCP_ZONE) -- -NL 5008:localhost:5008 -o PermitLocalCommand=yes -o LocalCommand="echo 'SSH tunnel established'"
+	gcloud compute ssh "$$INSTANCE_ID" --project=$(GCP_PROJECT_ID) --zone=$(GCP_ZONE) -- -NL 5008:localhost:5008 -NL 5007:localhost:5007   -o PermitLocalCommand=yes -o LocalCommand="echo 'SSH tunnel established'"
