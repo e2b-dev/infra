@@ -175,7 +175,7 @@ job "clickhouse" {
             <shard>
                 <internal_replication>true</internal_replication>
                 <replica>
-                    <host>clickhouse-1</host>
+                    <host>{{ env "NOMAD_IP_clickhouse" }}</host>
                     <port>9000</port>
                 </replica>
 
@@ -184,7 +184,7 @@ job "clickhouse" {
     </remote_servers>
     <listen_host>0.0.0.0</listen_host>
     <interserver_http_port>9010</interserver_http_port>
-    <interserver_http_host>clickhouse-1</interserver_http_host>
+    <interserver_http_host>{{ env "NOMAD_IP_clickhouse" }}</interserver_http_host>
 </clickhouse>
 EOF
         destination = "local/config.xml"
