@@ -108,6 +108,7 @@ processors:
       include:
         match_type: regexp
         # Exclude metrics that start with `http`, `go`, `rpc`, or `nomad` but aren't `nomad.client`
+        # Include info about grpc server endpoint durations - used for monitoring request times
         metric_names:
           - "nomad_client_host_cpu_idle"
           - "nomad_client_host_disk_available"
@@ -121,6 +122,7 @@ processors:
           - "orchestrator.*"
           - "api.*"
           - "client_proxy.*"
+          - "rpc_server_duration"
   metricstransform:
     transforms:
       - include: "nomad_client_host_cpu_idle"
