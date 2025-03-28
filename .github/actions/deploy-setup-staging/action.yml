@@ -42,9 +42,9 @@ runs:
         SERVER_MACHINE_TYPE: e2-standard-2
         SERVER_CLUSTER_SIZE: 3
         API_MACHINE_TYPE: e2-standard-8
-        API_CLUSTER_SIZE: 1
+        API_CLUSTER_SIZE: 2
         BUILD_MACHINE_TYPE: n1-standard-8
-        BUILD_CLUSTER_SIZE: 1
+        BUILD_CLUSTER_SIZE: 2
         DOMAIN_NAME: e2b-staging.dev
         POSTGRES_CONNECTION_STRING: ${{ inputs.postgres_connection_string }}
       run: |
