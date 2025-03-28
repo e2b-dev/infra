@@ -3,6 +3,12 @@ job "template-manager" {
   node_pool  = "build"
   priority = 70
 
+%{ if update_stanza }
+  update {
+     progress_deadline = "20m"
+  }
+%{ endif }
+
   group "template-manager" {
     network {
       port "template-manager" {
@@ -28,9 +34,8 @@ job "template-manager" {
       driver = "raw_exec"
 
 %{ if update_stanza }
-      # If we need more than 10m we will need to update the max_kill_timeout in nomad
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
-      kill_timeout = "10m"
+      kill_timeout      = "20m"
 %{ endif }
       kill_signal  = "SIGTERM"
 
