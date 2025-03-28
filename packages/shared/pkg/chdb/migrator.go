@@ -90,7 +90,7 @@ func NewMigrator(config ClickHouseConfig) (*ClickhouseMigrator, error) {
 			dirty      UInt8,
 			sequence   UInt64
 		)
-		ENGINE = MergeTree()
+		ENGINE = ReplicatedMergeTree()
 		ORDER BY tuple();
 	`)
 	if err != nil {
