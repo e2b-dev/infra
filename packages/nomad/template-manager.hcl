@@ -5,7 +5,9 @@ job "template-manager" {
 
 %{ if update_stanza }
   update {
-     progress_deadline = "20m"
+      auto_promote      = true # Whether to promote the canary if the rest of the group is not healthy
+      canary            = 1 # Allows to spawn new version of the service before killing the old one
+      progress_deadline = "20m" # Deadline for the update to be completed
   }
 %{ endif }
 
