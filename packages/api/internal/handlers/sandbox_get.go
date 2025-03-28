@@ -20,7 +20,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
 	team := teamInfo.Team
 
-	telemetry.ReportEvent(ctx, "get running instance")
+	telemetry.ReportEvent(ctx, "get sandbox")
 
 	sandboxId := strings.Split(id, "-")[0]
 
