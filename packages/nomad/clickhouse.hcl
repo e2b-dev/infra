@@ -78,10 +78,16 @@ job "clickhouse" {
       }
     }
 
-    volume "clickhouse" {
+    volume "clickhouse-server" {
       type      = "host"
       read_only = false
-      source    = "clickhouse"
+      source    = "clickhouse-server"
+    }
+
+    volume "clickhouse-keeper" {
+      type      = "host"
+      read_only = false
+      source    = "clickhouse-keeper"
     }
 
 
@@ -90,7 +96,7 @@ job "clickhouse" {
       driver = "docker"
 
       volume_mount {
-        volume      = "clickhouse"
+        volume      = "clickhouse-server"
         destination = "/var/lib/clickhouse"
         read_only   = false
       }
@@ -126,9 +132,7 @@ job "clickhouse" {
      # see https://github.com/ClickHouse/ClickHouse/pull/77515 for more details
     <shutdown_wait_unfinished>60</shutdown_wait_unfinished>
     <shutdown_wait_unfinished_queries>1</shutdown_wait_unfinished_queries>
-    <path>/clickhouse/data</path>
 
-    <default_replica_path>/clickhouse/tables/{shard}/{database}/{table}</default_replica_path>
 
     <logger>
         <console>1</console>
@@ -139,9 +143,7 @@ job "clickhouse" {
         <storage_policy>s3</storage_policy>
     </replicated_merge_tree>
 
-    <distributed_ddl>
-        <path>/clickhouse/task_queue/ddl</path>
-    </distributed_ddl>
+
 
     <zookeeper>
         <node>
@@ -230,7 +232,7 @@ EOF
       driver = "docker"
 
       volume_mount {
-        volume      = "clickhouse"
+        volume      = "clickhouse-keeper"
         destination = "/var/lib/clickhouse"
         read_only   = false
       }

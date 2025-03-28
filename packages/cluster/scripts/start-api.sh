@@ -23,7 +23,6 @@ export GOMAXPROCS='nproc'
 apt-get update
 apt-get install -y nfs-common
 
-
 # Create mount directory
 mkdir -p "${NFS_MOUNT_PATH}"
 
