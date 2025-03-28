@@ -7,6 +7,10 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+const (
+	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
+)
+
 // Defines values for EntryInfoType.
 const (
 	File EntryInfoType = "file"
@@ -97,6 +101,9 @@ type PostFilesParams struct {
 
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
+	// AccessToken Access token for secure access to envd service
+	AccessToken *string `json:"accessToken,omitempty"`
+
 	// EnvVars Environment variables to set
 	EnvVars *EnvVars `json:"envVars,omitempty"`
 }

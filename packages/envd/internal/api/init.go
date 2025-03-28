@@ -3,11 +3,10 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"io"
+	"net/http"
 )
 
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
@@ -34,6 +33,11 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 				a.envVars.Store(key, value)
 			}
+		}
+
+		if initRequest.AccessToken != nil {
+			a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg("Setting access token")
+			a.accessToken = initRequest.AccessToken
 		}
 	}
 
