@@ -1,7 +1,7 @@
 job "clickhouse" {
   datacenters = ["${zone}"]
   type        = "service"
-  node_pool = "api"
+  node_pool   = "api"
 
 
   group "clickhouse" {
@@ -18,13 +18,23 @@ job "clickhouse" {
 
     network {
       port "clickhouse" {
-        to = 9000
+        to     = 9000
         static = 9000
       }
-      
+
       port "clickhouse_http" {
         static = 8123
-        to = 8123
+        to     = 8123
+      }
+
+      port "clickhouse-keeper" {
+        static = 9181
+        to     = 9181
+      }
+
+      port "clickhouse-keeper-raft" {
+        static = 9234
+        to     = 9234
       }
     }
 
@@ -46,8 +56,50 @@ job "clickhouse" {
       ]
     }
 
+    service {
+      name = "clickhouse-keeper"
+      port = "clickhouse-keeper"
+
+      check {
+        type     = "tcp"
+        interval = "10s"
+        timeout  = "5s"
+      }
+    }
+
+    service {
+      name = "clickhouse-keeper-raft"
+      port = "clickhouse-keeper-raft"
+
+      check {
+        type     = "tcp"
+        interval = "10s"
+        timeout  = "5s"
+      }
+    }
+
+    volume "clickhouse-server" {
+      type      = "host"
+      read_only = false
+      source    = "clickhouse-server"
+    }
+
+    volume "clickhouse-keeper" {
+      type      = "host"
+      read_only = false
+      source    = "clickhouse-keeper"
+    }
+
+
+
     task "clickhouse-server" {
       driver = "docker"
+
+      volume_mount {
+        volume      = "clickhouse-server"
+        destination = "/var/lib/clickhouse"
+        read_only   = false
+      }
 
       kill_timeout = "120s"
 
@@ -73,47 +125,75 @@ job "clickhouse" {
       }
 
       template {
-        data = <<EOF
+        data        = <<EOF
 <?xml version="1.0"?>
 <clickhouse>
      # this is undocumented but needed to enable waiting for for shutdown for a custom amount of time 
      # see https://github.com/ClickHouse/ClickHouse/pull/77515 for more details
     <shutdown_wait_unfinished>60</shutdown_wait_unfinished>
     <shutdown_wait_unfinished_queries>1</shutdown_wait_unfinished_queries>
+
+
+    <logger>
+        <console>1</console>
+         <level>information</level>
+    </logger>
+
+    <replicated_merge_tree>
+        <storage_policy>s3</storage_policy>
+    </replicated_merge_tree>
+
+
+
+    <zookeeper>
+        <node>
+            <host>{{ env "NOMAD_IP_clickhouse_keeper" }}</host>
+            <port>9181</port>
+        </node>
+    </zookeeper>
     <storage_configuration>
         <disks>
-            <gcs>
+            <s3>
                 <support_batch_delete>false</support_batch_delete>
                 <type>s3</type>
                 <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/</endpoint>
                 <access_key_id>${hmac_key}</access_key_id>
                 <secret_access_key>${hmac_secret}</secret_access_key>
-                <metadata_path>/var/lib/clickhouse/disks/gcs/</metadata_path>
-            </gcs>
-            <gcs_cache>
-                <type>cache</type>
-                <disk>gcs</disk>
-                <path>/var/lib/clickhouse/disks/gcs_cache/</path>
-                <max_size>1Gi</max_size>
-            </gcs_cache>
+            </s3>
         </disks>
-        <policies>
-            <gcs_main>
+           <policies>
+            <s3>
                 <volumes>
                     <main>
-                        <disk>gcs_cache</disk>
+                        <disk>s3</disk>
                     </main>
                 </volumes>
-            </gcs_main>
+            </s3>
         </policies>
     </storage_configuration>
+        <remote_servers replace="true">
+        <cluster_1>
+        <secret>mysecretphrase</secret>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>{{ env "NOMAD_IP_clickhouse" }}</host>
+                    <port>9000</port>
+                </replica>
+
+            </shard>
+        </cluster_1>
+    </remote_servers>
+    <listen_host>0.0.0.0</listen_host>
+    <interserver_http_port>9010</interserver_http_port>
+    <interserver_http_host>{{ env "NOMAD_IP_clickhouse" }}</interserver_http_host>
 </clickhouse>
 EOF
         destination = "local/config.xml"
       }
 
       template {
-        data = <<EOF
+        data        = <<EOF
 <?xml version="1.0"?>
 <clickhouse>
     <users>
@@ -132,6 +212,117 @@ EOF
         destination = "local/users.xml"
       }
 
+      template {
+        data        = <<EOF
+<?xml version="1.0"?>
+<clickhouse>
+    <macros>
+        <cluster>my_cluster</cluster>
+        <shard>01</shard>
+        <replica>01</replica>
+    </macros>
+</clickhouse> 
+EOF
+        destination = "local/macros.xml"
+      }
+    }
+
+
+    task "clickhouse-keeper" {
+      driver = "docker"
+
+      volume_mount {
+        volume      = "clickhouse-keeper"
+        destination = "/var/lib/clickhouse"
+        read_only   = false
+      }
+
+      resources {
+        cpu    = 500
+        memory = 2048
+      }
+
+      config {
+        image = "clickhouse/clickhouse-server:latest"
+
+        ports = ["clickhouse-keeper", "clickhouse-keeper-raft"]
+
+        volumes = [
+          "local/keeper.xml:/etc/clickhouse-server/config.d/keeper.xml",
+        ]
+      }
+
+      template {
+        data        = <<EOF
+<?xml version="1.0"?>
+<clickhouse>
+
+    <logger>
+        <console>1</console>
+         <level>information</level>
+    </logger>
+
+
+   <keeper_server>
+        <log_storage_disk>log_s3</log_storage_disk>
+        <latest_log_storage_disk>log_local</latest_log_storage_disk>
+
+        <snapshot_storage_disk>snapshot_s3</snapshot_storage_disk>
+        <latest_snapshot_storage_disk>snapshot_s3</latest_snapshot_storage_disk>
+
+        <state_storage_disk>state_s3</state_storage_disk>
+        <latest_state_storage_disk>state_s3</latest_state_storage_disk>
+
+        <tcp_port>9181</tcp_port>
+        <server_id>1</server_id>
+
+         <raft_configuration>
+            <server>
+                <id>1</id>
+                <hostname>{{ env "NOMAD_IP_clickhouse_keeper" }}</hostname>
+                <port>9234</port>
+            </server>
+        </raft_configuration>
+
+        <coordination_settings>
+            <operation_timeout_ms>10000</operation_timeout_ms>
+            <session_timeout_ms>30000</session_timeout_ms>
+        </coordination_settings>
+    </keeper_server>
+
+    <storage_configuration>
+        <disks>
+            <log_local>
+                <type>local</type>
+                <path>/tmp/lib/clickhouse/coordination/logs/</path>
+            </log_local>
+            <log_s3>
+                <type>s3</type>
+                <endpoint>https://storage.googleapis.com/${gcs_bucket}/clickhouse-data/keeper/logs/</endpoint>
+                <access_key_id>${hmac_key}</access_key_id>
+                <secret_access_key>${hmac_secret}</secret_access_key>
+                <support_batch_delete>false</support_batch_delete>
+            </log_s3>
+            <snapshot_s3>
+                <type>s3</type>
+                <endpoint>https://storage.googleapis.com/${gcs_bucket}/clickhouse-data/keeper/snapshots/</endpoint>
+                <access_key_id>${hmac_key}</access_key_id>
+                <secret_access_key>${hmac_secret}</secret_access_key>
+                <support_batch_delete>false</support_batch_delete>
+            </snapshot_s3>
+            <state_s3>
+                <type>s3</type>
+                <endpoint>https://storage.googleapis.com/${gcs_bucket}/clickhouse-data/keeper/state/</endpoint>
+                <access_key_id>${hmac_key}</access_key_id>
+                <secret_access_key>${hmac_secret}</secret_access_key>
+                <support_batch_delete>false</support_batch_delete>
+            </state_s3>
+        </disks>
+    </storage_configuration>
+</clickhouse> 
+EOF
+        destination = "local/keeper.xml"
+      }
     }
   }
 } 
