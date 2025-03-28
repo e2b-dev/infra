@@ -14,8 +14,10 @@ import (
 )
 
 var (
-	accessTokenHeader       = "X-Access-Token"
-	alwaysAllowedProcedures = []string{"/health"}
+	accessTokenHeader = "X-Access-Token"
+
+	// todo: include HTTP method here!
+	alwaysAllowedProcedures = []string{"/health", "/files"}
 )
 
 type API struct {

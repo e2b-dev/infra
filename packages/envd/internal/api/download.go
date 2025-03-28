@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"net/http"
 	"os"
 	"os/user"
@@ -12,16 +13,59 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 )
 
+func (a *API) buildFileReadSigningKey(path string, username string) (string, error) {
+	if a.accessToken == nil {
+		return "", fmt.Errorf("access token is not set")
+	}
+
+	hasher := keys.NewSHA256Hashing()
+	signing := fmt.Sprintf("%s:%s:%s", path, username, *a.accessToken)
+
+	return hasher.Hash([]byte(signing)), nil
+}
+
 func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesParams) {
 	defer r.Body.Close()
 
 	var errorCode int
-
 	var errMsg error
 
 	var path string
 	if params.Path != nil {
 		path = *params.Path
+	}
+
+	// validate signing key
+	// todo: we should check if valid token is present in headers, then we can skip this part
+	// todo: same logic cane bused for file upload
+	if a.accessToken != nil {
+		if params.Signing == nil {
+			errMsg = fmt.Errorf("missing signing key")
+			errorCode = http.StatusUnauthorized
+
+			a.logger.Err(errMsg)
+			jsonError(w, errorCode, errMsg)
+			return
+		}
+
+		hash, err := a.buildFileReadSigningKey(path, params.Username)
+		if err != nil {
+			errorCode = http.StatusInternalServerError
+			errMsg = fmt.Errorf("error building signing key for user '%s' and path '%s'", params.Username, path)
+
+			a.logger.Err(errMsg)
+			jsonError(w, errorCode, errMsg)
+			return
+		}
+
+		if hash != *params.Signing {
+			errMsg = fmt.Errorf("bad signing key for user '%s' and path '%s'", params.Username, path)
+			errorCode = http.StatusUnauthorized
+
+			a.logger.Err(errMsg)
+			jsonError(w, errorCode, errMsg)
+			return
+		}
 	}
 
 	defer func() {

@@ -21,7 +21,7 @@ type EnvdClient struct {
 	ProcessClient    processconnect.ProcessClient
 }
 
-func GetEnvdClient(tb testing.TB, ctx context.Context) *EnvdClient {
+func GetEnvdClient(tb testing.TB, _ context.Context) *EnvdClient {
 	tb.Helper()
 
 	hc := http.Client{

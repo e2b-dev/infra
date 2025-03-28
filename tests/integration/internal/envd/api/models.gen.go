@@ -55,6 +55,9 @@ type Metrics struct {
 // FilePath defines model for FilePath.
 type FilePath = string
 
+// Signing defines model for Signing.
+type Signing = string
+
 // User defines model for User.
 type User = string
 
@@ -83,6 +86,9 @@ type GetFilesParams struct {
 
 	// Username User used for setting the owner, or resolving relative paths.
 	Username User `form:"username" json:"username"`
+
+	// Signing Signing key used for verification of permission for file access.
+	Signing *Signing `form:"signing,omitempty" json:"signing,omitempty"`
 }
 
 // PostFilesMultipartBody defines parameters for PostFiles.

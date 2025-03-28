@@ -61,6 +61,9 @@ type Metrics struct {
 // FilePath defines model for FilePath.
 type FilePath = string
 
+// Signing defines model for Signing.
+type Signing = string
+
 // User defines model for User.
 type User = string
 
@@ -89,6 +92,9 @@ type GetFilesParams struct {
 
 	// Username User used for setting the owner, or resolving relative paths.
 	Username User `form:"username" json:"username"`
+
+	// Signing Signing key used for verification of permission for file access.
+	Signing *Signing `form:"signing,omitempty" json:"signing,omitempty"`
 }
 
 // PostFilesMultipartBody defines parameters for PostFiles.
@@ -245,6 +251,14 @@ func (siw *ServerInterfaceWrapper) GetFiles(w http.ResponseWriter, r *http.Reque
 	err = runtime.BindQueryParameter("form", true, true, "username", r.URL.Query(), &params.Username)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "signing" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "signing", r.URL.Query(), &params.Signing)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signing", Err: err})
 		return
 	}
 
