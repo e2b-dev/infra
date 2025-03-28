@@ -14,6 +14,7 @@ WORKDIR /build/proxy
 COPY go.mod go.sum Makefile ./
 RUN go mod download
 
+COPY html-templates/ ./html-templates/
 COPY main.go main.go
 
 ARG COMMIT_SHA
