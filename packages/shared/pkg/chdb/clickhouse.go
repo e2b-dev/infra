@@ -2,7 +2,6 @@ package chdb
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -37,7 +36,6 @@ func NewConn(config ClickHouseConfig) (driver.Conn, error) {
 		conn, err = clickhouse.Open(&clickhouse.Options{
 			Addr:     []string{config.ConnectionString},
 			Protocol: clickhouse.Native,
-			TLS:      &tls.Config{}, // Not using TLS for now
 			Auth: clickhouse.Auth{
 				Database: config.Database,
 				Username: config.Username,

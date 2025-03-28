@@ -86,8 +86,8 @@ resource "google_compute_instance_template" "api" {
   tags                    = concat([var.cluster_tag_name], var.custom_tags)
   metadata_startup_script = var.startup_script
   metadata = merge(
-    { api_cluster = "TRUE" },
     {
+      api_cluster             = "TRUE",
       enable-osconfig         = "TRUE",
       enable-guest-attributes = "TRUE",
     },
@@ -138,3 +138,5 @@ resource "google_compute_instance_template" "api" {
     ignore_changes = [metadata]
   }
 }
+
+

@@ -19,6 +19,21 @@ exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&
 ulimit -n 1048576
 export GOMAXPROCS='nproc'
 
+# Install NFS client
+apt-get update
+apt-get install -y nfs-common
+
+
+# Create mount directory
+mkdir -p "${NFS_MOUNT_PATH}"
+
+# Mount NFS share
+mount -t nfs -o rw,hard,intr "${NFS_IP}:${NFS_SHARE}" "${NFS_MOUNT_PATH}"
+
+# Add to fstab for persistence
+echo "${NFS_IP}:${NFS_SHARE} ${NFS_MOUNT_PATH} nfs defaults,_netdev 0 0" >> /etc/fstab
+
+
 sudo tee -a /etc/sysctl.conf <<EOF
 # Increase the maximum number of socket connections
 net.core.somaxconn = 65535
