@@ -68,7 +68,12 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.AP
 			"/templates/:templateID/builds/:buildID/logs",
 			"/templates/:templateID/builds/:buildID/status",
 		),
-		customMiddleware.IncludeRoutes(metricsMiddleware.Middleware(serviceName), "/sandboxes"),
+		customMiddleware.IncludeRoutes(
+			metricsMiddleware.Middleware(serviceName),
+			"/sandboxes",
+			"/sandboxes/:sandboxID/pause",
+			"/sandboxes/:sandboxID/resume",
+		),
 		customMiddleware.ExcludeRoutes(ginzap.Ginzap(logger, time.RFC3339Nano, true),
 			"/health",
 			"/sandboxes/:sandboxID/refreshes",
