@@ -217,10 +217,11 @@ resource "google_secret_manager_secret" "clickhouse_password" {
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
-resource "google_secret_manager_secret_version" "clickhouse_password_value" {
+resource "google_secret_manager_secret_version" "clickhouse_password" {
   secret = google_secret_manager_secret.clickhouse_password.id
 
   secret_data = random_password.clickhouse_password.result
+
 }
 
 

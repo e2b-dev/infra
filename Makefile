@@ -136,6 +136,10 @@ migrate:
 	$(MAKE) -C packages/db migrate-postgres/up
 	# $(MAKE) -C packages/shared migrate-clickhouse/up
 
+.PHONY: migrate-clickhouse
+migrate-clickhouse:
+	$(MAKE) -C packages/shared migrate-clickhouse/up
+
 .PHONY: switch-env
 switch-env:
 	@ touch .last_used_env
