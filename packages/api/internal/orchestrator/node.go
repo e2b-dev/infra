@@ -162,7 +162,7 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 				meta := api.SandboxMetadata(sbx.Metadata)
 				metadata = &meta
 			}
-			node.Sandboxes = append(node.Sandboxes, api.RunningSandbox{
+			node.Sandboxes = append(node.Sandboxes, api.ListedSandbox{
 				Alias:      sbx.Instance.Alias,
 				ClientID:   nodeID,
 				CpuCount:   api.CPUCount(sbx.VCpu),
