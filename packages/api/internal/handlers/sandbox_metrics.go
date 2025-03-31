@@ -61,6 +61,7 @@ func (a *APIStore) LegacyGetSandboxIDMetrics(
 		for _, entry := range stream.Entries {
 
 			var metric struct {
+				Timestamp   time.Time `json:"timestamp"`
 				CPUUsedPct  float32 `json:"cpuUsedPct"`
 				CPUCount    int32   `json:"cpuCount"`
 				MemTotalMiB int64   `json:"memTotalMiB"`
