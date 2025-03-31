@@ -25,4 +25,5 @@ runs:
         make -C packages/template-manager build-debug
         make -C packages/orchestrator build-debug
         make -C packages/api build-debug
+        make -C packages/envd build-debug
       shell: bash
