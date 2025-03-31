@@ -72,6 +72,7 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.AP
 		customMiddleware.IncludeRoutes(
 			metricsMiddleware.Middleware(serviceName),
 			"/sandboxes",
+			"/sandboxes/:sandboxID",
 			"/sandboxes/:sandboxID/pause",
 			"/sandboxes/:sandboxID/resume",
 		),

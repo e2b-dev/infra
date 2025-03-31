@@ -66,7 +66,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	)
 	if err != nil {
 		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))
-		cleanupErr := cleanup.Run()
+		cleanupErr := cleanup.Run(ctx)
 
 		errMsg := fmt.Errorf("failed to cleanup sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -76,12 +76,15 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 
 	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
 	go func() {
-		waitErr := sbx.Wait()
+		ctx, childSpan := s.tracer.Start(context.Background(), "sandbox-create-stop")
+		defer childSpan.End()
+
+		waitErr := sbx.Wait(ctx)
 		if waitErr != nil {
 			sbxlogger.I(sbx).Error("failed to wait for sandbox, cleaning up", zap.Error(waitErr))
 		}
 
-		cleanupErr := cleanup.Run()
+		cleanupErr := cleanup.Run(ctx)
 		if cleanupErr != nil {
 			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
 		}
@@ -198,7 +201,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	sbx.Healthcheck(loggingCtx, true)
 	sbx.LogMetrics(loggingCtx)
 
-	err := sbx.Stop()
+	err := sbx.Stop(ctx)
 	if err != nil {
 		sbxlogger.I(sbx).Error("error stopping sandbox", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 	}
@@ -260,7 +263,10 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		// sbx.Stop sometimes blocks for several seconds,
 		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and DNS.
 		go func() {
-			err := sbx.Stop()
+			ctx, childSpan := s.tracer.Start(context.Background(), "sandbox-pause-stop")
+			defer childSpan.End()
+
+			err := sbx.Stop(ctx)
 			if err != nil {
 				sbxlogger.I(sbx).Error("error stopping sandbox after snapshot", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 			}
