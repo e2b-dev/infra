@@ -20,6 +20,7 @@ import (
 	limits "github.com/gin-contrib/size"
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -171,8 +172,9 @@ func run() int {
 	flag.StringVar(&debug, "debug", "false", "is debug")
 	flag.Parse()
 
+	instanceID := uuid.New().String()
 	if !env.IsLocal() {
-		otlpCleanup := telemetry.InitOTLPExporter(ctx, serviceName, commitSHA, "no")
+		otlpCleanup := telemetry.InitOTLPExporter(ctx, serviceName, commitSHA, instanceID)
 		defer otlpCleanup(ctx)
 	}
 
@@ -207,7 +209,7 @@ func run() int {
 	defer sbxLoggerInternal.Sync()
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
-	logger.Info("Starting API service...", zap.String("commit_sha", commitSHA))
+	logger.Info("Starting API service...", zap.String("commit_sha", commitSHA), zap.String("instance_id", instanceID))
 	if debug != "true" {
 		gin.SetMode(gin.ReleaseMode)
 	}

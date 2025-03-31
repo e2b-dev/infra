@@ -4,13 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/server"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/test"
-	"go.uber.org/zap"
 	"log"
 	"net"
 	"os"
@@ -18,6 +11,16 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+
+	"github.com/google/uuid"
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/server"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/test"
 )
 
 const defaultPort = 5009
@@ -34,8 +37,6 @@ func run() int {
 
 	port := flag.Int("port", defaultPort, "Port for test HTTP server")
 
-	log.Println("Starting template manager", "commit", commitSHA)
-
 	flag.Parse()
 
 	if err := constants.CheckRequired(); err != nil {
@@ -51,8 +52,10 @@ func run() int {
 		}
 	}
 
+	instanceID := uuid.New().String()
+
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(ctx, constants.ServiceName, "no", "no")
+		shutdown := telemetry.InitOTLPExporter(ctx, constants.ServiceName, "no", instanceID)
 		defer shutdown(context.TODO())
 	}
 
@@ -72,6 +75,8 @@ func run() int {
 	defer logger.Sync()
 	sbxlogger.SetSandboxLoggerExternal(logger)
 	zap.ReplaceGlobals(logger)
+
+	logger.Info("Starting template manager", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
 	// used for logging template build output
 	buildLogger := sbxlogger.NewLogger(
