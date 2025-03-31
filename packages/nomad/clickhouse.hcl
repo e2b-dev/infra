@@ -204,15 +204,15 @@ EOF
 <?xml version="1.0"?>
 <clickhouse>
     <users>
-        <${username}>
-            <password_sha256_hex>${password_sha256_hex}</password_sha256_hex>
+        <bar>
+            <password>password</password>
             <networks>
                 <ip>::/0</ip>
             </networks>
             <profile>default</profile>
             <quota>default</quota>
             <access_management>1</access_management>
-        </${username}>
+        </bar>
     </users>
 </clickhouse>
 EOF
