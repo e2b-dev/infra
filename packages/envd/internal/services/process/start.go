@@ -30,7 +30,8 @@ func (s *Service) InitializeStartProcess(ctx context.Context, user *user.User, r
 
 	handlerL := s.logger.With().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Logger()
 
-	proc, err := handler.New(ctx, user, req, &handlerL, nil)
+	startProcCtx, startProcCancel := context.WithCancel(ctx)
+	proc, err := handler.New(startProcCtx, user, req, &handlerL, nil, startProcCancel)
 	if err != nil {
 		return err
 	}
@@ -77,11 +78,12 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 
 	// Create a new context with a timeout if provided.
 	// We do not want the command to  be killed if the request context is cancelled
-	procCtx := context.Background()
+	procCtx, cancelProc := context.WithCancel(context.Background())
 	if timeout > 0 { // zero timeout means no timeout
-		procCtx, _ = context.WithTimeout(procCtx, timeout)
+		procCtx, cancelProc = context.WithTimeout(procCtx, timeout)
 	}
-	proc, err := handler.New(procCtx, u, req.Msg, &handlerL, s.envs)
+
+	proc, err := handler.New(procCtx, u, req.Msg, &handlerL, s.envs, cancelProc)
 	if err != nil {
 		return err
 	}

@@ -44,7 +44,9 @@ type Handler struct {
 	cmd *exec.Cmd
 	tty *os.File
 
-	outWg *sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	stdin io.WriteCloser
 
 	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
@@ -56,7 +58,14 @@ func (p *Handler) Pid() uint32 {
 	return uint32(p.cmd.Process.Pid)
 }
 
-func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *zerolog.Logger, envVars *utils.Map[string, string]) (*Handler, error) {
+func New(
+	ctx context.Context,
+	user *user.User,
+	req *rpc.StartRequest,
+	logger *zerolog.Logger,
+	envVars *utils.Map[string, string],
+	cancel context.CancelFunc,
+) (*Handler, error) {
 	cmd := exec.CommandContext(ctx, req.GetProcess().GetCmd(), req.GetProcess().GetArgs()...)
 
 	uid, gid, err := permissions.GetUserIds(user)
@@ -104,6 +113,7 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 	cmd.Env = formattedVars
 
 	outMultiplex := NewMultiplexedChannel[rpc.ProcessEvent_Data](outputBufferSize)
+
 	var outWg sync.WaitGroup
 
 	if req.GetPty() != nil {
@@ -118,7 +128,6 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 		}
 
 		outWg.Add(1)
-
 		go func() {
 			defer outWg.Done()
 
@@ -155,7 +164,8 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 			tty:       tty,
 			Tag:       req.Tag,
 			DataEvent: outMultiplex,
-			outWg:     &outWg,
+			ctx:       ctx,
+			cancel:    cancel,
 			EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
 			logger:    logger,
 		}, nil
@@ -174,7 +184,6 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 	outWg.Add(1)
 	go func() {
 		defer outWg.Done()
-
 		stdoutLogs := make(chan []byte, outputBufferSize)
 		defer close(stdoutLogs)
 
@@ -219,7 +228,6 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 	outWg.Add(1)
 	go func() {
 		defer outWg.Done()
-
 		stderrLogs := make(chan []byte, outputBufferSize)
 		defer close(stderrLogs)
 
@@ -256,13 +264,20 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 		}
 	}()
 
+	go func() {
+		outWg.Wait()
+		close(outMultiplex.Source)
+		cancel()
+	}()
+
 	return &Handler{
 		Config:    req.GetProcess(),
 		cmd:       cmd,
 		stdin:     stdin,
 		Tag:       req.Tag,
 		DataEvent: outMultiplex,
-		outWg:     &outWg,
+		ctx:       ctx,
+		cancel:    cancel,
 		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
 		logger:    logger,
 	}, nil
@@ -271,6 +286,10 @@ func New(ctx context.Context, user *user.User, req *rpc.StartRequest, logger *ze
 func (p *Handler) SendSignal(signal syscall.Signal) error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("process not started")
+	}
+
+	if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
+		p.cancel()
 	}
 
 	return p.cmd.Process.Signal(signal)
@@ -335,13 +354,11 @@ func (p *Handler) Start() (uint32, error) {
 }
 
 func (p *Handler) Wait() {
-	p.outWg.Wait()
-
-	close(p.DataEvent.Source)
-
-	p.tty.Close()
+	<-p.ctx.Done()
 
 	err := p.cmd.Wait()
+
+	p.tty.Close()
 
 	var errMsg *string
 
