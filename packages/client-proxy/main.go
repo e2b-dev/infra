@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/miekg/dns"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -149,7 +150,8 @@ func run() int {
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 
-	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA, "no")
+	instanceID := uuid.New().String()
+	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA, instanceID)
 	defer func() {
 		err := stopOtlp(ctx)
 		if err != nil {
@@ -171,7 +173,7 @@ func run() int {
 	}()
 	zap.ReplaceGlobals(logger)
 
-	logger.Info("Starting client proxy", zap.String("commit", commitSHA))
+	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
 	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
 	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
