@@ -119,6 +119,7 @@ processors:
           - "nomad_client_host_memory_total"
           - "nomad_client_unallocated_memory"
           - "nomad_nomad_job_summary_running"
+          - "nomad_client_allocs_memory.*"
           - "orchestrator.*"
           - "api.*"
           - "client_proxy.*"
