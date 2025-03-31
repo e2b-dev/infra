@@ -92,7 +92,7 @@ func NewMigrator(config ClickHouseConfig) (*ClickhouseMigrator, error) {
 			dirty      UInt8,
 			sequence   UInt64
    )
-   ENGINE = ReplicatedMergeTree
+   ENGINE = ReplicatedMergeTree('/clickhouse/{installation}/{cluster}/tables/{shard}/{database}/{table}', '{replica}') 
    ORDER BY id
    SETTINGS storage_policy = 's3';
 	`)
