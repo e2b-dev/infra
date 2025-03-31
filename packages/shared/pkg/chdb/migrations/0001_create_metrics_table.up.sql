@@ -1,5 +1,5 @@
 CREATE TABLE my_s3_table 
-   ON CLUSTER cluster_1
+   ON CLUSTER cluster
    (
        `id` UInt64,
        `column1` String

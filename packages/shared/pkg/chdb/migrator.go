@@ -86,7 +86,7 @@ func NewMigrator(config ClickHouseConfig) (*ClickhouseMigrator, error) {
 
 	_, err = db.Exec(`
 	CREATE TABLE IF NOT EXISTS default.schema_migrations
-   ON CLUSTER cluster_1
+   ON CLUSTER cluster
    (
 			version    Int64,
 			dirty      UInt8,
