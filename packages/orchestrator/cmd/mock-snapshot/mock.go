@@ -169,7 +169,7 @@ func mockSnapshot(
 		"true",
 	)
 	defer func() {
-		cleanupErr := cleanup.Run()
+		cleanupErr := cleanup.Run(ctx)
 		if cleanupErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to cleanup sandbox: %v\n", cleanupErr)
 		}
@@ -275,7 +275,7 @@ func mockSnapshot(
 		"true",
 	)
 	defer func() {
-		cleanupErr := cleanup2.Run()
+		cleanupErr := cleanup2.Run(ctx)
 		if cleanupErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to cleanup sandbox: %v\n", cleanupErr)
 		}

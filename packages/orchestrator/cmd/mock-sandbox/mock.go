@@ -163,7 +163,7 @@ func mockSandbox(
 		"true",
 	)
 	defer func() {
-		cleanupErr := cleanup.Run()
+		cleanupErr := cleanup.Run(ctx)
 		if cleanupErr != nil {
 			fmt.Fprintf(os.Stderr, "failed to cleanup sandbox: %v\n", cleanupErr)
 		}
@@ -181,7 +181,7 @@ func mockSandbox(
 
 	time.Sleep(keepAlive)
 
-	err = sbx.Stop()
+	err = sbx.Stop(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to stop sandbox: %v\n", err)
 

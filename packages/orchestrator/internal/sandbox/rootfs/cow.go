@@ -8,11 +8,13 @@ import (
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -27,9 +29,11 @@ type CowDevice struct {
 
 	finishedOperations chan struct{}
 	devicePool         *nbd.DevicePool
+
+	tracer trace.Tracer
 }
 
-func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64, devicePool *nbd.DevicePool) (*CowDevice, error) {
+func NewCowDevice(tracer trace.Tracer, rootfs *template.Storage, cachePath string, blockSize int64, devicePool *nbd.DevicePool) (*CowDevice, error) {
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
@@ -42,9 +46,10 @@ func NewCowDevice(rootfs *template.Storage, cachePath string, blockSize int64, d
 
 	overlay := block.NewOverlay(rootfs, cache, blockSize)
 
-	mnt := nbd.NewDirectPathMount(overlay, devicePool)
+	mnt := nbd.NewDirectPathMount(tracer, overlay, devicePool)
 
 	return &CowDevice{
+		tracer:             tracer,
 		mnt:                mnt,
 		overlay:            overlay,
 		ready:              utils.NewSetOnce[string](),
@@ -64,26 +69,32 @@ func (o *CowDevice) Start(ctx context.Context) error {
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
 }
 
-func (o *CowDevice) Export(ctx context.Context, out io.Writer, stopSandbox func() error) (*bitset.BitSet, error) {
+func (o *CowDevice) Export(parentCtx context.Context, out io.Writer, stopSandbox func(ctx context.Context) error) (*bitset.BitSet, error) {
+	childCtx, childSpan := o.tracer.Start(parentCtx, "cow-export")
+	defer childSpan.End()
+
 	cache, err := o.overlay.EjectCache()
 	if err != nil {
 		return nil, fmt.Errorf("error ejecting cache: %w", err)
 	}
 
 	// the error is already logged in go routine in SandboxCreate handler
-	go stopSandbox()
+	go stopSandbox(childCtx)
 
 	select {
 	case <-o.finishedOperations:
 		break
-	case <-ctx.Done():
+	case <-childCtx.Done():
 		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
 	}
+	telemetry.ReportEvent(childCtx, "sandbox stopped")
 
 	dirty, err := cache.Export(out)
 	if err != nil {
 		return nil, fmt.Errorf("error exporting cache: %w", err)
 	}
+
+	telemetry.ReportEvent(childCtx, "cache exported")
 
 	err = cache.Close()
 	if err != nil {
@@ -93,10 +104,13 @@ func (o *CowDevice) Export(ctx context.Context, out io.Writer, stopSandbox func(
 	return dirty, nil
 }
 
-func (o *CowDevice) Close() error {
+func (o *CowDevice) Close(ctx context.Context) error {
+	childCtx, childSpan := o.tracer.Start(ctx, "cow-close")
+	defer childSpan.End()
+
 	var errs []error
 
-	err := o.mnt.Close()
+	err := o.mnt.Close(childCtx)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error closing overlay mount: %w", err))
 	}
