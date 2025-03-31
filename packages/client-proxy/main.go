@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httputil"
+	"net/http/pprof"
 	"net/url"
 	"os"
 	"os/signal"
@@ -144,6 +145,15 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 func run() int {
 	exitCode := atomic.Int32{}
 	wg := sync.WaitGroup{}
+
+	profiler := http.NewServeMux()
+	profiler.HandleFunc("/debug/pprof/", pprof.Index)
+	profiler.HandleFunc("/debug/pprof/{action}", pprof.Index)
+	profiler.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+
+	go func() {
+		log.Fatal(http.ListenAndServe(":7777", profiler))
+	}()
 
 	ctx := context.Background()
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)

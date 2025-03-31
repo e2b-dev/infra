@@ -10,6 +10,10 @@ job "client-proxy" {
         static = "${port_number}"
       }
 
+      port "profiler" {
+        static = "7777"
+      }
+
       port "health" {
         static = "${health_port_number}"
       }
