@@ -133,7 +133,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 
 func (d *DirectPathMount) Close() error {
 	// First cancel the context, which will stop waiting on pending readAt/writeAt...
-	d.ctx.Done()
+	d.cancelfn()
 
 	// Now wait for any pending responses to be sent
 	if d.dispatcher != nil {
