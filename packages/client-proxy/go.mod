@@ -4,6 +4,7 @@ go 1.23.7
 
 require (
 	github.com/e2b-dev/infra/packages/shared v0.0.0
+	github.com/google/uuid v1.6.0
 	github.com/miekg/dns v1.1.63
 	go.uber.org/zap v1.27.0
 )
@@ -12,7 +13,6 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.25.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
