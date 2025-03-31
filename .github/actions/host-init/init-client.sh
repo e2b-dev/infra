@@ -74,8 +74,11 @@ mkdir -p /fc-vm
 # Download envd buckets
 envd_dir="/fc-envd"
 mkdir -p $envd_dir
-gcloud storage cp gs://e2b-prod-public-builds/envd "${envd_dir}/."
+
+# Provide fresh envd binary and old one from our archive
+cp packages/envd/bin/debug/envd "${envd_dir}/."
 gcloud storage cp gs://e2b-prod-public-builds/envd-v0.0.1 "${envd_dir}/."
+
 chmod -R 755 $envd_dir
 ls -lh $envd_dir
 du -h "${envd_dir}/envd"
