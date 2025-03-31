@@ -6,7 +6,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"go.uber.org/zap"
 	"html/template"
 	"net/http"
 	"net/http/httputil"
@@ -15,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"

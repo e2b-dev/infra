@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -11,10 +14,12 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"text/template"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,12 +43,27 @@ const (
 	maxRetries            = 3
 )
 
-var commitSHA string
-
-// Create a DNS client
 var (
+	//go:embed html-templates/sandbox_not_found_502.html
+	sandboxNotFound502Html         string
+	sandboxNotFound502HtmlTemplate = template.Must(template.New("template").Parse(sandboxNotFound502Html))
+	browserUserAgentRegex          = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|opera|msie`)
+
+	commitSHA string
+
+	// Create a DNS client
 	client = new(dns.Client)
 )
+
+type htmlTemplateData struct {
+	SandboxId   string
+	SandboxHost string
+}
+
+type jsonTemplateData struct {
+	Error     string `json:"error"`
+	SandboxId string `json:"sandboxId"`
+}
 
 func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
 	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
@@ -93,10 +113,30 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 			// The sandbox was not found, we want to return this information to the user
 			if node == "127.0.0.1" {
 				zap.L().Warn("Sandbox not found", zap.String("sandbox_id", sandboxID))
-				w.WriteHeader(http.StatusBadGateway)
-				w.Write([]byte("Sandbox not found"))
 
-				return
+				if isBrowser(r.UserAgent()) {
+					res, resErr := buildHtmlNotFoundError(sandboxID, r.Host)
+					if resErr != nil {
+						zap.L().Error("Failed to build sandbox not found HTML error response", zap.Error(resErr))
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+					w.Header().Add("Content-Type", "text/html")
+					w.Write(res)
+					return
+				} else {
+					res, resErr := buildJsonNotFoundError(sandboxID)
+					if resErr != nil {
+						zap.L().Error("Failed to build JSON error response", zap.Error(resErr))
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+					w.Header().Add("Content-Type", "application/json")
+					w.Write(res)
+					return
+				}
 			}
 
 			break
@@ -262,6 +302,36 @@ func run() int {
 	wg.Wait()
 
 	return int(exitCode.Load())
+}
+
+func buildHtmlNotFoundError(sandboxId string, host string) ([]byte, error) {
+	htmlResponse := new(bytes.Buffer)
+	htmlVars := htmlTemplateData{SandboxId: sandboxId, SandboxHost: host}
+
+	err := sandboxNotFound502HtmlTemplate.Execute(htmlResponse, htmlVars)
+	if err != nil {
+		return nil, err
+	}
+
+	return htmlResponse.Bytes(), nil
+}
+
+func buildJsonNotFoundError(sandboxId string) ([]byte, error) {
+	response := jsonTemplateData{
+		Error:     "Sandbox not found",
+		SandboxId: sandboxId,
+	}
+
+	responseBytes, err := json.Marshal(response)
+	if err != nil {
+		return nil, err
+	}
+
+	return responseBytes, nil
+}
+
+func isBrowser(userAgent string) bool {
+	return browserUserAgentRegex.MatchString(userAgent)
 }
 
 func main() {
