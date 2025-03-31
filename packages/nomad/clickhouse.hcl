@@ -121,6 +121,7 @@ job "clickhouse" {
           "local/config.xml:/etc/clickhouse-server/config.d/gcs.xml",
           # disabled while testing but will pass password to orchestrator in the future
           "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
+          "local/macros.xml:/etc/clickhouse-server/config.d/macros.xml"
         ]
       }
 
@@ -142,6 +143,13 @@ job "clickhouse" {
     <replicated_merge_tree>
         <storage_policy>s3</storage_policy>
     </replicated_merge_tree>
+
+    <distributed_ddl>
+        <path>/var/lib/clickhouse/task_queue/ddl</path>
+    </distributed_ddl>
+
+        <default_replica_path>/var/lib/clickhouse/tables/{shard}/{database}/{table}</default_replica_path>
+
 
 
 
@@ -171,8 +179,8 @@ job "clickhouse" {
             </s3>
         </policies>
     </storage_configuration>
-        <remote_servers replace="true">
-        <cluster_1>
+    <remote_servers replace="true">
+      <cluster>
         <secret>mysecretphrase</secret>
             <shard>
                 <internal_replication>true</internal_replication>
@@ -180,9 +188,8 @@ job "clickhouse" {
                     <host>{{ env "NOMAD_IP_clickhouse" }}</host>
                     <port>9000</port>
                 </replica>
-
             </shard>
-        </cluster_1>
+        </cluster>
     </remote_servers>
     <listen_host>0.0.0.0</listen_host>
     <interserver_http_port>9010</interserver_http_port>
@@ -217,7 +224,7 @@ EOF
 <?xml version="1.0"?>
 <clickhouse>
     <macros>
-        <cluster>my_cluster</cluster>
+        <cluster>cluster</cluster>
         <shard>01</shard>
         <replica>01</replica>
     </macros>
@@ -294,7 +301,7 @@ EOF
         <disks>
             <log_local>
                 <type>local</type>
-                <path>/tmp/lib/clickhouse/coordination/logs/</path>
+                <path>/var/lib/clickhouse/coordination/logs/</path>
             </log_local>
             <log_s3>
                 <type>s3</type>
