@@ -61,8 +61,9 @@ type htmlTemplateData struct {
 }
 
 type jsonTemplateData struct {
-	Error     string `json:"error"`
+	Message   string `json:"message"`
 	SandboxId string `json:"sandboxId"`
+	Code      int    `json:"code"`
 }
 
 func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
@@ -318,7 +319,7 @@ func buildHtmlNotFoundError(sandboxId string, host string) ([]byte, error) {
 
 func buildJsonNotFoundError(sandboxId string) ([]byte, error) {
 	response := jsonTemplateData{
-		Error:     "Sandbox not found",
+		Message:   "Sandbox not found",
 		SandboxId: sandboxId,
 	}
 
