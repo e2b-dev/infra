@@ -6,7 +6,6 @@
 
 set -euo pipefail
 
-
 # Set timestamp format
 PS4='[\D{%Y-%m-%d %H:%M:%S}] '
 # Enable command tracing
@@ -30,8 +29,7 @@ mkdir -p "${NFS_MOUNT_PATH}"
 mount -t nfs -o rw,hard,intr "${NFS_IP}:${NFS_SHARE}" "${NFS_MOUNT_PATH}"
 
 # Add to fstab for persistence
-echo "${NFS_IP}:${NFS_SHARE} ${NFS_MOUNT_PATH} nfs defaults,_netdev 0 0" >> /etc/fstab
-
+echo "${NFS_IP}:${NFS_SHARE} ${NFS_MOUNT_PATH} nfs defaults,_netdev 0 0" >>/etc/fstab
 
 sudo tee -a /etc/sysctl.conf <<EOF
 # Increase the maximum number of socket connections
@@ -64,7 +62,6 @@ cat <<EOF >/root/docker/config.json
 }
 EOF
 
-
 mkdir -p /etc/systemd/resolved.conf.d/
 touch /etc/systemd/resolved.conf.d/consul.conf
 cat <<EOF >/etc/systemd/resolved.conf.d/consul.conf
@@ -73,6 +70,14 @@ DNS=127.0.0.1:8600
 DNSSEC=false
 Domains=~consul
 EOF
+
+touch /etc/systemd/resolved.conf.d/docker.conf
+cat <<EOF >/etc/systemd/resolved.conf.d/docker.conf
+[Resolve]
+DNSStubListener=yes
+DNSStubListenerExtra=172.17.0.1
+EOF
+
 systemctl restart systemd-resolved
 
 # These variables are passed in via Terraform template interpolation
