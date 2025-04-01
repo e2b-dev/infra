@@ -87,11 +87,11 @@ job "clickhouse" {
         <server_id>${i + 1}</server_id>
 
          <raft_configuration>
-         %{ for i in range("${keeper_count}") }
+         %{ for j in range("${keeper_count}") }
             <server>
-                <id>${i + 1}</id>
-                <hostname>clickhouse-keeper-raft-${i + 1}.service.consul</hostname>
-                <port>${9234 + i}</port>
+                <id>${j + 1}</id>
+                <hostname>clickhouse-keeper-raft-${j + 1}.service.consul</hostname>
+                <port>${9234 + j}</port>
             </server>
             %{ endfor }
         </raft_configuration>
@@ -246,10 +246,10 @@ EOF
     <default_replica_path>/var/lib/clickhouse/tables/{shard}/{database}/{table}</default_replica_path>
 
     <zookeeper>
-        %{ for i in range("${keeper_count}") }
+        %{ for j in range("${keeper_count}") }
         <node>
-            <host>clickhouse-keeper-${i + 1}.service.consul</host>
-            <port>${9181 + i}</port>
+            <host>clickhouse-keeper-${j + 1}.service.consul</host>
+            <port>${9181 + j}</port>
         </node>
         %{ endfor }
     </zookeeper>
