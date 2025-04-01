@@ -513,6 +513,10 @@ func (s *Sandbox) Snapshot(
 		return nil, fmt.Errorf("failed to sync rootfs path: %w", err)
 	}
 
+	if err := file.Close(); err != nil {
+		return nil, fmt.Errorf("nbd file closing failed: %w", err)
+	}
+
 	telemetry.ReportEvent(ctx, "synced rootfs")
 
 	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath, buildId.String(), build.Rootfs)
