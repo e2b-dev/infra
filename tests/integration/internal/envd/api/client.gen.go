@@ -271,25 +271,9 @@ func NewGetFilesRequest(server string, params *GetFilesParams) (*http.Request, e
 			}
 		}
 
-		if params.Signature != nil {
+		if params.Signing != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "signature", runtime.ParamLocationQuery, *params.Signature); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.SignatureExpiration != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "signature_expiration", runtime.ParamLocationQuery, *params.SignatureExpiration); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "signing", runtime.ParamLocationQuery, *params.Signing); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -364,25 +348,9 @@ func NewPostFilesRequestWithBody(server string, params *PostFilesParams, content
 			}
 		}
 
-		if params.Signature != nil {
+		if params.Signing != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "signature", runtime.ParamLocationQuery, *params.Signature); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.SignatureExpiration != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "signature_expiration", runtime.ParamLocationQuery, *params.SignatureExpiration); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "signing", runtime.ParamLocationQuery, *params.Signing); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
