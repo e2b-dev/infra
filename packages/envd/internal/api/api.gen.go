@@ -61,11 +61,8 @@ type Metrics struct {
 // FilePath defines model for FilePath.
 type FilePath = string
 
-// Signature defines model for Signature.
-type Signature = string
-
-// SignatureExpiration defines model for SignatureExpiration.
-type SignatureExpiration = int
+// Signing defines model for Signing.
+type Signing = string
 
 // User defines model for User.
 type User = string
@@ -96,11 +93,8 @@ type GetFilesParams struct {
 	// Username User used for setting the owner, or resolving relative paths.
 	Username User `form:"username" json:"username"`
 
-	// Signature Signature used for file access permission verification.
-	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
-
-	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
-	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
+	// Signing Signing key used for verification of permission for file access.
+	Signing *Signing `form:"signing,omitempty" json:"signing,omitempty"`
 }
 
 // PostFilesMultipartBody defines parameters for PostFiles.
@@ -116,11 +110,8 @@ type PostFilesParams struct {
 	// Username User used for setting the owner, or resolving relative paths.
 	Username User `form:"username" json:"username"`
 
-	// Signature Signature used for file access permission verification.
-	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
-
-	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
-	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
+	// Signing Signing key used for verification of permission for file access.
+	Signing *Signing `form:"signing,omitempty" json:"signing,omitempty"`
 }
 
 // PostInitJSONBody defines parameters for PostInit.
@@ -266,19 +257,11 @@ func (siw *ServerInterfaceWrapper) GetFiles(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// ------------- Optional query parameter "signature" -------------
+	// ------------- Optional query parameter "signing" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "signature", r.URL.Query(), &params.Signature)
+	err = runtime.BindQueryParameter("form", true, false, "signing", r.URL.Query(), &params.Signing)
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "signature_expiration" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "signature_expiration", r.URL.Query(), &params.SignatureExpiration)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature_expiration", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signing", Err: err})
 		return
 	}
 
@@ -330,19 +313,11 @@ func (siw *ServerInterfaceWrapper) PostFiles(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// ------------- Optional query parameter "signature" -------------
+	// ------------- Optional query parameter "signing" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "signature", r.URL.Query(), &params.Signature)
+	err = runtime.BindQueryParameter("form", true, false, "signing", r.URL.Query(), &params.Signing)
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "signature_expiration" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "signature_expiration", r.URL.Query(), &params.SignatureExpiration)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature_expiration", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signing", Err: err})
 		return
 	}
 
