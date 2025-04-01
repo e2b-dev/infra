@@ -153,7 +153,6 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	defer r.Body.Close()
 
 	var errorCode int
-
 	var errMsg error
 
 	var path string
@@ -162,6 +161,13 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	}
 
 	operationID := logs.AssignOperationID()
+
+	// signing authorization if needed
+	ok, err := a.validateSigning(w, r, params.Signing, params.Username, path, SigningWriteOperation)
+	if !ok {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error during auth validation")
+		return
+	}
 
 	defer func() {
 		l := a.logger.

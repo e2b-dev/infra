@@ -16,7 +16,6 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 	defer r.Body.Close()
 
 	var errorCode int
-
 	var errMsg error
 
 	var path string
@@ -24,11 +23,20 @@ func (a *API) GetFiles(w http.ResponseWriter, r *http.Request, params GetFilesPa
 		path = *params.Path
 	}
 
+	operationID := logs.AssignOperationID()
+
+	// signing authorization if needed
+	ok, err := a.validateSigning(w, r, params.Signing, params.Username, path, SigningReadOperation)
+	if !ok {
+		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error during auth validation")
+		return
+	}
+
 	defer func() {
 		l := a.logger.
 			Err(errMsg).
 			Str("method", r.Method+" "+r.URL.Path).
-			Str(string(logs.OperationIDKey), logs.AssignOperationID()).
+			Str(string(logs.OperationIDKey), operationID).
 			Str("path", path).
 			Str("username", params.Username)
 
