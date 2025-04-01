@@ -18,5 +18,7 @@ func (t *TemplateLocalBuild) Upload(
 	memfilePath *string,
 	rootfsPath *string,
 ) chan error {
-	return make(chan error)
+	chanErr := make(chan error, 1)
+	close(chanErr)
+	return chanErr
 }
