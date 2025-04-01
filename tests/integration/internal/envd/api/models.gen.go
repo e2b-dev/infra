@@ -7,6 +7,10 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+const (
+	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
+)
+
 // Defines values for EntryInfoType.
 const (
 	File EntryInfoType = "file"
@@ -51,6 +55,9 @@ type Metrics struct {
 // FilePath defines model for FilePath.
 type FilePath = string
 
+// Signing defines model for Signing.
+type Signing = string
+
 // User defines model for User.
 type User = string
 
@@ -79,6 +86,9 @@ type GetFilesParams struct {
 
 	// Username User used for setting the owner, or resolving relative paths.
 	Username User `form:"username" json:"username"`
+
+	// Signing Signing key used for verification of permission for file access.
+	Signing *Signing `form:"signing,omitempty" json:"signing,omitempty"`
 }
 
 // PostFilesMultipartBody defines parameters for PostFiles.
@@ -93,10 +103,16 @@ type PostFilesParams struct {
 
 	// Username User used for setting the owner, or resolving relative paths.
 	Username User `form:"username" json:"username"`
+
+	// Signing Signing key used for verification of permission for file access.
+	Signing *Signing `form:"signing,omitempty" json:"signing,omitempty"`
 }
 
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
+	// AccessToken Access token for secure access to envd service
+	AccessToken *string `json:"accessToken,omitempty"`
+
 	// EnvVars Environment variables to set
 	EnvVars *EnvVars `json:"envVars,omitempty"`
 }
