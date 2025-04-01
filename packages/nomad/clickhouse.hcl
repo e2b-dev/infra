@@ -176,11 +176,6 @@ EOF
     }
 
     service {
-      name = "clickhouse"
-      port = "clickhouse"
-    }
-
-    service {
       name = "clickhouse-${i + 1}"
       port = "clickhouse"
     }
@@ -279,15 +274,20 @@ EOF
         <secret>mysecretphrase</secret>
             <shard>
                 <internal_replication>true</internal_replication>
+                %{ for j in range("${server_count}") }
                 <replica>
-                    <host>clickhouse-${i + 1}.service.consul</host>
-                    <port>${9000 + i}</port>
+                    <host>clickhouse-${j + 1}.service.consul</host>
+                    <port>${9000 + j}</port>
                 </replica>
+                %{ endfor }
             </shard>
         </cluster>
     </remote_servers>
 
     <listen_host>0.0.0.0</listen_host>
+
+    <http_port>${8123 + i}</http_port>
+    <tcp_port>${9000 + i}</tcp_port>
 
     <interserver_http_host>clickhouse-interserver-${i + 1}.service.consul</interserver_http_host>
     <interserver_http_port>${9009 + i}</interserver_http_port>
@@ -322,8 +322,8 @@ EOF
 <clickhouse>
     <macros>
         <cluster>cluster</cluster>
-        <shard>1</shard>
-        <replica>${i + 1}</replica>
+        <shard>01</shard>
+        <replica>0${i + 1}</replica>
     </macros>
 </clickhouse> 
 EOF
