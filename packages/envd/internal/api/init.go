@@ -35,6 +35,11 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 				a.envVars.Store(key, value)
 			}
 		}
+
+		if initRequest.AccessToken != nil {
+			a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg("Setting access token")
+			a.accessToken = initRequest.AccessToken
+		}
 	}
 
 	a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg("Syncing host")
