@@ -3,7 +3,8 @@ job "clickhouse" {
   type        = "service"
   node_pool   = "api"
 
-  group "keeper" {
+  %{ for i in range("${keeper_count}") }
+  group "keeper-${i + 1}" {
     count = 1
 
     update {
@@ -12,67 +13,53 @@ job "clickhouse" {
 
     network {
       mode = "bridge"
-      hostname = "clickhouse-keeper-1.service.consul"
 
       dns {
         servers = ["172.17.0.1", "8.8.8.8", "8.8.4.4", "169.254.169.254"]
       }
 
       port "keeper" {
-        static = 9181
-        to = 9181
+        static = ${9181 + i}
+        to = ${9181 + i}
       }
 
       port "raft" {
-        static = 9234
-        to = 9234
+        static = ${9234 + i}
+        to = ${9234 + i}
       }
     }
 
     service {
-      name = "clickhouse-keeper-1"
+      name = "clickhouse-keeper-${i + 1}"
       port = "keeper"
     }
 
     service {
-      name = "clickhouse-keeper-raft-1"
+      name = "clickhouse-keeper-raft-${i + 1}"
       port = "raft"
     }
 
-    task "clickhouse-keeper-1" {
+    task "clickhouse-keeper" {
       driver = "docker"
 
       config {
-        image = "clickhouse/clickhouse-server:latest"
-        ports = [
-          "keeper",
-          "raft",
-        ]
+        image = "clickhouse/clickhouse-server:25.3"
+        ports = ["keeper", "raft"]
 
         extra_hosts = [
-          "clickhouse-keeper-raft-1.service.consul:127.0.0.1",
-          "clickhouse-keeper-1.service.consul:127.0.0.1",
+          "clickhouse-keeper-${i + 1}.service.consul:127.0.0.1",
+          "clickhouse-keeper-raft-${i + 1}.service.consul:127.0.0.1",
         ]
 
-        mount {
-          type = "bind"
-          target = "/var/lib/clickhouse"
-          source = "/mnt/nfs/clickhouse/data/clickhouse-keeper"
-          readonly = false
-
-          bind_options {
-            propagation = "rshared"
-          }
-        }
-
         volumes = [
+          "/mnt/nfs/clickhouse/data/clickhouse-keeper-${i + 1}:/var/lib/clickhouse",
           "local/keeper.xml:/etc/clickhouse-server/config.d/keeper_config.xml",
         ]
       }
 
       resources {
-        cpu    = 500
-        memory = 2048
+        cpu    = 400
+        memory = 512
       }
 
       template {
@@ -87,21 +74,26 @@ job "clickhouse" {
     </logger>
 
     <keeper_server>
+        <log_storage_disk>log_s3</log_storage_disk>
+        <latest_log_storage_disk>log_local</latest_log_storage_disk>
+
         <snapshot_storage_disk>snapshot_s3</snapshot_storage_disk>
         <latest_snapshot_storage_disk>snapshot_s3</latest_snapshot_storage_disk>
 
         <state_storage_disk>state_s3</state_storage_disk>
         <latest_state_storage_disk>state_s3</latest_state_storage_disk>
 
-        <tcp_port>9181</tcp_port>
-        <server_id>1</server_id>
+        <tcp_port>${9181 + i}</tcp_port>
+        <server_id>${i + 1}</server_id>
 
          <raft_configuration>
+         %{ for i in range("${keeper_count}") }
             <server>
-                <id>1</id>
-                <hostname>clickhouse-keeper-raft-1.service.consul</hostname>
-                <port>9234</port>
+                <id>${i + 1}</id>
+                <hostname>clickhouse-keeper-raft-${i + 1}.service.consul</hostname>
+                <port>${9234 + i}</port>
             </server>
+            %{ endfor }
         </raft_configuration>
 
         <coordination_settings>
@@ -112,23 +104,27 @@ job "clickhouse" {
 
     <storage_configuration>
         <disks>
+            <log_local>
+                <type>local</type>
+                <path>/var/lib/clickhouse/coordination/logs/</path>
+            </log_local>
             <log_s3>
                 <type>s3</type>
-                <endpoint>https://storage.googleapis.com/${gcs_bucket}/clickhouse-data/keeper/logs/</endpoint>
+                <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/keeper-${i + 1}/logs/</endpoint>
                 <access_key_id>${hmac_key}</access_key_id>
                 <secret_access_key>${hmac_secret}</secret_access_key>
                 <support_batch_delete>false</support_batch_delete>
             </log_s3>
             <snapshot_s3>
                 <type>s3</type>
-                <endpoint>https://storage.googleapis.com/${gcs_bucket}/clickhouse-data/keeper/snapshots/</endpoint>
+                <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/keeper-${i + 1}/snapshots/</endpoint>
                 <access_key_id>${hmac_key}</access_key_id>
                 <secret_access_key>${hmac_secret}</secret_access_key>
                 <support_batch_delete>false</support_batch_delete>
             </snapshot_s3>
             <state_s3>
                 <type>s3</type>
-                <endpoint>https://storage.googleapis.com/${gcs_bucket}/clickhouse-data/keeper/state/</endpoint>
+                <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/keeper-${i + 1}/state/</endpoint>
                 <access_key_id>${hmac_key}</access_key_id>
                 <secret_access_key>${hmac_secret}</secret_access_key>
                 <support_batch_delete>false</support_batch_delete>
@@ -140,8 +136,11 @@ EOF
       }
     }
   }
+  %{ endfor }
 
-  group "server" {
+
+%{ for i in range("${server_count}") }
+  group "server-${i + 1}" {
     count = 1
 
     update {
@@ -150,72 +149,62 @@ EOF
 
     network {
       mode = "bridge"
-      hostname = "clickhouse-server-1.service.consul"
 
       dns {
         servers = ["172.17.0.1", "8.8.8.8", "8.8.4.4", "169.254.169.254"]
       }
 
-      port "native" {
-        static = 9000
-        to = 9000
+      port "http" {
+        static = ${8123 + i}
+        to = ${8123 + i}
       }
 
-      port "http" {
-        static = 8123
-        to = 8123
+      port "clickhouse" {
+        static = ${9000 + i}
+        to = ${9000 + i}
       }
 
       port "interserver" {
-        static = 9009
-        to = 9009
+        static = ${9009 + i}
+        to = ${9009 + i}
       }
     }
 
     service {
-      name = "clickhouse-1"
+      name = "clickhouse-http-${i + 1}"
       port = "http"
     }
 
     service {
-      name = "clickhouse-interserver-1"
-      port = "interserver"
+      name = "clickhouse"
+      port = "clickhouse"
     }
 
     service {
-      name = "clickhouse-native-1"
-      port = "native"
+      name = "clickhouse-${i + 1}"
+      port = "clickhouse"
     }
 
-    task "clickhouse-server-1" {
+    service {
+      name = "clickhouse-interserver-${i + 1}"
+      port = "interserver"
+    }
+
+    task "clickhouse-server" {
       driver = "docker"
 
       config {
-        image = "clickhouse/clickhouse-server:latest"
-        ports = [
-          "http",
-          "native",
-          "interserver",
-        ]
+        image = "clickhouse/clickhouse-server:25.3"
+        ports = ["http", "clickhouse", "interserver"]
 
         extra_hosts = [
-          "clickhouse-1.service.consul:127.0.0.1",
-          "clickhouse-interserver-1.service.consul:127.0.0.1",
-          "clickhouse-native-1.service.consul:127.0.0.1",
+          "clickhouse-http-${i + 1}.service.consul:127.0.0.1",
+          "clickhouse-${i + 1}.service.consul:127.0.0.1",
+          "clickhouse-interserver-${i + 1}.service.consul:127.0.0.1",
         ]
 
-        mount {
-          type = "bind"
-          target = "/var/lib/clickhouse"
-          source = "/mnt/nfs/clickhouse/data/clickhouse-server"
-          readonly = false
-
-          bind_options {
-            propagation = "rshared"
-          }
-        }
-
         volumes = [
+          "/mnt/nfs/clickhouse/data/clickhouse-server-${i + 1}:/var/lib/clickhouse",
           "local/config.xml:/etc/clickhouse-server/config.d/config.xml",
           "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
           "local/macros.xml:/etc/clickhouse-server/config.d/macros.xml",
@@ -228,7 +217,7 @@ EOF
 
       resources {
         cpu    = 500
-        memory = 2048
+        memory = 1024
       }
 
       template {
@@ -257,19 +246,22 @@ EOF
     <default_replica_path>/var/lib/clickhouse/tables/{shard}/{database}/{table}</default_replica_path>
 
     <zookeeper>
+        %{ for i in range("${keeper_count}") }
         <node>
-            <host>clickhouse-keeper-1.service.consul</host>
-            <port>9181</port>
+            <host>clickhouse-keeper-${i + 1}.service.consul</host>
+            <port>${9181 + i}</port>
         </node>
+        %{ endfor }
     </zookeeper>
     <storage_configuration>
          <disks>
             <s3>
-                <support_batch_delete>false</support_batch_delete>
                 <type>s3</type>
-                <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/</endpoint>
+                <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/server-${i + 1}/</endpoint>
                 <access_key_id>${hmac_key}</access_key_id>
                 <secret_access_key>${hmac_secret}</secret_access_key>
+                <support_batch_delete>false</support_batch_delete>
+                # <metadata_type>plain_rewritable</metadata_type>
             </s3>
         </disks>
            <policies>
@@ -288,8 +280,8 @@ EOF
             <shard>
                 <internal_replication>true</internal_replication>
                 <replica>
-                    <host>clickhouse-native-1.service.consul</host>
-                    <port>9000</port>
+                    <host>clickhouse-${i + 1}.service.consul</host>
+                    <port>${9000 + i}</port>
                 </replica>
             </shard>
         </cluster>
@@ -297,8 +289,8 @@ EOF
 
     <listen_host>0.0.0.0</listen_host>
 
-    <interserver_http_port>9009</interserver_http_port>
-    <interserver_http_host>clickhouse-interserver-1.service.consul</interserver_http_host>
+    <interserver_http_host>clickhouse-interserver-${i + 1}.service.consul</interserver_http_host>
+    <interserver_http_port>${9009 + i}</interserver_http_port>
 </clickhouse>
 EOF
       }
@@ -330,12 +322,13 @@ EOF
 <clickhouse>
     <macros>
         <cluster>cluster</cluster>
-        <shard>01</shard>
-        <replica>01</replica>
+        <shard>1</shard>
+        <replica>${i + 1}</replica>
     </macros>
 </clickhouse> 
 EOF
       }
     }
   }
+%{ endfor }
 } 
