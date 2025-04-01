@@ -122,7 +122,7 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 						w.WriteHeader(http.StatusInternalServerError)
 						return
 					}
-					w.WriteHeader(http.StatusNotFound)
+					w.WriteHeader(http.StatusBadGateway)
 					w.Header().Add("Content-Type", "text/html")
 					w.Write(res)
 					return
@@ -133,7 +133,7 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 						w.WriteHeader(http.StatusInternalServerError)
 						return
 					}
-					w.WriteHeader(http.StatusNotFound)
+					w.WriteHeader(http.StatusBadGateway)
 					w.Header().Add("Content-Type", "application/json")
 					w.Write(res)
 					return
