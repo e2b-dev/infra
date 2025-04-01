@@ -50,6 +50,7 @@ runs:
       run: |
         echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test
         echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRETS}" >> .env.test
+        echo "TEMPLATE_STORAGE=${TEMPLATE_STORAGE}" >> .env.test
         
         mkdir -p ~/logs
         
