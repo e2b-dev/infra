@@ -1,8 +1,15 @@
-job "orchestrator" {
+job "orchestrator-${random_id}" {
   type = "system"
   datacenters = ["${gcp_zone}"]
 
   priority = 90
+
+  // This constraint ensures that only one orchestrator is running at a time,
+  // now that we use differently names jobs.
+  constraint {
+    distinct_property = "orchestrator"
+    value             = "1"
+  }
 
   group "client-orchestrator" {
     network {
@@ -30,8 +37,41 @@ job "orchestrator" {
       port = "${proxy_port}"
     }
 
+    task "check-placement" {
+      driver = "raw_exec"
+
+      lifecycle {
+        hook = "prestart"
+        sidecar = false
+      }
+
+      restart {
+        attempts = 0
+      }
+
+      template {
+        destination = "local/check-placement.sh"
+        data = <<EOT
+#!/bin/bash
+
+if [ "{{with nomadVar "nomad/jobs" }}{{ .latest_orchestrator_job }}{{ end }}" != "${random_id}" ]; then
+  echo "This orchestrator is not the latest version, exiting"
+  exit 1
+fi
+        EOT
+      }
+      
+      config {
+        command = "local/check-placement.sh"
+      }
+    }
+
     task "start" {
       driver = "raw_exec"
+
+      restart {
+        attempts = 0
+      }
 
       env {
         NODE_ID                      = "$${node.unique.name}"
