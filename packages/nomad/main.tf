@@ -428,7 +428,7 @@ resource "nomad_job" "clickhouse" {
     hmac_secret         = google_storage_hmac_key.clickhouse_hmac_key.secret
     username            = var.clickhouse_username
     password_sha256_hex = sha256(var.clickhouse_password)
-    keeper_count = 1
-    server_count = 2
+    keeper_count        = 1
+    server_count        = 2
   })
 }
