@@ -52,18 +52,40 @@ init:
 	$(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
+# Setup production environment variables, this is used only for E2B.dev production
+# Uses HCP CLI to read secrets from HCP Vault Secrets
+.PHONY: setup-prod-env
+setup-prod-env:
+	@ hcp auth login
+	@ hcp profile init --vault-secrets
+	@ hcp vault-secrets secrets read env_$(ENV) >/dev/null 2>&1 && echo "Environment found, writing to the .env.$(ENV) file" || { echo "Environment does not exist"; exit 1; }
+	@ hcp vault-secrets secrets open env_$(ENV) -o ".env.$(ENV)"
+
+# Updates production environment from .env file, this is used only for E2B.dev production
+# Uses HCP CLI to update secrets from HCP Vault Secrets
+.PHONY: setup-prod-env
+update-prod-env:
+	@ hcp auth login
+	@ hcp profile init --vault-secrets
+	@ hcp vault-secrets secrets create env_$(ENV) --data-file=".env.$(ENV)"
+
 .PHONY: plan
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
 	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
 
-.PHONY: plan-only-jobs
-plan-only-jobs:
+# Deploy all jobs or just a specific job name in Nomad
+# When job name is specified, all '-' are replaced with '_' in the job name
+.PHONY: plan-only-jobs plan-only-jobs/%
+plan-only-jobs plan-only-jobs/%:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad
-
+	@if [ "$@" = "plan-only-jobs" ]; then \
+		$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad; \
+	else \
+		$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_'); \
+	fi
 
 .PHONY: apply
 apply:
@@ -104,6 +126,10 @@ destroy:
 version:
 	./scripts/increment-version.sh
 
+.PHONY: build
+build/%:
+	$(MAKE) -C packages/$(notdir $@) build
+
 .PHONY: build-and-upload
 build-and-upload:build-and-upload/api
 build-and-upload:build-and-upload/client-proxy
@@ -111,8 +137,6 @@ build-and-upload:build-and-upload/docker-reverse-proxy
 build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
-build/%:
-	$(MAKE) -C packages/$(notdir $@) build
 build-and-upload/%:
 	./scripts/confirm.sh $(ENV)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
