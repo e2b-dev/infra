@@ -317,8 +317,24 @@ data "external" "orchestrator_checksum" {
   }
 }
 
-resource "nomad_job" "orchestrator" {
-  jobspec = templatefile("${path.module}/orchestrator.hcl", {
+resource "random_id" "server" {
+  keepers = {
+    # Generate a new id each time we switch to a new AMI id
+    orchestrator_job = "5"
+  }
+
+  byte_length = 8
+}
+
+resource "nomad_variable" "example" {
+  path = "nomad/jobs"
+  items = {
+    latest_orchestrator_job = random_id.server.hex
+  }
+}
+
+locals {
+  orchestrator_job = templatefile("${path.module}/orchestrator.hcl", {
     gcp_zone         = var.gcp_zone
     port             = var.orchestrator_port
     proxy_port       = var.orchestrator_proxy_port
@@ -336,7 +352,14 @@ resource "nomad_job" "orchestrator" {
     clickhouse_username          = var.clickhouse_username
     clickhouse_password          = var.clickhouse_password
     clickhouse_database          = var.clickhouse_database
+    random_id                    = random_id.server.hex
   })
+}
+
+resource "nomad_job" "orchestrator" {
+  deregister_on_id_change = false
+
+  jobspec = local.orchestrator_job
 }
 
 data "google_storage_bucket_object" "template_manager" {
