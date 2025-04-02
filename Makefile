@@ -40,7 +40,7 @@ login-gcloud:
 	gcloud --quiet auth login
 	gcloud config set project "$(GCP_PROJECT_ID)"
 	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
-	gcloud --quiet auth app lication-default login
+	gcloud --quiet auth application-default login
 
 .PHONY: init
 init:
