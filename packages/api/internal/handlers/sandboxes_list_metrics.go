@@ -29,7 +29,7 @@ const (
 func (a *APIStore) getSandboxesMetrics(
 	ctx context.Context,
 	teamID uuid.UUID,
-	sandboxes []PaginatedSandbox,
+	sandboxes []api.RunningSandbox,
 ) ([]api.RunningSandboxWithMetrics, error) {
 	// Add operation telemetry
 	telemetry.ReportEvent(ctx, "fetch metrics for sandboxes")
@@ -48,7 +48,7 @@ func (a *APIStore) getSandboxesMetrics(
 	}()
 
 	type metricsResult struct {
-		sandbox PaginatedSandbox
+		sandbox api.RunningSandbox
 		metrics []api.SandboxMetric
 		err     error
 	}
@@ -66,7 +66,7 @@ func (a *APIStore) getSandboxesMetrics(
 	// Fetch metrics for each sandbox concurrently with rate limiting
 	for _, sandbox := range sandboxes {
 		wg.Add(1)
-		go func(s PaginatedSandbox) {
+		go func(s api.RunningSandbox) {
 			defer wg.Done()
 
 			err := sem.Acquire(ctx, 1)
@@ -191,17 +191,11 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
 
-	sandboxes, _, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
-		State:    &[]api.SandboxState{api.Running},
-		Metadata: params.Metadata,
-	}, SandboxListPaginationParams{
-		Limit:     nil,
-		NextToken: nil,
-	})
-
+	sandboxes, err := a.getSandboxes(ctx, team.ID, params.Metadata)
 	if err != nil {
 		zap.L().Error("Error fetching sandboxes", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
+		telemetry.ReportCriticalError(ctx, err)
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error returning sandboxes for team '%s'", team.ID))
 
 		return
 	}

@@ -25,12 +25,6 @@ const (
 	NodeStatusUnhealthy  NodeStatus = "unhealthy"
 )
 
-// Defines values for SandboxState.
-const (
-	Paused  SandboxState = "paused"
-	Running SandboxState = "running"
-)
-
 // Defines values for TemplateBuildStatus.
 const (
 	TemplateBuildStatusBuilding TemplateBuildStatus = "building"
@@ -92,37 +86,6 @@ type Error struct {
 
 	// Message Error
 	Message string `json:"message"`
-}
-
-// ListedSandbox defines model for ListedSandbox.
-type ListedSandbox struct {
-	// Alias Alias of the template
-	Alias *string `json:"alias,omitempty"`
-
-	// ClientID Identifier of the client
-	ClientID string `json:"clientID"`
-
-	// CpuCount CPU cores for the sandbox
-	CpuCount CPUCount `json:"cpuCount"`
-
-	// EndAt Time when the sandbox will expire
-	EndAt time.Time `json:"endAt"`
-
-	// MemoryMB Memory for the sandbox in MB
-	MemoryMB MemoryMB         `json:"memoryMB"`
-	Metadata *SandboxMetadata `json:"metadata,omitempty"`
-
-	// SandboxID Identifier of the sandbox
-	SandboxID string `json:"sandboxID"`
-
-	// StartedAt Time when the sandbox was started
-	StartedAt time.Time `json:"startedAt"`
-
-	// State State of the sandbox
-	State SandboxState `json:"state"`
-
-	// TemplateID Identifier of the template from which is the sandbox created
-	TemplateID string `json:"templateID"`
 }
 
 // MemoryMB Memory for the sandbox in MB
@@ -190,7 +153,7 @@ type NodeDetail struct {
 	NodeID string `json:"nodeID"`
 
 	// Sandboxes List of sandboxes running on the node
-	Sandboxes []ListedSandbox `json:"sandboxes"`
+	Sandboxes []RunningSandbox `json:"sandboxes"`
 
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
@@ -212,6 +175,34 @@ type ResumedSandbox struct {
 
 	// Timeout Time to live for the sandbox in seconds.
 	Timeout *int32 `json:"timeout,omitempty"`
+}
+
+// RunningSandbox defines model for RunningSandbox.
+type RunningSandbox struct {
+	// Alias Alias of the template
+	Alias *string `json:"alias,omitempty"`
+
+	// ClientID Identifier of the client
+	ClientID string `json:"clientID"`
+
+	// CpuCount CPU cores for the sandbox
+	CpuCount CPUCount `json:"cpuCount"`
+
+	// EndAt Time when the sandbox will expire
+	EndAt time.Time `json:"endAt"`
+
+	// MemoryMB Memory for the sandbox in MB
+	MemoryMB MemoryMB         `json:"memoryMB"`
+	Metadata *SandboxMetadata `json:"metadata,omitempty"`
+
+	// SandboxID Identifier of the sandbox
+	SandboxID string `json:"sandboxID"`
+
+	// StartedAt Time when the sandbox was started
+	StartedAt time.Time `json:"startedAt"`
+
+	// TemplateID Identifier of the template from which is the sandbox created
+	TemplateID string `json:"templateID"`
 }
 
 // RunningSandboxWithMetrics defines model for RunningSandboxWithMetrics.
@@ -296,9 +287,6 @@ type SandboxMetric struct {
 	// Timestamp Timestamp of the metric entry
 	Timestamp time.Time `json:"timestamp"`
 }
-
-// SandboxState State of the sandbox
-type SandboxState string
 
 // Team defines model for Team.
 type Team struct {
@@ -468,15 +456,6 @@ type N500 = Error
 type GetSandboxesParams struct {
 	// Metadata Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
 	Metadata *string `form:"metadata,omitempty" json:"metadata,omitempty"`
-
-	// State Filter sandboxes by one or more states
-	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
-
-	// NextToken Cursor to start the list from
-	NextToken *string `form:"nextToken,omitempty" json:"nextToken,omitempty"`
-
-	// Limit Maximum number of items to return per page
-	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.

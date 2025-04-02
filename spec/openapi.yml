@@ -161,13 +161,6 @@ components:
         type: string
         description: Metadata of the sandbox
 
-    SandboxState:
-      type: string
-      description: State of the sandbox
-      enum:
-        - running
-        - paused
-
     EnvVars:
       additionalProperties:
         type: string
@@ -250,7 +243,7 @@ components:
           type: string
           description: Version of the envd running in the sandbox
 
-    ListedSandbox:
+    RunningSandbox:
       required:
         - templateID
         - sandboxID
@@ -259,7 +252,6 @@ components:
         - cpuCount
         - memoryMB
         - endAt
-        - state
       properties:
         templateID:
           type: string
@@ -287,8 +279,6 @@ components:
           $ref: "#/components/schemas/MemoryMB"
         metadata:
           $ref: "#/components/schemas/SandboxMetadata"
-        state:
-          $ref: "#/components/schemas/SandboxState"
 
     RunningSandboxWithMetrics:
       required:
@@ -541,7 +531,7 @@ components:
           type: array
           description: List of sandboxes running on the node
           items:
-            $ref: "#/components/schemas/ListedSandbox"
+            $ref: "#/components/schemas/RunningSandbox"
         cachedBuilds:
             type: array
             description: List of cached builds id on the node
@@ -726,7 +716,7 @@ paths:
 
   /sandboxes:
     get:
-      description: List all sandboxes
+      description: List all running sandboxes
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
@@ -739,32 +729,6 @@ paths:
           required: false
           schema:
             type: string
-        - name: state
-          in: query
-          description: Filter sandboxes by one or more states
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/SandboxState"
-          style: form
-          explode: false
-        - name: nextToken
-          in: query
-          description: Cursor to start the list from
-          required: false
-          schema:
-            type: string
-        - name: limit
-          in: query
-          description: Maximum number of items to return per page
-          required: false
-          schema:
-            type: integer
-            format: int32
-            minimum: 1
-            default: 1000
-            maximum: 1000
       responses:
         "200":
           description: Successfully returned all running sandboxes
@@ -774,7 +738,7 @@ paths:
                 type: array
                 items:
                   allOf:
-                    - $ref: "#/components/schemas/ListedSandbox"
+                    - $ref: "#/components/schemas/RunningSandbox"
         "401":
           $ref: "#/components/responses/401"
         "400":
@@ -837,7 +801,7 @@ paths:
           $ref: "#/components/responses/400"
         "500":
           $ref: "#/components/responses/500"
-
+          
   /sandboxes/{sandboxID}/logs:
     get:
       description: Get sandbox logs
@@ -920,7 +884,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListedSandbox"
+                $ref: "#/components/schemas/RunningSandbox"
         "404":
           $ref: "#/components/responses/404"
         "401":

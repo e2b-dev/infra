@@ -39,12 +39,6 @@ func (sc *SnapshotCreate) SetNillableCreatedAt(t *time.Time) *SnapshotCreate {
 	return sc
 }
 
-// SetSandboxStartedAt sets the "sandbox_started_at" field.
-func (sc *SnapshotCreate) SetSandboxStartedAt(t time.Time) *SnapshotCreate {
-	sc.mutation.SetSandboxStartedAt(t)
-	return sc
-}
-
 // SetBaseEnvID sets the "base_env_id" field.
 func (sc *SnapshotCreate) SetBaseEnvID(s string) *SnapshotCreate {
 	sc.mutation.SetBaseEnvID(s)
@@ -126,9 +120,6 @@ func (sc *SnapshotCreate) check() error {
 	if _, ok := sc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`models: missing required field "Snapshot.created_at"`)}
 	}
-	if _, ok := sc.mutation.SandboxStartedAt(); !ok {
-		return &ValidationError{Name: "sandbox_started_at", err: errors.New(`models: missing required field "Snapshot.sandbox_started_at"`)}
-	}
 	if _, ok := sc.mutation.BaseEnvID(); !ok {
 		return &ValidationError{Name: "base_env_id", err: errors.New(`models: missing required field "Snapshot.base_env_id"`)}
 	}
@@ -184,10 +175,6 @@ func (sc *SnapshotCreate) createSpec() (*Snapshot, *sqlgraph.CreateSpec) {
 	if value, ok := sc.mutation.CreatedAt(); ok {
 		_spec.SetField(snapshot.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
-	}
-	if value, ok := sc.mutation.SandboxStartedAt(); ok {
-		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
-		_node.SandboxStartedAt = value
 	}
 	if value, ok := sc.mutation.BaseEnvID(); ok {
 		_spec.SetField(snapshot.FieldBaseEnvID, field.TypeString, value)
@@ -270,18 +257,6 @@ type (
 		*sql.UpdateSet
 	}
 )
-
-// SetSandboxStartedAt sets the "sandbox_started_at" field.
-func (u *SnapshotUpsert) SetSandboxStartedAt(v time.Time) *SnapshotUpsert {
-	u.Set(snapshot.FieldSandboxStartedAt, v)
-	return u
-}
-
-// UpdateSandboxStartedAt sets the "sandbox_started_at" field to the value that was provided on create.
-func (u *SnapshotUpsert) UpdateSandboxStartedAt() *SnapshotUpsert {
-	u.SetExcluded(snapshot.FieldSandboxStartedAt)
-	return u
-}
 
 // SetBaseEnvID sets the "base_env_id" field.
 func (u *SnapshotUpsert) SetBaseEnvID(v string) *SnapshotUpsert {
@@ -380,20 +355,6 @@ func (u *SnapshotUpsertOne) Update(set func(*SnapshotUpsert)) *SnapshotUpsertOne
 		set(&SnapshotUpsert{UpdateSet: update})
 	}))
 	return u
-}
-
-// SetSandboxStartedAt sets the "sandbox_started_at" field.
-func (u *SnapshotUpsertOne) SetSandboxStartedAt(v time.Time) *SnapshotUpsertOne {
-	return u.Update(func(s *SnapshotUpsert) {
-		s.SetSandboxStartedAt(v)
-	})
-}
-
-// UpdateSandboxStartedAt sets the "sandbox_started_at" field to the value that was provided on create.
-func (u *SnapshotUpsertOne) UpdateSandboxStartedAt() *SnapshotUpsertOne {
-	return u.Update(func(s *SnapshotUpsert) {
-		s.UpdateSandboxStartedAt()
-	})
 }
 
 // SetBaseEnvID sets the "base_env_id" field.
@@ -668,20 +629,6 @@ func (u *SnapshotUpsertBulk) Update(set func(*SnapshotUpsert)) *SnapshotUpsertBu
 		set(&SnapshotUpsert{UpdateSet: update})
 	}))
 	return u
-}
-
-// SetSandboxStartedAt sets the "sandbox_started_at" field.
-func (u *SnapshotUpsertBulk) SetSandboxStartedAt(v time.Time) *SnapshotUpsertBulk {
-	return u.Update(func(s *SnapshotUpsert) {
-		s.SetSandboxStartedAt(v)
-	})
-}
-
-// UpdateSandboxStartedAt sets the "sandbox_started_at" field to the value that was provided on create.
-func (u *SnapshotUpsertBulk) UpdateSandboxStartedAt() *SnapshotUpsertBulk {
-	return u.Update(func(s *SnapshotUpsert) {
-		s.UpdateSandboxStartedAt()
-	})
 }
 
 // SetBaseEnvID sets the "base_env_id" field.
