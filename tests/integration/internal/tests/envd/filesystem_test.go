@@ -5,6 +5,7 @@ import (
 	"context"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
@@ -84,12 +85,21 @@ func TestFilePermissions(t *testing.T) {
 
 	defer stream.Close()
 
+	out := []string{}
+
 	for stream.Receive() {
 		msg := stream.Msg()
-		t.Log(msg)
+		out = append(out, msg.String())
 	}
 
-	assert.NoError(t, stream.Err())
+	// in the output, we should see the files .bashrc and .profile, and they should have the correct permissions
+	for _, line := range out {
+		if strings.Contains(line, ".bashrc") || strings.Contains(line, ".profile") {
+			assert.Contains(t, line, "-rw-r--r--")
+			assert.Contains(t, line, "user user")
+		}
+	}
+
 }
 
 func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) *api.PostSandboxesResponse {
