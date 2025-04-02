@@ -320,7 +320,8 @@ data "external" "orchestrator_checksum" {
 resource "random_id" "server" {
   keepers = {
     # Generate a new id each time we switch to a new AMI id
-    orchestrator_job = "5"
+    # TODO: Change this to simulate change in orchstrator job
+    orchestrator_job = "12"
   }
 
   byte_length = 8
