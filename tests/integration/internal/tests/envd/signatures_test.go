@@ -169,7 +169,7 @@ func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
 
 	// create test file
 	filePath := "demo/test.txt"
-	signatureExpiration := time.Now().Add(-3 * time.Hour).Unix()
+	signatureExpiration := time.Now().Add(-1 * time.Minute).Unix()
 	signatureForRead := generateSignature(filePath, "user", "read", &signatureExpiration, envdToken)
 
 	readExpiration := int(signatureExpiration)
