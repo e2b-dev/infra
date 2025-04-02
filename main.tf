@@ -74,6 +74,16 @@ module "buckets" {
   labels = var.labels
 }
 
+data "external" "orchestrator_commit_hash" {
+  # TODO: Get the latest commit
+  program = ["bash", "${path.module}"]
+
+
+  query = {
+    base64 = data.google_storage_bucket_object
+  }
+}
+
 module "cluster" {
   source = "./packages/cluster"
 
@@ -116,6 +126,7 @@ module "cluster" {
 
   consul_acl_token_secret = module.init.consul_acl_token_secret
   nomad_acl_token_secret  = module.init.nomad_acl_token_secret
+  orchestrator_commit_hash = data.external.orchestrator_commit_hash
 
   notification_email_secret_version = module.init.notification_email_secret_version
 
@@ -221,6 +232,7 @@ module "nomad" {
   orchestrator_port           = var.orchestrator_port
   orchestrator_proxy_port     = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name
+  orchestrator_commit_hash    = data.external.orchestrator_commit_hash
 
   # Template manager
   template_manager_port          = var.template_manager_port

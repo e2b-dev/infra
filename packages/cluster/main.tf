@@ -5,6 +5,7 @@ locals {
     "scripts/run-consul.sh"              = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
     "scripts/run-nomad.sh"               = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
     "scripts/run-api-nomad.sh"           = substr(filesha256("${path.module}/scripts/run-api-nomad.sh"), 0, 5)
+    "scripts/run-client-nomad.sh"        = substr(filesha256("${path.module}/scripts/run-client-nomad.sh"), 0, 5)
     "scripts/run-build-cluster-nomad.sh" = substr(filesha256("${path.module}/scripts/run-build-cluster-nomad.sh"), 0, 5)
   }
 }
@@ -125,9 +126,10 @@ module "client_cluster" {
     NOMAD_TOKEN                  = var.nomad_acl_token_secret
     CONSUL_TOKEN                 = var.consul_acl_token_secret
     RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
-    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-nomad.sh"]
+    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-client-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
+    ORCHESTRATOR_COMMIT_HASH     = var.orchestrator_commit_hash
   })
 
   environment = var.environment
@@ -151,7 +153,7 @@ module "client_cluster" {
   service_account_email = var.google_service_account_email
 
   labels     = var.labels
-  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
+  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-client-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
 }
 
 module "api_cluster" {

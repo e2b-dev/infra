@@ -26,6 +26,10 @@ variable "otel_tracing_print" {
   type = bool
 }
 
+variable "orchestrator_commit_hash" {
+  type = string
+}
+
 # API
 variable "api_docker_image_digest" {
   type = string

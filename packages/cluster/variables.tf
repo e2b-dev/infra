@@ -16,6 +16,10 @@ variable "cloudflare_api_token_secret_name" {
   type = string
 }
 
+variable "orchestrator_commit_hash" {
+  type = string
+}
+
 variable "cluster_tag_name" {
   description = "The tag name the Compute Instances will look for to automatically discover each other and form a cluster. TIP: If running more than one server Server cluster, each cluster should have its own unique tag name."
   type        = string

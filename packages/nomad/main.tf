@@ -312,15 +312,8 @@ data "google_compute_machine_types" "client" {
   filter = "name = \"${var.client_machine_type}\""
 }
 
-data "external" "orchestrator_checksum" {
-  program = ["bash", "${path.module}/checksum.sh"]
-
-  query = {
-    base64 = data.google_storage_bucket_object.orchestrator.md5hash
-  }
-}
-
 resource "nomad_job" "orchestrator" {
+  for_each = []
   jobspec = templatefile("${path.module}/orchestrator.hcl", {
     gcp_zone         = var.gcp_zone
     port             = var.orchestrator_port
@@ -329,7 +322,7 @@ resource "nomad_job" "orchestrator" {
     consul_acl_token = var.consul_acl_token_secret
 
     bucket_name                  = var.fc_env_pipeline_bucket_name
-    orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
+    orchestrator_commit_hash     = var.orchestrator_commit_hash
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
     logs_collector_public_ip     = var.logs_proxy_address
     otel_tracing_print           = var.otel_tracing_print

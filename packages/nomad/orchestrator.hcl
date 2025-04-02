@@ -1,8 +1,15 @@
-job "orchestrator" {
+job "orchestrator-${commit_hash}" {
   type = "system"
   datacenters = ["${gcp_zone}"]
 
   priority = 90
+
+
+  constraint {
+    attribute = "${meta.orchestrator_commit_hash}"
+    operator  = "="
+    value     = "${commit_hash}"
+  }
 
   group "client-orchestrator" {
     network {
@@ -50,18 +57,11 @@ job "orchestrator" {
 
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port} --proxy-port ${proxy_port}"]
+        args    = ["-c", " chmod +x local/orchestrator-${commit_hash} && local/orchestrator-${commit_hash} --port ${port} --proxy-port ${proxy_port}"]
       }
 
       artifact {
-        source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator"
-
-        %{ if environment == "dev" }
-        // Checksum in only available for dev to increase development speed in prod use rolling updates
-        options {
-          checksum = "md5:${orchestrator_checksum}"
-        }
-        %{ endif }
+        source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator-${commit_hash}"
       }
     }
   }
