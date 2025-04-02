@@ -74,7 +74,8 @@ paths:
       parameters:
         - $ref: "#/components/parameters/FilePath"
         - $ref: "#/components/parameters/User"
-        - $ref: "#/components/parameters/Signing"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/SignatureExpiration"
       responses:
         "200":
           $ref: "#/components/responses/DownloadSuccess"
@@ -95,7 +96,8 @@ paths:
       parameters:
         - $ref: "#/components/parameters/FilePath"
         - $ref: "#/components/parameters/User"
-        - $ref: "#/components/parameters/Signing"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/SignatureExpiration"
       requestBody:
         $ref: "#/components/requestBodies/File"
       responses:
@@ -133,13 +135,20 @@ components:
       schema:
         type: string
         pattern: "^(root|user)$"
-    Signing:
-      name: signing
+    Signature:
+      name: signature
       in: query
       required: false
-      description: Signing key used for verification of permission for file access.
+      description: Signature used for file access permission verification.
       schema:
         type: string
+    SignatureExpiration:
+      name: signature_expiration
+      in: query
+      required: false
+      description: Signature expiration used for defining the expiration time of the signature.
+      schema:
+        type: integer
 
   requestBodies:
     File:
