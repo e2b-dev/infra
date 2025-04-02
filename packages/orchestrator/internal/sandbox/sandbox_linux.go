@@ -126,7 +126,10 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
 	}
 
-	cleanup.Add(func() error {
+	cleanup.Add(func(ctx context.Context) error {
+		_, span := tracer.Start(ctx, "network-slot-clean")
+		defer span.End()
+
 		returnErr := networkPool.Return(ips)
 		if returnErr != nil {
 			return fmt.Errorf("failed to return network slot: %w", returnErr)
@@ -138,7 +141,7 @@ func NewSandbox(
 
 	sandboxFiles := t.Files().NewSandboxFiles(config.SandboxId)
 
-	cleanup.Add(func() error {
+	cleanup.Add(func(ctx context.Context) error {
 		filesErr := cleanupFiles(sandboxFiles)
 		if filesErr != nil {
 			return fmt.Errorf("failed to cleanup files: %w", filesErr)
@@ -156,6 +159,7 @@ func NewSandbox(
 	}
 
 	rootfsOverlay, err := rootfs.NewCowDevice(
+		tracer,
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 		sandboxFiles.RootfsBlockSize(),
@@ -165,8 +169,11 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to create overlay file: %w", err)
 	}
 
-	cleanup.Add(func() error {
-		rootfsOverlay.Close()
+	cleanup.Add(func(ctx context.Context) error {
+		childCtx, span := tracer.Start(ctx, "rootfs-overlay-close")
+		defer span.End()
+
+		rootfsOverlay.Close(childCtx)
 
 		return nil
 	})
@@ -194,7 +201,10 @@ func NewSandbox(
 		return nil, cleanup, fmt.Errorf("failed to start uffd: %w", uffdStartErr)
 	}
 
-	cleanup.Add(func() error {
+	cleanup.Add(func(ctx context.Context) error {
+		_, span := tracer.Start(ctx, "uffd-stop")
+		defer span.End()
+
 		stopErr := fcUffd.Stop()
 		if stopErr != nil {
 			return fmt.Errorf("failed to stop uffd: %w", stopErr)
@@ -271,7 +281,10 @@ func NewSandbox(
 	// By default, the sandbox should be healthy, if the status change we report it.
 	sbx.healthy.Store(true)
 
-	cleanup.AddPriority(func() error {
+	cleanup.AddPriority(func(ctx context.Context) error {
+		_, span := tracer.Start(ctx, "fc-uffd-stop")
+		defer span.End()
+
 		var errs []error
 
 		fcStopErr := fcHandle.Stop()
@@ -319,7 +332,10 @@ func NewSandbox(
 
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
 
-	cleanup.Add(func() error {
+	cleanup.Add(func(ctx context.Context) error {
+		_, span := tracer.Start(ctx, "dns-proxy-remove")
+		defer span.End()
+
 		dns.Remove(config.SandboxId, ips.HostIP())
 		proxy.RemoveSandbox(config.SandboxId, ips.HostIP())
 
@@ -331,23 +347,23 @@ func NewSandbox(
 	return sbx, cleanup, nil
 }
 
-func (s *Sandbox) Wait() error {
+func (s *Sandbox) Wait(ctx context.Context) error {
 	select {
 	case fcErr := <-s.process.Exit:
-		stopErr := s.Stop()
+		stopErr := s.Stop(ctx)
 		uffdErr := <-s.uffdExit
 
 		return errors.Join(fcErr, stopErr, uffdErr)
 	case uffdErr := <-s.uffdExit:
-		stopErr := s.Stop()
+		stopErr := s.Stop(ctx)
 		fcErr := <-s.process.Exit
 
 		return errors.Join(uffdErr, stopErr, fcErr)
 	}
 }
 
-func (s *Sandbox) Stop() error {
-	err := s.cleanup.Run()
+func (s *Sandbox) Stop(ctx context.Context) error {
+	err := s.cleanup.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to stop sandbox: %w", err)
 	}
@@ -495,6 +511,10 @@ func (s *Sandbox) Snapshot(
 	err = file.Sync()
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync rootfs path: %w", err)
+	}
+
+	if err := file.Close(); err != nil {
+		return nil, fmt.Errorf("nbd file closing failed: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "synced rootfs")

@@ -6,7 +6,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"go.uber.org/zap"
 	"html/template"
 	"net/http"
 	"net/http/httputil"
@@ -15,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -33,7 +34,7 @@ type htmlTemplateData struct {
 }
 
 type jsonTemplateData struct {
-	Error     string `json:"error"`
+	Message   string `json:"message"`
 	SandboxId string `json:"sandboxId"`
 	Port      uint64 `json:"port"`
 }
@@ -182,7 +183,7 @@ func (p *SandboxProxy) buildHtmlClosedPortError(sandboxId string, host string, p
 
 func (p *SandboxProxy) buildJsonClosedPortError(sandboxId string, port uint64) []byte {
 	response := jsonTemplateData{
-		Error:     "The sandbox is running but port is not open",
+		Message:   "The sandbox is running but port is not open",
 		SandboxId: sandboxId,
 		Port:      port,
 	}

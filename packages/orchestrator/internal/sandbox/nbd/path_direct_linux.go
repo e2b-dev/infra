@@ -12,12 +12,15 @@ import (
 	"time"
 
 	"github.com/Merovius/nbd/nbdnl"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type DirectPathMount struct {
+	tracer      trace.Tracer
 	Backend     block.Device
 	ctx         context.Context
 	dispatcher  *Dispatch
@@ -28,10 +31,11 @@ type DirectPathMount struct {
 	devicePool  *DevicePool
 }
 
-func NewDirectPathMount(b block.Device, devicePool *DevicePool) *DirectPathMount {
+func NewDirectPathMount(tracer trace.Tracer, b block.Device, devicePool *DevicePool) *DirectPathMount {
 	ctx, cancelfn := context.WithCancel(context.Background())
 
 	return &DirectPathMount{
+		tracer:     tracer,
 		Backend:    b,
 		ctx:        ctx,
 		cancelfn:   cancelfn,
@@ -131,34 +135,42 @@ func (d *DirectPathMount) Open(ctx context.Context) (uint32, error) {
 	return d.deviceIndex, nil
 }
 
-func (d *DirectPathMount) Close() error {
+func (d *DirectPathMount) Close(ctx context.Context) error {
+	childCtx, childSpan := d.tracer.Start(ctx, "direct-path-mount-close")
+	defer childSpan.End()
+
 	// First cancel the context, which will stop waiting on pending readAt/writeAt...
-	d.ctx.Done()
+	telemetry.ReportEvent(childCtx, "canceling context")
+	d.cancelfn()
 
 	// Now wait for any pending responses to be sent
+	telemetry.ReportEvent(childCtx, "waiting for pending responses")
 	if d.dispatcher != nil {
 		d.dispatcher.Wait()
 	}
 
 	// Now ask to disconnect
+	telemetry.ReportEvent(childCtx, "disconnecting NBD")
 	err := nbdnl.Disconnect(d.deviceIndex)
 	if err != nil {
 		return err
 	}
 
 	// Close all the socket pairs...
+	telemetry.ReportEvent(childCtx, "closing socket pairs")
 	err = d.conn.Close()
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-	defer cancel()
 	// Wait until it's completely disconnected...
+	telemetry.ReportEvent(childCtx, "waiting for complete disconnection")
+	ctxTimeout, cancel := context.WithTimeout(childCtx, 4*time.Second)
+	defer cancel()
 	for {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-ctxTimeout.Done():
+			return ctxTimeout.Err()
 		default:
 		}
 

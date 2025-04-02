@@ -1,4 +1,4 @@
-name: Deploy Staging Jobs
+name: Build And Upload Job
 
 on:
   workflow_dispatch:
@@ -11,14 +11,22 @@ on:
         description: 'Unique tracking ID used for identifying the workflow run'
         required: false
         type: string
+      environment:
+        description: 'Target environment for deployment, e.g. staging'
+        required: true
+        type: string
+      job_name:
+        description: 'Name of the job to build-and-upload, e.g. api, template-manager'
+        required: true
+        type: string
 
 concurrency:
-  group: deploy-staging
+  group: deploy-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy remaining jobs to the staging environment
+    name: Build and upload job to the ${{ inputs.environment }} environment
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -31,12 +39,11 @@ jobs:
           ref: ${{ inputs.commit_sha }}
 
       - name: Setup environment
-        uses: ./.github/actions/deploy-setup-staging
+        uses: ./.github/actions/deploy-setup
         with:
-          postgres_connection_string: ${{ secrets.STAGING_POSTGRES_CONNECTION_STRING }}
+          environment: ${{ inputs.environment }}
 
-      - name: Deploy remaining jobs
+      - name: Build and upload
         run: |
-          make plan-only-jobs
-          make apply
+          make build-and-upload/${{ inputs.job_name }}
         

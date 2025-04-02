@@ -3,11 +3,22 @@ FROM golang:1.23
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update
-RUN apt-get install systemd ca-certificates make python-is-python3 python3 nodejs chrony sudo -y
+RUN apt-get install systemd ca-certificates make python-is-python3 python3 nodejs npm chrony sudo -y
 
 RUN update-ca-certificates
 
+# Remove password for root.
+RUN passwd -d root
+
+# Create default user.
 RUN useradd -ms /bin/bash user
+RUN usermod -aG sudo user
+RUN passwd -d user
+RUN echo "user ALL=(ALL:ALL) NOPASSWD: ALL" >>/etc/sudoers
+
+RUN mkdir -p /home/user
+RUN chmod 777 -R /home/user
+RUN chmod 777 -R /usr/local
 
 RUN go install github.com/go-delve/delve/cmd/dlv@latest
 

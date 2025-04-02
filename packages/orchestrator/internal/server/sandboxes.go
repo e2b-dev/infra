@@ -11,8 +11,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -68,8 +68,9 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	)
 	if err != nil {
 		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))
-		cleanupErr := cleanup.Run()
-		err = grpc.Errorf(codes.Internal, "failed to cleanup sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
+
+		cleanupErr := cleanup.Run(ctx)
+		err = status.Errorf(codes.Internal, "failed to cleanup sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
 
 		telemetry.ReportCriticalError(ctx, err)
 
@@ -77,6 +78,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 	started := time.Now()
 
+	// TODO: this could become JSON (pro: easier to read with external tools/code, con: larger size and slower serialization.)
 	confProto, err := proto.Marshal(sbx.Config)
 	if err != nil {
 		sbxlogger.I(sbx).Error("failed to marshal sandbox config for the database", zap.Error(err))
@@ -94,12 +96,16 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}
 
 	go func() {
-		if err := sbx.Wait(); err != nil {
+		ctx, childSpan := s.tracer.Start(context.Background(), "sandbox-create-stop")
+		defer childSpan.End()
+
+		if err := sbx.Wait(ctx); err != nil {
 			sbxlogger.I(sbx).Error("failed to wait for sandbox, cleaning up", zap.Error(err))
 		}
+
 		ended := time.Now()
 
-		if err := cleanup.Run(); err != nil {
+		if err := cleanup.Run(ctx); err != nil {
 			sbxlogger.I(sbx).Error("failed to cleanup sandbox, will remove from cache", zap.Error(err))
 		}
 
@@ -141,14 +147,14 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	item, ok := s.sandboxes.Get(req.SandboxId)
 	if !ok {
-		err := grpc.Errorf(codes.NotFound, "sandbox not found")
+		err := status.Errorf(codes.NotFound, "sandbox not found")
 		telemetry.ReportCriticalError(ctx, err)
 		return nil, err
 	}
 
 	item.EndAt = req.EndTime.AsTime()
 	if err := s.db.UpdateSandboxDeadline(ctx, req.SandboxId, item.EndAt); err != nil {
-		return nil, grpc.Errorf(codes.Internal, fmt.Sprintf("db update sandbox: %w", err))
+		return nil, status.Errorf(codes.Internal, fmt.Sprintf("db update sandbox: %w", err))
 	}
 
 	return &emptypb.Empty{}, nil
@@ -201,7 +207,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		err := fmt.Errorf("sandbox '%s' not found", in.SandboxId)
 		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, grpc.Errorf(codes.NotFound, err.Error())
+		return nil, status.Errorf(codes.NotFound, err.Error())
 	}
 
 	// Don't allow connecting to the sandbox anymore.
@@ -221,7 +227,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	sbx.Healthcheck(loggingCtx, true)
 	sbx.LogMetrics(loggingCtx)
 
-	err := sbx.Stop()
+	err := sbx.Stop(ctx)
 	if err != nil {
 		sbxlogger.I(sbx).Error("error stopping sandbox", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 	}
@@ -243,7 +249,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, grpc.Errorf(codes.ResourceExhausted, err.Error())
+		return nil, status.Errorf(codes.ResourceExhausted, err.Error())
 	}
 
 	releaseOnce := sync.OnceFunc(func() {
@@ -260,7 +266,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		err := fmt.Errorf("sandbox not found")
 		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, grpc.Errorf(codes.NotFound, err.Error())
+		return nil, status.Errorf(codes.NotFound, err.Error())
 	}
 
 	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
@@ -283,14 +289,17 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		err = fmt.Errorf("error creating template files: %w", err)
 		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, grpc.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
 	defer func() {
 		// sbx.Stop sometimes blocks for several seconds,
 		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and DNS.
 		go func() {
-			if err := sbx.Stop(); err != nil {
+			ctx, childSpan := s.tracer.Start(context.Background(), "sandbox-pause-stop")
+			defer childSpan.End()
+
+			if err := sbx.Stop(ctx); err != nil {
 				sbxlogger.I(sbx).Error("error stopping sandbox after snapshot", zap.String("sandbox_id", in.SandboxId), zap.Error(err))
 			}
 		}()
@@ -301,7 +310,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		err = fmt.Errorf("error creating sandbox cache dir '%s': %w", snapshotTemplateFiles.CacheDir(), err)
 		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, grpc.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
 	snapshot, err := sbx.Snapshot(ctx, s.tracer, snapshotTemplateFiles, releaseOnce)
@@ -309,7 +318,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		err = fmt.Errorf("error snapshotting sandbox '%s': %w", in.SandboxId, err)
 		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, grpc.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
 	err = s.templateCache.AddSnapshot(
@@ -328,7 +337,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		err = fmt.Errorf("error adding snapshot to template cache: %w", err)
 		telemetry.ReportCriticalError(ctx, err)
 
-		return nil, grpc.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")

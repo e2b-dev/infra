@@ -62,6 +62,11 @@ func CreatedAt(v time.Time) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldCreatedAt, v))
 }
 
+// SandboxStartedAt applies equality check predicate on the "sandbox_started_at" field. It's identical to SandboxStartedAtEQ.
+func SandboxStartedAt(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldSandboxStartedAt, v))
+}
+
 // BaseEnvID applies equality check predicate on the "base_env_id" field. It's identical to BaseEnvIDEQ.
 func BaseEnvID(v string) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldEQ(FieldBaseEnvID, v))
@@ -115,6 +120,46 @@ func CreatedAtLT(v time.Time) predicate.Snapshot {
 // CreatedAtLTE applies the LTE predicate on the "created_at" field.
 func CreatedAtLTE(v time.Time) predicate.Snapshot {
 	return predicate.Snapshot(sql.FieldLTE(FieldCreatedAt, v))
+}
+
+// SandboxStartedAtEQ applies the EQ predicate on the "sandbox_started_at" field.
+func SandboxStartedAtEQ(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldEQ(FieldSandboxStartedAt, v))
+}
+
+// SandboxStartedAtNEQ applies the NEQ predicate on the "sandbox_started_at" field.
+func SandboxStartedAtNEQ(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNEQ(FieldSandboxStartedAt, v))
+}
+
+// SandboxStartedAtIn applies the In predicate on the "sandbox_started_at" field.
+func SandboxStartedAtIn(vs ...time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldIn(FieldSandboxStartedAt, vs...))
+}
+
+// SandboxStartedAtNotIn applies the NotIn predicate on the "sandbox_started_at" field.
+func SandboxStartedAtNotIn(vs ...time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldNotIn(FieldSandboxStartedAt, vs...))
+}
+
+// SandboxStartedAtGT applies the GT predicate on the "sandbox_started_at" field.
+func SandboxStartedAtGT(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGT(FieldSandboxStartedAt, v))
+}
+
+// SandboxStartedAtGTE applies the GTE predicate on the "sandbox_started_at" field.
+func SandboxStartedAtGTE(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldGTE(FieldSandboxStartedAt, v))
+}
+
+// SandboxStartedAtLT applies the LT predicate on the "sandbox_started_at" field.
+func SandboxStartedAtLT(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLT(FieldSandboxStartedAt, v))
+}
+
+// SandboxStartedAtLTE applies the LTE predicate on the "sandbox_started_at" field.
+func SandboxStartedAtLTE(v time.Time) predicate.Snapshot {
+	return predicate.Snapshot(sql.FieldLTE(FieldSandboxStartedAt, v))
 }
 
 // BaseEnvIDEQ applies the EQ predicate on the "base_env_id" field.

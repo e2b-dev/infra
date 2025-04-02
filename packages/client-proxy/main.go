@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -11,12 +14,15 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"text/template"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/miekg/dns"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -37,12 +43,28 @@ const (
 	maxRetries            = 3
 )
 
-var commitSHA string
-
-// Create a DNS client
 var (
+	//go:embed html-templates/sandbox_not_found_502.html
+	sandboxNotFound502Html         string
+	sandboxNotFound502HtmlTemplate = template.Must(template.New("template").Parse(sandboxNotFound502Html))
+	browserUserAgentRegex          = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|opera|msie`)
+
+	commitSHA string
+
+	// Create a DNS client
 	client = new(dns.Client)
 )
+
+type htmlTemplateData struct {
+	SandboxId   string
+	SandboxHost string
+}
+
+type jsonTemplateData struct {
+	Message   string `json:"message"`
+	SandboxId string `json:"sandboxId"`
+	Code      int    `json:"code"`
+}
 
 func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
 	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
@@ -92,10 +114,30 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 			// The sandbox was not found, we want to return this information to the user
 			if node == "127.0.0.1" {
 				zap.L().Warn("Sandbox not found", zap.String("sandbox_id", sandboxID))
-				w.WriteHeader(http.StatusBadGateway)
-				w.Write([]byte("Sandbox not found"))
 
-				return
+				if isBrowser(r.UserAgent()) {
+					res, resErr := buildHtmlNotFoundError(sandboxID, r.Host)
+					if resErr != nil {
+						zap.L().Error("Failed to build sandbox not found HTML error response", zap.Error(resErr))
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					w.WriteHeader(http.StatusBadGateway)
+					w.Header().Add("Content-Type", "text/html")
+					w.Write(res)
+					return
+				} else {
+					res, resErr := buildJsonNotFoundError(sandboxID)
+					if resErr != nil {
+						zap.L().Error("Failed to build JSON error response", zap.Error(resErr))
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					w.WriteHeader(http.StatusBadGateway)
+					w.Header().Add("Content-Type", "application/json")
+					w.Write(res)
+					return
+				}
 			}
 
 			break
@@ -149,7 +191,8 @@ func run() int {
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 
-	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA, "no")
+	instanceID := uuid.New().String()
+	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA, instanceID)
 	defer func() {
 		err := stopOtlp(ctx)
 		if err != nil {
@@ -171,7 +214,7 @@ func run() int {
 	}()
 	zap.ReplaceGlobals(logger)
 
-	logger.Info("Starting client proxy", zap.String("commit", commitSHA))
+	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
 	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
 	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -260,6 +303,36 @@ func run() int {
 	wg.Wait()
 
 	return int(exitCode.Load())
+}
+
+func buildHtmlNotFoundError(sandboxId string, host string) ([]byte, error) {
+	htmlResponse := new(bytes.Buffer)
+	htmlVars := htmlTemplateData{SandboxId: sandboxId, SandboxHost: host}
+
+	err := sandboxNotFound502HtmlTemplate.Execute(htmlResponse, htmlVars)
+	if err != nil {
+		return nil, err
+	}
+
+	return htmlResponse.Bytes(), nil
+}
+
+func buildJsonNotFoundError(sandboxId string) ([]byte, error) {
+	response := jsonTemplateData{
+		Message:   "Sandbox not found",
+		SandboxId: sandboxId,
+	}
+
+	responseBytes, err := json.Marshal(response)
+	if err != nil {
+		return nil, err
+	}
+
+	return responseBytes, nil
+}
+
+func isBrowser(userAgent string) bool {
+	return browserUserAgentRegex.MatchString(userAgent)
 }
 
 func main() {

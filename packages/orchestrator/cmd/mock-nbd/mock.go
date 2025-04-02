@@ -9,6 +9,7 @@ import (
 	"os/signal"
 
 	"github.com/pojntfx/go-nbd/pkg/backend"
+	"go.opentelemetry.io/otel"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 )
@@ -112,7 +113,7 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 				}
 
 				if mnt != nil {
-					mnt.Close()
+					mnt.Close(ctx)
 				}
 
 				continue
@@ -124,12 +125,13 @@ func MockNbd(ctx context.Context, device *DeviceWithClose, index int, devicePool
 		}
 	}()
 
-	mnt = nbd.NewDirectPathMount(device, devicePool)
+	tracer := otel.Tracer("test")
+	mnt = nbd.NewDirectPathMount(tracer, device, devicePool)
 
 	go func() {
 		<-ctx.Done()
 
-		mnt.Close()
+		mnt.Close(context.TODO())
 	}()
 
 	_, err = mnt.Open(ctx)

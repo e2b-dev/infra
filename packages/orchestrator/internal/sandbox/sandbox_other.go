@@ -37,7 +37,7 @@ type NoOpProcess struct {
 type NoOpCleanup struct {
 }
 
-func (m *NoOpCleanup) Run() error {
+func (m *NoOpCleanup) Run(ctx context.Context) error {
 	return errors.New("platform does not support sandbox")
 }
 
@@ -69,8 +69,8 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 // Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
 func NewSandbox(
 
-	// YOU ARE IN SANDBOX_OTHER.GO
-	// YOU PROBABLY WANT TO BE IN SANDBOX_LINUX.GO
+// YOU ARE IN SANDBOX_OTHER.GO
+// YOU PROBABLY WANT TO BE IN SANDBOX_LINUX.GO
 
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -93,12 +93,12 @@ func NewSandbox(
 	return nil, nil, errors.New("platform does not support sandbox")
 }
 
-func (s *Sandbox) Wait() error {
+func (s *Sandbox) Wait(ctx context.Context) error {
 	return errors.New("platform does not support sandbox")
 }
 
-func (s *Sandbox) Stop() error {
-	err := s.cleanup.Run()
+func (s *Sandbox) Stop(ctx context.Context) error {
+	err := s.cleanup.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to stop sandbox: %w", err)
 	}
