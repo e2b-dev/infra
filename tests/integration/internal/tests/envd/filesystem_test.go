@@ -67,14 +67,17 @@ func TestFilePermissions(t *testing.T) {
 	sbx := createSandbox(t, setup.WithAPIKey())
 
 	envdClient := setup.GetEnvdClient(t, ctx)
+	req := connect.NewRequest(&process.StartRequest{
+		Process: &process.ProcessConfig{
+			Cmd:  "ls",
+			Args: []string{"-la", "/home/user"},
+		},
+	})
+	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
+	setup.SetUserHeader(req.Header(), "user")
 	stream, err := envdClient.ProcessClient.Start(
 		ctx,
-		connect.NewRequest(&process.StartRequest{
-			Process: &process.ProcessConfig{
-				Cmd:  "ls",
-				Args: []string{"-la", "/home/user"},
-			},
-		}),
+		req,
 	)
 
 	assert.NoError(t, err)
