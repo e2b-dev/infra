@@ -22,9 +22,17 @@ func TestListDir(t *testing.T) {
 
 	sbx := createSandbox(t, setup.WithAPIKey())
 
+	createDir(t, "/test-dir")
+	createDir(t, "/test-dir/sub-dir-1")
+	createDir(t, "/test-dir/sub-dir-2")
+	createTextFile(t, "/test-dir/sub-dir/file.txt", "Hello, World!")
+
 	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// List all files in the root directory with depth 1
 	req := connect.NewRequest(&filesystem.ListDirRequest{
-		Path: "/",
+		Path:  "/",
+		Depth: 1,
 	})
 	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
 	setup.SetUserHeader(req.Header(), "user")
@@ -32,6 +40,9 @@ func TestListDir(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.NotEmpty(t, folderListResp.Msg)
+	assert.Equal(t, 1, len(folderListResp.Msg.Entries))
+	assert.Equal(t, "test-dir", folderListResp.Msg.Entries[0].Name)
+	assert.Equal(t, "test-dir/sub-dir-1", folderListResp.Msg.Entries[1].Name)
 }
 
 func TestCreateFile(t *testing.T) {
@@ -102,4 +113,21 @@ func createTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, 
 	}
 
 	return body, writer.FormDataContentType()
+}
+
+func createDir(tb testing.TB, path string) {
+	tb.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	client := setup.GetEnvdClient(tb, ctx)
+	req := connect.NewRequest(&filesystem.MakeDirRequest{
+		Path: path,
+	})
+	setup.SetUserHeader(req.Header(), "user")
+	_, err := client.FilesystemClient.MakeDir(ctx, req)
+	if err != nil {
+		tb.Fatal(err)
+	}
 }
