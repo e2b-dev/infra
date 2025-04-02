@@ -310,7 +310,7 @@ EOF
             <profile>default</profile>
             <quota>default</quota>
             <access_management>1</access_management>
-        </${user}>
+        </${username}>
     </users>
 </clickhouse>
 EOF
