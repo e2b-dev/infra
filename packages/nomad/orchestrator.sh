@@ -13,7 +13,7 @@ export CLICKHOUSE_USERNAME="${clickhouse_username}"
 export CLICKHOUSE_PASSWORD="${clickhouse_password}"
 export CLICKHOUSE_DATABASE="${clickhouse_database}"
 
-# We should allow versioning for the orchestrator this way.
-# Alternatively validate the checksum.
-# Also let's copy the binary to local dir to avoid problems.
+# TODO: We should allow versioning for the orchestrator here or at least make the download more robust/explicit—we are using the fuse mount for envd here.
+# We can also validate the checksum here.
+# TODO: Also let's copy the binary to local dir to avoid problems.
 /fc-envd/orchestrator --port ${port}
