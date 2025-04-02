@@ -6,8 +6,9 @@ job "orchestrator-${random_id}" {
 
   // This constraint ensures that only one orchestrator is running at a time,
   // now that we use differently names jobs.
+  // TODO: We cannot use this on group level, so if we want to run the script check we will need to use colliding port.
   constraint {
-    distinct_property = "orchestrator"
+    distinct_property = "$${node.unique.id}"
     value             = "1"
   }
 
