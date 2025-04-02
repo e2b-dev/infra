@@ -16,10 +16,6 @@ type API struct {
 	envVars     *utils.Map[string, string]
 }
 
-type jsonErrorResponse struct {
-	Error string `json:"error"`
-}
-
 func New(l *zerolog.Logger, envVars *utils.Map[string, string]) *API {
 	return &API{logger: l, envVars: envVars}
 }

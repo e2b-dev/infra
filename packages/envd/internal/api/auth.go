@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
@@ -36,14 +35,10 @@ func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 			allowedPath := slices.Contains(allowedPaths, req.Method+req.URL.Path)
 
 			if authHeader != *a.accessToken && !allowedPath {
-				response := jsonErrorResponse{Error: "Unauthorized access, please provide a valid access token or method signing if supported"}
-				responseBytes, _ := json.Marshal(response)
-
 				a.logger.Error().Msg("Trying to access secured envd without correct access token")
 
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Header().Add("Content-Type", "application/json")
-				w.Write(responseBytes)
+				err := fmt.Errorf("unauthorized access, please provide a valid access token or method signing if supported")
+				jsonError(w, http.StatusUnauthorized, err)
 				return
 			}
 		}
