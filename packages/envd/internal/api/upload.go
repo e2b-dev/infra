@@ -163,9 +163,10 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	operationID := logs.AssignOperationID()
 
 	// signing authorization if needed
-	ok, err := a.validateSigning(w, r, params.Signing, params.Username, path, SigningWriteOperation)
-	if !ok {
+	err := a.validateSigning(r, params.Signature, params.SignatureExpiration, params.Username, path, SigningWriteOperation)
+	if err != nil {
 		a.logger.Error().Err(err).Str(string(logs.OperationIDKey), operationID).Msg("error during auth validation")
+		jsonError(w, http.StatusUnauthorized, err)
 		return
 	}
 
