@@ -227,3 +227,8 @@ variable "clickhouse_password" {
 variable "clickhouse_database" {
   type = string
 }
+
+variable "clickhouse_enabled" {
+  type    = bool
+  default = false
+}

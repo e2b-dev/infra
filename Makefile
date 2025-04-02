@@ -30,7 +30,8 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION) \
 	TF_VAR_clickhouse_connection_string=$(CLICKHOUSE_CONNECTION_STRING) \
 	TF_VAR_clickhouse_username=$(CLICKHOUSE_USERNAME) \
-	TF_VAR_clickhouse_database=$(CLICKHOUSE_DATABASE) 
+	TF_VAR_clickhouse_database=$(CLICKHOUSE_DATABASE) \
+	TF_VAR_clickhouse_enabled=$(CLICKHOUSE_ENABLED)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)

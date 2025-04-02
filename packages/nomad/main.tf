@@ -419,6 +419,7 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
 
 # Add this with your other Nomad jobs
 resource "nomad_job" "clickhouse" {
+  count = var.clickhouse_enabled ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
     zone                = var.gcp_zone
     clickhouse_version  = "25.1.5.31" # Or make this a variable

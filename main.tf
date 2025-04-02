@@ -177,7 +177,7 @@ module "nomad" {
   clickhouse_username          = "clickhouse"
   clickhouse_password          = module.init.clickhouse_password_secret_data
   clickhouse_database          = "default"
-
+  clickhouse_enabled           = var.clickhouse_enabled
   # API
   api_machine_count                         = var.api_cluster_size
   logs_proxy_address                        = "http://${module.cluster.logs_proxy_ip}"
