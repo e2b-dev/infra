@@ -24,6 +24,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+const defaultPageLimitSandboxList int32 = 1000
+
 // extend the api.ListedSandbox with a timestamp to use for pagination
 type PaginatedSandbox struct {
 	api.ListedSandbox
@@ -134,9 +136,9 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 	return sandboxes, nil
 }
 
-func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit *int32, cursorTime time.Time, cursorID string) ([]PaginatedSandbox, error) {
+func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit int32, cursorTime time.Time, cursorID string) ([]PaginatedSandbox, error) {
 	sandboxes := make([]PaginatedSandbox, 0)
-	snapshots, err := a.db.GetTeamSnapshotsWithCursor(ctx, teamID, runningSandboxesIDs, int(*limit), metadataFilter, cursorTime, cursorID)
+	snapshots, err := a.db.GetTeamSnapshotsWithCursor(ctx, teamID, runningSandboxesIDs, int(limit), metadataFilter, cursorTime, cursorID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting team snapshots: %s", err)
 	}
@@ -211,13 +213,19 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.Instance.SandboxID))
 	}
 
+	// Set default limit if not provided
+	limit := defaultPageLimitSandboxList
+	if paginationParams.Limit != nil {
+		limit = *paginationParams.Limit
+	}
+
 	if params.State == nil || (slices.Contains(*params.State, api.Running) && slices.Contains(*params.State, api.Paused)) {
 		runningSandboxList, err := a.getRunningSandboxes(runningSandboxes, metadataFilter, parsedCursorTime, parsedCursorID, paginationParams.Limit)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error getting running sandboxes: %w", err)
 		}
 
-		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, metadataFilter, paginationParams.Limit, parsedCursorTime, parsedCursorID)
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, metadataFilter, limit, parsedCursorTime, parsedCursorID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error getting paused sandboxes: %w", err)
 		}
@@ -231,7 +239,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 		}
 		sandboxes = append(sandboxes, runningSandboxList...)
 	} else if params.State != nil && slices.Contains(*params.State, api.Paused) {
-		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, metadataFilter, paginationParams.Limit, parsedCursorTime, parsedCursorID)
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, metadataFilter, limit, parsedCursorTime, parsedCursorID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error getting paused sandboxes: %w", err)
 		}
