@@ -1,19 +1,29 @@
 job "orchestrator" {
   type = "system"
   datacenters = ["${gcp_zone}"]
+  node_pool = "default"
 
   priority = 90
 
-  group "client-orchestrator" {
+  meta {
+    // In "dev" environment this will force a restart of orchestrator job when you upload new one.
+    restart_checksum = %{ if environment == "dev" }"${orchestrator_checksum}"%{ else }""%{ endif }
+  }
+
+  group "orchestrator" {
     network {
       port "orchestrator" {
         static = "${port}"
+      }
+
+      port "proxy" {
+        static = "${proxy_port}"
       }
     }
 
     service {
       name = "orchestrator"
-      port = "${port}"
+      port = "orchestrator"
 
       check {
         type         = "grpc"
@@ -27,41 +37,36 @@ job "orchestrator" {
 
     service {
       name = "orchestrator-proxy"
-      port = "${proxy_port}"
+      port = "proxy"
     }
 
     task "start" {
       driver = "raw_exec"
+      
+      restart {
+        attempts = 0
+      }
 
       env {
-        NODE_ID                      = "$${node.unique.id}"
-        CONSUL_TOKEN                 = "${consul_acl_token}"
-        OTEL_TRACING_PRINT           = "${otel_tracing_print}"
-        LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
-        LOGS_COLLECTOR_PUBLIC_IP     = "${logs_collector_public_ip}"
-        ENVIRONMENT                  = "${environment}"
-        TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
-        OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
-        CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
-        CLICKHOUSE_USERNAME          = "${clickhouse_username}"
-        CLICKHOUSE_PASSWORD          = "${clickhouse_password}"
-        CLICKHOUSE_DATABASE          = "${clickhouse_database}"
+        // We need to pass this env via HCL jobspec as it is not available during terraform templating,
+        // but filled via Consul when the allocation is created.
+        NODE_ID = "$${node.unique.id}"
+      }
+
+      template {
+        destination = "local/start.sh"
+        // Make this "noop" for "prod" and "restart" for "dev" to increase development speed.
+        // As we will move to orchestrator rolling updates we can try the "signal" or "script" change mode.
+        change_mode = %{ if environment == "dev" }"restart"%{ else }"noop"%{ endif }
+        // We template the whole script this way, because otherwise, although changes to the env vars do not force whole job restart,
+        // changes to the actual content of the inlined script would.
+        data = <<EOT
+{{ with nomadVar "nomad/jobs/orchestrator" }}{{ .start_script }}{{ end }}
+EOT
       }
 
       config {
-        command = "/bin/bash"
-        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port} --proxy-port ${proxy_port}"]
-      }
-
-      artifact {
-        source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator"
-
-        %{ if environment == "dev" }
-        // Checksum in only available for dev to increase development speed in prod use rolling updates
-        options {
-          checksum = "md5:${orchestrator_checksum}"
-        }
-        %{ endif }
+        command = "local/start.sh"
       }
     }
   }

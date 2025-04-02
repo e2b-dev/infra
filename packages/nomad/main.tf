@@ -306,7 +306,6 @@ data "google_storage_bucket_object" "orchestrator" {
   bucket = var.fc_env_pipeline_bucket_name
 }
 
-
 data "google_compute_machine_types" "client" {
   zone   = var.gcp_zone
   filter = "name = \"${var.client_machine_type}\""
@@ -320,25 +319,44 @@ data "external" "orchestrator_checksum" {
   }
 }
 
-resource "nomad_job" "orchestrator" {
-  jobspec = templatefile("${path.module}/orchestrator.hcl", {
-    gcp_zone         = var.gcp_zone
-    port             = var.orchestrator_port
-    proxy_port       = var.orchestrator_proxy_port
-    environment      = var.environment
-    consul_acl_token = var.consul_acl_token_secret
+resource "nomad_variable" "orchestrator_scripts" {
+  path = "nomad/jobs/orchestrator"
+  items = {
+    // You can modify the start script and pass the env vars here to change the orchestrator behavior.
+    // Any changes should be reflected for the new orchestrator deployments, but the old ones should not be affected.
+    // In "dev" environment changes here will force a restart of the orchestrator.
+    start_script = templatefile("${path.module}/orchestrator.sh", {
+      environment = "prod"
 
-    bucket_name                  = var.fc_env_pipeline_bucket_name
-    orchestrator_checksum        = data.external.orchestrator_checksum.result.hex
-    logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-    logs_collector_public_ip     = var.logs_proxy_address
-    otel_tracing_print           = var.otel_tracing_print
-    template_bucket_name         = var.template_bucket_name
-    otel_collector_grpc_endpoint = "localhost:4317"
-    clickhouse_connection_string = var.clickhouse_connection_string
-    clickhouse_username          = var.clickhouse_username
-    clickhouse_password          = var.clickhouse_password
-    clickhouse_database          = var.clickhouse_database
+      bucket_name           = var.fc_env_pipeline_bucket_name
+      orchestrator_checksum = data.external.orchestrator_checksum.result.hex
+
+      port       = var.orchestrator_port
+      proxy_port = var.orchestrator_proxy_port
+
+      logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+      logs_collector_public_ip     = var.logs_proxy_address
+      otel_tracing_print           = var.otel_tracing_print
+      template_bucket_name         = var.template_bucket_name
+      otel_collector_grpc_endpoint = "localhost:4317"
+      clickhouse_connection_string = var.clickhouse_connection_string
+      clickhouse_username          = var.clickhouse_username
+      clickhouse_password          = var.clickhouse_password
+      clickhouse_database          = var.clickhouse_database
+      consul_acl_token             = var.consul_acl_token_secret
+    })
+  }
+}
+
+resource "nomad_job" "orchestrator" {
+  // Change these env vars only if really needed as it will force a restart of the orchestrator everywhere.
+  // TODO: It might be worth add lifecycle block to prevent changes unless they are made deliberately/in dev environment?
+  jobspec = templatefile("${path.module}/orchestrator.hcl", {
+    gcp_zone              = var.gcp_zone
+    port                  = var.orchestrator_port
+    proxy_port            = var.orchestrator_proxy_port
+    environment           = "prod"
+    orchestrator_checksum = data.external.orchestrator_checksum.result.hex
   })
 }
 
@@ -428,4 +446,3 @@ resource "nomad_job" "clickhouse" {
     password_sha256_hex = sha256(var.clickhouse_password)
   })
 }
-
