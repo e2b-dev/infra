@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
@@ -13,11 +14,11 @@ import (
 const (
 	SigningReadOperation  = "read"
 	SigningWriteOperation = "write"
-
-	AccessTokenHeader = "X-Access-Token"
 )
 
 var (
+	accessTokenHeader = "X-Access-Token"
+
 	// paths that are always allowed without general authentication
 	allowedPaths = []string{
 		"GET/health",
@@ -29,16 +30,20 @@ var (
 func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if a.accessToken != nil {
-			authHeader := req.Header.Get(AccessTokenHeader)
+			authHeader := req.Header.Get(accessTokenHeader)
 
 			// check if this path is allowed without authentication (e.g., health check, endpoints supporting signing)
 			allowedPath := slices.Contains(allowedPaths, req.Method+req.URL.Path)
 
 			if authHeader != *a.accessToken && !allowedPath {
+				response := jsonErrorResponse{Error: "Unauthorized access, please provide a valid access token or method signing if supported"}
+				responseBytes, _ := json.Marshal(response)
+
 				a.logger.Error().Msg("Trying to access secured envd without correct access token")
 
-				err := fmt.Errorf("unauthorized access, please provide a valid access token or method signing if supported")
-				jsonError(w, http.StatusUnauthorized, err)
+				w.WriteHeader(http.StatusUnauthorized)
+				w.Header().Add("Content-Type", "application/json")
+				w.Write(responseBytes)
 				return
 			}
 		}
@@ -73,7 +78,7 @@ func (a *API) validateSigning(r *http.Request, signature *string, signatureExpir
 	}
 
 	// check if access token is sent in the header
-	tokenFromHeader := r.Header.Get(AccessTokenHeader)
+	tokenFromHeader := r.Header.Get(accessTokenHeader)
 	if tokenFromHeader != "" && tokenFromHeader != *a.accessToken {
 		return fmt.Errorf("access token present in header but does not match")
 	}
