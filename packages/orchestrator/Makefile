@@ -10,7 +10,7 @@ init:
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
 
 .PHONY: generate
-generate:generate-models
+generate:
 	# You need to install protobuf (brew install protobuf) and following go packages: protoc-gen-go, protoc-gen-go-grpc
 	# https://grpc.io/docs/languages/go/quickstart/
 	@echo "Generating protoc..."
