@@ -401,8 +401,8 @@ resource "google_storage_bucket" "clickhouse_bucket" {
 
 // create service account for bucket
 resource "google_service_account" "clickhouse_service_account" {
-  account_id   = "${var.prefix}clickhouse-service-account"
-  display_name = "${var.prefix}clickhouse-service-account"
+  account_id   = "${var.prefix}clickhouse"
+  display_name = "${var.prefix}clickhouse"
 }
 
 # attach service account to bucket 
