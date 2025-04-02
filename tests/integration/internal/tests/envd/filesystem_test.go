@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
+	"github.com/e2b-dev/infra/tests/integration/internal/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 
 	"connectrpc.com/connect"
@@ -57,6 +58,35 @@ func TestCreateFile(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, createFileResp.StatusCode())
+}
+
+func TestFilePermissions(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sbx := createSandbox(t, setup.WithAPIKey())
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+	stream, err := envdClient.ProcessClient.Start(
+		ctx,
+		connect.NewRequest(&process.StartRequest{
+			Process: &process.ProcessConfig{
+				Cmd:  "ls",
+				Args: []string{"-la", "/home/user"},
+			},
+		}),
+	)
+
+	assert.NoError(t, err)
+
+	defer stream.Close()
+
+	for stream.Receive() {
+		msg := stream.Msg()
+		t.Log(msg)
+	}
+
+	assert.NoError(t, stream.Err())
 }
 
 func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) *api.PostSandboxesResponse {
