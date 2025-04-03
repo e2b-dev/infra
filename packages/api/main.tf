@@ -58,6 +58,23 @@ resource "google_secret_manager_secret_version" "supabase_jwt_secrets" {
   }
 }
 
+resource "google_secret_manager_secret" "redis_url" {
+  secret_id = "${var.prefix}redis-url"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "redis_url" {
+  secret      = google_secret_manager_secret.redis_url.name
+  secret_data = "redis.service.consul"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
 resource "google_secret_manager_secret" "posthog_api_key" {
   secret_id = "${var.prefix}posthog-api-key"
 

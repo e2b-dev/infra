@@ -14,6 +14,10 @@ output "supabase_jwt_secrets_secret_name" {
   value = google_secret_manager_secret.supabase_jwt_secrets.name
 }
 
+output "redis_url_secret_version" {
+  value = google_secret_manager_secret_version.redis_url
+}
+
 output "posthog_api_key_secret_name" {
   value = google_secret_manager_secret.posthog_api_key.name
 }

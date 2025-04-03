@@ -26,6 +26,10 @@ provider "nomad" {
   consul_token = var.consul_acl_token_secret
 }
 
+data "google_secret_manager_secret_version" "redis_url" {
+  secret = var.redis_url_secret_version.secret
+}
+
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/api.hcl", {
     update_stanza = var.api_machine_count > 1
@@ -50,7 +54,7 @@ resource "nomad_job" "api" {
     otel_tracing_print            = var.otel_tracing_print
     nomad_acl_token               = var.nomad_acl_token_secret
     admin_token                   = var.api_admin_token
-    redis_url                     = "redis://redis.service.consul:${var.redis_port.port}"
+    redis_url                     = "redis://${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}"
     dns_port_number               = var.api_dns_port_number
     clickhouse_connection_string  = var.clickhouse_connection_string
     clickhouse_username           = var.clickhouse_username
@@ -60,6 +64,8 @@ resource "nomad_job" "api" {
 }
 
 resource "nomad_job" "redis" {
+  count = data.google_secret_manager_secret_version.redis_url.secret_data == "redis.service.consul" ? 1 : 0
+
   jobspec = templatefile("${path.module}/redis.hcl",
     {
       gcp_zone    = var.gcp_zone
