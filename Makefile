@@ -69,7 +69,7 @@ download-prod-env:
 update-prod-env:
 	@ hcp auth login
 	@ hcp profile init --vault-secrets
-	@ cat ".env.$(ENV)" | base64 | hcp vault-secrets secrets create env_$(ENV) --data-file=-
+	@ cat ".env.$(ENV)" | base64 -w 0 | tr -d '\n' | hcp vault-secrets secrets create env_$(ENV) --data-file=-
 
 .PHONY: plan
 plan:
