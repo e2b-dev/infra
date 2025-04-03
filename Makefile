@@ -75,17 +75,20 @@ plan:
 	$(TF) fmt -recursive
 	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
 
-# Deploy all jobs or just a specific job name in Nomad
-# When job name is specified, all '-' are replaced with '_' in the job name
-.PHONY: plan-only-jobs plan-only-jobs/%
-plan-only-jobs plan-only-jobs/%:
+# Deploy all jobs in Nomad
+.PHONY: plan-only-jobs
+plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	@if [ "$@" = "plan-only-jobs" ]; then \
-		$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad; \
-	else \
-		$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_'); \
-	fi
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad;
+
+# Deploy a specific job name in Nomad
+# When job name is specified, all '-' are replaced with '_' in the job name
+.PHONY: plan-only-jobs/%
+plan-only-jobs/%:
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(TF) fmt -recursive
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_');
 
 .PHONY: apply
 apply:
