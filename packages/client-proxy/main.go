@@ -166,11 +166,9 @@ func proxyHandler(transport *http.Transport, featureFlags *featureflags.Client) 
 		var targetPort int
 		if flag == featureflags.ClientProxyTrafficToOrchestrator {
 			// Proxy traffic to orchestrator
-			zap.L().Info("Proxying traffic to orchestrator", zap.String("sandbox_id", sandboxID), zap.String("node", node))
 			targetPort = orchestratorProxyPort
 		} else {
 			// Proxy traffic to nginx proxy
-			zap.L().Info("Proxying traffic to nginx", zap.String("sandbox_id", sandboxID), zap.String("node", node))
 			targetPort = sandboxPort
 		}
 
