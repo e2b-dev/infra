@@ -44,6 +44,21 @@ jobs:
           environment: ${{ inputs.environment }}
           env_vars: ${{ secrets[format('env_{0}', inputs.environment)] }}
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.work'
+          cache: false
+
+      - name: Go Mod Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum', '**/go.mod', 'go.work') }}
+          restore-keys: |
+            ${{ runner.os }}-go-mod-
+
       - name: Build and upload
         run: |
           make build-and-upload/${{ inputs.job_name }}
