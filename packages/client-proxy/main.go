@@ -31,6 +31,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	featureFlagClientProxyTrafficTarget "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags/client-proxy"
+
 	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
@@ -157,14 +159,14 @@ func proxyHandler(transport *http.Transport, featureFlags *featureflags.Client) 
 		// We've resolved the node to proxy the request to
 		zap.L().Debug("Proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
 
-		flagCtx := ldcontext.NewBuilder("client-proxy-context").SetString("sandbox_id", sandboxID).Build()
-		flag, flagErr := featureFlags.Ld.StringVariation(featureflags.ClientProxyTrafficTargetFeatureFlag, flagCtx, featureflags.ClientProxyTrafficToNginx)
+		flagCtx := ldcontext.NewBuilder(featureFlagClientProxyTrafficTarget.FlagName).SetString("sandbox_id", sandboxID).Build()
+		flag, flagErr := featureFlags.Ld.StringVariation(featureFlagClientProxyTrafficTarget.FlagName, flagCtx, featureFlagClientProxyTrafficTarget.FlagDefaultValue)
 		if flagErr != nil {
 			zap.L().Error("soft failing during feature flag receive", zap.Error(flagErr))
 		}
 
 		var targetPort int
-		if flag == featureflags.ClientProxyTrafficToOrchestrator {
+		if flag == featureFlagClientProxyTrafficTarget.FlagValueOrchestratorProxy {
 			// Proxy traffic to orchestrator
 			targetPort = orchestratorProxyPort
 		} else {

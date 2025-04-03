@@ -9,15 +9,6 @@ import (
 
 var launchDarklyApiKey = os.Getenv("LAUNCH_DARKLY_API_KEY")
 
-const (
-	// User by client proxy to route traffic between nginx sandbox proxy and orchestrator proxy
-	// https://app.launchdarkly.com/projects/default/flags/sandbox-proxy-traffic-target
-	ClientProxyTrafficTargetFeatureFlag = "sandbox-proxy-traffic-target"
-
-	ClientProxyTrafficToNginx        = "nginx-proxy"
-	ClientProxyTrafficToOrchestrator = "orchestrator-proxy"
-)
-
 type Client struct {
 	Ld *ldclient.LDClient
 }
@@ -45,11 +36,13 @@ func NewClient(waitForInitialize time.Duration) (*Client, error) {
 
 func (c *Client) Close() error {
 	if c.Ld != nil {
-		err := c.Ld.Close()
-		if err != nil {
-			zap.L().Error("Error during launch-darkly client shutdown", zap.Error(err))
-			return err
-		}
+		return nil
+	}
+
+	err := c.Ld.Close()
+	if err != nil {
+		zap.L().Error("Error during launch-darkly client shutdown", zap.Error(err))
+		return err
 	}
 
 	return nil
