@@ -8,11 +8,11 @@ CREATE TABLE sandboxes (
   deadline        TIMESTAMP   NOT NULL,
   status          TEXT        CHECK( status IN ('pending', 'running', 'paused', 'terminated'))
                               NOT NULL     DEFAULT 'pending',
-  duration_ms     INTEGER     CHECK( duration_ms > 0 )
-                              NOT NULL,
-  version         INTEGER     CHECK( version > 0 )
-                              NOT NULL,
-  global_version  INTEGER     CHECK( global_version > 0 )
+  duration_ms     INTEGER     CHECK( duration_ms >= 0 )
+                              NOT NULL     DEFAULT 0,
+  version         INTEGER     CHECK( version >= 0 )
+                              NOT NULL     DEFAULT 0,
+  global_version  INTEGER     CHECK( global_version >= 0 )
                               NOT NULL,
   config          BLOB
 );

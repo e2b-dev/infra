@@ -15,8 +15,12 @@ type DB struct {
 	ops    *database.Queries
 }
 
-func New(ctx context.Context, client *sql.DB) (*DB, error) {
+func New(ctx context.Context, client *sql.DB, schema string) (*DB, error) {
 	db := &DB{client: client, ops: database.New(client)}
+
+	if _, err := db.client.ExecContext(ctx, schema); err != nil {
+		return nil, fmt.Errorf("problem initializing the database: %w", err)
+	}
 
 	if err := db.ops.SetOrchestratorStatusRunning(ctx); err != nil {
 		return nil, err
@@ -25,16 +29,18 @@ func New(ctx context.Context, client *sql.DB) (*DB, error) {
 	return db, nil
 }
 
-func (db *DB) Init(ctx context.Context, ddl string) error {
-	if _, err := db.client.ExecContext(ctx, ddl); err != nil {
-		return fmt.Errorf("problem initializing the database: %w", err)
-	}
-
-	return nil
-}
-
 func (db *DB) Close(ctx context.Context) error {
 	return errors.Join(db.ops.SetOrchestratorStatusTerminated(ctx), db.client.Close())
+}
+
+func (db *DB) Status(ctx context.Context) (*database.OrchestratorStatusRow, error) {
+	report, err := db.ops.OrchestratorStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := report
+
+	return &out, nil
 }
 
 func (db *DB) CreateSandbox(ctx context.Context, params database.CreateSandboxParams) error {

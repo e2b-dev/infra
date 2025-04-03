@@ -82,23 +82,34 @@ type Service struct {
 	useClickhouseMetrics string
 }
 
-func New(ctx context.Context, port uint, clientID string, version string, proxy *proxy.SandboxProxy) (*Service, error) {
-	if port > math.MaxUint16 {
-		return nil, fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
+type ServiceConf struct {
+	Version  string
+	ClientID string
+	Schema   string
+	Port     uint
+}
+
+func New(
+	ctx context.Context,
+	conf ServiceConf,
+	proxy *proxy.SandboxProxy,
+) (*Service, error) {
+	if conf.Port > math.MaxUint16 {
+		return nil, fmt.Errorf("%d is larger than maximum possible port %d", conf.Port, math.MaxInt16)
 	}
 
-	if clientID == "" {
+	if conf.ClientID == "" {
 		return nil, errors.New("clientID is required")
 	}
 
-	srv := &Service{version: version, port: uint16(port)}
+	srv := &Service{version: conf.Version, port: uint16(conf.Port)}
 
 	templateCache, err := template.NewCache(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache: %w", err)
 	}
 
-	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
+	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, conf.ClientID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network pool: %w", err)
 	}
@@ -161,7 +172,7 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 		sandboxes:            smap.New[*sandbox.Sandbox](),
 		networkPool:          networkPool,
 		templateCache:        templateCache,
-		clientID:             clientID,
+		clientID:             conf.ClientID,
 		devicePool:           devicePool,
 		clickhouseStore:      clickhouseStore,
 		useLokiMetrics:       useLokiMetrics,
@@ -178,15 +189,15 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 	}
 
 	// BLOCK: setup database
-	const dbConnStr = "file:./db/sandboxes.db?_journal_mode=wal"
-	drv, err := sql.Open("sqlite3", dbConnStr)
+	const dbpath = "./db/sandboxes.db"
+	drv, err := newDatabaseDriver(dbpath)
 	if err != nil {
-		return nil, fmt.Errorf("connecting to %q: %w", dbConnStr, err)
+		return nil, err
 	}
 
-	srv.db, err = db.New(ctx, drv)
+	srv.db, err = db.New(ctx, drv, conf.Schema)
 	if err != nil {
-		return nil, fmt.Errorf("using database at %q: %w", dbConnStr, err)
+		return nil, fmt.Errorf("using database at %q: %w", dbpath, err)
 	}
 
 	// BLOCK: register services and return
@@ -196,6 +207,15 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 	grpc_health_v1.RegisterHealthServer(srv.grpc, srv.grpcHealth)
 
 	return srv, nil
+}
+
+func newDatabaseDriver(path string) (*sql.DB, error) {
+	connStr := fmt.Sprintf("file:%s?_journal_mode=wal", path)
+	drv, err := sql.Open("sqlite3", connStr)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to %q: %w", connStr, err)
+	}
+	return drv, nil
 }
 
 // Start launches
@@ -299,8 +319,6 @@ func (srv *Service) Start(ctx context.Context) error {
 
 	return nil
 }
-
-func (srv *Service) SetupDB(ctx context.Context, ddl string) error { return srv.db.Init(ctx, ddl) }
 
 func (srv *Service) Close(ctx context.Context) error {
 	srv.shutdown.once.Do(func() {

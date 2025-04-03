@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
@@ -32,8 +34,8 @@ const (
 
 var commitSHA string
 
-//go:embed schema.sql
-var ddl string
+//go:embed internal/db/schema.sql
+var schema string
 
 func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -107,13 +109,16 @@ func run() int {
 
 	sessionProxy := proxy.New(proxyPort)
 
-	srv, err := server.New(ctx, port, clientID, commitSHA, sessionProxy)
+	srv, err := server.New(ctx,
+		server.ServiceConf{
+			Version:  commitSHA,
+			Port:     port,
+			ClientID: clientID,
+			Schema:   schema,
+		},
+		sessionProxy)
 	if err != nil {
 		zap.L().Panic("failed to create server", zap.Error(err))
-	}
-
-	if err := srv.SetupDB(ctx, ddl); err != nil {
-		zap.L().Panic("failed database setup", zap.Error(err))
 	}
 
 	wg.Add(1)

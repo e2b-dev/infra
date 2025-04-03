@@ -2,8 +2,8 @@ version: "2"
 sql:
   # ORCHESTRATOR PROCESS' LOCAL DATABASE
   - engine: "sqlite"
-    queries: "packages/orchestrator/queries.sql"
-    schema: "packages/orchestrator/schema.sql"
+    queries: "packages/orchestrator/internal/db/queries.sql"
+    schema: "packages/orchestrator/internal/db/schema.sql"
     # migrations are unnecessary right now because the DB never lives
     # longer than the process.
     gen:

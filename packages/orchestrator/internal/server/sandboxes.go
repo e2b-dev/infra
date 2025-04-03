@@ -70,28 +70,22 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))
 
 		cleanupErr := cleanup.Run(ctx)
-		err = status.Errorf(codes.Internal, "failed to cleanup sandbox: %w", errors.Join(err, context.Cause(ctx), cleanupErr))
 
+		err = status.Errorf(codes.Internal, "failed to create sandbox: %v", errors.Join(err, context.Cause(ctx), cleanupErr))
 		telemetry.ReportCriticalError(ctx, err)
 
 		return nil, err
 	}
-	started := time.Now()
 
-	// TODO: this could become JSON (pro: easier to read with external tools/code, con: larger size and slower serialization.)
-	confProto, err := proto.Marshal(sbx.Config)
+	started, err := s.recordSandboxStart(ctx, sbx)
 	if err != nil {
-		sbxlogger.I(sbx).Error("failed to marshal sandbox config for the database", zap.Error(err))
-	}
+		zap.L().Error("failed to register sandbox, cleaning up", zap.Error(err))
 
-	s.sandboxes.Insert(req.Sandbox.SandboxId, sbx)
-	if err := s.db.CreateSandbox(ctx, database.CreateSandboxParams{
-		ID:        req.Sandbox.SandboxId,
-		Status:    database.SandboxStatusRunning,
-		StartedAt: started,
-		Deadline:  req.EndTime.AsTime(),
-		Config:    confProto,
-	}); err != nil {
+		cleanupErr := cleanup.Run(ctx)
+
+		err = status.Errorf(codes.Internal, "failed to register sandbox: %v", errors.Join(err, context.Cause(ctx), cleanupErr))
+		telemetry.ReportCriticalError(ctx, err)
+
 		return nil, err
 	}
 
@@ -136,6 +130,32 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	}, nil
 }
 
+func (s *server) recordSandboxStart(ctx context.Context, sbx *sandbox.Sandbox) (time.Time, error) {
+	started := time.Now().UTC()
+	s.sandboxes.Insert(sbx.Config.SandboxId, sbx)
+
+	// TODO: this could become JSON (pro: easier to read with
+	// external tools/code, con: larger size and slower
+	// serialization.)
+	confProto, err := proto.Marshal(sbx.Config)
+	if err != nil {
+		// TODO: decide if we want to return early and abort in this case.
+		sbxlogger.I(sbx).Error("failed to marshal sandbox config for the database", zap.Error(err))
+	}
+
+	if err := s.db.CreateSandbox(ctx, database.CreateSandboxParams{
+		ID:        sbx.Config.SandboxId,
+		Status:    database.SandboxStatusRunning,
+		StartedAt: started,
+		Deadline:  sbx.EndAt,
+		Config:    confProto,
+	}); err != nil {
+		return started, err
+	}
+
+	return started, nil
+}
+
 func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {
 	ctx, childSpan := s.tracer.Start(ctx, "sandbox-update")
 	defer childSpan.End()
@@ -154,7 +174,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	item.EndAt = req.EndTime.AsTime()
 	if err := s.db.UpdateSandboxDeadline(ctx, req.SandboxId, item.EndAt); err != nil {
-		return nil, status.Errorf(codes.Internal, fmt.Sprintf("db update sandbox: %w", err))
+		return nil, status.Errorf(codes.Internal, "db update sandbox: %v", err)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -395,4 +415,23 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}()
 
 	return &emptypb.Empty{}, nil
+}
+
+func (s *server) StatusReport(ctx context.Context, _ *emptypb.Empty) (*orchestrator.OrchestratorStatus, error) {
+	report, err := s.db.Status(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &orchestrator.OrchestratorStatus{
+		GlobalVersion:                     report.GlobalVersion,
+		RunningSandboxes:                  report.RunningSandboxes,
+		PendingSandboxes:                  report.PendingSandboxes,
+		TerminatedSandboxes:               report.TerminatedSandboxes,
+		NumSandboxes:                      report.NumSandboxes,
+		Status:                            report.Status,
+		UpdatedAt:                         timestamppb.New(report.UpdatedAt),
+		EarliestRunningSandboxStartedAt:   timestamppb.New(report.OldestSandboxStartTime()),
+		MostRecentRunningSandboxUpdatedAt: timestamppb.New(report.MostRecentSandboxModification()),
+	}, nil
 }

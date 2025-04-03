@@ -5,7 +5,7 @@ SELECT version FROM status WHERE id = 1;
 UPDATE status
 SET
    version = version + 1,
-   updated_at = current_timestamp(),
+   updated_at = current_timestamp,
    status = 'running'
 WHERE
    id = 1 AND status = 'initializing';
@@ -14,7 +14,7 @@ WHERE
 UPDATE status
 SET
    version = version + 1,
-   updated_at = current_timestamp(),
+   updated_at = current_timestamp,
    status = 'terminated'
 WHERE
    id = 1 AND status != 'terminated';
@@ -23,7 +23,7 @@ WHERE
 UPDATE status
 SET
    version = version + 1,
-   updated_at = current_timestamp()
+   updated_at = current_timestamp
 WHERE
    id = 1 AND status != 'terminated'
 RETURNING version;
@@ -44,7 +44,7 @@ UPDATE sandboxes
 SET
   version = version + 1,
   global_version = (SELECT version FROM status WHERE status.id = 1),
-  updated_at = current_timestamp(),
+  updated_at = current_timestamp,
   duration_ms = sqlc.arg('duration_ms'),
   status = sqlc.arg('status')
 WHERE
@@ -55,8 +55,22 @@ UPDATE sandboxes
 SET
   version = version + 1,
   global_version = (SELECT version FROM status WHERE status.id = 1),
-  udpated_at = current_timestamp(),
+  udpated_at = current_timestamp,
   deadline = sqlc.arg('deadline'),
   status = 'running'
 WHERE
   sandboxes.id = sqlc.arg('id');
+
+-- name: OrchestratorStatus :one
+SELECT
+  status.version AS global_version,
+  (SELECT count(*) FROM sandboxes) AS num_sandboxes,
+  (SELECT count(*) FROM sandboxes WHERE status = 'pending') AS pending_sandboxes,
+  (SELECT count(*) FROM sandboxes WHERE status = 'terminated') AS terminated_sandboxes,
+  (SELECT count(*) FROM sandboxes WHERE status = 'running') AS running_sandboxes,
+  (SELECT min(started_at) FROM sandboxes WHERE status = 'running') AS earliest_running_sandbox_started_at,
+  (SELECT max(updated_at) FROM sandboxes WHERE status = 'running') AS most_recent_running_sandbox_updated_at,
+  status.updated_at,
+  status.status
+FROM
+  status;

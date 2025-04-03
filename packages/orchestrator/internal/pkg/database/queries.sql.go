@@ -11,12 +11,13 @@ import (
 )
 
 const createSandbox = `-- name: CreateSandbox :exec
-INSERT INTO sandboxes(id, status, started_at, deadline, config, global_version)
+INSERT INTO sandboxes(id, status, started_at, deadline, duration_ms, config, global_version)
 VALUES (
    ?1,
    ?2,
    ?3,
    ?4,
+   0,
    ?5,
    (SELECT version FROM status WHERE status.id = 1)
 )
@@ -56,7 +57,7 @@ const incGlobalVersion = `-- name: IncGlobalVersion :one
 UPDATE status
 SET
    version = version + 1,
-   updated_at = current_timestamp()
+   updated_at = current_timestamp
 WHERE
    id = 1 AND status != 'terminated'
 RETURNING version
@@ -69,11 +70,55 @@ func (q *Queries) IncGlobalVersion(ctx context.Context) (int64, error) {
 	return version, err
 }
 
+const orchestratorStatus = `-- name: OrchestratorStatus :one
+SELECT
+  status.version AS global_version,
+  (SELECT count(*) FROM sandboxes) AS num_sandboxes,
+  (SELECT count(*) FROM sandboxes WHERE status = 'pending') AS pending_sandboxes,
+  (SELECT count(*) FROM sandboxes WHERE status = 'terminated') AS terminated_sandboxes,
+  (SELECT count(*) FROM sandboxes WHERE status = 'running') AS running_sandboxes,
+  (SELECT min(started_at) FROM sandboxes WHERE status = 'running') AS earliest_running_sandbox_started_at,
+  (SELECT max(updated_at) FROM sandboxes WHERE status = 'running') AS most_recent_running_sandbox_updated_at,
+  status.updated_at,
+  status.status
+FROM
+  status
+`
+
+type OrchestratorStatusRow struct {
+	GlobalVersion                     int64
+	NumSandboxes                      int64
+	PendingSandboxes                  int64
+	TerminatedSandboxes               int64
+	RunningSandboxes                  int64
+	EarliestRunningSandboxStartedAt   interface{}
+	MostRecentRunningSandboxUpdatedAt interface{}
+	UpdatedAt                         time.Time
+	Status                            string
+}
+
+func (q *Queries) OrchestratorStatus(ctx context.Context) (OrchestratorStatusRow, error) {
+	row := q.db.QueryRowContext(ctx, orchestratorStatus)
+	var i OrchestratorStatusRow
+	err := row.Scan(
+		&i.GlobalVersion,
+		&i.NumSandboxes,
+		&i.PendingSandboxes,
+		&i.TerminatedSandboxes,
+		&i.RunningSandboxes,
+		&i.EarliestRunningSandboxStartedAt,
+		&i.MostRecentRunningSandboxUpdatedAt,
+		&i.UpdatedAt,
+		&i.Status,
+	)
+	return i, err
+}
+
 const setOrchestratorStatusRunning = `-- name: SetOrchestratorStatusRunning :exec
 UPDATE status
 SET
    version = version + 1,
-   updated_at = current_timestamp(),
+   updated_at = current_timestamp,
    status = 'running'
 WHERE
    id = 1 AND status = 'initializing'
@@ -88,7 +133,7 @@ const setOrchestratorStatusTerminated = `-- name: SetOrchestratorStatusTerminate
 UPDATE status
 SET
    version = version + 1,
-   updated_at = current_timestamp(),
+   updated_at = current_timestamp,
    status = 'terminated'
 WHERE
    id = 1 AND status != 'terminated'
@@ -104,7 +149,7 @@ UPDATE sandboxes
 SET
   version = version + 1,
   global_version = (SELECT version FROM status WHERE status.id = 1),
-  updated_at = current_timestamp(),
+  updated_at = current_timestamp,
   duration_ms = ?1,
   status = ?2
 WHERE
@@ -127,7 +172,7 @@ UPDATE sandboxes
 SET
   version = version + 1,
   global_version = (SELECT version FROM status WHERE status.id = 1),
-  udpated_at = current_timestamp(),
+  udpated_at = current_timestamp,
   deadline = ?1,
   status = 'running'
 WHERE
