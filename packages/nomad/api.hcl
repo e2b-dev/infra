@@ -87,6 +87,7 @@ job "api" {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         ADMIN_TOKEN                   = "${admin_token}"
         REDIS_URL                     = "${redis_url}"
+        REDIS_URL2                    = "${redis_url2}"
         DNS_PORT                      = "${dns_port_number}"
         # This is here just because it is required in some part of our code which is transitively imported
         TEMPLATE_BUCKET_NAME          = "skip"
