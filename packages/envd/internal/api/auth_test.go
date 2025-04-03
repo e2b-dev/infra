@@ -1,7 +1,6 @@
 package api
 
 import (
-	"crypto/rand"
 	"fmt"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/stretchr/testify/assert"
@@ -11,7 +10,7 @@ import (
 )
 
 func TestKeyGenerationAlgorithmIsStable(t *testing.T) {
-	apiToken := rand.Text()
+	apiToken := "secret-access-token"
 	api := &API{accessToken: &apiToken}
 
 	path := "/path/to/demo.txt"
@@ -32,7 +31,7 @@ func TestKeyGenerationAlgorithmIsStable(t *testing.T) {
 }
 
 func TestKeyGenerationAlgorithmWithoutExpirationIsStable(t *testing.T) {
-	apiToken := rand.Text()
+	apiToken := "secret-access-token"
 	api := &API{accessToken: &apiToken}
 
 	path := "/path/to/resource.txt"
