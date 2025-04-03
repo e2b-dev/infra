@@ -194,7 +194,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, states []
 		runningSandboxList := transformToSandboxAPI(runningSandboxes)
 
 		// Filter based on metadata
-		runningSandboxList = filterSandboxes(runningSandboxList, metadataFilter)
+		runningSandboxList = filterSandboxesOnMetadata(runningSandboxList, metadataFilter)
 
 		// Filter based on cursor and limit
 		runningSandboxList = filterBasedOnCursor(runningSandboxList, parsedCursorTime, parsedCursorID, limit)
@@ -261,12 +261,12 @@ func parseFilters(query string) (map[string]string, error) {
 	return filters, nil
 }
 
-func filterSandboxes(sandboxes []PaginatedSandbox, filters *map[string]string) []PaginatedSandbox {
-	if filters == nil {
+func filterSandboxesOnMetadata(sandboxes []PaginatedSandbox, metadata *map[string]string) []PaginatedSandbox {
+	if metadata == nil {
 		return sandboxes
 	}
 
-	// Filter instances to match all filters
+	// Filter instances to match all metadata
 	n := 0
 	for _, sbx := range sandboxes {
 		if sbx.Metadata == nil {
@@ -274,7 +274,7 @@ func filterSandboxes(sandboxes []PaginatedSandbox, filters *map[string]string) [
 		}
 
 		matchesAll := true
-		for key, value := range *filters {
+		for key, value := range *metadata {
 			if metadataValue, ok := (*sbx.Metadata)[key]; !ok || metadataValue != value {
 				matchesAll = false
 				break
@@ -301,7 +301,7 @@ func (a *APIStore) getRunningSandboxes(ctx context.Context, teamID uuid.UUID, me
 	runningSandboxList := transformToSandboxAPI(runningSandboxes)
 
 	// Filter sandboxes based on metadata
-	runningSandboxList = filterSandboxes(runningSandboxList, metadataFilter)
+	runningSandboxList = filterSandboxesOnMetadata(runningSandboxList, metadataFilter)
 
 	return runningSandboxList
 }
