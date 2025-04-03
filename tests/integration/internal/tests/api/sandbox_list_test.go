@@ -287,7 +287,7 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 }
 
 // legacy tests
-func TestSandboxListRunningLegacy(t *testing.T) {
+func TestSandboxListRunningV1(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create a sandbox
@@ -316,7 +316,7 @@ func TestSandboxListRunningLegacy(t *testing.T) {
 	assert.True(t, found)
 }
 
-func TestSandboxListWithFilterLegacy(t *testing.T) {
+func TestSandboxListWithFilterV1(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	sandboxID := setupSandbox(t, c)
