@@ -57,20 +57,8 @@ func parseCursor(cursor string) (time.Time, string, error) {
 func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string, cursorTime time.Time, cursorID string, limit *int32) ([]PaginatedSandbox, error) {
 	sandboxes := make([]PaginatedSandbox, 0)
 
-	// Get build IDs for running sandboxes
-	buildIDs := make([]uuid.UUID, 0)
-	for _, info := range runningSandboxes {
-		if info.BuildID != nil {
-			buildIDs = append(buildIDs, *info.BuildID)
-		}
-	}
-
 	// Add running sandboxes to results
 	for _, info := range runningSandboxes {
-		if info.BuildID == nil {
-			continue
-		}
-
 		sandbox := PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
 				ClientID:   info.Instance.ClientID,
