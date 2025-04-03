@@ -19,7 +19,9 @@ runs:
         export $(cat ".env.${{ inputs.environment }}" | xargs)
 
         echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
+        echo "GCP_REGION=${GCP_PROJECT_ID}" >> $GITHUB_ENV
         echo "TERRAFORM_STATE_BUCKET=${TERRAFORM_STATE_BUCKET}" >> $GITHUB_ENV
+        echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> $GITHUB_ENV
       shell: bash
 
     - name: Setup Service Account
