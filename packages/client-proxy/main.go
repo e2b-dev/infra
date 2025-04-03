@@ -27,8 +27,12 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -66,7 +70,7 @@ type jsonTemplateData struct {
 	Code      int    `json:"code"`
 }
 
-func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
+func proxyHandler(transport *http.Transport, featureFlags *featureflags.Client) func(w http.ResponseWriter, r *http.Request) {
 	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
 	if err != nil {
 		zap.L().Error("failed to create active connections counter", zap.Error(err))
@@ -152,9 +156,27 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 
 		// We've resolved the node to proxy the request to
 		zap.L().Debug("Proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
+
+		flagCtx := ldcontext.NewBuilder("client-proxy-context").SetString("sandbox_id", sandboxID).Build()
+		flag, flagErr := featureFlags.Ld.StringVariation(featureflags.ClientProxyTrafficTargetFeatureFlag, flagCtx, featureflags.ClientProxyTrafficToNginx)
+		if flagErr != nil {
+			zap.L().Error("soft failing during feature flag receive", zap.Error(flagErr))
+		}
+
+		var targetPort int
+		if flag == featureflags.ClientProxyTrafficToOrchestrator {
+			// Proxy traffic to orchestrator
+			zap.L().Info("Proxying traffic to orchestrator", zap.String("sandbox_id", sandboxID), zap.String("node", node))
+			targetPort = orchestratorProxyPort
+		} else {
+			// Proxy traffic to nginx proxy
+			zap.L().Info("Proxying traffic to nginx", zap.String("sandbox_id", sandboxID), zap.String("node", node))
+			targetPort = sandboxPort
+		}
+
 		targetUrl := &url.URL{
 			Scheme: "http",
-			Host:   fmt.Sprintf("%s:%d", node, sandboxPort),
+			Host:   fmt.Sprintf("%s:%d", node, targetPort),
 		}
 
 		// Proxy the request
@@ -214,6 +236,13 @@ func run() int {
 	}()
 	zap.ReplaceGlobals(logger)
 
+	featureFlags, err := featureflags.NewClient(5 * time.Second)
+	if err != nil {
+		logger.Error("failed to create feature flags client", zap.Error(err))
+		return 1
+	}
+	defer featureFlags.Close()
+
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
 	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
@@ -254,7 +283,7 @@ func run() int {
 		DisableKeepAlives:     true,              // Disable keep-alive, not supported
 	}
 
-	server.Handler = http.HandlerFunc(proxyHandler(transport))
+	server.Handler = http.HandlerFunc(proxyHandler(transport, featureFlags))
 
 	wg.Add(1)
 	go func() {
