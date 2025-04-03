@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/pkg/database"
@@ -22,6 +23,14 @@ func New(ctx context.Context, client *sql.DB) (*DB, error) {
 	}
 
 	return db, nil
+}
+
+func (db *DB) Init(ctx context.Context, ddl string) error {
+	if _, err := db.client.ExecContext(ctx, ddl); err != nil {
+		return fmt.Errorf("problem initializing the database: %w", err)
+	}
+
+	return nil
 }
 
 func (db *DB) Close(ctx context.Context) error {

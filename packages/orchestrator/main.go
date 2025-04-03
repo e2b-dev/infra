@@ -32,7 +32,10 @@ const (
 
 var commitSHA string
 
-func run() int32 {
+//go:embed schema.sql
+var ddl string
+
+func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -109,6 +112,10 @@ func run() int32 {
 		zap.L().Panic("failed to create server", zap.Error(err))
 	}
 
+	if err := srv.SetupDB(ctx, ddl); err != nil {
+		zap.L().Panic("failed database setup", zap.Error(err))
+	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -180,9 +187,9 @@ func run() int32 {
 
 	wg.Wait()
 
-	return exitCode.Load()
+	return int(exitCode.Load())
 }
 
 func main() {
-	os.Exit(int(run()))
+	os.Exit(run())
 }

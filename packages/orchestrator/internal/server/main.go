@@ -300,6 +300,8 @@ func (srv *Service) Start(ctx context.Context) error {
 	return nil
 }
 
+func (srv *Service) SetupDB(ctx context.Context, ddl string) error { return srv.db.Init(ctx, ddl) }
+
 func (srv *Service) Close(ctx context.Context) error {
 	srv.shutdown.once.Do(func() {
 		if srv.shutdown.op == nil {
