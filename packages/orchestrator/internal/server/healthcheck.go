@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"errors"
 	"net"
 	"net/http"
 	"sync"
@@ -50,7 +50,7 @@ func NewHealthcheck(server *server, grpc *grpc.Server, grpcHealth *health.Server
 	}, nil
 }
 
-func (h *Healthcheck) Start(ctx context.Context, listener net.Listener) {
+func (h *Healthcheck) Start(ctx context.Context, listener net.Listener) error {
 	ticker := time.NewTicker(healthcheckFrequency)
 	defer ticker.Stop()
 
@@ -61,24 +61,49 @@ func (h *Healthcheck) Start(ctx context.Context, listener net.Listener) {
 		Handler: routeMux,
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	sig := make(chan struct{})
+
 	go func() {
-		zap.L().Info("Starting health server")
-		if err := httpServer.Serve(listener); err != nil {
-			log.Fatal(err)
+		defer cancel()
+		defer close(sig)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				err := h.report(ctx)
+				if err != nil {
+					zap.L().Error("Error reporting healthcheck", zap.Error(err))
+				}
+			}
 		}
 	}()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			err := h.report(ctx)
-			if err != nil {
-				zap.L().Error("Error reporting healthcheck", zap.Error(err))
+	shutdownErr := make(chan error)
+	go func() {
+		defer close(shutdownErr)
+		<-ctx.Done()
+
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			select {
+			case <-shutdownCtx.Done():
+			case shutdownErr <- err:
 			}
 		}
+	}()
+
+	zap.L().Info("Starting health server")
+	if err := httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
+		return err
 	}
+
+	<-sig
+	return <-shutdownErr
 }
 
 // report updates the health status.

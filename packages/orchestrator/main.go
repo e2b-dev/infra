@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
@@ -32,7 +34,10 @@ const (
 
 var commitSHA string
 
-func run() int32 {
+//go:embed internal/db/schema.sql
+var schema string
+
+func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -100,13 +105,20 @@ func run() int32 {
 	defer sbxLoggerInternal.Sync()
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
-	log.Println("Starting orchestrator", "commit", commitSHA)
+	logger.Info("Starting orchestrator", zap.String("commit", commitSHA))
 
 	sessionProxy := proxy.New(proxyPort)
 
-	srv, err := server.New(ctx, port, clientID, commitSHA, sessionProxy)
+	srv, err := server.New(ctx,
+		server.ServiceConf{
+			Version:  commitSHA,
+			Port:     port,
+			ClientID: clientID,
+			Schema:   schema,
+		},
+		sessionProxy)
 	if err != nil {
-		zap.L().Fatal("failed to create server", zap.Error(err))
+		zap.L().Panic("failed to create server", zap.Error(err))
 	}
 
 	wg.Add(1)
@@ -180,9 +192,9 @@ func run() int32 {
 
 	wg.Wait()
 
-	return exitCode.Load()
+	return int(exitCode.Load())
 }
 
 func main() {
-	os.Exit(int(run()))
+	os.Exit(run())
 }

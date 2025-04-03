@@ -9,20 +9,20 @@ message SandboxConfig {
   // Data required for creating a new sandbox.
   string template_id = 1;
   string build_id = 2;
-  
+
   string kernel_version = 3;
   string firecracker_version = 4;
-  
+
   bool huge_pages = 5;
-  
+
   string sandbox_id = 6;
   map<string, string> env_vars = 7;
-  
+
   // Metadata about the sandbox.
   map<string, string> metadata = 8;
   optional string alias = 9;
   string envd_version = 10;
-  
+
   int64 vcpu = 11;
   int64 ram_mb = 12;
 
@@ -86,7 +86,17 @@ message SandboxListCachedBuildsResponse {
   repeated CachedBuildInfo builds = 1;
 }
 
-
+message OrchestratorStatus {
+  int64 global_version = 1;
+  int64 running_sandboxes = 2;
+  int64 pending_sandboxes = 4;
+  int64 terminated_sandboxes = 5;
+  int64 num_sandboxes = 6;
+  string status = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  google.protobuf.Timestamp earliest_running_sandbox_started_at = 9;
+  google.protobuf.Timestamp most_recent_running_sandbox_updated_at = 10;
+}
 
 service SandboxService {
   rpc Create(SandboxCreateRequest) returns (SandboxCreateResponse);
@@ -96,4 +106,5 @@ service SandboxService {
   rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
 
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
+  rpc StatusReport(google.protobuf.Empty) returns (OrchestratorStatus);
 }
