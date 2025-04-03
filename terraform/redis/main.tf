@@ -1,24 +1,3 @@
-terraform {
-  required_version = ">= 1.5.0, < 1.6.0"
-
-  backend "gcs" {
-    prefix = "terraform/redis/state"
-  }
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "6.28.0"
-    }
-  }
-}
-
-provider "google" {
-  project = var.gcp_project_id
-  region  = var.gcp_region
-  zone    = var.gcp_zone
-}
-
-
 # Enable the Service Networking API
 resource "google_project_service" "service_networking" {
   service            = "servicenetworking.googleapis.com"

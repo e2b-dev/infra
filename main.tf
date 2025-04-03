@@ -232,4 +232,13 @@ module "nomad" {
   redis_port = var.redis_port
 }
 
+module "redis" {
+  source = "./terraform/redis"
+  count  = var.redis_enabled ? 1 : 0
 
+  gcp_project_id = var.gcp_region
+  gcp_region     = var.gcp_region
+  gcp_zone       = var.gcp_zone
+
+  depends_on = [module.api]
+}

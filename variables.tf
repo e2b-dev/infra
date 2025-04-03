@@ -231,3 +231,8 @@ variable "template_bucket_name" {
   type        = string
   description = "The name of the FC template bucket"
 }
+
+variable "redis_enabled" {
+  default = false
+  type    = bool
+}
