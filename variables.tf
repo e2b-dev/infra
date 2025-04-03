@@ -232,7 +232,7 @@ variable "template_bucket_name" {
   description = "The name of the FC template bucket"
 }
 
-variable "managed_redis" {
+variable "redis_managed" {
   default = false
   type    = bool
 }

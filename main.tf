@@ -234,9 +234,9 @@ module "nomad" {
 
 module "redis" {
   source = "./terraform/redis"
-  count  = var.managed_redis ? 1 : 0
+  count  = var.redis_managed ? 1 : 0
 
-  gcp_project_id = var.gcp_region
+  gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
 
