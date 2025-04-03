@@ -4,6 +4,9 @@ inputs:
   environment:
     description: 'Target environment for deployment, e.g. staging'
     required: true
+  env_vars:
+    description: 'Environment variables to load'
+    required: true
 
 runs:
   using: "composite"
@@ -12,18 +15,7 @@ runs:
       id: load-env
       run: |
         echo ${{ inputs.environment }} > .last_used_env
- 
-         # Switch between environments
-        if [ "${{ inputs.environment }}" = "staging" ]; then
-          echo "${{ secrets.ENV_STAGING }}" > ".env.${{ inputs.environment }}"
-        elif [ "${{ inputs.environment }}" = "foxtrot" ]; then
-          echo "${{ secrets.ENV_FOXTROT }}" > ".env.${{ inputs.environment }}"
-        elif [ "${{ inputs.environment }}" = "juliett" ]; then
-          echo "${{ secrets.ENV_JULIETT }}" > ".env.${{ inputs.environment }}"
-        else
-          echo "Error: Unknown environment ${{ inputs.environment }}"
-          exit 1
-        fi
+        echo "${{ inputs.env_vars }}" > ".env.${{ inputs.environment }}"
 
         echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
         echo "TERRAFORM_STATE_BUCKET=${TERRAFORM_STATE_BUCKET}" >> $GITHUB_ENV
