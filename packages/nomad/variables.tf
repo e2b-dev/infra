@@ -234,3 +234,8 @@ variable "clickhouse_password" {
 variable "clickhouse_database" {
   type = string
 }
+
+variable "launch_darkly_api_key" {
+  type    = string
+  default = null
+}

@@ -66,6 +66,10 @@ job "client-proxy" {
       env {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
+
+%{ if launch_darkly_api_key != null && launch_darkly_api_key != "" }
+        LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
+%{ endif }
       }
 
       config {

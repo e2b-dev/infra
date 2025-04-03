@@ -230,6 +230,8 @@ module "nomad" {
 
   # Redis
   redis_port = var.redis_port
+
+  launch_darkly_api_key = var.launch_darkly_api_key
 }
 
 module "redis" {
