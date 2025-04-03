@@ -13,9 +13,11 @@ runs:
   steps:
     - name: Load Environment Variables
       id: load-env
+      env:
+        ENV_CONFIG: ${{ inputs.env_vars }}
       run: |
         echo ${{ inputs.environment }} > .last_used_env
-        echo "${{ inputs.env_vars }}" | base64 -d > ".env.${{ inputs.environment }}"
+        echo "$ENV_CONFIG" | base64 -d > ".env.${{ inputs.environment }}"
         export $(cat ".env.${{ inputs.environment }}" | xargs)
 
         echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
