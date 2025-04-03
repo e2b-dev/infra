@@ -122,10 +122,10 @@ func NewAPIStore(ctx context.Context) *APIStore {
 
 		redisClient = redis.NewClient(opts)
 
-		if os.Getenv("REDIS_URL_2") != "" {
-			opts2, err := redis.ParseURL(os.Getenv("REDIS_URL_2"))
+		if os.Getenv("REDIS_URL2") != "" {
+			opts2, err := redis.ParseURL(os.Getenv("REDIS_URL2"))
 			if err != nil {
-				zap.L().Fatal("invalid redis URL", zap.String("url", os.Getenv("REDIS_URL_2")), zap.Error(err))
+				zap.L().Fatal("invalid redis URL", zap.String("url", os.Getenv("REDIS_URL2")), zap.Error(err))
 			}
 			redisClient2 = redis.NewClient(opts2)
 		}
