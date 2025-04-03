@@ -43,7 +43,7 @@ jobs:
           environment: ${{ inputs.environment }}
           env_vars: ${{ secrets[format('env_{0}', inputs.environment)] }}
 
-      - name: Deploy remaining jobs
+      - name: Deploy job ${{ inputs.job_name }}
         run: |
           make plan-only-jobs/${{ inputs.job_name }}
           make apply

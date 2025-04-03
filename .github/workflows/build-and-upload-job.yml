@@ -59,7 +59,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-mod-
 
-      - name: Build and upload
+      - name: Build and upload job ${{ inputs.job_name }}
         run: |
           make build-and-upload/${{ inputs.job_name }}
         
