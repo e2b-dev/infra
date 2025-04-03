@@ -41,6 +41,7 @@ jobs:
         uses: ./.github/actions/deploy-setup
         with:
           environment: ${{ inputs.environment }}
+          env_vars: ${{ secrets[format('env_{0}', inputs.environment)] }}
 
       - name: Deploy remaining jobs
         run: |
