@@ -2,10 +2,14 @@ package feature_flags
 
 import (
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
+	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"go.uber.org/zap"
 	"os"
 	"time"
 )
+
+// LaunchDarklyOfflineStore is a test fixture that provides dynamically updatable feature flag state
+var LaunchDarklyOfflineStore = ldtestdata.DataSource()
 
 var launchDarklyApiKey = os.Getenv("LAUNCH_DARKLY_API_KEY")
 
@@ -18,7 +22,7 @@ func NewClient(waitForInitialize time.Duration) (*Client, error) {
 	var err error
 
 	if launchDarklyApiKey == "" {
-		ldClient, err = ldclient.MakeCustomClient("", ldclient.Config{Offline: true}, waitForInitialize)
+		ldClient, err = ldclient.MakeCustomClient("", ldclient.Config{DataSource: LaunchDarklyOfflineStore}, waitForInitialize)
 		if err != nil {
 			return nil, err
 		}
