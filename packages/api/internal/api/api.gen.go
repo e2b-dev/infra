@@ -100,6 +100,9 @@ type ServerInterface interface {
 
 	// (GET /templates/{templateID}/builds/{buildID}/status)
 	GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, templateID TemplateID, buildID BuildID, params GetTemplatesTemplateIDBuildsBuildIDStatusParams)
+
+	// (GET /v2/sandboxes)
+	GetV2Sandboxes(c *gin.Context, params GetV2SandboxesParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -341,30 +344,6 @@ func (siw *ServerInterfaceWrapper) GetSandboxes(c *gin.Context) {
 	err = runtime.BindQueryParameter("form", true, false, "metadata", c.Request.URL.Query(), &params.Metadata)
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter metadata: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "state" -------------
-
-	err = runtime.BindQueryParameter("form", false, false, "state", c.Request.URL.Query(), &params.State)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter state: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "nextToken" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "nextToken", c.Request.URL.Query(), &params.NextToken)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nextToken: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -917,6 +896,62 @@ func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDBuildsBuildIDStatus(c *
 	siw.Handler.GetTemplatesTemplateIDBuildsBuildIDStatus(c, templateID, buildID, params)
 }
 
+// GetV2Sandboxes operation middleware
+func (siw *ServerInterfaceWrapper) GetV2Sandboxes(c *gin.Context) {
+
+	var err error
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	c.Set(Supabase2TeamAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetV2SandboxesParams
+
+	// ------------- Optional query parameter "metadata" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "metadata", c.Request.URL.Query(), &params.Metadata)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter metadata: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameter("form", false, false, "state", c.Request.URL.Query(), &params.State)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter state: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "nextToken" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "nextToken", c.Request.URL.Query(), &params.NextToken)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter nextToken: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetV2Sandboxes(c, params)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -973,4 +1008,5 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/templates/:templateID", wrapper.PostTemplatesTemplateID)
 	router.POST(options.BaseURL+"/templates/:templateID/builds/:buildID", wrapper.PostTemplatesTemplateIDBuildsBuildID)
 	router.GET(options.BaseURL+"/templates/:templateID/builds/:buildID/status", wrapper.GetTemplatesTemplateIDBuildsBuildIDStatus)
+	router.GET(options.BaseURL+"/v2/sandboxes", wrapper.GetV2Sandboxes)
 }

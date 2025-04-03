@@ -247,7 +247,7 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, params Sa
 	})
 
 	var nextToken *string
-	if len(sandboxes) > int(*paginationParams.Limit) {
+	if paginationParams.Limit != nil && len(sandboxes) > int(*paginationParams.Limit) {
 		// We have more results than the limit, so we need to set the nextToken
 		lastSandbox := sandboxes[*paginationParams.Limit-1]
 		cursor := lastSandbox.GenerateCursor()
@@ -320,6 +320,35 @@ func filterSandboxes(sandboxes []PaginatedSandbox, filters map[string]string) ([
 }
 
 func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
+	ctx := c.Request.Context()
+	telemetry.ReportEvent(ctx, "list sandboxes")
+
+	teamInfo := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo)
+	team := teamInfo.Team
+
+	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
+	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
+	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed sandboxes", properties)
+
+	// Get sandboxes with pagination
+	sandboxes, _, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
+		State:    &[]api.SandboxState{api.Running},
+		Metadata: params.Metadata,
+	}, SandboxListPaginationParams{
+		Limit:     nil,
+		NextToken: nil,
+	})
+
+	if err != nil {
+		zap.L().Error("Error fetching sandboxes", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
+		return
+	}
+
+	c.JSON(http.StatusOK, sandboxes)
+}
+
+func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParams) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list sandboxes")
 
