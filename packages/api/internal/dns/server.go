@@ -28,8 +28,9 @@ const cachedDnsPrefix = "sandbox.dns."
 type DNS struct {
 	srv *resolver.Server
 
-	remote *cache.Cache
-	local  *smap.Map[string]
+	remote  *cache.Cache
+	remote2 *cache.Cache
+	local   *smap.Map[string]
 
 	closer struct {
 		once sync.Once
@@ -38,11 +39,15 @@ type DNS struct {
 	}
 }
 
-func New(ctx context.Context, rc *redis.Client) *DNS {
+func New(ctx context.Context, rc *redis.Client, rc2 *redis.Client) *DNS {
 	d := &DNS{}
 
 	if rc != nil {
 		d.remote = cache.New(&cache.Options{Redis: rc, LocalCache: cache.NewTinyLFU(10_000, time.Hour)})
+		if rc2 != nil {
+			// No need for local cache, we never read from this redis
+			d.remote2 = cache.New(&cache.Options{Redis: rc2})
+		}
 	} else {
 		d.local = smap.New[string]()
 	}
@@ -53,12 +58,23 @@ func New(ctx context.Context, rc *redis.Client) *DNS {
 func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
 	switch {
 	case d.remote != nil:
-		d.remote.Set(&cache.Item{
+		err := d.remote.Set(&cache.Item{
 			Ctx:   ctx,
 			TTL:   redisTTL,
 			Key:   d.cacheKey(sandboxID),
 			Value: ip,
 		})
+		if err != nil {
+			zap.L().Warn("adding item to DNS cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
+		}
+		if d.remote2 != nil {
+			d.remote2.Set(&cache.Item{
+				Ctx:   ctx,
+				TTL:   redisTTL,
+				Key:   d.cacheKey(sandboxID),
+				Value: ip,
+			})
+		}
 	case d.local != nil:
 		d.local.Insert(sandboxID, ip)
 	}
@@ -69,6 +85,11 @@ func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
 	case d.remote != nil:
 		if err := d.remote.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
 			zap.L().Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
+		}
+		if d.remote2 != nil {
+			if err := d.remote2.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
+				zap.L().Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
+			}
 		}
 	case d.local != nil:
 		d.local.RemoveCb(d.cacheKey(sandboxID), func(k string, v string, ok bool) bool { return v == ip })
