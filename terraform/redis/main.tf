@@ -74,6 +74,13 @@ resource "google_redis_cluster" "redis_cluster_api" {
     zone = var.gcp_zone
   }
 
+  persistence_config {
+    mode = "AOF"
+    aof_config {
+      append_fsync = "EVERYSEC"
+    }
+  }
+
   depends_on = [
     google_network_connectivity_service_connection_policy.default,
     google_service_networking_connection.private_service_connection,
