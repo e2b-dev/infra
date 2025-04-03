@@ -88,7 +88,7 @@ func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
 		}
 		if d.remote2 != nil {
 			if err := d.remote2.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
-				zap.L().Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
+				zap.L().Debug("removing item from 2nd DNS cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
 			}
 		}
 	case d.local != nil:
@@ -103,6 +103,15 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 		if err := d.remote.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
 			if errors.Is(err, cache.ErrCacheMiss) {
 				zap.L().Warn("item missing in remote DNS cache", zap.String("sandbox_id", sandboxID))
+				if d.remote2 != nil {
+					if err := d.remote2.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
+						if errors.Is(err, cache.ErrCacheMiss) {
+							zap.L().Debug("item missing in 2nd remote DNS cache", zap.String("sandbox_id", sandboxID))
+						} else {
+							zap.L().Error("resolving item from remote DNS cache", zap.String("sandbox_id", sandboxID), zap.Error(err))
+						}
+					}
+				}
 			} else {
 				zap.L().Error("resolving item from remote DNS cache", zap.String("sandbox_id", sandboxID), zap.Error(err))
 			}
