@@ -30,9 +30,28 @@ type PaginatedSandbox struct {
 	PaginationTimestamp time.Time `json:"-"`
 }
 
+const defaultSandboxListLimit int32 = 1000
+
 func (p *PaginatedSandbox) GenerateCursor() string {
 	cursor := fmt.Sprintf("%s__%s", p.PaginationTimestamp.Format(time.RFC3339Nano), p.SandboxID)
 	return base64.URLEncoding.EncodeToString([]byte(cursor))
+}
+
+func parseMetadata(metadata *string) (*map[string]string, error) {
+	// Parse metadata filter (query) if provided
+	var metadataFilter *map[string]string
+	if metadata != nil {
+		parsedMetadataFilter, err := parseFilters(*metadata)
+		if err != nil {
+			zap.L().Error("Error parsing metadata", zap.Error(err))
+
+			return nil, fmt.Errorf("error parsing metadata: %w", err)
+		}
+
+		metadataFilter = &parsedMetadataFilter
+	}
+
+	return metadataFilter, nil
 }
 
 func parseCursor(cursor string) (time.Time, string, error) {
@@ -54,7 +73,7 @@ func parseCursor(cursor string) (time.Time, string, error) {
 	return cursorTime, parts[1], nil
 }
 
-func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo, metadataFilter *map[string]string, cursorTime time.Time, cursorID string, limit *int32) ([]PaginatedSandbox, error) {
+func transformToSandboxAPI(runningSandboxes []*instance.InstanceInfo) []PaginatedSandbox {
 	sandboxes := make([]PaginatedSandbox, 0)
 
 	// Add running sandboxes to results
@@ -82,16 +101,10 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 		sandboxes = append(sandboxes, sandbox)
 	}
 
-	// filter sandboxes by metadata
-	if metadataFilter != nil {
-		filteredSandboxes, err := filterSandboxes(sandboxes, *metadataFilter)
-		if err != nil {
-			return nil, fmt.Errorf("error when filtering sandboxes: %w", err)
-		}
+	return sandboxes
+}
 
-		sandboxes = filteredSandboxes
-	}
-
+func filterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cursorID string, limit int32) []PaginatedSandbox {
 	// Apply cursor-based filtering if cursor is provided
 	var filteredSandboxes []PaginatedSandbox
 	for _, sandbox := range sandboxes {
@@ -105,16 +118,16 @@ func (a *APIStore) getRunningSandboxes(runningSandboxes []*instance.InstanceInfo
 	sandboxes = filteredSandboxes
 
 	// Apply limit if provided (get limit + 1 for pagination if possible)
-	if limit != nil && len(sandboxes) > int(*limit) {
-		sandboxes = sandboxes[:int(*limit)+1]
+	if len(sandboxes) > int(limit) {
+		sandboxes = sandboxes[:limit+1]
 	}
 
-	return sandboxes, nil
+	return sandboxes
 }
 
-func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit *int32, cursorTime time.Time, cursorID string) ([]PaginatedSandbox, error) {
+func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit int32, cursorTime time.Time, cursorID string) ([]PaginatedSandbox, error) {
 	sandboxes := make([]PaginatedSandbox, 0)
-	snapshots, err := a.db.GetTeamSnapshotsWithCursor(ctx, teamID, runningSandboxesIDs, int(*limit), metadataFilter, cursorTime, cursorID)
+	snapshots, err := a.db.GetTeamSnapshotsWithCursor(ctx, teamID, runningSandboxesIDs, int(limit), metadataFilter, cursorTime, cursorID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting team snapshots: %s", err)
 	}
@@ -153,20 +166,8 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	return sandboxes, nil
 }
 
-func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, states []api.SandboxState, metadata *string, limit *int32, fromToken *string) ([]PaginatedSandbox, *string, error) {
+func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, states []api.SandboxState, metadataFilter *map[string]string, limit int32, fromToken *string) ([]PaginatedSandbox, *string, error) {
 	sandboxes := make([]PaginatedSandbox, 0)
-
-	// Parse metadata filter (query) if provided
-	var metadataFilter *map[string]string
-	if metadata != nil {
-		parsedMetadataFilter, err := parseFilters(*metadata)
-		if err != nil {
-			zap.L().Error("Error parsing metadata", zap.Error(err))
-			return nil, nil, fmt.Errorf("error parsing metadata: %w", err)
-		}
-
-		metadataFilter = &parsedMetadataFilter
-	}
 
 	var parsedCursorTime time.Time = time.Now()
 	var parsedCursorID string = "zzzzzzzzzzzzzzzzzzzz" // always lexically after any sandbox ID
@@ -190,10 +191,13 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, states []
 	}
 
 	if slices.Contains(states, api.Running) {
-		runningSandboxList, err := a.getRunningSandboxes(runningSandboxes, metadataFilter, parsedCursorTime, parsedCursorID, limit)
-		if err != nil {
-			return nil, nil, fmt.Errorf("error getting running sandboxes: %w", err)
-		}
+		runningSandboxList := transformToSandboxAPI(runningSandboxes)
+
+		// Filter based on metadata
+		runningSandboxList = filterSandboxes(runningSandboxList, metadataFilter)
+
+		// Filter based on cursor and limit
+		runningSandboxList = filterBasedOnCursor(runningSandboxList, parsedCursorTime, parsedCursorID, limit)
 
 		sandboxes = append(sandboxes, runningSandboxList...)
 	} else if slices.Contains(states, api.Paused) {
@@ -213,14 +217,14 @@ func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, states []
 	})
 
 	var nextToken *string
-	if limit != nil && len(sandboxes) > int(*limit) {
+	if len(sandboxes) > int(limit) {
 		// We have more results than the limit, so we need to set the nextToken
-		lastSandbox := sandboxes[*limit-1]
+		lastSandbox := sandboxes[limit-1]
 		cursor := lastSandbox.GenerateCursor()
 		nextToken = &cursor
 
 		// Trim to the requested limit
-		sandboxes = sandboxes[:*limit]
+		sandboxes = sandboxes[:limit]
 	}
 
 	return sandboxes, nextToken, nil
@@ -257,24 +261,28 @@ func parseFilters(query string) (map[string]string, error) {
 	return filters, nil
 }
 
-func filterSandboxes(sandboxes []PaginatedSandbox, filters map[string]string) ([]PaginatedSandbox, error) {
+func filterSandboxes(sandboxes []PaginatedSandbox, filters *map[string]string) []PaginatedSandbox {
+	if filters == nil {
+		return sandboxes
+	}
+
 	// Filter instances to match all filters
 	n := 0
-	for _, instance := range sandboxes {
-		if instance.Metadata == nil {
+	for _, sbx := range sandboxes {
+		if sbx.Metadata == nil {
 			continue
 		}
 
 		matchesAll := true
-		for key, value := range filters {
-			if metadataValue, ok := (*instance.Metadata)[key]; !ok || metadataValue != value {
+		for key, value := range *filters {
+			if metadataValue, ok := (*sbx.Metadata)[key]; !ok || metadataValue != value {
 				matchesAll = false
 				break
 			}
 		}
 
 		if matchesAll {
-			sandboxes[n] = instance
+			sandboxes[n] = sbx
 			n++
 		}
 	}
@@ -282,7 +290,20 @@ func filterSandboxes(sandboxes []PaginatedSandbox, filters map[string]string) ([
 	// Trim slice
 	sandboxes = sandboxes[:n]
 
-	return sandboxes, nil
+	return sandboxes
+}
+
+func (a *APIStore) getRunningSandboxes(ctx context.Context, teamID uuid.UUID, metadataFilter *map[string]string) []PaginatedSandbox {
+	// Get all sandbox instances
+	runningSandboxes := a.orchestrator.GetSandboxes(ctx, &teamID)
+
+	// Running Sandbox IDs
+	runningSandboxList := transformToSandboxAPI(runningSandboxes)
+
+	// Filter sandboxes based on metadata
+	runningSandboxList = filterSandboxes(runningSandboxList, metadataFilter)
+
+	return runningSandboxList
 }
 
 func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
@@ -296,14 +317,15 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed sandboxes", properties)
 
-	// V1 API only supported running sandboxes
-	states := []api.SandboxState{api.Running}
-	sandboxes, _, err := a.getSandboxes(ctx, team.ID, states, params.Metadata, nil, nil)
+	metadataFilter, err := parseMetadata(params.Metadata)
 	if err != nil {
-		zap.L().Error("Error fetching sandboxes", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
+		zap.L().Error("Error parsing metadata", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error parsing metadata: %s", err))
+
 		return
 	}
+
+	sandboxes := a.getRunningSandboxes(ctx, team.ID, metadataFilter)
 
 	c.JSON(http.StatusOK, sandboxes)
 }
@@ -329,8 +351,21 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		}
 	}
 
+	limit := defaultSandboxListLimit
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+
+	metadataFilter, err := parseMetadata(params.Metadata)
+	if err != nil {
+		zap.L().Error("Error parsing metadata", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error parsing metadata: %s", err))
+
+		return
+	}
+
 	// Get sandboxes with pagination
-	sandboxes, nextToken, err := a.getSandboxes(ctx, team.ID, states, params.Metadata, params.Limit, params.NextToken)
+	sandboxes, nextToken, err := a.getSandboxes(ctx, team.ID, states, metadataFilter, limit, params.NextToken)
 	if err != nil {
 		zap.L().Error("Error fetching sandboxes", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
