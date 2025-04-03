@@ -4,18 +4,26 @@ inputs:
   environment:
     description: 'Target environment for deployment, e.g. staging'
     required: true
+  env_vars:
+    description: 'Environment variables to load'
+    required: true
 
 runs:
   using: "composite"
   steps:
     - name: Load Environment Variables
       id: load-env
+      env:
+        ENV_CONFIG: ${{ inputs.env_vars }}
       run: |
         echo ${{ inputs.environment }} > .last_used_env
-        echo "${{ secrets[format('env_{0}', inputs.environment)] }}" > ".env.${{ inputs.environment }}"
+        echo "$ENV_CONFIG" | base64 -d > ".env.${{ inputs.environment }}"
+        export $(cat ".env.${{ inputs.environment }}" | xargs)
 
         echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
+        echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> $GITHUB_ENV
         echo "TERRAFORM_STATE_BUCKET=${TERRAFORM_STATE_BUCKET}" >> $GITHUB_ENV
+        echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> $GITHUB_ENV
       shell: bash
 
     - name: Setup Service Account

@@ -54,20 +54,22 @@ init:
 
 # Setup production environment variables, this is used only for E2B.dev production
 # Uses HCP CLI to read secrets from HCP Vault Secrets
-.PHONY: setup-prod-env
-setup-prod-env:
+.PHONY: download-prod-env
+download-prod-env:
 	@ hcp auth login
 	@ hcp profile init --vault-secrets
-	@ hcp vault-secrets secrets read env_$(ENV) >/dev/null 2>&1 && echo "Environment found, writing to the .env.$(ENV) file" || { echo "Environment does not exist"; exit 1; }
+	@ hcp vault-secrets secrets read env_$(ENV) >/dev/null 2>&1 && echo "Environment found, writing to the .env.$(ENV) file" || { echo "Environment $(ENV) does not exist"; exit 1; }
+	@ rm ".env.$(ENV)"
 	@ hcp vault-secrets secrets open env_$(ENV) -o ".env.$(ENV)"
+	@ DECODED=$$(cat ".env.$(ENV)" | base64 -d) && echo "$$DECODED" > ".env.$(ENV)"
 
 # Updates production environment from .env file, this is used only for E2B.dev production
 # Uses HCP CLI to update secrets from HCP Vault Secrets
-.PHONY: setup-prod-env
+.PHONY: update-prod-env
 update-prod-env:
 	@ hcp auth login
 	@ hcp profile init --vault-secrets
-	@ hcp vault-secrets secrets create env_$(ENV) --data-file=".env.$(ENV)"
+	@ cat ".env.$(ENV)" | base64 -w 0 | tr -d '\n' | hcp vault-secrets secrets create env_$(ENV) --data-file=-
 
 .PHONY: plan
 plan:
@@ -75,17 +77,20 @@ plan:
 	$(TF) fmt -recursive
 	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
 
-# Deploy all jobs or just a specific job name in Nomad
-# When job name is specified, all '-' are replaced with '_' in the job name
-.PHONY: plan-only-jobs plan-only-jobs/%
-plan-only-jobs plan-only-jobs/%:
+# Deploy all jobs in Nomad
+.PHONY: plan-only-jobs
+plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	@if [ "$@" = "plan-only-jobs" ]; then \
-		$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad; \
-	else \
-		$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_'); \
-	fi
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad;
+
+# Deploy a specific job name in Nomad
+# When job name is specified, all '-' are replaced with '_' in the job name
+.PHONY: plan-only-jobs/%
+plan-only-jobs/%:
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(TF) fmt -recursive
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_');
 
 .PHONY: apply
 apply:
