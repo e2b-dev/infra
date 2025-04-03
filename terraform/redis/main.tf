@@ -120,6 +120,6 @@ resource "google_network_connectivity_service_connection_policy" "default" {
 
 
 resource "google_secret_manager_secret_version" "redis_url" {
-  secret      = "${var.prefix}redis-url"
+  secret      = "projects/${var.gcp_project_id}/secrets/${var.prefix}redis-url"
   secret_data = google_redis_cluster.redis_cluster_api.psc_connections[0].address
 }
