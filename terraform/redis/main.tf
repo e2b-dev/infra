@@ -25,15 +25,10 @@ resource "time_sleep" "redis_api_wait_60_seconds" {
 
 
 # Get the default network resource
-data "google_compute_network" "default" {
-  name = var.network_name
-}
-
-# Get the default network resource
 resource "google_compute_subnetwork" "default" {
   name                     = var.network_name
   region                   = var.gcp_region
-  network                  = data.google_compute_network.default.id
+  network                  = "projects/${var.gcp_project_id}/global/networks/${var.network_name}"
   private_ip_google_access = true
 }
 
@@ -44,12 +39,12 @@ resource "google_compute_global_address" "private_ip_alloc" {
   purpose       = "VPC_PEERING"
   address_type  = "INTERNAL"
   prefix_length = 16
-  network       = data.google_compute_network.default.id
+  network       = "projects/${var.gcp_project_id}/global/networks/${var.network_name}"
 }
 
 # Create the private connection for the default network
 resource "google_service_networking_connection" "private_service_connection" {
-  network                 = data.google_compute_network.default.id
+  network                 = "projects/${var.gcp_project_id}/global/networks/${var.network_name}"
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_ip_alloc.name]
 
@@ -63,7 +58,7 @@ resource "google_redis_cluster" "redis_cluster_api" {
   shard_count = 2
 
   psc_configs {
-    network = data.google_compute_network.default.id
+    network = "projects/${var.gcp_project_id}/global/networks/${var.network_name}"
   }
 
   region                  = var.gcp_region
@@ -91,7 +86,7 @@ resource "google_network_connectivity_service_connection_policy" "default" {
   location      = var.gcp_region
   service_class = "gcp-memorystore-redis"
   description   = "my basic service connection policy"
-  network       = data.google_compute_network.default.id
+  network       = "projects/${var.gcp_project_id}/global/networks/${var.network_name}"
   psc_config {
     subnetworks = [google_compute_subnetwork.default.id]
   }
