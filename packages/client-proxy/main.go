@@ -251,7 +251,7 @@ func run() int {
 		IdleConnTimeout:       620 * time.Second, // Matches keepalive_timeout
 		TLSHandshakeTimeout:   10 * time.Second,  // Similar to client_header_timeout
 		ResponseHeaderTimeout: 24 * time.Hour,    // Matches proxy_read_timeout
-		DisableKeepAlives:     false,             // Allow keep-alives
+		DisableKeepAlives:     true,              // Disable keep-alive, not supported
 	}
 
 	server.Handler = http.HandlerFunc(proxyHandler(transport))

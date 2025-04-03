@@ -10,11 +10,11 @@ terraform {
     }
     google = {
       source  = "hashicorp/google"
-      version = "5.31.0"
+      version = "6.28.0"
     }
     google-beta = {
       source  = "hashicorp/google-beta"
-      version = "5.31.0"
+      version = "6.28.0"
     }
     cloudflare = {
       source  = "cloudflare/cloudflare"
