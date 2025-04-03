@@ -14,8 +14,8 @@ on:
         description: 'Target environment for deployment, e.g. staging'
         required: true
         type: string
-      job_name:
-        description: 'Name of the job to deploy, e.g. api, template-manager'
+      job_names:
+        description: 'Name of the jobs to deploy, e.g. api, template-manager, separated by ;'
         required: true
         type: string
 
@@ -43,8 +43,21 @@ jobs:
           environment: ${{ inputs.environment }}
           env_vars: ${{ secrets[format('env_{0}', inputs.environment)] }}
 
-      - name: Deploy job ${{ inputs.job_name }}
+      - name: Deploy jobs
         run: |
-          make plan-only-jobs/${{ inputs.job_name }}
-          make apply
+          # Parse semicolon-separated job names
+          IFS=';' read -ra JOBS <<< "${{ inputs.job_names }}"
+          
+          # Deploy each job
+          for job_name in "${JOBS[@]}"; do
+            # Trim whitespace
+            job_name=$(echo "$job_name" | xargs)
+          
+            if [ -n "$job_name" ]; then
+              echo "::group::Deploying job: $job_name"
+              make plan-only-jobs/$job_name
+              make apply
+              echo "::endgroup::"
+            fi
+          done
         
