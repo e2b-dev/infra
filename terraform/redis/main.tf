@@ -55,14 +55,14 @@ resource "google_service_networking_connection" "private_service_connection" {
 
 resource "google_redis_cluster" "redis_cluster_api" {
   name        = "${var.prefix}redis-cluster-api"
-  shard_count = 2
+  shard_count = 1
 
   psc_configs {
     network = "projects/${var.gcp_project_id}/global/networks/${var.network_name}"
   }
 
   region                  = var.gcp_region
-  replica_count           = 1
+  replica_count           = 2
   node_type               = "REDIS_STANDARD_SMALL"
   transit_encryption_mode = "TRANSIT_ENCRYPTION_MODE_DISABLED"
   authorization_mode      = "AUTH_MODE_DISABLED"
