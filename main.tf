@@ -193,6 +193,7 @@ module "nomad" {
   analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
   api_admin_token                           = module.api.api_admin_token
+  redis_url_secret_version                  = module.api.redis_url_secret_version
 
   # Proxies
   session_proxy_service_name = var.session_proxy_service_name
@@ -231,4 +232,13 @@ module "nomad" {
   redis_port = var.redis_port
 }
 
+module "redis" {
+  source = "./terraform/redis"
+  count  = var.redis_managed ? 1 : 0
 
+  gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
+  gcp_zone       = var.gcp_zone
+
+  depends_on = [module.api]
+}

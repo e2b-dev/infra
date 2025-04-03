@@ -162,6 +162,10 @@ variable "loki_service_port" {
   })
 }
 
+variable "redis_url_secret_version" {
+  type = any
+}
+
 # Docker reverse proxy
 variable "docker_reverse_proxy_docker_image_digest" {
   type = string
