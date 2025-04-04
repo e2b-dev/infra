@@ -79,7 +79,7 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 			}()
 		}
 
-		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.dev)
+		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.app)
 		hostSplit := strings.Split(r.Host, "-")
 		if len(hostSplit) < 2 {
 			zap.L().Warn("invalid host", zap.String("host", r.Host))
