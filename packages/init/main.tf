@@ -127,6 +127,27 @@ resource "google_secret_manager_secret" "grafana_api_key" {
   depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
+resource "google_secret_manager_secret" "launch_darkly_api_key" {
+  secret_id = "${var.prefix}launch-darkly-api-key"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "launch_darkly_api_key" {
+  secret      = google_secret_manager_secret.launch_darkly_api_key.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
 resource "google_secret_manager_secret_version" "grafana_api_key" {
   secret      = google_secret_manager_secret.grafana_api_key.name
   secret_data = " "

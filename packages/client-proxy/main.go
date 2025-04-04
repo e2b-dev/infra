@@ -27,8 +27,14 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
+	featureFlagClientProxyTrafficTarget "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags/client-proxy"
+
 	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -66,7 +72,7 @@ type jsonTemplateData struct {
 	Code      int    `json:"code"`
 }
 
-func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
+func proxyHandler(transport *http.Transport, featureFlags *featureflags.Client) func(w http.ResponseWriter, r *http.Request) {
 	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
 	if err != nil {
 		zap.L().Error("failed to create active connections counter", zap.Error(err))
@@ -152,26 +158,48 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 
 		// We've resolved the node to proxy the request to
 		zap.L().Debug("Proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
+
+		flagCtx := ldcontext.NewBuilder(featureFlagClientProxyTrafficTarget.FlagName).SetString("sandbox_id", sandboxID).Build()
+		flag, flagErr := featureFlags.Ld.StringVariation(featureFlagClientProxyTrafficTarget.FlagName, flagCtx, featureFlagClientProxyTrafficTarget.FlagDefaultValue)
+		if flagErr != nil {
+			zap.L().Error("soft failing during feature flag receive", zap.Error(flagErr))
+		}
+
+		var targetPort int
+		if flag == featureFlagClientProxyTrafficTarget.FlagValueOrchestratorProxy {
+			// Proxy traffic to orchestrator
+			targetPort = orchestratorProxyPort
+		} else {
+			// Proxy traffic to nginx proxy
+			targetPort = sandboxPort
+		}
+
 		targetUrl := &url.URL{
 			Scheme: "http",
-			Host:   fmt.Sprintf("%s:%d", node, sandboxPort),
+			Host:   fmt.Sprintf("%s:%d", node, targetPort),
 		}
 
 		// Proxy the request
 		proxy := httputil.NewSingleHostReverseProxy(targetUrl)
+		logger := zap.L().With(
+			zap.String("sandbox_id", sandboxID),
+			zap.String("node", node),
+			zap.String("feature_flag", featureFlagClientProxyTrafficTarget.FlagName),
+			zap.String("feature_flag_value", flag),
+		)
 
 		// Custom error handler for logging proxy errors
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-			zap.L().Error("Reverse proxy error", zap.Error(err), zap.String("sandbox_id", sandboxID))
+			logger.Error("Reverse proxy error", zap.Error(err))
 			http.Error(w, "Proxy error", http.StatusBadGateway)
 		}
 
 		// Modify response for logging or additional processing
 		proxy.ModifyResponse = func(resp *http.Response) error {
 			if resp.StatusCode >= 500 {
-				zap.L().Error("Backend responded with error", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID))
+				logger.Error("Backend responded with error", zap.Int("status_code", resp.StatusCode))
 			} else {
-				zap.L().Info("Backend responded", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID), zap.String("node", node), zap.String("path", r.URL.Path))
+				logger.Info("Backend responded", zap.Int("status_code", resp.StatusCode), zap.String("path", r.URL.Path))
 			}
 
 			return nil
@@ -214,6 +242,13 @@ func run() int {
 	}()
 	zap.ReplaceGlobals(logger)
 
+	featureFlags, err := featureflags.NewClient(5 * time.Second)
+	if err != nil {
+		logger.Error("failed to create feature flags client", zap.Error(err))
+		return 1
+	}
+	defer featureFlags.Close()
+
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
 	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
@@ -254,7 +289,7 @@ func run() int {
 		DisableKeepAlives:     true,              // Disable keep-alive, not supported
 	}
 
-	server.Handler = http.HandlerFunc(proxyHandler(transport))
+	server.Handler = http.HandlerFunc(proxyHandler(transport, featureFlags))
 
 	wg.Add(1)
 	go func() {

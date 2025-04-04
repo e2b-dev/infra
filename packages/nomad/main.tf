@@ -20,6 +20,10 @@ data "google_secret_manager_secret_version" "analytics_collector_api_token" {
   secret = var.analytics_collector_api_token_secret_name
 }
 
+data "google_secret_manager_secret_version" "launch_darkly_api_key" {
+  secret = var.launch_darkly_api_key_secret_name
+}
+
 provider "nomad" {
   address      = "https://nomad.${var.domain_name}"
   secret_id    = var.nomad_acl_token_secret
@@ -112,6 +116,7 @@ resource "nomad_job" "client_proxy" {
 
       otel_collector_grpc_endpoint = "localhost:4317"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+      launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   })
 }
 
@@ -436,4 +441,3 @@ resource "nomad_job" "clickhouse" {
     password_sha256_hex = sha256(var.clickhouse_password)
   })
 }
-

@@ -151,6 +151,10 @@ variable "analytics_collector_api_token_secret_name" {
   type = string
 }
 
+variable "launch_darkly_api_key_secret_name" {
+  type = string
+}
+
 variable "loki_bucket_name" {
   type = string
 }
