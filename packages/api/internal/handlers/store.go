@@ -113,7 +113,6 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	}
 
 	var redisClient *redis.Client
-	var redisClient2 *redis.Client
 	if rurl := os.Getenv("REDIS_URL"); rurl != "" {
 		opts, err := redis.ParseURL(rurl)
 		if err != nil {
@@ -121,19 +120,26 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		}
 
 		redisClient = redis.NewClient(opts)
-
-		if os.Getenv("REDIS_URL2") != "" {
-			opts2, err := redis.ParseURL(os.Getenv("REDIS_URL2"))
-			if err != nil {
-				zap.L().Fatal("invalid redis URL", zap.String("url", os.Getenv("REDIS_URL2")), zap.Error(err))
-			}
-			redisClient2 = redis.NewClient(opts2)
-		}
 	} else {
 		zap.L().Warn("REDIS_URL not set, using local caches")
 	}
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, posthogClient, redisClient, redisClient2, dbClient)
+	var redisClusterClient *redis.ClusterClient
+	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
+		redisClusterClient = redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs:        []string{redisClusterUrl},
+			MinIdleConns: 1,
+		})
+
+		_, err := redisClusterClient.Ping(ctx).Result()
+		if err != nil {
+			zap.L().Fatal("could not connect to Redis", zap.Error(err))
+		}
+	} else {
+		zap.L().Warn("REDIS_CLUSTER_URL not set, using local caches")
+	}
+
+	orch, err := orchestrator.New(ctx, tracer, nomadClient, posthogClient, redisClient, redisClusterClient, dbClient)
 	if err != nil {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
