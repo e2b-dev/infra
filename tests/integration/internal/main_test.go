@@ -29,9 +29,9 @@ func TestCacheTemplate(t *testing.T) {
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
 	}, setup.WithAPIKey())
+	assert.NoError(t, err)
+
 	t.Cleanup(func() {
 		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
 	})
-
-	assert.NoError(t, err)
 }
