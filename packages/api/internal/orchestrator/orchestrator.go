@@ -45,7 +45,7 @@ func New(
 	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient *redis.Client,
-	redisClient2 *redis.Client,
+	redisClusterClient *redis.ClusterClient,
 	dbClient *db.DB,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
@@ -53,7 +53,7 @@ func New(
 		zap.L().Error("Error initializing Analytics client", zap.Error(err))
 	}
 
-	dnsServer := dns.New(ctx, redisClient, redisClient2)
+	dnsServer := dns.New(ctx, redisClient, redisClusterClient)
 
 	if env.IsLocal() {
 		zap.L().Info("Running locally, skipping starting DNS server")
