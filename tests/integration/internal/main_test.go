@@ -2,12 +2,14 @@ package internal
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
 	"log"
 	"testing"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMain(m *testing.M) {
@@ -28,9 +30,7 @@ func TestCacheTemplate(t *testing.T) {
 		Timeout:    &sbxTimeout,
 	}, setup.WithAPIKey())
 	t.Cleanup(func() {
-		if sbx.JSON201 != nil {
-			_, _ = c.DeleteSandboxesSandboxIDWithResponse(context.Background(), sbx.JSON201.SandboxID, setup.WithAPIKey())
-		}
+		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
 	})
 
 	assert.NoError(t, err)
