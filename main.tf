@@ -199,10 +199,6 @@ module "nomad" {
   api_admin_token                           = module.api.api_admin_token
   redis_url_secret_version                  = module.api.redis_url_secret_version
 
-  # Proxies
-  session_proxy_service_name = var.session_proxy_service_name
-  session_proxy_port         = var.session_proxy_port
-
   client_proxy_port                = var.client_proxy_port
   client_proxy_health_port         = var.client_proxy_health_port
   client_proxy_docker_image_digest = module.client_proxy.client_proxy_docker_image_digest
