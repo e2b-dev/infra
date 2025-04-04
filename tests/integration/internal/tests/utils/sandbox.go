@@ -14,7 +14,6 @@ import (
 // SetupSandboxWithCleanup creates a new sandbox and returns its data
 func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses) *api.Sandbox {
 	sbxTimeout := int32(30)
-	// nolint:govet Ignore incorrect error for t.Context() method not existing
 	createSandboxResponse, err := c.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
