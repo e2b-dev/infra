@@ -34,7 +34,7 @@ resource "google_compute_firewall" "internal_remote_connection_firewall_ingress"
 
   allow {
     protocol = "tcp"
-    ports    = ["22", "3389"]
+    ports    = ["22"]
   }
 
   priority = 900
