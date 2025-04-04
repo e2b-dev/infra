@@ -62,7 +62,7 @@ resource "google_redis_cluster" "redis_cluster_api" {
   }
 
   region                  = var.gcp_region
-  replica_count           = 2
+  replica_count           = 1
   node_type               = "REDIS_STANDARD_SMALL"
   transit_encryption_mode = "TRANSIT_ENCRYPTION_MODE_DISABLED"
   authorization_mode      = "AUTH_MODE_DISABLED"
