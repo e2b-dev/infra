@@ -117,7 +117,15 @@ EOF
 passwd -d root
 
 # Create default user.
-adduser --disabled-password --gecos "" user
+# if the /home/user directory exists, we copy the skeleton files to it because the adduser command
+# will ignore the directory if it exists, but we want to include the skeleton files in the home directory
+# in our case.
+ADDUSER_OUTPUT=$(adduser -disabled-password --gecos "" user 2>&1)
+if echo "$ADDUSER_OUTPUT" | grep -q "The home directory \`/home/user' already exists"; then
+    # Copy skeleton files if they don't exist in the home directory
+    cp -rn /etc/skel/. /home/user/
+fi
+
 usermod -aG sudo user
 passwd -d user
 echo "user ALL=(ALL:ALL) NOPASSWD: ALL" >>/etc/sudoers
@@ -125,12 +133,9 @@ echo "user ALL=(ALL:ALL) NOPASSWD: ALL" >>/etc/sudoers
 mkdir -p /code
 mkdir -p /home/user
 
-chmod 777 -R /home/user
+chown -R user:user /home/user
 chmod 777 -R /usr/local
 chmod 777 -R /code
-
-# TODO: Right now the chown line has no effect in the FC, even though it correctly changes the owner here.
-# It may be because of the way we are starting the FC VM?
 
 # Add DNS.
 echo "nameserver 8.8.8.8" >/etc/resolv.conf
