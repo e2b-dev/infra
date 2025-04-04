@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -166,70 +167,6 @@ func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, run
 	return sandboxes, nil
 }
 
-func (a *APIStore) getSandboxes(ctx context.Context, teamID uuid.UUID, states []api.SandboxState, metadataFilter *map[string]string, limit int32, fromToken *string) ([]PaginatedSandbox, *string, error) {
-	sandboxes := make([]PaginatedSandbox, 0)
-
-	var parsedCursorTime time.Time = time.Now()
-	var parsedCursorID string = "zzzzzzzzzzzzzzzzzzzz" // always lexically after any sandbox ID
-	if fromToken != nil && *fromToken != "" {
-		cursorTime, cursorID, err := parseCursor(*fromToken)
-		if err != nil {
-			return nil, nil, fmt.Errorf("invalid cursor: %w", err)
-		}
-
-		parsedCursorTime = cursorTime
-		parsedCursorID = cursorID
-	}
-
-	// Get all sandbox instances
-	runningSandboxes := a.orchestrator.GetSandboxes(ctx, &teamID)
-
-	// Running Sandbox IDs
-	runningSandboxesIDs := make([]string, 0)
-	for _, info := range runningSandboxes {
-		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.Instance.SandboxID))
-	}
-
-	if slices.Contains(states, api.Running) {
-		runningSandboxList := transformToSandboxAPI(runningSandboxes)
-
-		// Filter based on metadata
-		runningSandboxList = filterSandboxesOnMetadata(runningSandboxList, metadataFilter)
-
-		// Filter based on cursor and limit
-		runningSandboxList = filterBasedOnCursor(runningSandboxList, parsedCursorTime, parsedCursorID, limit)
-
-		sandboxes = append(sandboxes, runningSandboxList...)
-	} else if slices.Contains(states, api.Paused) {
-		pausedSandboxList, err := a.getPausedSandboxes(ctx, teamID, runningSandboxesIDs, metadataFilter, limit, parsedCursorTime, parsedCursorID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("error getting paused sandboxes: %w", err)
-		}
-		sandboxes = append(sandboxes, pausedSandboxList...)
-	}
-
-	// Sort by StartedAt (descending), then by SandboxID (ascending) for stability
-	sort.Slice(sandboxes, func(a, b int) bool {
-		if !sandboxes[a].StartedAt.Equal(sandboxes[b].StartedAt) {
-			return sandboxes[a].StartedAt.After(sandboxes[b].StartedAt)
-		}
-		return sandboxes[a].SandboxID < sandboxes[b].SandboxID
-	})
-
-	var nextToken *string
-	if len(sandboxes) > int(limit) {
-		// We have more results than the limit, so we need to set the nextToken
-		lastSandbox := sandboxes[limit-1]
-		cursor := lastSandbox.GenerateCursor()
-		nextToken = &cursor
-
-		// Trim to the requested limit
-		sandboxes = sandboxes[:limit]
-	}
-
-	return sandboxes, nextToken, nil
-}
-
 func parseFilters(query string) (map[string]string, error) {
 	query, err := url.QueryUnescape(query)
 	if err != nil {
@@ -293,9 +230,9 @@ func filterSandboxesOnMetadata(sandboxes []PaginatedSandbox, metadata *map[strin
 	return sandboxes
 }
 
-func (a *APIStore) getRunningSandboxes(ctx context.Context, teamID uuid.UUID, metadataFilter *map[string]string) []PaginatedSandbox {
+func getRunningSandboxes(ctx context.Context, orchestrator *orchestrator.Orchestrator, teamID uuid.UUID, metadataFilter *map[string]string) []PaginatedSandbox {
 	// Get all sandbox instances
-	runningSandboxes := a.orchestrator.GetSandboxes(ctx, &teamID)
+	runningSandboxes := orchestrator.GetSandboxes(ctx, &teamID)
 
 	// Running Sandbox IDs
 	runningSandboxList := transformToSandboxAPI(runningSandboxes)
@@ -325,7 +262,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return
 	}
 
-	sandboxes := a.getRunningSandboxes(ctx, team.ID, metadataFilter)
+	sandboxes := getRunningSandboxes(ctx, a.orchestrator, team.ID, metadataFilter)
 
 	c.JSON(http.StatusOK, sandboxes)
 }
@@ -359,17 +296,77 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	metadataFilter, err := parseMetadata(params.Metadata)
 	if err != nil {
 		zap.L().Error("Error parsing metadata", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error parsing metadata: %s", err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, "Error parsing metadata")
 
 		return
 	}
 
 	// Get sandboxes with pagination
-	sandboxes, nextToken, err := a.getSandboxes(ctx, team.ID, states, metadataFilter, limit, params.NextToken)
-	if err != nil {
-		zap.L().Error("Error fetching sandboxes", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
-		return
+	sandboxes := make([]PaginatedSandbox, 0)
+
+	token := params.NextToken
+	var parsedCursorTime time.Time = time.Now()
+	var parsedCursorID string = "zzzzzzzzzzzzzzzzzzzz" // always lexically after any sandbox ID
+	if token != nil && *token != "" {
+		cursorTime, cursorID, err := parseCursor(*token)
+		if err != nil {
+			zap.L().Error("Error parsing cursor", zap.Error(err))
+			a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid next token")
+
+			return
+		}
+
+		parsedCursorTime = cursorTime
+		parsedCursorID = cursorID
+	}
+
+	// Get all sandbox instances
+	runningSandboxes := a.orchestrator.GetSandboxes(ctx, &team.ID)
+
+	// Running Sandbox IDs
+	runningSandboxesIDs := make([]string, 0)
+	for _, info := range runningSandboxes {
+		runningSandboxesIDs = append(runningSandboxesIDs, utils.ShortID(info.Instance.SandboxID))
+	}
+
+	if slices.Contains(states, api.Running) {
+		runningSandboxList := transformToSandboxAPI(runningSandboxes)
+
+		// Filter based on metadata
+		runningSandboxList = filterSandboxesOnMetadata(runningSandboxList, metadataFilter)
+
+		// Filter based on cursor and limit
+		runningSandboxList = filterBasedOnCursor(runningSandboxList, parsedCursorTime, parsedCursorID, limit)
+
+		sandboxes = append(sandboxes, runningSandboxList...)
+	} else if slices.Contains(states, api.Paused) {
+		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, limit, parsedCursorTime, parsedCursorID)
+		if err != nil {
+			zap.L().Error("Error getting paused sandboxes", zap.Error(err))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error getting paused sandboxes")
+
+			return
+		}
+		sandboxes = append(sandboxes, pausedSandboxList...)
+	}
+
+	// Sort by StartedAt (descending), then by SandboxID (ascending) for stability
+	sort.Slice(sandboxes, func(a, b int) bool {
+		if !sandboxes[a].StartedAt.Equal(sandboxes[b].StartedAt) {
+			return sandboxes[a].StartedAt.After(sandboxes[b].StartedAt)
+		}
+		return sandboxes[a].SandboxID < sandboxes[b].SandboxID
+	})
+
+	var nextToken *string
+	if len(sandboxes) > int(limit) {
+		// We have more results than the limit, so we need to set the nextToken
+		lastSandbox := sandboxes[limit-1]
+		cursor := lastSandbox.GenerateCursor()
+		nextToken = &cursor
+
+		// Trim to the requested limit
+		sandboxes = sandboxes[:limit]
 	}
 
 	// Add pagination info to headers
