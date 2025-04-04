@@ -14,8 +14,13 @@ import (
 // SetupSandboxWithCleanup creates a new sandbox and returns its data
 func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses) *api.Sandbox {
 	t.Helper()
+
+	// t.Context() doesn't work with go vet, so we use our own context
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
 	sbxTimeout := int32(30)
-	createSandboxResponse, err := c.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
+	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
 		Metadata: &api.SandboxMetadata{
