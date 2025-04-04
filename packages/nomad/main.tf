@@ -116,7 +116,7 @@ resource "nomad_job" "client_proxy" {
 
       otel_collector_grpc_endpoint = "localhost:4317"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-      launch_darkly_api_key        = data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data
+      launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   })
 }
 
