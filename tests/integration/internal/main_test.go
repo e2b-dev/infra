@@ -23,10 +23,15 @@ func TestCacheTemplate(t *testing.T) {
 
 	c := setup.GetAPIClient()
 	sbxTimeout := int32(60)
-	_, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
+	sbx, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
 	}, setup.WithAPIKey())
+	t.Cleanup(func() {
+		if sbx.JSON201 != nil {
+			_, _ = c.DeleteSandboxesSandboxIDWithResponse(context.Background(), sbx.JSON201.SandboxID, setup.WithAPIKey())
+		}
+	})
 
 	assert.NoError(t, err)
 }

@@ -7,32 +7,10 @@ import (
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 
 	"github.com/stretchr/testify/assert"
 )
-
-// setupSandbox creates a new sandbox and returns its ID
-func setupSandbox(t *testing.T, c *api.ClientWithResponses) string {
-	createSandboxResponse, err := c.PostSandboxesWithResponse(context.Background(), api.NewSandbox{
-		TemplateID: setup.SandboxTemplateID,
-		Metadata: &api.SandboxMetadata{
-			"sandboxType": "test",
-		},
-	}, setup.WithAPIKey())
-
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
-
-	return createSandboxResponse.JSON201.SandboxID
-}
-
-// teardownSandbox kills the sandbox with the given ID
-func teardownSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
-	killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(context.Background(), sandboxID, setup.WithAPIKey())
-
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusNoContent, killSandboxResponse.StatusCode())
-}
 
 func pauseSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
 	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(context.Background(), sandboxID, setup.WithAPIKey())
@@ -45,8 +23,7 @@ func TestSandboxList(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create a sandbox for testing
-	sandboxID := setupSandbox(t, c)
-	defer teardownSandbox(t, c, sandboxID)
+	sbx := utils.SetupSandboxWithCleanup(t, c)
 
 	// Test basic list functionality
 	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{}, setup.WithAPIKey())
@@ -57,7 +34,7 @@ func TestSandboxList(t *testing.T) {
 	// Verify our sandbox is in the list
 	found := false
 	for _, s := range *listResponse.JSON200 {
-		if s.SandboxID == sandboxID {
+		if s.SandboxID == sbx.SandboxID {
 			found = true
 			break
 		}
@@ -68,8 +45,7 @@ func TestSandboxList(t *testing.T) {
 func TestSandboxListWithFilter(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	sandboxID := setupSandbox(t, c)
-	defer teardownSandbox(t, c, sandboxID)
+	sbx := utils.SetupSandboxWithCleanup(t, c)
 
 	metadataString := "sandboxType=test"
 
@@ -80,15 +56,14 @@ func TestSandboxListWithFilter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.Equal(t, 1, len(*listResponse.JSON200))
-	assert.Equal(t, sandboxID, (*listResponse.JSON200)[0].SandboxID)
+	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
 }
 
 func TestSandboxListRunning(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create a sandbox
-	sandboxID := setupSandbox(t, c)
-	defer teardownSandbox(t, c, sandboxID)
+	sbx := utils.SetupSandboxWithCleanup(t, c)
 
 	metadataString := "sandboxType=test"
 
@@ -103,7 +78,7 @@ func TestSandboxListRunning(t *testing.T) {
 	// Verify our running sandbox is in the list
 	found := false
 	for _, s := range *listResponse.JSON200 {
-		if s.SandboxID == sandboxID {
+		if s.SandboxID == sbx.SandboxID {
 			found = true
 			assert.Equal(t, api.Running, s.State)
 			break
@@ -116,10 +91,10 @@ func TestSandboxListPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create and pause a sandbox
-	sandboxID := setupSandbox(t, c)
-	pauseSandbox(t, c, sandboxID)
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+	sandboxID := sbx.SandboxID
 
-	defer teardownSandbox(t, c, sandboxID)
+	pauseSandbox(t, c, sandboxID)
 
 	metadataString := "sandboxType=test"
 
@@ -148,11 +123,11 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create two sandboxes
-	sandbox1ID := setupSandbox(t, c)
-	defer teardownSandbox(t, c, sandbox1ID)
+	sbx1 := utils.SetupSandboxWithCleanup(t, c)
+	sandbox1ID := sbx1.SandboxID
 
-	sandbox2ID := setupSandbox(t, c)
-	defer teardownSandbox(t, c, sandbox2ID)
+	sbx2 := utils.SetupSandboxWithCleanup(t, c)
+	sandbox2ID := sbx2.SandboxID
 
 	// Test pagination with limit
 	var limit int32 = 1
@@ -193,15 +168,13 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create two paused sandboxes
-	sandbox1ID := setupSandbox(t, c)
+	sbx1 := utils.SetupSandboxWithCleanup(t, c)
+	sandbox1ID := sbx1.SandboxID
 	pauseSandbox(t, c, sandbox1ID)
 
-	defer teardownSandbox(t, c, sandbox1ID)
-
-	sandbox2ID := setupSandbox(t, c)
+	sbx2 := utils.SetupSandboxWithCleanup(t, c)
+	sandbox2ID := sbx2.SandboxID
 	pauseSandbox(t, c, sandbox2ID)
-
-	defer teardownSandbox(t, c, sandbox2ID)
 
 	// Test pagination with limit
 	var limit int32 = 1
@@ -242,11 +215,11 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create two sandboxes
-	sandbox1ID := setupSandbox(t, c)
-	defer teardownSandbox(t, c, sandbox1ID)
+	sbx1 := utils.SetupSandboxWithCleanup(t, c)
+	sandbox1ID := sbx1.SandboxID
 
-	sandbox2ID := setupSandbox(t, c)
-	defer teardownSandbox(t, c, sandbox2ID)
+	sbx2 := utils.SetupSandboxWithCleanup(t, c)
+	sandbox2ID := sbx2.SandboxID
 
 	// Pause the second sandbox
 	pauseSandbox(t, c, sandbox2ID)
@@ -291,8 +264,7 @@ func TestSandboxListRunningV1(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create a sandbox
-	sandboxID := setupSandbox(t, c)
-	defer teardownSandbox(t, c, sandboxID)
+	sbx := utils.SetupSandboxWithCleanup(t, c)
 
 	metadataString := "sandboxType=test"
 
@@ -307,7 +279,7 @@ func TestSandboxListRunningV1(t *testing.T) {
 	// Verify our running sandbox is in the list
 	found := false
 	for _, s := range *listResponse.JSON200 {
-		if s.SandboxID == sandboxID {
+		if s.SandboxID == sbx.SandboxID {
 			found = true
 			assert.Equal(t, api.Running, s.State)
 			break
@@ -319,8 +291,7 @@ func TestSandboxListRunningV1(t *testing.T) {
 func TestSandboxListWithFilterV1(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	sandboxID := setupSandbox(t, c)
-	defer teardownSandbox(t, c, sandboxID)
+	sbx := utils.SetupSandboxWithCleanup(t, c)
 
 	metadataString := "sandboxType=test"
 
@@ -331,5 +302,5 @@ func TestSandboxListWithFilterV1(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.Equal(t, 1, len(*listResponse.JSON200))
-	assert.Equal(t, sandboxID, (*listResponse.JSON200)[0].SandboxID)
+	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
 }
