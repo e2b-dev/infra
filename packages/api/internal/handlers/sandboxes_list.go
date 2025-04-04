@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -74,7 +75,44 @@ func parseCursor(cursor string) (time.Time, string, error) {
 	return cursorTime, parts[1], nil
 }
 
-func transformToSandboxAPI(runningSandboxes []*instance.InstanceInfo) []PaginatedSandbox {
+func snapshotsToPaginatedSandboxes(snapshots []*models.Snapshot) []PaginatedSandbox {
+	sandboxes := make([]PaginatedSandbox, 0)
+
+	// Add snapshots to results
+	for _, snapshot := range snapshots {
+		env := snapshot.Edges.Env
+
+		snapshotBuilds := env.Edges.Builds
+		if len(snapshotBuilds) == 0 {
+			continue
+		}
+
+		sandbox := PaginatedSandbox{
+			ListedSandbox: api.ListedSandbox{
+				ClientID:   "00000000", // for backwards compatibility we need to return a client id
+				TemplateID: env.ID,
+				SandboxID:  snapshot.SandboxID,
+				StartedAt:  snapshot.SandboxStartedAt,
+				CpuCount:   int32(snapshotBuilds[0].Vcpu),
+				MemoryMB:   int32(snapshotBuilds[0].RAMMB),
+				EndAt:      snapshot.CreatedAt,
+				State:      api.Paused,
+			},
+			PaginationTimestamp: snapshot.CreatedAt,
+		}
+
+		if snapshot.Metadata != nil {
+			meta := api.SandboxMetadata(snapshot.Metadata)
+			sandbox.Metadata = &meta
+		}
+
+		sandboxes = append(sandboxes, sandbox)
+	}
+
+	return sandboxes
+}
+
+func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo) []PaginatedSandbox {
 	sandboxes := make([]PaginatedSandbox, 0)
 
 	// Add running sandboxes to results
@@ -127,43 +165,12 @@ func filterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cur
 }
 
 func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit int32, cursorTime time.Time, cursorID string) ([]PaginatedSandbox, error) {
-	sandboxes := make([]PaginatedSandbox, 0)
 	snapshots, err := a.db.GetTeamSnapshotsWithCursor(ctx, teamID, runningSandboxesIDs, int(limit), metadataFilter, cursorTime, cursorID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting team snapshots: %s", err)
 	}
 
-	// Add snapshots to results
-	for _, snapshot := range snapshots {
-		env := snapshot.Edges.Env
-
-		snapshotBuilds := env.Edges.Builds
-		if len(snapshotBuilds) == 0 {
-			continue
-		}
-
-		sandbox := PaginatedSandbox{
-			ListedSandbox: api.ListedSandbox{
-				ClientID:   "00000000", // for backwards compatibility we need to return a client id
-				TemplateID: env.ID,
-				SandboxID:  snapshot.SandboxID,
-				StartedAt:  snapshot.SandboxStartedAt,
-				CpuCount:   int32(snapshotBuilds[0].Vcpu),
-				MemoryMB:   int32(snapshotBuilds[0].RAMMB),
-				EndAt:      snapshot.CreatedAt,
-				State:      api.Paused,
-			},
-			PaginationTimestamp: snapshot.CreatedAt,
-		}
-
-		if snapshot.Metadata != nil {
-			meta := api.SandboxMetadata(snapshot.Metadata)
-			sandbox.Metadata = &meta
-		}
-
-		sandboxes = append(sandboxes, sandbox)
-	}
-
+	sandboxes := snapshotsToPaginatedSandboxes(snapshots)
 	return sandboxes, nil
 }
 
@@ -235,7 +242,7 @@ func getRunningSandboxes(ctx context.Context, orchestrator *orchestrator.Orchest
 	runningSandboxes := orchestrator.GetSandboxes(ctx, &teamID)
 
 	// Running Sandbox IDs
-	runningSandboxList := transformToSandboxAPI(runningSandboxes)
+	runningSandboxList := instanceInfoToPaginatedSandboxes(runningSandboxes)
 
 	// Filter sandboxes based on metadata
 	runningSandboxList = filterSandboxesOnMetadata(runningSandboxList, metadataFilter)
@@ -330,7 +337,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	}
 
 	if slices.Contains(states, api.Running) {
-		runningSandboxList := transformToSandboxAPI(runningSandboxes)
+		runningSandboxList := instanceInfoToPaginatedSandboxes(runningSandboxes)
 
 		// Filter based on metadata
 		runningSandboxList = filterSandboxesOnMetadata(runningSandboxList, metadataFilter)
@@ -340,6 +347,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 
 		sandboxes = append(sandboxes, runningSandboxList...)
 	}
+
 	if slices.Contains(states, api.Paused) {
 		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, limit, parsedCursorTime, parsedCursorID)
 		if err != nil {
