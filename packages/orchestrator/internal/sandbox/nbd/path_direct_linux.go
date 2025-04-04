@@ -106,9 +106,12 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 				defer d.handlersWg.Done()
 
 				handleErr := dispatch.Handle()
-				if handleErr != nil {
-					zap.L().Error("error handling NBD commands", zap.Error(handleErr))
-				}
+				// The error is expected to happen if the nbd (socket connection) is closed
+				zap.L().Info("closing handler for NBD commands",
+					zap.Error(handleErr),
+					zap.Uint32("device_index", d.deviceIndex),
+					zap.Int("socket_index", i),
+				)
 			}()
 
 			d.socks = append(d.socks, serverc)
