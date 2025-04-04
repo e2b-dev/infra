@@ -5,6 +5,8 @@ package nbd
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -71,17 +73,6 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 	if err != nil {
 		return 0, err
 	}
-
-	defer func() {
-		if err != nil {
-			err := d.devicePool.ReleaseDevice(d.deviceIndex)
-			if err != nil {
-				zap.L().Error("error releasing device in direct path mount", zap.Error(err))
-			}
-
-			d.deviceIndex = 0
-		}
-	}()
 
 	for {
 		socks := make([]*os.File, 0)
@@ -150,11 +141,17 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 			return 0, err
 		}
 
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(25 * time.Millisecond)
 	}
 
 	// Wait until it's connected...
 	for {
+		select {
+		case <-d.ctx.Done():
+			return 0, d.ctx.Err()
+		default:
+		}
+
 		s, err := nbdnl.Status(d.deviceIndex)
 		if err == nil && s.Connected {
 			break
@@ -216,6 +213,29 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 			break
 		}
 		time.Sleep(100 * time.Nanosecond)
+	}
+
+	// Release the device back to the pool, retry if it is in use
+	telemetry.ReportEvent(childCtx, "releasing device to the pool")
+	attempt := 0
+	for {
+		attempt++
+		err := d.devicePool.ReleaseDevice(d.deviceIndex)
+		if errors.Is(err, ErrDeviceInUse{}) {
+			if attempt%100 == 0 {
+				zap.L().Error("error releasing overlay device", zap.Int("attempt", attempt), zap.Error(err))
+			}
+
+			time.Sleep(500 * time.Millisecond)
+
+			continue
+		}
+
+		if err != nil {
+			return fmt.Errorf("error releasing overlay device: %w", err)
+		}
+
+		break
 	}
 
 	return nil
