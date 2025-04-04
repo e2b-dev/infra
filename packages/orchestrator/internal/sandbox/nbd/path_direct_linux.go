@@ -63,7 +63,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 		return 0, err
 	}
 
-	// TODO: Do we need to the device or it is enough to retry the dispatchers?
+	// TODO: Do we need retry getting the device or it is enough to retry the dispatchers?
 	d.deviceIndex, err = d.devicePool.GetDevice(ctx)
 	if err != nil {
 		return 0, err
@@ -71,7 +71,10 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 
 	defer func() {
 		if err != nil {
-			d.devicePool.ReleaseDevice(d.deviceIndex)
+			err := d.devicePool.ReleaseDevice(d.deviceIndex)
+			if err != nil {
+				zap.L().Error("error releasing device in direct path mount", zap.Error(err))
+			}
 
 			d.deviceIndex = 0
 		}
@@ -189,7 +192,7 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 
 	// Wait until it's completely disconnected...
 	telemetry.ReportEvent(childCtx, "waiting for complete disconnection")
-	ctxTimeout, cancel := context.WithTimeout(childCtx, 8*time.Second)
+	ctxTimeout, cancel := context.WithTimeout(childCtx, timeout)
 	defer cancel()
 	for {
 		select {
