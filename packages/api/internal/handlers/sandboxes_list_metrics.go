@@ -200,7 +200,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	}
 
 	// Get relevant running sandboxes
-	sandboxes := a.getRunningSandboxes(ctx, team.ID, metadataFilter)
+	sandboxes := getRunningSandboxes(ctx, a.orchestrator, team.ID, metadataFilter)
 
 	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, sandboxes)
 	if err != nil {
