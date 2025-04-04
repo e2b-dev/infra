@@ -70,8 +70,7 @@ resource "google_redis_cluster" "redis_cluster_api" {
   deletion_protection_enabled = true
 
   zone_distribution_config {
-    mode = "SINGLE_ZONE"
-    zone = var.gcp_zone
+    mode = "MULTI_ZONE"
   }
 
   persistence_config {
