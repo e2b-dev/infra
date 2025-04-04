@@ -339,7 +339,8 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 		runningSandboxList = filterBasedOnCursor(runningSandboxList, parsedCursorTime, parsedCursorID, limit)
 
 		sandboxes = append(sandboxes, runningSandboxList...)
-	} else if slices.Contains(states, api.Paused) {
+	}
+	if slices.Contains(states, api.Paused) {
 		pausedSandboxList, err := a.getPausedSandboxes(ctx, team.ID, runningSandboxesIDs, metadataFilter, limit, parsedCursorTime, parsedCursorID)
 		if err != nil {
 			zap.L().Error("Error getting paused sandboxes", zap.Error(err))
