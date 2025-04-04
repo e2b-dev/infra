@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -29,7 +30,7 @@ const (
 func (a *APIStore) getSandboxesMetrics(
 	ctx context.Context,
 	teamID uuid.UUID,
-	sandboxes []PaginatedSandbox,
+	sandboxes []utils.PaginatedSandbox,
 ) ([]api.RunningSandboxWithMetrics, error) {
 	// Add operation telemetry
 	telemetry.ReportEvent(ctx, "fetch metrics for sandboxes")
@@ -48,7 +49,7 @@ func (a *APIStore) getSandboxesMetrics(
 	}()
 
 	type metricsResult struct {
-		sandbox PaginatedSandbox
+		sandbox utils.PaginatedSandbox
 		metrics []api.SandboxMetric
 		err     error
 	}
@@ -66,7 +67,7 @@ func (a *APIStore) getSandboxesMetrics(
 	// Fetch metrics for each sandbox concurrently with rate limiting
 	for _, sandbox := range sandboxes {
 		wg.Add(1)
-		go func(s PaginatedSandbox) {
+		go func(s utils.PaginatedSandbox) {
 			defer wg.Done()
 
 			err := sem.Acquire(ctx, 1)
@@ -191,7 +192,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
 
-	metadataFilter, err := parseMetadata(params.Metadata)
+	metadataFilter, err := utils.ParseMetadata(params.Metadata)
 	if err != nil {
 		zap.L().Error("Error parsing metadata", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error parsing metadata: %s", err))
