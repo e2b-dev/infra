@@ -27,5 +27,5 @@ func TestOfflineDatastore(t *testing.T) {
 
 	// value is set manually in datastore and should be taken from there
 	flagValue, _ = client.Ld.BoolVariation(flagName, clientCtx, false)
-	assert.Equal(t, true, flagValue)
+	assert.True(t, flagValue)
 }
