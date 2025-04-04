@@ -22,8 +22,11 @@ import (
 )
 
 const (
-	connections = 4
-	timeout     = 30 * time.Second
+	connections    = 4
+	connectTimeout = 30 * time.Second
+
+	// disconnectTimeout should not be necessary if the disconnect is reliable
+	disconnectTimeout = 30 * time.Second
 )
 
 type DirectPathMount struct {
@@ -121,8 +124,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 
 		var opts []nbdnl.ConnectOption
 		opts = append(opts, nbdnl.WithBlockSize(d.blockSize))
-		opts = append(opts, nbdnl.WithTimeout(timeout))
-		opts = append(opts, nbdnl.WithDeadconnTimeout(timeout))
+		opts = append(opts, nbdnl.WithTimeout(connectTimeout))
+		opts = append(opts, nbdnl.WithDeadconnTimeout(connectTimeout))
 
 		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn
 
@@ -199,7 +202,7 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 
 	// Wait until it's completely disconnected...
 	telemetry.ReportEvent(childCtx, "waiting for complete disconnection")
-	ctxTimeout, cancel := context.WithTimeout(childCtx, timeout)
+	ctxTimeout, cancel := context.WithTimeout(childCtx, disconnectTimeout)
 	defer cancel()
 	for {
 		select {
