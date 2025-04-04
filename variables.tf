@@ -236,7 +236,3 @@ variable "redis_managed" {
   default = false
   type    = bool
 }
-
-variable "launch_darkly_api_key" {
-  type = string
-}
