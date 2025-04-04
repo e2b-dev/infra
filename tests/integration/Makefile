@@ -23,6 +23,7 @@ generate:
 
 .PHONY: build-debug
 build-debug:
+	@echo "GOMOD=$(shell go env GOMOD)"
 	go mod download
 	go vet ./internal/...
 

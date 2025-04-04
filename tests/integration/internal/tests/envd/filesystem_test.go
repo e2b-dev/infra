@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
-	"github.com/e2b-dev/infra/tests/integration/internal/tests/utils"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"

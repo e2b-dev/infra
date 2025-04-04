@@ -7,7 +7,8 @@ import (
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
-	"github.com/e2b-dev/infra/tests/integration/internal/tests/utils"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
+
 	"github.com/stretchr/testify/assert"
 )
 
