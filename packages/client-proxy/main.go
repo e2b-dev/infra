@@ -181,19 +181,25 @@ func proxyHandler(transport *http.Transport, featureFlags *featureflags.Client) 
 
 		// Proxy the request
 		proxy := httputil.NewSingleHostReverseProxy(targetUrl)
+		logger := zap.L().With(
+			zap.String("sandbox_id", sandboxID),
+			zap.String("node", node),
+			zap.String("feature_flag", featureFlagClientProxyTrafficTarget.FlagName),
+			zap.String("feature_flag_value", flag),
+		)
 
 		// Custom error handler for logging proxy errors
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-			zap.L().Error("Reverse proxy error", zap.Error(err), zap.String("sandbox_id", sandboxID))
+			logger.Error("Reverse proxy error", zap.Error(err))
 			http.Error(w, "Proxy error", http.StatusBadGateway)
 		}
 
 		// Modify response for logging or additional processing
 		proxy.ModifyResponse = func(resp *http.Response) error {
 			if resp.StatusCode >= 500 {
-				zap.L().Error("Backend responded with error", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID))
+				logger.Error("Backend responded with error", zap.Int("status_code", resp.StatusCode))
 			} else {
-				zap.L().Info("Backend responded", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID), zap.String("node", node), zap.String("path", r.URL.Path))
+				logger.Info("Backend responded", zap.Int("status_code", resp.StatusCode), zap.String("path", r.URL.Path))
 			}
 
 			return nil
