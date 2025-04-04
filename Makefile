@@ -61,7 +61,7 @@ download-prod-env:
 	@ hcp auth login
 	@ hcp profile init --vault-secrets
 	@ hcp vault-secrets secrets read env_$(ENV) >/dev/null 2>&1 && echo "Environment found, writing to the .env.$(ENV) file" || { echo "Environment $(ENV) does not exist"; exit 1; }
-	@ rm ".env.$(ENV)"
+	@ rm -f ".env.$(ENV)"
 	@ hcp vault-secrets secrets open env_$(ENV) -o ".env.$(ENV)"
 	@ DECODED=$$(cat ".env.$(ENV)" | base64 -d) && echo "$$DECODED" > ".env.$(ENV)"
 

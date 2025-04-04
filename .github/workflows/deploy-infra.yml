@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy Infra to the staging environment
+    name: Deploy Infra to the ${{ inputs.environment }} environment
     runs-on: ubuntu-22.04
     permissions:
       contents: read

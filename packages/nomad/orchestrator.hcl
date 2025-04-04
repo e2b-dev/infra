@@ -54,13 +54,11 @@ job "orchestrator" {
       }
 
       artifact {
-        source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator"
-
         %{ if environment == "dev" }
-        // Checksum in only available for dev to increase development speed in prod use rolling updates
-        options {
-          checksum = "md5:${orchestrator_checksum}"
-        }
+        // Version hash is only available for dev to increase development speed in prod use rolling updates
+        source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator?version=${orchestrator_checksum}"
+        %{ else }
+        source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/orchestrator"
         %{ endif }
       }
     }
