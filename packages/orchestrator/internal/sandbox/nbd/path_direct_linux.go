@@ -125,10 +125,14 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 
 		idx, err := nbdnl.Connect(d.deviceIndex, socks, uint64(size), 0, serverFlags, opts...)
 		if err == nil {
+			// The idx should be the same as d.deviceIndex, because we are connecting to it,
+			// but we will use the one returned by nbdnl
 			d.deviceIndex = idx
 
 			break
 		}
+
+		zap.L().Error("error opening NBD, retrying", zap.Error(err), zap.Uint32("deviceIndex", d.deviceIndex))
 
 		// Sometimes (rare), there seems to be a BADF error here. Lets just retry for now...
 		// Close things down and try again...
