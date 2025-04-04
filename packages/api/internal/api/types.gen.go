@@ -468,15 +468,6 @@ type N500 = Error
 type GetSandboxesParams struct {
 	// Metadata Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
 	Metadata *string `form:"metadata,omitempty" json:"metadata,omitempty"`
-
-	// State Filter sandboxes by one or more states
-	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
-
-	// NextToken Cursor to start the list from
-	NextToken *string `form:"nextToken,omitempty" json:"nextToken,omitempty"`
-
-	// Limit Maximum number of items to return per page
-	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetSandboxesMetricsParams defines parameters for GetSandboxesMetrics.
@@ -515,6 +506,21 @@ type GetTemplatesParams struct {
 type GetTemplatesTemplateIDBuildsBuildIDStatusParams struct {
 	// LogsOffset Index of the starting build log that should be returned with the template
 	LogsOffset *int32 `form:"logsOffset,omitempty" json:"logsOffset,omitempty"`
+}
+
+// GetV2SandboxesParams defines parameters for GetV2Sandboxes.
+type GetV2SandboxesParams struct {
+	// Metadata Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
+	Metadata *string `form:"metadata,omitempty" json:"metadata,omitempty"`
+
+	// State Filter sandboxes by one or more states
+	State *[]SandboxState `form:"state,omitempty" json:"state,omitempty"`
+
+	// NextToken Cursor to start the list from
+	NextToken *string `form:"nextToken,omitempty" json:"nextToken,omitempty"`
+
+	// Limit Maximum number of items to return per page
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.

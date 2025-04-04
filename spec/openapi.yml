@@ -543,10 +543,10 @@ components:
           items:
             $ref: "#/components/schemas/ListedSandbox"
         cachedBuilds:
-            type: array
-            description: List of cached builds id on the node
-            items:
-                type: string
+          type: array
+          description: List of cached builds id on the node
+          items:
+            type: string
         createFails:
           type: integer
           format: uint64
@@ -726,6 +726,64 @@ paths:
 
   /sandboxes:
     get:
+      description: List all running sandboxes
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      parameters:
+        - name: metadata
+          in: query
+          description: Metadata query used to filter the sandboxes (e.g. "user=abc&app=prod"). Each key and values must be URL encoded.
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successfully returned all running sandboxes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: "#/components/schemas/ListedSandbox"
+        "401":
+          $ref: "#/components/responses/401"
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+    post:
+      description: Create a sandbox from the template
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewSandbox"
+      responses:
+        "201":
+          description: The sandbox was created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sandbox"
+        "401":
+          $ref: "#/components/responses/401"
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v2/sandboxes:
+    get:
       description: List all sandboxes
       tags: [sandboxes]
       security:
@@ -775,32 +833,6 @@ paths:
                 items:
                   allOf:
                     - $ref: "#/components/schemas/ListedSandbox"
-        "401":
-          $ref: "#/components/responses/401"
-        "400":
-          $ref: "#/components/responses/400"
-        "500":
-          $ref: "#/components/responses/500"
-    post:
-      description: Create a sandbox from the template
-      tags: [sandboxes]
-      security:
-        - ApiKeyAuth: []
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/NewSandbox"
-      responses:
-        "201":
-          description: The sandbox was created successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Sandbox"
         "401":
           $ref: "#/components/responses/401"
         "400":
@@ -902,7 +934,6 @@ paths:
           $ref: "#/components/responses/401"
         "500":
           $ref: "#/components/responses/500"
-
 
   /sandboxes/{sandboxID}:
     get:

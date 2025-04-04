@@ -49,7 +49,7 @@ func TestSandboxList(t *testing.T) {
 	defer teardownSandbox(t, c, sandboxID)
 
 	// Test basic list functionality
-	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{}, setup.WithAPIKey())
+	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{}, setup.WithAPIKey())
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
@@ -74,7 +74,7 @@ func TestSandboxListWithFilter(t *testing.T) {
 	metadataString := "sandboxType=test"
 
 	// List with filter
-	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
+	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
@@ -93,8 +93,7 @@ func TestSandboxListRunning(t *testing.T) {
 	metadataString := "sandboxType=test"
 
 	// List running sandboxes
-	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
-		State:    &[]api.SandboxState{api.Running},
+	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
@@ -125,7 +124,7 @@ func TestSandboxListPaused(t *testing.T) {
 	metadataString := "sandboxType=test"
 
 	// List paused sandboxes
-	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
+	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
 		State:    &[]api.SandboxState{api.Paused},
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
@@ -159,7 +158,7 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	var limit int32 = 1
 	metadataString := "sandboxType=test"
 
-	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
+	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
 		Limit:    &limit,
 		State:    &[]api.SandboxState{api.Running},
 		Metadata: &metadataString,
@@ -174,7 +173,7 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	nextToken := listResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.NotEmpty(t, nextToken)
 
-	secondPageResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
+	secondPageResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
 		Limit:     &limit,
 		NextToken: &nextToken,
 		State:     &[]api.SandboxState{api.Running},
@@ -208,7 +207,7 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 	var limit int32 = 1
 	metadataString := "sandboxType=test"
 
-	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
+	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
 		Limit:    &limit,
 		State:    &[]api.SandboxState{api.Paused},
 		Metadata: &metadataString,
@@ -223,7 +222,7 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 	nextToken := listResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.NotEmpty(t, nextToken)
 
-	secondPageResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
+	secondPageResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
 		Limit:     &limit,
 		NextToken: &nextToken,
 		State:     &[]api.SandboxState{api.Paused},
@@ -256,7 +255,7 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	var limit int32 = 1
 	metadataString := "sandboxType=test"
 
-	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
+	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
 		Limit:    &limit,
 		State:    &[]api.SandboxState{api.Running, api.Paused},
 		Metadata: &metadataString,
@@ -271,7 +270,7 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	nextToken := listResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.NotEmpty(t, nextToken)
 
-	secondPageResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
+	secondPageResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
 		Limit:     &limit,
 		NextToken: &nextToken,
 		State:     &[]api.SandboxState{api.Running, api.Paused},
@@ -285,4 +284,52 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	// No more pages
 	nextToken = secondPageResponse.HTTPResponse.Header.Get("X-Next-Token")
 	assert.Empty(t, nextToken)
+}
+
+// legacy tests
+func TestSandboxListRunningV1(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	// Create a sandbox
+	sandboxID := setupSandbox(t, c)
+	defer teardownSandbox(t, c, sandboxID)
+
+	metadataString := "sandboxType=test"
+
+	// List running sandboxes
+	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
+		Metadata: &metadataString,
+	}, setup.WithAPIKey())
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
+	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
+
+	// Verify our running sandbox is in the list
+	found := false
+	for _, s := range *listResponse.JSON200 {
+		if s.SandboxID == sandboxID {
+			found = true
+			assert.Equal(t, api.Running, s.State)
+			break
+		}
+	}
+	assert.True(t, found)
+}
+
+func TestSandboxListWithFilterV1(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	sandboxID := setupSandbox(t, c)
+	defer teardownSandbox(t, c, sandboxID)
+
+	metadataString := "sandboxType=test"
+
+	// List with filter
+	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
+		Metadata: &metadataString,
+	}, setup.WithAPIKey())
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
+	assert.Equal(t, 1, len(*listResponse.JSON200))
+	assert.Equal(t, sandboxID, (*listResponse.JSON200)[0].SandboxID)
 }
