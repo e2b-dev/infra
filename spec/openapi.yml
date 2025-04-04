@@ -4,7 +4,7 @@ info:
   title: E2B API
 
 servers:
-  - url: https://api.e2b.dev
+  - url: https://api.e2b.app
 
 components:
   securitySchemes:
