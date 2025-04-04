@@ -27,7 +27,7 @@ const (
 )
 
 type DirectPathMount struct {
-	tracer      trace.Tracer
+	tracer   trace.Tracer
 	ctx      context.Context
 	cancelfn context.CancelFunc
 
@@ -198,7 +198,7 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 		default:
 		}
 
-		s, err := nbdnl.Status(uint32(d.deviceIndex)
+		s, err := nbdnl.Status(d.deviceIndex)
 		if err == nil && !s.Connected {
 			break
 		}
