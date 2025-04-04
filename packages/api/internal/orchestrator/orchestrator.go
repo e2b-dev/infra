@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	nomadapi "github.com/hashicorp/nomad/api"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 

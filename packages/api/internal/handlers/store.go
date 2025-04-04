@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis/v8"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	loki "github.com/grafana/loki/pkg/logcli/client"
 	nomadapi "github.com/hashicorp/nomad/api"
 	middleware "github.com/oapi-codegen/gin-middleware"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -135,6 +135,8 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		if err != nil {
 			zap.L().Fatal("could not connect to Redis", zap.Error(err))
 		}
+
+		zap.L().Info("connected to Redis cluster", zap.String("url", redisClusterUrl))
 	} else {
 		zap.L().Warn("REDIS_CLUSTER_URL not set, using local caches")
 	}
