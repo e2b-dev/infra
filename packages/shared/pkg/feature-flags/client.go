@@ -39,7 +39,7 @@ func NewClient(waitForInitialize time.Duration) (*Client, error) {
 }
 
 func (c *Client) Close() error {
-	if c.Ld != nil {
+	if c.Ld == nil {
 		return nil
 	}
 
