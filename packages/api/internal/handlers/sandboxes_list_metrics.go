@@ -191,20 +191,16 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.CreateAnalyticsTeamEvent(team.ID.String(), "listed running instances with metrics", properties)
 
-	sandboxes, _, err := a.getSandboxes(ctx, team.ID, SandboxesListParams{
-		State:    &[]api.SandboxState{api.Running},
-		Metadata: params.Metadata,
-	}, SandboxListPaginationParams{
-		Limit:     nil,
-		NextToken: nil,
-	})
-
+	metadataFilter, err := parseMetadata(params.Metadata)
 	if err != nil {
-		zap.L().Error("Error fetching sandboxes", zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning sandboxes for team '%s': %s", team.ID, err))
+		zap.L().Error("Error parsing metadata", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error parsing metadata: %s", err))
 
 		return
 	}
+
+	// Get relevant running sandboxes
+	sandboxes := getRunningSandboxes(ctx, a.orchestrator, team.ID, metadataFilter)
 
 	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, sandboxes)
 	if err != nil {
