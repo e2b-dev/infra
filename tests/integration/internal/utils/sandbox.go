@@ -13,8 +13,8 @@ import (
 
 // SetupSandboxWithCleanup creates a new sandbox and returns its data
 func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses) *api.Sandbox {
+	t.Helper()
 	sbxTimeout := int32(30)
-	// nolint:govet Ignore incorrect error for t.Context() method not existing
 	createSandboxResponse, err := c.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
@@ -39,6 +39,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses) *api.Sand
 
 // TeardownSandbox kills the sandbox with the given ID
 func TeardownSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
+	t.Helper()
 	killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(context.Background(), sandboxID, setup.WithAPIKey())
 
 	assert.NoError(t, err)
