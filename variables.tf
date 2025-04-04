@@ -72,22 +72,6 @@ variable "client_proxy_port" {
   }
 }
 
-variable "session_proxy_service_name" {
-  type    = string
-  default = "session-proxy"
-}
-
-variable "session_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
-  default = {
-    name = "session"
-    port = 3003
-  }
-}
-
 variable "logs_proxy_port" {
   type = object({
     name = string
