@@ -3,23 +3,24 @@ package build
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+
 	"github.com/bits-and-blooms/bitset"
 	"github.com/docker/docker/client"
+	docker "github.com/fsouza/go-dockerclient"
+	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
+
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
-	docker "github.com/fsouza/go-dockerclient"
-	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/trace"
-	"os"
 
 	"go.uber.org/zap"
-	"os/exec"
-	"strings"
-	"time"
 )
 
 type TemplateBuilder struct {
@@ -30,12 +31,11 @@ type TemplateBuilder struct {
 	buildLogger        *zap.Logger
 	dockerClient       *client.Client
 	legacyDockerClient *docker.Client
-	templateStorage    *template.Storage
 }
 
 const cleanupTimeout = time.Second * 10
 
-func NewBuilder(logger *zap.Logger, buildLogger *zap.Logger, tracer trace.Tracer, dockerClient *client.Client, legacyDockerClient *docker.Client, templateStorage *template.Storage, buildCache *cache.BuildCache) *TemplateBuilder {
+func NewBuilder(logger *zap.Logger, buildLogger *zap.Logger, tracer trace.Tracer, dockerClient *client.Client, legacyDockerClient *docker.Client, buildCache *cache.BuildCache) *TemplateBuilder {
 	return &TemplateBuilder{
 		logger:             logger,
 		tracer:             tracer,
@@ -43,7 +43,6 @@ func NewBuilder(logger *zap.Logger, buildLogger *zap.Logger, tracer trace.Tracer
 		buildLogger:        buildLogger,
 		dockerClient:       dockerClient,
 		legacyDockerClient: legacyDockerClient,
-		templateStorage:    templateStorage,
 	}
 }
 
@@ -85,20 +84,6 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 
 		return err
 	}
-
-	// Remove build files if build fails or times out
-	defer func() {
-		if err != nil {
-			removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
-			defer cancel()
-
-			removeErr := b.templateStorage.Remove(removeCtx, buildID)
-			if removeErr != nil {
-				b.logger.Error("Error while removing build files", zap.Error(removeErr))
-				telemetry.ReportError(ctx, removeErr)
-			}
-		}
-	}()
 
 	// MEMFILE
 	memfilePath := template.BuildMemfilePath()
@@ -220,6 +205,20 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		rootfsHeader,
 		template.TemplateFiles,
 	)
+
+	// Remove build files if build fails or times out
+	defer func() {
+		if err != nil {
+			removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+			defer cancel()
+
+			removeErr := templateBuild.Remove(removeCtx)
+			if removeErr != nil {
+				b.logger.Error("Error while removing build files", zap.Error(removeErr))
+				telemetry.ReportError(ctx, removeErr)
+			}
+		}
+	}()
 
 	upload := templateBuild.Upload(
 		ctx,

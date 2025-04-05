@@ -14,6 +14,7 @@ runs:
         GCP_DOCKER_REPOSITORY_NAME: "custom-environments-tests"
         # Not used, but required to be defined
         GOOGLE_SERVICE_ACCOUNT_BASE64: "required-but-not-needed"
+        TEMPLATE_STORAGE: "local"
       run: |
         echo "TESTS_SANDBOX_TEMPLATE_ID=${TEMPLATE_ID}" >> .env.test
         echo "TESTS_SANDBOX_BUILD_ID=${BUILD_ID}" >> .env.test
