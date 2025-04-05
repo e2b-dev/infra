@@ -18,6 +18,9 @@ paths:
   /metrics:
     get:
       summary: Get the stats of the service
+      security:
+        - AccessTokenAuth: []
+        - {}
       responses:
         "200":
           description: The resource usage metrics of the service
@@ -28,7 +31,10 @@ paths:
 
   /init:
     post:
-      summary: Set env vars, ensure the time and metadata is synced with the host
+      summary: Set initial vars, ensure the time and metadata is synced with the host
+      security:
+        - AccessTokenAuth: []
+        - {}
       requestBody:
         content:
           application/json:
@@ -37,6 +43,9 @@ paths:
               properties:
                 envVars:
                   $ref: "#/components/schemas/EnvVars"
+                accessToken:
+                  type: string
+                  description: Access token for secure access to envd service
       responses:
         "204":
           description: Env vars set, the time and metadata is synced with the host
@@ -44,6 +53,9 @@ paths:
   /envs:
     get:
       summary: Get the environment variables
+      security:
+        - AccessTokenAuth: []
+        - {}
       responses:
         "200":
           description: Environment variables
@@ -56,9 +68,14 @@ paths:
     get:
       summary: Download a file
       tags: [files]
+      security:
+        - AccessTokenAuth: []
+        - {}
       parameters:
         - $ref: "#/components/parameters/FilePath"
         - $ref: "#/components/parameters/User"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/SignatureExpiration"
       responses:
         "200":
           $ref: "#/components/responses/DownloadSuccess"
@@ -73,9 +90,14 @@ paths:
     post:
       summary: Upload a file and ensure the parent directories exist. If the file exists, it will be overwritten.
       tags: [files]
+      security:
+        - AccessTokenAuth: []
+        - {}
       parameters:
         - $ref: "#/components/parameters/FilePath"
         - $ref: "#/components/parameters/User"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/SignatureExpiration"
       requestBody:
         $ref: "#/components/requestBodies/File"
       responses:
@@ -91,6 +113,12 @@ paths:
           $ref: "#/components/responses/NotEnoughDiskSpace"
 
 components:
+  securitySchemes:
+    AccessTokenAuth:
+      type: apiKey
+      scheme: header
+      name: X-Access-Token
+
   parameters:
     FilePath:
       name: path
@@ -107,6 +135,20 @@ components:
       schema:
         type: string
         pattern: "^(root|user)$"
+    Signature:
+      name: signature
+      in: query
+      required: false
+      description: Signature used for file access permission verification.
+      schema:
+        type: string
+    SignatureExpiration:
+      name: signature_expiration
+      in: query
+      required: false
+      description: Signature expiration used for defining the expiration time of the signature.
+      schema:
+        type: integer
 
   requestBodies:
     File:

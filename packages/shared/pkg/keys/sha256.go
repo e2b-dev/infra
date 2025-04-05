@@ -23,3 +23,8 @@ func (h *Sha256Hashing) Hash(key []byte) string {
 		hash64,
 	)
 }
+
+func (h *Sha256Hashing) HashWithoutPrefix(key []byte) string {
+	hashBytes := sha256.Sum256(key)
+	return base64.RawStdEncoding.EncodeToString(hashBytes[:])
+}
