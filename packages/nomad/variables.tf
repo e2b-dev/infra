@@ -92,18 +92,6 @@ variable "supabase_jwt_secrets_secret_name" {
   type = string
 }
 
-# Proxies
-variable "session_proxy_service_name" {
-  type = string
-}
-
-variable "session_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
-}
-
 variable "client_proxy_docker_image_digest" {
   type = string
 }

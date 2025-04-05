@@ -168,7 +168,7 @@ func run() int32 {
 		case <-ctx.Done():
 		case err = <-errChan:
 			if err != nil {
-				zap.L().Error("session proxy failed", zap.Error(err))
+				zap.L().Error("orchestrator proxy failed", zap.Error(err))
 				exitCode.Add(1)
 				cancel()
 			}

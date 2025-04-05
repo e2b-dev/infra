@@ -120,23 +120,6 @@ resource "nomad_job" "client_proxy" {
   })
 }
 
-resource "nomad_job" "session_proxy" {
-  jobspec = file("${path.module}/session-proxy.hcl")
-
-  hcl2 {
-    vars = {
-      gcp_zone                   = var.gcp_zone
-      session_proxy_port_number  = var.session_proxy_port.port
-      session_proxy_port_name    = var.session_proxy_port.name
-      session_proxy_service_name = var.session_proxy_service_name
-      load_balancer_conf = templatefile("${path.module}/proxies/session.conf", {
-        browser_502 = replace(file("${path.module}/proxies/browser_502.html"), "\n", "")
-      })
-      nginx_conf = file("${path.module}/proxies/nginx.conf")
-    }
-  }
-}
-
 # grafana otel collector url
 resource "google_secret_manager_secret" "grafana_otlp_url" {
   secret_id = "${var.prefix}grafana-otlp-url"
