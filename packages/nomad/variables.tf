@@ -147,6 +147,14 @@ variable "launch_darkly_api_key_secret_name" {
   type = string
 }
 
+variable "clickhouse_bucket_name" {
+  type = string
+}
+
+variable "clickhouse_instance_identifier" {
+  type = string
+}
+
 variable "loki_bucket_name" {
   type = string
 }

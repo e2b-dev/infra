@@ -434,40 +434,32 @@ resource "nomad_job" "loki" {
   })
 }
 
-# create a bucket for clickhouse
-resource "google_storage_bucket" "clickhouse_bucket" {
-  name     = "${var.gcp_project_id}-clickhouse-bucket"
-  location = var.gcp_region
-}
-
-// create service account for bucket
 resource "google_service_account" "clickhouse_service_account" {
   account_id   = "${var.prefix}clickhouse-service-account"
   display_name = "${var.prefix}clickhouse-service-account"
 }
 
-# attach service account to bucket 
 resource "google_storage_bucket_iam_member" "clickhouse_service_account_iam" {
   bucket = google_storage_bucket.clickhouse_bucket.name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.clickhouse_service_account.email}"
 }
 
-# hmac key for service account
 resource "google_storage_hmac_key" "clickhouse_hmac_key" {
   service_account_email = google_service_account.clickhouse_service_account.email
 }
 
-# Add this with your other Nomad jobs
 resource "nomad_job" "clickhouse" {
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
-    zone                = var.gcp_zone
-    clickhouse_version  = "25.1.5.31" # Or make this a variable
-    gcs_bucket          = google_storage_bucket.clickhouse_bucket.name
-    gcs_folder          = "clickhouse-data"
-    hmac_key            = google_storage_hmac_key.clickhouse_hmac_key.access_id
-    hmac_secret         = google_storage_hmac_key.clickhouse_hmac_key.secret
-    username            = var.clickhouse_username
-    password_sha256_hex = sha256(var.clickhouse_password)
+    zone                              = var.gcp_zone
+    clickhouse_version                = "25.1.5.31"
+    gcs_bucket                        = google_storage_bucket.clickhouse_bucket.name
+    gcs_folder                        = "clickhouse-data"
+    hmac_key                          = google_storage_hmac_key.clickhouse_hmac_key.access_id
+    hmac_secret                       = google_storage_hmac_key.clickhouse_hmac_key.secret
+    username                          = var.clickhouse_username
+    password_sha256_hex               = sha256(var.clickhouse_password)
+    clickhouse_server_index_attribute = var.clickhouse_server_index_attribute
+    clickhouse_keeper_index_attribute = var.clickhouse_keeper_index_attribute
   })
 }
