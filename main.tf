@@ -181,6 +181,7 @@ module "nomad" {
   clickhouse_username          = "clickhouse"
   clickhouse_password          = module.init.clickhouse_password_secret_data
   clickhouse_database          = "default"
+  clickhouse_bucket_name       = module.buckets.clickhouse_bucket_name
 
   # API
   api_machine_count                         = var.api_cluster_size
