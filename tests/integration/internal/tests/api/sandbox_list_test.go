@@ -304,3 +304,34 @@ func TestSandboxListWithFilterV1(t *testing.T) {
 	assert.Equal(t, 1, len(*listResponse.JSON200))
 	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
 }
+
+func TestSandboxListSortedV1(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	// Create three sandboxes
+	sbx1 := utils.SetupSandboxWithCleanup(t, c)
+	sbx2 := utils.SetupSandboxWithCleanup(t, c)
+	sbx3 := utils.SetupSandboxWithCleanup(t, c)
+
+	// List with filter
+	listResponse, err := c.GetSandboxesWithResponse(context.Background(), nil, setup.WithAPIKey())
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
+	assert.GreaterOrEqual(t, 3, len(*listResponse.JSON200))
+
+	// Verify all sandboxes are in the list
+	contains := 0
+	for _, sbx := range *listResponse.JSON200 {
+		switch sbx.SandboxID {
+		case sbx1.SandboxID, sbx2.SandboxID, sbx3.SandboxID:
+			contains++
+		}
+	}
+
+	assert.Equal(t, 3, contains)
+
+	// Verify the order of the sandboxes
+	for i := 0; i < len(*listResponse.JSON200)-1; i++ {
+		assert.True(t, (*listResponse.JSON200)[i].StartedAt.After((*listResponse.JSON200)[i+1].StartedAt))
+	}
+}
