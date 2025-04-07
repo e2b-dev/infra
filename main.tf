@@ -242,5 +242,7 @@ module "redis" {
   gcp_region     = var.gcp_region
   gcp_zone       = var.gcp_zone
 
+  prefix = var.prefix
+
   depends_on = [module.api]
 }
