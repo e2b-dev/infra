@@ -304,3 +304,21 @@ func TestSandboxListWithFilterV1(t *testing.T) {
 	assert.Equal(t, 1, len(*listResponse.JSON200))
 	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
 }
+
+func TestSandboxListSortedV1(t *testing.T) {
+	c := setup.GetAPIClient()
+
+	// Create three sandboxes
+	sbx1 := utils.SetupSandboxWithCleanup(t, c)
+	sbx2 := utils.SetupSandboxWithCleanup(t, c)
+	sbx3 := utils.SetupSandboxWithCleanup(t, c)
+
+	// List with filter
+	listResponse, err := c.GetSandboxesWithResponse(context.Background(), nil, setup.WithAPIKey())
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
+	assert.Equal(t, 3, len(*listResponse.JSON200))
+	assert.Equal(t, sbx1.SandboxID, (*listResponse.JSON200)[2].SandboxID)
+	assert.Equal(t, sbx2.SandboxID, (*listResponse.JSON200)[1].SandboxID)
+	assert.Equal(t, sbx3.SandboxID, (*listResponse.JSON200)[0].SandboxID)
+}
