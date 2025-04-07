@@ -70,6 +70,7 @@ func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
 		if err != nil {
 			zap.L().Warn("error adding DNS item to redis cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
 		}
+
 		if d.redisClusterCache != nil {
 			err = d.redisClusterCache.Set(&cache.Item{
 				Ctx:   ctx,
@@ -92,6 +93,7 @@ func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
 		if err := d.redisCache.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
 			zap.L().Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
 		}
+
 		if d.redisClusterCache != nil {
 			if err := d.redisClusterCache.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
 				zap.L().Debug("removing item from 2nd DNS cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
@@ -109,6 +111,7 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 		if err := d.redisCache.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
 			if errors.Is(err, cache.ErrCacheMiss) {
 				zap.L().Warn("item missing in redisCache DNS cache", zap.String("sandbox_id", sandboxID))
+
 				if d.redisClusterCache != nil {
 					if err := d.redisClusterCache.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
 						if errors.Is(err, cache.ErrCacheMiss) {

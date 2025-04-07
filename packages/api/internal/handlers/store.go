@@ -137,8 +137,6 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		}
 
 		zap.L().Info("connected to Redis cluster", zap.String("url", redisClusterUrl))
-	} else {
-		zap.L().Warn("REDIS_CLUSTER_URL not set, using local caches")
 	}
 
 	orch, err := orchestrator.New(ctx, tracer, nomadClient, posthogClient, redisClient, redisClusterClient, dbClient)
