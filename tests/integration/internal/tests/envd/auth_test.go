@@ -12,6 +12,30 @@ import (
 	"testing"
 )
 
+func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) *api.PostSandboxesResponse {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := setup.GetAPIClient()
+
+	sbxTimeout := int32(10)
+	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
+		TemplateID: setup.SandboxTemplateID,
+		Timeout:    &sbxTimeout,
+	}, reqEditors...)
+	assert.NoError(t, err)
+
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("Response: %s", string(resp.Body))
+		}
+	})
+
+	return resp
+}
+
 func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
