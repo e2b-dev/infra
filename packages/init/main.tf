@@ -247,7 +247,7 @@ resource "google_secret_manager_secret_version" "clickhouse_password_value" {
 
 
 resource "google_secret_manager_secret" "notification_email" {
-  secret_id = "${var.prefix}notification-email"
+  secret_id = "${var.prefix}security-notification-email"
 
   replication {
     auto {}
