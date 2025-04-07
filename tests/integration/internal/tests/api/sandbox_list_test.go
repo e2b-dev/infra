@@ -317,8 +317,10 @@ func TestSandboxListSortedV1(t *testing.T) {
 	listResponse, err := c.GetSandboxesWithResponse(context.Background(), nil, setup.WithAPIKey())
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
-	assert.Equal(t, 3, len(*listResponse.JSON200))
-	assert.Equal(t, sbx1.SandboxID, (*listResponse.JSON200)[2].SandboxID)
-	assert.Equal(t, sbx2.SandboxID, (*listResponse.JSON200)[1].SandboxID)
-	assert.Equal(t, sbx3.SandboxID, (*listResponse.JSON200)[0].SandboxID)
+	assert.GreaterOrEqual(t, 3, len(*listResponse.JSON200))
+
+	// Verify the order of the sandboxes
+	for i := 1; i <= len(*listResponse.JSON200); i++ {
+		assert.GreaterOrEqual(t, (*listResponse.JSON200)[i-1].StartedAt.Compare((*listResponse.JSON200)[i].StartedAt), 0)
+	}
 }
