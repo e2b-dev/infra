@@ -8,7 +8,6 @@ import (
 	"time"
 
 	nomadapi "github.com/hashicorp/nomad/api"
-	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -44,8 +43,8 @@ func New(
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
-	redisClient *redis.Client,
-	redisClusterClient *redis.ClusterClient,
+	redisClient dns.Rediser,
+	redisClusterClient dns.Rediser,
 	dbClient *db.DB,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()

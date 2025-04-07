@@ -17,6 +17,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
+// Rediser generalize RedisClient and RedisClusterClient, taken from github.com/go-redis/cache/v9
+type Rediser interface {
+	Set(ctx context.Context, key string, value interface{}, ttl time.Duration) *redis.StatusCmd
+	SetXX(ctx context.Context, key string, value interface{}, ttl time.Duration) *redis.BoolCmd
+	SetNX(ctx context.Context, key string, value interface{}, ttl time.Duration) *redis.BoolCmd
+
+	Get(ctx context.Context, key string) *redis.StringCmd
+	Del(ctx context.Context, keys ...string) *redis.IntCmd
+}
+
 const ttl = 0
 const redisTTL = 24 * time.Hour
 
@@ -41,15 +51,15 @@ type DNS struct {
 	}
 }
 
-func New(ctx context.Context, rc *redis.Client, rcc *redis.ClusterClient) *DNS {
+func New(ctx context.Context, redisClient Rediser, redisClusterClient Rediser) *DNS {
 	d := &DNS{}
 
-	if rc != nil {
-		d.redisCache = cache.New(&cache.Options{Redis: rc, LocalCache: cache.NewTinyLFU(10_000, time.Hour)})
+	if redisClient != nil {
+		d.redisCache = cache.New(&cache.Options{Redis: redisClient, LocalCache: cache.NewTinyLFU(10_000, time.Hour)})
 
-		if rcc != nil {
+		if redisClusterClient != nil {
 			// No need for local cache, we never read from this redis
-			d.redisClusterCache = cache.New(&cache.Options{Redis: rcc})
+			d.redisClusterCache = cache.New(&cache.Options{Redis: redisClusterClient})
 		}
 	} else {
 		d.local = smap.New[string]()
