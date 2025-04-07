@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -54,10 +55,10 @@ type DNS struct {
 func New(ctx context.Context, redisClient Rediser, redisClusterClient Rediser) *DNS {
 	d := &DNS{}
 
-	if redisClient != nil {
+	if redisClient != nil && !reflect.ValueOf(redisClient).IsNil() {
 		d.redisCache = cache.New(&cache.Options{Redis: redisClient, LocalCache: cache.NewTinyLFU(10_000, time.Hour)})
 
-		if redisClusterClient != nil {
+		if redisClusterClient != nil && !reflect.ValueOf(redisClusterClient).IsNil() {
 			// No need for local cache, we never read from this redis
 			d.redisClusterCache = cache.New(&cache.Options{Redis: redisClusterClient})
 		}
