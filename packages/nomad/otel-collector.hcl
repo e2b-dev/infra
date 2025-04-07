@@ -122,7 +122,7 @@ processors:
           - "orchestrator.*"
           - "api.*"
           - "client_proxy.*"
-          - "rpc_server_duration"
+          - "rpc.server.duration.*"
   metricstransform:
     transforms:
       - include: "nomad_client_host_cpu_idle"
