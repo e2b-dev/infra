@@ -331,7 +331,7 @@ func TestSandboxListSortedV1(t *testing.T) {
 	assert.Equal(t, 3, contains)
 
 	// Verify the order of the sandboxes
-	for i := 1; i <= len(*listResponse.JSON200); i++ {
-		assert.GreaterOrEqual(t, (*listResponse.JSON200)[i-1].StartedAt.Compare((*listResponse.JSON200)[i].StartedAt), 0)
+	for i := 0; i < len(*listResponse.JSON200)-1; i++ {
+		assert.GreaterOrEqual(t, (*listResponse.JSON200)[i].StartedAt.Compare((*listResponse.JSON200)[i+1].StartedAt), 0)
 	}
 }
