@@ -126,6 +126,10 @@ func NewAPIStore(ctx context.Context) *APIStore {
 
 	var redisClusterClient *redis.ClusterClient
 	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
+		// For managed Redis Cluster in GCP we should use Cluster Client, because
+		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
+		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
+		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
 		redisClusterClient = redis.NewClusterClient(&redis.ClusterOptions{
 			Addrs:        []string{redisClusterUrl},
 			MinIdleConns: 1,
