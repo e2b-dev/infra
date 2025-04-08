@@ -143,7 +143,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 
 		select {
 		case <-d.ctx.Done():
-			return 0, d.ctx.Err()
+			return 0, errors.Join(err, d.ctx.Err())
 		case <-time.After(25 * time.Millisecond):
 		}
 	}
