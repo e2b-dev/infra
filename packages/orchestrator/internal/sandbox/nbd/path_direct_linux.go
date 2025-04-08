@@ -187,7 +187,7 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 	// Now wait for any pending responses to be sent
 	telemetry.ReportEvent(childCtx, "waiting for pending responses")
 	for _, d := range d.dispatchers {
-		d.Wait()
+		d.Drain()
 	}
 
 	// Now ask to disconnect

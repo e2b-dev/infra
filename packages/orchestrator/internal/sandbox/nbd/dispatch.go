@@ -76,7 +76,7 @@ func NewDispatch(ctx context.Context, fp io.ReadWriteCloser, prov Provider) *Dis
 	return d
 }
 
-func (d *Dispatch) Wait() {
+func (d *Dispatch) Drain() {
 	d.shuttingDownLock.Lock()
 	d.shuttingDown = true
 	defer d.shuttingDownLock.Unlock()
