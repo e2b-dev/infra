@@ -141,7 +141,11 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 			return 0, err
 		}
 
-		time.Sleep(25 * time.Millisecond)
+		select {
+		case <-d.ctx.Done():
+			return 0, d.ctx.Err()
+		case <-time.After(25 * time.Millisecond):
+		}
 	}
 
 	// Wait until it's connected...
