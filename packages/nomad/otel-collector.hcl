@@ -132,6 +132,14 @@ processors:
           - action: aggregate_labels
             aggregation_type: sum
             label_set: [instance, node_id, node_status, node_pool]
+  resource/remove_instance_from_rpc:
+    include:
+      match_type: regexp
+      metric_names:
+        - "rpc.server.duration.*"
+    attributes:
+      - action: delete
+        key: service.instance.id
   attributes/session-proxy:
     actions:
       - key: service.name
@@ -167,7 +175,7 @@ service:
       receivers:
         - prometheus
         - otlp
-      processors: [filter, batch, metricstransform]
+      processors: [resource/remove_instance_from_rpc, filter, batch, metricstransform]
       exporters:
         - otlphttp/grafana_cloud
     traces:
