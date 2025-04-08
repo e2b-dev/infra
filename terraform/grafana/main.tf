@@ -235,6 +235,23 @@ resource "grafana_data_source" "gcloud_monitoring" {
   secure_json_data_encoded = jsonencode({
     privateKey = jsondecode(base64decode(google_service_account_key.grafana_monitoring_key.private_key)).private_key
   })
-
 }
 
+locals {
+  files_map = { for file in fileset(var.directory_path, "**/*") :
+    trimsuffix(file, ".json") => templatefile("${var.directory_path}/${file}", {
+      gcp_project_id  = var.gcp_project_id
+      stackdriver_uid = grafana_data_source.gcloud_monitoring.uid
+      prefix          = var.prefix
+    })
+  }
+}
+
+resource "grafana_dashboard" "dashboard" {
+  provider = grafana.datasource
+
+  config_json = templatefile("${path.module}/dashboard.json", merge({
+    domain_name    = var.domain_name
+    gcp_project_id = var.gcp_project_id
+  }, local.files_map))
+}

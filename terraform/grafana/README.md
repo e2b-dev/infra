@@ -1,5 +1,7 @@
 # Deploy grafana 
 
+It has to be separate terraform if we want to keep it optionally, it needs to initialize the grafana provider inside the module, but that isn't compatible with conditional module invocation (e.g. count = 0).
+
 ## Prerequisites
 
 - complete the steps in [self-host.md](../../self-host.md)

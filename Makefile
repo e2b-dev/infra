@@ -9,6 +9,7 @@ OTEL_TRACING_PRINT ?= false
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
 CLIENT_CLUSTER_AUTO_SCALING_MAX ?= 0
 REDIS_MANAGED ?= false
+GRAFANA_MANAGED ?= false
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
@@ -53,6 +54,7 @@ init:
 	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
 	$(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+	@ if [ "$(GRAFANA_MANAGED)" = "true" ]; then $(MAKE) -C terraform/grafana init; fi
 
 # Setup production environment variables, this is used only for E2B.dev production
 # Uses HCP CLI to read secrets from HCP Vault Secrets
@@ -77,6 +79,7 @@ update-prod-env:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
+	@ if [ "$(GRAFANA_MANAGED)" = "true" ]; then make -C terraform/grafana plan; fi
 	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
 
 # Deploy all jobs in Nomad
@@ -98,6 +101,7 @@ plan-only-jobs/%:
 apply:
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
+	@ if [ "$(GRAFANA_MANAGED)" = "true" ]; then make -C terraform/grafana apply; fi
 	$(tf_vars) \
 	$(TF) apply \
 	-auto-approve \
@@ -174,6 +178,7 @@ switch-env:
 	@ echo $(ENV) > .last_used_env
 	@ . ${ENV_FILE}
 	terraform init -input=false -upgrade -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+	@ if [ "$(GRAFANA_MANAGED)" = "true" ]; then $(MAKE) -C terraform/grafana init; fi
 
 # Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
 .PHONY: import
@@ -202,24 +207,6 @@ test:
 .PHONY: test-integration
 test-integration:
 	$(MAKE) -C tests/integration test
-
-# $(MAKE) -C terraform/grafana init does not work b/c of the -include ${ENV_FILE} in the Makefile
-# so we need to call the Makefile directly
-# && cd - || cd - is used to handle the case where the command fails, we still want to cd -
-.PHONY: grafana-init
-grafana-init:
-	@ printf "Initializing Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	cd terraform/grafana && make init && cd - || cd -
-
-.PHONY: grafana-plan
-grafana-plan:
-	@ printf "Planning Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	cd terraform/grafana && make plan && cd - || cd -
-
-.PHONY: grafana-apply
-grafana-apply:
-	@ printf "Applying Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	cd terraform/grafana && make apply && cd - || cd -
 
 .PHONY: connect-orchestrator
 connect-orchestrator:

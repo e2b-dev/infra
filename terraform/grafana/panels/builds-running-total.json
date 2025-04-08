@@ -1,0 +1,78 @@
+{
+  "datasource": {
+    "type": "prometheus",
+    "uid": "grafanacloud-prom"
+  },
+  "fieldConfig": {
+    "defaults": {
+      "color": {
+        "fixedColor": "green",
+        "mode": "shades"
+      },
+      "mappings": [],
+      "noValue": "no running builds",
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {
+            "color": "green"
+          },
+          {
+            "color": "red",
+            "value": 80
+          }
+        ]
+      },
+      "unit": "build(s)"
+    },
+    "overrides": []
+  },
+  "gridPos": {
+    "h": 8,
+    "w": 4,
+    "x": 0,
+    "y": 381
+  },
+  "id": 10,
+  "interval": "15s",
+  "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "auto",
+    "orientation": "auto",
+    "percentChangeColorMode": "standard",
+    "reduceOptions": {
+      "calcs": [
+        "last"
+      ],
+      "fields": "",
+      "values": false
+    },
+    "showPercentChange": false,
+    "textMode": "auto",
+    "wideLayout": true
+  },
+  "pluginVersion": "11.6.0-83314",
+  "targets": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "disableTextWrap": false,
+      "editorMode": "builder",
+      "expr": "sum(api_env_build_running{team_id=~\"$team_id\"})",
+      "fullMetaSearch": false,
+      "includeNullMetadata": true,
+      "instant": false,
+      "legendFormat": "__auto",
+      "range": true,
+      "refId": "A",
+      "useBackend": false
+    }
+  ],
+  "timeFrom": "1m",
+  "title": "Running builds",
+  "transparent": true,
+  "type": "stat"
+}

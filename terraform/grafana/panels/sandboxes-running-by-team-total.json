@@ -1,0 +1,86 @@
+{
+  "datasource": {
+    "type": "prometheus",
+    "uid": "grafanacloud-prom"
+  },
+  "description": "",
+  "fieldConfig": {
+    "defaults": {
+      "color": {
+        "fixedColor": "dark-orange",
+        "mode": "palette-classic"
+      },
+      "custom": {
+        "hideFrom": {
+          "legend": false,
+          "tooltip": false,
+          "viz": false
+        }
+      },
+      "fieldMinMax": false,
+      "mappings": [],
+      "noValue": "no running instances",
+      "unit": "sbxs"
+    },
+    "overrides": []
+  },
+  "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 463
+  },
+  "id": 27,
+  "interval": "60s",
+  "options": {
+    "displayLabels": [
+      "value"
+    ],
+    "legend": {
+      "displayMode": "table",
+      "placement": "right",
+      "showLegend": true,
+      "values": [
+        "value",
+        "percent"
+      ]
+    },
+    "pieType": "donut",
+    "reduceOptions": {
+      "calcs": [
+        "lastNotNull"
+      ],
+      "fields": "",
+      "values": false
+    },
+    "tooltip": {
+      "hideZeros": false,
+      "maxHeight": 600,
+      "mode": "single",
+      "sort": "none"
+    }
+  },
+  "pluginVersion": "11.6.0-83314",
+  "targets": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "disableTextWrap": false,
+      "editorMode": "builder",
+      "expr": "sum by(team_id) (api_env_instance_running{team_id=~\"$team_id\"} > 0)",
+      "fullMetaSearch": false,
+      "includeNullMetadata": true,
+      "instant": false,
+      "legendFormat": "{{team_id}}",
+      "range": true,
+      "refId": "A",
+      "useBackend": false
+    }
+  ],
+  "timeFrom": "1m",
+  "title": "Running sandboxes (by team)",
+  "transparent": true,
+  "type": "piechart"
+}

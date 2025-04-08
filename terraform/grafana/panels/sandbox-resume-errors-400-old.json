@@ -1,0 +1,145 @@
+{
+  "datasource": {
+    "type": "tempo",
+    "uid": "grafanacloud-traces"
+  },
+  "description": "",
+  "fieldConfig": {
+    "defaults": {
+      "custom": {
+        "align": "auto",
+        "cellOptions": {
+          "type": "auto"
+        },
+        "inspect": false
+      },
+      "mappings": [],
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {
+            "color": "green"
+          },
+          {
+            "color": "red",
+            "value": 80
+          }
+        ]
+      }
+    },
+    "overrides": []
+  },
+  "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 250
+  },
+  "id": 48,
+  "options": {
+    "cellHeight": "sm",
+    "footer": {
+      "countRows": false,
+      "enablePagination": true,
+      "fields": [],
+      "reducer": [
+        "sum"
+      ],
+      "show": false
+    },
+    "frameIndex": 1,
+    "showHeader": true,
+    "sortBy": [
+      {
+        "desc": true,
+        "displayName": "Start time"
+      }
+    ]
+  },
+  "pluginVersion": "11.6.0-82840",
+  "targets": [
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "grafanacloud-traces"
+      },
+      "filters": [
+        {
+          "id": "span-name",
+          "operator": "=",
+          "scope": "span",
+          "tag": "name",
+          "value": [
+            "/sandboxes/:sandboxID/resume"
+          ],
+          "valueType": "string"
+        },
+        {
+          "id": "e9d884be",
+          "operator": ">=",
+          "scope": "span",
+          "tag": "http.status_code",
+          "value": [
+            "400"
+          ],
+          "valueType": "int"
+        },
+        {
+          "id": "service-name",
+          "operator": "=",
+          "scope": "resource",
+          "tag": "service.name",
+          "value": [
+            "orchestration-api"
+          ],
+          "valueType": "string"
+        },
+        {
+          "id": "9d2054d4",
+          "operator": "<",
+          "scope": "span",
+          "tag": "http.status_code",
+          "value": [
+            "500"
+          ],
+          "valueType": "int"
+        }
+      ],
+      "limit": 1000,
+      "query": "{name=\"/instances\"}",
+      "queryType": "traceqlSearch",
+      "refId": "A",
+      "spss": 10,
+      "tableType": "traces"
+    }
+  ],
+  "title": "RESUME Sandbox 400 errors",
+  "transformations": [
+    {
+      "id": "filterFieldsByName",
+      "options": {
+        "include": {
+          "names": [
+            "Start time",
+            "Duration",
+            "Trace ID"
+          ]
+        }
+      }
+    },
+    {
+      "id": "organize",
+      "options": {
+        "excludeByName": {},
+        "includeByName": {},
+        "indexByName": {
+          "Duration": 1,
+          "Start time": 2,
+          "Trace ID": 0
+        },
+        "renameByName": {}
+      }
+    }
+  ],
+  "type": "table"
+}
