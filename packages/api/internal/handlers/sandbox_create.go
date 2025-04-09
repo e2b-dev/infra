@@ -22,18 +22,18 @@ import (
 )
 
 const (
-	InstanceIDPrefix   = "i"
-	metricTemplateName = metrics.MetricPrefix + "template.name"
+	InstanceIDPrefix    = "i"
+	metricTemplateAlias = metrics.MetricPrefix + "template.alias"
 )
 
 var (
-	// mostUsedTemplates is a map of the most used template IDs to their alias names.
-	// It is used to reduce metric cardinality.
-	mostUsedTemplates = map[string]string{
-		"rki5dems9wqfm4r03t7g": "base",
-		"nlhz8vlwyupq845jsdg9": "code-interpreter-v1",
-		"3e4rngfa34txe0gxc1zf": "code-interpreter-beta",
-		"k0wmnzir0zuzye6dndlw": "desktop-dev1",
+	// mostUsedTemplates is a map of the most used template aliases.
+	// It is used for monitoring and to reduce metric cardinality.
+	mostUsedTemplates = map[string]struct{}{
+		"base":                  {},
+		"code-interpreter-v1":   {},
+		"code-interpreter-beta": {},
+		"desktop-dev1":          {},
 	}
 )
 
@@ -89,7 +89,9 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	c.Set("envID", env.TemplateID)
-	setTemplateNameMetric(c, env.TemplateID)
+	if aliases := env.Aliases; aliases != nil {
+		setTemplateNameMetric(c, *aliases)
+	}
 
 	sandboxID := InstanceIDPrefix + id.Generate()
 
@@ -167,12 +169,20 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	c.JSON(http.StatusCreated, &sandbox)
 }
 
-func setTemplateNameMetric(c *gin.Context, templateID string) {
-	v, ok := mostUsedTemplates[templateID]
-	if !ok {
-		// template ID is not most used, set the name to "other"
-		v = "other"
+func setTemplateNameMetric(c *gin.Context, aliases []string) {
+	alias, _ := firstAlias(aliases)
+
+	if _, ok := mostUsedTemplates[alias]; !ok {
+		// alias is not most used, set the name to "other"
+		alias = "other"
 	}
 
-	c.Set(metricTemplateName, v)
+	c.Set(metricTemplateAlias, alias)
+}
+
+func firstAlias(aliases []string) (string, bool) {
+	if len(aliases) > 0 {
+		return (aliases)[0], true
+	}
+	return "", false
 }
