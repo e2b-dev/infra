@@ -7,11 +7,6 @@ terraform {
   }
 }
 
-data "google_secret_manager_secret_version" "grafana_api_key" {
-  secret  = "projects/${var.gcp_project_id}/secrets/${var.prefix}grafana-api-key"
-  project = var.gcp_project_id
-}
-
 resource "grafana_cloud_stack" "e2b_stack" {
   provider = grafana
 
@@ -135,21 +130,4 @@ resource "grafana_cloud_stack_service_account_token" "manage_datasource" {
   service_account_id = grafana_cloud_stack_service_account.cloud_sa.id
   stack_slug         = grafana_cloud_stack.e2b_stack.slug
   provider           = grafana
-}
-
-
-resource "google_service_account" "grafana_monitoring" {
-  account_id   = "${var.prefix}grafana-monitoring"
-  display_name = "Grafana Cloud Monitoring Service Account"
-  project      = var.gcp_project_id
-}
-
-resource "google_project_iam_member" "grafana_monitoring_viewer" {
-  project = var.gcp_project_id
-  role    = "roles/monitoring.viewer"
-  member  = "serviceAccount:${google_service_account.grafana_monitoring.email}"
-}
-
-resource "google_service_account_key" "grafana_monitoring_key" {
-  service_account_id = google_service_account.grafana_monitoring.name
 }
