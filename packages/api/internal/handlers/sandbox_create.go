@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -21,7 +22,19 @@ import (
 )
 
 const (
-	InstanceIDPrefix = "i"
+	InstanceIDPrefix   = "i"
+	metricTemplateName = metrics.MetricPrefix + "template.name"
+)
+
+var (
+	// mostUsedTemplates is a map of the most used template IDs to their alias names.
+	// It is used to reduce metric cardinality.
+	mostUsedTemplates = map[string]string{
+		"rki5dems9wqfm4r03t7g": "base",
+		"nlhz8vlwyupq845jsdg9": "code-interpreter-v1",
+		"3e4rngfa34txe0gxc1zf": "code-interpreter-beta",
+		"k0wmnzir0zuzye6dndlw": "desktop-dev1",
+	}
 )
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
@@ -76,6 +89,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	c.Set("envID", env.TemplateID)
+	setTemplateNameMetric(c, env.TemplateID)
 
 	sandboxID := InstanceIDPrefix + id.Generate()
 
@@ -151,4 +165,14 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	c.Set("nodeID", sandbox.ClientID)
 
 	c.JSON(http.StatusCreated, &sandbox)
+}
+
+func setTemplateNameMetric(c *gin.Context, templateID string) {
+	v, ok := mostUsedTemplates[templateID]
+	if !ok {
+		// template ID is not most used, set the name to "other"
+		v = "other"
+	}
+
+	c.Set(metricTemplateName, v)
 }
