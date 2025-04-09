@@ -86,7 +86,7 @@ func main() {
 		panic(err)
 	}
 	// Create access token
-	_, err = database.Client.AccessToken.Create().SetUser(user).SetID(accessToken).Save(ctx)
+	_, err = database.Client.AccessToken.Create().SetUser(user).SetAccessToken(accessToken).Save(ctx)
 	if err != nil {
 		panic(err)
 	}
