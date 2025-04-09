@@ -249,6 +249,9 @@ components:
         envdVersion:
           type: string
           description: Version of the envd running in the sandbox
+        envdAccessToken:
+          type: string
+          description: Access token used for envd communication
 
     ListedSandbox:
       required:
@@ -281,6 +284,12 @@ components:
           type: string
           format: date-time
           description: Time when the sandbox will expire
+        envdVersion:
+          type: string
+          description: Version of the envd running in the sandbox
+        envdAccessToken:
+          type: string
+          description: Access token used for envd communication
         cpuCount:
           $ref: "#/components/schemas/CPUCount"
         memoryMB:
@@ -348,6 +357,9 @@ components:
           type: boolean
           default: false
           description: Automatically pauses the sandbox after the timeout
+        secure:
+          type: boolean
+          description: Secure all system communication with sandbox
         metadata:
           $ref: "#/components/schemas/SandboxMetadata"
         envVars:
