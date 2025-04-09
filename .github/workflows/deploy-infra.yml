@@ -50,7 +50,7 @@ jobs:
           make copy-public-builds
 
       - name: Migrate database
-        if: inputs.plan_only != 'true'
+        if: inputs.plan_only == 'false'
         run: |
           make migrate
 
@@ -59,7 +59,7 @@ jobs:
           make plan-without-jobs
 
       - name: Apply infrastructure
-        if: inputs.plan_only != 'true'
+        if: inputs.plan_only == 'false'
         run: |
           make apply
         

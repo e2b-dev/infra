@@ -63,7 +63,7 @@ jobs:
               make plan-only-jobs/$job_name
 
               # Apply only if plan_only is not true
-              if [ "${{ inputs.plan_only }}" != "true" ]; then
+              if [ "${{ inputs.plan_only }}" == "false" ]; then
                 make apply
               else
                 echo "Skipping apply, plan_only is true"
