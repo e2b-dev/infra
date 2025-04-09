@@ -5,7 +5,6 @@ go 1.23.7
 require (
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/google/uuid v1.6.0
-	github.com/launchdarkly/go-sdk-common/v3 v3.1.0
 	github.com/miekg/dns v1.1.63
 	go.uber.org/zap v1.27.0
 )
@@ -21,6 +20,7 @@ require (
 	github.com/launchdarkly/ccache v1.1.0 // indirect
 	github.com/launchdarkly/eventsource v1.8.0 // indirect
 	github.com/launchdarkly/go-jsonstream/v3 v3.1.0 // indirect
+	github.com/launchdarkly/go-sdk-common/v3 v3.1.0 // indirect
 	github.com/launchdarkly/go-sdk-events/v3 v3.5.0 // indirect
 	github.com/launchdarkly/go-semver v1.0.3 // indirect
 	github.com/launchdarkly/go-server-sdk-evaluation/v3 v3.0.1 // indirect

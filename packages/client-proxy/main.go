@@ -27,12 +27,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
-	featureFlagClientProxyTrafficTarget "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags/client-proxy"
-
 	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
@@ -44,7 +40,6 @@ const (
 	dnsServer             = "api.service.consul:5353"
 	healthCheckPort       = 3001
 	port                  = 3002
-	sandboxPort           = 3003 // legacy session proxy port
 	orchestratorProxyPort = 5007 // orchestrator proxy port
 	maxRetries            = 3
 )
@@ -159,34 +154,14 @@ func proxyHandler(transport *http.Transport, featureFlags *featureflags.Client) 
 		// We've resolved the node to proxy the request to
 		zap.L().Debug("Proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
 
-		flagCtx := ldcontext.NewBuilder(featureFlagClientProxyTrafficTarget.FlagName).SetString("sandbox_id", sandboxID).Build()
-		flag, flagErr := featureFlags.Ld.StringVariation(featureFlagClientProxyTrafficTarget.FlagName, flagCtx, featureFlagClientProxyTrafficTarget.FlagDefaultValue)
-		if flagErr != nil {
-			zap.L().Error("soft failing during feature flag receive", zap.Error(flagErr))
-		}
-
-		var targetPort int
-		if flag == featureFlagClientProxyTrafficTarget.FlagValueOrchestratorProxy {
-			// Proxy traffic to orchestrator
-			targetPort = orchestratorProxyPort
-		} else {
-			// Proxy traffic to nginx proxy
-			targetPort = sandboxPort
-		}
-
 		targetUrl := &url.URL{
 			Scheme: "http",
-			Host:   fmt.Sprintf("%s:%d", node, targetPort),
+			Host:   fmt.Sprintf("%s:%d", node, orchestratorProxyPort),
 		}
 
 		// Proxy the request
 		proxy := httputil.NewSingleHostReverseProxy(targetUrl)
-		logger := zap.L().With(
-			zap.String("sandbox_id", sandboxID),
-			zap.String("node", node),
-			zap.String("feature_flag", featureFlagClientProxyTrafficTarget.FlagName),
-			zap.String("feature_flag_value", flag),
-		)
+		logger := zap.L().With(zap.String("sandbox_id", sandboxID), zap.String("node", node))
 
 		// Custom error handler for logging proxy errors
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
