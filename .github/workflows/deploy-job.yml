@@ -18,6 +18,11 @@ on:
         description: 'Name of the jobs to deploy, e.g. api, template-manager, separated by ;'
         required: true
         type: string
+      plan_only:
+        description: 'Only plan the changes without applying them'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-${{ inputs.environment }}
@@ -56,7 +61,13 @@ jobs:
             if [ -n "$job_name" ]; then
               echo "::group::Deploying job: $job_name"
               make plan-only-jobs/$job_name
-              make apply
+
+              # Apply only if plan_only is not true
+              if [ "${{ inputs.plan_only }}" != "true" ]; then
+                make apply
+              else
+                echo "Skipping apply, plan_only is true"
+              fi
               echo "::endgroup::"
             fi
           done
