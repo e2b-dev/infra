@@ -19,8 +19,18 @@ resource "google_compute_instance_group_manager" "cluster" {
   name = "${var.cluster_name}-ig"
 
   version {
-    name              = google_compute_instance_template.cluster.id
-    instance_template = google_compute_instance_template.cluster.id
+    name              = google_compute_instance_template.server.id
+    instance_template = google_compute_instance_template.server.id
+  }
+
+  named_port {
+    name = var.service_health_port.name
+    port = var.service_health_port.port
+  }
+
+  named_port {
+    name = var.service_port.name
+    port = var.service_port.port
   }
 
   auto_healing_policies {
@@ -32,13 +42,12 @@ resource "google_compute_instance_group_manager" "cluster" {
   # a rolling update.
   update_policy {
     type                  = "PROACTIVE"
-    minimal_action        = "REFRESH"
+    minimal_action        = "RESTART"
     max_unavailable_fixed = 1
     replacement_method    = "RECREATE"
   }
 
   base_instance_name = var.cluster_name
-  target_size        = var.cluster_size
   target_pools       = var.instance_group_target_pools
 
   depends_on = [
@@ -46,24 +55,33 @@ resource "google_compute_instance_group_manager" "cluster" {
   ]
 }
 
+resource "google_compute_disk" "stateful_disk" {
+  for_each = toset([for i in range(1, var.cluster_size + 1) : tostring(i)])
+
+  name = "${var.cluster_name}-${each.key}-disk"
+  type = "pd-ssd"
+  zone = var.gcp_zone
+
+  size = 10
+}
+
 resource "google_compute_per_instance_config" "instances" {
-  for_each = toset(range(1, var.cluster_size + 1))
+  for_each = toset([for i in range(1, var.cluster_size + 1) : tostring(i)])
 
   instance_group_manager = google_compute_instance_group_manager.cluster.name
-  zone                   = google_compute_instance_group_manager.cluster.zone
 
   name = "${var.cluster_name}-${each.key}"
 
   preserved_state {
     disk {
-      device_name = "${var.cluster_name}-${each.key}-disk"
+      device_name = google_compute_disk.stateful_disk[each.key].name
       mode        = "READ_WRITE"
-      source      = "${var.cluster_name}-${each.key}-disk"
       delete_rule = "ON_PERMANENT_INSTANCE_DELETION"
+      source      = google_compute_disk.stateful_disk[each.key].id
     }
 
     metadata = {
-      "${var.index_attribute}" = each.key
+      "job-constraint" = "${var.job_constraint_prefix}-${each.key}"
     }
   }
 }
@@ -80,9 +98,6 @@ resource "google_compute_instance_template" "server" {
 
   labels = merge(
     var.labels,
-    (var.environment != "dev" ? {
-      goog-ops-agent-policy = "v2-x86-template-1-2-0-${var.gcp_zone}"
-    } : {})
   )
   tags                    = concat([var.cluster_tag_name], var.custom_tags)
   metadata_startup_script = var.startup_script
@@ -91,6 +106,9 @@ resource "google_compute_instance_template" "server" {
     {
       enable-osconfig         = "TRUE",
       enable-guest-attributes = "TRUE",
+    },
+    {
+      node-pool = var.node_pool,
     },
     var.custom_metadata,
   )

@@ -3,6 +3,11 @@
 # You must provide a value for each of these parameters.
 # ---------------------------------------------------------------------------------------------------------------------
 
+variable "prefix" {
+  description = "The prefix for the cluster name."
+  type        = string
+}
+
 variable "environment" {
   description = "The environment (e.g. staging, prod)."
   type        = string
@@ -13,14 +18,9 @@ variable "gcp_zone" {
   type        = string
 }
 
-variable "machine_type" {
-  description = "The machine type of the Compute Instance to run for each node in the cluster (e.g. n1-standard-1)."
+variable "cluster_tag_name" {
+  description = "The tag name for the cluster."
   type        = string
-}
-
-variable "cluster_size" {
-  description = "The number of nodes to have in the Nomad cluster. We strongly recommended that you use either 3 or 5."
-  type        = number
 }
 
 variable "image_family" {
@@ -33,10 +33,6 @@ variable "startup_script" {
   type        = string
 }
 
-variable "cluster_tag_name" {
-  type = string
-}
-
 variable "service_account_email" {
   description = "The email of the service account for the instance template."
   type        = string
@@ -47,16 +43,73 @@ variable "nomad_port" {
   type        = number
 }
 
+variable "keeper_cluster_size" {
+  description = "The number of nodes to have in the Nomad cluster. We strongly recommended that you use either 3 or 5."
+  type        = number
+  default     = 3
+}
 
-# ---------------------------------------------------------------------------------------------------------------------
-# OPTIONAL PARAMETERS
-# These parameters have reasonable defaults.
-# ---------------------------------------------------------------------------------------------------------------------
+variable "clickhouse_keeper_machine_type" {
+  description = "The machine type of the Compute Instance to run for each node in the cluster (e.g. n1-standard-1)."
+  type        = string
+}
 
-variable "assign_public_ip_addresses" {
-  description = "If true, each of the Compute Instances will receive a public IP address and be reachable from the Public Internet (if Firewall rules permit). If false, the Compute Instances will have private IP addresses only. In production, this should be set to false."
-  type        = bool
-  default     = true
+variable "server_cluster_size" {
+  type    = number
+  default = 2
+}
+
+variable "clickhouse_server_machine_type" {
+  description = "The machine type of the Compute Instance to run for each node in the cluster."
+  type        = string
+}
+
+variable "keeper_service_port" {
+  type = object({
+    name = string
+    port = number
+  })
+  default = {
+    name = "clickhouse-keeper"
+    port = 9181
+  }
+}
+
+variable "keeper_service_health_port" {
+  type = object({
+    name = string
+    port = number
+    path = string
+  })
+  default = {
+    name = "clickhouse-keeper-health"
+    port = 9181
+    path = "/health"
+  }
+}
+
+variable "server_service_port" {
+  type = object({
+    name = string
+    port = number
+  })
+  default = {
+    name = "clickhouse"
+    port = 9000
+  }
+}
+
+variable "server_service_health_port" {
+  type = object({
+    name = string
+    port = number
+    path = string
+  })
+  default = {
+    name = "clickhouse-health"
+    port = 8123
+    path = "/health"
+  }
 }
 
 variable "instance_group_target_pools" {
@@ -99,18 +152,4 @@ variable "custom_metadata" {
   description = "A map of metadata key value pairs to assign to the Compute Instance metadata."
   type        = map(string)
   default     = {}
-}
-
-# Disk Settings
-
-variable "root_volume_disk_size_gb" {
-  description = "The size, in GB, of the root disk volume on each Consul node."
-  type        = number
-  default     = 200
-}
-
-variable "root_volume_disk_type" {
-  description = "The GCE disk type. Can be either pd-ssd, local-ssd, or pd-standard"
-  type        = string
-  default     = "pd-ssd"
 }

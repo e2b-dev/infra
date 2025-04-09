@@ -95,10 +95,12 @@ module "cluster" {
   api_cluster_size                = var.api_cluster_size
   build_cluster_size              = var.build_cluster_size
 
-  server_machine_type = var.server_machine_type
-  client_machine_type = var.client_machine_type
-  api_machine_type    = var.api_machine_type
-  build_machine_type  = var.build_machine_type
+  server_machine_type            = var.server_machine_type
+  client_machine_type            = var.client_machine_type
+  api_machine_type               = var.api_machine_type
+  build_machine_type             = var.build_machine_type
+  clickhouse_server_machine_type = var.clickhouse_server_machine_type
+  clickhouse_keeper_machine_type = var.clickhouse_keeper_machine_type
 
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
@@ -182,6 +184,10 @@ module "nomad" {
   clickhouse_password          = module.init.clickhouse_password_secret_data
   clickhouse_database          = "default"
   clickhouse_bucket_name       = module.buckets.clickhouse_bucket_name
+  clickhouse_keeper_count      = module.cluster.monitoring_keeper_count
+  clickhouse_server_count      = module.cluster.monitoring_server_count
+  clickhouse_keeper_port       = module.cluster.monitoring_keeper_service_port
+  clickhouse_server_port       = module.cluster.monitoring_server_service_port
 
   # API
   api_machine_count                         = var.api_cluster_size

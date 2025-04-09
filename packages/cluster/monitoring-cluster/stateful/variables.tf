@@ -120,38 +120,7 @@ variable "root_volume_disk_type" {
   default     = "pd-ssd"
 }
 
-# Update Policy
-variable "instance_group_update_policy_minimal_action" {
-  description = "Minimal action to be taken on an instance. You can specify either 'RESTART' to restart existing instances or 'REPLACE' to delete and create new instances from the target template. If you specify a 'RESTART', the Updater will attempt to perform that action only. However, if the Updater determines that the minimal action you specify is not enough to perform the update, it might perform a more disruptive action."
-  type        = string
-  default     = "REPLACE"
-}
-
-variable "instance_group_update_policy_max_surge_fixed" {
-  description = "The maximum number of instances that can be created above the specified targetSize during the update process. Conflicts with var.instance_group_update_policy_max_surge_percent. See https://www.terraform.io/docs/providers/google/r/compute_region_instance_group_manager.html#max_surge_fixed for more information."
-  type        = number
-  default     = 1
-}
-
-variable "instance_group_update_policy_max_surge_percent" {
-  description = "The maximum number of instances(calculated as percentage) that can be created above the specified targetSize during the update process. Conflicts with var.instance_group_update_policy_max_surge_fixed. Only allowed for regional managed instance groups with size at least 10."
-  type        = number
-  default     = null
-}
-
-variable "instance_group_update_policy_max_unavailable_fixed" {
-  description = "The maximum number of instances that can be unavailable during the update process. Conflicts with var.instance_group_update_policy_max_unavailable_percent. It has to be either 0 or at least equal to the number of zones. If fixed values are used, at least one of var.instance_group_update_policy_max_unavailable_fixed or var.instance_group_update_policy_max_surge_fixed must be greater than 0."
-  type        = number
-  default     = 1
-}
-
-variable "instance_group_update_policy_max_unavailable_percent" {
-  description = "The maximum number of instances(calculated as percentage) that can be unavailable during the update process. Conflicts with var.instance_group_update_policy_max_unavailable_fixed. Only allowed for regional managed instance groups with size at least 10."
-  type        = number
-  default     = null
-}
-
-variable "client_proxy_health_port" {
+variable "service_health_port" {
   type = object({
     name = string
     port = number
@@ -159,22 +128,19 @@ variable "client_proxy_health_port" {
   })
 }
 
-variable "client_proxy_port" {
+variable "service_port" {
   type = object({
     name = string
     port = number
   })
 }
 
-variable "api_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
+variable "job_constraint_prefix" {
+  description = "The prefix to use for the job constraint of the instance in the metadata."
+  type        = string
 }
 
-variable "index_attribute" {
-  description = "The key name to use for the index of the instance in the metadata."
+variable "node_pool" {
+  description = "The name of the Nomad pool."
   type        = string
 }

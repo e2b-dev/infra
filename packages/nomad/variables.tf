@@ -151,10 +151,6 @@ variable "clickhouse_bucket_name" {
   type = string
 }
 
-variable "clickhouse_instance_identifier" {
-  type = string
-}
-
 variable "loki_bucket_name" {
   type = string
 }
@@ -237,4 +233,26 @@ variable "clickhouse_password" {
 
 variable "clickhouse_database" {
   type = string
+}
+
+variable "clickhouse_keeper_count" {
+  type = number
+}
+
+variable "clickhouse_server_count" {
+  type = number
+}
+
+variable "clickhouse_keeper_port" {
+  type = object({
+    name = string
+    port = number
+  })
+}
+
+variable "clickhouse_server_port" {
+  type = object({
+    name = string
+    port = number
+  })
 }
