@@ -269,7 +269,7 @@ variable "grafana_managed" {
 }
 
 module "grafana_cloud" {
-  source = "./terraform/grafana_cloud"
+  source = "./terraform/grafana/cloud"
   count  = var.grafana_managed ? 1 : 0
 
   gcp_project_id = var.gcp_project_id
@@ -286,7 +286,7 @@ provider "grafana" {
 }
 
 module "grafana_stack" {
-  source = "./terraform/grafana_stack"
+  source = "./terraform/grafana/stack"
   count  = var.grafana_managed ? 1 : 0
 
   gcp_project_id = var.gcp_project_id
