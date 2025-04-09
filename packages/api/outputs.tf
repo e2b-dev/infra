@@ -29,3 +29,7 @@ output "custom_envs_repository_name" {
 output "api_admin_token" {
   value = random_password.api_admin_secret.result
 }
+
+output "sandbox_access_token_hash_seed" {
+  value = random_password.sandbox_access_token_hash_seed.result
+}
