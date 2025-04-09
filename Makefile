@@ -9,6 +9,7 @@ OTEL_TRACING_PRINT ?= false
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
 CLIENT_CLUSTER_AUTO_SCALING_MAX ?= 0
 REDIS_MANAGED ?= false
+GRAFANA_MANAGED ?= false
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
@@ -33,7 +34,8 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_clickhouse_connection_string=$(CLICKHOUSE_CONNECTION_STRING) \
 	TF_VAR_clickhouse_username=$(CLICKHOUSE_USERNAME) \
 	TF_VAR_clickhouse_database=$(CLICKHOUSE_DATABASE) \
-	TF_VAR_redis_managed=$(REDIS_MANAGED)
+	TF_VAR_redis_managed=$(REDIS_MANAGED) \
+	TF_VAR_grafana_managed=$(GRAFANA_MANAGED)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
@@ -202,24 +204,6 @@ test:
 .PHONY: test-integration
 test-integration:
 	$(MAKE) -C tests/integration test
-
-# $(MAKE) -C terraform/grafana init does not work b/c of the -include ${ENV_FILE} in the Makefile
-# so we need to call the Makefile directly
-# && cd - || cd - is used to handle the case where the command fails, we still want to cd -
-.PHONY: grafana-init
-grafana-init:
-	@ printf "Initializing Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	cd terraform/grafana && make init && cd - || cd -
-
-.PHONY: grafana-plan
-grafana-plan:
-	@ printf "Planning Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	cd terraform/grafana && make plan && cd - || cd -
-
-.PHONY: grafana-apply
-grafana-apply:
-	@ printf "Applying Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	cd terraform/grafana && make apply && cd - || cd -
 
 .PHONY: connect-orchestrator
 connect-orchestrator:

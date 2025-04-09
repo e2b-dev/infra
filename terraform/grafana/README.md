@@ -1,4 +1,4 @@
-# Deploy grafana 
+# Managed Grafana in Grafana Cloud 
 
 ## Prerequisites
 
@@ -19,9 +19,3 @@ Scopes:
  - stack-plugins:read
 
 - fill it in gcloud secrets manager (grafana-api-key)
-
-
-## Deploy
-
-- run `make plan` to plan the changes
-- run `make apply` to apply the changes 

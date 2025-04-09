@@ -1,0 +1,297 @@
+{
+  "datasource": {
+    "type": "prometheus",
+    "uid": "grafanacloud-prom"
+  },
+  "description": "",
+  "fieldConfig": {
+    "defaults": {
+      "color": {
+        "mode": "palette-classic"
+      },
+      "custom": {
+        "axisBorderShow": false,
+        "axisCenteredZero": false,
+        "axisColorMode": "text",
+        "axisLabel": "",
+        "axisPlacement": "auto",
+        "axisSoftMin": 0,
+        "barAlignment": 0,
+        "barWidthFactor": 0.6,
+        "drawStyle": "line",
+        "fillOpacity": 5,
+        "gradientMode": "hue",
+        "hideFrom": {
+          "legend": false,
+          "tooltip": false,
+          "viz": false
+        },
+        "insertNulls": false,
+        "lineInterpolation": "smooth",
+        "lineStyle": {
+          "fill": "solid"
+        },
+        "lineWidth": 1,
+        "pointSize": 3,
+        "scaleDistribution": {
+          "type": "linear"
+        },
+        "showPoints": "auto",
+        "spanNulls": true,
+        "stacking": {
+          "group": "A",
+          "mode": "none"
+        },
+        "thresholdsStyle": {
+          "mode": "off"
+        }
+      },
+      "mappings": [],
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {
+            "color": "green"
+          },
+          {
+            "color": "red",
+            "value": 80
+          }
+        ]
+      },
+      "unit": "ms"
+    },
+    "overrides": [
+      {
+        "matcher": {
+          "id": "byName",
+          "options": "2xx"
+        },
+        "properties": [
+          {
+            "id": "custom.hideFrom",
+            "value": {
+              "legend": true,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          {
+            "id": "custom.axisPlacement",
+            "value": "right"
+          },
+          {
+            "id": "unit",
+            "value": "none"
+          },
+          {
+            "id": "custom.drawStyle",
+            "value": "bars"
+          },
+          {
+            "id": "custom.lineWidth",
+            "value": 0
+          },
+          {
+            "id": "custom.fillOpacity",
+            "value": 5
+          },
+          {
+            "id": "color",
+            "value": {
+              "fixedColor": "semi-dark-green",
+              "mode": "fixed"
+            }
+          },
+          {
+            "id": "custom.barWidthFactor",
+            "value": 0.3
+          },
+          {
+            "id": "custom.axisColorMode",
+            "value": "series"
+          },
+          {
+            "id": "custom.pointSize",
+            "value": 3
+          },
+          {
+            "id": "custom.barAlignment",
+            "value": -1
+          },
+          {
+            "id": "min",
+            "value": 0
+          },
+          {
+            "id": "custom.gradientMode",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "id": "byName",
+          "options": "99th Percentile"
+        },
+        "properties": [
+          {
+            "id": "color",
+            "value": {
+              "fixedColor": "dark-blue",
+              "mode": "fixed"
+            }
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "id": "byName",
+          "options": "95th Percentile"
+        },
+        "properties": [
+          {
+            "id": "color",
+            "value": {
+              "fixedColor": "blue",
+              "mode": "fixed"
+            }
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "id": "byName",
+          "options": "50th Percentile"
+        },
+        "properties": [
+          {
+            "id": "color",
+            "value": {
+              "fixedColor": "super-light-blue",
+              "mode": "fixed"
+            }
+          }
+        ]
+      },
+      {
+        "__systemRef": "hideSeriesFrom",
+        "matcher": {
+          "id": "byNames",
+          "options": {
+            "mode": "exclude",
+            "names": [
+              "50th Percentile",
+              "95th Percentile",
+              "99th Percentile"
+            ],
+            "prefix": "All except:",
+            "readOnly": true
+          }
+        },
+        "properties": [
+          {
+            "id": "custom.hideFrom",
+            "value": {
+              "legend": false,
+              "tooltip": false,
+              "viz": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 35
+  },
+  "id": 87,
+  "options": {
+    "legend": {
+      "calcs": [
+        "lastNotNull"
+      ],
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": true
+    },
+    "tooltip": {
+      "hideZeros": false,
+      "mode": "single",
+      "sort": "none"
+    }
+  },
+  "pluginVersion": "12.0.0-85518.patch7-85777",
+  "targets": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "editorMode": "code",
+      "expr": "# 3. 50th Percentile (Median) Response Time\nhistogram_quantile(0.5, sum(rate(rpc_server_duration_milliseconds_bucket{job=\"orchestrator\", rpc_method=\"Pause\", rpc_grpc_status_code=\"0\"}[$__rate_interval])) by (handler, method, le))",
+      "hide": false,
+      "instant": false,
+      "legendFormat": "50th Percentile",
+      "range": true,
+      "refId": "A"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "editorMode": "code",
+      "expr": "# 5. 95th Percentile Response Time\nhistogram_quantile(0.95, sum(rate(rpc_server_duration_milliseconds_bucket{job=\"orchestrator\", rpc_method=\"Pause\", rpc_grpc_status_code=\"0\"}[$__rate_interval])) by (handler, method, le))",
+      "hide": false,
+      "instant": false,
+      "legendFormat": "95th Percentile",
+      "range": true,
+      "refId": "C"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "editorMode": "code",
+      "expr": "# 6. 99th Percentile Response Time \nhistogram_quantile(0.99, sum(rate(rpc_server_duration_milliseconds_bucket{job=\"orchestrator\", rpc_method=\"Pause\", rpc_grpc_status_code=\"0\"}[$__rate_interval])) by (handler, method, le))",
+      "hide": false,
+      "instant": false,
+      "legendFormat": "99th Percentile",
+      "range": true,
+      "refId": "D"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "editorMode": "code",
+      "expr": "# 6. Maximum Percentile Response Time \nhistogram_quantile(1, sum(rate(rpc_server_duration_milliseconds_bucket{job=\"orchestrator\", rpc_method=\"Pause\", rpc_grpc_status_code=\"0\"}[$__rate_interval])) by (handler, method, le))",
+      "hide": false,
+      "instant": false,
+      "legendFormat": "Maximum",
+      "range": true,
+      "refId": "E"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "editorMode": "code",
+      "expr": "# Total requests\nidelta(rpc_server_duration_milliseconds_bucket{job=\"orchestrator\", rpc_method=\"Pause\", rpc_grpc_status_code=\"0\"}[$__rate_interval])\n",
+      "hide": true,
+      "instant": false,
+      "legendFormat": "2xx",
+      "range": true,
+      "refId": "B"
+    }
+  ],
+  "title": "PAUSE Sandbox time (orchestrator)",
+  "type": "timeseries"
+}

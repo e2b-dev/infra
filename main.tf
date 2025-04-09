@@ -28,6 +28,10 @@ terraform {
       source  = "hashicorp/random"
       version = "3.5.1"
     }
+    grafana = {
+      source  = "grafana/grafana"
+      version = "3.18.3"
+    }
   }
 }
 
@@ -245,4 +249,14 @@ module "redis" {
   prefix = var.prefix
 
   depends_on = [module.api]
+}
+
+module "grafana" {
+  source          = "./terraform/grafana"
+  grafana_managed = var.grafana_managed
+
+  gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
+  prefix         = var.prefix
+  domain_name    = var.domain_name
 }
