@@ -78,12 +78,14 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		return math.MaxUint32, err
 	}
 
-	deviceIndex, err := d.devicePool.GetDevice(ctx)
-	if err != nil {
-		return math.MaxUint32, err
-	}
+	deviceIndex := uint32(math.MaxUint32)
 
 	for {
+		deviceIndex, err = d.devicePool.GetDevice(ctx)
+		if err != nil {
+			return math.MaxUint32, err
+		}
+
 		d.socksClient = make([]*os.File, 0)
 		d.socksServer = make([]io.Closer, 0)
 		d.dispatchers = make([]*Dispatch, 0)
@@ -149,6 +151,8 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		for _, sock := range d.socksServer {
 			sock.Close()
 		}
+		// Release the device back to the pool
+		d.devicePool.ReleaseDevice(idx)
 
 		if strings.Contains(err.Error(), "invalid argument") {
 			return math.MaxUint32, err
