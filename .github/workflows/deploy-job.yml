@@ -21,8 +21,8 @@ on:
       plan_only:
         description: 'Only plan the changes without applying them'
         required: false
-        type: boolean
-        default: false
+        type: string
+        default: "false"
 
 concurrency:
   group: deploy-${{ inputs.environment }}
