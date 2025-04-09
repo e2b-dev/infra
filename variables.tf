@@ -236,3 +236,8 @@ variable "redis_managed" {
   default = false
   type    = bool
 }
+
+variable "grafana_managed" {
+  default = false
+  type    = bool
+}

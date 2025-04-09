@@ -1,3 +1,8 @@
+variable "grafana_managed" {
+  type    = bool
+  default = false
+}
+
 variable "prefix" {
   type    = string
   default = "e2b-"
@@ -14,9 +19,15 @@ variable "domain_name" {
 variable "panels_directory_name" {
   description = "Path to the directory containing panel files"
   type        = string
+  default     = "panels"
 }
 
 variable "dashboards_directory_name" {
   description = "Path to the directory containing dashboard files"
   type        = string
+  default     = "dashboards"
+}
+
+variable "gcp_region" {
+  type = string
 }

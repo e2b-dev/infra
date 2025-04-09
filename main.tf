@@ -251,47 +251,12 @@ module "redis" {
   depends_on = [module.api]
 }
 
-data "google_secret_manager_secret_version" "grafana_api_key" {
-  secret  = "projects/${var.gcp_project_id}/secrets/${var.prefix}grafana-api-key"
-  project = var.gcp_project_id
-
-  depends_on = [module.init]
-}
-
-provider "grafana" {
-  alias                     = "cloud"
-  cloud_access_policy_token = data.google_secret_manager_secret_version.grafana_api_key.secret_data
-}
-
-variable "grafana_managed" {
-  type    = bool
-  default = false
-}
-
-module "grafana_cloud" {
-  source = "./terraform/grafana/cloud"
-  count  = var.grafana_managed ? 1 : 0
+module "grafana" {
+  source          = "./terraform/grafana"
+  grafana_managed = var.grafana_managed
 
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
-  providers = {
-    grafana = grafana.cloud
-  }
-}
 
-provider "grafana" {
-  alias = "datasource"
-  url   = var.grafana_managed ? module.grafana_cloud[0].stack_url : "https://nonexisting.grafana.com"
-  auth  = var.grafana_managed ? module.grafana_cloud[0].service_account_token : ""
-}
-
-module "grafana_stack" {
-  source = "./terraform/grafana/stack"
-  count  = var.grafana_managed ? 1 : 0
-
-  gcp_project_id = var.gcp_project_id
-  domain_name    = var.domain_name
-  providers = {
-    grafana = grafana.datasource
-  }
+  domain_name = var.domain_name
 }

@@ -1,6 +1,5 @@
 variable "prefix" {
-  type    = string
-  default = "e2b-"
+  type = string
 }
 
 variable "gcp_project_id" {

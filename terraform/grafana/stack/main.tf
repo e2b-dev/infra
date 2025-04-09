@@ -83,7 +83,7 @@ resource "grafana_data_source" "gcloud_monitoring" {
 }
 
 locals {
-  panel_directory_path = "${path.module}/${var.panels_directory_name}"
+  panel_directory_path      = "${path.module}/${var.panels_directory_name}"
   dashboards_directory_path = "${path.module}/${var.dashboards_directory_name}"
   files_map = { for file in fileset(local.panel_directory_path, "**/*") :
     trimsuffix(file, ".json") => templatefile("${local.panel_directory_path}/${file}", {
