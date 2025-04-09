@@ -141,7 +141,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			break
 		}
 
-		zap.L().Error("error opening NBD, retrying", zap.Error(err), zap.Uint32("deviceIndex", d.deviceIndex))
+		zap.L().Error("error opening NBD, retrying", zap.Error(err), zap.Uint32("device_index", deviceIndex))
 
 		// Sometimes (rare), there seems to be a BADF error here. Lets just retry for now...
 		// Close things down and try again...
