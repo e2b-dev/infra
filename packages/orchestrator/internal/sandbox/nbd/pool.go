@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel/metric"
@@ -252,6 +253,32 @@ func (d *DevicePool) ReleaseDevice(idx DeviceSlot) error {
 	d.mu.Lock()
 	d.usedSlots.Clear(uint(idx))
 	d.mu.Unlock()
+
+	return nil
+}
+
+// ReleaseDeviceWithRetry calls ReleaseDevice and retries if the device is in use.
+func (d *DevicePool) ReleaseDeviceWithRetry(idx DeviceSlot) error {
+	attempt := 0
+	for {
+		attempt++
+		err := d.ReleaseDevice(idx)
+		if errors.Is(err, ErrDeviceInUse{}) {
+			if attempt%100 == 0 {
+				zap.L().Error("error releasing device", zap.Int("attempt", attempt), zap.Error(err))
+			}
+
+			time.Sleep(500 * time.Millisecond)
+
+			continue
+		}
+
+		if err != nil {
+			return fmt.Errorf("error releasing device: %w", err)
+		}
+
+		break
+	}
 
 	return nil
 }

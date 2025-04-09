@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"os"
 	"strings"
@@ -61,18 +62,25 @@ func NewDirectPathMount(tracer trace.Tracer, b block.Device, devicePool *DeviceP
 		devicePool:  devicePool,
 		socksClient: make([]*os.File, 0),
 		socksServer: make([]io.Closer, 0),
+		deviceIndex: math.MaxUint32,
 	}
 }
 
-func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err error) {
+func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err error) {
+	defer func() {
+		// Set the device index to the one returned, correctly capture error values
+		d.deviceIndex = retDeviceIndex
+		zap.L().Debug("opening direct path mount", zap.Uint32("device_index", d.deviceIndex), zap.Error(err))
+	}()
+
 	size, err := d.Backend.Size()
 	if err != nil {
-		return 0, err
+		return math.MaxUint32, err
 	}
 
-	d.deviceIndex, err = d.devicePool.GetDevice(ctx)
+	deviceIndex, err := d.devicePool.GetDevice(ctx)
 	if err != nil {
-		return 0, err
+		return math.MaxUint32, err
 	}
 
 	for {
@@ -84,14 +92,14 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 			// Create the socket pairs
 			sockPair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 			if err != nil {
-				return 0, err
+				return math.MaxUint32, err
 			}
 
 			client := os.NewFile(uintptr(sockPair[0]), "client")
 			server := os.NewFile(uintptr(sockPair[1]), "server")
 			serverc, err := net.FileConn(server)
 			if err != nil {
-				return 0, err
+				return math.MaxUint32, err
 			}
 			server.Close()
 
@@ -105,7 +113,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 				// The error is expected to happen if the nbd (socket connection) is closed
 				zap.L().Info("closing handler for NBD commands",
 					zap.Error(handleErr),
-					zap.Uint32("device_index", d.deviceIndex),
+					zap.Uint32("device_index", deviceIndex),
 					zap.Int("socket_index", i),
 				)
 			}()
@@ -122,11 +130,11 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 
 		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn
 
-		idx, err := nbdnl.Connect(d.deviceIndex, d.socksClient, uint64(size), 0, serverFlags, opts...)
+		idx, err := nbdnl.Connect(deviceIndex, d.socksClient, uint64(size), 0, serverFlags, opts...)
 		if err == nil {
-			// The idx should be the same as d.deviceIndex, because we are connecting to it,
+			// The idx should be the same as deviceIndex, because we are connecting to it,
 			// but we will use the one returned by nbdnl
-			d.deviceIndex = idx
+			deviceIndex = idx
 
 			break
 		}
@@ -143,12 +151,12 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 		}
 
 		if strings.Contains(err.Error(), "invalid argument") {
-			return 0, err
+			return math.MaxUint32, err
 		}
 
 		select {
 		case <-d.ctx.Done():
-			return 0, errors.Join(err, d.ctx.Err())
+			return math.MaxUint32, errors.Join(err, d.ctx.Err())
 		case <-time.After(25 * time.Millisecond):
 		}
 	}
@@ -157,11 +165,11 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 	for {
 		select {
 		case <-d.ctx.Done():
-			return 0, d.ctx.Err()
+			return math.MaxUint32, d.ctx.Err()
 		default:
 		}
 
-		s, err := nbdnl.Status(d.deviceIndex)
+		s, err := nbdnl.Status(deviceIndex)
 		if err == nil && s.Connected {
 			break
 		}
@@ -169,12 +177,16 @@ func (d *DirectPathMount) Open(ctx context.Context) (deviceIndex uint32, err err
 		time.Sleep(100 * time.Nanosecond)
 	}
 
-	return d.deviceIndex, nil
+	return deviceIndex, nil
 }
 
 func (d *DirectPathMount) Close(ctx context.Context) error {
 	childCtx, childSpan := d.tracer.Start(ctx, "direct-path-mount-close")
 	defer childSpan.End()
+
+	var errs []error
+
+	idx := d.deviceIndex
 
 	// First cancel the context, which will stop waiting on pending readAt/writeAt...
 	telemetry.ReportEvent(childCtx, "canceling context")
@@ -185,7 +197,7 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 	for _, v := range d.socksServer {
 		err := v.Close()
 		if err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("error closing server pair: %w", err))
 		}
 	}
 
@@ -199,16 +211,46 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 		d.Drain()
 	}
 
+	// Disconnect NBD
+	if idx != math.MaxUint32 {
+		err := disconnectNBDWithTimeout(childCtx, idx, disconnectTimeout)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error disconnecting NBD: %w", err))
+		}
+	}
+
+	// Close all client socket pairs...
+	telemetry.ReportEvent(childCtx, "closing socket pairs client")
+	for _, v := range d.socksClient {
+		err := v.Close()
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error closing socket pair client: %w", err))
+		}
+	}
+
+	// Release the device back to the pool, retry if it is in use
+	if idx != math.MaxUint32 {
+		telemetry.ReportEvent(childCtx, "releasing device to the pool")
+		err := d.devicePool.ReleaseDeviceWithRetry(idx)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error releasing overlay device: %w", err))
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+func disconnectNBDWithTimeout(ctx context.Context, deviceIndex uint32, timeout time.Duration) error {
 	// Now ask to disconnect
-	telemetry.ReportEvent(childCtx, "disconnecting NBD")
-	err := nbdnl.Disconnect(d.deviceIndex)
+	telemetry.ReportEvent(ctx, "disconnecting NBD")
+	err := nbdnl.Disconnect(deviceIndex)
 	if err != nil {
 		return err
 	}
 
 	// Wait until it's completely disconnected...
-	telemetry.ReportEvent(childCtx, "waiting for complete disconnection")
-	ctxTimeout, cancel := context.WithTimeout(childCtx, disconnectTimeout)
+	telemetry.ReportEvent(ctx, "waiting for complete disconnection")
+	ctxTimeout, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	for {
 		select {
@@ -217,44 +259,11 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 		default:
 		}
 
-		s, err := nbdnl.Status(d.deviceIndex)
+		s, err := nbdnl.Status(deviceIndex)
 		if err == nil && !s.Connected {
 			break
 		}
 		time.Sleep(100 * time.Nanosecond)
-	}
-
-	// Close all client socket pairs...
-	telemetry.ReportEvent(childCtx, "closing socket pairs client")
-	for i, v := range d.socksClient {
-		err := v.Close()
-		if err != nil {
-			// Don't return here to monitor if there are double close errors
-			zap.L().Error("error closing socket pair client", zap.Error(err), zap.Int("socket_index", i), zap.Uint32("device_index", d.deviceIndex))
-		}
-	}
-
-	// Release the device back to the pool, retry if it is in use
-	telemetry.ReportEvent(childCtx, "releasing device to the pool")
-	attempt := 0
-	for {
-		attempt++
-		err := d.devicePool.ReleaseDevice(d.deviceIndex)
-		if errors.Is(err, ErrDeviceInUse{}) {
-			if attempt%100 == 0 {
-				zap.L().Error("error releasing overlay device", zap.Int("attempt", attempt), zap.Error(err))
-			}
-
-			time.Sleep(500 * time.Millisecond)
-
-			continue
-		}
-
-		if err != nil {
-			return fmt.Errorf("error releasing overlay device: %w", err)
-		}
-
-		break
 	}
 
 	return nil

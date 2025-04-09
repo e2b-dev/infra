@@ -2,6 +2,7 @@ package rootfs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -77,7 +78,12 @@ func (o *CowDevice) Export(parentCtx context.Context, out io.Writer, stopSandbox
 	}
 
 	// the error is already logged in go routine in SandboxCreate handler
-	go stopSandbox(childCtx)
+	go func() {
+		err := stopSandbox(childCtx)
+		if err != nil {
+			zap.L().Error("error stopping sandbox on cow export", zap.Error(err))
+		}
+	}()
 
 	select {
 	case <-o.finishedOperations:
@@ -122,7 +128,7 @@ func (o *CowDevice) Close(ctx context.Context) error {
 
 	zap.L().Info("overlay device released")
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func (o *CowDevice) Path() (string, error) {
