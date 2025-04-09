@@ -33,7 +33,7 @@ var (
 		"base":                  {},
 		"code-interpreter-v1":   {},
 		"code-interpreter-beta": {},
-		"desktop-dev1":          {},
+		"desktop":               {},
 	}
 )
 
@@ -103,11 +103,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		TeamID:     teamInfo.Team.ID.String(),
 	}).Debug("Started creating sandbox")
 
-	var alias string
-	if env.Aliases != nil && len(*env.Aliases) > 0 {
-		alias = (*env.Aliases)[0]
-	}
-
+	alias := firstAlias(env.Aliases)
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", teamInfo.Team.ID.String()),
 		attribute.String("env.id", env.TemplateID),
@@ -170,19 +166,23 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 }
 
 func setTemplateNameMetric(c *gin.Context, aliases []string) {
-	alias, _ := firstAlias(aliases)
-
-	if _, ok := mostUsedTemplates[alias]; !ok {
-		// alias is not most used, set the name to "other"
-		alias = "other"
+	for _, alias := range aliases {
+		if _, exists := mostUsedTemplates[alias]; exists {
+			c.Set(metricTemplateAlias, alias)
+			return
+		}
 	}
 
-	c.Set(metricTemplateAlias, alias)
+	// Fallback to 'other' if no match of mostUsedTemplates found
+	c.Set(metricTemplateAlias, "other")
 }
 
-func firstAlias(aliases []string) (string, bool) {
-	if len(aliases) > 0 {
-		return (aliases)[0], true
+func firstAlias(aliases *[]string) string {
+	if aliases == nil {
+		return ""
 	}
-	return "", false
+	if len(*aliases) == 0 {
+		return ""
+	}
+	return (*aliases)[0]
 }
