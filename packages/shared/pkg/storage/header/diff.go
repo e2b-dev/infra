@@ -2,10 +2,12 @@ package header
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -18,6 +20,13 @@ var (
 	EmptyHugePage = make([]byte, HugepageSize)
 	EmptyBlock    = make([]byte, RootfsBlockSize)
 )
+
+func CreateDiffWithTrace(ctx context.Context, tracer trace.Tracer, source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*bitset.BitSet, *bitset.BitSet, error) {
+	_, childSpan := tracer.Start(ctx, "create-diff")
+	defer childSpan.End()
+
+	return CreateDiff(source, blockSize, dirty, diff)
+}
 
 func CreateDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*bitset.BitSet, *bitset.BitSet, error) {
 	b := make([]byte, blockSize)
