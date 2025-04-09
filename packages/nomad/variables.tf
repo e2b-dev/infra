@@ -47,6 +47,10 @@ variable "api_admin_token" {
   type = string
 }
 
+variable "sandbox_access_token_hash_seed" {
+  type = string
+}
+
 variable "logs_proxy_address" {
   type = string
 }
