@@ -210,3 +210,13 @@ variable "labels" {
   description = "The labels to attach to resources created by this module"
   type        = map(string)
 }
+
+variable "clickhouse_server_machine_type" {
+  description = "The machine type of the Compute Instance to run for each node in the cluster."
+  type        = string
+}
+
+variable "clickhouse_keeper_machine_type" {
+  description = "The machine type of the Compute Instance to run for each node in the cluster."
+  type        = string
+}

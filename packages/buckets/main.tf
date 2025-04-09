@@ -91,6 +91,8 @@ resource "google_storage_bucket" "clickhouse_bucket" {
     retention_duration_seconds = 0
   }
 
+  force_destroy = true
+
   labels = var.labels
 }
 

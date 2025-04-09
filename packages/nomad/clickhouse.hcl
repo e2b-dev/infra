@@ -2,24 +2,37 @@ job "clickhouse" {
   type        = "service"
   node_pool   = "monitoring"
 
+  update {
+    // TODO: Can we use this to roll updates properly?
+    max_parallel = 1
+  }
+
   %{ for i in range("${keeper_count}") }
   group "keeper-${i + 1}" {
     count = 1
 
-    constraint {
-      attribute = "${meta.clickhouse_keeper_index_attribute}"
-      value     = "${i + 1}"
+    restart {
+      attempts = 10
+      delay    = "30s"
+      interval = "10m"
+      mode     = "delay"
     }
-
-    update {
-      // TODO: Can we use this to roll updates properly?
-      max_parallel = 0
+ 
+    constraint {
+      attribute = "$${meta.job_constraint}"
+      value     = "clickhouse-keeper-${i + 1}"
     }
 
     network {
+      mode = "bridge"
+
+      dns {
+        servers = ["172.17.0.1", "8.8.8.8", "8.8.4.4", "169.254.169.254"]
+      }
+
       port "keeper" {
-        static = 9181
-        to = 9181
+        static = "${clickhouse_keeper_port}"
+        to = "${clickhouse_keeper_port}"
       }
 
       port "raft" {
@@ -42,7 +55,7 @@ job "clickhouse" {
       driver = "docker"
 
       config {
-        image = "clickhouse/clickhouse-server:25.3"
+        image = "clickhouse/clickhouse-server:${clickhouse_version}"
         ports = ["keeper", "raft"]
 
         extra_hosts = [
@@ -82,7 +95,7 @@ job "clickhouse" {
         <state_storage_disk>state_s3</state_storage_disk>
         <latest_state_storage_disk>state_s3</latest_state_storage_disk>
 
-        <tcp_port>9181</tcp_port>
+        <tcp_port>${clickhouse_keeper_port}</tcp_port>
         <server_id>${i + 1}</server_id>
 
          <raft_configuration>
@@ -141,24 +154,33 @@ EOF
   group "server-${i + 1}" {
     count = 1
 
-    constraint {
-      attribute = "${meta.clickhouse_server_index_attribute}"
-      value     = "${i + 1}"
+    restart {
+      attempts = 10
+      delay    = "30s"
+      interval = "10m"
+      mode     = "delay"
     }
 
-    update {
-      max_parallel = 0
+    constraint {
+      attribute = "$${meta.job_constraint}"
+      value     = "clickhouse-server-${i + 1}"
     }
 
     network {
+      mode = "bridge"
+
+      dns {
+        servers = ["172.17.0.1", "8.8.8.8", "8.8.4.4", "169.254.169.254"]
+      }
+
       port "http" {
         static = 8123
         to = 8123
       }
 
-      port "clickhouse" {
-        static = 9000
-        to = 9000
+      port "clickhouse-server" {
+        static = "${clickhouse_server_port}"
+        to = "${clickhouse_server_port}"
       }
 
       port "interserver" {
@@ -173,8 +195,8 @@ EOF
     }
 
     service {
-      name = "clickhouse-${i + 1}"
-      port = "clickhouse"
+      name = "clickhouse-server-${i + 1}"
+      port = "clickhouse-server"
     }
 
     service {
@@ -186,8 +208,8 @@ EOF
       driver = "docker"
 
       config {
-        image = "clickhouse/clickhouse-server:25.3"
-        ports = ["http", "clickhouse", "interserver"]
+        image = "clickhouse/clickhouse-server:${clickhouse_version}"
+        ports = ["http", "clickhouse-server", "interserver"]
 
         extra_hosts = [
           "clickhouse-http-${i + 1}.service.consul:127.0.0.1",
@@ -242,7 +264,7 @@ EOF
         %{ for j in range("${keeper_count}") }
         <node>
             <host>clickhouse-keeper-${j + 1}.service.consul</host>
-            <port>9181</port>
+            <port>${clickhouse_keeper_port}</port>
         </node>
         %{ endfor }
     </zookeeper>
@@ -274,8 +296,8 @@ EOF
                 <internal_replication>true</internal_replication>
                 %{ for j in range("${server_count}") }
                 <replica>
-                    <host>clickhouse-${j + 1}.service.consul</host>
-                    <port>9000</port>
+                    <host>clickhouse-server-${j + 1}.service.consul</host>
+                    <port>${clickhouse_server_port}</port>
                 </replica>
                 %{ endfor }
             </shard>
@@ -285,7 +307,7 @@ EOF
     <listen_host>0.0.0.0</listen_host>
 
     <http_port>8123</http_port>
-    <tcp_port>9000</tcp_port>
+    <tcp_port>${clickhouse_server_port}</tcp_port>
 
     <interserver_http_host>clickhouse-interserver-${i + 1}.service.consul</interserver_http_host>
     <interserver_http_port>9009</interserver_http_port>

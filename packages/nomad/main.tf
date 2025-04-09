@@ -440,7 +440,7 @@ resource "google_service_account" "clickhouse_service_account" {
 }
 
 resource "google_storage_bucket_iam_member" "clickhouse_service_account_iam" {
-  bucket = google_storage_bucket.clickhouse_bucket.name
+  bucket = var.clickhouse_bucket_name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.clickhouse_service_account.email}"
 }
@@ -451,15 +451,29 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
 
 resource "nomad_job" "clickhouse" {
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
-    zone                              = var.gcp_zone
-    clickhouse_version                = "25.1.5.31"
-    gcs_bucket                        = google_storage_bucket.clickhouse_bucket.name
-    gcs_folder                        = "clickhouse-data"
-    hmac_key                          = google_storage_hmac_key.clickhouse_hmac_key.access_id
-    hmac_secret                       = google_storage_hmac_key.clickhouse_hmac_key.secret
-    username                          = var.clickhouse_username
-    password_sha256_hex               = sha256(var.clickhouse_password)
-    clickhouse_server_index_attribute = var.clickhouse_server_index_attribute
-    clickhouse_keeper_index_attribute = var.clickhouse_keeper_index_attribute
+    zone                   = var.gcp_zone
+    clickhouse_version     = "25.1.5.31"
+    gcs_bucket             = var.clickhouse_bucket_name
+    gcs_folder             = "clickhouse-data"
+    hmac_key               = google_storage_hmac_key.clickhouse_hmac_key.access_id
+    hmac_secret            = google_storage_hmac_key.clickhouse_hmac_key.secret
+    username               = var.clickhouse_username
+    password_sha256_hex    = sha256(var.clickhouse_password)
+    clickhouse_keeper_port = var.clickhouse_keeper_port.port
+    clickhouse_server_port = var.clickhouse_server_port.port
+    keeper_count           = var.clickhouse_keeper_count
+    server_count           = var.clickhouse_server_count
   })
 }
+
+# resource "consul_node" "clickhouse_lb" {
+#   name    = "clickhouse-lb"
+#   address = 
+# }
+
+# resource "consul_service" "clickhouse" {
+#   name = "clickhouse"
+#   node = consul_node.clickhouse_lb.name
+#   port = 9000
+#   tags = ["clickhouse"]
+# }

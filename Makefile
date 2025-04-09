@@ -20,6 +20,8 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_build_cluster_size=$(BUILD_CLUSTER_SIZE) \
 	TF_VAR_server_machine_type=$(SERVER_MACHINE_TYPE) \
 	TF_VAR_server_cluster_size=$(SERVER_CLUSTER_SIZE) \
+	TF_VAR_clickhouse_server_machine_type=$(CLICKHOUSE_SERVER_MACHINE_TYPE) \
+	TF_VAR_clickhouse_keeper_machine_type=$(CLICKHOUSE_KEEPER_MACHINE_TYPE) \
 	TF_VAR_gcp_project_id=$(GCP_PROJECT_ID) \
 	TF_VAR_gcp_region=$(GCP_REGION) \
 	TF_VAR_gcp_zone=$(GCP_ZONE) \
