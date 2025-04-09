@@ -226,10 +226,11 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 
 	// Close all client socket pairs...
 	telemetry.ReportEvent(childCtx, "closing socket pairs client")
-	for _, v := range d.socksClient {
+	for i, v := range d.socksClient {
 		err := v.Close()
 		if err != nil {
-			return err
+			// Don't return here to monitor if there are double close errors
+			zap.L().Error("error closing socket pair client", zap.Error(err), zap.Int("socket_index", i), zap.Uint32("device_index", d.deviceIndex))
 		}
 	}
 
