@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -36,15 +37,17 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 		// Sandbox exists and belongs to the team - return running sandbox info
 		sandbox := api.ListedSandbox{
-			ClientID:   info.Instance.ClientID,
-			TemplateID: info.Instance.TemplateID,
-			Alias:      info.Instance.Alias,
-			SandboxID:  info.Instance.SandboxID,
-			StartedAt:  info.StartTime,
-			CpuCount:   api.CPUCount(info.VCpu),
-			MemoryMB:   api.MemoryMB(info.RamMB),
-			EndAt:      info.GetEndTime(),
-			State:      api.Running,
+			ClientID:        info.Instance.ClientID,
+			TemplateID:      info.Instance.TemplateID,
+			Alias:           info.Instance.Alias,
+			SandboxID:       info.Instance.SandboxID,
+			StartedAt:       info.StartTime,
+			CpuCount:        api.CPUCount(info.VCpu),
+			MemoryMB:        api.MemoryMB(info.RamMB),
+			EndAt:           info.GetEndTime(),
+			State:           api.Running,
+			EnvdVersion:     &info.EnvdVersion,
+			EnvdAccessToken: info.EnvdAccessToken,
 		}
 
 		if info.Metadata != nil {
@@ -57,35 +60,32 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	}
 
 	// If sandbox not found try to get the latest snapshot
-	snapshot, build, err := a.db.GetLastSnapshot(ctx, sandboxId, team.ID)
+	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxId, TeamID: team.ID})
 	if err != nil {
 		zap.L().Error("error getting last snapshot for sandbox", zap.String("sandbox_id", id), zap.Error(err))
 		c.JSON(http.StatusNotFound, fmt.Sprintf("sandbox \"%s\" doesn't exist or you don't have access to it", id))
 		return
 	}
 
-	memoryMB := int32(-1)
-	cpuCount := int32(-1)
-
-	if build != nil {
-		memoryMB = int32(build.RAMMB)
-		cpuCount = int32(build.Vcpu)
-	}
+	memoryMB := int32(lastSnapshot.EnvBuild.RamMb)
+	cpuCount := int32(lastSnapshot.EnvBuild.Vcpu)
 
 	sandbox := api.ListedSandbox{
-		ClientID:   "00000000", // for backwards compatibility we need to return a client id
-		TemplateID: snapshot.EnvID,
-		SandboxID:  snapshot.SandboxID,
-		StartedAt:  snapshot.SandboxStartedAt,
-		CpuCount:   cpuCount,
-		MemoryMB:   memoryMB,
-		EndAt:      info.GetEndTime(),
-		State:      api.Paused,
+		ClientID:        "00000000", // for backwards compatibility we need to return a client id
+		TemplateID:      lastSnapshot.Snapshot.EnvID,
+		SandboxID:       lastSnapshot.Snapshot.SandboxID,
+		StartedAt:       lastSnapshot.Snapshot.SandboxStartedAt.Time,
+		CpuCount:        cpuCount,
+		MemoryMB:        memoryMB,
+		EndAt:           info.GetEndTime(),
+		State:           api.Paused,
+		EnvdVersion:     lastSnapshot.EnvBuild.EnvdVersion,
+		EnvdAccessToken: nil,
 	}
 
-	if snapshot.Metadata != nil {
-		meta := api.SandboxMetadata(snapshot.Metadata)
-		sandbox.Metadata = &meta
+	if lastSnapshot.Snapshot.Metadata != nil {
+		metadata := api.SandboxMetadata(lastSnapshot.Snapshot.Metadata)
+		sandbox.Metadata = &metadata
 	}
 
 	c.JSON(http.StatusOK, sandbox)
