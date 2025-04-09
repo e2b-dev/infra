@@ -198,15 +198,15 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 
 	//
 	//
-	//network, err := rootfs.client.NetworkCreate(childCtx, env.BuildID, types.NetworkCreate{})
-	//if err != nil {
+	// network, err := rootfs.client.NetworkCreate(childCtx, env.BuildID, types.NetworkCreate{})
+	// if err != nil {
 	//	errMsg := fmt.Errorf("error creating network: %w", err)
 	//	telemetry.ReportCriticalError(childCtx, errMsg)
 	//
 	//	return nil, errMsg
-	//}
+	// }
 	//
-	//defer func() {
+	// defer func() {
 	//	err = rootfs.client.NetworkRemove(childCtx, network.ID)
 	//	if err != nil {
 	//		errMsg := fmt.Errorf("error removing network: %w", err)
@@ -214,7 +214,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	//	} else {
 	//		telemetry.ReportEvent(childCtx, "removed network")
 	//	}
-	//}()
+	// }()
 	//
 	var scriptDef bytes.Buffer
 
@@ -250,6 +250,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	telemetry.ReportEvent(childCtx, "created network")
 
 	pidsLimit := int64(200)
+	memory := int64(math.Max(float64(r.env.MemoryMB)/2, 512)) << ToMBShift
 
 	cont, err := r.client.ContainerCreate(childCtx, &container.Config{
 		Image:        r.dockerTag(),
@@ -266,10 +267,10 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		// TODO: Network mode is causing problems with /etc/hosts - we want to find a way to fix this and enable network mode again
 		// NetworkMode: container.NetworkMode(network.ID),
 		Resources: container.Resources{
-			Memory:     r.env.MemoryMB << ToMBShift,
+			Memory:     memory,
 			CPUPeriod:  100000,
 			CPUQuota:   r.env.VCpuCount * 100000,
-			MemorySwap: r.env.MemoryMB << ToMBShift,
+			MemorySwap: memory,
 			PidsLimit:  &pidsLimit,
 		},
 	}, nil, &v1.Platform{}, "")
