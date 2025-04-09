@@ -45,6 +45,5 @@ module "grafana_stack" {
   gcp_project_id = var.gcp_project_id
   domain_name    = var.domain_name
 
-  panels_directory_name     = var.panels_directory_name
-  dashboards_directory_name = var.dashboards_directory_name
+  prefix = var.prefix
 }

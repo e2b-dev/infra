@@ -1,6 +1,5 @@
 variable "prefix" {
-  type    = string
-  default = "e2b-"
+  type = string
 }
 
 variable "gcp_project_id" {
@@ -14,9 +13,11 @@ variable "domain_name" {
 variable "panels_directory_name" {
   description = "Path to the directory containing panel files"
   type        = string
+  default     = "panels"
 }
 
 variable "dashboards_directory_name" {
   description = "Path to the directory containing dashboard files"
   type        = string
+  default     = "dashboards"
 }
