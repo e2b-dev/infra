@@ -83,7 +83,8 @@ resource "grafana_data_source" "gcloud_monitoring" {
 }
 
 locals {
-  panel_directory_path = "${path.module}/${var.panel_directory_name}"
+  panel_directory_path = "${path.module}/${var.panels_directory_name}"
+  dashboards_directory_path = "${path.module}/${var.dashboards_directory_name}"
   files_map = { for file in fileset(local.panel_directory_path, "**/*") :
     trimsuffix(file, ".json") => templatefile("${local.panel_directory_path}/${file}", {
       gcp_project_id  = var.gcp_project_id
@@ -94,8 +95,11 @@ locals {
 }
 
 resource "grafana_dashboard" "dashboard" {
-  config_json = templatefile("${path.module}/dashboard.json", merge({
-    domain_name    = var.domain_name
-    gcp_project_id = var.gcp_project_id
-  }, local.files_map))
+  for_each = { for file in fileset(local.dashboards_directory_path, "**/*") :
+    trimsuffix(file, ".json") => templatefile("${local.dashboards_directory_path}/${file}", merge({
+      domain_name    = var.domain_name
+      gcp_project_id = var.gcp_project_id
+    }, local.files_map))
+  }
+  config_json = each.value
 }
