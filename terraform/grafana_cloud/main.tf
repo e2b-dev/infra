@@ -1,17 +1,8 @@
 terraform {
-  required_version = ">= 1.5.0, < 1.6.0"
-
-  backend "gcs" {
-    prefix = "terraform/grafana/state"
-  }
   required_providers {
     grafana = {
       source  = "grafana/grafana"
       version = "3.18.3"
-    }
-    google = {
-      source  = "hashicorp/google"
-      version = "5.31.0"
     }
   }
 }
@@ -21,13 +12,8 @@ data "google_secret_manager_secret_version" "grafana_api_key" {
   project = var.gcp_project_id
 }
 
-provider "grafana" {
-  alias                     = "cloud"
-  cloud_access_policy_token = data.google_secret_manager_secret_version.grafana_api_key.secret_data
-}
-
 resource "grafana_cloud_stack" "e2b_stack" {
-  provider = grafana.cloud
+  provider = grafana
 
   name        = var.gcp_project_id
   slug        = replace(var.gcp_project_id, "-", "")
@@ -40,7 +26,7 @@ resource "google_secret_manager_secret_version" "grafana_username" {
 }
 
 resource "grafana_cloud_access_policy" "otel_collector" {
-  provider = grafana.cloud
+  provider = grafana
 
   region       = var.gcp_to_grafana_regions[var.gcp_region]
   name         = "otel-collector-${var.gcp_project_id}"
@@ -55,7 +41,7 @@ resource "grafana_cloud_access_policy" "otel_collector" {
 }
 
 resource "grafana_cloud_access_policy_token" "otel_collector" {
-  provider         = grafana.cloud
+  provider         = grafana
   region           = var.gcp_to_grafana_regions[var.gcp_region]
   access_policy_id = grafana_cloud_access_policy.otel_collector.policy_id
   name             = "otel-collector-${var.gcp_project_id}"
@@ -80,7 +66,7 @@ resource "google_secret_manager_secret_version" "grafana_logs_url" {
 
 # Create a new access policy for logs collector
 resource "grafana_cloud_access_policy" "logs_collector" {
-  provider     = grafana.cloud
+  provider     = grafana
   region       = var.gcp_to_grafana_regions[var.gcp_region]
   name         = "logs-collector-${var.gcp_project_id}"
   display_name = "Logs Collector for ${var.gcp_project_id}"
@@ -95,7 +81,7 @@ resource "grafana_cloud_access_policy" "logs_collector" {
 
 # Create access policy token for logs collector
 resource "grafana_cloud_access_policy_token" "logs_collector" {
-  provider         = grafana.cloud
+  provider         = grafana
   region           = var.gcp_to_grafana_regions[var.gcp_region]
   access_policy_id = grafana_cloud_access_policy.logs_collector.policy_id
   name             = "logs-collector-${var.gcp_project_id}"
@@ -127,41 +113,16 @@ resource "google_project_service" "resource_manager_api" {
   service = "cloudresourcemanager.googleapis.com"
 }
 
-# Create service account for Grafana
-resource "google_service_account" "grafana_logging" {
-  account_id   = "${var.prefix}grafana-logging"
-  display_name = "Grafana Cloud Logging Service Account"
-  project      = var.gcp_project_id
-}
-
-# Assign required roles to the service account
-resource "google_project_iam_member" "grafana_logging_viewer" {
-  project = var.gcp_project_id
-  role    = "roles/logging.viewer"
-  member  = "serviceAccount:${google_service_account.grafana_logging.email}"
-}
-
-resource "google_project_iam_member" "grafana_logging_accessor" {
-  project = var.gcp_project_id
-  role    = "roles/logging.viewAccessor"
-  member  = "serviceAccount:${google_service_account.grafana_logging.email}"
-}
-
-# Create and download service account key
-resource "google_service_account_key" "grafana_logging_key" {
-  service_account_id = google_service_account.grafana_logging.name
-}
-
 # configure gcp logs datasource
 resource "grafana_cloud_plugin_installation" "grafana_gcp_logs_datasource" {
-  provider   = grafana.cloud
+  provider   = grafana
   stack_slug = grafana_cloud_stack.e2b_stack.slug
   slug       = "googlecloud-logging-datasource"
   version    = "1.4.1"
 }
 
 resource "grafana_cloud_stack_service_account" "cloud_sa" {
-  provider   = grafana.cloud
+  provider   = grafana
   stack_slug = grafana_cloud_stack.e2b_stack.slug
 
   name        = "cloud service account for managing datasource ${var.gcp_project_id}"
@@ -173,33 +134,9 @@ resource "grafana_cloud_stack_service_account_token" "manage_datasource" {
   name               = "manage-datasource-${var.gcp_project_id}"
   service_account_id = grafana_cloud_stack_service_account.cloud_sa.id
   stack_slug         = grafana_cloud_stack.e2b_stack.slug
-  provider           = grafana.cloud
+  provider           = grafana
 }
 
-provider "grafana" {
-  alias = "datasource"
-  url   = grafana_cloud_stack.e2b_stack.url
-  auth  = grafana_cloud_stack_service_account_token.manage_datasource.key
-
-}
-
-resource "grafana_data_source" "gcloud_logs" {
-  provider = grafana.datasource
-
-  name = "gcloud-logs"
-  type = "googlecloud-logging-datasource"
-  json_data_encoded = jsonencode({
-    authenticationType = "jwt"
-    clientEmail        = google_service_account.grafana_logging.email
-    defaultProject     = var.gcp_project_id
-    tokenUri           = "https://oauth2.googleapis.com/token"
-  })
-
-  secure_json_data_encoded = jsonencode({
-    privateKey = jsondecode(base64decode(google_service_account_key.grafana_logging_key.private_key)).private_key
-  })
-
-}
 
 resource "google_service_account" "grafana_monitoring" {
   account_id   = "${var.prefix}grafana-monitoring"
@@ -215,43 +152,4 @@ resource "google_project_iam_member" "grafana_monitoring_viewer" {
 
 resource "google_service_account_key" "grafana_monitoring_key" {
   service_account_id = google_service_account.grafana_monitoring.name
-}
-
-resource "grafana_data_source" "gcloud_monitoring" {
-  provider = grafana.datasource
-
-
-  name = "gcloud-monitoring"
-  type = "stackdriver"
-
-
-  json_data_encoded = jsonencode({
-    authenticationType = "jwt"
-    clientEmail        = google_service_account.grafana_monitoring.email
-    defaultProject     = var.gcp_project_id
-    tokenUri           = "https://oauth2.googleapis.com/token"
-  })
-
-  secure_json_data_encoded = jsonencode({
-    privateKey = jsondecode(base64decode(google_service_account_key.grafana_monitoring_key.private_key)).private_key
-  })
-}
-
-locals {
-  files_map = { for file in fileset(var.directory_path, "**/*") :
-    trimsuffix(file, ".json") => templatefile("${var.directory_path}/${file}", {
-      gcp_project_id  = var.gcp_project_id
-      stackdriver_uid = grafana_data_source.gcloud_monitoring.uid
-      prefix          = var.prefix
-    })
-  }
-}
-
-resource "grafana_dashboard" "dashboard" {
-  provider = grafana.datasource
-
-  config_json = templatefile("${path.module}/dashboard.json", merge({
-    domain_name    = var.domain_name
-    gcp_project_id = var.gcp_project_id
-  }, local.files_map))
 }

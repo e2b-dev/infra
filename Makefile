@@ -34,7 +34,8 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_clickhouse_connection_string=$(CLICKHOUSE_CONNECTION_STRING) \
 	TF_VAR_clickhouse_username=$(CLICKHOUSE_USERNAME) \
 	TF_VAR_clickhouse_database=$(CLICKHOUSE_DATABASE) \
-	TF_VAR_redis_managed=$(REDIS_MANAGED)
+	TF_VAR_redis_managed=$(REDIS_MANAGED) \
+	TF_VAR_grafana_managed=$(GRAFANA_MANAGED)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
@@ -54,7 +55,6 @@ init:
 	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
 	$(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
-	@ if [ "$(GRAFANA_MANAGED)" = "true" ]; then $(MAKE) -C terraform/grafana init; fi
 
 # Setup production environment variables, this is used only for E2B.dev production
 # Uses HCP CLI to read secrets from HCP Vault Secrets
@@ -79,7 +79,6 @@ update-prod-env:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	@ if [ "$(GRAFANA_MANAGED)" = "true" ]; then make -C terraform/grafana plan; fi
 	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
 
 # Deploy all jobs in Nomad
@@ -101,7 +100,6 @@ plan-only-jobs/%:
 apply:
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	./scripts/confirm.sh $(ENV)
-	@ if [ "$(GRAFANA_MANAGED)" = "true" ]; then make -C terraform/grafana apply; fi
 	$(tf_vars) \
 	$(TF) apply \
 	-auto-approve \
@@ -178,7 +176,6 @@ switch-env:
 	@ echo $(ENV) > .last_used_env
 	@ . ${ENV_FILE}
 	terraform init -input=false -upgrade -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
-	@ if [ "$(GRAFANA_MANAGED)" = "true" ]; then $(MAKE) -C terraform/grafana init; fi
 
 # Shortcut to importing resources into Terraform state (e.g. after creating resources manually or switching between different branches for the same environment)
 .PHONY: import

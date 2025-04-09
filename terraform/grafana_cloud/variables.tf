@@ -11,16 +11,6 @@ variable "gcp_region" {
   type = string
 }
 
-variable "domain_name" {
-  type = string
-}
-
-variable "directory_path" {
-  description = "Path to the directory containing files"
-  type        = string
-  default     = "./panels"
-}
-
 variable "gcp_to_grafana_regions" {
   description = "Mapping of GCP regions to Grafana stack regions"
   type        = map(string)
