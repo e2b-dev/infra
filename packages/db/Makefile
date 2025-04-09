@@ -9,6 +9,11 @@ migrate-postgres/%:
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/migrate/postgres/main.go -direction $(notdir $@)
 	@echo "Done"
 
+.PHONY: init
+init:
+	@echo "Installing sqlc"
+	brew install sqlc
+	@echo "Done"
 
 .PHONY: generate
 generate:
