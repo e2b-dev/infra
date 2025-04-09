@@ -5,37 +5,18 @@ ENV_FILE := $(PWD)/.env.${ENV}
 
 TF := $(shell which terraform)
 TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
-OTEL_TRACING_PRINT ?= false
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
-CLIENT_CLUSTER_AUTO_SCALING_MAX ?= 0
-REDIS_MANAGED ?= false
-GRAFANA_MANAGED ?= false
 
-tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
-	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
-	TF_VAR_client_cluster_auto_scaling_max=$(CLIENT_CLUSTER_AUTO_SCALING_MAX) \
-	TF_VAR_api_machine_type=$(API_MACHINE_TYPE) \
-	TF_VAR_api_cluster_size=$(API_CLUSTER_SIZE) \
-	TF_VAR_build_machine_type=$(BUILD_MACHINE_TYPE) \
-	TF_VAR_build_cluster_size=$(BUILD_CLUSTER_SIZE) \
-	TF_VAR_server_machine_type=$(SERVER_MACHINE_TYPE) \
-	TF_VAR_server_cluster_size=$(SERVER_CLUSTER_SIZE) \
-	TF_VAR_gcp_project_id=$(GCP_PROJECT_ID) \
-	TF_VAR_gcp_region=$(GCP_REGION) \
-	TF_VAR_gcp_zone=$(GCP_ZONE) \
-	TF_VAR_domain_name=$(DOMAIN_NAME) \
-	TF_VAR_additional_domains=$(ADDITIONAL_DOMAINS) \
-	TF_VAR_prefix=$(PREFIX) \
-	TF_VAR_terraform_state_bucket=$(TERRAFORM_STATE_BUCKET) \
-	TF_VAR_otel_tracing_print=$(OTEL_TRACING_PRINT) \
-	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
-	TF_VAR_template_bucket_name=$(TEMPLATE_BUCKET_NAME) \
-	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION) \
-	TF_VAR_clickhouse_connection_string=$(CLICKHOUSE_CONNECTION_STRING) \
-	TF_VAR_clickhouse_username=$(CLICKHOUSE_USERNAME) \
-	TF_VAR_clickhouse_database=$(CLICKHOUSE_DATABASE) \
-	TF_VAR_redis_managed=$(REDIS_MANAGED) \
-	TF_VAR_grafana_managed=$(GRAFANA_MANAGED)
+
+define generate_tf_vars
+$(shell grep -v '^[[:space:]]*#' ${ENV_FILE} | grep '=' | awk -F= '{print "TF_VAR_" tolower($$1) "=" substr($$0, index($$0, "=") + 1)}')
+endef
+
+# Get all environment variables from the .env file (excluding comments)
+tf_vars := $(call generate_tf_vars)
+
+# Add template bucket location and terraform environment to the tf_vars
+tf_vars += TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION) TF_VAR_environment=$(TERRAFORM_ENVIRONMENT)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)

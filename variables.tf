@@ -25,7 +25,8 @@ variable "client_cluster_size" {
 }
 
 variable "client_cluster_auto_scaling_max" {
-  type = number
+  type    = number
+  default = 0
 }
 
 variable "client_machine_type" {
@@ -188,11 +189,6 @@ variable "labels" {
     "app"       = "e2b"
     "terraform" = "true"
   }
-}
-
-variable "terraform_state_bucket" {
-  description = "The name of the bucket to store terraform state in"
-  type        = string
 }
 
 variable "loki_service_port" {
