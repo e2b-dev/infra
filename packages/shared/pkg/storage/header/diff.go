@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/bits-and-blooms/bitset"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -24,6 +25,8 @@ var (
 func CreateDiffWithTrace(ctx context.Context, tracer trace.Tracer, source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff io.Writer) (*bitset.BitSet, *bitset.BitSet, error) {
 	_, childSpan := tracer.Start(ctx, "create-diff")
 	defer childSpan.End()
+	childSpan.SetAttributes(attribute.Int64("dirty.length", int64(dirty.Count())))
+	childSpan.SetAttributes(attribute.Int64("block.size", blockSize))
 
 	return CreateDiff(source, blockSize, dirty, diff)
 }
