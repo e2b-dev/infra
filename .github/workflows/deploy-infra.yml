@@ -15,6 +15,11 @@ on:
         description: 'Target environment for deployment, e.g. staging'
         required: true
         type: string
+      plan_only:
+        description: 'Only plan the infrastructure changes without applying them'
+        required: false
+        type: string
+        default: "false"
 
 concurrency:
   group: deploy-${{ inputs.environment }}
@@ -45,11 +50,16 @@ jobs:
           make copy-public-builds
 
       - name: Migrate database
+        if: inputs.plan_only == 'false'
         run: |
           make migrate
 
-      - name: Deploy infrastructure
+      - name: Plan infrastructure
         run: |
           make plan-without-jobs
+
+      - name: Apply infrastructure
+        if: inputs.plan_only == 'false'
+        run: |
           make apply
         
