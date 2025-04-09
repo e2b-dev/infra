@@ -130,7 +130,7 @@
         "filters": [
           "metric.label.device_name",
           "=~",
-          "${prefix}orch-client.*-1",
+          "^${prefix}orch-client-.*-1$",
           "AND",
           "metric.type",
           "=",
@@ -156,7 +156,7 @@
         "filters": [
           "metric.label.device_name",
           "=~",
-          "${prefix}orch-client.*-1",
+          "^${prefix}orch-client-.*-1$",
           "AND",
           "metric.type",
           "=",

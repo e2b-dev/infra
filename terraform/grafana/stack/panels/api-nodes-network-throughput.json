@@ -134,7 +134,7 @@
         "filters": [
           "metric.label.instance_name",
           "=~",
-          "${prefix}orch-api-.*",
+          "^${prefix}orch-api-.*$",
           "AND",
           "metric.type",
           "=",
@@ -162,7 +162,7 @@
         "filters": [
           "metric.label.instance_name",
           "=~",
-          "${prefix}orch-api-.*",
+          "^${prefix}orch-api-.*$",
           "AND",
           "metric.type",
           "=",

@@ -100,7 +100,7 @@
         "filters": [
           "metric.label.instance_name",
           "=~",
-          "${prefix}orch-client-.*",
+          "^${prefix}orch-client-.*$",
           "AND",
           "metric.type",
           "=",
@@ -128,7 +128,7 @@
         "filters": [
           "metric.label.instance_name",
           "=~",
-          "${prefix}orch-client-.*",
+          "^${prefix}orch-client-.*$",
           "AND",
           "metric.type",
           "=",
