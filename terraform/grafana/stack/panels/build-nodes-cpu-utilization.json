@@ -1,7 +1,7 @@
 {
   "datasource": {
     "type": "stackdriver",
-    "uid": "eeegely3pciyof"
+    "uid": "${stackdriver_uid}"
   },
   "fieldConfig": {
     "defaults": {
@@ -90,7 +90,7 @@
     {
       "datasource": {
         "type": "stackdriver",
-        "uid": "eeegely3pciyof"
+        "uid": "${stackdriver_uid}"
       },
       "queryType": "timeSeriesList",
       "refId": "A",

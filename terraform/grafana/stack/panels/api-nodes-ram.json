@@ -1,7 +1,7 @@
 {
   "datasource": {
     "type": "stackdriver",
-    "uid": "eeegely3pciyof"
+    "uid": "${stackdriver_uid}"
   },
   "fieldConfig": {
     "defaults": {
@@ -116,7 +116,7 @@
       "aliasBy": "",
       "datasource": {
         "type": "stackdriver",
-        "uid": "eeegely3pciyof"
+        "uid": "${stackdriver_uid}"
       },
       "queryType": "timeSeriesList",
       "refId": "A",
@@ -144,7 +144,7 @@
       "aliasBy": "Max",
       "datasource": {
         "type": "stackdriver",
-        "uid": "eeegely3pciyof"
+        "uid": "${stackdriver_uid}"
       },
       "hide": false,
       "queryType": "timeSeriesList",
