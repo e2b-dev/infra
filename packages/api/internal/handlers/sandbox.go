@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"net/http"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -20,16 +20,17 @@ func (a *APIStore) startSandbox(
 	ctx context.Context,
 	sandboxID string,
 	timeout time.Duration,
-	envVars,
+	envVars map[string]string,
 	metadata map[string]string,
 	alias string,
 	team authcache.AuthTeamInfo,
-	build *models.EnvBuild,
+	build queries.EnvBuild,
 	requestHeader *http.Header,
 	isResume bool,
 	clientID *string,
 	baseTemplateID string,
 	autoPause bool,
+	envdAccessToken *string,
 ) (*api.Sandbox, *api.APIError) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
@@ -49,11 +50,11 @@ func (a *APIStore) startSandbox(
 		clientID,
 		baseTemplateID,
 		autoPause,
+		envdAccessToken,
 	)
 	if instanceErr != nil {
 		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr.Err)
 		telemetry.ReportCriticalError(ctx, errMsg)
-
 		return nil, instanceErr
 	}
 
@@ -87,10 +88,11 @@ func (a *APIStore) startSandbox(
 	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
 
 	return &api.Sandbox{
-		ClientID:    sandbox.ClientID,
-		SandboxID:   sandbox.SandboxID,
-		TemplateID:  *build.EnvID,
-		Alias:       &alias,
-		EnvdVersion: *build.EnvdVersion,
+		ClientID:        sandbox.ClientID,
+		SandboxID:       sandbox.SandboxID,
+		TemplateID:      *build.EnvID,
+		Alias:           &alias,
+		EnvdVersion:     *build.EnvdVersion,
+		EnvdAccessToken: envdAccessToken,
 	}, nil
 }

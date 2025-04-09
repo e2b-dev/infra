@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -29,7 +30,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err != nil {
-		_, _, fErr := a.db.GetLastSnapshot(ctx, sandboxID, teamID)
+		_, fErr := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
 		if fErr == nil {
 			zap.L().Warn("Sandbox is already paused", zap.String("sandboxID", sandboxID))
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))

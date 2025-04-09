@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"golang.org/x/mod/semver"
 	"net/http"
 	"time"
 
@@ -80,7 +83,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
 	if checkErr != nil {
 		telemetry.ReportCriticalError(ctx, checkErr.Err)
-
 		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
 		return
 	}
@@ -128,7 +130,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 		if timeout > time.Duration(teamInfo.Tier.MaxLengthHours)*time.Hour {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Tier.MaxLengthHours))
-
 			return
 		}
 	}
@@ -138,7 +139,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause = *body.AutoPause
 	}
 
-	sandbox, createErr := a.startSandbox(
+	var envdAccessToken *string = nil
+	if body.Secure != nil && *body.Secure == true {
+		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
+		if tokenErr != nil {
+			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), zap.String("sandboxID", sandboxID), zap.String("buildID", build.ID.String()))
+			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
+			return
+		}
+
+		envdAccessToken = &accessToken
+	}
+
+	sbx, createErr := a.startSandbox(
 		ctx,
 		sandboxID,
 		timeout,
@@ -146,23 +159,55 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		metadata,
 		alias,
 		teamInfo,
-		build,
+		*build,
 		&c.Request.Header,
 		false,
 		nil,
 		env.TemplateID,
 		autoPause,
+		envdAccessToken,
 	)
 	if createErr != nil {
 		zap.L().Error("Failed to create sandbox", zap.Error(createErr.Err))
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
-
 		return
 	}
 
-	c.Set("nodeID", sandbox.ClientID)
+	c.Set("nodeID", sbx.ClientID)
 
-	c.JSON(http.StatusCreated, &sandbox)
+	c.JSON(http.StatusCreated, &sbx)
+}
+
+func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (string, *api.APIError) {
+	if envdVersion == nil {
+		return "", &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: "you need to re-build template to allow secure flag",
+			Err:       errors.New("envd version is required during envd access token creation"),
+		}
+	}
+
+	// check if the envd version is newer than 0.2.0
+	if semver.Compare(fmt.Sprintf("v%s", *envdVersion), "v0.2.0") < 0 {
+		return "", &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: "current template build does not support access flag, you need to re-build template to allow it",
+			Err:       errors.New("envd version is not supported for secure flag"),
+		}
+	}
+
+	hashed := sandbox.NewEnvdAccessTokenGenerator()
+	key, err := hashed.GenerateAccessToken(sandboxID)
+	if err != nil {
+		return "", &api.APIError{
+			Code:      http.StatusInternalServerError,
+			ClientMsg: "unknown error during sandbox access token generation",
+			Err:       err,
+		}
+	}
+
+	return key, nil
+
 }
 
 func setTemplateNameMetric(c *gin.Context, aliases []string) {

@@ -167,7 +167,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	}
 
 	authCache := authcache.NewTeamAuthCache()
-	templateCache := templatecache.NewTemplateCache(dbClient)
+	templateCache := templatecache.NewTemplateCache(sqlcDB)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
 	a := &APIStore{

@@ -16,8 +16,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -37,8 +37,8 @@ func (o *Orchestrator) CreateSandbox(
 	sandboxID,
 	alias string,
 	team authcache.AuthTeamInfo,
-	build *models.EnvBuild,
-	metadata,
+	build queries.EnvBuild,
+	metadata map[string]string,
 	envVars map[string]string,
 	startTime time.Time,
 	endTime time.Time,
@@ -47,6 +47,7 @@ func (o *Orchestrator) CreateSandbox(
 	clientID *string,
 	baseTemplateID string,
 	autoPause bool,
+	envdAuthToken *string,
 ) (*api.Sandbox, *api.APIError) {
 	childCtx, childSpan := o.tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -95,9 +96,10 @@ func (o *Orchestrator) CreateSandbox(
 			EnvdVersion:        *build.EnvdVersion,
 			Metadata:           metadata,
 			EnvVars:            envVars,
+			EnvdAccessToken:    envdAuthToken,
 			MaxSandboxLength:   team.Tier.MaxLengthHours,
 			HugePages:          features.HasHugePages(),
-			RamMb:              build.RAMMB,
+			RamMb:              build.RamMb,
 			Vcpu:               build.Vcpu,
 			Snapshot:           isResume,
 			AutoPause:          &autoPause,
@@ -155,7 +157,7 @@ func (o *Orchestrator) CreateSandbox(
 
 		// To creating a lot of sandboxes at once on the same node
 		node.sbxsInProgress.Insert(sandboxID, &sbxInProgress{
-			MiBMemory: build.RAMMB,
+			MiBMemory: build.RamMb,
 			CPUs:      build.Vcpu,
 		})
 
@@ -187,11 +189,12 @@ func (o *Orchestrator) CreateSandbox(
 	telemetry.ReportEvent(childCtx, "Created sandbox")
 
 	sbx := api.Sandbox{
-		ClientID:    node.Info.ID,
-		SandboxID:   sandboxID,
-		TemplateID:  *build.EnvID,
-		Alias:       &alias,
-		EnvdVersion: *build.EnvdVersion,
+		ClientID:        node.Info.ID,
+		SandboxID:       sandboxID,
+		TemplateID:      *build.EnvID,
+		Alias:           &alias,
+		EnvdVersion:     *build.EnvdVersion,
+		EnvdAccessToken: envdAuthToken,
 	}
 
 	// This is to compensate for the time it takes to start the instance
@@ -208,13 +211,14 @@ func (o *Orchestrator) CreateSandbox(
 		startTime,
 		endTime,
 		build.Vcpu,
-		*build.TotalDiskSizeMB,
-		build.RAMMB,
+		*build.TotalDiskSizeMb,
+		build.RamMb,
 		build.KernelVersion,
 		build.FirecrackerVersion,
 		*build.EnvdVersion,
 		node.Info,
 		autoPause,
+		envdAuthToken,
 	)
 
 	cacheErr := o.instanceCache.Add(childCtx, instanceInfo, true)
