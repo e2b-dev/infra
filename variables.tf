@@ -48,6 +48,14 @@ variable "build_machine_type" {
   type = string
 }
 
+variable "clickhouse_server_machine_type" {
+  type = string
+}
+
+variable "clickhouse_keeper_machine_type" {
+  type = string
+}
+
 variable "client_proxy_health_port" {
   type = object({
     name = string
