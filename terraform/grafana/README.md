@@ -1,6 +1,4 @@
-# Deploy grafana 
-
-It has to be separate terraform if we want to keep it optionally, it needs to initialize the grafana provider inside the module, but that isn't compatible with conditional module invocation (e.g. count = 0).
+# Managed Grafana in Grafana Cloud 
 
 ## Prerequisites
 
@@ -21,9 +19,3 @@ Scopes:
  - stack-plugins:read
 
 - fill it in gcloud secrets manager (grafana-api-key)
-
-
-## Deploy
-
-- run `make plan` to plan the changes
-- run `make apply` to apply the changes 
