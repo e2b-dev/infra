@@ -3,12 +3,15 @@ package nbd
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
 
 	"go.uber.org/zap"
 )
+
+var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
 
 type Provider interface {
 	io.ReaderAt
@@ -55,7 +58,9 @@ type Dispatch struct {
 	writeLock        sync.Mutex
 	prov             Provider
 	pendingResponses sync.WaitGroup
-	pendingMu        sync.Mutex
+	shuttingDown     bool
+	shuttingDownLock sync.Mutex
+	fatal            chan error
 }
 
 func NewDispatch(ctx context.Context, fp io.ReadWriteCloser, prov Provider) *Dispatch {
@@ -64,15 +69,17 @@ func NewDispatch(ctx context.Context, fp io.ReadWriteCloser, prov Provider) *Dis
 		fp:             fp,
 		prov:           prov,
 		ctx:            ctx,
+		fatal:          make(chan error, 1),
 	}
 
 	binary.BigEndian.PutUint32(d.responseHeader, NBDResponseMagic)
 	return d
 }
 
-func (d *Dispatch) Wait() {
-	d.pendingMu.Lock()
-	defer d.pendingMu.Unlock()
+func (d *Dispatch) Drain() {
+	d.shuttingDownLock.Lock()
+	d.shuttingDown = true
+	defer d.shuttingDownLock.Unlock()
 
 	// Wait for any pending responses
 	d.pendingResponses.Wait()
@@ -124,9 +131,10 @@ func (d *Dispatch) Handle() error {
 		rp := 0
 	process:
 		for {
-
-			// If the context has been cancelled, quit
+			// Check if there is a fatal error from an async read/write to return
 			select {
+			case err := <-d.fatal:
+				return err
 			case <-d.ctx.Done():
 				return d.ctx.Err()
 			default:
@@ -173,14 +181,13 @@ func (d *Dispatch) Handle() error {
 					}
 				case NBDCmdTrim:
 					rp += 28
-					err = d.cmdTrim(request.Handle, request.From, request.Length)
+					err := d.cmdTrim(request.Handle, request.From, request.Length)
 					if err != nil {
 						return err
 					}
 				default:
 					return fmt.Errorf("nbd not implemented %d", request.Type)
 				}
-
 			} else {
 				break // Try again when we have more data...
 			}
@@ -194,9 +201,14 @@ func (d *Dispatch) Handle() error {
 }
 
 func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
-	d.pendingMu.Lock()
-	d.pendingResponses.Add(1)
-	d.pendingMu.Unlock()
+	d.shuttingDownLock.Lock()
+	if !d.shuttingDown {
+		d.pendingResponses.Add(1)
+	} else {
+		d.shuttingDownLock.Unlock()
+		return ErrShuttingDown
+	}
+	d.shuttingDownLock.Unlock()
 
 	performRead := func(handle uint64, from uint64, length uint32) error {
 		errchan := make(chan error)
@@ -215,20 +227,21 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 		case e = <-errchan:
 		}
 
-		errorValue := uint32(0)
 		if e != nil {
-			errorValue = 1
-			data = make([]byte, 0) // If there was an error, don't send data
+			return d.writeResponse(1, handle, []byte{})
 		}
-		return d.writeResponse(errorValue, handle, data)
+		return d.writeResponse(0, handle, data)
 	}
 
 	go func() {
 		err := performRead(cmdHandle, cmdFrom, cmdLength)
 		if err != nil {
-			zap.L().Error("nbd error cmd read", zap.Error(err))
+			select {
+			case d.fatal <- err:
+			default:
+				zap.L().Error("nbd error cmd read", zap.Error(err))
+			}
 		}
-
 		d.pendingResponses.Done()
 	}()
 
@@ -236,14 +249,19 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 }
 
 func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
-	d.pendingMu.Lock()
-	d.pendingResponses.Add(1)
-	d.pendingMu.Unlock()
+	d.shuttingDownLock.Lock()
+	if !d.shuttingDown {
+		d.pendingResponses.Add(1)
+	} else {
+		d.shuttingDownLock.Unlock()
+		return ErrShuttingDown
+	}
+	d.shuttingDownLock.Unlock()
 
-	go func() {
+	performWrite := func(handle uint64, from uint64, data []byte) error {
 		errchan := make(chan error)
 		go func() {
-			_, e := d.prov.WriteAt(cmdData, int64(cmdFrom))
+			_, e := d.prov.WriteAt(data, int64(from))
 			errchan <- e
 		}()
 
@@ -259,14 +277,20 @@ func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) er
 		if e != nil {
 			errorValue = 1
 		}
-		err := d.writeResponse(errorValue, cmdHandle, []byte{})
-		if err != nil {
-			zap.L().Error("nbd error cmd write", zap.Error(err))
-		}
+		return d.writeResponse(errorValue, handle, []byte{})
+	}
 
+	go func() {
+		err := performWrite(cmdHandle, cmdFrom, cmdData)
+		if err != nil {
+			select {
+			case d.fatal <- err:
+			default:
+				zap.L().Error("nbd error cmd write", zap.Error(err))
+			}
+		}
 		d.pendingResponses.Done()
 	}()
-
 	return nil
 }
 

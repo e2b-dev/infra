@@ -173,7 +173,9 @@ func NewSandbox(
 		childCtx, span := tracer.Start(ctx, "rootfs-overlay-close")
 		defer span.End()
 
-		rootfsOverlay.Close(childCtx)
+		if rootfsOverlayErr := rootfsOverlay.Close(childCtx); rootfsOverlayErr != nil {
+			return fmt.Errorf("failed to close overlay file: %w", rootfsOverlayErr)
+		}
 
 		return nil
 	})
