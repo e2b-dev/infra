@@ -13,11 +13,11 @@ import (
 const (
 	SigningReadOperation  = "read"
 	SigningWriteOperation = "write"
+
+	AccessTokenHeader = "X-Access-Token"
 )
 
 var (
-	accessTokenHeader = "X-Access-Token"
-
 	// paths that are always allowed without general authentication
 	allowedPaths = []string{
 		"GET/health",
@@ -29,7 +29,7 @@ var (
 func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if a.accessToken != nil {
-			authHeader := req.Header.Get(accessTokenHeader)
+			authHeader := req.Header.Get(AccessTokenHeader)
 
 			// check if this path is allowed without authentication (e.g., health check, endpoints supporting signing)
 			allowedPath := slices.Contains(allowedPaths, req.Method+req.URL.Path)
@@ -73,7 +73,7 @@ func (a *API) validateSigning(r *http.Request, signature *string, signatureExpir
 	}
 
 	// check if access token is sent in the header
-	tokenFromHeader := r.Header.Get(accessTokenHeader)
+	tokenFromHeader := r.Header.Get(AccessTokenHeader)
 	if tokenFromHeader != "" && tokenFromHeader != *a.accessToken {
 		return fmt.Errorf("access token present in header but does not match")
 	}
