@@ -317,25 +317,9 @@ data "external" "orchestrator_checksum" {
   }
 }
 
-resource "random_id" "server" {
-  keepers = {
-    # Generate a new id each time we switch to a new AMI id
-    # TODO: Change this to simulate change in orchstrator job
-    orchestrator_job = "12"
-  }
-
-  byte_length = 8
-}
-
-resource "nomad_variable" "example" {
-  path = "nomad/jobs"
-  items = {
-    latest_orchestrator_job = random_id.server.hex
-  }
-}
 
 locals {
-  orchestrator_job = templatefile("${path.module}/orchestrator.hcl", {
+  orchestrator_envs = {
     gcp_zone         = var.gcp_zone
     port             = var.orchestrator_port
     proxy_port       = var.orchestrator_proxy_port
@@ -353,14 +337,43 @@ locals {
     clickhouse_username          = var.clickhouse_username
     clickhouse_password          = var.clickhouse_password
     clickhouse_database          = var.clickhouse_database
-    random_id                    = random_id.server.hex
-  })
+  }
+
+  orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(
+    local.orchestrator_envs,
+    {
+      latest_orchestrator_job_id = "placeholder",
+    }
+  ))
+}
+
+
+
+resource "random_id" "orchestrator_job" {
+  keepers = {
+    # Dynamically replace placeholders using a for loop
+    orchestrator_job = sha256("${local.orchestrator_job_check}-${data.external.orchestrator_checksum.result.hex}")
+  }
+
+  byte_length = 8
+}
+
+resource "nomad_variable" "orchestrator_hash" {
+  path = "nomad/jobs"
+  items = {
+    latest_orchestrator_job_id = random_id.orchestrator_job.hex
+  }
 }
 
 resource "nomad_job" "orchestrator" {
   deregister_on_id_change = false
 
-  jobspec = local.orchestrator_job
+  jobspec = templatefile("${path.module}/orchestrator.hcl", merge(
+    local.orchestrator_envs,
+    {
+      latest_orchestrator_job_id = random_id.orchestrator_job.hex
+    }
+  ))
 }
 
 data "google_storage_bucket_object" "template_manager" {

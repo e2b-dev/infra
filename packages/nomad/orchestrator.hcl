@@ -1,16 +1,8 @@
-job "orchestrator-${random_id}" {
+job "orchestrator-${latest_orchestrator_job_id}" {
   type = "system"
-  datacenters = ["${gcp_zone}"]
+  node_pool = "default"
 
   priority = 90
-
-  // This constraint ensures that only one orchestrator is running at a time,
-  // now that we use differently names jobs.
-  // TODO: We cannot use this on group level, so if we want to run the script check we will need to use colliding port.
-  constraint {
-    distinct_property = "$${node.unique.id}"
-    value             = "1"
-  }
 
   group "client-orchestrator" {
     network {
@@ -55,11 +47,11 @@ job "orchestrator-${random_id}" {
         data = <<EOT
 #!/bin/bash
 
-if [ "{{with nomadVar "nomad/jobs" }}{{ .latest_orchestrator_job }}{{ end }}" != "${random_id}" ]; then
+if [ "{{with nomadVar "nomad/jobs" }}{{ .latest_orchestrator_job_id }}{{ end }}" != "${latest_orchestrator_job_id}" ]; then
   echo "This orchestrator is not the latest version, exiting"
   exit 1
 fi
-        EOT
+EOT
       }
       
       config {
