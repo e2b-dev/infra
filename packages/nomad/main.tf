@@ -351,7 +351,7 @@ locals {
 
 resource "random_id" "orchestrator_job" {
   keepers = {
-    # Dynamically replace placeholders using a for loop
+    # Use both the orchestrator job (including vars) definition and the latest orchestrator checksum to detect changes
     orchestrator_job = sha256("${local.orchestrator_job_check}-${data.external.orchestrator_checksum.result.hex}")
   }
 
