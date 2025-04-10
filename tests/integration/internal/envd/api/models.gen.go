@@ -7,6 +7,10 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+const (
+	AccessTokenAuthScopes = "AccessTokenAuth.Scopes"
+)
+
 // Defines values for EntryInfoType.
 const (
 	File EntryInfoType = "file"
@@ -51,6 +55,12 @@ type Metrics struct {
 // FilePath defines model for FilePath.
 type FilePath = string
 
+// Signature defines model for Signature.
+type Signature = string
+
+// SignatureExpiration defines model for SignatureExpiration.
+type SignatureExpiration = int
+
 // User defines model for User.
 type User = string
 
@@ -79,6 +89,12 @@ type GetFilesParams struct {
 
 	// Username User used for setting the owner, or resolving relative paths.
 	Username User `form:"username" json:"username"`
+
+	// Signature Signature used for file access permission verification.
+	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
+
+	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
 // PostFilesMultipartBody defines parameters for PostFiles.
@@ -93,10 +109,19 @@ type PostFilesParams struct {
 
 	// Username User used for setting the owner, or resolving relative paths.
 	Username User `form:"username" json:"username"`
+
+	// Signature Signature used for file access permission verification.
+	Signature *Signature `form:"signature,omitempty" json:"signature,omitempty"`
+
+	// SignatureExpiration Signature expiration used for defining the expiration time of the signature.
+	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
 }
 
 // PostInitJSONBody defines parameters for PostInit.
 type PostInitJSONBody struct {
+	// AccessToken Access token for secure access to envd service
+	AccessToken *string `json:"accessToken,omitempty"`
+
 	// EnvVars Environment variables to set
 	EnvVars *EnvVars `json:"envVars,omitempty"`
 }
