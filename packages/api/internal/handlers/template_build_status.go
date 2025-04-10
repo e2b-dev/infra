@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -105,48 +106,45 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	end := time.Now()
 	start := end.Add(-templateBuildOldestLogsLimit)
+	logs := make([]string, 0)
 
 	res, err := a.lokiClient.QueryRange(query, templateBuildLogsLimit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
-	if err != nil {
-		errMsg := fmt.Errorf("error when returning logs for template build: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-		zap.L().Error("error when returning logs for template build", zap.Error(err), zap.String("buildID", buildID))
+	if err == nil {
+		logsCrawled := 0
 
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning logs for template build '%s'", buildUUID.String()))
-		return
-	}
-
-	logs := make([]string, 0)
-	logsCrawled := 0
-
-	offset := 0
-	if params.LogsOffset != nil {
-		offset = int(*params.LogsOffset)
-	}
-
-	if res.Data.Result.Type() != loghttp.ResultTypeStream {
-		zap.L().Error("unexpected value type received from loki query fetch", zap.String("type", string(res.Data.Result.Type())))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Unexpected error during fetching logs")
-		return
-	}
-
-	for _, stream := range res.Data.Result.(loghttp.Streams) {
-		for _, entry := range stream.Entries {
-			logsCrawled++
-
-			// loki does not support offset pagination, so we need to skip logs manually
-			if logsCrawled <= offset {
-				continue
-			}
-
-			line := make(map[string]interface{})
-			err := json.Unmarshal([]byte(entry.Line), &line)
-			if err != nil {
-				zap.L().Error("error parsing log line", zap.Error(err), zap.String("buildID", buildID), zap.String("line", entry.Line))
-			}
-
-			logs = append(logs, line["message"].(string))
+		offset := 0
+		if params.LogsOffset != nil {
+			offset = int(*params.LogsOffset)
 		}
+
+		if res.Data.Result.Type() != loghttp.ResultTypeStream {
+			zap.L().Error("unexpected value type received from loki query fetch", zap.String("type", string(res.Data.Result.Type())))
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Unexpected error during fetching logs")
+			return
+		}
+
+		for _, stream := range res.Data.Result.(loghttp.Streams) {
+			for _, entry := range stream.Entries {
+				logsCrawled++
+
+				// loki does not support offset pagination, so we need to skip logs manually
+				if logsCrawled <= offset {
+					continue
+				}
+
+				line := make(map[string]interface{})
+				err := json.Unmarshal([]byte(entry.Line), &line)
+				if err != nil {
+					zap.L().Error("error parsing log line", zap.Error(err), zap.String("buildID", buildID), zap.String("line", entry.Line))
+				}
+
+				logs = append(logs, line["message"].(string))
+			}
+		}
+	} else {
+		errMsg := fmt.Errorf("error when returning logs for template build: %w", err)
+		telemetry.ReportError(ctx, errMsg)
+		zap.L().Error("error when returning logs for template build", zap.Error(err), zap.String("buildID", buildID))
 	}
 
 	result := api.TemplateBuild{
