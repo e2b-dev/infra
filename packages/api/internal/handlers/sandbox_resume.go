@@ -1,10 +1,9 @@
 package handlers
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/jackc/pgx/v5"
 	"net/http"
 	"strings"
 	"time"
@@ -13,12 +12,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 

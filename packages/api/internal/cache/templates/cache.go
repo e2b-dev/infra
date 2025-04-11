@@ -2,9 +2,9 @@ package templatecache
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 
 	"net/http"
 	"sync"
