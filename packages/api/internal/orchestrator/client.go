@@ -2,7 +2,9 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"sync/atomic"
 	"time"
 
@@ -16,8 +18,11 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	e2bHealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
+
+const nodeHealthCheckTimeout = time.Second * 2
 
 type GRPCClient struct {
 	Sandbox orchestrator.SandboxServiceClient
@@ -61,15 +66,36 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	buildCache := ttlcache.New[string, interface{}]()
 	go buildCache.Start()
 
+	resp, err := o.httpClient.Get(fmt.Sprintf("http://%s/health", node.OrchestratorAddress))
+	if err != nil {
+		return fmt.Errorf("failed to check node health: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("node is not healthy: %s", resp.Status)
+	}
+
+	// Check if the node is healthy
+	var healthResp e2bHealth.Response
+	err = json.NewDecoder(resp.Body).Decode(&healthResp)
+	if err != nil {
+		return fmt.Errorf("failed to decode health response: %w", err)
+	}
+
+	if healthResp.Status != e2bHealth.Healthy {
+		return fmt.Errorf("node is not healthy: %s", healthResp.Status)
+	}
+
 	n := &Node{
 		Client:         client,
 		buildCache:     buildCache,
 		sbxsInProgress: smap.New[*sbxInProgress](),
 		status:         api.NodeStatusReady,
+		version:        healthResp.Version,
 		Info:           node,
 		createFails:    atomic.Uint64{},
 	}
-
 	o.nodes.Insert(n.Info.ID, n)
 
 	return nil
