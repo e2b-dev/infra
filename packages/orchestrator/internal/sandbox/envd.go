@@ -68,17 +68,18 @@ func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
 }
 
 type PostInitJSONBody struct {
-	EnvVars *map[string]string `json:"envVars"`
+	EnvVars     *map[string]string `json:"envVars"`
+	AccessToken *string            `json:"accessToken,omitempty"`
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map[string]string) error {
+func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map[string]string, envdAccessToken *string) error {
 	childCtx, childSpan := tracer.Start(ctx, "envd-init")
 	defer childSpan.End()
 
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
-
 	jsonBody := &PostInitJSONBody{
-		EnvVars: &envVars,
+		EnvVars:     &envVars,
+		AccessToken: envdAccessToken,
 	}
 
 	envVarsJSON, err := json.Marshal(jsonBody)

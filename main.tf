@@ -198,6 +198,7 @@ module "nomad" {
   analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
   api_admin_token                           = module.api.api_admin_token
   redis_url_secret_version                  = module.api.redis_url_secret_version
+  sandbox_access_token_hash_seed            = module.api.sandbox_access_token_hash_seed
 
   client_proxy_port                = var.client_proxy_port
   client_proxy_health_port         = var.client_proxy_health_port
