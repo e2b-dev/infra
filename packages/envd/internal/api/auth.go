@@ -13,11 +13,11 @@ import (
 const (
 	SigningReadOperation  = "read"
 	SigningWriteOperation = "write"
+
+	accessTokenHeader = "X-Access-Token"
 )
 
 var (
-	accessTokenHeader = "X-Access-Token"
-
 	// paths that are always allowed without general authentication
 	allowedPaths = []string{
 		"GET/health",

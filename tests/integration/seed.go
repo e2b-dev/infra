@@ -150,7 +150,7 @@ func seed(db *db.DB, data SeedData) error {
 			SetTotalDiskSizeMB(1982).
 			SetKernelVersion("vmlinux-6.1.102").
 			SetFirecrackerVersion("v1.10.1_1fcdaec").
-			SetEnvdVersion("0.1.5").
+			SetEnvdVersion("0.2.0").
 			SetNillableCreatedAt(build.createdAt).Save(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to create env build: %w", err)
