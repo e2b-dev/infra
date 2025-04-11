@@ -1,6 +1,6 @@
-job "orchestrator" {
+job "orchestrator-${latest_orchestrator_job_id}" {
   type = "system"
-  datacenters = ["${gcp_zone}"]
+  node_pool = "default"
 
   priority = 90
 
@@ -30,8 +30,41 @@ job "orchestrator" {
       port = "${proxy_port}"
     }
 
+    task "check-placement" {
+      driver = "raw_exec"
+
+      lifecycle {
+        hook = "prestart"
+        sidecar = false
+      }
+
+      restart {
+        attempts = 0
+      }
+
+      template {
+        destination = "local/check-placement.sh"
+        data = <<EOT
+#!/bin/bash
+
+if [ "{{with nomadVar "nomad/jobs" }}{{ .latest_orchestrator_job_id }}{{ end }}" != "${latest_orchestrator_job_id}" ]; then
+  echo "This orchestrator is not the latest version, exiting"
+  exit 1
+fi
+EOT
+      }
+      
+      config {
+        command = "local/check-placement.sh"
+      }
+    }
+
     task "start" {
       driver = "raw_exec"
+
+      restart {
+        attempts = 0
+      }
 
       env {
         NODE_ID                      = "$${node.unique.id}"
