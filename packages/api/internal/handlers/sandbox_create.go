@@ -202,7 +202,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 	if err != nil {
 		return "", &api.APIError{
 			Code:      http.StatusInternalServerError,
-			ClientMsg: "unknown error during sandbox access token generation",
+			ClientMsg: "error during sandbox access token generation",
 			Err:       err,
 		}
 	}
