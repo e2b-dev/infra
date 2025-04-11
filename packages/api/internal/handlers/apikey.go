@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,7 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -82,19 +80,10 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 			}
 		}
 
-		keyValue := strings.Split(apiKey.APIKey, keys.ApiKeyPrefix)[1]
-
-		// TODO: remove this once we migrate to hashed API keys
-		KeyMask, err := keys.MaskKey(keys.ApiKeyPrefix, keyValue)
-		if err != nil {
-			fmt.Printf("masking API key failed %d: %v", apiKey.ID, err)
-			continue
-		}
-
 		teamAPIKeys[i] = api.TeamAPIKey{
 			Id:        apiKey.ID,
 			Name:      apiKey.Name,
-			KeyMask:   KeyMask,
+			KeyMask:   apiKey.APIKeyMask,
 			CreatedAt: apiKey.CreatedAt,
 			CreatedBy: createdBy,
 			LastUsed:  apiKey.LastUsed,
