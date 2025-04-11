@@ -3,31 +3,35 @@ package server
 import (
 	"context"
 	"errors"
+	"sync"
+	"time"
+
 	"github.com/docker/docker/client"
+	docker "github.com/fsouza/go-dockerclient"
+
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
-	docker "github.com/fsouza/go-dockerclient"
+
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc/keepalive"
-	"sync"
-	"time"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
 )
 
 type ServerStore struct {
@@ -38,10 +42,11 @@ type ServerStore struct {
 	builder          *build.TemplateBuilder
 	buildCache       *cache.BuildCache
 	buildLogger      *zap.Logger
-	templateStorage  *template.Storage
+	templateBuild    storage.TemplateBuild
 	artifactRegistry *artifactregistry.Client
 	healthStatus     templatemanager.HealthState
-	wg               *sync.WaitGroup // wait group for running builds
+
+	wg *sync.WaitGroup // wait group for running builds
 }
 
 func New(logger *zap.Logger, buildLogger *zap.Logger) (*grpc.Server, *ServerStore) {
@@ -88,9 +93,8 @@ func New(logger *zap.Logger, buildLogger *zap.Logger) (*grpc.Server, *ServerStor
 		panic(err)
 	}
 
-	templateStorage := template.NewStorage(ctx)
 	buildCache := cache.NewBuildCache()
-	builder := build.NewBuilder(logger, buildLogger, otel.Tracer(constants.ServiceName), dockerClient, legacyClient, templateStorage, buildCache)
+	builder := build.NewBuilder(logger, buildLogger, otel.Tracer(constants.ServiceName), dockerClient, legacyClient, buildCache)
 	store := &ServerStore{
 		tracer:           otel.Tracer(constants.ServiceName),
 		logger:           logger,
@@ -98,7 +102,6 @@ func New(logger *zap.Logger, buildLogger *zap.Logger) (*grpc.Server, *ServerStor
 		buildCache:       buildCache,
 		buildLogger:      buildLogger,
 		artifactRegistry: artifactRegistry,
-		templateStorage:  templateStorage,
 		healthStatus:     templatemanager.HealthState_Healthy,
 		wg:               &sync.WaitGroup{},
 		server:           server,
