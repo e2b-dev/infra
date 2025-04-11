@@ -137,7 +137,11 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.AP
 	)
 
 	// We now register our store above as the handler for the interface
-	api.RegisterHandlers(r, apiStore)
+	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{
+		ErrorHandler: func(c *gin.Context, err error, statusCode int) {
+			utils.ErrorHandler(c, err.Error(), statusCode)
+		},
+	})
 
 	r.MaxMultipartMemory = maxMultipartMemory
 
