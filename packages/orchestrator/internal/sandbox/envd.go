@@ -77,15 +77,6 @@ func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map
 	defer childSpan.End()
 
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
-
-	// todo
-	if envdAccessToken == nil {
-		println("init envd without secret")
-	} else {
-		ee := *envdAccessToken
-		println("initializing envd with secret", ee)
-	}
-
 	jsonBody := &PostInitJSONBody{
 		EnvVars:     &envVars,
 		AccessToken: envdAccessToken,
