@@ -108,9 +108,9 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamInfo.Team.ID})
 	if err != nil {
-		if errors.As(err, &pgx.ErrNoRows) {
+		if errors.Is(err, sql.ErrNoRows) {
 			zap.L().Debug("Snapshot not found", zap.String("sandboxID", sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, err.Error())
+			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox snapshot not found")
 			return
 		}
 
