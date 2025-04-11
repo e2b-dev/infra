@@ -87,7 +87,7 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 	if item == nil {
 		result, err := c.db.GetEnvWithBuild(ctx, aliasOrEnvID)
 		if err != nil {
-			if errors.As(err, &pgx.ErrNoRows) {
+			if errors.Is(err, sql.ErrNoRows) {
 				return nil, nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("template '%s' not found", aliasOrEnvID), Err: err}
 			}
 
