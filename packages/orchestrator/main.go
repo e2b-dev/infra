@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"slices"
 	"syscall"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -41,6 +42,7 @@ type Closeable interface {
 const (
 	defaultPort      = 5008
 	defaultProxyPort = 5007
+	defaultWait      = 30
 )
 
 var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
@@ -49,6 +51,7 @@ var commitSHA string
 func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")
 	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
+	wait := flag.Uint("wait", defaultWait, "orchestrator proxy port")
 	flag.Parse()
 
 	if *port > math.MaxUint16 {
@@ -59,6 +62,12 @@ func main() {
 	if *proxyPort > math.MaxUint16 {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
 		os.Exit(1)
+	}
+
+	// TODO: Remove after the orchestrator is fully migrated to the new job definition
+	if *wait > 0 {
+		log.Printf("waiting %d seconds before starting orchestrator", *wait)
+		time.Sleep(time.Duration(*wait) * time.Second)
 	}
 
 	result := run(*port, *proxyPort)
