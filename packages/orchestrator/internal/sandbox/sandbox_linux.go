@@ -328,7 +328,7 @@ func NewSandbox(
 	sbx.StartedAt = time.Now()
 
 	dns.Add(config.SandboxId, ips.HostIP())
-	proxy.AddSandbox(config.SandboxId, ips.HostIP())
+	proxy.AddSandbox(config.SandboxId, ips.HostIP(), config.TeamId)
 
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
 
