@@ -1,0 +1,147 @@
+{
+  "datasource": {
+    "type": "prometheus",
+    "uid": "grafanacloud-prom"
+  },
+  "description": "",
+  "fieldConfig": {
+    "defaults": {
+      "color": {
+        "fixedColor": "green",
+        "mode": "fixed"
+      },
+      "custom": {
+        "axisBorderShow": false,
+        "axisCenteredZero": false,
+        "axisColorMode": "text",
+        "axisLabel": "",
+        "axisPlacement": "auto",
+        "barAlignment": 0,
+        "barWidthFactor": 0.6,
+        "drawStyle": "line",
+        "fillOpacity": 1,
+        "gradientMode": "none",
+        "hideFrom": {
+          "legend": false,
+          "tooltip": false,
+          "viz": false
+        },
+        "insertNulls": false,
+        "lineInterpolation": "linear",
+        "lineStyle": {
+          "fill": "solid"
+        },
+        "lineWidth": 1,
+        "pointSize": 1,
+        "scaleDistribution": {
+          "type": "linear"
+        },
+        "showPoints": "auto",
+        "spanNulls": false,
+        "stacking": {
+          "group": "A",
+          "mode": "none"
+        },
+        "thresholdsStyle": {
+          "mode": "off"
+        }
+      },
+      "fieldMinMax": false,
+      "mappings": [],
+      "min": 0,
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {
+            "color": "green"
+          }
+        ]
+      },
+      "unit": "gbytes"
+    },
+    "overrides": [
+      {
+        "matcher": {
+          "id": "byName",
+          "options": "Max"
+        },
+        "properties": [
+          {
+            "id": "custom.lineStyle",
+            "value": {
+              "dash": [
+                10,
+                10
+              ],
+              "fill": "dash"
+            }
+          },
+          {
+            "id": "custom.fillOpacity",
+            "value": 0
+          }
+        ]
+      }
+    ]
+  },
+  "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 76
+  },
+  "id": 1,
+  "interval": "15s",
+  "options": {
+    "legend": {
+      "calcs": [],
+      "displayMode": "table",
+      "placement": "bottom",
+      "showLegend": false
+    },
+    "tooltip": {
+      "hideZeros": false,
+      "mode": "multi",
+      "sort": "asc"
+    }
+  },
+  "pluginVersion": "12.0.0-85518.patch7-85777",
+  "targets": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "disableTextWrap": false,
+      "editorMode": "builder",
+      "exemplar": false,
+      "expr": "max(nomad_client_host_disk_size{disk=\"/dev/sdb\", node_pool=\"default\"}) / 1073741824",
+      "fullMetaSearch": false,
+      "hide": false,
+      "includeNullMetadata": true,
+      "instant": false,
+      "legendFormat": "Max",
+      "range": true,
+      "refId": "B",
+      "useBackend": false
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "disableTextWrap": false,
+      "editorMode": "builder",
+      "expr": "nomad_client_host_disk_available{disk=\"/dev/sdb\"} / 1073741824",
+      "fullMetaSearch": false,
+      "includeNullMetadata": true,
+      "instant": false,
+      "legendFormat": "{{node_id}}",
+      "range": true,
+      "refId": "A",
+      "useBackend": false
+    }
+  ],
+  "title": "Orchestrator Nodes Cache Disk",
+  "type": "timeseries"
+}

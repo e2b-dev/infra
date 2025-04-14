@@ -72,22 +72,6 @@ variable "client_proxy_port" {
   }
 }
 
-variable "session_proxy_service_name" {
-  type    = string
-  default = "session-proxy"
-}
-
-variable "session_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
-  default = {
-    name = "session"
-    port = 3003
-  }
-}
-
 variable "logs_proxy_port" {
   type = object({
     name = string
@@ -230,4 +214,14 @@ variable "template_bucket_location" {
 variable "template_bucket_name" {
   type        = string
   description = "The name of the FC template bucket"
+}
+
+variable "redis_managed" {
+  default = false
+  type    = bool
+}
+
+variable "grafana_managed" {
+  default = false
+  type    = bool
 }

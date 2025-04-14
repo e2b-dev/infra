@@ -1,0 +1,119 @@
+{
+  "datasource": {
+    "type": "prometheus",
+    "uid": "grafanacloud-prom"
+  },
+  "fieldConfig": {
+    "defaults": {
+      "color": {
+        "fixedColor": "yellow",
+        "mode": "palette-classic-by-name"
+      },
+      "custom": {
+        "axisBorderShow": false,
+        "axisCenteredZero": false,
+        "axisColorMode": "text",
+        "axisLabel": "",
+        "axisPlacement": "auto",
+        "barAlignment": 0,
+        "barWidthFactor": 0.6,
+        "drawStyle": "line",
+        "fillOpacity": 0,
+        "gradientMode": "hue",
+        "hideFrom": {
+          "legend": false,
+          "tooltip": false,
+          "viz": false
+        },
+        "insertNulls": false,
+        "lineInterpolation": "smooth",
+        "lineStyle": {
+          "fill": "solid"
+        },
+        "lineWidth": 1,
+        "pointSize": 1,
+        "scaleDistribution": {
+          "type": "linear"
+        },
+        "showPoints": "auto",
+        "spanNulls": false,
+        "stacking": {
+          "group": "A",
+          "mode": "none"
+        },
+        "thresholdsStyle": {
+          "mode": "off"
+        }
+      },
+      "fieldMinMax": false,
+      "mappings": [],
+      "min": 0,
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {
+            "color": "green"
+          }
+        ]
+      },
+      "unit": "CPUs"
+    },
+    "overrides": []
+  },
+  "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 73
+  },
+  "id": 4,
+  "interval": "15s",
+  "options": {
+    "legend": {
+      "calcs": [],
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": false
+    },
+    "tooltip": {
+      "hideZeros": false,
+      "maxHeight": 600,
+      "mode": "multi",
+      "sort": "asc"
+    }
+  },
+  "pluginVersion": "12.0.0-85518.patch7-85777",
+  "targets": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "disableTextWrap": false,
+      "editorMode": "builder",
+      "expr": "nomad_client_host_cpu_idle{node_pool=\"default\"} / 100",
+      "fullMetaSearch": false,
+      "includeNullMetadata": true,
+      "instant": false,
+      "legendFormat": "{{node_id}}",
+      "range": true,
+      "refId": "A",
+      "useBackend": false
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "editorMode": "builder",
+      "expr": "",
+      "hide": false,
+      "instant": false,
+      "legendFormat": "__auto",
+      "range": true,
+      "refId": "B"
+    }
+  ],
+  "title": "Orchestrator Nodes Idle CPU",
+  "type": "timeseries"
+}

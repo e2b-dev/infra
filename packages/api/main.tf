@@ -4,10 +4,6 @@ terraform {
       source  = "kreuzwerker/docker"
       version = "3.0.2"
     }
-    google = {
-      source  = "hashicorp/google"
-      version = "5.31.0"
-    }
     random = {
       source  = "hashicorp/random"
       version = "3.5.1"
@@ -56,6 +52,23 @@ resource "google_secret_manager_secret" "supabase_jwt_secrets" {
 resource "google_secret_manager_secret_version" "supabase_jwt_secrets" {
   secret      = google_secret_manager_secret.supabase_jwt_secrets.name
   secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret" "redis_url" {
+  secret_id = "${var.prefix}redis-url"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "redis_url" {
+  secret      = google_secret_manager_secret.redis_url.name
+  secret_data = "redis.service.consul"
 
   lifecycle {
     ignore_changes = [secret_data]

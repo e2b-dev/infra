@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -44,7 +43,8 @@ func New(
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
-	redisClient *redis.Client,
+	redisClient dns.Rediser,
+	redisClusterClient dns.Rediser,
 	dbClient *db.DB,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
@@ -52,7 +52,7 @@ func New(
 		zap.L().Error("Error initializing Analytics client", zap.Error(err))
 	}
 
-	dnsServer := dns.New(ctx, redisClient)
+	dnsServer := dns.New(ctx, redisClient, redisClusterClient)
 
 	if env.IsLocal() {
 		zap.L().Info("Running locally, skipping starting DNS server")

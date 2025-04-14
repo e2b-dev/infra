@@ -442,7 +442,7 @@ func (s *Sandbox) Snapshot(
 		return nil, fmt.Errorf("failed to create memfile diff file: %w", err)
 	}
 
-	memfileDirtyPages, _, err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiffFile)
+	memfileDirtyPages, _, err = header.CreateDiffWithTrace(ctx, tracer, sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiffFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
 	}
@@ -511,6 +511,10 @@ func (s *Sandbox) Snapshot(
 	err = file.Sync()
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync rootfs path: %w", err)
+	}
+
+	if err := file.Close(); err != nil {
+		return nil, fmt.Errorf("nbd file closing failed: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "synced rootfs")

@@ -6,6 +6,10 @@ variable "gcp_zone" {
   type = string
 }
 
+variable "network_name" {
+  type = string
+}
+
 variable "consul_version" {
   type    = string
   default = "1.16.2"

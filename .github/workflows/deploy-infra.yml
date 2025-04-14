@@ -1,4 +1,4 @@
-name: Deploy Staging Infra
+name: Deploy Infra
 
 on:
   workflow_dispatch:
@@ -11,14 +11,23 @@ on:
         description: 'Unique tracking ID used for identifying the workflow run'
         required: false
         type: string
+      environment:
+        description: 'Target environment for deployment, e.g. staging'
+        required: true
+        type: string
+      plan_only:
+        description: 'Only plan the infrastructure changes without applying them'
+        required: false
+        type: string
+        default: "false"
 
 concurrency:
-  group: deploy-staging
+  group: deploy-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy Infra to the staging environment
+    name: Deploy Infra to the ${{ inputs.environment }} environment
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -31,24 +40,26 @@ jobs:
           ref: ${{ inputs.commit_sha }}
 
       - name: Setup environment
-        uses: ./.github/actions/deploy-setup-staging
+        uses: ./.github/actions/deploy-setup
         with:
-          postgres_connection_string: ${{ secrets.STAGING_POSTGRES_CONNECTION_STRING }}
-
-      - name: Build and upload
-        run: |
-          make build-and-upload
+          environment: ${{ inputs.environment }}
+          env_vars: ${{ secrets[format('env_{0}', inputs.environment)] }}
 
       - name: Copy public builds
         run: |
           make copy-public-builds
 
       - name: Migrate database
+        if: inputs.plan_only == 'false'
         run: |
           make migrate
 
-      - name: Deploy infrastructure
+      - name: Plan infrastructure
         run: |
           make plan-without-jobs
+
+      - name: Apply infrastructure
+        if: inputs.plan_only == 'false'
+        run: |
           make apply
         

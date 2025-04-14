@@ -8,6 +8,8 @@ TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
 OTEL_TRACING_PRINT ?= false
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
 CLIENT_CLUSTER_AUTO_SCALING_MAX ?= 0
+REDIS_MANAGED ?= false
+GRAFANA_MANAGED ?= false
 
 tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
@@ -31,7 +33,9 @@ tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
 	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION) \
 	TF_VAR_clickhouse_connection_string=$(CLICKHOUSE_CONNECTION_STRING) \
 	TF_VAR_clickhouse_username=$(CLICKHOUSE_USERNAME) \
-	TF_VAR_clickhouse_database=$(CLICKHOUSE_DATABASE) 
+	TF_VAR_clickhouse_database=$(CLICKHOUSE_DATABASE) \
+	TF_VAR_redis_managed=$(REDIS_MANAGED) \
+	TF_VAR_grafana_managed=$(GRAFANA_MANAGED)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)
@@ -52,18 +56,45 @@ init:
 	$(MAKE) -C packages/cluster-disk-image init build
 	gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
+# Setup production environment variables, this is used only for E2B.dev production
+# Uses HCP CLI to read secrets from HCP Vault Secrets
+.PHONY: download-prod-env
+download-prod-env:
+	@ hcp auth login
+	@ hcp profile init --vault-secrets
+	@ hcp vault-secrets secrets read env_$(ENV) >/dev/null 2>&1 && echo "Environment found, writing to the .env.$(ENV) file" || { echo "Environment $(ENV) does not exist"; exit 1; }
+	@ rm -f ".env.$(ENV)"
+	@ hcp vault-secrets secrets open env_$(ENV) -o ".env.$(ENV)"
+	@ DECODED=$$(cat ".env.$(ENV)" | base64 -d) && echo "$$DECODED" > ".env.$(ENV)"
+
+# Updates production environment from .env file, this is used only for E2B.dev production
+# Uses HCP CLI to update secrets from HCP Vault Secrets
+.PHONY: update-prod-env
+update-prod-env:
+	@ hcp auth login
+	@ hcp profile init --vault-secrets
+	@ cat ".env.$(ENV)" | base64 -w 0 | tr -d '\n' | hcp vault-secrets secrets create env_$(ENV) --data-file=-
+
 .PHONY: plan
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
 	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
 
+# Deploy all jobs in Nomad
 .PHONY: plan-only-jobs
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(TF) fmt -recursive
-	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad;
 
+# Deploy a specific job name in Nomad
+# When job name is specified, all '-' are replaced with '_' in the job name
+.PHONY: plan-only-jobs/%
+plan-only-jobs/%:
+	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	$(TF) fmt -recursive
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode -target=module.nomad.nomad_job.$$(echo "$(notdir $@)" | tr '-' '_');
 
 .PHONY: apply
 apply:
@@ -104,6 +135,10 @@ destroy:
 version:
 	./scripts/increment-version.sh
 
+.PHONY: build
+build/%:
+	$(MAKE) -C packages/$(notdir $@) build
+
 .PHONY: build-and-upload
 build-and-upload:build-and-upload/api
 build-and-upload:build-and-upload/client-proxy
@@ -111,8 +146,6 @@ build-and-upload:build-and-upload/docker-reverse-proxy
 build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
-build/%:
-	$(MAKE) -C packages/$(notdir $@) build
 build-and-upload/%:
 	./scripts/confirm.sh $(ENV)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
@@ -171,24 +204,6 @@ test:
 .PHONY: test-integration
 test-integration:
 	$(MAKE) -C tests/integration test
-
-# $(MAKE) -C terraform/grafana init does not work b/c of the -include ${ENV_FILE} in the Makefile
-# so we need to call the Makefile directly
-# && cd - || cd - is used to handle the case where the command fails, we still want to cd -
-.PHONY: grafana-init
-grafana-init:
-	@ printf "Initializing Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	cd terraform/grafana && make init && cd - || cd -
-
-.PHONY: grafana-plan
-grafana-plan:
-	@ printf "Planning Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	cd terraform/grafana && make plan && cd - || cd -
-
-.PHONY: grafana-apply
-grafana-apply:
-	@ printf "Applying Grafana Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	cd terraform/grafana && make apply && cd - || cd -
 
 .PHONY: connect-orchestrator
 connect-orchestrator:

@@ -1,0 +1,58 @@
+name: "Deploy Staging Setup"
+description: "Sets the environment for deploying to staging"
+inputs:
+  environment:
+    description: 'Target environment for deployment, e.g. staging'
+    required: true
+  env_vars:
+    description: 'Environment variables to load'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Load Environment Variables
+      id: load-env
+      env:
+        ENV_CONFIG: ${{ inputs.env_vars }}
+      run: |
+        echo ${{ inputs.environment }} > .last_used_env
+        echo "$ENV_CONFIG" | base64 -d > ".env.${{ inputs.environment }}"
+        export $(cat ".env.${{ inputs.environment }}" | xargs)
+
+        echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
+        echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> $GITHUB_ENV
+        echo "TERRAFORM_STATE_BUCKET=${TERRAFORM_STATE_BUCKET}" >> $GITHUB_ENV
+        echo "GH_WORKLOAD_IDENTITY_PROVIDER=${GH_WORKLOAD_IDENTITY_PROVIDER}" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Setup Service Account
+      uses: google-github-actions/auth@v2
+      with:
+        project_id: ${{ env.GCP_PROJECT_ID }}
+        workload_identity_provider: ${{ env.GH_WORKLOAD_IDENTITY_PROVIDER }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Set up Docker
+      env:
+        GCP_REGION: ${{ env.GCP_REGION }}
+      run: |
+        gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+        export ACCESS_TOKEN=$(gcloud auth print-access-token)
+        export DOCKER_AUTH_BASE64=$(echo -n "{\"username\":\"oauth2accesstoken\",\"password\":\"$ACCESS_TOKEN\"}" | base64 -w 0)
+
+        echo "::add-mask::$DOCKER_AUTH_BASE64"
+        echo "DOCKER_AUTH_BASE64=${DOCKER_AUTH_BASE64}" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.5.7
+
+    - name: Terraform init
+      run: |
+        terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+      shell: bash

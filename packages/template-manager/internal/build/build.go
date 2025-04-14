@@ -122,7 +122,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 	memfileDirtyPages := bitset.New(0)
 	memfileDirtyPages.FlipRange(0, uint(header.TotalBlocks(memfileInfo.Size(), template.MemfilePageSize())))
 
-	memfileDirtyPages, emptyDirtyPages, err := header.CreateDiff(
+	memfileDirtyPages, emptyDirtyPages, err := header.CreateDiffWithTrace(
+		ctx,
+		b.tracer,
 		memfileSource,
 		template.MemfilePageSize(),
 		memfileDirtyPages,
@@ -179,7 +181,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 	rootfsDirtyBlocks := bitset.New(0)
 	rootfsDirtyBlocks.FlipRange(0, uint(header.TotalBlocks(rootfsInfo.Size(), template.RootfsBlockSize())))
 
-	rootfsDirtyBlocks, emptyDirtyBlocks, err := header.CreateDiff(
+	rootfsDirtyBlocks, emptyDirtyBlocks, err := header.CreateDiffWithTrace(
+		ctx,
+		b.tracer,
 		rootfsSource,
 		template.RootfsBlockSize(),
 		rootfsDirtyBlocks,

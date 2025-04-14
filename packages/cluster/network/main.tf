@@ -429,7 +429,7 @@ resource "google_compute_security_policy" "default" {
 
 module "gce_lb_http_logs" {
   source            = "GoogleCloudPlatform/lb-http/google"
-  version           = "~> 9.3"
+  version           = "~> 12.1"
   name              = "${var.prefix}external-logs-endpoint"
   project           = var.gcp_project_id
   address           = google_compute_global_address.orch_logs_ip.address

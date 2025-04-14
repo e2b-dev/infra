@@ -21,7 +21,7 @@ type EnvdClient struct {
 	ProcessClient    processconnect.ProcessClient
 }
 
-func GetEnvdClient(tb testing.TB, ctx context.Context) *EnvdClient {
+func GetEnvdClient(tb testing.TB, _ context.Context) *EnvdClient {
 	tb.Helper()
 
 	hc := http.Client{
@@ -52,12 +52,23 @@ func WithSandbox(sandboxID string, clientID string) func(ctx context.Context, re
 	}
 }
 
+func WithAccessToken(accessToken string) func(ctx context.Context, req *http.Request) error {
+	return func(ctx context.Context, req *http.Request) error {
+		SetAccessTokenHeader(req.Header, accessToken)
+		return nil
+	}
+}
+
 func SetSandboxHeader(header http.Header, sandboxID string, clientID string) {
 	domain := extractDomain(EnvdProxy)
-	// Construct the host (<port>-<sandbox id>-<old client id>.e2b.dev)
+	// Construct the host (<port>-<sandbox id>-<old client id>.e2b.app)
 	host := fmt.Sprintf("%d-%s-%s.%s", envdPort, sandboxID, clientID, domain)
 
 	header.Set("Host", host)
+}
+
+func SetAccessTokenHeader(header http.Header, accessToken string) {
+	header.Set("X-Access-Token", accessToken)
 }
 
 func SetUserHeader(header http.Header, user string) {

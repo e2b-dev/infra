@@ -34,7 +34,7 @@ type htmlTemplateData struct {
 }
 
 type jsonTemplateData struct {
-	Error     string `json:"error"`
+	Message   string `json:"message"`
 	SandboxId string `json:"sandboxId"`
 	Port      uint64 `json:"port"`
 }
@@ -98,7 +98,7 @@ func (p *SandboxProxy) proxyHandler(transport *http.Transport) func(w http.Respo
 			}()
 		}
 
-		// Extract sandbox id from the host (<port>-<sandbox id>-<old client id>.e2b.dev)
+		// Extract sandbox id from the host (<port>-<sandbox id>-<old client id>.e2b.app)
 		hostSplit := strings.Split(r.Host, "-")
 		if len(hostSplit) < 2 {
 			zap.L().Warn("invalid host to proxy", zap.String("host", r.Host))
@@ -183,7 +183,7 @@ func (p *SandboxProxy) buildHtmlClosedPortError(sandboxId string, host string, p
 
 func (p *SandboxProxy) buildJsonClosedPortError(sandboxId string, port uint64) []byte {
 	response := jsonTemplateData{
-		Error:     "The sandbox is running but port is not open",
+		Message:   "The sandbox is running but port is not open",
 		SandboxId: sandboxId,
 		Port:      port,
 	}

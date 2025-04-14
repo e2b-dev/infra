@@ -5,12 +5,14 @@ import (
 	"context"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"testing"
 
-	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
+	"github.com/e2b-dev/infra/tests/integration/internal/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
@@ -20,7 +22,8 @@ func TestListDir(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sbx := createSandbox(t, setup.WithAPIKey())
+	c := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, c)
 
 	createDir(t, "/test-dir")
 	createDir(t, "/test-dir/sub-dir-1")
@@ -34,7 +37,7 @@ func TestListDir(t *testing.T) {
 		Path:  "/",
 		Depth: 1,
 	})
-	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
 	setup.SetUserHeader(req.Header(), "user")
 	folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
 	assert.NoError(t, err)
@@ -49,7 +52,8 @@ func TestCreateFile(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sbx := createSandbox(t, setup.WithAPIKey())
+	c := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, c)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 	filePath := "test.txt"
@@ -63,37 +67,53 @@ func TestCreateFile(t *testing.T) {
 		},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
+		setup.WithSandbox(sbx.SandboxID, sbx.ClientID),
 	)
 	assert.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, createFileResp.StatusCode())
 }
 
-func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) *api.PostSandboxesResponse {
-	t.Helper()
-
+func TestFilePermissions(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	c := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, c)
 
-	sbxTimeout := int32(30)
-	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
-		TemplateID: setup.SandboxTemplateID,
-		Timeout:    &sbxTimeout,
-	}, reqEditors...)
+	envdClient := setup.GetEnvdClient(t, ctx)
+	req := connect.NewRequest(&process.StartRequest{
+		Process: &process.ProcessConfig{
+			Cmd:  "ls",
+			Args: []string{"-la", "/home/user"},
+		},
+	})
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetUserHeader(req.Header(), "user")
+	stream, err := envdClient.ProcessClient.Start(
+		ctx,
+		req,
+	)
+
 	assert.NoError(t, err)
 
-	t.Cleanup(func() {
-		if t.Failed() {
-			t.Logf("Response: %s", string(resp.Body))
+	defer stream.Close()
+
+	out := []string{}
+
+	for stream.Receive() {
+		msg := stream.Msg()
+		out = append(out, msg.String())
+	}
+
+	// in the output, we should see the files .bashrc and .profile, and they should have the correct permissions
+	for _, line := range out {
+		if strings.Contains(line, ".bashrc") || strings.Contains(line, ".profile") {
+			assert.Contains(t, line, "-rw-r--r--")
+			assert.Contains(t, line, "user user")
 		}
-	})
+	}
 
-	assert.Equal(t, http.StatusCreated, resp.StatusCode())
-
-	return resp
 }
 
 func createTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, string) {
