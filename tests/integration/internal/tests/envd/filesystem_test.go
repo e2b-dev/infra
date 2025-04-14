@@ -32,20 +32,60 @@ func TestListDir(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	// List all files in the root directory with depth 1
-	req := connect.NewRequest(&filesystem.ListDirRequest{
-		Path:  "/",
-		Depth: 1,
-	})
-	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
-	setup.SetUserHeader(req.Header(), "user")
-	folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
-	assert.NoError(t, err)
+	tests := []struct {
+		name          string
+		depth         uint32
+		expectedPaths []string
+	}{
+		{
+			name:  "depth 0 lists only root directory",
+			depth: 0,
+			expectedPaths: []string{
+				"test-dir",
+			},
+		},
+		{
+			name:  "depth 1 lists first level of subdirectories (in this case the root directory)",
+			depth: 1,
+			expectedPaths: []string{
+				"test-dir",
+				"test-dir/sub-dir-1",
+				"test-dir/sub-dir-2",
+			},
+		},
+		{
+			name:  "depth 2 lists all directories and files",
+			depth: 2,
+			expectedPaths: []string{
+				"test-dir",
+				"test-dir/sub-dir-1",
+				"test-dir/sub-dir-2",
+				"test-dir/sub-dir/file.txt",
+			},
+		},
+	}
 
-	assert.NotEmpty(t, folderListResp.Msg)
-	assert.Equal(t, 1, len(folderListResp.Msg.Entries))
-	assert.Equal(t, "test-dir", folderListResp.Msg.Entries[0].Name)
-	assert.Equal(t, "test-dir/sub-dir-1", folderListResp.Msg.Entries[1].Name)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := connect.NewRequest(&filesystem.ListDirRequest{
+				Path:  "/",
+				Depth: tt.depth,
+			})
+			setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
+			setup.SetUserHeader(req.Header(), "user")
+			folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
+			assert.NoError(t, err)
+
+			assert.NotEmpty(t, folderListResp.Msg)
+			assert.Equal(t, len(tt.expectedPaths), len(folderListResp.Msg.Entries))
+
+			actualPaths := make([]string, len(folderListResp.Msg.Entries))
+			for i, entry := range folderListResp.Msg.Entries {
+				actualPaths[i] = entry.Name
+			}
+			assert.ElementsMatch(t, tt.expectedPaths, actualPaths)
+		})
+	}
 }
 
 func TestCreateFile(t *testing.T) {
