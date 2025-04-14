@@ -5,11 +5,12 @@ job "orchestrator-${latest_orchestrator_job_id}" {
   priority = 90
 
   group "client-orchestrator" {
-    network {
-      port "orchestrator" {
-        static = "${port}"
-      }
-    }
+# TODO: Return after migrating to the new version
+#    network {
+#      port "orchestrator" {
+#        static = "${port}"
+#      }
+#    }
 
     service {
       name = "orchestrator"
@@ -83,7 +84,7 @@ EOT
 
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port} --proxy-port ${proxy_port}"]
+        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port} --proxy-port ${proxy_port} --wait 0"]
       }
 
       artifact {
