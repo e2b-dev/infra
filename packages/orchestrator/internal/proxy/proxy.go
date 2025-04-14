@@ -39,8 +39,13 @@ type jsonTemplateData struct {
 	Port      uint64 `json:"port"`
 }
 
+type sandboxProxyEntry struct {
+	ip     string
+	teamID string
+}
+
 type SandboxProxy struct {
-	sandboxes *smap.Map[string]
+	sandboxes *smap.Map[sandboxProxyEntry]
 	server    *http.Server
 }
 
@@ -49,16 +54,16 @@ func New(port uint) *SandboxProxy {
 
 	return &SandboxProxy{
 		server:    server,
-		sandboxes: smap.New[string](),
+		sandboxes: smap.New[sandboxProxyEntry](),
 	}
 }
 
-func (p *SandboxProxy) AddSandbox(sandboxID, ip string) {
-	p.sandboxes.Insert(sandboxID, ip)
+func (p *SandboxProxy) AddSandbox(sandboxID, ip string, teamID string) {
+	p.sandboxes.Insert(sandboxID, sandboxProxyEntry{ip: ip, teamID: teamID})
 }
 
 func (p *SandboxProxy) RemoveSandbox(sandboxID string, ip string) {
-	p.sandboxes.RemoveCb(sandboxID, func(k string, v string, ok bool) bool { return ok && v == ip })
+	p.sandboxes.RemoveCb(sandboxID, func(k string, v sandboxProxyEntry, ok bool) bool { return ok && v.ip == ip })
 }
 
 func (p *SandboxProxy) Start() error {
@@ -114,20 +119,26 @@ func (p *SandboxProxy) proxyHandler(transport *http.Transport) func(w http.Respo
 			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
 		}
 
-		sbxIp, sbxFound := p.sandboxes.Get(sandboxID)
+		sbxEntry, sbxFound := p.sandboxes.Get(sandboxID)
 		if !sbxFound {
 			zap.L().Warn("sandbox not found", zap.String("sandbox_id", sandboxID))
 			http.Error(w, "Sandbox not found", http.StatusNotFound)
 			return
 		}
 
-		logger := zap.L().With(zap.String("sandbox_id", sandboxID), zap.String("sandbox_ip", sbxIp), zap.Uint64("sandbox_req_port", sandboxPort), zap.String("sandbox_port_path", r.URL.Path))
+		logger := zap.L().With(
+			zap.String("sandbox_id", sandboxID),
+			zap.String("sandbox_ip", sbxEntry.ip),
+			zap.String("team_id", sbxEntry.teamID),
+			zap.Uint64("sandbox_req_port", sandboxPort),
+			zap.String("sandbox_port_path", r.URL.Path),
+		)
 
 		// We've resolved the node to proxy the request to
 		logger.Debug("Proxying request")
 		targetUrl := &url.URL{
 			Scheme: "http",
-			Host:   fmt.Sprintf("%s:%d", sbxIp, sandboxPort),
+			Host:   fmt.Sprintf("%s:%d", sbxEntry.ip, sandboxPort),
 		}
 
 		// Proxy the request
