@@ -21,7 +21,7 @@ const (
 
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
 // The parent context should have a deadline or a timeout.
-func doRequestWithInfiniteRetries(ctx context.Context, method, address string, requestBody []byte) (*http.Response, error) {
+func doRequestWithInfiniteRetries(ctx context.Context, method, address string, requestBody []byte, accessToken *string) (*http.Response, error) {
 	for {
 		reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 		request, err := http.NewRequestWithContext(reqCtx, method, address, bytes.NewReader(requestBody))
@@ -29,6 +29,12 @@ func doRequestWithInfiniteRetries(ctx context.Context, method, address string, r
 		if err != nil {
 			cancel()
 			return nil, err
+		}
+
+		// make sure request to already authorized envd will not fail
+		// this can happen in sandbox resume and in some edge cases when previous request was success, but we continued
+		if accessToken != nil {
+			request.Header.Set("X-Access-Token", *accessToken)
 		}
 
 		response, err := httpClient.Do(request)
@@ -49,7 +55,7 @@ func doRequestWithInfiniteRetries(ctx context.Context, method, address string, r
 func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
 	address := fmt.Sprintf("http://%s:%d/sync", s.Slot.HostIP(), consts.OldEnvdServerPort)
 
-	response, err := doRequestWithInfiniteRetries(ctx, "POST", address, nil)
+	response, err := doRequestWithInfiniteRetries(ctx, "POST", address, nil, nil)
 	if err != nil {
 		return fmt.Errorf("failed to sync envd: %w", err)
 	}
@@ -72,22 +78,22 @@ type PostInitJSONBody struct {
 	AccessToken *string            `json:"accessToken,omitempty"`
 }
 
-func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map[string]string, envdAccessToken *string) error {
+func (s *Sandbox) initEnvd(ctx context.Context, tracer trace.Tracer, envVars map[string]string, accessToken *string) error {
 	childCtx, childSpan := tracer.Start(ctx, "envd-init")
 	defer childSpan.End()
 
 	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
 	jsonBody := &PostInitJSONBody{
 		EnvVars:     &envVars,
-		AccessToken: envdAccessToken,
+		AccessToken: accessToken,
 	}
 
-	envVarsJSON, err := json.Marshal(jsonBody)
+	body, err := json.Marshal(jsonBody)
 	if err != nil {
 		return err
 	}
 
-	response, err := doRequestWithInfiniteRetries(childCtx, "POST", address, envVarsJSON)
+	response, err := doRequestWithInfiniteRetries(childCtx, "POST", address, body, accessToken)
 	if err != nil {
 		return fmt.Errorf("failed to init envd: %w", err)
 	}
