@@ -14,27 +14,31 @@ import (
 	"syscall"
 	"time"
 
+	limits "github.com/gin-contrib/size"
+	ginzap "github.com/gin-contrib/zap"
+	middleware "github.com/oapi-codegen/gin-middleware"
+
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-contrib/cors"
-	limits "github.com/gin-contrib/size"
-	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
+	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
+	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
-	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
-	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
-	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -63,7 +67,8 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.AP
 
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel
-		customMiddleware.ExcludeRoutes(tracingMiddleware.Middleware(serviceName),
+		customMiddleware.ExcludeRoutes(
+			tracingMiddleware.Middleware(serviceName),
 			"/health",
 			"/sandboxes/:sandboxID/refreshes",
 			"/templates/:templateID/builds/:buildID/logs",
@@ -75,12 +80,6 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.AP
 			"/sandboxes/:sandboxID",
 			"/sandboxes/:sandboxID/pause",
 			"/sandboxes/:sandboxID/resume",
-		),
-		customMiddleware.ExcludeRoutes(ginzap.Ginzap(logger, time.RFC3339Nano, true),
-			"/health",
-			"/sandboxes/:sandboxID/refreshes",
-			"/templates/:templateID/builds/:buildID/logs",
-			"/templates/:templateID/builds/:buildID/status",
 		),
 		gin.Recovery(),
 	)
@@ -134,6 +133,33 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.AP
 					MultiError: true,
 				},
 			}),
+	)
+
+	r.Use(
+		// Request logging must be executed after authorization (if required) is done,
+		// so that we can log team ID.
+		customMiddleware.ExcludeRoutes(
+			func(c *gin.Context) {
+				var teamID = ""
+
+				// Get team from context, use TeamContextKey
+				teamInfo := c.Value(auth.TeamContextKey)
+				if teamInfo != nil {
+					teamID = teamInfo.(authcache.AuthTeamInfo).Team.ID.String()
+				}
+
+				reqLogger := logger
+				if teamID != "" {
+					reqLogger = logger.With(zap.String("team_id", teamID))
+				}
+
+				ginzap.Ginzap(reqLogger, time.RFC3339Nano, true)(c)
+			},
+			"/health",
+			"/sandboxes/:sandboxID/refreshes",
+			"/templates/:templateID/builds/:buildID/logs",
+			"/templates/:templateID/builds/:buildID/status",
+		),
 	)
 
 	// We now register our store above as the handler for the interface
