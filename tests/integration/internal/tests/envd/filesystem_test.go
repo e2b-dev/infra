@@ -25,16 +25,67 @@ func TestListDir(t *testing.T) {
 	c := setup.GetAPIClient()
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 
-	envdClient := setup.GetEnvdClient(t, ctx)
-	req := connect.NewRequest(&filesystem.ListDirRequest{
-		Path: "/",
-	})
-	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
-	setup.SetUserHeader(req.Header(), "user")
-	folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
-	assert.NoError(t, err)
+	createDir(t, "/test-dir")
+	createDir(t, "/test-dir/sub-dir-1")
+	createDir(t, "/test-dir/sub-dir-2")
+	createTextFile(t, "/test-dir/sub-dir/file.txt", "Hello, World!")
 
-	assert.NotEmpty(t, folderListResp.Msg)
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	tests := []struct {
+		name          string
+		depth         uint32
+		expectedPaths []string
+	}{
+		{
+			name:  "depth 0 lists only root directory",
+			depth: 0,
+			expectedPaths: []string{
+				"test-dir",
+			},
+		},
+		{
+			name:  "depth 1 lists first level of subdirectories (in this case the root directory)",
+			depth: 1,
+			expectedPaths: []string{
+				"test-dir",
+				"test-dir/sub-dir-1",
+				"test-dir/sub-dir-2",
+			},
+		},
+		{
+			name:  "depth 2 lists all directories and files",
+			depth: 2,
+			expectedPaths: []string{
+				"test-dir",
+				"test-dir/sub-dir-1",
+				"test-dir/sub-dir-2",
+				"test-dir/sub-dir/file.txt",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := connect.NewRequest(&filesystem.ListDirRequest{
+				Path:  "/",
+				Depth: tt.depth,
+			})
+			setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
+			setup.SetUserHeader(req.Header(), "user")
+			folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
+			assert.NoError(t, err)
+
+			assert.NotEmpty(t, folderListResp.Msg)
+			assert.Equal(t, len(tt.expectedPaths), len(folderListResp.Msg.Entries))
+
+			actualPaths := make([]string, len(folderListResp.Msg.Entries))
+			for i, entry := range folderListResp.Msg.Entries {
+				actualPaths[i] = entry.Name
+			}
+			assert.ElementsMatch(t, tt.expectedPaths, actualPaths)
+		})
+	}
 }
 
 func TestCreateFile(t *testing.T) {
@@ -122,4 +173,21 @@ func createTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, 
 	}
 
 	return body, writer.FormDataContentType()
+}
+
+func createDir(tb testing.TB, path string) {
+	tb.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	client := setup.GetEnvdClient(tb, ctx)
+	req := connect.NewRequest(&filesystem.MakeDirRequest{
+		Path: path,
+	})
+	setup.SetUserHeader(req.Header(), "user")
+	_, err := client.FilesystemClient.MakeDir(ctx, req)
+	if err != nil {
+		tb.Fatal(err)
+	}
 }
