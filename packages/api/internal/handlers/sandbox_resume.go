@@ -129,7 +129,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}).Debug("Started resuming sandbox")
 
 	var envdAccessToken *string = nil
-	if snap.EnvSecure { // this should be taken from snapshot database i guess
+	if snap.EnvSecure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
 			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), zap.String("envdID", *build.EnvID), zap.String("envBuildID", build.ID.String()))
