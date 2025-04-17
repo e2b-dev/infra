@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) *api.PostSandboxesResponse {
+func createSandbox(t *testing.T, sbxWithAuth bool, reqEditors ...api.RequestEditorFn) *api.PostSandboxesResponse {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -21,10 +21,13 @@ func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) *api.PostSan
 	c := setup.GetAPIClient()
 
 	sbxTimeout := int32(10)
+
 	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
+		Secure:     &sbxWithAuth,
 	}, reqEditors...)
+
 	assert.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -40,19 +43,11 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sbx := createSandbox(t, setup.WithAPIKey())
+	sbx := createSandbox(t, true, setup.WithAPIKey())
+	assert.NotNil(t, sbx.JSON201)
+	assert.NotNil(t, sbx.JSON201.EnvdAccessToken)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
-	envdAuthToken := "test"
-
-	// first init call
-	sandboxEnvdInitCall(t, ctx, envdInitCall{
-		sbx:                   sbx,
-		client:                envdClient,
-		body:                  envdapi.PostInitJSONRequestBody{AccessToken: &envdAuthToken},
-		expectedResErr:        nil,
-		expectedResHttpStatus: http.StatusNoContent,
-	})
 
 	// set up the request to list the directory
 	req := connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
@@ -60,6 +55,7 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 	setup.SetUserHeader(req.Header(), "user")
 
 	_, err := envdClient.FilesystemClient.ListDir(ctx, req)
+	assert.NotNil(t, err)
 	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")
 }
 
@@ -67,19 +63,11 @@ func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sbx := createSandbox(t, setup.WithAPIKey())
+	sbx := createSandbox(t, true, setup.WithAPIKey())
+	assert.NotNil(t, sbx.JSON201)
+	assert.NotNil(t, sbx.JSON201.EnvdAccessToken)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
-	envdAuthToken := "secret-token"
-
-	// first init call
-	sandboxEnvdInitCall(t, ctx, envdInitCall{
-		sbx:                   sbx,
-		client:                envdClient,
-		body:                  envdapi.PostInitJSONRequestBody{AccessToken: &envdAuthToken},
-		expectedResErr:        nil,
-		expectedResHttpStatus: http.StatusNoContent,
-	})
 
 	// second call without authorization
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
@@ -95,26 +83,19 @@ func TestAccessAuthorizedPathWithOutdatedAccessToken(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sbx := createSandbox(t, setup.WithAPIKey())
+	sbx := createSandbox(t, true, setup.WithAPIKey())
+	assert.NotNil(t, sbx.JSON201)
+	assert.NotNil(t, sbx.JSON201.EnvdAccessToken)
+
 	envdClient := setup.GetEnvdClient(t, ctx)
-
-	envdAuthTokenA := "first-token"
+	envdAuthTokenA := sbx.JSON201.EnvdAccessToken
 	envdAuthTokenB := "second-token"
-
-	// first init call
-	sandboxEnvdInitCall(t, ctx, envdInitCall{
-		sbx:                   sbx,
-		client:                envdClient,
-		body:                  envdapi.PostInitJSONRequestBody{AccessToken: &envdAuthTokenA},
-		expectedResErr:        nil,
-		expectedResHttpStatus: http.StatusNoContent,
-	})
 
 	// set up the request to list the directory
 	req := connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
 	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
 	setup.SetUserHeader(req.Header(), "user")
-	setup.SetAccessTokenHeader(req.Header(), envdAuthTokenA)
+	setup.SetAccessTokenHeader(req.Header(), *envdAuthTokenA)
 
 	_, err := envdClient.FilesystemClient.ListDir(ctx, req)
 	assert.NoError(t, err)
@@ -123,7 +104,7 @@ func TestAccessAuthorizedPathWithOutdatedAccessToken(t *testing.T) {
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
-		authToken:             &envdAuthTokenA, // this is the old token used currently by envd
+		authToken:             envdAuthTokenA, // this is the old token used currently by envd
 		body:                  envdapi.PostInitJSONRequestBody{AccessToken: &envdAuthTokenB},
 		expectedResErr:        nil,
 		expectedResHttpStatus: http.StatusNoContent,
@@ -133,7 +114,7 @@ func TestAccessAuthorizedPathWithOutdatedAccessToken(t *testing.T) {
 	req = connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
 	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
 	setup.SetUserHeader(req.Header(), "user")
-	setup.SetAccessTokenHeader(req.Header(), envdAuthTokenA)
+	setup.SetAccessTokenHeader(req.Header(), *envdAuthTokenA)
 
 	_, err = envdClient.FilesystemClient.ListDir(ctx, req)
 	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")

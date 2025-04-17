@@ -12,16 +12,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSandboxCreate(t *testing.T) {
+func TestCreateSandboxWithSecuredEnvd(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	c := setup.GetAPIClient()
 
 	sbxTimeout := int32(60)
+	sbxSecure := true
+
 	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
+		Secure:     &sbxSecure,
 	}, setup.WithAPIKey())
 
 	if err != nil {
@@ -39,27 +42,13 @@ func TestSandboxCreate(t *testing.T) {
 	})
 
 	assert.Equal(t, http.StatusCreated, resp.StatusCode())
-}
+	assert.NotNil(t, resp.JSON201.EnvdAccessToken)
 
-func TestSandboxResumeUnknownSandbox(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	c := setup.GetAPIClient()
-
-	sbxCreate, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{TemplateID: setup.SandboxTemplateID}, setup.WithAPIKey())
-	if err != nil {
+	getResp, getErr := c.GetSandboxesSandboxIDWithResponse(ctx, resp.JSON201.SandboxID, setup.WithAPIKey())
+	if getErr != nil {
 		t.Fatal(err)
 	}
 
-	// try to generate non-existing sandbox id but with real client part
-	unknownSbxId := "xxx" + sbxCreate.JSON201.SandboxID[3:] + "-" + sbxCreate.JSON201.ClientID
-
-	sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(ctx, unknownSbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	assert.Equal(t, http.StatusNotFound, sbxResume.StatusCode())
-	assert.Equal(t, "{\"code\":404,\"message\":\"Sandbox snapshot not found\"}", string(sbxResume.Body))
+	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+	assert.Equal(t, *resp.JSON201.EnvdAccessToken, *getResp.JSON200.EnvdAccessToken)
 }

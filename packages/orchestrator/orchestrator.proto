@@ -36,6 +36,8 @@ message SandboxConfig {
   string base_template_id = 17;
 
   optional bool auto_pause = 18;
+
+  optional string envd_access_token = 19;
 }
 
 message SandboxCreateRequest {
