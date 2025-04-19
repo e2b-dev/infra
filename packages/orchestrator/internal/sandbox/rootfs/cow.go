@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel/trace"
@@ -79,7 +78,12 @@ func (o *CowDevice) Export(parentCtx context.Context, out io.Writer, stopSandbox
 	}
 
 	// the error is already logged in go routine in SandboxCreate handler
-	go stopSandbox(childCtx)
+	go func() {
+		err := stopSandbox(childCtx)
+		if err != nil {
+			zap.L().Error("error stopping sandbox on cow export", zap.Error(err))
+		}
+	}()
 
 	select {
 	case <-o.finishedOperations:
@@ -122,44 +126,9 @@ func (o *CowDevice) Close(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("error closing overlay cache: %w", err))
 	}
 
-	devicePath, err := o.ready.Wait()
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error getting overlay path: %w", err))
-
-		return errors.Join(errs...)
-	}
-
-	slot, err := nbd.GetDeviceSlot(devicePath)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error getting overlay slot: %w", err))
-
-		return errors.Join(errs...)
-	}
-
-	attempts := 0
-	for {
-		attempts++
-		err := o.devicePool.ReleaseDevice(slot)
-		if errors.Is(err, nbd.ErrDeviceInUse{}) {
-			if attempts%100 == 0 {
-				zap.L().Info("error releasing overlay device", zap.Int("attempts", attempts), zap.Error(err))
-			}
-
-			time.Sleep(500 * time.Millisecond)
-
-			continue
-		}
-
-		if err != nil {
-			return fmt.Errorf("error releasing overlay device: %w", err)
-		}
-
-		break
-	}
-
 	zap.L().Info("overlay device released")
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func (o *CowDevice) Path() (string, error) {
