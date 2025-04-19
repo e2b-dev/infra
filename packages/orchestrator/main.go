@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -44,7 +45,18 @@ func run() int32 {
 
 	var proxyPort uint
 	flag.UintVar(&proxyPort, "proxy-port", defaultProxyPort, "orchestrator proxy port")
+
+	// TODO: Remove after the orchestrator is fully migrated to the new job definition
+	defaultWait := uint(30)
+	var wait uint
+	flag.UintVar(&wait, "wait", defaultWait, "orchestrator initial wait time")
+
 	flag.Parse()
+
+	if wait > 0 {
+		log.Printf("waiting %d seconds before starting orchestrator", wait)
+		time.Sleep(time.Duration(wait) * time.Second)
+	}
 
 	wg := &sync.WaitGroup{}
 	exitCode := &atomic.Int32{}
