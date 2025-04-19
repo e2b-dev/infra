@@ -33,6 +33,7 @@ type Node struct {
 
 	Info *node.NodeInfo
 
+	version  string
 	status   api.NodeStatus
 	statusMu sync.RWMutex
 
@@ -113,6 +114,7 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 			Status:               n.Status(),
 			CreateFails:          n.createFails.Load(),
 			SandboxStartingCount: n.sbxsInProgress.Count(),
+			Version:              n.version,
 		}
 	}
 
@@ -147,6 +149,7 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 				Status:       n.Status(),
 				CachedBuilds: builds,
 				CreateFails:  n.createFails.Load(),
+				Version:      n.version,
 			}
 		}
 	}

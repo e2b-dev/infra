@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -29,6 +30,7 @@ const (
 )
 
 type Orchestrator struct {
+	httpClient    *http.Client
 	nomadClient   *nomadapi.Client
 	instanceCache *instance.InstanceCache
 	nodes         *smap.Map[*Node]
@@ -61,7 +63,12 @@ func New(
 		dnsServer.Start(ctx, "0.0.0.0", os.Getenv("DNS_PORT"))
 	}
 
+	httpClient := &http.Client{
+		Timeout: nodeHealthCheckTimeout,
+	}
+
 	o := Orchestrator{
+		httpClient:  httpClient,
 		analytics:   analyticsInstance,
 		nomadClient: nomadClient,
 		tracer:      tracer,
