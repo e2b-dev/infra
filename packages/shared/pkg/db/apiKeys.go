@@ -34,13 +34,13 @@ func validateTeamUsage(team *models.Team) error {
 	return nil
 }
 
-func (db *DB) GetTeamAuth(ctx context.Context, apiKey string) (*models.Team, *models.Tier, error) {
+func (db *DB) GetTeamAuth(ctx context.Context, apiKeyHashed string) (*models.Team, *models.Tier, error) {
 	result, err := db.
 		Client.
 		TeamAPIKey.
 		Query().
 		WithTeam().
-		Where(teamapikey.APIKey(apiKey)).
+		Where(teamapikey.APIKeyHash(apiKeyHashed)).
 		QueryTeam().
 		WithTeamTier().
 		Only(ctx)
@@ -59,12 +59,12 @@ func (db *DB) GetTeamAuth(ctx context.Context, apiKey string) (*models.Team, *mo
 	return result, result.Edges.TeamTier, nil
 }
 
-func (db *DB) GetUserID(ctx context.Context, token string) (*uuid.UUID, error) {
+func (db *DB) GetUserID(ctx context.Context, hashedToken string) (*uuid.UUID, error) {
 	result, err := db.
 		Client.
 		AccessToken.
 		Query().
-		Where(accesstoken.AccessToken(token)).
+		Where(accesstoken.AccessTokenHash(hashedToken)).
 		Only(ctx)
 
 	if err != nil {
