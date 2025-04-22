@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -26,6 +27,12 @@ var proxyBrowser502PageHtml string
 
 var browserRegex = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|opera|msie`)
 var browserTemplate = template.Must(template.New("template").Parse(proxyBrowser502PageHtml))
+
+const (
+	MaxIdleConnections    = 32768
+	MaxConnectionDuration = 24 * time.Hour
+	IdleTimeout           = 630 * time.Second
+)
 
 type htmlTemplateData struct {
 	SandboxId   string
@@ -50,7 +57,13 @@ type SandboxProxy struct {
 }
 
 func New(port uint) *SandboxProxy {
-	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
+	server := &http.Server{
+		Addr:              fmt.Sprintf(":%d", port),
+		ReadTimeout:       MaxConnectionDuration,
+		WriteTimeout:      MaxConnectionDuration,
+		IdleTimeout:       IdleTimeout,
+		ReadHeaderTimeout: 20 * time.Second,
+	}
 
 	return &SandboxProxy{
 		server:    server,
@@ -70,12 +83,15 @@ func (p *SandboxProxy) Start() error {
 	// similar values to our old the nginx configuration
 	serverTransport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
-		MaxIdleConns:          1024,              // Matches worker_connections
-		MaxIdleConnsPerHost:   8192,              // Matches keepalive_requests
-		IdleConnTimeout:       620 * time.Second, // Matches keepalive_timeout
-		TLSHandshakeTimeout:   10 * time.Second,  // Similar to client_header_timeout
-		ResponseHeaderTimeout: 24 * time.Hour,    // Matches proxy_read_timeout
-		DisableKeepAlives:     true,              // Disable keep-alives, envd doesn't support idle connections
+		MaxIdleConnsPerHost:   MaxIdleConnections,
+		IdleConnTimeout:       IdleTimeout,
+		TLSHandshakeTimeout:   20 * time.Second,
+		ResponseHeaderTimeout: 20 * time.Second,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second, // Connect timeout (no timeout by default)
+			KeepAlive: 30 * time.Second, // Lower than our http keepalives (50 seconds)
+		}).DialContext,
+		DisableCompression: true, // No need to request or manipulate compression
 	}
 
 	p.server.Handler = http.HandlerFunc(p.proxyHandler(serverTransport))
