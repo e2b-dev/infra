@@ -255,6 +255,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	telemetry.ReportEvent(childCtx, "created network")
 
 	pidsLimit := int64(200)
+	memory := int64(math.Max(float64(r.env.MemoryMB)/2, 512)) << ToMBShift
 
 	cont, err := r.client.ContainerCreate(childCtx, &container.Config{
 		Image:        r.dockerTag(),
@@ -271,10 +272,10 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		// TODO: Network mode is causing problems with /etc/hosts - we want to find a way to fix this and enable network mode again
 		// NetworkMode: container.NetworkMode(network.ID),
 		Resources: container.Resources{
-			Memory:     r.env.MemoryMB << ToMBShift,
+			Memory:     memory,
 			CPUPeriod:  100000,
 			CPUQuota:   r.env.VCpuCount * 100000,
-			MemorySwap: r.env.MemoryMB << ToMBShift,
+			MemorySwap: memory,
 			PidsLimit:  &pidsLimit,
 		},
 	}, nil, &v1.Platform{}, "")
