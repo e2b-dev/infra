@@ -3,6 +3,7 @@ package process
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os/user"
 	"strconv"
@@ -123,7 +124,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 				},
 			})
 			if streamErr != nil {
-				cancel(connect.NewError(connect.CodeUnknown, streamErr))
+				cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending start event: %w", streamErr)))
 
 				return
 			}
@@ -144,7 +145,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 					},
 				})
 				if streamErr != nil {
-					cancel(connect.NewError(connect.CodeUnknown, streamErr))
+					cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending keepalive: %w", streamErr)))
 					return
 				}
 			case <-ctx.Done():
@@ -161,7 +162,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 					},
 				})
 				if streamErr != nil {
-					cancel(connect.NewError(connect.CodeUnknown, streamErr))
+					cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending data event: %w", streamErr)))
 					return
 				}
 
@@ -187,7 +188,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 				},
 			})
 			if streamErr != nil {
-				cancel(connect.NewError(connect.CodeUnknown, streamErr))
+				cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending end event: %w", streamErr)))
 
 				return
 			}
