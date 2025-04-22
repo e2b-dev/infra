@@ -80,13 +80,15 @@ func (p *SandboxProxy) RemoveSandbox(sandboxID string, ip string) {
 }
 
 func (p *SandboxProxy) Start() error {
-	// similar values to our old the nginx configuration
+	// Similar values to our old the nginx configuration.
+	// Configures requests to upstream (sandbox).
 	serverTransport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		MaxIdleConnsPerHost:   maxIdleConnections,
 		IdleConnTimeout:       idleTimeout,
 		TLSHandshakeTimeout:   20 * time.Second,
 		ResponseHeaderTimeout: 20 * time.Second,
+		// TCP configuration
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second, // Connect timeout (no timeout by default)
 			KeepAlive: 30 * time.Second, // Lower than our http keepalives (50 seconds)

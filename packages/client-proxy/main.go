@@ -248,7 +248,6 @@ func run() int {
 		}
 	}()
 
-	// Proxy request to the correct node
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
 		ReadTimeout:       maxConnectionDuration,
@@ -257,13 +256,15 @@ func run() int {
 		ReadHeaderTimeout: 20 * time.Second,
 	}
 
-	// similar values to our old the nginx configuration
+	// Similar values to our old the nginx configuration.
+	// Configures requests to upstream (orchestrator proxy).
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		MaxIdleConnsPerHost:   maxIdleConnections,
 		IdleConnTimeout:       idleTimeout,
 		TLSHandshakeTimeout:   20 * time.Second,
 		ResponseHeaderTimeout: 20 * time.Second,
+		// TCP configuration
 		DialContext: (&net.Dialer{
 			Timeout:   10 * time.Second, // Connect timeout—can be lower between proxies
 			KeepAlive: 30 * time.Second, // Lower than our http keepalives (50 seconds)
