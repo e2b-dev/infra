@@ -3,6 +3,7 @@ name: Pull Request
 permissions:
   contents: read
   id-token: write
+  checks: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
