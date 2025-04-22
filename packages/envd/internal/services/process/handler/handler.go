@@ -119,7 +119,7 @@ func New(
 	var outWg sync.WaitGroup
 
 	// Create a context for waiting for and cancelling output pipes.
-	// Cancellation if the process via timeout will propagate and cancel this context too.
+	// Cancellation of the process via timeout will propagate and cancel this context too.
 	outCtx, outCancel := context.WithCancel(ctx)
 
 	h := &Handler{
