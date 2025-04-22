@@ -43,7 +43,7 @@ jobs:
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
-        comment_mode: off
         with:
+          comment_mode: off
           files: |
             ./tests/integration/test-results.xml
