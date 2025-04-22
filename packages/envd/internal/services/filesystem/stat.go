@@ -36,6 +36,7 @@ func (Service) Stat(ctx context.Context, req *connect.Request[rpc.StatRequest]) 
 			Entry: &rpc.EntryInfo{
 				Name: fileInfo.Name(),
 				Type: getEntryType(fileInfo),
+				Path: path,
 			},
 		},
 	), nil
