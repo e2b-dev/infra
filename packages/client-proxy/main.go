@@ -42,9 +42,9 @@ const (
 	port                  = 3002
 	orchestratorProxyPort = 5007 // orchestrator proxy port
 	maxRetries            = 3
-	maxConnectionDuration = 24 * time.Hour    // The same as the current max sandbox duration
-	maxIdleConnections    = 32768             // Reasonably big number that is lower than the number of available ports
-	maxIdleTimeout        = 620 * time.Second // This should be ideally bigger than the previous downstream and lower than then next upstream timeout so the closing is not from the most upstream server.
+	maxConnectionDuration = 24 * time.Hour    // The same as the current max sandbox duration.
+	maxIdleConnections    = 32768             // Reasonably big number that is lower than the number of available ports.
+	idleTimeout           = 620 * time.Second // This should be ideally bigger than the previous downstream and lower than then next upstream timeout so the closing is not from the most upstream server.
 )
 
 var (
@@ -253,7 +253,7 @@ func run() int {
 		Addr:              fmt.Sprintf(":%d", port),
 		ReadTimeout:       maxConnectionDuration,
 		WriteTimeout:      maxConnectionDuration,
-		IdleTimeout:       maxIdleTimeout,
+		IdleTimeout:       idleTimeout,
 		ReadHeaderTimeout: 20 * time.Second,
 	}
 
@@ -261,7 +261,7 @@ func run() int {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		MaxIdleConnsPerHost:   maxIdleConnections,
-		IdleConnTimeout:       maxIdleTimeout,
+		IdleConnTimeout:       idleTimeout,
 		TLSHandshakeTimeout:   20 * time.Second,
 		ResponseHeaderTimeout: 20 * time.Second,
 		DialContext: (&net.Dialer{

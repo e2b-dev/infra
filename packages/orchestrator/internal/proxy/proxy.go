@@ -29,9 +29,9 @@ var browserRegex = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|op
 var browserTemplate = template.Must(template.New("template").Parse(proxyBrowser502PageHtml))
 
 const (
-	MaxIdleConnections    = 32768
-	MaxConnectionDuration = 24 * time.Hour
-	IdleTimeout           = 630 * time.Second
+	maxConnectionDuration = 24 * time.Hour    // The same as the current max sandbox duration.
+	maxIdleConnections    = 32768             // Reasonably big number that is lower than the number of available ports.
+	idleTimeout           = 630 * time.Second // This should be ideally bigger than the previous downstream and lower than then next upstream timeout so the closing is not from the most upstream server.
 )
 
 type htmlTemplateData struct {
@@ -59,9 +59,9 @@ type SandboxProxy struct {
 func New(port uint) *SandboxProxy {
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
-		ReadTimeout:       MaxConnectionDuration,
-		WriteTimeout:      MaxConnectionDuration,
-		IdleTimeout:       IdleTimeout,
+		ReadTimeout:       maxConnectionDuration,
+		WriteTimeout:      maxConnectionDuration,
+		IdleTimeout:       idleTimeout,
 		ReadHeaderTimeout: 20 * time.Second,
 	}
 
@@ -83,8 +83,8 @@ func (p *SandboxProxy) Start() error {
 	// similar values to our old the nginx configuration
 	serverTransport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
-		MaxIdleConnsPerHost:   MaxIdleConnections,
-		IdleConnTimeout:       IdleTimeout,
+		MaxIdleConnsPerHost:   maxIdleConnections,
+		IdleConnTimeout:       idleTimeout,
 		TLSHandshakeTimeout:   20 * time.Second,
 		ResponseHeaderTimeout: 20 * time.Second,
 		DialContext: (&net.Dialer{
