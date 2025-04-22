@@ -40,10 +40,9 @@ jobs:
             # Run the integration tests
             make test-integration
 
-      - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+      - name: Upload Test Results
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          comment_mode: off
-          files: |
-            ./tests/integration/test-results.xml
+          name: Integration Tests Results
+          path: ./tests/integration/test-results.xml
