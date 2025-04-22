@@ -74,8 +74,12 @@ func (a *API) validateSigning(r *http.Request, signature *string, signatureExpir
 
 	// check if access token is sent in the header
 	tokenFromHeader := r.Header.Get(accessTokenHeader)
-	if tokenFromHeader != "" && tokenFromHeader != *a.accessToken {
-		return fmt.Errorf("access token present in header but does not match")
+	if tokenFromHeader != "" {
+		if tokenFromHeader != *a.accessToken {
+			return fmt.Errorf("access token present in header but does not match")
+		}
+
+		return nil
 	}
 
 	if signature == nil {
