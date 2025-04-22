@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/process"
@@ -25,9 +26,9 @@ func TestListDir(t *testing.T) {
 	c := setup.GetAPIClient()
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 
-	createDir(t, "/test-dir")
-	createDir(t, "/test-dir/sub-dir-1")
-	createDir(t, "/test-dir/sub-dir-2")
+	createDir(t, sbx, "/test-dir")
+	createDir(t, sbx, "/test-dir/sub-dir-1")
+	createDir(t, sbx, "/test-dir/sub-dir-2")
 	createTextFile(t, "/test-dir/sub-dir/file.txt", "Hello, World!")
 
 	envdClient := setup.GetEnvdClient(t, ctx)
@@ -175,7 +176,7 @@ func createTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, 
 	return body, writer.FormDataContentType()
 }
 
-func createDir(tb testing.TB, path string) {
+func createDir(tb testing.TB, sbx *api.Sandbox, path string) {
 	tb.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -185,6 +186,7 @@ func createDir(tb testing.TB, path string) {
 	req := connect.NewRequest(&filesystem.MakeDirRequest{
 		Path: path,
 	})
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
 	setup.SetUserHeader(req.Header(), "user")
 	_, err := client.FilesystemClient.MakeDir(ctx, req)
 	if err != nil {
