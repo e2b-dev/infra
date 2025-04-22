@@ -44,7 +44,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 	}
 
 	var entries []*rpc.EntryInfo
-	err = filepath.WalkDir(dirPath, func(path string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(dirPath, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -66,9 +66,9 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		}
 
 		entries = append(entries, &rpc.EntryInfo{
-			Name: d.Name(),
-			Type: getEntryType(d),
-			Path: filepath.ToSlash(path),
+			Name: entry.Name(),
+			Type: getEntryType(entry),
+			Path: path,
 		})
 
 		return nil
