@@ -2,7 +2,7 @@ import { Sandbox } from "npm:@e2b/code-interpreter@beta";
 import { log } from "./utils.ts";
 
 const sbx = await Sandbox.create()
-log('Sandbox created', sbx.sandboxId)
+log('ℹ️ sandbox created', sbx.sandboxId)
 
 await sbx.runCode('x = 1');
 log('Sandbox code executed')

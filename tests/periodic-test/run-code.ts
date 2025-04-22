@@ -8,11 +8,12 @@ try {
     // Create a E2B Code Interpreter with JavaScript kernel
     log('creating sandbox')
     sandbox = await Sandbox.create();
+    log('ℹ️ sandbox created', sandbox.sandboxId)
 } catch (error) {
     log('Test failed:', error)
     throw new Error('error creating sandbox', error)
 }
-log('sandbox created')
+
 
 
 try {
