@@ -30,7 +30,7 @@ jobs:
           TESTS_API_SERVER_URL: "http://localhost:3000"
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
           TESTS_ENVD_PROXY: "http://localhost:5007"
-        run:
+        run: |
             # Monitor logs of the services
             ls -l ~/logs
             tail -f ~/logs/orchestrator.log -n 0 &
