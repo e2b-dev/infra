@@ -3,6 +3,7 @@ package process
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
@@ -42,7 +43,7 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 		},
 	})
 	if streamErr != nil {
-		return connect.NewError(connect.CodeUnknown, streamErr)
+		return connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending start event: %w", streamErr))
 	}
 
 	go func() {
@@ -63,7 +64,7 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 					},
 				})
 				if streamErr != nil {
-					cancel(connect.NewError(connect.CodeUnknown, streamErr))
+					cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending keepalive: %w", streamErr)))
 
 					return
 				}
@@ -82,7 +83,7 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 					},
 				})
 				if streamErr != nil {
-					cancel(connect.NewError(connect.CodeUnknown, streamErr))
+					cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending data event: %w", streamErr)))
 
 					return
 				}
@@ -109,7 +110,7 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 				},
 			})
 			if streamErr != nil {
-				cancel(connect.NewError(connect.CodeUnknown, streamErr))
+				cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending end event: %w", streamErr)))
 
 				return
 			}

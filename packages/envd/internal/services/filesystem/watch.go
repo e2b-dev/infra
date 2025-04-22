@@ -75,7 +75,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 				},
 			})
 			if streamErr != nil {
-				return connect.NewError(connect.CodeUnknown, streamErr)
+				return connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending keepalive: %w", streamErr))
 			}
 		case <-ctx.Done():
 			return ctx.Err()
@@ -140,7 +140,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 					Msg("Streaming filesystem event")
 
 				if streamErr != nil {
-					return connect.NewError(connect.CodeUnknown, streamErr)
+					return connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending filesystem event: %w", streamErr))
 				}
 
 				resetKeepalive()
