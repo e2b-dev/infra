@@ -43,7 +43,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("path is not a directory: %s", dirPath))
 	}
 
-	var entries []os.DirEntry
+	var entries []*rpc.EntryInfo
 	err = filepath.WalkDir(dirPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -65,32 +65,20 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 			return filepath.SkipDir
 		}
 
-		entries = append(entries, d)
+		entries = append(entries, &rpc.EntryInfo{
+			Name: d.Name(),
+			Type: getEntryType(d),
+			Path: filepath.ToSlash(path),
+		})
+
 		return nil
 	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error reading directory: %w", err))
 	}
 
-	e := make([]*rpc.EntryInfo, len(entries))
-
-	for i, entry := range entries {
-		var t rpc.FileType
-		if entry.IsDir() {
-			t = rpc.FileType_FILE_TYPE_DIRECTORY
-		} else {
-			t = rpc.FileType_FILE_TYPE_FILE
-		}
-
-		e[i] = &rpc.EntryInfo{
-			Name: entry.Name(),
-			Type: t,
-			Path: path.Join(dirPath, entry.Name()),
-		}
-	}
-
 	return connect.NewResponse(&rpc.ListDirResponse{
-		Entries: e,
+		Entries: entries,
 	}), nil
 }
 
