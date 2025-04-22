@@ -3,3 +3,5 @@ bin
 .shared
 
 seed.sql
+
+test-results.*
