@@ -86,6 +86,9 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 
 	proc, err := handler.New(procCtx, u, req.Msg, &handlerL, s.envs, cancelProc)
 	if err != nil {
+		// Ensure the process cancel is called to cleanup resources.
+		cancelProc()
+
 		return err
 	}
 
