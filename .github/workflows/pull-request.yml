@@ -43,5 +43,6 @@ jobs:
         if: always()
         with:
           name: Tests Results
+          fail-on-error: false
           reporter: 'jest-junit'
           path: "artifacts/**/*.xml"
