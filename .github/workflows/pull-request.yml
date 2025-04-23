@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       checks: write
+      pull-requests: write
     if: always()
 
     steps:
@@ -44,4 +45,5 @@ jobs:
         with:
           flaky_summary: true
           include_time_in_summary: true
+          comment: true
           report_paths: "artifacts/**/*.xml"
