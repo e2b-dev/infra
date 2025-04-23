@@ -64,6 +64,7 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 	setup.SetUserHeader(req.Header(), "user")
 
 	_, err := envdClient.FilesystemClient.ListDir(ctx, req)
+	require.Error(t, err)
 	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")
 }
 
@@ -140,6 +141,7 @@ func TestAccessAuthorizedPathWithOutdatedAccessToken(t *testing.T) {
 	setup.SetAccessTokenHeader(req.Header(), envdAuthTokenA)
 
 	_, err = envdClient.FilesystemClient.ListDir(ctx, req)
+	require.Error(t, err)
 	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")
 }
 
