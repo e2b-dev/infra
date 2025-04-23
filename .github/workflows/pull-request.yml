@@ -23,14 +23,12 @@ jobs:
     needs: [ integrity-check ]
     uses: ./.github/workflows/integration_tests.yml
   publish-test-results:
-    name: "Publish Tests Results"
     needs:
       - unit-tests
       - integration-tests
     runs-on: ubuntu-latest
     permissions:
       checks: write
-      pull-requests: write
     if: always()
 
     steps:
@@ -40,10 +38,9 @@ jobs:
           path: artifacts
 
       - name: Publish Test Results
-        uses: mikepenz/action-junit-report@v5
+        uses: dorny/test-reporter@v2
         if: always()
         with:
-          flaky_summary: true
-          include_time_in_summary: true
-          comment: true
-          report_paths: "artifacts/**/*.xml"
+          name: Tests Results
+          reporter: 'jest-junit'
+          path: "artifacts/**/*.xml"
