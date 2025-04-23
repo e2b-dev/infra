@@ -38,9 +38,10 @@ jobs:
         with:
           path: artifacts
 
-      - name: Test Summary
-        uses: test-summary/action@v2
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
         with:
-          paths: "artifacts/**/*.xml"
-          show: "all"
+          comment_mode: off
+          fail_on: 'errors'
+          files: "artifacts/**/*.xml"
