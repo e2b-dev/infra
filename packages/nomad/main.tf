@@ -20,6 +20,10 @@ data "google_secret_manager_secret_version" "analytics_collector_api_token" {
   secret = var.analytics_collector_api_token_secret_name
 }
 
+data "google_secret_manager_secret_version" "launch_darkly_api_key" {
+  secret = var.launch_darkly_api_key_secret_name
+}
+
 provider "nomad" {
   address      = "https://nomad.${var.domain_name}"
   secret_id    = var.nomad_acl_token_secret
@@ -55,7 +59,7 @@ resource "nomad_job" "api" {
     nomad_acl_token               = var.nomad_acl_token_secret
     admin_token                   = var.api_admin_token
     redis_url                     = "redis://redis.service.consul:${var.redis_port.port}"
-    redis_url2                    = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "redis://${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+    redis_cluster_url             = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
     dns_port_number               = var.api_dns_port_number
     clickhouse_connection_string  = var.clickhouse_connection_string
     clickhouse_username           = var.clickhouse_username
@@ -112,24 +116,8 @@ resource "nomad_job" "client_proxy" {
 
       otel_collector_grpc_endpoint = "localhost:4317"
       logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+      launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   })
-}
-
-resource "nomad_job" "session_proxy" {
-  jobspec = file("${path.module}/session-proxy.hcl")
-
-  hcl2 {
-    vars = {
-      gcp_zone                   = var.gcp_zone
-      session_proxy_port_number  = var.session_proxy_port.port
-      session_proxy_port_name    = var.session_proxy_port.name
-      session_proxy_service_name = var.session_proxy_service_name
-      load_balancer_conf = templatefile("${path.module}/proxies/session.conf", {
-        browser_502 = replace(file("${path.module}/proxies/browser_502.html"), "\n", "")
-      })
-      nginx_conf = file("${path.module}/proxies/nginx.conf")
-    }
-  }
 }
 
 # grafana otel collector url
@@ -436,4 +424,3 @@ resource "nomad_job" "clickhouse" {
     password_sha256_hex = sha256(var.clickhouse_password)
   })
 }
-

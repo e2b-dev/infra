@@ -1,0 +1,394 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Dashboard for ${gcp_project_id} cluster",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 14,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "cloud",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "GCP",
+      "tooltip": "Open GCP Console",
+      "type": "link",
+      "url": "https://console.cloud.google.com/compute/instances?referrer=search&authuser=1&project=${gcp_project_id}"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Nomad",
+      "tooltip": "Open Nomad Dashboard",
+      "type": "link",
+      "url": "https://nomad.${domain_name}/ui/jobs"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Posthog",
+      "tooltip": "Open Posthog Dashboard",
+      "type": "link",
+      "url": "https://app.posthog.com/home"
+    }
+  ],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 28,
+      "panels": [],
+      "title": "Sandboxes (${gcp_project_id})",
+      "type": "row"
+    },
+    ${sandbox-start-rate},
+    ${sandbox-start-rate-by-team},
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "id": 82,
+      "panels": [
+        ${sandboxes-started-in-interval},
+        ${sandboxes-started-in-interval-by-team}
+      ],
+      "title": "Started Sandboxes",
+      "type": "row"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "id": 45,
+      "panels": [],
+      "title": "Requests",
+      "type": "row"
+    },
+    ${sandbox-create-latency},
+    ${sandbox-create-errors},
+    ${sandbox-kill-latency},
+    ${sandbox-kill-errors},
+    ${sandbox-pause-latency},
+    ${sandbox-pause-errors},
+    ${sandbox-pause-latency-orchestrator},
+    ${sandbox-pause-errors-orchestrator},
+    ${sandbox-resume-latency},
+    ${sandbox-resume-errors},
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 51
+      },
+      "id": 45,
+      "panels": [
+        ${sandbox-create-latency-long-term},
+        ${sandbox-kill-latency-long-term}
+      ],
+      "title": "Requests Long Term",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 68
+      },
+      "id": 79,
+      "panels": [
+        ${sandbox-create-latency-old},
+        ${sandbox-create-errors-old},
+        ${sandbox-pause-latency-old},
+        ${sandbox-pause-errors-old},
+        ${sandbox-resume-latency-old},
+        ${sandbox-resume-errors-old}
+      ],
+      "title": "Request times (old)",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 69
+      },
+      "id": 46,
+      "panels": [
+        ${sandbox-create-errors-500-old},
+        ${sandbox-create-errors-400-old},
+        ${sandbox-pause-errors-500-old},
+        ${sandbox-pause-errors-400-old},
+        ${sandbox-resume-errors-500-old},
+        ${sandbox-resume-errors-400-old}
+      ],
+      "title": "Request errors",
+      "type": "row"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 70
+      },
+      "id": 7,
+      "panels": [],
+      "title": "Orchestrator Nodes Resources",
+      "type": "row"
+    },
+    ${orchestrator-nodes-cpu-idle-total},
+    ${orchestrator-nodes-cpu-utilization},
+    ${orchestrator-nodes-cpu-idle},
+    ${orchestrator-nodes-ram},
+    ${orchestrator-nodes-network-throughput},
+    ${orchestrator-nodes-disk-cache},
+    ${orchestrator-nodes-disk-root},
+    ${orchestrator-nodes-disk-cache-throughput},
+    ${orchestrator-nodes-disk-root-throughput},
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 103
+      },
+      "id": 39,
+      "panels": [],
+      "title": "API Nodes Resources",
+      "type": "row"
+    },
+    ${api-nodes-ram},
+    ${api-nodes-cpu-utilization},
+    ${api-nodes-network-throughput},
+    ${api-nodes-disk-root},
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 120
+      },
+      "id": 63,
+      "panels": [
+        ${build-nodes-ram},
+        ${build-nodes-cpu-utilization},
+        ${build-nodes-disk-root}
+      ],
+      "title": "Build Nodes Resources",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 121
+      },
+      "id": 18,
+      "panels": [
+        ${traces-sandbox-create},
+        ${traces-sandbox-pause},
+        ${traces-sandbox-resume},
+        ${traces-build}
+      ],
+      "title": "Traces",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 122
+      },
+      "id": 6,
+      "panels": [
+        ${builds-running-total},
+        ${builds-running-by-team}
+      ],
+      "title": "Envs Builds",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 123
+      },
+      "id": 14,
+      "panels": [
+        {
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 289
+          },
+          "id": 15,
+          "options": {
+            "alertInstanceLabelFilter": "",
+            "alertName": "",
+            "dashboardAlerts": false,
+            "groupBy": [],
+            "groupMode": "default",
+            "maxItems": 30,
+            "showInactiveAlerts": false,
+            "sortOrder": 3,
+            "stateFilter": {
+              "error": true,
+              "firing": true,
+              "noData": true,
+              "normal": true,
+              "pending": true
+            },
+            "viewMode": "list"
+          },
+          "pluginVersion": "11.6.0-83314",
+          "title": "Alerts",
+          "type": "alertlist"
+        }
+      ],
+      "title": "Services Health",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 124
+      },
+      "id": 59,
+      "panels": [
+        ${sandboxes-running-total},
+        ${sandboxes-running-by-team},
+        ${sandboxes-running-by-team-total}
+      ],
+      "title": "Running sandboxes (inaccurate)",
+      "type": "row"
+    }
+  ],
+  "preload": false,
+  "refresh": "15s",
+  "schemaVersion": 41,
+  "tags": [
+    "cpu",
+    "memory",
+    "disk",
+    "traffic",
+    "envs",
+    "instances"
+  ],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "definition": "label_values(api_env_instance_running,team_id)",
+        "includeAll": true,
+        "label": "Team",
+        "multi": true,
+        "name": "team_id",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(api_env_instance_running,team_id)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "sort": 7,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "15s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "timezone": "browser",
+  "title": "Cluster",
+  "uid": "c1363939-0d21-40ae-adbc-9ede1608e050",
+  "version": 403,
+  "weekStart": "monday"
+}

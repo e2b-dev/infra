@@ -1,0 +1,152 @@
+{
+  "datasource": {
+    "type": "prometheus",
+    "uid": "grafanacloud-prom"
+  },
+  "fieldConfig": {
+    "defaults": {
+      "color": {
+        "fixedColor": "blue",
+        "mode": "fixed",
+        "seriesBy": "last"
+      },
+      "custom": {
+        "axisBorderShow": false,
+        "axisCenteredZero": false,
+        "axisColorMode": "text",
+        "axisLabel": "",
+        "axisPlacement": "auto",
+        "barAlignment": 0,
+        "barWidthFactor": 0.6,
+        "drawStyle": "line",
+        "fillOpacity": 1,
+        "gradientMode": "hue",
+        "hideFrom": {
+          "legend": false,
+          "tooltip": false,
+          "viz": false
+        },
+        "insertNulls": false,
+        "lineInterpolation": "linear",
+        "lineStyle": {
+          "fill": "solid"
+        },
+        "lineWidth": 1,
+        "pointSize": 1,
+        "scaleDistribution": {
+          "type": "linear"
+        },
+        "showPoints": "auto",
+        "spanNulls": false,
+        "stacking": {
+          "group": "A",
+          "mode": "none"
+        },
+        "thresholdsStyle": {
+          "mode": "off"
+        }
+      },
+      "fieldMinMax": false,
+      "mappings": [],
+      "min": 0,
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {
+            "color": "green"
+          },
+          {
+            "color": "red",
+            "value": 80
+          }
+        ]
+      },
+      "unit": "gbytes"
+    },
+    "overrides": [
+      {
+        "matcher": {
+          "id": "byName",
+          "options": "Max"
+        },
+        "properties": [
+          {
+            "id": "custom.lineStyle",
+            "value": {
+              "dash": [
+                10,
+                10
+              ],
+              "fill": "dash"
+            }
+          },
+          {
+            "id": "custom.fillOpacity",
+            "value": 0
+          }
+        ]
+      }
+    ]
+  },
+  "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 74
+  },
+  "id": 3,
+  "interval": "15s",
+  "options": {
+    "legend": {
+      "calcs": [],
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": false
+    },
+    "tooltip": {
+      "hideZeros": false,
+      "maxHeight": 600,
+      "mode": "multi",
+      "sort": "asc"
+    }
+  },
+  "pluginVersion": "12.0.0-85518.patch7-85777",
+  "targets": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "disableTextWrap": false,
+      "editorMode": "builder",
+      "expr": "max(nomad_client_host_memory_total{node_pool=\"default\"}) / 1073741824",
+      "fullMetaSearch": false,
+      "hide": false,
+      "includeNullMetadata": true,
+      "instant": false,
+      "legendFormat": "Max",
+      "range": true,
+      "refId": "B",
+      "useBackend": false
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
+      "disableTextWrap": false,
+      "editorMode": "builder",
+      "exemplar": false,
+      "expr": "nomad_client_host_memory_available{node_pool=\"default\"} / 1073741824",
+      "fullMetaSearch": false,
+      "includeNullMetadata": true,
+      "instant": false,
+      "legendFormat": "{{node_id}}",
+      "range": true,
+      "refId": "A",
+      "useBackend": false
+    }
+  ],
+  "title": "Orchestrator Nodes RAM",
+  "type": "timeseries"
+}

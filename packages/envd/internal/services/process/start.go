@@ -3,6 +3,7 @@ package process
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os/user"
 	"strconv"
@@ -77,14 +78,17 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 	}
 
 	// Create a new context with a timeout if provided.
-	// We do not want the command to  be killed if the request context is cancelled
-	procCtx, cancelProc := context.WithCancel(context.Background())
+	// We do not want the command to be killed if the request context is cancelled
+	procCtx, cancelProc := context.Background(), func() {}
 	if timeout > 0 { // zero timeout means no timeout
 		procCtx, cancelProc = context.WithTimeout(procCtx, timeout)
 	}
 
 	proc, err := handler.New(procCtx, u, req.Msg, &handlerL, s.envs, cancelProc)
 	if err != nil {
+		// Ensure the process cancel is called to cleanup resources.
+		cancelProc()
+
 		return err
 	}
 
@@ -123,7 +127,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 				},
 			})
 			if streamErr != nil {
-				cancel(connect.NewError(connect.CodeUnknown, streamErr))
+				cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending start event: %w", streamErr)))
 
 				return
 			}
@@ -144,7 +148,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 					},
 				})
 				if streamErr != nil {
-					cancel(connect.NewError(connect.CodeUnknown, streamErr))
+					cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending keepalive: %w", streamErr)))
 					return
 				}
 			case <-ctx.Done():
@@ -161,7 +165,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 					},
 				})
 				if streamErr != nil {
-					cancel(connect.NewError(connect.CodeUnknown, streamErr))
+					cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending data event: %w", streamErr)))
 					return
 				}
 
@@ -187,7 +191,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 				},
 			})
 			if streamErr != nil {
-				cancel(connect.NewError(connect.CodeUnknown, streamErr))
+				cancel(connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending end event: %w", streamErr)))
 
 				return
 			}

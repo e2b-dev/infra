@@ -29,6 +29,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -38,7 +39,6 @@ const (
 	dnsServer             = "api.service.consul:5353"
 	healthCheckPort       = 3001
 	port                  = 3002
-	sandboxPort           = 3003 // legacy session proxy port
 	orchestratorProxyPort = 5007 // orchestrator proxy port
 	maxRetries            = 3
 )
@@ -79,7 +79,7 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 			}()
 		}
 
-		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.dev)
+		// Extract sandbox id from the sandboxID (<port>-<sandbox id>-<old client id>.e2b.app)
 		hostSplit := strings.Split(r.Host, "-")
 		if len(hostSplit) < 2 {
 			zap.L().Warn("invalid host", zap.String("host", r.Host))
@@ -152,33 +152,37 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 
 		// We've resolved the node to proxy the request to
 		zap.L().Debug("Proxying request", zap.String("sandbox_id", sandboxID), zap.String("node", node))
+
 		targetUrl := &url.URL{
 			Scheme: "http",
-			Host:   fmt.Sprintf("%s:%d", node, sandboxPort),
+			Host:   fmt.Sprintf("%s:%d", node, orchestratorProxyPort),
 		}
 
 		// Proxy the request
 		proxy := httputil.NewSingleHostReverseProxy(targetUrl)
+		logger := zap.L().With(zap.String("sandbox_id", sandboxID), zap.String("node", node))
 
 		// Custom error handler for logging proxy errors
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-			zap.L().Error("Reverse proxy error", zap.Error(err), zap.String("sandbox_id", sandboxID))
+			logger.Error("Reverse proxy error", zap.Error(err))
 			http.Error(w, "Proxy error", http.StatusBadGateway)
 		}
 
 		// Modify response for logging or additional processing
 		proxy.ModifyResponse = func(resp *http.Response) error {
 			if resp.StatusCode >= 500 {
-				zap.L().Error("Backend responded with error", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID))
+				logger.Error("Backend responded with error", zap.Int("status_code", resp.StatusCode))
 			} else {
-				zap.L().Info("Backend responded", zap.Int("status_code", resp.StatusCode), zap.String("sandbox_id", sandboxID), zap.String("node", node), zap.String("path", r.URL.Path))
+				logger.Info("Backend responded", zap.Int("status_code", resp.StatusCode), zap.String("path", r.URL.Path))
 			}
 
 			return nil
 		}
 
-		// Set the transport
+		proxyLogger, _ := zap.NewStdLogAt(logger, zap.ErrorLevel)
+		proxy.ErrorLog = proxyLogger
 		proxy.Transport = transport
+
 		proxy.ServeHTTP(w, r)
 	}
 }

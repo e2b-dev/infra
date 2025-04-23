@@ -18,6 +18,10 @@ output "grafana_api_key_secret_name" {
   value = google_secret_manager_secret.grafana_api_key.name
 }
 
+output "launch_darkly_api_key_secret_version" {
+  value = google_secret_manager_secret_version.launch_darkly_api_key
+}
+
 output "analytics_collector_host_secret_name" {
   value = google_secret_manager_secret.analytics_collector_host.name
 }

@@ -108,7 +108,6 @@ processors:
       include:
         match_type: regexp
         # Exclude metrics that start with `http`, `go`, `rpc`, or `nomad` but aren't `nomad.client`
-        # Include info about grpc server endpoint durations - used for monitoring request times
         metric_names:
           - "nomad_client_host_cpu_idle"
           - "nomad_client_host_disk_available"
@@ -122,7 +121,11 @@ processors:
           - "orchestrator.*"
           - "api.*"
           - "client_proxy.*"
-          - "rpc_server_duration"
+      exclude:
+        match_type: regexp
+        # Exclude `rpc.server.duration` as it's processed in `filter/rpc_duration_only`
+        metric_names:
+          - "rpc.server.duration.*"
   metricstransform:
     transforms:
       - include: "nomad_client_host_cpu_idle"
@@ -132,6 +135,17 @@ processors:
           - action: aggregate_labels
             aggregation_type: sum
             label_set: [instance, node_id, node_status, node_pool]
+  filter/rpc_duration_only:
+    metrics:
+      include:
+        match_type: regexp
+        # Include info about grpc server endpoint durations - used for monitoring request times
+        metric_names:
+          - "rpc.server.duration.*"
+  resource/remove_instance:
+    attributes:
+      - action: delete
+        key: service.instance.id
   attributes/session-proxy:
     actions:
       - key: service.name
@@ -168,6 +182,13 @@ service:
         - prometheus
         - otlp
       processors: [filter, batch, metricstransform]
+      exporters:
+        - otlphttp/grafana_cloud
+    metrics/rpc_only:
+      receivers:
+        - prometheus
+        - otlp
+      processors: [filter/rpc_duration_only, resource/remove_instance, batch]
       exporters:
         - otlphttp/grafana_cloud
     traces:

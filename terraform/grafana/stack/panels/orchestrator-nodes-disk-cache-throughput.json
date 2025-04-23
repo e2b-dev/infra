@@ -1,0 +1,191 @@
+{
+  "datasource": {
+    "type": "stackdriver",
+    "uid": "${stackdriver_uid}"
+  },
+  "fieldConfig": {
+    "defaults": {
+      "color": {
+        "mode": "palette-classic"
+      },
+      "custom": {
+        "axisBorderShow": false,
+        "axisCenteredZero": true,
+        "axisColorMode": "text",
+        "axisLabel": "byte written (-) / read (+)",
+        "axisPlacement": "auto",
+        "barAlignment": 0,
+        "barWidthFactor": 0.6,
+        "drawStyle": "line",
+        "fillOpacity": 3,
+        "gradientMode": "hue",
+        "hideFrom": {
+          "legend": false,
+          "tooltip": false,
+          "viz": false
+        },
+        "insertNulls": false,
+        "lineInterpolation": "stepBefore",
+        "lineWidth": 1,
+        "pointSize": 1,
+        "scaleDistribution": {
+          "type": "linear"
+        },
+        "showPoints": "auto",
+        "spanNulls": false,
+        "stacking": {
+          "group": "A",
+          "mode": "none"
+        },
+        "thresholdsStyle": {
+          "mode": "off"
+        }
+      },
+      "mappings": [],
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {
+            "color": "green"
+          },
+          {
+            "color": "red",
+            "value": 80
+          }
+        ]
+      }
+    },
+    "overrides": [
+      {
+        "matcher": {
+          "id": "byName",
+          "options": "Write"
+        },
+        "properties": [
+          {
+            "id": "color",
+            "value": {
+              "fixedColor": "purple",
+              "mode": "fixed"
+            }
+          },
+          {
+            "id": "custom.transform",
+            "value": "negative-Y"
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "id": "byName",
+          "options": "Read"
+        },
+        "properties": [
+          {
+            "id": "color",
+            "value": {
+              "fixedColor": "green",
+              "mode": "fixed"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 78
+  },
+  "id": 61,
+  "options": {
+    "legend": {
+      "calcs": [
+        "max",
+        "mean"
+      ],
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": true
+    },
+    "tooltip": {
+      "hideZeros": false,
+      "mode": "multi",
+      "sort": "desc"
+    }
+  },
+  "pluginVersion": "12.0.0-85518.patch3-85676",
+  "targets": [
+    {
+      "datasource": {
+        "type": "stackdriver",
+        "uid": "${stackdriver_uid}"
+      },
+      "queryType": "timeSeriesList",
+      "refId": "A",
+      "timeSeriesList": {
+        "alignmentPeriod": "cloud-monitoring-auto",
+        "crossSeriesReducer": "REDUCE_SUM",
+        "filters": [
+          "metric.label.device_name",
+          "=~",
+          "^${prefix}orch-client-.*-1$",
+          "AND",
+          "metric.type",
+          "=",
+          "compute.googleapis.com/instance/disk/read_bytes_count"
+        ],
+        "groupBys": [],
+        "perSeriesAligner": "ALIGN_NONE",
+        "preprocessor": "rate",
+        "projectName": "${gcp_project_id}",
+        "view": "FULL"
+      }
+    },
+    {
+      "datasource": {
+        "type": "stackdriver",
+        "uid": "${stackdriver_uid}"
+      },
+      "queryType": "timeSeriesList",
+      "refId": "B",
+      "timeSeriesList": {
+        "alignmentPeriod": "cloud-monitoring-auto",
+        "crossSeriesReducer": "REDUCE_SUM",
+        "filters": [
+          "metric.label.device_name",
+          "=~",
+          "^${prefix}orch-client-.*-1$",
+          "AND",
+          "metric.type",
+          "=",
+          "compute.googleapis.com/instance/disk/write_bytes_count"
+        ],
+        "groupBys": [],
+        "perSeriesAligner": "ALIGN_NONE",
+        "preprocessor": "rate",
+        "projectName": "${gcp_project_id}",
+        "view": "FULL"
+      }
+    }
+  ],
+  "title": "Orchestrator Nodes Cache Disk Throughput",
+  "transformations": [
+    {
+      "id": "renameByRegex",
+      "options": {
+        "regex": "compute.googleapis.com/instance/disk/read_bytes_count",
+        "renamePattern": "Read"
+      }
+    },
+    {
+      "id": "renameByRegex",
+      "options": {
+        "regex": "compute.googleapis.com/instance/disk/write_bytes_count",
+        "renamePattern": "Write"
+      }
+    }
+  ],
+  "type": "timeseries"
+}

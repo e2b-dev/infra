@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
+	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -21,7 +22,19 @@ import (
 )
 
 const (
-	InstanceIDPrefix = "i"
+	InstanceIDPrefix    = "i"
+	metricTemplateAlias = metrics.MetricPrefix + "template.alias"
+)
+
+var (
+	// mostUsedTemplates is a map of the most used template aliases.
+	// It is used for monitoring and to reduce metric cardinality.
+	mostUsedTemplates = map[string]struct{}{
+		"base":                  {},
+		"code-interpreter-v1":   {},
+		"code-interpreter-beta": {},
+		"desktop":               {},
+	}
 )
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
@@ -76,6 +89,9 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	c.Set("envID", env.TemplateID)
+	if aliases := env.Aliases; aliases != nil {
+		setTemplateNameMetric(c, *aliases)
+	}
 
 	sandboxID := InstanceIDPrefix + id.Generate()
 
@@ -87,11 +103,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		TeamID:     teamInfo.Team.ID.String(),
 	}).Debug("Started creating sandbox")
 
-	var alias string
-	if env.Aliases != nil && len(*env.Aliases) > 0 {
-		alias = (*env.Aliases)[0]
-	}
-
+	alias := firstAlias(env.Aliases)
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", teamInfo.Team.ID.String()),
 		attribute.String("env.id", env.TemplateID),
@@ -151,4 +163,26 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	c.Set("nodeID", sandbox.ClientID)
 
 	c.JSON(http.StatusCreated, &sandbox)
+}
+
+func setTemplateNameMetric(c *gin.Context, aliases []string) {
+	for _, alias := range aliases {
+		if _, exists := mostUsedTemplates[alias]; exists {
+			c.Set(metricTemplateAlias, alias)
+			return
+		}
+	}
+
+	// Fallback to 'other' if no match of mostUsedTemplates found
+	c.Set(metricTemplateAlias, "other")
+}
+
+func firstAlias(aliases *[]string) string {
+	if aliases == nil {
+		return ""
+	}
+	if len(*aliases) == 0 {
+		return ""
+	}
+	return (*aliases)[0]
 }

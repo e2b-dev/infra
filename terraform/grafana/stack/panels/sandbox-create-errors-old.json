@@ -1,0 +1,151 @@
+{
+  "datasource": {
+    "default": false,
+    "type": "tempo",
+    "uid": "grafanacloud-traces"
+  },
+  "description": "Time series cannot show all points. Let's use histogram. This is still costing a lot because of tracing latency bucket cardinality, so we might want to do this manually later.\n\nWe are excluding the E2B testing team here.",
+  "fieldConfig": {
+    "defaults": {
+      "color": {
+        "fixedColor": "light-red",
+        "mode": "fixed"
+      },
+      "custom": {
+        "axisBorderShow": false,
+        "axisCenteredZero": false,
+        "axisColorMode": "text",
+        "axisLabel": "",
+        "axisPlacement": "auto",
+        "barAlignment": 0,
+        "barWidthFactor": 0.6,
+        "drawStyle": "points",
+        "fillOpacity": 15,
+        "gradientMode": "none",
+        "hideFrom": {
+          "legend": false,
+          "tooltip": false,
+          "viz": false
+        },
+        "insertNulls": false,
+        "lineInterpolation": "linear",
+        "lineWidth": 1,
+        "pointSize": 5,
+        "scaleDistribution": {
+          "type": "linear"
+        },
+        "showPoints": "auto",
+        "spanNulls": false,
+        "stacking": {
+          "group": "A",
+          "mode": "none"
+        },
+        "thresholdsStyle": {
+          "mode": "off"
+        }
+      },
+      "fieldMinMax": false,
+      "mappings": [],
+      "min": 0,
+      "noValue": "0",
+      "thresholds": {
+        "mode": "percentage",
+        "steps": [
+          {
+            "color": "green"
+          }
+        ]
+      },
+      "unit": "instance(s)"
+    },
+    "overrides": []
+  },
+  "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 70
+  },
+  "id": 57,
+  "options": {
+    "legend": {
+      "calcs": [
+        "p50",
+        "p95",
+        "p99"
+      ],
+      "displayMode": "table",
+      "placement": "bottom",
+      "showLegend": true
+    },
+    "tooltip": {
+      "hideZeros": false,
+      "mode": "single",
+      "sort": "none"
+    }
+  },
+  "pluginVersion": "12.0.0-85518.patch7-85777",
+  "targets": [
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "grafanacloud-traces"
+      },
+      "filters": [
+        {
+          "id": "span-name",
+          "operator": "=",
+          "scope": "span",
+          "tag": "name",
+          "value": "/sandboxes",
+          "valueType": "string"
+        },
+        {
+          "id": "status",
+          "operator": "=",
+          "scope": "intrinsic",
+          "tag": "status",
+          "valueType": "keyword"
+        },
+        {
+          "id": "fe395f9a",
+          "operator": ">=",
+          "scope": "span",
+          "tag": "http.status_code",
+          "value": [
+            "300"
+          ],
+          "valueType": "int"
+        },
+        {
+          "id": "service-name",
+          "operator": "=",
+          "scope": "resource",
+          "tag": "service.name",
+          "value": [
+            "orchestration-api"
+          ],
+          "valueType": "string"
+        },
+        {
+          "id": "8b6a080a",
+          "operator": "=",
+          "scope": "span",
+          "tag": "http.method",
+          "value": [
+            "POST"
+          ],
+          "valueType": "string"
+        }
+      ],
+      "limit": 1000,
+      "metricsQueryType": "range",
+      "queryType": "traceqlSearch",
+      "refId": "A",
+      "spss": 1,
+      "tableType": "spans"
+    }
+  ],
+  "title": "CREATE ERRORS Sandbox time",
+  "type": "timeseries"
+}

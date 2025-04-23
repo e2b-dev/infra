@@ -92,18 +92,6 @@ variable "supabase_jwt_secrets_secret_name" {
   type = string
 }
 
-# Proxies
-variable "session_proxy_service_name" {
-  type = string
-}
-
-variable "session_proxy_port" {
-  type = object({
-    name = string
-    port = number
-  })
-}
-
 variable "client_proxy_docker_image_digest" {
   type = string
 }
@@ -148,6 +136,10 @@ variable "analytics_collector_host_secret_name" {
 }
 
 variable "analytics_collector_api_token_secret_name" {
+  type = string
+}
+
+variable "launch_darkly_api_key_secret_name" {
   type = string
 }
 

@@ -24,6 +24,11 @@ source "googlecompute" "orch" {
 
   # Enable nested virtualization
   image_licenses = ["projects/vm-options/global/licenses/enable-vmx"]
+
+  # Enable IAP for SSH
+  network    = var.network_name
+  subnetwork = "${var.network_name}-subnetwork"
+  use_iap    = true
 }
 
 build {

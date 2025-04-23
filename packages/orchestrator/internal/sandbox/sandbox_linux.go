@@ -328,7 +328,7 @@ func NewSandbox(
 	sbx.StartedAt = time.Now()
 
 	dns.Add(config.SandboxId, ips.HostIP())
-	proxy.AddSandbox(config.SandboxId, ips.HostIP())
+	proxy.AddSandbox(config.SandboxId, ips.HostIP(), config.TeamId)
 
 	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
 
@@ -442,7 +442,7 @@ func (s *Sandbox) Snapshot(
 		return nil, fmt.Errorf("failed to create memfile diff file: %w", err)
 	}
 
-	memfileDirtyPages, _, err = header.CreateDiff(sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiffFile)
+	memfileDirtyPages, _, err = header.CreateDiffWithTrace(ctx, tracer, sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiffFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
 	}

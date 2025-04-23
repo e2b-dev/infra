@@ -7,6 +7,7 @@ import (
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -30,6 +31,10 @@ func TestSandboxCreate(t *testing.T) {
 	t.Cleanup(func() {
 		if t.Failed() {
 			t.Logf("Response: %s", string(resp.Body))
+		}
+
+		if resp.JSON201 != nil {
+			utils.TeardownSandbox(t, c, resp.JSON201.SandboxID)
 		}
 	})
 

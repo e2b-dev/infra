@@ -32,7 +32,7 @@ const (
 
 var (
 	// These vars are automatically set by goreleaser.
-	Version = "0.1.5"
+	Version = "0.1.6"
 
 	commitSHA string
 
@@ -141,18 +141,21 @@ func main() {
 	filesystemRpc.Handle(m, &fsLogger)
 
 	envVars := utils.NewMap[string, string]()
-
 	envVars.Store("E2B_SANDBOX", "true")
 
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, envVars)
 
-	handler := api.HandlerFromMux(api.New(&envLogger, envVars), m)
-
+	service := api.New(&envLogger, envVars)
+	handler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 
 	s := &http.Server{
-		Handler:           withCORS(middleware.Wrap(handler)),
+		Handler: withCORS(
+			service.WithAuthorization(
+				middleware.Wrap(handler),
+			),
+		),
 		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       maxTimeout,
