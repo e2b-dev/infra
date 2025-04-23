@@ -38,10 +38,15 @@ jobs:
         with:
           path: artifacts
 
-      - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+      - name: Test Summary
+        uses: test-summary/action@v2
         if: always()
         with:
-          comment_mode: off
-          fail_on: 'errors'
-          files: "artifacts/**/*.xml"
+          paths: "artifacts/**/*.xml"
+
+      - name: Upload Test Summary
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: test-summary
+          path: test-summary.md
