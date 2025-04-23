@@ -96,7 +96,7 @@ func TestSandboxKill(t *testing.T) {
 			TemplateID: setup.SandboxTemplateID,
 		}, setup.WithAPIKey())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
 
 		sandboxID := createSandboxResponse.JSON201.SandboxID
@@ -105,7 +105,7 @@ func TestSandboxKill(t *testing.T) {
 		// pause the sandbox
 		pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(context.Background(), sandboxID, setup.WithAPIKey())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
 
 		// resume the sandbox
@@ -114,19 +114,19 @@ func TestSandboxKill(t *testing.T) {
 			Timeout: &timeout,
 		}, setup.WithAPIKey())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, resumeSandboxResponse.StatusCode())
 
 		// kill the sandbox
 		killSandboxResponse, err := c.DeleteSandboxesSandboxIDWithResponse(context.Background(), sandboxID, setup.WithAPIKey())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, killSandboxResponse.StatusCode())
 
 		// list all sandboxes and check that the sandbox is not in the list
 		listSandboxesResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{}, setup.WithAPIKey())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, listSandboxesResponse.StatusCode())
 
 		runningSandboxes := listSandboxesResponse.JSON200

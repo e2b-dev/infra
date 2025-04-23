@@ -23,7 +23,6 @@ jobs:
     needs: [ integrity-check ]
     uses: ./.github/workflows/integration_tests.yml
   publish-test-results:
-    name: "Publish Tests Results"
     needs:
       - unit-tests
       - integration-tests
@@ -43,4 +42,5 @@ jobs:
         if: always()
         with:
           comment_mode: off
+          fail_on: 'errors'
           files: "artifacts/**/*.xml"
