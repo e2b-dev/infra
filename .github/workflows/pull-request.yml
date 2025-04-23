@@ -43,4 +43,5 @@ jobs:
         if: always()
         with:
           comment_mode: off
+          deduplicate_classes_by_file_name: true
           files: "artifacts/**/*.xml"
