@@ -43,10 +43,4 @@ jobs:
         if: always()
         with:
           paths: "artifacts/**/*.xml"
-
-      - name: Upload Test Summary
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-summary
-          path: test-summary.md
+          show: "all"
