@@ -39,9 +39,9 @@ jobs:
           path: artifacts
 
       - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        uses: mikepenz/action-junit-report@v5
         if: always()
         with:
-          comment_mode: off
-          deduplicate_classes_by_file_name: true
-          files: "artifacts/**/*.xml"
+          flaky_summary: true
+          include_time_in_summary: true
+          report_paths: "artifacts/**/*.xml"
