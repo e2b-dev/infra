@@ -39,10 +39,9 @@ jobs:
           path: artifacts
 
       - name: Publish Test Results
-        uses: dorny/test-reporter@v2
+        uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
         with:
-          name: Tests Results
-          fail-on-error: false
-          reporter: 'jest-junit'
-          path: "artifacts/**/*.xml"
+          comment_mode: off
+          fail_on: 'errors'
+          files: "artifacts/**/*.xml"
