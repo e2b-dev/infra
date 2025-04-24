@@ -2,7 +2,6 @@ package sandbox
 
 import (
 	"errors"
-	"fmt"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"os"
@@ -24,8 +23,6 @@ func (g *EnvdAccessTokenGenerator) GenerateAccessToken(id api.SandboxID) (string
 		return "", errors.New("salt key is not set")
 	}
 
-	raw := []byte(fmt.Sprintf("%s%s", id, saltKey))
-	hasher := keys.NewSHA256Hashing()
-
-	return hasher.HashWithoutPrefix(raw), nil
+	hasher := keys.NewMACSHA256Hashing([]byte(saltKey))
+	return hasher.Hash([]byte(id)), nil
 }

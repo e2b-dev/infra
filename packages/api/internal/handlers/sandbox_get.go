@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -71,6 +72,19 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	memoryMB := int32(lastSnapshot.EnvBuild.RamMb)
 	cpuCount := int32(lastSnapshot.EnvBuild.Vcpu)
 
+	var sbxAccessToken *string = nil
+	if lastSnapshot.Snapshot.EnvSecure {
+		hashed := sandbox.NewEnvdAccessTokenGenerator()
+		key, err := hashed.GenerateAccessToken(lastSnapshot.Snapshot.SandboxID)
+		if err != nil {
+			zap.L().Error("error generating sandbox access token", zap.String("sandbox_id", id), zap.Error(err))
+			c.JSON(http.StatusInternalServerError, fmt.Sprintf("error generating sandbox access token: %s", err))
+			return
+		}
+
+		sbxAccessToken = &key
+	}
+
 	sandbox := api.ListedSandbox{
 		ClientID:        "00000000", // for backwards compatibility we need to return a client id
 		TemplateID:      lastSnapshot.Snapshot.EnvID,
@@ -81,7 +95,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		EndAt:           info.GetEndTime(),
 		State:           api.Paused,
 		EnvdVersion:     lastSnapshot.EnvBuild.EnvdVersion,
-		EnvdAccessToken: nil,
+		EnvdAccessToken: sbxAccessToken,
 	}
 
 	if lastSnapshot.Snapshot.Metadata != nil {
