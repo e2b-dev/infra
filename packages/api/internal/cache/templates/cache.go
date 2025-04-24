@@ -95,20 +95,10 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 		}
 
 		build = &result.EnvBuild
-		template := &result.Env
-
-		aliasesDB, err := c.db.GetEnvAliases(ctx, result.Env.ID)
-		if err != nil {
-			return nil, nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "error while getting template aliases", Err: err}
-		}
+		template := result.Env
+		aliases := result.Aliases
 
 		c.aliasCache.cache.Set(template.ID, template.ID, templateInfoExpiration)
-
-		aliases := make([]string, len(aliasesDB))
-		for _, alias := range aliasesDB {
-			aliases = append(aliases, alias.EnvAlias.Alias)
-			c.aliasCache.cache.Set(alias.EnvAlias.Alias, template.ID, templateInfoExpiration)
-		}
 
 		// Check if the team has access to the environment
 		if template.TeamID != teamID && (!public || !template.Public) {
