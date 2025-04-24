@@ -89,12 +89,14 @@ func TestSandboxResumeWithSecuredEnvd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(ctx, sbxCreate.JSON201.SandboxID, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
+	sbxIdWithClient := sbxCreate.JSON201.SandboxID + "-" + sbxCreate.JSON201.ClientID
+
+	sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(ctx, sbxIdWithClient, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, http.StatusOK, sbxResume.StatusCode())
+	assert.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 	require.NotNil(t, sbxResume.JSON201)
 
 	t.Cleanup(func() {

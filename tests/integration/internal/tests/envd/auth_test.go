@@ -194,7 +194,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 		t.Fatal(err)
 	}
 
-	require.Equal(t, http.StatusOK, sbxResume.StatusCode())
+	require.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 
 	// try to get the file with the valid access token
 	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
@@ -267,10 +267,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, http.StatusOK, sbxResume.StatusCode())
-
-	// todo
-	assert.Equal(t, "xxx", string(sbxResume.Body))
+	assert.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 
 	// try to get the file with the without access token
 	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
