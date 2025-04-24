@@ -2,6 +2,7 @@ package envd
 
 import (
 	"context"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 	"fmt"
 	"net/http"
 	"strings"
@@ -27,7 +28,6 @@ func createSandbox(t *testing.T, sbxWithAuth bool, reqEditors ...api.RequestEdit
 	c := setup.GetAPIClient()
 
 	sbxTimeout := int32(10)
-
 	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
@@ -62,8 +62,13 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 	setup.SetUserHeader(req.Header(), "user")
 
 	_, err := envdClient.FilesystemClient.ListDir(ctx, req)
-	assert.NotNil(t, err)
 	require.Error(t, err)
+
+	t.Cleanup(func() {
+		c := setup.GetAPIClient()
+		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
+	})
+
 	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")
 }
 
@@ -77,13 +82,17 @@ func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	// second call without authorization
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
 		body:                  envdapi.PostInitJSONRequestBody{},
 		expectedResErr:        nil,
 		expectedResHttpStatus: http.StatusUnauthorized,
+	})
+
+	t.Cleanup(func() {
+		c := setup.GetAPIClient()
+		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
 	})
 }
 
@@ -108,7 +117,6 @@ func TestAccessAuthorizedPathWithOutdatedAccessToken(t *testing.T) {
 	_, err := envdClient.FilesystemClient.ListDir(ctx, req)
 	assert.NoError(t, err)
 
-	// second init call with different secret
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
@@ -126,7 +134,160 @@ func TestAccessAuthorizedPathWithOutdatedAccessToken(t *testing.T) {
 
 	_, err = envdClient.FilesystemClient.ListDir(ctx, req)
 	require.Error(t, err)
+
+	t.Cleanup(func() {
+		c := setup.GetAPIClient()
+		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
+	})
+
 	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")
+}
+
+func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sbx := createSandbox(t, true, setup.WithAPIKey())
+	require.NotNil(t, sbx.JSON201)
+	require.NotNil(t, sbx.JSON201.EnvdAccessToken)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+	sbxMeta := sbx.JSON201
+
+	// set up the request to list the directory
+	req := connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
+	setup.SetSandboxHeader(req.Header(), sbxMeta.SandboxID, sbxMeta.ClientID)
+	setup.SetUserHeader(req.Header(), "user")
+	setup.SetAccessTokenHeader(req.Header(), *sbxMeta.EnvdAccessToken)
+
+	filePath := "demo.txt"
+	fileContent := "Hello, world!"
+
+	// create test file
+	textFile, contentType := createTextFile(t, filePath, fileContent)
+
+	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
+		ctx,
+		&envdapi.PostFilesParams{Path: &filePath, Username: "user"},
+		contentType,
+		textFile,
+		setup.WithSandbox(sbxMeta.SandboxID, sbxMeta.ClientID),
+		setup.WithAccessToken(*sbxMeta.EnvdAccessToken),
+	)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
+
+	c := setup.GetAPIClient()
+
+	// stop sandbox
+	_, err = c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sbxIdWithClient := sbxMeta.SandboxID + "-" + sbxMeta.ClientID
+
+	// resume sandbox
+	sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(ctx, sbxIdWithClient, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	require.Equal(t, http.StatusOK, sbxResume.StatusCode())
+
+	// try to get the file with the valid access token
+	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
+		ctx,
+		&envdapi.GetFilesParams{Path: &filePath, Username: "user"},
+		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
+		setup.WithAccessToken(*sbxMeta.EnvdAccessToken),
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
+	})
+
+	assert.Equal(t, http.StatusOK, fileResponse.StatusCode())
+	assert.Equal(t, fileContent, string(fileResponse.Body))
+}
+
+func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sbx := createSandbox(t, true, setup.WithAPIKey())
+	require.NotNil(t, sbx.JSON201)
+	require.NotNil(t, sbx.JSON201.EnvdAccessToken)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+	sbxMeta := sbx.JSON201
+
+	// set up the request to list the directory
+	req := connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
+	setup.SetSandboxHeader(req.Header(), sbxMeta.SandboxID, sbxMeta.ClientID)
+	setup.SetUserHeader(req.Header(), "user")
+	setup.SetAccessTokenHeader(req.Header(), *sbxMeta.EnvdAccessToken)
+
+	filePath := "demo.txt"
+	fileContent := "Hello, world!"
+
+	// create test file
+	textFile, contentType := createTextFile(t, filePath, fileContent)
+
+	writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
+		ctx,
+		&envdapi.PostFilesParams{Path: &filePath, Username: "user"},
+		contentType,
+		textFile,
+		setup.WithSandbox(sbxMeta.SandboxID, sbxMeta.ClientID),
+		setup.WithAccessToken(*sbxMeta.EnvdAccessToken),
+	)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
+
+	c := setup.GetAPIClient()
+
+	// stop sandbox
+	_, err = c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxMeta.SandboxID, setup.WithAPIKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sbxIdWithClient := sbxMeta.SandboxID + "-" + sbxMeta.ClientID
+
+	// resume sandbox
+	sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(ctx, sbxIdWithClient, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Equal(t, http.StatusOK, sbxResume.StatusCode())
+
+	// todo
+	assert.Equal(t, "xxx", string(sbxResume.Body))
+
+	// try to get the file with the without access token
+	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
+		ctx,
+		&envdapi.GetFilesParams{Path: &filePath, Username: "user"},
+		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
+	})
+
+	assert.Equal(t, http.StatusUnauthorized, fileResponse.StatusCode())
 }
 
 type envdInitCall struct {
