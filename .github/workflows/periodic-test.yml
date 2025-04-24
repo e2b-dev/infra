@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
+    inputs:
+      dev:
+        description: 'Only testing the workflow'
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
         - main
@@ -33,11 +39,11 @@ jobs:
           - e2b-domain: "e2b-foxtrot.dev"
             api_key: E2B_API_KEY
             access_token: E2B_ACCESS_TOKEN
-            slack_channel: monitoring-infra-staging
+            slack_channel: monitoring-infra
           - e2b-domain: "e2b-juliett.dev"
             api_key: E2B_API_KEY_JULIETT
             access_token: E2B_ACCESS_TOKEN_JULIETT
-            slack_channel: monitoring-infra-staging
+            slack_channel: monitoring-infra
           - e2b-domain: "e2b-staging.dev"
             api_key: E2B_API_KEY
             access_token: E2B_ACCESS_TOKEN
@@ -72,6 +78,14 @@ jobs:
           echo "E2B_API_KEY=${{ secrets[format('{0}', matrix.api_key)] }}" >> $GITHUB_ENV
           echo "E2B_ACCESS_TOKEN=${{ secrets[format('{0}', matrix.access_token)] }}" >> $GITHUB_ENV
 
+      - name: Set Slack channel based on dev input
+        run: |
+          if [ "${{ inputs.dev }}" == "true" ]; then
+            echo "SLACK_CHANNEL=monitoring-infra-testing" >> $GITHUB_ENV
+          else
+            echo "SLACK_CHANNEL=${{ matrix.slack_channel }}" >> $GITHUB_ENV
+          fi
+
       - name: ${{ matrix.test-command.name }}
         run: deno run --allow-all ${{ matrix.test-command.command }}
         working-directory: ${{ matrix.test-command.dir }}
@@ -82,7 +96,7 @@ jobs:
 
       - name: Periodic check failed - Slack Notification
         uses: rtCamp/action-slack-notify@v2
-        if: failure() && github.ref == 'refs/heads/main'
+        if: failure()
         env:
           SLACK_COLOR: "#ff0000"
           SLACK_USERNAME: "Periodic Check"
@@ -93,4 +107,4 @@ jobs:
           SLACK_MESSAGE: "Check for **${{ matrix.test-command.name }}** failed \n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           SLACK_TITLE: "[${{ matrix.e2b-domain }}] check failed"
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          SLACK_CHANNEL: ${{ matrix.slack_channel }}
+          SLACK_CHANNEL: ${{ env.SLACK_CHANNEL }}
