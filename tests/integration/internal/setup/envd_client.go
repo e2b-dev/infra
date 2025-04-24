@@ -72,7 +72,7 @@ func SetAccessTokenHeader(header http.Header, accessToken string) {
 }
 
 func SetUserHeader(header http.Header, user string) {
-	userString := fmt.Sprintf("user:%s", user)
+	userString := fmt.Sprintf("%s:", user)
 	userBase64 := base64.StdEncoding.EncodeToString([]byte(userString))
 	basic := fmt.Sprintf("Basic %s", userBase64)
 	header.Set("Authorization", basic)
