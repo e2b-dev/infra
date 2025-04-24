@@ -19,22 +19,38 @@ permissions:
   contents: read
 
 jobs:
+  generate-keys:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set secrets as outputs
+        id: set-secrets
+        run: |
+          echo "key_juliett=${{ secrets.E2B_API_KEY_JULIETT }}" >> $GITHUB_OUTPUT
+          echo "token_juliett=${{ secrets.E2B_ACCESS_TOKEN_JULIETT }}" >> $GITHUB_OUTPUT
+          echo "key_prod=${{ secrets.E2B_API_KEY }}" >> $GITHUB_OUTPUT
+          echo "token_prod=${{ secrets.E2B_ACCESS_TOKEN }}" >> $GITHUB_OUTPUT
+    outputs:
+      key_juliett: ${{ steps.set-secrets.outputs.key_juliett }}
+      token_juliett: ${{ steps.set-secrets.outputs.token_juliett }}
+      key_prod: ${{ steps.set-secrets.outputs.key_prod }}
+      token_prod: ${{ steps.set-secrets.outputs.token_prod }}
   changes:
     name: Check
     runs-on: ubuntu-22.04
+    needs: generate-keys
     strategy:
       matrix:
         # each domain is a different cluster
         include:
           - e2b-domain: "e2b-foxtrot.dev"
-            api_key: ${{ secrets.E2B_API_KEY }}
-            access_token: ${{ secrets.E2B_ACCESS_TOKEN }}
+            api_key: ${{ needs.generate-keys.outputs.key_prod }}
+            access_token: ${{ needs.generate-keys.outputs.token_prod }}
           - e2b-domain: "e2b-juliett.dev"
-            api_key: ${{ secrets.E2B_API_KEY_JULIETT }}
-            access_token: ${{ secrets.E2B_ACCESS_TOKEN_JULIETT }}
+            api_key: ${{ needs.generate-keys.outputs.key_juliett }}
+            access_token: ${{ needs.generate-keys.outputs.token_juliett }}
           - e2b-domain: "e2b-staging.dev"
-            api_key: ${{ secrets.E2B_API_KEY }}
-            access_token: ${{ secrets.E2B_ACCESS_TOKEN }}
+            api_key: ${{ needs.generate-keys.outputs.key_prod }}
+            access_token: ${{ needs.generate-keys.outputs.token_prod }}
         test-command:
           - command: "tests/periodic-test/run-code.ts"
             name: "run code in sandbox"
