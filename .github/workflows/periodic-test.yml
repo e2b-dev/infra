@@ -33,12 +33,15 @@ jobs:
           - e2b-domain: "e2b-foxtrot.dev"
             api_key: E2B_API_KEY
             access_token: E2B_ACCESS_TOKEN
+            slack_channel: monitoring-infra-staging
           - e2b-domain: "e2b-juliett.dev"
             api_key: E2B_API_KEY_JULIETT
             access_token: E2B_ACCESS_TOKEN_JULIETT
+            slack_channel: monitoring-infra-staging
           - e2b-domain: "e2b-staging.dev"
             api_key: E2B_API_KEY
             access_token: E2B_ACCESS_TOKEN
+            slack_channel: monitoring-infra-staging
         test-command:
           - command: "tests/periodic-test/run-code.ts"
             name: "run code in sandbox"
@@ -64,7 +67,7 @@ jobs:
       - name: GitHub Action for npx
         uses: mikeal/npx@1.0.0
 
-      - name: Set env variables based on the domain
+      - name: Set env variables from secrets
         run: |
           echo "E2B_API_KEY=${{ secrets[format('{0}', matrix.api_key)] }}" >> $GITHUB_ENV
           echo "E2B_ACCESS_TOKEN=${{ secrets[format('{0}', matrix.access_token)] }}" >> $GITHUB_ENV
@@ -90,5 +93,4 @@ jobs:
           SLACK_MESSAGE: "Check for **${{ matrix.test-command.name }}** failed \n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           SLACK_TITLE: "[${{ matrix.e2b-domain }}] check failed"
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          # use this channel for dev
-          SLACK_CHANNEL: C08F4DXJA00
+          SLACK_CHANNEL: ${{ matrix.slack_channel }}
