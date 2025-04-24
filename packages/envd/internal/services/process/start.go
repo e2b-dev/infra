@@ -78,14 +78,17 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 	}
 
 	// Create a new context with a timeout if provided.
-	// We do not want the command to  be killed if the request context is cancelled
-	procCtx, cancelProc := context.WithCancel(context.Background())
+	// We do not want the command to be killed if the request context is cancelled
+	procCtx, cancelProc := context.Background(), func() {}
 	if timeout > 0 { // zero timeout means no timeout
 		procCtx, cancelProc = context.WithTimeout(procCtx, timeout)
 	}
 
 	proc, err := handler.New(procCtx, u, req.Msg, &handlerL, s.envs, cancelProc)
 	if err != nil {
+		// Ensure the process cancel is called to cleanup resources.
+		cancelProc()
+
 		return err
 	}
 

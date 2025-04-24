@@ -185,6 +185,10 @@ func TestLifecycleCacheHasEvicting(t *testing.T) {
 
 	// Wait for eviction to complete
 	<-evictCalled
+	// Wait for the eviction process (remove from an evicting map) to complete,
+	// this delay is waiting just for code runtime.
+	// Not ideal, but should be enough for most of the time
+	time.Sleep(50 * time.Millisecond)
 
 	assert.False(t, cache.Has("test", true))
 	assert.False(t, cache.Has("test", false))

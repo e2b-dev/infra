@@ -26,7 +26,7 @@ try {
   // Create sandbox
   log('creating sandbox')
   sandbox = await Sandbox.create()
-  log('Sandbox created with ID:', sandbox.sandboxId)
+  log('ℹ️ sandbox created', sandbox.sandboxId)
 
   // Run a command in the sandbox, so we can test both
   await sandbox.commands.run('echo "Hello, World!"')

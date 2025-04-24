@@ -15,7 +15,7 @@ try {
   // Create sandbox
   log('creating sandbox')
   sandbox = await Sandbox.create()
-  log('Sandbox created with ID:', sandbox.sandboxId)
+  log('ℹ️ sandbox created', sandbox.sandboxId)
 
   const out = await sandbox.commands.run('wget https://google.com', {
     requestTimeoutMs: 10000,
