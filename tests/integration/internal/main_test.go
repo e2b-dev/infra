@@ -9,7 +9,7 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -29,9 +29,15 @@ func TestCacheTemplate(t *testing.T) {
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
 	}, setup.WithAPIKey())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
+		if sbx == nil {
+			t.Logf("Error: %v", err)
+		} else if sbx.JSON201 == nil {
+			t.Logf("Response error: %d %v", sbx.StatusCode(), string(sbx.Body))
+		} else {
+			utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
+		}
 	})
 }
