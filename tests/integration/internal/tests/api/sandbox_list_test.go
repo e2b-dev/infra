@@ -5,11 +5,12 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func pauseSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
@@ -28,7 +29,8 @@ func TestSandboxList(t *testing.T) {
 	// Test basic list functionality
 	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{}, setup.WithAPIKey())
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
+
 	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
 
 	// Verify our sandbox is in the list
@@ -54,7 +56,7 @@ func TestSandboxListWithFilter(t *testing.T) {
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.Equal(t, 1, len(*listResponse.JSON200))
 	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
 }
@@ -72,7 +74,7 @@ func TestSandboxListRunning(t *testing.T) {
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
 
 	// Verify our running sandbox is in the list
@@ -104,7 +106,7 @@ func TestSandboxListPaused(t *testing.T) {
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
 
 	// Verify our paused sandbox is in the list
@@ -140,8 +142,8 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 	}, setup.WithAPIKey())
 
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
-	assert.Equal(t, 1, len(*listResponse.JSON200))
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
+	require.Equal(t, 1, len(*listResponse.JSON200))
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
 
 	// Get second page using the next token from first response
@@ -155,8 +157,8 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 		Metadata:  &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
-	assert.Equal(t, 1, len(*secondPageResponse.JSON200))
+	require.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
+	require.Equal(t, 1, len(*secondPageResponse.JSON200))
 	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
 
 	// No more pages
@@ -187,8 +189,8 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 	}, setup.WithAPIKey())
 
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
-	assert.Equal(t, 1, len(*listResponse.JSON200))
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
+	require.Equal(t, 1, len(*listResponse.JSON200))
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
 
 	// Get second page using the next token from first response
@@ -202,8 +204,8 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 		Metadata:  &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
-	assert.Equal(t, 1, len(*secondPageResponse.JSON200))
+	require.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
+	require.Equal(t, 1, len(*secondPageResponse.JSON200))
 	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
 
 	// No more pages
@@ -235,8 +237,8 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	}, setup.WithAPIKey())
 
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
-	assert.Equal(t, 1, len(*listResponse.JSON200))
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
+	require.Equal(t, 1, len(*listResponse.JSON200))
 	assert.Equal(t, sandbox2ID, (*listResponse.JSON200)[0].SandboxID)
 
 	// Get second page using the next token from first response
@@ -250,8 +252,8 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 		Metadata:  &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
-	assert.Equal(t, 1, len(*secondPageResponse.JSON200))
+	require.Equal(t, http.StatusOK, secondPageResponse.StatusCode())
+	require.Equal(t, 1, len(*secondPageResponse.JSON200))
 	assert.Equal(t, sandbox1ID, (*secondPageResponse.JSON200)[0].SandboxID)
 
 	// No more pages
@@ -273,7 +275,7 @@ func TestSandboxListRunningV1(t *testing.T) {
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
 	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
 
 	// Verify our running sandbox is in the list
@@ -300,8 +302,8 @@ func TestSandboxListWithFilterV1(t *testing.T) {
 		Metadata: &metadataString,
 	}, setup.WithAPIKey())
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
-	assert.Equal(t, 1, len(*listResponse.JSON200))
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
+	require.Equal(t, 1, len(*listResponse.JSON200))
 	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
 }
 

@@ -43,9 +43,9 @@ generate:
 		echo "buf is not installed. Do you want to install it?  (Y/n): "; \
 		read choice; \
 		if [ "$$choice" = "Y" ]; then \
-			go install github.com/bufbuild/buf/cmd/buf@latest && \
-			go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
-			go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest; \
+			go install github.com/bufbuild/buf/cmd/buf@v1.50.1 && \
+			go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1 && \
+			go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.18.1; \
 		else \
 			exit 1; \
 		fi; \

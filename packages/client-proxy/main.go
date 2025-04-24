@@ -28,7 +28,6 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
@@ -67,7 +66,7 @@ type jsonTemplateData struct {
 	Code      int    `json:"code"`
 }
 
-func proxyHandler(transport *http.Transport, featureFlags *featureflags.Client) func(w http.ResponseWriter, r *http.Request) {
+func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
 	activeConnections, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
 	if err != nil {
 		zap.L().Error("failed to create active connections counter", zap.Error(err))
@@ -180,8 +179,10 @@ func proxyHandler(transport *http.Transport, featureFlags *featureflags.Client) 
 			return nil
 		}
 
-		// Set the transport
+		proxyLogger, _ := zap.NewStdLogAt(logger, zap.ErrorLevel)
+		proxy.ErrorLog = proxyLogger
 		proxy.Transport = transport
+
 		proxy.ServeHTTP(w, r)
 	}
 }
@@ -216,13 +217,6 @@ func run() int {
 		}
 	}()
 	zap.ReplaceGlobals(logger)
-
-	featureFlags, err := featureflags.NewClient(5 * time.Second)
-	if err != nil {
-		logger.Error("failed to create feature flags client", zap.Error(err))
-		return 1
-	}
-	defer featureFlags.Close()
 
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
@@ -264,7 +258,7 @@ func run() int {
 		DisableKeepAlives:     true,              // Disable keep-alive, not supported
 	}
 
-	server.Handler = http.HandlerFunc(proxyHandler(transport, featureFlags))
+	server.Handler = http.HandlerFunc(proxyHandler(transport))
 
 	wg.Add(1)
 	go func() {

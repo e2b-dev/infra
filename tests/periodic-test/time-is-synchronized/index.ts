@@ -74,7 +74,7 @@ try {
     }
     console.log('ℹ️ creating sandbox')
     const sandbox = await Sandbox.create(templateID, { timeoutMs: 10000 })
-    console.log('ℹ️ sandbox created')
+    console.log('ℹ️ sandbox created', sandbox.sandboxId)
 
 
     console.log('ℹ️ running command')

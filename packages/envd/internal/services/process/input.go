@@ -85,7 +85,7 @@ func (s *Service) streamInputHandler(ctx context.Context, stream *connect.Client
 
 	err := stream.Err()
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnknown, err)
+		return nil, connect.NewError(connect.CodeUnknown, fmt.Errorf("error streaming input: %w", err))
 	}
 
 	return connect.NewResponse(&rpc.StreamInputResponse{}), nil

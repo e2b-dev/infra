@@ -1,15 +1,18 @@
 package envd
 
 import (
-	"connectrpc.com/connect"
 	"context"
+	"net/http"
+	"testing"
+
+	"connectrpc.com/connect"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
-	"github.com/stretchr/testify/assert"
-	"net/http"
-	"testing"
 )
 
 func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) *api.PostSandboxesResponse {
@@ -26,6 +29,7 @@ func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) *api.PostSan
 		Timeout:    &sbxTimeout,
 	}, reqEditors...)
 	assert.NoError(t, err)
+	require.Equal(t, http.StatusCreated, resp.StatusCode())
 
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -60,6 +64,7 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 	setup.SetUserHeader(req.Header(), "user")
 
 	_, err := envdClient.FilesystemClient.ListDir(ctx, req)
+	require.Error(t, err)
 	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")
 }
 
@@ -136,6 +141,7 @@ func TestAccessAuthorizedPathWithOutdatedAccessToken(t *testing.T) {
 	setup.SetAccessTokenHeader(req.Header(), envdAuthTokenA)
 
 	_, err = envdClient.FilesystemClient.ListDir(ctx, req)
+	require.Error(t, err)
 	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")
 }
 
