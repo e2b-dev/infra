@@ -23,6 +23,6 @@ func (g *EnvdAccessTokenGenerator) GenerateAccessToken(id api.SandboxID) (string
 		return "", errors.New("salt key is not set")
 	}
 
-	hasher := keys.NewMACSHA256Hashing([]byte(saltKey))
+	hasher := keys.NewHMACSHA256Hashing([]byte(saltKey))
 	return hasher.Hash([]byte(id)), nil
 }

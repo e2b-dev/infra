@@ -10,7 +10,7 @@ type HMACSha256Hashing struct {
 	key []byte
 }
 
-func NewMACSHA256Hashing(key []byte) *HMACSha256Hashing {
+func NewHMACSHA256Hashing(key []byte) *HMACSha256Hashing {
 	return &HMACSha256Hashing{key: key}
 }
 
