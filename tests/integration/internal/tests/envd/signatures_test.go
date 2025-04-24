@@ -6,7 +6,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"strconv"
 	"testing"
@@ -44,7 +46,13 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
 	)
 
-	assert.NoError(t, err)
+	require.Nil(t, err)
+
+	t.Cleanup(func() {
+		c := setup.GetAPIClient()
+		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
+	})
+
 	assert.Equal(t, http.StatusOK, getRes.StatusCode())
 }
 
@@ -86,7 +94,13 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
 	)
 
-	assert.NoError(t, readErr)
+	require.Nil(t, readErr)
+
+	t.Cleanup(func() {
+		c := setup.GetAPIClient()
+		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
+	})
+
 	assert.Equal(t, http.StatusUnauthorized, readRes.StatusCode)
 }
 
@@ -128,7 +142,13 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
 	)
 
-	assert.NoError(t, readErr)
+	require.Nil(t, readErr)
+
+	t.Cleanup(func() {
+		c := setup.GetAPIClient()
+		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
+	})
+
 	assert.Equal(t, http.StatusOK, readRes.StatusCode())
 	assert.Equal(t, "Hello, World!", string(readRes.Body))
 }
@@ -161,7 +181,13 @@ func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
 	)
 
-	assert.NoError(t, readErr)
+	require.Nil(t, readErr)
+
+	t.Cleanup(func() {
+		c := setup.GetAPIClient()
+		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
+	})
+
 	assert.Equal(t, http.StatusUnauthorized, readRes.StatusCode())
 	assert.Equal(t, "{\"code\":401,\"message\":\"signature is already expired\"}\n", string(readRes.Body))
 }
@@ -194,7 +220,13 @@ func TestDownloadWithHealthyToken(t *testing.T) {
 		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
 	)
 
-	assert.NoError(t, readErr)
+	require.Nil(t, readErr)
+
+	t.Cleanup(func() {
+		c := setup.GetAPIClient()
+		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
+	})
+
 	assert.Equal(t, http.StatusNotFound, readRes.StatusCode())
 	assert.Equal(t, "{\"code\":404,\"message\":\"path '/home/user/demo/test.txt' does not exist\"}\n", string(readRes.Body))
 }
@@ -227,7 +259,13 @@ func TestAccessWithNotCorrespondingSignatureAndSignatureExpiration(t *testing.T)
 		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
 	)
 
-	assert.NoError(t, readErr)
+	require.Nil(t, readErr)
+
+	t.Cleanup(func() {
+		c := setup.GetAPIClient()
+		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
+	})
+
 	assert.Equal(t, http.StatusUnauthorized, readRes.StatusCode())
 	assert.Equal(t, "{\"code\":401,\"message\":\"invalid signature\"}\n", string(readRes.Body))
 }
