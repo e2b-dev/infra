@@ -185,12 +185,12 @@ func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
 func getSandboxLogs(ctx context.Context, client *setup.EnvdClient, sbx *api.PostSandboxesResponse) (string, error) {
 	req := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
-			Cmd:  "sudo",
-			Args: []string{"journalctl", "-u", "envd"},
+			Cmd:  "journalctl",
+			Args: []string{"-u", "envd"},
 		},
 	})
 	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
-	setup.SetUserHeader(req.Header(), "user")
+	setup.SetUserHeader(req.Header(), "root")
 	stream, err := client.ProcessClient.Start(
 		ctx,
 		req,
