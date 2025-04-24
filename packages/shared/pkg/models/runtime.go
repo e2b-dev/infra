@@ -75,6 +75,10 @@ func init() {
 	snapshotDescCreatedAt := snapshotFields[1].Descriptor()
 	// snapshot.DefaultCreatedAt holds the default value on creation for the created_at field.
 	snapshot.DefaultCreatedAt = snapshotDescCreatedAt.Default.(func() time.Time)
+	// snapshotDescEnvSecure is the schema descriptor for env_secure field.
+	snapshotDescEnvSecure := snapshotFields[7].Descriptor()
+	// snapshot.DefaultEnvSecure holds the default value on creation for the env_secure field.
+	snapshot.DefaultEnvSecure = snapshotDescEnvSecure.Default.(bool)
 	teamFields := schema.Team{}.Fields()
 	_ = teamFields
 	// teamDescCreatedAt is the schema descriptor for created_at field.
