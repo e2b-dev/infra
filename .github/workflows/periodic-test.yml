@@ -79,4 +79,4 @@ jobs:
           SLACK_TITLE: "[${{ matrix.e2b-domain }}] check failed"
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           # use this channel for dev
-          # SLACK_CHANNEL: C08F4DXJA00  
+          SLACK_CHANNEL: C08F4DXJA00
