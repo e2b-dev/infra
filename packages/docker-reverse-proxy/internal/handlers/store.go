@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -35,7 +36,8 @@ func NewStore() *APIStore {
 	// Custom ModifyResponse function
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		if resp.StatusCode == http.StatusUnauthorized {
-			log.Printf("Unauthorized request:[%s] %s\n", resp.Request.Method, resp.Request.URL.String())
+			respBody, _ := io.ReadAll(resp.Body)
+			log.Printf("Unauthorized request:[%s] %s\n", resp.Request.Method, respBody)
 		}
 
 		// You can also modify the response here if needed

@@ -9,6 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/constants"
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/handlers"
+	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/utils"
 )
 
 var commitSHA string
@@ -26,30 +27,46 @@ func main() {
 
 	store := handlers.NewStore()
 
+	// https://distribution.github.io/distribution/spec/api/
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+		log.Printf("Request: %s %s\n", req.Method, utils.SubstringMax(req.URL.String(), 100))
+
 		// Health check for nomad
 		if req.URL.Path == "/health" {
 			store.HealthCheck(w, req)
+			return
+		}
+
+		// https://docker-docs.uclv.cu/registry/spec/auth/oauth/
+		// We are using Token validation, and not OAuth2, so we need to return 404 for the POST /v2/token endpoint
+		if req.URL.Path == "/v2/token" && req.Method == http.MethodPost {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		// If the request doesn't have the Authorization header, we return 401 with the url for getting a token
+		if req.Header.Get("Authorization") == "" {
+			log.Printf("Authorization header is missing: %s\n", utils.SubstringMax(req.URL.String(), 100))
+			utils.SetDockerUnauthorizedHeaders(w)
 
 			return
 		}
 
-		// Docker calls this endpoint to check if the registry needs credentials and to get the url for authentication
-		if req.URL.Path == "/v2/" {
-			err = store.Login(w, req)
-			if err != nil {
-				log.Printf("Error while logging in: %s\n", err)
-			}
-			return
-		}
-
-		// Auth endpoint for docker
+		// Get token to access the repository
 		if req.URL.Path == "/v2/token" {
 			err = store.GetToken(w, req)
 			if err != nil {
 				log.Printf("Error while getting token: %s\n", err)
 			}
+			return
+		}
 
+		// Validate the returned token from /token
+		if req.URL.Path == "/v2/" {
+			err = store.LoginWithToken(w, req)
+			if err != nil {
+				log.Printf("Error while logging in: %s\n", err)
+			}
 			return
 		}
 
