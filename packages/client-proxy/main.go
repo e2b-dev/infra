@@ -21,7 +21,6 @@ import (
 	client_proxy "github.com/e2b-dev/infra/packages/proxy/internal/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 

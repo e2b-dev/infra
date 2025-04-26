@@ -7,13 +7,12 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
-	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy"
-	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/host"
 	"github.com/miekg/dns"
-
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy"
 )
 
 const (
@@ -45,8 +44,8 @@ func NewClientProxy(port uint) *http.Server {
 	)
 }
 
-func getSandboxClientHost(r *http.Request) (*host.SandboxHost, error) {
-	sandboxId, port, err := host.ParseHost(r.Host)
+func getSandboxClientHost(r *http.Request) (*reverse_proxy.RoutingTarget, error) {
+	sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +81,7 @@ func getSandboxClientHost(r *http.Request) (*host.SandboxHost, error) {
 
 		// The sandbox was not found, we want to return this information to the user
 		if node == "127.0.0.1" {
-			return nil, &host.ErrSandboxNotFound{}
+			return nil, &reverse_proxy.ErrSandboxNotFound{}
 		}
 
 		break
@@ -105,7 +104,7 @@ func getSandboxClientHost(r *http.Request) (*host.SandboxHost, error) {
 		Host:   fmt.Sprintf("%s:%d", node, orchestratorProxyPort),
 	}
 
-	return &host.SandboxHost{
+	return &reverse_proxy.RoutingTarget{
 		Url:       url,
 		SandboxId: sandboxId,
 		Logger:    logger,

@@ -9,7 +9,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy"
-	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/host"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 
 	"go.opentelemetry.io/otel/metric"
@@ -39,15 +38,15 @@ func NewSandboxProxy(
 		idleTimeout,
 		connectionTimeout,
 		activeConnections,
-		func(r *http.Request) (*host.SandboxHost, error) {
-			sandboxId, port, err := host.ParseHost(r.Host)
+		func(r *http.Request) (*reverse_proxy.RoutingTarget, error) {
+			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
 			if err != nil {
 				return nil, err
 			}
 
 			sbx, found := sandboxes.Get(sandboxId)
 			if !found {
-				return nil, &host.ErrSandboxNotFound{}
+				return nil, &reverse_proxy.ErrSandboxNotFound{}
 			}
 
 			url := &url.URL{
@@ -55,7 +54,7 @@ func NewSandboxProxy(
 				Host:   fmt.Sprintf("%s:%d", sbx.Slot.HostIP(), port),
 			}
 
-			return &host.SandboxHost{
+			return &reverse_proxy.RoutingTarget{
 				Url:       url,
 				SandboxId: sbx.Config.SandboxId,
 				Logger: zap.L().With(
