@@ -1,0 +1,29 @@
+package template_errors
+
+import (
+	_ "embed"
+	"html/template"
+)
+
+//go:embed browser_502_port_closed.html
+var portClosedHtml string
+var portClosedHtmlTemplate = template.Must(template.New("portClosedHtml").Parse(portClosedHtml))
+
+type portClosedError struct {
+	SandboxId string `json:"sandboxId"`
+	Message   string `json:"message"`
+	Port      string `json:"port"`
+	Host      string `json:"-"`
+}
+
+func NewPortClosedError(sandboxId string, host string, port string) *ReturnedError[portClosedError] {
+	return &ReturnedError[portClosedError]{
+		template: portClosedHtmlTemplate,
+		vars: portClosedError{
+			Message:   "The sandbox is running but port is not open",
+			SandboxId: sandboxId,
+			Host:      host,
+			Port:      port,
+		},
+	}
+}

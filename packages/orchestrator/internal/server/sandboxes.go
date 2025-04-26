@@ -48,8 +48,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	sbx, cleanup, err := sandbox.NewSandbox(
 		childCtx,
 		s.tracer,
-		s.dns,
-		s.proxy,
 		s.networkPool,
 		s.templateCache,
 		req.Sandbox,
@@ -184,14 +182,11 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
 
-	// Don't allow connecting to the sandbox anymore.
-	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
-	s.proxy.RemoveSandbox(in.SandboxId, sbx.Slot.HostIP())
-
 	// Remove the sandbox from the cache to prevent loading it again in API during the time the instance is stopping.
 	// Old comment:
 	// 	Ensure the sandbox is removed from cache.
 	// 	Ideally we would rely only on the goroutine defer.
+	// Don't allow connecting to the sandbox anymore.
 	s.sandboxes.Remove(in.SandboxId)
 
 	loggingCtx, cancelLogginCtx := context.WithTimeout(ctx, 2*time.Second)
@@ -240,7 +235,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.NotFound, errMsg.Error()).Err()
 	}
 
-	s.dns.Remove(in.SandboxId, sbx.Slot.HostIP())
 	s.sandboxes.Remove(in.SandboxId)
 
 	s.pauseMu.Unlock()
@@ -261,7 +255,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	defer func() {
 		// sbx.Stop sometimes blocks for several seconds,
-		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and DNS.
+		// so we don't want to block the request and do the cleanup in a goroutine after we already removed sandbox from cache and proxy.
 		go func() {
 			ctx, childSpan := s.tracer.Start(context.Background(), "sandbox-pause-stop")
 			defer childSpan.End()

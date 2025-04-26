@@ -17,10 +17,12 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -102,9 +104,20 @@ func run() int32 {
 
 	log.Println("Starting orchestrator", "commit", commitSHA)
 
-	sessionProxy := proxy.New(proxyPort)
+	// The sandbox map is shared between the server and the proxy
+	// to propagate information about sandbox routing.
+	sandboxes := smap.New[*sandbox.Sandbox]()
 
-	srv, err := server.New(ctx, port, clientID, commitSHA, sessionProxy)
+	sandboxProxy := proxy.NewOrchestratorProxy(proxyPort, sandboxes)
+
+	srv, err := server.New(
+		ctx,
+		port,
+		clientID,
+		commitSHA,
+		sandboxProxy,
+		sandboxes,
+	)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -161,7 +174,7 @@ func run() int32 {
 
 		errChan := make(chan error, 1)
 		go func() {
-			errChan <- sessionProxy.Start()
+			errChan <- sandboxProxy.ListenAndServe()
 		}()
 
 		select {
@@ -175,7 +188,12 @@ func run() int32 {
 		}
 
 		// close sandbox proxy, this will wait until all sessions are closed
-		defer sessionProxy.Shutdown(context.Background())
+		defer func() {
+			err := sandboxProxy.Shutdown(context.Background())
+			if err != nil {
+				zap.L().Error("failed to shutdown proxy server", zap.Error(err))
+			}
+		}()
 	}()
 
 	wg.Wait()

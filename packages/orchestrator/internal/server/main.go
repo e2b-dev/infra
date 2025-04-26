@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/http"
 	"os"
 	"sync"
 
@@ -22,8 +23,6 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -41,8 +40,7 @@ const ServiceName = "orchestrator"
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	sandboxes       *smap.Map[*sandbox.Sandbox]
-	dns             *dns.DNS
-	proxy           *proxy.SandboxProxy
+	proxy           *http.Server
 	tracer          trace.Tracer
 	networkPool     *network.Pool
 	templateCache   *template.Cache
@@ -60,8 +58,7 @@ type Service struct {
 	server     *server
 	grpc       *grpc.Server
 	grpcHealth *health.Server
-	dns        *dns.DNS
-	proxy      *proxy.SandboxProxy
+	proxy      *http.Server
 	port       uint16
 	shutdown   struct {
 		once sync.Once
@@ -76,7 +73,14 @@ type Service struct {
 	useClickhouseMetrics string
 }
 
-func New(ctx context.Context, port uint, clientID string, version string, proxy *proxy.SandboxProxy) (*Service, error) {
+func New(
+	ctx context.Context,
+	port uint,
+	clientID string,
+	version string,
+	proxy *http.Server,
+	sandboxes *smap.Map[*sandbox.Sandbox],
+) (*Service, error) {
 	if port > math.MaxUint16 {
 		return nil, fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
 	}
@@ -99,7 +103,6 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 
 	// BLOCK: initialize services
 	{
-		srv.dns = dns.New()
 		srv.proxy = proxy
 
 		opts := []logging.Option{
@@ -151,9 +154,8 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 
 		srv.server = &server{
 			tracer:               otel.Tracer(ServiceName),
-			dns:                  srv.dns,
 			proxy:                srv.proxy,
-			sandboxes:            smap.New[*sandbox.Sandbox](),
+			sandboxes:            sandboxes,
 			networkPool:          networkPool,
 			templateCache:        templateCache,
 			clientID:             clientID,
@@ -183,7 +185,7 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 
 // Start launches
 func (srv *Service) Start(ctx context.Context) error {
-	if srv.server == nil || srv.dns == nil || srv.grpc == nil {
+	if srv.server == nil || srv.grpc == nil {
 		return errors.New("orchestrator services are not initialized")
 	}
 
@@ -191,13 +193,6 @@ func (srv *Service) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create healthcheck: %w", err)
 	}
-
-	go func() {
-		zap.L().Info("Starting DNS server")
-		if err := srv.dns.Start("127.0.0.4", 53); err != nil {
-			zap.L().Fatal("Failed running DNS server", zap.Error(err))
-		}
-	}()
 
 	// the listener is closed by the shutdown operation
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", srv.port))
@@ -237,10 +232,6 @@ func (srv *Service) Start(ctx context.Context) error {
 		m.Close()
 
 		if err := lis.Close(); err != nil {
-			errs = append(errs, err)
-		}
-
-		if err := srv.dns.Close(ctx); err != nil {
 			errs = append(errs, err)
 		}
 

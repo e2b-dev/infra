@@ -20,8 +20,6 @@ import (
 	"golang.org/x/mod/semver"
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -86,8 +84,6 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 func NewSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
-	dns *dns.DNS,
-	proxy *proxy.SandboxProxy,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,
@@ -326,21 +322,6 @@ func NewSandbox(
 	}
 
 	sbx.StartedAt = time.Now()
-
-	dns.Add(config.SandboxId, ips.HostIP())
-	proxy.AddSandbox(config.SandboxId, ips.HostIP(), config.TeamId)
-
-	telemetry.ReportEvent(childCtx, "added DNS record", attribute.String("ip", ips.HostIP()), attribute.String("hostname", config.SandboxId))
-
-	cleanup.Add(func(ctx context.Context) error {
-		_, span := tracer.Start(ctx, "dns-proxy-remove")
-		defer span.End()
-
-		dns.Remove(config.SandboxId, ips.HostIP())
-		proxy.RemoveSandbox(config.SandboxId, ips.HostIP())
-
-		return nil
-	})
 
 	go sbx.logHeathAndUsage(healthcheckCtx)
 

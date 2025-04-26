@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -42,9 +41,6 @@ const (
 	port                  = 3002
 	orchestratorProxyPort = 5007 // orchestrator proxy port
 	maxRetries            = 3
-	maxConnectionDuration = 24 * time.Hour    // The same as the current max sandbox duration.
-	maxIdleConnections    = 32768             // Reasonably big number that is lower than the number of available ports.
-	idleTimeout           = 620 * time.Second // This should be ideally bigger than the previous downstream and lower than then next upstream timeout so the closing is not from the most upstream server.
 )
 
 var (
@@ -248,28 +244,18 @@ func run() int {
 		}
 	}()
 
-	server := &http.Server{
-		Addr:              fmt.Sprintf(":%d", port),
-		ReadTimeout:       maxConnectionDuration,
-		WriteTimeout:      maxConnectionDuration,
-		IdleTimeout:       idleTimeout,
-		ReadHeaderTimeout: 20 * time.Second,
-	}
+	// Proxy request to the correct node
+	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
 
-	// Similar values to our old the nginx configuration.
-	// Configures requests to upstream (orchestrator proxy).
+	// similar values to our old the nginx configuration
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
-		MaxIdleConnsPerHost:   maxIdleConnections,
-		IdleConnTimeout:       idleTimeout,
-		TLSHandshakeTimeout:   20 * time.Second,
-		ResponseHeaderTimeout: 20 * time.Second,
-		// TCP configuration
-		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second, // Connect timeout—can be lower between proxies
-			KeepAlive: 30 * time.Second, // Lower than our http keepalives (50 seconds)
-		}).DialContext,
-		DisableCompression: true, // No need to request or manipulate compression
+		MaxIdleConns:          1024,              // Matches worker_connections
+		MaxIdleConnsPerHost:   8192,              // Matches keepalive_requests
+		IdleConnTimeout:       620 * time.Second, // Matches keepalive_timeout
+		TLSHandshakeTimeout:   10 * time.Second,  // Similar to client_header_timeout
+		ResponseHeaderTimeout: 24 * time.Hour,    // Matches proxy_read_timeout
+		DisableKeepAlives:     true,              // Disable keep-alive, not supported
 	}
 
 	server.Handler = http.HandlerFunc(proxyHandler(transport))
