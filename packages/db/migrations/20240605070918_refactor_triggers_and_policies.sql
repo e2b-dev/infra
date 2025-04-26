@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 DROP TRIGGER IF EXISTS create_default_team ON auth.users;
 DROP FUNCTION IF EXISTS generate_default_team_trigger();
@@ -139,4 +140,8 @@ DO $$
         END;
     END $$;
 
-COMMIT; 
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

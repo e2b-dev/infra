@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 -- Add new schema named "auth"
 CREATE SCHEMA IF NOT EXISTS "auth";
@@ -159,4 +160,8 @@ END $$;
 -- Create index "usersteams_team_id_user_id" to table: "users_teams"
 CREATE UNIQUE INDEX IF NOT EXISTS "usersteams_team_id_user_id" ON "public"."users_teams" ("team_id", "user_id");
 
-COMMIT; 
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

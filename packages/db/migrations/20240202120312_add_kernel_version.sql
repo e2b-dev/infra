@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 -- Modify "envs" table
 ALTER TABLE "public"."envs" ADD COLUMN IF NOT EXISTS "kernel_version" character varying NULL;
@@ -11,4 +12,8 @@ ALTER TABLE "public"."envs"
     ALTER COLUMN "kernel_version" SET NOT NULL,
     ALTER COLUMN "kernel_version" SET DEFAULT 'vmlinux-5.10.186';
 
-COMMIT; 
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

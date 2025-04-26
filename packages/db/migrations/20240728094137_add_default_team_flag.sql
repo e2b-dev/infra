@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 -- Modify "users_teams" table
 ALTER TABLE "public"."users_teams" ADD COLUMN IF NOT EXISTS "is_default" boolean NOT NULL DEFAULT false;
@@ -38,4 +39,8 @@ $post_user_signup$ SECURITY DEFINER SET search_path = public;
 
 ALTER FUNCTION public.post_user_signup() OWNER TO trigger_user;
 
-COMMIT; 
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

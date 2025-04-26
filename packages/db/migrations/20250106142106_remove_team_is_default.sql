@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 -- Alter "teams" table
 ALTER TABLE "public"."teams" DROP COLUMN IF EXISTS "is_default";
@@ -29,4 +30,8 @@ BEGIN
 END
 $post_user_signup$ SECURITY DEFINER SET search_path = public;
 
-COMMIT; 
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

@@ -1,5 +1,5 @@
-BEGIN;
-
+-- +goose Up
+-- +goose StatementBegin
 CREATE SCHEMA IF NOT EXISTS auth;
 
 -- Create RLS policies for user management
@@ -44,4 +44,8 @@ CREATE TABLE IF NOT EXISTS "auth"."users"
     PRIMARY KEY ("id")
 );
 
-COMMIT;
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

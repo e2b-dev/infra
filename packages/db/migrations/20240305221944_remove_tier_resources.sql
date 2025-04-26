@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 -- Modify "tiers" table
 ALTER TABLE "public"."tiers" 
@@ -7,4 +8,8 @@ ALTER TABLE "public"."tiers"
     DROP COLUMN IF EXISTS "vcpu",
     DROP COLUMN IF EXISTS "ram_mb";
 
-COMMIT; 
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

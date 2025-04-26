@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 -- Add column to "users_teams" table
 ALTER TABLE "public"."users_teams"
@@ -13,3 +14,8 @@ ALTER TABLE "public"."users_teams"
             ON DELETE SET NULL;
 
 COMMIT;
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

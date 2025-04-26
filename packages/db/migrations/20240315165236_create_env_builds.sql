@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 -- Modify "env_aliases" table
 ALTER TABLE IF EXISTS "public"."env_aliases" RENAME COLUMN "is_name" TO "is_renamable";
@@ -24,4 +25,8 @@ ALTER TABLE IF EXISTS "public"."envs"
     DROP COLUMN IF EXISTS "kernel_version",
     DROP COLUMN IF EXISTS "firecracker_version";
 
-COMMIT; 
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

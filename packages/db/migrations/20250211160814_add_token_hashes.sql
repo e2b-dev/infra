@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 -- Add new columns to team_api_keys table
 ALTER TABLE team_api_keys
@@ -16,4 +17,8 @@ ALTER TABLE access_tokens
 COMMENT ON COLUMN team_api_keys.api_key_hash IS 'sensitive';
 COMMENT ON COLUMN access_tokens.access_token_hash IS 'sensitive';
 
-COMMIT; 
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd
