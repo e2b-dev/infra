@@ -1,4 +1,4 @@
-package template_errors
+package error_template
 
 import (
 	_ "embed"
@@ -15,8 +15,8 @@ type sandboxNotFoundData struct {
 	Host      string `json:"-"`
 }
 
-func NewSandboxNotFoundError(sandboxId string, host string) *ReturnedError[sandboxNotFoundData] {
-	return &ReturnedError[sandboxNotFoundData]{
+func NewSandboxNotFoundError(sandboxId string, host string) *TemplatedError[sandboxNotFoundData] {
+	return &TemplatedError[sandboxNotFoundData]{
 		template: sandboxNotFoundHtmlTemplate,
 		vars: sandboxNotFoundData{
 			SandboxId: sandboxId,

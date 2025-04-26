@@ -108,7 +108,7 @@ func run() int32 {
 	// to propagate information about sandbox routing.
 	sandboxes := smap.New[*sandbox.Sandbox]()
 
-	sandboxProxy := proxy.NewOrchestratorProxy(proxyPort, sandboxes)
+	sandboxProxy := proxy.NewSandboxProxy(proxyPort, sandboxes)
 
 	srv, err := server.New(
 		ctx,

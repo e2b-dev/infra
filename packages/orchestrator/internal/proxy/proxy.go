@@ -7,9 +7,12 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/host"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -18,14 +21,24 @@ const (
 	connectionTimeout = 630 * time.Second
 )
 
-func NewOrchestratorProxy(
+func NewSandboxProxy(
 	port uint,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) *http.Server {
+	var activeConnections *metric.Int64UpDownCounter
+
+	connectionCounter, err := meters.GetUpDownCounter(meters.OrchestratorProxyActiveConnectionsCounterMeterName)
+	if err != nil {
+		zap.L().Error("failed to create active connections counter", zap.Error(err))
+	} else {
+		activeConnections = &connectionCounter
+	}
+
 	return reverse_proxy.New(
 		port,
 		idleTimeout,
 		connectionTimeout,
+		activeConnections,
 		func(r *http.Request) (*host.SandboxHost, error) {
 			sandboxId, port, err := host.ParseHost(r.Host)
 			if err != nil {

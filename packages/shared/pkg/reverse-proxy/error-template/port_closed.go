@@ -1,4 +1,4 @@
-package template_errors
+package error_template
 
 import (
 	_ "embed"
@@ -16,8 +16,8 @@ type portClosedError struct {
 	Host      string `json:"-"`
 }
 
-func NewPortClosedError(sandboxId string, host string, port string) *ReturnedError[portClosedError] {
-	return &ReturnedError[portClosedError]{
+func NewPortClosedError(sandboxId string, host string, port string) *TemplatedError[portClosedError] {
+	return &TemplatedError[portClosedError]{
 		template: portClosedHtmlTemplate,
 		vars: portClosedError{
 			Message:   "The sandbox is running but port is not open",

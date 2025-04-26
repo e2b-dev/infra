@@ -7,15 +7,13 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"regexp"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	template "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/error-template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/host"
-	template "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/template-errors"
 )
 
 const (
@@ -27,6 +25,7 @@ func New(
 	port uint,
 	idleTimeout time.Duration,
 	connectionTimeout time.Duration,
+	activeConnections *metric.Int64UpDownCounter,
 	getTargetHost func(r *http.Request) (*host.SandboxHost, error),
 ) *http.Server {
 	transport := &http.Transport{
@@ -49,23 +48,15 @@ func New(
 		WriteTimeout:      maxConnectionDuration,
 		IdleTimeout:       idleTimeout,
 		ReadHeaderTimeout: 20 * time.Second,
-		Handler:           http.HandlerFunc(proxyHandler(transport, getTargetHost)),
+		Handler:           http.HandlerFunc(proxyHandler(transport, getTargetHost, activeConnections)),
 	}
 }
 
 func proxyHandler(
 	transport *http.Transport,
 	getSandboxHost func(r *http.Request) (*host.SandboxHost, error),
+	activeConnections *metric.Int64UpDownCounter,
 ) func(w http.ResponseWriter, r *http.Request) {
-	var activeConnections *metric.Int64UpDownCounter
-
-	connectionCounter, err := meters.GetUpDownCounter(meters.OrchestratorProxyActiveConnectionsCounterMeterName)
-	if err != nil {
-		zap.L().Error("failed to create active connections counter", zap.Error(err))
-	} else {
-		activeConnections = &connectionCounter
-	}
-
 	proxyLogger, _ := zap.NewStdLogAt(zap.L(), zap.ErrorLevel)
 
 	proxy := httputil.ReverseProxy{
@@ -168,52 +159,5 @@ func proxyHandler(
 		ctx := context.WithValue(r.Context(), host.SandboxHostContextKey{}, h)
 
 		proxy.ServeHTTP(w, r.WithContext(ctx))
-	}
-}
-
-var browserRegex = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|opera|msie`)
-
-func isBrowser(r *http.Request) bool {
-	return browserRegex.MatchString(r.UserAgent())
-}
-
-func handleError[T any](
-	w http.ResponseWriter,
-	r *http.Request,
-	err *template.ReturnedError[T],
-	logger *zap.Logger,
-) {
-	if isBrowser(r) {
-		body, buildErr := err.BuildHtml()
-		if buildErr != nil {
-			logger.Error("Failed to build HTML error response", zap.Error(buildErr))
-			w.WriteHeader(http.StatusInternalServerError)
-
-			return
-		}
-
-		w.WriteHeader(http.StatusBadGateway)
-		w.Header().Add("Content-Type", "text/html")
-		_, writeErr := w.Write(body)
-		if writeErr != nil {
-			logger.Error("failed to write HTML error response", zap.Error(writeErr))
-		}
-
-		return
-	}
-
-	body, buildErr := err.BuildJson()
-	if buildErr != nil {
-		logger.Error("failed to build JSON error response", zap.Error(buildErr))
-
-		return
-	}
-
-	w.WriteHeader(http.StatusBadGateway)
-	w.Header().Add("Content-Type", "application/json")
-
-	_, writeErr := w.Write(body)
-	if writeErr != nil {
-		logger.Error("failed to write JSON error response", zap.Error(writeErr))
 	}
 }

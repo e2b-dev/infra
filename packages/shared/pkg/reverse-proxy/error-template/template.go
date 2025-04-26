@@ -1,4 +1,4 @@
-package template_errors
+package error_template
 
 import (
 	"bytes"
@@ -17,15 +17,15 @@ func buildHtmlError[T any](template *template.Template, vars T) ([]byte, error) 
 	return html.Bytes(), nil
 }
 
-type ReturnedError[T any] struct {
+type TemplatedError[T any] struct {
 	template *template.Template
 	vars     T
 }
 
-func (e *ReturnedError[T]) BuildHtml() ([]byte, error) {
+func (e *TemplatedError[T]) BuildHtml() ([]byte, error) {
 	return buildHtmlError(e.template, e.vars)
 }
 
-func (e *ReturnedError[T]) BuildJson() ([]byte, error) {
+func (e *TemplatedError[T]) BuildJson() ([]byte, error) {
 	return json.Marshal(e.vars)
 }
