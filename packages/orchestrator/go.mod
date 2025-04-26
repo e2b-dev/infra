@@ -15,7 +15,6 @@ require (
 	github.com/hashicorp/consul/api v1.30.0
 	github.com/jellydator/ttlcache/v3 v3.3.1-0.20250207140243-aefc35918359
 	github.com/loopholelabs/userfaultfd-go v0.1.2
-	github.com/miekg/dns v1.1.63
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.10.0
@@ -101,6 +100,7 @@ require (
 	github.com/mdlayher/genetlink v1.3.2 // indirect
 	github.com/mdlayher/netlink v1.7.2 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
+	github.com/miekg/dns v1.1.63 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.1-0.20220423185008-bf980b35cac4 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
@@ -137,7 +137,6 @@ require (
 	golang.org/x/oauth2 v0.25.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
-	golang.org/x/tools v0.30.0 // indirect
 	google.golang.org/api v0.214.0 // indirect
 	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250115164207-1a7da9e5054f // indirect
