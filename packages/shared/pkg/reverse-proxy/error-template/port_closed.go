@@ -5,7 +5,7 @@ import (
 	"html/template"
 )
 
-//go:embed browser_502_port_closed.html
+//go:embed browser_port_closed.html
 var portClosedHtml string
 var portClosedHtmlTemplate = template.Must(template.New("portClosedHtml").Parse(portClosedHtml))
 

@@ -1,17 +1,14 @@
-package host
+package reverse_proxy
 
 import (
-	"net/url"
 	"strconv"
 	"strings"
-
-	"go.uber.org/zap"
 )
 
 type ErrInvalidHost struct{}
 
 func (e ErrInvalidHost) Error() string {
-	return "invalid host to proxy"
+	return "invalid url host"
 }
 
 type ErrInvalidSandboxPort struct{}
@@ -24,14 +21,6 @@ type ErrSandboxNotFound struct{}
 
 func (e ErrSandboxNotFound) Error() string {
 	return "sandbox not found"
-}
-
-type SandboxHostContextKey struct{}
-
-type SandboxHost struct {
-	Url       *url.URL
-	SandboxId string
-	Logger    *zap.Logger
 }
 
 func ParseHost(host string) (sandboxID string, port uint64, err error) {

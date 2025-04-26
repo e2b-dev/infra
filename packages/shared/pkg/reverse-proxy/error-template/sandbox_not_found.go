@@ -5,7 +5,7 @@ import (
 	"html/template"
 )
 
-//go:embed browser_502_sandbox_not_found.html
+//go:embed browser_sandbox_not_found.html
 var sandboxNotFoundHtml string
 var sandboxNotFoundHtmlTemplate = template.Must(template.New("sandboxNotFoundHtml").Parse(sandboxNotFoundHtml))
 

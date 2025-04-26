@@ -7,13 +7,13 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	template "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/error-template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/host"
 )
 
 const (
@@ -21,12 +21,21 @@ const (
 	maxIdleConnections    = 32768          // Reasonably big number that is lower than the number of available ports.
 )
 
+type routingTargetContextKey struct{}
+
+// RoutingTarget contains information about where to route the request.
+type RoutingTarget struct {
+	Url       *url.URL
+	SandboxId string
+	Logger    *zap.Logger
+}
+
 func New(
 	port uint,
 	idleTimeout time.Duration,
 	connectionTimeout time.Duration,
 	activeConnections *metric.Int64UpDownCounter,
-	getTargetHost func(r *http.Request) (*host.SandboxHost, error),
+	getRoutingTarget func(r *http.Request) (*RoutingTarget, error),
 ) *http.Server {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
@@ -48,13 +57,13 @@ func New(
 		WriteTimeout:      maxConnectionDuration,
 		IdleTimeout:       idleTimeout,
 		ReadHeaderTimeout: 20 * time.Second,
-		Handler:           http.HandlerFunc(proxyHandler(transport, getTargetHost, activeConnections)),
+		Handler:           http.HandlerFunc(proxyHandler(transport, getRoutingTarget, activeConnections)),
 	}
 }
 
 func proxyHandler(
 	transport *http.Transport,
-	getSandboxHost func(r *http.Request) (*host.SandboxHost, error),
+	getRoutingTarget func(r *http.Request) (*RoutingTarget, error),
 	activeConnections *metric.Int64UpDownCounter,
 ) func(w http.ResponseWriter, r *http.Request) {
 	proxyLogger, _ := zap.NewStdLogAt(zap.L(), zap.ErrorLevel)
@@ -62,45 +71,45 @@ func proxyHandler(
 	proxy := httputil.ReverseProxy{
 		Transport: transport,
 		Rewrite: func(r *httputil.ProxyRequest) {
-			host, ok := r.In.Context().Value(host.SandboxHostContextKey{}).(*host.SandboxHost)
+			t, ok := r.In.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
 			if !ok {
-				zap.L().Error("failed to get sandox host info from context")
+				zap.L().Error("failed to get routing target from context")
 
 				return
 			}
 
-			r.SetURL(host.Url)
+			r.SetURL(t.Url)
 
 			r.Out.Host = r.In.Host
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			h, ok := r.Context().Value(host.SandboxHostContextKey{}).(*host.SandboxHost)
+			t, ok := r.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
 			if !ok {
-				zap.L().Error("failed to get sandox host info from context")
+				zap.L().Error("failed to get routing target from context")
 
 				return
 			}
 
-			h.Logger.Error("Reverse proxy error", zap.Error(err))
+			t.Logger.Error("Reverse proxy error", zap.Error(err))
 
-			errorTemplate := template.NewPortClosedError(h.SandboxId, r.Host, h.Url.Port())
-			handleError(w, r, errorTemplate, h.Logger)
+			errorTemplate := template.NewPortClosedError(t.SandboxId, r.Host, t.Url.Port())
+			handleError(w, r, errorTemplate, t.Logger)
 		},
 		ModifyResponse: func(r *http.Response) error {
-			h, ok := r.Request.Context().Value(host.SandboxHostContextKey{}).(*host.SandboxHost)
+			t, ok := r.Request.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
 			if !ok {
-				zap.L().Error("failed to get sandox host info from context")
+				zap.L().Error("failed to get routing target from context")
 
 				return nil
 			}
 
 			if r.StatusCode >= 500 {
-				h.Logger.Error(
+				t.Logger.Error(
 					"Reverse proxy error",
 					zap.Int("status_code", r.StatusCode),
 				)
 			} else {
-				h.Logger.Debug("Reverse proxy response",
+				t.Logger.Debug("Reverse proxy response",
 					zap.Int("status_code", r.StatusCode),
 				)
 			}
@@ -122,41 +131,40 @@ func proxyHandler(
 			}()
 		}
 
-		h, err := getSandboxHost(r)
-		if errors.As(err, &host.ErrInvalidHost{}) {
-			zap.L().Warn("invalid host to proxy", zap.String("host", r.Host))
+		t, err := getRoutingTarget(r)
+		if errors.As(err, &ErrInvalidHost{}) {
+			zap.L().Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)
 
 			return
 		}
 
-		if errors.As(err, &host.ErrInvalidSandboxPort{}) {
-			h.Logger.Warn("invalid sandbox port", zap.String("sandbox_port", h.Url.Port()))
+		if errors.As(err, &ErrInvalidSandboxPort{}) {
+			t.Logger.Warn("invalid sandbox port")
 			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
 
 			return
 		}
 
-		// TODO: Should this error be propagated differently?
-		if errors.As(err, &host.ErrSandboxNotFound{}) {
-			h.Logger.Warn("sandbox not found", zap.String("sandbox_id", h.SandboxId))
+		if errors.As(err, &ErrSandboxNotFound{}) {
+			t.Logger.Warn("sandbox not found")
 
-			errorTemplate := template.NewSandboxNotFoundError(h.SandboxId, r.Host)
-			handleError(w, r, errorTemplate, h.Logger)
+			errorTemplate := template.NewSandboxNotFoundError(t.SandboxId, r.Host)
+			handleError(w, r, errorTemplate, t.Logger)
 
 			return
 		}
 
 		if err != nil {
-			h.Logger.Error("failed to get host", zap.Error(err))
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			t.Logger.Error("failed to route request", zap.Error(err))
+			http.Error(w, "Unexpected error when routing request", http.StatusInternalServerError)
 
 			return
 		}
 
-		h.Logger.Debug("proxying request")
+		t.Logger.Debug("proxying request")
 
-		ctx := context.WithValue(r.Context(), host.SandboxHostContextKey{}, h)
+		ctx := context.WithValue(r.Context(), routingTargetContextKey{}, t)
 
 		proxy.ServeHTTP(w, r.WithContext(ctx))
 	}
