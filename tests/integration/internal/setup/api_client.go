@@ -8,11 +8,16 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 )
 
-func GetAPIClient() *api.ClientWithResponses {
-	hc := http.Client{
+var (
+	hc = http.Client{
 		Timeout: apiTimeout,
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: 2000,
+		},
 	}
+)
 
+func GetAPIClient() *api.ClientWithResponses {
 	c, err := api.NewClientWithResponses(APIServerURL, api.WithHTTPClient(&hc))
 	if err != nil {
 		panic(err)
