@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	template "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/error-template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 const (
@@ -30,6 +31,10 @@ type RoutingTarget struct {
 	Logger    *zap.Logger
 }
 
+var (
+	proxies = smap.New[*httputil.ReverseProxy]()
+)
+
 func New(
 	port uint,
 	idleTimeout time.Duration,
@@ -37,94 +42,113 @@ func New(
 	activeConnections *metric.Int64UpDownCounter,
 	getRoutingTarget func(r *http.Request) (*RoutingTarget, error),
 ) *http.Server {
-	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		MaxIdleConnsPerHost:   maxIdleConnections,
-		IdleConnTimeout:       idleTimeout,
-		TLSHandshakeTimeout:   20 * time.Second,
-		ResponseHeaderTimeout: 20 * time.Second,
-		// TCP configuration
-		DialContext: (&net.Dialer{
-			Timeout:   connectionTimeout, // Connect timeout (no timeout by default)
-			KeepAlive: 30 * time.Second,  // Lower than our http keepalives (50 seconds)
-		}).DialContext,
-		DisableCompression: true, // No need to request or manipulate compression
-	}
-
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
 		ReadTimeout:       maxConnectionDuration,
 		WriteTimeout:      maxConnectionDuration,
 		IdleTimeout:       idleTimeout,
 		ReadHeaderTimeout: 20 * time.Second,
-		Handler:           http.HandlerFunc(proxyHandler(transport, getRoutingTarget, activeConnections)),
+		Handler: http.HandlerFunc(
+			proxyHandler(
+				getRoutingTarget,
+				activeConnections,
+				idleTimeout,
+				connectionTimeout,
+			),
+		),
 	}
 }
 
 func proxyHandler(
-	transport *http.Transport,
 	getRoutingTarget func(r *http.Request) (*RoutingTarget, error),
 	activeConnections *metric.Int64UpDownCounter,
+	idleTimeout time.Duration,
+	connectionTimeout time.Duration,
 ) func(w http.ResponseWriter, r *http.Request) {
 	proxyLogger, _ := zap.NewStdLogAt(zap.L(), zap.ErrorLevel)
 
-	proxy := httputil.ReverseProxy{
-		Transport: transport,
-		Rewrite: func(r *httputil.ProxyRequest) {
-			t, ok := r.In.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
-			if !ok {
-				zap.L().Error("failed to get routing target from context")
+	getProxy := func(target *RoutingTarget) *httputil.ReverseProxy {
+		proxy, ok := proxies.Get(target.SandboxId)
+		if ok {
+			return proxy
+		}
 
-				return
-			}
+		transport := &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			MaxIdleConnsPerHost:   maxIdleConnections,
+			IdleConnTimeout:       idleTimeout,
+			TLSHandshakeTimeout:   20 * time.Second,
+			ResponseHeaderTimeout: 20 * time.Second,
+			// TCP configuration
+			DialContext: (&net.Dialer{
+				Timeout:   connectionTimeout, // Connect timeout (no timeout by default)
+				KeepAlive: 30 * time.Second,  // Lower than our http keepalives (50 seconds)
+			}).DialContext,
+			DisableCompression: true, // No need to request or manipulate compression
+		}
 
-			r.SetURL(t.Url)
+		proxy = &httputil.ReverseProxy{
+			Transport: transport,
+			Rewrite: func(r *httputil.ProxyRequest) {
+				t, ok := r.In.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
+				if !ok {
+					zap.L().Error("failed to get routing target from context")
 
-			r.Out.Host = r.In.Host
-		},
-		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			t, ok := r.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
-			if !ok {
-				zap.L().Error("failed to get routing target from context")
+					return
+				}
 
-				return
-			}
+				r.SetURL(t.Url)
 
-			rc := http.NewResponseController(w)
+				r.Out.Host = r.In.Host
+			},
+			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+				t, ok := r.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
+				if !ok {
+					zap.L().Error("failed to get routing target from context")
 
-			err = rc.EnableFullDuplex()
-			if err != nil {
-				zap.L().Error("failed to enable full duplex", zap.Error(err))
-			}
+					return
+				}
 
-			t.Logger.Error("Reverse proxy error", zap.Error(err))
+				rc := http.NewResponseController(w)
 
-			errorTemplate := template.NewPortClosedError(t.SandboxId, r.Host, t.Url.Port())
-			handleError(w, r, errorTemplate, t.Logger)
-		},
-		ModifyResponse: func(r *http.Response) error {
-			t, ok := r.Request.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
-			if !ok {
-				zap.L().Error("failed to get routing target from context")
+				err = rc.EnableFullDuplex()
+				if err != nil {
+					zap.L().Error("failed to enable full duplex", zap.Error(err))
+				}
+
+				t.Logger.Error("Reverse proxy error", zap.Error(err))
+
+				errorTemplate := template.NewPortClosedError(t.SandboxId, r.Host, t.Url.Port())
+				handleError(w, r, errorTemplate, t.Logger)
+			},
+			ModifyResponse: func(r *http.Response) error {
+				t, ok := r.Request.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
+				if !ok {
+					zap.L().Error("failed to get routing target from context")
+
+					return nil
+				}
+
+				if r.StatusCode >= 500 {
+					t.Logger.Error(
+						"Reverse proxy error",
+						zap.Int("status_code", r.StatusCode),
+					)
+				} else {
+					t.Logger.Debug("Reverse proxy response",
+						zap.Int("status_code", r.StatusCode),
+					)
+				}
 
 				return nil
-			}
+			},
+			// Ideally we would add info about sandbox to each error log, but there is no easy way right now.
+			ErrorLog: proxyLogger,
+		}
 
-			if r.StatusCode >= 500 {
-				t.Logger.Error(
-					"Reverse proxy error",
-					zap.Int("status_code", r.StatusCode),
-				)
-			} else {
-				t.Logger.Debug("Reverse proxy response",
-					zap.Int("status_code", r.StatusCode),
-				)
-			}
+		proxies.Insert(target.SandboxId, proxy)
 
-			return nil
-		},
-		// Ideally we would add info about sandbox to each error log, but there is no easy way right now.
-		ErrorLog: proxyLogger,
+		return proxy
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -180,6 +204,6 @@ func proxyHandler(
 
 		ctx := context.WithValue(r.Context(), routingTargetContextKey{}, t)
 
-		proxy.ServeHTTP(w, r.WithContext(ctx))
+		getProxy(t).ServeHTTP(w, r.WithContext(ctx))
 	}
 }
