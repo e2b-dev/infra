@@ -55,8 +55,9 @@ func NewSandboxProxy(
 			}
 
 			return &reverse_proxy.RoutingTarget{
-				Url:       url,
-				SandboxId: sbx.Config.SandboxId,
+				Url:           url,
+				SandboxId:     sbx.Config.SandboxId,
+				ConnectionKey: fmt.Sprintf("%s|%s", sbx.Config.SandboxId, sbx.Slot.HostIP()),
 				Logger: zap.L().With(
 					zap.String("host", r.Host),
 					zap.String("sandbox_id", sbx.Config.SandboxId),
