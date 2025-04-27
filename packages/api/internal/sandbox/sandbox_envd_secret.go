@@ -24,5 +24,5 @@ func (g *EnvdAccessTokenGenerator) GenerateAccessToken(id api.SandboxID) (string
 	}
 
 	hasher := keys.NewHMACSHA256Hashing([]byte(saltKey))
-	return hasher.Hash([]byte(id)), nil
+	return hasher.Hash([]byte(id))
 }

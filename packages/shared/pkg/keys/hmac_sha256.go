@@ -14,8 +14,12 @@ func NewHMACSHA256Hashing(key []byte) *HMACSha256Hashing {
 	return &HMACSha256Hashing{key: key}
 }
 
-func (h *HMACSha256Hashing) Hash(content []byte) string {
+func (h *HMACSha256Hashing) Hash(content []byte) (string, error) {
 	mac := hmac.New(sha256.New, h.key)
-	mac.Write(content)
-	return hex.EncodeToString(mac.Sum(nil))
+	_, err := mac.Write(content)
+	if err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(mac.Sum(nil)), nil
 }
