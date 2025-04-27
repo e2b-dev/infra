@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -109,6 +110,8 @@ func proxyHandler(
 				r.Out.Host = r.In.Host
 			},
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+				fmt.Fprintf(os.Stderr, "Reverse proxy error -> error handler %s\n", err)
+
 				t, ok := r.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
 				if !ok {
 					zap.L().Error("failed to get routing target from context")
@@ -122,6 +125,7 @@ func proxyHandler(
 				handleError(w, r, errorTemplate, t.Logger)
 			},
 			ModifyResponse: func(r *http.Response) error {
+				fmt.Fprintf(os.Stderr, "Reverse proxy response -> modify response %d\n", r.StatusCode)
 				t, ok := r.Request.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
 				if !ok {
 					zap.L().Error("failed to get routing target from context")
@@ -163,32 +167,36 @@ func proxyHandler(
 		}
 
 		t, err := getRoutingTarget(r)
-		if errors.As(err, &ErrInvalidHost{}) {
+
+		var invalidHostErr *ErrInvalidHost
+		if errors.As(err, &invalidHostErr) {
 			zap.L().Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)
 
 			return
 		}
 
-		if errors.As(err, &ErrInvalidSandboxPort{}) {
+		var invalidPortErr *ErrInvalidSandboxPort
+		if errors.As(err, &invalidPortErr) {
 			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host))
 			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
 
 			return
 		}
 
-		if errors.As(err, &ErrSandboxNotFound{}) {
+		var notFoundErr *ErrSandboxNotFound
+		if errors.As(err, &notFoundErr) {
 			zap.L().Warn("sandbox not found", zap.String("host", r.Host))
 
-			errorTemplate := template.NewSandboxNotFoundError(t.SandboxId, r.Host)
-			handleError(w, r, errorTemplate, t.Logger)
+			errorTemplate := template.NewSandboxNotFoundError(notFoundErr.SandboxId, r.Host)
+			handleError(w, r, errorTemplate, zap.L())
 
 			return
 		}
 
 		if err != nil {
 			zap.L().Error("failed to route request", zap.Error(err), zap.String("host", r.Host))
-			http.Error(w, "Unexpected error when routing request", http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Unexpected error when routing request: %s", err), http.StatusInternalServerError)
 
 			return
 		}

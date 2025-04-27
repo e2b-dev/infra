@@ -81,7 +81,7 @@ func getSandboxClientHost(r *http.Request) (*reverse_proxy.RoutingTarget, error)
 
 		// The sandbox was not found, we want to return this information to the user
 		if node == "127.0.0.1" {
-			return nil, &reverse_proxy.ErrSandboxNotFound{}
+			return nil, reverse_proxy.NewErrSandboxNotFound(sandboxId)
 		}
 
 		break

@@ -46,7 +46,7 @@ func NewSandboxProxy(
 
 			sbx, found := sandboxes.Get(sandboxId)
 			if !found {
-				return nil, &reverse_proxy.ErrSandboxNotFound{}
+				return nil, reverse_proxy.NewErrSandboxNotFound(sandboxId)
 			}
 
 			url := &url.URL{

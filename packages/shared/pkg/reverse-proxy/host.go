@@ -7,19 +7,27 @@ import (
 
 type ErrInvalidHost struct{}
 
-func (e ErrInvalidHost) Error() string {
+func (e *ErrInvalidHost) Error() string {
 	return "invalid url host"
 }
 
 type ErrInvalidSandboxPort struct{}
 
-func (e ErrInvalidSandboxPort) Error() string {
+func (e *ErrInvalidSandboxPort) Error() string {
 	return "invalid sandbox port"
 }
 
-type ErrSandboxNotFound struct{}
+func NewErrSandboxNotFound(sandboxId string) *ErrSandboxNotFound {
+	return &ErrSandboxNotFound{
+		SandboxId: sandboxId,
+	}
+}
 
-func (e ErrSandboxNotFound) Error() string {
+type ErrSandboxNotFound struct {
+	SandboxId string
+}
+
+func (e *ErrSandboxNotFound) Error() string {
 	return "sandbox not found"
 }
 
