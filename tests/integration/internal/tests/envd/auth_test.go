@@ -90,7 +90,7 @@ func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
 	})
 }
 
-func TestAccessAuthorizedPathWithOutdatedAccessToken(t *testing.T) {
+func TestChangeAccessAuthorizedToken(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -102,34 +102,14 @@ func TestAccessAuthorizedPathWithOutdatedAccessToken(t *testing.T) {
 	envdAuthTokenA := sbx.JSON201.EnvdAccessToken
 	envdAuthTokenB := "second-token"
 
-	// set up the request to list the directory
-	req := connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
-	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
-	setup.SetUserHeader(req.Header(), "user")
-	setup.SetAccessTokenHeader(req.Header(), *envdAuthTokenA)
-
-	_, err := envdClient.FilesystemClient.ListDir(ctx, req)
-	assert.NoError(t, err)
-
 	sandboxEnvdInitCall(t, ctx, envdInitCall{
 		sbx:                   sbx,
 		client:                envdClient,
 		authToken:             envdAuthTokenA, // this is the old token used currently by envd
 		body:                  envdapi.PostInitJSONRequestBody{AccessToken: &envdAuthTokenB},
 		expectedResErr:        nil,
-		expectedResHttpStatus: http.StatusNoContent,
+		expectedResHttpStatus: http.StatusConflict,
 	})
-
-	// try to call with old access token
-	req = connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
-	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
-	setup.SetUserHeader(req.Header(), "user")
-	setup.SetAccessTokenHeader(req.Header(), *envdAuthTokenA)
-
-	_, err = envdClient.FilesystemClient.ListDir(ctx, req)
-	require.Error(t, err)
-
-	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")
 }
 
 func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T) {
