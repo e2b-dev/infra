@@ -312,10 +312,6 @@ resource "google_compute_url_map" "orch_map" {
 resource "google_compute_target_https_proxy" "default" {
   name    = "${var.prefix}https-proxy"
   url_map = google_compute_url_map.orch_map.self_link
-  // This should be lower than the fixed backend keepalive timeout of 600 seconds.
-  // We reduce this, because the 610 seconds were a lot.
-  // The connection termination should be propagated via TCP.
-  http_keep_alive_timeout_sec = 300
 
   certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.certificate_map.id}"
 }
