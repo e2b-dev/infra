@@ -1,0 +1,24 @@
+name: Lint
+
+on: [workflow_call]
+
+jobs:
+  lint:
+    name: Run golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # IMPORTANT: fetch full history for diffs
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.7'
+
+      - name: Run golangci-lint only on changed files
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.1.5
+          args: --new-from-rev=origin/main --out-format=colored-line-number
