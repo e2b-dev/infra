@@ -43,6 +43,7 @@ func New(
 		IdleConnTimeout:       idleTimeout,
 		TLSHandshakeTimeout:   20 * time.Second,
 		ResponseHeaderTimeout: 20 * time.Second,
+		DisableKeepAlives:     true,
 		// TCP configuration
 		DialContext: (&net.Dialer{
 			Timeout:   connectionTimeout, // Connect timeout (no timeout by default)
