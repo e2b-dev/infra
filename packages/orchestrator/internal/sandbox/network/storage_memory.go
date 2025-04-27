@@ -41,7 +41,7 @@ func (s *StorageMemory) Release(ips *Slot) error {
 	s.freeSlotsMu.Lock()
 	defer s.freeSlotsMu.Unlock()
 
-	s.freeSlots[ips.Idx] = false
+	// s.freeSlots[ips.Idx] = false
 
 	return nil
 }
