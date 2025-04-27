@@ -19,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -197,8 +196,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 		}
 	}
 
-	hashed := sandbox.NewEnvdAccessTokenGenerator()
-	key, err := hashed.GenerateAccessToken(sandboxID)
+	key, err := a.envdAccessTokenGenerator.GenerateAccessToken(sandboxID)
 	if err != nil {
 		return "", &api.APIError{
 			Code:      http.StatusInternalServerError,

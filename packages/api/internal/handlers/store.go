@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"net/http"
 	"os"
 	"strings"
@@ -46,19 +47,20 @@ const minSupabaseJWTSecretLength = 16
 var supabaseJWTSecrets = strings.Split(supabaseJWTSecretsString, ",")
 
 type APIStore struct {
-	Healthy              bool
-	posthog              *analyticscollector.PosthogClient
-	Tracer               trace.Tracer
-	orchestrator         *orchestrator.Orchestrator
-	templateManager      *template_manager.TemplateManager
-	db                   *db.DB
-	sqlcDB               *sqlcdb.Client
-	lokiClient           *loki.DefaultClient
-	templateCache        *templatecache.TemplateCache
-	templateBuildsCache  *templatecache.TemplatesBuildCache
-	authCache            *authcache.TeamAuthCache
-	templateSpawnCounter *utils.TemplateSpawnCounter
-	clickhouseStore      chdb.Store
+	Healthy                  bool
+	posthog                  *analyticscollector.PosthogClient
+	Tracer                   trace.Tracer
+	orchestrator             *orchestrator.Orchestrator
+	templateManager          *template_manager.TemplateManager
+	db                       *db.DB
+	sqlcDB                   *sqlcdb.Client
+	lokiClient               *loki.DefaultClient
+	templateCache            *templatecache.TemplateCache
+	templateBuildsCache      *templatecache.TemplatesBuildCache
+	authCache                *authcache.TeamAuthCache
+	templateSpawnCounter     *utils.TemplateSpawnCounter
+	clickhouseStore          chdb.Store
+	envdAccessTokenGenerator *sandbox.EnvdAccessTokenGenerator
 	// should use something like this: https://github.com/spf13/viper
 	// but for now this is good
 	readMetricsFromClickHouse string
@@ -169,6 +171,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	authCache := authcache.NewTeamAuthCache()
 	templateCache := templatecache.NewTemplateCache(sqlcDB)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
+	accessTokenGenerator := sandbox.NewEnvdAccessTokenGenerator()
 
 	a := &APIStore{
 		Healthy:                   false,
@@ -184,6 +187,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		authCache:                 authCache,
 		templateSpawnCounter:      templateSpawnCounter,
 		clickhouseStore:           clickhouseStore,
+		envdAccessTokenGenerator:  accessTokenGenerator,
 		readMetricsFromClickHouse: readMetricsFromClickHouse,
 	}
 
