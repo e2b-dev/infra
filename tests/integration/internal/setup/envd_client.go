@@ -24,6 +24,10 @@ type EnvdClient struct {
 func GetEnvdClient(tb testing.TB, _ context.Context) *EnvdClient {
 	tb.Helper()
 
+	hc := http.Client{
+		Timeout: apiTimeout,
+	}
+
 	httpC, err := api.NewClientWithResponses(EnvdProxy, api.WithHTTPClient(&hc))
 	if err != nil {
 		panic(err)
