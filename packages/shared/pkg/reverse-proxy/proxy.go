@@ -91,6 +91,13 @@ func proxyHandler(
 				return
 			}
 
+			rc := http.NewResponseController(w)
+
+			err = rc.EnableFullDuplex()
+			if err != nil {
+				zap.L().Error("failed to enable full duplex", zap.Error(err))
+			}
+
 			t.Logger.Error("Reverse proxy error", zap.Error(err))
 
 			errorTemplate := template.NewPortClosedError(t.SandboxId, r.Host, t.Url.Port())
@@ -122,6 +129,13 @@ func proxyHandler(
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		rc := http.NewResponseController(w)
+
+		err := rc.EnableFullDuplex()
+		if err != nil {
+			zap.L().Error("failed to enable full duplex", zap.Error(err))
+		}
+
 		if activeConnections != nil {
 			// TODO: Won't cancellation of the request make adding/removing from the counter unpredictable?
 			// We should probably use observable gauge and separate counter without context.
