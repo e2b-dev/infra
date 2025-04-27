@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE snapshots
+DROP COLUMN IF EXISTS env_secure;
+
+COMMIT;
