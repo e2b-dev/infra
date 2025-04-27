@@ -2,8 +2,8 @@ package envd
 
 import (
 	"context"
-	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 	"fmt"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 	"net/http"
 	"strings"
 	"testing"
@@ -41,6 +41,10 @@ func createSandbox(t *testing.T, sbxWithAuth bool, reqEditors ...api.RequestEdit
 		if t.Failed() {
 			t.Logf("Response: %s", string(resp.Body))
 		}
+
+		if resp.JSON201 != nil {
+			utils.TeardownSandbox(t, setup.GetAPIClient(), resp.JSON201.SandboxID)
+		}
 	})
 
 	return resp
@@ -64,11 +68,6 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 	_, err := envdClient.FilesystemClient.ListDir(ctx, req)
 	require.Error(t, err)
 
-	t.Cleanup(func() {
-		c := setup.GetAPIClient()
-		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
-	})
-
 	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")
 }
 
@@ -88,11 +87,6 @@ func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
 		body:                  envdapi.PostInitJSONRequestBody{},
 		expectedResErr:        nil,
 		expectedResHttpStatus: http.StatusUnauthorized,
-	})
-
-	t.Cleanup(func() {
-		c := setup.GetAPIClient()
-		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
 	})
 }
 
@@ -134,11 +128,6 @@ func TestAccessAuthorizedPathWithOutdatedAccessToken(t *testing.T) {
 
 	_, err = envdClient.FilesystemClient.ListDir(ctx, req)
 	require.Error(t, err)
-
-	t.Cleanup(func() {
-		c := setup.GetAPIClient()
-		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
-	})
 
 	assert.Equal(t, err.Error(), "unauthenticated: 401 Unauthorized")
 }
@@ -208,10 +197,6 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() {
-		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
-	})
-
 	assert.Equal(t, http.StatusOK, fileResponse.StatusCode())
 	assert.Equal(t, fileContent, string(fileResponse.Body))
 }
@@ -279,10 +264,6 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	t.Cleanup(func() {
-		utils.TeardownSandbox(t, c, sbx.JSON201.SandboxID)
-	})
 
 	assert.Equal(t, http.StatusUnauthorized, fileResponse.StatusCode())
 }
