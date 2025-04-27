@@ -69,11 +69,11 @@ func proxyHandler(
 	idleTimeout time.Duration,
 	connectionTimeout time.Duration,
 ) func(w http.ResponseWriter, r *http.Request) {
-	getProxy := func(target *RoutingTarget) *httputil.ReverseProxy {
+	getProxy := func(connectionKey string) *httputil.ReverseProxy {
 		proxiesMu.Lock()
 		defer proxiesMu.Unlock()
 
-		proxy, ok := proxies.Get(target.ConnectionKey)
+		proxy, ok := proxies.Get(connectionKey)
 		if ok {
 			return proxy
 		}
@@ -92,14 +92,14 @@ func proxyHandler(
 			DisableCompression: true, // No need to request or manipulate compression
 		}
 
-		proxyLogger, _ := zap.NewStdLogAt(target.Logger, zap.ErrorLevel)
+		proxyLogger, _ := zap.NewStdLogAt(zap.L(), zap.ErrorLevel)
 
 		proxy = &httputil.ReverseProxy{
 			Transport: transport,
 			Rewrite: func(r *httputil.ProxyRequest) {
 				t, ok := r.In.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
 				if !ok {
-					target.Logger.Error("failed to get routing target from context")
+					zap.L().Error("failed to get routing target from context")
 
 					return
 				}
@@ -111,7 +111,7 @@ func proxyHandler(
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 				t, ok := r.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
 				if !ok {
-					target.Logger.Error("failed to get routing target from context")
+					zap.L().Error("failed to get routing target from context")
 
 					return
 				}
@@ -124,7 +124,7 @@ func proxyHandler(
 			ModifyResponse: func(r *http.Response) error {
 				t, ok := r.Request.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
 				if !ok {
-					target.Logger.Error("failed to get routing target from context")
+					zap.L().Error("failed to get routing target from context")
 
 					return nil
 				}
@@ -146,7 +146,7 @@ func proxyHandler(
 			ErrorLog: proxyLogger,
 		}
 
-		proxies.Add(target.ConnectionKey, proxy)
+		proxies.Add(connectionKey, proxy)
 
 		return proxy
 	}
@@ -171,14 +171,14 @@ func proxyHandler(
 		}
 
 		if errors.As(err, &ErrInvalidSandboxPort{}) {
-			t.Logger.Warn("invalid sandbox port")
+			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host))
 			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
 
 			return
 		}
 
 		if errors.As(err, &ErrSandboxNotFound{}) {
-			t.Logger.Warn("sandbox not found")
+			zap.L().Warn("sandbox not found", zap.String("host", r.Host))
 
 			errorTemplate := template.NewSandboxNotFoundError(t.SandboxId, r.Host)
 			handleError(w, r, errorTemplate, t.Logger)
@@ -187,7 +187,7 @@ func proxyHandler(
 		}
 
 		if err != nil {
-			t.Logger.Error("failed to route request", zap.Error(err))
+			zap.L().Error("failed to route request", zap.Error(err), zap.String("host", r.Host))
 			http.Error(w, "Unexpected error when routing request", http.StatusInternalServerError)
 
 			return
@@ -197,6 +197,6 @@ func proxyHandler(
 
 		ctx := context.WithValue(r.Context(), routingTargetContextKey{}, t)
 
-		getProxy(t).ServeHTTP(w, r.WithContext(ctx))
+		getProxy(t.ConnectionKey).ServeHTTP(w, r.WithContext(ctx))
 	}
 }
