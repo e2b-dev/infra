@@ -38,4 +38,4 @@ jobs:
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           working-directory: ${{ matrix.modules }}
-          args: --new-from-rev=origin/main
+          only-new-issues: true
