@@ -1,0 +1,46 @@
+name: Out of Order Migrations
+
+on:
+  workflow_call:
+    secrets:
+      service_account_email:
+        required: true
+      workload_identity_provider:
+        required: true
+      gcp_project_id:
+        required: true
+
+jobs:
+  check:
+    name: Check for out of order migrations
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch main
+        run: git fetch origin main
+
+      - name: Compare migrations
+        run: |
+          # Get all migration versions from main
+          git ls-tree -r origin/main --name-only | grep '^packages/db/migrations/' | grep -oE '[0-9]{14}' | sort -n > main_versions.txt
+          
+          # Find the highest version number from main
+          HIGHEST_MAIN=$(tail -n1 main_versions.txt)
+          echo "Highest main migration version: $HIGHEST_MAIN"
+        
+          # Find newly added migration files in this PR
+          NEW_FILES=$(git diff --name-status origin/main -- packages/db/migrations/ | grep '^A' | awk '{print $2}')
+          
+          for file in $NEW_FILES; do
+            version=$(basename "$file" | grep -oE '^[0-9]{14}')
+            echo "Checking new migration version: $version"
+            if [ "$version" -lt "$HIGHEST_MAIN" ]; then
+              echo "❌ Migration $file is out of order! ($version < $HIGHEST_MAIN)"
+              exit 1
+            fi
+          done
+          
+          echo "✅ All new migrations are in correct order."
+  
