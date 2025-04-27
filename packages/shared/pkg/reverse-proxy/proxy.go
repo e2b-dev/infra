@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
 	"sync"
 	"time"
 
@@ -110,8 +109,6 @@ func proxyHandler(
 				r.Out.Host = r.In.Host
 			},
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-				fmt.Fprintf(os.Stderr, "Reverse proxy error -> error handler %s\n", err)
-
 				t, ok := r.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
 				if !ok {
 					zap.L().Error("failed to get routing target from context")
@@ -119,13 +116,15 @@ func proxyHandler(
 					return
 				}
 
-				t.Logger.Error("Reverse proxy error", zap.Error(err))
-
 				errorTemplate := template.NewPortClosedError(t.SandboxId, r.Host, t.Url.Port())
-				handleError(w, r, errorTemplate, t.Logger)
+
+				err = handleError(w, r, errorTemplate, t.Logger)
+				if err != nil {
+					zap.L().Error("failed to handle error", zap.Error(err))
+					http.Error(w, "Failed to handle error", http.StatusInternalServerError)
+				}
 			},
 			ModifyResponse: func(r *http.Response) error {
-				fmt.Fprintf(os.Stderr, "Reverse proxy response -> modify response %d\n", r.StatusCode)
 				t, ok := r.Request.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
 				if !ok {
 					zap.L().Error("failed to get routing target from context")

@@ -20,31 +20,26 @@ func handleError[T any](
 	r *http.Request,
 	err *template.TemplatedError[T],
 	logger *zap.Logger,
-) {
+) error {
 	if isBrowser(r) {
 		body, buildErr := err.BuildHtml()
 		if buildErr != nil {
-			logger.Error("Failed to build HTML error response", zap.Error(buildErr))
-			w.WriteHeader(http.StatusInternalServerError)
-
-			return
+			return buildErr
 		}
 
 		w.WriteHeader(http.StatusBadGateway)
 		w.Header().Add("Content-Type", "text/html")
 		_, writeErr := w.Write(body)
 		if writeErr != nil {
-			logger.Error("failed to write HTML error response", zap.Error(writeErr))
+			return writeErr
 		}
 
-		return
+		return nil
 	}
 
 	body, buildErr := err.BuildJson()
 	if buildErr != nil {
-		logger.Error("failed to build JSON error response", zap.Error(buildErr))
-
-		return
+		return buildErr
 	}
 
 	w.WriteHeader(http.StatusBadGateway)
@@ -52,6 +47,8 @@ func handleError[T any](
 
 	_, writeErr := w.Write(body)
 	if writeErr != nil {
-		logger.Error("failed to write JSON error response", zap.Error(writeErr))
+		return writeErr
 	}
+
+	return nil
 }
