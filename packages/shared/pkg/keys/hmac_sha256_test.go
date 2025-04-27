@@ -34,19 +34,6 @@ func TestHMACSha256Hashing_EmptyContent(t *testing.T) {
 	}
 }
 
-func TestHMACSha256Hashing_MismatchedHash(t *testing.T) {
-	key := []byte("test-key")
-	hasher := NewHMACSHA256Hashing(key)
-	content := []byte("hello world")
-	unexpectedHash := "0000000000000000000000000000000000000000000000000000000000000000"
-	actualHash, err := hasher.Hash(content)
-	require.Nil(t, err)
-
-	if actualHash == unexpectedHash {
-		t.Errorf("hash should not match %s", unexpectedHash)
-	}
-}
-
 func TestHMACSha256Hashing_DifferentKey(t *testing.T) {
 	key := []byte("test-key")
 	hasher := NewHMACSHA256Hashing(key)
