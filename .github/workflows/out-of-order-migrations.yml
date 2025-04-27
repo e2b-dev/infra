@@ -1,14 +1,6 @@
 name: Out of Order Migrations
 
-on:
-  workflow_call:
-    secrets:
-      service_account_email:
-        required: true
-      workload_identity_provider:
-        required: true
-      gcp_project_id:
-        required: true
+on: [workflow_call]
 
 jobs:
   check:
