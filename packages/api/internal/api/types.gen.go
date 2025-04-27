@@ -108,12 +108,6 @@ type ListedSandbox struct {
 	// EndAt Time when the sandbox will expire
 	EndAt time.Time `json:"endAt"`
 
-	// EnvdAccessToken Access token used for envd communication
-	EnvdAccessToken *string `json:"envdAccessToken,omitempty"`
-
-	// EnvdVersion Version of the envd running in the sandbox
-	EnvdVersion *string `json:"envdVersion,omitempty"`
-
 	// MemoryMB Memory for the sandbox in MB
 	MemoryMB MemoryMB         `json:"memoryMB"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
@@ -268,6 +262,43 @@ type Sandbox struct {
 
 	// SandboxID Identifier of the sandbox
 	SandboxID string `json:"sandboxID"`
+
+	// TemplateID Identifier of the template from which is the sandbox created
+	TemplateID string `json:"templateID"`
+}
+
+// SandboxDetailed defines model for SandboxDetailed.
+type SandboxDetailed struct {
+	// Alias Alias of the template
+	Alias *string `json:"alias,omitempty"`
+
+	// ClientID Identifier of the client
+	ClientID string `json:"clientID"`
+
+	// CpuCount CPU cores for the sandbox
+	CpuCount CPUCount `json:"cpuCount"`
+
+	// EndAt Time when the sandbox will expire
+	EndAt time.Time `json:"endAt"`
+
+	// EnvdAccessToken Access token used for envd communication
+	EnvdAccessToken *string `json:"envdAccessToken,omitempty"`
+
+	// EnvdVersion Version of the envd running in the sandbox
+	EnvdVersion *string `json:"envdVersion,omitempty"`
+
+	// MemoryMB Memory for the sandbox in MB
+	MemoryMB MemoryMB         `json:"memoryMB"`
+	Metadata *SandboxMetadata `json:"metadata,omitempty"`
+
+	// SandboxID Identifier of the sandbox
+	SandboxID string `json:"sandboxID"`
+
+	// StartedAt Time when the sandbox was started
+	StartedAt time.Time `json:"startedAt"`
+
+	// State State of the sandbox
+	State SandboxState `json:"state"`
 
 	// TemplateID Identifier of the template from which is the sandbox created
 	TemplateID string `json:"templateID"`

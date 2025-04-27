@@ -37,7 +37,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		}
 
 		// Sandbox exists and belongs to the team - return running sandbox info
-		sandbox := api.ListedSandbox{
+		sandbox := api.SandboxDetailed{
 			ClientID:        info.Instance.ClientID,
 			TemplateID:      info.Instance.TemplateID,
 			Alias:           info.Instance.Alias,
@@ -83,7 +83,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		sbxAccessToken = &key
 	}
 
-	sandbox := api.ListedSandbox{
+	sandbox := api.SandboxDetailed{
 		ClientID:        "00000000", // for backwards compatibility we need to return a client id
 		TemplateID:      lastSnapshot.Snapshot.EnvID,
 		SandboxID:       lastSnapshot.Snapshot.SandboxID,
