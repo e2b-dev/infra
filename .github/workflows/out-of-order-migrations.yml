@@ -28,8 +28,8 @@ jobs:
           for file in $NEW_FILES; do
             version=$(basename "$file" | grep -oE '^[0-9]{14}')
             echo "Checking new migration version: $version"
-            if [ "$version" -lt "$HIGHEST_MAIN" ]; then
-              echo "❌ Migration $file is out of order! ($version < $HIGHEST_MAIN)"
+            if [ "$version" -le "$HIGHEST_MAIN" ]; then
+              echo "❌ Migration $file is out of order! ($version <= $HIGHEST_MAIN)"
               exit 1
             fi
           done
