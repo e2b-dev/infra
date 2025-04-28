@@ -46,13 +46,12 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	scope := r.URL.Query().Get("scope")
-	templateID := "not-yet-known"
 	hasScope := scope != ""
 
 	if !hasScope {
 		// If the scope is not provided, create a new token for the user,
 		// but don't grant any access to the underlying repository.
-		jsonResponse := a.AuthCache.Create(templateID, "undefined-docker-token", int(time.Hour.Seconds()))
+		jsonResponse := a.AuthCache.Create("not-yet-known", "undefined-docker-token", int(time.Hour.Seconds()))
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(jsonResponse))
@@ -67,7 +66,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("invalid scope %s", scope)
 	}
 
-	templateID = scopeRegexMatches[1]
+	templateID := scopeRegexMatches[1]
 	action := scopeRegexMatches[2]
 
 	// Don't allow a delete actions
