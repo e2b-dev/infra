@@ -12,20 +12,26 @@ async function streamCommandOutput(command: string, args: string[]) {
     const process = cmd.spawn();
     const decoder = new TextDecoder();
 
-    let output = '';
+    let output = "";
 
-    const readStream = async (stream: ReadableStream<Uint8Array>, logFn: (msg: string) => void) => {
+    const readStream = async (
+        stream: ReadableStream<Uint8Array>,
+        logFn: (msg: Uint8Array) => void
+    ) => {
         for await (const chunk of stream) {
-            const text = decoder.decode(chunk);
-            logFn(text);
-            output += text;
+            logFn(chunk);
+            output += decoder.decode(chunk);
         }
     };
 
     // Run both readers concurrently
     await Promise.all([
-        readStream(process.stdout, console.log),
-        readStream(process.stderr, console.error),
+        readStream(process.stdout, (chunk) => {
+            Deno.stdout.write(chunk);
+        }),
+        readStream(process.stderr, (chunk) => {
+            Deno.stderr.write(chunk);
+        }),
     ]);
 
     // Wait for the process to complete and get the status
