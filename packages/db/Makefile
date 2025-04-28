@@ -1,16 +1,34 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-.PHONY: migrate-postgres
-migrate-postgres:migrate-postgres/up
-migrate-postgres:migrate-postgres/down
-migrate-postgres/%:
+goose := GOOSE_DBSTRING=$(POSTGRES_CONNECTION_STRING) goose -table "_migrations" -dir "migrations" postgres
+
+.PHONY: migrate
+migrate:migrate/up
+migrate:migrate/down
+migrate/%:goose-init
 	@echo "Applying Postgres migration *$(notdir $@)*"
-	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/migrate/postgres/main.go -direction $(notdir $@)
+	@$(goose) $(notdir $@)
 	@echo "Done"
 
+
+.PHONE: create-migration
+create-migration: goose-init
+ifeq ($(origin NAME), undefined)
+	@echo "The expected syntax is: make migration-create NAME=your-migration-name"
+	@exit 1
+endif
+	@$(goose) create $(NAME) sql
+
+.PHONE: status
+status: goose-init
+	@$(goose) status
 
 .PHONY: generate
 generate:
 	rm -rf queries/*.go
 	sqlc generate
+
+.PHONY: goose-init
+goose-init:
+	@go install github.com/pressly/goose/v3/cmd/goose@latest

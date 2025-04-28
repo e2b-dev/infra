@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 -- Modify "teams" table
 ALTER TABLE "public"."teams" ADD COLUMN IF NOT EXISTS "email" character varying(255) NULL;
@@ -21,4 +22,8 @@ UPDATE "public"."teams" SET "email" = "name" WHERE "email" IS NULL;
 
 ALTER TABLE "public"."teams" ALTER COLUMN "email" SET NOT NULL;
 
-COMMIT; 
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 -- Modify "envs" table
 ALTER TABLE "public"."envs"
@@ -12,4 +13,8 @@ ALTER TABLE "public"."envs"
             ON UPDATE NO ACTION
             ON DELETE SET NULL;
 
-COMMIT; 
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

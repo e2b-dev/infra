@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 ALTER TABLE "public"."snapshots"
     ADD CONSTRAINT "snapshots_envs_env_id"
@@ -15,3 +16,8 @@ ALTER TABLE "public"."snapshots"
             ON DELETE CASCADE;
 
 COMMIT;
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

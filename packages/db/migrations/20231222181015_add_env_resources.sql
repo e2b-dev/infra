@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 -- Modify "envs" table
 ALTER TABLE "public"."envs"
@@ -7,4 +8,8 @@ ALTER TABLE "public"."envs"
     ADD COLUMN IF NOT EXISTS "free_disk_size_mb" bigint NULL,
     ADD COLUMN IF NOT EXISTS "total_disk_size_mb" bigint NULL;
 
-COMMIT; 
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

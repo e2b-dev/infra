@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 ALTER TABLE "public"."snapshots"
   ADD COLUMN IF NOT EXISTS "sandbox_started_at" timestamp with time zone NOT NULL 
@@ -29,3 +30,8 @@ ALTER TABLE "public"."snapshots"
 ALTER COLUMN "sandbox_started_at" DROP DEFAULT;
 
 COMMIT;
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd

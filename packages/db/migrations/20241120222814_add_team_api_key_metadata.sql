@@ -1,4 +1,5 @@
-BEGIN;
+-- +goose Up
+-- +goose StatementBegin
 
 -- Modify "team_api_keys" table
 ALTER TABLE "public"."team_api_keys"
@@ -15,4 +16,8 @@ ALTER TABLE "public"."team_api_keys"
             ON UPDATE NO ACTION
             ON DELETE SET NULL;
 
-COMMIT; 
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- +goose StatementEnd
