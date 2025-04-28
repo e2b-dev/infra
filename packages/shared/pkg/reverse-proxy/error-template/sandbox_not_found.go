@@ -3,6 +3,7 @@ package error_template
 import (
 	_ "embed"
 	"html/template"
+	"net/http"
 )
 
 //go:embed browser_sandbox_not_found.html
@@ -23,5 +24,6 @@ func NewSandboxNotFoundError(sandboxId string, host string) *TemplatedError[sand
 			Message:   "The sandbox was not found",
 			Host:      host,
 		},
+		status: http.StatusNotFound,
 	}
 }

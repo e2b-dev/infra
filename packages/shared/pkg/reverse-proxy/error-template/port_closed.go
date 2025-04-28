@@ -3,6 +3,7 @@ package error_template
 import (
 	_ "embed"
 	"html/template"
+	"net/http"
 )
 
 //go:embed browser_port_closed.html
@@ -25,5 +26,6 @@ func NewPortClosedError(sandboxId string, host string, port string) *TemplatedEr
 			Host:      host,
 			Port:      port,
 		},
+		status: http.StatusBadGateway,
 	}
 }

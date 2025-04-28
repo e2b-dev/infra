@@ -20,6 +20,7 @@ func buildHtmlError[T any](template *template.Template, vars T) ([]byte, error) 
 type TemplatedError[T any] struct {
 	template *template.Template
 	vars     T
+	status   int
 }
 
 func (e *TemplatedError[T]) BuildHtml() ([]byte, error) {
@@ -28,4 +29,8 @@ func (e *TemplatedError[T]) BuildHtml() ([]byte, error) {
 
 func (e *TemplatedError[T]) BuildJson() ([]byte, error) {
 	return json.Marshal(e.vars)
+}
+
+func (e *TemplatedError[T]) Status() int {
+	return e.status
 }

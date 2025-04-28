@@ -109,6 +109,6 @@ func getSandboxClientHost(r *http.Request) (*reverse_proxy.RoutingTarget, error)
 		SandboxId: sandboxId,
 		Logger:    logger,
 		// We need to include sandboxId to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
-		ConnectionKey: fmt.Sprintf("%s", sandboxId),
+		ConnectionKey: sandboxId,
 	}, nil
 }

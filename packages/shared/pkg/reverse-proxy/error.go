@@ -27,7 +27,7 @@ func handleError[T any](
 			return buildErr
 		}
 
-		w.WriteHeader(http.StatusBadGateway)
+		w.WriteHeader(err.Status())
 		w.Header().Add("Content-Type", "text/html")
 		_, writeErr := w.Write(body)
 		if writeErr != nil {
@@ -42,7 +42,7 @@ func handleError[T any](
 		return buildErr
 	}
 
-	w.WriteHeader(http.StatusBadGateway)
+	w.WriteHeader(err.Status())
 	w.Header().Add("Content-Type", "application/json")
 
 	_, writeErr := w.Write(body)
