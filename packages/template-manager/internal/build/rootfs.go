@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
 	"github.com/docker/docker/api/types"
@@ -30,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 )
 
 const (
@@ -66,9 +66,12 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *client.Client, legacyDocker *docker.Client) (*Rootfs, error) {
+func NewRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, env *Env, docker *client.Client, legacyDocker *docker.Client) (*Rootfs, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-rootfs")
 	defer childSpan.End()
+
+	postProcessor.Write("Creating file system...")
+	defer postProcessor.Write("Creating file system done")
 
 	rootfs := &Rootfs{
 		client:       docker,
@@ -76,7 +79,7 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 		env:          env,
 	}
 
-	_, _ = env.BuildLogsWriter.Write([]byte("Pulling Docker image...\n"))
+	postProcessor.Write("Pulling Docker image...")
 	err := rootfs.pullDockerImage(childCtx, tracer)
 	if err != nil {
 		errMsg := fmt.Errorf("error building docker image: %w", err)
@@ -85,7 +88,7 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, env *Env, docker *clien
 
 		return nil, errMsg
 	}
-	_, _ = env.BuildLogsWriter.Write([]byte("Pulled Docker image.\n"))
+	postProcessor.Write("Pulled Docker image.")
 
 	err = rootfs.createRootfsFile(childCtx, tracer)
 	if err != nil {
@@ -167,63 +170,13 @@ func (r *Rootfs) dockerTag() string {
 	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.env.TemplateId, r.env.BuildId)
 }
 
-type PostProcessor struct {
-	errChan chan error
-	ctx     context.Context
-	writer  io.Writer
-}
-
-// Start starts the post-processing.
-func (p *PostProcessor) Start() {
-	p.writer.Write([]byte(fmt.Sprintf("[%s] Start postprocessing\n", time.Now().Format(time.RFC3339))))
-
-	for {
-		msg := []byte(fmt.Sprintf("[%s] Postprocessing\n", time.Now().Format(time.RFC3339)))
-
-		select {
-		case postprocessingErr := <-p.errChan:
-			if postprocessingErr != nil {
-				p.writer.Write([]byte(fmt.Sprintf("[%s] Postprocessing failed: %s\n", time.Now().Format(time.RFC3339), postprocessingErr)))
-				return
-			}
-
-			p.writer.Write(msg)
-			p.writer.Write([]byte(fmt.Sprintf("[%s] Postprocessing finished.\n", time.Now().Format(time.RFC3339))))
-
-			return
-		case <-p.ctx.Done():
-			return
-		case <-time.After(5 * time.Second):
-			p.writer.Write(msg)
-		}
-	}
-
-}
-
-func (p *PostProcessor) stop(err error) {
-	p.errChan <- err
-}
-
-func NewPostProcessor(ctx context.Context, writer io.Writer) *PostProcessor {
-	return &PostProcessor{
-		ctx:     ctx,
-		writer:  writer,
-		errChan: make(chan error),
-	}
-}
-
 func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-rootfs-file")
 	defer childSpan.End()
 
-	var err error
-	PostProcessor := NewPostProcessor(childCtx, r.env.BuildLogsWriter)
-	go PostProcessor.Start()
-	defer PostProcessor.stop(err)
-
 	var scriptDef bytes.Buffer
 
-	err = EnvInstanceTemplate.Execute(&scriptDef, struct {
+	err := EnvInstanceTemplate.Execute(&scriptDef, struct {
 		EnvID       string
 		BuildID     string
 		StartCmd    string
@@ -244,15 +197,6 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	}
 
 	telemetry.ReportEvent(childCtx, "executed provision script env")
-
-	if err != nil {
-		errMsg := fmt.Errorf("error generating network name: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "created network")
 
 	pidsLimit := int64(200)
 	memory := int64(math.Max(float64(r.env.MemoryMB)/2, 512)) << ToMBShift

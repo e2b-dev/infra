@@ -1,4 +1,4 @@
-package build
+package writer
 
 import (
 	"context"
@@ -58,7 +58,7 @@ func TestPostProcessor_Start(t *testing.T) {
 				errChan: errChan,
 			}
 			go p.Start()
-			p.stop(tt.fields.testErr)
+			p.Stop(tt.fields.testErr)
 			close(errChan)
 
 			if !strings.Contains(string(tw.data), tt.fields.shouldContain) {

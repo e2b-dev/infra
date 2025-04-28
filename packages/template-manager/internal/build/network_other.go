@@ -8,6 +8,8 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 )
 
 type FCNetwork struct {
@@ -19,6 +21,6 @@ func (n *FCNetwork) Cleanup(ctx context.Context, tracer trace.Tracer) {
 }
 
 // NewFCNetwork returns an error
-func NewFCNetwork(ctx context.Context, tracer trace.Tracer, env *Env) (*FCNetwork, error) {
+func NewFCNetwork(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, env *Env) (*FCNetwork, error) {
 	return nil, fmt.Errorf("network functionality is only supported on Linux")
 }

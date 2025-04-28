@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 )
 
 const (
@@ -29,9 +30,12 @@ type FCNetwork struct {
 	namespaceID string
 }
 
-func NewFCNetwork(ctx context.Context, tracer trace.Tracer, env *Env) (*FCNetwork, error) {
+func NewFCNetwork(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, env *Env) (*FCNetwork, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-fc-network")
 	defer childSpan.End()
+
+	postProcessor.Write("Creating network...")
+	defer postProcessor.Write("Creating network done")
 
 	network := &FCNetwork{
 		namespaceID: namespaceNamePrefix + env.BuildId,
@@ -53,7 +57,7 @@ func (n *FCNetwork) setup(ctx context.Context, tracer trace.Tracer) error {
 	childCtx, childSpan := tracer.Start(ctx, "setup")
 	defer childSpan.End()
 
-	// Prevent thread changes so the we can safely manipulate with namespaces
+	// Prevent thread changes so that we can safely manipulate with namespaces
 	telemetry.ReportEvent(childCtx, "waiting for OS thread lock")
 
 	runtime.LockOSThread()
