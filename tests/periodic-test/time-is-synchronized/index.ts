@@ -4,7 +4,7 @@ import { Sandbox } from "npm:@e2b/code-interpreter";
 // Helper function to stream command output
 async function streamCommandOutput(command: string, args: string[]) {
     const cmd = new Deno.Command(command, {
-        args: args,
+        args,
         stdout: "piped",
         stderr: "piped",
     });
@@ -12,23 +12,25 @@ async function streamCommandOutput(command: string, args: string[]) {
     const process = cmd.spawn();
     const decoder = new TextDecoder();
 
-    let output = ''
+    let output = '';
 
-    // Stream stdout
-    for await (const chunk of process.stdout) {
-        console.log(decoder.decode(chunk));
-        output += decoder.decode(chunk)
-    }
+    const readStream = async (stream: ReadableStream<Uint8Array>, logFn: (msg: string) => void) => {
+        for await (const chunk of stream) {
+            const text = decoder.decode(chunk);
+            logFn(text);
+            output += text;
+        }
+    };
 
-    // Stream stderr
-    for await (const chunk of process.stderr) {
-        console.error(decoder.decode(chunk));
-        output += decoder.decode(chunk)
-    }
+    // Run both readers concurrently
+    await Promise.all([
+        readStream(process.stdout, console.log),
+        readStream(process.stderr, console.error),
+    ]);
 
     // Wait for the process to complete and get the status
     const status = await process.status;
-    return { status, output }
+    return { status, output };
 }
 
 const uniqueID = crypto.randomUUID();
