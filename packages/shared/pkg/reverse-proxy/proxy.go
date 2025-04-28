@@ -36,11 +36,6 @@ type RoutingTarget struct {
 	ConnectionKey string
 }
 
-var (
-	proxies   = expirable.NewLRU[string, *httputil.ReverseProxy](0, nil, maxConnectionDuration)
-	proxiesMu sync.Mutex
-)
-
 type Proxy struct {
 	http.Server
 	totalEstablishedConnections *atomic.Uint64
@@ -84,6 +79,10 @@ func proxyHandler(
 	connectionTimeout time.Duration,
 ) (func(w http.ResponseWriter, r *http.Request), *atomic.Uint64) {
 	var counter atomic.Uint64
+
+	var proxiesMu sync.Mutex
+
+	proxies := expirable.NewLRU[string, *httputil.ReverseProxy](0, nil, maxConnectionDuration)
 
 	getProxy := func(connectionKey string) *httputil.ReverseProxy {
 		proxiesMu.Lock()
