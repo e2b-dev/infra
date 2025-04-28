@@ -50,3 +50,10 @@ func NewStore() *APIStore {
 		proxy:     proxy,
 	}
 }
+
+func (a *APIStore) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	// Set the host to the URL host
+	req.Host = req.URL.Host
+
+	a.proxy.ServeHTTP(rw, req)
+}

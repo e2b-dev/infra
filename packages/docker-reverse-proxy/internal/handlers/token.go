@@ -32,14 +32,14 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 
 	accessToken, err := auth.ExtractAccessToken(authHeader, "Basic ")
 	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusBadRequest)
 		return fmt.Errorf("error while extracting access token: %s", err)
 	}
 
 	if !auth.ValidateAccessToken(ctx, a.db.Client, accessToken) {
 		log.Printf("Invalid access token: '%s'\n", accessToken)
 
-		w.WriteHeader(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("invalid access token"))
 
 		return fmt.Errorf("invalid access token")
