@@ -112,7 +112,6 @@ func proxyHandler(
 				}
 				return conn, err
 			},
-
 			DisableCompression: true, // No need to request or manipulate compression
 		}
 
