@@ -2,8 +2,9 @@ package utils
 
 import (
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"net/http"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 // SetDockerUnauthorizedHeaders https://distribution.github.io/distribution/spec/api/#api-version-check

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
@@ -22,8 +23,7 @@ func (a *APIStore) Proxy(w http.ResponseWriter, req *http.Request) {
 	token, err := a.AuthCache.Get(e2bToken)
 	if err != nil {
 		log.Printf("Error while getting token for %s: %s, header: %s\n", path, err, authHeader)
-		//w.Header().Set("Www-Authenticate", fmt.Sprintf("Bearer realm=\"https://docker.%s/v2/token\"", consts.Domain))
-		w.WriteHeader(http.StatusUnauthorized)
+		utils.SetDockerUnauthorizedHeaders(w)
 
 		return
 	}
