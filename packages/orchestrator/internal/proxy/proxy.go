@@ -23,7 +23,7 @@ const (
 func NewSandboxProxy(
 	port uint,
 	sandboxes *smap.Map[*sandbox.Sandbox],
-) *http.Server {
+) *reverse_proxy.Proxy {
 	var activeConnections *metric.Int64UpDownCounter
 
 	connectionCounter, err := meters.GetUpDownCounter(meters.OrchestratorProxyActiveConnectionsCounterMeterName)

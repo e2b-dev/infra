@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"net"
-	"net/http"
 	"os"
 	"sync"
 
@@ -32,6 +31,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -40,7 +40,7 @@ const ServiceName = "orchestrator"
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	sandboxes       *smap.Map[*sandbox.Sandbox]
-	proxy           *http.Server
+	proxy           *reverse_proxy.Proxy
 	tracer          trace.Tracer
 	networkPool     *network.Pool
 	templateCache   *template.Cache
@@ -58,7 +58,7 @@ type Service struct {
 	server     *server
 	grpc       *grpc.Server
 	grpcHealth *health.Server
-	proxy      *http.Server
+	proxy      *reverse_proxy.Proxy
 	port       uint16
 	shutdown   struct {
 		once sync.Once
@@ -78,7 +78,7 @@ func New(
 	port uint,
 	clientID string,
 	version string,
-	proxy *http.Server,
+	proxy *reverse_proxy.Proxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) (*Service, error) {
 	if port > math.MaxUint16 {

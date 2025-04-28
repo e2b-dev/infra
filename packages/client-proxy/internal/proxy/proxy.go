@@ -25,7 +25,7 @@ const (
 
 var client = dns.Client{}
 
-func NewClientProxy(port uint) *http.Server {
+func NewClientProxy(port uint) *reverse_proxy.Proxy {
 	var activeConnections *metric.Int64UpDownCounter
 
 	connectionCounter, err := meters.GetUpDownCounter(meters.ActiveConnectionsCounterMeterName)
