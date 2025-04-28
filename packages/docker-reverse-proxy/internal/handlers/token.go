@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -18,47 +19,42 @@ type DockerToken struct {
 	ExpiresIn int    `json:"expires_in"`
 }
 
-// expiresIn is the expiration time for the token in seconds, it's an access token and it still the same, no need to refresh it
-const expiresIn = 60 * 60 * 24 * 30 // 30 days
-
 // The scope is in format "repository:<project>/<repo>/<templateID>:<action>"
 var scopeRegex = regexp.MustCompile(fmt.Sprintf(`^repository:e2b/custom-envs/(?P<templateID>[^:]+):(?P<action>[^:]+)$`))
 
-// GetToken validates if user has access to template and then returns a new token for required scope
+// GetToken validates if user has access to template and then returns a new token for the required scope
 func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 
-	// To get the token the docker CLI uses Basic Auth in format "username:password",
+	// To get the token, the docker CLI uses Basic Auth in format "username:password",
 	// where username should be "_e2b_access_token" and password is the actual access token
 	authHeader := r.Header.Get("Authorization")
 
 	accessToken, err := auth.ExtractAccessToken(authHeader, "Basic ")
 	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-
+		w.WriteHeader(http.StatusBadRequest)
 		return fmt.Errorf("error while extracting access token: %s", err)
 	}
 
-	// There are two types of requests:
-	// 1. Request for token without scope (the initial login request) - we return the same token -> it's used for requesting the token with scope
-	// 2. Request for token with scope
+	if !auth.ValidateAccessToken(ctx, a.db.Client, accessToken) {
+		log.Printf("Invalid access token: '%s'\n", accessToken)
+
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("invalid access token"))
+
+		return fmt.Errorf("invalid access token")
+	}
+
 	scope := r.URL.Query().Get("scope")
-	if scope == "" {
-		if !auth.ValidateAccessToken(ctx, a.db.Client, accessToken) {
-			log.Printf("Invalid access token: '%s'\n", accessToken)
+	hasScope := scope != ""
 
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("invalid access token"))
-
-			return fmt.Errorf("invalid access token")
-		}
+	if !hasScope {
+		// If the scope is not provided, create a new token for the user,
+		// but don't grant any access to the underlying repository.
+		jsonResponse := a.AuthCache.Create("not-yet-known", "undefined-docker-token", int(time.Hour.Seconds()))
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		// The same token is returned for the initial login request
-		response := fmt.Sprintf(`{"token": "%s", "expires_in": %d}`, strings.TrimPrefix(authHeader, "Basic "), expiresIn)
-		w.Write([]byte(response))
+		w.Write([]byte(jsonResponse))
 
 		return nil
 	}
@@ -80,7 +76,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("access denied for scope %s", scope)
 	}
 
-	// Validate if user has access to the template
+	// Validate if the user has access to the template
 	hasAccess, err := auth.Validate(ctx, a.db.Client, accessToken, templateID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -94,7 +90,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("access denied for env: %s", templateID)
 	}
 
-	// Get docker token from the actual registry for the scope
+	// Get docker token from the actual registry
 	dockerToken, err := getToken(templateID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -112,13 +108,17 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 
 // getToken gets a new token from the actual registry for the required scope
 func getToken(templateID string) (*DockerToken, error) {
-	url := fmt.Sprintf(
-		"https://%s-docker.pkg.dev/v2/token?service=%s-docker.pkg.dev/token&scope=repository:%s/%s/%s:push,pull",
-		consts.GCPRegion,
+	scope := fmt.Sprintf(
+		"?service=%s-docker.pkg.dev&scope=repository:%s/%s/%s:push,pull",
 		consts.GCPRegion,
 		consts.GCPProject,
 		consts.DockerRegistry,
 		templateID,
+	)
+	url := fmt.Sprintf(
+		"https://%s-docker.pkg.dev/v2/token%s",
+		consts.GCPRegion,
+		scope,
 	)
 
 	r, err := http.NewRequest(http.MethodGet, url, nil)
