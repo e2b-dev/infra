@@ -9,6 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
@@ -40,27 +41,39 @@ var (
 	proxiesMu sync.Mutex
 )
 
+type Proxy struct {
+	http.Server
+	totalEstablishedConnections *atomic.Uint64
+}
+
+func (p *Proxy) TotalEstablishedConnections() uint64 {
+	return p.totalEstablishedConnections.Load()
+}
+
 func New(
 	port uint,
 	idleTimeout time.Duration,
 	connectionTimeout time.Duration,
 	activeConnections *metric.Int64UpDownCounter,
 	getRoutingTarget func(r *http.Request) (*RoutingTarget, error),
-) *http.Server {
-	return &http.Server{
-		Addr:              fmt.Sprintf(":%d", port),
-		ReadTimeout:       maxConnectionDuration,
-		WriteTimeout:      maxConnectionDuration,
-		IdleTimeout:       idleTimeout,
-		ReadHeaderTimeout: 20 * time.Second,
-		Handler: http.HandlerFunc(
-			proxyHandler(
-				getRoutingTarget,
-				activeConnections,
-				idleTimeout,
-				connectionTimeout,
-			),
-		),
+) *Proxy {
+	handler, counter := proxyHandler(
+		getRoutingTarget,
+		activeConnections,
+		idleTimeout,
+		connectionTimeout,
+	)
+
+	return &Proxy{
+		Server: http.Server{
+			Addr:              fmt.Sprintf(":%d", port),
+			ReadTimeout:       maxConnectionDuration,
+			WriteTimeout:      maxConnectionDuration,
+			IdleTimeout:       idleTimeout,
+			ReadHeaderTimeout: 20 * time.Second,
+			Handler:           http.HandlerFunc(handler),
+		},
+		totalEstablishedConnections: counter,
 	}
 }
 
@@ -69,7 +82,9 @@ func proxyHandler(
 	activeConnections *metric.Int64UpDownCounter,
 	idleTimeout time.Duration,
 	connectionTimeout time.Duration,
-) func(w http.ResponseWriter, r *http.Request) {
+) (func(w http.ResponseWriter, r *http.Request), *atomic.Uint64) {
+	var counter atomic.Uint64
+
 	getProxy := func(connectionKey string) *httputil.ReverseProxy {
 		proxiesMu.Lock()
 		defer proxiesMu.Unlock()
@@ -86,10 +101,18 @@ func proxyHandler(
 			TLSHandshakeTimeout:   20 * time.Second,
 			ResponseHeaderTimeout: 20 * time.Second,
 			// TCP configuration
-			DialContext: (&net.Dialer{
-				Timeout:   connectionTimeout, // Connect timeout (no timeout by default)
-				KeepAlive: 10 * time.Second,  // Lower than our http keepalives (50 seconds)
-			}).DialContext,
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				conn, err := (&net.Dialer{
+					Timeout:   connectionTimeout, // Connect timeout (no timeout by default)
+					KeepAlive: 10 * time.Second,  // Lower than our http keepalives (50 seconds)
+				}).DialContext(ctx, network, addr)
+				if err == nil {
+					counter.Add(1)
+					fmt.Errorf("connection established")
+				}
+				return conn, err
+			},
+
 			DisableCompression: true, // No need to request or manipulate compression
 		}
 
@@ -206,5 +229,5 @@ func proxyHandler(
 		ctx := context.WithValue(r.Context(), routingTargetContextKey{}, t)
 
 		getProxy(t.ConnectionKey).ServeHTTP(w, r.WithContext(ctx))
-	}
+	}, &counter
 }
