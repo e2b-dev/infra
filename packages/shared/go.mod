@@ -39,6 +39,7 @@ require (
 	google.golang.org/api v0.214.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.4
+	gotest.tools v2.2.0+incompatible
 )
 
 require (

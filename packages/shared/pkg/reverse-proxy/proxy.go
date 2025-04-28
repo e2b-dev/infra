@@ -108,7 +108,6 @@ func proxyHandler(
 				}).DialContext(ctx, network, addr)
 				if err == nil {
 					counter.Add(1)
-					fmt.Errorf("connection established")
 				}
 				return conn, err
 			},
