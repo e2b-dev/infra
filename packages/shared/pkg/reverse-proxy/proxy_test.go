@@ -44,14 +44,15 @@ func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
 				select {
 				case <-ctx.Done():
 					w.WriteHeader(http.StatusBadGateway)
+
 					return
 				default:
 				}
 
 				requestCount.Add(1)
 
-				w.Write([]byte(id))
 				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(id))
 			}),
 		},
 		listener:     listener,
@@ -233,8 +234,8 @@ func TestProxyReusesConnections(t *testing.T) {
 	assertBackendOutput(t, backend, resp2)
 
 	// Verify that only one connection was established
-	assert.Equal(t, backend.RequestCount(), uint64(2))
-	assert.Equal(t, proxy.TotalEstablishedConnections(), uint64(1))
+	assert.Equal(t, backend.RequestCount(), uint64(2), "backend should have been called twice")
+	assert.Equal(t, proxy.TotalEstablishedConnections(), uint64(1), "proxy should have used one connection")
 }
 
 // This is a test that verify that the proxy reuse fails when the backend changes.
