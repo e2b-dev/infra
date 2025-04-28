@@ -105,9 +105,10 @@ func getSandboxClientHost(r *http.Request) (*reverse_proxy.RoutingTarget, error)
 	}
 
 	return &reverse_proxy.RoutingTarget{
-		Url:           url,
-		SandboxId:     sandboxId,
-		Logger:        logger,
-		ConnectionKey: fmt.Sprintf("%s|%s", sandboxId, node),
+		Url:       url,
+		SandboxId: sandboxId,
+		Logger:    logger,
+		// We need to include sandboxId to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
+		ConnectionKey: fmt.Sprintf("%s", sandboxId),
 	}, nil
 }

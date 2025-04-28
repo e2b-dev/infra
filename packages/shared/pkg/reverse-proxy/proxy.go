@@ -30,7 +30,8 @@ type RoutingTarget struct {
 	Url       *url.URL
 	SandboxId string
 	Logger    *zap.Logger
-	// ConnectionKey is used for identifying which keepalive connections are the same so they can be reused.
+	// ConnectionKey is used for identifying which keepalive connections are not the same so we can prevent uninted reuse.
+	// This is evaluated before checking for existing connection to the IP:port pair.
 	ConnectionKey string
 }
 

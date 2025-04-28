@@ -55,9 +55,10 @@ func NewSandboxProxy(
 			}
 
 			return &reverse_proxy.RoutingTarget{
-				Url:           url,
-				SandboxId:     sbx.Config.SandboxId,
-				ConnectionKey: fmt.Sprintf("%s|%s", sbx.Config.SandboxId, sbx.Slot.HostIP()),
+				Url:       url,
+				SandboxId: sbx.Config.SandboxId,
+				// We need to include sandboxId to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
+				ConnectionKey: fmt.Sprintf("%s", sbx.Config.SandboxId),
 				Logger: zap.L().With(
 					zap.String("host", r.Host),
 					zap.String("sandbox_id", sbx.Config.SandboxId),
