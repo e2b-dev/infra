@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -49,9 +50,14 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 	hasScope := scope != ""
 
 	if !hasScope {
-		w.WriteHeader(http.StatusBadRequest)
+		// If the scope is not provided, create a new token for the user,
+		// but don't grant any access to the underlying repository.
+		jsonResponse := a.AuthCache.Create(templateID, "undefined-docker-token", int(time.Hour.Seconds()))
 
-		return fmt.Errorf("scope is not provided")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(jsonResponse))
+
+		return nil
 	}
 
 	scopeRegexMatches := scopeRegex.FindStringSubmatch(scope)

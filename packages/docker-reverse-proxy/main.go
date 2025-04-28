@@ -44,13 +44,6 @@ func main() {
 			return
 		}
 
-		// Provides version support for the Docker registry API
-		// Doesn't require authentication as it will be requested for the push anyway
-		// https://distribution.github.io/distribution/spec/api/#api-version-check
-		if req.URL.Path == "/v2/" {
-			return
-		}
-
 		// If the request doesn't have the Authorization header, we return 401 with the url for getting a token
 		if req.Header.Get("Authorization") == "" {
 			log.Printf("Authorization header is missing: %s\n", utils.SubstringMax(req.URL.String(), 100))
@@ -65,6 +58,17 @@ func main() {
 			if err != nil {
 				log.Printf("Error while getting token: %s\n", err)
 			}
+			return
+		}
+
+		// Verify if the user is logged in with the token
+		// https://distribution.github.io/distribution/spec/api/#api-version-check
+		if req.URL.Path == "/v2/" {
+			err = store.LoginWithToken(w, req)
+			if err != nil {
+				log.Printf("Error while logging in with token: %s\n", err)
+			}
+
 			return
 		}
 
