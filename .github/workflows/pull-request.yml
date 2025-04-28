@@ -16,9 +16,33 @@ on:
 jobs:
   integrity-check:
     uses: ./.github/workflows/pr-go-integrity.yml
+  out-of-order-migrations:
+    uses: ./.github/workflows/out-of-order-migrations.yml
   unit-tests:
     needs: [ integrity-check ]
     uses: ./.github/workflows/pr-tests.yml
   integration-tests:
-    needs: [ integrity-check ]
+    needs: [ integrity-check, out-of-order-migrations ]
     uses: ./.github/workflows/integration_tests.yml
+  publish-test-results:
+    needs:
+      - unit-tests
+      - integration-tests
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+    if: always()
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          comment_mode: off
+          fail_on: 'errors'
+          files: "artifacts/**/*.xml"

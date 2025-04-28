@@ -3,11 +3,13 @@ package envd
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/process"
@@ -18,19 +20,36 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const testFolder = "/test"
+
 func TestListDir(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	c := setup.GetAPIClient()
 	sbx := utils.SetupSandboxWithCleanup(t, c)
-
-	createDir(t, "/test-dir")
-	createDir(t, "/test-dir/sub-dir-1")
-	createDir(t, "/test-dir/sub-dir-2")
-	createTextFile(t, "/test-dir/sub-dir/file.txt", "Hello, World!")
-
 	envdClient := setup.GetEnvdClient(t, ctx)
+
+	createDir(t, sbx, testFolder)
+	createDir(t, sbx, fmt.Sprintf("%s/test-dir", testFolder))
+	createDir(t, sbx, fmt.Sprintf("%s/test-dir/sub-dir-1", testFolder))
+	createDir(t, sbx, fmt.Sprintf("%s/test-dir/sub-dir-2", testFolder))
+
+	filePath := fmt.Sprintf("%s/test-dir/sub-dir-1/file.txt", testFolder)
+	textFile, contentType := createTextFile(t, filePath, "Hello, World!")
+
+	createFileResp, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
+		ctx,
+		&envdapi.PostFilesParams{
+			Path:     &filePath,
+			Username: "user",
+		},
+		contentType,
+		textFile,
+		setup.WithSandbox(sbx.SandboxID, sbx.ClientID),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, createFileResp.StatusCode())
 
 	tests := []struct {
 		name          string
@@ -41,26 +60,33 @@ func TestListDir(t *testing.T) {
 			name:  "depth 0 lists only root directory",
 			depth: 0,
 			expectedPaths: []string{
-				"test-dir",
+				fmt.Sprintf("%s/test-dir", testFolder),
 			},
 		},
 		{
-			name:  "depth 1 lists first level of subdirectories (in this case the root directory)",
+			name:  "depth 1 lists root directory",
 			depth: 1,
 			expectedPaths: []string{
-				"test-dir",
-				"test-dir/sub-dir-1",
-				"test-dir/sub-dir-2",
+				fmt.Sprintf("%s/test-dir", testFolder),
 			},
 		},
 		{
-			name:  "depth 2 lists all directories and files",
+			name:  "depth 2 lists first level of subdirectories (in this case the root directory)",
 			depth: 2,
 			expectedPaths: []string{
-				"test-dir",
-				"test-dir/sub-dir-1",
-				"test-dir/sub-dir-2",
-				"test-dir/sub-dir/file.txt",
+				fmt.Sprintf("%s/test-dir", testFolder),
+				fmt.Sprintf("%s/test-dir/sub-dir-1", testFolder),
+				fmt.Sprintf("%s/test-dir/sub-dir-2", testFolder),
+			},
+		},
+		{
+			name:  "depth 3 lists all directories and files",
+			depth: 3,
+			expectedPaths: []string{
+				fmt.Sprintf("%s/test-dir", testFolder),
+				fmt.Sprintf("%s/test-dir/sub-dir-1", testFolder),
+				fmt.Sprintf("%s/test-dir/sub-dir-2", testFolder),
+				fmt.Sprintf("%s/test-dir/sub-dir-1/file.txt", testFolder),
 			},
 		},
 	}
@@ -68,7 +94,7 @@ func TestListDir(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := connect.NewRequest(&filesystem.ListDirRequest{
-				Path:  "/",
+				Path:  testFolder,
 				Depth: tt.depth,
 			})
 			setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
@@ -81,7 +107,7 @@ func TestListDir(t *testing.T) {
 
 			actualPaths := make([]string, len(folderListResp.Msg.Entries))
 			for i, entry := range folderListResp.Msg.Entries {
-				actualPaths[i] = entry.Name
+				actualPaths[i] = entry.Path
 			}
 			assert.ElementsMatch(t, tt.expectedPaths, actualPaths)
 		})
@@ -175,7 +201,7 @@ func createTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, 
 	return body, writer.FormDataContentType()
 }
 
-func createDir(tb testing.TB, path string) {
+func createDir(tb testing.TB, sbx *api.Sandbox, path string) {
 	tb.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -185,6 +211,7 @@ func createDir(tb testing.TB, path string) {
 	req := connect.NewRequest(&filesystem.MakeDirRequest{
 		Path: path,
 	})
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
 	setup.SetUserHeader(req.Header(), "user")
 	_, err := client.FilesystemClient.MakeDir(ctx, req)
 	if err != nil {

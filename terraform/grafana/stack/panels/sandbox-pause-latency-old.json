@@ -132,7 +132,7 @@
       ],
       "limit": 1000,
       "metricsQueryType": "range",
-      "query": "{name=\"sandbox-pause\" && resource.service.name=\"orchestrator\" }",
+      "query": "{name=\"sandbox-pause\" && resource.service.name=\"orchestrator\" && status!=error }",
       "queryType": "traceql",
       "refId": "A",
       "spss": 1,

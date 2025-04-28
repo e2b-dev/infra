@@ -66,12 +66,13 @@ type EnvBuild struct {
 }
 
 type Snapshot struct {
-	CreatedAt pgtype.Timestamptz
-	EnvID     string
-	SandboxID string
-	ID        uuid.UUID
-	Metadata  []byte
-	BaseEnvID string
+	CreatedAt        pgtype.Timestamptz
+	EnvID            string
+	SandboxID        string
+	ID               uuid.UUID
+	Metadata         []byte
+	BaseEnvID        string
+	SandboxStartedAt pgtype.Timestamptz
 }
 
 type Team struct {

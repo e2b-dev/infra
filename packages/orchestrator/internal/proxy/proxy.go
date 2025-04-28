@@ -175,7 +175,10 @@ func (p *SandboxProxy) proxyHandler(transport *http.Transport) func(w http.Respo
 			return nil
 		}
 
+		proxyLogger, _ := zap.NewStdLogAt(logger, zap.ErrorLevel)
+		proxy.ErrorLog = proxyLogger
 		proxy.Transport = transport
+
 		proxy.ServeHTTP(w, r)
 	}
 }

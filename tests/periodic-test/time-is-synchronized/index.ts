@@ -4,7 +4,7 @@ import { Sandbox } from "npm:@e2b/code-interpreter";
 // Helper function to stream command output
 async function streamCommandOutput(command: string, args: string[]) {
     const cmd = new Deno.Command(command, {
-        args: args,
+        args,
         stdout: "piped",
         stderr: "piped",
     });
@@ -12,23 +12,31 @@ async function streamCommandOutput(command: string, args: string[]) {
     const process = cmd.spawn();
     const decoder = new TextDecoder();
 
-    let output = ''
+    let output = "";
 
-    // Stream stdout
-    for await (const chunk of process.stdout) {
-        console.log(decoder.decode(chunk));
-        output += decoder.decode(chunk)
-    }
+    const readStream = async (
+        stream: ReadableStream<Uint8Array>,
+        logFn: (msg: Uint8Array) => void
+    ) => {
+        for await (const chunk of stream) {
+            logFn(chunk);
+            output += decoder.decode(chunk);
+        }
+    };
 
-    // Stream stderr
-    for await (const chunk of process.stderr) {
-        console.error(decoder.decode(chunk));
-        output += decoder.decode(chunk)
-    }
+    // Run both readers concurrently
+    await Promise.all([
+        readStream(process.stdout, (chunk) => {
+            Deno.stdout.write(chunk);
+        }),
+        readStream(process.stderr, (chunk) => {
+            Deno.stderr.write(chunk);
+        }),
+    ]);
 
     // Wait for the process to complete and get the status
     const status = await process.status;
-    return { status, output }
+    return { status, output };
 }
 
 const uniqueID = crypto.randomUUID();
@@ -74,7 +82,7 @@ try {
     }
     console.log('ℹ️ creating sandbox')
     const sandbox = await Sandbox.create(templateID, { timeoutMs: 10000 })
-    console.log('ℹ️ sandbox created')
+    console.log('ℹ️ sandbox created', sandbox.sandboxId)
 
 
     console.log('ℹ️ running command')

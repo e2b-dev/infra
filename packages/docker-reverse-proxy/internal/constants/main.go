@@ -36,3 +36,5 @@ func CheckRequired() error {
 
 	return nil
 }
+
+var GCPArtifactUploadPrefix = fmt.Sprintf("/artifacts-uploads/namespaces/%s/repositories/%s/uploads/", consts.GCPProject, consts.DockerRegistry)

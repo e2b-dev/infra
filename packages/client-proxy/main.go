@@ -179,8 +179,10 @@ func proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http
 			return nil
 		}
 
-		// Set the transport
+		proxyLogger, _ := zap.NewStdLogAt(logger, zap.ErrorLevel)
+		proxy.ErrorLog = proxyLogger
 		proxy.Transport = transport
+
 		proxy.ServeHTTP(w, r)
 	}
 }

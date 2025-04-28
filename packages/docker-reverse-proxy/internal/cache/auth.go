@@ -15,7 +15,7 @@ const (
 )
 
 type AccessTokenData struct {
-	AccessToken string
+	DockerToken string
 	TemplateID  string
 }
 
@@ -33,6 +33,10 @@ func New() *AuthCache {
 
 // Get returns the auth token for the given teamID and e2bToken.
 func (c *AuthCache) Get(e2bToken string) (*AccessTokenData, error) {
+	if e2bToken == "" {
+		return nil, fmt.Errorf("e2bToken is empty")
+	}
+
 	item := c.cache.Get(e2bToken)
 
 	if item == nil {
@@ -44,13 +48,13 @@ func (c *AuthCache) Get(e2bToken string) (*AccessTokenData, error) {
 
 // Create creates a new auth token for the given templateID and accessToken and returns e2bToken
 func (c *AuthCache) Create(templateID, token string, expiresIn int) string {
-	// Get docker token from the actual registry for the scope
+	// Get docker token from the actual registry for the scope,
 	// Create a new e2b token for the user and store it in the cache
 	userToken := utils.GenerateRandomString(128)
 	jsonResponse := fmt.Sprintf(`{"token": "%s", "expires_in": %d}`, userToken, expiresIn)
 
 	data := &AccessTokenData{
-		AccessToken: token,
+		DockerToken: token,
 		TemplateID:  templateID,
 	}
 
