@@ -8,8 +8,8 @@ import (
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/utils"
 )
 
+// LoginWithToken Validates the token by checking if the generated token is in the cache.
 func (a *APIStore) LoginWithToken(w http.ResponseWriter, r *http.Request) error {
-	// Validate the token by checking if the generated token is in the cache
 	authHeader := r.Header.Get("Authorization")
 	e2bToken := strings.TrimPrefix(authHeader, "Bearer ")
 	_, err := a.AuthCache.Get(e2bToken)

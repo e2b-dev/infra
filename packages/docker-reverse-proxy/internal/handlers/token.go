@@ -18,10 +18,6 @@ type DockerToken struct {
 	ExpiresIn int    `json:"expires_in"`
 }
 
-// expiresIn is the expiration time for the token in seconds,
-// it's an access token, and it still the same, no need to refresh it
-const expiresIn = 60 * 60 * 24 * 30 // 30 days
-
 // The scope is in format "repository:<project>/<repo>/<templateID>:<action>"
 var scopeRegex = regexp.MustCompile(fmt.Sprintf(`^repository:e2b/custom-envs/(?P<templateID>[^:]+):(?P<action>[^:]+)$`))
 
@@ -36,7 +32,6 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 	accessToken, err := auth.ExtractAccessToken(authHeader, "Basic ")
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-
 		return fmt.Errorf("error while extracting access token: %s", err)
 	}
 
@@ -53,41 +48,45 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 	templateID := "not-yet-known"
 	hasScope := scope != ""
 
-	if hasScope {
-		scopeRegexMatches := scopeRegex.FindStringSubmatch(scope)
-		if len(scopeRegexMatches) == 0 {
-			w.WriteHeader(http.StatusBadRequest)
+	if !hasScope {
+		w.WriteHeader(http.StatusBadRequest)
 
-			return fmt.Errorf("invalid scope %s", scope)
-		}
+		return fmt.Errorf("scope is not provided")
+	}
 
-		templateID = scopeRegexMatches[1]
-		action := scopeRegexMatches[2]
+	scopeRegexMatches := scopeRegex.FindStringSubmatch(scope)
+	if len(scopeRegexMatches) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
 
-		// Don't allow a delete actions
-		if strings.Contains(action, "delete") {
-			w.WriteHeader(http.StatusForbidden)
+		return fmt.Errorf("invalid scope %s", scope)
+	}
 
-			return fmt.Errorf("access denied for scope %s", scope)
-		}
+	templateID = scopeRegexMatches[1]
+	action := scopeRegexMatches[2]
 
-		// Validate if the user has access to the template
-		hasAccess, err := auth.Validate(ctx, a.db.Client, accessToken, templateID)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+	// Don't allow a delete actions
+	if strings.Contains(action, "delete") {
+		w.WriteHeader(http.StatusForbidden)
 
-			return fmt.Errorf("error while validating access: %s", err)
-		}
+		return fmt.Errorf("access denied for scope %s", scope)
+	}
 
-		if !hasAccess {
-			w.WriteHeader(http.StatusForbidden)
+	// Validate if the user has access to the template
+	hasAccess, err := auth.Validate(ctx, a.db.Client, accessToken, templateID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
 
-			return fmt.Errorf("access denied for env: %s", templateID)
-		}
+		return fmt.Errorf("error while validating access: %s", err)
+	}
+
+	if !hasAccess {
+		w.WriteHeader(http.StatusForbidden)
+
+		return fmt.Errorf("access denied for env: %s", templateID)
 	}
 
 	// Get docker token from the actual registry
-	dockerToken, err := getToken(templateID, hasScope)
+	dockerToken, err := getToken(templateID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 
@@ -103,17 +102,14 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 }
 
 // getToken gets a new token from the actual registry for the required scope
-func getToken(templateID string, includeScope bool) (*DockerToken, error) {
-	scope := ""
-	if includeScope {
-		scope = fmt.Sprintf(
-			"?service=%s-docker.pkg.dev&scope=repository:%s/%s/%s:push,pull",
-			consts.GCPRegion,
-			consts.GCPProject,
-			consts.DockerRegistry,
-			templateID,
-		)
-	}
+func getToken(templateID string) (*DockerToken, error) {
+	scope := fmt.Sprintf(
+		"?service=%s-docker.pkg.dev&scope=repository:%s/%s/%s:push,pull",
+		consts.GCPRegion,
+		consts.GCPProject,
+		consts.DockerRegistry,
+		templateID,
+	)
 	url := fmt.Sprintf(
 		"https://%s-docker.pkg.dev/v2/token%s",
 		consts.GCPRegion,
