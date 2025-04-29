@@ -267,8 +267,8 @@ type Sandbox struct {
 	TemplateID string `json:"templateID"`
 }
 
-// SandboxDetailed defines model for SandboxDetailed.
-type SandboxDetailed struct {
+// SandboxDetail defines model for SandboxDetail.
+type SandboxDetail struct {
 	// Alias Alias of the template
 	Alias *string `json:"alias,omitempty"`
 

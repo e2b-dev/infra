@@ -253,7 +253,7 @@ components:
           type: string
           description: Access token used for envd communication
 
-    SandboxDetailed:
+    SandboxDetail:
       required:
         - templateID
         - sandboxID
@@ -1003,7 +1003,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SandboxDetailed"
+                $ref: "#/components/schemas/SandboxDetail"
         "404":
           $ref: "#/components/responses/404"
         "401":
