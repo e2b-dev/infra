@@ -108,6 +108,12 @@ type ListedSandbox struct {
 	// EndAt Time when the sandbox will expire
 	EndAt time.Time `json:"endAt"`
 
+	// EnvdAccessToken Access token used for envd communication
+	EnvdAccessToken *string `json:"envdAccessToken,omitempty"`
+
+	// EnvdVersion Version of the envd running in the sandbox
+	EnvdVersion *string `json:"envdVersion,omitempty"`
+
 	// MemoryMB Memory for the sandbox in MB
 	MemoryMB MemoryMB         `json:"memoryMB"`
 	Metadata *SandboxMetadata `json:"metadata,omitempty"`
@@ -140,6 +146,9 @@ type NewSandbox struct {
 	AutoPause *bool            `json:"autoPause,omitempty"`
 	EnvVars   *EnvVars         `json:"envVars,omitempty"`
 	Metadata  *SandboxMetadata `json:"metadata,omitempty"`
+
+	// Secure Secure all system communication with sandbox
+	Secure *bool `json:"secure,omitempty"`
 
 	// TemplateID Identifier of the required template
 	TemplateID string `json:"templateID"`
@@ -250,6 +259,9 @@ type Sandbox struct {
 
 	// ClientID Identifier of the client
 	ClientID string `json:"clientID"`
+
+	// EnvdAccessToken Access token used for envd communication
+	EnvdAccessToken *string `json:"envdAccessToken,omitempty"`
 
 	// EnvdVersion Version of the envd running in the sandbox
 	EnvdVersion string `json:"envdVersion"`

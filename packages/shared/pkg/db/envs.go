@@ -137,58 +137,6 @@ func (db *DB) GetEnv(ctx context.Context, aliasOrEnvID string) (result *models.E
 	return template, nil
 }
 
-func (db *DB) GetEnvWithBuild(ctx context.Context, aliasOrEnvID string) (result *Template, build *models.EnvBuild, err error) {
-	template, err := db.
-		Client.
-		Env.
-		Query().
-		Where(
-			env.Or(
-				env.HasEnvAliasesWith(envalias.ID(aliasOrEnvID)),
-				env.ID(aliasOrEnvID),
-			),
-		).
-		WithEnvAliases(func(query *models.EnvAliasQuery) {
-			query.Order(models.Asc(envalias.FieldID)) // TODO: remove once we have only 1 alias per env
-		}).Only(ctx)
-
-	notFound := models.IsNotFound(err)
-	if notFound {
-		return nil, nil, TemplateNotFound{}
-	} else if err != nil {
-		return nil, nil, fmt.Errorf("failed to get template '%s': %w", aliasOrEnvID, err)
-	}
-
-	build, err = db.Client.EnvBuild.Query().Where(envbuild.EnvID(template.ID), envbuild.StatusEQ(envbuild.StatusUploaded)).Order(models.Desc(envbuild.FieldFinishedAt)).First(ctx)
-	notFound = models.IsNotFound(err)
-	if notFound {
-		return nil, nil, fmt.Errorf("build for '%s' not found: %w", aliasOrEnvID, err)
-	} else if err != nil {
-		return nil, nil, fmt.Errorf("failed to get template build '%s': %w", aliasOrEnvID, err)
-	}
-
-	aliases := make([]string, len(template.Edges.EnvAliases))
-	for i, alias := range template.Edges.EnvAliases {
-		aliases[i] = alias.ID
-	}
-
-	return &Template{
-		TemplateID:    template.ID,
-		BuildID:       build.ID.String(),
-		VCPU:          build.Vcpu,
-		RAMMB:         build.RAMMB,
-		DiskMB:        build.FreeDiskSizeMB,
-		Public:        template.Public,
-		Aliases:       &aliases,
-		TeamID:        template.TeamID,
-		CreatedAt:     template.CreatedAt,
-		UpdatedAt:     template.UpdatedAt,
-		LastSpawnedAt: template.LastSpawnedAt,
-		SpawnCount:    template.SpawnCount,
-		BuildCount:    template.BuildCount,
-	}, build, nil
-}
-
 func (db *DB) GetRunningEnvBuilds(ctx context.Context) ([]*models.EnvBuild, error) {
 	envBuilds, err := db.
 		Client.

@@ -39,32 +39,33 @@ resource "nomad_job" "api" {
     update_stanza = var.api_machine_count > 1
     // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
     // It might be possible there could be problems if we are rolling updates for both API and Loki at the same time., so maybe increasing this to > 3 makes sense.
-    prevent_colocation            = var.api_machine_count > 2
-    orchestrator_port             = var.orchestrator_port
-    template_manager_address      = "http://template-manager.service.consul:${var.template_manager_port}"
-    otel_collector_grpc_endpoint  = "localhost:4317"
-    loki_address                  = "http://loki.service.consul:${var.loki_service_port.port}"
-    logs_collector_address        = "http://localhost:${var.logs_proxy_port.port}"
-    gcp_zone                      = var.gcp_zone
-    port_name                     = var.api_port.name
-    port_number                   = var.api_port.port
-    api_docker_image              = var.api_docker_image_digest
-    postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-    supabase_jwt_secrets          = data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data
-    posthog_api_key               = data.google_secret_manager_secret_version.posthog_api_key.secret_data
-    environment                   = var.environment
-    analytics_collector_host      = data.google_secret_manager_secret_version.analytics_collector_host.secret_data
-    analytics_collector_api_token = data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data
-    otel_tracing_print            = var.otel_tracing_print
-    nomad_acl_token               = var.nomad_acl_token_secret
-    admin_token                   = var.api_admin_token
-    redis_url                     = "redis://redis.service.consul:${var.redis_port.port}"
-    redis_cluster_url             = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
-    dns_port_number               = var.api_dns_port_number
-    clickhouse_connection_string  = var.clickhouse_connection_string
-    clickhouse_username           = var.clickhouse_username
-    clickhouse_password           = var.clickhouse_password
-    clickhouse_database           = var.clickhouse_database
+    prevent_colocation             = var.api_machine_count > 2
+    orchestrator_port              = var.orchestrator_port
+    template_manager_address       = "http://template-manager.service.consul:${var.template_manager_port}"
+    otel_collector_grpc_endpoint   = "localhost:4317"
+    loki_address                   = "http://loki.service.consul:${var.loki_service_port.port}"
+    logs_collector_address         = "http://localhost:${var.logs_proxy_port.port}"
+    gcp_zone                       = var.gcp_zone
+    port_name                      = var.api_port.name
+    port_number                    = var.api_port.port
+    api_docker_image               = var.api_docker_image_digest
+    postgres_connection_string     = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    supabase_jwt_secrets           = data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data
+    posthog_api_key                = data.google_secret_manager_secret_version.posthog_api_key.secret_data
+    environment                    = var.environment
+    analytics_collector_host       = data.google_secret_manager_secret_version.analytics_collector_host.secret_data
+    analytics_collector_api_token  = data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data
+    otel_tracing_print             = var.otel_tracing_print
+    nomad_acl_token                = var.nomad_acl_token_secret
+    admin_token                    = var.api_admin_token
+    redis_url                      = "redis://redis.service.consul:${var.redis_port.port}"
+    redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
+    dns_port_number                = var.api_dns_port_number
+    clickhouse_connection_string   = var.clickhouse_connection_string
+    clickhouse_username            = var.clickhouse_username
+    clickhouse_password            = var.clickhouse_password
+    clickhouse_database            = var.clickhouse_database
+    sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
   })
 }
 

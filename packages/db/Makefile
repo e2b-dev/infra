@@ -11,6 +11,11 @@ migrate/%:goose-init
 	@$(goose) $(notdir $@)
 	@echo "Done"
 
+.PHONY: init
+init:
+	@echo "Installing sqlc"
+	brew install sqlc
+	@echo "Done"
 
 .PHONE: create-migration
 create-migration: goose-init

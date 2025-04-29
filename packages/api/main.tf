@@ -119,8 +119,6 @@ resource "google_secret_manager_secret" "clickhouse_password" {
   }
 }
 
-
-
 resource "random_password" "api_admin_secret" {
   length  = 32
   special = true
@@ -137,4 +135,22 @@ resource "google_secret_manager_secret" "api_admin_token" {
 resource "google_secret_manager_secret_version" "api_admin_token_value" {
   secret      = google_secret_manager_secret.api_admin_token.id
   secret_data = random_password.api_admin_secret.result
+}
+
+resource "random_password" "sandbox_access_token_hash_seed" {
+  length  = 32
+  special = false
+}
+
+
+resource "google_secret_manager_secret" "sandbox_access_token_hash_seed" {
+  secret_id = "${var.prefix}sandbox-access-token-hash-seed"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "sandbox_access_token_hash_seed" {
+  secret      = google_secret_manager_secret.sandbox_access_token_hash_seed.id
+  secret_data = random_password.sandbox_access_token_hash_seed.result
 }

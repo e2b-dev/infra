@@ -31,8 +31,7 @@ const (
 )
 
 var (
-	// These vars are automatically set by goreleaser.
-	Version = "0.1.6"
+	Version = "0.2.0"
 
 	commitSHA string
 

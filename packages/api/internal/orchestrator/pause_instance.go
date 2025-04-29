@@ -43,6 +43,7 @@ func (o *Orchestrator) PauseInstance(
 		KernelVersion:      sbx.KernelVersion,
 		FirecrackerVersion: sbx.FirecrackerVersion,
 		EnvdVersion:        sbx.Instance.EnvdVersion,
+		EnvdSecured:        sbx.EnvdAccessToken != nil,
 	}
 
 	envBuild, err := o.dbClient.NewSnapshotBuild(

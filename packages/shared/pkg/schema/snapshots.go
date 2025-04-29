@@ -27,6 +27,7 @@ func (Snapshot) Fields() []ent.Field {
 		field.String("sandbox_id").Unique().SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.JSON("metadata", map[string]string{}).SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.Time("sandbox_started_at"),
+		field.Bool("env_secure").Default(false),
 	}
 }
 
