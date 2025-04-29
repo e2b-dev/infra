@@ -19,7 +19,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses) *api.Sand
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	sbxTimeout := int32(30)
+	sbxTimeout := int32(60)
 	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
