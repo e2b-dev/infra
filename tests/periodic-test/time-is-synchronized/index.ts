@@ -105,7 +105,8 @@ try {
 
     // kill sandbox
     await sandbox.kill()
-
+} catch (e) {
+    console.error("Error while running sandbox or commands", e)
 } finally {
     // delete template
     const output = await streamCommandOutput('npx', [
