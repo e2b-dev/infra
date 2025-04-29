@@ -19,8 +19,10 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	client_proxy "github.com/e2b-dev/infra/packages/proxy/internal/proxy"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -65,30 +67,6 @@ func run() int {
 
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
-	healthServer := &http.Server{Addr: fmt.Sprintf(":%d", healthCheckPort)}
-	healthServer.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.WriteHeader(http.StatusOK)
-	})
-
-	wg.Add(1)
-	go func() {
-		// Health check
-		defer wg.Done()
-
-		logger.Info("starting health check server", zap.Int("port", healthCheckPort))
-		err := healthServer.ListenAndServe()
-		switch {
-		case errors.Is(err, http.ErrServerClosed):
-			logger.Info("http service shutdown successfully", zap.Int("port", healthCheckPort))
-		case err != nil:
-			exitCode.Add(1)
-			logger.Error("http service encountered error", zap.Int("port", healthCheckPort), zap.Error(err))
-		default:
-			// this probably shouldn't happen...
-			logger.Error("http service exited without error", zap.Int("port", healthCheckPort))
-		}
-	}()
-
 	// Proxy request to the correct node
 	proxy, err := client_proxy.NewClientProxy(port)
 	if err != nil {
@@ -96,6 +74,19 @@ func run() int {
 
 		return 1
 	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := edge.Run(logger, healthCheckPort, ctx)
+		if err != nil {
+			exitCode.Add(1)
+			logger.Error("edge service error", zap.Error(err))
+
+			// todo: just for now, we need proper exit handling
+			os.Exit(1)
+		}
+	}()
 
 	wg.Add(1)
 	go func() {
@@ -132,8 +123,10 @@ func run() int {
 			logger.Error("http service shutdown error", zap.Int("port", healthCheckPort), zap.Error(err))
 		}
 
-		logger.Info("waiting 15 seconds before shutting down http service")
-		time.Sleep(15 * time.Second)
+		if env.IsProduction() {
+			logger.Info("waiting 15 seconds before shutting down http service")
+			time.Sleep(15 * time.Second)
+		}
 
 		logger.Info("shutting down http service", zap.Int("port", port))
 		if err := proxy.Shutdown(ctx); err != nil {
