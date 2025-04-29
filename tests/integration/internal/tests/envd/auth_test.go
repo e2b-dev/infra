@@ -3,7 +3,6 @@ package envd
 import (
 	"context"
 	"fmt"
-	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 	"net/http"
 	"strings"
 	"testing"
@@ -12,11 +11,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
+
+	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
 func createSandbox(t *testing.T, sbxWithAuth bool, reqEditors ...api.RequestEditorFn) *api.PostSandboxesResponse {
@@ -76,8 +77,8 @@ func TestRunUnauthorizedInitWithAlreadySecuredEnvd(t *testing.T) {
 	defer cancel()
 
 	sbx := createSandbox(t, true, setup.WithAPIKey())
-	assert.NotNil(t, sbx.JSON201)
-	assert.NotNil(t, sbx.JSON201.EnvdAccessToken)
+	require.NotNil(t, sbx.JSON201)
+	require.NotNil(t, sbx.JSON201.EnvdAccessToken)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
@@ -95,8 +96,8 @@ func TestChangeAccessAuthorizedToken(t *testing.T) {
 	defer cancel()
 
 	sbx := createSandbox(t, true, setup.WithAPIKey())
-	assert.NotNil(t, sbx.JSON201)
-	assert.NotNil(t, sbx.JSON201.EnvdAccessToken)
+	require.NotNil(t, sbx.JSON201)
+	require.NotNil(t, sbx.JSON201.EnvdAccessToken)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 	envdAuthTokenA := sbx.JSON201.EnvdAccessToken
@@ -144,7 +145,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 		setup.WithAccessToken(*sbxMeta.EnvdAccessToken),
 	)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, writeRes.StatusCode())
 
 	c := setup.GetAPIClient()
