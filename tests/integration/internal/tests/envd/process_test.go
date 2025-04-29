@@ -23,12 +23,12 @@ func TestCommandKillNextApp(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	// Step 1: Run `npx create-next-app`
+	// Run `npx create-next-app`
 	createAppReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
-			Cmd: "npx",
+			Cmd: "/bin/bash",
 			Args: []string{
-				"create-next-app@latest", "nextapp", "--yes",
+				"-l", "-c", "npx create-next-app@latest nextapp --yes",
 			},
 		},
 	})
@@ -43,12 +43,12 @@ func TestCommandKillNextApp(t *testing.T) {
 	}
 	require.NoError(t, createAppStream.Err())
 
-	// Step 2: Run `npm run dev` in background
+	// Run `npm run dev` in background
 	cwd := "~/nextapp"
 	runDevReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
-			Cmd:  "npm",
-			Args: []string{"run", "dev"},
+			Cmd:  "/bin/bash",
+			Args: []string{"-l", "-c", "npm run dev"},
 			Cwd:  &cwd,
 		},
 	})
@@ -78,7 +78,7 @@ func TestCommandKillNextApp(t *testing.T) {
 		}
 	}()
 
-	// Step 3: Wait for next dev to start and list processes
+	// Wait for the next dev to start and list processes
 	time.Sleep(10 * time.Second)
 
 	listReq := connect.NewRequest(&process.ListRequest{})
@@ -89,7 +89,7 @@ func TestCommandKillNextApp(t *testing.T) {
 
 	assert.Len(t, listResp.Msg.Processes, 1, "Expected one process (next dev) running")
 
-	// Step 4: Kill all processes
+	// Kill all processes
 	for _, proc := range listResp.Msg.Processes {
 		t.Logf("killing process PID=%d CMD=%s", proc.Pid, proc.Config.Cmd)
 		killReq := connect.NewRequest(&process.SendSignalRequest{
@@ -106,7 +106,87 @@ func TestCommandKillNextApp(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	// Step 5: Final process list
+	// Final process list
+	finalListResp, err := envdClient.ProcessClient.List(ctx, listReq)
+	require.NoError(t, err)
+
+	assert.Len(t, finalListResp.Msg.Processes, 0, "Expected no processes running")
+	for _, proc := range finalListResp.Msg.Processes {
+		t.Errorf("remaining process: PID=%d CMD=%s", proc.Pid, proc.Config.Cmd)
+	}
+}
+
+func TestCommandKillWithAnd(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	client := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, client)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Run `sleep 30 && echo done` in background
+	runDevReq := connect.NewRequest(&process.StartRequest{
+		Process: &process.ProcessConfig{
+			Cmd:  "/bin/bash",
+			Args: []string{"-l", "-c", "sleep 30 && echo done"},
+		},
+	})
+	setup.SetSandboxHeader(runDevReq.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetUserHeader(runDevReq.Header(), "user")
+	runDevStream, err := envdClient.ProcessClient.Start(ctx, runDevReq)
+	require.NoError(t, err)
+	defer runDevStream.Close()
+
+	// Read dev output
+	receiveDone := make(chan error, 1)
+	go func() {
+		defer close(receiveDone)
+		for runDevStream.Receive() {
+			t.Log("cmd:", runDevStream.Msg())
+		}
+		receiveDone <- runDevStream.Err()
+	}()
+
+	defer func() {
+		select {
+		case <-ctx.Done():
+			t.Logf("Context done while receiving cmd logs: %v", ctx.Err())
+			_ = runDevStream.Close()
+		case err := <-receiveDone:
+			require.NoError(t, err, "streaming ended with error")
+		}
+	}()
+
+	// Step 2: Wait for the command to start
+	time.Sleep(5 * time.Second)
+
+	listReq := connect.NewRequest(&process.ListRequest{})
+	setup.SetSandboxHeader(listReq.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetUserHeader(listReq.Header(), "user")
+	listResp, err := envdClient.ProcessClient.List(ctx, listReq)
+	require.NoError(t, err)
+
+	assert.Len(t, listResp.Msg.Processes, 1, "Expected one process running")
+
+	// Kill all processes
+	for _, proc := range listResp.Msg.Processes {
+		t.Logf("killing process PID=%d CMD=%s", proc.Pid, proc.Config.Cmd)
+		killReq := connect.NewRequest(&process.SendSignalRequest{
+			Signal: process.Signal_SIGNAL_SIGKILL,
+			Process: &process.ProcessSelector{
+				Selector: &process.ProcessSelector_Pid{
+					Pid: proc.Pid,
+				},
+			},
+		})
+		setup.SetSandboxHeader(killReq.Header(), sbx.SandboxID, sbx.ClientID)
+		setup.SetUserHeader(killReq.Header(), "user")
+		_, err := envdClient.ProcessClient.SendSignal(ctx, killReq)
+		assert.NoError(t, err)
+	}
+
+	// Final process list
 	finalListResp, err := envdClient.ProcessClient.List(ctx, listReq)
 	require.NoError(t, err)
 
