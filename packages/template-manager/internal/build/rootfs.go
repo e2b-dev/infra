@@ -255,7 +255,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 	telemetry.ReportEvent(childCtx, "created network")
 
 	pidsLimit := int64(200)
-	memory := int64(math.Max(float64(r.env.MemoryMB)/2, 512)) << ToMBShift
+	memory := max(r.env.MemoryMB, 512) << ToMBShift
 
 	cont, err := r.client.ContainerCreate(childCtx, &container.Config{
 		Image:        r.dockerTag(),
