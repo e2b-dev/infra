@@ -61,9 +61,9 @@ func Build(ctx context.Context, kernelVersion, fcVersion, templateID, buildID st
 			true,
 		),
 		VCpuCount:       2,
-		MemoryMB:        256,
+		MemoryMB:        1024,
 		StartCmd:        "",
-		DiskSizeMB:      512,
+		DiskSizeMB:      1024,
 		BuildLogsWriter: &buf,
 	}
 
