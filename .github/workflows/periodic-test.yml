@@ -74,11 +74,13 @@ jobs:
         uses: mikeal/npx@1.0.0
 
       - name: Set env variables from secrets
+        if: always()
         run: |
           echo "E2B_API_KEY=${{ secrets[format('{0}', matrix.api_key)] }}" >> $GITHUB_ENV
           echo "E2B_ACCESS_TOKEN=${{ secrets[format('{0}', matrix.access_token)] }}" >> $GITHUB_ENV
 
       - name: Set Slack channel based on dev input
+        if: always()
         run: |
           if [ "${{ inputs.dev }}" == "true" ]; then
             echo "SLACK_CHANNEL=monitoring-infra-testing" >> $GITHUB_ENV
