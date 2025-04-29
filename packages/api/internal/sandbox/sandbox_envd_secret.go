@@ -8,21 +8,23 @@ import (
 )
 
 var (
-	saltKey = os.Getenv("SANDBOX_ACCESS_TOKEN_HASH_SEED")
+	seedKey = os.Getenv("SANDBOX_ACCESS_TOKEN_HASH_SEED")
 )
 
 type EnvdAccessTokenGenerator struct {
+	hasher *keys.HMACSha256Hashing
 }
 
-func NewEnvdAccessTokenGenerator() *EnvdAccessTokenGenerator {
-	return &EnvdAccessTokenGenerator{}
+func NewEnvdAccessTokenGenerator() (*EnvdAccessTokenGenerator, error) {
+	if seedKey == "" {
+		return nil, errors.New("seed key is not set")
+	}
+
+	return &EnvdAccessTokenGenerator{
+		hasher: keys.NewHMACSHA256Hashing([]byte(seedKey)),
+	}, nil
 }
 
 func (g *EnvdAccessTokenGenerator) GenerateAccessToken(id api.SandboxID) (string, error) {
-	if saltKey == "" {
-		return "", errors.New("salt key is not set")
-	}
-
-	hasher := keys.NewHMACSHA256Hashing([]byte(saltKey))
-	return hasher.Hash([]byte(id))
+	return g.hasher.Hash([]byte(id))
 }

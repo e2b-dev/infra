@@ -171,7 +171,11 @@ func NewAPIStore(ctx context.Context) *APIStore {
 	authCache := authcache.NewTeamAuthCache()
 	templateCache := templatecache.NewTemplateCache(sqlcDB)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
-	accessTokenGenerator := sandbox.NewEnvdAccessTokenGenerator()
+
+	accessTokenGenerator, err := sandbox.NewEnvdAccessTokenGenerator()
+	if err != nil {
+		zap.L().Fatal("initializing access token generator failed", zap.Error(err))
+	}
 
 	a := &APIStore{
 		Healthy:                   false,
