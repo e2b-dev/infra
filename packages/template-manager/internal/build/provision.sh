@@ -1,7 +1,7 @@
 export BASH_XTRACEFD=1
 set -euo pipefail
 
-echo "Starting provisioning script."
+echo "Starting provisioning script"
 
 echo "ENV_ID={{ .EnvID }}" >/.e2b
 echo "BUILD_ID={{ .BuildID }}" >>/.e2b
