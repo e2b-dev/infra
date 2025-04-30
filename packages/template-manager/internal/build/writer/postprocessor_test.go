@@ -1,4 +1,4 @@
-package build
+package writer
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // test writer that stores the written data
@@ -56,9 +57,10 @@ func TestPostProcessor_Start(t *testing.T) {
 				ctx:     ctx,
 				writer:  tw,
 				errChan: errChan,
+				ticker:  time.NewTicker(tickerInterval),
 			}
 			go p.Start()
-			p.stop(tt.fields.testErr)
+			p.Stop(tt.fields.testErr)
 			close(errChan)
 
 			if !strings.Contains(string(tw.data), tt.fields.shouldContain) {

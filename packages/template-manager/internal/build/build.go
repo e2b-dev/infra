@@ -3,23 +3,25 @@ package build
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+
 	"github.com/bits-and-blooms/bitset"
 	"github.com/docker/docker/client"
+	docker "github.com/fsouza/go-dockerclient"
+	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
-	docker "github.com/fsouza/go-dockerclient"
-	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/trace"
-	"os"
-
-	"go.uber.org/zap"
-	"os/exec"
-	"strings"
-	"time"
 )
 
 type TemplateBuilder struct {
@@ -59,6 +61,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 	}
 
 	logsWriter := template.BuildLogsWriter
+	postProcessor := writer.NewPostProcessor(ctx, logsWriter)
+	go postProcessor.Start()
+	defer postProcessor.Stop(err)
 
 	// Remove local template files when exiting
 	defer func() {
@@ -72,9 +77,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		}
 	}()
 
-	err = template.Build(ctx, b.tracer, b.dockerClient, b.legacyDockerClient)
+	err = template.Build(ctx, b.tracer, postProcessor, b.dockerClient, b.legacyDockerClient)
 	if err != nil {
-		_, _ = logsWriter.Write([]byte(fmt.Sprintf("Error building environment: %v", err)))
+		postProcessor.WriteMsg(fmt.Sprintf("Error building environment: %v", err))
 		telemetry.ReportCriticalError(ctx, err)
 
 		buildStateErr := b.buildCache.SetFailed(envID, buildID)
@@ -99,6 +104,8 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 			}
 		}
 	}()
+
+	postProcessor.WriteMsg("Processing system memory")
 
 	// MEMFILE
 	memfilePath := template.BuildMemfilePath()
@@ -159,6 +166,8 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		memfileMappings,
 	)
 
+	postProcessor.WriteMsg("Processing file system")
+
 	// ROOTFS
 	rootfsPath := template.BuildRootfsPath()
 	rootfsDiffPath := template.BuildRootfsDiffPath()
@@ -218,6 +227,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		rootfsMappings,
 	)
 
+	postProcessor.WriteMsg("Uploading template")
 	// UPLOAD
 	templateBuild := storage.NewTemplateBuild(
 		memfileHeader,
@@ -235,7 +245,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 	cmd := exec.Command(storage.HostEnvdPath, "-version")
 	out, err := cmd.Output()
 	if err != nil {
-		_, _ = logsWriter.Write([]byte(fmt.Sprintf("Error while getting envd version: %v", err)))
+		postProcessor.WriteMsg(fmt.Sprintf("Error while getting envd version: %v", err))
 		telemetry.ReportError(ctx, err)
 
 		buildStateErr := b.buildCache.SetFailed(envID, buildID)
@@ -247,10 +257,16 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		return err
 	}
 
+	postProcessor.Stop(err)
+	// Wait for the CLI to load all the logs
+	// This is a temporary ~fix for the CLI to load most of the logs before finishing the template build
+	// Ideally we should wait in the CLI for the last log message
+	time.Sleep(5 * time.Second)
+
 	uploadErr := <-upload
 	if uploadErr != nil {
 		errMsg := fmt.Sprintf("Error while uploading build files: %v", uploadErr)
-		_, _ = logsWriter.Write([]byte(errMsg))
+		postProcessor.WriteMsg(errMsg)
 		telemetry.ReportError(ctx, uploadErr)
 
 		buildStateErr := b.buildCache.SetFailed(envID, buildID)
