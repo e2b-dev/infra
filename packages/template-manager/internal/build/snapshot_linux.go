@@ -144,7 +144,7 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, postProcessor *writer
 	postProcessor.WriteMsg("VM started")
 
 	if env.StartCmd != "" {
-		postProcessor.WriteMsg("Waiting for start command to be healthy...")
+		postProcessor.WriteMsg("Waiting for start command to run...")
 		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
 		// TODO: Remove this after we can add customizable wait time for building templates.
 		if env.TemplateId == "zegbt9dl3l2ixqem82mm" || env.TemplateId == "ot5bidkk3j2so2j02uuz" || env.TemplateId == "0zeou1s7agaytqitvmzc" {
@@ -152,7 +152,7 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, postProcessor *writer
 		} else {
 			time.Sleep(waitTimeForStartCmd)
 		}
-		postProcessor.WriteMsg("Waiting for start command is healthy")
+		postProcessor.WriteMsg("Start command is running")
 		telemetry.ReportEvent(childCtx, "waited for start command", attribute.Float64("seconds", float64(waitTimeForStartCmd/time.Second)))
 	}
 
