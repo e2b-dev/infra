@@ -1,4 +1,4 @@
-import { Sandbox } from "npm:@e2b/code-interpreter";
+import {Sandbox} from "npm:@e2b/code-interpreter";
 
 
 // Helper function to stream command output
@@ -107,6 +107,7 @@ try {
     await sandbox.kill()
 } catch (e) {
     console.error("Error while running sandbox or commands", e)
+    throw e
 } finally {
     // delete template
     const output = await streamCommandOutput('npx', [
