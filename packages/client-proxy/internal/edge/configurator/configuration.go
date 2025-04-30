@@ -9,6 +9,7 @@ type Config struct {
 	RedisReaderUrl string
 
 	ServicePort int
+	ServiceIpv4 string
 
 	SelfUpdateSourceUrl    *string
 	SelfUpdateAutoInterval int64 // in seconds
