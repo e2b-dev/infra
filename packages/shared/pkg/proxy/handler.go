@@ -1,4 +1,4 @@
-package pool
+package proxy
 
 import (
 	"context"
@@ -8,16 +8,41 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/client"
-	template "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/error-template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/routing"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/client"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 )
 
-func (p *ProxyPool) Handler(getRoutingTarget func(r *http.Request) (*client.ProxingInfo, error)) http.HandlerFunc {
+type ErrInvalidHost struct{}
+
+func (e *ErrInvalidHost) Error() string {
+	return "invalid url host"
+}
+
+type ErrInvalidSandboxPort struct{}
+
+func (e *ErrInvalidSandboxPort) Error() string {
+	return "invalid sandbox port"
+}
+
+func NewErrSandboxNotFound(sandboxId string) *ErrSandboxNotFound {
+	return &ErrSandboxNotFound{
+		SandboxId: sandboxId,
+	}
+}
+
+type ErrSandboxNotFound struct {
+	SandboxId string
+}
+
+func (e *ErrSandboxNotFound) Error() string {
+	return "sandbox not found"
+}
+
+func (p *proxyPool) handler(getRoutingTarget func(r *http.Request) (*client.ProxingInfo, error)) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t, err := getRoutingTarget(r)
 
-		var invalidHostErr *routing.ErrInvalidHost
+		var invalidHostErr *ErrInvalidHost
 		if errors.As(err, &invalidHostErr) {
 			zap.L().Warn("invalid host", zap.String("host", r.Host))
 			http.Error(w, "Invalid host", http.StatusBadRequest)
@@ -25,7 +50,7 @@ func (p *ProxyPool) Handler(getRoutingTarget func(r *http.Request) (*client.Prox
 			return
 		}
 
-		var invalidPortErr *routing.ErrInvalidSandboxPort
+		var invalidPortErr *ErrInvalidSandboxPort
 		if errors.As(err, &invalidPortErr) {
 			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host))
 			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
@@ -33,7 +58,7 @@ func (p *ProxyPool) Handler(getRoutingTarget func(r *http.Request) (*client.Prox
 			return
 		}
 
-		var notFoundErr *routing.ErrSandboxNotFound
+		var notFoundErr *ErrSandboxNotFound
 		if errors.As(err, &notFoundErr) {
 			zap.L().Warn("sandbox not found", zap.String("host", r.Host))
 

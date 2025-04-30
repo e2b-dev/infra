@@ -7,15 +7,14 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
-	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy"
-	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/client"
-	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/routing"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
-
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/client"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 const (
@@ -29,14 +28,14 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse
 		idleTimeout,
 		minSandboxConns,
 		func(r *http.Request) (*client.ProxingInfo, error) {
-			sandboxId, port, err := routing.ParseHost(r.Host)
+			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
 			if err != nil {
 				return nil, err
 			}
 
 			sbx, found := sandboxes.Get(sandboxId)
 			if !found {
-				return nil, routing.NewErrSandboxNotFound(sandboxId)
+				return nil, reverse_proxy.NewErrSandboxNotFound(sandboxId)
 			}
 
 			url := &url.URL{

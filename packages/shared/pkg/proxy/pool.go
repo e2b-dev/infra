@@ -1,4 +1,4 @@
-package pool
+package proxy
 
 import (
 	"fmt"
@@ -7,14 +7,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/client"
-	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/client"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
+// hostConnectionSplit is the number of connections per host.
+// This is used to limit the number of connections per host to avoid exhausting the number of available via one host.
+// The total number of connection per host will be total connections / hostConnectionSplit.
+// If the total connections is lower than hostConnectionSplit, the total connections will be used for each host.
 const hostConnectionSplit = 4
 
-type ProxyPool struct {
+type proxyPool struct {
 	pool                *smap.Map[*client.ProxyClient]
 	size                int
 	maxClientConns      int
@@ -24,13 +29,13 @@ type ProxyPool struct {
 	clientLogger        *log.Logger
 }
 
-func New(size int, maxClientConns int, idleTimeout time.Duration) (*ProxyPool, error) {
+func newProxyPool(size int, maxClientConns int, idleTimeout time.Duration) (*proxyPool, error) {
 	clientLogger, err := zap.NewStdLogAt(zap.L(), zap.ErrorLevel)
 	if err != nil {
 		return nil, err
 	}
 
-	return &ProxyPool{
+	return &proxyPool{
 		pool:           smap.New[*client.ProxyClient](),
 		size:           size,
 		maxClientConns: maxClientConns,
@@ -43,7 +48,7 @@ func getClientKey(connectionKey string, poolIdx int) string {
 	return fmt.Sprintf("%s:%d", connectionKey, poolIdx)
 }
 
-func (p *ProxyPool) keys(connectionKey string) []string {
+func (p *proxyPool) keys(connectionKey string) []string {
 	keys := make([]string, 0, p.size)
 
 	for poolIdx := range p.size {
@@ -53,7 +58,7 @@ func (p *ProxyPool) keys(connectionKey string) []string {
 	return keys
 }
 
-func (p *ProxyPool) Get(connectionKey string) *client.ProxyClient {
+func (p *proxyPool) Get(connectionKey string) *client.ProxyClient {
 	randomIdx := rand.Intn(p.size)
 
 	key := getClientKey(connectionKey, randomIdx)
@@ -81,7 +86,7 @@ func (p *ProxyPool) Get(connectionKey string) *client.ProxyClient {
 	})
 }
 
-func (p *ProxyPool) Close(connectionKey string) {
+func (p *proxyPool) Close(connectionKey string) {
 	for _, key := range p.keys(connectionKey) {
 		p.pool.RemoveCb(key, func(key string, proxy *client.ProxyClient, exists bool) bool {
 			if proxy != nil {
@@ -93,10 +98,10 @@ func (p *ProxyPool) Close(connectionKey string) {
 	}
 }
 
-func (p *ProxyPool) TotalConnections() uint64 {
+func (p *proxyPool) TotalConnections() uint64 {
 	return p.totalConnsCounter.Load()
 }
 
-func (p *ProxyPool) CurrentConnections() int64 {
+func (p *proxyPool) CurrentConnections() int64 {
 	return p.currentConnsCounter.Load()
 }

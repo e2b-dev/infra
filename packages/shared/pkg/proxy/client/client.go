@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	template "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/error-template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 )
 
 type ProxyingInfoContextKey struct{}

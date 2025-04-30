@@ -1,4 +1,4 @@
-package reverse_proxy
+package proxy
 
 import (
 	"context"
@@ -13,9 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/client"
 	"go.uber.org/zap"
 	"gotest.tools/assert"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/client"
 )
 
 // testBackend represents a test backend server

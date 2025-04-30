@@ -1,4 +1,4 @@
-package reverse_proxy
+package proxy
 
 import (
 	"fmt"
@@ -8,15 +8,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/client"
-	pool "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/pool"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/client"
 )
 
 const maxClientConns = 8192 // Reasonably big number that is lower than the number of available ports.
 
 type Proxy struct {
 	http.Server
-	pool                      *pool.ProxyPool
+	pool                      *proxyPool
 	currentServerConnsCounter *atomic.Int64
 	noServerConns             *sync.Cond
 }
@@ -27,7 +26,7 @@ func New(
 	poolSize int,
 	getProxyingInfo func(r *http.Request) (*client.ProxingInfo, error),
 ) (*Proxy, error) {
-	pool, err := pool.New(
+	pool, err := newProxyPool(
 		poolSize,
 		maxClientConns,
 		idleTimeout,
@@ -46,7 +45,7 @@ func New(
 			WriteTimeout:      0,
 			IdleTimeout:       idleTimeout,
 			ReadHeaderTimeout: 0,
-			Handler:           pool.Handler(getProxyingInfo),
+			Handler:           pool.handler(getProxyingInfo),
 			ConnState: func(conn net.Conn, state http.ConnState) {
 				if state == http.StateNew {
 					currentServerConnsCounter.Add(1)

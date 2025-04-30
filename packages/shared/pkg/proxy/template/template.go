@@ -1,4 +1,4 @@
-package error_template
+package template
 
 import (
 	"bytes"

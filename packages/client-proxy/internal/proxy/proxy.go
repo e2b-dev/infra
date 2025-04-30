@@ -13,9 +13,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
-	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy"
-	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/client"
-	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/routing"
+	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/client"
 )
 
 const (
@@ -35,7 +34,7 @@ func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 		idleTimeout,
 		minOrchestratorProxyConns,
 		func(r *http.Request) (*client.ProxingInfo, error) {
-			sandboxId, port, err := routing.ParseHost(r.Host)
+			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
 			if err != nil {
 				return nil, err
 			}
@@ -71,7 +70,7 @@ func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 
 				// The sandbox was not found, we want to return this information to the user
 				if node == "127.0.0.1" {
-					return nil, routing.NewErrSandboxNotFound(sandboxId)
+					return nil, reverse_proxy.NewErrSandboxNotFound(sandboxId)
 				}
 
 				break
