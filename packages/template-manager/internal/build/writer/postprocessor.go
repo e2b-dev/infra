@@ -8,10 +8,13 @@ import (
 	"time"
 )
 
+const tickerInterval = 5 * time.Second
+
 type PostProcessor struct {
 	errChan chan error
 	ctx     context.Context
 	writer  io.Writer
+	ticker  *time.Ticker
 
 	stopOnce sync.Once
 }
@@ -36,7 +39,7 @@ func (p *PostProcessor) Start() {
 			return
 		case <-p.ctx.Done():
 			return
-		case <-time.After(5 * time.Second):
+		case <-p.ticker.C:
 			p.WriteMsg(msg)
 		}
 	}
@@ -50,11 +53,13 @@ func (p *PostProcessor) Stop(err error) {
 }
 
 func (p *PostProcessor) WriteMsg(message string) {
-	p.writer.Write([]byte(fmt.Sprintf("[%s] %s\n", time.Now().Format(time.RFC3339), message)))
+	p.ticker.Reset(tickerInterval)
+	p.writer.Write([]byte(prefixWithTimestamp(message + "\n")))
 }
 
 func (p *PostProcessor) Write(b []byte) (n int, err error) {
-	return p.writer.Write(b)
+	p.ticker.Reset(tickerInterval)
+	return p.writer.Write([]byte(prefixWithTimestamp(string(b))))
 }
 
 func NewPostProcessor(ctx context.Context, writer io.Writer) *PostProcessor {
@@ -62,5 +67,10 @@ func NewPostProcessor(ctx context.Context, writer io.Writer) *PostProcessor {
 		ctx:     ctx,
 		writer:  writer,
 		errChan: make(chan error, 1),
+		ticker:  time.NewTicker(tickerInterval),
 	}
+}
+
+func prefixWithTimestamp(message string) string {
+	return fmt.Sprintf("[%s] %s", time.Now().Format(time.RFC3339), message)
 }
