@@ -258,7 +258,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 	}
 
 	postProcessor.Stop(err)
-	// Wait for the client to load the logs
+	// Wait for the CLI to load all the logs
+	// This is a temporary ~fix for the CLI to load most of the logs before finishing the template build
+	// Ideally we should wait in the CLI for the last log message
 	time.Sleep(5 * time.Second)
 
 	uploadErr := <-upload
