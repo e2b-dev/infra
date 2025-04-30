@@ -90,7 +90,12 @@ func run() int {
 	}()
 
 	// Proxy request to the correct node
-	proxy := client_proxy.NewClientProxy(port)
+	proxy, err := client_proxy.NewClientProxy(port)
+	if err != nil {
+		logger.Error("failed to create client proxy", zap.Error(err))
+
+		return 1
+	}
 
 	wg.Add(1)
 	go func() {

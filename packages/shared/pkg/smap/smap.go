@@ -26,6 +26,10 @@ func (m *Map[V]) Insert(key string, value V) {
 	m.m.Set(key, value)
 }
 
+func (m *Map[V]) Upsert(key string, value V, cb cmap.UpsertCb[V]) V {
+	return m.m.Upsert(key, value, cb)
+}
+
 func (m *Map[V]) InsertIfAbsent(key string, value V) bool {
 	return m.m.SetIfAbsent(key, value)
 }

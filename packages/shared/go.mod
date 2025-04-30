@@ -17,7 +17,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/googleapis/gax-go/v2 v2.14.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
-	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/launchdarkly/go-sdk-common/v3 v3.1.0
 	github.com/launchdarkly/go-server-sdk/v7 v7.10.0
 	github.com/lib/pq v1.10.9

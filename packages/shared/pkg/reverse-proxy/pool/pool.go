@@ -2,104 +2,101 @@ package pool
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
-	"net/http"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/client"
-	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"go.uber.org/zap"
 )
 
 const hostConnectionSplit = 4
 
 type ProxyPool struct {
-	pool                        *expirable.LRU[string, *client.ProxyClient]
-	mu                          sync.Mutex
-	poolSize                    int
-	connectionLimitPerProxy     int
-	totalEstablishedConnections atomic.Uint64
-	clientIdleTimeout           time.Duration
+	pool                *smap.Map[*client.ProxyClient]
+	size                int
+	maxClientConns      int
+	idleTimeout         time.Duration
+	totalConnsCounter   atomic.Uint64
+	currentConnsCounter atomic.Int64
+	clientLogger        *log.Logger
 }
 
-func New(
-	poolSize int,
-	connectionLimitPerProxy int,
-	clientIdleTimeout time.Duration,
-) *ProxyPool {
-	return &ProxyPool{
-		pool: expirable.NewLRU(0, func(key string, value *client.ProxyClient) {
-			if value != nil {
-				value.Transport.(*http.Transport).CloseIdleConnections()
-			}
-		}, 0),
-		poolSize:                poolSize,
-		connectionLimitPerProxy: connectionLimitPerProxy,
-		clientIdleTimeout:       clientIdleTimeout,
-	}
-}
-
-func (p *ProxyPool) createProxyClient() (*client.ProxyClient, error) {
-	proxyClient, err := client.NewProxyClient(
-		p.clientIdleTimeout,
-		p.connectionLimitPerProxy,
-		// We limit the max number of connections per host to avoid exhausting the number of available via one host.
-		func() int {
-			if p.connectionLimitPerProxy <= hostConnectionSplit {
-				return p.connectionLimitPerProxy
-			}
-
-			return p.connectionLimitPerProxy / hostConnectionSplit
-		}(),
-	)
+func New(size int, maxClientConns int, idleTimeout time.Duration) (*ProxyPool, error) {
+	clientLogger, err := zap.NewStdLogAt(zap.L(), zap.ErrorLevel)
 	if err != nil {
 		return nil, err
 	}
 
-	return proxyClient, nil
+	return &ProxyPool{
+		pool:           smap.New[*client.ProxyClient](),
+		size:           size,
+		maxClientConns: maxClientConns,
+		idleTimeout:    idleTimeout,
+		clientLogger:   clientLogger,
+	}, nil
 }
 
-func getLRUKey(connectionKey string, poolIdx int) string {
+func getClientKey(connectionKey string, poolIdx int) string {
 	return fmt.Sprintf("%s:%d", connectionKey, poolIdx)
 }
 
-func (p *ProxyPool) Get(connectionKey string) (*client.ProxyClient, error) {
-	randomIndex := rand.Intn(p.poolSize)
+func (p *ProxyPool) keys(connectionKey string) []string {
+	keys := make([]string, 0, p.size)
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	proxy, ok := p.pool.Get(getLRUKey(connectionKey, randomIndex))
-	if !ok {
-		proxy, err := p.createProxyClient()
-		if err != nil {
-			return nil, err
-		}
-
-		p.pool.Add(getLRUKey(connectionKey, randomIndex), proxy)
-
-		return proxy, nil
+	for poolIdx := range p.size {
+		keys = append(keys, getClientKey(connectionKey, poolIdx))
 	}
 
-	return proxy, nil
+	return keys
+}
+
+func (p *ProxyPool) Get(connectionKey string) *client.ProxyClient {
+	randomIdx := rand.Intn(p.size)
+
+	key := getClientKey(connectionKey, randomIdx)
+
+	return p.pool.Upsert(key, nil, func(exist bool, inMapValue *client.ProxyClient, newValue *client.ProxyClient) *client.ProxyClient {
+		if exist && inMapValue != nil {
+			return inMapValue
+		}
+
+		return client.NewProxyClient(
+			p.maxClientConns,
+			// We limit the max number of connections per host to avoid exhausting the number of available via one host.
+			func() int {
+				if p.maxClientConns <= hostConnectionSplit {
+					return p.maxClientConns
+				}
+
+				return p.maxClientConns / hostConnectionSplit
+			}(),
+			p.idleTimeout,
+			&p.totalConnsCounter,
+			&p.currentConnsCounter,
+			p.clientLogger,
+		)
+	})
 }
 
 func (p *ProxyPool) Close(connectionKey string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	for _, key := range p.keys(connectionKey) {
+		p.pool.RemoveCb(key, func(key string, proxy *client.ProxyClient, exists bool) bool {
+			if proxy != nil {
+				proxy.CloseIdleConnections()
+			}
 
-	for poolIdx := range p.poolSize {
-		p.pool.Remove(getLRUKey(connectionKey, poolIdx))
+			return true
+		})
 	}
 }
 
-func (p *ProxyPool) TotalEstablishedConnections() uint64 {
-	total := uint64(0)
+func (p *ProxyPool) TotalConnections() uint64 {
+	return p.totalConnsCounter.Load()
+}
 
-	for _, proxy := range p.pool.Values() {
-		total += proxy.TotalConnections()
-	}
-
-	return total
+func (p *ProxyPool) CurrentConnections() int64 {
+	return p.currentConnsCounter.Load()
 }

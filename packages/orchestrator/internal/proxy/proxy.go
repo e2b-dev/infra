@@ -19,19 +19,16 @@ import (
 )
 
 const (
-	idleTimeout                  = 630 * time.Second
-	minimalConnectionsPerSandbox = 1
+	minSandboxConns = 1
+	idleTimeout     = 630 * time.Second
 )
 
-func NewSandboxProxy(
-	port uint,
-	sandboxes *smap.Map[*sandbox.Sandbox],
-) *reverse_proxy.Proxy {
-	proxy := reverse_proxy.New(
+func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse_proxy.Proxy, error) {
+	proxy, err := reverse_proxy.New(
 		port,
 		idleTimeout,
-		minimalConnectionsPerSandbox,
-		func(r *http.Request) (*client.RoutingTarget, error) {
+		minSandboxConns,
+		func(r *http.Request) (*client.ProxingInfo, error) {
 			sandboxId, port, err := routing.ParseHost(r.Host)
 			if err != nil {
 				return nil, err
@@ -47,7 +44,7 @@ func NewSandboxProxy(
 				Host:   fmt.Sprintf("%s:%d", sbx.Slot.HostIP(), port),
 			}
 
-			return &client.RoutingTarget{
+			return &client.ProxingInfo{
 				Url:       url,
 				SandboxId: sbx.Config.SandboxId,
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
@@ -64,9 +61,12 @@ func NewSandboxProxy(
 			}, nil
 		},
 	)
+	if err != nil {
+		return nil, err
+	}
 
-	_, err := meters.GetObservableUpDownCounter(meters.OrchestratorProxyActiveConnectionsCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(proxy.CurrentDownstreamConnections()))
+	_, err = meters.GetObservableUpDownCounter(meters.OrchestratorProxyActiveConnectionsCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+		observer.Observe(int64(proxy.CurrentServerConnections()))
 
 		return nil
 	})
@@ -75,5 +75,5 @@ func NewSandboxProxy(
 		zap.L().Error("Error registering orchestrator proxy connections metric", zap.Any("metric_name", meters.OrchestratorProxyActiveConnectionsCounterMeterName), zap.Error(err))
 	}
 
-	return proxy
+	return proxy, nil
 }

@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"html/template"
+	"net/http"
+	"regexp"
+
+	"go.uber.org/zap"
 )
 
 func buildHtmlError[T any](template *template.Template, vars T) ([]byte, error) {
@@ -23,14 +27,53 @@ type TemplatedError[T any] struct {
 	status   int
 }
 
-func (e *TemplatedError[T]) BuildHtml() ([]byte, error) {
+func (e *TemplatedError[T]) buildHtml() ([]byte, error) {
 	return buildHtmlError(e.template, e.vars)
 }
 
-func (e *TemplatedError[T]) BuildJson() ([]byte, error) {
+func (e *TemplatedError[T]) buildJson() ([]byte, error) {
 	return json.Marshal(e.vars)
 }
 
-func (e *TemplatedError[T]) Status() int {
-	return e.status
+var browserRegex = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|opera|msie`)
+
+func isBrowser(r *http.Request) bool {
+	return browserRegex.MatchString(r.UserAgent())
+}
+
+func (e *TemplatedError[T]) HandleError(
+	w http.ResponseWriter,
+	r *http.Request,
+	logger *zap.Logger,
+) error {
+	if isBrowser(r) {
+		body, buildErr := e.buildHtml()
+		if buildErr != nil {
+			return buildErr
+		}
+
+		w.WriteHeader(e.status)
+		w.Header().Add("Content-Type", "text/html")
+		_, writeErr := w.Write(body)
+		if writeErr != nil {
+			return writeErr
+		}
+
+		return nil
+	}
+
+	body, buildErr := e.buildJson()
+	if buildErr != nil {
+		return buildErr
+	}
+
+	w.WriteHeader(e.status)
+	w.Header().Add("Content-Type", "application/json")
+
+	_, writeErr := w.Write(body)
+	if writeErr != nil {
+		return writeErr
+	}
+
+	return nil
 }

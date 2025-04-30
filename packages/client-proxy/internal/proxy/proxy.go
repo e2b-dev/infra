@@ -19,21 +19,22 @@ import (
 )
 
 const (
-	dnsServer                              = "api.service.consul:5353"
-	orchestratorProxyPort                  = 5007 // orchestrator proxy port
-	maxRetries                             = 3
-	idleTimeout                            = 620 * time.Second
-	minimalConnectionsPerOrchestratorProxy = 16
+	dnsServer             = "api.service.consul:5353"
+	orchestratorProxyPort = 5007 // orchestrator proxy port
+	maxRetries            = 3
+
+	minOrchestratorProxyConns = 16
+	idleTimeout               = 620 * time.Second
 )
 
 var dnsClient = dns.Client{}
 
-func NewClientProxy(port uint) *reverse_proxy.Proxy {
-	proxy := reverse_proxy.New(
+func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
+	proxy, err := reverse_proxy.New(
 		port,
 		idleTimeout,
-		minimalConnectionsPerOrchestratorProxy,
-		func(r *http.Request) (*client.RoutingTarget, error) {
+		minOrchestratorProxyConns,
+		func(r *http.Request) (*client.ProxingInfo, error) {
 			sandboxId, port, err := routing.ParseHost(r.Host)
 			if err != nil {
 				return nil, err
@@ -93,16 +94,19 @@ func NewClientProxy(port uint) *reverse_proxy.Proxy {
 				Host:   fmt.Sprintf("%s:%d", node, orchestratorProxyPort),
 			}
 
-			return &client.RoutingTarget{
+			return &client.ProxingInfo{
 				Url:       url,
 				SandboxId: sandboxId,
 				Logger:    logger,
 			}, nil
 		},
 	)
+	if err != nil {
+		return nil, err
+	}
 
-	_, err := meters.GetObservableUpDownCounter(meters.ActiveConnectionsCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(proxy.CurrentDownstreamConnections()))
+	_, err = meters.GetObservableUpDownCounter(meters.ActiveConnectionsCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+		observer.Observe(int64(proxy.CurrentServerConnections()))
 
 		return nil
 	})
@@ -111,5 +115,5 @@ func NewClientProxy(port uint) *reverse_proxy.Proxy {
 		zap.L().Error("Error registering client proxy connections metric", zap.Any("metric_name", meters.ActiveConnectionsCounterMeterName), zap.Error(err))
 	}
 
-	return proxy
+	return proxy, nil
 }

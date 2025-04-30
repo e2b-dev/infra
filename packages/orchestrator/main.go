@@ -108,7 +108,10 @@ func run() int32 {
 	// to propagate information about sandbox routing.
 	sandboxes := smap.New[*sandbox.Sandbox]()
 
-	sandboxProxy := proxy.NewSandboxProxy(proxyPort, sandboxes)
+	sandboxProxy, err := proxy.NewSandboxProxy(proxyPort, sandboxes)
+	if err != nil {
+		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
+	}
 
 	srv, err := server.New(
 		ctx,
