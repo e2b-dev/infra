@@ -30,10 +30,15 @@ status: goose-init
 	@$(goose) status
 
 .PHONY: generate
-generate:
+generate: sqlc-init
 	rm -rf queries/*.go
 	sqlc generate
 
 .PHONY: goose-init
 goose-init:
-	@go install github.com/pressly/goose/v3/cmd/goose@latest
+	@go install github.com/pressly/goose/v3/cmd/goose@v3.24.2
+
+.PHONY: sqlc-init
+sqlc-init:
+	@go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0
+
