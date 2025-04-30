@@ -34,8 +34,7 @@ func NewFCNetwork(ctx context.Context, tracer trace.Tracer, postProcessor *write
 	childCtx, childSpan := tracer.Start(ctx, "new-fc-network")
 	defer childSpan.End()
 
-	postProcessor.Write("Creating network...")
-	defer postProcessor.Write("Creating network done")
+	postProcessor.WriteMsg("Creating network")
 
 	network := &FCNetwork{
 		namespaceID: namespaceNamePrefix + env.BuildId,

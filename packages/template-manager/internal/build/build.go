@@ -79,7 +79,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 
 	err = template.Build(ctx, b.tracer, postProcessor, b.dockerClient, b.legacyDockerClient)
 	if err != nil {
-		postProcessor.Write(fmt.Sprintf("Error building environment: %v", err))
+		postProcessor.WriteMsg(fmt.Sprintf("Error building environment: %v", err))
 		telemetry.ReportCriticalError(ctx, err)
 
 		buildStateErr := b.buildCache.SetFailed(envID, buildID)
@@ -105,7 +105,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		}
 	}()
 
-	postProcessor.Write("Processing system memory...")
+	postProcessor.WriteMsg("Processing system memory")
 
 	// MEMFILE
 	memfilePath := template.BuildMemfilePath()
@@ -166,8 +166,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		memfileMappings,
 	)
 
-	postProcessor.Write("Processing system memory done.")
-	postProcessor.Write("Processing file system...")
+	postProcessor.WriteMsg("Processing file system")
 
 	// ROOTFS
 	rootfsPath := template.BuildRootfsPath()
@@ -227,9 +226,8 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		rootfsMetadata,
 		rootfsMappings,
 	)
-	postProcessor.Write("Processing file system done")
 
-	postProcessor.Write("Uploading template...")
+	postProcessor.WriteMsg("Uploading template")
 	// UPLOAD
 	templateBuild := storage.NewTemplateBuild(
 		memfileHeader,
@@ -243,12 +241,11 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		&memfileDiffPath,
 		&rootfsDiffPath,
 	)
-	postProcessor.Write("Uploading template done")
 
 	cmd := exec.Command(storage.HostEnvdPath, "-version")
 	out, err := cmd.Output()
 	if err != nil {
-		postProcessor.Write(fmt.Sprintf("Error while getting envd version: %v", err))
+		postProcessor.WriteMsg(fmt.Sprintf("Error while getting envd version: %v", err))
 		telemetry.ReportError(ctx, err)
 
 		buildStateErr := b.buildCache.SetFailed(envID, buildID)
@@ -267,7 +264,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 	uploadErr := <-upload
 	if uploadErr != nil {
 		errMsg := fmt.Sprintf("Error while uploading build files: %v", uploadErr)
-		postProcessor.Write(errMsg)
+		postProcessor.WriteMsg(errMsg)
 		telemetry.ReportError(ctx, uploadErr)
 
 		buildStateErr := b.buildCache.SetFailed(envID, buildID)

@@ -93,8 +93,7 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, postProcessor *writer
 	childCtx, childSpan := tracer.Start(ctx, "new-snapshot")
 	defer childSpan.End()
 
-	postProcessor.Write("Creating snapshot...")
-	defer postProcessor.Write("Creating snapshot done")
+	postProcessor.WriteMsg("Creating snapshot")
 
 	socketFileName := fmt.Sprintf("fc-sock-%s.sock", env.BuildId)
 	socketPath := filepath.Join(tmpDirPath, socketFileName)
@@ -137,15 +136,15 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, postProcessor *writer
 
 	telemetry.ReportEvent(childCtx, "configured fc")
 
-	postProcessor.Write("Waiting for VM start...")
+	postProcessor.WriteMsg("Waiting for VM to start...")
 	// Wait for all necessary things in FC to start
 	// TODO: Maybe init should signalize when it's ready?
 	time.Sleep(waitTimeForFCStart)
 	telemetry.ReportEvent(childCtx, "waited for fc to start", attribute.Float64("seconds", float64(waitTimeForFCStart/time.Second)))
-	postProcessor.Write("VM started")
+	postProcessor.WriteMsg("VM started")
 
 	if env.StartCmd != "" {
-		postProcessor.Write("Waiting for start command to be healthy...")
+		postProcessor.WriteMsg("Waiting for start command to be healthy...")
 		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
 		// TODO: Remove this after we can add customizable wait time for building templates.
 		if env.TemplateId == "zegbt9dl3l2ixqem82mm" || env.TemplateId == "ot5bidkk3j2so2j02uuz" || env.TemplateId == "0zeou1s7agaytqitvmzc" {
@@ -153,7 +152,7 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, postProcessor *writer
 		} else {
 			time.Sleep(waitTimeForStartCmd)
 		}
-		postProcessor.Write("Waiting for start command is healthy")
+		postProcessor.WriteMsg("Waiting for start command is healthy")
 		telemetry.ReportEvent(childCtx, "waited for start command", attribute.Float64("seconds", float64(waitTimeForStartCmd/time.Second)))
 	}
 

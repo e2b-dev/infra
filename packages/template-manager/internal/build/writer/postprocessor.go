@@ -18,7 +18,7 @@ type PostProcessor struct {
 
 // Start starts the post-processing.
 func (p *PostProcessor) Start() {
-	p.Write("Starting postprocessing")
+	p.WriteMsg("Starting postprocessing")
 
 	for {
 		msg := "..."
@@ -26,18 +26,18 @@ func (p *PostProcessor) Start() {
 		select {
 		case postprocessingErr := <-p.errChan:
 			if postprocessingErr != nil {
-				p.Write(fmt.Sprintf("Postprocessing failed: %s", postprocessingErr))
+				p.WriteMsg(fmt.Sprintf("Postprocessing failed: %s", postprocessingErr))
 				return
 			}
 
-			p.Write(msg)
-			p.Write("Postprocessing finished. Cleaning up...")
+			p.WriteMsg(msg)
+			p.WriteMsg("Postprocessing finished. Cleaning up...")
 
 			return
 		case <-p.ctx.Done():
 			return
 		case <-time.After(5 * time.Second):
-			p.Write(msg)
+			p.WriteMsg(msg)
 		}
 	}
 
@@ -49,8 +49,12 @@ func (p *PostProcessor) Stop(err error) {
 	})
 }
 
-func (p *PostProcessor) Write(message string) {
+func (p *PostProcessor) WriteMsg(message string) {
 	p.writer.Write([]byte(fmt.Sprintf("[%s] %s\n", time.Now().Format(time.RFC3339), message)))
+}
+
+func (p *PostProcessor) Write(b []byte) (n int, err error) {
+	return p.writer.Write(b)
 }
 
 func NewPostProcessor(ctx context.Context, writer io.Writer) *PostProcessor {

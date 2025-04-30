@@ -1,32 +1,55 @@
 export BASH_XTRACEFD=1
-set -euo xtrace pipefail
+set -euo pipefail
+set -x
 
 echo "Starting provisioning script."
 
 echo "ENV_ID={{ .EnvID }}" >/.e2b
 echo "BUILD_ID={{ .BuildID }}" >>/.e2b
 
+# Helper function to run commands without echoing them to the console.
+run_quietly() {
+    set +x
+    "$@"
+    local status=$?
+    set -x
+    return $status
+}
+
 # We are downloading the packages manually
-apt-get update --download-only
-DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get install -y openssh-server sudo systemd socat chrony linuxptp iptables
+install_packages() {
+    apt-get -qq update --download-only
+    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq install -y openssh-server sudo systemd socat chrony linuxptp iptables > /dev/null
+}
+
+run_quietly install_packages
 
 # Set up autologin.
-mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
-cat <<EOF >/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf
+autologin() {
+    mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
+    cat <<EOF >/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf
 [Service]
 ExecStart=
 ExecStart=-/sbin/agetty --noissue --autologin root %I 115200,38400,9600 vt102
 EOF
+}
+
+run_quietly autologin
 
 # Add swapfile — we enable it in the preexec for envd
-mkdir /swap
-fallocate -l 128M /swap/swapfile
-chmod 600 /swap/swapfile
-mkswap /swap/swapfile
+swap() {
+    mkdir /swap
+    fallocate -l "${1}"M /swap/swapfile
+    chmod 600 /swap/swapfile
+    mkswap /swap/swapfile
+}
 
-# Set up envd service.
-mkdir -p /etc/systemd/system
-cat <<EOF >/etc/systemd/system/envd-v0.0.1.service
+run_quietly swap 128
+
+# Set up envd v0.0.1 service.
+service_envd_v0_0_1() {
+    mkdir -p /etc/systemd/system
+    cat <<EOF >/etc/systemd/system/envd-v0.0.1.service
 [Unit]
 Description=Env v0.0.1 Daemon Service
 
@@ -45,9 +68,13 @@ Environment="GOMEMLIMIT={{ .MemoryLimit }}MiB"
 [Install]
 WantedBy=multi-user.target
 EOF
+}
 
-# Set up e2bd service.
-cat <<EOF >/etc/systemd/system/envd.service
+run_quietly service_envd_v0_0_1
+
+# Set up envd service.
+service_envd() {
+    cat <<EOF >/etc/systemd/system/envd.service
 [Unit]
 Description=Env Daemon Service
 
@@ -68,13 +95,20 @@ ExecStartPre=/bin/bash -c 'echo 0 > /proc/sys/vm/swappiness && swapon /swap/swap
 [Install]
 WantedBy=multi-user.target
 EOF
+}
+
+run_quietly service_envd
 
 # Set up chrony.
-mkdir -p /etc/chrony
-cat <<EOF >/etc/chrony/chrony.conf
+chrony(){
+    mkdir -p /etc/chrony
+    cat <<EOF >/etc/chrony/chrony.conf
 refclock PHC /dev/ptp0 poll -1 dpoll -1 offset 0 trust prefer
 makestep 1 -1
 EOF
+}
+
+chrony
 
 # Add a proxy config, as some environments expects it there (e.g. timemaster in Node Dockerimage)
 echo "include /etc/chrony/chrony.conf" >/etc/chrony.conf

@@ -70,16 +70,13 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *writer.P
 	childCtx, childSpan := tracer.Start(ctx, "new-rootfs")
 	defer childSpan.End()
 
-	postProcessor.Write("Creating file system...")
-	defer postProcessor.Write("Creating file system done")
-
 	rootfs := &Rootfs{
 		client:       docker,
 		legacyClient: legacyDocker,
 		env:          env,
 	}
 
-	postProcessor.Write("Pulling Docker image...")
+	postProcessor.WriteMsg("Pulling Docker image...")
 	err := rootfs.pullDockerImage(childCtx, tracer)
 	if err != nil {
 		errMsg := fmt.Errorf("error building docker image: %w", err)
@@ -88,9 +85,10 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *writer.P
 
 		return nil, errMsg
 	}
-	postProcessor.Write("Pulled Docker image.")
+	postProcessor.WriteMsg("Pulled Docker image.")
 
-	err = rootfs.createRootfsFile(childCtx, tracer)
+	postProcessor.WriteMsg("Creating file system")
+	err = rootfs.createRootfsFile(childCtx, tracer, postProcessor)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs file: %w", err)
 
@@ -170,7 +168,7 @@ func (r *Rootfs) dockerTag() string {
 	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.env.TemplateId, r.env.BuildId)
 }
 
-func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) error {
+func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-rootfs-file")
 	defer childSpan.End()
 
@@ -350,6 +348,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 
 	telemetry.ReportEvent(childCtx, "copied envd to container")
 
+	postProcessor.WriteMsg("Provisioning template")
 	err = r.client.ContainerStart(childCtx, cont.ID, container.StartOptions{})
 	if err != nil {
 		errMsg := fmt.Errorf("error starting container: %w", err)
@@ -367,16 +366,19 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		containerStdoutWriter := telemetry.NewEventWriter(anonymousChildCtx, "stdout")
 		containerStderrWriter := telemetry.NewEventWriter(anonymousChildCtx, "stderr")
 
-		writer := &MultiWriter{
-			writers: []io.Writer{containerStderrWriter, r.env.BuildLogsWriter},
+		outWriter := &MultiWriter{
+			writers: []io.Writer{containerStdoutWriter, postProcessor},
+		}
+		errWriter := &MultiWriter{
+			writers: []io.Writer{containerStderrWriter, r.env.BuildLogsWriter, postProcessor},
 		}
 
 		logsErr := r.legacyClient.Logs(docker.LogsOptions{
 			Stdout:       true,
 			Stderr:       true,
 			RawTerminal:  false,
-			OutputStream: containerStdoutWriter,
-			ErrorStream:  writer,
+			OutputStream: outWriter,
+			ErrorStream:  errWriter,
 			Context:      childCtx,
 			Container:    cont.ID,
 			Follow:       true,
@@ -445,6 +447,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		return errMsg
 	}
 
+	postProcessor.WriteMsg("Extracting file system")
 	rootfsFile, err := os.Create(r.env.BuildRootfsPath())
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs file: %w", err)
@@ -505,6 +508,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer) erro
 		return errMsg
 	}
 
+	postProcessor.WriteMsg("Filesystem cleanup")
 	telemetry.ReportEvent(childCtx, "converted container tar to ext4")
 
 	tuneContext, tuneSpan := tracer.Start(childCtx, "tune-rootfs-file-cmd")
