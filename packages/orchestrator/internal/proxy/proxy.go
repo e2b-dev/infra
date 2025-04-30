@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -9,6 +10,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy"
+	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/client"
+	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/routing"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 
 	"go.opentelemetry.io/otel/metric"
@@ -16,37 +19,30 @@ import (
 )
 
 const (
-	idleTimeout       = 30 * time.Second
-	connectionTimeout = 630 * time.Second
+	idleTimeout           = 30 * time.Second
+	connectionTimeout     = 630 * time.Second
+	maxConnectionDuration = 24 * time.Hour
 )
 
 func NewSandboxProxy(
 	port uint,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) *reverse_proxy.Proxy {
-	var activeConnections *metric.Int64UpDownCounter
-
-	connectionCounter, err := meters.GetUpDownCounter(meters.OrchestratorProxyActiveConnectionsCounterMeterName)
-	if err != nil {
-		zap.L().Error("failed to create active connections counter", zap.Error(err))
-	} else {
-		activeConnections = &connectionCounter
-	}
-
-	return reverse_proxy.New(
+	proxy := reverse_proxy.New(
 		port,
 		idleTimeout,
+		1,
 		connectionTimeout,
-		activeConnections,
-		func(r *http.Request) (*reverse_proxy.RoutingTarget, error) {
-			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
+		maxConnectionDuration,
+		func(r *http.Request) (*client.RoutingTarget, error) {
+			sandboxId, port, err := routing.ParseHost(r.Host)
 			if err != nil {
 				return nil, err
 			}
 
 			sbx, found := sandboxes.Get(sandboxId)
 			if !found {
-				return nil, reverse_proxy.NewErrSandboxNotFound(sandboxId)
+				return nil, routing.NewErrSandboxNotFound(sandboxId)
 			}
 
 			url := &url.URL{
@@ -54,11 +50,12 @@ func NewSandboxProxy(
 				Host:   fmt.Sprintf("%s:%d", sbx.Slot.HostIP(), port),
 			}
 
-			return &reverse_proxy.RoutingTarget{
+			return &client.RoutingTarget{
 				Url:       url,
 				SandboxId: sbx.Config.SandboxId,
-				// We need to include sandboxId to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
-				ConnectionKey: sbx.Config.SandboxId,
+				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
+				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
+				ConnectionKey: sbx.StartID,
 				Logger: zap.L().With(
 					zap.String("host", r.Host),
 					zap.String("sandbox_id", sbx.Config.SandboxId),
@@ -70,4 +67,16 @@ func NewSandboxProxy(
 			}, nil
 		},
 	)
+
+	_, err := meters.GetObservableUpDownCounter(meters.OrchestratorProxyActiveConnectionsCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+		observer.Observe(int64(proxy.TotalDownstreamConnections()))
+
+		return nil
+	})
+
+	if err != nil {
+		zap.L().Error("Error registering orchestrator proxy connections metric", zap.Any("metric_name", meters.OrchestratorProxyActiveConnectionsCounterMeterName), zap.Error(err))
+	}
+
+	return proxy
 }

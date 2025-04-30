@@ -1,63 +1,47 @@
 package reverse_proxy
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/hashicorp/golang-lru/v2/expirable"
-	"go.opentelemetry.io/otel/metric"
-	"go.uber.org/zap"
-
-	template "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/error-template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/client"
+	pool "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/pool"
+	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/routing"
 )
 
-const (
-	maxConnectionDuration = 24 * time.Hour // The same as the current max sandbox duration.
-	maxIdleConnections    = 32768          // Reasonably big number that is lower than the number of available ports.
-)
-
-type routingTargetContextKey struct{}
-
-// RoutingTarget contains information about where to route the request.
-type RoutingTarget struct {
-	Url       *url.URL
-	SandboxId string
-	Logger    *zap.Logger
-	// ConnectionKey is used for identifying which keepalive connections are not the same so we can prevent uninted reuse.
-	// This is evaluated before checking for existing connection to the IP:port pair.
-	ConnectionKey string
-}
+const MaxTotalIdleConnections = 8192 // Reasonably big number that is lower than the number of available ports.
 
 type Proxy struct {
 	http.Server
-	totalEstablishedConnections *atomic.Uint64
-}
-
-func (p *Proxy) TotalEstablishedConnections() uint64 {
-	return p.totalEstablishedConnections.Load()
+	totalUpstreamConnections     *atomic.Uint64
+	currentDownstreamConnections *atomic.Int64
+	noDownstreamConnections      *sync.Cond
+	pool                         *pool.ProxyPool
 }
 
 func New(
 	port uint,
 	idleTimeout time.Duration,
+	poolSizePerConnectionKey int,
 	connectionTimeout time.Duration,
-	activeConnections *metric.Int64UpDownCounter,
-	getRoutingTarget func(r *http.Request) (*RoutingTarget, error),
+	maxConnectionDuration time.Duration,
+	getRoutingTarget func(r *http.Request) (*client.RoutingTarget, error),
 ) *Proxy {
-	handler, counter := proxyHandler(
-		getRoutingTarget,
-		activeConnections,
+	pool := pool.NewProxyPool(
+		maxConnectionDuration,
+		poolSizePerConnectionKey,
+		MaxTotalIdleConnections,
 		idleTimeout,
 		connectionTimeout,
 	)
+
+	var downstreamConnections atomic.Int64
+
+	noDownstreamConnections := sync.NewCond(&sync.Mutex{})
 
 	return &Proxy{
 		Server: http.Server{
@@ -66,165 +50,41 @@ func New(
 			WriteTimeout:      maxConnectionDuration,
 			IdleTimeout:       idleTimeout,
 			ReadHeaderTimeout: 20 * time.Second,
-			Handler:           http.HandlerFunc(handler),
+			Handler:           http.HandlerFunc(routing.Handle(pool, getRoutingTarget)),
+			ConnState: func(conn net.Conn, state http.ConnState) {
+				if state == http.StateNew {
+					downstreamConnections.Add(1)
+				} else if state == http.StateClosed {
+					if downstreamConnections.Add(-1) == 0 {
+						noDownstreamConnections.Broadcast()
+					}
+				}
+			},
 		},
-		totalEstablishedConnections: counter,
+		currentDownstreamConnections: &downstreamConnections,
+		noDownstreamConnections:      noDownstreamConnections,
+		pool:                         pool,
 	}
 }
 
-func proxyHandler(
-	getRoutingTarget func(r *http.Request) (*RoutingTarget, error),
-	activeConnections *metric.Int64UpDownCounter,
-	idleTimeout time.Duration,
-	connectionTimeout time.Duration,
-) (func(w http.ResponseWriter, r *http.Request), *atomic.Uint64) {
-	var counter atomic.Uint64
+func (p *Proxy) TotalEstablishedConnections() uint64 {
+	return p.totalUpstreamConnections.Load()
+}
 
-	var proxiesMu sync.Mutex
+// WaitForNoDownstreamConnections waits for all downstream connections (even the idle ones) to be closed.
+func (p *Proxy) WaitForNoDownstreamConnections() {
+	for p.currentDownstreamConnections.Load() != 0 {
+		p.noDownstreamConnections.L.Lock()
+		defer p.noDownstreamConnections.L.Unlock()
 
-	proxies := expirable.NewLRU[string, *httputil.ReverseProxy](0, nil, maxConnectionDuration)
-
-	getProxy := func(connectionKey string) *httputil.ReverseProxy {
-		proxiesMu.Lock()
-		defer proxiesMu.Unlock()
-
-		proxy, ok := proxies.Get(connectionKey)
-		if ok {
-			return proxy
-		}
-
-		transport := &http.Transport{
-			Proxy:                 http.ProxyFromEnvironment,
-			MaxIdleConnsPerHost:   maxIdleConnections,
-			IdleConnTimeout:       idleTimeout,
-			TLSHandshakeTimeout:   20 * time.Second,
-			ResponseHeaderTimeout: 20 * time.Second,
-			// TCP configuration
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				conn, err := (&net.Dialer{
-					Timeout:   connectionTimeout, // Connect timeout (no timeout by default)
-					KeepAlive: 10 * time.Second,  // Lower than our http keepalives (50 seconds)
-				}).DialContext(ctx, network, addr)
-				if err == nil {
-					counter.Add(1)
-				}
-				return conn, err
-			},
-			DisableCompression: true, // No need to request or manipulate compression
-		}
-
-		proxyLogger, _ := zap.NewStdLogAt(zap.L(), zap.ErrorLevel)
-
-		proxy = &httputil.ReverseProxy{
-			Transport: transport,
-			Rewrite: func(r *httputil.ProxyRequest) {
-				t, ok := r.In.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
-				if !ok {
-					zap.L().Error("failed to get routing target from context")
-
-					return
-				}
-
-				r.SetURL(t.Url)
-
-				r.Out.Host = r.In.Host
-			},
-			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-				t, ok := r.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
-				if !ok {
-					zap.L().Error("failed to get routing target from context")
-
-					return
-				}
-
-				errorTemplate := template.NewPortClosedError(t.SandboxId, r.Host, t.Url.Port())
-
-				err = handleError(w, r, errorTemplate, t.Logger)
-				if err != nil {
-					zap.L().Error("failed to handle error", zap.Error(err))
-					http.Error(w, "Failed to handle error", http.StatusInternalServerError)
-				}
-			},
-			ModifyResponse: func(r *http.Response) error {
-				t, ok := r.Request.Context().Value(routingTargetContextKey{}).(*RoutingTarget)
-				if !ok {
-					zap.L().Error("failed to get routing target from context")
-
-					return nil
-				}
-
-				if r.StatusCode >= 500 {
-					t.Logger.Error(
-						"Reverse proxy error",
-						zap.Int("status_code", r.StatusCode),
-					)
-				} else {
-					t.Logger.Debug("Reverse proxy response",
-						zap.Int("status_code", r.StatusCode),
-					)
-				}
-
-				return nil
-			},
-			// Ideally we would add info about sandbox to each error log, but there is no easy way right now.
-			ErrorLog: proxyLogger,
-		}
-
-		proxies.Add(connectionKey, proxy)
-
-		return proxy
+		p.noDownstreamConnections.Wait()
 	}
+}
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		if activeConnections != nil {
-			// TODO: Won't cancellation of the request make adding/removing from the counter unpredictable?
-			// We should probably use observable gauge and separate counter without context.
-			// Also not 100% sure if this handled idle connections/streaming correctly.
-			(*activeConnections).Add(r.Context(), 1)
-			defer func() {
-				(*activeConnections).Add(r.Context(), -1)
-			}()
-		}
+func (p *Proxy) TotalDownstreamConnections() int64 {
+	return p.currentDownstreamConnections.Load()
+}
 
-		t, err := getRoutingTarget(r)
+func (p *Proxy) RemoveFromPool(connectionKey string) {
 
-		var invalidHostErr *ErrInvalidHost
-		if errors.As(err, &invalidHostErr) {
-			zap.L().Warn("invalid host", zap.String("host", r.Host))
-			http.Error(w, "Invalid host", http.StatusBadRequest)
-
-			return
-		}
-
-		var invalidPortErr *ErrInvalidSandboxPort
-		if errors.As(err, &invalidPortErr) {
-			zap.L().Warn("invalid sandbox port", zap.String("host", r.Host))
-			http.Error(w, "Invalid sandbox port", http.StatusBadRequest)
-
-			return
-		}
-
-		var notFoundErr *ErrSandboxNotFound
-		if errors.As(err, &notFoundErr) {
-			zap.L().Warn("sandbox not found", zap.String("host", r.Host))
-
-			errorTemplate := template.NewSandboxNotFoundError(notFoundErr.SandboxId, r.Host)
-			handleError(w, r, errorTemplate, zap.L())
-
-			return
-		}
-
-		if err != nil {
-			zap.L().Error("failed to route request", zap.Error(err), zap.String("host", r.Host))
-			http.Error(w, fmt.Sprintf("Unexpected error when routing request: %s", err), http.StatusInternalServerError)
-
-			return
-		}
-
-		t.Logger.Debug("proxying request")
-
-		ctx := context.WithValue(r.Context(), routingTargetContextKey{}, t)
-
-		getProxy(t.ConnectionKey).ServeHTTP(w, r.WithContext(ctx))
-	}, &counter
 }

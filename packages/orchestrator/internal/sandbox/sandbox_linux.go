@@ -69,7 +69,7 @@ type Sandbox struct {
 	//
 	useLokiMetrics       string
 	useClickhouseMetrics string
-	CleanupID            string
+	StartID              string
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -272,7 +272,7 @@ func NewSandbox(
 		healthcheckCtx:  healthcheckCtx,
 		healthy:         atomic.Bool{}, // defaults to `false`
 		ClickhouseStore: clickhouseStore,
-		CleanupID:       uuid.New().String(),
+		StartID:         uuid.New().String(),
 	}
 	// By default, the sandbox should be healthy, if the status change we report it.
 	sbx.healthy.Store(true)

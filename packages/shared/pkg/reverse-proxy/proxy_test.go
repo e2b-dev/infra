@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 	"gotest.tools/assert"
 )
@@ -113,19 +112,11 @@ func newTestProxy(getRoutingTarget func(r *http.Request) (*RoutingTarget, error)
 	port := l.Addr().(*net.TCPAddr).Port
 	l.Close()
 
-	// Create metric counter
-	meter := noop.NewMeterProvider().Meter("")
-	counter, err := meter.Int64UpDownCounter("test")
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to create metric counter: %v", err)
-	}
-
 	// Set up the proxy server
 	proxy := New(
 		uint(port),
 		5*time.Second, // Short idle timeout
 		10*time.Second,
-		&counter,
 		getRoutingTarget,
 	)
 

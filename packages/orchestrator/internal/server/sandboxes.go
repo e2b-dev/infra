@@ -99,8 +99,11 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 				return false
 			}
 
-			return sbx.CleanupID == v.CleanupID
+			return sbx.StartID == v.StartID
 		})
+
+		// Remove the proxies assigned to the sandbox from the pool to prevent them from being reused.
+		s.proxy.RemoveFromPool(sbx.StartID)
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
 	}()

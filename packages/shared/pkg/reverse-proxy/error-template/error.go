@@ -1,12 +1,10 @@
-package reverse_proxy
+package error_template
 
 import (
 	"net/http"
 	"regexp"
 
 	"go.uber.org/zap"
-
-	template "github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/error-template"
 )
 
 var browserRegex = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|opera|msie`)
@@ -15,10 +13,10 @@ func isBrowser(r *http.Request) bool {
 	return browserRegex.MatchString(r.UserAgent())
 }
 
-func handleError[T any](
+func HandleError[T any](
 	w http.ResponseWriter,
 	r *http.Request,
-	err *template.TemplatedError[T],
+	err *TemplatedError[T],
 	logger *zap.Logger,
 ) error {
 	if isBrowser(r) {

@@ -16,13 +16,13 @@ const (
 type UpDownCounterType string
 
 const (
-	SandboxCountMeterName                              UpDownCounterType = "api.env.instance.running"
-	BuildCounterMeterName                              UpDownCounterType = "api.env.build.running"
-	NewNetworkSlotSPoolCounterMeterName                UpDownCounterType = "orchestrator.network.slots_pool.new"
-	ReusedNetworkSlotSPoolCounterMeterName             UpDownCounterType = "orchestrator.network.slots_pool.reused"
-	NBDkSlotSReadyPoolCounterMeterName                 UpDownCounterType = "orchestrator.nbd.slots_pool.read"
-	ActiveConnectionsCounterMeterName                  UpDownCounterType = "client_proxy.connections.active"
-	OrchestratorProxyActiveConnectionsCounterMeterName UpDownCounterType = "orchestrator.proxy.connections.active"
+	SandboxCountMeterName                              UpDownCounterType           = "api.env.instance.running"
+	BuildCounterMeterName                              UpDownCounterType           = "api.env.build.running"
+	NewNetworkSlotSPoolCounterMeterName                UpDownCounterType           = "orchestrator.network.slots_pool.new"
+	ReusedNetworkSlotSPoolCounterMeterName             UpDownCounterType           = "orchestrator.network.slots_pool.reused"
+	NBDkSlotSReadyPoolCounterMeterName                 UpDownCounterType           = "orchestrator.nbd.slots_pool.read"
+	ActiveConnectionsCounterMeterName                  ObservableUpDownCounterType = "client_proxy.connections.active"
+	OrchestratorProxyActiveConnectionsCounterMeterName ObservableUpDownCounterType = "orchestrator.proxy.connections.active"
 )
 
 type ObservableUpDownCounterType string
@@ -51,7 +51,6 @@ var upDownCounterDesc = map[UpDownCounterType]string{
 	ReusedNetworkSlotSPoolCounterMeterName: "Number of reused network slots ready to be used.",
 	NewNetworkSlotSPoolCounterMeterName:    "Number of new network slots ready to be used.",
 	NBDkSlotSReadyPoolCounterMeterName:     "Number of nbd slots ready to be used.",
-	ActiveConnectionsCounterMeterName:      "Number of active network connections in the client proxy.",
 }
 
 var upDownCounterUnits = map[UpDownCounterType]string{
@@ -60,15 +59,18 @@ var upDownCounterUnits = map[UpDownCounterType]string{
 	ReusedNetworkSlotSPoolCounterMeterName: "{slot}",
 	NewNetworkSlotSPoolCounterMeterName:    "{slot}",
 	NBDkSlotSReadyPoolCounterMeterName:     "{slot}",
-	ActiveConnectionsCounterMeterName:      "{connection}",
 }
 
 var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
-	OrchestratorSandboxCountMeterName: "Counter of running sandboxes on the orchestrator.",
+	OrchestratorSandboxCountMeterName:                  "Counter of running sandboxes on the orchestrator.",
+	ActiveConnectionsCounterMeterName:                  "Number of active network connections in the client proxy.",
+	OrchestratorProxyActiveConnectionsCounterMeterName: "Number of active network connections in the orchestrator proxy.",
 }
 
 var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
-	OrchestratorSandboxCountMeterName: "{sandbox}",
+	OrchestratorSandboxCountMeterName:                  "{sandbox}",
+	ActiveConnectionsCounterMeterName:                  "{connection}",
+	OrchestratorProxyActiveConnectionsCounterMeterName: "{connection}",
 }
 
 func GetCounter(name CounterType) (metric.Int64Counter, error) {

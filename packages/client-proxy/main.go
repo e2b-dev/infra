@@ -121,6 +121,7 @@ func run() int {
 		defer wg.Done()
 		<-signalCtx.Done()
 		logger.Info("shutting down http service", zap.Int("port", healthCheckPort))
+		// TODO: We might want to wait for the idle connections to transition to closed instead of closing them.
 		if err := healthServer.Shutdown(ctx); err != nil {
 			exitCode.Add(1)
 			logger.Error("http service shutdown error", zap.Int("port", healthCheckPort), zap.Error(err))

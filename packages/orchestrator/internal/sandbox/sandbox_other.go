@@ -57,7 +57,8 @@ type Sandbox struct {
 	useLokiMetrics       string
 	useClickhouseMetrics string
 
-	CleanupID string
+	// Unique ID for the sandbox start.
+	StartID string
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
