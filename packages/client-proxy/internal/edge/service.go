@@ -3,175 +3,213 @@ package edge
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 	configuration "github.com/e2b-dev/infra/packages/proxy/internal/edge/configurator"
-	edge "github.com/e2b-dev/infra/packages/shared/pkg/grpc/edge"
-	"github.com/go-redsync/redsync/v4"
-	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/service-discovery"
+	updater "github.com/e2b-dev/infra/packages/proxy/internal/edge/updater"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 	"net"
+	"net/http"
 	"os"
 	"time"
 )
 
 type Service struct {
-	grpcPort         int
-	grpc             *grpc.Server
-	edgeServer       *edgeServer
-	healthServer     *HealthServer
-	distributedMutex *redsync.Mutex
-	serviceDiscovery *serviceDiscovery
+	serverPort  int
+	server      *http.Server
+	serverStore *handlers.APIStore
+
+	logger *zap.Logger
+
+	serviceDiscovery *service_discovery.ServiceDiscovery
+	updater          *updater.Updater
 }
 
 const (
+	serviceVersion = "v1.1.0"
+	serviceType    = "edge"
+
 	configSetupTimeout = 5 * time.Second
 )
 
-func Run(logger *zap.Logger, healthServerPort int, ctx context.Context) error {
-	service, err := NewService(ctx, healthServerPort)
-	if err != nil {
-		logger.Error("failed to create service", zap.Error(err))
-		return err
-	}
-
-	errorChan := make(chan error)
-
-	go func() {
-		err := service.Start()
-		if err != nil {
-			logger.Error("failed to start edge service", zap.Error(err))
-			errorChan <- err
-		}
-	}()
-
-	select {
-	case <-ctx.Done():
-		logger.Info("context done, shutting down edge service")
-		service.Shutdown()
-		return nil
-	case err := <-errorChan:
-		if err != nil {
-			logger.Error("error in edge service", zap.Error(err))
-			return err
-		}
-	}
-
-	return nil
-}
-
-func NewService(ctx context.Context, healthServerPort int) (*Service, error) {
+func NewService(ctx context.Context, logger *zap.Logger, proxyDrainingHandler func()) (*Service, error) {
 	configAdapter, err := configuration.NewAutoConfigurationAdapter()
 	if err != nil {
 		return nil, err
 	}
 
-	configCtx, confixCtxCancel := context.WithTimeout(ctx, configSetupTimeout)
-	defer confixCtxCancel()
+	configCtx, configCtxCancel := context.WithTimeout(ctx, configSetupTimeout)
+	defer configCtxCancel()
 
 	config, err := configAdapter.GetConfiguration(configCtx)
 	if err != nil {
 		return nil, err
 	}
 
-	opts, err := redis.ParseURL(config.RedisReaderUrl)
+	opts, err := redis.ParseURL(config.RedisUrl)
 	if err != nil {
 		return nil, err
 	}
 
-	// todo: this is just temporary, we need to use the config adapter
-	if config.SelfUpdateSourceUrl != nil {
-		go autoUpdate(*config.SelfUpdateSourceUrl, 10*time.Second)
-	}
+	serviceId := uuid.NewString()
+	serviceDiscovery := service_discovery.NewServiceDiscovery(
+		&service_discovery.ServiceDiscoveryConfig{
+			RedisClient: redis.NewClient(opts),
+			Logger:      logger,
 
-	healthServer := NewHealthServer(healthServerPort, zap.L())
+			NodePort: config.ServicePort,
+			NodeIp:   config.ServiceIpv4,
 
-	go func() {
-		err := healthServer.Start()
-		if err != nil {
-			zap.L().Error("failed to start health server", zap.Error(err))
-			os.Exit(1) // todo: handle properly
-			return
-		}
-	}()
-
-	//grpcOpts := []logging.Option{
-	//	logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
-	//	logging.WithLevels(logging.DefaultServerCodeToLevel),
-	//	logging.WithFieldsFromContext(logging.ExtractFields),
-	//}
-
-	grpcServer := grpc.NewServer(
-	/*
-		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
-		grpc.ChainUnaryInterceptor(
-			recovery.UnaryServerInterceptor(),
-			selector.UnaryServerInterceptor(
-				logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), grpcOpts...),
-				logger.WithoutHealthCheck(),
-			),
-		),
-		grpc.ChainStreamInterceptor(
-			selector.StreamServerInterceptor(
-				logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), grpcOpts...),
-				logger.WithoutHealthCheck(),
-			),
-		),*/
+			ServiceId:      serviceId,
+			ServiceType:    serviceType,
+			ServiceVersion: serviceVersion,
+			ServiceStatus:  service_discovery.StatusHealthy,
+		},
 	)
 
-	redisClient := redis.NewClient(opts)
+	// todo: make it configurable
+	updaterUrl := "https://e2b-eu-west-1-assets.s3.eu-west-1.amazonaws.com/edge-agent"
+	updaterService := updater.NewUpdater(updaterUrl, logger)
 
-	rsPool := goredis.NewPool(redisClient)
-	rs := redsync.New(rsPool)
+	var serverStore *handlers.APIStore
+	var server *http.Server
 
-	// Obtain a new mutex by using the same name for all instances wanting the
-	// same mx.
-	mutexName := "my-global-mutex" // todo: constant
-	mutex := rs.NewMutex(mutexName)
+	selfUpdateHandler := func() updater.UpdaterResponse {
+		logger.Info("self update handler called")
+
+		if updaterService == nil {
+			err := fmt.Errorf("service updater is not configured")
+			return updater.UpdaterResponse{
+				Success: false,
+				Message: err.Error(),
+				Error:   err,
+			}
+		}
+
+		updateCtx, updateCtxCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer updateCtxCancel()
+
+		// let's check if its possible to update
+		// todo: add some handling of current version in some catalog or something
+		updateResp := updaterService.Update(updateCtx, nil)
+		if !updateResp.Success {
+			return updateResp
+		}
+
+		// let's make service as draining and start shutdown process
+		serviceDiscovery.SetStatus(service_discovery.StatusDraining)
+
+		go func() {
+			// wait for services to realize we are unhealthy)
+			if !env.IsLocal() {
+				time.Sleep(30 * time.Second)
+			}
+
+			// start draining of http proxy
+			proxyDrainingHandler()
+
+			serviceDiscovery.SetStatus(service_discovery.StatusUnhealthy)
+			serverStore.SetHealth(service_discovery.StatusUnhealthy)
+
+			// wait for services to realize we are unhealthy
+			// mainly just for in-process requests etc
+			time.Sleep(15 * time.Second)
+
+			// shutdown edge http server
+			shutdownCtx, shutdownCtxCancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer shutdownCtxCancel()
+
+			err := server.Shutdown(shutdownCtx)
+			if err != nil {
+				logger.Error("failed to shutdown server", zap.Error(err))
+			}
+
+			// todo: this should be done carefully in service main
+			os.Exit(0)
+		}()
+
+		// todo: shutdown process must be handled async because we are still in-request
+		return updater.UpdaterResponse{
+			Success: true,
+		}
+	}
+
+	selfDrainHandler := func() error {
+		logger.Info("self drain handler called")
+		serviceDiscovery.SetStatus(service_discovery.StatusDraining)
+
+		// let's make service as draining and start shutdown process
+		serviceDiscovery.SetStatus(service_discovery.StatusDraining)
+
+		go func() {
+			// wait for services to realize we are unhealthy)
+			if !env.IsLocal() {
+				time.Sleep(30 * time.Second)
+			}
+
+			// start draining of http proxy
+			proxyDrainingHandler()
+
+			serviceDiscovery.SetStatus(service_discovery.StatusUnhealthy)
+			serverStore.SetHealth(service_discovery.StatusUnhealthy)
+
+			// wait for services to realize we are unhealthy
+			// mainly just for in-process requests etc
+			time.Sleep(15 * time.Second)
+
+			// shutdown edge http server
+			shutdownCtx, shutdownCtxCancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer shutdownCtxCancel()
+
+			err := server.Shutdown(shutdownCtx)
+			if err != nil {
+				logger.Error("failed to shutdown server", zap.Error(err))
+			}
+
+			// we wil just wait for scaling manager to kill whole instance
+			// because otherwise we will be just started again with systemd manager
+		}()
+
+		return nil
+	}
+
+	serverStore, err = handlers.NewStore(serviceDiscovery, logger, &selfUpdateHandler, &selfDrainHandler)
+	if err != nil {
+		return nil, err
+	}
+
+	serverSwagger, err := api.GetSwagger()
+	if err != nil {
+		return nil, err
+	}
+
+	server = NewGinServer(ctx, logger, serverStore, config.ServicePort, serverSwagger)
 
 	return &Service{
-		grpcPort: config.ServicePort,
-		grpc:     grpcServer,
+		serverPort:  config.ServicePort,
+		serverStore: serverStore,
+		server:      server,
 
-		healthServer: healthServer,
-		edgeServer: &edgeServer{
-			redisClient: redisClient,
-			healthy:     true,
-			mx:          mutex,
-		},
+		logger: logger,
 
-		serviceDiscovery: newServiceDiscovery(redisClient),
-		distributedMutex: mutex,
+		updater:          updaterService,
+		serviceDiscovery: serviceDiscovery,
 	}, nil
 }
 
 func (s *Service) Start() error {
-	zap.L().Info("starting edge service", zap.Int("port", s.grpcPort))
+	zap.L().Info("starting edge service", zap.Int("port", s.serverPort))
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.grpcPort))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.serverPort))
 	if err != nil {
-		return fmt.Errorf("failed to listen on port %d: %w", s.grpcPort, err)
+		return fmt.Errorf("failed to listen on port %d: %w", s.serverPort, err)
 	}
 
-	edge.RegisterEdgeServiceServer(s.grpc, s.edgeServer)
-
-	// todo: move this to a separate function
-	go func() {
-		for {
-			registerCtx := context.Background()
-			registerErr := s.serviceDiscovery.registerMyself(registerCtx)
-			if registerErr != nil {
-				zap.L().Error("failed to register myself", zap.Error(registerErr))
-			} else {
-				zap.L().Info("registered myself")
-			}
-
-			time.Sleep(5 * time.Second)
-		}
-
-	}()
-
-	if err := s.grpc.Serve(lis); err != nil {
+	if err := s.server.Serve(lis); err != nil {
 		println("edge server err")
 		return err
 	}
@@ -179,8 +217,14 @@ func (s *Service) Start() error {
 	return nil
 }
 
-func (s *Service) Shutdown() {
-	if s.grpc != nil {
-		s.grpc.GracefulStop()
+func (s *Service) Shutdown(ctx context.Context) error {
+	if s.server != nil {
+		return s.server.Shutdown(ctx)
 	}
+
+	return nil
+}
+
+func (s *Service) StartServiceDiscovery(ctx context.Context) {
+	go func() { s.serviceDiscovery.StartSelfRegistration(ctx) }()
 }
