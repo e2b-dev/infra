@@ -75,10 +75,17 @@ func run() int {
 		return 1
 	}
 
+	proxyDrainingHandler := func() {
+		logger.Info("draining http proxy")
+		if err := server.Shutdown(ctx); err != nil {
+			logger.Error("failed to shutdown server", zap.Error(err))
+		}
+	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err := edge.Run(logger, healthCheckPort, ctx)
+		err := edge.Run(ctx, logger, proxyDrainingHandler)
 		if err != nil {
 			exitCode.Add(1)
 			logger.Error("edge service error", zap.Error(err))

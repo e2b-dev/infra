@@ -18,13 +18,14 @@ IMAGE := e2b-orchestration/client-proxy
 #	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" .
 #	@rm -rf .shared/
 
+openapi := ../../spec/openapi-edge.yml
+codegen := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+
 .PHONY: generate
 generate:
-	# You need to install protobuf (brew install protobuf) and following go packages: protoc-gen-go, protoc-gen-go-grpc
-	# https://grpc.io/docs/languages/go/quickstart/
-	@echo "Generating..."
-	@protoc --go_out=../shared/pkg/grpc/edge/ --go_opt=paths=source_relative --go-grpc_out=../shared/pkg/grpc/edge/ --go-grpc_opt=paths=source_relative edge.proto
-	@echo "Done"
+	$(codegen) -old-config-style -generate gin --package api $(openapi) > internal/edge/api/api.gen.go
+	$(codegen) -old-config-style -generate types --package api $(openapi) > internal/edge/api/types.gen.go
+	$(codegen) -old-config-style -generate spec --package api $(openapi) > internal/edge/api/spec.gen.go
 
 .PHONY: run
 run:
