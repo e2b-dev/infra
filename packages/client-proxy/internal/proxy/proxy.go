@@ -106,7 +106,7 @@ func NewClientProxy(port uint) *reverse_proxy.Proxy {
 	)
 
 	_, err := meters.GetObservableUpDownCounter(meters.ActiveConnectionsCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(proxy.TotalDownstreamConnections()))
+		observer.Observe(int64(proxy.CurrentDownstreamConnections()))
 
 		return nil
 	})

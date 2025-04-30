@@ -69,7 +69,7 @@ func NewSandboxProxy(
 	)
 
 	_, err := meters.GetObservableUpDownCounter(meters.OrchestratorProxyActiveConnectionsCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(proxy.TotalDownstreamConnections()))
+		observer.Observe(int64(proxy.CurrentDownstreamConnections()))
 
 		return nil
 	})

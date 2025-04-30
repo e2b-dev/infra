@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
-	"net/http/httputil"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,7 +17,7 @@ const (
 )
 
 type ProxyPool struct {
-	pool                        *expirable.LRU[string, *httputil.ReverseProxy]
+	pool                        *expirable.LRU[string, *client.ProxyClient]
 	mu                          sync.Mutex
 	poolSize                    int
 	connectionLimitPerProxy     int
@@ -35,7 +34,7 @@ func NewProxyPool(
 	clientConnectionTimeout time.Duration,
 ) *ProxyPool {
 	return &ProxyPool{
-		pool: expirable.NewLRU(0, func(key string, value *httputil.ReverseProxy) {
+		pool: expirable.NewLRU(0, func(key string, value *client.ProxyClient) {
 			if value != nil {
 				value.Transport.(*http.Transport).CloseIdleConnections()
 			}
@@ -47,7 +46,7 @@ func NewProxyPool(
 	}
 }
 
-func (p *ProxyPool) createProxyClient() (*httputil.ReverseProxy, error) {
+func (p *ProxyPool) createProxyClient() (*client.ProxyClient, error) {
 	proxyClient, err := client.NewProxyClient(
 		p.clientIdleTimeout,
 		p.clientConnectionTimeout,
@@ -65,14 +64,14 @@ func (p *ProxyPool) createProxyClient() (*httputil.ReverseProxy, error) {
 		return nil, err
 	}
 
-	return &proxyClient.ReverseProxy, nil
+	return proxyClient, nil
 }
 
 func getLRUKey(connectionKey string, poolIdx int) string {
 	return fmt.Sprintf("%s:%d", connectionKey, poolIdx)
 }
 
-func (p *ProxyPool) Get(connectionKey string) (*httputil.ReverseProxy, error) {
+func (p *ProxyPool) Get(connectionKey string) (*client.ProxyClient, error) {
 	randomIndex := rand.Intn(p.poolSize)
 
 	p.mu.Lock()
@@ -103,5 +102,11 @@ func (p *ProxyPool) Close(connectionKey string) {
 }
 
 func (p *ProxyPool) TotalEstablishedConnections() uint64 {
-	return p.totalEstablishedConnections.Load()
+	total := uint64(0)
+
+	for _, proxy := range p.pool.Values() {
+		total += proxy.TotalConnections()
+	}
+
+	return total
 }

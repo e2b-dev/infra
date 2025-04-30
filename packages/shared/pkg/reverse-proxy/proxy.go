@@ -17,7 +17,6 @@ const MaxTotalIdleConnections = 8192 // Reasonably big number that is lower than
 
 type Proxy struct {
 	http.Server
-	totalUpstreamConnections     *atomic.Uint64
 	currentDownstreamConnections *atomic.Int64
 	noDownstreamConnections      *sync.Cond
 	pool                         *pool.ProxyPool
@@ -40,7 +39,6 @@ func New(
 	)
 
 	var downstreamConnections atomic.Int64
-
 	noDownstreamConnections := sync.NewCond(&sync.Mutex{})
 
 	return &Proxy{
@@ -67,8 +65,8 @@ func New(
 	}
 }
 
-func (p *Proxy) TotalEstablishedConnections() uint64 {
-	return p.totalUpstreamConnections.Load()
+func (p *Proxy) TotalUpstreamConnections() uint64 {
+	return p.pool.TotalEstablishedConnections()
 }
 
 // WaitForNoDownstreamConnections waits for all downstream connections (even the idle ones) to be closed.
@@ -81,10 +79,10 @@ func (p *Proxy) WaitForNoDownstreamConnections() {
 	}
 }
 
-func (p *Proxy) TotalDownstreamConnections() int64 {
+func (p *Proxy) CurrentDownstreamConnections() int64 {
 	return p.currentDownstreamConnections.Load()
 }
 
 func (p *Proxy) RemoveFromPool(connectionKey string) {
-
+	p.pool.Close(connectionKey)
 }

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/reverse-proxy/client"
 	"go.uber.org/zap"
 	"gotest.tools/assert"
 )
@@ -103,7 +104,7 @@ func assertBackendOutput(t *testing.T, backend *testBackend, resp *http.Response
 }
 
 // newTestProxy creates a new proxy server for testing
-func newTestProxy(getRoutingTarget func(r *http.Request) (*RoutingTarget, error)) (*Proxy, uint, error) {
+func newTestProxy(getRoutingTarget func(r *http.Request) (*client.RoutingTarget, error)) (*Proxy, uint, error) {
 	// Find a free port for the proxy
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -116,7 +117,9 @@ func newTestProxy(getRoutingTarget func(r *http.Request) (*RoutingTarget, error)
 	proxy := New(
 		uint(port),
 		5*time.Second, // Short idle timeout
+		1,
 		10*time.Second,
+		0,
 		getRoutingTarget,
 	)
 
@@ -144,8 +147,8 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 	defer backend.Close()
 
 	// Set up a routing function that always returns the backend
-	getRoutingTarget := func(r *http.Request) (*RoutingTarget, error) {
-		return &RoutingTarget{
+	getRoutingTarget := func(r *http.Request) (*client.RoutingTarget, error) {
+		return &client.RoutingTarget{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
 			Logger:        zap.NewNop(),
@@ -159,7 +162,7 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 	}
 	defer proxy.Close()
 
-	assert.Equal(t, proxy.TotalEstablishedConnections(), uint64(0))
+	assert.Equal(t, proxy.TotalUpstreamConnections(), uint64(0))
 
 	// Make a request to the proxy
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
@@ -171,8 +174,8 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 
 	assertBackendOutput(t, backend, resp)
 
-	assert.Equal(t, backend.RequestCount(), uint64(1))
-	assert.Equal(t, proxy.TotalEstablishedConnections(), uint64(1))
+	assert.Equal(t, backend.RequestCount(), uint64(1), "backend should have been called once")
+	assert.Equal(t, proxy.TotalUpstreamConnections(), uint64(1), "proxy should have established one connection")
 }
 
 func TestProxyReusesConnections(t *testing.T) {
@@ -188,8 +191,8 @@ func TestProxyReusesConnections(t *testing.T) {
 	defer backend.Close()
 
 	// Set up a routing function that always returns the backend
-	getRoutingTarget := func(r *http.Request) (*RoutingTarget, error) {
-		return &RoutingTarget{
+	getRoutingTarget := func(r *http.Request) (*client.RoutingTarget, error) {
+		return &client.RoutingTarget{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
 			Logger:        zap.NewNop(),
@@ -226,7 +229,7 @@ func TestProxyReusesConnections(t *testing.T) {
 
 	// Verify that only one connection was established
 	assert.Equal(t, backend.RequestCount(), uint64(2), "backend should have been called twice")
-	assert.Equal(t, proxy.TotalEstablishedConnections(), uint64(1), "proxy should have used one connection")
+	assert.Equal(t, proxy.TotalUpstreamConnections(), uint64(1), "proxy should have used one connection")
 }
 
 // This is a test that verify that the proxy reuse fails when the backend changes.
@@ -252,7 +255,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	var backendMappingMutex sync.Mutex
 
 	// Set up a routing function that returns the current backend
-	getRoutingTarget := func(r *http.Request) (*RoutingTarget, error) {
+	getRoutingTarget := func(r *http.Request) (*client.RoutingTarget, error) {
 		backendMappingMutex.Lock()
 		defer backendMappingMutex.Unlock()
 
@@ -261,7 +264,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 			return nil, fmt.Errorf("backend not found")
 		}
 
-		return &RoutingTarget{
+		return &client.RoutingTarget{
 			Url:           backend1.url,
 			SandboxId:     "backend1",
 			Logger:        zap.NewNop(),
@@ -287,7 +290,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 
 	assertBackendOutput(t, backend1, resp1)
 
-	assert.Equal(t, proxy.TotalEstablishedConnections(), uint64(1), "proxy should have used one connection")
+	assert.Equal(t, proxy.TotalUpstreamConnections(), uint64(1), "proxy should have used one connection")
 	assert.Equal(t, backend1.RequestCount(), uint64(1), "first backend should have been called once")
 
 	// Close the first backend
@@ -337,7 +340,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	var backendMappingMutex sync.Mutex
 
 	// Set up a routing function that returns the current backend
-	getRoutingTarget := func(r *http.Request) (*RoutingTarget, error) {
+	getRoutingTarget := func(r *http.Request) (*client.RoutingTarget, error) {
 		backendMappingMutex.Lock()
 		defer backendMappingMutex.Unlock()
 
@@ -346,7 +349,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 			return nil, fmt.Errorf("backend not found")
 		}
 
-		return &RoutingTarget{
+		return &client.RoutingTarget{
 			Url:           backend1.url,
 			SandboxId:     "backend1",
 			Logger:        zap.NewNop(),
@@ -372,7 +375,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 
 	assertBackendOutput(t, backend1, resp1)
 
-	assert.Equal(t, proxy.TotalEstablishedConnections(), uint64(1), "proxy should have reused the connection")
+	assert.Equal(t, proxy.TotalUpstreamConnections(), uint64(1), "proxy should have reused the connection")
 	assert.Equal(t, backend1.RequestCount(), uint64(1), "first backend should have been called once")
 
 	// Close the first backend
@@ -405,5 +408,5 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 
 	assert.Equal(t, backend2.RequestCount(), uint64(1), "second backend should have been called once")
 	assert.Equal(t, backend1.RequestCount(), uint64(1), "first backend should have been called once")
-	assert.Equal(t, proxy.TotalEstablishedConnections(), uint64(2), "proxy should not have reused the connection")
+	assert.Equal(t, proxy.TotalUpstreamConnections(), uint64(2), "proxy should not have reused the connection")
 }
