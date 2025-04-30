@@ -12,9 +12,7 @@ import (
 	"github.com/hashicorp/golang-lru/v2/expirable"
 )
 
-const (
-	hostConnectionSplit = 4
-)
+const hostConnectionSplit = 4
 
 type ProxyPool struct {
 	pool                        *expirable.LRU[string, *client.ProxyClient]
@@ -23,34 +21,29 @@ type ProxyPool struct {
 	connectionLimitPerProxy     int
 	totalEstablishedConnections atomic.Uint64
 	clientIdleTimeout           time.Duration
-	clientConnectionTimeout     time.Duration
 }
 
-func NewProxyPool(
-	maxDuration time.Duration,
+func New(
 	poolSize int,
 	connectionLimitPerProxy int,
-	clientIdleTimeout,
-	clientConnectionTimeout time.Duration,
+	clientIdleTimeout time.Duration,
 ) *ProxyPool {
 	return &ProxyPool{
 		pool: expirable.NewLRU(0, func(key string, value *client.ProxyClient) {
 			if value != nil {
 				value.Transport.(*http.Transport).CloseIdleConnections()
 			}
-		}, maxDuration),
+		}, 0),
 		poolSize:                poolSize,
 		connectionLimitPerProxy: connectionLimitPerProxy,
 		clientIdleTimeout:       clientIdleTimeout,
-		clientConnectionTimeout: clientConnectionTimeout,
 	}
 }
 
 func (p *ProxyPool) createProxyClient() (*client.ProxyClient, error) {
 	proxyClient, err := client.NewProxyClient(
 		p.clientIdleTimeout,
-		p.clientConnectionTimeout,
-		p.poolSize,
+		p.connectionLimitPerProxy,
 		// We limit the max number of connections per host to avoid exhausting the number of available via one host.
 		func() int {
 			if p.connectionLimitPerProxy <= hostConnectionSplit {

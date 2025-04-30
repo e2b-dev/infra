@@ -19,9 +19,8 @@ import (
 )
 
 const (
-	idleTimeout           = 30 * time.Second
-	connectionTimeout     = 630 * time.Second
-	maxConnectionDuration = 24 * time.Hour
+	idleTimeout                  = 630 * time.Second
+	minimalConnectionsPerSandbox = 1
 )
 
 func NewSandboxProxy(
@@ -31,9 +30,7 @@ func NewSandboxProxy(
 	proxy := reverse_proxy.New(
 		port,
 		idleTimeout,
-		1,
-		connectionTimeout,
-		maxConnectionDuration,
+		minimalConnectionsPerSandbox,
 		func(r *http.Request) (*client.RoutingTarget, error) {
 			sandboxId, port, err := routing.ParseHost(r.Host)
 			if err != nil {

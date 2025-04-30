@@ -116,10 +116,8 @@ func newTestProxy(getRoutingTarget func(r *http.Request) (*client.RoutingTarget,
 	// Set up the proxy server
 	proxy := New(
 		uint(port),
-		5*time.Second, // Short idle timeout
+		20*time.Second, // Short idle timeout
 		1,
-		10*time.Second,
-		0,
 		getRoutingTarget,
 	)
 

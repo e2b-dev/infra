@@ -19,13 +19,11 @@ import (
 )
 
 const (
-	dnsServer                       = "api.service.consul:5353"
-	orchestratorProxyPort           = 5007 // orchestrator proxy port
-	maxRetries                      = 3
-	idleTimeout                     = 620 * time.Second
-	connectionTimeout               = 10 * time.Second
-	connectionsPerOrchestratorProxy = 16
-	maxConnectionDuration           = 0 // The connections can be reused indefinitely as they are from client-proxy to orchestrator-proxy
+	dnsServer                              = "api.service.consul:5353"
+	orchestratorProxyPort                  = 5007 // orchestrator proxy port
+	maxRetries                             = 3
+	idleTimeout                            = 620 * time.Second
+	minimalConnectionsPerOrchestratorProxy = 16
 )
 
 var dnsClient = dns.Client{}
@@ -34,9 +32,7 @@ func NewClientProxy(port uint) *reverse_proxy.Proxy {
 	proxy := reverse_proxy.New(
 		port,
 		idleTimeout,
-		connectionsPerOrchestratorProxy,
-		connectionTimeout,
-		maxConnectionDuration,
+		minimalConnectionsPerOrchestratorProxy,
 		func(r *http.Request) (*client.RoutingTarget, error) {
 			sandboxId, port, err := routing.ParseHost(r.Host)
 			if err != nil {

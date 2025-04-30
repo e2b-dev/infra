@@ -18,7 +18,7 @@ type ProxyClient struct {
 	totalConnections *atomic.Uint64
 }
 
-func NewProxyClient(idleTimeout time.Duration, connectionTimeout time.Duration, maxIdleConnections, maxIdleConnectionsPerHost int) (*ProxyClient, error) {
+func NewProxyClient(idleTimeout time.Duration, maxIdleConnections, maxIdleConnectionsPerHost int) (*ProxyClient, error) {
 	var totalConnections atomic.Uint64
 
 	transport := &http.Transport{
@@ -27,13 +27,13 @@ func NewProxyClient(idleTimeout time.Duration, connectionTimeout time.Duration, 
 		MaxIdleConnsPerHost:   maxIdleConnectionsPerHost,
 		MaxIdleConns:          maxIdleConnections,
 		IdleConnTimeout:       idleTimeout,
-		TLSHandshakeTimeout:   20 * time.Second,
-		ResponseHeaderTimeout: 20 * time.Second,
+		TLSHandshakeTimeout:   0,
+		ResponseHeaderTimeout: 0,
 		// TCP configuration
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			conn, err := (&net.Dialer{
-				Timeout:   connectionTimeout, // Connect timeout (no timeout by default)
-				KeepAlive: 10 * time.Second,  // Lower than our http keepalives (50 seconds)
+				Timeout:   30 * time.Second, // Connect timeout (no timeout by default)
+				KeepAlive: 20 * time.Second, // Lower than our http keepalives (50 seconds)
 			}).DialContext(ctx, network, addr)
 			if err == nil {
 				totalConnections.Add(1)

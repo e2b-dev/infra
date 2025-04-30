@@ -26,16 +26,12 @@ func New(
 	port uint,
 	idleTimeout time.Duration,
 	poolSizePerConnectionKey int,
-	connectionTimeout time.Duration,
-	maxConnectionDuration time.Duration,
 	getRoutingTarget func(r *http.Request) (*client.RoutingTarget, error),
 ) *Proxy {
-	pool := pool.NewProxyPool(
-		maxConnectionDuration,
+	pool := pool.New(
 		poolSizePerConnectionKey,
 		MaxTotalIdleConnections,
 		idleTimeout,
-		connectionTimeout,
 	)
 
 	var downstreamConnections atomic.Int64
@@ -44,10 +40,10 @@ func New(
 	return &Proxy{
 		Server: http.Server{
 			Addr:              fmt.Sprintf(":%d", port),
-			ReadTimeout:       maxConnectionDuration,
-			WriteTimeout:      maxConnectionDuration,
+			ReadTimeout:       0,
+			WriteTimeout:      0,
 			IdleTimeout:       idleTimeout,
-			ReadHeaderTimeout: 20 * time.Second,
+			ReadHeaderTimeout: 0,
 			Handler:           http.HandlerFunc(routing.Handle(pool, getRoutingTarget)),
 			ConnState: func(conn net.Conn, state http.ConnState) {
 				if state == http.StateNew {
