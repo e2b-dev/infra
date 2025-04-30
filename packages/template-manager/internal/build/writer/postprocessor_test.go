@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // test writer that stores the written data
@@ -56,6 +57,7 @@ func TestPostProcessor_Start(t *testing.T) {
 				ctx:     ctx,
 				writer:  tw,
 				errChan: errChan,
+				ticker:  time.NewTicker(tickerInterval),
 			}
 			go p.Start()
 			p.Stop(tt.fields.testErr)
