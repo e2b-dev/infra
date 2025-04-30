@@ -15,6 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
@@ -67,7 +68,10 @@ func Build(ctx context.Context, kernelVersion, fcVersion, templateID, buildID st
 		BuildLogsWriter: &buf,
 	}
 
-	err = t.Build(ctx, tracer, dockerClient, legacyClient)
+	postProcessor := writer.NewPostProcessor(ctx, &buf)
+	defer postProcessor.Stop(nil)
+
+	err = t.Build(ctx, tracer, postProcessor, dockerClient, legacyClient)
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}
