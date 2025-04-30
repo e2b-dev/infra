@@ -31,8 +31,8 @@ var dnsClient = dns.Client{}
 func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 	proxy, err := reverse_proxy.New(
 		port,
-		idleTimeout,
 		minOrchestratorProxyConns,
+		idleTimeout,
 		func(r *http.Request) (*client.ProxingInfo, error) {
 			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
 			if err != nil {

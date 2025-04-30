@@ -91,7 +91,7 @@ func NewProxyClient(
 
 				err = template.
 					NewPortClosedError(t.SandboxId, r.Host, t.Url.Port()).
-					HandleError(w, r, t.Logger)
+					HandleError(w, r)
 				if err != nil {
 					zap.L().Error("failed to handle error", zap.Error(err))
 					http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)

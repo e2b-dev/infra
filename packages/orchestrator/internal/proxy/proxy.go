@@ -25,8 +25,8 @@ const (
 func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse_proxy.Proxy, error) {
 	proxy, err := reverse_proxy.New(
 		port,
-		idleTimeout,
 		minSandboxConns,
+		idleTimeout,
 		func(r *http.Request) (*client.ProxingInfo, error) {
 			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
 			if err != nil {

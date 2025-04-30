@@ -22,8 +22,8 @@ type Proxy struct {
 
 func New(
 	port uint,
-	idleTimeout time.Duration,
 	poolSize int,
+	idleTimeout time.Duration,
 	getProxyingInfo func(r *http.Request) (*client.ProxingInfo, error),
 ) (*Proxy, error) {
 	pool, err := newProxyPool(

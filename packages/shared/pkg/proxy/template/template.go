@@ -6,8 +6,6 @@ import (
 	"html/template"
 	"net/http"
 	"regexp"
-
-	"go.uber.org/zap"
 )
 
 func buildHtmlError[T any](template *template.Template, vars T) ([]byte, error) {
@@ -44,7 +42,6 @@ func isBrowser(r *http.Request) bool {
 func (e *TemplatedError[T]) HandleError(
 	w http.ResponseWriter,
 	r *http.Request,
-	logger *zap.Logger,
 ) error {
 	if isBrowser(r) {
 		body, buildErr := e.buildHtml()

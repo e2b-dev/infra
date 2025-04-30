@@ -16,7 +16,7 @@ type sandboxNotFoundData struct {
 	Host      string `json:"-"`
 }
 
-func NewSandboxNotFoundError(sandboxId string, host string) *TemplatedError[sandboxNotFoundData] {
+func NewSandboxNotFoundError(sandboxId, host string) *TemplatedError[sandboxNotFoundData] {
 	return &TemplatedError[sandboxNotFoundData]{
 		template: sandboxNotFoundHtmlTemplate,
 		vars: sandboxNotFoundData{

@@ -64,7 +64,7 @@ func (p *proxyPool) handler(getRoutingTarget func(r *http.Request) (*client.Prox
 
 			err := template.
 				NewSandboxNotFoundError(notFoundErr.SandboxId, r.Host).
-				HandleError(w, r, zap.L())
+				HandleError(w, r)
 			if err != nil {
 				zap.L().Error("failed to handle sandbox not found error", zap.Error(err))
 				http.Error(w, "Failed to handle sandbox not found error", http.StatusInternalServerError)

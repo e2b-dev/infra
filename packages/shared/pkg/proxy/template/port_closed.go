@@ -17,7 +17,7 @@ type portClosedError struct {
 	Host      string `json:"-"`
 }
 
-func NewPortClosedError(sandboxId string, host string, port string) *TemplatedError[portClosedError] {
+func NewPortClosedError(sandboxId, host, port string) *TemplatedError[portClosedError] {
 	return &TemplatedError[portClosedError]{
 		template: portClosedHtmlTemplate,
 		vars: portClosedError{
