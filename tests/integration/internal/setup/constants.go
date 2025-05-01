@@ -8,7 +8,8 @@ import (
 )
 
 const (
-	apiTimeout = 120 * time.Second
+	apiTimeout  = 120 * time.Second
+	envdTimeout = 600 * time.Second
 )
 
 var (

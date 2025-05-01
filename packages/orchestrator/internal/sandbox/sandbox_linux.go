@@ -169,7 +169,9 @@ func NewSandbox(
 		childCtx, span := tracer.Start(ctx, "rootfs-overlay-close")
 		defer span.End()
 
-		rootfsOverlay.Close(childCtx)
+		if rootfsOverlayErr := rootfsOverlay.Close(childCtx); rootfsOverlayErr != nil {
+			return fmt.Errorf("failed to close overlay file: %w", rootfsOverlayErr)
+		}
 
 		return nil
 	})
@@ -306,7 +308,7 @@ func NewSandbox(
 
 	// Sync envds.
 	if semver.Compare(fmt.Sprintf("v%s", config.EnvdVersion), "v0.1.1") >= 0 {
-		initErr := sbx.initEnvd(syncCtx, tracer, config.EnvVars)
+		initErr := sbx.initEnvd(syncCtx, tracer, config.EnvVars, config.EnvdAccessToken)
 		if initErr != nil {
 			return nil, cleanup, fmt.Errorf("failed to init new envd: %w", initErr)
 		} else {

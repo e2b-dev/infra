@@ -14,42 +14,48 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	operationID := logs.AssignOperationID()
+	logger := a.logger.With().Str(string(logs.OperationIDKey), operationID).Logger()
 
 	if r.Body != nil {
 		var initRequest PostInitJSONBody
 
 		err := json.NewDecoder(r.Body).Decode(&initRequest)
 		if err != nil && err != io.EOF {
-			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Msgf("Failed to decode request: %v", err)
+			logger.Error().Msgf("Failed to decode request: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
 
 			return
 		}
 
 		if initRequest.EnvVars != nil {
-			a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg(fmt.Sprintf("Setting %d env vars", len(*initRequest.EnvVars)))
+			logger.Debug().Msg(fmt.Sprintf("Setting %d env vars", len(*initRequest.EnvVars)))
 
 			for key, value := range *initRequest.EnvVars {
-				a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msgf("Setting env var for %s", key)
-
+				logger.Debug().Msgf("Setting env var for %s", key)
 				a.envVars.Store(key, value)
 			}
 		}
 
 		if initRequest.AccessToken != nil {
-			a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg("Setting access token")
+			if a.accessToken != nil && *initRequest.AccessToken != *a.accessToken {
+				logger.Error().Msg("Access token is already set and cannot be changed")
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+
+			logger.Debug().Msg("Setting access token")
 			a.accessToken = initRequest.AccessToken
 		}
 	}
 
-	a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg("Syncing host")
+	logger.Debug().Msg("Syncing host")
 
 	go func() {
 		err := host.Sync()
 		if err != nil {
-			a.logger.Error().Str(string(logs.OperationIDKey), operationID).Msgf("Failed to sync clock: %v", err)
+			logger.Error().Msgf("Failed to sync clock: %v", err)
 		} else {
-			a.logger.Trace().Str(string(logs.OperationIDKey), operationID).Msg("Clock synced")
+			logger.Trace().Msg("Clock synced")
 		}
 	}()
 

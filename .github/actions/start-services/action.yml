@@ -45,11 +45,13 @@ runs:
     - name: Start Services
       env:
         ENVD_TIMEOUT: "60s"
+        SANDBOX_ACCESS_TOKEN_HASH_SEED: "abcdefghijklmnopqrstuvwxyz"
         SUPABASE_JWT_SECRETS: "supabasejwtsecretsupabasejwtsecret"
       run: |
         echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test
+        echo "SANDBOX_ACCESS_TOKEN_HASH_SEED=${SANDBOX_ACCESS_TOKEN_HASH_SEED}" >> .env.test
         echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRETS}" >> .env.test
-        
+
         mkdir -p ~/logs
         
         # Start orchestrator

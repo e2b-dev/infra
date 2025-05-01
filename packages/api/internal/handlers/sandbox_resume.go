@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,13 +12,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -104,27 +106,39 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		clientID = pausedOnNode.ID
 	}
 
-	snap, build, err := a.db.GetLastSnapshot(ctx, sandboxID, teamInfo.Team.ID)
+	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamInfo.Team.ID})
 	if err != nil {
-		var errNotFound db.ErrNotFound
-		if errors.Is(err, errNotFound) {
+		if errors.Is(err, sql.ErrNoRows) {
 			zap.L().Debug("Snapshot not found", zap.String("sandboxID", sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, err.Error())
-
+			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox snapshot not found")
 			return
 		}
 
 		zap.L().Error("Error getting last snapshot", zap.String("sandboxID", sandboxID), zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting snapshot"))
-
 		return
 	}
+
+	snap := lastSnapshot.Snapshot
+	build := lastSnapshot.EnvBuild
 
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
 		TemplateID: *build.EnvID,
 		TeamID:     teamInfo.Team.ID.String(),
 	}).Debug("Started resuming sandbox")
+
+	var envdAccessToken *string = nil
+	if snap.EnvSecure {
+		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
+		if tokenErr != nil {
+			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), zap.String("envdID", *build.EnvID), zap.String("envBuildID", build.ID.String()))
+			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
+			return
+		}
+
+		envdAccessToken = &accessToken
+	}
 
 	sbx, createErr := a.startSandbox(
 		ctx,
@@ -140,7 +154,9 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		&clientID,
 		snap.BaseEnvID,
 		autoPause,
+		envdAccessToken,
 	)
+
 	if createErr != nil {
 		zap.L().Error("Failed to resume sandbox", zap.Error(createErr.Err))
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)

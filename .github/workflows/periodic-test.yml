@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
+    inputs:
+      dev:
+        description: 'Only testing the workflow'
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
         - main
@@ -24,9 +30,24 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        e2b-domain: # each domain is a different cluster 
+        # each domain is a different cluster
+        e2b-domain:
           - "e2b-foxtrot.dev"
           - "e2b-juliett.dev"
+          - "e2b-staging.dev"
+        include:
+          - e2b-domain: "e2b-foxtrot.dev"
+            api_key: E2B_API_KEY
+            access_token: E2B_ACCESS_TOKEN
+            slack_channel: monitoring-infra
+          - e2b-domain: "e2b-juliett.dev"
+            api_key: E2B_API_KEY_JULIETT
+            access_token: E2B_ACCESS_TOKEN_JULIETT
+            slack_channel: monitoring-infra
+          - e2b-domain: "e2b-staging.dev"
+            api_key: E2B_API_KEY
+            access_token: E2B_ACCESS_TOKEN
+            slack_channel: monitoring-infra-staging
         test-command:
           - command: "tests/periodic-test/run-code.ts"
             name: "run code in sandbox"
@@ -51,41 +72,33 @@ jobs:
 
       - name: GitHub Action for npx
         uses: mikeal/npx@1.0.0
-      # workaround for not being able to use secrets in matrix
-      # each cluster has a different api key
-      - name: Set API Key
-        id: set-api-key
-        run: |
-          if [ "${{ matrix.e2b-domain }}" == "e2b-juliett.dev" ]; then
-            echo "api_key=${{ secrets.E2B_API_KEY_JULIETT }}" >> $GITHUB_OUTPUT
-          elif [ "${{ matrix.e2b-domain }}" == "e2b-foxtrot.dev" ]; then
-            echo "api_key=${{ secrets.E2B_API_KEY }}" >> $GITHUB_OUTPUT
-          else
-            exit 1
-          fi
 
-      - name: Set Access Token based on domain
-        id: set-access-token
+      - name: Set env variables from secrets
+        if: always()
         run: |
-          if [ "${{ matrix.e2b-domain }}" == "e2b-juliett.dev" ]; then
-            echo "access_token=${{ secrets.E2B_ACCESS_TOKEN_JULIETT }}" >> $GITHUB_OUTPUT
-          elif [ "${{ matrix.e2b-domain }}" == "e2b-foxtrot.dev" ]; then
-            echo "access_token=${{ secrets.E2B_ACCESS_TOKEN }}" >> $GITHUB_OUTPUT
+          echo "E2B_API_KEY=${{ secrets[format('{0}', matrix.api_key)] }}" >> $GITHUB_ENV
+          echo "E2B_ACCESS_TOKEN=${{ secrets[format('{0}', matrix.access_token)] }}" >> $GITHUB_ENV
+
+      - name: Set Slack channel based on dev input
+        if: always()
+        run: |
+          if [ "${{ inputs.dev }}" == "true" ]; then
+            echo "SLACK_CHANNEL=monitoring-infra-testing" >> $GITHUB_ENV
           else
-            exit 1
+            echo "SLACK_CHANNEL=${{ matrix.slack_channel }}" >> $GITHUB_ENV
           fi
 
       - name: ${{ matrix.test-command.name }}
         run: deno run --allow-all ${{ matrix.test-command.command }}
         working-directory: ${{ matrix.test-command.dir }}
         env:
-          E2B_API_KEY: ${{ steps.set-api-key.outputs.api_key }}
-          E2B_ACCESS_TOKEN: ${{ steps.set-access-token.outputs.access_token }}
+          E2B_API_KEY: ${{ env.E2B_API_KEY }}
+          E2B_ACCESS_TOKEN: ${{ env.E2B_ACCESS_TOKEN }}
           E2B_DOMAIN: ${{ matrix.e2b-domain }}
 
       - name: Periodic check failed - Slack Notification
         uses: rtCamp/action-slack-notify@v2
-        if: failure() && github.ref == 'refs/heads/main'
+        if: failure()
         env:
           SLACK_COLOR: "#ff0000"
           SLACK_USERNAME: "Periodic Check"
@@ -96,5 +109,4 @@ jobs:
           SLACK_MESSAGE: "Check for **${{ matrix.test-command.name }}** failed \n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           SLACK_TITLE: "[${{ matrix.e2b-domain }}] check failed"
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          # use this channel for dev
-          # SLACK_CHANNEL: C08F4DXJA00  
+          SLACK_CHANNEL: ${{ env.SLACK_CHANNEL }}

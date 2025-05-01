@@ -25,7 +25,7 @@ func GetEnvdClient(tb testing.TB, _ context.Context) *EnvdClient {
 	tb.Helper()
 
 	hc := http.Client{
-		Timeout: apiTimeout,
+		Timeout: envdTimeout,
 	}
 
 	httpC, err := api.NewClientWithResponses(EnvdProxy, api.WithHTTPClient(&hc))

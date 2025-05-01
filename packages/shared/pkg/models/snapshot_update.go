@@ -31,20 +31,6 @@ func (su *SnapshotUpdate) Where(ps ...predicate.Snapshot) *SnapshotUpdate {
 	return su
 }
 
-// SetSandboxStartedAt sets the "sandbox_started_at" field.
-func (su *SnapshotUpdate) SetSandboxStartedAt(t time.Time) *SnapshotUpdate {
-	su.mutation.SetSandboxStartedAt(t)
-	return su
-}
-
-// SetNillableSandboxStartedAt sets the "sandbox_started_at" field if the given value is not nil.
-func (su *SnapshotUpdate) SetNillableSandboxStartedAt(t *time.Time) *SnapshotUpdate {
-	if t != nil {
-		su.SetSandboxStartedAt(*t)
-	}
-	return su
-}
-
 // SetBaseEnvID sets the "base_env_id" field.
 func (su *SnapshotUpdate) SetBaseEnvID(s string) *SnapshotUpdate {
 	su.mutation.SetBaseEnvID(s)
@@ -90,6 +76,34 @@ func (su *SnapshotUpdate) SetNillableSandboxID(s *string) *SnapshotUpdate {
 // SetMetadata sets the "metadata" field.
 func (su *SnapshotUpdate) SetMetadata(m map[string]string) *SnapshotUpdate {
 	su.mutation.SetMetadata(m)
+	return su
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (su *SnapshotUpdate) SetSandboxStartedAt(t time.Time) *SnapshotUpdate {
+	su.mutation.SetSandboxStartedAt(t)
+	return su
+}
+
+// SetNillableSandboxStartedAt sets the "sandbox_started_at" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableSandboxStartedAt(t *time.Time) *SnapshotUpdate {
+	if t != nil {
+		su.SetSandboxStartedAt(*t)
+	}
+	return su
+}
+
+// SetEnvSecure sets the "env_secure" field.
+func (su *SnapshotUpdate) SetEnvSecure(b bool) *SnapshotUpdate {
+	su.mutation.SetEnvSecure(b)
+	return su
+}
+
+// SetNillableEnvSecure sets the "env_secure" field if the given value is not nil.
+func (su *SnapshotUpdate) SetNillableEnvSecure(b *bool) *SnapshotUpdate {
+	if b != nil {
+		su.SetEnvSecure(*b)
+	}
 	return su
 }
 
@@ -162,9 +176,6 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			}
 		}
 	}
-	if value, ok := su.mutation.SandboxStartedAt(); ok {
-		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
-	}
 	if value, ok := su.mutation.BaseEnvID(); ok {
 		_spec.SetField(snapshot.FieldBaseEnvID, field.TypeString, value)
 	}
@@ -173,6 +184,12 @@ func (su *SnapshotUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := su.mutation.Metadata(); ok {
 		_spec.SetField(snapshot.FieldMetadata, field.TypeJSON, value)
+	}
+	if value, ok := su.mutation.SandboxStartedAt(); ok {
+		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
+	}
+	if value, ok := su.mutation.EnvSecure(); ok {
+		_spec.SetField(snapshot.FieldEnvSecure, field.TypeBool, value)
 	}
 	if su.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -229,20 +246,6 @@ type SnapshotUpdateOne struct {
 	modifiers []func(*sql.UpdateBuilder)
 }
 
-// SetSandboxStartedAt sets the "sandbox_started_at" field.
-func (suo *SnapshotUpdateOne) SetSandboxStartedAt(t time.Time) *SnapshotUpdateOne {
-	suo.mutation.SetSandboxStartedAt(t)
-	return suo
-}
-
-// SetNillableSandboxStartedAt sets the "sandbox_started_at" field if the given value is not nil.
-func (suo *SnapshotUpdateOne) SetNillableSandboxStartedAt(t *time.Time) *SnapshotUpdateOne {
-	if t != nil {
-		suo.SetSandboxStartedAt(*t)
-	}
-	return suo
-}
-
 // SetBaseEnvID sets the "base_env_id" field.
 func (suo *SnapshotUpdateOne) SetBaseEnvID(s string) *SnapshotUpdateOne {
 	suo.mutation.SetBaseEnvID(s)
@@ -288,6 +291,34 @@ func (suo *SnapshotUpdateOne) SetNillableSandboxID(s *string) *SnapshotUpdateOne
 // SetMetadata sets the "metadata" field.
 func (suo *SnapshotUpdateOne) SetMetadata(m map[string]string) *SnapshotUpdateOne {
 	suo.mutation.SetMetadata(m)
+	return suo
+}
+
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (suo *SnapshotUpdateOne) SetSandboxStartedAt(t time.Time) *SnapshotUpdateOne {
+	suo.mutation.SetSandboxStartedAt(t)
+	return suo
+}
+
+// SetNillableSandboxStartedAt sets the "sandbox_started_at" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableSandboxStartedAt(t *time.Time) *SnapshotUpdateOne {
+	if t != nil {
+		suo.SetSandboxStartedAt(*t)
+	}
+	return suo
+}
+
+// SetEnvSecure sets the "env_secure" field.
+func (suo *SnapshotUpdateOne) SetEnvSecure(b bool) *SnapshotUpdateOne {
+	suo.mutation.SetEnvSecure(b)
+	return suo
+}
+
+// SetNillableEnvSecure sets the "env_secure" field if the given value is not nil.
+func (suo *SnapshotUpdateOne) SetNillableEnvSecure(b *bool) *SnapshotUpdateOne {
+	if b != nil {
+		suo.SetEnvSecure(*b)
+	}
 	return suo
 }
 
@@ -390,9 +421,6 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 			}
 		}
 	}
-	if value, ok := suo.mutation.SandboxStartedAt(); ok {
-		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
-	}
 	if value, ok := suo.mutation.BaseEnvID(); ok {
 		_spec.SetField(snapshot.FieldBaseEnvID, field.TypeString, value)
 	}
@@ -401,6 +429,12 @@ func (suo *SnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Snapshot, err
 	}
 	if value, ok := suo.mutation.Metadata(); ok {
 		_spec.SetField(snapshot.FieldMetadata, field.TypeJSON, value)
+	}
+	if value, ok := suo.mutation.SandboxStartedAt(); ok {
+		_spec.SetField(snapshot.FieldSandboxStartedAt, field.TypeTime, value)
+	}
+	if value, ok := suo.mutation.EnvSecure(); ok {
+		_spec.SetField(snapshot.FieldEnvSecure, field.TypeBool, value)
 	}
 	if suo.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{

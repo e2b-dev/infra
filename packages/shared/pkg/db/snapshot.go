@@ -25,6 +25,7 @@ type SnapshotInfo struct {
 	KernelVersion      string
 	FirecrackerVersion string
 	EnvdVersion        string
+	EnvdSecured        bool
 }
 
 // Check if there exists snapshot with the ID, if yes then return a new
@@ -81,6 +82,7 @@ func (db *DB) NewSnapshotBuild(
 			SetEnv(e).
 			SetMetadata(snapshotConfig.Metadata).
 			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
+			SetEnvSecure(snapshotConfig.EnvdSecured).
 			Save(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create snapshot '%s': %w", snapshotConfig.SandboxID, err)
@@ -122,55 +124,6 @@ func (db *DB) NewSnapshotBuild(
 	}
 
 	return b, nil
-}
-
-func (db *DB) GetLastSnapshot(ctx context.Context, sandboxID string, teamID uuid.UUID) (
-	*models.Snapshot,
-	*models.EnvBuild,
-	error,
-) {
-
-	snap, err := db.Client.Snapshot.Query().Where(snapshot.SandboxID(sandboxID)).Only(ctx)
-	if err != nil {
-		notFound := models.IsNotFound(err)
-
-		if notFound {
-			return nil, nil, SnapshotNotFound{}
-		} else {
-			return nil, nil, fmt.Errorf("failed to get snapshot for '%s': %w", sandboxID, err)
-		}
-	}
-
-	build, err := db.Client.EnvBuild.Query().Where(envbuild.StatusEQ(envbuild.StatusSuccess), envbuild.EnvID(snap.EnvID)).Order(models.Desc(envbuild.FieldFinishedAt)).First(ctx)
-	if err != nil {
-		notFound := models.IsNotFound(err)
-
-		if notFound {
-			return snap, nil, BuildNotFound{}
-		} else {
-			return nil, nil, fmt.Errorf("failed to get build for '%s': %w", sandboxID, err)
-		}
-	}
-
-	_, err = db.
-		Client.
-		Env.
-		Query().
-		Where(
-			env.ID(snap.EnvID),
-			env.TeamID(teamID),
-		).Only(ctx)
-	if err != nil {
-		notFound := models.IsNotFound(err)
-
-		if notFound {
-			return nil, nil, TemplateNotFound{}
-		} else {
-			return nil, nil, fmt.Errorf("failed to get template for '%s': %w", sandboxID, err)
-		}
-	}
-
-	return snap, build, nil
 }
 
 func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uuid.UUID) (

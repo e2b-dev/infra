@@ -23,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 )
 
 const (
@@ -42,7 +43,7 @@ const (
 	waitTimeForFCConfig = 500 * time.Millisecond
 
 	waitTimeForFCStart  = 10 * time.Second
-	waitTimeForStartCmd = 15 * time.Second
+	waitTimeForStartCmd = 20 * time.Second
 )
 
 type Snapshot struct {
@@ -88,20 +89,22 @@ func newFirecrackerClient(socketPath string) *client.Firecracker {
 	return httpClient
 }
 
-func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FCNetwork, rootfs *Rootfs) (*Snapshot, error) {
+func NewSnapshot(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, env *Env, network *FCNetwork, rootfs *Rootfs) (*Snapshot, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-snapshot")
 	defer childSpan.End()
+
+	postProcessor.WriteMsg("Creating snapshot")
 
 	socketFileName := fmt.Sprintf("fc-sock-%s.sock", env.BuildId)
 	socketPath := filepath.Join(tmpDirPath, socketFileName)
 
-	client := newFirecrackerClient(socketPath)
+	fcClient := newFirecrackerClient(socketPath)
 
 	telemetry.ReportEvent(childCtx, "created fc client")
 
 	snapshot := &Snapshot{
 		socketPath: socketPath,
-		client:     client,
+		client:     fcClient,
 		env:        env,
 		fc:         nil,
 	}
@@ -133,12 +136,15 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 
 	telemetry.ReportEvent(childCtx, "configured fc")
 
+	postProcessor.WriteMsg("Waiting for VM to start...")
 	// Wait for all necessary things in FC to start
 	// TODO: Maybe init should signalize when it's ready?
 	time.Sleep(waitTimeForFCStart)
 	telemetry.ReportEvent(childCtx, "waited for fc to start", attribute.Float64("seconds", float64(waitTimeForFCStart/time.Second)))
+	postProcessor.WriteMsg("VM started")
 
 	if env.StartCmd != "" {
+		postProcessor.WriteMsg("Waiting for start command to run...")
 		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
 		// TODO: Remove this after we can add customizable wait time for building templates.
 		if env.TemplateId == "zegbt9dl3l2ixqem82mm" || env.TemplateId == "ot5bidkk3j2so2j02uuz" || env.TemplateId == "0zeou1s7agaytqitvmzc" {
@@ -146,6 +152,7 @@ func NewSnapshot(ctx context.Context, tracer trace.Tracer, env *Env, network *FC
 		} else {
 			time.Sleep(waitTimeForStartCmd)
 		}
+		postProcessor.WriteMsg("Start command is running")
 		telemetry.ReportEvent(childCtx, "waited for start command", attribute.Float64("seconds", float64(waitTimeForStartCmd/time.Second)))
 	}
 

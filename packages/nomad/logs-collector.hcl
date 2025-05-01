@@ -84,7 +84,7 @@ inputs = ["http_server"]
 source = """
 del(."_path")
 .sandboxID = .instanceID
-.timestamp = parse_timestamp(.timestamp, format: "%Y-%m-%dT%H:%M:%S.%fZ") ?? now()
+.timestamp = parse_timestamp(.timestamp, format: "%+") ?? now()
 if !exists(.envID) {
   .envID = "unknown"
 }

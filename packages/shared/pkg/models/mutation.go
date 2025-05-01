@@ -3696,10 +3696,11 @@ type SnapshotMutation struct {
 	typ                string
 	id                 *uuid.UUID
 	created_at         *time.Time
-	sandbox_started_at *time.Time
 	base_env_id        *string
 	sandbox_id         *string
 	metadata           *map[string]string
+	sandbox_started_at *time.Time
+	env_secure         *bool
 	clearedFields      map[string]struct{}
 	env                *string
 	clearedenv         bool
@@ -3848,42 +3849,6 @@ func (m *SnapshotMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
-// SetSandboxStartedAt sets the "sandbox_started_at" field.
-func (m *SnapshotMutation) SetSandboxStartedAt(t time.Time) {
-	m.sandbox_started_at = &t
-}
-
-// SandboxStartedAt returns the value of the "sandbox_started_at" field in the mutation.
-func (m *SnapshotMutation) SandboxStartedAt() (r time.Time, exists bool) {
-	v := m.sandbox_started_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSandboxStartedAt returns the old "sandbox_started_at" field's value of the Snapshot entity.
-// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SnapshotMutation) OldSandboxStartedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSandboxStartedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSandboxStartedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSandboxStartedAt: %w", err)
-	}
-	return oldValue.SandboxStartedAt, nil
-}
-
-// ResetSandboxStartedAt resets all changes to the "sandbox_started_at" field.
-func (m *SnapshotMutation) ResetSandboxStartedAt() {
-	m.sandbox_started_at = nil
-}
-
 // SetBaseEnvID sets the "base_env_id" field.
 func (m *SnapshotMutation) SetBaseEnvID(s string) {
 	m.base_env_id = &s
@@ -4028,6 +3993,78 @@ func (m *SnapshotMutation) ResetMetadata() {
 	m.metadata = nil
 }
 
+// SetSandboxStartedAt sets the "sandbox_started_at" field.
+func (m *SnapshotMutation) SetSandboxStartedAt(t time.Time) {
+	m.sandbox_started_at = &t
+}
+
+// SandboxStartedAt returns the value of the "sandbox_started_at" field in the mutation.
+func (m *SnapshotMutation) SandboxStartedAt() (r time.Time, exists bool) {
+	v := m.sandbox_started_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSandboxStartedAt returns the old "sandbox_started_at" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldSandboxStartedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSandboxStartedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSandboxStartedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSandboxStartedAt: %w", err)
+	}
+	return oldValue.SandboxStartedAt, nil
+}
+
+// ResetSandboxStartedAt resets all changes to the "sandbox_started_at" field.
+func (m *SnapshotMutation) ResetSandboxStartedAt() {
+	m.sandbox_started_at = nil
+}
+
+// SetEnvSecure sets the "env_secure" field.
+func (m *SnapshotMutation) SetEnvSecure(b bool) {
+	m.env_secure = &b
+}
+
+// EnvSecure returns the value of the "env_secure" field in the mutation.
+func (m *SnapshotMutation) EnvSecure() (r bool, exists bool) {
+	v := m.env_secure
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvSecure returns the old "env_secure" field's value of the Snapshot entity.
+// If the Snapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SnapshotMutation) OldEnvSecure(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvSecure is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvSecure requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvSecure: %w", err)
+	}
+	return oldValue.EnvSecure, nil
+}
+
+// ResetEnvSecure resets all changes to the "env_secure" field.
+func (m *SnapshotMutation) ResetEnvSecure() {
+	m.env_secure = nil
+}
+
 // ClearEnv clears the "env" edge to the Env entity.
 func (m *SnapshotMutation) ClearEnv() {
 	m.clearedenv = true
@@ -4089,12 +4126,9 @@ func (m *SnapshotMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SnapshotMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 7)
 	if m.created_at != nil {
 		fields = append(fields, snapshot.FieldCreatedAt)
-	}
-	if m.sandbox_started_at != nil {
-		fields = append(fields, snapshot.FieldSandboxStartedAt)
 	}
 	if m.base_env_id != nil {
 		fields = append(fields, snapshot.FieldBaseEnvID)
@@ -4108,6 +4142,12 @@ func (m *SnapshotMutation) Fields() []string {
 	if m.metadata != nil {
 		fields = append(fields, snapshot.FieldMetadata)
 	}
+	if m.sandbox_started_at != nil {
+		fields = append(fields, snapshot.FieldSandboxStartedAt)
+	}
+	if m.env_secure != nil {
+		fields = append(fields, snapshot.FieldEnvSecure)
+	}
 	return fields
 }
 
@@ -4118,8 +4158,6 @@ func (m *SnapshotMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case snapshot.FieldCreatedAt:
 		return m.CreatedAt()
-	case snapshot.FieldSandboxStartedAt:
-		return m.SandboxStartedAt()
 	case snapshot.FieldBaseEnvID:
 		return m.BaseEnvID()
 	case snapshot.FieldEnvID:
@@ -4128,6 +4166,10 @@ func (m *SnapshotMutation) Field(name string) (ent.Value, bool) {
 		return m.SandboxID()
 	case snapshot.FieldMetadata:
 		return m.Metadata()
+	case snapshot.FieldSandboxStartedAt:
+		return m.SandboxStartedAt()
+	case snapshot.FieldEnvSecure:
+		return m.EnvSecure()
 	}
 	return nil, false
 }
@@ -4139,8 +4181,6 @@ func (m *SnapshotMutation) OldField(ctx context.Context, name string) (ent.Value
 	switch name {
 	case snapshot.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
-	case snapshot.FieldSandboxStartedAt:
-		return m.OldSandboxStartedAt(ctx)
 	case snapshot.FieldBaseEnvID:
 		return m.OldBaseEnvID(ctx)
 	case snapshot.FieldEnvID:
@@ -4149,6 +4189,10 @@ func (m *SnapshotMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldSandboxID(ctx)
 	case snapshot.FieldMetadata:
 		return m.OldMetadata(ctx)
+	case snapshot.FieldSandboxStartedAt:
+		return m.OldSandboxStartedAt(ctx)
+	case snapshot.FieldEnvSecure:
+		return m.OldEnvSecure(ctx)
 	}
 	return nil, fmt.Errorf("unknown Snapshot field %s", name)
 }
@@ -4164,13 +4208,6 @@ func (m *SnapshotMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
-		return nil
-	case snapshot.FieldSandboxStartedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSandboxStartedAt(v)
 		return nil
 	case snapshot.FieldBaseEnvID:
 		v, ok := value.(string)
@@ -4199,6 +4236,20 @@ func (m *SnapshotMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMetadata(v)
+		return nil
+	case snapshot.FieldSandboxStartedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSandboxStartedAt(v)
+		return nil
+	case snapshot.FieldEnvSecure:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvSecure(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Snapshot field %s", name)
@@ -4252,9 +4303,6 @@ func (m *SnapshotMutation) ResetField(name string) error {
 	case snapshot.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
-	case snapshot.FieldSandboxStartedAt:
-		m.ResetSandboxStartedAt()
-		return nil
 	case snapshot.FieldBaseEnvID:
 		m.ResetBaseEnvID()
 		return nil
@@ -4266,6 +4314,12 @@ func (m *SnapshotMutation) ResetField(name string) error {
 		return nil
 	case snapshot.FieldMetadata:
 		m.ResetMetadata()
+		return nil
+	case snapshot.FieldSandboxStartedAt:
+		m.ResetSandboxStartedAt()
+		return nil
+	case snapshot.FieldEnvSecure:
+		m.ResetEnvSecure()
 		return nil
 	}
 	return fmt.Errorf("unknown Snapshot field %s", name)

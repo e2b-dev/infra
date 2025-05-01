@@ -47,6 +47,7 @@ func NewInstanceInfo(
 	EnvdVersion string,
 	Node *node.NodeInfo,
 	AutoPause bool,
+	EnvdAccessToken *string,
 ) *InstanceInfo {
 	instance := &InstanceInfo{
 		Instance:           Instance,
@@ -62,6 +63,7 @@ func NewInstanceInfo(
 		KernelVersion:      KernelVersion,
 		FirecrackerVersion: FirecrackerVersion,
 		EnvdVersion:        EnvdVersion,
+		EnvdAccessToken:    EnvdAccessToken,
 		Node:               Node,
 		AutoPause:          atomic.Bool{},
 		Pausing:            utils.NewSetOnce[*node.NodeInfo](),
@@ -87,6 +89,7 @@ type InstanceInfo struct {
 	KernelVersion      string
 	FirecrackerVersion string
 	EnvdVersion        string
+	EnvdAccessToken    *string
 	Node               *node.NodeInfo
 	AutoPause          atomic.Bool
 	Pausing            *utils.SetOnce[*node.NodeInfo]

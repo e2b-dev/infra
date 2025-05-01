@@ -35,3 +35,7 @@ sql:
               type: "Time"
               pointer: true
             nullable: true
+
+          - db_type: "jsonb"
+            go_type: "github.com/e2b-dev/infra/packages/db/types.JSONBStringMap"
+            nullable: true
