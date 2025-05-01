@@ -40,7 +40,7 @@ func (e *ErrSandboxNotFound) Error() string {
 
 func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Destination, error)) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t, err := getDestination(r)
+		d, err := getDestination(r)
 
 		var invalidHostErr *ErrInvalidHost
 		if errors.As(err, &invalidHostErr) {
@@ -82,11 +82,11 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		t.Logger.Debug("proxying request")
+		d.RequestLogger.Debug("proxying request")
 
-		ctx := context.WithValue(r.Context(), pool.DestinationContextKey{}, t)
+		ctx := context.WithValue(r.Context(), pool.DestinationContextKey{}, d)
 
-		proxy := p.Get(t.ConnectionKey)
+		proxy := p.Get(d)
 		proxy.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

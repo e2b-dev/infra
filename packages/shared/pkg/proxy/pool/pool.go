@@ -25,21 +25,14 @@ type ProxyPool struct {
 	idleTimeout          time.Duration
 	totalConnsCounter    atomic.Uint64
 	currentConnsCounter  atomic.Int64
-	clientLogger         *log.Logger
 }
 
 func New(sizePerConnectionKey, maxClientConns int, idleTimeout time.Duration) (*ProxyPool, error) {
-	clientLogger, err := zap.NewStdLogAt(zap.L(), zap.ErrorLevel)
-	if err != nil {
-		return nil, err
-	}
-
 	return &ProxyPool{
 		pool:                 smap.New[*proxyClient](),
 		sizePerConnectionKey: sizePerConnectionKey,
 		maxClientConns:       maxClientConns,
 		idleTimeout:          idleTimeout,
-		clientLogger:         clientLogger,
 	}, nil
 }
 
@@ -57,14 +50,31 @@ func (p *ProxyPool) keys(connectionKey string) []string {
 	return keys
 }
 
-func (p *ProxyPool) Get(connectionKey string) *proxyClient {
+func (p *ProxyPool) Get(d *Destination) *proxyClient {
 	randomIdx := rand.Intn(p.sizePerConnectionKey)
 
-	key := getClientKey(connectionKey, randomIdx)
+	key := getClientKey(d.ConnectionKey, randomIdx)
 
 	return p.pool.Upsert(key, nil, func(exist bool, inMapValue *proxyClient, newValue *proxyClient) *proxyClient {
 		if exist && inMapValue != nil {
 			return inMapValue
+		}
+
+		var logger *log.Logger
+		if d.ConnectionKey != "" {
+			l, err := zap.NewStdLogAt(zap.L().With(zap.String("sandbox_id", d.SandboxId)), zap.ErrorLevel)
+			if err != nil {
+				zap.L().Warn("failed to create logger", zap.Error(err))
+			}
+
+			logger = l
+		} else {
+			l, err := zap.NewStdLogAt(zap.L(), zap.ErrorLevel)
+			if err != nil {
+				zap.L().Warn("failed to create logger", zap.Error(err))
+			}
+
+			logger = l
 		}
 
 		return newProxyClient(
@@ -80,7 +90,7 @@ func (p *ProxyPool) Get(connectionKey string) *proxyClient {
 			p.idleTimeout,
 			&p.totalConnsCounter,
 			&p.currentConnsCounter,
-			p.clientLogger,
+			logger,
 		)
 	})
 }

@@ -149,7 +149,7 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
-			Logger:        zap.NewNop(),
+			RequestLogger: zap.NewNop(),
 			ConnectionKey: backend.id,
 		}, nil
 	}
@@ -193,7 +193,7 @@ func TestProxyReusesConnections(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
-			Logger:        zap.NewNop(),
+			RequestLogger: zap.NewNop(),
 			ConnectionKey: backend.id,
 		}, nil
 	}
@@ -265,7 +265,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend1.url,
 			SandboxId:     "backend1",
-			Logger:        zap.NewNop(),
+			RequestLogger: zap.NewNop(),
 			ConnectionKey: backendKey,
 		}, nil
 	}
@@ -350,7 +350,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 		return &pool.Destination{
 			Url:           backend1.url,
 			SandboxId:     "backend1",
-			Logger:        zap.NewNop(),
+			RequestLogger: zap.NewNop(),
 			ConnectionKey: backendKey,
 		}, nil
 	}

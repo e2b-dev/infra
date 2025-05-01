@@ -49,7 +49,7 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
 				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
 				ConnectionKey: sbx.StartID,
-				Logger: zap.L().With(
+				RequestLogger: zap.L().With(
 					zap.String("host", r.Host),
 					zap.String("sandbox_id", sbx.Config.SandboxId),
 					zap.String("sandbox_ip", sbx.Slot.HostIP()),

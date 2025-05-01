@@ -94,12 +94,12 @@ func newProxyClient(
 				}
 
 				if r.StatusCode >= 500 {
-					t.Logger.Error(
+					t.RequestLogger.Error(
 						"Reverse proxy error",
 						zap.Int("status_code", r.StatusCode),
 					)
 				} else {
-					t.Logger.Debug("Reverse proxy response",
+					t.RequestLogger.Debug("Reverse proxy response",
 						zap.Int("status_code", r.StatusCode),
 					)
 				}
