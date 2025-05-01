@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 )
 
 type proxyClient struct {
@@ -47,7 +48,7 @@ func newProxyClient(
 
 			totalConnsCounter.Add(1)
 
-			return NewTrackedConnection(conn, currentConnsCounter), nil
+			return tracking.NewConnection(conn, currentConnsCounter), nil
 		},
 		DisableCompression: true, // No need to request or manipulate compression
 	}

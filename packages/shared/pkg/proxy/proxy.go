@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 )
 
 const maxClientConns = 8192 // Reasonably big number that is lower than the number of available ports.
@@ -76,5 +77,5 @@ func (p *Proxy) ListenAndServe() error {
 }
 
 func (p *Proxy) Serve(l net.Listener) error {
-	return p.Server.Serve(newTrackedListener(l, &p.currentServerConnsCounter))
+	return p.Server.Serve(tracking.NewListener(l, &p.currentServerConnsCounter))
 }
