@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-// hostConnectionSplit is the number of connections per host.
+// hostConnectionSplit is used for splitting the total number of connections between the hosts.
 // This is used to limit the number of connections per host to avoid exhausting the number of available via one host.
 // The total number of connection per host will be total connections / hostConnectionSplit.
 // If the total connections is lower than hostConnectionSplit, the total connections will be used for each host.
