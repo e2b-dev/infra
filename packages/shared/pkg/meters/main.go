@@ -29,12 +29,12 @@ const (
 	OrchestratorSandboxCountMeterName ObservableUpDownCounterType = "orchestrator.env.sandbox.running"
 
 	ClientProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.server.connections.open"
-	ClientProxyClientConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.client.connections.open"
-	ClientProxyClientPoolSizeMeterCounterName    ObservableUpDownCounterType = "client_proxy.proxy.client.pool.size"
+	ClientProxyPoolConnectionsMeterCounterName   ObservableUpDownCounterType = "client_proxy.proxy.pool.connections.open"
+	ClientProxyPoolSizeMeterCounterName          ObservableUpDownCounterType = "client_proxy.proxy.pool.size"
 
 	OrchestratorProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "orchestrator.proxy.server.connections.open"
-	OrchestratorProxyClientConnectionsMeterCounterName ObservableUpDownCounterType = "orchestrator.proxy.client.connections.open"
-	OrchestratorProxyClientPoolSizeMeterCounterName    ObservableUpDownCounterType = "orchestrator.proxy.client.pool.size"
+	OrchestratorProxyPoolConnectionsMeterCounterName   ObservableUpDownCounterType = "orchestrator.proxy.pool.connections.open"
+	OrchestratorProxyPoolSizeMeterCounterName          ObservableUpDownCounterType = "orchestrator.proxy.pool.size"
 )
 
 var meter = otel.GetMeterProvider().Meter("nomad")
@@ -70,21 +70,21 @@ var upDownCounterUnits = map[UpDownCounterType]string{
 var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName:                  "Counter of running sandboxes on the orchestrator.",
 	ClientProxyServerConnectionsMeterCounterName:       "Open connections to the client proxy from load balancer.",
-	ClientProxyClientConnectionsMeterCounterName:       "Open connections from the client proxy to the orchestrator proxy.",
-	ClientProxyClientPoolSizeMeterCounterName:          "Size of the client proxy pool.",
+	ClientProxyPoolConnectionsMeterCounterName:         "Open connections from the client proxy to the orchestrator proxy.",
+	ClientProxyPoolSizeMeterCounterName:                "Size of the client proxy pool.",
 	OrchestratorProxyServerConnectionsMeterCounterName: "Open connections to the orchestrator proxy from client proxies.",
-	OrchestratorProxyClientConnectionsMeterCounterName: "Open connections from the orchestrator proxy to sandboxes.",
-	OrchestratorProxyClientPoolSizeMeterCounterName:    "Size of the orchestrator proxy pool.",
+	OrchestratorProxyPoolConnectionsMeterCounterName:   "Open connections from the orchestrator proxy to sandboxes.",
+	OrchestratorProxyPoolSizeMeterCounterName:          "Size of the orchestrator proxy pool.",
 }
 
 var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName:                  "{sandbox}",
 	ClientProxyServerConnectionsMeterCounterName:       "{connection}",
-	ClientProxyClientConnectionsMeterCounterName:       "{connection}",
-	ClientProxyClientPoolSizeMeterCounterName:          "{connection}",
+	ClientProxyPoolConnectionsMeterCounterName:         "{connection}",
+	ClientProxyPoolSizeMeterCounterName:                "{connection}",
 	OrchestratorProxyServerConnectionsMeterCounterName: "{connection}",
-	OrchestratorProxyClientConnectionsMeterCounterName: "{connection}",
-	OrchestratorProxyClientPoolSizeMeterCounterName:    "{connection}",
+	OrchestratorProxyPoolConnectionsMeterCounterName:   "{connection}",
+	OrchestratorProxyPoolSizeMeterCounterName:          "{connection}",
 }
 
 func GetCounter(name CounterType) (metric.Int64Counter, error) {

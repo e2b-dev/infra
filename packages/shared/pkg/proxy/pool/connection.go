@@ -5,21 +5,21 @@ import (
 	"sync/atomic"
 )
 
-type trackedConnection struct {
+type TrackedConnection struct {
 	net.Conn
 	counter *atomic.Int64
 }
 
-func newTrackedConnection(conn net.Conn, counter *atomic.Int64) *trackedConnection {
+func NewTrackedConnection(conn net.Conn, counter *atomic.Int64) *TrackedConnection {
 	counter.Add(1)
 
-	return &trackedConnection{
+	return &TrackedConnection{
 		Conn:    conn,
 		counter: counter,
 	}
 }
 
-func (c *trackedConnection) Close() error {
+func (c *TrackedConnection) Close() error {
 	c.counter.Add(-1)
 
 	return c.Conn.Close()

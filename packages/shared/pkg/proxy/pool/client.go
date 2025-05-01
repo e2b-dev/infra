@@ -47,7 +47,7 @@ func newProxyClient(
 
 			totalConnsCounter.Add(1)
 
-			return newTrackedConnection(conn, currentConnsCounter), nil
+			return NewTrackedConnection(conn, currentConnsCounter), nil
 		},
 		DisableCompression: true, // No need to request or manipulate compression
 	}

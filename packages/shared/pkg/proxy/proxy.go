@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,26 +16,22 @@ type Proxy struct {
 	http.Server
 	pool                      *pool.ProxyPool
 	currentServerConnsCounter *atomic.Int64
-	noServerConns             *sync.Cond
 }
 
 func New(
 	port uint,
-	poolSize int,
+	poolSizePerConnectionKey int,
 	idleTimeout time.Duration,
 	getDestination func(r *http.Request) (*pool.Destination, error),
 ) (*Proxy, error) {
 	p, err := pool.New(
-		poolSize,
+		poolSizePerConnectionKey,
 		maxClientConns,
 		idleTimeout,
 	)
 	if err != nil {
 		return nil, err
 	}
-
-	var currentServerConnsCounter atomic.Int64
-	noServerConns := sync.NewCond(&sync.Mutex{})
 
 	return &Proxy{
 		Server: http.Server{
@@ -46,34 +41,13 @@ func New(
 			IdleTimeout:       idleTimeout,
 			ReadHeaderTimeout: 0,
 			Handler:           handler(p, getDestination),
-			ConnState: func(conn net.Conn, state http.ConnState) {
-				if state == http.StateNew {
-					currentServerConnsCounter.Add(1)
-				} else if state == http.StateClosed {
-					if currentServerConnsCounter.Add(-1) == 0 {
-						noServerConns.Broadcast()
-					}
-				}
-			},
 		},
-		currentServerConnsCounter: &currentServerConnsCounter,
-		noServerConns:             noServerConns,
-		pool:                      p,
+		pool: p,
 	}, nil
 }
 
 func (p *Proxy) TotalPoolConnections() uint64 {
 	return p.pool.TotalConnections()
-}
-
-// WaitForNoServerConnections waits for all server connections (even the idle ones) to be closed.
-func (p *Proxy) WaitForNoServerConnections() {
-	for p.currentServerConnsCounter.Load() != 0 {
-		p.noServerConns.L.Lock()
-		defer p.noServerConns.L.Unlock()
-
-		p.noServerConns.Wait()
-	}
 }
 
 func (p *Proxy) CurrentServerConnections() int64 {
@@ -84,10 +58,23 @@ func (p *Proxy) CurrentPoolSize() int {
 	return p.pool.Size()
 }
 
-func (p *Proxy) CurrentClientConnections() int64 {
+func (p *Proxy) CurrentPoolConnections() int64 {
 	return p.pool.CurrentConnections()
 }
 
 func (p *Proxy) RemoveFromPool(connectionKey string) {
 	p.pool.Close(connectionKey)
+}
+
+func (p *Proxy) ListenAndServe() error {
+	l, err := net.Listen("tcp", p.Addr)
+	if err != nil {
+		return err
+	}
+
+	return p.Serve(l)
+}
+
+func (p *Proxy) Serve(l net.Listener) error {
+	return p.Server.Serve(newTrackedListener(l, p.currentServerConnsCounter))
 }
