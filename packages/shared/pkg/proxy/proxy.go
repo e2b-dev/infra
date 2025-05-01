@@ -15,7 +15,7 @@ const maxClientConns = 8192 // Reasonably big number that is lower than the numb
 type Proxy struct {
 	http.Server
 	pool                      *pool.ProxyPool
-	currentServerConnsCounter *atomic.Int64
+	currentServerConnsCounter atomic.Int64
 }
 
 func New(
@@ -76,5 +76,5 @@ func (p *Proxy) ListenAndServe() error {
 }
 
 func (p *Proxy) Serve(l net.Listener) error {
-	return p.Server.Serve(newTrackedListener(l, p.currentServerConnsCounter))
+	return p.Server.Serve(newTrackedListener(l, &p.currentServerConnsCounter))
 }
