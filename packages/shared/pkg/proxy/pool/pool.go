@@ -19,27 +19,27 @@ import (
 const hostConnectionSplit = 4
 
 type ProxyPool struct {
-	pool                *smap.Map[*proxyClient]
-	size                int
-	maxClientConns      int
-	idleTimeout         time.Duration
-	totalConnsCounter   atomic.Uint64
-	currentConnsCounter atomic.Int64
-	clientLogger        *log.Logger
+	pool                 *smap.Map[*proxyClient]
+	sizePerConnectionKey int
+	maxClientConns       int
+	idleTimeout          time.Duration
+	totalConnsCounter    atomic.Uint64
+	currentConnsCounter  atomic.Int64
+	clientLogger         *log.Logger
 }
 
-func New(size int, maxClientConns int, idleTimeout time.Duration) (*ProxyPool, error) {
+func New(sizePerConnectionKey, maxClientConns int, idleTimeout time.Duration) (*ProxyPool, error) {
 	clientLogger, err := zap.NewStdLogAt(zap.L(), zap.ErrorLevel)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ProxyPool{
-		pool:           smap.New[*proxyClient](),
-		size:           size,
-		maxClientConns: maxClientConns,
-		idleTimeout:    idleTimeout,
-		clientLogger:   clientLogger,
+		pool:                 smap.New[*proxyClient](),
+		sizePerConnectionKey: sizePerConnectionKey,
+		maxClientConns:       maxClientConns,
+		idleTimeout:          idleTimeout,
+		clientLogger:         clientLogger,
 	}, nil
 }
 
@@ -48,9 +48,9 @@ func getClientKey(connectionKey string, poolIdx int) string {
 }
 
 func (p *ProxyPool) keys(connectionKey string) []string {
-	keys := make([]string, 0, p.size)
+	keys := make([]string, 0, p.sizePerConnectionKey)
 
-	for poolIdx := range p.size {
+	for poolIdx := range p.sizePerConnectionKey {
 		keys = append(keys, getClientKey(connectionKey, poolIdx))
 	}
 
@@ -58,7 +58,7 @@ func (p *ProxyPool) keys(connectionKey string) []string {
 }
 
 func (p *ProxyPool) Get(connectionKey string) *proxyClient {
-	randomIdx := rand.Intn(p.size)
+	randomIdx := rand.Intn(p.sizePerConnectionKey)
 
 	key := getClientKey(connectionKey, randomIdx)
 
