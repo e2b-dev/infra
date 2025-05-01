@@ -112,7 +112,6 @@ func newTestProxy(getDestination func(r *http.Request) (*pool.Destination, error
 		return nil, 0, fmt.Errorf("failed to get free port: %v", err)
 	}
 	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
 
 	// Set up the proxy server
 	proxy, err := New(
@@ -127,11 +126,8 @@ func newTestProxy(getDestination func(r *http.Request) (*pool.Destination, error
 
 	// Start the proxy server
 	go func() {
-		_ = proxy.ListenAndServe()
+		proxy.Serve(l)
 	}()
-
-	// Wait for the proxy to start
-	time.Sleep(100 * time.Millisecond)
 
 	return proxy, uint(port), nil
 }
