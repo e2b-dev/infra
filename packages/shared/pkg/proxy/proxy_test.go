@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 	"gotest.tools/assert"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/client"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 )
 
 // testBackend represents a test backend server
@@ -105,7 +105,7 @@ func assertBackendOutput(t *testing.T, backend *testBackend, resp *http.Response
 }
 
 // newTestProxy creates a new proxy server for testing
-func newTestProxy(getRoutingTarget func(r *http.Request) (*client.ProxingInfo, error)) (*Proxy, uint, error) {
+func newTestProxy(getDestination func(r *http.Request) (*pool.Destination, error)) (*Proxy, uint, error) {
 	// Find a free port for the proxy
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -117,9 +117,9 @@ func newTestProxy(getRoutingTarget func(r *http.Request) (*client.ProxingInfo, e
 	// Set up the proxy server
 	proxy, err := New(
 		uint(port),
-		20*time.Second, // Short idle timeout
 		1,
-		getRoutingTarget,
+		20*time.Second, // Short idle timeout
+		getDestination,
 	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create proxy: %v", err)
@@ -149,8 +149,8 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 	defer backend.Close()
 
 	// Set up a routing function that always returns the backend
-	getRoutingTarget := func(r *http.Request) (*client.ProxingInfo, error) {
-		return &client.ProxingInfo{
+	getDestination := func(r *http.Request) (*pool.Destination, error) {
+		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
 			Logger:        zap.NewNop(),
@@ -158,7 +158,7 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 		}, nil
 	}
 
-	proxy, port, err := newTestProxy(getRoutingTarget)
+	proxy, port, err := newTestProxy(getDestination)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}
@@ -193,8 +193,8 @@ func TestProxyReusesConnections(t *testing.T) {
 	defer backend.Close()
 
 	// Set up a routing function that always returns the backend
-	getRoutingTarget := func(r *http.Request) (*client.ProxingInfo, error) {
-		return &client.ProxingInfo{
+	getDestination := func(r *http.Request) (*pool.Destination, error) {
+		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
 			Logger:        zap.NewNop(),
@@ -202,7 +202,7 @@ func TestProxyReusesConnections(t *testing.T) {
 		}, nil
 	}
 
-	proxy, port, err := newTestProxy(getRoutingTarget)
+	proxy, port, err := newTestProxy(getDestination)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	var backendMappingMutex sync.Mutex
 
 	// Set up a routing function that returns the current backend
-	getRoutingTarget := func(r *http.Request) (*client.ProxingInfo, error) {
+	getDestination := func(r *http.Request) (*pool.Destination, error) {
 		backendMappingMutex.Lock()
 		defer backendMappingMutex.Unlock()
 
@@ -266,7 +266,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 			return nil, fmt.Errorf("backend not found")
 		}
 
-		return &client.ProxingInfo{
+		return &pool.Destination{
 			Url:           backend1.url,
 			SandboxId:     "backend1",
 			Logger:        zap.NewNop(),
@@ -275,7 +275,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	}
 
 	// Create proxy with the initial routing function
-	proxy, port, err := newTestProxy(getRoutingTarget)
+	proxy, port, err := newTestProxy(getDestination)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	var backendMappingMutex sync.Mutex
 
 	// Set up a routing function that returns the current backend
-	getRoutingTarget := func(r *http.Request) (*client.ProxingInfo, error) {
+	getDestination := func(r *http.Request) (*pool.Destination, error) {
 		backendMappingMutex.Lock()
 		defer backendMappingMutex.Unlock()
 
@@ -351,7 +351,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 			return nil, fmt.Errorf("backend not found")
 		}
 
-		return &client.ProxingInfo{
+		return &pool.Destination{
 			Url:           backend1.url,
 			SandboxId:     "backend1",
 			Logger:        zap.NewNop(),
@@ -360,7 +360,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 	}
 
 	// Create proxy with the initial routing function
-	proxy, port, err := newTestProxy(getRoutingTarget)
+	proxy, port, err := newTestProxy(getDestination)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}

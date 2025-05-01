@@ -8,14 +8,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/client"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 )
 
 const maxClientConns = 8192 // Reasonably big number that is lower than the number of available ports.
 
 type Proxy struct {
 	http.Server
-	pool                      *proxyPool
+	pool                      *pool.ProxyPool
 	currentServerConnsCounter *atomic.Int64
 	noServerConns             *sync.Cond
 }
@@ -24,9 +24,9 @@ func New(
 	port uint,
 	poolSize int,
 	idleTimeout time.Duration,
-	getProxyingInfo func(r *http.Request) (*client.ProxingInfo, error),
+	getDestination func(r *http.Request) (*pool.Destination, error),
 ) (*Proxy, error) {
-	pool, err := newProxyPool(
+	p, err := pool.New(
 		poolSize,
 		maxClientConns,
 		idleTimeout,
@@ -45,7 +45,7 @@ func New(
 			WriteTimeout:      0,
 			IdleTimeout:       idleTimeout,
 			ReadHeaderTimeout: 0,
-			Handler:           pool.handler(getProxyingInfo),
+			Handler:           handler(p, getDestination),
 			ConnState: func(conn net.Conn, state http.ConnState) {
 				if state == http.StateNew {
 					currentServerConnsCounter.Add(1)
@@ -58,7 +58,7 @@ func New(
 		},
 		currentServerConnsCounter: &currentServerConnsCounter,
 		noServerConns:             noServerConns,
-		pool:                      pool,
+		pool:                      p,
 	}, nil
 }
 

@@ -1,4 +1,4 @@
-package client
+package pool
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"sync/atomic"
 	"time"
 
@@ -15,31 +14,19 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 )
 
-type ProxyingInfoContextKey struct{}
-
-// ProxingInfo contains information about where to route the request.
-type ProxingInfo struct {
-	Url       *url.URL
-	SandboxId string
-	Logger    *zap.Logger
-	// ConnectionKey is used for identifying which keepalive connections are not the same so we can prevent unintended reuse.
-	// This is evaluated before checking for existing connection to the IP:port pair.
-	ConnectionKey string
-}
-
-type ProxyClient struct {
+type proxyClient struct {
 	httputil.ReverseProxy
 	transport *http.Transport
 }
 
-func NewProxyClient(
+func newProxyClient(
 	maxIdleConns,
 	maxHostIdleConns int,
 	idleTimeout time.Duration,
 	totalConnsCounter *atomic.Uint64,
 	currentConnsCounter *atomic.Int64,
 	logger *log.Logger,
-) *ProxyClient {
+) *proxyClient {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		// Limit the max connection per host to avoid exhausting the number of available ports to one host.
@@ -65,12 +52,12 @@ func NewProxyClient(
 		DisableCompression: true, // No need to request or manipulate compression
 	}
 
-	return &ProxyClient{
+	return &proxyClient{
 		transport: transport,
 		ReverseProxy: httputil.ReverseProxy{
 			Transport: transport,
 			Rewrite: func(r *httputil.ProxyRequest) {
-				t, ok := r.In.Context().Value(ProxyingInfoContextKey{}).(*ProxingInfo)
+				t, ok := r.In.Context().Value(DestinationContextKey{}).(*Destination)
 				if !ok {
 					zap.L().Error("failed to get routing target from context")
 
@@ -82,7 +69,7 @@ func NewProxyClient(
 				r.Out.Host = r.In.Host
 			},
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-				t, ok := r.Context().Value(ProxyingInfoContextKey{}).(*ProxingInfo)
+				t, ok := r.Context().Value(DestinationContextKey{}).(*Destination)
 				if !ok {
 					zap.L().Error("failed to get routing target from context")
 
@@ -98,7 +85,7 @@ func NewProxyClient(
 				}
 			},
 			ModifyResponse: func(r *http.Response) error {
-				t, ok := r.Request.Context().Value(ProxyingInfoContextKey{}).(*ProxingInfo)
+				t, ok := r.Request.Context().Value(DestinationContextKey{}).(*Destination)
 				if !ok {
 					zap.L().Error("failed to get routing target from context")
 
@@ -124,6 +111,6 @@ func NewProxyClient(
 	}
 }
 
-func (p *ProxyClient) CloseIdleConnections() {
+func (p *proxyClient) closeIdleConnections() {
 	p.transport.CloseIdleConnections()
 }

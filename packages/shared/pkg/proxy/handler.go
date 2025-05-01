@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/client"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 )
 
@@ -38,9 +38,9 @@ func (e *ErrSandboxNotFound) Error() string {
 	return "sandbox not found"
 }
 
-func (p *proxyPool) handler(getRoutingTarget func(r *http.Request) (*client.ProxingInfo, error)) http.HandlerFunc {
+func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Destination, error)) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t, err := getRoutingTarget(r)
+		t, err := getDestination(r)
 
 		var invalidHostErr *ErrInvalidHost
 		if errors.As(err, &invalidHostErr) {
@@ -84,7 +84,7 @@ func (p *proxyPool) handler(getRoutingTarget func(r *http.Request) (*client.Prox
 
 		t.Logger.Debug("proxying request")
 
-		ctx := context.WithValue(r.Context(), client.ProxyingInfoContextKey{}, t)
+		ctx := context.WithValue(r.Context(), pool.DestinationContextKey{}, t)
 
 		proxy := p.Get(t.ConnectionKey)
 		proxy.ServeHTTP(w, r.WithContext(ctx))

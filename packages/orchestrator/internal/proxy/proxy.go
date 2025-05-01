@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
-	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/client"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -27,7 +27,7 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse
 		port,
 		minSandboxConns,
 		idleTimeout,
-		func(r *http.Request) (*client.ProxingInfo, error) {
+		func(r *http.Request) (*pool.Destination, error) {
 			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
 			if err != nil {
 				return nil, err
@@ -43,7 +43,7 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse
 				Host:   fmt.Sprintf("%s:%d", sbx.Slot.HostIP(), port),
 			}
 
-			return &client.ProxingInfo{
+			return &pool.Destination{
 				Url:       url,
 				SandboxId: sbx.Config.SandboxId,
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.

@@ -14,7 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
-	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/client"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 )
 
 const (
@@ -33,7 +33,7 @@ func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 		port,
 		minOrchestratorProxyConns,
 		idleTimeout,
-		func(r *http.Request) (*client.ProxingInfo, error) {
+		func(r *http.Request) (*pool.Destination, error) {
 			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
 			if err != nil {
 				return nil, err
@@ -93,7 +93,7 @@ func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 				Host:   fmt.Sprintf("%s:%d", node, orchestratorProxyPort),
 			}
 
-			return &client.ProxingInfo{
+			return &pool.Destination{
 				Url:       url,
 				SandboxId: sandboxId,
 				Logger:    logger,

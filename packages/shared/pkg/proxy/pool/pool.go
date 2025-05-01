@@ -1,4 +1,4 @@
-package proxy
+package pool
 
 import (
 	"fmt"
@@ -9,7 +9,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -19,8 +18,8 @@ import (
 // If the total connections is lower than hostConnectionSplit, the total connections will be used for each host.
 const hostConnectionSplit = 4
 
-type proxyPool struct {
-	pool                *smap.Map[*client.ProxyClient]
+type ProxyPool struct {
+	pool                *smap.Map[*proxyClient]
 	size                int
 	maxClientConns      int
 	idleTimeout         time.Duration
@@ -29,14 +28,14 @@ type proxyPool struct {
 	clientLogger        *log.Logger
 }
 
-func newProxyPool(size int, maxClientConns int, idleTimeout time.Duration) (*proxyPool, error) {
+func New(size int, maxClientConns int, idleTimeout time.Duration) (*ProxyPool, error) {
 	clientLogger, err := zap.NewStdLogAt(zap.L(), zap.ErrorLevel)
 	if err != nil {
 		return nil, err
 	}
 
-	return &proxyPool{
-		pool:           smap.New[*client.ProxyClient](),
+	return &ProxyPool{
+		pool:           smap.New[*proxyClient](),
 		size:           size,
 		maxClientConns: maxClientConns,
 		idleTimeout:    idleTimeout,
@@ -48,7 +47,7 @@ func getClientKey(connectionKey string, poolIdx int) string {
 	return fmt.Sprintf("%s:%d", connectionKey, poolIdx)
 }
 
-func (p *proxyPool) keys(connectionKey string) []string {
+func (p *ProxyPool) keys(connectionKey string) []string {
 	keys := make([]string, 0, p.size)
 
 	for poolIdx := range p.size {
@@ -58,17 +57,17 @@ func (p *proxyPool) keys(connectionKey string) []string {
 	return keys
 }
 
-func (p *proxyPool) Get(connectionKey string) *client.ProxyClient {
+func (p *ProxyPool) Get(connectionKey string) *proxyClient {
 	randomIdx := rand.Intn(p.size)
 
 	key := getClientKey(connectionKey, randomIdx)
 
-	return p.pool.Upsert(key, nil, func(exist bool, inMapValue *client.ProxyClient, newValue *client.ProxyClient) *client.ProxyClient {
+	return p.pool.Upsert(key, nil, func(exist bool, inMapValue *proxyClient, newValue *proxyClient) *proxyClient {
 		if exist && inMapValue != nil {
 			return inMapValue
 		}
 
-		return client.NewProxyClient(
+		return newProxyClient(
 			p.maxClientConns,
 			// We limit the max number of connections per host to avoid exhausting the number of available via one host.
 			func() int {
@@ -86,11 +85,11 @@ func (p *proxyPool) Get(connectionKey string) *client.ProxyClient {
 	})
 }
 
-func (p *proxyPool) Close(connectionKey string) {
+func (p *ProxyPool) Close(connectionKey string) {
 	for _, key := range p.keys(connectionKey) {
-		p.pool.RemoveCb(key, func(key string, proxy *client.ProxyClient, exists bool) bool {
+		p.pool.RemoveCb(key, func(key string, proxy *proxyClient, exists bool) bool {
 			if proxy != nil {
-				proxy.CloseIdleConnections()
+				proxy.closeIdleConnections()
 			}
 
 			return true
@@ -98,10 +97,10 @@ func (p *proxyPool) Close(connectionKey string) {
 	}
 }
 
-func (p *proxyPool) TotalConnections() uint64 {
+func (p *ProxyPool) TotalConnections() uint64 {
 	return p.totalConnsCounter.Load()
 }
 
-func (p *proxyPool) CurrentConnections() int64 {
+func (p *ProxyPool) CurrentConnections() int64 {
 	return p.currentConnsCounter.Load()
 }
