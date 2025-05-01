@@ -80,6 +80,14 @@ func (p *Proxy) CurrentServerConnections() int64 {
 	return p.currentServerConnsCounter.Load()
 }
 
+func (p *Proxy) CurrentPoolSize() int {
+	return p.pool.Size()
+}
+
+func (p *Proxy) CurrentClientConnections() int64 {
+	return p.pool.CurrentConnections()
+}
+
 func (p *Proxy) RemoveFromPool(connectionKey string) {
 	p.pool.Close(connectionKey)
 }

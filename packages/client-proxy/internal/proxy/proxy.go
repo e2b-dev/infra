@@ -104,14 +104,31 @@ func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 		return nil, err
 	}
 
-	_, err = meters.GetObservableUpDownCounter(meters.ActiveConnectionsCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err = meters.GetObservableUpDownCounter(meters.ClientProxyClientConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(proxy.CurrentServerConnections()))
 
 		return nil
 	})
-
 	if err != nil {
-		zap.L().Error("Error registering client proxy connections metric", zap.Any("metric_name", meters.ActiveConnectionsCounterMeterName), zap.Error(err))
+		zap.L().Error("Error registering client proxy connections metric", zap.Any("metric_name", meters.ClientProxyClientConnectionsMeterCounterName), zap.Error(err))
+	}
+
+	_, err = meters.GetObservableUpDownCounter(meters.ClientProxyClientPoolSizeMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+		observer.Observe(int64(proxy.CurrentPoolSize()))
+
+		return nil
+	})
+	if err != nil {
+		zap.L().Error("Error registering client proxy pool size metric", zap.Any("metric_name", meters.ClientProxyClientPoolSizeMeterCounterName), zap.Error(err))
+	}
+
+	_, err = meters.GetObservableUpDownCounter(meters.ClientProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+		observer.Observe(int64(proxy.CurrentClientConnections()))
+
+		return nil
+	})
+	if err != nil {
+		zap.L().Error("Error registering client proxy server connections metric", zap.Any("metric_name", meters.ClientProxyServerConnectionsMeterCounterName), zap.Error(err))
 	}
 
 	return proxy, nil

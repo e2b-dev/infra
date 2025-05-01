@@ -16,19 +16,25 @@ const (
 type UpDownCounterType string
 
 const (
-	SandboxCountMeterName                              UpDownCounterType           = "api.env.instance.running"
-	BuildCounterMeterName                              UpDownCounterType           = "api.env.build.running"
-	NewNetworkSlotSPoolCounterMeterName                UpDownCounterType           = "orchestrator.network.slots_pool.new"
-	ReusedNetworkSlotSPoolCounterMeterName             UpDownCounterType           = "orchestrator.network.slots_pool.reused"
-	NBDkSlotSReadyPoolCounterMeterName                 UpDownCounterType           = "orchestrator.nbd.slots_pool.read"
-	ActiveConnectionsCounterMeterName                  ObservableUpDownCounterType = "client_proxy.connections.active"
-	OrchestratorProxyActiveConnectionsCounterMeterName ObservableUpDownCounterType = "orchestrator.proxy.connections.active"
+	SandboxCountMeterName                  UpDownCounterType = "api.env.instance.running"
+	BuildCounterMeterName                  UpDownCounterType = "api.env.build.running"
+	NewNetworkSlotSPoolCounterMeterName    UpDownCounterType = "orchestrator.network.slots_pool.new"
+	ReusedNetworkSlotSPoolCounterMeterName UpDownCounterType = "orchestrator.network.slots_pool.reused"
+	NBDkSlotSReadyPoolCounterMeterName     UpDownCounterType = "orchestrator.nbd.slots_pool.read"
 )
 
 type ObservableUpDownCounterType string
 
 const (
 	OrchestratorSandboxCountMeterName ObservableUpDownCounterType = "orchestrator.env.sandbox.running"
+
+	ClientProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.server.connections.active"
+	ClientProxyClientConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.client.connections.active"
+	ClientProxyClientPoolSizeMeterCounterName    ObservableUpDownCounterType = "client_proxy.proxy.client.pool.size"
+
+	OrchestratorProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "orchestrator.proxy.server.connections.active"
+	OrchestratorProxyClientConnectionsMeterCounterName ObservableUpDownCounterType = "orchestrator.proxy.client.connections.active"
+	OrchestratorProxyClientPoolSizeMeterCounterName    ObservableUpDownCounterType = "orchestrator.proxy.client.pool.size"
 )
 
 var meter = otel.GetMeterProvider().Meter("nomad")
@@ -63,14 +69,22 @@ var upDownCounterUnits = map[UpDownCounterType]string{
 
 var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName:                  "Counter of running sandboxes on the orchestrator.",
-	ActiveConnectionsCounterMeterName:                  "Number of active network connections in the client proxy.",
-	OrchestratorProxyActiveConnectionsCounterMeterName: "Number of active network connections in the orchestrator proxy.",
+	ClientProxyServerConnectionsMeterCounterName:       "Open connections to the client proxy from load balancer.",
+	ClientProxyClientConnectionsMeterCounterName:       "Open connections from the client proxy to the orchestrator proxy.",
+	ClientProxyClientPoolSizeMeterCounterName:          "Size of the client proxy pool.",
+	OrchestratorProxyServerConnectionsMeterCounterName: "Open connections to the orchestrator proxy from client proxies.",
+	OrchestratorProxyClientConnectionsMeterCounterName: "Open connections from the orchestrator proxy to sandboxes.",
+	OrchestratorProxyClientPoolSizeMeterCounterName:    "Size of the orchestrator proxy pool.",
 }
 
 var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName:                  "{sandbox}",
-	ActiveConnectionsCounterMeterName:                  "{connection}",
-	OrchestratorProxyActiveConnectionsCounterMeterName: "{connection}",
+	ClientProxyServerConnectionsMeterCounterName:       "{connection}",
+	ClientProxyClientConnectionsMeterCounterName:       "{connection}",
+	ClientProxyClientPoolSizeMeterCounterName:          "{connection}",
+	OrchestratorProxyServerConnectionsMeterCounterName: "{connection}",
+	OrchestratorProxyClientConnectionsMeterCounterName: "{connection}",
+	OrchestratorProxyClientPoolSizeMeterCounterName:    "{connection}",
 }
 
 func GetCounter(name CounterType) (metric.Int64Counter, error) {

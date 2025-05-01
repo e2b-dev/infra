@@ -104,3 +104,7 @@ func (p *ProxyPool) TotalConnections() uint64 {
 func (p *ProxyPool) CurrentConnections() int64 {
 	return p.currentConnsCounter.Load()
 }
+
+func (p *ProxyPool) Size() int {
+	return p.pool.Count()
+}
