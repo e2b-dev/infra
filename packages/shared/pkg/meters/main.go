@@ -28,12 +28,12 @@ type ObservableUpDownCounterType string
 const (
 	OrchestratorSandboxCountMeterName ObservableUpDownCounterType = "orchestrator.env.sandbox.running"
 
-	ClientProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.server.connections.active"
-	ClientProxyClientConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.client.connections.active"
+	ClientProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.server.connections.open"
+	ClientProxyClientConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.client.connections.open"
 	ClientProxyClientPoolSizeMeterCounterName    ObservableUpDownCounterType = "client_proxy.proxy.client.pool.size"
 
-	OrchestratorProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "orchestrator.proxy.server.connections.active"
-	OrchestratorProxyClientConnectionsMeterCounterName ObservableUpDownCounterType = "orchestrator.proxy.client.connections.active"
+	OrchestratorProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "orchestrator.proxy.server.connections.open"
+	OrchestratorProxyClientConnectionsMeterCounterName ObservableUpDownCounterType = "orchestrator.proxy.client.connections.open"
 	OrchestratorProxyClientPoolSizeMeterCounterName    ObservableUpDownCounterType = "orchestrator.proxy.client.pool.size"
 )
 
