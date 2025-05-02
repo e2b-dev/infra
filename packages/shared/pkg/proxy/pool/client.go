@@ -77,8 +77,14 @@ func newProxyClient(
 					return
 				}
 
+				if t.SandboxPort != nil {
+					zap.L().Error("sandbox error handler called", zap.Error(err))
+
+					return
+				}
+
 				err = template.
-					NewPortClosedError(t.SandboxId, r.Host, t.Url.Port()).
+					NewPortClosedError(t.SandboxId, r.Host, *t.SandboxPort).
 					HandleError(w, r)
 				if err != nil {
 					zap.L().Error("failed to handle error", zap.Error(err))
