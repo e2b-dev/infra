@@ -23,7 +23,7 @@ const (
 )
 
 func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse_proxy.Proxy, error) {
-	proxy, err := reverse_proxy.New(
+	proxy := reverse_proxy.New(
 		port,
 		minSandboxConns,
 		idleTimeout,
@@ -60,11 +60,8 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse
 			}, nil
 		},
 	)
-	if err != nil {
-		return nil, err
-	}
 
-	_, err = meters.GetObservableUpDownCounter(meters.OrchestratorProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err := meters.GetObservableUpDownCounter(meters.OrchestratorProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(proxy.CurrentServerConnections()))
 
 		return nil

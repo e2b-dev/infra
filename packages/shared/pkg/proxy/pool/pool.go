@@ -27,13 +27,13 @@ type ProxyPool struct {
 	currentConnsCounter  atomic.Int64
 }
 
-func New(sizePerConnectionKey, maxClientConns int, idleTimeout time.Duration) (*ProxyPool, error) {
+func New(sizePerConnectionKey, maxClientConns int, idleTimeout time.Duration) *ProxyPool {
 	return &ProxyPool{
 		pool:                 smap.New[*proxyClient](),
 		sizePerConnectionKey: sizePerConnectionKey,
 		maxClientConns:       maxClientConns,
 		idleTimeout:          idleTimeout,
-	}, nil
+	}
 }
 
 func getClientKey(connectionKey string, poolIdx int) string {

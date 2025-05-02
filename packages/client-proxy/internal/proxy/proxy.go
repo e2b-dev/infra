@@ -29,7 +29,7 @@ const (
 var dnsClient = dns.Client{}
 
 func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
-	proxy, err := reverse_proxy.New(
+	proxy := reverse_proxy.New(
 		port,
 		minOrchestratorProxyConns,
 		idleTimeout,
@@ -100,11 +100,8 @@ func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 			}, nil
 		},
 	)
-	if err != nil {
-		return nil, err
-	}
 
-	_, err = meters.GetObservableUpDownCounter(meters.ClientProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err := meters.GetObservableUpDownCounter(meters.ClientProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(proxy.CurrentServerConnections()))
 
 		return nil

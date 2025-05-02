@@ -24,15 +24,12 @@ func New(
 	poolSizePerConnectionKey int,
 	idleTimeout time.Duration,
 	getDestination func(r *http.Request) (*pool.Destination, error),
-) (*Proxy, error) {
-	p, err := pool.New(
+) *Proxy {
+	p := pool.New(
 		poolSizePerConnectionKey,
 		maxClientConns,
 		idleTimeout,
 	)
-	if err != nil {
-		return nil, err
-	}
 
 	return &Proxy{
 		Server: http.Server{
@@ -44,7 +41,7 @@ func New(
 			Handler:           handler(p, getDestination),
 		},
 		pool: p,
-	}, nil
+	}
 }
 
 func (p *Proxy) TotalPoolConnections() uint64 {
