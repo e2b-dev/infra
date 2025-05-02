@@ -114,15 +114,12 @@ func newTestProxy(getDestination func(r *http.Request) (*pool.Destination, error
 	port := l.Addr().(*net.TCPAddr).Port
 
 	// Set up the proxy server
-	proxy, err := New(
+	proxy := New(
 		uint(port),
 		1,
 		20*time.Second, // Short idle timeout
 		getDestination,
 	)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to create proxy: %v", err)
-	}
 
 	// Start the proxy server
 	go func() {
