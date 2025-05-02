@@ -67,7 +67,7 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse
 		return nil
 	})
 	if err != nil {
-		zap.L().Error("Error registering orchestrator proxy connections metric", zap.Any("metric_name", meters.OrchestratorProxyServerConnectionsMeterCounterName), zap.Error(err))
+		return nil, fmt.Errorf("error registering orchestrator proxy connections metric (%s): %w", meters.OrchestratorProxyServerConnectionsMeterCounterName, err)
 	}
 
 	_, err = meters.GetObservableUpDownCounter(meters.OrchestratorProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
@@ -76,7 +76,7 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse
 		return nil
 	})
 	if err != nil {
-		zap.L().Error("Error registering orchestrator proxy connections metric", zap.Any("metric_name", meters.OrchestratorProxyPoolConnectionsMeterCounterName), zap.Error(err))
+		return nil, fmt.Errorf("error registering orchestrator proxy connections metric (%s): %w", meters.OrchestratorProxyPoolConnectionsMeterCounterName, err)
 	}
 
 	_, err = meters.GetObservableUpDownCounter(meters.OrchestratorProxyPoolSizeMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
@@ -85,7 +85,7 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse
 		return nil
 	})
 	if err != nil {
-		zap.L().Error("Error registering orchestrator proxy pool size metric", zap.Any("metric_name", meters.OrchestratorProxyPoolSizeMeterCounterName), zap.Error(err))
+		return nil, fmt.Errorf("error registering orchestrator proxy pool size metric (%s): %w", meters.OrchestratorProxyPoolSizeMeterCounterName, err)
 	}
 
 	return proxy, nil
