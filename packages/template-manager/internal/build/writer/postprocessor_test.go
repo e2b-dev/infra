@@ -22,6 +22,13 @@ func (w *testWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func (w *testWriter) Data() []byte {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.data
+}
+
 func TestPostProcessor_Start(t *testing.T) {
 	type fields struct {
 		testErr       error
@@ -59,12 +66,21 @@ func TestPostProcessor_Start(t *testing.T) {
 				errChan: errChan,
 				ticker:  time.NewTicker(tickerInterval),
 			}
-			go p.Start()
-			p.Stop(tt.fields.testErr)
-			close(errChan)
 
-			if !strings.Contains(string(tw.data), tt.fields.shouldContain) {
-				t.Errorf("expected data to contain %s, got %s", tt.fields.shouldContain, string(tw.data))
+			end := make(chan struct{}, 1)
+			go func() {
+				p.Start()
+
+				end <- struct{}{}
+			}()
+			p.Stop(tt.fields.testErr)
+
+			// Wait for the start goroutine to finish
+			<-end
+
+			logs := string(tw.Data())
+			if !strings.Contains(logs, tt.fields.shouldContain) {
+				t.Errorf("expected data to contain %s, got %s", tt.fields.shouldContain, logs)
 			}
 
 		})
