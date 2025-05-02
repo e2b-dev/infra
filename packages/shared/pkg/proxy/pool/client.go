@@ -90,7 +90,7 @@ func newProxyClient(
 					return
 				}
 
-				if t.SandboxPort != nil {
+				if t.SandboxPort == nil {
 					zap.L().Error("sandbox error handler called", zap.Error(err))
 
 					http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
@@ -103,7 +103,10 @@ func newProxyClient(
 					HandleError(w, r)
 				if err != nil {
 					zap.L().Error("failed to handle error", zap.Error(err))
+
 					http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
+
+					return
 				}
 			},
 			ModifyResponse: func(r *http.Response) error {
