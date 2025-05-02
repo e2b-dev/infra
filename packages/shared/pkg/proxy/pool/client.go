@@ -60,25 +60,40 @@ func newProxyClient(
 			Rewrite: func(r *httputil.ProxyRequest) {
 				t, ok := r.In.Context().Value(DestinationContextKey{}).(*Destination)
 				if !ok {
-					zap.L().Error("failed to get routing target from context")
+					zap.L().Error("failed to get routing destination from context")
+
+					// Error from this will be later caught as r.Host == "" in the ErrorHandler
+					r.SetURL(r.In.URL)
 
 					return
 				}
 
 				r.SetURL(t.Url)
-
+				r.SetXForwarded()
 				r.Out.Host = r.In.Host
 			},
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+				if r.Host == "" {
+					zap.L().Error("error handler called from rewrite because of missing DestinationContext", zap.Error(err))
+
+					http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
+
+					return
+				}
+
 				t, ok := r.Context().Value(DestinationContextKey{}).(*Destination)
 				if !ok {
-					zap.L().Error("failed to get routing target from context")
+					zap.L().Error("failed to get routing destination from context")
+
+					http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
 
 					return
 				}
 
 				if t.SandboxPort != nil {
 					zap.L().Error("sandbox error handler called", zap.Error(err))
+
+					http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
 
 					return
 				}
