@@ -188,7 +188,7 @@ func (s *DiffStore) deleteOldestFromCache() (bool, error) {
 
 		sfSize, err := item.Value().FileSize()
 		if err != nil {
-			zap.L().Error("failed to get size of deleted item from cache", zap.Error(err))
+			zap.L().Warn("failed to get size of deleted item from cache", zap.Error(err))
 			sfSize = fallbackDiffSize
 		}
 
