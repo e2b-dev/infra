@@ -12,6 +12,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const (
+	ToMBShift        = 20
+	fallbackDiffSize = 100 << ToMBShift
+)
+
 const DefaultCachePath = "/orchestrator/build"
 
 type deleteDiff struct {
@@ -183,8 +188,8 @@ func (s *DiffStore) deleteOldestFromCache() (bool, error) {
 
 		sfSize, err := item.Value().FileSize()
 		if err != nil {
-			e = fmt.Errorf("failed to get diff size: %w", err)
-			return false
+			zap.L().Warn("failed to get size of deleted item from cache", zap.Error(err))
+			sfSize = fallbackDiffSize
 		}
 
 		s.scheduleDelete(item.Key(), sfSize)
