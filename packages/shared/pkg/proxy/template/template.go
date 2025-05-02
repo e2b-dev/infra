@@ -8,16 +8,7 @@ import (
 	"regexp"
 )
 
-func buildHtmlError[T any](template *template.Template, vars T) ([]byte, error) {
-	html := new(bytes.Buffer)
-
-	err := template.Execute(html, vars)
-	if err != nil {
-		return nil, err
-	}
-
-	return html.Bytes(), nil
-}
+var browserRegex = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|opera|msie`)
 
 type TemplatedError[T any] struct {
 	template *template.Template
@@ -26,17 +17,18 @@ type TemplatedError[T any] struct {
 }
 
 func (e *TemplatedError[T]) buildHtml() ([]byte, error) {
-	return buildHtmlError(e.template, e.vars)
+	html := new(bytes.Buffer)
+
+	err := e.template.Execute(html, e.vars)
+	if err != nil {
+		return nil, err
+	}
+
+	return html.Bytes(), nil
 }
 
 func (e *TemplatedError[T]) buildJson() ([]byte, error) {
 	return json.Marshal(e.vars)
-}
-
-var browserRegex = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|opera|msie`)
-
-func isBrowser(r *http.Request) bool {
-	return browserRegex.MatchString(r.UserAgent())
 }
 
 func (e *TemplatedError[T]) HandleError(
@@ -73,4 +65,8 @@ func (e *TemplatedError[T]) HandleError(
 	}
 
 	return nil
+}
+
+func isBrowser(r *http.Request) bool {
+	return browserRegex.MatchString(r.UserAgent())
 }
