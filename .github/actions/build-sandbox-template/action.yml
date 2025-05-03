@@ -7,7 +7,6 @@ runs:
     - name: Build Sandbox Template
       env:
         TEMPLATE_ID: "2j6ly824owf4awgai1xo"
-        BUILD_ID: "98130b63-ca75-431d-956a-9d829d14d317"
         KERNEL_VERSION: "vmlinux-6.1.102"
         FIRECRACKER_VERSION: "v1.10.1_1fcdaec"
         # Rootfs Docker image repository
@@ -15,6 +14,9 @@ runs:
         # Not used, but required to be defined
         GOOGLE_SERVICE_ACCOUNT_BASE64: "required-but-not-needed"
       run: |
+        # Generate a unique build ID for the template for this run
+        export BUILD_ID=$(uuidgen)
+        
         echo "TESTS_SANDBOX_TEMPLATE_ID=${TEMPLATE_ID}" >> .env.test
         echo "TESTS_SANDBOX_BUILD_ID=${BUILD_ID}" >> .env.test
         
