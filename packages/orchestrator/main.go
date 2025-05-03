@@ -6,25 +6,32 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/signal"
-	"sync"
-	"sync/atomic"
 	"syscall"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
+	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+type Closeable interface {
+	Close(context.Context) error
+}
 
 const (
 	defaultPort      = 5008
@@ -34,51 +41,48 @@ const (
 
 var commitSHA string
 
-func run() int32 {
-	ctx, cancel := context.WithCancel(context.Background())
+func run(port, proxyPort uint) (result int) {
+	result = 0
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-
-	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer sigCancel()
-
-	var port uint
-	flag.UintVar(&port, "port", defaultPort, "orchestrator server port")
-
-	var proxyPort uint
-	flag.UintVar(&proxyPort, "proxy-port", defaultProxyPort, "orchestrator proxy port")
-	flag.Parse()
-
-	wg := &sync.WaitGroup{}
-	exitCode := &atomic.Int32{}
-	telemetrySignal := make(chan struct{})
-
-	// defer waiting on the waitgroup so that this runs even when
-	// there's a panic.
-	defer wg.Wait()
 
 	clientID := consul.GetClientID()
 
+	var g errgroup.Group
+	// defer waiting on the group so that this runs even when
+	// there's a panic.
+	defer func(g *errgroup.Group) {
+		err := g.Wait()
+		if err != nil {
+			log.Printf("error while shutting down: %v", err)
+			result = 1
+		}
+	}(&g)
+
 	if !env.IsLocal() {
 		shutdown := telemetry.InitOTLPExporter(ctx, server.ServiceName, commitSHA, clientID)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			<-telemetrySignal
+		defer func() {
 			if err := shutdown(ctx); err != nil {
 				log.Printf("telemetry shutdown: %v", err)
-				exitCode.Add(1)
+				result = 1
 			}
 		}()
 	}
 
-	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName: ServiceName,
 		IsInternal:  true,
 		IsDebug:     env.IsDebug(),
 		Cores:       []zapcore.Core{logger.GetOTELCore(ServiceName)},
 	}))
-	defer logger.Sync()
-	zap.ReplaceGlobals(logger)
+	defer func(l *zap.Logger) {
+		err := l.Sync()
+		if err != nil {
+			log.Printf("error while shutting down logger: %v", err)
+			result = 1
+		}
+	}(globalLogger)
+	zap.ReplaceGlobals(globalLogger)
 
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
@@ -88,7 +92,13 @@ func run() int32 {
 			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
 		},
 	)
-	defer sbxLoggerExternal.Sync()
+	defer func(l *zap.Logger) {
+		err := l.Sync()
+		if err != nil {
+			log.Printf("error while shutting down sandbox logger: %v", err)
+			result = 1
+		}
+	}(sbxLoggerExternal)
 	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
 
 	sbxLoggerInternal := sbxlogger.NewLogger(
@@ -99,7 +109,13 @@ func run() int32 {
 			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
 		},
 	)
-	defer sbxLoggerInternal.Sync()
+	defer func(l *zap.Logger) {
+		err := l.Sync()
+		if err != nil {
+			log.Printf("error while shutting down sandbox logger: %v", err)
+			result = 1
+		}
+	}(sbxLoggerInternal)
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
 
 	log.Println("Starting orchestrator", "commit", commitSHA)
@@ -113,23 +129,33 @@ func run() int32 {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	srv, err := server.New(
-		ctx,
-		port,
-		clientID,
-		commitSHA,
-		sandboxProxy,
-		sandboxes,
-	)
+	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
+	if err != nil {
+		zap.L().Fatal("failed to create network pool", zap.Error(err))
+	}
+
+	grpcSrv := grpcserver.New(commitSHA)
+	_, err = server.New(ctx, grpcSrv, networkPool, clientID, commitSHA, sandboxProxy, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
+	tmpl := tmplserver.New(ctx, grpcSrv, globalLogger, sbxLoggerExternal)
+	defer tmpl.Close(ctx)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		var err error
+	var closers []Closeable
+	closers = append(closers,
+		tmpl,
+		grpcSrv,
+		networkPool,
+		sandboxProxy,
+	)
 
+	g.Go(func() error {
+		zap.L().Info("Starting session proxy")
+		return sandboxProxy.Start()
+	})
+
+	g.Go(func() (err error) {
 		defer func() {
 			// recover the panic because the service manages a number of go routines
 			// that can panic, so catching this here allows for the rest of the process
@@ -139,71 +165,45 @@ func run() int32 {
 				// some panic messages twice, but this seems ok, and temporary while
 				// we clean up logging.
 				log.Printf("caught panic in service: %v", perr)
-				exitCode.Add(1)
 				err = errors.Join(err, fmt.Errorf("server panic: %v", perr))
-			}
-
-			// if we encountered an err, but the signal context was NOT canceled, then
-			// the outer context needs to be canceled so the remainder of the service
-			// can shutdown.
-			if err != nil && sig.Err() == nil {
-				log.Printf("service ended early without signal")
-				cancel()
 			}
 		}()
 
 		// this sets the error declared above so the function
 		// in the defer can check it.
-		if err = srv.Start(ctx); err != nil {
-			log.Printf("orchestrator service: %v", err)
-			exitCode.Add(1)
-		}
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(telemetrySignal)
-		<-sig.Done()
-		if err := srv.Close(ctx); err != nil {
-			log.Printf("grpc service: %v", err)
-			exitCode.Add(1)
-		}
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		errChan := make(chan error, 1)
-		go func() {
-			errChan <- sandboxProxy.ListenAndServe()
-		}()
-
-		select {
-		case <-ctx.Done():
-		case err = <-errChan:
-			if err != nil {
-				zap.L().Error("orchestrator proxy failed", zap.Error(err))
-				exitCode.Add(1)
-				cancel()
-			}
+		if err = grpcSrv.Start(ctx, port); err != nil {
+			return fmt.Errorf("grpc service: %w", err)
 		}
 
-		// close sandbox proxy, this will wait until all sessions are closed
-		defer func() {
-			err := sandboxProxy.Shutdown(context.Background())
-			if err != nil {
-				zap.L().Error("failed to shutdown proxy server", zap.Error(err))
-			}
-		}()
-	}()
+		return nil
+	})
 
-	wg.Wait()
+	<-ctx.Done()
+	log.Printf("Shutdown signal received")
 
-	return exitCode.Load()
+	for _, c := range closers {
+		if err := c.Close(context.Background()); err != nil {
+			log.Printf("error during shutdown: %v", err)
+			result = 1
+		}
+	}
+
+	if err := g.Wait(); err != nil {
+		log.Printf("service group error: %v", err)
+		result = 1
+	}
+
+	return result
 }
 
 func main() {
-	os.Exit(int(run()))
+	port := flag.Uint("port", defaultPort, "orchestrator server port")
+	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
+	flag.Parse()
+	if *port > math.MaxUint16 {
+		log.Fatalf("%d is larger than maximum possible port %d", port, math.MaxInt16)
+		os.Exit(1)
+	}
+
+	os.Exit(run(*port, *proxyPort))
 }

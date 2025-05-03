@@ -15,13 +15,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
 type TemplateBuilder struct {

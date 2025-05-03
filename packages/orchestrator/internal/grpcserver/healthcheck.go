@@ -1,4 +1,4 @@
-package server
+package grpcserver
 
 import (
 	"context"
@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	e2bHealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
@@ -21,10 +19,8 @@ const healthcheckFrequency = 5 * time.Second
 const healthcheckTimeout = 30 * time.Second
 
 type Healthcheck struct {
-	version    string
-	server     *server
-	grpc       *grpc.Server
-	grpcHealth *health.Server
+	version string
+	grpc    *GRPCServer
 
 	// TODO: Replace with status from SQL Lite
 	status  e2bHealth.Status
@@ -32,12 +28,10 @@ type Healthcheck struct {
 	mu      sync.RWMutex
 }
 
-func NewHealthcheck(server *server, grpc *grpc.Server, grpcHealth *health.Server, version string) (*Healthcheck, error) {
+func NewHealthcheck(grpc *GRPCServer, version string) (*Healthcheck, error) {
 	return &Healthcheck{
-		version:    version,
-		server:     server,
-		grpc:       grpc,
-		grpcHealth: grpcHealth,
+		version: version,
+		grpc:    grpc,
 
 		lastRun: time.Now(),
 		status:  e2bHealth.Unhealthy,
@@ -102,7 +96,7 @@ func (h *Healthcheck) report(ctx context.Context) error {
 
 // getGRPCHealth returns the health status of the grpc.Server by calling the health service check.
 func (h *Healthcheck) getGRPCHealth(ctx context.Context) (e2bHealth.Status, error) {
-	c, err := h.grpcHealth.Check(ctx, &healthpb.HealthCheckRequest{
+	c, err := h.grpc.HealthServer().Check(ctx, &healthpb.HealthCheckRequest{
 		// Empty string is the default service name
 		Service: "",
 	})

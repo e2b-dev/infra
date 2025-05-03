@@ -22,7 +22,11 @@ const (
 	idleTimeout     = 630 * time.Second
 )
 
-func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse_proxy.Proxy, error) {
+type SandboxProxy struct {
+	proxy *reverse_proxy.Proxy
+}
+
+func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxProxy, error) {
 	proxy := reverse_proxy.New(
 		port,
 		minSandboxConns,
@@ -65,7 +69,7 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse
 	)
 
 	_, err := meters.GetObservableUpDownCounter(meters.OrchestratorProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(proxy.CurrentServerConnections()))
+		observer.Observe(proxy.CurrentServerConnections())
 
 		return nil
 	})
@@ -74,7 +78,7 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse
 	}
 
 	_, err = meters.GetObservableUpDownCounter(meters.OrchestratorProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(proxy.CurrentPoolConnections()))
+		observer.Observe(proxy.CurrentPoolConnections())
 
 		return nil
 	})
@@ -91,5 +95,21 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse
 		return nil, fmt.Errorf("error registering orchestrator proxy pool size metric (%s): %w", meters.OrchestratorProxyPoolSizeMeterCounterName, err)
 	}
 
-	return proxy, nil
+	return &SandboxProxy{proxy}, nil
+}
+
+func (p *SandboxProxy) Start() error {
+	return p.proxy.ListenAndServe()
+}
+
+func (p *SandboxProxy) Close(ctx context.Context) error {
+	if err := p.proxy.Shutdown(ctx); err != nil {
+		return fmt.Errorf("error shutting down proxy: %w", err)
+	}
+
+	return nil
+}
+
+func (p *SandboxProxy) RemoveFromPool(connectionKey string) {
+	p.proxy.RemoveFromPool(connectionKey)
 }

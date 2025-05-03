@@ -34,7 +34,6 @@ import (
 
 type ServerStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
-	server           *grpc.Server
 	tracer           trace.Tracer
 	logger           *zap.Logger
 	builder          *build.TemplateBuilder
@@ -46,35 +45,14 @@ type ServerStore struct {
 	wg               *sync.WaitGroup // wait group for running builds
 }
 
-func New(logger *zap.Logger, buildLogger *zap.Logger) (*grpc.Server, *ServerStore) {
-	ctx := context.Background()
+func New(ctx context.Context, grpc *grpcserver.GRPCServer, logger *zap.Logger, buildLogger *zap.Logger) *ServerStore {
+	// Template Manager Initialization
+	if err := constants.CheckRequired(); err != nil {
+		log.Fatalf("Validation for environment variables failed: %v", err)
+	}
 
 	logger.Info("Initializing template manager")
 
-	opts := []logging.Option{
-		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
-		logging.WithLevels(logging.DefaultServerCodeToLevel),
-		logging.WithFieldsFromContext(logging.ExtractFields),
-	}
-
-	server := grpc.NewServer(
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			MinTime:             5 * time.Second, // Minimum time between pings from client
-			PermitWithoutStream: true,            // Allow pings even when no active streams
-		}),
-		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Time:    15 * time.Second, // Server sends keepalive pings every 15s
-			Timeout: 5 * time.Second,  // Wait 5s for response before considering dead
-		}),
-		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
-		grpc.ChainUnaryInterceptor(
-			recovery.UnaryServerInterceptor(),
-			selector.UnaryServerInterceptor(
-				logging.UnaryServerInterceptor(l.GRPCLogger(logger), opts...),
-				l.WithoutHealthCheck(),
-			),
-		),
-	)
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		panic(err)
@@ -108,13 +86,11 @@ func New(logger *zap.Logger, buildLogger *zap.Logger) (*grpc.Server, *ServerStor
 		templateStorage:  templateStorage,
 		healthStatus:     templatemanager.HealthState_Healthy,
 		wg:               &sync.WaitGroup{},
-		server:           server,
 	}
 
-	templatemanager.RegisterTemplateServiceServer(server, store)
-	grpc_health_v1.RegisterHealthServer(server, health.NewServer())
+	templatemanager.RegisterTemplateServiceServer(grpc.GRPCServer(), store)
 
-	return server, store
+	return store
 }
 
 func (s *ServerStore) Close(ctx context.Context) error {
@@ -138,9 +114,6 @@ func (s *ServerStore) Close(ctx context.Context) error {
 			zap.L().Info("waiting before shutting down server")
 			time.Sleep(15 * time.Second)
 		}
-
-		// mark service as unhealthy so now new request will be accepted
-		s.server.GracefulStop()
 		return nil
 	}
 }
