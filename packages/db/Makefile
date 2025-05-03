@@ -20,7 +20,7 @@ init:
 .PHONY: build-debug
 build-debug:
 	go mod download
-	go vet ./internal/...
+	go vet ./...
 
 .PHONE: create-migration
 create-migration: goose-init
