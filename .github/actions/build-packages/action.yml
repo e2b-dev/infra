@@ -22,6 +22,7 @@ runs:
     - name: Build Packages
       run: |
         make -C tests/integration build-debug
+        make -C packages/db build-debug
         make -C packages/template-manager build-debug
         make -C packages/orchestrator build-debug
         make -C packages/api build-debug
