@@ -25,6 +25,7 @@ runs:
         export DOCKER_IMAGE_PATH="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_DOCKER_REPOSITORY_NAME}/${TEMPLATE_ID}"
         echo "Docker image template path: ${DOCKER_IMAGE_PATH}"
         
+        gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
         docker pull "${DOCKER_IMAGE_PATH}:98130b63-ca75-431d-956a-9d829d14d317"
         docker tag "${DOCKER_IMAGE_PATH}:98130b63-ca75-431d-956a-9d829d14d317" "${DOCKER_IMAGE_PATH}:${BUILD_ID}"
         docker push "${DOCKER_IMAGE_PATH}:${BUILD_ID}"
