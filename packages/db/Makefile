@@ -17,6 +17,11 @@ init:
 	brew install sqlc
 	@echo "Done"
 
+.PHONY: build-debug
+build-debug:
+	go mod download
+	go vet ./...
+
 .PHONE: create-migration
 create-migration: goose-init
 ifeq ($(origin NAME), undefined)
