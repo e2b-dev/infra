@@ -3,12 +3,14 @@ package internal
 import (
 	"context"
 	"log"
+	"net/http"
 	"testing"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,6 +32,7 @@ func TestCacheTemplate(t *testing.T) {
 		Timeout:    &sbxTimeout,
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, sbx.StatusCode())
 
 	t.Cleanup(func() {
 		if sbx == nil {

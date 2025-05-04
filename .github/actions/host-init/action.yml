@@ -25,6 +25,7 @@ runs:
         printenv > .env.test
         
         echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
+        echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}" >> $GITHUB_ENV
       shell: bash
 
     - name: Set up Docker
