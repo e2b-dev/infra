@@ -68,11 +68,11 @@ type BuildCache struct {
 	mu sync.Mutex
 }
 
-func NewBuildCache(logger *zap.Logger) *BuildCache {
+func NewBuildCache() *BuildCache {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
 	counter, err := meters.GetUpDownCounter(meters.BuildCounterMeterName)
 	if err != nil {
-		logger.Error("error creating counter", zap.Error(err))
+		zap.L().Error("error creating counter", zap.Error(err))
 	}
 
 	go cache.Start()
