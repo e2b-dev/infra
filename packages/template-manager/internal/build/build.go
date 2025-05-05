@@ -27,6 +27,7 @@ import (
 type TemplateBuilder struct {
 	tracer trace.Tracer
 
+	storage            storage.StorageProvider
 	logger             *zap.Logger
 	buildCache         *cache.BuildCache
 	buildLogger        *zap.Logger
@@ -37,7 +38,16 @@ type TemplateBuilder struct {
 
 const cleanupTimeout = time.Second * 10
 
-func NewBuilder(logger *zap.Logger, buildLogger *zap.Logger, tracer trace.Tracer, dockerClient *client.Client, legacyDockerClient *docker.Client, templateStorage *template.Storage, buildCache *cache.BuildCache) *TemplateBuilder {
+func NewBuilder(
+	logger *zap.Logger,
+	buildLogger *zap.Logger,
+	tracer trace.Tracer,
+	dockerClient *client.Client,
+	legacyDockerClient *docker.Client,
+	templateStorage *template.Storage,
+	buildCache *cache.BuildCache,
+	storage storage.StorageProvider,
+) *TemplateBuilder {
 	return &TemplateBuilder{
 		logger:             logger,
 		tracer:             tracer,
@@ -46,6 +56,7 @@ func NewBuilder(logger *zap.Logger, buildLogger *zap.Logger, tracer trace.Tracer
 		dockerClient:       dockerClient,
 		legacyDockerClient: legacyDockerClient,
 		templateStorage:    templateStorage,
+		storage:            storage,
 	}
 }
 
@@ -228,10 +239,12 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 	)
 
 	postProcessor.WriteMsg("Uploading template")
+
 	// UPLOAD
 	templateBuild := storage.NewTemplateBuild(
 		memfileHeader,
 		rootfsHeader,
+		b.storage,
 		template.TemplateFiles,
 	)
 

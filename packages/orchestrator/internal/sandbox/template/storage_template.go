@@ -8,7 +8,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -24,7 +23,7 @@ type storageTemplate struct {
 	rootfsHeader  *header.Header
 	localSnapfile *LocalFile
 
-	bucket *gcs.BucketHandle
+	persistence storage.StorageProvider
 }
 
 func newTemplateFromStorage(
@@ -35,7 +34,7 @@ func newTemplateFromStorage(
 	hugePages bool,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
-	bucket *gcs.BucketHandle,
+	persistence storage.StorageProvider,
 	localSnapfile *LocalFile,
 ) (*storageTemplate, error) {
 	files, err := storage.NewTemplateFiles(
@@ -54,7 +53,7 @@ func newTemplateFromStorage(
 		localSnapfile: localSnapfile,
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
-		bucket:        bucket,
+		persistence:   persistence,
 		memfile:       utils.NewSetOnce[*Storage](),
 		rootfs:        utils.NewSetOnce[*Storage](),
 		snapfile:      utils.NewSetOnce[File](),
@@ -84,7 +83,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 
 		snapfile, snapfileErr := newStorageFile(
 			ctx,
-			t.bucket,
+			t.persistence,
 			t.files.StorageSnapfilePath(),
 			t.files.CacheSnapfilePath(),
 		)
@@ -108,8 +107,9 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			build.Memfile,
 			t.files.MemfilePageSize(),
 			t.memfileHeader,
-			t.bucket,
+			t.persistence,
 		)
+
 		if memfileErr != nil {
 			errMsg := fmt.Errorf("failed to create memfile storage: %w", memfileErr)
 
@@ -130,7 +130,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			build.Rootfs,
 			t.files.RootfsBlockSize(),
 			t.rootfsHeader,
-			t.bucket,
+			t.persistence,
 		)
 		if rootfsErr != nil {
 			errMsg := fmt.Errorf("failed to create rootfs storage: %w", rootfsErr)

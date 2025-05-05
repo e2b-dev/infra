@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
-
 	"github.com/google/uuid"
+	"io"
 )
 
 type Metadata struct {
@@ -18,7 +17,6 @@ type Metadata struct {
 	// TODO: Use the base build id when setting up the snapshot rootfs
 	BaseBuildId uuid.UUID
 }
-
 
 func Serialize(metadata *Metadata, mappings []*BuildMap) (io.Reader, error) {
 	var buf bytes.Buffer

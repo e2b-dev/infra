@@ -9,7 +9,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -25,13 +24,19 @@ func NewStorage(
 	fileType build.DiffType,
 	blockSize int64,
 	h *header.Header,
-	bucket *gcs.BucketHandle,
+	persistence storage.StorageProvider,
 ) (*Storage, error) {
 	if h == nil {
-		headerObject := gcs.NewObject(ctx, bucket, buildId+"/"+string(fileType)+storage.HeaderSuffix)
+		headerObjectPath := buildId + "/" + string(fileType) + storage.HeaderSuffix
+		headerObject, err := persistence.OpenObject(ctx, headerObjectPath)
+		if err != nil {
+			return nil, err
+		}
 
 		diffHeader, err := header.Deserialize(headerObject)
-		if err != nil && !errors.Is(err, gcs.ErrObjectNotExist) {
+
+		// If we can't find the diff header in storage, we switch to templates without a headers
+		if err != nil && !errors.Is(err, storage.ErrorObjectNotExist) {
 			return nil, fmt.Errorf("failed to deserialize header: %w", err)
 		}
 
@@ -42,7 +47,11 @@ func NewStorage(
 
 	// If we can't find the diff header in storage, we try to find the "old" style template without a header as a fallback.
 	if h == nil {
-		object := gcs.NewObject(ctx, bucket, buildId+"/"+string(fileType))
+		objectPath := buildId + "/" + string(fileType)
+		object, err := persistence.OpenObject(ctx, objectPath)
+		if err != nil {
+			return nil, err
+		}
 
 		size, err := object.Size()
 		if err != nil {
@@ -64,7 +73,7 @@ func NewStorage(
 		}, nil)
 	}
 
-	b := build.NewFile(h, store, fileType, bucket)
+	b := build.NewFile(h, store, fileType, persistence)
 
 	return &Storage{
 		source: b,

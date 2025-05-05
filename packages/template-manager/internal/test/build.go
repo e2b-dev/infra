@@ -63,9 +63,14 @@ func Build(templateID, buildID string) {
 		return
 	}
 
-	tempStorage := template.NewStorage(ctx)
+	persistence, err := storage.GetTemplateStorageProvider(ctx)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
 
-	buildStorage := tempStorage.NewBuild(t.TemplateFiles)
+	tmplStorage := template.NewStorage(persistence)
+	buildStorage := tmplStorage.NewBuild(t.TemplateFiles, persistence)
 
 	memfilePath := t.BuildMemfilePath()
 	rootfsPath := t.BuildRootfsPath()
