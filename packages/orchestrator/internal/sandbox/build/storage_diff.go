@@ -6,9 +6,10 @@ import (
 	"io"
 	"path/filepath"
 
+	storage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -22,7 +23,7 @@ type StorageDiff struct {
 	cacheKey    DiffStoreKey
 	storagePath string
 	blockSize   int64
-	bucket      *gcs.BucketHandle
+	persistence storage.StorageProvider
 }
 
 func newStorageDiff(
@@ -30,7 +31,7 @@ func newStorageDiff(
 	buildId string,
 	diffType DiffType,
 	blockSize int64,
-	bucket *gcs.BucketHandle,
+	persistence storage.StorageProvider,
 ) *StorageDiff {
 	cachePathSuffix := id.Generate()
 
@@ -43,7 +44,7 @@ func newStorageDiff(
 		cachePath:   cachePath,
 		chunker:     utils.NewSetOnce[*block.Chunker](),
 		blockSize:   blockSize,
-		bucket:      bucket,
+		persistence: persistence,
 		cacheKey:    GetDiffStoreKey(buildId, diffType),
 	}
 }
@@ -53,23 +54,22 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
-	obj := gcs.NewObject(ctx, b.bucket, b.storagePath)
+	obj, err := b.persistence.OpenObject(ctx, b.storagePath)
+	if err != nil {
+		return err
+	}
 
 	size, err := obj.Size()
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get object size: %w", err)
-
 		b.chunker.SetError(errMsg)
-
 		return errMsg
 	}
 
 	chunker, err := block.NewChunker(ctx, size, b.blockSize, obj, b.cachePath)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create chunker: %w", err)
-
 		b.chunker.SetError(errMsg)
-
 		return errMsg
 	}
 

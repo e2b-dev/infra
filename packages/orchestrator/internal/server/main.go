@@ -34,6 +34,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const ServiceName = "orchestrator"
@@ -50,6 +51,7 @@ type server struct {
 	clientID        string // nomad node id
 	devicePool      *nbd.DevicePool
 	clickhouseStore chdb.Store
+	persistence     storage.StorageProvider
 
 	useLokiMetrics       string
 	useClickhouseMetrics string
@@ -74,6 +76,8 @@ type Service struct {
 	// see https://linear.app/e2b/issue/E2B-1731/use-viper-to-read-env-vars
 	useLokiMetrics       string
 	useClickhouseMetrics string
+
+	persistence storage.StorageProvider
 }
 
 func New(ctx context.Context, port uint, clientID string, version string, proxy *proxy.SandboxProxy) (*Service, error) {
@@ -130,6 +134,13 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 			return nil, fmt.Errorf("failed to create device pool: %w", err)
 		}
 
+		persistence, err := storage.GetTemplateStorageProvider(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create storage provider: %w", err)
+		}
+
+		srv.persistence = persistence
+
 		useLokiMetrics := os.Getenv("WRITE_LOKI_METRICS")
 		useClickhouseMetrics := os.Getenv("WRITE_CLICKHOUSE_METRICS")
 		readClickhouseMetrics := os.Getenv("READ_CLICKHOUSE_METRICS")
@@ -161,6 +172,7 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 			clickhouseStore:      clickhouseStore,
 			useLokiMetrics:       useLokiMetrics,
 			useClickhouseMetrics: useClickhouseMetrics,
+			persistence:          persistence,
 		}
 		_, err = meters.GetObservableUpDownCounter(meters.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
 			observer.Observe(int64(srv.server.sandboxes.Count()))

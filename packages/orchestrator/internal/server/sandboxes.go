@@ -346,6 +346,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		b := storage.NewTemplateBuild(
 			snapshot.MemfileDiffHeader,
 			snapshot.RootfsDiffHeader,
+			s.persistence,
 			snapshotTemplateFiles.TemplateFiles,
 		)
 
