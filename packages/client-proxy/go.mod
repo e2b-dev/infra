@@ -6,6 +6,7 @@ require (
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/google/uuid v1.6.0
 	github.com/miekg/dns v1.1.63
+	go.opentelemetry.io/otel/metric v1.34.0
 	go.uber.org/zap v1.27.0
 )
 
@@ -15,6 +16,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.25.1 // indirect
+	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/bridges/otelzap v0.9.0 // indirect
 	go.opentelemetry.io/otel v1.34.0 // indirect
@@ -23,7 +25,6 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.34.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.34.0 // indirect
 	go.opentelemetry.io/otel/log v0.10.0 // indirect
-	go.opentelemetry.io/otel/metric v1.34.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.34.0 // indirect
 	go.opentelemetry.io/otel/sdk/log v0.10.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.34.0 // indirect

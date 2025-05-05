@@ -13,8 +13,6 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -59,7 +57,8 @@ type Sandbox struct {
 	useLokiMetrics       string
 	useClickhouseMetrics string
 
-	CleanupID string
+	// Unique ID for the sandbox start.
+	StartID string
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -74,8 +73,6 @@ func NewSandbox(
 
 	ctx context.Context,
 	tracer trace.Tracer,
-	dns *dns.DNS,
-	proxy *proxy.SandboxProxy,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,
