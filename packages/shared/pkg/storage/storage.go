@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.uber.org/zap"
 	"io"
-	"os"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -45,18 +44,10 @@ type StorageObjectProvider interface {
 }
 
 func GetTemplateStorageProvider(ctx context.Context) (StorageProvider, error) {
-	var provider = Provider(os.Getenv(storageProviderEnv))
-	if provider == "" {
-		provider = DefaultStorageProvider
-	}
+	var provider = Provider(env.GetEnv(storageProviderEnv, string(DefaultStorageProvider)))
 
 	if provider == LocalStorageProvider {
-		basePath := os.Getenv("TEMPLATE_STORAGE_BASE_PATH")
-		if basePath == "" {
-			basePath = "/tmp/templates"
-			zap.L().Warn(fmt.Sprintf("For local file system, base path is not set. Defaulting to %s", basePath))
-		}
-
+		basePath := env.GetEnv("LOCAL_TEMPLATE_STORAGE_BASE_PATH", "/tmp/templates")
 		return NewFileSystemStorageProvider(basePath)
 	}
 
