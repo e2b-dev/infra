@@ -24,6 +24,11 @@ const (
 
 	minOrchestratorProxyConns = 16
 	idleTimeout               = 620 * time.Second
+
+	// We use constant connection key, because we don't have to separate connection pools
+	// as we need to do when connections to sandboxes to prevent reuse of pool connections
+	// by different sandboxes cause failed connections.
+	clientProxyConnectionKey = "client-proxy"
 )
 
 var dnsClient = dns.Client{}
@@ -98,6 +103,7 @@ func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 				SandboxId:     sandboxId,
 				RequestLogger: logger,
 				SandboxPort:   port,
+				ConnectionKey: clientProxyConnectionKey,
 			}, nil
 		},
 	)
