@@ -77,7 +77,7 @@ func New(ctx context.Context, grpc *grpcserver.GRPCServer, logger *zap.Logger, b
 	buildCache := cache.NewBuildCache()
 	builder := build.NewBuilder(logger, buildLogger, otel.Tracer(constants.ServiceName), dockerClient, legacyClient, templateStorage, buildCache, persistence)
 	store := &ServerStore{
-		tracer:           otel.Tracer(constants.ServiceName),
+		tracer:           otel.Tracer(constants.ServiceNameTemplate),
 		logger:           logger,
 		builder:          builder,
 		buildCache:       buildCache,
@@ -99,19 +99,19 @@ func (s *ServerStore) Close(ctx context.Context) error {
 		return errors.New("context canceled during server graceful shutdown")
 	default:
 		// no new jobs should be started
-		zap.L().Info("marking service as draining")
+		s.logger.Info("marking service as draining")
 		s.healthStatus = templatemanager.HealthState_Draining
 		if !env.IsLocal() {
 			time.Sleep(5 * time.Second)
 		}
 
 		// wait for all builds to finish
-		zap.L().Info("waiting for all jobs to finish")
+		s.logger.Info("waiting for all jobs to finish")
 		s.wg.Wait()
 
 		if !env.IsLocal() {
 			// give some time so all connected services can check build status
-			zap.L().Info("waiting before shutting down server")
+			s.logger.Info("waiting before shutting down server")
 			time.Sleep(15 * time.Second)
 		}
 		return nil

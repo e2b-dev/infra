@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -139,7 +140,36 @@ func run(port, proxyPort uint) (result int) {
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
-	tmpl := tmplserver.New(ctx, grpcSrv, globalLogger, sbxLoggerExternal)
+
+	templateManagerLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+		ServiceName: constants.ServiceNameTemplate,
+		IsInternal:  true,
+		IsDebug:     env.IsDebug(),
+		Cores:       []zapcore.Core{logger.GetOTELCore(constants.ServiceNameTemplate)},
+	}))
+	defer func(l *zap.Logger) {
+		err := l.Sync()
+		if err != nil {
+			log.Printf("error while shutting down template manager logger: %v", err)
+			result = 1
+		}
+	}(templateManagerLogger)
+	tmplSbxLoggerExternal := sbxlogger.NewLogger(
+		ctx,
+		sbxlogger.SandboxLoggerConfig{
+			ServiceName:      constants.ServiceNameTemplate,
+			IsInternal:       false,
+			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
+		},
+	)
+	defer func(l *zap.Logger) {
+		err := l.Sync()
+		if err != nil {
+			log.Printf("error while shutting down template manager sandbox logger: %v", err)
+			result = 1
+		}
+	}(tmplSbxLoggerExternal)
+	tmpl := tmplserver.New(ctx, grpcSrv, templateManagerLogger, tmplSbxLoggerExternal)
 	defer tmpl.Close(ctx)
 
 	var closers []Closeable
