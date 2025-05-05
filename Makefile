@@ -205,7 +205,6 @@ test:
 	$(MAKE) -C packages/envd test
 	$(MAKE) -C packages/orchestrator test
 	$(MAKE) -C packages/shared test
-	$(MAKE) -C packages/template-manager test
 
 .PHONY: test-integration
 test-integration:
