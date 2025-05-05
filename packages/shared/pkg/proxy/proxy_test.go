@@ -158,6 +158,7 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 	defer proxy.Close()
 
 	assert.Equal(t, proxy.TotalPoolConnections(), uint64(0))
+	assert.Equal(t, backend.RequestCount(), uint64(0))
 
 	// Make a request to the proxy
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
