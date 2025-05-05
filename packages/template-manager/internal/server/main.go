@@ -6,6 +6,7 @@ import (
 	"github.com/docker/docker/client"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
@@ -88,9 +89,14 @@ func New(logger *zap.Logger, buildLogger *zap.Logger) (*grpc.Server, *ServerStor
 		panic(err)
 	}
 
-	templateStorage := template.NewStorage(ctx)
+	persistence, err := storage.GetTemplateStorageProvider(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	templateStorage := template.NewStorage(persistence)
 	buildCache := cache.NewBuildCache()
-	builder := build.NewBuilder(logger, buildLogger, otel.Tracer(constants.ServiceName), dockerClient, legacyClient, templateStorage, buildCache)
+	builder := build.NewBuilder(logger, buildLogger, otel.Tracer(constants.ServiceName), dockerClient, legacyClient, templateStorage, buildCache, persistence)
 	store := &ServerStore{
 		tracer:           otel.Tracer(constants.ServiceName),
 		logger:           logger,

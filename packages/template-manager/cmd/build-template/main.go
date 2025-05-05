@@ -76,9 +76,13 @@ func Build(ctx context.Context, kernelVersion, fcVersion, templateID, buildID st
 		return fmt.Errorf("error building template: %w", err)
 	}
 
-	tempStorage := template.NewStorage(ctx)
+	persistence, err := storage.GetTemplateStorageProvider(ctx)
+	if err != nil {
+		return err
+	}
 
-	buildStorage := tempStorage.NewBuild(t.TemplateFiles)
+	tempStorage := template.NewStorage(persistence)
+	buildStorage := tempStorage.NewBuild(t.TemplateFiles, persistence)
 
 	memfilePath := t.BuildMemfilePath()
 	rootfsPath := t.BuildRootfsPath()

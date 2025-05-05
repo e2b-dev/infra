@@ -5,21 +5,21 @@ import (
 	"fmt"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 )
 
 type Storage struct {
-	bucket *gcs.BucketHandle
+	bucketName  string
+	persistence storage.StorageProvider
 }
 
-func NewStorage(ctx context.Context) *Storage {
+func NewStorage(persistence storage.StorageProvider) *Storage {
 	return &Storage{
-		bucket: gcs.GetTemplateBucket(),
+		persistence: persistence,
 	}
 }
 
 func (t *Storage) Remove(ctx context.Context, buildId string) error {
-	err := gcs.RemoveDir(ctx, t.bucket, buildId)
+	err := t.persistence.DeleteObjectsWithPrefix(ctx, buildId)
 	if err != nil {
 		return fmt.Errorf("error when removing template '%s': %w", buildId, err)
 	}
@@ -27,6 +27,6 @@ func (t *Storage) Remove(ctx context.Context, buildId string) error {
 	return nil
 }
 
-func (t *Storage) NewBuild(files *storage.TemplateFiles) *storage.TemplateBuild {
-	return storage.NewTemplateBuild(nil, nil, files)
+func (t *Storage) NewBuild(files *storage.TemplateFiles, persistence storage.StorageProvider) *storage.TemplateBuild {
+	return storage.NewTemplateBuild(nil, nil, persistence, files)
 }
