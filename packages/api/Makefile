@@ -5,7 +5,7 @@ IMAGE := e2b-orchestration/api
 
 openapi := ../../spec/openapi.yml
 codegen := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
-expectedMigration := $(shell git ls-tree --name-only HEAD ../db/migrations/* | sed 's|../db/migrations/||' | sed 's/_.*//' | sort | tail -n 1)
+expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
 .PHONY: generate
 generate:
