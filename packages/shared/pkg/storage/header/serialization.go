@@ -19,7 +19,6 @@ type Metadata struct {
 	BaseBuildId uuid.UUID
 }
 
-
 func Serialize(metadata *Metadata, mappings []*BuildMap) (io.Reader, error) {
 	var buf bytes.Buffer
 
@@ -41,6 +40,7 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) (io.Reader, error) {
 func Deserialize(in io.WriterTo) (*Header, error) {
 	var buf bytes.Buffer
 
+	// todo
 	_, err := in.WriteTo(&buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write to buffer: %w", err)
