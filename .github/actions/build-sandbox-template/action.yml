@@ -21,6 +21,10 @@ runs:
         echo "TESTS_SANDBOX_TEMPLATE_ID=${TEMPLATE_ID}" >> .env.test
         echo "TESTS_SANDBOX_BUILD_ID=${BUILD_ID}" >> .env.test
         
+        # This is for a template manager
+        echo "GCP_DOCKER_REPOSITORY_NAME=${GCP_DOCKER_REPOSITORY_NAME}" >> .env.test
+        echo "GOOGLE_SERVICE_ACCOUNT_BASE64=${GOOGLE_SERVICE_ACCOUNT_BASE64}" >> .env.test
+        
         # Manually reupload Docker image from common build ID
         export DOCKER_IMAGE_PATH="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_DOCKER_REPOSITORY_NAME}/${TEMPLATE_ID}"
         echo "Docker image template path: ${DOCKER_IMAGE_PATH}"

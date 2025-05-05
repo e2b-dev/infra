@@ -48,11 +48,8 @@ runs:
         ORCHESTRATOR_SERVICES: "orchestrator,template-manager"
         SANDBOX_ACCESS_TOKEN_HASH_SEED: "abcdefghijklmnopqrstuvwxyz"
         SUPABASE_JWT_SECRETS: "supabasejwtsecretsupabasejwtsecret"
+        TEMPLATE_MANAGER_ADDRESS: "http://localhost:5008"
       run: |
-        echo "ENVD_TIMEOUT=${ENVD_TIMEOUT}" >> .env.test
-        echo "SANDBOX_ACCESS_TOKEN_HASH_SEED=${SANDBOX_ACCESS_TOKEN_HASH_SEED}" >> .env.test
-        echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRETS}" >> .env.test
-
         mkdir -p ~/logs
         
         # Start orchestrator
