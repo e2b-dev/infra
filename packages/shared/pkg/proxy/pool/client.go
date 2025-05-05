@@ -90,24 +90,24 @@ func newProxyClient(
 					return
 				}
 
-				if t.SandboxPort == nil {
-					zap.L().Error("sandbox error handler called", zap.Error(err))
+				if t.DefaultToPortError {
+					err = template.
+						NewPortClosedError(t.SandboxId, r.Host, t.SandboxPort).
+						HandleError(w, r)
+					if err != nil {
+						zap.L().Error("failed to handle error", zap.Error(err))
 
-					http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
+						http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
 
-					return
+						return
+					}
 				}
 
-				err = template.
-					NewPortClosedError(t.SandboxId, r.Host, *t.SandboxPort).
-					HandleError(w, r)
-				if err != nil {
-					zap.L().Error("failed to handle error", zap.Error(err))
+				zap.L().Error("sandbox error handler called", zap.Error(err))
 
-					http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
+				http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
 
-					return
-				}
+				return
 			},
 			ModifyResponse: func(r *http.Response) error {
 				t, ok := r.Request.Context().Value(DestinationContextKey{}).(*Destination)

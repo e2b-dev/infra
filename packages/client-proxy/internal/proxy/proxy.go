@@ -97,6 +97,7 @@ func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 				Url:           url,
 				SandboxId:     sandboxId,
 				RequestLogger: logger,
+				SandboxPort:   port,
 			}, nil
 		},
 	)
