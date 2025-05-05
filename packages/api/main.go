@@ -45,9 +45,9 @@ const (
 	maxMultipartMemory = 1 << 27 // 128 MiB
 	maxUploadLimit     = 1 << 28 // 256 MiB
 
-	maxReadHeaderTimeout = 60 * time.Second
-	maxReadTimeout       = 75 * time.Second
-	maxWriteTimeout      = 75 * time.Second
+	maxReadTimeout  = 75 * time.Second
+	maxWriteTimeout = 75 * time.Second
+	idleTimeout     = 620 * time.Second
 
 	defaultPort = 80
 )
@@ -171,12 +171,14 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.AP
 	r.MaxMultipartMemory = maxMultipartMemory
 
 	s := &http.Server{
-		Handler:           r,
-		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
-		ReadHeaderTimeout: maxReadHeaderTimeout,
-		ReadTimeout:       maxReadTimeout,
-		WriteTimeout:      maxWriteTimeout,
-		BaseContext:       func(net.Listener) context.Context { return ctx },
+		Handler: r,
+		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
+		// Configure timeouts to be greater than the proxy timeouts.
+		// https://github.com/golang/go/issues/47007
+		ReadTimeout:  maxReadTimeout,
+		WriteTimeout: maxWriteTimeout,
+		IdleTimeout:  idleTimeout,
+		BaseContext:  func(net.Listener) context.Context { return ctx },
 	}
 
 	return s
