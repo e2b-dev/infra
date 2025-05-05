@@ -41,6 +41,7 @@ const (
 	defaultProxyPort = 5007
 )
 
+var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
 var commitSHA string
 
 func main() {
@@ -149,7 +150,7 @@ func run(port, proxyPort uint) (result int) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
+	networkPool, err := network.NewPool(sig, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
@@ -224,9 +225,15 @@ func run(port, proxyPort uint) (result int) {
 	<-sig.Done()
 	log.Printf("Shutdown signal received")
 
+	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
+	defer cancelCloseCtx()
+	if forceStop {
+		cancelCloseCtx()
+	}
+
 	for _, c := range closers {
-		log.Printf("Closing %T", c)
-		if err := c.Close(context.Background()); err != nil {
+		log.Printf("Closing %T, forced: %v", c, forceStop)
+		if err := c.Close(closeCtx); err != nil {
 			log.Printf("error during shutdown: %v", err)
 			result = 1
 		}

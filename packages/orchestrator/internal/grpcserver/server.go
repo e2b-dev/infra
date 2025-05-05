@@ -115,7 +115,12 @@ func (g *GRPCServer) Start(ctx context.Context, port uint) error {
 
 	g.shutdown.op = func(ctx context.Context) error {
 		// mark services as unhealthy so now new request will be accepted
-		g.grpc.GracefulStop()
+		select {
+		case <-ctx.Done():
+			g.grpc.Stop()
+		default:
+			g.grpc.GracefulStop()
+		}
 		m.Close()
 
 		return lis.Close()

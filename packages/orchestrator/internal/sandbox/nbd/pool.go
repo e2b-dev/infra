@@ -287,7 +287,7 @@ func GetDevicePath(slot DeviceSlot) DevicePath {
 	return fmt.Sprintf("/dev/nbd%d", slot)
 }
 
-func (d *DevicePool) Close(ctx context.Context) error {
+func (d *DevicePool) Close(_ context.Context) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 

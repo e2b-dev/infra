@@ -92,6 +92,7 @@ func (s *ServerStore) Close(ctx context.Context) error {
 		// no new jobs should be started
 		s.logger.Info("marking service as draining")
 		s.healthStatus = templatemanager.HealthState_Draining
+		// wait for registering the node as draining
 		if !env.IsLocal() {
 			time.Sleep(5 * time.Second)
 		}

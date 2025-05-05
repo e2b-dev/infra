@@ -103,8 +103,15 @@ func (p *SandboxProxy) Start() error {
 }
 
 func (p *SandboxProxy) Close(ctx context.Context) error {
-	if err := p.proxy.Shutdown(ctx); err != nil {
-		return fmt.Errorf("error shutting down proxy: %w", err)
+	var err error
+	select {
+	case <-ctx.Done():
+		err = p.proxy.Close()
+	default:
+		err = p.proxy.Shutdown(ctx)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to shutdown proxy server: %w", err)
 	}
 
 	return nil
