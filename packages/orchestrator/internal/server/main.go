@@ -64,6 +64,7 @@ func New(
 	ctx context.Context,
 	grpc *grpcserver.GRPCServer,
 	networkPool *network.Pool,
+	devicePool *nbd.DevicePool,
 	tracer trace.Tracer,
 	clientID string,
 	version string,
@@ -84,12 +85,6 @@ func New(
 	// BLOCK: initialize services
 	{
 		srv.proxy = proxy
-
-		devicePool, err := nbd.NewDevicePool()
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to create device pool: %w", err)
-		}
 
 		persistence, err := storage.GetTemplateStorageProvider(ctx)
 		if err != nil {

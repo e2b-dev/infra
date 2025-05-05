@@ -286,3 +286,22 @@ func (d *DevicePool) ReleaseDeviceWithRetry(idx DeviceSlot) error {
 func GetDevicePath(slot DeviceSlot) DevicePath {
 	return fmt.Sprintf("/dev/nbd%d", slot)
 }
+
+func (d *DevicePool) Close(ctx context.Context) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.slots != nil {
+		close(d.slots)
+	}
+
+	for slotIdx, e := d.usedSlots.NextSet(0); e; slotIdx, e = d.usedSlots.NextSet(slotIdx + 1) {
+		slot := DeviceSlot(slotIdx)
+		err := d.ReleaseDeviceWithRetry(slot)
+		if err != nil {
+			return fmt.Errorf("failed to release device %d: %w", slot, err)
+		}
+	}
+
+	return nil
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"log"
 	"math"
 	"os"
@@ -151,10 +152,15 @@ func run(port, proxyPort uint) (result int) {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
 
+	devicePool, err := nbd.NewDevicePool()
+	if err != nil {
+		zap.L().Fatal("failed to create device pool", zap.Error(err))
+	}
+
 	grpcSrv := grpcserver.New(commitSHA)
 	tracer := otel.Tracer(serviceName)
 
-	_, err = server.New(ctx, grpcSrv, networkPool, tracer, clientID, commitSHA, sandboxProxy, sandboxes)
+	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, clientID, commitSHA, sandboxProxy, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -182,7 +188,8 @@ func run(port, proxyPort uint) (result int) {
 		tmpl,
 		grpcSrv,
 		networkPool,
-		sandboxProxy,
+		devicePool,
+		sessionProxy,
 	)
 
 	g.Go(func() error {
