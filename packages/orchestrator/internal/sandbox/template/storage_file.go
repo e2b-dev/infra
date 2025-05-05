@@ -28,8 +28,7 @@ func newStorageFile(
 
 	object, err := persistence.OpenObject(ctx, objectPath)
 	if err != nil {
-		cleanupErr := os.Remove(path)
-		return nil, errors.Join(err, cleanupErr)
+		return nil, err
 	}
 
 	_, err = object.WriteTo(f)
