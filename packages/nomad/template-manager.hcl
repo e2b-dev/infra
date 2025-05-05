@@ -59,6 +59,7 @@ job "template-manager" {
         TEMPLATE_BUCKET_NAME          = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
+        ORCHESTRATOR_SERVICES         = "${orchestrator_services}"
       }
 
       config {

@@ -45,6 +45,7 @@ runs:
     - name: Start Services
       env:
         ENVD_TIMEOUT: "60s"
+        ORCHESTRATOR_SERVICES: "orchestrator,template-manager"
         SANDBOX_ACCESS_TOKEN_HASH_SEED: "abcdefghijklmnopqrstuvwxyz"
         SUPABASE_JWT_SECRETS: "supabasejwtsecretsupabasejwtsecret"
       run: |

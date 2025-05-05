@@ -45,7 +45,7 @@ type ServerStore struct {
 	wg               *sync.WaitGroup // wait group for running builds
 }
 
-func New(ctx context.Context, grpc *grpcserver.GRPCServer, logger *zap.Logger, buildLogger *zap.Logger) *ServerStore {
+func New(ctx context.Context, grpc *grpcserver.GRPCServer, logger *zap.Logger, buildLogger *zap.Logger, tracer trace.Tracer) *ServerStore {
 	// Template Manager Initialization
 	if err := constants.CheckRequired(); err != nil {
 		log.Fatalf("Validation for environment variables failed: %v", err)
@@ -75,9 +75,9 @@ func New(ctx context.Context, grpc *grpcserver.GRPCServer, logger *zap.Logger, b
 
 	templateStorage := template.NewStorage(persistence)
 	buildCache := cache.NewBuildCache()
-	builder := build.NewBuilder(logger, buildLogger, otel.Tracer(constants.ServiceName), dockerClient, legacyClient, templateStorage, buildCache, persistence)
+	builder := build.NewBuilder(logger, buildLogger, tracer, dockerClient, legacyClient, templateStorage, buildCache, persistence)
 	store := &ServerStore{
-		tracer:           otel.Tracer(constants.ServiceNameTemplate),
+		tracer:           tracer,
 		logger:           logger,
 		builder:          builder,
 		buildCache:       buildCache,

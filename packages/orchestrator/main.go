@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -21,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/servicetype"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -37,10 +39,21 @@ type Closeable interface {
 const (
 	defaultPort      = 5008
 	defaultProxyPort = 5007
-	ServiceName      = "orchestrator"
 )
 
 var commitSHA string
+
+func main() {
+	port := flag.Uint("port", defaultPort, "orchestrator server port")
+	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
+	flag.Parse()
+	if *port > math.MaxUint16 {
+		log.Fatalf("%d is larger than maximum possible port %d", port, math.MaxInt16)
+		os.Exit(1)
+	}
+
+	os.Exit(run(*port, *proxyPort))
+}
 
 func run(port, proxyPort uint) (result int) {
 	result = 0
@@ -48,6 +61,9 @@ func run(port, proxyPort uint) (result int) {
 	defer cancel()
 
 	clientID := consul.GetClientID()
+
+	services := servicetype.GetServices()
+	serviceName := servicetype.GetServiceName(services)
 
 	var g errgroup.Group
 	// defer waiting on the group so that this runs even when
@@ -61,7 +77,7 @@ func run(port, proxyPort uint) (result int) {
 	}(&g)
 
 	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(ctx, server.ServiceName, commitSHA, clientID)
+		shutdown := telemetry.InitOTLPExporter(ctx, serviceName, commitSHA, clientID)
 		defer func() {
 			if err := shutdown(ctx); err != nil {
 				log.Printf("telemetry shutdown: %v", err)
@@ -71,10 +87,10 @@ func run(port, proxyPort uint) (result int) {
 	}
 
 	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName: ServiceName,
+		ServiceName: serviceName,
 		IsInternal:  true,
 		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{logger.GetOTELCore(ServiceName)},
+		Cores:       []zapcore.Core{logger.GetOTELCore(serviceName)},
 	}))
 	defer func(l *zap.Logger) {
 		err := l.Sync()
@@ -88,7 +104,7 @@ func run(port, proxyPort uint) (result int) {
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
-			ServiceName:      ServiceName,
+			ServiceName:      serviceName,
 			IsInternal:       false,
 			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
 		},
@@ -105,7 +121,7 @@ func run(port, proxyPort uint) (result int) {
 	sbxLoggerInternal := sbxlogger.NewLogger(
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
-			ServiceName:      ServiceName,
+			ServiceName:      serviceName,
 			IsInternal:       true,
 			CollectorAddress: os.Getenv("LOGS_COLLECTOR_ADDRESS"),
 		},
@@ -136,24 +152,13 @@ func run(port, proxyPort uint) (result int) {
 	}
 
 	grpcSrv := grpcserver.New(commitSHA)
-	_, err = server.New(ctx, grpcSrv, networkPool, clientID, commitSHA, sandboxProxy, sandboxes)
+	tracer := otel.Tracer(serviceName)
+
+	_, err = server.New(ctx, grpcSrv, networkPool, tracer, clientID, commitSHA, sandboxProxy, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
 
-	templateManagerLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName: constants.ServiceNameTemplate,
-		IsInternal:  true,
-		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{logger.GetOTELCore(constants.ServiceNameTemplate)},
-	}))
-	defer func(l *zap.Logger) {
-		err := l.Sync()
-		if err != nil {
-			log.Printf("error while shutting down template manager logger: %v", err)
-			result = 1
-		}
-	}(templateManagerLogger)
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
 		sbxlogger.SandboxLoggerConfig{
@@ -169,7 +174,7 @@ func run(port, proxyPort uint) (result int) {
 			result = 1
 		}
 	}(tmplSbxLoggerExternal)
-	tmpl := tmplserver.New(ctx, grpcSrv, templateManagerLogger, tmplSbxLoggerExternal)
+	tmpl := tmplserver.New(ctx, grpcSrv, globalLogger, tmplSbxLoggerExternal, tracer)
 	defer tmpl.Close(ctx)
 
 	var closers []Closeable
@@ -224,16 +229,4 @@ func run(port, proxyPort uint) (result int) {
 	}
 
 	return result
-}
-
-func main() {
-	port := flag.Uint("port", defaultPort, "orchestrator server port")
-	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
-	flag.Parse()
-	if *port > math.MaxUint16 {
-		log.Fatalf("%d is larger than maximum possible port %d", port, math.MaxInt16)
-		os.Exit(1)
-	}
-
-	os.Exit(run(*port, *proxyPort))
 }

@@ -7,7 +7,6 @@ import (
 	"os"
 	"sync"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -24,8 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
-
-const ServiceName = "orchestrator"
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
@@ -67,6 +64,7 @@ func New(
 	ctx context.Context,
 	grpc *grpcserver.GRPCServer,
 	networkPool *network.Pool,
+	tracer trace.Tracer,
 	clientID string,
 	version string,
 	proxy *proxy.SandboxProxy,
@@ -120,7 +118,7 @@ func New(
 		}
 
 		srv.server = &server{
-			tracer:               otel.Tracer(ServiceName),
+			tracer:               tracer,
 			proxy:                srv.proxy,
 			sandboxes:            sandboxes,
 			networkPool:          networkPool,

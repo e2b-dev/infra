@@ -44,6 +44,7 @@ run-debug:
 	NODE_ID="testclient" \
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	ENVD_TIMEOUT=$(ENVD_TIMEOUT) \
+	ORCHESTRATOR_SERVICES=$(ORCHESTRATOR_SERVICES) \
 	./bin/orchestrator
 
 .PHONY: upload/orchestrator
