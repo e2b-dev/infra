@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"time"
 
@@ -69,7 +70,8 @@ func (s *Sandbox) LogMetrics(ctx context.Context) {
 				MemUsedMiB:     metrics.MemUsedMiB,
 			})
 
-			memUsedPct := float32(metrics.MemUsedMiB) / float32(metrics.MemTotalMiB) * 100
+			// Round percentage to 2 decimal places
+			memUsedPct := float32(math.Floor(float64(metrics.MemUsedMiB)/float64(metrics.MemTotalMiB)*10000) / 100)
 			if memUsedPct >= sbxMemThresholdPct {
 				sbxlogger.E(s).Warn("Memory usage threshold exceeded",
 					zap.Float32("mem_used_percent", memUsedPct),
