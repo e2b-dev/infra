@@ -67,29 +67,20 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	buildCache := ttlcache.New[string, interface{}]()
 	go buildCache.Start()
 
-	status := api.NodeStatusUnhealthy
 	version := "unknown"
 
 	nodeStatus, err := o.getNodeHealth(node)
-	if err != nil {
-		zap.L().Error("Failed to get node health", zap.Error(err))
-	}
-
-	if nodeStatus != nil {
-		if nodeStatus.Status == e2bHealth.Healthy {
-			status = api.NodeStatusReady
-		} else {
-			status = api.NodeStatusUnhealthy
-		}
-
+	if err == nil {
 		version = nodeStatus.Version
+	} else {
+		zap.L().Error("Failed to get node health", zap.Error(err))
 	}
 
 	n := &Node{
 		Client:         client,
 		buildCache:     buildCache,
 		sbxsInProgress: smap.New[*sbxInProgress](),
-		status:         status,
+		status:         api.NodeStatusUnhealthy,
 		version:        version,
 		Info:           node,
 		createFails:    atomic.Uint64{},
