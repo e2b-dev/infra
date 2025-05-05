@@ -81,10 +81,10 @@ var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName:                  "{sandbox}",
 	ClientProxyServerConnectionsMeterCounterName:       "{connection}",
 	ClientProxyPoolConnectionsMeterCounterName:         "{connection}",
-	ClientProxyPoolSizeMeterCounterName:                "{connection}",
+	ClientProxyPoolSizeMeterCounterName:                "{transport}",
 	OrchestratorProxyServerConnectionsMeterCounterName: "{connection}",
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "{connection}",
-	OrchestratorProxyPoolSizeMeterCounterName:          "{connection}",
+	OrchestratorProxyPoolSizeMeterCounterName:          "{transport}",
 }
 
 func GetCounter(name CounterType) (metric.Int64Counter, error) {
