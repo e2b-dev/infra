@@ -10,11 +10,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const (
-	memThresholdPct = 80
-	cpuThresholdPct = 80
-)
-
 type API struct {
 	logger      *zerolog.Logger
 	accessToken *string
@@ -49,21 +44,6 @@ func (a *API) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		a.logger.Error().Err(err).Msg("Failed to get metrics")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
-	}
-
-	memUsedPct := float32(metrics.MemUsedMiB) / float32(metrics.MemTotalMiB) * 100
-	if memUsedPct >= memThresholdPct {
-		a.logger.Warn().
-			Float32("mem_used_percent", memUsedPct).
-			Float32("mem_threshold_percent", memThresholdPct).
-			Msg("Memory usage threshold exceeded")
-	}
-
-	if metrics.CPUUsedPercent >= cpuThresholdPct {
-		a.logger.Warn().
-			Float32("cpu_used_percent", metrics.CPUUsedPercent).
-			Float32("cpu_threshold_percent", cpuThresholdPct).
-			Msg("CPU usage threshold exceeded")
 	}
 
 	w.WriteHeader(http.StatusOK)

@@ -14,6 +14,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
 )
 
+const (
+	sbxMemThresholdPct = 80
+	sbxCpuThresholdPct = 80
+)
+
 type SandboxMetrics struct {
 	Timestamp      int64   `json:"ts"`            // Unix Timestamp in UTC
 	CPUCount       uint32  `json:"cpu_count"`     // Total CPU cores
@@ -63,6 +68,21 @@ func (s *Sandbox) LogMetrics(ctx context.Context) {
 				MemTotalMiB:    metrics.MemTotalMiB,
 				MemUsedMiB:     metrics.MemUsedMiB,
 			})
+
+			memUsedPct := float32(metrics.MemUsedMiB) / float32(metrics.MemTotalMiB) * 100
+			if memUsedPct >= sbxMemThresholdPct {
+				sbxlogger.E(s).Warn("Memory usage threshold exceeded",
+					zap.Float32("mem_used_percent", memUsedPct),
+					zap.Float32("mem_threshold_percent", sbxMemThresholdPct),
+				)
+			}
+
+			if metrics.CPUUsedPercent >= sbxCpuThresholdPct {
+				sbxlogger.E(s).Warn("CPU usage threshold exceeded",
+					zap.Float32("cpu_used_percent", metrics.CPUUsedPercent),
+					zap.Float32("cpu_threshold_percent", sbxCpuThresholdPct),
+				)
+			}
 		}
 	}
 }
