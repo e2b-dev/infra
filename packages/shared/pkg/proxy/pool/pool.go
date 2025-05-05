@@ -2,7 +2,6 @@ package pool
 
 import (
 	"fmt"
-	"log"
 	"math/rand"
 	"sync/atomic"
 	"time"
@@ -60,21 +59,14 @@ func (p *ProxyPool) Get(d *Destination) *proxyClient {
 			return inMapValue
 		}
 
-		var logger *log.Logger
-		if d.ConnectionKey != "" {
-			l, err := zap.NewStdLogAt(zap.L().With(zap.String("sandbox_id", d.SandboxId)), zap.ErrorLevel)
-			if err != nil {
-				zap.L().Warn("failed to create logger", zap.Error(err))
-			}
+		withFields := make([]zap.Field, 0)
+		if d.IncludeSandboxIdInProxyErrorLogger {
+			withFields = append(withFields, zap.String("sandbox_id", d.SandboxId))
+		}
 
-			logger = l
-		} else {
-			l, err := zap.NewStdLogAt(zap.L(), zap.ErrorLevel)
-			if err != nil {
-				zap.L().Warn("failed to create logger", zap.Error(err))
-			}
-
-			logger = l
+		logger, err := zap.NewStdLogAt(zap.L().With(withFields...), zap.ErrorLevel)
+		if err != nil {
+			zap.L().Warn("failed to create logger", zap.Error(err))
 		}
 
 		return newProxyClient(

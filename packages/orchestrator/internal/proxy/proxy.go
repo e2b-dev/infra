@@ -44,10 +44,11 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*reverse
 			}
 
 			return &pool.Destination{
-				Url:                url,
-				SandboxId:          sbx.Config.SandboxId,
-				SandboxPort:        port,
-				DefaultToPortError: true,
+				Url:                                url,
+				SandboxId:                          sbx.Config.SandboxId,
+				SandboxPort:                        port,
+				DefaultToPortError:                 true,
+				IncludeSandboxIdInProxyErrorLogger: true,
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
 				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
 				ConnectionKey: sbx.StartID,
