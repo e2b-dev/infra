@@ -307,7 +307,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 	// Make request to second backend
 	resp2, err := http.Get(proxyURL)
 	if err != nil {
-		t.Fatalf("unexpectedly got a response from the second backend: %v", resp2.StatusCode)
+		t.Fatalf("failed to GET from proxy (second request): %v", err)
 	}
 	defer resp2.Body.Close()
 
