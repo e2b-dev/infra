@@ -80,7 +80,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 		Client:         client,
 		buildCache:     buildCache,
 		sbxsInProgress: smap.New[*sbxInProgress](),
-		status:         api.NodeStatusUnhealthy,
+		status:         api.NodeStatusReady,
 		version:        version,
 		Info:           node,
 		createFails:    atomic.Uint64{},
