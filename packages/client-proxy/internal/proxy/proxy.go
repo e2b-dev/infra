@@ -22,7 +22,7 @@ const (
 	orchestratorProxyPort = 5007 // orchestrator proxy port
 	maxRetries            = 3
 
-	minOrchestratorProxyConns = 16
+	minOrchestratorProxyConns = 3
 	idleTimeout               = 620 * time.Second
 
 	// We use a constant connection key, because we don't have to separate connection pools
