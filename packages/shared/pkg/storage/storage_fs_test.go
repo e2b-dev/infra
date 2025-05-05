@@ -126,10 +126,3 @@ func TestWriteToNonExistentObject(t *testing.T) {
 	_, err = obj.WriteTo(&sink)
 	require.ErrorIs(t, err, ErrorObjectNotExist)
 }
-
-func TestGetDetails(t *testing.T) {
-	p := newTempProvider(t)
-
-	info := p.GetDetails()
-	require.Contains(t, info, p.GetDetails())
-}
