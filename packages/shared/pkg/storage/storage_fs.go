@@ -38,7 +38,7 @@ func (fs *FileSystemStorageProvider) GetDetails() string {
 
 func (fs *FileSystemStorageProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
 	dir := filepath.Dir(fs.getPath(path))
-	if err := os.MkdirAll(dir, 0); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 
@@ -138,10 +138,9 @@ func (f *FileSystemStorageObjectProvider) getHandle(checkExistence bool) (*os.Fi
 			return nil, fmt.Errorf("path %s is a directory", f.path)
 		}
 
-		return nil, nil
 	}
 
-	handle, err := os.OpenFile(f.path, os.O_RDWR|os.O_CREATE, 0)
+	handle, err := os.OpenFile(f.path, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, err
 	}
