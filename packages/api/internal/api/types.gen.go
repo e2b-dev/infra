@@ -179,6 +179,9 @@ type Node struct {
 
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
+
+	// Version Version of the orchestrator
+	Version string `json:"version"`
 }
 
 // NodeDetail defines model for NodeDetail.
@@ -197,6 +200,9 @@ type NodeDetail struct {
 
 	// Status Status of the node
 	Status NodeStatus `json:"status"`
+
+	// Version Version of the orchestrator
+	Version string `json:"version"`
 }
 
 // NodeStatus Status of the node
