@@ -23,9 +23,9 @@ import (
 )
 
 const (
-	// We limit the timeout more in proxies.
-	maxTimeout = 24 * time.Hour
-	maxAge     = 2 * time.Hour
+	// Greater than in orchestrator proxy.
+	idleTimeout = 640 * time.Second
+	maxAge      = 2 * time.Hour
 
 	defaultPort = 49983
 )
@@ -155,11 +155,12 @@ func main() {
 				middleware.Wrap(handler),
 			),
 		),
-		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       maxTimeout,
-		WriteTimeout:      maxTimeout,
-		IdleTimeout:       maxTimeout,
+		Addr: fmt.Sprintf("0.0.0.0:%d", port),
+		// We remove the timeouts as the connection is terminated by closing of the sandbox and keepalive close.
+		// https://github.com/golang/go/issues/47007
+		ReadTimeout:  0,
+		WriteTimeout: 0,
+		IdleTimeout:  idleTimeout,
 	}
 
 	if startCmdFlag != "" {
