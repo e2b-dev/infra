@@ -8,7 +8,6 @@ import (
 )
 
 type Storage struct {
-	bucketName  string
 	persistence storage.StorageProvider
 }
 
