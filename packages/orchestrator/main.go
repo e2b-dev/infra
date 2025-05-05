@@ -58,8 +58,11 @@ func main() {
 
 func run(port, proxyPort uint) (result int) {
 	result = 0
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer sigCancel()
 
 	clientID := consul.GetClientID()
 
@@ -181,7 +184,6 @@ func run(port, proxyPort uint) (result int) {
 		}
 	}(tmplSbxLoggerExternal)
 	tmpl := tmplserver.New(ctx, grpcSrv, globalLogger, tmplSbxLoggerExternal, tracer)
-	defer tmpl.Close(ctx)
 
 	var closers []Closeable
 	closers = append(closers,
@@ -220,16 +222,18 @@ func run(port, proxyPort uint) (result int) {
 		return nil
 	})
 
-	<-ctx.Done()
+	<-sig.Done()
 	log.Printf("Shutdown signal received")
 
 	for _, c := range closers {
+		log.Printf("Closing %T", c)
 		if err := c.Close(context.Background()); err != nil {
 			log.Printf("error during shutdown: %v", err)
 			result = 1
 		}
 	}
 
+	log.Println("Waiting for services to finish")
 	if err := g.Wait(); err != nil {
 		log.Printf("service group error: %v", err)
 		result = 1
