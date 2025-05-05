@@ -5,7 +5,7 @@ go 1.23.7
 require (
 	github.com/e2b-dev/infra/packages/shared v0.0.0-20250324174051-3fb806938dc1
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.7.2
+	github.com/jackc/pgx/v5 v5.7.4
 	github.com/lib/pq v1.10.9
 	go.uber.org/zap v1.27.0
 )

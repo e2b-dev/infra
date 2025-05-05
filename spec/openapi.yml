@@ -549,7 +549,11 @@ components:
         - allocatedMemoryMiB
         - createFails
         - sandboxStartingCount
+        - version
       properties:
+        version:
+          type: string
+          description: Version of the orchestrator
         nodeID:
           type: string
           description: Identifier of the node
@@ -583,7 +587,11 @@ components:
         - sandboxes
         - cachedBuilds
         - createFails
+        - version
       properties:
+        version:
+          type: string
+          description: Version of the orchestrator
         nodeID:
           type: string
           description: Identifier of the node

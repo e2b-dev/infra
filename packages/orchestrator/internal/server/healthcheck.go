@@ -13,17 +13,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+
+	e2bHealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
 )
 
 const healthcheckFrequency = 5 * time.Second
 const healthcheckTimeout = 30 * time.Second
-
-type Status string
-
-const (
-	Healthy   Status = "healthy"
-	Unhealthy Status = "unhealthy"
-)
 
 type Healthcheck struct {
 	version    string
@@ -32,7 +27,7 @@ type Healthcheck struct {
 	grpcHealth *health.Server
 
 	// TODO: Replace with status from SQL Lite
-	status  Status
+	status  e2bHealth.Status
 	lastRun time.Time
 	mu      sync.RWMutex
 }
@@ -45,7 +40,7 @@ func NewHealthcheck(server *server, grpc *grpc.Server, grpcHealth *health.Server
 		grpcHealth: grpcHealth,
 
 		lastRun: time.Now(),
-		status:  Unhealthy,
+		status:  e2bHealth.Unhealthy,
 		mu:      sync.RWMutex{},
 	}, nil
 }
@@ -106,39 +101,34 @@ func (h *Healthcheck) report(ctx context.Context) error {
 }
 
 // getGRPCHealth returns the health status of the grpc.Server by calling the health service check.
-func (h *Healthcheck) getGRPCHealth(ctx context.Context) (Status, error) {
+func (h *Healthcheck) getGRPCHealth(ctx context.Context) (e2bHealth.Status, error) {
 	c, err := h.grpcHealth.Check(ctx, &healthpb.HealthCheckRequest{
 		// Empty string is the default service name
 		Service: "",
 	})
 	if err != nil {
-		return Unhealthy, err
+		return e2bHealth.Unhealthy, err
 	}
 
 	switch c.GetStatus() {
 	case healthpb.HealthCheckResponse_SERVING:
-		return Healthy, nil
+		return e2bHealth.Healthy, nil
 	default:
-		return Unhealthy, nil
+		return e2bHealth.Unhealthy, nil
 	}
-}
-
-type HealthResponse struct {
-	Status  Status `json:"status"`
-	Version string `json:"version"`
 }
 
 func (h *Healthcheck) healthHandler(w http.ResponseWriter, r *http.Request) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	response := HealthResponse{
+	response := e2bHealth.Response{
 		Status:  h.status,
 		Version: h.version,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if h.status == Unhealthy {
+	if h.status == e2bHealth.Unhealthy {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	} else {
 		w.WriteHeader(http.StatusOK)

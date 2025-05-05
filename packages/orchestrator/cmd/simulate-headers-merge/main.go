@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/google/uuid"
 )
@@ -52,8 +51,20 @@ func main() {
 
 	ctx := context.Background()
 
-	baseObj := gcs.NewObject(ctx, gcs.GetTemplateBucket(), baseStoragePath)
-	diffObj := gcs.NewObject(ctx, gcs.GetTemplateBucket(), diffStoragePath)
+	storage, err := storage.GetTemplateStorageProvider(ctx)
+	if err != nil {
+		log.Fatalf("failed to get storage provider: %s", err)
+	}
+
+	baseObj, err := storage.OpenObject(ctx, baseStoragePath)
+	if err != nil {
+		log.Fatalf("failed to open object: %s", err)
+	}
+
+	diffObj, err := storage.OpenObject(ctx, diffStoragePath)
+	if err != nil {
+		log.Fatalf("failed to open object: %s", err)
+	}
 
 	baseHeader, err := header.Deserialize(baseObj)
 	if err != nil {
@@ -66,7 +77,7 @@ func main() {
 	}
 
 	fmt.Printf("\nBASE METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", gcs.GetTemplateBucket().BucketName(), baseStoragePath)
+	fmt.Printf("Storage path       %s/%s\n", storage.GetDetails(), baseStoragePath)
 	fmt.Printf("========\n")
 
 	for _, mapping := range baseHeader.Mapping {
@@ -97,7 +108,7 @@ func main() {
 	}
 
 	fmt.Printf("\nDIFF METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", gcs.GetTemplateBucket().BucketName(), diffStoragePath)
+	fmt.Printf("Storage path       %s/%s\n", storage.GetDetails(), diffStoragePath)
 	fmt.Printf("========\n")
 
 	onlyDiffMappings := make([]*header.BuildMap, 0)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"net/http"
 	"os"
 	"strings"
@@ -26,6 +25,7 @@ import (
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
@@ -81,7 +81,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Fatal("initializing SQLC client", zap.Error(err))
 	}
 
-	zap.L().Info("created Supabase client")
+	zap.L().Info("created database client")
 
 	readMetricsFromClickHouse := os.Getenv("READ_METRICS_FROM_CLICKHOUSE")
 	var clickhouseStore chdb.Store = nil

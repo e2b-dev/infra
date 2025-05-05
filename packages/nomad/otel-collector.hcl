@@ -49,7 +49,6 @@ job "otel-collector" {
 
         volumes = [
           "local/config:/config",
-          "/var/log/session-proxy:/var/log/session-proxy",
         ]
         args = [
           "--config=local/config/otel-collector-config.yaml",
@@ -92,7 +91,7 @@ receivers:
           params:
             format: ['prometheus']
           consul_sd_configs:
-          - services: ['nomad-client', 'nomad', 'api', 'client-proxy', 'session-proxy', 'otel-collector', 'logs-collector', 'docker-reverse-proxy', 'loki', 'orchestrator', 'template-manager']
+          - services: ['nomad-client', 'nomad', 'api', 'client-proxy', 'otel-collector', 'logs-collector', 'docker-reverse-proxy', 'loki', 'orchestrator', 'template-manager']
             token: "${consul_token}"
 
           relabel_configs:
@@ -146,11 +145,6 @@ processors:
     attributes:
       - action: delete
         key: service.instance.id
-  attributes/session-proxy:
-    actions:
-      - key: service.name
-        action: upsert
-        value: session-proxy
 extensions:
   basicauth/grafana_cloud:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/extension/basicauthextension
@@ -199,7 +193,6 @@ service:
         - otlphttp/grafana_cloud
     logs:
       receivers:
-      # - filelog/session-proxy
         - otlp
       processors: [batch]
       exporters:

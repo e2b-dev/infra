@@ -22,8 +22,6 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/dns"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -33,7 +31,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const ServiceName = "orchestrator"
@@ -41,8 +41,7 @@ const ServiceName = "orchestrator"
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	sandboxes       *smap.Map[*sandbox.Sandbox]
-	dns             *dns.DNS
-	proxy           *proxy.SandboxProxy
+	proxy           *reverse_proxy.Proxy
 	tracer          trace.Tracer
 	networkPool     *network.Pool
 	templateCache   *template.Cache
@@ -50,6 +49,7 @@ type server struct {
 	clientID        string // nomad node id
 	devicePool      *nbd.DevicePool
 	clickhouseStore chdb.Store
+	persistence     storage.StorageProvider
 
 	useLokiMetrics       string
 	useClickhouseMetrics string
@@ -60,8 +60,7 @@ type Service struct {
 	server     *server
 	grpc       *grpc.Server
 	grpcHealth *health.Server
-	dns        *dns.DNS
-	proxy      *proxy.SandboxProxy
+	proxy      *reverse_proxy.Proxy
 	port       uint16
 	shutdown   struct {
 		once sync.Once
@@ -74,9 +73,18 @@ type Service struct {
 	// see https://linear.app/e2b/issue/E2B-1731/use-viper-to-read-env-vars
 	useLokiMetrics       string
 	useClickhouseMetrics string
+
+	persistence storage.StorageProvider
 }
 
-func New(ctx context.Context, port uint, clientID string, version string, proxy *proxy.SandboxProxy) (*Service, error) {
+func New(
+	ctx context.Context,
+	port uint,
+	clientID string,
+	version string,
+	proxy *reverse_proxy.Proxy,
+	sandboxes *smap.Map[*sandbox.Sandbox],
+) (*Service, error) {
 	if port > math.MaxUint16 {
 		return nil, fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
 	}
@@ -99,7 +107,6 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 
 	// BLOCK: initialize services
 	{
-		srv.dns = dns.New()
 		srv.proxy = proxy
 
 		opts := []logging.Option{
@@ -130,6 +137,13 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 			return nil, fmt.Errorf("failed to create device pool: %w", err)
 		}
 
+		persistence, err := storage.GetTemplateStorageProvider(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create storage provider: %w", err)
+		}
+
+		srv.persistence = persistence
+
 		useLokiMetrics := os.Getenv("WRITE_LOKI_METRICS")
 		useClickhouseMetrics := os.Getenv("WRITE_CLICKHOUSE_METRICS")
 		readClickhouseMetrics := os.Getenv("READ_CLICKHOUSE_METRICS")
@@ -151,9 +165,8 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 
 		srv.server = &server{
 			tracer:               otel.Tracer(ServiceName),
-			dns:                  srv.dns,
 			proxy:                srv.proxy,
-			sandboxes:            smap.New[*sandbox.Sandbox](),
+			sandboxes:            sandboxes,
 			networkPool:          networkPool,
 			templateCache:        templateCache,
 			clientID:             clientID,
@@ -161,6 +174,7 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 			clickhouseStore:      clickhouseStore,
 			useLokiMetrics:       useLokiMetrics,
 			useClickhouseMetrics: useClickhouseMetrics,
+			persistence:          persistence,
 		}
 		_, err = meters.GetObservableUpDownCounter(meters.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
 			observer.Observe(int64(srv.server.sandboxes.Count()))
@@ -183,7 +197,7 @@ func New(ctx context.Context, port uint, clientID string, version string, proxy 
 
 // Start launches
 func (srv *Service) Start(ctx context.Context) error {
-	if srv.server == nil || srv.dns == nil || srv.grpc == nil {
+	if srv.server == nil || srv.grpc == nil {
 		return errors.New("orchestrator services are not initialized")
 	}
 
@@ -191,13 +205,6 @@ func (srv *Service) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create healthcheck: %w", err)
 	}
-
-	go func() {
-		zap.L().Info("Starting DNS server")
-		if err := srv.dns.Start("127.0.0.4", 53); err != nil {
-			zap.L().Fatal("Failed running DNS server", zap.Error(err))
-		}
-	}()
 
 	// the listener is closed by the shutdown operation
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", srv.port))
@@ -237,10 +244,6 @@ func (srv *Service) Start(ctx context.Context) error {
 		m.Close()
 
 		if err := lis.Close(); err != nil {
-			errs = append(errs, err)
-		}
-
-		if err := srv.dns.Close(ctx); err != nil {
 			errs = append(errs, err)
 		}
 

@@ -7,28 +7,28 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type File struct {
-	header   *header.Header
-	store    *DiffStore
-	fileType DiffType
-	bucket   *gcs.BucketHandle
+	header      *header.Header
+	store       *DiffStore
+	fileType    DiffType
+	persistence storage.StorageProvider
 }
 
 func NewFile(
 	header *header.Header,
 	store *DiffStore,
 	fileType DiffType,
-	bucket *gcs.BucketHandle,
+	persistence storage.StorageProvider,
 ) *File {
 	return &File{
-		header:   header,
-		store:    store,
-		fileType: fileType,
-		bucket:   bucket,
+		header:      header,
+		store:       store,
+		fileType:    fileType,
+		persistence: persistence,
 	}
 }
 
@@ -124,7 +124,7 @@ func (b *File) getBuild(buildID *uuid.UUID) (Diff, error) {
 		buildID.String(),
 		b.fileType,
 		int64(b.header.Metadata.BlockSize),
-		b.bucket,
+		b.persistence,
 	)
 
 	source, err := b.store.Get(storageDiff)

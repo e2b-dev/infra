@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/gcs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -27,10 +27,10 @@ const (
 )
 
 type Cache struct {
-	cache      *ttlcache.Cache[string, Template]
-	bucket     *gcs.BucketHandle
-	ctx        context.Context
-	buildStore *build.DiffStore
+	cache       *ttlcache.Cache[string, Template]
+	persistence storage.StorageProvider
+	ctx         context.Context
+	buildStore  *build.DiffStore
 }
 
 func NewCache(ctx context.Context) (*Cache, error) {
@@ -56,15 +56,21 @@ func NewCache(ctx context.Context) (*Cache, error) {
 		buildCacheDelayEviction,
 		buildCacheMaxUsedPercentage,
 	)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build store: %w", err)
 	}
 
+	persistence, err := storage.GetTemplateStorageProvider(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get storage provider: %w", err)
+	}
+
 	return &Cache{
-		bucket:     gcs.GetTemplateBucket(),
-		buildStore: buildStore,
-		cache:      cache,
-		ctx:        ctx,
+		persistence: persistence,
+		buildStore:  buildStore,
+		cache:       cache,
+		ctx:         ctx,
 	}, nil
 }
 
@@ -87,7 +93,7 @@ func (c *Cache) GetTemplate(
 		hugePages,
 		nil,
 		nil,
-		c.bucket,
+		c.persistence,
 		nil,
 	)
 	if err != nil {
@@ -141,7 +147,7 @@ func (c *Cache) AddSnapshot(
 		hugePages,
 		memfileHeader,
 		rootfsHeader,
-		c.bucket,
+		c.persistence,
 		localSnapfile,
 	)
 	if err != nil {

@@ -28,7 +28,8 @@ COPY internal internal
 COPY main.go main.go
 
 ARG COMMIT_SHA
-RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA}
+ARG EXPECTED_MIGRATION_TIMESTAMP
+RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA} EXPECTED_MIGRATION_TIMESTAMP=${EXPECTED_MIGRATION_TIMESTAMP}
 
 RUN chmod +x /build/api/bin/api
 
