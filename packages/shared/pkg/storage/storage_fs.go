@@ -16,9 +16,8 @@ type FileSystemStorageProvider struct {
 }
 
 type FileSystemStorageObjectProvider struct {
-	path   string
-	handle *os.File
-	ctx    context.Context
+	path string
+	ctx  context.Context
 }
 
 func NewFileSystemStorageProvider(basePath string) (*FileSystemStorageProvider, error) {
@@ -43,15 +42,9 @@ func (fs *FileSystemStorageProvider) OpenObject(ctx context.Context, path string
 		return nil, err
 	}
 
-	handle, err := os.OpenFile(fs.getPath(path), os.O_RDWR|os.O_CREATE, 0)
-	if err != nil {
-		return nil, err
-	}
-
 	return &FileSystemStorageObjectProvider{
-		path:   filepath.Join(fs.basePath, path),
-		handle: handle,
-		ctx:    ctx,
+		path: fs.getPath(path),
+		ctx:  ctx,
 	}, nil
 }
 
@@ -60,17 +53,30 @@ func (fs *FileSystemStorageProvider) getPath(path string) string {
 }
 
 func (f *FileSystemStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
-	return io.Copy(dst, f.handle)
+	handle, err := f.getHandle(true)
+	if err != nil {
+		return 0, err
+	}
+
+	defer handle.Close()
+
+	return io.Copy(dst, handle)
 }
 
 func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(path string) error {
+	handle, err := f.getHandle(false)
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+
 	src, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer src.Close()
 
-	_, err = io.Copy(f.handle, src)
+	_, err = io.Copy(handle, src)
 	if err != nil {
 		return err
 	}
@@ -79,15 +85,33 @@ func (f *FileSystemStorageObjectProvider) WriteFromFileSystem(path string) error
 }
 
 func (f *FileSystemStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) {
-	return io.Copy(f.handle, src)
+	handle, err := f.getHandle(false)
+	if err != nil {
+		return 0, err
+	}
+	defer handle.Close()
+
+	return io.Copy(handle, src)
 }
 
 func (f *FileSystemStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {
-	return f.handle.ReadAt(buff, off)
+	handle, err := f.getHandle(true)
+	if err != nil {
+		return 0, err
+	}
+	defer handle.Close()
+
+	return handle.ReadAt(buff, off)
 }
 
 func (f *FileSystemStorageObjectProvider) Size() (int64, error) {
-	fileInfo, err := f.handle.Stat()
+	handle, err := f.getHandle(true)
+	if err != nil {
+		return 0, err
+	}
+	defer handle.Close()
+
+	fileInfo, err := handle.Stat()
 	if err != nil {
 		return 0, err
 	}
@@ -96,5 +120,31 @@ func (f *FileSystemStorageObjectProvider) Size() (int64, error) {
 }
 
 func (f *FileSystemStorageObjectProvider) Delete() error {
-	return os.Remove(f.handle.Name())
+	return os.Remove(f.path)
+}
+
+func (f *FileSystemStorageObjectProvider) getHandle(checkExistence bool) (*os.File, error) {
+	if checkExistence {
+		info, err := os.Stat(f.path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, ErrorObjectNotExist
+			}
+
+			return nil, err
+		}
+
+		if info.IsDir() {
+			return nil, fmt.Errorf("path %s is a directory", f.path)
+		}
+
+		return nil, nil
+	}
+
+	handle, err := os.OpenFile(f.path, os.O_RDWR|os.O_CREATE, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return handle, nil
 }
