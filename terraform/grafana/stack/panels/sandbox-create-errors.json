@@ -121,7 +121,7 @@
         "uid": "grafanacloud-prom"
       },
       "editorMode": "code",
-      "expr": "# 9. HTTP 4xx Error Count (Exact counts per interval)\nincrease(orchestration_api_http_server_duration_milliseconds_count{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"400\"}[$__interval])\n",
+      "expr": "# 9. HTTP 4xx Error Count (Exact counts per interval)\nsum (\n    increase(orchestration_api_http_server_duration_milliseconds_count{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"400\"}[$__interval])\n)",
       "format": "time_series",
       "instant": false,
       "interval": "60s",
@@ -135,7 +135,7 @@
         "uid": "grafanacloud-prom"
       },
       "editorMode": "code",
-      "expr": "# 9. HTTP 5xx Error Count (Exact counts per interval)\nincrease(orchestration_api_http_server_duration_milliseconds_count{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"500\"}[$__interval])\n",
+      "expr": "# 9. HTTP 5xx Error Count (Exact counts per interval)\nsum (\n    increase(orchestration_api_http_server_duration_milliseconds_count{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"500\"}[$__interval])\n)",
       "hide": false,
       "instant": false,
       "interval": "60",
