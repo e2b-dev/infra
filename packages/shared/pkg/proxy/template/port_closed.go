@@ -14,7 +14,12 @@ type portClosedError struct {
 	SandboxId string `json:"sandboxId"`
 	Message   string `json:"message"`
 	Port      uint64 `json:"port"`
+	Code      int    `json:"code"`
 	Host      string `json:"-"`
+}
+
+func (e portClosedError) StatusCode() int {
+	return e.Code
 }
 
 func NewPortClosedError(sandboxId, host string, port uint64) *TemplatedError[portClosedError] {
@@ -25,7 +30,7 @@ func NewPortClosedError(sandboxId, host string, port uint64) *TemplatedError[por
 			SandboxId: sandboxId,
 			Host:      host,
 			Port:      port,
+			Code:      http.StatusBadGateway,
 		},
-		status: http.StatusBadGateway,
 	}
 }

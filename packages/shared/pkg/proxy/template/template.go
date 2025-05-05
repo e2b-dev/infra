@@ -3,6 +3,7 @@ package template
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"net/http"
 	"regexp"
@@ -10,10 +11,13 @@ import (
 
 var browserRegex = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|opera|msie`)
 
-type TemplatedError[T any] struct {
+type jsonErrorMessage interface {
+	StatusCode() int
+}
+
+type TemplatedError[T jsonErrorMessage] struct {
 	template *template.Template
 	vars     T
-	status   int
 }
 
 func (e *TemplatedError[T]) buildHtml() ([]byte, error) {
@@ -35,13 +39,17 @@ func (e *TemplatedError[T]) HandleError(
 	w http.ResponseWriter,
 	r *http.Request,
 ) error {
+	if e.vars.StatusCode() <= 0 {
+		return fmt.Errorf("invalid status code: %d", e.vars.StatusCode())
+	}
+
 	if isBrowser(r) {
 		body, buildErr := e.buildHtml()
 		if buildErr != nil {
 			return buildErr
 		}
 
-		w.WriteHeader(e.status)
+		w.WriteHeader(e.vars.StatusCode())
 		w.Header().Add("Content-Type", "text/html")
 		_, writeErr := w.Write(body)
 		if writeErr != nil {
@@ -56,7 +64,7 @@ func (e *TemplatedError[T]) HandleError(
 		return buildErr
 	}
 
-	w.WriteHeader(e.status)
+	w.WriteHeader(e.vars.StatusCode())
 	w.Header().Add("Content-Type", "application/json")
 
 	_, writeErr := w.Write(body)

@@ -13,7 +13,12 @@ var sandboxNotFoundHtmlTemplate = template.Must(template.New("sandboxNotFoundHtm
 type sandboxNotFoundData struct {
 	SandboxId string `json:"sandboxId"`
 	Message   string `json:"message"`
+	Code      int    `json:"code"`
 	Host      string `json:"-"`
+}
+
+func (e sandboxNotFoundData) StatusCode() int {
+	return e.Code
 }
 
 func NewSandboxNotFoundError(sandboxId, host string) *TemplatedError[sandboxNotFoundData] {
@@ -23,7 +28,7 @@ func NewSandboxNotFoundError(sandboxId, host string) *TemplatedError[sandboxNotF
 			SandboxId: sandboxId,
 			Message:   "The sandbox was not found",
 			Host:      host,
+			Code:      http.StatusBadGateway,
 		},
-		status: http.StatusNotFound,
 	}
 }
