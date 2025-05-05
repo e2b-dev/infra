@@ -9,36 +9,34 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	limits "github.com/gin-contrib/size"
-	ginzap "github.com/gin-contrib/zap"
-	middleware "github.com/oapi-codegen/gin-middleware"
-
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-contrib/cors"
+	limits "github.com/gin-contrib/size"
+	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-
-	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -55,7 +53,8 @@ const (
 )
 
 var (
-	commitSHA string
+	commitSHA                  string
+	expectedMigrationTimestamp string
 )
 
 func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
@@ -239,6 +238,19 @@ func run() int {
 	)
 	defer sbxLoggerInternal.Sync()
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
+
+	// Convert the string expectedMigrationTimestamp  to a int64
+	expectedMigration, err := strconv.ParseInt(expectedMigrationTimestamp, 10, 64)
+	if err != nil {
+		// If expectedMigrationTimestamp is not set, we set it to 0
+		logger.Warn("failed to parse expected migration timestamp", zap.Error(err))
+		expectedMigration = 0
+	}
+
+	err = utils.CheckMigrationVersion(expectedMigration)
+	if err != nil {
+		logger.Fatal("failed to check migration version", zap.Error(err))
+	}
 
 	logger.Info("Starting API service...", zap.String("commit_sha", commitSHA), zap.String("instance_id", instanceID))
 	if debug != "true" {
