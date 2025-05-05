@@ -8,7 +8,7 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.32.2
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
-	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.11.33
+	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.74
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.79.3
 	github.com/bits-and-blooms/bitset v1.22.0
 	github.com/dchest/uniuri v1.2.0
