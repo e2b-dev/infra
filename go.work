@@ -10,7 +10,6 @@ use (
 	./packages/envd
 	./packages/orchestrator
 	./packages/shared
-	./packages/template-manager
 
 	./tests/integration
 )

@@ -4,44 +4,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
-	"net"
 	"os"
 	"sync"
 
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
-	"github.com/soheilhy/cmux"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
-	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
-	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-const ServiceName = "orchestrator"
-
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	sandboxes       *smap.Map[*sandbox.Sandbox]
-	proxy           *reverse_proxy.Proxy
+	proxy           *proxy.SandboxProxy
 	tracer          trace.Tracer
 	networkPool     *network.Pool
 	templateCache   *template.Cache
@@ -56,13 +42,10 @@ type server struct {
 }
 
 type Service struct {
-	version    string
-	server     *server
-	grpc       *grpc.Server
-	grpcHealth *health.Server
-	proxy      *reverse_proxy.Proxy
-	port       uint16
-	shutdown   struct {
+	version  string
+	server   *server
+	proxy    *proxy.SandboxProxy
+	shutdown struct {
 		once sync.Once
 		op   func(context.Context) error
 		err  error
@@ -79,63 +62,29 @@ type Service struct {
 
 func New(
 	ctx context.Context,
-	port uint,
+	grpc *grpcserver.GRPCServer,
+	networkPool *network.Pool,
+	devicePool *nbd.DevicePool,
+	tracer trace.Tracer,
 	clientID string,
 	version string,
-	proxy *reverse_proxy.Proxy,
+	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) (*Service, error) {
-	if port > math.MaxUint16 {
-		return nil, fmt.Errorf("%d is larger than maximum possible port %d", port, math.MaxInt16)
-	}
-
 	if clientID == "" {
 		return nil, errors.New("clientID is required")
 	}
 
-	srv := &Service{version: version, port: uint16(port)}
+	srv := &Service{version: version}
 
 	templateCache, err := template.NewCache(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache: %w", err)
 	}
 
-	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create network pool: %w", err)
-	}
-
 	// BLOCK: initialize services
 	{
 		srv.proxy = proxy
-
-		opts := []logging.Option{
-			logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
-			logging.WithLevels(logging.DefaultServerCodeToLevel),
-			logging.WithFieldsFromContext(logging.ExtractFields),
-		}
-		srv.grpc = grpc.NewServer(
-			grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
-			grpc.ChainUnaryInterceptor(
-				recovery.UnaryServerInterceptor(),
-				selector.UnaryServerInterceptor(
-					logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-					logger.WithoutHealthCheck(),
-				),
-			),
-			grpc.ChainStreamInterceptor(
-				selector.StreamServerInterceptor(
-					logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-					logger.WithoutHealthCheck(),
-				),
-			),
-		)
-
-		devicePool, err := nbd.NewDevicePool()
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to create device pool: %w", err)
-		}
 
 		persistence, err := storage.GetTemplateStorageProvider(ctx)
 		if err != nil {
@@ -164,7 +113,7 @@ func New(
 		}
 
 		srv.server = &server{
-			tracer:               otel.Tracer(ServiceName),
+			tracer:               tracer,
 			proxy:                srv.proxy,
 			sandboxes:            sandboxes,
 			networkPool:          networkPool,
@@ -187,82 +136,7 @@ func New(
 		}
 	}
 
-	orchestrator.RegisterSandboxServiceServer(srv.grpc, srv.server)
-
-	srv.grpcHealth = health.NewServer()
-	grpc_health_v1.RegisterHealthServer(srv.grpc, srv.grpcHealth)
+	orchestrator.RegisterSandboxServiceServer(grpc.GRPCServer(), srv.server)
 
 	return srv, nil
-}
-
-// Start launches
-func (srv *Service) Start(ctx context.Context) error {
-	if srv.server == nil || srv.grpc == nil {
-		return errors.New("orchestrator services are not initialized")
-	}
-
-	healthcheck, err := NewHealthcheck(srv.server, srv.grpc, srv.grpcHealth, srv.version)
-	if err != nil {
-		return fmt.Errorf("failed to create healthcheck: %w", err)
-	}
-
-	// the listener is closed by the shutdown operation
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", srv.port))
-	if err != nil {
-		return fmt.Errorf("failed to listen on port %d: %w", srv.port, err)
-	}
-
-	// Reuse the same TCP port between grpc and HTTP requests
-	m := cmux.New(lis)
-	// Match HTTP requests.
-	httpL := m.Match(cmux.HTTP1Fast())
-	// Match gRPC requests.
-	grpcL := m.Match(cmux.Any())
-
-	zap.L().Info("Starting orchestrator server", zap.Uint16("port", srv.port))
-
-	go func() {
-		if err := srv.grpc.Serve(grpcL); err != nil {
-			zap.L().Fatal("grpc server failed to serve", zap.Error(err))
-		}
-	}()
-
-	go healthcheck.Start(ctx, httpL)
-
-	// Start serving traffic
-	go func() {
-		if err := m.Serve(); err != nil {
-			zap.L().Fatal("failed to serve", zap.Error(err))
-		}
-	}()
-
-	srv.shutdown.op = func(ctx context.Context) error {
-		var errs []error
-
-		srv.grpc.GracefulStop()
-
-		m.Close()
-
-		if err := lis.Close(); err != nil {
-			errs = append(errs, err)
-		}
-
-		return errors.Join(errs...)
-	}
-
-	return nil
-}
-
-func (srv *Service) Close(ctx context.Context) error {
-	srv.shutdown.once.Do(func() {
-		if srv.shutdown.op == nil {
-			// should only be true if there was an error
-			// during startup.
-			return
-		}
-
-		srv.shutdown.err = srv.shutdown.op(ctx)
-		srv.shutdown.op = nil
-	})
-	return srv.shutdown.err
 }

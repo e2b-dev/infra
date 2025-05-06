@@ -83,23 +83,32 @@ resource "grafana_data_source" "gcloud_monitoring" {
 }
 
 locals {
-  panel_directory_path      = "${path.module}/${var.panels_directory_name}"
   dashboards_directory_path = "${path.module}/${var.dashboards_directory_name}"
-  files_map = { for file in fileset(local.panel_directory_path, "**/*") :
-    trimsuffix(file, ".json") => templatefile("${local.panel_directory_path}/${file}", {
-      gcp_project_id  = var.gcp_project_id
-      stackdriver_uid = grafana_data_source.gcloud_monitoring.uid
-      prefix          = var.prefix
-    })
+  dashboards                = [for path in fileset(local.dashboards_directory_path, "**/dashboard.json") : dirname(path)]
+  # Prep the panels for each dashboard
+  dashboard_panels = {
+    for dashboard in local.dashboards : dashboard => {
+      for panel in fileset("${local.dashboards_directory_path}/${dashboard}/${var.panels_directory_name}/", "*") :
+      trimsuffix(panel, ".json") => templatefile(
+        "${local.dashboards_directory_path}/${dashboard}/${var.panels_directory_name}/${panel}", {
+          gcp_project_id  = var.gcp_project_id
+          stackdriver_uid = grafana_data_source.gcloud_monitoring.uid
+          prefix          = var.prefix
+        },
+      )
+    }
   }
 }
 
 resource "grafana_dashboard" "dashboard" {
-  for_each = { for file in fileset(local.dashboards_directory_path, "**/*") :
-    trimsuffix(file, ".json") => templatefile("${local.dashboards_directory_path}/${file}", merge({
-      domain_name    = var.domain_name
-      gcp_project_id = var.gcp_project_id
-    }, local.files_map))
+  for_each = { for dashboard in local.dashboards :
+    dashboard => templatefile(
+      "${local.dashboards_directory_path}/${dashboard}/dashboard.json",
+      merge(local.dashboard_panels[dashboard], {
+        domain_name    = var.domain_name
+        gcp_project_id = var.gcp_project_id
+      })
+    )
   }
   config_json = each.value
 }

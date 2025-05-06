@@ -8,6 +8,11 @@ import (
 	"net/http"
 	"time"
 
+	"connectrpc.com/authn"
+	connectcors "connectrpc.com/cors"
+	"github.com/go-chi/chi/v5"
+	"github.com/rs/cors"
+
 	"github.com/e2b-dev/infra/packages/envd/internal/api"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
@@ -15,11 +20,6 @@ import (
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
-
-	"connectrpc.com/authn"
-	connectcors "connectrpc.com/cors"
-	"github.com/go-chi/chi/v5"
-	"github.com/rs/cors"
 )
 
 const (

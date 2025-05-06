@@ -11,14 +11,14 @@ import (
 	"sync"
 	"syscall"
 
+	"connectrpc.com/connect"
+	"github.com/creack/pty"
+	"github.com/rs/zerolog"
+
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
-
-	"connectrpc.com/connect"
-	"github.com/creack/pty"
-	"github.com/rs/zerolog"
 )
 
 const (

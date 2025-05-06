@@ -1,0 +1,137 @@
+{
+  "id": 55,
+  "type": "stat",
+  "title": "Orchestrator Nodes Total Idle CPU",
+  "gridPos": {
+    "x": 0,
+    "y": 55,
+    "h": 8,
+    "w": 3
+  },
+  "fieldConfig": {
+    "defaults": {
+      "mappings": [],
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {
+            "color": "red",
+            "value": null
+          },
+          {
+            "color": "yellow",
+            "value": 30
+          },
+          {
+            "color": "green",
+            "value": 80
+          }
+        ]
+      },
+      "color": {
+        "mode": "thresholds"
+      },
+      "fieldMinMax": false,
+      "max": 100,
+      "min": 0,
+      "unit": "percent"
+    },
+    "overrides": []
+  },
+  "transformations": [
+    {
+      "id": "calculateField",
+      "options": {
+        "mode": "binary",
+        "reduce": {
+          "reducer": "sum"
+        },
+        "binary": {
+          "operator": "-",
+          "left": {
+            "fixed": "1"
+          },
+          "right": {
+            "matcher": {
+              "id": "byName",
+              "options": "compute.googleapis.com/instance/cpu/utilization"
+            }
+          }
+        },
+        "replaceFields": true,
+        "alias": "Idle CPU"
+      }
+    },
+    {
+      "id": "calculateField",
+      "options": {
+        "mode": "binary",
+        "binary": {
+          "operator": "*",
+          "left": {
+            "matcher": {
+              "id": "byName",
+              "options": "Idle CPU"
+            }
+          },
+          "right": {
+            "fixed": "100"
+          }
+        },
+        "alias": "Idle CPU Percent",
+        "replaceFields": true
+      }
+    }
+  ],
+  "pluginVersion": "12.0.0-86898",
+  "targets": [
+    {
+      "datasource": {
+        "type": "stackdriver",
+        "uid": "${stackdriver_uid}"
+      },
+      "refId": "A",
+      "queryType": "timeSeriesList",
+      "timeSeriesList": {
+        "projectName": "${gcp_project_id}",
+        "filters": [
+          "metric.label.instance_name",
+          "=~",
+          "^${prefix}orch-client-.*$",
+          "AND",
+          "metric.type",
+          "=",
+          "compute.googleapis.com/instance/cpu/utilization"
+        ],
+        "view": "FULL",
+        "crossSeriesReducer": "REDUCE_MEAN",
+        "alignmentPeriod": "cloud-monitoring-auto",
+        "perSeriesAligner": "ALIGN_MEAN",
+        "groupBys": [],
+        "preprocessor": "none"
+      }
+    }
+  ],
+  "datasource": {
+    "uid": "${stackdriver_uid}",
+    "type": "stackdriver"
+  },
+  "interval": "15s",
+  "options": {
+    "reduceOptions": {
+      "values": false,
+      "calcs": [
+        "lastNotNull"
+      ],
+      "fields": ""
+    },
+    "orientation": "auto",
+    "textMode": "auto",
+    "wideLayout": true,
+    "colorMode": "value",
+    "graphMode": "none",
+    "justifyMode": "auto",
+    "showPercentChange": false,
+    "percentChangeColorMode": "standard"
+  }
+}

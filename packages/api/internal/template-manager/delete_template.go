@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/google/uuid"
 )
 
 func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildId uuid.UUID) error {

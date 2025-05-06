@@ -3,15 +3,17 @@ package envd
 import (
 	"context"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
-	"github.com/e2b-dev/infra/tests/integration/internal/setup"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"net/http"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
+	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
+	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
 func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {

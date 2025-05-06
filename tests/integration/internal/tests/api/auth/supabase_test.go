@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) int {

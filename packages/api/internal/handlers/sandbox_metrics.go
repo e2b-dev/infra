@@ -62,10 +62,10 @@ func (a *APIStore) LegacyGetSandboxIDMetrics(
 
 			var metric struct {
 				Timestamp   time.Time `json:"timestamp"`
-				CPUUsedPct  float32 `json:"cpuUsedPct"`
-				CPUCount    int32   `json:"cpuCount"`
-				MemTotalMiB int64   `json:"memTotalMiB"`
-				MemUsedMiB  int64   `json:"memUsedMiB"`
+				CPUUsedPct  float32   `json:"cpuUsedPct"`
+				CPUCount    int32     `json:"cpuCount"`
+				MemTotalMiB int64     `json:"memTotalMiB"`
+				MemUsedMiB  int64     `json:"memUsedMiB"`
 			}
 
 			err := json.Unmarshal([]byte(entry.Line), &metric)

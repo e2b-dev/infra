@@ -14,7 +14,7 @@ import (
 
 func GetOrchestratorClient(tb testing.TB, ctx context.Context) orchestrator.SandboxServiceClient {
 	tb.Helper()
-	
+
 	conn, err := e2bgrpc.GetConnection(OrchestratorHost, false, grpc.WithBlock(), grpc.WithTimeout(time.Second))
 	if err != nil {
 		tb.Fatal(fmt.Errorf("failed to establish GRPC connection: %w", err))

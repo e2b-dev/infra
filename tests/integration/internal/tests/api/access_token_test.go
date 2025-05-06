@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
-	"github.com/google/uuid"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestCreateAccessToken(t *testing.T) {

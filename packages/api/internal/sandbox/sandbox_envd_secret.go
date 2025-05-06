@@ -2,9 +2,10 @@ package sandbox
 
 import (
 	"errors"
+	"os"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	"os"
 )
 
 var (

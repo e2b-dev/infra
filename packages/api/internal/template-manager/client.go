@@ -3,11 +3,11 @@ package template_manager
 import (
 	"context"
 	"fmt"
-	"go.uber.org/zap"
 	"os"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
