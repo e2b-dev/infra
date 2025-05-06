@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 
 	"go.opentelemetry.io/otel"
@@ -194,16 +195,22 @@ func run(port, proxyPort uint) (success bool) {
 			success = false
 		}
 	}(tmplSbxLoggerExternal)
-	tmpl := tmplserver.New(ctx, grpcSrv, globalLogger, tmplSbxLoggerExternal, tracer)
 
 	var closers []Closeable
 	closers = append(closers,
-		tmpl,
 		grpcSrv,
 		networkPool,
 		devicePool,
 		sandboxProxy,
 	)
+
+	// Initialize the template manager only if the service is enabled
+	if slices.Contains(services, servicetype.TemplateManager) {
+		tmpl := tmplserver.New(ctx, grpcSrv, globalLogger, tmplSbxLoggerExternal, tracer)
+
+		// Prepend to make sure it's awaited on graceful shutdown
+		closers = append([]Closeable{tmpl}, closers...)
+	}
 
 	g.Go(func() error {
 		zap.L().Info("Starting session proxy")
