@@ -38,6 +38,8 @@ job "template-manager" {
 %{ if update_stanza }
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
       kill_timeout      = "20m"
+%{ else }
+      kill_timeout      = "1m"
 %{ endif }
       kill_signal  = "SIGTERM"
 
@@ -47,6 +49,8 @@ job "template-manager" {
       }
 
       env {
+        NODE_ID                       = "$${node.unique.id}"
+        CONSUL_TOKEN                  = "${consul_acl_token}"
         GOOGLE_SERVICE_ACCOUNT_BASE64 = "${google_service_account_key}"
         GCP_PROJECT_ID                = "${gcp_project}"
         GCP_REGION                    = "${gcp_region}"
@@ -57,6 +61,10 @@ job "template-manager" {
         TEMPLATE_BUCKET_NAME          = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
+        ORCHESTRATOR_SERVICES         = "${orchestrator_services}"
+%{ if !update_stanza }
+        FORCE_STOP                    = "true"
+%{ endif }
       }
 
       config {

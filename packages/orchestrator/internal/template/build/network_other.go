@@ -9,7 +9,7 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 )
 
 type FCNetwork struct {

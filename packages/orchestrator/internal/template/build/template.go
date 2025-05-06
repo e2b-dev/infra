@@ -12,9 +12,9 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/build/writer"
 )
 
 type Env struct {

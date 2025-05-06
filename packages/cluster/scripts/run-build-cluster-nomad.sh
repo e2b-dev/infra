@@ -281,6 +281,9 @@ function run {
       consul_token="$2"
       shift
       ;;
+    --client)
+      # Ignored, we are always running in client mode
+      ;;
     *)
       log_error "Unrecognized argument: $key"
       print_usage

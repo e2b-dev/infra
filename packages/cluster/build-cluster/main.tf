@@ -94,6 +94,14 @@ resource "google_compute_instance_template" "build" {
     disk_type    = var.root_volume_disk_type
   }
 
+  disk {
+    auto_delete  = true
+    boot         = false
+    type         = "PERSISTENT"
+    disk_size_gb = 200
+    disk_type    = "pd-ssd"
+  }
+
   network_interface {
     network = var.network_name
 

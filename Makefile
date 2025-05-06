@@ -146,6 +146,12 @@ build-and-upload:build-and-upload/docker-reverse-proxy
 build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
+build-and-upload/template-manager:
+	./scripts/confirm.sh $(ENV)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/template-manager
+build-and-upload/orchestrator:
+	./scripts/confirm.sh $(ENV)
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/orchestrator
 build-and-upload/%:
 	./scripts/confirm.sh $(ENV)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
@@ -199,7 +205,6 @@ test:
 	$(MAKE) -C packages/envd test
 	$(MAKE) -C packages/orchestrator test
 	$(MAKE) -C packages/shared test
-	$(MAKE) -C packages/template-manager test
 
 .PHONY: test-integration
 test-integration:

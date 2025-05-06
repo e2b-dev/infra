@@ -155,7 +155,7 @@ func (p *Pool) cleanup(slot Slot) error {
 	return errors.Join(errs...)
 }
 
-func (p *Pool) Close() error {
+func (p *Pool) Close(_ context.Context) error {
 	p.cancel()
 
 	for slot := range p.newSlots {

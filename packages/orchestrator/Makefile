@@ -15,6 +15,7 @@ generate:
 	# https://grpc.io/docs/languages/go/quickstart/
 	@echo "Generating..."
 	@protoc --go_out=../shared/pkg/grpc/orchestrator/ --go_opt=paths=source_relative --go-grpc_out=../shared/pkg/grpc/orchestrator/ --go-grpc_opt=paths=source_relative orchestrator.proto
+	@protoc --go_out=../shared/pkg/grpc/template-manager/ --go_opt=paths=source_relative --go-grpc_out=../shared/pkg/grpc/template-manager/ --go-grpc_opt=paths=source_relative template-manager.proto
 	@echo "Done"
 
 .PHONY: build
@@ -43,14 +44,24 @@ run-debug:
 	NODE_ID="testclient" \
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	ENVD_TIMEOUT=$(ENVD_TIMEOUT) \
+	ORCHESTRATOR_SERVICES=$(ORCHESTRATOR_SERVICES) \
+	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
+	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
 	./bin/orchestrator
 
-.PHONY: upload
-upload:
-	./upload.sh $(GCP_PROJECT_ID)
+.PHONY: upload/orchestrator
+upload/orchestrator:
+	./upload-orchestrator.sh $(GCP_PROJECT_ID)
 
-.PHONY: build-and-upload
-build-and-upload: build upload
+.PHONY: upload/template-manager
+upload/template-manager:
+	./upload-template-manager.sh $(GCP_PROJECT_ID)
+
+.PHONY: build-and-upload/orchestrator
+build-and-upload/orchestrator: build upload/orchestrator
+
+.PHONY: build-and-upload/template-manager
+build-and-upload/template-manager: build upload/template-manager
 
 .PHONY: mock
 mock:
@@ -85,3 +96,21 @@ mock-snapshot:
 .PHONY: test
 test:
 	go test -v ./...
+
+.PHONY: build-template
+build-template:
+	sudo -E TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
+	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
+	DOCKER_AUTH_BASE64=$(DOCKER_AUTH_BASE64) \
+	GCP_PROJECT_ID=$(GCP_PROJECT_ID) \
+	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
+	GCP_REGION=$(GCP_REGION) \
+	go run cmd/build-template/main.go \
+	-template $(TEMPLATE_ID) \
+	-build $(BUILD_ID) \
+	-kernel $(KERNEL_VERSION) \
+	-firecracker $(FIRECRACKER_VERSION)
+
+.PHONY: migrate
+migrate:
+	./upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)

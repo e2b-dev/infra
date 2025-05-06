@@ -357,11 +357,12 @@ resource "nomad_job" "template_manager" {
   jobspec = templatefile("${path.module}/template-manager.hcl", {
     update_stanza = var.template_manager_machine_count > 1
 
-    gcp_project = var.gcp_project_id
-    gcp_region  = var.gcp_region
-    gcp_zone    = var.gcp_zone
-    port        = var.template_manager_port
-    environment = var.environment
+    gcp_project      = var.gcp_project_id
+    gcp_region       = var.gcp_region
+    gcp_zone         = var.gcp_zone
+    port             = var.template_manager_port
+    environment      = var.environment
+    consul_acl_token = var.consul_acl_token_secret
 
     api_secret                   = var.api_secret
     bucket_name                  = var.fc_env_pipeline_bucket_name
@@ -372,6 +373,7 @@ resource "nomad_job" "template_manager" {
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+    orchestrator_services        = "template-manager"
   })
 }
 resource "nomad_job" "loki" {
