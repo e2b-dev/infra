@@ -8,11 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.uber.org/zap"
-	"google.golang.org/grpc/connectivity"
-
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/jellydator/ttlcache/v3"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/connectivity"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"

@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 
 	"entgo.io/ent/dialect/sql"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/models/predicate"
 )
 
 func MetadataContains(metadata map[string]string) predicate.Snapshot {

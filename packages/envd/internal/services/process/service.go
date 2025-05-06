@@ -3,15 +3,15 @@ package process
 import (
 	"fmt"
 
+	"connectrpc.com/connect"
+	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
+
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/process/handler"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	spec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process/processconnect"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
-
-	"connectrpc.com/connect"
-	"github.com/go-chi/chi/v5"
-	"github.com/rs/zerolog"
 )
 
 type Service struct {

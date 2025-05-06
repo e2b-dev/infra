@@ -14,6 +14,8 @@ on:
       - main
 
 jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
   integrity-check:
     uses: ./.github/workflows/pr-go-integrity.yml
   out-of-order-migrations:
@@ -22,7 +24,7 @@ jobs:
     needs: [ integrity-check ]
     uses: ./.github/workflows/pr-tests.yml
   integration-tests:
-    needs: [ integrity-check, out-of-order-migrations ]
+    needs: [ lint, integrity-check, out-of-order-migrations ]
     uses: ./.github/workflows/integration_tests.yml
   publish-test-results:
     needs:

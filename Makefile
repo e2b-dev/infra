@@ -208,3 +208,12 @@ test-integration:
 .PHONY: connect-orchestrator
 connect-orchestrator:
 	$(MAKE) -C tests/integration connect-orchestrator
+
+.PHONY: fmt
+fmt:
+	@command -v golangci-lint >/dev/null 2>&1 || { \
+		echo >&2 "golangci-lint not found, please install it first. Run following command please:\n"; \
+		echo >&2 'curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.1.6\n'; \
+		exit 1; \
+	}
+	golangci-lint fmt

@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
 func (s *ServerStore) HealthStatus(ctx context.Context, req *emptypb.Empty) (*template_manager.HealthStatusResponse, error) {

@@ -1,11 +1,12 @@
 package feature_flags
 
 import (
+	"os"
+	"time"
+
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"go.uber.org/zap"
-	"os"
-	"time"
 )
 
 // LaunchDarklyOfflineStore is a test fixture that provides dynamically updatable feature flag state

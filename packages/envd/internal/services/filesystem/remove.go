@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
+	"connectrpc.com/connect"
+
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
-
-	"connectrpc.com/connect"
 )
 
 func (Service) Remove(ctx context.Context, req *connect.Request[rpc.RemoveRequest]) (*connect.Response[rpc.RemoveResponse], error) {

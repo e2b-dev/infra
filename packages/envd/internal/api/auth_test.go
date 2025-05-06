@@ -2,11 +2,13 @@ package api
 
 import (
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	"github.com/stretchr/testify/assert"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
 func TestKeyGenerationAlgorithmIsStable(t *testing.T) {

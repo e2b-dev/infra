@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"syscall"
 
-	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
-
 	"connectrpc.com/connect"
+
+	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 )
 
 func (s *Service) SendSignal(ctx context.Context, req *connect.Request[rpc.SendSignalRequest]) (*connect.Response[rpc.SendSignalResponse], error) {

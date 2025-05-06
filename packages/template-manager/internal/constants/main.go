@@ -2,8 +2,9 @@ package constants
 
 import (
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"strings"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 func CheckRequired() error {
