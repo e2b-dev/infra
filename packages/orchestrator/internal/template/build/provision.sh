@@ -198,7 +198,7 @@ Type=simple
 Restart=no
 User=root
 Group=root
-ExecStart=/bin/bash -l -c "(echo 1 | tee /proc/sys/net/ipv4/ip_forward) && iptables-legacy -t nat -A POSTROUTING -s 127.0.0.1 -j SNAT --to-source {{ .FcAddress }} && iptables-legacy -t nat -A PREROUTING -d {{ .FcAddress }} -j DNAT --to-destination 127.0.0.1 && iptables-legacy -t nat -A OUTPUT -p tcp ! -d 127.0.0.0/8 ! -d {{ .ForwardProxyAddress }} -j DNAT --to-destination {{ .ForwardProxyAddress }}"
+ExecStart=/bin/bash -l -c "(echo 1 | tee /proc/sys/net/ipv4/ip_forward) && iptables-legacy -t nat -A POSTROUTING -s 127.0.0.1 -j SNAT --to-source {{ .FcAddress }} && iptables-legacy -t nat -A PREROUTING -d {{ .FcAddress }} -j DNAT --to-destination 127.0.0.1 && iptables-legacy -t nat -A OUTPUT -p tcp ! -d 127.0.0.0/8 ! -d {{ .FcForwardProxyAddr }} -j DNAT --to-destination {{ .FcForwardProxyAddr }}"
 
 [Install]
 WantedBy=multi-user.target
