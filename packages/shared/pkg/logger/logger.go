@@ -19,6 +19,8 @@ type LoggerConfig struct {
 	IsInternal bool
 	// IsDebug enables debug level logging, otherwise zap.InfoLevel level is used.
 	IsDebug bool
+	// DisableStacktrace disables stacktraces for the logger.
+	DisableStacktrace bool
 
 	// InitialFields fields that are added to every log entry.
 	InitialFields []zap.Field
@@ -36,8 +38,8 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 
 	config := zap.Config{
 		Level:             level,
-		DisableStacktrace: false,
-		// Taks stacktraces more liberally
+		DisableStacktrace: loggerConfig.DisableStacktrace,
+		// Takes stacktraces more liberally
 		Development:   true,
 		Sampling:      nil,
 		Encoding:      "json",

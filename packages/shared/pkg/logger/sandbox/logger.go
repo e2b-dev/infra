@@ -14,6 +14,7 @@ type SandboxLoggerConfig struct {
 	// The service name is added to every log entry.
 	ServiceName string
 	// IsInternal differentiates between our (internal) logs, and user accessible (external) logs.
+	// For external logger, we also disable stacktraces
 	IsInternal       bool
 	CollectorAddress string
 }
@@ -36,9 +37,10 @@ func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
 	}
 
 	lg, err := logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName: config.ServiceName,
-		IsInternal:  config.IsInternal,
-		IsDebug:     true,
+		ServiceName:       config.ServiceName,
+		IsInternal:        config.IsInternal,
+		IsDebug:           true,
+		DisableStacktrace: !config.IsInternal,
 		InitialFields: []zap.Field{
 			zap.String("logger", config.ServiceName),
 		},
