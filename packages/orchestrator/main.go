@@ -49,16 +49,26 @@ func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")
 	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
 	flag.Parse()
+
 	if *port > math.MaxUint16 {
 		log.Fatalf("%d is larger than maximum possible port %d", port, math.MaxInt16)
 		os.Exit(1)
 	}
 
-	os.Exit(run(*port, *proxyPort))
+	if *proxyPort > math.MaxUint16 {
+		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
+		os.Exit(1)
+	}
+
+	result := run(*port, *proxyPort)
+
+	if result == false {
+		os.Exit(1)
+	}
 }
 
-func run(port, proxyPort uint) (result int) {
-	result = 0
+func run(port, proxyPort uint) (success bool) {
+	success = true
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -77,7 +87,7 @@ func run(port, proxyPort uint) (result int) {
 		err := g.Wait()
 		if err != nil {
 			log.Printf("error while shutting down: %v", err)
-			result = 1
+			success = false
 		}
 	}(&g)
 
@@ -86,7 +96,7 @@ func run(port, proxyPort uint) (result int) {
 		defer func() {
 			if err := shutdown(ctx); err != nil {
 				log.Printf("telemetry shutdown: %v", err)
-				result = 1
+				success = false
 			}
 		}()
 	}
@@ -101,7 +111,7 @@ func run(port, proxyPort uint) (result int) {
 		err := l.Sync()
 		if err != nil {
 			log.Printf("error while shutting down logger: %v", err)
-			result = 1
+			success = false
 		}
 	}(globalLogger)
 	zap.ReplaceGlobals(globalLogger)
@@ -118,7 +128,7 @@ func run(port, proxyPort uint) (result int) {
 		err := l.Sync()
 		if err != nil {
 			log.Printf("error while shutting down sandbox logger: %v", err)
-			result = 1
+			success = false
 		}
 	}(sbxLoggerExternal)
 	sbxlogger.SetSandboxLoggerExternal(sbxLoggerExternal)
@@ -135,7 +145,7 @@ func run(port, proxyPort uint) (result int) {
 		err := l.Sync()
 		if err != nil {
 			log.Printf("error while shutting down sandbox logger: %v", err)
-			result = 1
+			success = false
 		}
 	}(sbxLoggerInternal)
 	sbxlogger.SetSandboxLoggerInternal(sbxLoggerInternal)
@@ -181,7 +191,7 @@ func run(port, proxyPort uint) (result int) {
 		err := l.Sync()
 		if err != nil {
 			log.Printf("error while shutting down template manager sandbox logger: %v", err)
-			result = 1
+			success = false
 		}
 	}(tmplSbxLoggerExternal)
 	tmpl := tmplserver.New(ctx, grpcSrv, globalLogger, tmplSbxLoggerExternal, tracer)
@@ -236,15 +246,15 @@ func run(port, proxyPort uint) (result int) {
 		log.Printf("Closing %T, forced: %v", c, forceStop)
 		if err := c.Close(closeCtx); err != nil {
 			log.Printf("error during shutdown: %v", err)
-			result = 1
+			success = false
 		}
 	}
 
 	log.Println("Waiting for services to finish")
 	if err := g.Wait(); err != nil {
 		log.Printf("service group error: %v", err)
-		result = 1
+		success = false
 	}
 
-	return result
+	return success
 }
