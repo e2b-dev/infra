@@ -2,7 +2,8 @@ name: Lint
 
 on: [workflow_call]
 
-
+permissions:
+  contents: read
 env:
   GO_VERSION: 1.23.7
   GOLANGCI_LINT_VERSION: v2.1.6
