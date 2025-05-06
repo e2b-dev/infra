@@ -10,7 +10,6 @@ require (
 	github.com/coreos/go-iptables v0.8.0
 	github.com/docker/docker v28.0.1+incompatible
 	github.com/e2b-dev/infra/packages/shared v0.0.0
-	github.com/e2b-dev/infra/packages/template-manager v0.0.0-20250506103023-94e3d91093aa
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
 	github.com/fsouza/go-dockerclient v1.12.1
@@ -188,6 +187,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20250115164207-1a7da9e5054f // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250324211829-b45e905df463 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gotest.tools/v3 v3.5.1 // indirect
 )
 
 replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
