@@ -16,7 +16,7 @@ type SandboxForwardProxy struct {
 	server *http.Server
 }
 
-func NewForwardProxy(port uint) *SandboxForwardProxy {
+func NewSandboxForwardProxy(port uint) *SandboxForwardProxy {
 	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
 
 	return &SandboxForwardProxy{
@@ -41,11 +41,19 @@ func (p *SandboxForwardProxy) Start() error {
 
 }
 
-func (p *SandboxForwardProxy) Shutdown(ctx context.Context) {
-	err := p.server.Shutdown(ctx)
-	if err != nil {
-		zap.L().Error("failed to shutdown forward proxy server", zap.Error(err))
+func (p *SandboxForwardProxy) Close(ctx context.Context) error {
+	var err error
+	select {
+	case <-ctx.Done():
+		err = p.server.Close()
+	default:
+		err = p.server.Shutdown(ctx)
 	}
+	if err != nil {
+		return fmt.Errorf("failed to shutdown proxy server: %w", err)
+	}
+
+	return nil
 }
 
 func (p *SandboxForwardProxy) proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {

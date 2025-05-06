@@ -39,8 +39,9 @@ type Closeable interface {
 }
 
 const (
-	defaultPort      = 5008
-	defaultProxyPort = 5007
+	defaultPort             = 5008
+	defaultReverseProxyPort = 5007
+	defaultForwardProxyPort = 5009
 )
 
 var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
@@ -48,7 +49,8 @@ var commitSHA string
 
 func main() {
 	port := flag.Uint("port", defaultPort, "orchestrator server port")
-	proxyPort := flag.Uint("proxy-port", defaultProxyPort, "orchestrator proxy port")
+	reverseProxyPort := flag.Uint("proxy-port", defaultReverseProxyPort, "orchestrator reverseproxy port")
+	forwardProxyPort := flag.Uint("forward-proxy-port", defaultForwardProxyPort, "orchestrator forward proxy port")
 	flag.Parse()
 
 	if *port > math.MaxUint16 {
@@ -56,19 +58,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *proxyPort > math.MaxUint16 {
-		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
+	if *reverseProxyPort > math.MaxUint16 {
+		log.Fatalf("%d is larger than maximum possible proxy port %d", reverseProxyPort, math.MaxInt16)
 		os.Exit(1)
 	}
 
-	result := run(*port, *proxyPort)
+	result := run(*port, *reverseProxyPort, *forwardProxyPort)
 
 	if result == false {
 		os.Exit(1)
 	}
 }
 
-func run(port, proxyPort uint) (success bool) {
+func run(port, reverseProxyPort, forwardProxyPort uint) (success bool) {
+
 	success = true
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -157,10 +160,12 @@ func run(port, proxyPort uint) (success bool) {
 	// to propagate information about sandbox routing.
 	sandboxes := smap.New[*sandbox.Sandbox]()
 
-	sandboxProxy, err := proxy.NewSandboxProxy(proxyPort, sandboxes)
+	sandboxReverseProxy, err := proxy.NewSandboxReverseProxy(reverseProxyPort, sandboxes)
 	if err != nil {
-		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
+		zap.L().Fatal("failed to create sandbox reverse proxy", zap.Error(err))
 	}
+
+	sandboxForwardProxy := proxy.NewSandboxForwardProxy(forwardProxyPort)
 
 	networkPool, err := network.NewPool(sig, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
 	if err != nil {
@@ -175,7 +180,8 @@ func run(port, proxyPort uint) (success bool) {
 	grpcSrv := grpcserver.New(commitSHA)
 	tracer := otel.Tracer(serviceName)
 
-	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, clientID, commitSHA, sandboxProxy, sandboxes)
+	_, err = server.New(
+		ctx, grpcSrv, networkPool, devicePool, tracer, clientID, commitSHA, sandboxReverseProxy, sandboxForwardProxy, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -201,7 +207,8 @@ func run(port, proxyPort uint) (success bool) {
 		grpcSrv,
 		networkPool,
 		devicePool,
-		sandboxProxy,
+		sandboxReverseProxy,
+		sandboxForwardProxy,
 	)
 
 	// Initialize the template manager only if the service is enabled
@@ -213,8 +220,13 @@ func run(port, proxyPort uint) (success bool) {
 	}
 
 	g.Go(func() error {
-		zap.L().Info("Starting session proxy")
-		return sandboxProxy.Start()
+		zap.L().Info("Starting reverse sandbox proxy (session proxy)")
+		return sandboxReverseProxy.Start()
+	})
+
+	g.Go(func() error {
+		zap.L().Info("Starting forward sandbox proxy")
+		return sandboxForwardProxy.Start()
 	})
 
 	g.Go(func() (err error) {

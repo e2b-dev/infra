@@ -27,7 +27,8 @@ import (
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	sandboxes       *smap.Map[*sandbox.Sandbox]
-	proxy           *proxy.SandboxProxy
+	reverseProxy    *proxy.SandboxReverseProxy
+	forwardProxy    *proxy.SandboxForwardProxy
 	tracer          trace.Tracer
 	networkPool     *network.Pool
 	templateCache   *template.Cache
@@ -42,10 +43,11 @@ type server struct {
 }
 
 type Service struct {
-	version  string
-	server   *server
-	proxy    *proxy.SandboxProxy
-	shutdown struct {
+	version      string
+	server       *server
+	reverseProxy *proxy.SandboxReverseProxy
+	forwardProxy *proxy.SandboxForwardProxy
+	shutdown     struct {
 		once sync.Once
 		op   func(context.Context) error
 		err  error
@@ -68,7 +70,8 @@ func New(
 	tracer trace.Tracer,
 	clientID string,
 	version string,
-	proxy *proxy.SandboxProxy,
+	reverseProxy *proxy.SandboxReverseProxy,
+	forwardProxy *proxy.SandboxForwardProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) (*Service, error) {
 	if clientID == "" {
@@ -84,7 +87,8 @@ func New(
 
 	// BLOCK: initialize services
 	{
-		srv.proxy = proxy
+		srv.reverseProxy = reverseProxy
+		srv.forwardProxy = forwardProxy
 
 		persistence, err := storage.GetTemplateStorageProvider(ctx)
 		if err != nil {
@@ -114,7 +118,8 @@ func New(
 
 		srv.server = &server{
 			tracer:               tracer,
-			proxy:                srv.proxy,
+			reverseProxy:         srv.reverseProxy,
+			forwardProxy:         srv.forwardProxy,
 			sandboxes:            sandboxes,
 			networkPool:          networkPool,
 			templateCache:        templateCache,

@@ -22,11 +22,11 @@ const (
 	idleTimeout     = 630 * time.Second
 )
 
-type SandboxProxy struct {
+type SandboxReverseProxy struct {
 	proxy *reverse_proxy.Proxy
 }
 
-func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxProxy, error) {
+func NewSandboxReverseProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxReverseProxy, error) {
 	proxy := reverse_proxy.New(
 		port,
 		minSandboxConns,
@@ -95,14 +95,14 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*Sandbox
 		return nil, fmt.Errorf("error registering orchestrator proxy pool size metric (%s): %w", meters.OrchestratorProxyPoolSizeMeterCounterName, err)
 	}
 
-	return &SandboxProxy{proxy}, nil
+	return &SandboxReverseProxy{proxy}, nil
 }
 
-func (p *SandboxProxy) Start() error {
+func (p *SandboxReverseProxy) Start() error {
 	return p.proxy.ListenAndServe()
 }
 
-func (p *SandboxProxy) Close(ctx context.Context) error {
+func (p *SandboxReverseProxy) Close(ctx context.Context) error {
 	var err error
 	select {
 	case <-ctx.Done():
@@ -117,6 +117,6 @@ func (p *SandboxProxy) Close(ctx context.Context) error {
 	return nil
 }
 
-func (p *SandboxProxy) RemoveFromPool(connectionKey string) {
+func (p *SandboxReverseProxy) RemoveFromPool(connectionKey string) {
 	p.proxy.RemoveFromPool(connectionKey)
 }

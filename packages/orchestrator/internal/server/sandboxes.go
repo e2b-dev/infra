@@ -103,7 +103,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		})
 
 		// Remove the proxies assigned to the sandbox from the pool to prevent them from being reused.
-		s.proxy.RemoveFromPool(sbx.StartID)
+		s.reverseProxy.RemoveFromPool(sbx.StartID)
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
 	}()
