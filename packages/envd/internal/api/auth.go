@@ -3,11 +3,12 @@ package api
 import (
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"net/http"
 	"slices"
 	"strconv"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
 const (

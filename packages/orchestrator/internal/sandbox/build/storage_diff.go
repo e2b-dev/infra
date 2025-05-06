@@ -6,10 +6,9 @@ import (
 	"io"
 	"path/filepath"
 
-	storage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	storage "github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 

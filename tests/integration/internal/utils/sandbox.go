@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
-
-	"github.com/stretchr/testify/assert"
 )
 
 // SetupSandboxWithCleanupWithTimeout creates a new sandbox with specific timeout and returns its data

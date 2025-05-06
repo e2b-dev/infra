@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
+	"connectrpc.com/connect"
+
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
-
-	"connectrpc.com/connect"
 )
 
 func (Service) Stat(ctx context.Context, req *connect.Request[rpc.StatRequest]) (*connect.Response[rpc.StatResponse], error) {

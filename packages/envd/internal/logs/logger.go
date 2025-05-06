@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/envd/internal/logs/exporter"
-
 	"github.com/rs/zerolog"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/logs/exporter"
 )
 
 func NewLogger(ctx context.Context, debug bool) *zerolog.Logger {

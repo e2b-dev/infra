@@ -2,8 +2,9 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"net/http"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 )
 
 func (a *API) GetEnvs(w http.ResponseWriter, _ *http.Request) {

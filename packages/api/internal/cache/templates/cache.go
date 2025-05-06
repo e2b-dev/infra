@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-
 	"net/http"
 	"sync"
 	"time"
@@ -14,9 +13,8 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
 
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"

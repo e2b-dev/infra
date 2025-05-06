@@ -1,9 +1,10 @@
 package feature_flags
 
 import (
+	"testing"
+
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 const (

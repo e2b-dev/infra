@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
-
 	"connectrpc.com/connect"
 	"github.com/creack/pty"
+
+	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 )
 
 func (s *Service) Update(ctx context.Context, req *connect.Request[rpc.UpdateRequest]) (*connect.Response[rpc.UpdateResponse], error) {

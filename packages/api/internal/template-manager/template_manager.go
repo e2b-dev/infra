@@ -13,9 +13,8 @@ import (
 	"google.golang.org/grpc"
 
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
 
