@@ -97,6 +97,6 @@
       "useBackend": false
     }
   ],
-  "title": "Client Proxy Pool Connections",
+  "title": "Orchestrator Proxy Pool Connections",
   "type": "timeseries"
 }
