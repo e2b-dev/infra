@@ -3,32 +3,33 @@ package server
 import (
 	"context"
 	"errors"
+	"sync"
+	"time"
+
+	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
 	"github.com/docker/docker/client"
-	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
-	"google.golang.org/grpc/keepalive"
-	"sync"
-	"time"
-
-	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
-	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/keepalive"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/build"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/cache"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/constants"
+	"github.com/e2b-dev/infra/packages/template-manager/internal/template"
 )
 
 type ServerStore struct {
@@ -74,7 +75,7 @@ func New(logger *zap.Logger, buildLogger *zap.Logger) (*grpc.Server, *ServerStor
 			),
 		),
 	)
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		panic(err)
 	}
