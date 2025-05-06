@@ -21,7 +21,7 @@ type storageTemplate struct {
 
 	memfileHeader *header.Header
 	rootfsHeader  *header.Header
-	localSnapfile *LocalFile
+	localSnapfile *LocalFileLink
 
 	persistence storage.StorageProvider
 }
@@ -31,18 +31,16 @@ func newTemplateFromStorage(
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
-	hugePages bool,
 	memfileHeader *header.Header,
 	rootfsHeader *header.Header,
 	persistence storage.StorageProvider,
-	localSnapfile *LocalFile,
+	localSnapfile *LocalFileLink,
 ) (*storageTemplate, error) {
 	files, err := storage.NewTemplateFiles(
 		templateId,
 		buildId,
 		kernelVersion,
 		firecrackerVersion,
-		hugePages,
 	).NewTemplateCacheFiles()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create template cache files: %w", err)
@@ -105,7 +103,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			buildStore,
 			t.files.BuildId,
 			build.Memfile,
-			t.files.MemfilePageSize(),
 			t.memfileHeader,
 			t.persistence,
 		)
@@ -128,7 +125,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			buildStore,
 			t.files.BuildId,
 			build.Rootfs,
-			t.files.RootfsBlockSize(),
 			t.rootfsHeader,
 			t.persistence,
 		)

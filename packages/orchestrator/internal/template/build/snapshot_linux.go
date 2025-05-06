@@ -369,7 +369,7 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 		TrackDirtyPages: &trackDirtyPages,
 	}
 
-	if s.env.Hugepages() {
+	if s.env.HugePages {
 		machineConfig.HugePages = models.MachineConfigurationHugePagesNr2M
 	}
 

@@ -45,7 +45,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
-	sbx, cleanup, err := sandbox.NewSandbox(
+	sbx, cleanup, err := sandbox.StartSandbox(
 		childCtx,
 		s.tracer,
 		s.networkPool,
@@ -54,7 +54,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
-		req.Sandbox.Snapshot,
 		req.Sandbox.BaseTemplateId,
 		s.clientID,
 		s.devicePool,
@@ -247,7 +246,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		in.BuildId,
 		sbx.Config.KernelVersion,
 		sbx.Config.FirecrackerVersion,
-		sbx.Config.HugePages,
 	).NewTemplateCacheFiles()
 	if err != nil {
 		errMsg := fmt.Errorf("error creating template files: %w", err)
@@ -278,7 +276,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.New(codes.Internal, errMsg.Error()).Err()
 	}
 
-	snapshot, err := sbx.Snapshot(ctx, s.tracer, snapshotTemplateFiles, releaseOnce)
+	snapshot, err := sbx.Pause(ctx, s.tracer, snapshotTemplateFiles, releaseOnce)
 	if err != nil {
 		errMsg := fmt.Errorf("error snapshotting sandbox '%s': %w", in.SandboxId, err)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -291,7 +289,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		snapshotTemplateFiles.BuildId,
 		snapshotTemplateFiles.KernelVersion,
 		snapshotTemplateFiles.FirecrackerVersion,
-		snapshotTemplateFiles.Hugepages(),
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,

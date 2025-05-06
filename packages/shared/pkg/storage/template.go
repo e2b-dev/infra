@@ -3,8 +3,6 @@ package storage
 import (
 	"fmt"
 	"path/filepath"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const (
@@ -42,8 +40,6 @@ type TemplateFiles struct {
 	BuildId            string
 	KernelVersion      string
 	FirecrackerVersion string
-
-	hugePages bool
 }
 
 func NewTemplateFiles(
@@ -51,14 +47,12 @@ func NewTemplateFiles(
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
-	hugePages bool,
 ) *TemplateFiles {
 	return &TemplateFiles{
 		TemplateId:         templateId,
 		BuildId:            buildId,
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
-		hugePages:          hugePages,
 	}
 }
 
@@ -133,20 +127,4 @@ func (t *TemplateFiles) BuildRootfsDiffPath() string {
 
 func (t *TemplateFiles) BuildSnapfilePath() string {
 	return filepath.Join(t.BuildDir(), SnapfileName)
-}
-
-func (t *TemplateFiles) Hugepages() bool {
-	return t.hugePages
-}
-
-func (t *TemplateFiles) MemfilePageSize() int64 {
-	if t.hugePages {
-		return header.HugepageSize
-	}
-
-	return header.PageSize
-}
-
-func (t *TemplateFiles) RootfsBlockSize() int64 {
-	return header.RootfsBlockSize
 }

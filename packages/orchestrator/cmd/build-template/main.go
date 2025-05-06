@@ -59,13 +59,13 @@ func Build(ctx context.Context, kernelVersion, fcVersion, templateID, buildID st
 			buildID,
 			kernelVersion,
 			fcVersion,
-			true,
 		),
 		VCpuCount:       2,
 		MemoryMB:        1024,
 		StartCmd:        "",
 		DiskSizeMB:      1024,
 		BuildLogsWriter: &buf,
+		HugePages:       true,
 	}
 
 	postProcessor := writer.NewPostProcessor(ctx, &buf)

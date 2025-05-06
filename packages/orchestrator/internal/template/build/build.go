@@ -116,9 +116,8 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		}
 	}()
 
-	postProcessor.WriteMsg("Processing system memory")
-
 	// MEMFILE
+	postProcessor.WriteMsg("Processing system memory")
 	memfilePath := template.BuildMemfilePath()
 	memfileDiffPath := template.BuildMemfileDiffPath()
 
@@ -126,6 +125,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 	if err != nil {
 		return fmt.Errorf("error opening memfile source: %w", err)
 	}
+	defer memfileSource.Close()
 
 	memfileInfo, err := memfileSource.Stat()
 	if err != nil {
@@ -137,10 +137,11 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		return fmt.Errorf("error creating memfile diff file: %w", err)
 	}
 
-	memfileDirtyPages := bitset.New(0)
-	memfileDirtyPages.FlipRange(0, uint(header.TotalBlocks(memfileInfo.Size(), template.MemfilePageSize())))
+	// Mark all pages as dirty
+	memfileDirtyPages := bitset.New(0).FlipRange(0, uint(header.TotalBlocks(memfileInfo.Size(), template.MemfilePageSize())))
 
-	memfileDirtyPages, emptyDirtyPages, err := header.CreateDiffWithTrace(
+	// Create diff and get dirty/empty blocks
+	memfileDiffMetadata, err := header.WriteDiffWithTrace(
 		ctx,
 		b.tracer,
 		memfileSource,
@@ -148,38 +149,29 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		memfileDirtyPages,
 		memfileDiffFile,
 	)
-
-	memfileDirtyMappings := header.CreateMapping(
-		&buildIDParsed,
-		memfileDirtyPages,
-		uint64(template.MemfilePageSize()),
+	if err != nil {
+		return fmt.Errorf("error creating diff: %w", err)
+	}
+	memfileMappings, err := memfileDiffMetadata.CreateMapping(
+		ctx,
+		buildIDParsed,
 	)
-
-	memfileEmptyMappings := header.CreateMapping(
-		&uuid.Nil,
-		emptyDirtyPages,
-		uint64(template.MemfilePageSize()),
-	)
-
-	memfileMappings := header.MergeMappings(memfileDirtyMappings, memfileEmptyMappings)
-
-	memfileMetadata := &header.Metadata{
-		Version:     1,
-		Generation:  0,
-		BlockSize:   uint64(template.MemfilePageSize()),
-		Size:        uint64(memfileInfo.Size()),
-		BuildId:     buildIDParsed,
-		BaseBuildId: buildIDParsed,
+	if err != nil {
+		return fmt.Errorf("failed to create memfile diff: %w", err)
 	}
 
+	memfileMetadata := header.NewTemplateMetadata(
+		buildIDParsed,
+		uint64(template.MemfilePageSize()),
+		uint64(memfileInfo.Size()),
+	)
 	memfileHeader := header.NewHeader(
 		memfileMetadata,
 		memfileMappings,
 	)
 
-	postProcessor.WriteMsg("Processing file system")
-
 	// ROOTFS
+	postProcessor.WriteMsg("Processing file system")
 	rootfsPath := template.BuildRootfsPath()
 	rootfsDiffPath := template.BuildRootfsDiffPath()
 
@@ -198,10 +190,10 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		return fmt.Errorf("error creating rootfs diff file: %w", err)
 	}
 
-	rootfsDirtyBlocks := bitset.New(0)
-	rootfsDirtyBlocks.FlipRange(0, uint(header.TotalBlocks(rootfsInfo.Size(), template.RootfsBlockSize())))
+	// Mark all pages as dirty
+	rootfsDirtyBlocks := bitset.New(0).FlipRange(0, uint(header.TotalBlocks(rootfsInfo.Size(), template.RootfsBlockSize())))
 
-	rootfsDirtyBlocks, emptyDirtyBlocks, err := header.CreateDiffWithTrace(
+	rootfsDiffMetadata, err := header.WriteDiffWithTrace(
 		ctx,
 		b.tracer,
 		rootfsSource,
@@ -209,38 +201,26 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		rootfsDirtyBlocks,
 		rootfsDiffFile,
 	)
-
-	rootfsDirtyMappings := header.CreateMapping(
-		&buildIDParsed,
-		rootfsDirtyBlocks,
-		uint64(template.RootfsBlockSize()),
+	rootfsMappings, err := rootfsDiffMetadata.CreateMapping(
+		ctx,
+		buildIDParsed,
 	)
-
-	rootfsEmptyMappings := header.CreateMapping(
-		&uuid.Nil,
-		emptyDirtyBlocks,
-		uint64(template.RootfsBlockSize()),
-	)
-
-	rootfsMappings := header.MergeMappings(rootfsDirtyMappings, rootfsEmptyMappings)
-
-	rootfsMetadata := &header.Metadata{
-		Version:     1,
-		Generation:  0,
-		BlockSize:   uint64(template.RootfsBlockSize()),
-		Size:        uint64(rootfsInfo.Size()),
-		BuildId:     buildIDParsed,
-		BaseBuildId: buildIDParsed,
+	if err != nil {
+		return fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
 
+	rootfsMetadata := header.NewTemplateMetadata(
+		buildIDParsed,
+		uint64(template.RootfsBlockSize()),
+		uint64(rootfsInfo.Size()),
+	)
 	rootfsHeader := header.NewHeader(
 		rootfsMetadata,
 		rootfsMappings,
 	)
 
-	postProcessor.WriteMsg("Uploading template")
-
 	// UPLOAD
+	postProcessor.WriteMsg("Uploading template")
 	templateBuild := storage.NewTemplateBuild(
 		memfileHeader,
 		rootfsHeader,

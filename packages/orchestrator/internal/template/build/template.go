@@ -14,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -37,6 +38,9 @@ type Env struct {
 
 	// Real size of the rootfs after building the env.
 	rootfsSize int64
+
+	// HugePages sets whether the VM use huge pages.
+	HugePages bool
 }
 
 //go:embed provision.sh
@@ -104,4 +108,16 @@ func (e *Env) Remove(ctx context.Context, tracer trace.Tracer) error {
 	telemetry.ReportEvent(childCtx, "removed build dir")
 
 	return nil
+}
+
+func (e *Env) MemfilePageSize() int64 {
+	if e.HugePages {
+		return header.HugepageSize
+	}
+
+	return header.PageSize
+}
+
+func (e *Env) RootfsBlockSize() int64 {
+	return header.RootfsBlockSize
 }

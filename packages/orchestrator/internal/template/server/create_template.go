@@ -50,13 +50,13 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			config.BuildID,
 			config.KernelVersion,
 			config.FirecrackerVersion,
-			config.HugePages,
 		),
 		VCpuCount:       int64(config.VCpuCount),
 		MemoryMB:        int64(config.MemoryMB),
 		StartCmd:        config.StartCommand,
 		DiskSizeMB:      int64(config.DiskSizeMB),
 		BuildLogsWriter: logsWriter,
+		HugePages:       config.HugePages,
 	}
 
 	err := s.buildCache.Create(config.BuildID, config.TemplateID)

@@ -5,14 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"syscall"
 
-	"github.com/bits-and-blooms/bitset"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -32,11 +35,13 @@ type CowDevice struct {
 	tracer trace.Tracer
 }
 
-func NewCowDevice(tracer trace.Tracer, rootfs *template.Storage, cachePath string, blockSize int64, devicePool *nbd.DevicePool) (*CowDevice, error) {
+func NewCowDevice(tracer trace.Tracer, rootfs *template.Storage, cachePath string, devicePool *nbd.DevicePool) (*CowDevice, error) {
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
 	}
+
+	blockSize := rootfs.BlockSize()
 
 	cache, err := block.NewCache(size, blockSize, cachePath, false)
 	if err != nil {
@@ -68,7 +73,11 @@ func (o *CowDevice) Start(ctx context.Context) error {
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
 }
 
-func (o *CowDevice) Export(parentCtx context.Context, out io.Writer, stopSandbox func(ctx context.Context) error) (*bitset.BitSet, error) {
+func (o *CowDevice) ExportDiff(
+	parentCtx context.Context,
+	out io.Writer,
+	stopSandbox func(ctx context.Context) error,
+) (*header.DiffMetadata, error) {
 	childCtx, childSpan := o.tracer.Start(parentCtx, "cow-export")
 	defer childSpan.End()
 
@@ -93,7 +102,7 @@ func (o *CowDevice) Export(parentCtx context.Context, out io.Writer, stopSandbox
 	}
 	telemetry.ReportEvent(childCtx, "sandbox stopped")
 
-	dirty, err := cache.Export(out)
+	m, err := cache.ExportToDiff(out)
 	if err != nil {
 		return nil, fmt.Errorf("error exporting cache: %w", err)
 	}
@@ -105,7 +114,7 @@ func (o *CowDevice) Export(parentCtx context.Context, out io.Writer, stopSandbox
 		return nil, fmt.Errorf("error closing cache: %w", err)
 	}
 
-	return dirty, nil
+	return m, nil
 }
 
 func (o *CowDevice) Close(ctx context.Context) error {
@@ -133,4 +142,42 @@ func (o *CowDevice) Close(ctx context.Context) error {
 
 func (o *CowDevice) Path() (string, error) {
 	return o.ready.Wait()
+}
+
+// Flush flushes the data to the operating system's buffer.
+func (o *CowDevice) Flush(ctx context.Context) error {
+	telemetry.ReportEvent(ctx, "flushing cow device")
+	defer telemetry.ReportEvent(ctx, "flushing cow done")
+
+	nbdPath, err := o.Path()
+	if err != nil {
+		return fmt.Errorf("failed to get cow path: %w", err)
+	}
+
+	file, err := os.Open(nbdPath)
+	if err != nil {
+		return fmt.Errorf("failed to open cow path: %w", err)
+	}
+	defer func() {
+		err := file.Close()
+		if err != nil {
+			zap.L().Error("failed to close nbd file", zap.Error(err))
+		}
+	}()
+
+	if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
+		return fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
+	}
+
+	err = syscall.Fsync(int(file.Fd()))
+	if err != nil {
+		return fmt.Errorf("failed to fsync cow path: %w", err)
+	}
+
+	err = file.Sync()
+	if err != nil {
+		return fmt.Errorf("failed to sync cow path: %w", err)
+	}
+
+	return nil
 }

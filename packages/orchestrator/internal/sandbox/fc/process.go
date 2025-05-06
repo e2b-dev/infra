@@ -84,7 +84,6 @@ func NewProcess(
 		rootfs.BaseBuildId,
 		files.KernelVersion,
 		files.FirecrackerVersion,
-		files.Hugepages(),
 	)
 
 	err := startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{

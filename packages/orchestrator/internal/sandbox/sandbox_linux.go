@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,7 +17,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/mod/semver"
-	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -81,7 +79,7 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 }
 
 // Run cleanup functions for the already initialized resources if there is any error or after you are done with the started sandbox.
-func NewSandbox(
+func StartSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
 	networkPool *network.Pool,
@@ -90,7 +88,6 @@ func NewSandbox(
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
-	isSnapshot bool,
 	baseTemplateID string,
 	clientID string,
 	devicePool *nbd.DevicePool,
@@ -108,7 +105,6 @@ func NewSandbox(
 		config.BuildId,
 		config.KernelVersion,
 		config.FirecrackerVersion,
-		config.HugePages,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get template snapshot data: %w", err)
@@ -158,7 +154,6 @@ func NewSandbox(
 		tracer,
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
-		sandboxFiles.RootfsBlockSize(),
 		devicePool,
 	)
 	if err != nil {
@@ -189,7 +184,7 @@ func NewSandbox(
 	}
 	overlaySpan.End()
 
-	fcUffd, uffdErr := uffd.New(memfile, sandboxFiles.SandboxUffdSocketPath(), sandboxFiles.MemfilePageSize(), clientID)
+	fcUffd, uffdErr := uffd.New(memfile, sandboxFiles.SandboxUffdSocketPath(), memfile.BlockSize(), clientID)
 	if uffdErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to create uffd: %w", uffdErr)
 	}
@@ -354,7 +349,7 @@ func (s *Sandbox) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (s *Sandbox) Snapshot(
+func (s *Sandbox) Pause(
 	ctx context.Context,
 	tracer trace.Tracer,
 	snapshotTemplateFiles *storage.TemplateCacheFiles,
@@ -363,207 +358,89 @@ func (s *Sandbox) Snapshot(
 	ctx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
 	defer childSpan.End()
 
-	buildId, err := uuid.Parse(snapshotTemplateFiles.BuildId)
+	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse build id: %w", err)
 	}
 
-	// MEMFILE & SNAPFILE
-	originalMemfile, err := s.template.Memfile()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get original memfile: %w", err)
-	}
-
-	memfileMetadata := &header.Metadata{
-		Version:     1,
-		Generation:  originalMemfile.Header().Metadata.Generation + 1,
-		BlockSize:   originalMemfile.Header().Metadata.BlockSize,
-		Size:        originalMemfile.Header().Metadata.Size,
-		BuildId:     buildId,
-		BaseBuildId: originalMemfile.Header().Metadata.BaseBuildId,
-	}
-
+	// Stop the health check before pausing the VM
 	s.healthcheckCtx.Lock()
 	s.healthcheckCtx.Cancel()
 	s.healthcheckCtx.Unlock()
 
-	err = s.process.Pause(ctx, tracer)
-	if err != nil {
-		return nil, fmt.Errorf("error pausing vm: %w", err)
+	if err := s.process.Pause(ctx, tracer); err != nil {
+		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	err = s.uffd.Disable()
-	if err != nil {
+	if err := s.uffd.Disable(); err != nil {
 		return nil, fmt.Errorf("failed to disable uffd: %w", err)
 	}
 
-	defer os.RemoveAll(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
+	// Snapfile is not closed as it's returned and reused for resume
+	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
+	memfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
+	defer memfile.Close()
 
 	err = s.process.CreateSnapshot(
 		ctx,
 		tracer,
-		snapshotTemplateFiles.CacheSnapfilePath(),
-		snapshotTemplateFiles.CacheMemfileFullSnapshotPath(),
+		snapfile.Path(),
+		memfile.Path(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating snapshot: %w", err)
 	}
 
-	memfileDirtyPages := s.uffd.Dirty()
-
-	sourceFile, err := os.Open(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
-	if err != nil {
-		return nil, fmt.Errorf("failed to open memfile: %w", err)
-	}
-
-	memfileDiffFile, err := build.NewLocalDiffFile(
-		build.DefaultCachePath,
-		buildId.String(),
-		build.Memfile,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create memfile diff file: %w", err)
-	}
-
-	memfileDirtyPages, _, err = header.CreateDiffWithTrace(ctx, tracer, sourceFile, s.files.MemfilePageSize(), memfileDirtyPages, memfileDiffFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create memfile diff: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "created memfile diff")
-
-	os.RemoveAll(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
-
+	// TODO: When is the right time to release the lock?
 	releaseLock()
 
-	memfileMapping := header.CreateMapping(
-		&buildId,
-		memfileDirtyPages,
-		memfileMetadata.BlockSize,
-	)
-
-	telemetry.ReportEvent(ctx, "created memfile mapping")
-
-	memfileMappings := header.MergeMappings(
-		originalMemfile.Header().Mapping,
-		memfileMapping,
-	)
-
-	telemetry.ReportEvent(ctx, "merged memfile mappings")
-
-	snapfile, err := template.NewLocalFile(snapshotTemplateFiles.CacheSnapfilePath())
+	// Gather data for postprocessing
+	originalMemfile, err := s.template.Memfile()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create local snapfile: %w", err)
+		return nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
-
-	// ROOTFS
 	originalRootfs, err := s.template.Rootfs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get original rootfs: %w", err)
 	}
 
-	rootfsMetadata := &header.Metadata{
-		Version:     1,
-		Generation:  originalRootfs.Header().Metadata.Generation + 1,
-		BlockSize:   originalRootfs.Header().Metadata.BlockSize,
-		Size:        originalRootfs.Header().Metadata.Size,
-		BuildId:     buildId,
-		BaseBuildId: originalRootfs.Header().Metadata.BaseBuildId,
-	}
-
-	nbdPath, err := s.rootfs.Path()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get rootfs path: %w", err)
-	}
-
-	// Flush the data to the operating system's buffer
-	file, err := os.Open(nbdPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open rootfs path: %w", err)
-	}
-
-	if err := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0); err != nil {
-		return nil, fmt.Errorf("ioctl BLKFLSBUF failed: %w", err)
-	}
-
-	err = syscall.Fsync(int(file.Fd()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to fsync rootfs path: %w", err)
-	}
-
-	err = file.Sync()
-	if err != nil {
-		return nil, fmt.Errorf("failed to sync rootfs path: %w", err)
-	}
-
-	if err := file.Close(); err != nil {
-		return nil, fmt.Errorf("nbd file closing failed: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "synced rootfs")
-
-	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath, buildId.String(), build.Rootfs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create rootfs diff: %w", err)
-	}
-
-	rootfsDirtyBlocks, err := s.rootfs.Export(ctx, rootfsDiffFile, s.Stop)
-	if err != nil {
-		return nil, fmt.Errorf("failed to export rootfs: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "exported rootfs")
-
-	rootfsMapping := header.CreateMapping(
-		&buildId,
-		rootfsDirtyBlocks,
-		rootfsMetadata.BlockSize,
+	// Start POSTPROCESSING
+	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
+		ctx,
+		tracer,
+		buildID,
+		originalMemfile,
+		&MemoryDiffCreator{
+			tracer:     tracer,
+			memfile:    memfile,
+			dirtyPages: s.uffd.Dirty(),
+			blockSize:  originalMemfile.BlockSize(),
+		},
 	)
-
-	telemetry.ReportEvent(ctx, "created rootfs mapping")
-
-	rootfsMappings := header.MergeMappings(
-		originalRootfs.Header().Mapping,
-		rootfsMapping,
-	)
-
-	telemetry.ReportEvent(ctx, "merged rootfs mappings")
-
-	rootfsDiff, err := rootfsDiffFile.ToDiff(int64(originalRootfs.Header().Metadata.BlockSize))
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
+		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 
-	telemetry.ReportEvent(ctx, "converted rootfs diff file to local diff")
-
-	memfileDiff, err := memfileDiffFile.ToDiff(int64(originalMemfile.Header().Metadata.BlockSize))
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, "converted memfile diff file to local diff")
-
-	telemetry.SetAttributes(ctx,
-		attribute.Int64("snapshot.memfile.header.mappings.length", int64(len(memfileMappings))),
-		attribute.Int64("snapshot.rootfs.header.mappings.length", int64(len(rootfsMappings))),
-		attribute.Int64("snapshot.memfile.diff.size", int64(memfileDirtyPages.Count()*uint(originalMemfile.Header().Metadata.BlockSize))),
-		attribute.Int64("snapshot.memfile.mapped_size", int64(memfileMetadata.Size)),
-		attribute.Int64("snapshot.memfile.block_size", int64(memfileMetadata.BlockSize)),
-		attribute.Int64("snapshot.rootfs.diff.size", int64(rootfsDirtyBlocks.Count()*uint(originalRootfs.Header().Metadata.BlockSize))),
-		attribute.Int64("snapshot.rootfs.mapped_size", int64(rootfsMetadata.Size)),
-		attribute.Int64("snapshot.rootfs.block_size", int64(rootfsMetadata.BlockSize)),
-		attribute.Int64("snapshot.metadata.version", int64(memfileMetadata.Version)),
-		attribute.Int64("snapshot.metadata.generation", int64(memfileMetadata.Generation)),
-		attribute.String("snapshot.metadata.build_id", memfileMetadata.BuildId.String()),
-		attribute.String("snapshot.metadata.base_build_id", memfileMetadata.BaseBuildId.String()),
+	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
+		ctx,
+		tracer,
+		buildID,
+		originalRootfs,
+		&RootfsDiffCreator{
+			rootfs:   s.rootfs,
+			stopHook: s.Stop,
+		},
 	)
+	if err != nil {
+		return nil, fmt.Errorf("error while post processing: %w", err)
+	}
 
 	return &Snapshot{
 		Snapfile:          snapfile,
 		MemfileDiff:       memfileDiff,
-		MemfileDiffHeader: header.NewHeader(memfileMetadata, memfileMappings),
+		MemfileDiffHeader: memfileDiffHeader,
 		RootfsDiff:        rootfsDiff,
-		RootfsDiffHeader:  header.NewHeader(rootfsMetadata, rootfsMappings),
+		RootfsDiffHeader:  rootfsDiffHeader,
 	}, nil
 }
 
@@ -572,5 +449,121 @@ type Snapshot struct {
 	MemfileDiffHeader *header.Header
 	RootfsDiff        build.Diff
 	RootfsDiffHeader  *header.Header
-	Snapfile          *template.LocalFile
+	Snapfile          *template.LocalFileLink
+}
+
+func pauseProcessMemory(
+	ctx context.Context,
+	tracer trace.Tracer,
+	buildId uuid.UUID,
+	originalMemfile *template.Storage,
+	diffCreator DiffCreator,
+) (build.Diff, *header.Header, error) {
+	ctx, childSpan := tracer.Start(ctx, "process-memory")
+	defer childSpan.End()
+
+	memfileDiffFile, err := build.NewLocalDiffFile(
+		build.DefaultCachePath,
+		buildId.String(),
+		build.Memfile,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create memfile diff file: %w", err)
+	}
+
+	m, err := diffCreator.process(ctx, memfileDiffFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating diff: %w", err)
+	}
+	telemetry.ReportEvent(ctx, "created diff")
+
+	// TODO: Do we need to release here or can we earlier?
+	// Release the lock to allow other operations to proceed
+
+	memfileMapping, err := m.CreateMapping(ctx, buildId)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create memfile mapping: %w", err)
+	}
+
+	memfileMappings := header.MergeMappings(
+		originalMemfile.Header().Mapping,
+		memfileMapping,
+	)
+	// TODO: We can run normalization only when empty mappings are not empty for this snapshot
+	memfileMappings = header.NormalizeMappings(memfileMappings)
+	telemetry.ReportEvent(ctx, "merged memfile mappings")
+
+	memfileDiff, err := memfileDiffFile.CloseToDiff(int64(originalMemfile.Header().Metadata.BlockSize))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to convert memfile diff file to local diff: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "converted memfile diff file to local diff")
+
+	memfileMetadata := originalMemfile.Header().Metadata.NextGeneration(buildId)
+
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("snapshot.memfile.header.mappings.length", int64(len(memfileMappings))),
+		attribute.Int64("snapshot.memfile.diff.size", int64(m.Dirty.Count()*uint(originalMemfile.Header().Metadata.BlockSize))),
+		attribute.Int64("snapshot.memfile.mapped_size", int64(memfileMetadata.Size)),
+		attribute.Int64("snapshot.memfile.block_size", int64(memfileMetadata.BlockSize)),
+		attribute.Int64("snapshot.metadata.version", int64(memfileMetadata.Version)),
+		attribute.Int64("snapshot.metadata.generation", int64(memfileMetadata.Generation)),
+		attribute.String("snapshot.metadata.build_id", memfileMetadata.BuildId.String()),
+		attribute.String("snapshot.metadata.base_build_id", memfileMetadata.BaseBuildId.String()),
+	)
+
+	return memfileDiff, header.NewHeader(memfileMetadata, memfileMappings), nil
+}
+
+func pauseProcessRootfs(
+	ctx context.Context,
+	tracer trace.Tracer,
+	buildId uuid.UUID,
+	originalRootfs *template.Storage,
+	diffCreator DiffCreator,
+) (build.Diff, *header.Header, error) {
+	ctx, childSpan := tracer.Start(ctx, "process-rootfs")
+	defer childSpan.End()
+
+	rootfsDiffFile, err := build.NewLocalDiffFile(build.DefaultCachePath, buildId.String(), build.Rootfs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
+	}
+
+	rootfsDiffMetadata, err := diffCreator.process(ctx, rootfsDiffFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating diff: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "exported rootfs")
+	rootfsMapping, err := rootfsDiffMetadata.CreateMapping(ctx, buildId)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
+	}
+
+	rootfsMappings := header.MergeMappings(
+		originalRootfs.Header().Mapping,
+		rootfsMapping,
+	)
+	// TODO: We can run normalization only when empty mappings are not empty for this snapshot
+	rootfsMappings = header.NormalizeMappings(rootfsMappings)
+	telemetry.ReportEvent(ctx, "merged rootfs mappings")
+
+	rootfsDiff, err := rootfsDiffFile.CloseToDiff(int64(originalRootfs.Header().Metadata.BlockSize))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
+	}
+	telemetry.ReportEvent(ctx, "converted rootfs diff file to local diff")
+
+	rootfsMetadata := originalRootfs.Header().Metadata.NextGeneration(buildId)
+
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("snapshot.rootfs.header.mappings.length", int64(len(rootfsMappings))),
+		attribute.Int64("snapshot.rootfs.diff.size", int64(rootfsDiffMetadata.Dirty.Count()*uint(originalRootfs.Header().Metadata.BlockSize))),
+		attribute.Int64("snapshot.rootfs.mapped_size", int64(rootfsMetadata.Size)),
+		attribute.Int64("snapshot.rootfs.block_size", int64(rootfsMetadata.BlockSize)),
+	)
+
+	return rootfsDiff, header.NewHeader(rootfsMetadata, rootfsMappings), nil
 }
