@@ -10,10 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
+	"go.uber.org/zap"
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 

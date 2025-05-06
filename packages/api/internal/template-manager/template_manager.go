@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/flowchartsman/retry"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
-	"github.com/flowchartsman/retry"
 )
 
 type processingBuilds struct {
