@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/constants"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
@@ -59,7 +60,8 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 
 	telemetry.ReportEvent(ctx, "started request for environment build")
 
-	var team *models.Team
+	var team *queries.Team
+	var tier *queries.Tier
 	// Prepare info for rebuilding env
 	userID, teams, err := a.GetUserAndTeams(c)
 	if err != nil {
@@ -83,8 +85,9 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		}
 
 		for _, t := range teams {
-			if t.ID == teamUUID {
-				team = t
+			if t.Team.ID == teamUUID {
+				team = &t.Team
+				tier = &t.Tier
 				break
 			}
 		}
@@ -99,8 +102,9 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		}
 	} else {
 		for _, t := range teams {
-			if t.Edges.UsersTeams[0].IsDefault {
-				team = t
+			if t.UsersTeam.IsDefault {
+				team = &t.Team
+				tier = &t.Tier
 				break
 			}
 		}
@@ -145,7 +149,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		attribute.String("env.id", templateID),
-		attribute.String("env.team.tier", team.Tier),
+		attribute.String("env.team.tier", tier.ID),
 		attribute.String("build.id", buildID.String()),
 		attribute.String("env.dockerfile", body.Dockerfile),
 	)
@@ -165,7 +169,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		telemetry.SetAttributes(ctx, attribute.Int("env.memory_mb", int(*body.MemoryMB)))
 	}
 
-	cpuCount, ramMB, apiError := getCPUAndRAM(team.Tier, body.CpuCount, body.MemoryMB)
+	cpuCount, ramMB, apiError := getCPUAndRAM(tier.ID, body.CpuCount, body.MemoryMB)
 	if apiError != nil {
 		telemetry.ReportCriticalError(ctx, apiError.Err)
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
@@ -244,7 +248,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		SetVcpu(cpuCount).
 		SetKernelVersion(schema.DefaultKernelVersion).
 		SetFirecrackerVersion(schema.DefaultFirecrackerVersion).
-		SetFreeDiskSizeMB(team.Edges.TeamTier.DiskMB).
+		SetFreeDiskSizeMB(tier.DiskMb).
 		SetNillableStartCmd(body.StartCmd).
 		SetDockerfile(body.Dockerfile).
 		Exec(ctx)
