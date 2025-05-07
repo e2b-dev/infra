@@ -250,6 +250,7 @@ func run(port, proxyPort uint) (success bool) {
 		return grpcErr
 	})
 
+	// Wait for the shutdown signal or if some service fails
 	select {
 	case <-sig.Done():
 		zap.L().Info("Shutdown signal received")
