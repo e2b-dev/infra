@@ -38,7 +38,8 @@ seed:
 	@echo "Done"
 
 .PHONY: test
-test:
+test: test/.
+test/%:
 	export TESTS_API_SERVER_URL=$(TESTS_API_SERVER_URL); \
 	export TESTS_ORCHESTRATOR_HOST=$(TESTS_ORCHESTRATOR_HOST); \
 	export TESTS_ENVD_PROXY=$(TESTS_ENVD_PROXY); \
@@ -48,7 +49,7 @@ test:
 	export TESTS_SUPABASE_TOKEN=$(TESTS_SUPABASE_TOKEN); \
 	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
 	go test -v ./internal/main_test.go -count=1 && \
-	go run gotest.tools/gotestsum@latest --rerun-fails=2 --packages="./internal/tests/$(SCOPE)..." --format standard-verbose --junitfile=test-results.xml -- -count=1
+	go run gotest.tools/gotestsum@latest --rerun-fails=2 --packages="./internal/tests/$(notdir $@)/..." --format standard-verbose --junitfile=test-results.xml -- -count=1
 
 .PHONY: connect-orchestrator
 connect-orchestrator:
