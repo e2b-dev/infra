@@ -109,6 +109,8 @@ type Tier struct {
 	// The number of instances the team can run concurrently
 	ConcurrentInstances int64
 	MaxLengthHours      int64
+	MaxVcpu             int64
+	MaxRamMb            int64
 }
 
 type UsersTeam struct {
