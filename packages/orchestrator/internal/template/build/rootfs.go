@@ -35,9 +35,8 @@ import (
 const (
 	ToMBShift = 20
 	// Max size of the rootfs file in MB.
-	maxRootfsSize      = 15000 << ToMBShift
-	cacheTimeout       = "48h"
-	fcForwardProxyAddr = "127.0.0.1:5151"
+	maxRootfsSize = 15000 << ToMBShift
+	cacheTimeout  = "48h"
 )
 
 var authConfig = registry.AuthConfig{
@@ -176,19 +175,17 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	var scriptDef bytes.Buffer
 
 	err := EnvInstanceTemplate.Execute(&scriptDef, struct {
-		EnvID              string
-		BuildID            string
-		StartCmd           string
-		FcAddress          string
-		FcForwardProxyAddr string
-		MemoryLimit        int
+		EnvID       string
+		BuildID     string
+		StartCmd    string
+		FcAddress   string
+		MemoryLimit int
 	}{
-		FcAddress:          fcAddr,
-		FcForwardProxyAddr: fcForwardProxyAddr,
-		EnvID:              r.env.TemplateId,
-		BuildID:            r.env.BuildId,
-		StartCmd:           strings.ReplaceAll(r.env.StartCmd, "'", "\\'"),
-		MemoryLimit:        int(math.Min(float64(r.env.MemoryMB)/2, 512)),
+		FcAddress:   fcAddr,
+		EnvID:       r.env.TemplateId,
+		BuildID:     r.env.BuildId,
+		StartCmd:    strings.ReplaceAll(r.env.StartCmd, "'", "\\'"),
+		MemoryLimit: int(math.Min(float64(r.env.MemoryMB)/2, 512)),
 	})
 	if err != nil {
 		errMsg := fmt.Errorf("error executing provision script: %w", err)

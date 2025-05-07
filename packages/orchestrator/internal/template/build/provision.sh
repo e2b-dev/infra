@@ -10,7 +10,7 @@ echo "BUILD_ID={{ .BuildID }}" >>/.e2b
 install_packages() {
     echo "Installing packages"
     apt-get -qq update --download-only
-    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq install -y openssh-server sudo systemd socat chrony linuxptp iptables >/dev/null
+    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq install -y openssh-server sudo systemd socat chrony linuxptp iptables > /dev/null
 }
 
 install_packages
@@ -94,7 +94,7 @@ EOF
 setup_service_envd
 
 # Set up chrony.
-setup_chrony() {
+setup_chrony(){
     echo "Setting up chrony"
     mkdir -p /etc/chrony
     cat <<EOF >/etc/chrony/chrony.conf
@@ -198,7 +198,7 @@ Type=simple
 Restart=no
 User=root
 Group=root
-ExecStart=/bin/bash -l -c "(echo 1 | tee /proc/sys/net/ipv4/ip_forward) && iptables-legacy -t nat -A POSTROUTING -s 127.0.0.1 -j SNAT --to-source {{ .FcAddress }} && iptables-legacy -t nat -A PREROUTING -d {{ .FcAddress }} -j DNAT --to-destination 127.0.0.1 && iptables-legacy -t nat -A OUTPUT -p tcp ! -d 127.0.0.0/8 ! -d {{ .FcForwardProxyAddr }} -j DNAT --to-destination {{ .FcForwardProxyAddr }}"
+ExecStart=/bin/bash -l -c "(echo 1 | tee /proc/sys/net/ipv4/ip_forward) && iptables-legacy -t nat -A POSTROUTING -s 127.0.0.1 -j SNAT --to-source {{ .FcAddress }} && iptables-legacy -t nat -A PREROUTING -d {{ .FcAddress }} -j DNAT --to-destination 127.0.0.1"
 
 [Install]
 WantedBy=multi-user.target
