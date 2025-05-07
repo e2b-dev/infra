@@ -17,11 +17,12 @@ import (
 )
 
 type SeedData struct {
-	APIKey  string
-	EnvID   string
-	BuildID uuid.UUID
-	TeamID  uuid.UUID
-	UserID  uuid.UUID
+	AccessToken string
+	APIKey      string
+	EnvID       string
+	BuildID     uuid.UUID
+	TeamID      uuid.UUID
+	UserID      uuid.UUID
 }
 
 func main() {
@@ -37,11 +38,12 @@ func main() {
 	defer database.Close()
 
 	data := SeedData{
-		APIKey:  os.Getenv("TESTS_E2B_API_KEY"),
-		EnvID:   os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
-		BuildID: uuid.MustParse(os.Getenv("TESTS_SANDBOX_BUILD_ID")),
-		TeamID:  uuid.MustParse(os.Getenv("TESTS_SANDBOX_TEAM_ID")),
-		UserID:  uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID")),
+		AccessToken: os.Getenv("TESTS_E2B_ACCESS_TOKEN"),
+		APIKey:      os.Getenv("TESTS_E2B_API_KEY"),
+		EnvID:       os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
+		BuildID:     uuid.MustParse(os.Getenv("TESTS_SANDBOX_BUILD_ID")),
+		TeamID:      uuid.MustParse(os.Getenv("TESTS_SANDBOX_TEAM_ID")),
+		UserID:      uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID")),
 	}
 
 	err = seed(database, data)
@@ -56,10 +58,19 @@ func seed(db *db.DB, data SeedData) error {
 	ctx := context.Background()
 
 	// User
-	_, err := db.Client.User.Create().
+	user, err := db.Client.User.Create().
 		SetID(data.UserID).
 		SetEmail("user-test-integration@e2b.dev").
 		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// Access token
+	err = db.Client.AccessToken.Create().
+		SetUser(user).
+		SetAccessToken(data.AccessToken).
+		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create user: %w", err)
 	}

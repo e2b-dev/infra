@@ -77,7 +77,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 		contentType,
 		textFile,
 		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
-		setup.WithAccessToken(*envdToken),
+		setup.WithEnvdAccessToken(*envdToken),
 	)
 
 	assert.NoError(t, err)

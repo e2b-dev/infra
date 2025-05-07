@@ -31,6 +31,7 @@ seed:
 	@echo "Applying seeds"
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) \
 		TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY) \
+		TESTS_E2B_ACCESS_TOKEN=$(TESTS_E2B_ACCESS_TOKEN) \
 		TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID) \
 		TESTS_SANDBOX_BUILD_ID=$(TESTS_SANDBOX_BUILD_ID) \
 		go run seed.go
@@ -43,10 +44,11 @@ test:
 	export TESTS_ENVD_PROXY=$(TESTS_ENVD_PROXY); \
 	export TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID); \
 	export TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY); \
+	export TESTS_E2B_ACCESS_TOKEN=$(TESTS_E2B_ACCESS_TOKEN); \
 	export TESTS_SUPABASE_TOKEN=$(TESTS_SUPABASE_TOKEN); \
 	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
 	go test -v ./internal/main_test.go -count=1 && \
-	go run gotest.tools/gotestsum@latest --rerun-fails=2 --packages="./internal/tests/..." --format standard-verbose --junitfile=test-results.xml -- -count=1
+	go run gotest.tools/gotestsum@latest --rerun-fails=2 --packages="./internal/tests/$(SCOPE)..." --format standard-verbose --junitfile=test-results.xml -- -count=1
 
 .PHONY: connect-orchestrator
 connect-orchestrator:
