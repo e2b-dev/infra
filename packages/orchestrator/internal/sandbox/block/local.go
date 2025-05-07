@@ -13,9 +13,11 @@ type Local struct {
 	m    mmap.MMap
 	size int64
 	path string
+
+	blockSize int64
 }
 
-func NewLocal(path string) (*Local, error) {
+func NewLocal(path string, blockSize int64) (*Local, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY, 0o777)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -34,9 +36,10 @@ func NewLocal(path string) (*Local, error) {
 	}
 
 	return &Local{
-		m:    m,
-		size: info.Size(),
-		path: path,
+		m:         m,
+		size:      info.Size(),
+		path:      path,
+		blockSize: blockSize,
 	}, nil
 }
 
@@ -51,6 +54,10 @@ func (d *Local) ReadAt(p []byte, off int64) (int, error) {
 
 func (d *Local) Size() (int64, error) {
 	return d.size, nil
+}
+
+func (d *Local) BlockSize() int64 {
+	return d.blockSize
 }
 
 func (d *Local) Close() error {

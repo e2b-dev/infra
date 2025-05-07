@@ -181,7 +181,8 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 		FcAddress   string
 		MemoryLimit int
 	}{
-		FcAddress:   fcAddr,
+		// TODO: use slot instead of hardcoded value
+		FcAddress:   "169.254.0.21",
 		EnvID:       r.env.TemplateId,
 		BuildID:     r.env.BuildId,
 		StartCmd:    strings.ReplaceAll(r.env.StartCmd, "'", "\\'"),

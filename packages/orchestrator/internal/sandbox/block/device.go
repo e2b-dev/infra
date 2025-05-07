@@ -12,6 +12,7 @@ type ReadonlyDevice interface {
 	io.ReaderAt
 	Slice(off, length int64) ([]byte, error)
 	Size() (int64, error)
+	BlockSize() int64
 }
 
 type Device interface {

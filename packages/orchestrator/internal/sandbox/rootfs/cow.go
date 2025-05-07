@@ -14,7 +14,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -26,8 +25,7 @@ type CowDevice struct {
 
 	ready *utils.SetOnce[string]
 
-	blockSize   int64
-	BaseBuildId string
+	blockSize int64
 
 	finishedOperations chan struct{}
 	devicePool         *nbd.DevicePool
@@ -35,7 +33,7 @@ type CowDevice struct {
 	tracer trace.Tracer
 }
 
-func NewCowDevice(tracer trace.Tracer, rootfs *template.Storage, cachePath string, devicePool *nbd.DevicePool) (*CowDevice, error) {
+func NewCowDevice(tracer trace.Tracer, rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (*CowDevice, error) {
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
@@ -59,7 +57,6 @@ func NewCowDevice(tracer trace.Tracer, rootfs *template.Storage, cachePath strin
 		ready:              utils.NewSetOnce[string](),
 		blockSize:          blockSize,
 		finishedOperations: make(chan struct{}, 1),
-		BaseBuildId:        rootfs.Header().Metadata.BaseBuildId.String(),
 		devicePool:         devicePool,
 	}, nil
 }
@@ -180,4 +177,8 @@ func (o *CowDevice) Flush(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (o *CowDevice) MarkAllBlocksAsDirty() {
+	o.overlay.MarkAllBlocksAsDirty()
 }

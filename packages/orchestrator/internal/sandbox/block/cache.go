@@ -256,5 +256,19 @@ func (m *Cache) FileSize() (int64, error) {
 		return 0, fmt.Errorf("failed to get disk stats for path %s: %w", m.filePath, err)
 	}
 
-	return stat.Blocks * int64(fsStat.Bsize), nil
+	return stat.Blocks * fsStat.Bsize, nil
+}
+
+func (m *Cache) MarkAllBlocksAsDirty() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.isClosed() {
+		return
+	}
+
+	for i := int64(0); i < m.size; i += m.blockSize {
+		m.dirty.Store(i, struct{}{})
+	}
+	m.dirtyFile = true
 }

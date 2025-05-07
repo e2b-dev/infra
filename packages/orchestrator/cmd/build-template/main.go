@@ -1,22 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"time"
 
-	"github.com/docker/docker/client"
-	docker "github.com/fsouza/go-dockerclient"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 func main() {
@@ -40,7 +30,7 @@ func Build(ctx context.Context, kernelVersion, fcVersion, templateID, buildID st
 	ctx, cancel := context.WithTimeout(ctx, time.Minute*3)
 	defer cancel()
 
-	tracer := otel.Tracer("test")
+	/*tracer := otel.Tracer("test")
 
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -72,7 +62,13 @@ func Build(ctx context.Context, kernelVersion, fcVersion, templateID, buildID st
 	defer postProcessor.Stop(nil)
 
 	// TODO: implement the build process in a command
-	_, err = t.Build(ctx, tracer, postProcessor, dockerClient, legacyClient)
+	_, err = t.Build(
+		ctx,
+		tracer,
+		postProcessor,
+		dockerClient,
+		legacyClient,
+	)
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}
@@ -98,7 +94,7 @@ func Build(ctx context.Context, kernelVersion, fcVersion, templateID, buildID st
 	err = <-upload
 	if err != nil {
 		return fmt.Errorf("error uploading build: %w", err)
-	}
+	}*/
 
 	return nil
 }

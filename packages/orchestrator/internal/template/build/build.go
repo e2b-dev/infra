@@ -3,17 +3,13 @@ package build
 import (
 	"context"
 	"fmt"
-	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
@@ -25,12 +21,13 @@ import (
 )
 
 type TemplateBuilder struct {
-	tracer trace.Tracer
+	logger   *zap.Logger
+	tracer   trace.Tracer
+	clientID string
 
 	storage            storage.StorageProvider
 	devicePool         *nbd.DevicePool
 	networkPool        *network.Pool
-	logger             *zap.Logger
 	buildCache         *cache.BuildCache
 	buildLogger        *zap.Logger
 	dockerClient       *client.Client
@@ -51,10 +48,12 @@ func NewBuilder(
 	storage storage.StorageProvider,
 	devicePool *nbd.DevicePool,
 	networkPool *network.Pool,
+	clientID string,
 ) *TemplateBuilder {
 	return &TemplateBuilder{
 		logger:             logger,
 		tracer:             tracer,
+		clientID:           clientID,
 		buildCache:         buildCache,
 		buildLogger:        buildLogger,
 		dockerClient:       dockerClient,
@@ -67,12 +66,7 @@ func NewBuilder(
 }
 
 func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string, buildID string) error {
-	buildIDParsed, err := uuid.Parse(buildID)
-	if err != nil {
-		return fmt.Errorf("error parsing build ID: %w", err)
-	}
-
-	_, err = b.buildCache.Get(buildID)
+	_, err := b.buildCache.Get(buildID)
 	if err != nil {
 		return err
 	}
@@ -94,7 +88,31 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		}
 	}()
 
-	_, err = template.Build(ctx, b.tracer, postProcessor, b.dockerClient, b.legacyDockerClient, b.networkPool, b.devicePool)
+	envdVersion, err := GetEnvdVersion(ctx)
+	if err != nil {
+		postProcessor.WriteMsg(fmt.Sprintf("Error while getting envd version: %v", err))
+		telemetry.ReportError(ctx, err)
+
+		buildStateErr := b.buildCache.SetFailed(envID, buildID)
+		if buildStateErr != nil {
+			b.logger.Error("Error while setting build state to failed", zap.Error(buildStateErr))
+			telemetry.ReportError(ctx, buildStateErr)
+		}
+
+		return err
+	}
+
+	sbx, err := template.Build(
+		ctx,
+		b.tracer,
+		postProcessor,
+		b.dockerClient,
+		b.legacyDockerClient,
+		b.networkPool,
+		b.devicePool,
+		b.clientID,
+		envdVersion,
+	)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error building environment: %v", err))
 		telemetry.ReportCriticalError(ctx, err)
@@ -122,16 +140,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		}
 	}()
 
-	sbx := &sandbox.Sandbox{}
-
 	// TODO: LINK to sandbox.go
-	postProcessor.WriteMsg("Processing vm memory and file system")
-	snapshotTemplateFiles, err := storage.NewTemplateFiles(
-		in.TemplateId,
-		bui,
-		sbx.Config.KernelVersion,
-		sbx.Config.FirecrackerVersion,
-	).NewTemplateCacheFiles()
+	postProcessor.WriteMsg("Pausing VM")
+	snapshotTemplateFiles, err := template.NewTemplateCacheFiles()
 	if err != nil {
 		return fmt.Errorf("error creating template files: %w", err)
 	}
@@ -145,33 +156,6 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		return fmt.Errorf("error processing vm: %w", err)
 	}
 
-	/*memfileSource, err := os.Open(template.BuildMemfilePath())
-	if err != nil {
-		return fmt.Errorf("error opening memfile source: %w", err)
-	}
-	defer memfileSource.Close()
-	memfileInfo, err := memfileSource.Stat()
-	if err != nil {
-		return fmt.Errorf("error getting memfile size: %w", err)
-	}
-
-	memfileDiffFile, err := os.Create(template.BuildMemfileDiffPath())
-	if err != nil {
-		return fmt.Errorf("error creating memfile diff file: %w", err)
-	}
-	defer memfileDiffFile.Close()
-
-	snapshot, err := sandbox.TODOTEMPLATEPAUSE(
-		ctx,
-		b.tracer,
-		buildIDParsed,
-		memfileInfo.Size(),
-		template.MemfilePageSize(),
-	)
-	if err != nil {
-		return fmt.Errorf("error processing vm: %w", err)
-	}*/
-
 	// UPLOAD
 	postProcessor.WriteMsg("Uploading template")
 	templateBuild := storage.NewTemplateBuild(
@@ -181,27 +165,22 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		template.TemplateFiles,
 	)
 
+	memfileDiffPath, err := snapshot.MemfileDiff.CachePath()
+	if err != nil {
+		return fmt.Errorf("error getting memfile diff path: %w", err)
+	}
+
+	rootfsDiffPath, err := snapshot.RootfsDiff.CachePath()
+	if err != nil {
+		return fmt.Errorf("error getting rootfs diff path: %w", err)
+	}
+
 	upload := templateBuild.Upload(
 		ctx,
 		template.BuildSnapfilePath(),
-		&snapshot.MemfileDiff,
-		&snapshot.RootfsDiff,
+		&memfileDiffPath,
+		&rootfsDiffPath,
 	)
-
-	cmd := exec.Command(storage.HostEnvdPath, "-version")
-	out, err := cmd.Output()
-	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error while getting envd version: %v", err))
-		telemetry.ReportError(ctx, err)
-
-		buildStateErr := b.buildCache.SetFailed(envID, buildID)
-		if buildStateErr != nil {
-			b.logger.Error("Error while setting build state to failed", zap.Error(buildStateErr))
-			telemetry.ReportError(ctx, buildStateErr)
-		}
-
-		return err
-	}
 
 	postProcessor.Stop(err)
 	// Wait for the CLI to load all the logs
@@ -224,7 +203,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		return uploadErr
 	}
 
-	buildMetadata := &template_manager.TemplateBuildMetadata{RootfsSizeKey: int32(template.RootfsSizeMB()), EnvdVersionKey: strings.TrimSpace(string(out))}
+	buildMetadata := &template_manager.TemplateBuildMetadata{RootfsSizeKey: int32(template.RootfsSizeMB()), EnvdVersionKey: envdVersion}
 	err = b.buildCache.SetSucceeded(envID, buildID, buildMetadata)
 	if err != nil {
 		b.logger.Error("Error while setting build state to succeeded", zap.Error(err))

@@ -206,7 +206,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	// Initialize the template manager only if the service is enabled
 	if slices.Contains(services, servicetype.TemplateManager) {
-		tmpl := tmplserver.New(ctx, tracer, globalLogger, tmplSbxLoggerExternal, grpcSrv, networkPool, devicePool)
+		tmpl := tmplserver.New(ctx, tracer, globalLogger, tmplSbxLoggerExternal, grpcSrv, networkPool, devicePool, clientID)
 
 		// Prepend to make sure it's awaited on graceful shutdown
 		closers = append([]Closeable{tmpl}, closers...)

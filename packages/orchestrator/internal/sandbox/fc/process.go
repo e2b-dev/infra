@@ -34,9 +34,6 @@ ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrack
 var startScriptTemplate = txtTemplate.Must(txtTemplate.New("fc-start").Parse(startScript))
 
 type Process struct {
-	uffdReady chan struct{}
-	snapfile  template.File
-
 	cmd *exec.Cmd
 
 	uffdSocketPath        string
@@ -56,10 +53,9 @@ func NewProcess(
 	tracer trace.Tracer,
 	slot network.Slot,
 	files *storage.SandboxFiles,
-	snapfile template.File,
 	rootfs *rootfs.CowDevice,
-	uffdReady chan struct{},
 	baseTemplateID string,
+	baseBuildID string,
 ) (*Process, error) {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
 		attribute.Int("sandbox.slot.index", slot.Idx),
@@ -70,7 +66,7 @@ func NewProcess(
 
 	baseBuild := storage.NewTemplateFiles(
 		baseTemplateID,
-		rootfs.BaseBuildId,
+		baseBuildID,
 		files.KernelVersion,
 		files.FirecrackerVersion,
 	)
@@ -120,11 +116,9 @@ func NewProcess(
 
 	return &Process{
 		Exit:                  make(chan error, 1),
-		uffdReady:             uffdReady,
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		uffdSocketPath:        files.SandboxUffdSocketPath(),
-		snapfile:              snapfile,
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
 		rootfs:                rootfs,
 		files:                 files,
@@ -251,7 +245,6 @@ func (p *Process) Create(
 	vCPUCount int64,
 	memoryMB int64,
 	hugePages bool,
-	rootfsPath string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
@@ -281,6 +274,10 @@ func (p *Process) Create(
 	telemetry.ReportEvent(childCtx, "set fc boot source config")
 
 	// Rootfs
+	rootfsPath, err := p.rootfs.Path()
+	if err != nil {
+		return fmt.Errorf("error getting rootfs path: %w", err)
+	}
 	err = p.client.setRootfsDrive(childCtx, rootfsPath)
 	if err != nil {
 		fcStopErr := p.Stop()
@@ -328,6 +325,8 @@ func (p *Process) Resume(
 	ctx context.Context,
 	tracer trace.Tracer,
 	mmdsMetadata *MmdsMetadata,
+	snapfile template.File,
+	uffdReady chan struct{},
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "resume-fc")
 	defer childSpan.End()
@@ -363,8 +362,8 @@ func (p *Process) Resume(
 	err = p.client.loadSnapshot(
 		childCtx,
 		p.uffdSocketPath,
-		p.uffdReady,
-		p.snapfile,
+		uffdReady,
+		snapfile,
 	)
 	if err != nil {
 		fcStopErr := p.Stop()
