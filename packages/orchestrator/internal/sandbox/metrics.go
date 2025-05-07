@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"time"
 
@@ -12,6 +13,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
+)
+
+const (
+	sbxMemThresholdPct = 80
+	sbxCpuThresholdPct = 80
 )
 
 type SandboxMetrics struct {
@@ -63,6 +69,22 @@ func (s *Sandbox) LogMetrics(ctx context.Context) {
 				MemTotalMiB:    metrics.MemTotalMiB,
 				MemUsedMiB:     metrics.MemUsedMiB,
 			})
+
+			// Round percentage to 2 decimal places
+			memUsedPct := float32(math.Floor(float64(metrics.MemUsedMiB)/float64(metrics.MemTotalMiB)*10000) / 100)
+			if memUsedPct >= sbxMemThresholdPct {
+				sbxlogger.E(s).Warn("Memory usage threshold exceeded",
+					zap.Float32("mem_used_percent", memUsedPct),
+					zap.Float32("mem_threshold_percent", sbxMemThresholdPct),
+				)
+			}
+
+			if metrics.CPUUsedPercent >= sbxCpuThresholdPct {
+				sbxlogger.E(s).Warn("CPU usage threshold exceeded",
+					zap.Float32("cpu_used_percent", metrics.CPUUsedPercent),
+					zap.Float32("cpu_threshold_percent", sbxCpuThresholdPct),
+				)
+			}
 		}
 	}
 }
