@@ -81,6 +81,9 @@ func run(port, proxyPort uint) (success bool) {
 	services := servicetype.GetServices()
 	serviceName := servicetype.GetServiceName(services)
 
+	serviceError := make(chan error)
+	defer close(serviceError)
+
 	var g errgroup.Group
 	// defer waiting on the group so that this runs even when
 	// there's a panic.
@@ -214,7 +217,12 @@ func run(port, proxyPort uint) (success bool) {
 
 	g.Go(func() error {
 		zap.L().Info("Starting session proxy")
-		return sandboxProxy.Start()
+		proxyErr := sandboxProxy.Start()
+		if proxyErr != nil {
+			serviceError <- proxyErr
+		}
+
+		return proxyErr
 	})
 
 	g.Go(func() (err error) {
@@ -233,15 +241,22 @@ func run(port, proxyPort uint) (success bool) {
 
 		// this sets the error declared above so the function
 		// in the defer can check it.
-		if err = grpcSrv.Start(ctx, port); err != nil {
-			return fmt.Errorf("grpc service: %w", err)
+		grpcErr := grpcSrv.Start(ctx, port)
+		if grpcErr != nil {
+			grpcErr = fmt.Errorf("grpc server: %w", grpcErr)
+			serviceError <- grpcErr
 		}
 
-		return nil
+		return grpcErr
 	})
 
-	<-sig.Done()
-	log.Printf("Shutdown signal received")
+	select {
+	case <-sig.Done():
+		zap.L().Info("Shutdown signal received")
+	case serviceErr := <-serviceError:
+		zap.L().Error("Service error", zap.Error(serviceErr))
+		sigCancel()
+	}
 
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 	defer cancelCloseCtx()
@@ -250,16 +265,16 @@ func run(port, proxyPort uint) (success bool) {
 	}
 
 	for _, c := range closers {
-		log.Printf("Closing %T, forced: %v", c, forceStop)
+		zap.L().Info(fmt.Sprintf("Closing %T, forced: %v", c, forceStop))
 		if err := c.Close(closeCtx); err != nil {
-			log.Printf("error during shutdown: %v", err)
+			zap.L().Error("error during shutdown", zap.Error(err))
 			success = false
 		}
 	}
 
-	log.Println("Waiting for services to finish")
+	zap.L().Info("Waiting for services to finish")
 	if err := g.Wait(); err != nil {
-		log.Printf("service group error: %v", err)
+		zap.L().Error("service group error", zap.Error(err))
 		success = false
 	}
 
