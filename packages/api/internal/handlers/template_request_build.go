@@ -149,7 +149,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
 		attribute.String("env.id", templateID),
-		attribute.String("env.team.tier", tier.ID),
+		attribute.String("env.team.tier", team.Tier),
 		attribute.String("build.id", buildID.String()),
 		attribute.String("env.dockerfile", body.Dockerfile),
 	)
@@ -169,7 +169,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		telemetry.SetAttributes(ctx, attribute.Int("env.memory_mb", int(*body.MemoryMB)))
 	}
 
-	cpuCount, ramMB, apiError := getCPUAndRAM(tier.ID, body.CpuCount, body.MemoryMB)
+	cpuCount, ramMB, apiError := getCPUAndRAM(tier, body.CpuCount, body.MemoryMB)
 	if apiError != nil {
 		telemetry.ReportCriticalError(ctx, apiError.Err)
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
@@ -372,50 +372,57 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 	}
 }
 
-func getCPUAndRAM(tierID string, cpuCount, memoryMB *int32) (int64, int64, *api.APIError) {
+func getCPUAndRAM(tier *queries.Tier, cpuCount, memoryMB *int32) (int64, int64, *api.APIError) {
 	cpu := constants.DefaultTemplateCPU
 	ramMB := constants.DefaultTemplateMemory
 
-	// // Check if team can customize the resources
-	// if (cpuCount != nil || memoryMB != nil) && tierID == constants.BaseTierID {
-	// 	return 0, 0, &api.APIError{
-	// 		Err:       fmt.Errorf("team with tier %s can't customize resources", tierID),
-	// 		ClientMsg: "Team with this tier can't customize resources, don't specify cpu count or memory",
-	// 		Code:      http.StatusBadRequest,
-	// 	}
-	// }
-
 	if cpuCount != nil {
-		if *cpuCount < constants.MinTemplateCPU || *cpuCount > constants.MaxTemplateCPU {
+		cpu = int64(*cpuCount)
+		if cpu < constants.MinTemplateCPU {
 			return 0, 0, &api.APIError{
-				Err:       fmt.Errorf("customCPU must be between %d and %d", constants.MinTemplateCPU, constants.MaxTemplateCPU),
-				ClientMsg: fmt.Sprintf("CPU must be between %d and %d", constants.MinTemplateCPU, constants.MaxTemplateCPU),
+				Err:       fmt.Errorf("CPU count must be at least %d", constants.MinTemplateCPU),
+				ClientMsg: fmt.Sprintf("CPU count must be at least %d", constants.MinTemplateCPU),
 				Code:      http.StatusBadRequest,
 			}
 		}
 
-		cpu = *cpuCount
+		if cpu > tier.MaxVcpu {
+			return 0, 0, &api.APIError{
+				Err:       fmt.Errorf("CPU count exceeds team limits (%d)", tier.MaxVcpu),
+				ClientMsg: fmt.Sprintf("CPU count can't be higher than %d (if you need to increase this limit, please contact support)", tier.MaxVcpu),
+				Code:      http.StatusBadRequest,
+			}
+		}
+
 	}
 
 	if memoryMB != nil {
-		if *memoryMB < constants.MinTemplateMemory || *memoryMB > constants.MaxTemplateMemory {
+		ramMB = int64(*memoryMB)
+
+		if ramMB < constants.MinTemplateMemory {
 			return 0, 0, &api.APIError{
-				Err:       fmt.Errorf("customMemory must be between %d and %d", constants.MinTemplateMemory, constants.MaxTemplateMemory),
-				ClientMsg: fmt.Sprintf("Memory must be between %d and %d", constants.MinTemplateMemory, constants.MaxTemplateMemory),
+				Err:       fmt.Errorf("memory must be at least %d MiB", constants.MinTemplateMemory),
+				ClientMsg: fmt.Sprintf("Memory must be at least %d MiB", constants.MinTemplateMemory),
 				Code:      http.StatusBadRequest,
 			}
 		}
 
-		if *memoryMB%2 != 0 {
+		if ramMB%2 != 0 {
 			return 0, 0, &api.APIError{
-				Err:       fmt.Errorf("customMemory must be divisible by 2"),
-				ClientMsg: "Memory must be a divisible by 2",
+				Err:       fmt.Errorf("user provided memory size isn't divisible by 2"),
+				ClientMsg: "Memory must be divisible by 2",
 				Code:      http.StatusBadRequest,
 			}
 		}
 
-		ramMB = *memoryMB
+		if ramMB > tier.MaxRamMb {
+			return 0, 0, &api.APIError{
+				Err:       fmt.Errorf("memory exceeds team limits (%d MiB)", tier.MaxRamMb),
+				ClientMsg: fmt.Sprintf("Memory can't be higher than %d MiB (if you need to increase this limit, please contact support)", tier.MaxRamMb),
+				Code:      http.StatusBadRequest,
+			}
+		}
 	}
 
-	return int64(cpu), int64(ramMB), nil
+	return cpu, ramMB, nil
 }
