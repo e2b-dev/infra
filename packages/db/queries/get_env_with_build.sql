@@ -10,13 +10,13 @@ WITH s AS NOT MATERIALIZED (
 
 SELECT sqlc.embed(e), sqlc.embed(eb), aliases
 FROM s
-JOIN public.envs AS e  ON e.id = s.env_id
+JOIN public.envs AS e ON e.id = s.env_id
 JOIN public.env_builds AS eb ON eb.env_id = e.id
 AND eb.status = 'uploaded'
-CROSS  JOIN LATERAL (
+CROSS JOIN LATERAL (
     SELECT array_agg(alias)::text[] AS aliases
-    FROM   public.env_aliases
-    WHERE  env_id = e.id
+    FROM public.env_aliases
+    WHERE env_id = e.id
 ) AS al
 ORDER BY eb.finished_at DESC
-LIMIT  1;
+LIMIT 1;

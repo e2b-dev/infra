@@ -20,16 +20,16 @@ WITH s AS NOT MATERIALIZED (
 
 SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, aliases
 FROM s
-JOIN public.envs AS e  ON e.id = s.env_id
+JOIN public.envs AS e ON e.id = s.env_id
 JOIN public.env_builds AS eb ON eb.env_id = e.id
 AND eb.status = 'uploaded'
-CROSS  JOIN LATERAL (
+CROSS JOIN LATERAL (
     SELECT array_agg(alias)::text[] AS aliases
-    FROM   public.env_aliases
-    WHERE  env_id = e.id
+    FROM public.env_aliases
+    WHERE env_id = e.id
 ) AS al
 ORDER BY eb.finished_at DESC
-LIMIT  1
+LIMIT 1
 `
 
 type GetEnvWithBuildRow struct {
@@ -38,6 +38,7 @@ type GetEnvWithBuildRow struct {
 	Aliases  []string
 }
 
+// get the env_id when querying by alias; if not, @alias_or_env_id should be env_id
 func (q *Queries) GetEnvWithBuild(ctx context.Context, aliasOrEnvID string) (GetEnvWithBuildRow, error) {
 	row := q.db.QueryRow(ctx, getEnvWithBuild, aliasOrEnvID)
 	var i GetEnvWithBuildRow
