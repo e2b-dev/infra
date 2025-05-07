@@ -10,18 +10,24 @@ import (
 )
 
 const getEnvWithBuild = `-- name: GetEnvWithBuild :one
-SELECT
-  e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by,
-  eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version,
-  (
-    SELECT array_agg(alias)::text[]
+WITH s AS NOT MATERIALIZED (
+    SELECT ea.env_id as env_id
+    FROM public.env_aliases as ea
+    WHERE ea.alias = $1
+    UNION
+    SELECT $1 as env_id
+)
+
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, aliases
+FROM s
+JOIN public.envs AS e ON e.id = s.env_id
+JOIN public.env_builds AS eb ON eb.env_id = e.id
+AND eb.status = 'uploaded'
+CROSS JOIN LATERAL (
+    SELECT array_agg(alias)::text[] AS aliases
     FROM public.env_aliases
     WHERE env_id = e.id
-  ) AS aliases
-FROM public.envs e
-LEFT JOIN public.env_aliases ea ON ea.env_id = e.id
-JOIN public.env_builds eb ON eb.env_id = e.id
-WHERE (e.id = $1 OR ea.alias = $1) and eb.status = 'uploaded'
+) AS al
 ORDER BY eb.finished_at DESC
 LIMIT 1
 `
@@ -32,8 +38,9 @@ type GetEnvWithBuildRow struct {
 	Aliases  []string
 }
 
-func (q *Queries) GetEnvWithBuild(ctx context.Context, id string) (GetEnvWithBuildRow, error) {
-	row := q.db.QueryRow(ctx, getEnvWithBuild, id)
+// get the env_id when querying by alias; if not, @alias_or_env_id should be env_id
+func (q *Queries) GetEnvWithBuild(ctx context.Context, aliasOrEnvID string) (GetEnvWithBuildRow, error) {
+	row := q.db.QueryRow(ctx, getEnvWithBuild, aliasOrEnvID)
 	var i GetEnvWithBuildRow
 	err := row.Scan(
 		&i.Env.ID,

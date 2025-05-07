@@ -96,6 +96,9 @@ func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uui
 		aliases := result.Aliases
 
 		c.aliasCache.cache.Set(template.ID, template.ID, templateInfoExpiration)
+		for _, alias := range aliases {
+			c.aliasCache.cache.Set(alias, template.ID, templateInfoExpiration)
+		}
 
 		// Check if the team has access to the environment
 		if template.TeamID != teamID && (!public || !template.Public) {
