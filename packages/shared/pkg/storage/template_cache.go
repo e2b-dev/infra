@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
@@ -24,14 +25,17 @@ func (f *TemplateFiles) NewTemplateCacheFiles() (*TemplateCacheFiles, error) {
 		return nil, fmt.Errorf("failed to generate identifier: %w", err)
 	}
 
-	return &TemplateCacheFiles{
+	tcf := &TemplateCacheFiles{
 		TemplateFiles:   f,
 		CacheIdentifier: identifier.String(),
-	}, nil
-}
+	}
 
-func (c *TemplateCacheFiles) CacheDir() string {
-	return filepath.Join(templateCacheDir, c.TemplateId, c.BuildId, "cache", c.CacheIdentifier)
+	err = tcf.setup()
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup: %w", err)
+	}
+
+	return tcf, nil
 }
 
 func (c *TemplateCacheFiles) CacheMemfileFullSnapshotPath() string {
@@ -41,5 +45,18 @@ func (c *TemplateCacheFiles) CacheMemfileFullSnapshotPath() string {
 }
 
 func (c *TemplateCacheFiles) CacheSnapfilePath() string {
-	return filepath.Join(c.CacheDir(), SnapfileName)
+	return filepath.Join(c.cacheDir(), SnapfileName)
+}
+
+func (c *TemplateCacheFiles) cacheDir() string {
+	return filepath.Join(templateCacheDir, c.TemplateId, c.BuildId, "cache", c.CacheIdentifier)
+}
+
+func (c *TemplateCacheFiles) setup() error {
+	err := os.MkdirAll(c.cacheDir(), os.ModePerm)
+	if err != nil {
+		return fmt.Errorf("failed to create cache dir '%s': %w", c.cacheDir(), err)
+	}
+
+	return nil
 }

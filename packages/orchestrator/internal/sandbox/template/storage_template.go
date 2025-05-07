@@ -3,7 +3,6 @@ package template
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
@@ -59,17 +58,6 @@ func newTemplateFromStorage(
 }
 
 func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
-	err := os.MkdirAll(t.files.CacheDir(), os.ModePerm)
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create directory %s: %w", t.files.CacheDir(), err)
-
-		t.memfile.SetError(errMsg)
-		t.rootfs.SetError(errMsg)
-		t.snapfile.SetError(errMsg)
-
-		return
-	}
-
 	var wg sync.WaitGroup
 
 	wg.Add(1)

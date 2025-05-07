@@ -56,7 +56,7 @@ func (s *Sandbox) GetMetrics(ctx context.Context) (SandboxMetrics, error) {
 	return metrics, nil
 }
 
-func (s *Sandbox) LogMetrics(ctx context.Context) {
+func (s *Sandbox) LogMetricsLoki(ctx context.Context) {
 	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrcis) {
 		metrics, err := s.GetMetrics(ctx)
 		if err != nil {
@@ -89,7 +89,7 @@ func (s *Sandbox) LogMetrics(ctx context.Context) {
 	}
 }
 
-func (s *Sandbox) SendMetrics(ctx context.Context) {
+func (s *Sandbox) LogMetricsClickhouse(ctx context.Context) {
 	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrcis) {
 		envdMetrics, err := s.GetMetrics(ctx)
 		if err != nil {

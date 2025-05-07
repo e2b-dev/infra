@@ -12,12 +12,12 @@ type fakeMetricStore struct {
 	calls []string
 }
 
-func (l *fakeMetricStore) LogMetrics(ctx context.Context) {
-	l.calls = append(l.calls, "LogMetrics")
+func (l *fakeMetricStore) LogMetricsLoki(ctx context.Context) {
+	l.calls = append(l.calls, "LogMetricsLoki")
 }
 
-func (l *fakeMetricStore) SendMetrics(ctx context.Context) {
-	l.calls = append(l.calls, "SendMetrics")
+func (l *fakeMetricStore) LogMetricsClickhouse(ctx context.Context) {
+	l.calls = append(l.calls, "LogMetricsClickhouse")
 }
 
 func TestSandbox_logMetricsBasedOnConfig(t *testing.T) {
@@ -38,34 +38,34 @@ func TestSandbox_logMetricsBasedOnConfig(t *testing.T) {
 	}{
 		// cover all the cases
 		{
-			name: "should call LogMetrics if useLokiMetrics is true and useClickhouseMetrics is not set",
+			name: "should call LogMetricsLoki if useLokiMetrics is true and useClickhouseMetrics is not set",
 			fields: fields{
 				useLokiMetrics: "true",
 			},
 			args: args{
 				logger: &fakeMetricStore{},
-				want:   []string{"LogMetrics"},
+				want:   []string{"LogMetricsLoki"},
 			},
 		},
 		{
-			name: "should call SendMetrics if useClickhouseMetrics is true and useLokiMetrics is not set",
+			name: "should call LogMetricsClickhouse if useClickhouseMetrics is true and useLokiMetrics is not set",
 			fields: fields{
 				useClickhouseMetrics: "true",
 			},
 			args: args{
 				logger: &fakeMetricStore{},
-				want:   []string{"SendMetrics"},
+				want:   []string{"LogMetricsClickhouse"},
 			},
 		},
 		{
-			name: "should call LogMetrics neither are set",
+			name: "should call LogMetricsLoki neither are set",
 			fields: fields{
 				useLokiMetrics:       "",
 				useClickhouseMetrics: "",
 			},
 			args: args{
 				logger: &fakeMetricStore{},
-				want:   []string{"LogMetrics"},
+				want:   []string{"LogMetricsLoki"},
 			},
 		},
 		{
@@ -76,7 +76,7 @@ func TestSandbox_logMetricsBasedOnConfig(t *testing.T) {
 			},
 			args: args{
 				logger: &fakeMetricStore{},
-				want:   []string{"LogMetrics", "SendMetrics"},
+				want:   []string{"LogMetricsLoki", "LogMetricsClickhouse"},
 			},
 		},
 	}
@@ -89,7 +89,7 @@ func TestSandbox_logMetricsBasedOnConfig(t *testing.T) {
 			}
 			s.logMetricsBasedOnConfig(tt.args.ctx, tt.args.logger)
 			if !reflect.DeepEqual(tt.args.logger.calls, tt.args.want) {
-				t.Errorf("Sandbox.logMetricsBasedOnConfig() = %v, want %v", tt.args.logger.calls, tt.args.want)
+				t.Errorf("Sandbox.LogMetrics() = %v, want %v", tt.args.logger.calls, tt.args.want)
 			}
 		})
 	}

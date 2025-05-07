@@ -3,24 +3,24 @@ package build
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
 
-	"github.com/bits-and-blooms/bitset"
 	"github.com/docker/docker/client"
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -28,6 +28,8 @@ type TemplateBuilder struct {
 	tracer trace.Tracer
 
 	storage            storage.StorageProvider
+	devicePool         *nbd.DevicePool
+	networkPool        *network.Pool
 	logger             *zap.Logger
 	buildCache         *cache.BuildCache
 	buildLogger        *zap.Logger
@@ -47,6 +49,8 @@ func NewBuilder(
 	templateStorage *template.Storage,
 	buildCache *cache.BuildCache,
 	storage storage.StorageProvider,
+	devicePool *nbd.DevicePool,
+	networkPool *network.Pool,
 ) *TemplateBuilder {
 	return &TemplateBuilder{
 		logger:             logger,
@@ -57,6 +61,8 @@ func NewBuilder(
 		legacyDockerClient: legacyDockerClient,
 		templateStorage:    templateStorage,
 		storage:            storage,
+		devicePool:         devicePool,
+		networkPool:        networkPool,
 	}
 }
 
@@ -88,7 +94,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		}
 	}()
 
-	err = template.Build(ctx, b.tracer, postProcessor, b.dockerClient, b.legacyDockerClient)
+	_, err = template.Build(ctx, b.tracer, postProcessor, b.dockerClient, b.legacyDockerClient, b.networkPool, b.devicePool)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error building environment: %v", err))
 		telemetry.ReportCriticalError(ctx, err)
@@ -116,114 +122,61 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		}
 	}()
 
-	// MEMFILE
-	postProcessor.WriteMsg("Processing system memory")
-	memfilePath := template.BuildMemfilePath()
-	memfileDiffPath := template.BuildMemfileDiffPath()
+	sbx := &sandbox.Sandbox{}
 
-	memfileSource, err := os.Open(memfilePath)
+	// TODO: LINK to sandbox.go
+	postProcessor.WriteMsg("Processing vm memory and file system")
+	snapshotTemplateFiles, err := storage.NewTemplateFiles(
+		in.TemplateId,
+		bui,
+		sbx.Config.KernelVersion,
+		sbx.Config.FirecrackerVersion,
+	).NewTemplateCacheFiles()
+	if err != nil {
+		return fmt.Errorf("error creating template files: %w", err)
+	}
+
+	snapshot, err := sbx.Pause(
+		ctx,
+		b.tracer,
+		snapshotTemplateFiles,
+	)
+	if err != nil {
+		return fmt.Errorf("error processing vm: %w", err)
+	}
+
+	/*memfileSource, err := os.Open(template.BuildMemfilePath())
 	if err != nil {
 		return fmt.Errorf("error opening memfile source: %w", err)
 	}
 	defer memfileSource.Close()
-
 	memfileInfo, err := memfileSource.Stat()
 	if err != nil {
 		return fmt.Errorf("error getting memfile size: %w", err)
 	}
 
-	memfileDiffFile, err := os.Create(memfileDiffPath)
+	memfileDiffFile, err := os.Create(template.BuildMemfileDiffPath())
 	if err != nil {
 		return fmt.Errorf("error creating memfile diff file: %w", err)
 	}
+	defer memfileDiffFile.Close()
 
-	// Mark all pages as dirty
-	memfileDirtyPages := bitset.New(0).FlipRange(0, uint(header.TotalBlocks(memfileInfo.Size(), template.MemfilePageSize())))
-
-	// Create diff and get dirty/empty blocks
-	memfileDiffMetadata, err := header.WriteDiffWithTrace(
+	snapshot, err := sandbox.TODOTEMPLATEPAUSE(
 		ctx,
 		b.tracer,
-		memfileSource,
+		buildIDParsed,
+		memfileInfo.Size(),
 		template.MemfilePageSize(),
-		memfileDirtyPages,
-		memfileDiffFile,
 	)
 	if err != nil {
-		return fmt.Errorf("error creating diff: %w", err)
-	}
-	memfileMappings, err := memfileDiffMetadata.CreateMapping(
-		ctx,
-		buildIDParsed,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create memfile diff: %w", err)
-	}
-
-	memfileMetadata := header.NewTemplateMetadata(
-		buildIDParsed,
-		uint64(template.MemfilePageSize()),
-		uint64(memfileInfo.Size()),
-	)
-	memfileHeader := header.NewHeader(
-		memfileMetadata,
-		memfileMappings,
-	)
-
-	// ROOTFS
-	postProcessor.WriteMsg("Processing file system")
-	rootfsPath := template.BuildRootfsPath()
-	rootfsDiffPath := template.BuildRootfsDiffPath()
-
-	rootfsSource, err := os.Open(rootfsPath)
-	if err != nil {
-		return fmt.Errorf("error opening rootfs source: %w", err)
-	}
-
-	rootfsInfo, err := rootfsSource.Stat()
-	if err != nil {
-		return fmt.Errorf("error getting rootfs size: %w", err)
-	}
-
-	rootfsDiffFile, err := os.Create(rootfsDiffPath)
-	if err != nil {
-		return fmt.Errorf("error creating rootfs diff file: %w", err)
-	}
-
-	// Mark all pages as dirty
-	rootfsDirtyBlocks := bitset.New(0).FlipRange(0, uint(header.TotalBlocks(rootfsInfo.Size(), template.RootfsBlockSize())))
-
-	rootfsDiffMetadata, err := header.WriteDiffWithTrace(
-		ctx,
-		b.tracer,
-		rootfsSource,
-		template.RootfsBlockSize(),
-		rootfsDirtyBlocks,
-		rootfsDiffFile,
-	)
-	rootfsMappings, err := rootfsDiffMetadata.CreateMapping(
-		ctx,
-		buildIDParsed,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create rootfs diff: %w", err)
-	}
-
-	rootfsMetadata := header.NewTemplateMetadata(
-		buildIDParsed,
-		uint64(template.RootfsBlockSize()),
-		uint64(rootfsInfo.Size()),
-	)
-	rootfsHeader := header.NewHeader(
-		rootfsMetadata,
-		rootfsMappings,
-	)
+		return fmt.Errorf("error processing vm: %w", err)
+	}*/
 
 	// UPLOAD
 	postProcessor.WriteMsg("Uploading template")
 	templateBuild := storage.NewTemplateBuild(
-		memfileHeader,
-		rootfsHeader,
+		snapshot.MemfileDiffHeader,
+		snapshot.RootfsDiffHeader,
 		b.storage,
 		template.TemplateFiles,
 	)
@@ -231,8 +184,8 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 	upload := templateBuild.Upload(
 		ctx,
 		template.BuildSnapfilePath(),
-		&memfileDiffPath,
-		&rootfsDiffPath,
+		&snapshot.MemfileDiff,
+		&snapshot.RootfsDiff,
 	)
 
 	cmd := exec.Command(storage.HostEnvdPath, "-version")

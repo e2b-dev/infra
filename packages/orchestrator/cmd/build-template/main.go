@@ -71,7 +71,8 @@ func Build(ctx context.Context, kernelVersion, fcVersion, templateID, buildID st
 	postProcessor := writer.NewPostProcessor(ctx, &buf)
 	defer postProcessor.Stop(nil)
 
-	err = t.Build(ctx, tracer, postProcessor, dockerClient, legacyClient)
+	// TODO: implement the build process in a command
+	_, err = t.Build(ctx, tracer, postProcessor, dockerClient, legacyClient)
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}
