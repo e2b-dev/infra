@@ -157,7 +157,6 @@ func main() {
 		),
 		Addr: fmt.Sprintf("0.0.0.0:%d", port),
 		// We remove the timeouts as the connection is terminated by closing of the sandbox and keepalive close.
-		// https://github.com/golang/go/issues/47007
 		ReadTimeout:  0,
 		WriteTimeout: 0,
 		IdleTimeout:  idleTimeout,
