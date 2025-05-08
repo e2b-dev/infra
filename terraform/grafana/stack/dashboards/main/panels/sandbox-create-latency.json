@@ -231,7 +231,7 @@
         "uid": "grafanacloud-prom"
       },
       "editorMode": "code",
-      "expr": "# 3. 50th Percentile (Median) Response Time\nhistogram_quantile(0.5, sum(rate(orchestration_api_http_server_duration_milliseconds_bucket{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"200\"}[$__rate_interval])) by (handler, method, le))\n",
+      "expr": "# 3. 50th Percentile (Median) Response Time\nhistogram_quantile(0.5, sum(rate(orchestration_api_http_server_duration_milliseconds{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"200\"}[$__rate_interval])) by (handler, method, le))\n",
       "hide": false,
       "instant": false,
       "legendFormat": "50th Percentile",
@@ -244,7 +244,7 @@
         "uid": "grafanacloud-prom"
       },
       "editorMode": "code",
-      "expr": "# 5. 95th Percentile Response Time\nhistogram_quantile(0.95, sum(rate(orchestration_api_http_server_duration_milliseconds_bucket{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"200\"}[$__rate_interval])) by (handler, method, le))",
+      "expr": "# 5. 95th Percentile Response Time\nhistogram_quantile(0.95, sum(rate(orchestration_api_http_server_duration_milliseconds{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"200\"}[$__rate_interval])) by (handler, method, le))",
       "hide": false,
       "instant": false,
       "legendFormat": "95th Percentile",
@@ -257,7 +257,7 @@
         "uid": "grafanacloud-prom"
       },
       "editorMode": "code",
-      "expr": "# 6. 99th Percentile Response Time \nhistogram_quantile(0.99, sum(rate(orchestration_api_http_server_duration_milliseconds_bucket{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"200\"}[$__rate_interval])) by (handler, method, le))",
+      "expr": "# 6. 99th Percentile Response Time \nhistogram_quantile(0.99, sum(rate(orchestration_api_http_server_duration_milliseconds{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"200\"}[$__rate_interval])) by (handler, method, le))",
       "hide": false,
       "instant": false,
       "legendFormat": "99th Percentile",
@@ -270,7 +270,7 @@
         "uid": "grafanacloud-prom"
       },
       "editorMode": "code",
-      "expr": "# 6. Maximum Percentile Response Time \nhistogram_quantile(1, sum(rate(orchestration_api_http_server_duration_milliseconds_bucket{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"200\"}[$__rate_interval])) by (handler, method, le))",
+      "expr": "# 6. Maximum Percentile Response Time \nhistogram_quantile(1, sum(rate(orchestration_api_http_server_duration_milliseconds{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"200\"}[$__rate_interval])) by (handler, method, le))",
       "hide": false,
       "instant": false,
       "legendFormat": "Maximum",
@@ -283,7 +283,7 @@
         "uid": "grafanacloud-prom"
       },
       "editorMode": "code",
-      "expr": "# Total requests\nidelta(orchestration_api_http_server_duration_milliseconds_bucket{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"200\"}[$__rate_interval])\n",
+      "expr": "# Total requests\nidelta(orchestration_api_http_server_duration_milliseconds{http_method=\"POST\", http_route=\"/sandboxes\", http_status_code=\"200\"}[$__rate_interval])\n",
       "hide": true,
       "instant": false,
       "legendFormat": "2xx",
