@@ -54,36 +54,32 @@ func (e *Env) Build(ctx context.Context, tracer trace.Tracer, postProcessor *wri
 
 	err := os.MkdirAll(e.BuildDir(), 0o777)
 	if err != nil {
-		errMsg := fmt.Errorf("error initializing directories for building env '%s' during build '%s': %w", e.TemplateId, e.BuildId, err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error initializing directories for building env", err)
 
-		return errMsg
+		return fmt.Errorf("error initializing directories for building env: %w", err)
 	}
 
 	rootfs, err := NewRootfs(childCtx, tracer, postProcessor, e, docker, legacyDocker)
 	if err != nil {
-		errMsg := fmt.Errorf("error creating rootfs for env '%s' during build '%s': %w", e.TemplateId, e.BuildId, err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error creating rootfs for env", err)
 
-		return errMsg
+		return fmt.Errorf("error creating rootfs for env: %w", err)
 	}
 
 	network, err := NewFCNetwork(childCtx, tracer, postProcessor, e)
 	if err != nil {
-		errMsg := fmt.Errorf("error network setup for FC while building env '%s' during build '%s': %w", e.TemplateId, e.BuildId, err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error network setup for FC while building env", err)
 
-		return errMsg
+		return fmt.Errorf("error network setup for FC while building env: %w", err)
 	}
 
 	defer network.Cleanup(childCtx, tracer)
 
 	_, err = NewSnapshot(childCtx, tracer, postProcessor, e, network, rootfs)
 	if err != nil {
-		errMsg := fmt.Errorf("error snapshot for env '%s' during build '%s': %w", e.TemplateId, e.BuildId, err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error snapshot for env", err)
 
-		return errMsg
+		return fmt.Errorf("error snapshot for env: %w", err)
 	}
 
 	return nil
@@ -95,10 +91,9 @@ func (e *Env) Remove(ctx context.Context, tracer trace.Tracer) error {
 
 	err := os.RemoveAll(e.BuildDir())
 	if err != nil {
-		errMsg := fmt.Errorf("error removing build dir: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error removing build dir", err)
 
-		return errMsg
+		return fmt.Errorf("error removing build dir: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "removed build dir")
