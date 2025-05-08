@@ -176,7 +176,6 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.AP
 		Handler: r,
 		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
 		// Configure timeouts to be greater than the proxy timeouts.
-		// https://github.com/golang/go/issues/47007
 		ReadTimeout:  maxReadTimeout,
 		WriteTimeout: maxWriteTimeout,
 		IdleTimeout:  idleTimeout,
