@@ -26,8 +26,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid env ID: %s", aliasOrTemplateID))
 
-		err = fmt.Errorf("invalid env ID: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "invalid env ID", err)
 
 		return
 	}
@@ -37,8 +36,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
-		err = fmt.Errorf("error when getting default team: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "error when getting default team", err)
 
 		return
 	}
@@ -111,8 +109,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 
 	dbErr := a.db.DeleteEnv(ctx, template.ID)
 	if dbErr != nil {
-		errMsg := fmt.Errorf("error when deleting env from db: %w", dbErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when deleting env from db", dbErr)
 
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting env")
 
@@ -131,8 +128,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	// delete all builds
 	deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIds)
 	if deleteJobErr != nil {
-		errMsg := fmt.Errorf("error when deleting env files from storage: %w", deleteJobErr)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when deleting env files from storage", deleteJobErr)
 	} else {
 		telemetry.ReportEvent(ctx, "deleted env from storage")
 	}

@@ -34,11 +34,9 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	userID := c.Value(auth.UserIDContextKey).(uuid.UUID)
 	teams, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
 	if err != nil {
-		errMsg := fmt.Errorf("error when getting teams: %w", err)
-
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get the default team")
 
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when getting teams", err)
 
 		return
 	}

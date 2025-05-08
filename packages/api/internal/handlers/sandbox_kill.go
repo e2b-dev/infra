@@ -87,8 +87,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
 		if *sbx.TeamID != teamID {
-			errMsg := fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String())
-			telemetry.ReportCriticalError(ctx, errMsg)
+			telemetry.ReportCriticalError(ctx, "sandbox does not belong to team", fmt.Errorf("sandbox '%s' does not belong to team '%s'", sandboxID, teamID.String()))
 
 			a.sendAPIStoreError(c, http.StatusUnauthorized, fmt.Sprintf("Error deleting sandbox - sandbox '%s' does not belong to your team '%s'", sandboxID, teamID.String()))
 

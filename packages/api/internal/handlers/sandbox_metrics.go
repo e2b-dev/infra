@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
@@ -70,8 +69,7 @@ func (a *APIStore) LegacyGetSandboxIDMetrics(
 
 			err := json.Unmarshal([]byte(entry.Line), &metric)
 			if err != nil {
-				zap.L().Error("Failed to unmarshal metric", zap.String("sandbox_id", sandboxID), zap.Error(err))
-				telemetry.ReportCriticalError(ctx, fmt.Errorf("failed to unmarshal metric: %w", err))
+				telemetry.ReportCriticalError(ctx, "failed to unmarshal metric", err, attribute.String("sandbox_id", sandboxID))
 
 				continue
 			}
@@ -174,11 +172,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 	metrics, err := a.readMetricsBasedOnConfig(ctx, sandboxID, teamID, a)
 
 	if err != nil {
-		zap.L().Error("Error returning metrics for sandbox",
-			zap.Error(err),
-			zap.String("sandboxID", sandboxID),
-		)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "error returning metrics for sandbox", err, attribute.String("sandboxID", sandboxID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning metrics for sandbox '%s'", sandboxID))
 
 		return

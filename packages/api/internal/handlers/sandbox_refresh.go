@@ -26,8 +26,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 
-		errMsg := fmt.Errorf("error when parsing request: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
 
 		return
 	}
@@ -44,7 +43,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 
 	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, false)
 	if apiErr != nil {
-		telemetry.ReportCriticalError(ctx, apiErr.Err)
+		telemetry.ReportCriticalError(ctx, "error when refreshing sandbox", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
