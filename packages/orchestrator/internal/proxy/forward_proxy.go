@@ -11,8 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-const DefaultForwardProxyPort = 5151
-
 // SandboxForwardProxy handles outbound traffic from sandboxes
 type SandboxForwardProxy struct {
 	server *http.Server
