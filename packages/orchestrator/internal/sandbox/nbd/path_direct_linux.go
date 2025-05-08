@@ -152,9 +152,9 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			sock.Close()
 		}
 		// Release the device back to the pool
-		err = d.devicePool.ReleaseDevice(deviceIndex)
-		if err != nil {
-			zap.L().Error("error opening NBD, error releasing device", zap.Error(err), zap.Uint32("device_index", deviceIndex))
+		releaseErr := d.devicePool.ReleaseDevice(deviceIndex)
+		if releaseErr != nil {
+			zap.L().Error("error opening NBD, error releasing device", zap.Error(releaseErr), zap.Uint32("device_index", deviceIndex))
 		}
 
 		if strings.Contains(err.Error(), "invalid argument") {
