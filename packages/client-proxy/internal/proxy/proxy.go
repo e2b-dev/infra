@@ -22,8 +22,7 @@ const (
 	orchestratorProxyPort = 5007 // orchestrator proxy port
 	maxRetries            = 3
 
-	minOrchestratorProxyConns = 3
-	idleTimeout               = 620 * time.Second
+	idleTimeout = 620 * time.Second
 
 	// We use a constant connection key, because we don't have to separate connection pools
 	// as we need to do when connecting to sandboxes (from orchestrator proxy) to prevent reuse of pool connections
@@ -36,7 +35,6 @@ var dnsClient = dns.Client{}
 func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 	proxy := reverse_proxy.New(
 		port,
-		minOrchestratorProxyConns,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
 			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)

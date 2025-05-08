@@ -18,8 +18,7 @@ import (
 )
 
 const (
-	minSandboxConns = 1
-	idleTimeout     = 630 * time.Second
+	idleTimeout = 630 * time.Second
 )
 
 type SandboxProxy struct {
@@ -29,7 +28,6 @@ type SandboxProxy struct {
 func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxProxy, error) {
 	proxy := reverse_proxy.New(
 		port,
-		minSandboxConns,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
 			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
