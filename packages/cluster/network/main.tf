@@ -310,9 +310,8 @@ resource "google_compute_url_map" "orch_map" {
 
 ### IPv4 block ###
 resource "google_compute_target_https_proxy" "default" {
-  name                        = "${var.prefix}https-proxy"
-  url_map                     = google_compute_url_map.orch_map.self_link
-  http_keep_alive_timeout_sec = 540
+  name    = "${var.prefix}https-proxy"
+  url_map = google_compute_url_map.orch_map.self_link
 
   certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.certificate_map.id}"
 }
