@@ -127,7 +127,7 @@ func (e *Env) Build(
 	emptyMemoryFile.Truncate(config.RamMb * 1024 * 1024)
 	emptyMemoryFile.Close()
 
-	memfile, err := block.NewLocal("", e.MemfilePageSize())
+	memfile, err := block.NewLocal(e.BuildMemfilePath(), e.MemfilePageSize())
 	if err != nil {
 		errMsg := fmt.Errorf("error reading memfile pages: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
