@@ -37,9 +37,9 @@ func New(
 			Addr:         fmt.Sprintf(":%d", port),
 			ReadTimeout:  0,
 			WriteTimeout: 0,
-			// Downstream idle > upstream idle,
-			// otherwise a new downstream connection can try to reuse an upstream connection
-			// which is already in state `CLOSE_WAIT` resulting in error
+			// Downstream (client side) idle > upstream (server side) idle
+			// otherwise a new connection between downstream idle and upstream idle
+			// will try to reuse an upstream connection which is in `CLOSE_WAIT` state resulting in error
 			IdleTimeout:       idleTimeout + idleTimeoutBufferUpstreamDownstream,
 			ReadHeaderTimeout: 0,
 			Handler:           handler(p, getDestination),
