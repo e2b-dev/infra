@@ -29,7 +29,7 @@ type Pool struct {
 	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, clientID string) (*Pool, error) {
+func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, clientID string, forwardProxyPort uint) (*Pool, error) {
 	newSlots := make(chan Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan Slot, reusedSlotsPoolSize)
 
@@ -60,7 +60,7 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, cli
 	}
 
 	go func() {
-		err := pool.populate(ctx)
+		err := pool.populate(ctx, forwardProxyPort)
 		if err != nil {
 			zap.L().Fatal("error when populating network slot pool", zap.Error(err))
 		}
@@ -69,13 +69,13 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, cli
 	return pool, nil
 }
 
-func (p *Pool) createNetworkSlot() (*Slot, error) {
+func (p *Pool) createNetworkSlot(forwardProxyPort uint) (*Slot, error) {
 	ips, err := p.slotStorage.Acquire()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network: %w", err)
 	}
 
-	err = ips.CreateNetwork()
+	err = ips.CreateNetwork(forwardProxyPort)
 	if err != nil {
 		releaseErr := p.slotStorage.Release(ips)
 		err = errors.Join(err, releaseErr)
@@ -86,13 +86,13 @@ func (p *Pool) createNetworkSlot() (*Slot, error) {
 	return ips, nil
 }
 
-func (p *Pool) populate(ctx context.Context) error {
+func (p *Pool) populate(ctx context.Context, forwardProxyPort uint) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			slot, err := p.createNetworkSlot()
+			slot, err := p.createNetworkSlot(forwardProxyPort)
 			if err != nil {
 				zap.L().Error("[network slot pool]: failed to create network", zap.Error(err))
 

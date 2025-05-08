@@ -11,6 +11,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const DefaultForwardProxyPort = 5151
+
 // SandboxForwardProxy handles outbound traffic from sandboxes
 type SandboxForwardProxy struct {
 	server *http.Server
@@ -58,6 +60,7 @@ func (p *SandboxForwardProxy) Close(ctx context.Context) error {
 
 func (p *SandboxForwardProxy) proxyHandler(transport *http.Transport) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		zap.L().Info("~~~ 	Forwarding request", zap.String("url", r.URL.String()))
 		// Handle CONNECT method for HTTPS
 		if r.Method == http.MethodConnect {
 			handleConnect(w, r)
@@ -128,6 +131,8 @@ func handleHTTP(w http.ResponseWriter, r *http.Request, transport *http.Transpor
 	if targetURL.Host == "" {
 		targetURL.Host = r.Host
 	}
+
+	zap.L().Info("Forwarding request", zap.String("url", targetURL.String()))
 
 	// Create a new request
 	req, err := http.NewRequest(r.Method, targetURL.String(), r.Body)

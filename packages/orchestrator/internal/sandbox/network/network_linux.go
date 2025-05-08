@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (s *Slot) CreateNetwork() error {
+func (s *Slot) CreateNetwork(forwardProxyPort uint) error {
 	// Prevent thread changes so we can safely manipulate with namespaces
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -235,6 +235,18 @@ func (s *Slot) CreateNetwork() error {
 	err = tables.Append("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
 	if err != nil {
 		return fmt.Errorf("error creating postrouting rule: %w", err)
+	}
+
+	// Redirect HTTP traffic to forward proxy
+	err = tables.Append("nat", "PREROUTING", "-i", s.VpeerName(), "-p", "tcp", "--dport", "80", "-j", "REDIRECT", "--to-port", fmt.Sprintf("%d", forwardProxyPort))
+	if err != nil {
+		return fmt.Errorf("error adding HTTP redirect rule: %w", err)
+	}
+
+	// Redirect HTTPS traffic to forward proxy
+	err = tables.Append("nat", "PREROUTING", "-i", s.VpeerName(), "-p", "tcp", "--dport", "443", "-j", "REDIRECT", "--to-port", fmt.Sprintf("%d", forwardProxyPort))
+	if err != nil {
+		return fmt.Errorf("error adding HTTPS redirect rule: %w", err)
 	}
 
 	return nil

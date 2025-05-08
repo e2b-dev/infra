@@ -41,7 +41,7 @@ type Closeable interface {
 const (
 	defaultPort             = 5008
 	defaultReverseProxyPort = 5007
-	defaultForwardProxyPort = 5009
+	defaultForwardProxyPort = 5151
 )
 
 var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
@@ -167,7 +167,7 @@ func run(port, reverseProxyPort, forwardProxyPort uint) (success bool) {
 
 	sandboxForwardProxy := proxy.NewSandboxForwardProxy(forwardProxyPort)
 
-	networkPool, err := network.NewPool(sig, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
+	networkPool, err := network.NewPool(sig, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, forwardProxyPort)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
