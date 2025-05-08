@@ -104,32 +104,12 @@ func (e *Env) Build(
 		// TODO: set proper teamID
 		TeamId: uuid.New().String(),
 
-		BaseTemplateId: uuid.New().String(),
+		BaseTemplateId: e.TemplateId,
 	}
 
 	rootfs, err := block.NewLocal(e.BuildRootfsPath(), e.RootfsBlockSize())
 	if err != nil {
 		errMsg := fmt.Errorf("error reading rootfs blocks: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return nil, errMsg
-	}
-
-	// Create empty memfile in the size of the RAM
-	emptyMemoryFile, err := os.Create(e.BuildMemfilePath())
-	if err != nil {
-		errMsg := fmt.Errorf("error creating blank memfile: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return nil, errMsg
-	}
-	defer emptyMemoryFile.Close()
-	emptyMemoryFile.Truncate(config.RamMb * 1024 * 1024)
-	emptyMemoryFile.Close()
-
-	memfile, err := block.NewLocal(e.BuildMemfilePath(), e.MemfilePageSize())
-	if err != nil {
-		errMsg := fmt.Errorf("error reading memfile pages: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return nil, errMsg
@@ -142,10 +122,8 @@ func (e *Env) Build(
 		devicePool,
 		config,
 		rootfs,
-		memfile,
 		// TODO: set correct sandbox timeout
 		time.Hour,
-		clientID,
 	)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating sandbox: %w", err)

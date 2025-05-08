@@ -36,7 +36,6 @@ var startScriptTemplate = txtTemplate.Must(txtTemplate.New("fc-start").Parse(sta
 type Process struct {
 	cmd *exec.Cmd
 
-	uffdSocketPath        string
 	firecrackerSocketPath string
 
 	slot   network.Slot
@@ -46,6 +45,8 @@ type Process struct {
 	Exit chan error
 
 	client *apiClient
+
+	buildRootfsPath string
 }
 
 func NewProcess(
@@ -71,11 +72,12 @@ func NewProcess(
 		files.FirecrackerVersion,
 	)
 
+	buildRootfsPath := baseBuild.BuildRootfsPath()
 	err := startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
 		"rootfsPath":        files.SandboxCacheRootfsLinkPath(),
 		"kernelPath":        files.CacheKernelPath(),
 		"buildDir":          baseBuild.BuildDir(),
-		"buildRootfsPath":   baseBuild.BuildRootfsPath(),
+		"buildRootfsPath":   buildRootfsPath,
 		"buildKernelPath":   files.BuildKernelPath(),
 		"buildKernelDir":    files.BuildKernelDir(),
 		"namespaceID":       slot.NamespaceID(),
@@ -118,11 +120,12 @@ func NewProcess(
 		Exit:                  make(chan error, 1),
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
-		uffdSocketPath:        files.SandboxUffdSocketPath(),
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
 		rootfs:                rootfs,
 		files:                 files,
 		slot:                  slot,
+
+		buildRootfsPath: buildRootfsPath,
 	}, nil
 }
 
@@ -211,10 +214,10 @@ func (p *Process) configure(
 				}
 			}
 
+			zap.L().Error("error waiting for fc process", zap.Error(waitErr))
+
 			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
-
 			p.Exit <- errMsg
-
 			// TODO: Handle the error properly
 			cancelStart(errMsg)
 
@@ -265,7 +268,7 @@ func (p *Process) Create(
 	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
 	ipv4 := fmt.Sprintf("%s::%s:%s:instance:%s:off:%s", p.slot.NamespaceIP(), p.slot.TapIP(), p.slot.TapMaskString(), p.slot.VpeerName(), p.slot.TapName())
 	kernelArgs := fmt.Sprintf("quiet loglevel=1 ip=%s ipv6.disable=0 ipv6.autoconf=1 reboot=k panic=1 pci=off nomodules i8042.nokbd i8042.noaux random.trust_cpu=on", ipv4)
-	err = p.client.setBootSource(childCtx, kernelArgs)
+	err = p.client.setBootSource(childCtx, kernelArgs, p.files.BuildKernelPath())
 	if err != nil {
 		fcStopErr := p.Stop()
 
@@ -278,7 +281,17 @@ func (p *Process) Create(
 	if err != nil {
 		return fmt.Errorf("error getting rootfs path: %w", err)
 	}
-	err = p.client.setRootfsDrive(childCtx, rootfsPath)
+	err = os.Remove(p.files.SandboxCacheRootfsLinkPath())
+	if err != nil {
+		return fmt.Errorf("error removing rootfs symlink: %w", err)
+	}
+
+	err = os.Symlink(rootfsPath, p.files.SandboxCacheRootfsLinkPath())
+	if err != nil {
+		return fmt.Errorf("error symlinking rootfs: %w", err)
+	}
+
+	err = p.client.setRootfsDrive(childCtx, p.buildRootfsPath)
 	if err != nil {
 		fcStopErr := p.Stop()
 
@@ -325,6 +338,7 @@ func (p *Process) Resume(
 	ctx context.Context,
 	tracer trace.Tracer,
 	mmdsMetadata *MmdsMetadata,
+	uffdSocketPath string,
 	snapfile template.File,
 	uffdReady chan struct{},
 ) error {
@@ -361,7 +375,7 @@ func (p *Process) Resume(
 
 	err = p.client.loadSnapshot(
 		childCtx,
-		p.uffdSocketPath,
+		uffdSocketPath,
 		uffdReady,
 		snapfile,
 	)

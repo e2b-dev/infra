@@ -15,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type apiClient struct {
@@ -146,12 +145,12 @@ func (c *apiClient) setMmds(ctx context.Context, metadata *MmdsMetadata) error {
 	return nil
 }
 
-func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string) error {
+func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string, kernelPath string) error {
 	bootSourceConfig := operations.PutGuestBootSourceParams{
 		Context: ctx,
 		Body: &models.BootSource{
 			BootArgs:        kernelArgs,
-			KernelImagePath: &storage.KernelMountedPath,
+			KernelImagePath: &kernelPath,
 		},
 	}
 

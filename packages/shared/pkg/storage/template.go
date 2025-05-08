@@ -32,9 +32,6 @@ const (
 	HeaderSuffix = ".header"
 )
 
-// Path to the directory where the kernel can be accessed inside when the dirs are mounted.
-var KernelMountedPath = filepath.Join(KernelMountDir, KernelName)
-
 type TemplateFiles struct {
 	TemplateId         string
 	BuildId            string

@@ -42,9 +42,10 @@ var httpClient = http.Client{
 }
 
 type Resources struct {
-	Slot   network.Slot
-	rootfs *rootfs.CowDevice
-	uffd   *uffd.Uffd
+	Slot     network.Slot
+	rootfs   *rootfs.CowDevice
+	memory   uffd.MemoryBackend
+	uffdExit chan error
 }
 
 type Metadata struct {
@@ -62,8 +63,6 @@ type Sandbox struct {
 	cleanup *Cleanup
 
 	process *fc.Process
-
-	uffdExit chan error
 
 	template template.Template
 
@@ -87,15 +86,10 @@ func CreateSandbox(
 	devicePool *nbd.DevicePool,
 	config *orchestrator.SandboxConfig,
 	rootfs block.ReadonlyDevice,
-	memfile block.ReadonlyDevice,
 	sandboxTimeout time.Duration,
-	clientID string,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
-
-	baseTemplateID := uuid.New().String()
-	sandboxID := uuid.New().String()
 
 	cleanup := NewCleanup()
 
@@ -144,34 +138,11 @@ func CreateSandbox(
 		}
 	}()
 
-	fcUffd, err := serveMemory(
-		childCtx,
-		tracer,
-		cleanup,
-		memfile,
-		sandboxFiles.SandboxUffdSocketPath(),
-		sandboxID,
-		clientID,
-	)
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to serve memory: %w", err)
-	}
-
-	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
-	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
-
-	uffdExit := make(chan error, 1)
-	go func() {
-		uffdWaitErr := <-fcUffd.Exit
-		uffdExit <- uffdWaitErr
-
-		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
-	}()
-
 	resources := &Resources{
-		Slot:   ips,
-		rootfs: rootfsOverlay,
-		uffd:   fcUffd,
+		Slot:     ips,
+		rootfs:   rootfsOverlay,
+		memory:   &uffd.NoopMemory{},
+		uffdExit: make(chan error, 1),
 	}
 
 	/// ==== END of resources initialization ====
@@ -182,8 +153,7 @@ func CreateSandbox(
 		ips,
 		sandboxFiles,
 		rootfsOverlay,
-		baseTemplateID,
-		// TODO: This base buildID might be wrong
+		config.BaseTemplateId,
 		config.BuildId,
 	)
 	if err != nil {
@@ -206,21 +176,6 @@ func CreateSandbox(
 	}
 	telemetry.ReportEvent(childCtx, "created fc process")
 
-	/* TODO
-	if env.StartCmd != "" {
-		postProcessor.WriteMsg("Waiting for start command to run...")
-		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
-		// TODO: Remove this after we can add customizable wait time for building templates.
-		if env.TemplateId == "zegbt9dl3l2ixqem82mm" || env.TemplateId == "ot5bidkk3j2so2j02uuz" || env.TemplateId == "0zeou1s7agaytqitvmzc" {
-			time.Sleep(120 * time.Second)
-		} else {
-			time.Sleep(waitTimeForStartCmd)
-		}
-		postProcessor.WriteMsg("Start command is running")
-		telemetry.ReportEvent(childCtx, "waited for start command", attribute.Float64("seconds", float64(waitTimeForStartCmd/time.Second)))
-	}
-	*/
-
 	metadata := &Metadata{
 		Config: config,
 
@@ -233,9 +188,8 @@ func CreateSandbox(
 		Resources: resources,
 		Metadata:  metadata,
 
-		uffdExit: uffdExit,
-		files:    sandboxFiles,
-		process:  fcHandle,
+		files:   sandboxFiles,
+		process: fcHandle,
 
 		cleanup: cleanup,
 
@@ -255,6 +209,21 @@ func CreateSandbox(
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
+
+	/* TODO
+	if env.StartCmd != "" {
+		postProcessor.WriteMsg("Waiting for start command to run...")
+		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
+		// TODO: Remove this after we can add customizable wait time for building templates.
+		if env.TemplateId == "zegbt9dl3l2ixqem82mm" || env.TemplateId == "ot5bidkk3j2so2j02uuz" || env.TemplateId == "0zeou1s7agaytqitvmzc" {
+			time.Sleep(120 * time.Second)
+		} else {
+			time.Sleep(waitTimeForStartCmd)
+		}
+		postProcessor.WriteMsg("Start command is running")
+		telemetry.ReportEvent(childCtx, "waited for start command", attribute.Float64("seconds", float64(waitTimeForStartCmd/time.Second)))
+	}
+	*/
 
 	// Set the sandbox as started now
 	sbx.Metadata.StartedAt = time.Now()
@@ -337,12 +306,14 @@ func ResumeSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get memfile: %w", err)
 	}
 
+	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
+
 	fcUffd, err := serveMemory(
 		childCtx,
 		tracer,
 		cleanup,
 		memfile,
-		sandboxFiles.SandboxUffdSocketPath(),
+		fcUffdPath,
 		config.SandboxId,
 		clientID,
 	)
@@ -355,16 +326,17 @@ func ResumeSandbox(
 
 	uffdExit := make(chan error, 1)
 	go func() {
-		uffdWaitErr := <-fcUffd.Exit
+		uffdWaitErr := <-fcUffd.Exit()
 		uffdExit <- uffdWaitErr
 
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
 
 	resources := &Resources{
-		Slot:   ips,
-		rootfs: rootfsOverlay,
-		uffd:   fcUffd,
+		Slot:     ips,
+		rootfs:   rootfsOverlay,
+		memory:   fcUffd,
+		uffdExit: uffdExit,
 	}
 
 	/// ==== END of resources initialization ====
@@ -397,8 +369,9 @@ func ResumeSandbox(
 			TraceId:              traceID,
 			TeamId:               config.TeamId,
 		},
+		fcUffdPath,
 		snapfile,
-		fcUffd.Ready,
+		fcUffd.Ready(),
 	)
 	if fcStartErr != nil {
 		return nil, cleanup, fmt.Errorf("failed to start FC: %w", fcStartErr)
@@ -418,9 +391,8 @@ func ResumeSandbox(
 		Resources: resources,
 		Metadata:  metadata,
 
-		uffdExit: uffdExit,
-		files:    sandboxFiles,
-		process:  fcHandle,
+		files:   sandboxFiles,
+		process: fcHandle,
 
 		cleanup: cleanup,
 
@@ -487,7 +459,7 @@ func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 	}
 
-	uffdStopErr := s.Resources.uffd.Stop()
+	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
 		errs = append(errs, fmt.Errorf("failed to stop uffd: %w", uffdStopErr))
 	}
@@ -531,7 +503,7 @@ func (s *Sandbox) PauseWithLockRelease(
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
-	if err := s.uffd.Disable(); err != nil {
+	if err := s.memory.Disable(); err != nil {
 		return nil, fmt.Errorf("failed to disable uffd: %w", err)
 	}
 
@@ -572,7 +544,7 @@ func (s *Sandbox) PauseWithLockRelease(
 		&MemoryDiffCreator{
 			tracer:     tracer,
 			memfile:    memfile,
-			dirtyPages: s.uffd.Dirty(),
+			dirtyPages: s.memory.Dirty(),
 			blockSize:  originalMemfile.BlockSize(),
 		},
 	)
@@ -762,7 +734,7 @@ func createRootfsOverlay(
 	devicePool *nbd.DevicePool,
 	cleanup *Cleanup,
 	readonlyRootfs block.ReadonlyDevice,
-	path string,
+	targetCachePath string,
 ) (*rootfs.CowDevice, error) {
 	_, overlaySpan := tracer.Start(ctx, "create-rootfs-overlay")
 	defer overlaySpan.End()
@@ -770,7 +742,7 @@ func createRootfsOverlay(
 	rootfsOverlay, err := rootfs.NewCowDevice(
 		tracer,
 		readonlyRootfs,
-		path,
+		targetCachePath,
 		devicePool,
 	)
 	if err != nil {
@@ -799,7 +771,7 @@ func serveMemory(
 	socketPath string,
 	sandboxID string,
 	clientID string,
-) (*uffd.Uffd, error) {
+) (uffd.MemoryBackend, error) {
 	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize(), clientID)
 	if uffdErr != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", uffdErr)
