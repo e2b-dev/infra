@@ -76,18 +76,6 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 	go postProcessor.Start()
 	defer postProcessor.Stop(err)
 
-	// Remove local template files when exiting
-	defer func() {
-		removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
-		defer cancel()
-
-		removeErr := template.Remove(removeCtx, b.tracer)
-		if removeErr != nil {
-			b.logger.Error("Error while removing template files", zap.Error(removeErr))
-			telemetry.ReportError(ctx, removeErr)
-		}
-	}()
-
 	envdVersion, err := GetEnvdVersion(ctx)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error while getting envd version: %v", err))

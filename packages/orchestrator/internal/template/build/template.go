@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"text/template"
 	"time"
 
@@ -74,15 +75,18 @@ func (e *Env) Build(
 	childCtx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
-	err := os.MkdirAll(e.BuildDir(), 0o777)
+	// TODO: Better file/path definition
+	// TODO: Cleanup
+	rootfsBuildDir := filepath.Join("/tmp/", e.BuildId)
+	err := os.Mkdir(rootfsBuildDir, 0777)
 	if err != nil {
 		errMsg := fmt.Errorf("error initializing directories for building env '%s' during build '%s': %w", e.TemplateId, e.BuildId, err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
-		return nil, errMsg
+		return nil, err
 	}
 
-	_, err = NewRootfs(childCtx, tracer, postProcessor, e, docker, legacyDocker)
+	rootfsPath, err := NewRootfs(childCtx, tracer, postProcessor, e, docker, legacyDocker, rootfsBuildDir)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs for env '%s' during build '%s': %w", e.TemplateId, e.BuildId, err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -107,7 +111,7 @@ func (e *Env) Build(
 		BaseTemplateId: e.TemplateId,
 	}
 
-	rootfs, err := block.NewLocal(e.BuildRootfsPath(), e.RootfsBlockSize())
+	rootfs, err := block.NewLocal(rootfsPath, e.RootfsBlockSize())
 	if err != nil {
 		errMsg := fmt.Errorf("error reading rootfs blocks: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -135,23 +139,6 @@ func (e *Env) Build(
 	}
 
 	return sbx, nil
-}
-
-func (e *Env) Remove(ctx context.Context, tracer trace.Tracer) error {
-	childCtx, childSpan := tracer.Start(ctx, "move-to-env-dir")
-	defer childSpan.End()
-
-	err := os.RemoveAll(e.BuildDir())
-	if err != nil {
-		errMsg := fmt.Errorf("error removing build dir: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "removed build dir")
-
-	return nil
 }
 
 func (e *Env) MemfilePageSize() int64 {
