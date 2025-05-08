@@ -12,6 +12,7 @@ import (
 )
 
 const maxClientConns = 8192 // Reasonably big number that is lower than the number of available ports.
+const idleTimeoutBufferUpstreamDownstream = 10
 
 type Proxy struct {
 	http.Server
@@ -33,10 +34,13 @@ func New(
 
 	return &Proxy{
 		Server: http.Server{
-			Addr:              fmt.Sprintf(":%d", port),
-			ReadTimeout:       0,
-			WriteTimeout:      0,
-			IdleTimeout:       idleTimeout,
+			Addr:         fmt.Sprintf(":%d", port),
+			ReadTimeout:  0,
+			WriteTimeout: 0,
+			// Downstream idle > upstream idle,
+			// otherwise a new downstream connection can try to reuse an open upstream connection
+			// and reuse TCP connection which is already closed
+			IdleTimeout:       idleTimeout + idleTimeoutBufferUpstreamDownstream,
 			ReadHeaderTimeout: 0,
 			Handler:           handler(p, getDestination),
 		},
