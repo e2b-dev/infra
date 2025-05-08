@@ -111,7 +111,21 @@ func InitOTLPExporter(ctx context.Context, serviceName, serviceVersion string, i
 		otel.SetTracerProvider(tracerProvider)
 		otelClient.tracerProvider = tracerProvider
 
-		metricExporter, metricErr := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithGRPCConn(conn))
+		metricExporter, metricErr := otlpmetricgrpc.New(
+			ctx,
+			otlpmetricgrpc.WithGRPCConn(conn),
+			otlpmetricgrpc.WithAggregationSelector(func(kind metric.InstrumentKind) metric.Aggregation {
+				if kind == metric.InstrumentKindHistogram {
+					// Defaults from https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/sdk.md#base2-exponential-bucket-histogram-aggregation
+					return metric.AggregationBase2ExponentialHistogram{
+						MaxSize:  160,
+						MaxScale: 20,
+						NoMinMax: false,
+					}
+				}
+				return metric.DefaultAggregationSelector(kind)
+			}),
+		)
 		if metricErr != nil {
 			panic(fmt.Errorf("failed to create metric exporter: %w", err))
 		}
