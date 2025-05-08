@@ -41,16 +41,14 @@ func Delete(
 			log.Printf("template image not found in registry, skipping deletion: %v", artifactRegistryDeleteErr)
 			telemetry.ReportEvent(childCtx, fmt.Sprintf("template image not found in registry, skipping deletion: %v", artifactRegistryDeleteErr))
 		} else {
-			errMsg := fmt.Errorf("error when deleting template image from registry: %w", artifactRegistryDeleteErr)
-			telemetry.ReportCriticalError(childCtx, errMsg)
+			telemetry.ReportCriticalError(childCtx, "error when deleting template image from registry", artifactRegistryDeleteErr)
 		}
 	} else {
 		telemetry.ReportEvent(childCtx, "started deleting template image from registry")
 
 		waitErr := op.Wait(childCtx)
 		if waitErr != nil {
-			errMsg := fmt.Errorf("error when waiting for template image deleting from registry: %w", waitErr)
-			telemetry.ReportCriticalError(childCtx, errMsg)
+			telemetry.ReportCriticalError(childCtx, "error when waiting for template image deleting from registry", waitErr)
 		} else {
 			telemetry.ReportEvent(childCtx, "deleted template image from registry")
 		}

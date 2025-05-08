@@ -200,24 +200,21 @@ func (s *Snapshot) startFCProcess(
 
 	stdoutPipe, err := s.fc.StdoutPipe()
 	if err != nil {
-		errMsg := fmt.Errorf("error creating fc stdout pipe: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error creating fc stdout pipe", err)
 
-		return errMsg
+		return fmt.Errorf("error creating fc stdout pipe: %w", err)
 	}
 
 	stderrPipe, err := s.fc.StderrPipe()
 	if err != nil {
-		errMsg := fmt.Errorf("error creating fc stderr pipe: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error creating fc stderr pipe", err)
 
 		closeErr := stdoutPipe.Close()
 		if closeErr != nil {
-			closeErrMsg := fmt.Errorf("error closing fc stdout pipe: %w", closeErr)
-			telemetry.ReportError(childCtx, closeErrMsg)
+			telemetry.ReportError(childCtx, "error closing fc stdout pipe", closeErr)
 		}
 
-		return errMsg
+		return fmt.Errorf("error creating fc stderr pipe: %w", err)
 	}
 
 	var outputWaitGroup sync.WaitGroup
@@ -248,10 +245,9 @@ func (s *Snapshot) startFCProcess(
 
 	err = s.fc.Start()
 	if err != nil {
-		errMsg := fmt.Errorf("error starting fc process: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error starting fc process", err)
 
-		return errMsg
+		return fmt.Errorf("error starting fc process: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "started fc process")
@@ -264,8 +260,7 @@ func (s *Snapshot) startFCProcess(
 
 		waitErr := s.fc.Wait()
 		if err != nil {
-			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
-			telemetry.ReportError(anonymousChildCtx, errMsg)
+			telemetry.ReportError(anonymousChildCtx, "error waiting for fc process", waitErr)
 		} else {
 			telemetry.ReportEvent(anonymousChildCtx, "fc process exited")
 		}
@@ -303,7 +298,7 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 	_, err := s.client.Operations.PutGuestBootSource(&bootSourceConfig)
 	if err != nil {
 		errMsg := fmt.Errorf("error setting fc boot source config: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error setting fc boot source config", errMsg)
 
 		return errMsg
 	}
@@ -329,10 +324,9 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 
 	_, err = s.client.Operations.PutGuestDriveByID(&driversConfig)
 	if err != nil {
-		errMsg := fmt.Errorf("error setting fc drivers config: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error setting fc drivers config", err)
 
-		return errMsg
+		return fmt.Errorf("error setting fc drivers config: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "set fc drivers config")
@@ -351,10 +345,9 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 
 	_, err = s.client.Operations.PutGuestNetworkInterfaceByID(&networkConfig)
 	if err != nil {
-		errMsg := fmt.Errorf("error setting fc network config: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error setting fc network config", err)
 
-		return errMsg
+		return fmt.Errorf("error setting fc network config: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "set fc network config")
@@ -389,10 +382,9 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 
 	_, err = s.client.Operations.PutMachineConfiguration(&machineConfigParams)
 	if err != nil {
-		errMsg := fmt.Errorf("error setting fc machine config: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error setting fc machine config", err)
 
-		return errMsg
+		return fmt.Errorf("error setting fc machine config: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "set fc machine config")
@@ -408,10 +400,9 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 
 	_, err = s.client.Operations.PutMmdsConfig(&mmdsConfig)
 	if err != nil {
-		errMsg := fmt.Errorf("error setting fc mmds config: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error setting fc mmds config", err)
 
-		return errMsg
+		return fmt.Errorf("error setting fc mmds config: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "set fc mmds config")
@@ -429,10 +420,9 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 
 	_, err = s.client.Operations.CreateSyncAction(&startActionParams)
 	if err != nil {
-		errMsg := fmt.Errorf("error starting fc: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error starting fc", err)
 
-		return errMsg
+		return fmt.Errorf("error starting fc: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "started fc")
@@ -454,10 +444,9 @@ func (s *Snapshot) pauseFC(ctx context.Context, tracer trace.Tracer) error {
 
 	_, err := s.client.Operations.PatchVM(&pauseConfig)
 	if err != nil {
-		errMsg := fmt.Errorf("error pausing vm: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error pausing vm", err)
 
-		return errMsg
+		return fmt.Errorf("error pausing vm: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "paused fc")
@@ -482,10 +471,9 @@ func (s *Snapshot) snapshotFC(ctx context.Context, tracer trace.Tracer) error {
 
 	_, err := s.client.Operations.CreateSnapshot(&snapshotConfig)
 	if err != nil {
-		errMsg := fmt.Errorf("error creating vm snapshot: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
+		telemetry.ReportCriticalError(childCtx, "error creating vm snapshot", err)
 
-		return errMsg
+		return fmt.Errorf("error creating vm snapshot: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "created vm snapshot")
@@ -500,8 +488,7 @@ func (s *Snapshot) cleanupFC(ctx context.Context, tracer trace.Tracer) {
 	if s.fc != nil {
 		err := s.fc.Cancel()
 		if err != nil {
-			errMsg := fmt.Errorf("error killing fc process: %w", err)
-			telemetry.ReportError(childCtx, errMsg)
+			telemetry.ReportError(childCtx, "error killing fc process", err)
 		} else {
 			telemetry.ReportEvent(childCtx, "killed fc process")
 		}
@@ -509,8 +496,7 @@ func (s *Snapshot) cleanupFC(ctx context.Context, tracer trace.Tracer) {
 
 	err := os.RemoveAll(s.socketPath)
 	if err != nil {
-		errMsg := fmt.Errorf("error removing fc socket %w", err)
-		telemetry.ReportError(childCtx, errMsg)
+		telemetry.ReportError(childCtx, "error removing fc socket", err)
 	} else {
 		telemetry.ReportEvent(childCtx, "removed fc socket")
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -82,7 +81,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	// Now, we need to get the API key from the request
 	headerKey, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("%v %w", a.errorMessage, err))
+		telemetry.ReportCriticalError(ctx, a.errorMessage, err)
 
 		return fmt.Errorf("%v %w", a.errorMessage, err)
 	}
@@ -92,8 +91,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	// If the API key is valid, we will get a result back
 	result, validationError := a.validationFunction(ctx, headerKey)
 	if validationError != nil {
-		log.Printf("validation error %v", validationError.Err)
-		telemetry.ReportError(ctx, fmt.Errorf("%s %w", a.errorMessage, validationError.Err))
+		telemetry.ReportError(ctx, a.errorMessage, validationError.Err)
 
 		return fmt.Errorf(a.errorMessage)
 	}

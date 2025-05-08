@@ -23,8 +23,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 
-		errMsg := fmt.Errorf("error when parsing request: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
 
 		return
 	}
@@ -33,8 +32,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when generating access token: %s", err))
 
-		errMsg := fmt.Errorf("error when generating access token: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when generating access token", err)
 
 		return
 	}
@@ -52,8 +50,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating access token: %s", err))
 
-		errMsg := fmt.Errorf("error when creating access token: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when creating access token", err)
 
 		return
 	}
@@ -76,8 +73,8 @@ func (a *APIStore) DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing access token ID: %s", err))
 
-		errMsg := fmt.Errorf("error when parsing access token ID: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when parsing access token ID", err)
+
 		return
 	}
 
@@ -90,8 +87,8 @@ func (a *APIStore) DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID
 	} else if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting access token: %s", err))
 
-		errMsg := fmt.Errorf("error when deleting access token: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when deleting access token", err)
+
 		return
 	}
 

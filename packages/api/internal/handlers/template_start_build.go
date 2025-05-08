@@ -29,8 +29,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid build ID: %s", buildID))
 
-		err = fmt.Errorf("invalid build ID: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "invalid build ID", err)
 
 		return
 	}
@@ -39,8 +38,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
-		err = fmt.Errorf("error when getting default team: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "error when getting default team", err)
 
 		return
 	}
@@ -58,8 +56,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
 
-		err = fmt.Errorf("error when getting env: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "error when getting env", err, attribute.String("template_id", templateID))
 
 		return
 	}
@@ -76,8 +73,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if team == nil {
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("User does not have access to the template"))
 
-		err = fmt.Errorf("user '%s' does not have access to the template '%s'", userID, templateID)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "user does not have access to the template", err, attribute.String("template_id", templateID))
 
 		return
 	}
@@ -107,8 +103,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	// make sure there is no other build in progress for the same template
 	if concurrentlyRunningBuilds > 0 {
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("There is already a build in progress for the template"))
-		err = fmt.Errorf("there is already a build in progress for the template '%s'", templateID)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "there is already a build in progress for the template", err, attribute.String("template_id", templateID))
 		return
 	}
 
@@ -122,8 +117,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	// only waiting builds can be triggered
 	if build.Status != envbuild.StatusWaiting {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
-		err = fmt.Errorf("build is not in waiting state: %s", build.Status)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), attribute.String("template_id", templateID))
 		return
 	}
 
@@ -142,9 +136,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	)
 
 	if buildErr != nil {
-		buildErr = fmt.Errorf("error when building env: %w", buildErr)
-		zap.L().Error("build failed", zap.Error(buildErr))
-		telemetry.ReportCriticalError(ctx, buildErr)
+		telemetry.ReportCriticalError(ctx, "build failed", buildErr, attribute.String("template_id", templateID))
 
 		err = a.templateManager.SetStatus(
 			ctx,
@@ -154,7 +146,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 			fmt.Sprintf("error when building env: %s", buildErr),
 		)
 		if err != nil {
-			telemetry.ReportCriticalError(ctx, fmt.Errorf("error when setting build status: %w", err))
+			telemetry.ReportCriticalError(ctx, "error when setting build status", err)
 		}
 
 		return
@@ -170,7 +162,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		"starting build",
 	)
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("error when setting build status: %w", err))
+		telemetry.ReportCriticalError(ctx, "error when setting build status", err)
 
 		return
 	}

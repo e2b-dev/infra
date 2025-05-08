@@ -4,11 +4,11 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -55,15 +55,14 @@ func (o *Orchestrator) CreateSandbox(
 	// Check if team has reached max instances
 	err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
 	if err != nil {
-		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances)
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
+		telemetry.ReportCriticalError(ctx, "team has reached the maximum number of instances", err, attribute.Int64("concurrent_instances", team.Tier.ConcurrentInstances))
 
 		return nil, &api.APIError{
 			Code: http.StatusTooManyRequests,
 			ClientMsg: fmt.Sprintf(
 				"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
 					"please contact us at 'https://e2b.dev/docs/getting-help'", team.Tier.ConcurrentInstances),
-			Err: errMsg,
+			Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances),
 		}
 	}
 
@@ -144,13 +143,12 @@ func (o *Orchestrator) CreateSandbox(
 		if node == nil {
 			node, err = o.getLeastBusyNode(childCtx, nodesExcluded)
 			if err != nil {
-				errMsg := fmt.Errorf("failed to get least busy node: %w", err)
-				telemetry.ReportError(childCtx, errMsg)
+				telemetry.ReportError(childCtx, "failed to get least busy node", err)
 
 				return nil, &api.APIError{
 					Code:      http.StatusInternalServerError,
 					ClientMsg: "Failed to get node to place sandbox on.",
-					Err:       errMsg,
+					Err:       fmt.Errorf("failed to get least busy node: %w", err),
 				}
 			}
 		}
@@ -170,7 +168,12 @@ func (o *Orchestrator) CreateSandbox(
 
 		node.sbxsInProgress.Remove(sandboxID)
 
-		log.Printf("failed to create sandbox '%s' on node '%s', attempt #%d: %v", sandboxID, node.Info.ID, attempt, utils.UnwrapGRPCError(err))
+		zap.L().Warn("failed to create sandbox on node",
+			zap.Error(utils.UnwrapGRPCError(err)),
+			zap.String("node_id", node.Info.ID),
+			zap.String("sandbox_id", sandboxID),
+			zap.Int("attempt", attempt),
+		)
 
 		// The node is not available, try again with another node
 		node.createFails.Add(1)
@@ -223,8 +226,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	cacheErr := o.instanceCache.Add(childCtx, instanceInfo, true)
 	if cacheErr != nil {
-		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportError(ctx, "error when adding instance to cache", cacheErr)
 
 		deleted := o.DeleteInstance(childCtx, sbx.SandboxID, false)
 		if !deleted {
@@ -234,7 +236,7 @@ func (o *Orchestrator) CreateSandbox(
 		return nil, &api.APIError{
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Failed to create sandbox",
-			Err:       errMsg,
+			Err:       fmt.Errorf("error when adding instance to cache: %w", cacheErr),
 		}
 	}
 
