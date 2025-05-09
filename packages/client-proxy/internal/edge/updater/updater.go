@@ -5,11 +5,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"github.com/minio/selfupdate"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/minio/selfupdate"
+	"go.uber.org/zap"
 )
 
 type Updater struct {
