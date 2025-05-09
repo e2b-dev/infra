@@ -77,6 +77,9 @@ job "client-proxy" {
       }
 
       env {
+        NODE_PORT = "${edge_api_port_number}"
+        NODE_IP   = "$${attr.unique.network.ip-address}"
+
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
         REDIS_URL                     = "${redis_url}"
