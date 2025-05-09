@@ -5,12 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"os"
 	"os/exec"
 	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
+	htransport "google.golang.org/api/transport/http"
 )
 
 const (
@@ -24,8 +28,9 @@ const (
 )
 
 type GCPBucketStorageProvider struct {
-	client *storage.Client
-	bucket *storage.BucketHandle
+	client         *storage.Client
+	bucket         *storage.BucketHandle
+	proxyTransport *proxyTransport
 }
 
 type GCPBucketStorageObjectProvider struct {
@@ -35,15 +40,53 @@ type GCPBucketStorageObjectProvider struct {
 	ctx     context.Context
 }
 
-func NewGCPBucketStorageProvider(ctx context.Context, bucketName string) (*GCPBucketStorageProvider, error) {
-	client, err := storage.NewClient(ctx)
+// Add possible proxy option
+type GCPBucketStorageProviderOptions struct {
+	transportProxy *proxyTransport
+}
+
+type GCPBucketStorageProviderOption func(*GCPBucketStorageProviderOptions)
+
+func WithProxy(proxyURL string) GCPBucketStorageProviderOption {
+	return func(o *GCPBucketStorageProviderOptions) {
+		o.transportProxy = newProxyTransport(proxyURL)
+	}
+}
+
+func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, opts ...GCPBucketStorageProviderOption) (*GCPBucketStorageProvider, error) {
+	var providerOptions GCPBucketStorageProviderOptions
+
+	for _, opt := range opts {
+		opt(&providerOptions)
+	}
+
+	var clientOptions []option.ClientOption
+
+	if providerOptions.transportProxy != nil {
+		// We need to create a transport this way to set up the credentials.
+		ht, err := htransport.NewTransport(ctx, providerOptions.transportProxy)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create GCS client: %w", err)
+		}
+
+		httpClient := &http.Client{
+			Transport: ht,
+		}
+
+		clientOptions = append(clientOptions, option.WithHTTPClient(httpClient))
+	}
+
+	// Create the storage client with proper credentials
+	client, err := storage.NewClient(ctx, clientOptions...)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
 	}
 
 	return &GCPBucketStorageProvider{
-		client: client,
-		bucket: client.Bucket(bucketName),
+		client:         client,
+		bucket:         client.Bucket(bucketName),
+		proxyTransport: providerOptions.transportProxy,
 	}, nil
 }
 
@@ -84,6 +127,20 @@ func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string) 
 				Multiplier: googleBackoffMultiplier,
 			},
 		),
+		storage.WithPolicy(storage.RetryAlways),
+		storage.WithErrorFunc(func(err error) bool {
+			if err == nil || errors.Is(err, storage.ErrObjectNotExist) {
+				return storage.ShouldRetry(err)
+			}
+
+			fmt.Fprintf(os.Stderr, "Failed to do the request: %s\n", err)
+
+			if g.proxyTransport != nil {
+				g.proxyTransport.disableProxy()
+			}
+
+			return storage.ShouldRetry(err)
+		}),
 	)
 
 	return &GCPBucketStorageObjectProvider{
