@@ -5,11 +5,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/configurator"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/updater"
 	"github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 )
 
@@ -20,7 +20,7 @@ const (
 	configSetupTimeout = 5 * time.Second
 )
 
-func NewEdgeAPIStore(ctx context.Context, logger *zap.Logger, drainingHandler *func(terminate bool)) (*handlers.APIStore, error) {
+func NewEdgeAPIStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, drainingHandler *func(terminate bool)) (*handlers.APIStore, error) {
 	configAdapter, err := configuration.NewConfigurationAdapter()
 	if err != nil {
 		return nil, err
@@ -81,12 +81,12 @@ func NewEdgeAPIStore(ctx context.Context, logger *zap.Logger, drainingHandler *f
 		return nil
 	}
 
-	selfUpdateHandler := func() updater.UpdaterResponse {
+	selfUpdateHandler := func() error {
 		(*drainingHandler)(true) // we want to restart service after update
 		panic("not implemented")
 	}
 
-	store, err := handlers.NewStore(serviceDiscovery, logger, &selfUpdateHandler, &selfDrainHandler)
+	store, err := handlers.NewStore(ctx, serviceDiscovery, logger, tracer, &selfUpdateHandler, &selfDrainHandler)
 	if err != nil {
 		return nil, err
 	}
