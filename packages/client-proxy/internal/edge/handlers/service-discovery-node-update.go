@@ -3,15 +3,17 @@ package handlers
 import (
 	"context"
 	"errors"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
-	service_discovery "github.com/e2b-dev/infra/packages/proxy/internal/edge/service-discovery"
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
+	"github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 )
 
-func (a *APIStore) PostV1ServiceDiscoveryNodesNodeIdUpdate(c *gin.Context, nodeId string) {
+func (a *APIStore) V1ServiceDiscoveryNodeUpdate(c *gin.Context, nodeId string) {
 	findCtx, findCtxCancel := context.WithTimeout(c, 5*time.Second)
 	defer findCtxCancel()
 
@@ -21,7 +23,7 @@ func (a *APIStore) PostV1ServiceDiscoveryNodesNodeIdUpdate(c *gin.Context, nodeI
 	if err != nil {
 		logger.Error("failed to get node by id", zap.Error(err))
 
-		if errors.Is(err, service_discovery.ServiceNotFoundErr) {
+		if errors.Is(err, service_discovery.NodeNotFoundErr) {
 			a.sendAPIStoreError(c, http.StatusNotFound, "node not found")
 		} else {
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "failed to get node by id")
@@ -30,7 +32,7 @@ func (a *APIStore) PostV1ServiceDiscoveryNodesNodeIdUpdate(c *gin.Context, nodeI
 		return
 	}
 
-	currentNodeId := a.serviceDiscovery.GetItself()
+	currentNodeId := a.serviceDiscovery.GetSelfNodeId()
 	if nodeId != currentNodeId {
 		logger.Info("sending update node request to neighbor", zap.String("node_ip", node.NodeIp))
 
@@ -55,10 +57,10 @@ func (a *APIStore) PostV1ServiceDiscoveryNodesNodeIdUpdate(c *gin.Context, nodeI
 
 	logger.Info("starting self-update process")
 
-	resp := (*a.selfUpdateHandler)()
-	if !resp.Success {
-		logger.Error("failed to start self update process", zap.Error(resp.Error))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, resp.Message)
+	err = (*a.selfUpdateHandler)()
+	if err != nil {
+		logger.Error("failed to start self update process", zap.Error(err))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 

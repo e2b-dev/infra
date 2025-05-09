@@ -4,15 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
-	service_discovery "github.com/e2b-dev/infra/packages/proxy/internal/edge/service-discovery"
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
+	"github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 )
 
-func (a *APIStore) PostV1ServiceDiscoveryNodesNodeIdDrain(c *gin.Context, nodeId string) {
+func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context, nodeId string) {
 	findCtx, findCtxCancel := context.WithTimeout(c, 5*time.Second)
 	defer findCtxCancel()
 
@@ -22,7 +24,7 @@ func (a *APIStore) PostV1ServiceDiscoveryNodesNodeIdDrain(c *gin.Context, nodeId
 	if err != nil {
 		logger.Error("failed to get node by id", zap.Error(err))
 
-		if errors.Is(err, service_discovery.ServiceNotFoundErr) {
+		if errors.Is(err, service_discovery.NodeNotFoundErr) {
 			a.sendAPIStoreError(c, http.StatusNotFound, "node not found")
 		} else {
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "failed to get node by id")
@@ -31,7 +33,7 @@ func (a *APIStore) PostV1ServiceDiscoveryNodesNodeIdDrain(c *gin.Context, nodeId
 		return
 	}
 
-	currentNodeId := a.serviceDiscovery.GetItself()
+	currentNodeId := a.serviceDiscovery.GetSelfNodeId()
 	if nodeId != currentNodeId {
 		logger.Info("sending draining node request to neighbor", zap.String("node_ip", node.NodeIp))
 
