@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	// Greater than in orchestrator proxy.
+	// Downstream timeout should be greater than upstream (in orchestrator proxy).
 	idleTimeout = 640 * time.Second
 	maxAge      = 2 * time.Hour
 
