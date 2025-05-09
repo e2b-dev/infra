@@ -100,7 +100,7 @@ variable "client_proxy_docker_image_digest" {
   type = string
 }
 
-variable "client_proxy_health_port" {
+variable "client_proxy_edge_api_port" {
   type = object({
     name = string
     port = number
