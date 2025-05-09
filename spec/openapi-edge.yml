@@ -412,7 +412,7 @@ paths:
           description: Updated (no content)
 
     delete:
-      operationId: deleteSandbox
+      operationId: v1DeleteSandbox
       summary: Delete a sandbox
       security:
         - ApiKeyAuth: [ ]
