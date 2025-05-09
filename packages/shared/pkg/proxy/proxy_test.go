@@ -116,7 +116,6 @@ func newTestProxy(getDestination func(r *http.Request) (*pool.Destination, error
 	// Set up the proxy server
 	proxy := New(
 		uint(port),
-		1,
 		20*time.Second, // Short idle timeout
 		getDestination,
 	)
