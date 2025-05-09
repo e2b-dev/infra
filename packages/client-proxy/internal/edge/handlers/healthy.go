@@ -1,9 +1,11 @@
 package handlers
 
 import (
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
-	"github.com/gin-gonic/gin"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 )
 
 func (a *APIStore) GetHealth(c *gin.Context) {
