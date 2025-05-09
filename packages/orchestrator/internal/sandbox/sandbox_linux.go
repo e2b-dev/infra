@@ -129,7 +129,8 @@ func CreateSandbox(
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
-	rootfsOverlay.MarkAllBlocksAsDirty()
+	// TODO: Maybe it's broken right now?
+	// rootfsOverlay.MarkAllBlocksAsDirty()
 
 	go func() {
 		runErr := rootfsOverlay.Start(childCtx)

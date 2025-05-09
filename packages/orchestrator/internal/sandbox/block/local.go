@@ -18,7 +18,7 @@ type Local struct {
 }
 
 func NewLocal(path string, blockSize int64) (*Local, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY, 0o777)
+	f, err := os.OpenFile(path, os.O_RDONLY, os.ModePerm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
