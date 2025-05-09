@@ -77,10 +77,6 @@ job "client-proxy" {
         image        = "${image_name}"
         ports        = ["${port_name}"]
         args         = ["--port", "${port_number}"]
-
-        ulimit {
-          nofile = "262144:262144"
-        }
       }
     }
   }
