@@ -179,6 +179,6 @@ func (o *CowDevice) Flush(ctx context.Context) error {
 	return nil
 }
 
-func (o *CowDevice) MarkAllBlocksAsDirty() {
-	o.overlay.MarkAllBlocksAsDirty()
+func (o *CowDevice) MarkAllBlocksAsDirty() error {
+	return o.overlay.CopyAllToCache()
 }

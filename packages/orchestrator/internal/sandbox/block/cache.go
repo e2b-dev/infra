@@ -258,17 +258,3 @@ func (m *Cache) FileSize() (int64, error) {
 
 	return stat.Blocks * fsStat.Bsize, nil
 }
-
-func (m *Cache) MarkAllBlocksAsDirty() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.isClosed() {
-		return
-	}
-
-	for i := int64(0); i < m.size; i += m.blockSize {
-		m.dirty.Store(i, struct{}{})
-	}
-	m.dirtyFile = true
-}

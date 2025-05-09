@@ -85,6 +85,22 @@ func (o *Overlay) Header() *header.Header {
 	return o.device.Header()
 }
 
-func (o *Overlay) MarkAllBlocksAsDirty() {
-	o.cache.MarkAllBlocksAsDirty()
+func (o *Overlay) CopyAllToCache() error {
+	size, err := o.device.Size()
+	if err != nil {
+		return fmt.Errorf("error getting device size: %w", err)
+	}
+
+	for i := int64(0); i < size; i += o.blockSize {
+		slice, err := o.device.Slice(i, o.blockSize)
+		if err != nil {
+			return fmt.Errorf("error getting device slice: %w", err)
+		}
+
+		if _, err := o.cache.WriteAt(slice, i); err != nil {
+			return fmt.Errorf("error writing to cache: %w", err)
+		}
+	}
+
+	return nil
 }
