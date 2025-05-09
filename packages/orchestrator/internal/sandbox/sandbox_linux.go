@@ -134,10 +134,20 @@ func CreateSandbox(
 		}
 	}()
 
+	memfile, err := template.Memfile()
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to get memfile: %w", err)
+	}
+
+	memfileSize, err := memfile.Size()
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to get memfile size: %w", err)
+	}
+
 	resources := &Resources{
 		Slot:     ips,
 		rootfs:   rootfsOverlay,
-		memory:   &uffd.NoopMemory{},
+		memory:   uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
 		uffdExit: make(chan error, 1),
 	}
 

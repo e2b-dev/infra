@@ -101,7 +101,6 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		b.legacyDockerClient,
 		b.networkPool,
 		b.devicePool,
-		b.clientID,
 		envdVersion,
 	)
 	if err != nil {
@@ -166,9 +165,11 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string
 		return fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
 
+	snapfilePath := snapshot.Snapfile.Path()
+
 	upload := templateBuild.Upload(
 		ctx,
-		template.BuildSnapfilePath(),
+		snapfilePath,
 		&memfileDiffPath,
 		&rootfsDiffPath,
 	)

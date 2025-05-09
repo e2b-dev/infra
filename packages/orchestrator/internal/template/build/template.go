@@ -70,7 +70,6 @@ func (e *Env) Build(
 	legacyDocker *docker.Client,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
-	clientID string,
 	envdVersion string,
 ) (*sandbox.Sandbox, error) {
 	childCtx, childSpan := tracer.Start(ctx, "template-build")

@@ -1,8 +1,31 @@
 package uffd
 
-import "github.com/bits-and-blooms/bitset"
+import (
+	"github.com/bits-and-blooms/bitset"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+)
 
 type NoopMemory struct {
+	size      int64
+	blockSize int64
+
+	dirty *bitset.BitSet
+}
+
+func NewNoopMemory(size, blockSize int64) *NoopMemory {
+	blocks := header.TotalBlocks(size, blockSize)
+
+	dirty := bitset.New(0)
+	for i := int64(0); i < blocks; i++ {
+		dirty.Set(uint(i))
+	}
+
+	return &NoopMemory{
+		size:      size,
+		blockSize: blockSize,
+		dirty:     dirty,
+	}
 }
 
 func (m *NoopMemory) Disable() error {
@@ -10,7 +33,7 @@ func (m *NoopMemory) Disable() error {
 }
 
 func (m *NoopMemory) Dirty() *bitset.BitSet {
-	return nil
+	return m.dirty
 }
 
 func (m *NoopMemory) Start(sandboxId string) error {
