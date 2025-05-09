@@ -16,8 +16,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -32,7 +32,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	ctx := c.Request.Context()
 
 	userID := c.Value(auth.UserIDContextKey).(uuid.UUID)
-	teams, err := a.db.GetTeams(ctx, userID)
+	teams, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
 	if err != nil {
 		errMsg := fmt.Errorf("error when getting teams: %w", err)
 
@@ -69,10 +69,10 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 		return
 	}
 
-	var team *models.Team
+	var team *queries.Team
 	for _, t := range teams {
-		if t.ID == buildInfo.TeamID {
-			team = t
+		if t.Team.ID == buildInfo.TeamID {
+			team = &t.Team
 			break
 		}
 	}

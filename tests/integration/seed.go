@@ -17,11 +17,12 @@ import (
 )
 
 type SeedData struct {
-	APIKey  string
-	EnvID   string
-	BuildID uuid.UUID
-	TeamID  uuid.UUID
-	UserID  uuid.UUID
+	AccessToken string
+	APIKey      string
+	EnvID       string
+	BuildID     uuid.UUID
+	TeamID      uuid.UUID
+	UserID      uuid.UUID
 }
 
 func main() {
@@ -37,11 +38,12 @@ func main() {
 	defer database.Close()
 
 	data := SeedData{
-		APIKey:  os.Getenv("TESTS_E2B_API_KEY"),
-		EnvID:   os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
-		BuildID: uuid.MustParse(os.Getenv("TESTS_SANDBOX_BUILD_ID")),
-		TeamID:  uuid.MustParse(os.Getenv("TESTS_SANDBOX_TEAM_ID")),
-		UserID:  uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID")),
+		AccessToken: os.Getenv("TESTS_E2B_ACCESS_TOKEN"),
+		APIKey:      os.Getenv("TESTS_E2B_API_KEY"),
+		EnvID:       os.Getenv("TESTS_SANDBOX_TEMPLATE_ID"),
+		BuildID:     uuid.MustParse(os.Getenv("TESTS_SANDBOX_BUILD_ID")),
+		TeamID:      uuid.MustParse(os.Getenv("TESTS_SANDBOX_TEAM_ID")),
+		UserID:      uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID")),
 	}
 
 	err = seed(database, data)
@@ -54,12 +56,33 @@ func main() {
 
 func seed(db *db.DB, data SeedData) error {
 	ctx := context.Background()
+	hasher := keys.NewSHA256Hashing()
 
 	// User
-	_, err := db.Client.User.Create().
+	user, err := db.Client.User.Create().
 		SetID(data.UserID).
 		SetEmail("user-test-integration@e2b.dev").
 		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// Access token
+	tokenWithoutPrefix := strings.TrimPrefix(data.AccessToken, keys.AccessTokenPrefix)
+	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)
+	accessTokenHash := hasher.Hash(accessTokenBytes)
+
+	accessTokenMask, err := keys.MaskKey(keys.ApiKeyPrefix, tokenWithoutPrefix)
+	if err != nil {
+		return fmt.Errorf("failed to mask access token: %w", err)
+	}
+
+	err = db.Client.AccessToken.Create().
+		SetUser(user).
+		SetAccessToken(data.AccessToken).
+		SetAccessTokenHash(accessTokenHash).
+		SetAccessTokenMask(accessTokenMask).
+		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create user: %w", err)
 	}
@@ -86,22 +109,21 @@ func seed(db *db.DB, data SeedData) error {
 	}
 
 	// Team API Key
-	hasher := keys.NewSHA256Hashing()
 	keyWithoutPrefix := strings.TrimPrefix(data.APIKey, keys.ApiKeyPrefix)
 	apiKeyBytes, err := hex.DecodeString(keyWithoutPrefix)
 	if err != nil {
 		return fmt.Errorf("failed to decode api key: %w", err)
 	}
-	hash := hasher.Hash(apiKeyBytes)
-	mask, err := keys.MaskKey(keys.ApiKeyPrefix, keyWithoutPrefix)
+	apiKeyHash := hasher.Hash(apiKeyBytes)
+	apiKeyMask, err := keys.MaskKey(keys.ApiKeyPrefix, keyWithoutPrefix)
 	if err != nil {
 		return fmt.Errorf("failed to mask api key: %w", err)
 	}
 	_, err = db.Client.TeamAPIKey.Create().
 		SetTeam(t).
 		SetAPIKey(data.APIKey).
-		SetAPIKeyHash(hash).
-		SetAPIKeyMask(mask).
+		SetAPIKeyHash(apiKeyHash).
+		SetAPIKeyMask(apiKeyMask).
 		SetName("Integration Tests API Key").
 		Save(ctx)
 	if err != nil {

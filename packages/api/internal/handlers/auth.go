@@ -8,18 +8,18 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
 func (a *APIStore) GetUserID(c *gin.Context) uuid.UUID {
 	return c.Value(auth.UserIDContextKey).(uuid.UUID)
 }
 
-func (a *APIStore) GetUserAndTeams(c *gin.Context) (*uuid.UUID, []*models.Team, error) {
+func (a *APIStore) GetUserAndTeams(c *gin.Context) (*uuid.UUID, []queries.GetTeamsWithUsersTeamsWithTierRow, error) {
 	userID := a.GetUserID(c)
 	ctx := c.Request.Context()
 
-	teams, err := a.db.GetTeams(ctx, userID)
+	teams, err := a.sqlcDB.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error when getting default team: %w", err)
 	}
