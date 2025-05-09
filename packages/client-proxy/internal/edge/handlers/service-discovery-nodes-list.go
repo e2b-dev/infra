@@ -2,14 +2,17 @@ package handlers
 
 import (
 	"fmt"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
+	service_discovery "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 )
 
-func (a *APIStore) GetV1ServiceDiscoveryNodes(c *gin.Context) {
+func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 	nodes, err := a.serviceDiscovery.ListNodes(c)
 	if err != nil {
 		a.logger.Error("failed to list cluster nodes", zap.Error(err))
@@ -65,10 +68,10 @@ func getNodeStatusResolved(s string) (api.ClusterNodeStatus, error) {
 
 func getNodeTypeResolved(t string) (api.ClusterNodeType, error) {
 	switch t {
-	case "edge":
+	case service_discovery.ServiceTypeEdge:
 		return api.Edge, nil
-	case "compute":
-		return api.Compute, nil
+	case service_discovery.ServiceTypeOrchestrator:
+		return api.Orchestrator, nil
 	default:
 		return "", fmt.Errorf("unknown node type: %s", t)
 	}
