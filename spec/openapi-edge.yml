@@ -4,8 +4,20 @@ info:
   title: E2B Edge
 
 components:
+  parameters:
+    sandbox_id:
+      name: sandbox_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier of the sandbox
+
   securitySchemes:
-    # todo
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
 
   responses:
     "400":
@@ -91,6 +103,41 @@ components:
         - compute
         - edge
 
+    ClusterOrchestratorNode:
+      properties:
+        nodeId:
+          type: string
+          description: Node ID
+        nodeVersion:
+          type: string
+          description: Version of the node
+        nodeStatus:
+          $ref: "#/components/schemas/ClusterNodeStatus"
+        vCpuUsed:
+          type: integer
+          format: int64
+          description: Number of vCPUs currently in use
+        vCpuTotal:
+          type: integer
+          format: int64
+          description: Total number of available vCPUs
+        ramMBUsed:
+          type: integer
+          format: int64
+          description: Amount of RAM currently used in MB
+        ramMBTotal:
+          type: integer
+          format: int64
+          description: Total amount of available RAM in MB
+      required:
+        - nodeId
+        - nodeVersion
+        - nodeStatus
+        - vCpuUsed
+        - vCpuTotal
+        - ramMBUsed
+        - ramMBTotal
+
     Error:
       required:
         - code
@@ -104,8 +151,101 @@ components:
           type: string
           description: Error
 
+    SandboxCreateRequest:
+      type: object
+      properties:
+        sandbox:
+          $ref: '#/components/schemas/SandboxConfig'
+        startTime:
+          $ref: '#/components/schemas/Timestamp'
+        endTime:
+          $ref: '#/components/schemas/Timestamp'
+      required: [sandbox]
+
+    SandboxCreateResponse:
+      type: object
+      properties:
+        clientId:
+          type: string
+      required: [clientId]
+
+    SandboxUpdateRequest:
+      type: object
+      properties:
+        sandboxId:
+          type: string
+        endTime:
+          $ref: '#/components/schemas/Timestamp'
+      required: [sandboxId]
+
+    SandboxPauseRequest:
+      type: object
+      properties:
+        sandboxId:
+          type: string
+        templateId:
+          type: string
+        buildId:
+          type: string
+      required: [sandboxId]
+
+    SandboxListResponse:
+      type: object
+      properties:
+        sandboxes:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunningSandbox'
+      required: [sandboxes]
+
+    SandboxConfig:
+      type: object
+      properties:
+        orchestratorId:     { type: string }
+        templateId:         { type: string }
+        buildId:            { type: string }
+        sandboxId:          { type: string }
+        teamId:             { type: string }
+        baseTemplateId:     { type: string }
+        kernelVersion:      { type: string }
+        firecrackerVersion: { type: string }
+        envdVersion:        { type: string }
+        alias:              { type: string }
+        envdAccessToken:    { type: string }
+        snapshot:           { type: boolean }
+        autoPause:          { type: boolean }
+        hugePages:          { type: boolean }
+        ramMB:              { type: integer, format: int64 }
+        vCPU:               { type: integer, format: int64 }
+        totalDiskSizeMB:    { type: integer, format: int64 }
+        maxSandboxLength:   { type: integer, format: int64, description: Maximum duration in hours }
+        envVars:
+          type: object
+          additionalProperties: { type: string }
+        metadata:
+          type: object
+          additionalProperties: { type: string }
+      required: [orchestratorId, templateId, buildId, sandboxId, kernelVersion, firecrackerVersion, envdVersion, hugePages]
+
+    RunningSandbox:
+      type: object
+      properties:
+        config:
+          $ref: '#/components/schemas/SandboxConfig'
+        client_id:
+          type: string
+        start_time:
+          $ref: '#/components/schemas/Timestamp'
+        end_time:
+          $ref: '#/components/schemas/Timestamp'
+
+    Timestamp:
+      type: string
+      format: date-time
+
 tags:
   - name: service-discovery
+  - name: sandboxes
 
 paths:
   /health:
@@ -128,7 +268,10 @@ paths:
 
   /v1/service-discovery/nodes:
     get:
+        operationId: v1ServiceDiscoveryNodes
         description: Get the service discovery information
+        security:
+          - ApiKeyAuth: [ ]
         tags: [service-discovery]
         responses:
           "200":
@@ -147,7 +290,10 @@ paths:
 
   /v1/service-discovery/nodes/{nodeId}/drain:
     post:
+      operationId: v1ServiceDiscoveryNodeDrain
       description: Drain a node
+      security:
+        - ApiKeyAuth: [ ]
       tags: [service-discovery]
       parameters:
         - name: nodeId
@@ -170,7 +316,10 @@ paths:
 
   /v1/service-discovery/nodes/{nodeId}/update:
     post:
+      operationId: v1ServiceDiscoveryNodeUpdate
       description: Update a node with safe draining
+      security:
+        - ApiKeyAuth: [ ]
       tags: [service-discovery]
       parameters:
         - name: nodeId
@@ -190,3 +339,103 @@ paths:
           $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
+
+  /v1/service-discovery/nodes/orchestrators:
+    get:
+      operationId: v1ServiceDiscoveryGetOrchestrators
+      summary: Get the orchestrators
+      security:
+        - ApiKeyAuth: [ ]
+      tags: [service-discovery]
+      responses:
+        "200":
+          description: Successfully returned all orchestrators
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClusterOrchestratorNode"
+
+  /v1/sandboxes:
+    post:
+      operationId: v1CreateSandbox
+      summary: Create a new sandbox
+      security:
+        - ApiKeyAuth: [ ]
+      tags: [sandboxes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SandboxCreateRequest'
+      responses:
+        "201":
+          description: Sandbox created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxCreateResponse'
+
+    get:
+      operationId: v1ListSandboxes
+      summary: List running sandboxes
+      security:
+        - ApiKeyAuth: [ ]
+      tags: [sandboxes]
+      responses:
+        "200":
+          description: List of sandboxes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxListResponse'
+
+  /v1/sandboxes/{sandbox_id}:
+    parameters:
+      - $ref: '#/components/parameters/sandbox_id'
+    patch:
+      operationId: v1UpdateSandbox
+      summary: Update an existing sandbox
+      security:
+        - ApiKeyAuth: [ ]
+      tags: [sandboxes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SandboxUpdateRequest'
+      responses:
+        "204":
+          description: Updated (no content)
+
+    delete:
+      operationId: deleteSandbox
+      summary: Delete a sandbox
+      security:
+        - ApiKeyAuth: [ ]
+      tags: [sandboxes]
+      responses:
+        "204":
+          description: Deleted (no content)
+
+  /v1/sandboxes/{sandbox_id}/pause:
+    parameters:
+      - $ref: '#/components/parameters/sandbox_id'
+    post:
+      operationId: v1PauseSandbox
+      summary: Pause a running sandbox
+      security:
+        - ApiKeyAuth: [ ]
+      tags: [sandboxes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SandboxPauseRequest'
+      responses:
+        "204":
+          description: Paused (no content)

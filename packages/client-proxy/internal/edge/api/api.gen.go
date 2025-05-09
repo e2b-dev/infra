@@ -19,15 +19,33 @@ type ServerInterface interface {
 
 	// (GET /health/traffic)
 	GetHealthTraffic(c *gin.Context)
+	// List running sandboxes
+	// (GET /v1/sandboxes)
+	V1ListSandboxes(c *gin.Context)
+	// Create a new sandbox
+	// (POST /v1/sandboxes)
+	V1CreateSandbox(c *gin.Context)
+	// Delete a sandbox
+	// (DELETE /v1/sandboxes/{sandbox_id})
+	DeleteSandbox(c *gin.Context, sandboxId SandboxId)
+	// Update an existing sandbox
+	// (PATCH /v1/sandboxes/{sandbox_id})
+	V1UpdateSandbox(c *gin.Context, sandboxId SandboxId)
+	// Pause a running sandbox
+	// (POST /v1/sandboxes/{sandbox_id}/pause)
+	V1PauseSandbox(c *gin.Context, sandboxId SandboxId)
 
 	// (GET /v1/service-discovery/nodes)
-	GetV1ServiceDiscoveryNodes(c *gin.Context)
+	V1ServiceDiscoveryNodes(c *gin.Context)
+	// Get the orchestrators
+	// (GET /v1/service-discovery/nodes/orchestrators)
+	V1ServiceDiscoveryGetOrchestrators(c *gin.Context)
 
 	// (POST /v1/service-discovery/nodes/{nodeId}/drain)
-	PostV1ServiceDiscoveryNodesNodeIdDrain(c *gin.Context, nodeId string)
+	V1ServiceDiscoveryNodeDrain(c *gin.Context, nodeId string)
 
 	// (POST /v1/service-discovery/nodes/{nodeId}/update)
-	PostV1ServiceDiscoveryNodesNodeIdUpdate(c *gin.Context, nodeId string)
+	V1ServiceDiscoveryNodeUpdate(c *gin.Context, nodeId string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -65,8 +83,10 @@ func (siw *ServerInterfaceWrapper) GetHealthTraffic(c *gin.Context) {
 	siw.Handler.GetHealthTraffic(c)
 }
 
-// GetV1ServiceDiscoveryNodes operation middleware
-func (siw *ServerInterfaceWrapper) GetV1ServiceDiscoveryNodes(c *gin.Context) {
+// V1ListSandboxes operation middleware
+func (siw *ServerInterfaceWrapper) V1ListSandboxes(c *gin.Context) {
+
+	c.Set(ApiKeyAuthScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -75,11 +95,134 @@ func (siw *ServerInterfaceWrapper) GetV1ServiceDiscoveryNodes(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetV1ServiceDiscoveryNodes(c)
+	siw.Handler.V1ListSandboxes(c)
 }
 
-// PostV1ServiceDiscoveryNodesNodeIdDrain operation middleware
-func (siw *ServerInterfaceWrapper) PostV1ServiceDiscoveryNodesNodeIdDrain(c *gin.Context) {
+// V1CreateSandbox operation middleware
+func (siw *ServerInterfaceWrapper) V1CreateSandbox(c *gin.Context) {
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.V1CreateSandbox(c)
+}
+
+// DeleteSandbox operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSandbox(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandbox_id" -------------
+	var sandboxId SandboxId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandbox_id", c.Param("sandbox_id"), &sandboxId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandbox_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteSandbox(c, sandboxId)
+}
+
+// V1UpdateSandbox operation middleware
+func (siw *ServerInterfaceWrapper) V1UpdateSandbox(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandbox_id" -------------
+	var sandboxId SandboxId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandbox_id", c.Param("sandbox_id"), &sandboxId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandbox_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.V1UpdateSandbox(c, sandboxId)
+}
+
+// V1PauseSandbox operation middleware
+func (siw *ServerInterfaceWrapper) V1PauseSandbox(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "sandbox_id" -------------
+	var sandboxId SandboxId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sandbox_id", c.Param("sandbox_id"), &sandboxId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sandbox_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.V1PauseSandbox(c, sandboxId)
+}
+
+// V1ServiceDiscoveryNodes operation middleware
+func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodes(c *gin.Context) {
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.V1ServiceDiscoveryNodes(c)
+}
+
+// V1ServiceDiscoveryGetOrchestrators operation middleware
+func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.V1ServiceDiscoveryGetOrchestrators(c)
+}
+
+// V1ServiceDiscoveryNodeDrain operation middleware
+func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 
 	var err error
 
@@ -92,6 +235,8 @@ func (siw *ServerInterfaceWrapper) PostV1ServiceDiscoveryNodesNodeIdDrain(c *gin
 		return
 	}
 
+	c.Set(ApiKeyAuthScopes, []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -99,11 +244,11 @@ func (siw *ServerInterfaceWrapper) PostV1ServiceDiscoveryNodesNodeIdDrain(c *gin
 		}
 	}
 
-	siw.Handler.PostV1ServiceDiscoveryNodesNodeIdDrain(c, nodeId)
+	siw.Handler.V1ServiceDiscoveryNodeDrain(c, nodeId)
 }
 
-// PostV1ServiceDiscoveryNodesNodeIdUpdate operation middleware
-func (siw *ServerInterfaceWrapper) PostV1ServiceDiscoveryNodesNodeIdUpdate(c *gin.Context) {
+// V1ServiceDiscoveryNodeUpdate operation middleware
+func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeUpdate(c *gin.Context) {
 
 	var err error
 
@@ -116,6 +261,8 @@ func (siw *ServerInterfaceWrapper) PostV1ServiceDiscoveryNodesNodeIdUpdate(c *gi
 		return
 	}
 
+	c.Set(ApiKeyAuthScopes, []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -123,7 +270,7 @@ func (siw *ServerInterfaceWrapper) PostV1ServiceDiscoveryNodesNodeIdUpdate(c *gi
 		}
 	}
 
-	siw.Handler.PostV1ServiceDiscoveryNodesNodeIdUpdate(c, nodeId)
+	siw.Handler.V1ServiceDiscoveryNodeUpdate(c, nodeId)
 }
 
 // GinServerOptions provides options for the Gin server.
@@ -155,7 +302,13 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 
 	router.GET(options.BaseURL+"/health", wrapper.GetHealth)
 	router.GET(options.BaseURL+"/health/traffic", wrapper.GetHealthTraffic)
-	router.GET(options.BaseURL+"/v1/service-discovery/nodes", wrapper.GetV1ServiceDiscoveryNodes)
-	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeId/drain", wrapper.PostV1ServiceDiscoveryNodesNodeIdDrain)
-	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeId/update", wrapper.PostV1ServiceDiscoveryNodesNodeIdUpdate)
+	router.GET(options.BaseURL+"/v1/sandboxes", wrapper.V1ListSandboxes)
+	router.POST(options.BaseURL+"/v1/sandboxes", wrapper.V1CreateSandbox)
+	router.DELETE(options.BaseURL+"/v1/sandboxes/:sandbox_id", wrapper.DeleteSandbox)
+	router.PATCH(options.BaseURL+"/v1/sandboxes/:sandbox_id", wrapper.V1UpdateSandbox)
+	router.POST(options.BaseURL+"/v1/sandboxes/:sandbox_id/pause", wrapper.V1PauseSandbox)
+	router.GET(options.BaseURL+"/v1/service-discovery/nodes", wrapper.V1ServiceDiscoveryNodes)
+	router.GET(options.BaseURL+"/v1/service-discovery/nodes/orchestrators", wrapper.V1ServiceDiscoveryGetOrchestrators)
+	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeId/drain", wrapper.V1ServiceDiscoveryNodeDrain)
+	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeId/update", wrapper.V1ServiceDiscoveryNodeUpdate)
 }
