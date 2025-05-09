@@ -111,7 +111,9 @@ resource "nomad_job" "client_proxy" {
       gcp_zone             = var.gcp_zone
       port_name            = var.client_proxy_port.name
       port_number          = var.client_proxy_port.port
-      edge_api_port_nunber = var.client_proxy_edge_api_port.port
+      edge_api_port_name   = var.client_proxy_edge_api_port.name
+      edge_api_port_number = var.client_proxy_edge_api_port.port
+      redis_url            = "redis://redis.service.consul:${var.redis_port.port}"
       environment          = var.environment
 
       image_name = var.client_proxy_docker_image_digest
