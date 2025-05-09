@@ -59,26 +59,32 @@ type ClusterNodeType string
 
 // ClusterOrchestratorNode defines model for ClusterOrchestratorNode.
 type ClusterOrchestratorNode struct {
+	// CanBuild Whether the node can be used for template building
+	CanBuild bool `json:"canBuild"`
+
+	// CanSpawn Whether the node can be used for sandbox spawning
+	CanSpawn bool `json:"canSpawn"`
+
+	// MetricDiskMBUsed Amount of disk space currently used in MB
+	MetricDiskMBUsed int64 `json:"metricDiskMBUsed"`
+
+	// MetricRamMBUsed Amount of RAM currently used in MB
+	MetricRamMBUsed int64 `json:"metricRamMBUsed"`
+
+	// MetricSandboxesRunning Amount of disk space currently used in MB
+	MetricSandboxesRunning int64 `json:"metricSandboxesRunning"`
+
+	// MetricVCpuUsed Number of vCPUs currently in use
+	MetricVCpuUsed int64 `json:"metricVCpuUsed"`
+
 	// NodeId Node ID
 	NodeId string `json:"nodeId"`
 
 	// NodeStatus State of the cluster node
 	NodeStatus ClusterNodeStatus `json:"nodeStatus"`
 
-	// NodeVersion Version of the node
+	// NodeVersion Node Version
 	NodeVersion string `json:"nodeVersion"`
-
-	// RamMBTotal Total amount of available RAM in MB
-	RamMBTotal int64 `json:"ramMBTotal"`
-
-	// RamMBUsed Amount of RAM currently used in MB
-	RamMBUsed int64 `json:"ramMBUsed"`
-
-	// VCpuTotal Total number of available vCPUs
-	VCpuTotal int64 `json:"vCpuTotal"`
-
-	// VCpuUsed Number of vCPUs currently in use
-	VCpuUsed int64 `json:"vCpuUsed"`
 }
 
 // Error defines model for Error.
@@ -94,8 +100,8 @@ type Error struct {
 type RunningSandbox struct {
 	ClientId  *string        `json:"client_id,omitempty"`
 	Config    *SandboxConfig `json:"config,omitempty"`
-	EndTime   *Timestamp     `json:"end_time,omitempty"`
-	StartTime *Timestamp     `json:"start_time,omitempty"`
+	EndEime   *Timestamp     `json:"endEime,omitempty"`
+	StartTime *Timestamp     `json:"startTime,omitempty"`
 }
 
 // SandboxConfig defines model for SandboxConfig.
@@ -143,15 +149,13 @@ type SandboxListResponse struct {
 
 // SandboxPauseRequest defines model for SandboxPauseRequest.
 type SandboxPauseRequest struct {
-	BuildId    *string `json:"buildId,omitempty"`
-	SandboxId  string  `json:"sandboxId"`
-	TemplateId *string `json:"templateId,omitempty"`
+	BuildId    string `json:"buildId"`
+	TemplateId string `json:"templateId"`
 }
 
 // SandboxUpdateRequest defines model for SandboxUpdateRequest.
 type SandboxUpdateRequest struct {
-	EndTime   *Timestamp `json:"endTime,omitempty"`
-	SandboxId string     `json:"sandboxId"`
+	EndTime Timestamp `json:"endTime"`
 }
 
 // Timestamp defines model for Timestamp.
