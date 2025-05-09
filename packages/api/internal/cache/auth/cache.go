@@ -2,6 +2,7 @@ package autchcache
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -52,7 +53,7 @@ func (c *TeamAuthCache) GetOrSet(ctx context.Context, key string, dataCallback D
 	if item == nil {
 		team, tier, err = dataCallback(ctx, key)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("error while getting the team: %w", err)
 		}
 
 		templateInfo = &TeamInfo{team: team, tier: tier, lastRefresh: time.Now()}
