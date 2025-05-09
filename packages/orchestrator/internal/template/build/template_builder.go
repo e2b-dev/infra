@@ -2,7 +2,6 @@ package build
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -138,12 +137,15 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 		localTemplate,
 		sbxTimeout,
 	)
+	defer func() {
+		cleanupErr := cleanup.Run(ctx)
+		if cleanupErr != nil {
+			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
+		}
+	}()
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error creating sandbox: %v", err))
-		cleanupErr := cleanup.Run(ctx)
-
-		errMsg := fmt.Errorf("error creating sandbox: %w", err)
-		return errors.Join(errMsg, cleanupErr)
+		return fmt.Errorf("error creating sandbox: %w", err)
 	}
 
 	// Remove build files if build fails or times out

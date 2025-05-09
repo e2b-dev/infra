@@ -16,10 +16,8 @@ type NoopMemory struct {
 func NewNoopMemory(size, blockSize int64) *NoopMemory {
 	blocks := header.TotalBlocks(size, blockSize)
 
-	dirty := bitset.New(0)
-	for i := int64(0); i < blocks; i++ {
-		dirty.Set(uint(i))
-	}
+	dirty := bitset.New(uint(blocks))
+	dirty.FlipRange(0, dirty.Len())
 
 	return &NoopMemory{
 		size:      size,
