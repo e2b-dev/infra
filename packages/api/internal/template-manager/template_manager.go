@@ -30,7 +30,7 @@ type TemplateManager struct {
 	buildCache *templatecache.TemplatesBuildCache
 }
 
-var (
+const (
 	syncInterval             = time.Minute * 1
 	syncTimeout              = time.Minute * 15
 	syncWaitingStateDeadline = time.Minute * 20
