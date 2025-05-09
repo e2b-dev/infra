@@ -100,7 +100,7 @@ components:
       type: string
       description: Cluster node type
       enum:
-        - compute
+        - orchestrator
         - edge
 
     ClusterOrchestratorNode:
