@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/orchestrators"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/updater"
 	servicediscovery "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -17,21 +17,24 @@ import (
 type APIStore struct {
 	healthStatus api.ClusterNodeStatus
 
-	selfUpdateHandler *func() updater.UpdaterResponse
+	selfUpdateHandler *func() error
 	selfDrainHandler  *func() error
 
-	logger            *zap.Logger
+	tracer trace.Tracer
+	logger *zap.Logger
+
 	serviceDiscovery  servicediscovery.ServiceDiscoveryAdapter
 	orchestratorsPool *orchestrators.Pool
 }
 
-func NewStore(serviceDiscovery servicediscovery.ServiceDiscoveryAdapter, logger *zap.Logger, selfUpdateHandler *func() updater.UpdaterResponse, selfDrainHandler *func() error) (*APIStore, error) {
-	pool := orchestrators.NewOrchestratorsPool(context.TODO(), logger, serviceDiscovery)
+func NewStore(ctx context.Context, serviceDiscovery servicediscovery.ServiceDiscoveryAdapter, logger *zap.Logger, tracer trace.Tracer, selfUpdateHandler *func() error, selfDrainHandler *func() error) (*APIStore, error) {
+	pool := orchestrators.NewOrchestratorsPool(ctx, logger, serviceDiscovery, tracer)
 
 	return &APIStore{
 		serviceDiscovery:  serviceDiscovery,
 		orchestratorsPool: pool,
 
+		tracer:       tracer,
 		logger:       logger,
 		healthStatus: api.Healthy,
 
