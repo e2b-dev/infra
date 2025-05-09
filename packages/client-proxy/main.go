@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -26,7 +27,8 @@ import (
 )
 
 const (
-	ServiceName = "client-proxy"
+	ServiceName        = "client-proxy"
+	TracingServiceName = "edge-api"
 
 	edgePort  = 3001
 	proxyPort = 3002
@@ -95,7 +97,9 @@ func run() int {
 		sigCancel() // trigger shutdown workflow
 	}
 
-	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, &edgeApiDrainingHandler)
+	tracer := otel.Tracer(TracingServiceName)
+
+	edgeApiStore, err := edge.NewEdgeAPIStore(ctx, logger, tracer, &edgeApiDrainingHandler)
 	if err != nil {
 		logger.Error("failed to create edge api store", zap.Error(err))
 		return 1
