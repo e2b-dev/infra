@@ -220,12 +220,12 @@ func run(port, reverseProxyPort, forwardProxyPort uint) (success bool) {
 	}
 
 	g.Go(func() error {
-		zap.L().Info("Starting reverse sandbox proxy (session proxy)")
+		zap.L().Info("Starting reverse sandbox proxy (session proxy)", zap.Uint("port", reverseProxyPort))
 		return sandboxReverseProxy.Start()
 	})
 
 	g.Go(func() error {
-		zap.L().Info("Starting forward sandbox proxy")
+		zap.L().Info("Starting forward sandbox proxy", zap.Uint("port", forwardProxyPort))
 		return sandboxForwardProxy.Start()
 	})
 

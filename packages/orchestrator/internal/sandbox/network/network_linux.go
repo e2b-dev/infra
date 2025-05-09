@@ -238,13 +238,13 @@ func (s *Slot) CreateNetwork(forwardProxyPort uint) error {
 	}
 
 	// Redirect HTTP traffic to forward proxy
-	err = tables.Append("nat", "PREROUTING", "-i", s.VpeerName(), "-p", "tcp", "--dport", "80", "-j", "REDIRECT", "--to-port", fmt.Sprintf("%d", forwardProxyPort))
+	err = tables.Append("nat", "PREROUTING", "-i", s.VethName(), "-p", "tcp", "--dport", "80", "-j", "REDIRECT", "--to-port", fmt.Sprintf("%d", forwardProxyPort))
 	if err != nil {
 		return fmt.Errorf("error adding HTTP redirect rule: %w", err)
 	}
 
 	// Redirect HTTPS traffic to forward proxy
-	err = tables.Append("nat", "PREROUTING", "-i", s.VpeerName(), "-p", "tcp", "--dport", "443", "-j", "REDIRECT", "--to-port", fmt.Sprintf("%d", forwardProxyPort))
+	err = tables.Append("nat", "PREROUTING", "-i", s.VethName(), "-p", "tcp", "--dport", "443", "-j", "REDIRECT", "--to-port", fmt.Sprintf("%d", forwardProxyPort))
 	if err != nil {
 		return fmt.Errorf("error adding HTTPS redirect rule: %w", err)
 	}
