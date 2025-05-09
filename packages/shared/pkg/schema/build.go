@@ -32,7 +32,7 @@ func (EnvBuild) Fields() []ent.Field {
 		field.Time("updated_at").Default(time.Now),
 		field.Time("finished_at").Optional().Nillable(),
 		field.String("env_id").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
-		field.Enum("status").Values("waiting", "building", "failed", "success", "uploaded").Default("waiting").SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.Enum("status").Values("waiting", "building", "snapshotting", "failed", "success", "uploaded").Default("waiting").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("dockerfile").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
 		field.String("start_cmd").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
 		field.Int64("vcpu"),

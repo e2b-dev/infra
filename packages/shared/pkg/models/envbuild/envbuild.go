@@ -104,11 +104,12 @@ const DefaultStatus = StatusWaiting
 
 // Status values.
 const (
-	StatusWaiting  Status = "waiting"
-	StatusBuilding Status = "building"
-	StatusFailed   Status = "failed"
-	StatusSuccess  Status = "success"
-	StatusUploaded Status = "uploaded"
+	StatusWaiting      Status = "waiting"
+	StatusBuilding     Status = "building"
+	StatusSnapshotting Status = "snapshotting"
+	StatusFailed       Status = "failed"
+	StatusSuccess      Status = "success"
+	StatusUploaded     Status = "uploaded"
 )
 
 func (s Status) String() string {
@@ -118,7 +119,7 @@ func (s Status) String() string {
 // StatusValidator is a validator for the "status" field enum values. It is called by the builders before save.
 func StatusValidator(s Status) error {
 	switch s {
-	case StatusWaiting, StatusBuilding, StatusFailed, StatusSuccess, StatusUploaded:
+	case StatusWaiting, StatusBuilding, StatusSnapshotting, StatusFailed, StatusSuccess, StatusUploaded:
 		return nil
 	default:
 		return fmt.Errorf("envbuild: invalid enum value for status field: %q", s)
