@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+const (
+	ApiKeyAuthScopes = "ApiKeyAuth.Scopes"
+)
+
 // Defines values for ClusterNodeStatus.
 const (
 	Draining  ClusterNodeStatus = "draining"
@@ -53,6 +57,30 @@ type ClusterNodeStatus string
 // ClusterNodeType Cluster node type
 type ClusterNodeType string
 
+// ClusterOrchestratorNode defines model for ClusterOrchestratorNode.
+type ClusterOrchestratorNode struct {
+	// NodeId Node ID
+	NodeId string `json:"nodeId"`
+
+	// NodeStatus State of the cluster node
+	NodeStatus ClusterNodeStatus `json:"nodeStatus"`
+
+	// NodeVersion Version of the node
+	NodeVersion string `json:"nodeVersion"`
+
+	// RamMBTotal Total amount of available RAM in MB
+	RamMBTotal int64 `json:"ramMBTotal"`
+
+	// RamMBUsed Amount of RAM currently used in MB
+	RamMBUsed int64 `json:"ramMBUsed"`
+
+	// VCpuTotal Total number of available vCPUs
+	VCpuTotal int64 `json:"vCpuTotal"`
+
+	// VCpuUsed Number of vCPUs currently in use
+	VCpuUsed int64 `json:"vCpuUsed"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	// Code Error code
@@ -61,6 +89,76 @@ type Error struct {
 	// Message Error
 	Message string `json:"message"`
 }
+
+// RunningSandbox defines model for RunningSandbox.
+type RunningSandbox struct {
+	ClientId  *string        `json:"client_id,omitempty"`
+	Config    *SandboxConfig `json:"config,omitempty"`
+	EndTime   *Timestamp     `json:"end_time,omitempty"`
+	StartTime *Timestamp     `json:"start_time,omitempty"`
+}
+
+// SandboxConfig defines model for SandboxConfig.
+type SandboxConfig struct {
+	Alias              *string            `json:"alias,omitempty"`
+	AutoPause          *bool              `json:"autoPause,omitempty"`
+	BaseTemplateId     *string            `json:"baseTemplateId,omitempty"`
+	BuildId            string             `json:"buildId"`
+	EnvVars            *map[string]string `json:"envVars,omitempty"`
+	EnvdAccessToken    *string            `json:"envdAccessToken,omitempty"`
+	EnvdVersion        string             `json:"envdVersion"`
+	FirecrackerVersion string             `json:"firecrackerVersion"`
+	HugePages          bool               `json:"hugePages"`
+	KernelVersion      string             `json:"kernelVersion"`
+
+	// MaxSandboxLength Maximum duration in hours
+	MaxSandboxLength *int64             `json:"maxSandboxLength,omitempty"`
+	Metadata         *map[string]string `json:"metadata,omitempty"`
+	OrchestratorId   string             `json:"orchestratorId"`
+	RamMB            *int64             `json:"ramMB,omitempty"`
+	SandboxId        string             `json:"sandboxId"`
+	Snapshot         *bool              `json:"snapshot,omitempty"`
+	TeamId           *string            `json:"teamId,omitempty"`
+	TemplateId       string             `json:"templateId"`
+	TotalDiskSizeMB  *int64             `json:"totalDiskSizeMB,omitempty"`
+	VCPU             *int64             `json:"vCPU,omitempty"`
+}
+
+// SandboxCreateRequest defines model for SandboxCreateRequest.
+type SandboxCreateRequest struct {
+	EndTime   *Timestamp    `json:"endTime,omitempty"`
+	Sandbox   SandboxConfig `json:"sandbox"`
+	StartTime *Timestamp    `json:"startTime,omitempty"`
+}
+
+// SandboxCreateResponse defines model for SandboxCreateResponse.
+type SandboxCreateResponse struct {
+	ClientId string `json:"clientId"`
+}
+
+// SandboxListResponse defines model for SandboxListResponse.
+type SandboxListResponse struct {
+	Sandboxes []RunningSandbox `json:"sandboxes"`
+}
+
+// SandboxPauseRequest defines model for SandboxPauseRequest.
+type SandboxPauseRequest struct {
+	BuildId    *string `json:"buildId,omitempty"`
+	SandboxId  string  `json:"sandboxId"`
+	TemplateId *string `json:"templateId,omitempty"`
+}
+
+// SandboxUpdateRequest defines model for SandboxUpdateRequest.
+type SandboxUpdateRequest struct {
+	EndTime   *Timestamp `json:"endTime,omitempty"`
+	SandboxId string     `json:"sandboxId"`
+}
+
+// Timestamp defines model for Timestamp.
+type Timestamp = time.Time
+
+// SandboxId defines model for sandbox_id.
+type SandboxId = string
 
 // N400 defines model for 400.
 type N400 = Error
@@ -73,3 +171,12 @@ type N404 = Error
 
 // N500 defines model for 500.
 type N500 = Error
+
+// V1CreateSandboxJSONRequestBody defines body for V1CreateSandbox for application/json ContentType.
+type V1CreateSandboxJSONRequestBody = SandboxCreateRequest
+
+// V1UpdateSandboxJSONRequestBody defines body for V1UpdateSandbox for application/json ContentType.
+type V1UpdateSandboxJSONRequestBody = SandboxUpdateRequest
+
+// V1PauseSandboxJSONRequestBody defines body for V1PauseSandbox for application/json ContentType.
+type V1PauseSandboxJSONRequestBody = SandboxPauseRequest
