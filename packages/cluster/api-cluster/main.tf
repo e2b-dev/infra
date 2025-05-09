@@ -24,10 +24,9 @@ resource "google_compute_instance_group_manager" "api_cluster" {
     instance_template = google_compute_instance_template.api.id
   }
 
-
   named_port {
-    name = var.client_proxy_health_port.name
-    port = var.client_proxy_health_port.port
+    name = var.client_proxy_edge_api_port.name
+    port = var.client_proxy_edge_api_port.port
   }
 
   named_port {

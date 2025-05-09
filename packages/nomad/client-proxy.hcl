@@ -10,8 +10,8 @@ job "client-proxy" {
         static = "${port_number}"
       }
 
-      port "health" {
-        static = "${health_port_number}"
+      port "edge_api" {
+        static = "${edge_api_port_nunber}"
       }
     }
 
@@ -19,14 +19,27 @@ job "client-proxy" {
       name = "proxy"
       port = "${port_name}"
 
+      check {
+        type     = "http"
+        name     = "health"
+        path     = "/health"
+        interval = "3s"
+        timeout  = "3s"
+        port     = "edge_api"
+      }
+    }
+
+    service {
+      name = "api"
+      port = "${edge_api_port_nunber}"
 
       check {
         type     = "http"
         name     = "health"
-        path     = "/"
+        path     = "/health"
         interval = "3s"
         timeout  = "3s"
-        port     = "health"
+        port     = "edge_api"
       }
     }
 
