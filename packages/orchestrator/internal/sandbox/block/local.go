@@ -42,8 +42,8 @@ func NewLocal(path string, blockSize int64, buildID uuid.UUID) (*Local, error) {
 
 	h := header.NewHeader(header.NewTemplateMetadata(
 		buildID,
-		uint64(info.Size()),
 		uint64(blockSize),
+		uint64(info.Size()),
 	), nil)
 
 	return &Local{
