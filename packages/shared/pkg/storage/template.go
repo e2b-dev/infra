@@ -106,22 +106,6 @@ func (t *TemplateFiles) BuildDir() string {
 	return filepath.Join(EnvsDisk, t.TemplateId, buildDirName, t.BuildId)
 }
 
-func (t *TemplateFiles) BuildMemfilePath() string {
-	return filepath.Join(t.BuildDir(), MemfileName)
-}
-
 func (t *TemplateFiles) BuildRootfsPath() string {
 	return filepath.Join(t.BuildDir(), RootfsName)
-}
-
-func (t *TemplateFiles) BuildMemfileDiffPath() string {
-	return filepath.Join(t.BuildDir(), fmt.Sprintf("%s.diff", MemfileName))
-}
-
-func (t *TemplateFiles) BuildRootfsDiffPath() string {
-	return filepath.Join(t.BuildDir(), fmt.Sprintf("%s.diff", RootfsName))
-}
-
-func (t *TemplateFiles) BuildSnapfilePath() string {
-	return filepath.Join(t.BuildDir(), SnapfileName)
 }

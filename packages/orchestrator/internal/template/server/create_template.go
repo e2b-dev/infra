@@ -44,7 +44,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: config.BuildID}),
 	)
 
-	template := &build.Env{
+	template := &build.TemplateConfig{
 		TemplateFiles: storage.NewTemplateFiles(
 			config.TemplateID,
 			config.BuildID,
@@ -76,9 +76,11 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 		err = s.builder.Build(buildContext, template, config.TemplateID, config.BuildID)
 		if err != nil {
+			telemetry.ReportCriticalError(ctx, err)
+
 			cacheErr := s.buildCache.SetFailed(config.TemplateID, config.BuildID)
 			if cacheErr != nil {
-				s.logger.Error("Error during failing template build in cache", zap.Error(err))
+				s.logger.Error("Error while setting build state to failed", zap.Error(err))
 			}
 
 			s.logger.Error("Error while building template", zap.Error(err))

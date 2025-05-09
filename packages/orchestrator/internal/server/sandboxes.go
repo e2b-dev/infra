@@ -337,7 +337,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 		err = <-b.Upload(
 			context.Background(),
-			snapshotTemplateFiles.CacheSnapfilePath(),
+			snapshot.Snapfile.Path(),
 			memfilePath,
 			rootfsPath,
 		)

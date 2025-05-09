@@ -19,14 +19,14 @@ type TemplateCacheFiles struct {
 	CacheIdentifier string
 }
 
-func (f *TemplateFiles) NewTemplateCacheFiles() (*TemplateCacheFiles, error) {
+func (c *TemplateFiles) NewTemplateCacheFiles() (*TemplateCacheFiles, error) {
 	identifier, err := uuid.NewRandom()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate identifier: %w", err)
 	}
 
 	tcf := &TemplateCacheFiles{
-		TemplateFiles:   f,
+		TemplateFiles:   c,
 		CacheIdentifier: identifier.String(),
 	}
 

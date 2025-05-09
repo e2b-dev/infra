@@ -310,7 +310,7 @@ func (p *Process) Create(
 
 	// Machine Config
 	// hack for 16GB RAM templates
-	// todo fixme
+	// TODO: Remove this in place of Tiers
 	// customer template id raocbwn4f2mtdrjuajsx
 	if templateID == "raocbwn4f2mtdrjuajsx" {
 		memoryMB = 16384 // 16 GB

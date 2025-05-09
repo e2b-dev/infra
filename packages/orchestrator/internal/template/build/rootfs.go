@@ -38,6 +38,8 @@ const (
 	// Max size of the rootfs file in MB.
 	maxRootfsSize = 15000 << ToMBShift
 	cacheTimeout  = "48h"
+
+	rootfsBuildFileName = "rootfs.ext4.build"
 )
 
 var authConfig = registry.AuthConfig{
@@ -49,7 +51,7 @@ type Rootfs struct {
 	client       *client.Client
 	legacyClient *docker.Client
 
-	env *Env
+	env *TemplateConfig
 }
 
 type MultiWriter struct {
@@ -67,7 +69,7 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func NewRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, env *Env, docker *client.Client, legacyDocker *docker.Client, rootfsBuildDir string) (string, error) {
+func NewRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, env *TemplateConfig, docker *client.Client, legacyDocker *docker.Client, rootfsBuildDir string) (string, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-rootfs")
 	defer childSpan.End()
 
@@ -182,7 +184,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 		FcAddress   string
 		MemoryLimit int
 	}{
-		// TODO: use slot instead of hardcoded value
+		// TODO: use slot instead of a hardcoded value
 		FcAddress:   "169.254.0.21",
 		EnvID:       r.env.TemplateId,
 		BuildID:     r.env.BuildId,
@@ -450,8 +452,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	}
 
 	postProcessor.WriteMsg("Extracting file system")
-	// TODO: Better file/path definition
-	rootfsPath := filepath.Join(rootfsBuildDir, "rootfs.ext4.build")
+	rootfsPath := filepath.Join(rootfsBuildDir, rootfsBuildFileName)
 	rootfsFile, err := os.Create(rootfsPath)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs file: %w", err)
