@@ -110,33 +110,41 @@ components:
           description: Node ID
         nodeVersion:
           type: string
-          description: Version of the node
+          description: Node Version
         nodeStatus:
           $ref: "#/components/schemas/ClusterNodeStatus"
-        vCpuUsed:
+        metricVCpuUsed:
           type: integer
           format: int64
           description: Number of vCPUs currently in use
-        vCpuTotal:
-          type: integer
-          format: int64
-          description: Total number of available vCPUs
-        ramMBUsed:
+        metricRamMBUsed:
           type: integer
           format: int64
           description: Amount of RAM currently used in MB
-        ramMBTotal:
+        metricDiskMBUsed:
           type: integer
           format: int64
-          description: Total amount of available RAM in MB
+          description: Amount of disk space currently used in MB
+        metricSandboxesRunning:
+          type: integer
+          format: int64
+          description: Amount of disk space currently used in MB
+        canSpawn:
+          type: boolean
+          description: Whether the node can be used for sandbox spawning
+        canBuild:
+          type: boolean
+          description: Whether the node can be used for template building
       required:
         - nodeId
         - nodeVersion
         - nodeStatus
-        - vCpuUsed
-        - vCpuTotal
-        - ramMBUsed
-        - ramMBTotal
+        - metricVCpuUsed
+        - metricRamMBUsed
+        - metricDiskMBUsed
+        - metricSandboxesRunning
+        - canSpawn
+        - canBuild
 
     Error:
       required:
@@ -172,22 +180,18 @@ components:
     SandboxUpdateRequest:
       type: object
       properties:
-        sandboxId:
-          type: string
         endTime:
           $ref: '#/components/schemas/Timestamp'
-      required: [sandboxId]
+      required: [endTime]
 
     SandboxPauseRequest:
       type: object
       properties:
-        sandboxId:
-          type: string
         templateId:
           type: string
         buildId:
           type: string
-      required: [sandboxId]
+      required: [templateId, buildId]
 
     SandboxListResponse:
       type: object
@@ -234,9 +238,9 @@ components:
           $ref: '#/components/schemas/SandboxConfig'
         client_id:
           type: string
-        start_time:
+        startTime:
           $ref: '#/components/schemas/Timestamp'
-        end_time:
+        endEime:
           $ref: '#/components/schemas/Timestamp'
 
     Timestamp:
