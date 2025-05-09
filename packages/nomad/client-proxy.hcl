@@ -10,8 +10,8 @@ job "client-proxy" {
         static = "${port_number}"
       }
 
-      port "edge_api" {
-        static = "${edge_api_port_nunber}"
+      port "${edge_api_port_name}" {
+        static = "${edge_api_port_number}"
       }
     }
 
@@ -25,13 +25,13 @@ job "client-proxy" {
         path     = "/health"
         interval = "3s"
         timeout  = "3s"
-        port     = "edge_api"
+        port     = "${edge_api_port_name}"
       }
     }
 
     service {
-      name = "api"
-      port = "${edge_api_port_nunber}"
+      name = "edge-api"
+      port = "${edge_api_port_number}"
 
       check {
         type     = "http"
@@ -39,7 +39,7 @@ job "client-proxy" {
         path     = "/health"
         interval = "3s"
         timeout  = "3s"
-        port     = "edge_api"
+        port     = "${edge_api_port_name}"
       }
     }
 
@@ -79,17 +79,18 @@ job "client-proxy" {
       env {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
+        REDIS_URL                     = "${redis_url}"
 
-%{ if launch_darkly_api_key != "" }
+        %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
-%{ endif }
+        %{ endif }
       }
 
       config {
         network_mode = "host"
         image        = "${image_name}"
-        ports        = ["${port_name}"]
-        args         = ["--port", "${port_number}"]
+        ports        = ["${port_name}", "${edge_api_port_name}"]
+        args         = ["--port", "${edge_api_port_number} --port-proxy ${port_number}"]
       }
     }
   }
