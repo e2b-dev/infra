@@ -11,10 +11,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const securityErrPrefix = "error in openapi3filter.SecurityRequirementsError: security requirements failed: "
+const (
+	securityErrPrefix  = "error in openapi3filter.SecurityRequirementsError: security requirements failed: "
+	forbiddenErrPrefix = "team forbidden: "
+)
 
 func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	var errMsg error
@@ -40,6 +44,19 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	telemetry.ReportError(ctx, errMsg)
 
 	c.Error(errMsg)
+
+	// Handle forbidden errors
+	if strings.HasPrefix(message, forbiddenErrPrefix) {
+		c.AbortWithStatusJSON(
+			http.StatusForbidden,
+			gin.H{
+				"code":    http.StatusForbidden,
+				"message": strings.TrimPrefix(message, forbiddenErrPrefix),
+			},
+		)
+
+		return
+	}
 
 	// Handle security requirements errors from the openapi3filter
 	if strings.HasPrefix(message, securityErrPrefix) {
@@ -78,10 +95,15 @@ func MultiErrorHandler(me openapi3.MultiError) error {
 		unwrapped := e.Errors
 		err = unwrapped[0]
 
+		var teamForbidden *db.TeamForbiddenError
 		// Return only the first non-missing authorization header error (if possible)
 		for _, errW := range unwrapped {
 			if errors.Is(errW, auth.ErrNoAuthHeader) {
 				continue
+			}
+
+			if errors.As(errW, &teamForbidden) {
+				return fmt.Errorf("%s%s", forbiddenErrPrefix, err.Error())
 			}
 
 			err = errW

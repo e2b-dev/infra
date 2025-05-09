@@ -53,7 +53,7 @@ func (c *TeamAuthCache) GetOrSet(ctx context.Context, key string, dataCallback D
 	if item == nil {
 		team, tier, err = dataCallback(ctx, key)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get the team from db for a key: %w", err)
+			return nil, nil, fmt.Errorf("error while getting the team: %w", err)
 		}
 
 		templateInfo = &TeamInfo{team: team, tier: tier, lastRefresh: time.Now()}
