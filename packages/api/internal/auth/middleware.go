@@ -93,7 +93,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 
 		var forbiddenError *db.TeamForbiddenError
 		if errors.As(validationError.Err, &forbiddenError) {
-			return validationError.Err
+			return fmt.Errorf("Forbidden: %w", validationError.Err)
 		}
 
 		return fmt.Errorf("%s\n%s (%w)", a.errorMessage, validationError.ClientMsg, validationError.Err)

@@ -387,7 +387,7 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) 
 	if errors.Is(err, &db.TeamForbiddenError{}) {
 		return authcache.AuthTeamInfo{}, &api.APIError{
 			Err:       fmt.Errorf("failed getting team: %w", err),
-			ClientMsg: err.Error(),
+			ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
 			Code:      http.StatusUnauthorized,
 		}
 	}
