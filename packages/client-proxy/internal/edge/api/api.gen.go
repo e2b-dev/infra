@@ -27,7 +27,7 @@ type ServerInterface interface {
 	V1CreateSandbox(c *gin.Context)
 	// Delete a sandbox
 	// (DELETE /v1/sandboxes/{sandbox_id})
-	DeleteSandbox(c *gin.Context, sandboxId SandboxId)
+	V1DeleteSandbox(c *gin.Context, sandboxId SandboxId)
 	// Update an existing sandbox
 	// (PATCH /v1/sandboxes/{sandbox_id})
 	V1UpdateSandbox(c *gin.Context, sandboxId SandboxId)
@@ -113,8 +113,8 @@ func (siw *ServerInterfaceWrapper) V1CreateSandbox(c *gin.Context) {
 	siw.Handler.V1CreateSandbox(c)
 }
 
-// DeleteSandbox operation middleware
-func (siw *ServerInterfaceWrapper) DeleteSandbox(c *gin.Context) {
+// V1DeleteSandbox operation middleware
+func (siw *ServerInterfaceWrapper) V1DeleteSandbox(c *gin.Context) {
 
 	var err error
 
@@ -136,7 +136,7 @@ func (siw *ServerInterfaceWrapper) DeleteSandbox(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteSandbox(c, sandboxId)
+	siw.Handler.V1DeleteSandbox(c, sandboxId)
 }
 
 // V1UpdateSandbox operation middleware
@@ -304,7 +304,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/health/traffic", wrapper.GetHealthTraffic)
 	router.GET(options.BaseURL+"/v1/sandboxes", wrapper.V1ListSandboxes)
 	router.POST(options.BaseURL+"/v1/sandboxes", wrapper.V1CreateSandbox)
-	router.DELETE(options.BaseURL+"/v1/sandboxes/:sandbox_id", wrapper.DeleteSandbox)
+	router.DELETE(options.BaseURL+"/v1/sandboxes/:sandbox_id", wrapper.V1DeleteSandbox)
 	router.PATCH(options.BaseURL+"/v1/sandboxes/:sandbox_id", wrapper.V1UpdateSandbox)
 	router.POST(options.BaseURL+"/v1/sandboxes/:sandbox_id/pause", wrapper.V1PauseSandbox)
 	router.GET(options.BaseURL+"/v1/service-discovery/nodes", wrapper.V1ServiceDiscoveryNodes)
