@@ -20,8 +20,8 @@ const (
 
 // Defines values for ClusterNodeType.
 const (
-	Compute ClusterNodeType = "compute"
-	Edge    ClusterNodeType = "edge"
+	Edge         ClusterNodeType = "edge"
+	Orchestrator ClusterNodeType = "orchestrator"
 )
 
 // ClusterNode defines model for ClusterNode.
