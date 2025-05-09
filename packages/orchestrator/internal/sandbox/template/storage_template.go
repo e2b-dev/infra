@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -14,8 +15,8 @@ import (
 type storageTemplate struct {
 	files *storage.TemplateCacheFiles
 
-	memfile  *utils.SetOnce[*Storage]
-	rootfs   *utils.SetOnce[*Storage]
+	memfile  *utils.SetOnce[block.ReadonlyDevice]
+	rootfs   *utils.SetOnce[block.ReadonlyDevice]
 	snapfile *utils.SetOnce[File]
 
 	memfileHeader *header.Header
@@ -51,8 +52,8 @@ func newTemplateFromStorage(
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
 		persistence:   persistence,
-		memfile:       utils.NewSetOnce[*Storage](),
-		rootfs:        utils.NewSetOnce[*Storage](),
+		memfile:       utils.NewSetOnce[block.ReadonlyDevice](),
+		rootfs:        utils.NewSetOnce[block.ReadonlyDevice](),
 		snapfile:      utils.NewSetOnce[File](),
 	}, nil
 }
@@ -136,11 +137,11 @@ func (t *storageTemplate) Files() *storage.TemplateCacheFiles {
 	return t.files
 }
 
-func (t *storageTemplate) Memfile() (*Storage, error) {
+func (t *storageTemplate) Memfile() (block.ReadonlyDevice, error) {
 	return t.memfile.Wait()
 }
 
-func (t *storageTemplate) Rootfs() (*Storage, error) {
+func (t *storageTemplate) Rootfs() (block.ReadonlyDevice, error) {
 	return t.rootfs.Wait()
 }
 

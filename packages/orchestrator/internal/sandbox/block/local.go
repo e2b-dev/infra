@@ -6,7 +6,10 @@ import (
 	"os"
 
 	"github.com/edsrzf/mmap-go"
+	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type Local struct {
@@ -15,9 +18,11 @@ type Local struct {
 	path string
 
 	blockSize int64
+
+	header *header.Header
 }
 
-func NewLocal(path string, blockSize int64) (*Local, error) {
+func NewLocal(path string, blockSize int64, buildID uuid.UUID) (*Local, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY, os.ModePerm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -35,11 +40,18 @@ func NewLocal(path string, blockSize int64) (*Local, error) {
 		return nil, fmt.Errorf("failed to map region: %w", err)
 	}
 
+	h := header.NewHeader(header.NewTemplateMetadata(
+		buildID,
+		uint64(info.Size()),
+		uint64(blockSize),
+	), nil)
+
 	return &Local{
 		m:         m,
 		size:      info.Size(),
 		path:      path,
 		blockSize: blockSize,
+		header:    h,
 	}, nil
 }
 
@@ -74,4 +86,8 @@ func (d *Local) Slice(off, length int64) ([]byte, error) {
 	}
 
 	return d.m[off:end], nil
+}
+
+func (d *Local) Header() *header.Header {
+	return d.header
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	templatelocal "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -72,7 +73,7 @@ func (e *Env) Build(
 	clientID string,
 	envdVersion string,
 ) (*sandbox.Sandbox, error) {
-	childCtx, childSpan := tracer.Start(ctx, "build")
+	childCtx, childSpan := tracer.Start(ctx, "template-build")
 	defer childSpan.End()
 
 	// TODO: Better file/path definition
@@ -111,9 +112,71 @@ func (e *Env) Build(
 		BaseTemplateId: e.TemplateId,
 	}
 
-	rootfs, err := block.NewLocal(rootfsPath, e.RootfsBlockSize())
+	buildIDParsed, err := uuid.Parse(e.BuildId)
+	if err != nil {
+		errMsg := fmt.Errorf("failed to parse build id: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return nil, errMsg
+	}
+
+	rootfs, err := block.NewLocal(rootfsPath, e.RootfsBlockSize(), buildIDParsed)
 	if err != nil {
 		errMsg := fmt.Errorf("error reading rootfs blocks: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return nil, errMsg
+	}
+
+	// Create empty memfile in the size of the RAM
+	err = os.MkdirAll(e.BuildDir(), os.ModePerm)
+	if err != nil {
+		errMsg := fmt.Errorf("error creating build dir: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return nil, err
+	}
+	emptyMemoryFile, err := os.Create(e.BuildMemfilePath())
+	if err != nil {
+		errMsg := fmt.Errorf("error creating blank memfile: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return nil, errMsg
+	}
+	defer emptyMemoryFile.Close()
+	err = emptyMemoryFile.Truncate(config.RamMb * 1024 * 1024)
+	if err != nil {
+		errMsg := fmt.Errorf("error truncating blank memfile: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return nil, err
+	}
+	emptyMemoryFile.Close()
+
+	memfile, err := block.NewLocal(e.BuildMemfilePath(), e.MemfilePageSize(), buildIDParsed)
+	if err != nil {
+		errMsg := fmt.Errorf("error creating memfile blocks: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return nil, errMsg
+	}
+
+	templateFiles, err := storage.NewTemplateFiles(
+		config.TemplateId,
+		config.BuildId,
+		config.KernelVersion,
+		config.FirecrackerVersion,
+	).NewTemplateCacheFiles()
+	if err != nil {
+		errMsg := fmt.Errorf("error creating template files: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+
+		return nil, errMsg
+	}
+
+	localTemplate, err := templatelocal.NewLocalTemplate(templateFiles, rootfs, memfile)
+	if err != nil {
+		errMsg := fmt.Errorf("error creating local template: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
 
 		return nil, errMsg
@@ -125,7 +188,7 @@ func (e *Env) Build(
 		networkPool,
 		devicePool,
 		config,
-		rootfs,
+		localTemplate,
 		// TODO: set correct sandbox timeout
 		time.Hour,
 	)

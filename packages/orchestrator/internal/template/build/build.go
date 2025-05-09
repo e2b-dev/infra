@@ -66,6 +66,9 @@ func NewBuilder(
 }
 
 func (b *TemplateBuilder) Build(ctx context.Context, template *Env, envID string, buildID string) error {
+	ctx, childSpan := b.tracer.Start(ctx, "build")
+	defer childSpan.End()
+
 	_, err := b.buildCache.Get(buildID)
 	if err != nil {
 		return err

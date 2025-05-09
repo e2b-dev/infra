@@ -85,7 +85,7 @@ func CreateSandbox(
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	config *orchestrator.SandboxConfig,
-	rootfs block.ReadonlyDevice,
+	template template.Template,
 	sandboxTimeout time.Duration,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
@@ -93,22 +93,12 @@ func CreateSandbox(
 
 	cleanup := NewCleanup()
 
-	t, err := storage.NewTemplateFiles(
-		config.TemplateId,
-		config.BuildId,
-		config.KernelVersion,
-		config.FirecrackerVersion,
-	).NewTemplateCacheFiles()
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to create template cache files: %w", err)
-	}
-
 	ips, err := getNetworkSlot(childCtx, tracer, networkPool, cleanup)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
 	}
 
-	sandboxFiles := t.NewSandboxFiles(config.SandboxId)
+	sandboxFiles := template.Files().NewSandboxFiles(config.SandboxId)
 	cleanup.Add(func(ctx context.Context) error {
 		filesErr := cleanupFiles(sandboxFiles)
 		if filesErr != nil {
@@ -118,12 +108,17 @@ func CreateSandbox(
 		return nil
 	})
 
+	rootFS, err := template.Rootfs()
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to get rootfs: %w", err)
+	}
+
 	rootfsOverlay, err := createRootfsOverlay(
 		childCtx,
 		tracer,
 		devicePool,
 		cleanup,
-		rootfs,
+		rootFS,
 		sandboxFiles.SandboxCacheRootfsPath(),
 	)
 	if err != nil {
@@ -189,8 +184,9 @@ func CreateSandbox(
 		Resources: resources,
 		Metadata:  metadata,
 
-		files:   sandboxFiles,
-		process: fcHandle,
+		template: template,
+		files:    sandboxFiles,
+		process:  fcHandle,
 
 		cleanup: cleanup,
 
@@ -392,8 +388,9 @@ func ResumeSandbox(
 		Resources: resources,
 		Metadata:  metadata,
 
-		files:   sandboxFiles,
-		process: fcHandle,
+		template: t,
+		files:    sandboxFiles,
+		process:  fcHandle,
 
 		cleanup: cleanup,
 
@@ -489,7 +486,7 @@ func (s *Sandbox) PauseWithLockRelease(
 	snapshotTemplateFiles *storage.TemplateCacheFiles,
 	releaseLock func(),
 ) (*Snapshot, error) {
-	ctx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
+	childCtx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
 	defer childSpan.End()
 
 	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildId)
@@ -500,7 +497,7 @@ func (s *Sandbox) PauseWithLockRelease(
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
 
-	if err := s.process.Pause(ctx, tracer); err != nil {
+	if err := s.process.Pause(childCtx, tracer); err != nil {
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
 
@@ -514,7 +511,7 @@ func (s *Sandbox) PauseWithLockRelease(
 	defer memfile.Close()
 
 	err = s.process.CreateSnapshot(
-		ctx,
+		childCtx,
 		tracer,
 		snapfile.Path(),
 		memfile.Path(),
@@ -538,7 +535,7 @@ func (s *Sandbox) PauseWithLockRelease(
 
 	// Start POSTPROCESSING
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
-		ctx,
+		childCtx,
 		tracer,
 		buildID,
 		originalMemfile.Header(),
@@ -554,7 +551,7 @@ func (s *Sandbox) PauseWithLockRelease(
 	}
 
 	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
-		ctx,
+		childCtx,
 		tracer,
 		buildID,
 		originalRootfs.Header(),
