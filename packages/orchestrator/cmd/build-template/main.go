@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -54,6 +55,8 @@ func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, bu
 		return fmt.Errorf("could not create logger: %w", err)
 	}
 	zap.ReplaceGlobals(logger)
+	sbxlogger.SetSandboxLoggerExternal(logger)
+	sbxlogger.SetSandboxLoggerInternal(logger)
 
 	tracer := otel.Tracer("test")
 
