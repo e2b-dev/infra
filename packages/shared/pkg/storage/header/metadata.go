@@ -9,6 +9,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+var ignoreBuildID = uuid.Nil
+
 type DiffMetadata struct {
 	Dirty *bitset.BitSet
 	Empty *bitset.BitSet
@@ -28,7 +30,8 @@ func (d *DiffMetadata) CreateMapping(
 	telemetry.ReportEvent(ctx, "created dirty mapping")
 
 	emptyMappings := CreateMapping(
-		&buildID,
+		// This buildID is intentionally ignored for nil blocks
+		&ignoreBuildID,
 		d.Empty,
 		d.BlockSize,
 	)
