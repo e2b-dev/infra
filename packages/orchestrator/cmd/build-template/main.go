@@ -12,13 +12,13 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -48,10 +48,10 @@ func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, bu
 	logger, err := logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName: clientID,
 		IsInternal:  true,
-		IsDebug:     env.IsDebug(),
+		IsDebug:     true,
 	})
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("could not create logger: %w", err)
 	}
 
 	tracer := otel.Tracer("test")
@@ -71,17 +71,27 @@ func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, bu
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
 
-	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
+	networkPool, err := network.NewPool(ctx, 8, 8, clientID)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
-	defer networkPool.Close(ctx)
+	defer func() {
+		err := networkPool.Close(ctx)
+		if err != nil {
+			logger.Error("error closing network pool", zap.Error(err))
+		}
+	}()
 
 	devicePool, err := nbd.NewDevicePool()
 	if err != nil {
 		return fmt.Errorf("could not create device pool: %w", err)
 	}
-	defer devicePool.Close(ctx)
+	defer func() {
+		err := devicePool.Close(ctx)
+		if err != nil {
+			logger.Error("error closing device pool", zap.Error(err))
+		}
+	}()
 
 	templateStorage := template.NewStorage(persistence)
 	buildCache := cache.NewBuildCache()
@@ -114,5 +124,16 @@ func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, bu
 		HugePages:       true,
 	}
 
-	return builder.Build(ctx, config, templateID, buildID)
+	err = builder.Build(ctx, config, templateID, buildID)
+	if err != nil {
+		return fmt.Errorf("error building template: %w", err)
+	}
+
+	if buf.Len() > 0 {
+		fmt.Println("Build logs:")
+		fmt.Println(buf.String())
+	} else {
+		fmt.Println("No build logs available")
+	}
+	return nil
 }
