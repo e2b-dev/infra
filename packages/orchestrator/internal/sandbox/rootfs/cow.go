@@ -180,5 +180,6 @@ func (o *CowDevice) Flush(ctx context.Context) error {
 }
 
 func (o *CowDevice) MarkAllBlocksAsDirty() error {
-	return o.overlay.CopyAllToCache()
+	o.overlay.MarkAllAsDirty()
+	return nil
 }

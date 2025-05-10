@@ -30,12 +30,13 @@ func Build(
 	legacyDocker *docker.Client,
 	templateCacheFiles *storage.TemplateCacheFiles,
 	templateBuildDir string,
+	rootfsPath string,
 ) (s *templatelocal.LocalTemplate, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "template-build")
 	defer childSpan.End()
 
 	// Create a rootfs file
-	rootfsPath, err := NewRootfs(childCtx, tracer, postProcessor, templateConfig, docker, legacyDocker, templateBuildDir)
+	err := NewRootfs(childCtx, tracer, postProcessor, templateConfig, docker, legacyDocker, rootfsPath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating rootfs for env '%s' during build '%s': %w", templateConfig.TemplateId, templateConfig.BuildId, err)
 	}

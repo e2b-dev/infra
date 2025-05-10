@@ -112,6 +112,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 		}
 	}()
 
+	// Created here to be able to pass it to CreateSandbox for populating COW cache
+	rootfsPath := filepath.Join(templateBuildDir, rootfsBuildFileName)
+
 	localTemplate, err := Build(
 		ctx,
 		b.tracer,
@@ -121,6 +124,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 		b.legacyDockerClient,
 		templateCacheFiles,
 		templateBuildDir,
+		rootfsPath,
 	)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error building environment: %v", err))
@@ -135,6 +139,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 		env.ToSandboxConfig(envdVersion),
 		localTemplate,
 		sbxTimeout,
+		rootfsPath,
 	)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)

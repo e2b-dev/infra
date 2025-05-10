@@ -241,6 +241,10 @@ func (m *Cache) dirtySortedKeys() []int64 {
 	return keys
 }
 
+func (m *Cache) MarkAllAsDirty() {
+	m.setIsCached(0, m.size)
+}
+
 // FileSize returns the size of the cache on disk.
 // The size might differ from the dirty size, as it may not be fully on disk.
 func (m *Cache) FileSize() (int64, error) {

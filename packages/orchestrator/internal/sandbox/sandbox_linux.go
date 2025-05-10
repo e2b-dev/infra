@@ -87,6 +87,7 @@ func CreateSandbox(
 	config *orchestrator.SandboxConfig,
 	template template.Template,
 	sandboxTimeout time.Duration,
+	rootfsCOWCachePath string,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -119,7 +120,9 @@ func CreateSandbox(
 		devicePool,
 		cleanup,
 		rootFS,
-		sandboxFiles.SandboxCacheRootfsPath(),
+		// Populate COW cache directly from the source file
+		// This is needed for marking all blocks as dirty and being able to read them from the cache
+		rootfsCOWCachePath,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
