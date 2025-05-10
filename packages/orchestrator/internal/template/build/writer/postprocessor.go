@@ -35,7 +35,7 @@ func (p *PostProcessor) Start() {
 			}
 
 			p.WriteMsg(msg)
-			p.WriteMsg(fmt.Sprintf("Postprocessing finished. Took %s. Cleaning up...", time.Since(startTime).String()))
+			p.WriteMsg(fmt.Sprintf("Postprocessing finished. Took %s. Cleaning up...", time.Since(startTime).Truncate(time.Second).String()))
 
 			return
 		case <-p.ctx.Done():

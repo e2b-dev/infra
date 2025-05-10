@@ -131,6 +131,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 		return err
 	}
 
+	postProcessor.WriteMsg("Creating sandbox template")
 	sbx, cleanup, err := sandbox.CreateSandbox(
 		ctx,
 		b.tracer,
@@ -180,7 +181,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 	}
 
 	// PAUSE
-	postProcessor.WriteMsg("Pausing VM")
+	postProcessor.WriteMsg("Pausing sandbox template")
 	snapshot, err := sbx.Pause(
 		ctx,
 		b.tracer,
