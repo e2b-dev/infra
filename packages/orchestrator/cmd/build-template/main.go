@@ -53,6 +53,7 @@ func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, bu
 	if err != nil {
 		return fmt.Errorf("could not create logger: %w", err)
 	}
+	zap.ReplaceGlobals(logger)
 
 	tracer := otel.Tracer("test")
 
