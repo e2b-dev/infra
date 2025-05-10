@@ -72,11 +72,11 @@ func NewProcess(
 		files.FirecrackerVersion,
 	)
 
-	buildRootfsPath := baseBuild.BuildRootfsPath()
+	buildRootfsPath := baseBuild.SandboxRootfsPath()
 	err := startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
 		"rootfsPath":        files.SandboxCacheRootfsLinkPath(),
 		"kernelPath":        files.CacheKernelPath(),
-		"buildDir":          baseBuild.BuildDir(),
+		"buildDir":          baseBuild.SandboxBuildDir(),
 		"buildRootfsPath":   buildRootfsPath,
 		"buildKernelPath":   files.BuildKernelPath(),
 		"buildKernelDir":    files.BuildKernelDir(),

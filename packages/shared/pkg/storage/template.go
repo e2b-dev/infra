@@ -102,10 +102,10 @@ func (t *TemplateFiles) StorageSnapfilePath() string {
 	return fmt.Sprintf("%s/%s", t.StorageDir(), SnapfileName)
 }
 
-func (t *TemplateFiles) BuildDir() string {
+func (t *TemplateFiles) SandboxBuildDir() string {
 	return filepath.Join(EnvsDisk, t.TemplateId, buildDirName, t.BuildId)
 }
 
-func (t *TemplateFiles) BuildRootfsPath() string {
-	return filepath.Join(t.BuildDir(), RootfsName)
+func (t *TemplateFiles) SandboxRootfsPath() string {
+	return filepath.Join(t.SandboxBuildDir(), RootfsName)
 }
