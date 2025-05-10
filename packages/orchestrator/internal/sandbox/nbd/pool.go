@@ -302,13 +302,19 @@ func GetDevicePath(slot DeviceSlot) DevicePath {
 }
 
 func (d *DevicePool) Close(_ context.Context) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	zap.L().Info("Closing device pool", zap.Uint("used_slots", d.usedSlots.Count()))
 
 	d.exit <- nil
 	close(d.exit)
 
-	return nil
+	var errs error
+	for slotIdx, e := d.usedSlots.NextSet(0); e; slotIdx, e = d.usedSlots.NextSet(slotIdx + 1) {
+		slot := DeviceSlot(slotIdx)
+		err := d.ReleaseDeviceWithRetry(slot)
+		if err != nil {
+			errs = errors.Join(errs, fmt.Errorf("failed to release device %d: %w", slot, err))
+		}
+	}
+
+	return errs
 }
