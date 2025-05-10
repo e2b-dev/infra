@@ -64,6 +64,8 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, cli
 		if err != nil {
 			zap.L().Fatal("error when populating network slot pool", zap.Error(err))
 		}
+
+		zap.L().Info("network slot pool populate closed")
 	}()
 
 	return pool, nil
@@ -87,6 +89,8 @@ func (p *Pool) createNetworkSlot() (*Slot, error) {
 }
 
 func (p *Pool) populate(ctx context.Context) error {
+	defer close(p.newSlots)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -168,6 +172,7 @@ func (p *Pool) Close(_ context.Context) error {
 		}
 	}
 
+	close(p.reusedSlots)
 	for slot := range p.reusedSlots {
 		err := p.cleanup(slot)
 		if err != nil {
