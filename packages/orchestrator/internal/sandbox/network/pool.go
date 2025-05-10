@@ -90,7 +90,8 @@ func (p *Pool) populate(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			// Do not return an error here, this is expected on close
+			return nil
 		default:
 			slot, err := p.createNetworkSlot()
 			if err != nil {
