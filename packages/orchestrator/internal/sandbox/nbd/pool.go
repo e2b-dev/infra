@@ -291,10 +291,6 @@ func (d *DevicePool) Close(_ context.Context) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if d.slots != nil {
-		close(d.slots)
-	}
-
 	for slotIdx, e := d.usedSlots.NextSet(0); e; slotIdx, e = d.usedSlots.NextSet(slotIdx + 1) {
 		slot := DeviceSlot(slotIdx)
 		err := d.ReleaseDeviceWithRetry(slot)
