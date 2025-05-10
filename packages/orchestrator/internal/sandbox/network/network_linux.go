@@ -242,8 +242,7 @@ func (s *Slot) CreateNetwork(forwardProxyPort uint) error {
 	if err != nil {
 		return fmt.Errorf("error adding HTTP redirect rule: %w", err)
 	}
-
-	// Redirect HTTPS traffic to forward proxy
+	// Redirect HTTPS traffic to forward proxy using REDIRECT instead of TPROXY
 	err = tables.Append("nat", "PREROUTING", "-i", s.VethName(), "-p", "tcp", "--dport", "443", "-j", "REDIRECT", "--to-port", fmt.Sprintf("%d", forwardProxyPort))
 	if err != nil {
 		return fmt.Errorf("error adding HTTPS redirect rule: %w", err)
