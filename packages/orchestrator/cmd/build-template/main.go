@@ -76,17 +76,6 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
 
-	networkPool, err := network.NewPool(ctx, 8, 8, clientID)
-	if err != nil {
-		return fmt.Errorf("could not create network pool: %w", err)
-	}
-	defer func() {
-		err := networkPool.Close(parentCtx)
-		if err != nil {
-			logger.Error("error closing network pool", zap.Error(err))
-		}
-	}()
-
 	devicePool, err := nbd.NewDevicePool(ctx)
 	if err != nil {
 		return fmt.Errorf("could not create device pool: %w", err)
@@ -95,6 +84,17 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		err := devicePool.Close(parentCtx)
 		if err != nil {
 			logger.Error("error closing device pool", zap.Error(err))
+		}
+	}()
+
+	networkPool, err := network.NewPool(ctx, 8, 8, clientID)
+	if err != nil {
+		return fmt.Errorf("could not create network pool: %w", err)
+	}
+	defer func() {
+		err := networkPool.Close(parentCtx)
+		if err != nil {
+			logger.Error("error closing network pool", zap.Error(err))
 		}
 	}()
 
