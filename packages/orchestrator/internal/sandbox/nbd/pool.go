@@ -87,6 +87,8 @@ func NewDevicePool(ctx context.Context) (*DevicePool, error) {
 		if err != nil {
 			zap.L().Fatal("failed during populating device pool", zap.Error(err))
 		}
+
+		zap.L().Info("device pool populate closed")
 	}()
 
 	return pool, nil
@@ -118,6 +120,8 @@ func (d *DevicePool) Populate() error {
 		select {
 		case <-d.ctx.Done():
 			return d.ctx.Err()
+		case err := <-d.exit:
+			return err
 		default:
 			device, err := d.getFreeDeviceSlot()
 			if err != nil {
