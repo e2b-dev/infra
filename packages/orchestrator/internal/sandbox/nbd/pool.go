@@ -291,6 +291,8 @@ func (d *DevicePool) Close(_ context.Context) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	zap.L().Info("Closing device pool")
+
 	for slotIdx, e := d.usedSlots.NextSet(0); e; slotIdx, e = d.usedSlots.NextSet(slotIdx + 1) {
 		slot := DeviceSlot(slotIdx)
 		err := d.ReleaseDeviceWithRetry(slot)

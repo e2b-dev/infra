@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -13,10 +12,12 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -41,8 +42,8 @@ func main() {
 	}
 }
 
-func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, buildID string) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Minute*5)
+func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, templateID, buildID string) error {
+	ctx, cancel := context.WithTimeout(parentCtx, time.Minute*5)
 	defer cancel()
 
 	clientID := "build-template-cmd"
@@ -80,7 +81,7 @@ func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, bu
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
 	defer func() {
-		err := networkPool.Close(ctx)
+		err := networkPool.Close(parentCtx)
 		if err != nil {
 			logger.Error("error closing network pool", zap.Error(err))
 		}
@@ -91,7 +92,7 @@ func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, bu
 		return fmt.Errorf("could not create device pool: %w", err)
 	}
 	defer func() {
-		err := devicePool.Close(ctx)
+		err := devicePool.Close(parentCtx)
 		if err != nil {
 			logger.Error("error closing device pool", zap.Error(err))
 		}
@@ -117,7 +118,11 @@ func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, bu
 		fmt.Errorf("error while creating build cache: %w", err)
 	}
 
-	var buf bytes.Buffer
+	logsWriter := writer.New(
+		logger.
+			With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
+			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID}),
+	)
 	config := &build.TemplateConfig{
 		TemplateFiles: storage.NewTemplateFiles(
 			templateID,
@@ -129,7 +134,7 @@ func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, bu
 		MemoryMB:        1024,
 		StartCmd:        "",
 		DiskSizeMB:      1024,
-		BuildLogsWriter: &buf,
+		BuildLogsWriter: logsWriter,
 		HugePages:       true,
 	}
 
@@ -138,11 +143,8 @@ func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, bu
 		return fmt.Errorf("error building template: %w", err)
 	}
 
-	if buf.Len() > 0 {
-		fmt.Println("Build logs:")
-		fmt.Println(buf.String())
-	} else {
-		fmt.Println("No build logs available")
-	}
+	cancel()
+
+	fmt.Println("Build finished, closing...")
 	return nil
 }

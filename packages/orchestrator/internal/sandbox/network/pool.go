@@ -158,6 +158,8 @@ func (p *Pool) cleanup(slot Slot) error {
 func (p *Pool) Close(_ context.Context) error {
 	p.cancel()
 
+	zap.L().Info("Closing network pool")
+
 	for slot := range p.newSlots {
 		err := p.cleanup(slot)
 		if err != nil {
