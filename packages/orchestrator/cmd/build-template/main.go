@@ -1,12 +1,26 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
+	"github.com/docker/docker/client"
+	docker "github.com/fsouza/go-dockerclient"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 func main() {
@@ -19,31 +33,73 @@ func main() {
 	fcVersion := flag.String("firecracker", "", "firecracker version")
 	flag.Parse()
 
-	err := Build(ctx, *kernelVersion, *fcVersion, *templateID, *buildID)
+	err := buildTemplate(ctx, *kernelVersion, *fcVersion, *templateID, *buildID)
 	if err != nil {
 		log.Fatal().Err(err).Msg("error building template")
 		os.Exit(1)
 	}
 }
 
-func Build(ctx context.Context, kernelVersion, fcVersion, templateID, buildID string) error {
+func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, buildID string) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute*3)
 	defer cancel()
 
-	/*tracer := otel.Tracer("test")
+	clientID := "build-template-cmd"
+	logger, err := logger.NewLogger(ctx, logger.LoggerConfig{
+		ServiceName: clientID,
+		IsInternal:  true,
+		IsDebug:     env.IsDebug(),
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	tracer := otel.Tracer("test")
 
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		return err
+		return fmt.Errorf("could not create docker client: %w", err)
 	}
 
 	legacyClient, err := docker.NewClientFromEnv()
 	if err != nil {
-		return err
+		return fmt.Errorf("could not create docker legacy client: %w", err)
 	}
 
+	persistence, err := storage.GetTemplateStorageProvider(ctx)
+	if err != nil {
+		return fmt.Errorf("could not create storage provider: %w", err)
+	}
+
+	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
+	if err != nil {
+		return fmt.Errorf("could not create network pool: %w", err)
+	}
+	defer networkPool.Close(ctx)
+
+	devicePool, err := nbd.NewDevicePool()
+	if err != nil {
+		return fmt.Errorf("could not create device pool: %w", err)
+	}
+	defer devicePool.Close(ctx)
+
+	templateStorage := template.NewStorage(persistence)
+	buildCache := cache.NewBuildCache()
+	builder := build.NewBuilder(
+		logger,
+		logger,
+		tracer,
+		dockerClient,
+		legacyClient,
+		templateStorage,
+		buildCache,
+		persistence,
+		devicePool,
+		networkPool,
+	)
+
 	var buf bytes.Buffer
-	t := build.Env{
+	config := &build.TemplateConfig{
 		TemplateFiles: storage.NewTemplateFiles(
 			templateID,
 			buildID,
@@ -58,43 +114,5 @@ func Build(ctx context.Context, kernelVersion, fcVersion, templateID, buildID st
 		HugePages:       true,
 	}
 
-	postProcessor := writer.NewPostProcessor(ctx, &buf)
-	defer postProcessor.Stop(nil)
-
-	// TODO: implement the build process in a command
-	_, err = t.Build(
-		ctx,
-		tracer,
-		postProcessor,
-		dockerClient,
-		legacyClient,
-	)
-	if err != nil {
-		return fmt.Errorf("error building template: %w", err)
-	}
-
-	persistence, err := storage.GetTemplateStorageProvider(ctx)
-	if err != nil {
-		return err
-	}
-
-	tmplStorage := template.NewStorage(persistence)
-	buildStorage := tmplStorage.NewBuild(t.TemplateFiles, persistence)
-
-	memfilePath := t.BuildMemfilePath()
-	rootfsPath := t.BuildRootfsPath()
-
-	upload := buildStorage.Upload(
-		ctx,
-		t.BuildSnapfilePath(),
-		&memfilePath,
-		&rootfsPath,
-	)
-
-	err = <-upload
-	if err != nil {
-		return fmt.Errorf("error uploading build: %w", err)
-	}*/
-
-	return nil
+	return builder.Build(ctx, config, templateID, buildID)
 }

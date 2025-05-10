@@ -87,7 +87,6 @@ func New(ctx context.Context,
 		persistence,
 		devicePool,
 		networkPool,
-		clientID,
 	)
 	store := &ServerStore{
 		tracer:           tracer,

@@ -24,9 +24,8 @@ import (
 )
 
 type TemplateBuilder struct {
-	logger   *zap.Logger
-	tracer   trace.Tracer
-	clientID string
+	logger *zap.Logger
+	tracer trace.Tracer
 
 	storage            storage.StorageProvider
 	devicePool         *nbd.DevicePool
@@ -57,12 +56,10 @@ func NewBuilder(
 	storage storage.StorageProvider,
 	devicePool *nbd.DevicePool,
 	networkPool *network.Pool,
-	clientID string,
 ) *TemplateBuilder {
 	return &TemplateBuilder{
 		logger:             logger,
 		tracer:             tracer,
-		clientID:           clientID,
 		buildCache:         buildCache,
 		buildLogger:        buildLogger,
 		dockerClient:       dockerClient,
