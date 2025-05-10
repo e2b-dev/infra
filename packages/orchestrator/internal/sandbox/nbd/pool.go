@@ -310,14 +310,5 @@ func (d *DevicePool) Close(_ context.Context) error {
 	d.exit <- nil
 	close(d.exit)
 
-	var errs error
-	for slotIdx, e := d.usedSlots.NextSet(0); e; slotIdx, e = d.usedSlots.NextSet(slotIdx + 1) {
-		slot := DeviceSlot(slotIdx)
-		err := d.ReleaseDeviceWithRetry(slot)
-		if err != nil {
-			errs = errors.Join(errs, fmt.Errorf("failed to release device %d: %w", slot, err))
-		}
-	}
-
-	return errs
+	return nil
 }
