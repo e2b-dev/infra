@@ -48,14 +48,14 @@ variable "build_machine_type" {
   type = string
 }
 
-variable "client_proxy_health_port" {
+variable "client_proxy_edge_api_port" {
   type = object({
     name = string
     port = number
     path = string
   })
   default = {
-    name = "health"
+    name = "edge-api"
     port = 3001
     path = "/health"
   }
