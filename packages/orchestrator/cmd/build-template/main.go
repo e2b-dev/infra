@@ -42,7 +42,7 @@ func main() {
 }
 
 func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, buildID string) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Minute*3)
+	ctx, cancel := context.WithTimeout(ctx, time.Minute*5)
 	defer cancel()
 
 	clientID := "build-template-cmd"
@@ -111,6 +111,11 @@ func buildTemplate(ctx context.Context, kernelVersion, fcVersion, templateID, bu
 		devicePool,
 		networkPool,
 	)
+
+	err = buildCache.Create(buildID, templateID)
+	if err != nil {
+		fmt.Errorf("error while creating build cache: %w", err)
+	}
 
 	var buf bytes.Buffer
 	config := &build.TemplateConfig{
