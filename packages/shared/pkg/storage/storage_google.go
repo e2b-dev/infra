@@ -129,6 +129,8 @@ func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string) 
 		),
 		storage.WithPolicy(storage.RetryAlways),
 		storage.WithErrorFunc(func(err error) bool {
+			fmt.Printf("should retry?: %s\n", err)
+
 			if err == nil || errors.Is(err, storage.ErrObjectNotExist) {
 				return storage.ShouldRetry(err)
 			}
@@ -136,7 +138,7 @@ func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string) 
 			fmt.Fprintf(os.Stderr, "Failed to do the request: %s\n", err)
 
 			if g.proxyTransport != nil {
-				g.proxyTransport.disableProxy()
+				g.proxyTransport.DisableForwarding()
 			}
 
 			return storage.ShouldRetry(err)
