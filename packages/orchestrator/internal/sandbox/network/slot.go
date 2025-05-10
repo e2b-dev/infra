@@ -1,6 +1,9 @@
 package network
 
-import "fmt"
+import (
+	"fmt"
+	"net"
+)
 
 // We are using a more debuggable IP address allocation for now that only covers 255 addresses.
 const (
@@ -101,6 +104,15 @@ func (s *Slot) TapMask() int {
 	return tapMask
 }
 
+func (s *Slot) TapMaskString() string {
+	mask := net.CIDRMask(s.TapMask(), 32)
+	return net.IP(mask).String()
+}
+
 func (s *Slot) TapCIDR() string {
 	return fmt.Sprintf("%s/%d", s.TapIP(), s.TapMask())
+}
+
+func (s *Slot) TapMAC() string {
+	return "02:FC:00:00:00:05"
 }

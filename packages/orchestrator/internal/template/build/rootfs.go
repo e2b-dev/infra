@@ -37,6 +37,8 @@ const (
 	// Max size of the rootfs file in MB.
 	maxRootfsSize = 15000 << ToMBShift
 	cacheTimeout  = "48h"
+
+	rootfsBuildFileName = "rootfs.ext4.build"
 )
 
 var authConfig = registry.AuthConfig{
@@ -48,7 +50,7 @@ type Rootfs struct {
 	client       *client.Client
 	legacyClient *docker.Client
 
-	env *Env
+	env *TemplateConfig
 }
 
 type MultiWriter struct {
@@ -66,7 +68,15 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func NewRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, env *Env, docker *client.Client, legacyDocker *docker.Client) (*Rootfs, error) {
+func NewRootfs(
+	ctx context.Context,
+	tracer trace.Tracer,
+	postProcessor *writer.PostProcessor,
+	env *TemplateConfig,
+	docker *client.Client,
+	legacyDocker *docker.Client,
+	rootfsPath string,
+) error {
 	childCtx, childSpan := tracer.Start(ctx, "new-rootfs")
 	defer childSpan.End()
 
@@ -83,21 +93,21 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *writer.P
 
 		rootfs.cleanupDockerImage(childCtx, tracer)
 
-		return nil, errMsg
+		return errMsg
 	}
 	postProcessor.WriteMsg("Pulled Docker image.")
 
 	postProcessor.WriteMsg("Creating file system")
-	err = rootfs.createRootfsFile(childCtx, tracer, postProcessor)
+	err = rootfs.createRootfsFile(childCtx, tracer, postProcessor, rootfsPath)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs file: %w", err)
 
 		rootfs.cleanupDockerImage(childCtx, tracer)
 
-		return nil, errMsg
+		return errMsg
 	}
 
-	return rootfs, nil
+	return nil
 }
 
 func (r *Rootfs) pullDockerImage(ctx context.Context, tracer trace.Tracer) error {
@@ -168,7 +178,7 @@ func (r *Rootfs) dockerTag() string {
 	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.env.TemplateId, r.env.BuildId)
 }
 
-func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor) error {
+func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, rootfsPath string) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-rootfs-file")
 	defer childSpan.End()
 
@@ -181,7 +191,8 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 		FcAddress   string
 		MemoryLimit int
 	}{
-		FcAddress:   fcAddr,
+		// TODO: use slot instead of a hardcoded value
+		FcAddress:   "169.254.0.21",
 		EnvID:       r.env.TemplateId,
 		BuildID:     r.env.BuildId,
 		StartCmd:    strings.ReplaceAll(r.env.StartCmd, "'", "\\'"),
@@ -448,7 +459,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	}
 
 	postProcessor.WriteMsg("Extracting file system")
-	rootfsFile, err := os.Create(r.env.BuildRootfsPath())
+	rootfsFile, err := os.Create(rootfsPath)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs file: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -514,7 +525,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	tuneContext, tuneSpan := tracer.Start(childCtx, "tune-rootfs-file-cmd")
 	defer tuneSpan.End()
 
-	cmd := exec.CommandContext(tuneContext, "tune2fs", "-O ^read-only", r.env.BuildRootfsPath())
+	cmd := exec.CommandContext(tuneContext, "tune2fs", "-O ^read-only", rootfsPath)
 
 	tuneStdoutWriter := telemetry.NewEventWriter(tuneContext, "stdout")
 	cmd.Stdout = tuneStdoutWriter
@@ -560,7 +571,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	resizeContext, resizeSpan := tracer.Start(childCtx, "resize-rootfs-file-cmd")
 	defer resizeSpan.End()
 
-	cmd = exec.CommandContext(resizeContext, "resize2fs", r.env.BuildRootfsPath())
+	cmd = exec.CommandContext(resizeContext, "resize2fs", rootfsPath)
 
 	resizeStdoutWriter := telemetry.NewEventWriter(resizeContext, "stdout")
 	cmd.Stdout = resizeStdoutWriter

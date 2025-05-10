@@ -41,11 +41,13 @@ func Test_server_List(t *testing.T) {
 			},
 			data: []*sandbox.Sandbox{
 				{
-					Config: &orchestrator.SandboxConfig{
-						TemplateId: "template-id",
+					Metadata: &sandbox.Metadata{
+						Config: &orchestrator.SandboxConfig{
+							TemplateId: "template-id",
+						},
+						StartedAt: startTime,
+						EndAt:     endTime,
 					},
-					StartedAt: startTime,
-					EndAt:     endTime,
 				},
 			},
 			want: &orchestrator.SandboxListResponse{

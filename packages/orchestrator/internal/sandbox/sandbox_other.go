@@ -79,7 +79,6 @@ func NewSandbox(
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
-	isSnapshot bool,
 	baseTemplateID string,
 	clientID string,
 	devicePool *nbd.DevicePool,
@@ -117,5 +116,5 @@ type Snapshot struct {
 	MemfileDiffHeader *header.Header
 	RootfsDiff        build.Diff
 	RootfsDiffHeader  *header.Header
-	Snapfile          *template.LocalFile
+	Snapfile          *template.LocalFileLink
 }

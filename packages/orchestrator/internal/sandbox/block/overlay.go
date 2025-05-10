@@ -69,10 +69,22 @@ func (o *Overlay) Size() (int64, error) {
 	return o.cache.Size()
 }
 
+func (o *Overlay) BlockSize() int64 {
+	return o.blockSize
+}
+
 func (o *Overlay) Close() error {
 	if o.cacheEjected.Load() {
 		return nil
 	}
 
 	return o.cache.Close()
+}
+
+func (o *Overlay) Header() *header.Header {
+	return o.device.Header()
+}
+
+func (o *Overlay) MarkAllAsDirty() {
+	o.cache.MarkAllAsDirty()
 }

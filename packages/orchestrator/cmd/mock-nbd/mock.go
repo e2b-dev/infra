@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/google/uuid"
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"go.opentelemetry.io/otel"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const blockSize = 4096
@@ -35,6 +37,23 @@ func (d *DeviceWithClose) Slice(offset, length int64) ([]byte, error) {
 	return b, nil
 }
 
+func (d *DeviceWithClose) BlockSize() int64 {
+	return blockSize
+}
+
+func (d *DeviceWithClose) Header() *header.Header {
+	size, err := d.Backend.Size()
+	if err != nil {
+		panic(err)
+	}
+
+	return header.NewHeader(header.NewTemplateMetadata(
+		uuid.New(),
+		uint64(blockSize),
+		uint64(size),
+	), nil)
+}
+
 func main() {
 	data := make([]byte, blockSize*8)
 	rand.Read(data)
@@ -48,7 +67,7 @@ func main() {
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create device pool: %v\n", err)
 

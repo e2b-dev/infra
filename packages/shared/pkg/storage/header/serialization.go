@@ -19,6 +19,28 @@ type Metadata struct {
 	BaseBuildId uuid.UUID
 }
 
+func NewTemplateMetadata(buildId uuid.UUID, blockSize, size uint64) *Metadata {
+	return &Metadata{
+		Version:     1,
+		Generation:  0,
+		BlockSize:   blockSize,
+		Size:        size,
+		BuildId:     buildId,
+		BaseBuildId: buildId,
+	}
+}
+
+func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
+	return &Metadata{
+		Version:     1,
+		Generation:  m.Generation + 1,
+		BlockSize:   m.BlockSize,
+		Size:        m.Size,
+		BuildId:     buildID,
+		BaseBuildId: m.BaseBuildId,
+	}
+}
+
 func Serialize(metadata *Metadata, mappings []*BuildMap) (io.Reader, error) {
 	var buf bytes.Buffer
 

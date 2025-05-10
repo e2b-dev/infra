@@ -26,7 +26,6 @@ func main() {
 		*baseBuildId,
 		"",
 		"",
-		false,
 	)
 
 	diffTemplate := storage.NewTemplateFiles(
@@ -34,7 +33,6 @@ func main() {
 		*diffBuildId,
 		"",
 		"",
-		false,
 	)
 
 	var baseStoragePath string

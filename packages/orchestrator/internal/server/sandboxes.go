@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -45,7 +44,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
-	sbx, cleanup, err := sandbox.NewSandbox(
+	sbx, cleanup, err := sandbox.ResumeSandbox(
 		childCtx,
 		s.tracer,
 		s.networkPool,
@@ -54,7 +53,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
-		req.Sandbox.Snapshot,
 		req.Sandbox.BaseTemplateId,
 		s.clientID,
 		s.devicePool,
@@ -196,8 +194,8 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	defer cancelLogginCtx()
 
 	// Check health metrics before stopping the sandbox
-	sbx.Healthcheck(loggingCtx, true)
-	sbx.LogMetrics(loggingCtx)
+	sbx.Checks.Healthcheck(loggingCtx, true)
+	sbx.Checks.LogMetrics(loggingCtx)
 
 	err := sbx.Stop(ctx)
 	if err != nil {
@@ -247,7 +245,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		in.BuildId,
 		sbx.Config.KernelVersion,
 		sbx.Config.FirecrackerVersion,
-		sbx.Config.HugePages,
 	).NewTemplateCacheFiles()
 	if err != nil {
 		errMsg := fmt.Errorf("error creating template files: %w", err)
@@ -270,15 +267,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		}()
 	}()
 
-	err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
-	if err != nil {
-		errMsg := fmt.Errorf("error creating sandbox cache dir '%s': %w", snapshotTemplateFiles.CacheDir(), err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
-	}
-
-	snapshot, err := sbx.Snapshot(ctx, s.tracer, snapshotTemplateFiles, releaseOnce)
+	snapshot, err := sbx.PauseWithLockRelease(ctx, s.tracer, snapshotTemplateFiles, releaseOnce)
 	if err != nil {
 		errMsg := fmt.Errorf("error snapshotting sandbox '%s': %w", in.SandboxId, err)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -291,7 +280,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		snapshotTemplateFiles.BuildId,
 		snapshotTemplateFiles.KernelVersion,
 		snapshotTemplateFiles.FirecrackerVersion,
-		snapshotTemplateFiles.Hugepages(),
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
@@ -349,7 +337,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 		err = <-b.Upload(
 			context.Background(),
-			snapshotTemplateFiles.CacheSnapfilePath(),
+			snapshot.Snapfile.Path(),
 			memfilePath,
 			rootfsPath,
 		)

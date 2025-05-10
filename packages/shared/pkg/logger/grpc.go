@@ -10,6 +10,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const HealthCheckRoute = "/grpc.health.v1.Health/Check"
+
 func GRPCLogger(l *zap.Logger) logging.Logger {
 	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
 		f := make([]zap.Field, 0, len(fields)/2)
@@ -71,7 +73,16 @@ func GRPCLogger(l *zap.Logger) logging.Logger {
 }
 
 func WithoutHealthCheck() selector.Matcher {
+	return WithoutRoutes(HealthCheckRoute)
+}
+
+func WithoutRoutes(routes ...string) selector.Matcher {
 	return selector.MatchFunc(func(_ context.Context, c interceptors.CallMeta) bool {
-		return c.FullMethod() != "/grpc.health.v1.Health/Check"
+		for _, route := range routes {
+			if c.FullMethod() == route {
+				return false
+			}
+		}
+		return true
 	})
 }

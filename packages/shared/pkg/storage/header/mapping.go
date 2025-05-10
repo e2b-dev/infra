@@ -22,7 +22,7 @@ type BuildMap struct {
 func CreateMapping(
 	buildId *uuid.UUID,
 	dirty *bitset.BitSet,
-	blockSize uint64,
+	blockSize int64,
 ) []*BuildMap {
 	var mappings []*BuildMap
 
@@ -39,9 +39,9 @@ func CreateMapping(
 
 		if blockLength > 0 {
 			m := &BuildMap{
-				Offset:             uint64(startBlock) * blockSize,
+				Offset:             uint64(startBlock) * uint64(blockSize),
 				BuildId:            *buildId,
-				Length:             uint64(blockLength) * blockSize,
+				Length:             uint64(blockLength) * uint64(blockSize),
 				BuildStorageOffset: buildStorageOffset,
 			}
 
@@ -56,9 +56,9 @@ func CreateMapping(
 
 	if blockLength > 0 {
 		mappings = append(mappings, &BuildMap{
-			Offset:             uint64(startBlock) * blockSize,
+			Offset:             uint64(startBlock) * uint64(blockSize),
 			BuildId:            *buildId,
-			Length:             uint64(blockLength) * blockSize,
+			Length:             uint64(blockLength) * uint64(blockSize),
 			BuildStorageOffset: buildStorageOffset,
 		})
 	}
@@ -231,6 +231,18 @@ func MergeMappings(
 
 	mappings = append(mappings, baseMapping[baseIdx:]...)
 	mappings = append(mappings, diffMapping[diffIdx:]...)
+
+	return mappings
+}
+
+// NormalizeMappings joins adjacent mappings that have the same buildId.
+func NormalizeMappings(mappings []*BuildMap) []*BuildMap {
+	for i := 0; i < len(mappings); i++ {
+		if i+1 < len(mappings) && mappings[i].BuildId == mappings[i+1].BuildId {
+			mappings[i].Length += mappings[i+1].Length
+			mappings = append(mappings[:i+1], mappings[i+2:]...)
+		}
+	}
 
 	return mappings
 }

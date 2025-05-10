@@ -23,7 +23,6 @@ func main() {
 		*buildId,
 		"",
 		"",
-		false,
 	)
 
 	var storagePath string

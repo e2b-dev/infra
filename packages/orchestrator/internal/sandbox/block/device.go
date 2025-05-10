@@ -1,6 +1,10 @@
 package block
 
-import "io"
+import (
+	"io"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+)
 
 type ErrBytesNotAvailable struct{}
 
@@ -12,6 +16,8 @@ type ReadonlyDevice interface {
 	io.ReaderAt
 	Slice(off, length int64) ([]byte, error)
 	Size() (int64, error)
+	BlockSize() int64
+	Header() *header.Header
 }
 
 type Device interface {

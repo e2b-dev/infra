@@ -22,7 +22,6 @@ func NewStorage(
 	store *build.DiffStore,
 	buildId string,
 	fileType build.DiffType,
-	blockSize int64,
 	h *header.Header,
 	persistence storage.StorageProvider,
 ) (*Storage, error) {
@@ -68,7 +67,7 @@ func NewStorage(
 			BaseBuildId: id,
 			Size:        uint64(size),
 			Version:     1,
-			BlockSize:   uint64(blockSize),
+			BlockSize:   h.Metadata.BlockSize,
 			Generation:  1,
 		}, nil)
 	}
@@ -87,6 +86,10 @@ func (d *Storage) ReadAt(p []byte, off int64) (int, error) {
 
 func (d *Storage) Size() (int64, error) {
 	return int64(d.header.Metadata.Size), nil
+}
+
+func (d *Storage) BlockSize() int64 {
+	return int64(d.header.Metadata.BlockSize)
 }
 
 func (d *Storage) Slice(off, length int64) ([]byte, error) {
