@@ -167,7 +167,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
 
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(ctx)
 	if err != nil {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}

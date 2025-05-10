@@ -87,7 +87,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		}
 	}()
 
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(ctx)
 	if err != nil {
 		return fmt.Errorf("could not create device pool: %w", err)
 	}
@@ -142,8 +142,6 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}
-
-	cancel()
 
 	fmt.Println("Build finished, closing...")
 	return nil

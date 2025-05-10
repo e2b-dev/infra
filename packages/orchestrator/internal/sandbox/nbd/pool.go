@@ -47,7 +47,9 @@ type (
 //
 // Use `sudo modprobe nbd nbds_max=4096` to set the max number of devices to 4096, which is a good default for now.
 type DevicePool struct {
-	ctx context.Context
+	ctx  context.Context
+	exit chan error
+
 	// We use the bitset to speedup the free device lookup.
 	usedSlots *bitset.BitSet
 	mu        sync.Mutex
@@ -57,7 +59,7 @@ type DevicePool struct {
 	slotCounter metric.Int64UpDownCounter
 }
 
-func NewDevicePool() (*DevicePool, error) {
+func NewDevicePool(ctx context.Context) (*DevicePool, error) {
 	maxDevices, err := getMaxDevices()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get max devices: %w", err)
@@ -73,7 +75,8 @@ func NewDevicePool() (*DevicePool, error) {
 	}
 
 	pool := &DevicePool{
-		ctx:         context.Background(),
+		ctx:         ctx,
+		exit:        make(chan error, 1),
 		usedSlots:   bitset.New(maxDevices),
 		slots:       make(chan DeviceSlot, maxSlotsReady),
 		slotCounter: counter,
@@ -124,7 +127,14 @@ func (d *DevicePool) Populate() error {
 			}
 
 			d.slotCounter.Add(d.ctx, 1)
-			d.slots <- *device
+
+			// Use select to avoid panic if context is canceled before writing
+			select {
+			case err := <-d.exit:
+				return err
+			case d.slots <- *device:
+				// sent successfully
+			}
 		}
 	}
 }
@@ -292,6 +302,13 @@ func (d *DevicePool) Close(_ context.Context) error {
 	defer d.mu.Unlock()
 
 	zap.L().Info("Closing device pool")
+
+	d.exit <- nil
+	close(d.exit)
+
+	if d.slots != nil {
+		close(d.slots)
+	}
 
 	for slotIdx, e := d.usedSlots.NextSet(0); e; slotIdx, e = d.usedSlots.NextSet(slotIdx + 1) {
 		slot := DeviceSlot(slotIdx)
