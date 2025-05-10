@@ -305,18 +305,19 @@ func (d *DevicePool) Close(_ context.Context) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	zap.L().Info("Closing device pool")
+	zap.L().Info("Closing device pool", zap.Uint("used_slots", d.usedSlots.Count()))
 
 	d.exit <- nil
 	close(d.exit)
 
+	var errs error
 	for slotIdx, e := d.usedSlots.NextSet(0); e; slotIdx, e = d.usedSlots.NextSet(slotIdx + 1) {
 		slot := DeviceSlot(slotIdx)
-		err := d.ReleaseDeviceWithRetry(slot)
+		err := d.ReleaseDevice(slot)
 		if err != nil {
-			return fmt.Errorf("failed to release device %d: %w", slot, err)
+			errs = errors.Join(errs, fmt.Errorf("failed to release device %d: %w", slot, err))
 		}
 	}
 
-	return nil
+	return errs
 }
