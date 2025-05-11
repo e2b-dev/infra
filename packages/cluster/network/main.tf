@@ -582,6 +582,12 @@ resource "google_compute_firewall" "remote_connection_firewall_ingress" {
   }
 
 
+  dynamic "log_config" {
+    for_each = var.environment != "dev" ? [1] : []
+    content {
+      metadata = "EXCLUDE_ALL_METADATA"
+    }
+  }
 
   priority = 1000
 
