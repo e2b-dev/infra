@@ -582,6 +582,7 @@ resource "google_compute_firewall" "remote_connection_firewall_ingress" {
   }
 
 
+  #  Metadata fields can be found here: https://cloud.google.com/firewall/docs/firewall-rules-logging#log-format
   dynamic "log_config" {
     for_each = var.environment != "dev" ? [1] : []
     content {
