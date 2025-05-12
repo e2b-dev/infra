@@ -97,7 +97,7 @@ func (a *AwsAdapter) GetConfiguration(ctx context.Context) (*Config, error) {
 
 func getArnFromInstanceMetadata() (string, error) {
 	// ec2 internal aws metadata URL for instance tags
-	const metadataURL = "http://169.254.169.254/latest/meta-data/tags/instance/config_storage_arn"
+	const metadataURL = "http://169.254.169.254/latest/meta-data/tags/instance/e2b_config_storage_arn"
 	resp, err := http.Get(metadataURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to get metadata: %w", err)
