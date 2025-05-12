@@ -3,20 +3,20 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 
 IMAGE := e2b-orchestration/client-proxy
 
-#.PHONY: build
-#build:
-#	# Allow for passing commit sha directly for docker builds
-#	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
-#	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
-#
-#.PHONY: build-and-upload
-#build-and-upload:
-#	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-#	@rm -rf .shared/
-#	@cp -r ../shared .shared/
-#	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
-#	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" .
-#	@rm -rf .shared/
+.PHONY: build
+build:
+	# Allow for passing commit sha directly for docker builds
+	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
+
+.PHONY: build-and-upload
+build-and-upload:
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
+	@rm -rf .shared/
+	@cp -r ../shared .shared/
+	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
+	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" .
+	@rm -rf .shared/
 
 openapi := ../../spec/openapi-edge.yml
 codegen := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
@@ -32,18 +32,18 @@ run:
 	@echo "Running..."
 	@AWS_PROFILE=e2b_jirka CONFIGURATION_SOURCE=AWS-SECRET-MANAGER CONFIGURATION_AWS_SECRET_MANAGER_ARN=arn:aws:secretsmanager:eu-west-1:228660242780:secret:e2b/edge-node-config-11mvun go run main.go
 
-.PHONY: build
-build:
-	@echo "Building..."
-	@GOOS=linux GOARCH=amd64 go build -o bin/edge-agent main.go
-	@echo "Done"
-
-.PHONY: build-and-upload
-build-and-upload:
-	@make build
-	@echo "Uploading..."
-	@aws s3 cp bin/edge-agent s3://e2b-eu-west-1-assets/edge-agent --profile e2b_jirka
-	@echo "Upload complete"
+#.PHONY: build
+#build:
+#	@echo "Building..."
+#	@GOOS=linux GOARCH=amd64 go build -o bin/edge-agent main.go
+#	@echo "Done"
+#
+#.PHONY: build-and-upload
+#build-and-upload:
+#	@make build
+#	@echo "Uploading..."
+#	@aws s3 cp bin/edge-agent s3://e2b-eu-west-1-assets/edge-agent --profile e2b_jirka
+#	@echo "Upload complete"
 
 .PHONY: test
 test:
