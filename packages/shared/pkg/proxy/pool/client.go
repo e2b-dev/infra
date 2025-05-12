@@ -101,9 +101,13 @@ func newProxyClient(
 
 						return
 					}
+
+					return
 				}
 
-				zap.L().Warn("sandbox error handler called", zap.Error(err))
+				zap.L().Error("sandbox error handler called", zap.Error(err))
+
+				http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
 
 				return
 			},
