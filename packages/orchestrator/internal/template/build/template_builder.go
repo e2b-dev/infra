@@ -203,6 +203,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 			sbx.Metadata.Config.SandboxId,
 			startCmdWait,
 			env.StartCmd,
+			"root",
 		)
 		if err != nil {
 			postProcessor.WriteMsg(fmt.Sprintf("Error while running command: %v", err))

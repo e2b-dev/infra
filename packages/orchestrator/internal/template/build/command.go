@@ -23,6 +23,7 @@ func (b *TemplateBuilder) runCommand(
 	sandboxID string,
 	cmdWait time.Duration,
 	command string,
+	runAsUser string,
 ) error {
 	createAppReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
@@ -39,10 +40,9 @@ func (b *TemplateBuilder) runCommand(
 	proxyHost := fmt.Sprintf("http://localhost%s", b.proxy.GetAddr())
 	processC := processconnect.NewProcessClient(&hc, proxyHost)
 	grpc.SetSandboxHeader(createAppReq.Header(), proxyHost, sandboxID, b.clientID)
-	grpc.SetUserHeader(createAppReq.Header(), "user")
+	grpc.SetUserHeader(createAppReq.Header(), runAsUser)
 	createAppStream, err := processC.Start(ctx, createAppReq)
 	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error while starting process: %v", err))
 		return fmt.Errorf("error starting process: %w", err)
 	}
 	defer createAppStream.Close()
