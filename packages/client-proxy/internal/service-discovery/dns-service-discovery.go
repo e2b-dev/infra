@@ -2,143 +2,116 @@ package service_discovery
 
 import (
 	"context"
+	"fmt"
 	"net"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 type DnsServiceDiscovery struct {
-	serviceId      string
-	serviceType    string
-	serviceStatus  string
-	serviceVersion string
+	logger  *zap.Logger
+	entries *smap.Map[*ServiceDiscoveryItem]
 
-	nodeIp   string
-	nodePort int
-
-	logger *zap.Logger
-	lock   sync.Mutex
-
-	orchestratorsDomain string
-	orchestratorsPort   int
-}
-
-type DnsServiceDiscoveryConfig struct {
-	Logger *zap.Logger
-
-	NodeIp   string
-	NodePort int
-
-	ServiceId      string
-	ServiceType    string
-	ServiceVersion string
-	ServiceStatus  string
-
-	OrchestratorsDomain string
-	OrchestratorsPort   int
+	query       string
+	servicePort int
 }
 
 const (
 	dnsMaxRetries = 3
+	dnsRetryWait  = 5 * time.Millisecond
+
+	cacheRefreshInterval = 10 * time.Second
 )
 
-func NewDnsServiceDiscovery(config *DnsServiceDiscoveryConfig) *DnsServiceDiscovery {
-	return &DnsServiceDiscovery{
-		nodeIp:   config.NodeIp,
-		nodePort: config.NodePort,
+func NewDnsServiceDiscovery(ctx context.Context, query string, servicePort int, logger *zap.Logger) *DnsServiceDiscovery {
+	sd := &DnsServiceDiscovery{
+		query:   query,
+		logger:  logger,
+		entries: smap.New[*ServiceDiscoveryItem](),
 
-		serviceId:      config.ServiceId,
-		serviceStatus:  config.ServiceStatus, // just initial status
-		serviceVersion: config.ServiceVersion,
-		serviceType:    config.ServiceType,
-
-		orchestratorsDomain: config.OrchestratorsDomain,
-		orchestratorsPort:   config.OrchestratorsPort,
-
-		logger: config.Logger,
-	}
-}
-
-func (sd *DnsServiceDiscovery) ListNodes(_ context.Context) (map[string]*ServiceDiscoveryItem, error) {
-	return sd.getNodes()
-}
-
-func (sd *DnsServiceDiscovery) GetNodeById(_ context.Context, nodeId string) (*ServiceDiscoveryItem, error) {
-	nodes, err := sd.getNodes()
-	if err != nil {
-		return nil, err
+		servicePort: servicePort,
 	}
 
-	for id, node := range nodes {
-		if id == nodeId {
-			return node, nil
+	go func() { sd.sync(ctx) }()
+
+	return sd
+}
+
+func (sd *DnsServiceDiscovery) ListNodes(_ context.Context) ([]*ServiceDiscoveryItem, error) {
+	entries := sd.entries.Items()
+	items := make([]*ServiceDiscoveryItem, 0)
+
+	for _, item := range entries {
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
+func (sd *DnsServiceDiscovery) keepInSync(ctx context.Context) {
+	// Run the first sync immediately
+	sd.sync(ctx)
+
+	ticker := time.NewTicker(cacheRefreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			sd.logger.Info("Stopping service discovery keep-in-sync")
+			return
+		case <-ticker.C:
+			sd.sync(ctx)
 		}
 	}
-
-	return nil, NodeNotFoundErr
 }
 
-func (sd *DnsServiceDiscovery) GetSelfNodeId() string {
-	return sd.serviceId
-}
+func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
+	ctxTimeout, ctxCancel := context.WithTimeout(ctx, cacheRefreshInterval)
+	defer ctxCancel()
 
-func (sd *DnsServiceDiscovery) SetSelfStatus(status string) {
-	sd.serviceStatus = status
-}
-
-func (sd *DnsServiceDiscovery) getNodes() (map[string]*ServiceDiscoveryItem, error) {
-	sd.lock.Lock()
-	defer sd.lock.Unlock()
-
-	nodes := make(map[string]*ServiceDiscoveryItem)
-
-	for _ = range dnsMaxRetries {
-		ips, err := net.LookupIP(sd.orchestratorsDomain)
-		if err != nil {
-			sd.logger.Error("DNS service discovery failed", zap.Error(err))
-			time.Sleep(5 * time.Millisecond)
-			continue
-		}
-
-		sd.logger.Debug("DNS service discovery response", zap.Int("ips", len(ips)))
-
-		for _, answer := range ips {
-			orchestratorIp := answer.String()
-
-			// we want to use orchestrator ip as static service id
-			nodes[orchestratorIp] = &ServiceDiscoveryItem{
-				SchemaVersion: schemaVersion,
-
-				ServiceType:    ServiceTypeOrchestrator,
-				ServiceVersion: sd.serviceVersion, // mocked
-				NodeIp:         orchestratorIp,
-				NodePort:       sd.orchestratorsPort,
-
-				Status:       StatusHealthy,
-				RegisteredAt: time.Now().Unix(),                               // mocked
-				ExpiresAt:    time.Now().Add(defaultServiceExpiration).Unix(), // mocked
+	select {
+	case <-ctxTimeout.Done():
+		sd.logger.Info("Service discovery sync timed out")
+		return
+	default:
+		for _ = range dnsMaxRetries {
+			ips, err := net.LookupIP(sd.query)
+			if err != nil {
+				sd.logger.Error("DNS service discovery failed", zap.Error(err))
+				time.Sleep(dnsRetryWait)
+				continue
 			}
+
+			sd.logger.Debug("DNS service discovery response", zap.Int("ips", len(ips)))
+
+			// Map IPs
+			ipsMap := make(map[string]string)
+			for _, ip := range ips {
+				ipsMap[ip.String()] = ip.String()
+			}
+
+			// Create or update the entries
+			for _, answer := range ips {
+				ip := answer.String()
+				key := fmt.Sprintf("%s:%d", ip, sd.servicePort)
+
+				sd.entries.Insert(
+					key, &ServiceDiscoveryItem{NodeIp: ip, NodePort: sd.servicePort},
+				)
+			}
+
+			// Remove entries that are no longer in DNS response
+			for key := range sd.entries.Items() {
+				if _, ok := ipsMap[key]; !ok {
+					sd.entries.Remove(key)
+				}
+			}
+
+			break
 		}
-
-		break
 	}
-
-	// inject itself
-	nodes[sd.serviceId] = &ServiceDiscoveryItem{
-		SchemaVersion: schemaVersion,
-
-		ServiceType:    ServiceTypeEdge,
-		ServiceVersion: sd.serviceVersion,
-
-		NodeIp:   sd.nodeIp,
-		NodePort: sd.nodePort,
-
-		Status:       sd.serviceStatus,
-		RegisteredAt: time.Now().Unix(),
-		ExpiresAt:    time.Now().Add(defaultServiceExpiration).Unix(),
-	}
-
-	return nodes, nil
 }
