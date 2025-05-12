@@ -2,6 +2,7 @@ package build
 
 import (
 	"io"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -59,7 +60,7 @@ func (e *TemplateConfig) ToSandboxConfig(envdVersion string) *orchestrator.Sandb
 		KernelVersion:      e.KernelVersion,
 		FirecrackerVersion: e.FirecrackerVersion,
 		HugePages:          e.HugePages,
-		SandboxId:          uuid.New().String(),
+		SandboxId:          strings.ReplaceAll(uuid.New().String(), "-", ""),
 
 		EnvdVersion: envdVersion,
 		Vcpu:        e.VCpuCount,

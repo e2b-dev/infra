@@ -8,7 +8,7 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
-	filesystem "github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
+	filesystem "github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	http "net/http"
 	strings "strings"
 )

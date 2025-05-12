@@ -50,7 +50,8 @@ generate:
 			exit 1; \
 		fi; \
 	fi
-	cd spec && buf generate
+	cd spec && buf generate --template buf.gen.yaml
+	cd spec && buf generate --template buf.gen.shared.yaml
 
 .PHONY: init-generate
 init-generate:
