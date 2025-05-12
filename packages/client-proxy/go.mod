@@ -6,19 +6,18 @@ require (
 	github.com/aws/aws-sdk-go v1.55.7
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.217.0
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.35.4
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/getkin/kin-openapi v0.132.0
 	github.com/gin-contrib/size v1.0.2
 	github.com/gin-gonic/gin v1.10.0
-	github.com/go-redsync/redsync/v4 v4.13.0
+	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/miekg/dns v1.1.63
 	github.com/oapi-codegen/gin-middleware v1.0.2
 	github.com/oapi-codegen/runtime v1.1.1
-	github.com/redis/go-redis/v9 v9.7.3
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.57.0
-	go.opentelemetry.io/otel v1.35.0
 	go.opentelemetry.io/otel/metric v1.35.0
 	go.opentelemetry.io/otel/trace v1.35.0
 	go.uber.org/zap v1.27.0
@@ -42,9 +41,7 @@ require (
 	github.com/bytedance/sonic v1.13.2 // indirect
 	github.com/bytedance/sonic/loader v0.2.4 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.5 // indirect
-	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-contrib/sse v1.0.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
@@ -58,8 +55,6 @@ require (
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.25.1 // indirect
-	github.com/hashicorp/errwrap v1.1.0 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
@@ -78,6 +73,7 @@ require (
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/bridges/otelzap v0.9.0 // indirect
+	go.opentelemetry.io/otel v1.35.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.10.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.34.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.34.0 // indirect
