@@ -67,7 +67,6 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 				HandleError(w, r)
 			if err != nil {
 				zap.L().Error("failed to handle sandbox not found error", zap.Error(err))
-
 				http.Error(w, "Failed to handle sandbox not found error", http.StatusInternalServerError)
 
 				return
