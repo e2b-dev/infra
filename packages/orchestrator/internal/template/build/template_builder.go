@@ -1,14 +1,13 @@
 package build
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/docker/docker/client"
-	docker "github.com/fsouza/go-dockerclient"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -30,16 +29,14 @@ type TemplateBuilder struct {
 	logger *zap.Logger
 	tracer trace.Tracer
 
-	storage            storage.StorageProvider
-	devicePool         *nbd.DevicePool
-	networkPool        *network.Pool
-	buildCache         *cache.BuildCache
-	buildLogger        *zap.Logger
-	dockerClient       *client.Client
-	legacyDockerClient *docker.Client
-	templateStorage    *template.Storage
-	proxy              *proxy.SandboxProxy
-	sandboxes          *smap.Map[*sandbox.Sandbox]
+	storage         storage.StorageProvider
+	devicePool      *nbd.DevicePool
+	networkPool     *network.Pool
+	buildCache      *cache.BuildCache
+	buildLogger     *zap.Logger
+	templateStorage *template.Storage
+	proxy           *proxy.SandboxProxy
+	sandboxes       *smap.Map[*sandbox.Sandbox]
 }
 
 const (
@@ -55,8 +52,6 @@ func NewBuilder(
 	logger *zap.Logger,
 	buildLogger *zap.Logger,
 	tracer trace.Tracer,
-	dockerClient *client.Client,
-	legacyDockerClient *docker.Client,
 	templateStorage *template.Storage,
 	buildCache *cache.BuildCache,
 	storage storage.StorageProvider,
@@ -66,18 +61,16 @@ func NewBuilder(
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) *TemplateBuilder {
 	return &TemplateBuilder{
-		logger:             logger,
-		tracer:             tracer,
-		buildCache:         buildCache,
-		buildLogger:        buildLogger,
-		dockerClient:       dockerClient,
-		legacyDockerClient: legacyDockerClient,
-		templateStorage:    templateStorage,
-		storage:            storage,
-		devicePool:         devicePool,
-		networkPool:        networkPool,
-		proxy:              proxy,
-		sandboxes:          sandboxes,
+		logger:          logger,
+		tracer:          tracer,
+		buildCache:      buildCache,
+		buildLogger:     buildLogger,
+		templateStorage: templateStorage,
+		storage:         storage,
+		devicePool:      devicePool,
+		networkPool:     networkPool,
+		proxy:           proxy,
+		sandboxes:       sandboxes,
 	}
 }
 
@@ -114,10 +107,10 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 		return fmt.Errorf("error initializing directories for building template '%s' during build '%s': %w", template.TemplateId, template.BuildId, err)
 	}
 	defer func() {
-		err := os.RemoveAll(templateBuildDir)
+		/*err := os.RemoveAll(templateBuildDir)
 		if err != nil {
 			b.logger.Error("Error while removing template build directory", zap.Error(err))
-		}
+		}*/
 	}()
 
 	// Created here to be able to pass it to CreateSandbox for populating COW cache
@@ -128,8 +121,6 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 		b.tracer,
 		template,
 		postProcessor,
-		b.dockerClient,
-		b.legacyDockerClient,
 		templateCacheFiles,
 		templateBuildDir,
 		rootfsPath,
@@ -183,6 +174,24 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 			}
 		}
 	}()
+
+	var scriptDef bytes.Buffer
+	err = FinishTemplate.Execute(&scriptDef, map[string]string{})
+	if err != nil {
+		return fmt.Errorf("error executing provision script: %w", err)
+	}
+	err = b.runCommand(
+		ctx,
+		postProcessor,
+		sbx.Metadata.Config.SandboxId,
+		time.Hour,
+		scriptDef.String(),
+		"root",
+	)
+	if err != nil {
+		postProcessor.WriteMsg(fmt.Sprintf("Error while running script: %v", err))
+		return fmt.Errorf("error running script: %w", err)
+	}
 
 	// Start command
 	if template.StartCmd != "" {

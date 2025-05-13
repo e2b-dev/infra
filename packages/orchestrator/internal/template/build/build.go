@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"text/template"
 
-	"github.com/docker/docker/client"
-	docker "github.com/fsouza/go-dockerclient"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 
@@ -21,13 +19,15 @@ import (
 var provisionEnvScriptFile string
 var EnvInstanceTemplate = template.Must(template.New("provisioning-script").Parse(provisionEnvScriptFile))
 
+//go:embed provision-finish.sh
+var provisionFinishEnvScriptFile string
+var FinishTemplate = template.Must(template.New("provisioning-finish-script").Parse(provisionFinishEnvScriptFile))
+
 func Build(
 	ctx context.Context,
 	tracer trace.Tracer,
 	templateConfig *TemplateConfig,
 	postProcessor *writer.PostProcessor,
-	docker *client.Client,
-	legacyDocker *docker.Client,
 	templateCacheFiles *storage.TemplateCacheFiles,
 	templateBuildDir string,
 	rootfsPath string,
@@ -36,7 +36,8 @@ func Build(
 	defer childSpan.End()
 
 	// Create a rootfs file
-	err := NewRootfs(childCtx, tracer, postProcessor, templateConfig, docker, legacyDocker, rootfsPath)
+	rtfs := NewRootfs(templateConfig)
+	err := rtfs.createExt4Filesystem(childCtx, tracer, postProcessor, rootfsPath)
 	if err != nil {
 		return nil, fmt.Errorf("error creating rootfs for template '%s' during build '%s': %w", templateConfig.TemplateId, templateConfig.BuildId, err)
 	}

@@ -35,7 +35,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var envdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
+var envdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "1m")))
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
@@ -176,6 +176,7 @@ func CreateSandbox(
 	err = fcHandle.Create(
 		childCtx,
 		tracer,
+		config.SandboxId,
 		config.TemplateId,
 		config.TeamId,
 		config.Vcpu,
@@ -217,6 +218,7 @@ func CreateSandbox(
 	err = sbx.waitForStart(
 		ctx,
 		tracer,
+		fcHandle,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to wait for sandbox start: %w", err)
@@ -406,6 +408,7 @@ func ResumeSandbox(
 	err = sbx.waitForStart(
 		ctx,
 		tracer,
+		fcHandle,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to wait for sandbox start: %w", err)
@@ -791,10 +794,22 @@ func serveMemory(
 func (s *Sandbox) waitForStart(
 	ctx context.Context,
 	tracer trace.Tracer,
+	fcProcess *fc.Process,
 ) error {
-	// Ensure the syncing takes at most envdTimeout seconds.
-	syncCtx, syncCancel := context.WithTimeoutCause(ctx, envdTimeout, fmt.Errorf("syncing took too long"))
-	defer syncCancel()
+	syncCtx, syncCancel := context.WithCancelCause(ctx)
+	defer syncCancel(nil)
+
+	go func() {
+		select {
+		// Ensure the syncing takes at most envdTimeout seconds.
+		case <-time.After(envdTimeout):
+			syncCancel(fmt.Errorf("syncing took too long"))
+		case <-syncCtx.Done():
+			return
+		case err := <-fcProcess.Exit:
+			syncCancel(fmt.Errorf("fc process exited prematurely: %w", err))
+		}
+	}()
 
 	if semver.Compare(fmt.Sprintf("v%s", s.Metadata.Config.EnvdVersion), "v0.1.1") >= 0 {
 		initErr := s.initEnvd(syncCtx, tracer, s.Metadata.Config.EnvVars, s.Metadata.Config.EnvdAccessToken)

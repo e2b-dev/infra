@@ -8,8 +8,6 @@ import (
 	"time"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
-	"github.com/docker/docker/client"
-	docker "github.com/fsouza/go-dockerclient"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -58,16 +56,6 @@ func New(ctx context.Context,
 
 	logger.Info("Initializing template manager")
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		panic(err)
-	}
-
-	legacyClient, err := docker.NewClientFromEnv()
-	if err != nil {
-		panic(err)
-	}
-
 	artifactRegistry, err := artifactregistry.NewClient(ctx)
 	if err != nil {
 		panic(err)
@@ -84,8 +72,6 @@ func New(ctx context.Context,
 		logger,
 		buildLogger,
 		tracer,
-		dockerClient,
-		legacyClient,
 		templateStorage,
 		buildCache,
 		persistence,

@@ -9,8 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/docker/docker/client"
-	docker "github.com/fsouza/go-dockerclient"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -68,16 +66,6 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 
 	tracer := otel.Tracer("test")
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		return fmt.Errorf("could not create docker client: %w", err)
-	}
-
-	legacyClient, err := docker.NewClientFromEnv()
-	if err != nil {
-		return fmt.Errorf("could not create docker legacy client: %w", err)
-	}
-
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
 	sandboxes := smap.New[*sandbox.Sandbox]()
@@ -132,8 +120,6 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		logger,
 		logger,
 		tracer,
-		dockerClient,
-		legacyClient,
 		templateStorage,
 		buildCache,
 		persistence,
