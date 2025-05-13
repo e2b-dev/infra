@@ -27,10 +27,10 @@ func (e *EnvAdapter) GetConfiguration(_ context.Context) (*Config, error) {
 	redisUrl := utils.RequiredEnv(RedisUrlEnv, "Redis URL is required")
 
 	selfIp := utils.RequiredEnv(NodeIpEnv, "Node IP env is required")
-	selfPortRaw := utils.RequiredEnv(NodePortEnv, "Node Port env is required")
+	selfPortRaw := utils.RequiredEnv(NodePortEnv, "Node NodePort env is required")
 	selfPort, err := strconv.Atoi(selfPortRaw)
 	if err != nil {
-		return nil, errors.New("node Port env is not a valid integer")
+		return nil, errors.New("node NodePort env is not a valid integer")
 	}
 
 	var redisReaderUrl *string = nil

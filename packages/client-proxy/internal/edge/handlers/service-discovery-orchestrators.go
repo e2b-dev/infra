@@ -33,8 +33,8 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 				NodeVersion: node.Version,
 				NodeStatus:  nodeStatus,
 
-				CanSpawn: node.CanSpawn,
-				CanBuild: node.CanBuild,
+				CanSpawn: node.CanSpawnSandboxes,
+				CanBuild: node.CanBuildTemplates,
 
 				MetricRamMBUsed:        node.MemoryUsedInMB.Load(),
 				MetricVCpuUsed:         node.VCpuUsed.Load(),

@@ -66,7 +66,7 @@ func NewEdgeAPIStore(ctx context.Context, logger *zap.Logger, tracer trace.Trace
 				Logger:      logger,
 
 				NodePort: config.ServicePort,
-				NodeIp:   config.ServiceIpv4,
+				Host:   config.ServiceIpv4,
 
 				ServiceId:      serviceId,
 				ServiceType:    serviceType,
