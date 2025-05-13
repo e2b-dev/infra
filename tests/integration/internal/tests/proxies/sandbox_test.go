@@ -61,15 +61,15 @@ func TestSandboxProxyPorts(t *testing.T) {
 	url, err := url.Parse(setup.EnvdProxy)
 	require.NoError(t, err)
 
-	var etldPlusOne string
+	var eTLD string
 	if url.Hostname() == "localhost" {
-		etldPlusOne = url.Hostname()
+		eTLD = url.Hostname()
 	} else {
-		etldPlusOne, _ = publicsuffix.EffectiveTLDPlusOne(url.Hostname())
+		eTLD, _ = publicsuffix.EffectiveTLDPlusOne(url.Hostname())
 	}
 
 	// Extract top level domain from EnvdProxy
-	host := fmt.Sprintf("%d-%s-%s.%s:%s", serverPort, sbx.SandboxID, sbx.ClientID, etldPlusOne, url.Port())
+	host := fmt.Sprintf("%d-%s-%s.%s:%s", serverPort, sbx.SandboxID, sbx.ClientID, eTLD, url.Port())
 	url.Host = host
 
 	var goodResp *http.Response
@@ -99,7 +99,7 @@ func TestSandboxProxyPorts(t *testing.T) {
 
 	// Test bad port (3210)
 	badPort := 3210
-	host = fmt.Sprintf("%d-%s-%s.%s", badPort, sbx.SandboxID, sbx.ClientID, etldPlusOne)
+	host = fmt.Sprintf("%d-%s-%s.%s:%s", badPort, sbx.SandboxID, sbx.ClientID, eTLD, url.Port())
 	url.Host = host
 
 	var badResp *http.Response
