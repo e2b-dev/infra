@@ -244,6 +244,7 @@ func (p *Process) configure(
 func (p *Process) Create(
 	ctx context.Context,
 	tracer trace.Tracer,
+	sandboxID string,
 	templateID string,
 	teamID string,
 	vCPUCount int64,
@@ -256,7 +257,7 @@ func (p *Process) Create(
 	err := p.configure(
 		childCtx,
 		tracer,
-		"",
+		sandboxID,
 		templateID,
 		teamID,
 	)
@@ -268,7 +269,7 @@ func (p *Process) Create(
 
 	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
 	ipv4 := fmt.Sprintf("%s::%s:%s:instance:%s:off:%s", p.slot.NamespaceIP(), p.slot.TapIP(), p.slot.TapMaskString(), p.slot.VpeerName(), p.slot.TapName())
-	kernelArgs := fmt.Sprintf("quiet loglevel=1 ip=%s ipv6.disable=0 ipv6.autoconf=1 reboot=k panic=1 pci=off nomodules i8042.nokbd i8042.noaux random.trust_cpu=on", ipv4)
+	kernelArgs := fmt.Sprintf("console=ttyS0 loglevel=5 systemd.journald.forward_to_console init=/lib/systemd/systemd ip=%s ipv6.disable=0 ipv6.autoconf=1 reboot=k panic=1 pci=off i8042.nokbd i8042.noaux random.trust_cpu=on nomodules", ipv4)
 	err = p.client.setBootSource(childCtx, kernelArgs, p.files.BuildKernelPath())
 	if err != nil {
 		fcStopErr := p.Stop()

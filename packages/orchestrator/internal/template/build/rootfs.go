@@ -1,11 +1,8 @@
 package build
 
 import (
-	"archive/tar"
 	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,16 +12,9 @@ import (
 	"strings"
 
 	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/registry"
-	"github.com/docker/docker/client"
-	docker "github.com/fsouza/go-dockerclient"
-	v1 "github.com/opencontainers/image-spec/specs-go/v1"
-	"go.opentelemetry.io/otel/attribute"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -36,20 +26,11 @@ const (
 	ToMBShift = 20
 	// Max size of the rootfs file in MB.
 	maxRootfsSize = 15000 << ToMBShift
-	cacheTimeout  = "48h"
 
 	rootfsBuildFileName = "rootfs.ext4.build"
 )
 
-var authConfig = registry.AuthConfig{
-	Username: "_json_key_base64",
-	Password: consts.GoogleServiceAccountSecret,
-}
-
 type Rootfs struct {
-	client       *client.Client
-	legacyClient *docker.Client
-
 	template *TemplateConfig
 }
 
@@ -69,444 +50,179 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 }
 
 func NewRootfs(
-	ctx context.Context,
-	tracer trace.Tracer,
-	postProcessor *writer.PostProcessor,
 	template *TemplateConfig,
-	docker *client.Client,
-	legacyDocker *docker.Client,
-	rootfsPath string,
-) error {
-	childCtx, childSpan := tracer.Start(ctx, "new-rootfs")
-	defer childSpan.End()
-
-	rootfs := &Rootfs{
-		client:       docker,
-		legacyClient: legacyDocker,
-		template:     template,
-	}
-
-	postProcessor.WriteMsg("Pulling Docker image...")
-	err := rootfs.pullDockerImage(childCtx, tracer)
-	if err != nil {
-		errMsg := fmt.Errorf("error building docker image: %w", err)
-
-		rootfs.cleanupDockerImage(childCtx, tracer)
-
-		return errMsg
-	}
-	postProcessor.WriteMsg("Pulled Docker image.")
-
-	postProcessor.WriteMsg("Creating file system")
-	err = rootfs.createRootfsFile(childCtx, tracer, postProcessor, rootfsPath)
-	if err != nil {
-		errMsg := fmt.Errorf("error creating rootfs file: %w", err)
-
-		rootfs.cleanupDockerImage(childCtx, tracer)
-
-		return errMsg
-	}
-
-	return nil
-}
-
-func (r *Rootfs) pullDockerImage(ctx context.Context, tracer trace.Tracer) error {
-	childCtx, childSpan := tracer.Start(ctx, "pull-docker-image")
-	defer childSpan.End()
-
-	authConfigBytes, err := json.Marshal(authConfig)
-	if err != nil {
-		errMsg := fmt.Errorf("error marshaling auth config: %w", err)
-
-		return errMsg
-	}
-
-	authConfigBase64 := base64.URLEncoding.EncodeToString(authConfigBytes)
-	if consts.DockerAuthConfig != "" {
-		authConfigBase64 = consts.DockerAuthConfig
-	}
-
-	logs, err := r.client.ImagePull(childCtx, r.dockerTag(), image.PullOptions{
-		RegistryAuth: authConfigBase64,
-		Platform:     "linux/amd64",
-	})
-	if err != nil {
-		errMsg := fmt.Errorf("error pulling image: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	_, err = io.Copy(os.Stdout, logs)
-	if err != nil {
-		errMsg := fmt.Errorf("error copying logs: %w", err)
-		telemetry.ReportError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	err = logs.Close()
-	if err != nil {
-		errMsg := fmt.Errorf("error closing logs: %w", err)
-		telemetry.ReportError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "pulled image")
-
-	return nil
-}
-
-func (r *Rootfs) cleanupDockerImage(ctx context.Context, tracer trace.Tracer) {
-	childCtx, childSpan := tracer.Start(ctx, "cleanup-docker-image")
-	defer childSpan.End()
-
-	_, err := r.client.ImageRemove(childCtx, r.dockerTag(), image.RemoveOptions{
-		Force:         false,
-		PruneChildren: false,
-	})
-	if err != nil {
-		errMsg := fmt.Errorf("error removing image: %w", err)
-		telemetry.ReportError(childCtx, errMsg)
-	} else {
-		telemetry.ReportEvent(childCtx, "removed image")
+) *Rootfs {
+	return &Rootfs{
+		template: template,
 	}
 }
-
 func (r *Rootfs) dockerTag() string {
 	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.template.TemplateId, r.template.BuildId)
 }
 
-func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, rootfsPath string) error {
-	childCtx, childSpan := tracer.Start(ctx, "create-rootfs-file")
+func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, rootfsPath string) (e error) {
+	childCtx, childSpan := tracer.Start(ctx, "create-ext4-file")
 	defer childSpan.End()
 
-	var scriptDef bytes.Buffer
-
-	err := EnvInstanceTemplate.Execute(&scriptDef, struct {
-		EnvID       string
-		BuildID     string
-		FcAddress   string
-		MemoryLimit int
-	}{
-		// TODO: remove this value as it's not used in the provision script anymore
-		FcAddress:   "169.254.0.21",
-		EnvID:       r.template.TemplateId,
-		BuildID:     r.template.BuildId,
-		MemoryLimit: int(math.Min(float64(r.template.MemoryMB)/2, 512)),
-	})
-	if err != nil {
-		errMsg := fmt.Errorf("error executing provision script: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "executed provision script template")
-
-	pidsLimit := int64(200)
-	memory := max(r.template.MemoryMB, 512) << ToMBShift
-
-	cont, err := r.client.ContainerCreate(childCtx, &container.Config{
-		Image:        r.dockerTag(),
-		Entrypoint:   []string{"/bin/bash", "-c"},
-		User:         "root",
-		Cmd:          []string{scriptDef.String()},
-		Tty:          false,
-		AttachStdout: true,
-		AttachStderr: true,
-	}, &container.HostConfig{
-		SecurityOpt: []string{"no-new-privileges"},
-		CapAdd:      []string{"CHOWN", "DAC_OVERRIDE", "FSETID", "FOWNER", "SETGID", "SETUID", "NET_RAW", "SYS_CHROOT"},
-		CapDrop:     []string{"ALL"},
-		// TODO: Network mode is causing problems with /etc/hosts - we want to find a way to fix this and enable network mode again
-		// NetworkMode: container.NetworkMode(network.ID),
-		Resources: container.Resources{
-			Memory:     memory,
-			CPUPeriod:  100000,
-			CPUQuota:   r.template.VCpuCount * 100000,
-			MemorySwap: memory,
-			PidsLimit:  &pidsLimit,
-		},
-	}, nil, &v1.Platform{}, "")
-	if err != nil {
-		errMsg := fmt.Errorf("error creating container: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-
-	telemetry.ReportEvent(childCtx, "created container")
-
 	defer func() {
-		go func() {
-			cleanupContext, cleanupSpan := tracer.Start(
-				trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
-				"cleanup-container",
-			)
-			defer cleanupSpan.End()
-
-			removeErr := r.legacyClient.RemoveContainer(docker.RemoveContainerOptions{
-				ID:            cont.ID,
-				RemoveVolumes: true,
-				Force:         true,
-				Context:       cleanupContext,
-			})
-			if removeErr != nil {
-				errMsg := fmt.Errorf("error removing container: %w", removeErr)
-				telemetry.ReportError(cleanupContext, errMsg)
-			} else {
-				telemetry.ReportEvent(cleanupContext, "removed container")
-			}
-
-			// Move pruning to separate goroutine
-			cacheTimeoutArg := filters.Arg("until", cacheTimeout)
-
-			_, pruneErr := r.client.BuildCachePrune(cleanupContext, types.BuildCachePruneOptions{
-				Filters: filters.NewArgs(cacheTimeoutArg),
-				All:     true,
-			})
-			if pruneErr != nil {
-				errMsg := fmt.Errorf("error pruning build cache: %w", pruneErr)
-				telemetry.ReportError(cleanupContext, errMsg)
-			} else {
-				telemetry.ReportEvent(cleanupContext, "pruned build cache")
-			}
-
-			_, pruneErr = r.client.ImagesPrune(cleanupContext, filters.NewArgs(cacheTimeoutArg))
-			if pruneErr != nil {
-				errMsg := fmt.Errorf("error pruning images: %w", pruneErr)
-				telemetry.ReportError(cleanupContext, errMsg)
-			} else {
-				telemetry.ReportEvent(cleanupContext, "pruned images")
-			}
-
-			_, pruneErr = r.client.ContainersPrune(cleanupContext, filters.NewArgs(cacheTimeoutArg))
-			if pruneErr != nil {
-				errMsg := fmt.Errorf("error pruning containers: %w", pruneErr)
-				telemetry.ReportError(cleanupContext, errMsg)
-			} else {
-				telemetry.ReportEvent(cleanupContext, "pruned containers")
-			}
-		}()
-	}()
-
-	filesToTar := []fileToTar{
-		{
-			localPath: storage.HostOldEnvdPath,
-			tarPath:   storage.GuestOldEnvdPath,
-		},
-		{
-			localPath: storage.HostEnvdPath,
-			tarPath:   storage.GuestEnvdPath,
-		},
-	}
-
-	pr, pw := io.Pipe()
-
-	go func() {
-		var errMsg error
-		defer func() {
-			closeErr := pw.CloseWithError(errMsg)
-			if closeErr != nil {
-				errMsg := fmt.Errorf("error closing pipe: %w", closeErr)
-				telemetry.ReportCriticalError(childCtx, errMsg)
-			} else {
-				telemetry.ReportEvent(childCtx, "closed pipe")
-			}
-		}()
-
-		tw := tar.NewWriter(pw)
-		defer func() {
-			err = tw.Close()
-			if err != nil {
-				errMsg = fmt.Errorf("error closing tar writer: %w", errors.Join(err, errMsg))
-				telemetry.ReportCriticalError(childCtx, errMsg)
-			} else {
-				telemetry.ReportEvent(childCtx, "closed tar writer")
-			}
-		}()
-
-		for _, file := range filesToTar {
-			addErr := addFileToTarWriter(tw, file)
-			if addErr != nil {
-				errMsg = fmt.Errorf("error adding envd to tar writer: %w", addErr)
-				telemetry.ReportCriticalError(childCtx, errMsg)
-
-				break
-			} else {
-				telemetry.ReportEvent(childCtx, "added envd to tar writer")
-			}
+		if e != nil {
+			telemetry.ReportCriticalError(childCtx, e)
 		}
 	}()
 
-	// Copy tar to the container
-	err = r.legacyClient.UploadToContainer(cont.ID, docker.UploadToContainerOptions{
-		InputStream:          pr,
-		Path:                 "/",
-		Context:              childCtx,
-		NoOverwriteDirNonDir: false,
-	})
+	postProcessor.WriteMsg("Requesting Docker Image")
+	img, err := getOCIImage(childCtx, tracer, r.dockerTag())
 	if err != nil {
-		errMsg := fmt.Errorf("error copying envd to container: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("error requesting docker image: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "copied envd to container")
 
 	postProcessor.WriteMsg("Provisioning template")
-	err = r.client.ContainerStart(childCtx, cont.ID, container.StartOptions{})
+	var scriptDef bytes.Buffer
+	memoryLimit := int(math.Min(float64(r.env.MemoryMB)/2, 512))
+	err = EnvInstanceTemplate.Execute(&scriptDef, struct{}{})
 	if err != nil {
-		errMsg := fmt.Errorf("error starting container: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("error executing provision script: %w", err)
 	}
+	telemetry.ReportEvent(childCtx, "executed provision script env")
 
-	telemetry.ReportEvent(childCtx, "started container")
+	postProcessor.WriteMsg("Setting up system files")
+	provisionService := `[Unit]
+Description=Provision Script
+DefaultDependencies=no
+Before=network-pre.target network.target network-online.target sysinit.target systemd-hostnamed.service systemd-resolved.service
+Wants=network-pre.target
+Requires=local-fs.target
+After=local-fs.target
+OnFailure=emergency.target
 
-	go func() {
-		anonymousChildCtx, anonymousChildSpan := tracer.Start(childCtx, "handle-container-logs", trace.WithSpanKind(trace.SpanKindConsumer))
-		defer anonymousChildSpan.End()
+[Service]
+Type=oneshot
+ExecStart=/provision.sh
+RemainAfterExit=true
 
-		containerStdoutWriter := telemetry.NewEventWriter(anonymousChildCtx, "stdout")
-		containerStderrWriter := telemetry.NewEventWriter(anonymousChildCtx, "stderr")
+# Fail boot if this service fails
+StandardError=journal
+TimeoutStartSec=0
+SuccessExitStatus=0
 
-		outWriter := &MultiWriter{
-			writers: []io.Writer{containerStdoutWriter, postProcessor},
-		}
-		errWriter := &MultiWriter{
-			writers: []io.Writer{containerStderrWriter, r.template.BuildLogsWriter, postProcessor},
-		}
+[Install]
+WantedBy=sysinit.target
+`
 
-		logsErr := r.legacyClient.Logs(docker.LogsOptions{
-			Stdout:       true,
-			Stderr:       true,
-			RawTerminal:  false,
-			OutputStream: outWriter,
-			ErrorStream:  errWriter,
-			Context:      childCtx,
-			Container:    cont.ID,
-			Follow:       true,
-			Timestamps:   false,
-		})
-		if logsErr != nil {
-			errMsg := fmt.Errorf("error getting container logs: %w", logsErr)
-			telemetry.ReportError(anonymousChildCtx, errMsg)
-		} else {
-			telemetry.ReportEvent(anonymousChildCtx, "setup container logs")
-		}
-	}()
+	envdService := fmt.Sprintf(`[Unit]
+Description=Env Daemon Service
+After=multi-user.target
 
-	wait, errWait := r.client.ContainerWait(childCtx, cont.ID, container.WaitConditionNotRunning)
-	select {
-	case <-childCtx.Done():
-		errMsg := fmt.Errorf("error waiting for container: %w", childCtx.Err())
-		telemetry.ReportCriticalError(childCtx, errMsg)
+[Service]
+Type=simple
+Restart=always
+User=root
+Group=root
+Environment=GOTRACEBACK=all
+LimitCORE=infinity
+ExecStart=/bin/bash -l -c "/usr/bin/envd"
+OOMPolicy=continue
+OOMScoreAdjust=-1000
+Environment="GOMEMLIMIT=%dMiB"
 
-		return errMsg
-	case waitErr := <-errWait:
-		if waitErr != nil {
-			errMsg := fmt.Errorf("error waiting for container: %w", waitErr)
-			telemetry.ReportCriticalError(childCtx, errMsg)
+[Install]
+WantedBy=multi-user.target
+`, memoryLimit)
 
-			return errMsg
-		}
-	case response := <-wait:
-		if response.Error != nil {
-			errMsg := fmt.Errorf("error waiting for container - code %d: %s", response.StatusCode, response.Error.Message)
-			telemetry.ReportCriticalError(childCtx, errMsg)
+	autologinService := `[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --noissue --autologin root %I 115200,38400,9600 vt102
+`
 
-			return errMsg
-		}
-	}
+	hostname := r.env.TemplateId
 
-	telemetry.ReportEvent(childCtx, "waited for container exit")
+	hosts := fmt.Sprintf(`127.0.0.1   localhost
+127.0.1.1   %s
+`, hostname)
 
-	inspection, err := r.client.ContainerInspect(ctx, cont.ID)
+	e2bFile := fmt.Sprintf(`ENV_ID=%s
+BUILD_ID=%s
+`, r.env.TemplateId, r.env.BuildId)
+
+	envdFileData, err := os.ReadFile(storage.HostEnvdPath)
 	if err != nil {
-		errMsg := fmt.Errorf("error inspecting container: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("error reading envd file: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "inspected container")
-
-	if inspection.State.Running {
-		errMsg := fmt.Errorf("container is still running")
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+	// Delete files from underlying layers
+	filesRemoveLayer, err := LayerFile(
+		map[string]layerFile{
+			"etc/.wh.hostname":    {[]byte{}, 0o644},
+			"etc/.wh.hosts":       {[]byte{}, 0o644},
+			"etc/.wh.resolv.conf": {[]byte{}, 0o644},
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("error creating layer from files: %w", err)
 	}
 
-	if inspection.State.ExitCode != 0 {
-		errMsg := fmt.Errorf("container exited with status %d: %s", inspection.State.ExitCode, inspection.State.Error)
-		telemetry.ReportCriticalError(
-			childCtx,
-			errMsg,
-			attribute.Int("exit_code", inspection.State.ExitCode),
-			attribute.String("error", inspection.State.Error),
-			attribute.Bool("oom", inspection.State.OOMKilled),
-		)
+	filesLayer, err := LayerFile(
+		map[string]layerFile{
+			// Setup system
+			"etc/hostname":    {[]byte(hostname), 0o644},
+			"etc/hosts":       {[]byte(hosts), 0o644},
+			"etc/resolv.conf": {[]byte("nameserver 8.8.8.8"), 0o644},
 
-		return errMsg
+			".e2b":                                 {[]byte(e2bFile), 0o644},
+			storage.GuestEnvdPath:                  {envdFileData, 0o777},
+			"provision.sh":                         {scriptDef.Bytes(), 0o777},
+			"etc/systemd/system/provision.service": {[]byte(provisionService), 0o644},
+			"etc/systemd/system/envd.service":      {[]byte(envdService), 0o644},
+			"etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf": {[]byte(autologinService), 0o644},
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("error creating layer from files: %w", err)
 	}
 
-	postProcessor.WriteMsg("Extracting file system")
+	symlinkLayer, err := LayerSymlink(
+		map[string]string{
+			// Enable provision service autostart
+			"etc/systemd/system/sysinit.target.wants/provision.service": "etc/systemd/system/provision.service",
+			// Enable envd service autostart
+			"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("error creating layer from symlinks: %w", err)
+	}
+
+	/*systemdLayer, err := createLayerFromFolder("/extract")
+	if err != nil {
+		return err
+	}*/
+
+	img, err = mutate.AppendLayers(img, filesRemoveLayer, filesLayer, symlinkLayer)
+	if err != nil {
+		return fmt.Errorf("error appending layers: %w", err)
+	}
+
+	telemetry.ReportEvent(childCtx, "set up filesystem")
+
+	// Step 2: Flatten layers to tar stream
+	pr := mutate.Extract(img)
+	defer pr.Close()
+
+	postProcessor.WriteMsg("Creating file system")
 	rootfsFile, err := os.Create(rootfsPath)
 	if err != nil {
-		errMsg := fmt.Errorf("error creating rootfs file: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("error creating rootfs file: %w", err)
 	}
-
-	telemetry.ReportEvent(childCtx, "created rootfs file")
-
 	defer func() {
 		rootfsErr := rootfsFile.Close()
 		if rootfsErr != nil {
-			errMsg := fmt.Errorf("error closing rootfs file: %w", rootfsErr)
-			telemetry.ReportError(childCtx, errMsg)
+			telemetry.ReportError(childCtx, fmt.Errorf("error closing rootfs file: %w", rootfsErr))
 		} else {
 			telemetry.ReportEvent(childCtx, "closed rootfs file")
 		}
 	}()
-
-	pr, pw = io.Pipe()
-
-	go func() {
-		downloadErr := r.legacyClient.DownloadFromContainer(cont.ID, docker.DownloadFromContainerOptions{
-			Context:      childCtx,
-			Path:         "/",
-			OutputStream: pw,
-		})
-		if downloadErr != nil {
-			errMsg := fmt.Errorf("error downloading from container: %w", downloadErr)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-		} else {
-			telemetry.ReportEvent(childCtx, "downloaded from container")
-		}
-
-		closeErr := pw.Close()
-		if closeErr != nil {
-			errMsg := fmt.Errorf("error closing pipe: %w", closeErr)
-			telemetry.ReportCriticalError(childCtx, errMsg)
-		} else {
-			telemetry.ReportEvent(childCtx, "closed pipe")
-		}
-	}()
-
-	telemetry.ReportEvent(childCtx, "coverting tar to ext4")
-
-	// This package creates a read-only ext4 filesystem from a tar archive.
-	// We need to use another program to make the filesystem writable.
-	err = tar2ext4.ConvertTarToExt4(pr, rootfsFile, tar2ext4.MaximumDiskSize(maxRootfsSize))
-	if err != nil {
+	// Step 3: Convert tar to ext4 image
+	if err := tar2ext4.Convert(pr, rootfsFile, tar2ext4.ConvertWhiteout, tar2ext4.MaximumDiskSize(maxRootfsSize)); err != nil {
 		if strings.Contains(err.Error(), "disk exceeded maximum size") {
 			r.template.BuildLogsWriter.Write([]byte(fmt.Sprintf("Build failed - exceeded maximum size %v MB.\n", maxRootfsSize>>ToMBShift)))
 		}
@@ -516,6 +232,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 
 		return errMsg
 	}
+	telemetry.ReportEvent(childCtx, "created rootfs file")
 
 	postProcessor.WriteMsg("Filesystem cleanup")
 	telemetry.ReportEvent(childCtx, "converted container tar to ext4")
@@ -533,23 +250,17 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 
 	err = cmd.Run()
 	if err != nil {
-		errMsg := fmt.Errorf("error making rootfs file writable: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("error making rootfs file writable: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "made rootfs file writable")
 
 	rootfsStats, err := rootfsFile.Stat()
 	if err != nil {
-		errMsg := fmt.Errorf("error statting rootfs file: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("error statting rootfs file: %w", err)
 	}
 
-	telemetry.ReportEvent(childCtx, "statted rootfs file")
+	telemetry.ReportEvent(childCtx, fmt.Sprintf("statted rootfs file (size: %d)", rootfsStats.Size()))
 
 	// In bytes
 	rootfsSize := rootfsStats.Size() + r.template.DiskSizeMB<<ToMBShift
@@ -558,10 +269,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 
 	err = rootfsFile.Truncate(rootfsSize)
 	if err != nil {
-		errMsg := fmt.Errorf("error truncating rootfs file: %w to size of build + defaultDiskSizeMB", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("error truncating rootfs file: %w to size of build + defaultDiskSizeMB", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "truncated rootfs file to size of build + defaultDiskSizeMB")
@@ -579,13 +287,34 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 
 	err = cmd.Run()
 	if err != nil {
-		errMsg := fmt.Errorf("error resizing rootfs file: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
+		return fmt.Errorf("error resizing rootfs file: %w", err)
 	}
 
 	telemetry.ReportEvent(childCtx, "resized rootfs file")
 
+	// Check the rootfs filesystem corruption
+	ext4Check, err := checkFileSystemExt4(rootfsFile.Name())
+	zap.L().Debug("filesystem ext4 integrity",
+		zap.String("result", ext4Check),
+		zap.Error(err),
+	)
+	if err != nil {
+		return fmt.Errorf("error checking ext4 filesystem integrity: %w", err)
+	}
+
 	return nil
+}
+
+func checkFileSystemExt4(rootfsPath string) (string, error) {
+	cmd := exec.Command("e2fsck", "-n", rootfsPath)
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.Error(), fmt.Errorf("error running e2fsck: %w", err)
+		} else {
+			return string(out), fmt.Errorf("error running e2fsck: %w", err)
+		}
+	}
+	return strings.TrimSpace(string(out)), nil
 }
