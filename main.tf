@@ -233,6 +233,10 @@ module "nomad" {
   redis_port = var.redis_port
 
   launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
+
+  # Self-signed certificate
+  cert_pem_value = module.init.cert_pem_value
+  key_pem_value  = module.init.key_pem_value
 }
 
 module "redis" {

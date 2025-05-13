@@ -336,6 +336,8 @@ resource "nomad_job" "orchestrator" {
     clickhouse_username          = var.clickhouse_username
     clickhouse_password          = var.clickhouse_password
     clickhouse_database          = var.clickhouse_database
+    cert_pem_value               = var.cert_pem_value
+    key_pem_value                = var.key_pem_value
   })
 }
 

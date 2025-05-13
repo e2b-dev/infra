@@ -230,3 +230,11 @@ variable "clickhouse_password" {
 variable "clickhouse_database" {
   type = string
 }
+
+variable "cert_pem_value" {
+  type = string
+}
+
+variable "key_pem_value" {
+  type = string
+}

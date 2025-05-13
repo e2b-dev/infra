@@ -245,6 +245,59 @@ resource "google_secret_manager_secret_version" "clickhouse_password_value" {
 }
 
 
+resource "tls_private_key" "cert_key" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+resource "tls_self_signed_cert" "cert" {
+  private_key_pem = tls_private_key.cert_key.private_key_pem
+
+  subject {
+    common_name  = "e2b.dev"
+    organization = "E2B"
+  }
+
+  validity_period_hours = 8760 # 1 year
+
+  allowed_uses = [
+    "key_encipherment",
+    "digital_signature",
+    "server_auth",
+  ]
+}
+
+resource "google_secret_manager_secret" "cert_pem" {
+  secret_id = "${var.prefix}cert-pem"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "cert_pem_value" {
+  secret = google_secret_manager_secret.cert_pem.id
+
+  secret_data = tls_self_signed_cert.cert.cert_pem
+}
+
+resource "google_secret_manager_secret" "key_pem" {
+  secret_id = "${var.prefix}key-pem"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "key_pem_value" {
+  secret = google_secret_manager_secret.key_pem.id
+
+  secret_data = tls_private_key.cert_key.private_key_pem
+}
 
 resource "google_secret_manager_secret" "notification_email" {
   secret_id = "${var.prefix}security-notification-email"

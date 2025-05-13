@@ -45,3 +45,11 @@ output "clickhouse_password_secret_data" {
 output "notification_email_secret_version" {
   value = google_secret_manager_secret_version.notification_email_value
 }
+
+output "cert_pem_value" {
+  value = google_secret_manager_secret_version.cert_pem_value.secret_data
+}
+
+output "key_pem_value" {
+  value = google_secret_manager_secret_version.key_pem_value.secret_data
+}

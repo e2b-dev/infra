@@ -2,19 +2,13 @@ package proxy
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"fmt"
 	"io"
 	"log"
-	"math/big"
 	"net"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -23,117 +17,36 @@ import (
 // SandboxForwardProxy handles outbound traffic from sandboxes
 type SandboxForwardProxy struct {
 	server *http.Server
-	ca     *x509.Certificate
-	caKey  *rsa.PrivateKey
-	certs  sync.Map // map[string]*tls.Certificate
 }
 
 func NewSandboxForwardProxy(port uint) *SandboxForwardProxy {
-	server := &http.Server{Addr: fmt.Sprintf(":%d", port)}
-
-	caCert, caKey, err := generateCA()
+	wd, err := os.Getwd()
 	if err != nil {
-		log.Fatalf("Failed to generate CA certificate and key: %v", err)
+		log.Fatalf("Failed to get working directory: %v", err)
 		os.Exit(1)
+	}
+	zap.L().Info("Current working directory", zap.String("cwd", wd))
+	cert, err := tls.LoadX509KeyPair("/etc/ssl/certs/cert.pem", "/etc/ssl/certs/key.pem")
+
+	if err != nil {
+		zap.L().Fatal("Failed to load TLS certificate and key", zap.Error(err))
+		os.Exit(1)
+	}
+
+	server := &http.Server{
+		Addr: fmt.Sprintf(":%d", port),
+		TLSConfig: &tls.Config{
+			Certificates:       []tls.Certificate{cert},
+			InsecureSkipVerify: false,
+			MinVersion:         tls.VersionTLS12,
+			MaxVersion:         tls.VersionTLS13,
+		},
 	}
 
 	return &SandboxForwardProxy{
 		server: server,
-		ca:     caCert,
-		caKey:  caKey,
 	}
 }
-
-// generateCA generates a new Certificate Authority (CA) certificate and private key
-func generateCA() (*x509.Certificate, *rsa.PrivateKey, error) {
-	// Generate private key for CA
-	caPrivateKey, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate CA private key: %w", err)
-	}
-
-	// Create CA certificate template
-	caTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(time.Now().UnixNano()),
-		Subject: pkix.Name{
-			CommonName:   "E2B Root CA",
-			Organization: []string{"E2B"},
-		},
-		NotBefore:             time.Now().Add(-24 * time.Hour),
-		NotAfter:              time.Now().AddDate(10, 0, 0), // Valid for 10 years
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature | x509.KeyUsageCRLSign,
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-		MaxPathLen:            1,
-	}
-
-	// Self-sign the CA certificate
-	caDerBytes, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caPrivateKey.PublicKey, caPrivateKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create CA certificate: %w", err)
-	}
-
-	// Parse the CA certificate
-	caCert, err := x509.ParseCertificate(caDerBytes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse CA certificate: %w", err)
-	}
-
-	return caCert, caPrivateKey, nil
-}
-
-func (p *SandboxForwardProxy) generateCert(hostname string) (*tls.Certificate, error) {
-	// Check if we already have a certificate for this hostname
-	if cert, ok := p.certs.Load(hostname); ok {
-		return cert.(*tls.Certificate), nil
-	}
-
-	// Generate private key for the certificate
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate private key: %w", err)
-	}
-
-	// Create certificate template
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(time.Now().UnixNano()),
-		Subject: pkix.Name{
-			CommonName:   hostname,
-			Organization: []string{"E2B MITM Proxy"},
-		},
-		NotBefore:             time.Now().Add(-24 * time.Hour),
-		NotAfter:              time.Now().Add(24 * time.Hour),
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-		DNSNames:              []string{hostname},
-	}
-
-	// Create certificate
-	derBytes, err := x509.CreateCertificate(rand.Reader, template, p.ca, &privateKey.PublicKey, p.caKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create certificate: %w", err)
-	}
-
-	// Parse the certificate
-	cert, err := x509.ParseCertificate(derBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse certificate: %w", err)
-	}
-
-	// Create TLS certificate
-	tlsCert := &tls.Certificate{
-		Certificate: [][]byte{derBytes},
-		PrivateKey:  privateKey,
-		Leaf:        cert,
-	}
-
-	// Store the certificate
-	p.certs.Store(hostname, tlsCert)
-
-	return tlsCert, nil
-}
-
 func (p *SandboxForwardProxy) Start() error {
 	serverTransport := &http.Transport{
 		MaxIdleConns:          1024,
@@ -148,43 +61,44 @@ func (p *SandboxForwardProxy) Start() error {
 		},
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			zap.L().Info("Dialing TLS", zap.String("network", network), zap.String("addr", addr))
-			host, _, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
+			return net.Dial(network, addr)
+			//host, _, err := net.SplitHostPort(addr)
+			//if err != nil {
+			//	return nil, err
+			//}
 
-			// Generate certificate for the host
-			cert, err := p.generateCert(host)
-			if err != nil {
-				return nil, fmt.Errorf("failed to generate certificate: %w", err)
-			}
+			//// Generate certificate for the host
+			//cert, err := p.generateCert(host)
+			//if err != nil {
+			//	return nil, fmt.Errorf("failed to generate certificate: %w", err)
+			//}
 
-			// Create TLS config for the connection
-			tlsConfig := &tls.Config{
-				Certificates: []tls.Certificate{*cert},
-				MinVersion:   tls.VersionTLS12,
-				MaxVersion:   tls.VersionTLS13,
-			}
+			//// Create TLS config for the connection
+			//tlsConfig := &tls.Config{
+			//	Certificates: []tls.Certificate{*cert},
+			//	MinVersion:   tls.VersionTLS12,
+			//	MaxVersion:   tls.VersionTLS13,
+			//}
 
-			// Establish TCP connection
-			conn, err := net.Dial(network, addr)
-			if err != nil {
-				return nil, err
-			}
+			//// Establish TCP connection
+			//conn, err := net.Dial(network, addr)
+			//if err != nil {
+			//	return nil, err
+			//}
 
-			// Wrap connection with TLS
-			tlsConn := tls.Client(conn, tlsConfig)
-			if err := tlsConn.Handshake(); err != nil {
-				conn.Close()
-				return nil, err
-			}
+			//// Wrap connection with TLS
+			//tlsConn := tls.Client(conn, tlsConfig)
+			//if err := tlsConn.Handshake(); err != nil {
+			//	conn.Close()
+			//	return nil, err
+			//}
 
-			return tlsConn, nil
+			//return tlsConn, nil
 		},
 	}
 	p.server.Handler = http.HandlerFunc(p.proxyHandler(serverTransport))
 
-	return p.server.ListenAndServe()
+	return p.server.ListenAndServeTLS("/etc/ssl/certs/cert.pem", "/etc/ssl/certs/key.pem")
 }
 
 func (p *SandboxForwardProxy) Close(ctx context.Context) error {
@@ -271,7 +185,7 @@ func handleHTTP(w http.ResponseWriter, r *http.Request, transport *http.Transpor
 	// Create a new request to the target
 	targetURL := r.URL
 	if targetURL.Scheme == "" {
-		targetURL.Scheme = "http"
+		targetURL.Scheme = "https"
 	}
 	if targetURL.Host == "" {
 		targetURL.Host = r.Host
