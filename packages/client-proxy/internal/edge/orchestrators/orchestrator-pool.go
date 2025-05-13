@@ -3,6 +3,7 @@ package orchestrators
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -90,85 +91,98 @@ func (p *Pool) syncNodes(ctx context.Context) {
 	defer span.End()
 
 	// Service discovery targets
-	nodes, err := p.sd.ListNodes(spanCtx)
+	sdNodes, err := p.sd.ListNodes(spanCtx)
 	if err != nil {
 		return
 	}
 
 	var wg sync.WaitGroup
 
-	// connect newly discovered orchestrators
-	for nodeId, node := range nodes {
-		// skip not orchestrators
-		if node.ServiceType != sd.ServiceTypeOrchestrator {
-			continue
-		}
-
-		// skip unhealthy nodes (draining are included)
-		if node.Status == sd.StatusUnhealthy {
-			continue
-		}
-
-		// Already exists, skipping
-		_, ok := p.nodes.Get(nodeId)
-		if ok {
-			continue
-		}
-
-		// If the node is not in the list, connect to it
+	// connect / refresh discovered orchestrators
+	for _, sdNode := range sdNodes {
 		wg.Add(1)
-		go func(n *sd.ServiceDiscoveryItem, id string) {
+		go func(sdNode *sd.ServiceDiscoveryItem) {
 			defer wg.Done()
 
-			err := p.connectNode(spanCtx, n, nodeId)
-			if err != nil {
-				p.logger.Error("Error connecting to node", zap.Error(err))
+			var found *Orchestrator = nil
+
+			host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
+			for _, node := range p.nodes.Items() {
+				if host == node.Host {
+					found = node
+					break
+				}
 			}
-		}(node, nodeId)
+
+			if found == nil {
+				// newly discovered orchestrator
+				err := p.connectNode(ctx, sdNode)
+				if err != nil {
+					p.logger.Error("Error connecting to node", zap.Error(err))
+				}
+
+				return
+			}
+
+			// already discovered orchestrator, just sync status etc
+			err := p.syncNode(spanCtx, found, true)
+			if err != nil {
+				p.logger.Error("Error syncing orchestrator node", zap.Error(err))
+			}
+		}(sdNode)
 	}
 
 	// wait for all connections to finish
 	wg.Wait()
 
 	// disconnect nodes that are not in the list anymore
-	for nodeId, node := range p.nodes.Items() {
+	for _, node := range p.nodes.Items() {
 		wg.Add(1)
-		go func(nodeId string) {
+		go func(node *Orchestrator) {
 			defer wg.Done()
 
-			// check if node is in incoming one
-			sdNode, sdNodeFound := nodes[nodeId]
+			found := false
 
-			if sdNode != nil && sdNode.Status == sd.StatusUnhealthy {
-				// force removal of unhealthy node
-				sdNodeFound = true
+			for _, sdNode := range sdNodes {
+				host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
+				if host == node.Host {
+					found = true
+					break
+				}
 			}
 
-			err := p.syncNode(spanCtx, nodeId, node, sdNode, sdNodeFound)
-			if err != nil {
-				p.logger.Error("Error during node sync", zap.Error(err))
+			// orchestrator is no longer in the list coming from service discovery
+			if !found {
+				err := p.syncNode(spanCtx, node, false)
+				if err != nil {
+					p.logger.Error("Error during node sync", zap.Error(err))
+				}
 			}
-		}(nodeId)
+		}(node)
+
 	}
 
 	// wait for all node removals to finish
 	wg.Wait()
 }
 
-func (p *Pool) connectNode(ctx context.Context, node *sd.ServiceDiscoveryItem, nodeId string) error {
+func (p *Pool) connectNode(ctx context.Context, node *sd.ServiceDiscoveryItem) error {
 	ctx, childSpan := p.tracer.Start(ctx, "connect-orchestrator-node")
 	defer childSpan.End()
 
-	o, err := NewOrchestrator(ctx, nodeId, node.NodeIp, node.NodePort, node.ServiceVersion, node.Status)
+	host := fmt.Sprintf("%s:%d", node.NodeIp, node.NodePort)
+	o, err := NewOrchestrator(ctx, host)
 	if err != nil {
 		return err
 	}
 
 	p.nodes.Insert(nodeId, o)
-	return nil
+
+	// call initial node sync
+	return p.syncNode(ctx, o, true)
 }
 
-func (p *Pool) syncNode(ctx context.Context, nodeId string, node *Orchestrator, sdNode *sd.ServiceDiscoveryItem, foundWithDiscovery bool) error {
+func (p *Pool) syncNode(ctx context.Context, node *Orchestrator, foundWithDiscovery bool) error {
 	ctx, childSpan := p.tracer.Start(ctx, "sync-orchestrator-node")
 	defer childSpan.End()
 
