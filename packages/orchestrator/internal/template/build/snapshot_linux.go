@@ -290,7 +290,7 @@ func (s *Snapshot) configureFC(ctx context.Context, tracer trace.Tracer) error {
 
 	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
 	ipv4 := fmt.Sprintf("%s::%s:%s:instance:%s:off:%s", fcAddr, fcTapAddress, fcMaskLong, fcIfaceID, fcDNS)
-	kernelArgs := fmt.Sprintf("quiet loglevel=1 ip=%s ipv6.disable=0 ipv6.autoconf=1 reboot=k panic=1 pci=off nomodules i8042.nokbd i8042.noaux random.trust_cpu=on", ipv4)
+	kernelArgs := fmt.Sprintf("quiet loglevel=1 ip=%s ipv6.disable=0 ipv6.autoconf=1 reboot=k panic=1 pci=off nomodules i8042.nokbd i8042.noaux random.trust_cpu=on clocksource=kvm-clock", ipv4)
 	kernelImagePath := storage.KernelMountedPath
 	bootSourceConfig := operations.PutGuestBootSourceParams{
 		Context: childCtx,
