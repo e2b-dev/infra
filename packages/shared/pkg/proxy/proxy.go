@@ -11,7 +11,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 )
 
-const maxClientConns = 8192 // Reasonably big number that is lower than the number of available ports.
+const maxClientConns = 16384 // Reasonably big number that is lower than the number of available ports.
+const idleTimeoutBufferUpstreamDownstream = 10
 
 type Proxy struct {
 	http.Server
@@ -21,22 +22,22 @@ type Proxy struct {
 
 func New(
 	port uint,
-	poolSizePerConnectionKey int,
 	idleTimeout time.Duration,
 	getDestination func(r *http.Request) (*pool.Destination, error),
 ) *Proxy {
 	p := pool.New(
-		poolSizePerConnectionKey,
 		maxClientConns,
 		idleTimeout,
 	)
 
 	return &Proxy{
 		Server: http.Server{
-			Addr:              fmt.Sprintf(":%d", port),
-			ReadTimeout:       0,
-			WriteTimeout:      0,
-			IdleTimeout:       idleTimeout,
+			Addr:         fmt.Sprintf(":%d", port),
+			ReadTimeout:  0,
+			WriteTimeout: 0,
+			// Downstream idle timeout (client facing) > upstream idle timeout (server facing)
+			// otherwise there's a chance for a race condition when the server closes and the client tries to use the connection
+			IdleTimeout:       idleTimeout + idleTimeoutBufferUpstreamDownstream,
 			ReadHeaderTimeout: 0,
 			Handler:           handler(p, getDestination),
 		},

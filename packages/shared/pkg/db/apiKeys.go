@@ -11,25 +11,25 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/teamapikey"
 )
 
-type TeamUsageError struct {
+type TeamForbiddenError struct {
 	message string
 }
 
-func (e *TeamUsageError) Error() string {
+func (e *TeamForbiddenError) Error() string {
 	return e.message
 }
 
 func validateTeamUsage(team *models.Team) error {
 	if team.IsBanned {
-		return &TeamUsageError{message: "team is banned"}
+		return &TeamForbiddenError{message: "team is banned"}
 	}
 
 	if team.IsBlocked {
 		if team.BlockedReason == nil {
-			return &TeamUsageError{message: "team was blocked"}
+			return &TeamForbiddenError{message: "team was blocked"}
 		}
 
-		return &TeamUsageError{message: fmt.Sprintf("team was blocked, reason: %s", *team.BlockedReason)}
+		return &TeamForbiddenError{message: fmt.Sprintf("team was blocked, reason: %s", *team.BlockedReason)}
 	}
 
 	return nil

@@ -52,7 +52,7 @@ func WithSandbox(sandboxID string, clientID string) func(ctx context.Context, re
 	}
 }
 
-func WithAccessToken(accessToken string) func(ctx context.Context, req *http.Request) error {
+func WithEnvdAccessToken(accessToken string) func(ctx context.Context, req *http.Request) error {
 	return func(ctx context.Context, req *http.Request) error {
 		SetAccessTokenHeader(req.Header, accessToken)
 		return nil

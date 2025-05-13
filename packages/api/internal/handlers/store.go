@@ -269,6 +269,15 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authca
 		return a.db.GetTeamAuth(ctx, key)
 	})
 	if err != nil {
+		var usageErr *db.TeamForbiddenError
+		if errors.As(err, &usageErr) {
+			return authcache.AuthTeamInfo{}, &api.APIError{
+				Err:       err,
+				ClientMsg: err.Error(),
+				Code:      http.StatusForbidden,
+			}
+		}
+
 		return authcache.AuthTeamInfo{}, &api.APIError{
 			Err:       fmt.Errorf("failed to get the team from db for an api key: %w", err),
 			ClientMsg: "Cannot get the team for the given API key",
@@ -375,10 +384,10 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) 
 	team, tier, err := a.authCache.GetOrSet(ctx, teamID, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
 		return a.db.GetTeamByIDAndUserIDAuth(ctx, teamID, userID)
 	})
-	if errors.Is(err, &db.TeamUsageError{}) {
+	if errors.Is(err, &db.TeamForbiddenError{}) {
 		return authcache.AuthTeamInfo{}, &api.APIError{
 			Err:       fmt.Errorf("failed getting team: %w", err),
-			ClientMsg: "Team is blocked",
+			ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
 			Code:      http.StatusUnauthorized,
 		}
 	}

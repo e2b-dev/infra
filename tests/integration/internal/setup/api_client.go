@@ -2,6 +2,7 @@ package setup
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -24,6 +25,14 @@ func GetAPIClient() *api.ClientWithResponses {
 func WithAPIKey() func(ctx context.Context, req *http.Request) error {
 	return func(ctx context.Context, req *http.Request) error {
 		req.Header.Set("X-API-Key", APIKey)
+
+		return nil
+	}
+}
+
+func WithAccessToken() func(ctx context.Context, req *http.Request) error {
+	return func(ctx context.Context, req *http.Request) error {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", AccessToken))
 
 		return nil
 	}

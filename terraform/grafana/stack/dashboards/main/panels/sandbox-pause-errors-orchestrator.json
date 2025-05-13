@@ -121,7 +121,7 @@
         "uid": "grafanacloud-prom"
       },
       "editorMode": "code",
-      "expr": "sum by (rpc_grpc_status_code) (\n  increase(rpc_server_duration_milliseconds_count{job=\"orchestrator\", rpc_method=\"Pause\", rpc_grpc_status_code!=\"0\"}[$__interval])\n)",
+      "expr": "histogram_count(sum by (rpc_grpc_status_code) (\n  increase(rpc_server_duration_milliseconds{job=\"orchestrator\", rpc_method=\"Pause\", rpc_grpc_status_code!=\"0\"}[$__interval])\n))",
       "format": "time_series",
       "instant": false,
       "interval": "60s",

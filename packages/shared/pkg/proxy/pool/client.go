@@ -69,7 +69,7 @@ func newProxyClient(
 				}
 
 				r.SetURL(t.Url)
-				r.SetXForwarded()
+				// We are **not** using SetXForwarded() because servers can sometimes modify the content-location header to be http which might break some customer services.
 				r.Out.Host = r.In.Host
 			},
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -101,6 +101,8 @@ func newProxyClient(
 
 						return
 					}
+
+					return
 				}
 
 				zap.L().Error("sandbox error handler called", zap.Error(err))
