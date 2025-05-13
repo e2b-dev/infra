@@ -3,10 +3,11 @@ package db
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 )
@@ -29,7 +30,9 @@ func NewClient() (*DB, error) {
 
 	// Get the underlying sql.DB object of the driver.
 	db := drv.DB()
-	db.SetMaxOpenConns(100)
+	db.SetMaxOpenConns(40)
+	db.SetMaxIdleConns(20)
+	db.SetConnMaxLifetime(time.Minute * 30)
 
 	client := models.NewClient(models.Driver(drv))
 
