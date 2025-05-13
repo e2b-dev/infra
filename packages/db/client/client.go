@@ -18,7 +18,21 @@ type Client struct {
 	conn *pgxpool.Pool
 }
 
-func NewClient(ctx context.Context) (*Client, error) {
+type Option func(config *pgxpool.Config)
+
+func WithMaxConnections(maxConns int32) Option {
+	return func(config *pgxpool.Config) {
+		config.MaxConns = maxConns
+	}
+}
+
+func WithMinIdle(minIdle int32) Option {
+	return func(config *pgxpool.Config) {
+		config.MinIdleConns = minIdle
+	}
+}
+
+func NewClient(ctx context.Context, options ...Option) (*Client, error) {
 	databaseURL := utils.RequiredEnv("POSTGRES_CONNECTION_STRING", "Postgres connection string")
 
 	// Parse the connection pool configuration
@@ -29,8 +43,10 @@ func NewClient(ctx context.Context) (*Client, error) {
 		return nil, err
 	}
 
-	// Set the maximum number of connections
-	config.MaxConns = 100
+	// Set the default number of connections
+	for _, option := range options {
+		option(config)
+	}
 
 	// Create the connection pool
 	pool, err := pgxpool.NewWithConfig(ctx, config)

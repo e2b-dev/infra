@@ -17,7 +17,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	database, err := db.NewClient()
+	database, err := db.NewClient(1, 1)
 	if err != nil {
 		panic(err)
 	}
