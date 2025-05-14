@@ -376,6 +376,8 @@ resource "nomad_job" "template_manager" {
     otel_collector_grpc_endpoint = "localhost:4317"
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
     orchestrator_services        = "template-manager"
+    cert_pem_value               = var.cert_pem_value
+    key_pem_value                = var.key_pem_value
   })
 }
 resource "nomad_job" "loki" {

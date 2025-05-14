@@ -67,9 +67,23 @@ job "template-manager" {
 %{ endif }
       }
 
+      template {
+        data = <<EOF
+${cert_pem_value}
+EOF
+        destination = "local/cert.pem"
+      }
+      
+      template {
+        data = <<EOF
+${key_pem_value}
+EOF
+        destination = "local/key.pem"
+      }
+
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/template-manager && local/template-manager --port ${port}"]
+        args    = ["-c", "cp local/cert.pem /etc/ssl/certs/cert.pem && cp local/key.pem /etc/ssl/certs/key.pem && chmod +x local/template-manager && local/template-manager --port ${port}"]
       }
 
       artifact {
