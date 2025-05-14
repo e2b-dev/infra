@@ -9,9 +9,11 @@ import (
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -131,21 +133,44 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 		return
 	}
 
-	activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
-	if instancesErr != nil {
-		zap.L().Error("Error getting instances", zap.Error(instancesErr))
-		return
+	syncMaxRetries := 4
+	syncRetrySuccess := false
+
+	for range syncMaxRetries {
+		nodeInfo, err := node.Client.Info.ServiceInfo(ctx, &emptypb.Empty{})
+		if err != nil {
+			zap.L().Error("Error getting node info", zap.Error(err))
+			continue
+		}
+
+		node.SetStatus(o.getNodeStatusConverted(nodeInfo.ServiceStatus))
+
+
+		activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
+		if instancesErr != nil {
+			zap.L().Error("Error getting instances", zap.Error(instancesErr))
+			continue
+		}
+
+		instanceCache.Sync(ctx, activeInstances, node.Info.ID)
+
+		builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
+		if buildsErr != nil {
+			zap.L().Error("Error listing cached builds", zap.Error(buildsErr))
+			continue
+		}
+
+		node.SyncBuilds(builds)
+
+		syncRetrySuccess = true
+		break
 	}
 
-	instanceCache.Sync(ctx, activeInstances, node.Info.ID)
-
-	builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
-	if buildsErr != nil {
-		zap.L().Error("Error listing cached builds", zap.Error(buildsErr))
+	if !syncRetrySuccess {
+		zap.L().Error("Failed to sync node after max retries, temporarily marking as draining", zap.String("node_id", node.Info.ID))
+		node.SetStatus(api.NodeStatusDraining)
 		return
 	}
-
-	node.SyncBuilds(builds)
 }
 
 func (o *Orchestrator) getDeleteInstanceFunction(
