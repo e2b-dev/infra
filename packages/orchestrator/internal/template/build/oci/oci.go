@@ -1,20 +1,26 @@
-package build
+package oci
 
 import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 
+	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+const ToMBShift = 20
 
 var authConfig = authn.Basic{
 	Username: "_json_key_base64",
@@ -46,7 +52,7 @@ func getRepositoryAuth() (authn.Authenticator, error) {
 	}, nil
 }
 
-func getOCIImage(ctx context.Context, tracer trace.Tracer, dockerTag string) (v1.Image, error) {
+func GetImage(ctx context.Context, tracer trace.Tracer, dockerTag string) (v1.Image, error) {
 	childCtx, childSpan := tracer.Start(ctx, "pull-docker-image")
 	defer childSpan.End()
 
@@ -71,4 +77,32 @@ func getOCIImage(ctx context.Context, tracer trace.Tracer, dockerTag string) (v1
 
 	telemetry.ReportEvent(childCtx, "pulled image")
 	return img, nil
+}
+
+func ToExt4(ctx context.Context, img v1.Image, rootfsPath string, sizeLimit int64) error {
+	pr := mutate.Extract(img)
+	defer pr.Close()
+
+	rootfsFile, err := os.Create(rootfsPath)
+	if err != nil {
+		return fmt.Errorf("error creating rootfs file: %w", err)
+	}
+	defer func() {
+		rootfsErr := rootfsFile.Close()
+		if rootfsErr != nil {
+			telemetry.ReportError(ctx, fmt.Errorf("error closing rootfs file: %w", rootfsErr))
+		} else {
+			telemetry.ReportEvent(ctx, "closed rootfs file")
+		}
+	}()
+
+	// Convert tar to ext4 image
+	if err := tar2ext4.Convert(pr, rootfsFile, tar2ext4.ConvertWhiteout, tar2ext4.MaximumDiskSize(sizeLimit)); err != nil {
+		if strings.Contains(err.Error(), "disk exceeded maximum size") {
+			return fmt.Errorf("build failed - exceeded maximum size %v MB", sizeLimit>>ToMBShift)
+		}
+		return fmt.Errorf("error converting tar to ext4: %w", err)
+	}
+
+	return nil
 }
