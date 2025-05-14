@@ -11,7 +11,9 @@ import (
 	"os/signal"
 	"slices"
 	"syscall"
+	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -41,6 +43,8 @@ type Closeable interface {
 const (
 	defaultPort      = 5008
 	defaultProxyPort = 5007
+
+	version = "0.1.0"
 )
 
 var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
@@ -77,6 +81,9 @@ func run(port, proxyPort uint) (success bool) {
 	defer sigCancel()
 
 	clientID := consul.GetClientID()
+	if clientID == "" {
+		zap.L().Fatal("client ID is empty")
+	}
 
 	services := servicetype.GetServices()
 	serviceName := servicetype.GetServiceName(services)
@@ -178,7 +185,18 @@ func run(port, proxyPort uint) (success bool) {
 	grpcSrv := grpcserver.New(commitSHA)
 	tracer := otel.Tracer(serviceName)
 
-	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, clientID, commitSHA, sandboxProxy, sandboxes)
+	serviceInfo := &server.ServiceInfo{
+		ClientId:             clientID,
+		ServiceId:            uuid.NewString(),
+		ServiceStartup:       time.Now(),
+		ServiceSourceVersion: version,
+		ServiceSourceCommit:  commitSHA,
+
+		CanWorkAsOrchestrator:    true,
+		CanWorkAsTemplateBuilder: slices.Contains(services, servicetype.TemplateManager),
+	}
+
+	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}

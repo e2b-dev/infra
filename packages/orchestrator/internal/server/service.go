@@ -11,7 +11,7 @@ import (
 
 func (s *server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrator.ServiceInfoResponse, error) {
 	info := s.info
-	status := orchestrator.ServiceInfoStatus_Healthy // todo
+	status := orchestrator.ServiceInfoStatus_OrchestratorHealthy // todo
 
 	return &orchestrator.ServiceInfoResponse{
 		NodeId:         info.ClientId,
@@ -32,7 +32,7 @@ func (s *server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 	}, nil
 }
 
-
 func (s *server) ServiceStatusOverride(ctx context.Context, req *orchestrator.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
+	// todo: implement
 	return &emptypb.Empty{}, nil
 }

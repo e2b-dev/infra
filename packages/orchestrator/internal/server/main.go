@@ -55,7 +55,7 @@ type ServiceInfo struct {
 }
 
 type Service struct {
-	version  string
+	info     *ServiceInfo
 	server   *server
 	proxy    *proxy.SandboxProxy
 	shutdown struct {
@@ -79,16 +79,11 @@ func New(
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	tracer trace.Tracer,
-	clientID string,
-	version string,
+	info *ServiceInfo,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) (*Service, error) {
-	if clientID == "" {
-		return nil, errors.New("clientID is required")
-	}
-
-	srv := &Service{version: version}
+	srv := &Service{info: info}
 
 	templateCache, err := template.NewCache(ctx)
 	if err != nil {
@@ -126,12 +121,12 @@ func New(
 		}
 
 		srv.server = &server{
+			info:                 info,
 			tracer:               tracer,
 			proxy:                srv.proxy,
 			sandboxes:            sandboxes,
 			networkPool:          networkPool,
 			templateCache:        templateCache,
-			clientID:             clientID,
 			devicePool:           devicePool,
 			clickhouseStore:      clickhouseStore,
 			useLokiMetrics:       useLokiMetrics,
@@ -150,6 +145,7 @@ func New(
 	}
 
 	orchestrator.RegisterSandboxServiceServer(grpc.GRPCServer(), srv.server)
+	orchestrator.RegisterInfoServiceServer(grpc.GRPCServer(), srv.server)
 
 	return srv, nil
 }
