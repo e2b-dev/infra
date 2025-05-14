@@ -19,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
-	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -74,13 +73,18 @@ func NewBuilder(
 	}
 }
 
-func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, envID string, buildID string) error {
+type Result struct {
+	EnvdVersion  string
+	RootfsSizeMB int64
+}
+
+func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, envID string, buildID string) (*Result, error) {
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
 	_, err := b.buildCache.Get(buildID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	logsWriter := template.BuildLogsWriter
@@ -91,13 +95,13 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 	envdVersion, err := GetEnvdVersion(ctx)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error while getting envd version: %v", err))
-		return err
+		return nil, err
 	}
 
 	templateCacheFiles, err := template.NewTemplateCacheFiles()
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error while creating template files: %v", err))
-		return err
+		return nil, err
 	}
 
 	templateBuildDir := filepath.Join(templatesDirectory, template.BuildId)
@@ -107,10 +111,10 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 		return fmt.Errorf("error initializing directories for building template '%s' during build '%s': %w", template.TemplateId, template.BuildId, err)
 	}
 	defer func() {
-		/*err := os.RemoveAll(templateBuildDir)
+		err := os.RemoveAll(templateBuildDir)
 		if err != nil {
 			b.logger.Error("Error while removing template build directory", zap.Error(err))
-		}*/
+		}
 	}()
 
 	// Created here to be able to pass it to CreateSandbox for populating COW cache
@@ -127,7 +131,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 	)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error building environment: %v", err))
-		return err
+		return nil, err
 	}
 
 	postProcessor.WriteMsg("Creating sandbox template")
@@ -148,7 +152,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 		}
 
 		postProcessor.WriteMsg(fmt.Sprintf("Error creating sandbox: %v", err))
-		return fmt.Errorf("error creating sandbox: %w", err)
+		return nil, fmt.Errorf("error creating sandbox: %w", err)
 	}
 	b.sandboxes.Insert(sbx.Metadata.Config.SandboxId, sbx)
 	defer func() {
@@ -176,9 +180,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 	}()
 
 	var scriptDef bytes.Buffer
-	err = FinishTemplate.Execute(&scriptDef, map[string]string{})
+	err = ConfigureScriptTemplate.Execute(&scriptDef, map[string]string{})
 	if err != nil {
-		return fmt.Errorf("error executing provision script: %w", err)
+		return nil, fmt.Errorf("error executing provision script: %w", err)
 	}
 	err = b.runCommand(
 		ctx,
@@ -190,7 +194,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 	)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error while running script: %v", err))
-		return fmt.Errorf("error running script: %w", err)
+		return nil, fmt.Errorf("error running script: %w", err)
 	}
 
 	// Start command
@@ -213,7 +217,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 		)
 		if err != nil {
 			postProcessor.WriteMsg(fmt.Sprintf("Error while running command: %v", err))
-			return fmt.Errorf("error running command: %w", err)
+			return nil, fmt.Errorf("error running command: %w", err)
 		}
 
 		postProcessor.WriteMsg("Start command is running")
@@ -228,7 +232,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 		templateCacheFiles,
 	)
 	if err != nil {
-		return fmt.Errorf("error processing vm: %w", err)
+		return nil, fmt.Errorf("error processing vm: %w", err)
 	}
 
 	postProcessor.WriteMsg("Uploading template")
@@ -238,27 +242,16 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 		snapshot,
 	)
 
-	postProcessor.Stop(err)
-
 	uploadErr := <-uploadErrCh
 	if uploadErr != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error while uploading build files: %v", uploadErr))
-		return uploadErr
+		postProcessor.WriteMsg(fmt.Sprintf("Error while uploading template: %v", uploadErr))
+		return nil, fmt.Errorf("error uploading build files: %w", uploadErr)
 	}
 
-	// Wait for the CLI to load all the logs
-	// This is a temporary ~fix for the CLI to load most of the logs before finishing the template build
-	// Ideally we should wait in the CLI for the last log message
-	time.Sleep(5 * time.Second)
-
-	buildMetadata := &templatemanager.TemplateBuildMetadata{RootfsSizeKey: int32(template.RootfsSizeMB()), EnvdVersionKey: envdVersion}
-	err = b.buildCache.SetSucceeded(envID, buildID, buildMetadata)
-	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error while setting build state to succeeded: %v", err))
-		return fmt.Errorf("error while setting build state to succeeded: %w", err)
-	}
-
-	return nil
+	return &Result{
+		EnvdVersion:  envdVersion,
+		RootfsSizeMB: env.RootfsSizeMB(),
+	}, nil
 }
 
 func (b *TemplateBuilder) uploadTemplate(
