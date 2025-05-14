@@ -13,6 +13,16 @@ import (
 func (s *server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator.ServiceInfoResponse, error) {
 	info := s.info
 
+	metricVCpuUsed := int64(0)
+	metricMemoryUsedMb := int64(0)
+	metricDiskMb := int64(0)
+
+	for _, item := range s.sandboxes.Items() {
+		metricVCpuUsed += item.Config.Vcpu
+		metricMemoryUsedMb += item.Config.RamMb
+		metricDiskMb += item.Config.TotalDiskSizeMb
+	}
+
 	return &orchestrator.ServiceInfoResponse{
 		NodeId:         info.ClientId,
 		ServiceId:      info.ServiceId,
@@ -24,11 +34,10 @@ func (s *server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator
 		CanBuildTemplates: info.CanWorkAsTemplateBuilder,
 		CanSpawnSandboxes: info.CanWorkAsOrchestrator,
 
-		// todo: implement
-		MetricVcpuUsed:          1,
-		MetricMemoryUsedInBytes: 2,
-		MetricDiskUserInByte:    3,
-		MetricSandboxesRunning:  4,
+		MetricVcpuUsed:         metricVCpuUsed,
+		MetricMemoryUsedMb:     metricMemoryUsedMb,
+		MetricDiskMb:           metricDiskMb,
+		MetricSandboxesRunning: int64(s.sandboxes.Count()),
 	}, nil
 }
 

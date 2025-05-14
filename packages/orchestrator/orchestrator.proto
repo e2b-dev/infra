@@ -108,8 +108,8 @@ message ServiceInfoResponse {
   bool can_spawn_sandboxes = 11;
 
   int64 metric_vcpu_used = 20;
-  int64 metric_memory_used_in_bytes = 21;
-  int64 metric_disk_user_in_byte = 22;
+  int64 metric_memory_used_mb = 21;
+  int64 metric_disk_mb = 22;
   int64 metric_sandboxes_running = 23;
 }
 
