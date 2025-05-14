@@ -88,7 +88,34 @@ message SandboxListCachedBuildsResponse {
   repeated CachedBuildInfo builds = 1;
 }
 
+// needs to be different from the enumeration in the template manager
+enum ServiceInfoStatus {
+  OrchestratorHealthy = 0;
+  OrchestratorDraining = 1;
+  OrchestratorUnhealthy = 2;
+}
 
+message ServiceInfoResponse {
+  string node_id = 1;
+  string service_id = 2;
+  string service_version = 3;
+  string service_commit = 4;
+
+  ServiceInfoStatus service_status = 5;
+  google.protobuf.Timestamp service_startup = 6;
+
+  bool can_build_templates = 10;
+  bool can_spawn_sandboxes = 11;
+
+  int64 metric_vcpu_used = 20;
+  int64 metric_memory_used_in_bytes = 21;
+  int64 metric_disk_user_in_byte = 22;
+  int64 metric_sandboxes_running = 23;
+}
+
+message ServiceStatusChangeRequest {
+  ServiceInfoStatus service_status = 2;
+}
 
 service SandboxService {
   rpc Create(SandboxCreateRequest) returns (SandboxCreateResponse);
@@ -98,4 +125,9 @@ service SandboxService {
   rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
 
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
+}
+
+service InfoService {
+  rpc ServiceInfo(google.protobuf.Empty) returns (ServiceInfoResponse);
+  rpc ServiceStatusOverride(ServiceStatusChangeRequest) returns (google.protobuf.Empty);
 }
