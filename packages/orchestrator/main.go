@@ -21,6 +21,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/info"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -186,16 +187,25 @@ func run(port, proxyPort uint) (success bool) {
 	grpcSrv := grpcserver.New(commitSHA)
 	tracer := otel.Tracer(serviceName)
 
-	serviceInfo := &server.ServiceInfo{
-		ClientId:             clientID,
-		ServiceId:            uuid.NewString(),
-		ServiceStartup:       time.Now(),
-		ServiceSourceVersion: version,
-		ServiceSourceCommit:  commitSHA,
-
-		CanWorkAsOrchestrator:    true,
-		CanWorkAsTemplateBuilder: slices.Contains(services, servicetype.TemplateManager),
+	serviceRoles := make([]orchestrator.ServiceInfoRole, 0)
+	if slices.Contains(services, servicetype.Orchestrator) {
+		serviceRoles = append(serviceRoles, orchestrator.ServiceInfoRole_Orchestrator)
 	}
+
+	if slices.Contains(services, servicetype.TemplateManager) {
+		serviceRoles = append(serviceRoles, orchestrator.ServiceInfoRole_TemplateManager)
+	}
+
+	serviceInfo := &server.ServiceInfo{
+		ClientId:  clientID,
+		ServiceId: uuid.NewString(),
+		Startup:   time.Now(),
+		Roles:     serviceRoles,
+
+		SourceVersion: version,
+		SourceCommit:  commitSHA,
+	}
+
 	serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_OrchestratorHealthy)
 
 	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
@@ -234,6 +244,9 @@ func run(port, proxyPort uint) (success bool) {
 		// Prepend to make sure it's awaited on graceful shutdown
 		closers = append([]Closeable{tmpl}, closers...)
 	}
+
+	// Initialize info service as last to make sure template manager/orchestrator are already initialized
+	info.NewInfoService(ctx, grpcSrv, serviceInfo, sandboxes)
 
 	g.Go(func() error {
 		zap.L().Info("Starting session proxy")

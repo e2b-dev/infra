@@ -95,6 +95,11 @@ enum ServiceInfoStatus {
   OrchestratorUnhealthy = 2;
 }
 
+enum ServiceInfoRole {
+  TemplateManager = 0;
+  Orchestrator = 1;
+}
+
 message ServiceInfoResponse {
   string node_id = 1;
   string service_id = 2;
@@ -102,10 +107,8 @@ message ServiceInfoResponse {
   string service_commit = 4;
 
   ServiceInfoStatus service_status = 5;
+  repeated ServiceInfoRole service_roles = 7;
   google.protobuf.Timestamp service_startup = 6;
-
-  bool can_build_templates = 10;
-  bool can_spawn_sandboxes = 11;
 
   int64 metric_vcpu_used = 20;
   int64 metric_memory_used_mb = 21;

@@ -44,14 +44,14 @@ type server struct {
 }
 
 type ServiceInfo struct {
-	ClientId             string
-	ServiceId            string
-	ServiceSourceVersion string
-	ServiceSourceCommit  string
-	ServiceStartup       time.Time
+	ClientId  string
+	ServiceId string
 
-	CanWorkAsOrchestrator    bool
-	CanWorkAsTemplateBuilder bool
+	SourceVersion string
+	SourceCommit  string
+
+	Startup time.Time
+	Roles   []orchestrator.ServiceInfoRole
 
 	status   orchestrator.ServiceInfoStatus
 	statusMu sync.RWMutex
