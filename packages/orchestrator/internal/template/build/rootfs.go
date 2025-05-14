@@ -125,7 +125,7 @@ func additionalOCILayers(
 	config *TemplateConfig,
 ) ([]v1.Layer, error) {
 	var scriptDef bytes.Buffer
-	err := EnvInstanceTemplate.Execute(&scriptDef, struct{}{})
+	err := ProvisionScriptTemplate.Execute(&scriptDef, struct{}{})
 	if err != nil {
 		return nil, fmt.Errorf("error executing provision script: %w", err)
 	}

@@ -16,12 +16,12 @@ import (
 )
 
 //go:embed provision.sh
-var provisionEnvScriptFile string
-var EnvInstanceTemplate = template.Must(template.New("provisioning-script").Parse(provisionEnvScriptFile))
+var provisionScriptFile string
+var ProvisionScriptTemplate = template.Must(template.New("provisioning-script").Parse(provisionScriptFile))
 
-//go:embed provision-finish.sh
-var provisionFinishEnvScriptFile string
-var FinishTemplate = template.Must(template.New("provisioning-finish-script").Parse(provisionFinishEnvScriptFile))
+//go:embed configure.sh
+var configureScriptFile string
+var ConfigureScriptTemplate = template.Must(template.New("provisioning-finish-script").Parse(configureScriptFile))
 
 func Build(
 	ctx context.Context,
