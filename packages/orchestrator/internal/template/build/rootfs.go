@@ -3,19 +3,18 @@ package build
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
-	"os/exec"
-	"strings"
 
-	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -71,21 +70,67 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	}()
 
 	postProcessor.WriteMsg("Requesting Docker Image")
-	img, err := getOCIImage(childCtx, tracer, r.dockerTag())
+	img, err := oci.GetImage(childCtx, tracer, r.dockerTag())
 	if err != nil {
 		return fmt.Errorf("error requesting docker image: %w", err)
 	}
 
-	postProcessor.WriteMsg("Provisioning template")
-	var scriptDef bytes.Buffer
-	memoryLimit := int(math.Min(float64(r.env.MemoryMB)/2, 512))
-	err = EnvInstanceTemplate.Execute(&scriptDef, struct{}{})
-	if err != nil {
-		return fmt.Errorf("error executing provision script: %w", err)
-	}
-	telemetry.ReportEvent(childCtx, "executed provision script env")
-
 	postProcessor.WriteMsg("Setting up system files")
+	layers, err := additionalOCILayers(childCtx, r.env)
+	if err != nil {
+		return fmt.Errorf("error populating filesystem: %w", err)
+	}
+	img, err = mutate.AppendLayers(img, layers...)
+	if err != nil {
+		return fmt.Errorf("error appending layers: %w", err)
+	}
+	telemetry.ReportEvent(childCtx, "set up filesystem")
+
+	postProcessor.WriteMsg("Creating file system")
+	err = oci.ToExt4(ctx, img, rootfsPath, maxRootfsSize)
+	if err != nil {
+		return fmt.Errorf("error creating ext4 filesystem: %w", err)
+	}
+	telemetry.ReportEvent(childCtx, "created rootfs ext4 file")
+
+	postProcessor.WriteMsg("Filesystem cleanup")
+	// Make rootfs writable, be default it's readonly
+	err = ext4.MakeWritable(ctx, tracer, rootfsPath)
+	if err != nil {
+		return fmt.Errorf("error making rootfs file writable: %w", err)
+	}
+
+	// Resize rootfs
+	rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, r.env.DiskSizeMB<<ToMBShift)
+	if err != nil {
+		return fmt.Errorf("error enlarging rootfs: %w", err)
+	}
+	r.env.rootfsSize = rootfsFinalSize
+
+	// Check the rootfs filesystem corruption
+	ext4Check, err := ext4.CheckIntegrity(rootfsPath)
+	zap.L().Debug("filesystem ext4 integrity",
+		zap.String("result", ext4Check),
+		zap.Error(err),
+	)
+	if err != nil {
+		return fmt.Errorf("error checking ext4 filesystem integrity: %w", err)
+	}
+
+	return nil
+}
+
+func additionalOCILayers(
+	ctx context.Context,
+	config *TemplateConfig,
+) ([]v1.Layer, error) {
+	var scriptDef bytes.Buffer
+	err := EnvInstanceTemplate.Execute(&scriptDef, struct{}{})
+	if err != nil {
+		return nil, fmt.Errorf("error executing provision script: %w", err)
+	}
+	telemetry.ReportEvent(ctx, "executed provision script env")
+
 	provisionService := `[Unit]
 Description=Provision Script
 DefaultDependencies=no
@@ -109,6 +154,7 @@ SuccessExitStatus=0
 WantedBy=sysinit.target
 `
 
+	memoryLimit := int(math.Min(float64(config.MemoryMB)/2, 512))
 	envdService := fmt.Sprintf(`[Unit]
 Description=Env Daemon Service
 After=multi-user.target
@@ -134,7 +180,7 @@ ExecStart=
 ExecStart=-/sbin/agetty --noissue --autologin root %I 115200,38400,9600 vt102
 `
 
-	hostname := r.env.TemplateId
+	hostname := config.TemplateId
 
 	hosts := fmt.Sprintf(`127.0.0.1   localhost
 127.0.1.1   %s
@@ -142,11 +188,11 @@ ExecStart=-/sbin/agetty --noissue --autologin root %I 115200,38400,9600 vt102
 
 	e2bFile := fmt.Sprintf(`ENV_ID=%s
 BUILD_ID=%s
-`, r.env.TemplateId, r.env.BuildId)
+`, config.TemplateId, config.BuildId)
 
 	envdFileData, err := os.ReadFile(storage.HostEnvdPath)
 	if err != nil {
-		return fmt.Errorf("error reading envd file: %w", err)
+		return nil, fmt.Errorf("error reading envd file: %w", err)
 	}
 
 	// Delete files from underlying layers
@@ -158,7 +204,7 @@ BUILD_ID=%s
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("error creating layer from files: %w", err)
+		return nil, fmt.Errorf("error creating layer from files: %w", err)
 	}
 
 	filesLayer, err := LayerFile(
@@ -177,7 +223,7 @@ BUILD_ID=%s
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("error creating layer from files: %w", err)
+		return nil, fmt.Errorf("error creating layer from files: %w", err)
 	}
 
 	symlinkLayer, err := LayerSymlink(
@@ -189,7 +235,7 @@ BUILD_ID=%s
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("error creating layer from symlinks: %w", err)
+		return nil, fmt.Errorf("error creating layer from symlinks: %w", err)
 	}
 
 	/*systemdLayer, err := createLayerFromFolder("/extract")
@@ -197,124 +243,9 @@ BUILD_ID=%s
 		return err
 	}*/
 
-	img, err = mutate.AppendLayers(img, filesRemoveLayer, filesLayer, symlinkLayer)
-	if err != nil {
-		return fmt.Errorf("error appending layers: %w", err)
-	}
-
-	telemetry.ReportEvent(childCtx, "set up filesystem")
-
-	// Step 2: Flatten layers to tar stream
-	pr := mutate.Extract(img)
-	defer pr.Close()
-
-	postProcessor.WriteMsg("Creating file system")
-	rootfsFile, err := os.Create(rootfsPath)
-	if err != nil {
-		return fmt.Errorf("error creating rootfs file: %w", err)
-	}
-	defer func() {
-		rootfsErr := rootfsFile.Close()
-		if rootfsErr != nil {
-			telemetry.ReportError(childCtx, fmt.Errorf("error closing rootfs file: %w", rootfsErr))
-		} else {
-			telemetry.ReportEvent(childCtx, "closed rootfs file")
-		}
-	}()
-	// Step 3: Convert tar to ext4 image
-	if err := tar2ext4.Convert(pr, rootfsFile, tar2ext4.ConvertWhiteout, tar2ext4.MaximumDiskSize(maxRootfsSize)); err != nil {
-		if strings.Contains(err.Error(), "disk exceeded maximum size") {
-			r.template.BuildLogsWriter.Write([]byte(fmt.Sprintf("Build failed - exceeded maximum size %v MB.\n", maxRootfsSize>>ToMBShift)))
-		}
-
-		errMsg := fmt.Errorf("error converting tar to ext4: %w", err)
-		telemetry.ReportCriticalError(childCtx, errMsg)
-
-		return errMsg
-	}
-	telemetry.ReportEvent(childCtx, "created rootfs file")
-
-	postProcessor.WriteMsg("Filesystem cleanup")
-	telemetry.ReportEvent(childCtx, "converted container tar to ext4")
-
-	tuneContext, tuneSpan := tracer.Start(childCtx, "tune-rootfs-file-cmd")
-	defer tuneSpan.End()
-
-	cmd := exec.CommandContext(tuneContext, "tune2fs", "-O ^read-only", rootfsPath)
-
-	tuneStdoutWriter := telemetry.NewEventWriter(tuneContext, "stdout")
-	cmd.Stdout = tuneStdoutWriter
-
-	tuneStderrWriter := telemetry.NewEventWriter(childCtx, "stderr")
-	cmd.Stderr = tuneStderrWriter
-
-	err = cmd.Run()
-	if err != nil {
-		return fmt.Errorf("error making rootfs file writable: %w", err)
-	}
-
-	telemetry.ReportEvent(childCtx, "made rootfs file writable")
-
-	rootfsStats, err := rootfsFile.Stat()
-	if err != nil {
-		return fmt.Errorf("error statting rootfs file: %w", err)
-	}
-
-	telemetry.ReportEvent(childCtx, fmt.Sprintf("statted rootfs file (size: %d)", rootfsStats.Size()))
-
-	// In bytes
-	rootfsSize := rootfsStats.Size() + r.template.DiskSizeMB<<ToMBShift
-
-	r.template.rootfsSize = rootfsSize
-
-	err = rootfsFile.Truncate(rootfsSize)
-	if err != nil {
-		return fmt.Errorf("error truncating rootfs file: %w to size of build + defaultDiskSizeMB", err)
-	}
-
-	telemetry.ReportEvent(childCtx, "truncated rootfs file to size of build + defaultDiskSizeMB")
-
-	resizeContext, resizeSpan := tracer.Start(childCtx, "resize-rootfs-file-cmd")
-	defer resizeSpan.End()
-
-	cmd = exec.CommandContext(resizeContext, "resize2fs", rootfsPath)
-
-	resizeStdoutWriter := telemetry.NewEventWriter(resizeContext, "stdout")
-	cmd.Stdout = resizeStdoutWriter
-
-	resizeStderrWriter := telemetry.NewEventWriter(resizeContext, "stderr")
-	cmd.Stderr = resizeStderrWriter
-
-	err = cmd.Run()
-	if err != nil {
-		return fmt.Errorf("error resizing rootfs file: %w", err)
-	}
-
-	telemetry.ReportEvent(childCtx, "resized rootfs file")
-
-	// Check the rootfs filesystem corruption
-	ext4Check, err := checkFileSystemExt4(rootfsFile.Name())
-	zap.L().Debug("filesystem ext4 integrity",
-		zap.String("result", ext4Check),
-		zap.Error(err),
-	)
-	if err != nil {
-		return fmt.Errorf("error checking ext4 filesystem integrity: %w", err)
-	}
-
-	return nil
-}
-
-func checkFileSystemExt4(rootfsPath string) (string, error) {
-	cmd := exec.Command("e2fsck", "-n", rootfsPath)
-	out, err := cmd.Output()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return exitErr.Error(), fmt.Errorf("error running e2fsck: %w", err)
-		} else {
-			return string(out), fmt.Errorf("error running e2fsck: %w", err)
-		}
-	}
-	return strings.TrimSpace(string(out)), nil
+	return []v1.Layer{
+		filesRemoveLayer,
+		filesLayer,
+		symlinkLayer,
+	}, nil
 }
