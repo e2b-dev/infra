@@ -143,8 +143,8 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 			continue
 		}
 
+		// update node status (if changed)
 		node.SetStatus(o.getNodeStatusConverted(nodeInfo.ServiceStatus))
-
 
 		activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
 		if instancesErr != nil {

@@ -52,6 +52,26 @@ type ServiceInfo struct {
 
 	CanWorkAsOrchestrator    bool
 	CanWorkAsTemplateBuilder bool
+
+	status   orchestrator.ServiceInfoStatus
+	statusMu sync.RWMutex
+}
+
+func (s *ServiceInfo) GetStatus() orchestrator.ServiceInfoStatus {
+	s.statusMu.RLock()
+	defer s.statusMu.RUnlock()
+
+	return s.status
+}
+
+func (s *ServiceInfo) SetStatus(status orchestrator.ServiceInfoStatus) {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+
+	if s.status != status {
+		zap.L().Info("Service status changed", zap.String("status", status.String()))
+		s.status = status
+	}
 }
 
 type Service struct {

@@ -3,23 +3,23 @@ package server
 import (
 	"context"
 
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
-func (s *server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrator.ServiceInfoResponse, error) {
+func (s *server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator.ServiceInfoResponse, error) {
 	info := s.info
-	status := orchestrator.ServiceInfoStatus_OrchestratorHealthy // todo
 
 	return &orchestrator.ServiceInfoResponse{
 		NodeId:         info.ClientId,
 		ServiceId:      info.ServiceId,
 		ServiceVersion: info.ServiceSourceVersion,
 		ServiceCommit:  info.ServiceSourceCommit,
+		ServiceStatus:  info.GetStatus(),
 		ServiceStartup: timestamppb.New(info.ServiceStartup),
-		ServiceStatus:  status,
 
 		CanBuildTemplates: info.CanWorkAsTemplateBuilder,
 		CanSpawnSandboxes: info.CanWorkAsOrchestrator,
@@ -32,7 +32,8 @@ func (s *server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 	}, nil
 }
 
-func (s *server) ServiceStatusOverride(ctx context.Context, req *orchestrator.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
-	// todo: implement
+func (s *server) ServiceStatusOverride(_ context.Context, req *orchestrator.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
+	zap.L().Info("service status override request received", zap.String("status", req.ServiceStatus.String()))
+	s.info.SetStatus(req.ServiceStatus)
 	return &emptypb.Empty{}, nil
 }
