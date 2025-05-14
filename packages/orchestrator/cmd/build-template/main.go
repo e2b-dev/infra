@@ -154,7 +154,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		HugePages:       true,
 	}
 
-	_, err = builder.Build(ctx, config, templateID, buildID)
+	_, err = builder.Build(ctx, config)
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}

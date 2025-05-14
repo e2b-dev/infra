@@ -78,11 +78,11 @@ type Result struct {
 	RootfsSizeMB int64
 }
 
-func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, envID string, buildID string) (*Result, error) {
+func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (*Result, error) {
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
-	_, err := b.buildCache.Get(buildID)
+	_, err := b.buildCache.Get(env.BuildId)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +171,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 			removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 			defer cancel()
 
-			removeErr := b.templateStorage.Remove(removeCtx, buildID)
+			removeErr := b.templateStorage.Remove(removeCtx, env.BuildId)
 			if removeErr != nil {
 				b.logger.Error("Error while removing build files", zap.Error(removeErr))
 				telemetry.ReportError(ctx, removeErr)
