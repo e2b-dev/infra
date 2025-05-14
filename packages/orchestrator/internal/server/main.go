@@ -26,7 +26,6 @@ import (
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
-	orchestrator.UnimplementedInfoServiceServer
 
 	info            *ServiceInfo
 	sandboxes       *smap.Map[*sandbox.Sandbox]
