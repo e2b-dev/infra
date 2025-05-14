@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -69,9 +68,7 @@ func Test_server_List(t *testing.T) {
 			s := &server{
 				sandboxes: smap.New[*sandbox.Sandbox](),
 				tracer:    noop.NewTracerProvider().Tracer(""),
-				info: &ServiceInfo{
-					ClientId: uuid.NewString(),
-				},
+				info:      &ServiceInfo{ClientId: ""},
 			}
 			for _, sbx := range tt.data {
 				s.sandboxes.Insert(sbx.Config.SandboxId, sbx)
