@@ -2,10 +2,10 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -26,19 +26,32 @@ import (
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
+	orchestrator.UnimplementedInfoServiceServer
+
+	info            *ServiceInfo
 	sandboxes       *smap.Map[*sandbox.Sandbox]
 	proxy           *proxy.SandboxProxy
 	tracer          trace.Tracer
 	networkPool     *network.Pool
 	templateCache   *template.Cache
 	pauseMu         sync.Mutex
-	clientID        string // nomad node id
 	devicePool      *nbd.DevicePool
 	clickhouseStore chdb.Store
 	persistence     storage.StorageProvider
 
 	useLokiMetrics       string
 	useClickhouseMetrics string
+}
+
+type ServiceInfo struct {
+	ClientId             string
+	ServiceId            string
+	ServiceSourceVersion string
+	ServiceSourceCommit  string
+	ServiceStartup       time.Time
+
+	CanWorkAsOrchestrator    bool
+	CanWorkAsTemplateBuilder bool
 }
 
 type Service struct {

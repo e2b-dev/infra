@@ -9,5 +9,4 @@ const (
 
 type Response struct {
 	Status  Status `json:"status"`
-	Version string `json:"version"`
 }
