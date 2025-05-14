@@ -31,6 +31,8 @@ const reportTimeout = 4 * time.Minute
 type closeType string
 
 const (
+	syncMaxRetries = 4
+
 	ClosePause  closeType = "pause"
 	CloseDelete closeType = "delete"
 )
@@ -133,7 +135,6 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 		return
 	}
 
-	syncMaxRetries := 4
 	syncRetrySuccess := false
 
 	for range syncMaxRetries {
