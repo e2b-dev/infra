@@ -79,7 +79,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		// Wait for the CLI to load all the logs
 		// This is a temporary ~fix for the CLI to load most of the logs before finishing the template build
 		// Ideally we should wait in the CLI for the last log message
-		time.Sleep(5 * time.Second)
+		time.Sleep(8 * time.Second)
 		if err != nil {
 			s.reportBuildFailed(buildContext, s.buildLogger, template, err)
 			return
