@@ -10,7 +10,7 @@ echo "BUILD_ID={{ .BuildID }}" >>/.e2b
 install_packages() {
     echo "Installing packages"
     apt-get -qq update --download-only
-    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq install -y openssh-server sudo systemd socat chrony linuxptp iptables > /dev/null
+    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq install -y openssh-server sudo systemd socat chrony linuxptp iptables >/dev/null
 }
 
 install_packages
@@ -94,7 +94,7 @@ EOF
 setup_service_envd
 
 # Set up chrony.
-setup_chrony(){
+setup_chrony() {
     echo "Setting up chrony"
     mkdir -p /etc/chrony
     cat <<EOF >/etc/chrony/chrony.conf
@@ -205,5 +205,11 @@ WantedBy=multi-user.target
 EOF
 
 # systemctl enable forward_ports
+
+# Add self-signed TLS certificate
+echo "Adding self-signed TLS certificate"
+cat <<EOF >/etc/ssl/certs/cert.pem
+{{ .CertPem }}
+EOF
 
 echo "Finished provisioning script"

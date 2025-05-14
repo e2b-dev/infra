@@ -172,19 +172,29 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	childCtx, childSpan := tracer.Start(ctx, "create-rootfs-file")
 	defer childSpan.End()
 
+	certBytes, err := os.ReadFile("/etc/ssl/certs/cert.pem")
+	if err != nil {
+		errMsg := fmt.Errorf("error reading cert file: %w", err)
+		telemetry.ReportCriticalError(childCtx, errMsg)
+		return errMsg
+	}
+
+	telemetry.ReportEvent(childCtx, "read cert file")
 	var scriptDef bytes.Buffer
 
-	err := EnvInstanceTemplate.Execute(&scriptDef, struct {
+	err = EnvInstanceTemplate.Execute(&scriptDef, struct {
 		EnvID       string
 		BuildID     string
 		StartCmd    string
 		FcAddress   string
+		CertPem     string
 		MemoryLimit int
 	}{
 		FcAddress:   fcAddr,
 		EnvID:       r.env.TemplateId,
 		BuildID:     r.env.BuildId,
 		StartCmd:    strings.ReplaceAll(r.env.StartCmd, "'", "\\'"),
+		CertPem:     string(certBytes),
 		MemoryLimit: int(math.Min(float64(r.env.MemoryMB)/2, 512)),
 	})
 	if err != nil {
