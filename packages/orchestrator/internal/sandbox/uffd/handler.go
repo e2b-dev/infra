@@ -9,6 +9,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/bits-and-blooms/bitset"
 	"go.uber.org/zap"
@@ -22,6 +23,10 @@ const (
 	mappingsSize           = 1024
 )
 
+type UffdUnregisterRange struct {
+	Start uintptr
+	Len   uintptr
+}
 type UffdSetup struct {
 	Mappings []GuestRegionUffdMapping
 	Fd       uintptr
@@ -167,6 +172,30 @@ func (u *Uffd) receiveSetup() (*UffdSetup, error) {
 	}, nil
 }
 
+func (u *Uffd) regionUnregister(uffd int, addr uintptr, size uintptr) (err error) {
+	unregRange := UffdUnregisterRange{
+		Start: uintptr(addr),
+		Len:   uintptr(size),
+	}
+
+	const (
+		UFFDIO_UNREGISTER = 2148575745
+	)
+
+	if _, _, errno := syscall.Syscall(
+		syscall.SYS_IOCTL,
+		uintptr(uffd),
+		UFFDIO_UNREGISTER,
+		uintptr(unsafe.Pointer(&unregRange)),
+	); errno != 0 {
+		zap.L().Error("UFFD unregister error", zap.Uintptr("start", addr), zap.Uintptr("len", size), zap.Error(errno))
+
+		return fmt.Errorf("failed to unregister uffd: %w", errno)
+	}
+
+	return nil
+}
+
 func (u *Uffd) handle(sandboxId string) (err error) {
 	setup, err := u.receiveSetup()
 	if err != nil {
@@ -175,6 +204,9 @@ func (u *Uffd) handle(sandboxId string) (err error) {
 
 	uffd := setup.Fd
 	defer func() {
+		for _, mapping := range setup.Mappings {
+			u.regionUnregister(int(setup.Fd), mapping.BaseHostVirtAddr, mapping.Size)
+		}
 		closeErr := syscall.Close(int(uffd))
 		if closeErr != nil {
 			zap.L().Error("failed to close uffd", zap.String("sandbox_id", sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
