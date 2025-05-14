@@ -115,7 +115,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 
 	err = buildCache.Create(buildID, templateID)
 	if err != nil {
-		fmt.Errorf("error while creating build cache: %w", err)
+		return fmt.Errorf("error while creating build cache: %w", err)
 	}
 
 	logsWriter := writer.New(
