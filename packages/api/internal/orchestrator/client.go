@@ -69,7 +69,20 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 	ok, err := o.getNodeHealth(node)
 	if err != nil {
-		zap.L().Error("Failed to get node health", zap.Error(err))
+		zap.L().Error("Failed to get node health, connecting and marking as unhealthy", zap.Error(err))
+
+		o.nodes.Insert(
+			node.ID, &Node{
+				Client:         client,
+				Info:           node,
+				buildCache:     buildCache,
+				status:         api.NodeStatusUnhealthy,
+				version:        "unknown",
+				sbxsInProgress: smap.New[*sbxInProgress](),
+				createFails:    atomic.Uint64{},
+			},
+		)
+
 		return err
 	}
 
