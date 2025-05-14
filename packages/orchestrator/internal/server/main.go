@@ -165,7 +165,6 @@ func New(
 	}
 
 	orchestrator.RegisterSandboxServiceServer(grpc.GRPCServer(), srv.server)
-	orchestrator.RegisterInfoServiceServer(grpc.GRPCServer(), srv.server)
 
 	return srv, nil
 }
