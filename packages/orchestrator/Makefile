@@ -52,14 +52,10 @@ run-debug:
 
 .PHONY: upload/orchestrator
 upload/orchestrator:
-	# todo: just for dev
-	aws s3 cp ./bin/orchestrator s3://e2b-eu-west-1-assets --profile e2b_jirka
 	./upload-orchestrator.sh $(GCP_PROJECT_ID)
 
 .PHONY: upload/template-manager
 upload/template-manager:
-	# todo: just for dev
-	aws s3 cp ./bin/template-manager s3://e2b-eu-west-1-assets --profile e2b_jirka
 	./upload-template-manager.sh $(GCP_PROJECT_ID)
 
 .PHONY: build-and-upload/orchestrator
