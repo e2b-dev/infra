@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "https://github.com/e2b-dev/infra/orchestrator";
+
+// needs to be different from the enumeration in the template manager
+enum ServiceInfoStatus {
+  OrchestratorHealthy = 0;
+  OrchestratorDraining = 1;
+  OrchestratorUnhealthy = 2;
+}
+
+enum ServiceInfoRole {
+  TemplateManager = 0;
+  Orchestrator = 1;
+}
+
+message ServiceInfoResponse {
+  string node_id = 1;
+  string service_id = 2;
+  string service_version = 3;
+  string service_commit = 4;
+
+  ServiceInfoStatus service_status = 51;
+  repeated ServiceInfoRole service_roles = 52;
+  google.protobuf.Timestamp service_startup = 53;
+
+  int64 metric_vcpu_used = 101;
+  int64 metric_memory_used_mb = 102;
+  int64 metric_disk_mb = 103;
+  int64 metric_sandboxes_running = 104;
+}
+
+message ServiceStatusChangeRequest {
+  ServiceInfoStatus service_status = 2;
+}
+
+service InfoService {
+  rpc ServiceInfo(google.protobuf.Empty) returns (ServiceInfoResponse);
+  rpc ServiceStatusOverride(ServiceStatusChangeRequest) returns (google.protobuf.Empty);
+}

@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -50,20 +51,20 @@ type ServiceInfo struct {
 	SourceCommit  string
 
 	Startup time.Time
-	Roles   []orchestrator.ServiceInfoRole
+	Roles   []orchestratorinfo.ServiceInfoRole
 
-	status   orchestrator.ServiceInfoStatus
+	status   orchestratorinfo.ServiceInfoStatus
 	statusMu sync.RWMutex
 }
 
-func (s *ServiceInfo) GetStatus() orchestrator.ServiceInfoStatus {
+func (s *ServiceInfo) GetStatus() orchestratorinfo.ServiceInfoStatus {
 	s.statusMu.RLock()
 	defer s.statusMu.RUnlock()
 
 	return s.status
 }
 
-func (s *ServiceInfo) SetStatus(status orchestrator.ServiceInfoStatus) {
+func (s *ServiceInfo) SetStatus(status orchestratorinfo.ServiceInfoStatus) {
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
 

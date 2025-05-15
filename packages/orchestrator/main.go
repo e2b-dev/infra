@@ -11,9 +11,7 @@ import (
 	"os/signal"
 	"slices"
 	"syscall"
-	"time"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -31,7 +29,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -187,26 +184,7 @@ func run(port, proxyPort uint) (success bool) {
 	grpcSrv := grpcserver.New(commitSHA)
 	tracer := otel.Tracer(serviceName)
 
-	serviceRoles := make([]orchestrator.ServiceInfoRole, 0)
-	if slices.Contains(services, servicetype.Orchestrator) {
-		serviceRoles = append(serviceRoles, orchestrator.ServiceInfoRole_Orchestrator)
-	}
-
-	if slices.Contains(services, servicetype.TemplateManager) {
-		serviceRoles = append(serviceRoles, orchestrator.ServiceInfoRole_TemplateManager)
-	}
-
-	serviceInfo := &server.ServiceInfo{
-		ClientId:  clientID,
-		ServiceId: uuid.NewString(),
-		Startup:   time.Now(),
-		Roles:     serviceRoles,
-
-		SourceVersion: version,
-		SourceCommit:  commitSHA,
-	}
-
-	serviceInfo.SetStatus(orchestrator.ServiceInfoStatus_OrchestratorHealthy)
+	serviceInfo := info.NewInfoContainer(clientID, version, commitSHA)
 
 	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
 	if err != nil {
@@ -245,7 +223,6 @@ func run(port, proxyPort uint) (success bool) {
 		closers = append([]Closeable{tmpl}, closers...)
 	}
 
-	// Initialize info service as last to make sure template manager/orchestrator are already initialized
 	info.NewInfoService(ctx, grpcSrv, serviceInfo, sandboxes)
 
 	g.Go(func() error {

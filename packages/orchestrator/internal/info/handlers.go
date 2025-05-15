@@ -7,10 +7,10 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
-func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator.ServiceInfoResponse, error) {
+func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestratorinfo.ServiceInfoResponse, error) {
 	info := s.info
 
 	metricVCpuUsed := int64(0)
@@ -23,7 +23,7 @@ func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator
 		metricDiskMb += item.Config.TotalDiskSizeMb
 	}
 
-	return &orchestrator.ServiceInfoResponse{
+	return &orchestratorinfo.ServiceInfoResponse{
 		NodeId:        info.ClientId,
 		ServiceId:     info.ServiceId,
 		ServiceStatus: info.GetStatus(),
@@ -41,7 +41,7 @@ func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestrator
 	}, nil
 }
 
-func (s *Server) ServiceStatusOverride(_ context.Context, req *orchestrator.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
+func (s *Server) ServiceStatusOverride(_ context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
 	zap.L().Info("service status override request received", zap.String("status", req.ServiceStatus.String()))
 	s.info.SetStatus(req.ServiceStatus)
 	return &emptypb.Empty{}, nil
