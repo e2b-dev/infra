@@ -36,13 +36,24 @@ DO $$
 $$;
 
 
--- Create "users" table
-CREATE TABLE IF NOT EXISTS "auth"."users"
-(
-    "id"                   uuid              NOT NULL DEFAULT gen_random_uuid(),
-    "email"                text              NOT NULL,
-    PRIMARY KEY ("id")
-);
+-- Check if the table exists before trying to create it
+DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'auth'
+              AND table_name = 'users'
+        ) THEN
+            EXECUTE '
+        CREATE TABLE auth.users (
+            id uuid NOT NULL DEFAULT gen_random_uuid(),
+            email text NOT NULL,
+            PRIMARY KEY (id)
+        );';
+        END IF;
+    END;
+$$;
 
 -- +goose StatementEnd
 
