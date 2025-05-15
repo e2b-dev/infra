@@ -9,8 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/orchestrators"
-	servicediscovery "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -22,18 +21,20 @@ type APIStore struct {
 
 	tracer trace.Tracer
 	logger *zap.Logger
+	info   *info.ServiceInfo
 
-	serviceDiscovery  servicediscovery.ServiceDiscoveryAdapter
-	orchestratorsPool *orchestrators.Pool
+	//serviceDiscovery  servicediscovery.ServiceDiscoveryAdapter
+	//orchestratorsPool *orchestrators.Pool
 }
 
-func NewStore(ctx context.Context, serviceDiscovery servicediscovery.ServiceDiscoveryAdapter, logger *zap.Logger, tracer trace.Tracer, selfUpdateHandler *func() error, selfDrainHandler *func() error) (*APIStore, error) {
-	pool := orchestrators.NewOrchestratorsPool(ctx, logger, serviceDiscovery, tracer)
+func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info *info.ServiceInfo, selfUpdateHandler *func() error, selfDrainHandler *func() error) (*APIStore, error) {
+	//pool := orchestrators.NewOrchestratorsPool(ctx, logger, serviceDiscovery, tracer)
 
 	return &APIStore{
-		serviceDiscovery:  serviceDiscovery,
-		orchestratorsPool: pool,
+		//serviceDiscovery:  serviceDiscovery,
+		//orchestratorsPool: pool,
 
+		info:         info,
 		tracer:       tracer,
 		logger:       logger,
 		healthStatus: api.Healthy,
@@ -44,15 +45,16 @@ func NewStore(ctx context.Context, serviceDiscovery servicediscovery.ServiceDisc
 }
 
 func (a *APIStore) SetDraining() {
-	a.healthStatus = api.Draining
+	a.info.SetStatus(api.Draining)
 }
 
 func (a *APIStore) SetUnhealthy() {
-	a.healthStatus = api.Unhealthy
+	a.info.SetStatus(api.Unhealthy)
 }
 
 func (a *APIStore) GracefullyShutdown() {
-	a.serviceDiscovery.SetSelfStatus(servicediscovery.StatusDraining)
+	// todo
+	//a.serviceDiscovery.SetSelfStatus(servicediscovery.StatusDraining)
 }
 
 func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {

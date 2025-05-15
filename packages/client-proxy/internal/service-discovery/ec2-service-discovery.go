@@ -53,7 +53,7 @@ func NewAwsEc2ServiceDiscovery(ctx context.Context, region string, filterTagsKey
 		entries: smap.New[*ServiceDiscoveryItem](),
 	}
 
-	go func() { sd.sync(ctx) }()
+	go func() { sd.keepInSync(ctx) }()
 
 	return sd, nil
 }
