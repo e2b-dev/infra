@@ -65,9 +65,6 @@ func (e *TemplateConfig) ToSandboxConfig(envdVersion string) *orchestrator.Sandb
 		Vcpu:        e.VCpuCount,
 		RamMb:       e.MemoryMB,
 
-		// TODO: set proper teamID
-		TeamId: uuid.New().String(),
-
 		BaseTemplateId: e.TemplateId,
 	}
 }
