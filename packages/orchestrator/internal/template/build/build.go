@@ -38,7 +38,7 @@ func Build(
 	// Create a rootfs file
 	err := NewRootfs(childCtx, tracer, postProcessor, templateConfig, docker, legacyDocker, rootfsPath)
 	if err != nil {
-		return nil, fmt.Errorf("error creating rootfs for env '%s' during build '%s': %w", templateConfig.TemplateId, templateConfig.BuildId, err)
+		return nil, fmt.Errorf("error creating rootfs for template '%s' during build '%s': %w", templateConfig.TemplateId, templateConfig.BuildId, err)
 	}
 
 	buildIDParsed, err := uuid.Parse(templateConfig.BuildId)

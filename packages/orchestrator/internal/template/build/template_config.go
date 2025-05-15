@@ -13,7 +13,7 @@ import (
 type TemplateConfig struct {
 	*storage.TemplateFiles
 
-	// Command to run when building the env.
+	// Command to run when building the template.
 	StartCmd string
 
 	// The number of vCPUs to allocate to the VM.
@@ -28,14 +28,14 @@ type TemplateConfig struct {
 	// Path to the directory where the temporary files for the build are stored.
 	BuildLogsWriter io.Writer
 
-	// Real size of the rootfs after building the env.
+	// Real size of the rootfs after building the template.
 	rootfsSize int64
 
 	// HugePages sets whether the VM use huge pages.
 	HugePages bool
 }
 
-// Real size in MB of rootfs after building the env
+// Real size in MB of rootfs after building the template
 func (e *TemplateConfig) RootfsSizeMB() int64 {
 	return e.rootfsSize >> 20
 }

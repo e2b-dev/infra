@@ -73,7 +73,7 @@ func NewBuilder(
 	}
 }
 
-func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID string, buildID string) error {
+func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, envID string, buildID string) error {
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
@@ -82,7 +82,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 		return err
 	}
 
-	logsWriter := env.BuildLogsWriter
+	logsWriter := template.BuildLogsWriter
 	postProcessor := writer.NewPostProcessor(ctx, logsWriter)
 	go postProcessor.Start()
 	defer postProcessor.Stop(err)
@@ -93,17 +93,17 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 		return err
 	}
 
-	templateCacheFiles, err := env.NewTemplateCacheFiles()
+	templateCacheFiles, err := template.NewTemplateCacheFiles()
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error while creating template files: %v", err))
 		return err
 	}
 
-	templateBuildDir := filepath.Join(templatesDirectory, env.BuildId)
+	templateBuildDir := filepath.Join(templatesDirectory, template.BuildId)
 	err = os.MkdirAll(templateBuildDir, 0777)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error while creating template directory: %v", err))
-		return fmt.Errorf("error initializing directories for building env '%s' during build '%s': %w", env.TemplateId, env.BuildId, err)
+		return fmt.Errorf("error initializing directories for building template '%s' during build '%s': %w", template.TemplateId, template.BuildId, err)
 	}
 	defer func() {
 		err := os.RemoveAll(templateBuildDir)
@@ -118,7 +118,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 	localTemplate, err := Build(
 		ctx,
 		b.tracer,
-		env,
+		template,
 		postProcessor,
 		b.dockerClient,
 		b.legacyDockerClient,
@@ -137,7 +137,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 		b.tracer,
 		b.networkPool,
 		b.devicePool,
-		env.ToSandboxConfig(envdVersion),
+		template.ToSandboxConfig(envdVersion),
 		localTemplate,
 		sbxTimeout,
 		rootfsPath,
@@ -167,11 +167,11 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 		}
 	}()
 
-	if env.StartCmd != "" {
+	if template.StartCmd != "" {
 		postProcessor.WriteMsg("Waiting for start command to run...")
 		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
 		// TODO: Remove this after we can add customizable wait time for building templates.
-		if env.TemplateId == "zegbt9dl3l2ixqem82mm" || env.TemplateId == "ot5bidkk3j2so2j02uuz" || env.TemplateId == "0zeou1s7agaytqitvmzc" {
+		if template.TemplateId == "zegbt9dl3l2ixqem82mm" || template.TemplateId == "ot5bidkk3j2so2j02uuz" || template.TemplateId == "0zeou1s7agaytqitvmzc" {
 			time.Sleep(120 * time.Second)
 		} else {
 			time.Sleep(waitTimeForStartCmd)
@@ -194,7 +194,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 	postProcessor.WriteMsg("Uploading template")
 	uploadErrCh := b.uploadTemplate(
 		ctx,
-		env.TemplateFiles,
+		template.TemplateFiles,
 		snapshot,
 	)
 
@@ -210,7 +210,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, env *TemplateConfig, envID 
 		return uploadErr
 	}
 
-	buildMetadata := &templatemanager.TemplateBuildMetadata{RootfsSizeKey: int32(env.RootfsSizeMB()), EnvdVersionKey: envdVersion}
+	buildMetadata := &templatemanager.TemplateBuildMetadata{RootfsSizeKey: int32(template.RootfsSizeMB()), EnvdVersionKey: envdVersion}
 	err = b.buildCache.SetSucceeded(envID, buildID, buildMetadata)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error while setting build state to succeeded: %v", err))
