@@ -168,6 +168,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 	builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
 	if buildsErr != nil {
 		zap.L().Error("Error listing cached builds", zap.Error(buildsErr))
+		return
 	}
 
 	node.SyncBuilds(builds)
