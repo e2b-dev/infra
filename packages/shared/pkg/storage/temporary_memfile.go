@@ -30,19 +30,18 @@ func AcquireTmpMemfile(
 	ctx context.Context,
 	buildID string,
 ) (*TemporaryMemfile, error) {
-	err := snapshotCacheQueue.Acquire(ctx, 1)
+	randomID, err := uuid.NewRandom()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate identifier: %w", err)
+	}
+
+	err = snapshotCacheQueue.Acquire(ctx, 1)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire cache: %w", err)
 	}
 	releaseOnce := sync.OnceFunc(func() {
 		snapshotCacheQueue.Release(1)
 	})
-
-	randomID, err := uuid.NewRandom()
-	if err != nil {
-		releaseOnce()
-		return nil, fmt.Errorf("failed to generate identifier: %w", err)
-	}
 
 	return &TemporaryMemfile{
 		path:    cacheMemfileFullSnapshotPath(buildID, randomID.String()),

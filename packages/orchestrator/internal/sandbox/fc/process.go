@@ -22,6 +22,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const startScript = `mount --make-rprivate / &&
@@ -281,12 +282,7 @@ func (p *Process) Create(
 	if err != nil {
 		return fmt.Errorf("error getting rootfs path: %w", err)
 	}
-	err = os.Remove(p.files.SandboxCacheRootfsLinkPath())
-	if err != nil {
-		return fmt.Errorf("error removing rootfs symlink: %w", err)
-	}
-
-	err = os.Symlink(rootfsPath, p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce(rootfsPath, p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -355,13 +351,7 @@ func (p *Process) Resume(
 	if err != nil {
 		return fmt.Errorf("error getting rootfs path: %w", err)
 	}
-
-	err = os.Remove(p.files.SandboxCacheRootfsLinkPath())
-	if err != nil {
-		return fmt.Errorf("error removing rootfs symlink: %w", err)
-	}
-
-	err = os.Symlink(device, p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce(device, p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
