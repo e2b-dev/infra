@@ -83,36 +83,35 @@ components:
     ClusterNode:
       required:
         - id
+        - nodeId
         - version
+        - commit
         - type
-        - nodeIp
-        - nodePort
-        - registeredAt
-        - expiresAt
+        - host
+        - startedAt
         - status
       properties:
         id:
+          type: string
+          description: Service ID
+        nodeId:
           type: string
           description: Node ID
         version:
             type: string
             description: Version of the node
-        type:
-          $ref: "#/components/schemas/ClusterNodeType"
-        nodeIp:
+        commit:
           type: string
-          description: Node private IPv4 address
-        nodePort:
-          type: integer
-          description: Node main service port
-        registeredAt:
+          description: Source code version of the node
+        host:
+          type: string
+          description: Node private IPv4 address and service port
+        startedAt:
           type: string
           format: date-time
           description: Time when the node was registered
-        expiresAt:
-            type: string
-            format: date-time
-            description: Time when the node will expire
+        type:
+          $ref: "#/components/schemas/ClusterNodeType"
         status:
           $ref: "#/components/schemas/ClusterNodeStatus"
 
@@ -131,15 +130,32 @@ components:
         - orchestrator
         - edge
 
+    ClusterOrchestratorRole:
+      type: string
+      description: Capability of the orchestrator
+      enum:
+        - orchestrator
+        - templateManager
+
     ClusterOrchestratorNode:
       properties:
+        id:
+          type: string
+          description: Service ID
         nodeId:
           type: string
           description: Node ID
-        nodeVersion:
+        version:
           type: string
-          description: Node Version
-        nodeStatus:
+          description: Service Version
+        commit:
+          type: string
+          description: Service Version
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClusterOrchestratorRole'
+        status:
           $ref: "#/components/schemas/ClusterNodeStatus"
         metricVCpuUsed:
           type: integer
@@ -157,22 +173,17 @@ components:
           type: integer
           format: int64
           description: Amount of disk space currently used in MB
-        canSpawn:
-          type: boolean
-          description: Whether the node can be used for sandbox spawning
-        canBuild:
-          type: boolean
-          description: Whether the node can be used for template building
       required:
+        - id
         - nodeId
-        - nodeVersion
-        - nodeStatus
+        - version
+        - commit
+        - status
+        - roles
         - metricVCpuUsed
         - metricRamMBUsed
         - metricDiskMBUsed
         - metricSandboxesRunning
-        - canSpawn
-        - canBuild
 
     Error:
       required:
