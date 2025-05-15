@@ -51,7 +51,7 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 
 		o, err := a.orchestratorsPool.GetOrchestrator(body.Sandbox.OrchestratorId)
 		if err != nil {
-			if errors.Is(err, orchestrators.ErrOrchestratorNotFound) {
+			if errors.Is(err, orchestratorPool.ErrOrchestratorNotFound) {
 				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Orchestrator not found: %s", err))
 				telemetry.ReportCriticalError(ctx, fmt.Errorf("orchestrator not found: %w", err))
 				return

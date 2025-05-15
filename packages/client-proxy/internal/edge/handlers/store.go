@@ -10,34 +10,31 @@ import (
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
+	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/orchestrators"
+	"github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type APIStore struct {
-	healthStatus api.ClusterNodeStatus
-
 	selfUpdateHandler *func() error
 	selfDrainHandler  *func() error
 
-	tracer trace.Tracer
-	logger *zap.Logger
-	info   *info.ServiceInfo
 
-	//serviceDiscovery  servicediscovery.ServiceDiscoveryAdapter
-	//orchestratorsPool *orchestrators.Pool
+	tracer           trace.Tracer
+	logger           *zap.Logger
+	info             *info.ServiceInfo
+	orchestratorPool *e2borchestrators.Pool
+	edgePool         service_discovery.ServiceDiscoveryAdapter
 }
 
-func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info *info.ServiceInfo, selfUpdateHandler *func() error, selfDrainHandler *func() error) (*APIStore, error) {
-	//pool := orchestrators.NewOrchestratorsPool(ctx, logger, serviceDiscovery, tracer)
-
+func NewStore(_ context.Context, logger *zap.Logger, tracer trace.Tracer, info *info.ServiceInfo, orchestratorsPool *e2borchestrators.Pool, edgePool service_discovery.ServiceDiscoveryAdapter, selfUpdateHandler *func() error, selfDrainHandler *func() error) (*APIStore, error) {
 	return &APIStore{
-		//serviceDiscovery:  serviceDiscovery,
-		//orchestratorsPool: pool,
+		orchestratorPool: orchestratorsPool,
+		edgePool:         edgePool,
 
-		info:         info,
-		tracer:       tracer,
-		logger:       logger,
-		healthStatus: api.Healthy,
+		info:   info,
+		tracer: tracer,
+		logger: logger,
 
 		selfDrainHandler:  selfDrainHandler,
 		selfUpdateHandler: selfUpdateHandler,

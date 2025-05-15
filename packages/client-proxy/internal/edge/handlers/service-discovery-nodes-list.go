@@ -1,75 +1,50 @@
 package handlers
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
+
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 )
 
 func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
+	response := make([]api.ClusterNode, 0)
 
-	/*
-		nodes, err := a.serviceDiscovery.ListNodes(c)
-		if err != nil {
-			a.logger.Error("failed to list cluster nodes", zap.Error(err))
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "failed to list cluster nodes")
-			return
-		}
-
-		nodesRes := make([]api.ClusterNode, 0, len(nodes))
-
-		for nodeId, node := range nodes {
-			nodeStatus, err := getNodeStatusResolved(node.Status)
-			if err != nil {
-				a.logger.Error("failed to resolve node status", zap.String("node_id", nodeId), zap.Error(err))
-				continue
-			}
-
-			nodeType, err := getNodeTypeResolved(node.ServiceType)
-			if err != nil {
-				a.logger.Error("failed to resolve node type", zap.String("node_id", nodeId), zap.Error(err))
-				continue
-			}
-
-			nodesRes = append(
-				nodesRes,
-				api.ClusterNode{
-					Id:           nodeId,
-					Status:       nodeStatus,
-					Type:         nodeType,
-					Version:      node.ServiceVersion,
-					NodeIp:       node.NodeIp,
-					NodePort:     node.NodePort,
-					RegisteredAt: time.Unix(node.RegisteredAt, 0),
-					ExpiresAt:    time.Unix(node.ExpiresAt, 0),
-				},
-			)
-		}
-
-		c.JSON(http.StatusOK, nodesRes)*/
-}
-
-/*
-func getNodeStatusResolved(s string) (api.ClusterNodeStatus, error) {
-	switch s {
-	case "healthy":
-		return api.Healthy, nil
-	case "draining":
-		return api.Draining, nil
-	case "unhealthy":
-		return api.Unhealthy, nil
-	default:
-		return "", fmt.Errorf("unknown node status: %s", s)
+	// iterate orchestrator pool
+	for _, orchestrator := range a.orchestratorPool.GetOrchestrators() {
+		response = append(
+			response,
+			api.ClusterNode{
+				Id:        orchestrator.ServiceId,
+				NodeId:    orchestrator.NodeId,
+				Status:    getOrchestratorStatusResolved(orchestrator.Status),
+				Type:      api.ClusterNodeTypeOrchestrator,
+				Version:   orchestrator.SourceVersion,
+				Commit:    orchestrator.SourceCommit,
+				Host:      orchestrator.Host,
+				StartedAt: orchestrator.Startup,
+			},
+		)
 	}
-}
 
+	// iterate edge apis
+	// todo
 
-func getNodeTypeResolved(t string) (api.ClusterNodeType, error) {
-	switch t {
-	case service_discovery.ServiceTypeEdge:
-		return api.Edge, nil
-	case service_discovery.ServiceTypeOrchestrator:
-		return api.Orchestrator, nil
-	default:
-		return "", fmt.Errorf("unknown node type: %s", t)
-	}
+	// register itself
+	response = append(
+		response,
+		api.ClusterNode{
+			Id:        a.info.ServiceId,
+			NodeId:    a.info.NodeId,
+			Status:    a.info.GetStatus(),
+			Type:      api.ClusterNodeTypeEdge,
+			Version:   a.info.SourceVersion,
+			Commit:    a.info.SourceCommit,
+			Host:      a.info.Host,
+			StartedAt: a.info.Startup,
+		},
+	)
+
+	c.JSON(http.StatusOK, response)
 }
-*/
