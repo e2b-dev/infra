@@ -82,7 +82,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
 
-	_, err := b.buildCache.Get(env.BuildId)
+	_, err := b.buildCache.Get(template.BuildId)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	err = os.MkdirAll(templateBuildDir, 0777)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error while creating template directory: %v", err))
-		return fmt.Errorf("error initializing directories for building template '%s' during build '%s': %w", template.TemplateId, template.BuildId, err)
+		return nil, fmt.Errorf("error initializing directories for building template '%s' during build '%s': %w", template.TemplateId, template.BuildId, err)
 	}
 	defer func() {
 		err := os.RemoveAll(templateBuildDir)
@@ -171,7 +171,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 			removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 			defer cancel()
 
-			removeErr := b.templateStorage.Remove(removeCtx, env.BuildId)
+			removeErr := b.templateStorage.Remove(removeCtx, template.BuildId)
 			if removeErr != nil {
 				b.logger.Error("Error while removing build files", zap.Error(removeErr))
 				telemetry.ReportError(ctx, removeErr)
@@ -188,7 +188,8 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		ctx,
 		postProcessor,
 		sbx.Metadata.Config.SandboxId,
-		time.Hour,
+		// TODO: Make this user configurable, with health check too
+		2*time.Minute,
 		scriptDef.String(),
 		"root",
 	)
@@ -250,7 +251,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 
 	return &Result{
 		EnvdVersion:  envdVersion,
-		RootfsSizeMB: env.RootfsSizeMB(),
+		RootfsSizeMB: template.RootfsSizeMB(),
 	}, nil
 }
 

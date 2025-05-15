@@ -77,7 +77,7 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	}
 
 	postProcessor.WriteMsg("Setting up system files")
-	layers, err := additionalOCILayers(childCtx, r.env)
+	layers, err := additionalOCILayers(childCtx, r.template)
 	if err != nil {
 		return fmt.Errorf("error populating filesystem: %w", err)
 	}
@@ -102,11 +102,11 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	}
 
 	// Resize rootfs
-	rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, r.env.DiskSizeMB<<ToMBShift)
+	rootfsFinalSize, err := ext4.Enlarge(ctx, tracer, rootfsPath, r.template.DiskSizeMB<<ToMBShift)
 	if err != nil {
 		return fmt.Errorf("error enlarging rootfs: %w", err)
 	}
-	r.env.rootfsSize = rootfsFinalSize
+	r.template.rootfsSize = rootfsFinalSize
 
 	// Check the rootfs filesystem corruption
 	ext4Check, err := ext4.CheckIntegrity(rootfsPath)
