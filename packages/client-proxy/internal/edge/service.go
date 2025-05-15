@@ -8,74 +8,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/proxy/internal/configurator"
+	"github.com/e2b-dev/infra/packages/proxy/internal"
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
+	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	"github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 )
 
-const (
-	serviceVersion = "v2.0.0"
-	serviceType    = "edge"
-
-	configSetupTimeout = 5 * time.Second
-)
-
-func NewEdgeAPIStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, drainingHandler *func(terminate bool)) (*handlers.APIStore, error) {
-	configAdapter, err := configuration.NewConfigurationAdapter()
-	if err != nil {
-		return nil, err
-	}
-
-	configCtx, configCtxCancel := context.WithTimeout(ctx, configSetupTimeout)
-	defer configCtxCancel()
-
-	config, err := configAdapter.GetConfiguration(configCtx)
-	if err != nil {
-		return nil, err
-	}
-
-	//opts, err := redis.ParseURL(config.RedisUrl)
-	//if err != nil {
-	//	return nil, err
-	//}
-
-	serviceId := uuid.NewString()
-	serviceDiscovery := service_discovery.NewDnsServiceDiscovery(
-		&service_discovery.DnsServiceDiscoveryConfig{
-			Logger: logger,
-
-			NodePort: config.ServicePort,
-			NodeIp:   config.ServiceIpv4,
-
-			ServiceId:      serviceId,
-			ServiceType:    serviceType,
-			ServiceVersion: serviceVersion,
-			ServiceStatus:  service_discovery.StatusHealthy,
-
-			// todo: this should be ideally taken from some ENV
-			OrchestratorsDomain: "orchestrator.service.consul",
-			OrchestratorsPort:   5008,
-		},
-	)
-
-	/*
-		serviceDiscovery := service_discovery.NewRedisServiceDiscovery(
-			ctx,
-			&service_discovery.RedisServiceDiscoveryConfig{
-				RedisClient: redis.NewClient(opts),
-				Logger:      logger,
-
-				NodePort: config.ServicePort,
-				Host:   config.ServiceIpv4,
-
-				ServiceId:      serviceId,
-				ServiceType:    serviceType,
-				ServiceVersion: serviceVersion,
-				ServiceStatus:  service_discovery.StatusHealthy,
-			},
-		)
-	*/
-
+func NewEdgeAPIStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, serviceCommit string, serviceVersion string, drainingHandler *func(terminate bool)) (*handlers.APIStore, error) {
 	selfDrainHandler := func() error {
 		(*drainingHandler)(false) // program should stay alive and terminated whole instance
 		return nil
@@ -86,7 +26,28 @@ func NewEdgeAPIStore(ctx context.Context, logger *zap.Logger, tracer trace.Trace
 		panic("not implemented")
 	}
 
-	store, err := handlers.NewStore(ctx, serviceDiscovery, logger, tracer, &selfUpdateHandler, &selfDrainHandler)
+	edgePort := internal.GetEdgeServicePort()
+	orchestratorPort := internal.GetOrchestratorServicePort()
+
+	_, _, err := service_discovery.NewServiceDiscoveryProvider(ctx, edgePort, orchestratorPort, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	info := &e2binfo.ServiceInfo{
+		NodeId:        internal.GetNodeID(),
+		ServiceId:     uuid.NewString(),
+		SourceVersion: serviceVersion,
+		SourceCommit:  serviceCommit,
+		Startup:       time.Now(),
+	}
+	info.SetStatus(api.Healthy)
+
+	// todo
+	// orchestrator pool
+	// edge pool
+
+	store, err := handlers.NewStore(ctx, logger, tracer, info, &selfUpdateHandler, &selfDrainHandler)
 	if err != nil {
 		return nil, err
 	}

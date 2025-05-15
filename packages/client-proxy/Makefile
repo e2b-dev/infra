@@ -30,20 +30,7 @@ generate:
 .PHONY: run
 run:
 	@echo "Running..."
-	@AWS_PROFILE=e2b_jirka CONFIGURATION_SOURCE=AWS-SECRET-MANAGER CONFIGURATION_AWS_SECRET_MANAGER_ARN=arn:aws:secretsmanager:eu-west-1:228660242780:secret:e2b/edge-node-config-11mvun go run main.go
-
-#.PHONY: build
-#build:
-#	@echo "Building..."
-#	@GOOS=linux GOARCH=amd64 go build -o bin/edge-agent main.go
-#	@echo "Done"
-#
-#.PHONY: build-and-upload
-#build-and-upload:
-#	@make build
-#	@echo "Uploading..."
-#	@aws s3 cp bin/edge-agent s3://e2b-eu-west-1-assets/edge-agent --profile e2b_jirka
-#	@echo "Upload complete"
+	@AWS_PROFILE=e2b_jirka SERVICE_DISCOVERY_EDGE_PROVIDER=STATIC SERVICE_DISCOVERY_EDGE_STATIC=xx_edge SERVICE_DISCOVERY_ORCHESTRATOR_PROVIDER=STATIC SERVICE_DISCOVERY_ORCHESTRATOR_STATIC=xx_orchestrator go run main.go
 
 .PHONY: test
 test:

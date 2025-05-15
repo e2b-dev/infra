@@ -8,7 +8,7 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 )
 
-func (a *APIStore) GetHealth(c *gin.Context) {
+func (a *APIStore) HealthCheck(c *gin.Context) {
 	if a.healthStatus == api.Healthy || a.healthStatus == api.Draining {
 		c.Status(http.StatusOK)
 		c.Writer.Write([]byte("healthy"))
@@ -19,7 +19,7 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 	c.Writer.Write([]byte("unhealthy"))
 }
 
-func (a *APIStore) GetHealthTraffic(c *gin.Context) {
+func (a *APIStore) HealthCheckTraffic(c *gin.Context) {
 	if a.healthStatus == api.Healthy {
 		c.Status(http.StatusOK)
 		c.Writer.Write([]byte("healthy"))

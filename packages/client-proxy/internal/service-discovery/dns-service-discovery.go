@@ -26,6 +26,10 @@ const (
 	cacheRefreshInterval = 10 * time.Second
 )
 
+var (
+	dnsResolver = net.DefaultResolver
+)
+
 func NewDnsServiceDiscovery(ctx context.Context, query string, servicePort int, logger *zap.Logger) *DnsServiceDiscovery {
 	sd := &DnsServiceDiscovery{
 		query:   query,
@@ -35,7 +39,7 @@ func NewDnsServiceDiscovery(ctx context.Context, query string, servicePort int, 
 		servicePort: servicePort,
 	}
 
-	go func() { sd.sync(ctx) }()
+	go func() { sd.keepInSync(ctx) }()
 
 	return sd
 }
@@ -75,11 +79,11 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 
 	select {
 	case <-ctxTimeout.Done():
-		sd.logger.Info("Service discovery sync timed out")
+		sd.logger.Error("Service discovery sync timed out")
 		return
 	default:
 		for _ = range dnsMaxRetries {
-			ips, err := net.LookupIP(sd.query)
+			ips, err := dnsResolver.LookupIP(ctxTimeout, "ip", sd.query)
 			if err != nil {
 				sd.logger.Error("DNS service discovery failed", zap.Error(err))
 				time.Sleep(dnsRetryWait)
@@ -105,8 +109,8 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 			}
 
 			// Remove entries that are no longer in DNS response
-			for key := range sd.entries.Items() {
-				if _, ok := ipsMap[key]; !ok {
+			for key, item := range sd.entries.Items() {
+				if _, ok := ipsMap[item.NodeIp]; !ok {
 					sd.entries.Remove(key)
 				}
 			}
