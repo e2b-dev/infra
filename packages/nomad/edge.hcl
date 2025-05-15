@@ -78,14 +78,14 @@ job "client-proxy" {
 
       env {
         NODE_ID = "$${node.unique.id}"
+        NODE_IP = "$${attr.unique.network.ip-address}"
 
         EDGE_PORT         = "${api_port}"
         PROXY_PORT        = "${proxy_port}"
         ORCHESTRATOR_PORT = "${orchestrator_port}"
 
-
         SERVICE_DISCOVERY_ORCHESTRATOR_PROVIDER  = "DNS"
-        SERVICE_DISCOVERY_ORCHESTRATOR_DNS_QUERY = "orchestrator.service.consul"
+        SERVICE_DISCOVERY_ORCHESTRATOR_DNS_QUERY = "orchestrator.service.consul,template-manager.service.consul"
 
         SERVICE_DISCOVERY_EDGE_PROVIDER  = "DNS"
         SERVICE_DISCOVERY_EDGE_DNS_QUERY = "edge-api.service.consul"
