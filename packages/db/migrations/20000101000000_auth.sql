@@ -36,6 +36,9 @@ DO $$
 $$;
 
 
+-- Grant execute on auth.uid() to postgres role
+GRANT EXECUTE ON FUNCTION auth.uid() TO postgres;
+
 -- Check if the table exists before trying to create it
 DO $$
     BEGIN
