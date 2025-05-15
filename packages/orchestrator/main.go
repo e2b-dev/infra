@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -44,6 +43,8 @@ const (
 	defaultProxyPort = 5007
 
 	version = "0.1.0"
+
+	fileLockName = "/orchestrator.lock"
 )
 
 var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
@@ -56,23 +57,48 @@ func main() {
 
 	if *port > math.MaxUint16 {
 		log.Fatalf("%d is larger than maximum possible port %d", port, math.MaxInt16)
-		os.Exit(1)
 	}
 
 	if *proxyPort > math.MaxUint16 {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
-		os.Exit(1)
 	}
 
-	result := run(*port, *proxyPort)
-
-	if result == false {
+	success := run(*port, *proxyPort)
+	if success == false {
 		os.Exit(1)
 	}
 }
 
 func run(port, proxyPort uint) (success bool) {
 	success = true
+
+	// Check if the orchestrator crashed and restarted
+	// Skip this check in development mode
+	if !env.IsDevelopment() {
+		info, err := os.Stat(fileLockName)
+		if err == nil {
+			log.Printf("Orchestrator was already started at %s", info.ModTime())
+		}
+
+		f, err := os.Create(fileLockName)
+		if err != nil {
+			log.Fatalf("Failed to create lock file %s: %v", fileLockName, err)
+		}
+		defer func() {
+			fileErr := f.Close()
+			if fileErr != nil {
+				log.Printf("Failed to close lock file %s: %v", fileLockName, fileErr)
+			}
+
+			// Remove the lock file on graceful shutdown
+			if success == true {
+				if fileErr = os.Remove(fileLockName); fileErr != nil {
+					log.Printf("Failed to remove lock file %s: %v", fileLockName, fileErr)
+				}
+			}
+		}()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -236,19 +262,6 @@ func run(port, proxyPort uint) (success bool) {
 	})
 
 	g.Go(func() (err error) {
-		defer func() {
-			// recover the panic because the service manages a number of go routines
-			// that can panic, so catching this here allows for the rest of the process
-			// to terminate in a more orderly manner.
-			if perr := recover(); perr != nil {
-				// many of the panics use log.Panicf which means we're going to log
-				// some panic messages twice, but this seems ok, and temporary while
-				// we clean up logging.
-				log.Printf("caught panic in service: %v", perr)
-				err = errors.Join(err, fmt.Errorf("server panic: %v", perr))
-			}
-		}()
-
 		// this sets the error declared above so the function
 		// in the defer can check it.
 		grpcErr := grpcSrv.Start(ctx, port)
