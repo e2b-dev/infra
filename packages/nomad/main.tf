@@ -317,8 +317,9 @@ data "external" "orchestrator_checksum" {
   }
 }
 
-resource "nomad_job" "orchestrator" {
-  jobspec = templatefile("${path.module}/orchestrator.hcl", {
+
+locals {
+  orchestrator_envs = {
     gcp_zone         = var.gcp_zone
     port             = var.orchestrator_port
     proxy_port       = var.orchestrator_proxy_port
@@ -336,7 +337,45 @@ resource "nomad_job" "orchestrator" {
     clickhouse_username          = var.clickhouse_username
     clickhouse_password          = var.clickhouse_password
     clickhouse_database          = var.clickhouse_database
-  })
+  }
+
+  orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(
+    local.orchestrator_envs,
+    {
+      latest_orchestrator_job_id = "placeholder",
+    }
+  ))
+}
+
+
+
+resource "random_id" "orchestrator_job" {
+  keepers = {
+    # Use both the orchestrator job (including vars) definition and the latest orchestrator checksum to detect changes
+    orchestrator_job = sha256("${local.orchestrator_job_check}-${data.external.orchestrator_checksum.result.hex}")
+  }
+
+  byte_length = 8
+}
+
+resource "nomad_variable" "orchestrator_hash" {
+  path = "nomad/jobs"
+  items = {
+    latest_orchestrator_job_id = random_id.orchestrator_job.hex
+  }
+}
+
+resource "nomad_job" "orchestrator" {
+  deregister_on_id_change = false
+
+  jobspec = templatefile("${path.module}/orchestrator.hcl", merge(
+    local.orchestrator_envs,
+    {
+      latest_orchestrator_job_id = random_id.orchestrator_job.hex
+    }
+  ))
+
+  depends_on = [nomad_variable.orchestrator_hash]
 }
 
 data "google_storage_bucket_object" "template_manager" {
