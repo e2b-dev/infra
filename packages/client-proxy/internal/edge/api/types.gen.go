@@ -20,26 +20,32 @@ const (
 
 // Defines values for ClusterNodeType.
 const (
-	Edge         ClusterNodeType = "edge"
-	Orchestrator ClusterNodeType = "orchestrator"
+	ClusterNodeTypeEdge         ClusterNodeType = "edge"
+	ClusterNodeTypeOrchestrator ClusterNodeType = "orchestrator"
+)
+
+// Defines values for ClusterOrchestratorRole.
+const (
+	ClusterOrchestratorRoleOrchestrator    ClusterOrchestratorRole = "orchestrator"
+	ClusterOrchestratorRoleTemplateManager ClusterOrchestratorRole = "templateManager"
 )
 
 // ClusterNode defines model for ClusterNode.
 type ClusterNode struct {
-	// ExpiresAt Time when the node will expire
-	ExpiresAt time.Time `json:"expiresAt"`
+	// Commit Source code version of the node
+	Commit string `json:"commit"`
 
-	// Id Node ID
+	// Host Node private IPv4 address and service port
+	Host string `json:"host"`
+
+	// Id Service ID
 	Id string `json:"id"`
 
-	// NodeIp Node private IPv4 address
-	NodeIp string `json:"nodeIp"`
+	// NodeId Node ID
+	NodeId string `json:"nodeId"`
 
-	// NodePort Node main service port
-	NodePort int `json:"nodePort"`
-
-	// RegisteredAt Time when the node was registered
-	RegisteredAt time.Time `json:"registeredAt"`
+	// StartedAt Time when the node was registered
+	StartedAt time.Time `json:"startedAt"`
 
 	// Status State of the cluster node
 	Status ClusterNodeStatus `json:"status"`
@@ -80,11 +86,11 @@ type ClusterNodeType string
 
 // ClusterOrchestratorNode defines model for ClusterOrchestratorNode.
 type ClusterOrchestratorNode struct {
-	// CanBuild Whether the node can be used for template building
-	CanBuild bool `json:"canBuild"`
+	// Commit Service Version
+	Commit string `json:"commit"`
 
-	// CanSpawn Whether the node can be used for sandbox spawning
-	CanSpawn bool `json:"canSpawn"`
+	// Id Service ID
+	Id string `json:"id"`
 
 	// MetricDiskMBUsed Amount of disk space currently used in MB
 	MetricDiskMBUsed int64 `json:"metricDiskMBUsed"`
@@ -99,14 +105,18 @@ type ClusterOrchestratorNode struct {
 	MetricVCpuUsed int64 `json:"metricVCpuUsed"`
 
 	// NodeId Node ID
-	NodeId string `json:"nodeId"`
+	NodeId string                    `json:"nodeId"`
+	Roles  []ClusterOrchestratorRole `json:"roles"`
 
-	// NodeStatus State of the cluster node
-	NodeStatus ClusterNodeStatus `json:"nodeStatus"`
+	// Status State of the cluster node
+	Status ClusterNodeStatus `json:"status"`
 
-	// NodeVersion Node Version
-	NodeVersion string `json:"nodeVersion"`
+	// Version Service Version
+	Version string `json:"version"`
 }
+
+// ClusterOrchestratorRole Capability of the orchestrator
+type ClusterOrchestratorRole string
 
 // Error defines model for Error.
 type Error struct {
