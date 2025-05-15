@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -238,12 +239,13 @@ BUILD_ID=%s
 		return nil, fmt.Errorf("error creating layer from symlinks: %w", err)
 	}
 
-	/*systemdLayer, err := createLayerFromFolder("/extract")
+	systemdLayer, err := tarball.LayerFromFile("/systemd.tar")
 	if err != nil {
-		return err
-	}*/
+		return nil, fmt.Errorf("error getting systemd layer: %w", err)
+	}
 
 	return []v1.Layer{
+		systemdLayer,
 		filesRemoveLayer,
 		filesLayer,
 		symlinkLayer,
