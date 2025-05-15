@@ -18,15 +18,6 @@ echo "if [ -f ~/.bashrc ]; then source ~/.bashrc; fi; if [ -f ~/.profile ]; then
 echo "Remove root password"
 passwd -d root
 
-# Set up SSH.
-echo "Setting up SSH"
-mkdir -p /etc/ssh
-cat <<EOF >>/etc/ssh/sshd_config
-PermitRootLogin yes
-PermitEmptyPasswords yes
-PasswordAuthentication yes
-EOF
-
 echo "Don't wait for ttyS0 (serial console kernel logs)"
 systemctl mask serial-getty@ttyS0.service
 

@@ -4,9 +4,25 @@ set -euo pipefail
 
 echo "Starting provisioning script"
 
-echo "Installing packages openssh-server sudo socat chrony linuxptp"
-apt-get -qq update --download-only
-DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq install -y openssh-server sudo socat chrony linuxptp > /dev/null
+# Install required packages if not already installed
+PACKAGES="openssh-server sudo socat chrony linuxptp"
+echo "Checking presence of the following packages: $PACKAGES"
+
+MISSING=()
+for pkg in $PACKAGES; do
+    if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+        echo "Package $pkg is missing, will install it."
+        MISSING+=("$pkg")
+    fi
+done
+
+if [ ${#MISSING[@]} -ne 0 ]; then
+    echo "Missing packages detected, installing: ${MISSING[*]}"
+    apt-get -qq update --download-only
+    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq install -y "${MISSING[@]}" > /dev/null
+else
+    echo "All required packages are already installed."
+fi
 
 # Add swapfile — we enable it in the preexec for envd
 configure_swap() {
@@ -46,6 +62,19 @@ EOF
 }
 
 setup_chrony
+
+# Set up SSH.
+setup_ssh() {
+    echo "Setting up SSH"
+    mkdir -p /etc/ssh
+    cat <<EOF >>/etc/ssh/sshd_config
+PermitRootLogin yes
+PermitEmptyPasswords yes
+PasswordAuthentication yes
+EOF
+}
+
+setup_ssh
 
 # Create default user.
 # if the /home/user directory exists, we copy the skeleton files to it because the adduser command
