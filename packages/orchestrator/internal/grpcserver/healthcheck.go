@@ -116,10 +116,7 @@ func (h *Healthcheck) healthHandler(w http.ResponseWriter, r *http.Request) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	response := e2bHealth.Response{
-		Status:  h.status,
-		Version: h.version,
-	}
+	response := e2bHealth.Response{Status: h.status, Version: h.version}
 
 	w.Header().Set("Content-Type", "application/json")
 	if h.status == e2bHealth.Unhealthy {

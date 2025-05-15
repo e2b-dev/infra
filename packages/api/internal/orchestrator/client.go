@@ -13,13 +13,14 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	e2bHealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
+	orchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	e2bhealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -27,7 +28,7 @@ const nodeHealthCheckTimeout = time.Second * 2
 
 type GRPCClient struct {
 	Sandbox orchestrator.SandboxServiceClient
-	Health  grpc_health_v1.HealthClient
+	Info    orchestratorinfo.InfoServiceClient
 
 	connection e2bgrpc.ClientConnInterface
 }
@@ -38,10 +39,10 @@ func NewClient(host string) (*GRPCClient, error) {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
 
-	client := orchestrator.NewSandboxServiceClient(conn)
-	health := grpc_health_v1.NewHealthClient(conn)
+	sandboxClient := orchestrator.NewSandboxServiceClient(conn)
+	infoClient := orchestratorinfo.NewInfoServiceClient(conn)
 
-	return &GRPCClient{Sandbox: client, Health: health, connection: conn}, nil
+	return &GRPCClient{Sandbox: sandboxClient, Info: infoClient, connection: conn}, nil
 }
 
 func (a *GRPCClient) Close() error {
@@ -67,25 +68,37 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	buildCache := ttlcache.New[string, interface{}]()
 	go buildCache.Start()
 
-	version := "unknown"
+	nodeStatus := api.NodeStatusUnhealthy
+	nodeVersion := "unknown"
 
-	nodeStatus, err := o.getNodeHealth(node)
-	if err == nil {
-		version = nodeStatus.Version
+	ok, err := o.getNodeHealth(node)
+	if err != nil {
+		zap.L().Error("Failed to get node health, connecting and marking as unhealthy", zap.Error(err))
+	}
+
+	if !ok {
+		zap.L().Error("Node is not healthy", zap.String("node_id", node.ID))
+	}
+
+	nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
+	if err != nil {
+		zap.L().Error("Failed to get node info", zap.Error(err))
 	} else {
-		zap.L().Error("Failed to get node health", zap.Error(err))
+		nodeStatus = o.getNodeStatusConverted(nodeInfo.ServiceStatus)
+		nodeVersion = nodeInfo.ServiceVersion
 	}
 
-	n := &Node{
-		Client:         client,
-		buildCache:     buildCache,
-		sbxsInProgress: smap.New[*sbxInProgress](),
-		status:         api.NodeStatusReady,
-		version:        version,
-		Info:           node,
-		createFails:    atomic.Uint64{},
-	}
-	o.nodes.Insert(n.Info.ID, n)
+	o.nodes.Insert(
+		node.ID, &Node{
+			Client:         client,
+			Info:           node,
+			buildCache:     buildCache,
+			status:         nodeStatus,
+			version:        nodeVersion,
+			sbxsInProgress: smap.New[*sbxInProgress](),
+			createFails:    atomic.Uint64{},
+		},
+	)
 
 	return nil
 }
@@ -99,23 +112,37 @@ func (o *Orchestrator) GetClient(nodeID string) (*GRPCClient, error) {
 	return n.Client, nil
 }
 
-func (o *Orchestrator) getNodeHealth(node *node.NodeInfo) (*e2bHealth.Response, error) {
+func (o *Orchestrator) getNodeStatusConverted(s orchestratorinfo.ServiceInfoStatus) api.NodeStatus {
+	switch s {
+	case orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:
+		return api.NodeStatusReady
+	case orchestratorinfo.ServiceInfoStatus_OrchestratorDraining:
+		return api.NodeStatusDraining
+	case orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy:
+		return api.NodeStatusUnhealthy
+	default:
+		zap.L().Error("Unknown service info status", zap.Any("status", s))
+		return api.NodeStatusUnhealthy
+	}
+}
+
+func (o *Orchestrator) getNodeHealth(node *node.NodeInfo) (bool, error) {
 	resp, err := o.httpClient.Get(fmt.Sprintf("http://%s/health", node.OrchestratorAddress))
 	if err != nil {
-		return nil, fmt.Errorf("failed to check node health: %w", err)
+		return false, fmt.Errorf("failed to check node health: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("node is not healthy: %s", resp.Status)
+		return false, fmt.Errorf("node is not healthy: %s", resp.Status)
 	}
 
 	// Check if the node is healthy
-	var healthResp e2bHealth.Response
+	var healthResp e2bhealth.Response
 	err = json.NewDecoder(resp.Body).Decode(&healthResp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode health response: %w", err)
+		return false, fmt.Errorf("failed to decode health response: %w", err)
 	}
 
-	return &healthResp, nil
+	return healthResp.Status == e2bhealth.Healthy, nil
 }

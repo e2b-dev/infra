@@ -19,6 +19,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/info"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -41,6 +42,8 @@ type Closeable interface {
 const (
 	defaultPort      = 5008
 	defaultProxyPort = 5007
+
+	version = "0.1.0"
 )
 
 var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
@@ -77,6 +80,9 @@ func run(port, proxyPort uint) (success bool) {
 	defer sigCancel()
 
 	clientID := consul.GetClientID()
+	if clientID == "" {
+		zap.L().Fatal("client ID is empty")
+	}
 
 	services := servicetype.GetServices()
 	serviceName := servicetype.GetServiceName(services)
@@ -178,7 +184,9 @@ func run(port, proxyPort uint) (success bool) {
 	grpcSrv := grpcserver.New(commitSHA)
 	tracer := otel.Tracer(serviceName)
 
-	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, clientID, commitSHA, sandboxProxy, sandboxes)
+	serviceInfo := info.NewInfoContainer(clientID, version, commitSHA)
+
+	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -214,6 +222,8 @@ func run(port, proxyPort uint) (success bool) {
 		// Prepend to make sure it's awaited on graceful shutdown
 		closers = append([]Closeable{tmpl}, closers...)
 	}
+
+	info.NewInfoService(ctx, grpcSrv, serviceInfo, sandboxes)
 
 	g.Go(func() error {
 		zap.L().Info("Starting session proxy")
