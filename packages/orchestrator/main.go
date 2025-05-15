@@ -64,21 +64,23 @@ func main() {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
 	}
 
-	info, err := os.Stat(fileLockName)
-	if err == nil {
-		log.Fatalf("Orchestrator was already started at %s", info.ModTime())
-	}
-
-	f, err := os.Create(fileLockName)
-	if err != nil {
-		log.Fatalf("Failed to create lock file %s: %v", fileLockName, err)
-	}
-	defer func() {
-		fileErr := f.Close()
-		if fileErr != nil {
-			log.Printf("Failed to close lock file %s: %v", fileLockName, fileErr)
+	if !env.IsDevelopment() {
+		info, err := os.Stat(fileLockName)
+		if err == nil {
+			log.Fatalf("Orchestrator was already started at %s", info.ModTime())
 		}
-	}()
+
+		f, err := os.Create(fileLockName)
+		if err != nil {
+			log.Fatalf("Failed to create lock file %s: %v", fileLockName, err)
+		}
+		defer func() {
+			fileErr := f.Close()
+			if fileErr != nil {
+				log.Printf("Failed to close lock file %s: %v", fileLockName, fileErr)
+			}
+		}()
+	}
 
 	result := run(*port, *proxyPort)
 
