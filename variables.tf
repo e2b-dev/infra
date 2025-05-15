@@ -150,7 +150,7 @@ variable "orchestrator_proxy_port" {
 
 variable "template_manager_port" {
   type    = number
-  default = 5009
+  default = 5008 // we want to use the same port for both because of edge api
 }
 
 variable "environment" {
