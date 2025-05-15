@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
-	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -25,8 +23,6 @@ import (
 
 const (
 	requestTimeout = 60 * time.Second
-
-	maxParalellSnapshotting = 8
 )
 
 func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
@@ -205,24 +201,9 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	return &emptypb.Empty{}, nil
 }
 
-var pauseQueue = semaphore.NewWeighted(maxParalellSnapshotting)
-
 func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
 	ctx, childSpan := s.tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
-
-	err := pauseQueue.Acquire(ctx, 1)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, err)
-
-		return nil, status.New(codes.ResourceExhausted, err.Error()).Err()
-	}
-
-	releaseOnce := sync.OnceFunc(func() {
-		pauseQueue.Release(1)
-	})
-
-	defer releaseOnce()
 
 	s.pauseMu.Lock()
 
@@ -267,7 +248,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		}()
 	}()
 
-	snapshot, err := sbx.PauseWithLockRelease(ctx, s.tracer, snapshotTemplateFiles, releaseOnce)
+	snapshot, err := sbx.Pause(ctx, s.tracer, snapshotTemplateFiles)
 	if err != nil {
 		errMsg := fmt.Errorf("error snapshotting sandbox '%s': %w", in.SandboxId, err)
 		telemetry.ReportCriticalError(ctx, errMsg)

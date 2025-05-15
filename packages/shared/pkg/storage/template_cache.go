@@ -10,7 +10,6 @@ import (
 
 const (
 	templateCacheDir = "/orchestrator/template"
-	snapshotCacheDir = "/mnt/snapshot-cache"
 )
 
 type TemplateCacheFiles struct {
@@ -30,18 +29,12 @@ func (c *TemplateFiles) NewTemplateCacheFiles() (*TemplateCacheFiles, error) {
 		CacheIdentifier: identifier.String(),
 	}
 
-	err = tcf.setup()
+	err = os.MkdirAll(tcf.cacheDir(), os.ModePerm)
 	if err != nil {
-		return nil, fmt.Errorf("failed to setup: %w", err)
+		return nil, fmt.Errorf("failed to create cache dir '%s': %w", tcf.cacheDir(), err)
 	}
 
 	return tcf, nil
-}
-
-func (c *TemplateCacheFiles) CacheMemfileFullSnapshotPath() string {
-	name := fmt.Sprintf("%s-%s-%s.full", c.BuildId, MemfileName, c.CacheIdentifier)
-
-	return filepath.Join(snapshotCacheDir, name)
 }
 
 func (c *TemplateCacheFiles) CacheSnapfilePath() string {
@@ -50,13 +43,4 @@ func (c *TemplateCacheFiles) CacheSnapfilePath() string {
 
 func (c *TemplateCacheFiles) cacheDir() string {
 	return filepath.Join(templateCacheDir, c.TemplateId, c.BuildId, "cache", c.CacheIdentifier)
-}
-
-func (c *TemplateCacheFiles) setup() error {
-	err := os.MkdirAll(c.cacheDir(), os.ModePerm)
-	if err != nil {
-		return fmt.Errorf("failed to create cache dir '%s': %w", c.cacheDir(), err)
-	}
-
-	return nil
 }

@@ -472,20 +472,6 @@ func (s *Sandbox) Pause(
 	tracer trace.Tracer,
 	snapshotTemplateFiles *storage.TemplateCacheFiles,
 ) (*Snapshot, error) {
-	return s.PauseWithLockRelease(
-		ctx,
-		tracer,
-		snapshotTemplateFiles,
-		func() {},
-	)
-}
-
-func (s *Sandbox) PauseWithLockRelease(
-	ctx context.Context,
-	tracer trace.Tracer,
-	snapshotTemplateFiles *storage.TemplateCacheFiles,
-	releaseLock func(),
-) (*Snapshot, error) {
 	childCtx, childSpan := tracer.Start(ctx, "sandbox-snapshot")
 	defer childSpan.End()
 
@@ -505,10 +491,20 @@ func (s *Sandbox) PauseWithLockRelease(
 		return nil, fmt.Errorf("failed to disable uffd: %w", err)
 	}
 
-	// Snapfile is not closed as it's returned and reused for resume
+	// Snapfile is not closed as it's returned and cached for later use (like resume)
 	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
-	memfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheMemfileFullSnapshotPath())
-	defer memfile.Close()
+	// Memfile is closed on diff creation processing
+	/* The process of snapshotting memory is as follows:
+	1. Pause FC via API
+	2. Snapshot FC via API—memory dump to “file on disk” that is actually tmpfs, because it is too slow
+	3. Create the diff - copy the diff pages from tmpfs to normal disk file
+	4. Delete tmpfs file
+	5. Unlock so another snapshot can use tmpfs space
+	*/
+	memfile, err := storage.AcquireTmpMemfile(childCtx, buildID.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
+	}
 
 	err = s.process.CreateSnapshot(
 		childCtx,
@@ -519,9 +515,6 @@ func (s *Sandbox) PauseWithLockRelease(
 	if err != nil {
 		return nil, fmt.Errorf("error creating snapshot: %w", err)
 	}
-
-	// TODO: When is the right time to release the lock?
-	releaseLock()
 
 	// Gather data for postprocessing
 	originalMemfile, err := s.template.Memfile()
@@ -544,6 +537,9 @@ func (s *Sandbox) PauseWithLockRelease(
 			memfile:    memfile,
 			dirtyPages: s.memory.Dirty(),
 			blockSize:  originalMemfile.BlockSize(),
+			doneHook: func(ctx context.Context) error {
+				return memfile.Close()
+			},
 		},
 	)
 	if err != nil {
@@ -605,9 +601,6 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("error creating diff: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "created diff")
-
-	// TODO: Do we need to release here or can we earlier?
-	// Release the lock to allow other operations to proceed
 
 	memfileMapping, err := m.CreateMapping(ctx, buildId)
 	if err != nil {

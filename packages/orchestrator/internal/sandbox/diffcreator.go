@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -33,12 +34,20 @@ func (r *RootfsDiffCreator) process(ctx context.Context, out io.Writer) (*header
 
 type MemoryDiffCreator struct {
 	tracer     trace.Tracer
-	memfile    *template.LocalFileLink
+	memfile    *storage.TemporaryMemfile
 	dirtyPages *bitset.BitSet
 	blockSize  int64
+	doneHook   func(context.Context) error
 }
 
-func (r *MemoryDiffCreator) process(ctx context.Context, out io.Writer) (*header.DiffMetadata, error) {
+func (r *MemoryDiffCreator) process(ctx context.Context, out io.Writer) (h *header.DiffMetadata, e error) {
+	defer func() {
+		err := r.doneHook(ctx)
+		if err != nil {
+			e = errors.Join(e, err)
+		}
+	}()
+
 	memfileSource, err := os.Open(r.memfile.Path())
 	defer memfileSource.Close()
 	if err != nil {
