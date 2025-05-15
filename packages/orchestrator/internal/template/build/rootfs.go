@@ -194,7 +194,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 		FcAddress:   "169.254.0.21",
 		EnvID:       r.template.TemplateId,
 		BuildID:     r.template.BuildId,
-		MemoryLimit: int(math.Min(float64(r.env.MemoryMB)/2, 512)),
+		MemoryLimit: int(math.Min(float64(r.template.MemoryMB)/2, 512)),
 	})
 	if err != nil {
 		errMsg := fmt.Errorf("error executing provision script: %w", err)

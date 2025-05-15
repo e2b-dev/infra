@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -61,11 +62,36 @@ func (b *TemplateBuilder) runCommand(
 			case err := <-msgErrCh:
 				return err
 			case msg := <-msgCh:
-				fmtMsg := fmt.Sprintf("[cmd]: %s", msg)
-				postProcessor.WriteMsg(fmtMsg)
-				b.buildLogger.Info(fmtMsg)
+				e := msg.Event
+
+				switch {
+				case e.GetData() != nil:
+					data := e.GetData()
+					b.logStream(postProcessor, "stdout", string(data.GetStdout()))
+					b.logStream(postProcessor, "stderr", string(data.GetStderr()))
+
+				case e.GetEnd() != nil:
+					end := e.GetEnd()
+					name := fmt.Sprintf("exit %d", end.GetExitCode())
+					b.logStream(postProcessor, name, end.GetStatus())
+				}
 			}
 		}
 	})
 	return g.Wait()
+}
+
+func (b *TemplateBuilder) logStream(postProcessor *writer.PostProcessor, name string, content string) {
+	if content == "" {
+		return
+	}
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		msg := fmt.Sprintf("[cmd] [%s]: %s", name, line)
+		postProcessor.WriteMsg(msg)
+		b.buildLogger.Info(msg)
+	}
 }

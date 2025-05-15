@@ -202,7 +202,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 			postProcessor,
 			sbx.Metadata.Config.SandboxId,
 			startCmdWait,
-			env.StartCmd,
+			template.StartCmd,
 			"root",
 		)
 		if err != nil {
