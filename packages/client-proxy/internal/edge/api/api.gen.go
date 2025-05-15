@@ -15,10 +15,13 @@ import (
 type ServerInterface interface {
 
 	// (GET /health)
-	GetHealth(c *gin.Context)
+	HealthCheck(c *gin.Context)
 
 	// (GET /health/traffic)
-	GetHealthTraffic(c *gin.Context)
+	HealthCheckTraffic(c *gin.Context)
+
+	// (GET /v1/info)
+	V1Info(c *gin.Context)
 	// List running sandboxes
 	// (GET /v1/sandboxes)
 	V1ListSandboxes(c *gin.Context)
@@ -57,8 +60,8 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(c *gin.Context)
 
-// GetHealth operation middleware
-func (siw *ServerInterfaceWrapper) GetHealth(c *gin.Context) {
+// HealthCheck operation middleware
+func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -67,11 +70,11 @@ func (siw *ServerInterfaceWrapper) GetHealth(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetHealth(c)
+	siw.Handler.HealthCheck(c)
 }
 
-// GetHealthTraffic operation middleware
-func (siw *ServerInterfaceWrapper) GetHealthTraffic(c *gin.Context) {
+// HealthCheckTraffic operation middleware
+func (siw *ServerInterfaceWrapper) HealthCheckTraffic(c *gin.Context) {
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -80,7 +83,20 @@ func (siw *ServerInterfaceWrapper) GetHealthTraffic(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetHealthTraffic(c)
+	siw.Handler.HealthCheckTraffic(c)
+}
+
+// V1Info operation middleware
+func (siw *ServerInterfaceWrapper) V1Info(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.V1Info(c)
 }
 
 // V1ListSandboxes operation middleware
@@ -300,8 +316,9 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
-	router.GET(options.BaseURL+"/health", wrapper.GetHealth)
-	router.GET(options.BaseURL+"/health/traffic", wrapper.GetHealthTraffic)
+	router.GET(options.BaseURL+"/health", wrapper.HealthCheck)
+	router.GET(options.BaseURL+"/health/traffic", wrapper.HealthCheckTraffic)
+	router.GET(options.BaseURL+"/v1/info", wrapper.V1Info)
 	router.GET(options.BaseURL+"/v1/sandboxes", wrapper.V1ListSandboxes)
 	router.POST(options.BaseURL+"/v1/sandboxes", wrapper.V1CreateSandbox)
 	router.DELETE(options.BaseURL+"/v1/sandboxes/:sandbox_id", wrapper.V1DeleteSandbox)

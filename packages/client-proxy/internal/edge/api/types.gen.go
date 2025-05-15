@@ -51,6 +51,27 @@ type ClusterNode struct {
 	Version string `json:"version"`
 }
 
+// ClusterNodeInfo defines model for ClusterNodeInfo.
+type ClusterNodeInfo struct {
+	// Commit Version of the node
+	Commit string `json:"commit"`
+
+	// Id Service ID
+	Id string `json:"id"`
+
+	// NodeId Node ID
+	NodeId string `json:"nodeId"`
+
+	// Startup Time when the node started
+	Startup time.Time `json:"startup"`
+
+	// Status State of the cluster node
+	Status ClusterNodeStatus `json:"status"`
+
+	// Version Version of the node
+	Version string `json:"version"`
+}
+
 // ClusterNodeStatus State of the cluster node
 type ClusterNodeStatus string
 
