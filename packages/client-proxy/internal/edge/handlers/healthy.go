@@ -9,7 +9,9 @@ import (
 )
 
 func (a *APIStore) HealthCheck(c *gin.Context) {
-	if a.healthStatus == api.Healthy || a.healthStatus == api.Draining {
+	status := a.info.GetStatus()
+
+	if status == api.Healthy || status == api.Draining {
 		c.Status(http.StatusOK)
 		c.Writer.Write([]byte("healthy"))
 		return
@@ -20,7 +22,7 @@ func (a *APIStore) HealthCheck(c *gin.Context) {
 }
 
 func (a *APIStore) HealthCheckTraffic(c *gin.Context) {
-	if a.healthStatus == api.Healthy {
+	if a.info.GetStatus() == api.Healthy {
 		c.Status(http.StatusOK)
 		c.Writer.Write([]byte("healthy"))
 		return
