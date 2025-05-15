@@ -170,7 +170,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
 
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(ctx)
 	if err != nil {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
@@ -209,7 +209,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	// Initialize the template manager only if the service is enabled
 	if slices.Contains(services, servicetype.TemplateManager) {
-		tmpl := tmplserver.New(ctx, grpcSrv, globalLogger, tmplSbxLoggerExternal, tracer)
+		tmpl := tmplserver.New(ctx, tracer, globalLogger, tmplSbxLoggerExternal, grpcSrv, networkPool, devicePool, clientID)
 
 		// Prepend to make sure it's awaited on graceful shutdown
 		closers = append([]Closeable{tmpl}, closers...)

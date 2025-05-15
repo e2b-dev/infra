@@ -22,6 +22,7 @@ type PostProcessor struct {
 // Start starts the post-processing.
 func (p *PostProcessor) Start() {
 	p.WriteMsg("Starting postprocessing")
+	startTime := time.Now()
 
 	for {
 		msg := "..."
@@ -34,7 +35,7 @@ func (p *PostProcessor) Start() {
 			}
 
 			p.WriteMsg(msg)
-			p.WriteMsg("Postprocessing finished. Cleaning up...")
+			p.WriteMsg(fmt.Sprintf("Postprocessing finished. Took %s. Cleaning up...", time.Since(startTime).Truncate(time.Second).String()))
 
 			return
 		case <-p.ctx.Done():

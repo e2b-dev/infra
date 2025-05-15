@@ -24,7 +24,7 @@ func newDiff(t *testing.T, cachePath, buildId string, diffType DiffType, blockSi
 	assert.NoError(t, err)
 	assert.Equal(t, 100, n)
 
-	diff, err := localDiff.ToDiff(blockSize)
+	diff, err := localDiff.CloseToDiff(blockSize)
 	assert.NoError(t, err)
 
 	return diff

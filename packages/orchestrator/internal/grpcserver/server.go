@@ -40,6 +40,12 @@ func New(version string) *GRPCServer {
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
 		logging.WithFieldsFromContext(logging.ExtractFields),
 	}
+
+	ignoredLoggingRoutes := logger.WithoutRoutes(
+		logger.HealthCheckRoute,
+		"/TemplateService/TemplateBuildStatus",
+		"/TemplateService/HealthStatus",
+	)
 	srv := grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 			MinTime:             5 * time.Second, // Minimum time between pings from client
@@ -54,13 +60,13 @@ func New(version string) *GRPCServer {
 			recovery.UnaryServerInterceptor(),
 			selector.UnaryServerInterceptor(
 				logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-				logger.WithoutHealthCheck(),
+				ignoredLoggingRoutes,
 			),
 		),
 		grpc.ChainStreamInterceptor(
 			selector.StreamServerInterceptor(
 				logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-				logger.WithoutHealthCheck(),
+				ignoredLoggingRoutes,
 			),
 		),
 	)

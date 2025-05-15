@@ -4,22 +4,22 @@ import (
 	"os"
 )
 
-type LocalFile struct {
+type LocalFileLink struct {
 	path string
 }
 
-func NewLocalFile(
+func NewLocalFileLink(
 	path string,
-) (*LocalFile, error) {
-	return &LocalFile{
+) *LocalFileLink {
+	return &LocalFileLink{
 		path: path,
-	}, nil
+	}
 }
 
-func (f *LocalFile) Path() string {
+func (f *LocalFileLink) Path() string {
 	return f.path
 }
 
-func (f *LocalFile) Close() error {
+func (f *LocalFileLink) Close() error {
 	return os.RemoveAll(f.path)
 }
