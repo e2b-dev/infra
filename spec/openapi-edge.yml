@@ -52,6 +52,34 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    ClusterNodeInfo:
+      required:
+        - id
+        - nodeId
+        - version
+        - commit
+        - startup
+        - status
+      properties:
+        id:
+          type: string
+          description: Service ID
+        nodeId:
+          type: string
+          description: Node ID
+        version:
+          type: string
+          description: Version of the node
+        commit:
+          type: string
+          description: Version of the node
+        startup:
+          type: string
+          format: date-time
+          description: Time when the node started
+        status:
+          $ref: "#/components/schemas/ClusterNodeStatus"
+
     ClusterNode:
       required:
         - id
@@ -254,6 +282,7 @@ tags:
 paths:
   /health:
     get:
+      operationId: healthCheck
       description: Health check
       responses:
         "200":
@@ -263,12 +292,29 @@ paths:
 
   /health/traffic:
     get:
-      description: Health check for sandbox traffic proxy
+      operationId: healthCheckTraffic
+      description: Health check for traffic proxy
       responses:
         "200":
           description: Request was successful
         "401":
           $ref: "#/components/responses/401"
+
+  /v1/info:
+    get:
+        operationId: v1Info
+        description: Edge node information
+        responses:
+          "200":
+            description: Successfully returned node information
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/ClusterNodeInfo"
+          "401":
+            $ref: "#/components/responses/401"
+          "500":
+            $ref: "#/components/responses/500"
 
   /v1/service-discovery/nodes:
     get:
