@@ -68,7 +68,7 @@ func Test_server_List(t *testing.T) {
 			s := &server{
 				sandboxes: smap.New[*sandbox.Sandbox](),
 				tracer:    noop.NewTracerProvider().Tracer(""),
-				info:      &ServiceInfo{ClientId: ""},
+				info:      &ServiceInfo{},
 			}
 			for _, sbx := range tt.data {
 				s.sandboxes.Insert(sbx.Config.SandboxId, sbx)
