@@ -44,7 +44,7 @@ const (
 
 	version = "0.1.0"
 
-	fileLockName     = "/orchestrator.lock"
+	fileLockName = "/orchestrator.lock"
 )
 
 var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
