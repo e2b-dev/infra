@@ -74,6 +74,10 @@ func (b *TemplateBuilder) runCommand(
 					end := e.GetEnd()
 					name := fmt.Sprintf("exit %d", end.GetExitCode())
 					b.logStream(postProcessor, name, end.GetStatus())
+
+					if end.GetExitCode() != 0 {
+						return fmt.Errorf("command failed: %s", end.GetStatus())
+					}
 				}
 			}
 		}
