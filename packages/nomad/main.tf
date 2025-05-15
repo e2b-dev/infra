@@ -374,6 +374,8 @@ resource "nomad_job" "orchestrator" {
       latest_orchestrator_job_id = random_id.orchestrator_job.hex
     }
   ))
+
+  depends_on = [nomad_variable.orchestrator_hash]
 }
 
 data "google_storage_bucket_object" "template_manager" {
