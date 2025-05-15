@@ -44,6 +44,8 @@ const (
 	defaultProxyPort = 5007
 
 	version = "0.1.0"
+
+	fileLockName     = "/orchestrator.lock"
 )
 
 var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
@@ -56,13 +58,27 @@ func main() {
 
 	if *port > math.MaxUint16 {
 		log.Fatalf("%d is larger than maximum possible port %d", port, math.MaxInt16)
-		os.Exit(1)
 	}
 
 	if *proxyPort > math.MaxUint16 {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
-		os.Exit(1)
 	}
+
+	info, err := os.Stat(fileLockName)
+	if err == nil {
+		log.Fatalf("Orchestrator was already started at %s", info.ModTime())
+	}
+
+	f, err := os.Create(fileLockName)
+	if err != nil {
+		log.Fatalf("Failed to create lock file %s: %v", fileLockName, err)
+	}
+	defer func() {
+		fileErr := f.Close()
+		if fileErr != nil {
+			log.Printf("Failed to close lock file %s: %v", fileLockName, fileErr)
+		}
+	}()
 
 	result := run(*port, *proxyPort)
 
