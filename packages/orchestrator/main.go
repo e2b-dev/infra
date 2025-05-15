@@ -63,8 +63,17 @@ func main() {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
 	}
 
-	var success bool
+	success := run(*port, *proxyPort)
+	if success == false {
+		os.Exit(1)
+	}
+}
 
+func run(port, proxyPort uint) (success bool) {
+	success = true
+
+	// Check if the orchestrator crashed and restarted
+	// Skip this check in development mode
 	if !env.IsDevelopment() {
 		info, err := os.Stat(fileLockName)
 		if err == nil {
@@ -90,15 +99,6 @@ func main() {
 		}()
 	}
 
-	success = run(*port, *proxyPort)
-
-	if success == false {
-		os.Exit(1)
-	}
-}
-
-func run(port, proxyPort uint) (success bool) {
-	success = true
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
