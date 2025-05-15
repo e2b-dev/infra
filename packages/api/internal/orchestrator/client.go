@@ -18,7 +18,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	e2bhealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -27,7 +28,7 @@ const nodeHealthCheckTimeout = time.Second * 2
 
 type GRPCClient struct {
 	Sandbox orchestrator.SandboxServiceClient
-	Info    orchestrator.InfoServiceClient
+	Info    orchestratorinfo.InfoServiceClient
 
 	connection e2bgrpc.ClientConnInterface
 }
@@ -39,7 +40,7 @@ func NewClient(host string) (*GRPCClient, error) {
 	}
 
 	sandboxClient := orchestrator.NewSandboxServiceClient(conn)
-	infoClient := orchestrator.NewInfoServiceClient(conn)
+	infoClient := orchestratorinfo.NewInfoServiceClient(conn)
 
 	return &GRPCClient{Sandbox: sandboxClient, Info: infoClient, connection: conn}, nil
 }
@@ -67,33 +68,24 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	buildCache := ttlcache.New[string, interface{}]()
 	go buildCache.Start()
 
+	nodeStatus := api.NodeStatusUnhealthy
+	nodeVersion := "unknown"
+
 	ok, err := o.getNodeHealth(node)
 	if err != nil {
 		zap.L().Error("Failed to get node health, connecting and marking as unhealthy", zap.Error(err))
-
-		o.nodes.Insert(
-			node.ID, &Node{
-				Client:         client,
-				Info:           node,
-				buildCache:     buildCache,
-				status:         api.NodeStatusUnhealthy,
-				version:        "unknown",
-				sbxsInProgress: smap.New[*sbxInProgress](),
-				createFails:    atomic.Uint64{},
-			},
-		)
-
-		return err
 	}
 
 	if !ok {
 		zap.L().Error("Node is not healthy", zap.String("node_id", node.ID))
-		return fmt.Errorf("node is not healthy")
 	}
 
 	nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	if err != nil {
-		return fmt.Errorf("failed to get service info: %w", err)
+		zap.L().Error("Failed to get node info", zap.Error(err))
+	} else {
+		nodeStatus = o.getNodeStatusConverted(nodeInfo.ServiceStatus)
+		nodeVersion = nodeInfo.ServiceVersion
 	}
 
 	o.nodes.Insert(
@@ -101,8 +93,8 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 			Client:         client,
 			Info:           node,
 			buildCache:     buildCache,
-			status:         o.getNodeStatusConverted(nodeInfo.ServiceStatus),
-			version:        nodeInfo.ServiceVersion,
+			status:         nodeStatus,
+			version:        nodeVersion,
 			sbxsInProgress: smap.New[*sbxInProgress](),
 			createFails:    atomic.Uint64{},
 		},
@@ -120,13 +112,13 @@ func (o *Orchestrator) GetClient(nodeID string) (*GRPCClient, error) {
 	return n.Client, nil
 }
 
-func (o *Orchestrator) getNodeStatusConverted(s orchestrator.ServiceInfoStatus) api.NodeStatus {
+func (o *Orchestrator) getNodeStatusConverted(s orchestratorinfo.ServiceInfoStatus) api.NodeStatus {
 	switch s {
-	case orchestrator.ServiceInfoStatus_OrchestratorHealthy:
+	case orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:
 		return api.NodeStatusReady
-	case orchestrator.ServiceInfoStatus_OrchestratorDraining:
+	case orchestratorinfo.ServiceInfoStatus_OrchestratorDraining:
 		return api.NodeStatusDraining
-	case orchestrator.ServiceInfoStatus_OrchestratorUnhealthy:
+	case orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy:
 		return api.NodeStatusUnhealthy
 	default:
 		zap.L().Error("Unknown service info status", zap.Any("status", s))

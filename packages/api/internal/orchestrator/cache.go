@@ -155,14 +155,6 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 
 		instanceCache.Sync(ctx, activeInstances, node.Info.ID)
 
-		builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
-		if buildsErr != nil {
-			zap.L().Error("Error listing cached builds", zap.Error(buildsErr))
-			continue
-		}
-
-		node.SyncBuilds(builds)
-
 		syncRetrySuccess = true
 		break
 	}
@@ -172,6 +164,13 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 		node.SetStatus(api.NodeStatusDraining)
 		return
 	}
+
+	builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
+	if buildsErr != nil {
+		zap.L().Error("Error listing cached builds", zap.Error(buildsErr))
+	}
+
+	node.SyncBuilds(builds)
 }
 
 func (o *Orchestrator) getDeleteInstanceFunction(
