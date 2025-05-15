@@ -494,7 +494,7 @@ func (s *Sandbox) Pause(
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
 	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
-	// Memfile is closed on diff creation processing
+	// Memfile is also closed on diff creation processing
 	/* The process of snapshotting memory is as follows:
 	1. Pause FC via API
 	2. Snapshot FC via API—memory dump to “file on disk” that is actually tmpfs, because it is too slow
@@ -506,6 +506,8 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire memfile snapshot: %w", err)
 	}
+	// Close the file even if an error occurs
+	defer memfile.Close()
 
 	err = s.process.CreateSnapshot(
 		childCtx,

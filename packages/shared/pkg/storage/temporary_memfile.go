@@ -40,6 +40,7 @@ func AcquireTmpMemfile(
 
 	randomID, err := uuid.NewRandom()
 	if err != nil {
+		releaseOnce()
 		return nil, fmt.Errorf("failed to generate identifier: %w", err)
 	}
 
