@@ -46,20 +46,6 @@ locals {
       }
       groups = [{ group = var.api_instance_group }]
     }
-    edge = {
-      protocol                        = "HTTP"
-      port                            = var.client_proxy_edge_api_port.port
-      port_name                       = var.client_proxy_edge_api_port.name
-      timeout_sec                     = 65
-      connection_draining_timeout_sec = 1
-      http_health_check = {
-        request_path       = var.client_proxy_edge_api_port.path
-        port               = var.client_proxy_edge_api_port.port
-        timeout_sec        = 3
-        check_interval_sec = 3
-      }
-      groups = [{ group = var.api_instance_group }]
-    }
     docker-reverse-proxy = {
       protocol                        = "HTTP"
       port                            = var.docker_reverse_proxy_port.port
@@ -284,11 +270,6 @@ resource "google_compute_url_map" "orch_map" {
     path_matcher = "session-paths"
   }
 
-  host_rule {
-    hosts        = concat(["edge.${var.domain_name}"], [for d in var.additional_domains : "edge.${d}"])
-    path_matcher = "edge-paths"
-  }
-
   path_matcher {
     name            = "api-paths"
     default_service = google_compute_backend_service.default["api"].self_link
@@ -324,11 +305,6 @@ resource "google_compute_url_map" "orch_map" {
   path_matcher {
     name            = "consul-paths"
     default_service = google_compute_backend_service.default["consul"].self_link
-  }
-
-  path_matcher {
-    name            = "edge-paths"
-    default_service = google_compute_backend_service.default["edge"].self_link
   }
 }
 
