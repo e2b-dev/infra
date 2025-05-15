@@ -397,7 +397,8 @@ func ResumeSandbox(
 		ClickhouseStore: clickhouseStore,
 	}
 
-	// TODO: Part of the sandbox as we need to stop Checks before pausing the sandbox (why?)
+	// Part of the sandbox as we need to stop Checks before pausing the sandbox
+	// This is to prevent race condition of reporting unhealthy sandbox
 	sbx.Checks = NewChecks(sbx, useLokiMetrics, useClickhouseMetrics)
 
 	cleanup.AddPriority(func(ctx context.Context) error {
@@ -447,7 +448,7 @@ func (s *Sandbox) Stop(ctx context.Context) error {
 
 // Close cleans up the sandbox and stops all resources.
 func (s *Sandbox) Close(ctx context.Context, tracer trace.Tracer) error {
-	_, span := tracer.Start(ctx, "fc-uffd-stop")
+	_, span := tracer.Start(ctx, "sandbox-close")
 	defer span.End()
 
 	var errs []error

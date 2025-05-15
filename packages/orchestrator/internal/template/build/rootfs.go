@@ -191,7 +191,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 		FcAddress   string
 		MemoryLimit int
 	}{
-		// TODO: use slot instead of a hardcoded value
+		// TODO: remove this value as it's not used in the provision script anymore
 		FcAddress:   "169.254.0.21",
 		EnvID:       r.env.TemplateId,
 		BuildID:     r.env.BuildId,

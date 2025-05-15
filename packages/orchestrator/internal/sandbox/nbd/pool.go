@@ -304,7 +304,6 @@ func GetDevicePath(slot DeviceSlot) DevicePath {
 func (d *DevicePool) Close(_ context.Context) error {
 	zap.L().Info("Closing device pool", zap.Uint("used_slots", d.usedSlots.Count()))
 
-	d.exit <- nil
 	close(d.exit)
 
 	var errs error

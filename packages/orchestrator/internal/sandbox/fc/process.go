@@ -218,7 +218,7 @@ func (p *Process) configure(
 
 			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
 			p.Exit <- errMsg
-			// TODO: Handle the error properly
+
 			cancelStart(errMsg)
 
 			return
@@ -308,13 +308,6 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(childCtx, "set fc network config")
 
-	// Machine Config
-	// hack for 16GB RAM templates
-	// TODO: Remove this in place of Tiers
-	// customer template id raocbwn4f2mtdrjuajsx
-	if templateID == "raocbwn4f2mtdrjuajsx" {
-		memoryMB = 16384 // 16 GB
-	}
 	err = p.client.setMachineConfig(childCtx, vCPUCount, memoryMB, hugePages)
 	if err != nil {
 		fcStopErr := p.Stop()

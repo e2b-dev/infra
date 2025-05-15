@@ -202,7 +202,6 @@ func (c *apiClient) setNetworkInterface(ctx context.Context, ifaceID string, tap
 		return fmt.Errorf("error setting fc network config: %w", err)
 	}
 
-	// TODO: does this have to be done after machine config?
 	mmdsVersion := "V2"
 	mmdsConfig := operations.PutMmdsParams{
 		Context: ctx,
