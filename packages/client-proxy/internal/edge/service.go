@@ -2,6 +2,7 @@ package edge
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
+	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/orchestrators"
 	"github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 )
 
@@ -29,7 +31,7 @@ func NewEdgeAPIStore(ctx context.Context, logger *zap.Logger, tracer trace.Trace
 	edgePort := internal.GetEdgeServicePort()
 	orchestratorPort := internal.GetOrchestratorServicePort()
 
-	_, _, err := service_discovery.NewServiceDiscoveryProvider(ctx, edgePort, orchestratorPort, logger)
+	edgeSD, orchestratorsSD, err := service_discovery.NewServiceDiscoveryProvider(ctx, edgePort, orchestratorPort, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -40,14 +42,15 @@ func NewEdgeAPIStore(ctx context.Context, logger *zap.Logger, tracer trace.Trace
 		SourceVersion: serviceVersion,
 		SourceCommit:  serviceCommit,
 		Startup:       time.Now(),
+		Host:  		   fmt.Sprintf("%s:%d", internal.GetNodeIP(), edgePort),
 	}
 	info.SetStatus(api.Healthy)
 
 	// todo
-	// orchestrator pool
 	// edge pool
+	orchestratorsPool := e2borchestrators.NewOrchestratorsPool(ctx, logger, orchestratorsSD, tracer)
 
-	store, err := handlers.NewStore(ctx, logger, tracer, info, &selfUpdateHandler, &selfDrainHandler)
+	store, err := handlers.NewStore(ctx, logger, tracer, info, orchestratorsPool, edgeSD, &selfUpdateHandler, &selfDrainHandler)
 	if err != nil {
 		return nil, err
 	}

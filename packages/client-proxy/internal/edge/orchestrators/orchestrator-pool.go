@@ -15,8 +15,7 @@ import (
 )
 
 type Pool struct {
-	sd        sd.ServiceDiscoveryAdapter
-	sdFetched *time.Time
+	discovery sd.ServiceDiscoveryAdapter
 
 	nodes *smap.Map[*Orchestrator]
 	mutex sync.Mutex
@@ -33,10 +32,9 @@ var (
 	ErrOrchestratorNotFound = errors.New("orchestrator not found")
 )
 
-func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, sd sd.ServiceDiscoveryAdapter, tracer trace.Tracer) *Pool {
+func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer) *Pool {
 	pool := &Pool{
-		sd:        sd,
-		sdFetched: nil,
+		discovery: discovery,
 
 		nodes: smap.New[*Orchestrator](),
 		mutex: sync.Mutex{},
@@ -51,8 +49,8 @@ func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, sd sd.Service
 	return pool
 }
 
-func (p *Pool) GetOrchestrators() (map[string]*Orchestrator, error) {
-	return p.nodes.Items(), nil
+func (p *Pool) GetOrchestrators() map[string]*Orchestrator {
+	return p.nodes.Items()
 }
 
 func (p *Pool) GetOrchestrator(id string) (*Orchestrator, error) {
@@ -61,7 +59,6 @@ func (p *Pool) GetOrchestrator(id string) (*Orchestrator, error) {
 		return nil, ErrOrchestratorNotFound
 	}
 
-	// todo: check orchestrator status
 	return o, nil
 }
 
@@ -91,7 +88,7 @@ func (p *Pool) syncNodes(ctx context.Context) {
 	defer span.End()
 
 	// Service discovery targets
-	sdNodes, err := p.sd.ListNodes(spanCtx)
+	sdNodes, err := p.discovery.ListNodes(spanCtx)
 	if err != nil {
 		return
 	}
@@ -176,7 +173,7 @@ func (p *Pool) connectNode(ctx context.Context, node *sd.ServiceDiscoveryItem) e
 		return err
 	}
 
-	p.nodes.Insert(nodeId, o)
+	p.nodes.Insert(o.ServiceId, o)
 
 	// call initial node sync
 	return p.syncNode(ctx, o, true)
@@ -188,20 +185,24 @@ func (p *Pool) syncNode(ctx context.Context, node *Orchestrator, foundWithDiscov
 
 	// close connection with node
 	if !foundWithDiscovery {
-		p.logger.Info("Orchestrator node connection is not active anymore, closing.", zap.String("node_id", nodeId))
+		p.logger.Info("Orchestrator node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
 
 		err := node.Close()
 		if err != nil {
 			p.logger.Error("Error closing connection to node", zap.Error(err))
 		}
 
-		p.nodes.Remove(nodeId)
-		p.logger.Info("Orchestrator node connection has been closed.", zap.String("node_id", nodeId))
+		// stop background sync and close everything
+		err = node.Kill()
+		if err != nil {
+			p.logger.Error("Error closing connection to node", zap.Error(err))
+		}
+
+		p.nodes.Remove(node.ServiceId) // remove from pool
+
+		p.logger.Info("Orchestrator node connection has been closed.", zap.String("node_id", node.ServiceId))
 		return nil
 	}
-
-	// todo: sync running sandboxes and cached builds?
-	node.Status = sdNode.Status
 
 	return nil
 }

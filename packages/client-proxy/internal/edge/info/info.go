@@ -17,6 +17,7 @@ type ServiceInfo struct {
 	SourceCommit  string
 
 	Startup time.Time
+	Host    string
 
 	status   api.ClusterNodeStatus
 	statusMu sync.RWMutex

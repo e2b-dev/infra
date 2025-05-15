@@ -2,6 +2,7 @@ package orchestrators
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -10,17 +11,19 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	e2bgrpcorchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	e2bgrpcorchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	e2bgrpctemplatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
 type OrchestratorStatus string
 
 const (
-	orchestratorSyncInterval = 10 * time.Second
+	syncInterval   = 10 * time.Second
+	syncMaxRetries = 3
 
 	OrchestratorStatusHealthy   OrchestratorStatus = "healthy"
 	OrchestratorStatusDraining  OrchestratorStatus = "draining"
@@ -28,22 +31,23 @@ const (
 )
 
 type Orchestrator struct {
-	Id      string
-	Version string
+	ServiceId string
+	NodeId    string
 
-	Host   string
-	Status OrchestratorStatus
+	SourceVersion string
+	SourceCommit  string
 
-	CanBuildTemplates bool
-	CanSpawnSandboxes bool
+	Host    string
+	Status  OrchestratorStatus
+	Startup time.Time
+	Roles []e2bgrpcorchestratorinfo.ServiceInfoRole
 
 	Client *OrchestratorGRPCClient
 
-	VCpuUsed       atomic.Int64
-	MemoryUsedInMB atomic.Int64
-	DiskUsedInMB   atomic.Int64
-
-	SandboxesRunning atomic.Int64
+	MetricVCpuUsed         atomic.Int64
+	MetricMemoryUsedInMB   atomic.Int64
+	MetricDiskUsedInMB     atomic.Int64
+	MetricSandboxesRunning atomic.Int64
 
 	mutex sync.Mutex
 
@@ -54,7 +58,7 @@ type Orchestrator struct {
 type OrchestratorGRPCClient struct {
 	Sandbox  e2bgrpcorchestrator.SandboxServiceClient
 	Template e2bgrpctemplatemanager.TemplateServiceClient
-	Health   grpc_health_v1.HealthClient
+	Info     e2bgrpcorchestratorinfo.InfoServiceClient
 
 	connection e2bgrpc.ClientConnInterface
 }
@@ -71,11 +75,13 @@ func NewOrchestrator(ctx context.Context, host string) (*Orchestrator, error) {
 		Host:   host,
 		Client: client,
 
-		CanBuildTemplates: true,
-		CanSpawnSandboxes: true,
-
 		ctx:       ctx,
 		ctxCancel: ctxCancel,
+	}
+
+	err = o.syncRun()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize orchestrator, maybe its not ready yet: %w", err)
 	}
 
 	// initialize background sync to update orchestrator running sandboxes
@@ -84,103 +90,60 @@ func NewOrchestrator(ctx context.Context, host string) (*Orchestrator, error) {
 	return o, nil
 }
 
+func (o *Orchestrator) Kill() error {
+	o.ctxCancel()
+	return o.Client.close()
+}
+
 func (o *Orchestrator) sync() {
 	// Run the first sync immediately
 	o.syncRun()
 
-	ticker := time.NewTicker(orchestratorSyncInterval)
+	ticker := time.NewTicker(syncInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-o.ctx.Done():
-			zap.L().Info("context done", zap.String("orchestrator sync id", o.Id))
+			zap.L().Info("context done", zap.String("orchestrator sync id", o.ServiceId))
 		case <-ticker.C:
 			o.syncRun()
 		}
 	}
 }
 
-func (o *Orchestrator) syncRun() {
+func (o *Orchestrator) syncRun() error {
 	o.mutex.Lock()
 	defer o.mutex.Unlock()
 
-	ctx, cancel := context.WithTimeout(o.ctx, orchestratorSyncInterval)
+	ctx, cancel := context.WithTimeout(o.ctx, syncInterval)
 	defer cancel()
 
-	syncMaxRetries := 3
-	syncSuccess := false
-
 	for i := 0; i < syncMaxRetries; i++ {
-		health, err := o.Client.Health.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+		status, err := o.Client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
-			zap.L().Error("failed to check health", zap.String("orchestrator id", o.Id), zap.Error(err))
+			zap.L().Error("failed to check health", zap.String("orchestrator id", o.ServiceId), zap.Error(err))
 			continue
 		}
 
-		status := OrchestratorStatusHealthy
+		o.NodeId = status.NodeId
+		o.ServiceId = status.ServiceId
+		o.Startup = status.ServiceStartup.AsTime()
+		o.Status = getMappedStatus(status.ServiceStatus)
+		o.Roles = status.ServiceRoles
 
-		switch health.Status {
-		case grpc_health_v1.HealthCheckResponse_SERVING:
-			status = OrchestratorStatusHealthy
-		case grpc_health_v1.HealthCheckResponse_NOT_SERVING:
-			status = OrchestratorStatusDraining
-		case grpc_health_v1.HealthCheckResponse_UNKNOWN:
-		case grpc_health_v1.HealthCheckResponse_SERVICE_UNKNOWN:
-		}
+		o.SourceVersion = status.ServiceVersion
+		o.SourceCommit = status.ServiceCommit
 
-		//if health.Status != grpc_health_v1.HealthCheckResponse {
+		o.MetricSandboxesRunning.Store(status.MetricSandboxesRunning)
+		o.MetricMemoryUsedInMB.Store(status.MetricMemoryUsedMb)
+		o.MetricDiskUsedInMB.Store(status.MetricDiskMb)
+		o.MetricVCpuUsed.Store(status.MetricVcpuUsed)
+
+		return nil
 	}
 
-	// todo
-	// todo
-	// todo
-	// todo
-	println(syncSuccess)
-	// ------
-	// ------
-	// ------
-	// ------
-	// ------
-	// ------
-	// ------
-	// ------
-	// ------
-	// ------
-
-	//o.Client.
-	//	sandboxes, err := o.Client.Sandbox.List(ctx, &empty.Empty{})
-	//if err != nil {
-	//	zap.L().Error("failed to list sandboxes", zap.String("orchestrator id", o.Id), zap.Error(err))
-	//	return
-	//}
-
-	cpuUsed := int64(0)
-	diskUsed := int64(0)
-	memoryUsed := int64(0)
-	sandboxesRunning := int64(0)
-
-	//// todo: we can stored actually all metadata about running sandboxes and use them for listing
-	//for _, sandbox := range sandboxes.Sandboxes {
-	//	sandboxesRunning++
-	//
-	//	diskUsed += sandbox.GetConfig().TotalDiskSizeMb
-	//	memoryUsed += sandbox.GetConfig().RamMb
-	//	cpuUsed += sandbox.GetConfig().Vcpu
-	//}
-
-	// metrics
-	o.SandboxesRunning.Store(sandboxesRunning)
-	o.MemoryUsedInMB.Store(memoryUsed)
-	o.DiskUsedInMB.Store(diskUsed)
-	o.VCpuUsed.Store(cpuUsed)
-
-	// todo
-	o.CanBuildTemplates = true
-	o.CanSpawnSandboxes = true
-
-	// todo
-	o.Status = OrchestratorStatusHealthy
+	return errors.New("failed to check orchestrator status")
 }
 
 func (o *Orchestrator) Close() error {
@@ -199,6 +162,20 @@ func (o *Orchestrator) Close() error {
 	return nil
 }
 
+func getMappedStatus(s e2bgrpcorchestratorinfo.ServiceInfoStatus) OrchestratorStatus {
+	switch s {
+	case e2bgrpcorchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:
+		return OrchestratorStatusHealthy
+	case e2bgrpcorchestratorinfo.ServiceInfoStatus_OrchestratorDraining:
+		return OrchestratorStatusDraining
+	case e2bgrpcorchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy:
+		return OrchestratorStatusUnhealthy
+	}
+
+	zap.L().Error("Unknown service info status", zap.Any("status", s))
+	return OrchestratorStatusUnhealthy
+}
+
 func newClient(host string) (*OrchestratorGRPCClient, error) {
 	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()), grpc.WithBlock(), grpc.WithTimeout(time.Second))
 	if err != nil {
@@ -208,7 +185,7 @@ func newClient(host string) (*OrchestratorGRPCClient, error) {
 	return &OrchestratorGRPCClient{
 		Sandbox:    e2bgrpcorchestrator.NewSandboxServiceClient(conn),
 		Template:   e2bgrpctemplatemanager.NewTemplateServiceClient(conn),
-		Health:     grpc_health_v1.NewHealthClient(conn),
+		Info:       e2bgrpcorchestratorinfo.NewInfoServiceClient(conn),
 		connection: conn,
 	}, nil
 }

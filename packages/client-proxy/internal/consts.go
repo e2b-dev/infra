@@ -44,6 +44,10 @@ func GetOrchestratorServicePort() int {
 	return p
 }
 
+func GetNodeIP() string {
+	return utils.RequiredEnv("NODE_IP", "Node IP of the instance node is required")
+}
+
 func GetNodeID() string {
 	return utils.RequiredEnv("NODE_ID", "Node ID of the instance node is required")
 }
