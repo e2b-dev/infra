@@ -29,7 +29,6 @@ type SandboxServiceClient interface {
 	Delete(ctx context.Context, in *SandboxDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Pause(ctx context.Context, in *SandboxPauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ListCachedBuilds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SandboxListCachedBuildsResponse, error)
-	ServiceInfo(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ServiceInfoResponse, error)
 }
 
 type sandboxServiceClient struct {
@@ -94,15 +93,6 @@ func (c *sandboxServiceClient) ListCachedBuilds(ctx context.Context, in *emptypb
 	return out, nil
 }
 
-func (c *sandboxServiceClient) ServiceInfo(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ServiceInfoResponse, error) {
-	out := new(ServiceInfoResponse)
-	err := c.cc.Invoke(ctx, "/SandboxService/ServiceInfo", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // SandboxServiceServer is the server API for SandboxService service.
 // All implementations must embed UnimplementedSandboxServiceServer
 // for forward compatibility
@@ -113,7 +103,6 @@ type SandboxServiceServer interface {
 	Delete(context.Context, *SandboxDeleteRequest) (*emptypb.Empty, error)
 	Pause(context.Context, *SandboxPauseRequest) (*emptypb.Empty, error)
 	ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error)
-	ServiceInfo(context.Context, *emptypb.Empty) (*ServiceInfoResponse, error)
 	mustEmbedUnimplementedSandboxServiceServer()
 }
 
@@ -138,9 +127,6 @@ func (UnimplementedSandboxServiceServer) Pause(context.Context, *SandboxPauseReq
 }
 func (UnimplementedSandboxServiceServer) ListCachedBuilds(context.Context, *emptypb.Empty) (*SandboxListCachedBuildsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListCachedBuilds not implemented")
-}
-func (UnimplementedSandboxServiceServer) ServiceInfo(context.Context, *emptypb.Empty) (*ServiceInfoResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ServiceInfo not implemented")
 }
 func (UnimplementedSandboxServiceServer) mustEmbedUnimplementedSandboxServiceServer() {}
 
@@ -263,24 +249,6 @@ func _SandboxService_ListCachedBuilds_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SandboxService_ServiceInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SandboxServiceServer).ServiceInfo(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/SandboxService/ServiceInfo",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SandboxServiceServer).ServiceInfo(ctx, req.(*emptypb.Empty))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // SandboxService_ServiceDesc is the grpc.ServiceDesc for SandboxService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -311,10 +279,6 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListCachedBuilds",
 			Handler:    _SandboxService_ListCachedBuilds_Handler,
-		},
-		{
-			MethodName: "ServiceInfo",
-			Handler:    _SandboxService_ServiceInfo_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
