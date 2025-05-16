@@ -49,7 +49,7 @@ func (e *TemplatedError[T]) HandleError(
 			return buildErr
 		}
 
-		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(e.vars.StatusCode())
 		_, writeErr := w.Write(body)
 		if writeErr != nil {
@@ -64,7 +64,7 @@ func (e *TemplatedError[T]) HandleError(
 		return buildErr
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(e.vars.StatusCode())
 
 	_, writeErr := w.Write(body)
