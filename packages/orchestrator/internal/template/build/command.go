@@ -39,7 +39,10 @@ func (b *TemplateBuilder) runCommand(
 	}
 	proxyHost := fmt.Sprintf("http://localhost%s", b.proxy.GetAddr())
 	processC := processconnect.NewProcessClient(&hc, proxyHost)
-	grpc.SetSandboxHeader(createAppReq.Header(), proxyHost, sandboxID, b.clientID)
+	err := grpc.SetSandboxHeader(createAppReq.Header(), proxyHost, sandboxID, b.clientID)
+	if err != nil {
+		return fmt.Errorf("failed to set sandbox header: %w", err)
+	}
 	grpc.SetUserHeader(createAppReq.Header(), runAsUser)
 
 	processCtx, processCancel := context.WithCancel(ctx)

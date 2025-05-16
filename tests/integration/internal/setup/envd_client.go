@@ -56,7 +56,10 @@ func WithEnvdAccessToken(accessToken string) func(ctx context.Context, req *http
 }
 
 func SetSandboxHeader(header http.Header, sandboxID string, clientID string) {
-	grpc.SetSandboxHeader(header, EnvdProxy, sandboxID, clientID)
+	err := grpc.SetSandboxHeader(header, EnvdProxy, sandboxID, clientID)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func SetAccessTokenHeader(header http.Header, accessToken string) {
