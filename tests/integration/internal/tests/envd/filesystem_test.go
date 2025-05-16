@@ -189,7 +189,7 @@ func TestStat(t *testing.T) {
 	sbx := utils.SetupSandboxWithCleanup(t, c)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
-	filePath := "test.txt"
+	filePath := "/home/user/test.txt"
 	textFile, contentType := createTextFile(t, filePath, "Hello, World!")
 
 	createFileResp, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
@@ -219,7 +219,7 @@ func TestStat(t *testing.T) {
 	entry := statResp.Msg.Entry
 
 	// Verify basic file info
-	assert.Equal(t, "test.txt", entry.Name)
+	assert.Equal(t, "/home/user/test.txt", entry.Name)
 	assert.Equal(t, filePath, entry.Path)
 	assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, entry.Type)
 
