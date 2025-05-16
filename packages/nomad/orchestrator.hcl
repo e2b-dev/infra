@@ -34,7 +34,9 @@ job "orchestrator" {
       driver = "raw_exec"
 
       env {
-        NODE_ID                      = "$${node.unique.name}"
+        // todo: use client name instead of node id
+        // NODE_ID                   = "$${node.unique.name}"
+        NODE_ID                      = "$${node.unique.id}"
         CONSUL_TOKEN                 = "${consul_acl_token}"
         OTEL_TRACING_PRINT           = "${otel_tracing_print}"
         LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
