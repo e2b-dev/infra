@@ -248,7 +248,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	// Initialize the template manager only if the service is enabled
 	if slices.Contains(services, service.TemplateManager) {
-		tmpl := tmplserver.New(
+		tmpl, err := tmplserver.New(
 			ctx,
 			tracer,
 			globalLogger,
