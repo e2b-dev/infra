@@ -45,7 +45,6 @@ func New(ctx context.Context,
 	grpc *grpcserver.GRPCServer,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
-	clientID string,
 ) *ServerStore {
 	// Template Manager Initialization
 	if err := constants.CheckRequired(); err != nil {

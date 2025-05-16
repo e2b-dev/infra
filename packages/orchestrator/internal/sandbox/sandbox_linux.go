@@ -241,7 +241,6 @@ func ResumeSandbox(
 	startedAt time.Time,
 	endAt time.Time,
 	baseTemplateID string,
-	clientID string,
 	devicePool *nbd.DevicePool,
 	clickhouseStore chdb.Store,
 	useLokiMetrics string,
@@ -312,7 +311,6 @@ func ResumeSandbox(
 		memfile,
 		fcUffdPath,
 		config.SandboxId,
-		clientID,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to serve memory: %w", err)
@@ -764,9 +762,8 @@ func serveMemory(
 	memfile block.ReadonlyDevice,
 	socketPath string,
 	sandboxID string,
-	clientID string,
 ) (uffd.MemoryBackend, error) {
-	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize(), clientID)
+	fcUffd, uffdErr := uffd.New(memfile, socketPath, memfile.BlockSize())
 	if uffdErr != nil {
 		return nil, fmt.Errorf("failed to create uffd: %w", uffdErr)
 	}
