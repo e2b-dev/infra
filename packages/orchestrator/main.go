@@ -248,7 +248,7 @@ func run(port, proxyPort uint) (success bool) {
 		closers = append([]Closeable{tmpl}, closers...)
 	}
 
-	grpcserver.NewInfoService(ctx, grpcSrv, serviceInfo, sandboxes)
+	service.NewInfoService(ctx, grpcSrv.GRPCServer(), serviceInfo, sandboxes)
 
 	g.Go(func() error {
 		zap.L().Info("Starting session proxy")
