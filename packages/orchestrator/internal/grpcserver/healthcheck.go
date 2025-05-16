@@ -11,19 +11,20 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	e2bHealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
 )
 
 type Healthcheck struct {
-	info *ServiceInfo
+	info *service.ServiceInfo
 	grpc *GRPCServer
 
 	lastRun time.Time
 	mu      sync.RWMutex
 }
 
-func NewHealthcheck(grpc *GRPCServer, info *ServiceInfo) (*Healthcheck, error) {
+func NewHealthcheck(grpc *GRPCServer, info *service.ServiceInfo) (*Healthcheck, error) {
 	return &Healthcheck{
 		info: info,
 		grpc: grpc,

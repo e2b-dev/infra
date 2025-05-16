@@ -7,8 +7,29 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
+
+type Server struct {
+	orchestratorinfo.UnimplementedInfoServiceServer
+
+	info      *service.ServiceInfo
+	sandboxes *smap.Map[*sandbox.Sandbox]
+}
+
+func NewInfoService(_ context.Context, grpc *GRPCServer, info *service.ServiceInfo, sandboxes *smap.Map[*sandbox.Sandbox]) *Server {
+	service := &Server{
+		info:      info,
+		sandboxes: sandboxes,
+	}
+
+	orchestratorinfo.RegisterInfoServiceServer(grpc.GRPCServer(), service)
+
+	return service
+}
 
 func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestratorinfo.ServiceInfoResponse, error) {
 	info := s.info

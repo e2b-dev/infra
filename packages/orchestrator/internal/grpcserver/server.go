@@ -18,12 +18,13 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type GRPCServer struct {
-	info *ServiceInfo
+	info *service.ServiceInfo
 
 	grpc       *grpc.Server
 	grpcHealth *health.Server
@@ -35,7 +36,7 @@ type GRPCServer struct {
 	}
 }
 
-func New(info *ServiceInfo) *GRPCServer {
+func New(info *service.ServiceInfo) *GRPCServer {
 	opts := []logging.Option{
 		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),

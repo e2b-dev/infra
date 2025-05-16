@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
@@ -26,7 +27,7 @@ import (
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
-	info            *grpcserver.ServiceInfo
+	info            *service.ServiceInfo
 	sandboxes       *smap.Map[*sandbox.Sandbox]
 	proxy           *proxy.SandboxProxy
 	tracer          trace.Tracer
@@ -42,7 +43,7 @@ type server struct {
 }
 
 type Service struct {
-	info     *grpcserver.ServiceInfo
+	info     *service.ServiceInfo
 	server   *server
 	proxy    *proxy.SandboxProxy
 	shutdown struct {
@@ -66,7 +67,7 @@ func New(
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	tracer trace.Tracer,
-	info *grpcserver.ServiceInfo,
+	info *service.ServiceInfo,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) (*Service, error) {

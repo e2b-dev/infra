@@ -206,7 +206,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
 
-	serviceInfo := grpcserver.NewInfoContainer(clientID, version, commitSHA)
+	serviceInfo := service.NewInfoContainer(clientID, version, commitSHA)
 
 	grpcSrv := grpcserver.New(serviceInfo)
 	tracer := otel.Tracer(serviceName)
