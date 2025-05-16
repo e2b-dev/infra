@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -156,11 +157,24 @@ func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.En
 			return filepath.SkipDir
 		}
 
+		fileInfo, err := entry.Info()
+		if err != nil {
+			return err
+		}
+
+		owner, group := getFileOwnership(fileInfo)
+		fileMode := fileInfo.Mode()
+
 		entries = append(entries, &rpc.EntryInfo{
-			Name: entry.Name(),
-			Type: getEntryType(entry),
-			// Return the requested path as the base path instead of the symlink-resolved path
-			Path: filepath.Join(requestedPath, relPath),
+			Name:         entry.Name(),
+			Type:         getEntryType(entry),
+			Path:         filepath.Join(requestedPath, relPath),
+			Size:         fileInfo.Size(),
+			Mode:         uint32(fileMode.Perm()),
+			Permissions:  fileMode.String(),
+			Owner:        owner,
+			Group:        group,
+			ModifiedTime: timestamppb.New(fileInfo.ModTime()),
 		})
 
 		return nil
