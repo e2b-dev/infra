@@ -9,6 +9,7 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 )
 
@@ -29,43 +30,43 @@ type TeamInfo struct {
 	lock        sync.Mutex
 }
 
-type DataCallback = func(ctx context.Context, key string) (*models.Team, *models.Tier, error)
-
 type TeamAuthCache struct {
 	cache *ttlcache.Cache[string, *TeamInfo]
+	db    *db.DB
 }
 
-func NewTeamAuthCache() *TeamAuthCache {
+func NewTeamAuthCache(db *db.DB) *TeamAuthCache {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *TeamInfo](authInfoExpiration))
 	go cache.Start()
 
 	return &TeamAuthCache{
 		cache: cache,
+		db:    db,
 	}
 }
 
-// TODO: save blocked teams to cache as well, handle the condition in the GetOrSet method
-func (c *TeamAuthCache) GetOrSet(ctx context.Context, key string, dataCallback DataCallback) (team *models.Team, tier *models.Tier, err error) {
+// TODO: save blocked teams to cache as well, handle the condition in the Get method
+func (c *TeamAuthCache) Get(ctx context.Context, apiKey string) (team *models.Team, tier *models.Tier, err error) {
 	var item *ttlcache.Item[string, *TeamInfo]
 	var templateInfo *TeamInfo
 
-	item = c.cache.Get(key)
+	item = c.cache.Get(apiKey)
 	if item == nil {
-		team, tier, err = dataCallback(ctx, key)
+		team, tier, err = c.db.GetTeamAuth(ctx, apiKey)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error while getting the team: %w", err)
+			return nil, nil, fmt.Errorf("failed to get the team from db for an api key: %w", err)
 		}
 
 		templateInfo = &TeamInfo{team: team, tier: tier, lastRefresh: time.Now()}
-		c.cache.Set(key, templateInfo, authInfoExpiration)
+		c.cache.Set(apiKey, templateInfo, authInfoExpiration)
 
 		return team, tier, nil
 	}
 
 	templateInfo = item.Value()
 	if time.Since(templateInfo.lastRefresh) > refreshInterval {
-		go templateInfo.once.Do(key, func() (interface{}, error) {
-			c.Refresh(key, dataCallback)
+		go templateInfo.once.Do(apiKey, func() (interface{}, error) {
+			c.Refresh(apiKey)
 			return nil, err
 		})
 	}
@@ -74,16 +75,16 @@ func (c *TeamAuthCache) GetOrSet(ctx context.Context, key string, dataCallback D
 }
 
 // Refresh refreshes the cache for the given team ID.
-func (c *TeamAuthCache) Refresh(key string, dataCallback DataCallback) {
+func (c *TeamAuthCache) Refresh(apiKey string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	team, tier, err := dataCallback(ctx, key)
+	team, tier, err := c.db.GetTeamAuth(ctx, apiKey)
 	if err != nil {
-		c.cache.Delete(key)
+		c.cache.Delete(apiKey)
 
 		return
 	}
 
-	c.cache.Set(key, &TeamInfo{team: team, tier: tier, lastRefresh: time.Now()}, authInfoExpiration)
+	c.cache.Set(apiKey, &TeamInfo{team: team, tier: tier, lastRefresh: time.Now()}, authInfoExpiration)
 }

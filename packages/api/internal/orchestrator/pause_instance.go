@@ -35,7 +35,6 @@ func (o *Orchestrator) PauseInstance(
 	snapshotConfig := &db.SnapshotInfo{
 		BaseTemplateID:     sbx.Instance.TemplateID,
 		SandboxID:          sbx.Instance.SandboxID,
-		SandboxStartedAt:   sbx.StartTime,
 		VCPU:               sbx.VCpu,
 		RAMMB:              sbx.RamMB,
 		TotalDiskSizeMB:    sbx.TotalDiskSizeMB,
@@ -43,7 +42,6 @@ func (o *Orchestrator) PauseInstance(
 		KernelVersion:      sbx.KernelVersion,
 		FirecrackerVersion: sbx.FirecrackerVersion,
 		EnvdVersion:        sbx.Instance.EnvdVersion,
-		EnvdSecured:        sbx.EnvdAccessToken != nil,
 	}
 
 	envBuild, err := o.dbClient.NewSnapshotBuild(

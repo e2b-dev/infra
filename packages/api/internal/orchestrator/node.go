@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"google.golang.org/grpc/connectivity"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -10,8 +11,6 @@ import (
 
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/jellydator/ttlcache/v3"
-	"go.uber.org/zap"
-	"google.golang.org/grpc/connectivity"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
@@ -32,7 +31,6 @@ type Node struct {
 
 	Info *node.NodeInfo
 
-	version  string
 	status   api.NodeStatus
 	statusMu sync.RWMutex
 
@@ -51,15 +49,8 @@ func (n *Node) Status() api.NodeStatus {
 		return n.status
 	}
 
-	switch n.Client.connection.GetState() {
-	case connectivity.Shutdown:
-		return api.NodeStatusUnhealthy
-	case connectivity.TransientFailure:
+	if n.Client.connection.GetState() != connectivity.Ready {
 		return api.NodeStatusConnecting
-	case connectivity.Connecting:
-		return api.NodeStatusConnecting
-	default:
-		break
 	}
 
 	return n.status
@@ -69,10 +60,7 @@ func (n *Node) SetStatus(status api.NodeStatus) {
 	n.statusMu.Lock()
 	defer n.statusMu.Unlock()
 
-	if n.status != status {
-		zap.L().Info("Node status changed", zap.String("node_id", n.Info.ID), zap.String("status", string(status)))
-		n.status = status
-	}
+	n.status = status
 }
 
 func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, error) {
@@ -113,7 +101,6 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 			Status:               n.Status(),
 			CreateFails:          n.createFails.Load(),
 			SandboxStartingCount: n.sbxsInProgress.Count(),
-			Version:              n.version,
 		}
 	}
 
@@ -148,7 +135,6 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 				Status:       n.Status(),
 				CachedBuilds: builds,
 				CreateFails:  n.createFails.Load(),
-				Version:      n.version,
 			}
 		}
 	}
@@ -164,7 +150,7 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 				meta := api.SandboxMetadata(sbx.Metadata)
 				metadata = &meta
 			}
-			node.Sandboxes = append(node.Sandboxes, api.ListedSandbox{
+			node.Sandboxes = append(node.Sandboxes, api.RunningSandbox{
 				Alias:      sbx.Instance.Alias,
 				ClientID:   nodeID,
 				CpuCount:   api.CPUCount(sbx.VCpu),
@@ -187,17 +173,13 @@ func (n *Node) SyncBuilds(builds []*orchestrator.CachedBuildInfo) {
 	}
 }
 
-func (n *Node) InsertBuild(buildID string) {
-	exists := n.buildCache.Has(buildID)
+func (t *Node) InsertBuild(buildID string) {
+	exists := t.buildCache.Has(buildID)
 	if exists {
 		return
 	}
 
 	// Set the build in the cache for 2 minutes, it should get updated with the correct time from the orchestrator during sync
-	n.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
+	t.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
 	return
-}
-
-func (o *Orchestrator) NodeCount() int {
-	return o.nodes.Count()
 }

@@ -3,9 +3,9 @@ package instance
 import (
 	"fmt"
 
-	"github.com/google/uuid"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+
+	"github.com/google/uuid"
 )
 
 type Reservation struct {

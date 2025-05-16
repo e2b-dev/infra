@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
-
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+
+	"github.com/gin-gonic/gin"
 )
 
 func (a *APIStore) PostSandboxesSandboxIDTimeout(
@@ -37,10 +37,11 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 		duration = time.Duration(body.Timeout) * time.Second
 	}
 
-	apiErr := a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, true)
-	if apiErr != nil {
-		telemetry.ReportCriticalError(ctx, apiErr.Err)
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+	err = a.orchestrator.KeepAliveFor(ctx, sandboxID, duration, true)
+	if err != nil {
+		errMsg := fmt.Errorf("error setting sandbox timeout: %w", err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error setting sandbox timeout for sandbox '%s'", sandboxID))
 
 		return
 	}

@@ -6,16 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	loki "github.com/grafana/loki/pkg/logcli/client"
 	nomadapi "github.com/hashicorp/nomad/api"
-	middleware "github.com/oapi-codegen/gin-middleware"
-	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -23,85 +20,51 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logging"
 )
 
-var supabaseJWTSecretsString = strings.TrimSpace(os.Getenv("SUPABASE_JWT_SECRETS"))
-
-// minSupabaseJWTSecretLength is the minimum length of a secret used to verify the Supabase JWT.
-// This is a security measure to prevent the use of weak secrets (like empty).
-const minSupabaseJWTSecretLength = 16
-
-// supabaseJWTSecrets is a list of secrets used to verify the Supabase JWT.
-// More secrets are possible in the case of JWT secret rotation where we need to accept
-// tokens signed with the old secret for some time.
-var supabaseJWTSecrets = strings.Split(supabaseJWTSecretsString, ",")
-
 type APIStore struct {
-	Healthy                  bool
-	posthog                  *analyticscollector.PosthogClient
-	Tracer                   trace.Tracer
-	orchestrator             *orchestrator.Orchestrator
-	templateManager          *template_manager.TemplateManager
-	db                       *db.DB
-	sqlcDB                   *sqlcdb.Client
-	lokiClient               *loki.DefaultClient
-	templateCache            *templatecache.TemplateCache
-	templateBuildsCache      *templatecache.TemplatesBuildCache
-	authCache                *authcache.TeamAuthCache
-	templateSpawnCounter     *utils.TemplateSpawnCounter
-	clickhouseStore          chdb.Store
-	envdAccessTokenGenerator *sandbox.EnvdAccessTokenGenerator
-	// should use something like this: https://github.com/spf13/viper
-	// but for now this is good
-	readMetricsFromClickHouse string
+	Healthy              bool
+	posthog              *analyticscollector.PosthogClient
+	Tracer               trace.Tracer
+	orchestrator         *orchestrator.Orchestrator
+	templateManager      *template_manager.TemplateManager
+	buildCache           *builds.BuildCache
+	db                   *db.DB
+	lokiClient           *loki.DefaultClient
+	logger               *zap.SugaredLogger
+	templateCache        *templatecache.TemplateCache
+	authCache            *authcache.TeamAuthCache
+	templateSpawnCounter *utils.TemplateSpawnCounter
 }
 
 func NewAPIStore(ctx context.Context) *APIStore {
 	tracer := otel.Tracer("api")
 
-	zap.L().Info("initializing API store and services")
+	logger, err := logging.New(env.IsLocal())
+	if err != nil {
+		panic(fmt.Errorf("initializing logger: %w", err))
+	}
+
+	logger.Info("initializing API store and services")
 
 	dbClient, err := db.NewClient()
 	if err != nil {
-		zap.L().Fatal("initializing Supabase client", zap.Error(err))
+		logger.Panic("initializing Supabase client", zap.Error(err))
 	}
 
-	sqlcDB, err := sqlcdb.NewClient(ctx)
-	if err != nil {
-		zap.L().Fatal("initializing SQLC client", zap.Error(err))
-	}
+	logger.Info("created Supabase client")
 
-	zap.L().Info("created database client")
-
-	readMetricsFromClickHouse := os.Getenv("READ_METRICS_FROM_CLICKHOUSE")
-	var clickhouseStore chdb.Store = nil
-
-	if readMetricsFromClickHouse == "true" {
-		clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
-			ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
-			Username:         os.Getenv("CLICKHOUSE_USERNAME"),
-			Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
-			Database:         os.Getenv("CLICKHOUSE_DATABASE"),
-			Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
-		})
-		if err != nil {
-			zap.L().Fatal("initializing ClickHouse store", zap.Error(err))
-		}
-	}
-
-	posthogClient, posthogErr := analyticscollector.NewPosthogClient()
+	posthogClient, posthogErr := analyticscollector.NewPosthogClient(logger)
 	if posthogErr != nil {
-		zap.L().Fatal("initializing Posthog client", zap.Error(posthogErr))
+		logger.Panic("initializing Posthog client", zap.Error(posthogErr))
 	}
 
 	nomadConfig := &nomadapi.Config{
@@ -111,53 +74,30 @@ func NewAPIStore(ctx context.Context) *APIStore {
 
 	nomadClient, err := nomadapi.NewClient(nomadConfig)
 	if err != nil {
-		zap.L().Fatal("initializing Nomad client", zap.Error(err))
+		logger.Panic("initializing Nomad client", zap.Error(err))
 	}
 
 	var redisClient *redis.Client
 	if rurl := os.Getenv("REDIS_URL"); rurl != "" {
 		opts, err := redis.ParseURL(rurl)
 		if err != nil {
-			zap.L().Fatal("invalid redis URL", zap.String("url", rurl), zap.Error(err))
+			logger.Panic("invalid redis URL", zap.String("url", rurl), zap.Error(err))
 		}
 
 		redisClient = redis.NewClient(opts)
 	} else {
-		zap.L().Warn("REDIS_URL not set, using local caches")
+		logger.Warn("REDIS_URL not set, using local caches")
 	}
 
-	var redisClusterClient *redis.ClusterClient
-	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
-		// For managed Redis Cluster in GCP we should use Cluster Client, because
-		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
-		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
-		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
-		redisClusterClient = redis.NewClusterClient(&redis.ClusterOptions{
-			Addrs:        []string{redisClusterUrl},
-			MinIdleConns: 1,
-		})
-
-		_, err := redisClusterClient.Ping(ctx).Result()
-		if err != nil {
-			zap.L().Fatal("could not connect to Redis", zap.Error(err))
-		}
-
-		zap.L().Info("connected to Redis cluster", zap.String("url", redisClusterUrl))
-	}
-
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, posthogClient, redisClient, redisClusterClient, dbClient)
+	orch, err := orchestrator.New(ctx, tracer, nomadClient, logger.Desugar(), posthogClient, redisClient, dbClient)
 	if err != nil {
-		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
+		logger.Panic("initializing Orchestrator client", zap.Error(err))
 	}
 
-	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(ctx, dbClient, templateBuildsCache)
+	templateManager, err := template_manager.New()
 	if err != nil {
-		zap.L().Fatal("initializing Template manager client", zap.Error(err))
+		logger.Panic("initializing Template manager client", zap.Error(err))
 	}
-
-	// Start the periodic sync of template builds statuses
-	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	var lokiClient *loki.DefaultClient
 	if laddr := os.Getenv("LOKI_ADDRESS"); laddr != "" {
@@ -165,54 +105,29 @@ func NewAPIStore(ctx context.Context) *APIStore {
 			Address: laddr,
 		}
 	} else {
-		zap.L().Warn("LOKI_ADDRESS not set, disabling Loki client")
+		logger.Warn("LOKI_ADDRESS not set, disabling Loki client")
 	}
 
-	authCache := authcache.NewTeamAuthCache()
-	templateCache := templatecache.NewTemplateCache(sqlcDB)
+	buildCache := builds.NewBuildCache()
+
+	templateCache := templatecache.NewTemplateCache(dbClient)
+	authCache := authcache.NewTeamAuthCache(dbClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(time.Minute, dbClient)
 
-	accessTokenGenerator, err := sandbox.NewEnvdAccessTokenGenerator()
-	if err != nil {
-		zap.L().Fatal("initializing access token generator failed", zap.Error(err))
+	return &APIStore{
+		Healthy:              true,
+		orchestrator:         orch,
+		templateManager:      templateManager,
+		db:                   dbClient,
+		Tracer:               tracer,
+		posthog:              posthogClient,
+		buildCache:           buildCache,
+		logger:               logger,
+		lokiClient:           lokiClient,
+		templateCache:        templateCache,
+		authCache:            authCache,
+		templateSpawnCounter: templateSpawnCounter,
 	}
-
-	a := &APIStore{
-		Healthy:                   false,
-		orchestrator:              orch,
-		templateManager:           templateManager,
-		db:                        dbClient,
-		sqlcDB:                    sqlcDB,
-		Tracer:                    tracer,
-		posthog:                   posthogClient,
-		lokiClient:                lokiClient,
-		templateCache:             templateCache,
-		templateBuildsCache:       templateBuildsCache,
-		authCache:                 authCache,
-		templateSpawnCounter:      templateSpawnCounter,
-		clickhouseStore:           clickhouseStore,
-		envdAccessTokenGenerator:  accessTokenGenerator,
-		readMetricsFromClickHouse: readMetricsFromClickHouse,
-	}
-
-	// Wait till there's at least one, otherwise we can't create sandboxes yet
-	go func() {
-		ticker := time.NewTicker(5 * time.Millisecond)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if orch.NodeCount() != 0 {
-					zap.L().Info("Nodes are ready, setting API as healthy")
-					a.Healthy = true
-					return
-				}
-			}
-		}
-	}()
-
-	return a
 }
 
 func (a *APIStore) Close(ctx context.Context) error {
@@ -225,14 +140,10 @@ func (a *APIStore) Close(ctx context.Context) error {
 
 	if err := a.orchestrator.Close(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("closing Orchestrator client: %w", err))
-	}
 
+	}
 	if err := a.templateManager.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing Template manager client: %w", err))
-	}
-
-	if err := a.sqlcDB.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("closing sqlc database client: %w", err))
 	}
 
 	if err := a.db.Close(); err != nil {
@@ -265,19 +176,8 @@ func (a *APIStore) GetHealth(c *gin.Context) {
 }
 
 func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authcache.AuthTeamInfo, *api.APIError) {
-	team, tier, err := a.authCache.GetOrSet(ctx, apiKey, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
-		return a.db.GetTeamAuth(ctx, key)
-	})
+	team, tier, err := a.authCache.Get(ctx, apiKey)
 	if err != nil {
-		var usageErr *db.TeamForbiddenError
-		if errors.As(err, &usageErr) {
-			return authcache.AuthTeamInfo{}, &api.APIError{
-				Err:       err,
-				ClientMsg: err.Error(),
-				Code:      http.StatusForbidden,
-			}
-		}
-
 		return authcache.AuthTeamInfo{}, &api.APIError{
 			Err:       fmt.Errorf("failed to get the team from db for an api key: %w", err),
 			ClientMsg: "Cannot get the team for the given API key",
@@ -302,105 +202,4 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, accessToken strin
 	}
 
 	return *userID, nil
-}
-
-// supabaseClaims defines the claims we expect from the Supabase JWT.
-type supabaseClaims struct {
-	jwt.RegisteredClaims
-}
-
-func getJWTClaims(secrets []string, token string) (*supabaseClaims, error) {
-	errs := make([]error, 0)
-
-	for _, secret := range secrets {
-		if len(secret) < minSupabaseJWTSecretLength {
-			zap.L().Warn("jwt secret is too short and will be ignored", zap.Int("min_length", minSupabaseJWTSecretLength), zap.String("secret_start", secret[:min(3, len(secret))]))
-
-			continue
-		}
-
-		// Parse the token with the custom claims.
-		token, err := jwt.ParseWithClaims(token, &supabaseClaims{}, func(token *jwt.Token) (interface{}, error) {
-			// Verify that the signing method is HMAC (HS256)
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-			}
-			// Return the secret key used for signing the token.
-			return []byte(secret), nil
-		})
-		if err != nil {
-			// This error is ignored because we will try to parse the token with the next secret.
-			errs = append(errs, fmt.Errorf("failed to parse supabase token: %w", err))
-			continue
-		}
-
-		// Extract and return the custom claims if the token is valid.
-		if claims, ok := token.Claims.(*supabaseClaims); ok && token.Valid {
-			return claims, nil
-		}
-	}
-
-	if len(errs) == 0 {
-		return nil, errors.New("failed to parse supabase token, no secrets found")
-	}
-
-	return nil, errors.Join(errs...)
-}
-
-func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
-	claims, err := getJWTClaims(supabaseJWTSecrets, supabaseToken)
-	if err != nil {
-		return uuid.UUID{}, &api.APIError{
-			Err:       err,
-			ClientMsg: "Backend authentication failed",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	userId, err := claims.GetSubject()
-	if err != nil {
-		return uuid.UUID{}, &api.APIError{
-			Err:       fmt.Errorf("failed getting jwt subject: %w", err),
-			ClientMsg: "Backend authentication failed",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	userIDParsed, err := uuid.Parse(userId)
-	if err != nil {
-		return uuid.UUID{}, &api.APIError{
-			Err:       fmt.Errorf("failed parsing user uuid: %w", err),
-			ClientMsg: "Backend authentication failed",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	return userIDParsed, nil
-}
-
-func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) (authcache.AuthTeamInfo, *api.APIError) {
-	userID := a.GetUserID(middleware.GetGinContext(ctx))
-
-	team, tier, err := a.authCache.GetOrSet(ctx, teamID, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
-		return a.db.GetTeamByIDAndUserIDAuth(ctx, teamID, userID)
-	})
-	if errors.Is(err, &db.TeamForbiddenError{}) {
-		return authcache.AuthTeamInfo{}, &api.APIError{
-			Err:       fmt.Errorf("failed getting team: %w", err),
-			ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
-			Code:      http.StatusUnauthorized,
-		}
-	}
-	if err != nil {
-		return authcache.AuthTeamInfo{}, &api.APIError{
-			Err:       fmt.Errorf("failed getting team: %w", err),
-			ClientMsg: "Backend authentication failed",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	return authcache.AuthTeamInfo{
-		Team: team,
-		Tier: tier,
-	}, nil
 }

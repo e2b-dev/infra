@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	nNode "github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) ([]*instance.InstanceInfo, error) {
@@ -60,6 +61,7 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 		sandboxesInfo = append(
 			sandboxesInfo,
 			instance.NewInstanceInfo(
+				logs.NewSandboxLogger(config.SandboxId, config.TemplateId, teamID.String(), config.Vcpu, config.RamMb, false),
 				&api.Sandbox{
 					SandboxID:  config.SandboxId,
 					TemplateID: config.TemplateId,
@@ -80,7 +82,6 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 				config.EnvdVersion,
 				node,
 				autoPause,
-				config.EnvdAccessToken,
 			),
 		)
 	}
@@ -96,6 +97,6 @@ func (o *Orchestrator) GetSandboxes(ctx context.Context, teamID *uuid.UUID) []*i
 	return o.instanceCache.GetInstances(teamID)
 }
 
-func (o *Orchestrator) GetInstance(_ context.Context, id string) (*instance.InstanceInfo, error) {
+func (o *Orchestrator) GetInstance(ctx context.Context, id string) (*instance.InstanceInfo, error) {
 	return o.instanceCache.Get(id)
 }

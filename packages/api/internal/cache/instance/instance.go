@@ -15,7 +15,7 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -25,6 +25,7 @@ const (
 	InstanceExpiration = time.Second * 15
 	// Should we auto pause the instance by default instead of killing it,
 	InstanceAutoPauseDefault = false
+	CacheSyncTime            = time.Minute
 )
 
 var (
@@ -32,6 +33,7 @@ var (
 )
 
 func NewInstanceInfo(
+	Logger *logs.SandboxLogger,
 	Instance *api.Sandbox,
 	TeamID *uuid.UUID,
 	BuildID *uuid.UUID,
@@ -47,9 +49,9 @@ func NewInstanceInfo(
 	EnvdVersion string,
 	Node *node.NodeInfo,
 	AutoPause bool,
-	EnvdAccessToken *string,
 ) *InstanceInfo {
 	instance := &InstanceInfo{
+		Logger:             Logger,
 		Instance:           Instance,
 		TeamID:             TeamID,
 		BuildID:            BuildID,
@@ -63,7 +65,6 @@ func NewInstanceInfo(
 		KernelVersion:      KernelVersion,
 		FirecrackerVersion: FirecrackerVersion,
 		EnvdVersion:        EnvdVersion,
-		EnvdAccessToken:    EnvdAccessToken,
 		Node:               Node,
 		AutoPause:          atomic.Bool{},
 		Pausing:            utils.NewSetOnce[*node.NodeInfo](),
@@ -76,6 +77,7 @@ func NewInstanceInfo(
 }
 
 type InstanceInfo struct {
+	Logger             *logs.SandboxLogger
 	Instance           *api.Sandbox
 	TeamID             *uuid.UUID
 	BuildID            *uuid.UUID
@@ -89,19 +91,10 @@ type InstanceInfo struct {
 	KernelVersion      string
 	FirecrackerVersion string
 	EnvdVersion        string
-	EnvdAccessToken    *string
 	Node               *node.NodeInfo
 	AutoPause          atomic.Bool
 	Pausing            *utils.SetOnce[*node.NodeInfo]
 	mu                 sync.RWMutex
-}
-
-func (i *InstanceInfo) LoggerMetadata() sbxlogger.SandboxMetadata {
-	return sbxlogger.SandboxMetadata{
-		SandboxID:  i.Instance.SandboxID,
-		TemplateID: i.Instance.TemplateID,
-		TeamID:     i.TeamID.String(),
-	}
 }
 
 func (i *InstanceInfo) IsExpired() bool {
@@ -136,6 +129,8 @@ type InstanceCache struct {
 	cache          *lifecycleCache[*InstanceInfo]
 	insertInstance func(data *InstanceInfo) error
 
+	logger *zap.SugaredLogger
+
 	sandboxCounter metric.Int64UpDownCounter
 	createdCounter metric.Int64Counter
 	analytics      analyticscollector.AnalyticsCollectorClient
@@ -146,6 +141,7 @@ type InstanceCache struct {
 func NewCache(
 	ctx context.Context,
 	analytics analyticscollector.AnalyticsCollectorClient,
+	logger *zap.SugaredLogger,
 	insertInstance func(data *InstanceInfo) error,
 	deleteInstance func(data *InstanceInfo) error,
 ) *InstanceCache {
@@ -155,17 +151,18 @@ func NewCache(
 
 	sandboxCounter, err := meters.GetUpDownCounter(meters.SandboxCountMeterName)
 	if err != nil {
-		zap.L().Error("error getting counter", zap.Error(err))
+		logger.Errorw("error getting counter", "error", err)
 	}
 
 	createdCounter, err := meters.GetCounter(meters.SandboxCreateMeterName)
 	if err != nil {
-		zap.L().Error("error getting counter", zap.Error(err))
+		logger.Errorw("error getting counter", "error", err)
 	}
 
 	instanceCache := &InstanceCache{
 		cache:          cache,
 		insertInstance: insertInstance,
+		logger:         logger,
 		analytics:      analytics,
 		sandboxCounter: sandboxCounter,
 		createdCounter: createdCounter,
@@ -176,10 +173,10 @@ func NewCache(
 	cache.OnEviction(func(ctx context.Context, instanceInfo *InstanceInfo) {
 		err := deleteInstance(instanceInfo)
 		if err != nil {
-			zap.L().Error("Error deleting instance", zap.Error(err))
+			logger.Errorf("Error deleting instance (%v)\n: %v", err)
 		}
 
-		instanceCache.UpdateCounters(ctx, instanceInfo, -1, false)
+		instanceCache.UpdateCounters(instanceInfo, -1, false)
 	})
 
 	go cache.Start(ctx)
@@ -215,7 +212,7 @@ func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
 			return false
 		}
 
-		// We depend on the startTime not changing to uniquely identify instance in the cache.
+		// We depend of the startTime not changing to uniquely identify instance in the cache.
 		return v.Instance.SandboxID == instanceInfo.Instance.SandboxID && v.StartTime == instanceInfo.StartTime
 	})
 }
@@ -238,14 +235,14 @@ func (c *InstanceInfo) PauseDone(err error) {
 	if err == nil {
 		err := c.Pausing.SetValue(c.Node)
 		if err != nil {
-			zap.L().Error("error setting PauseDone value", zap.Error(err))
+			fmt.Printf("error setting PauseDone value: %v", err)
 
 			return
 		}
 	} else {
 		err := c.Pausing.SetError(err)
 		if err != nil {
-			zap.L().Error("error setting PauseDone error", zap.Error(err))
+			fmt.Printf("error setting PauseDone error: %v", err)
 
 			return
 		}

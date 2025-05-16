@@ -4,20 +4,28 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"io"
+	"strconv"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/cache/builds"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (tm *TemplateManager) CreateTemplate(
 	t trace.Tracer,
 	ctx context.Context,
+	db *db.DB,
+	buildCache *builds.BuildCache,
 	templateID string,
 	buildID uuid.UUID,
 	kernelVersion,
@@ -27,12 +35,12 @@ func (tm *TemplateManager) CreateTemplate(
 	diskSizeMB,
 	memoryMB int64,
 ) error {
-	ctx, span := t.Start(ctx, "create-template",
+	childCtx, childSpan := t.Start(ctx, "create-template",
 		trace.WithAttributes(
 			attribute.String("env.id", templateID),
 		),
 	)
-	defer span.End()
+	defer childSpan.End()
 
 	features, err := sandbox.NewVersionInfo(firecrackerVersion)
 	if err != nil {
@@ -41,11 +49,9 @@ func (tm *TemplateManager) CreateTemplate(
 		return errMsg
 	}
 
-	if !tm.grpc.IsReadyForBuildPlacement() {
-		return fmt.Errorf("template manager is not ready for build placement")
-	}
+	telemetry.ReportEvent(childCtx, "Got FC version info")
 
-	_, err = tm.grpc.TemplateClient.TemplateCreate(ctx, &template_manager.TemplateCreateRequest{
+	logs, err := tm.grpc.Client.TemplateCreate(ctx, &template_manager.TemplateCreateRequest{
 		Template: &template_manager.TemplateConfig{
 			TemplateID:         templateID,
 			BuildID:            buildID.String(),
@@ -58,13 +64,58 @@ func (tm *TemplateManager) CreateTemplate(
 			StartCommand:       startCommand,
 		},
 	})
-
 	err = utils.UnwrapGRPCError(err)
 	if err != nil {
 		return fmt.Errorf("failed to create template '%s': %w", templateID, err)
 	}
 
-	telemetry.ReportEvent(ctx, "Template build started")
+	// Wait for the build to finish and save logs
+	for {
+		log, receiveErr := logs.Recv()
+		if receiveErr == io.EOF {
+			break
+		} else if receiveErr != nil {
+			// There was an error during the build
+			return fmt.Errorf("error when building env: %w", receiveErr)
+
+		}
+		logErr := buildCache.Append(templateID, buildID, log.Log)
+		if logErr != nil {
+			// There was an error saving the logs, the build wasn't found
+			return fmt.Errorf("error when saving docker build logs: %w", logErr)
+		}
+	}
+
+	trailer := logs.Trailer()
+	rootfsSizeStr, ok := trailer[storage.RootfsSizeKey]
+	if !ok {
+		return fmt.Errorf("rootfs size not found in trailer")
+	}
+
+	diskSize, parseErr := strconv.ParseInt(rootfsSizeStr[0], 10, 64)
+	if parseErr != nil {
+		return fmt.Errorf("error when parsing rootfs size: %w", parseErr)
+	}
+
+	envdVersion, ok := trailer[storage.EnvdVersionKey]
+	if !ok {
+		return fmt.Errorf("envd version not found in trailer")
+	}
+
+	err = db.FinishEnvBuild(childCtx, templateID, buildID, diskSize, envdVersion[0])
+	if err != nil {
+		return fmt.Errorf("error when finishing build: %w", err)
+	}
+
+	telemetry.ReportEvent(childCtx, "created new environment", attribute.String("env.id", templateID))
+
+	cacheErr := buildCache.SetDone(templateID, buildID, api.TemplateBuildStatusReady)
+	if cacheErr != nil {
+		err = fmt.Errorf("error when setting build done in logs: %w", cacheErr)
+		telemetry.ReportCriticalError(childCtx, cacheErr)
+	}
+
+	telemetry.ReportEvent(childCtx, "Template build started")
 
 	return nil
 }

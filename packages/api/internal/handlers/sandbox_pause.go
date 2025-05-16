@@ -1,18 +1,16 @@
 package handlers
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/auth"
+	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -20,7 +18,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	ctx := c.Request.Context()
 	// Get team from context, use TeamContextKey
 
-	teamID := a.GetTeamInfo(c).Team.ID
+	teamID := c.Value(auth.TeamContextKey).(authcache.AuthTeamInfo).Team.ID
 
 	sandboxID = utils.ShortID(sandboxID)
 
@@ -30,22 +28,13 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	sbx, err := a.orchestrator.GetSandbox(sandboxID)
 	if err != nil {
-		_, fErr := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamID})
+		_, _, fErr := a.db.GetLastSnapshot(ctx, sandboxID, teamID)
 		if fErr == nil {
-			zap.L().Warn("Sandbox is already paused", zap.String("sandboxID", sandboxID))
 			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Error pausing sandbox - sandbox '%s' is already paused", sandboxID))
 			return
 		}
 
-		var errNotFound db.ErrNotFound
-		if errors.Is(err, errNotFound) {
-			zap.L().Debug("Snapshot not found", zap.String("sandboxID", sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - snapshot for sandbox '%s' was not found", sandboxID))
-			return
-		}
-
-		zap.L().Error("Error getting snapshot", zap.Error(fErr), zap.String("sandboxID", sandboxID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox"))
+		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error pausing sandbox - sandbox '%s' was not found", sandboxID))
 		return
 	}
 

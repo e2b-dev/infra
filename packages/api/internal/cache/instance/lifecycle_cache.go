@@ -18,19 +18,15 @@ type lifecycleCacheMetrics struct {
 
 type lifecycleCache[T LifecycleCacheItem] struct {
 	running cmap.ConcurrentMap[string, T]
-	// evicting is used to track items in the process of evicting.
-	// This is to allow checking if an item is still in the process as that might take some time.
-	evicting cmap.ConcurrentMap[string, struct{}]
-	onEvict  func(ctx context.Context, instance T)
+	onEvict func(ctx context.Context, instance T)
 
 	metrics lifecycleCacheMetrics
 }
 
 func newLifecycleCache[T LifecycleCacheItem]() *lifecycleCache[T] {
 	return &lifecycleCache[T]{
-		running:  cmap.New[T](),
-		evicting: cmap.New[struct{}](),
-		onEvict:  func(ctx context.Context, instance T) {},
+		running: cmap.New[T](),
+		onEvict: func(ctx context.Context, instance T) {},
 		metrics: lifecycleCacheMetrics{
 			Evictions: 0,
 		},
@@ -62,11 +58,7 @@ func (c *lifecycleCache[T]) Start(ctx context.Context) {
 							return false
 						}
 
-						c.evicting.Set(key, struct{}{})
-						go func() {
-							c.onEvict(ctx, value)
-							c.evicting.Remove(key)
-						}()
+						go c.onEvict(ctx, value)
 
 						return true
 					})
@@ -80,21 +72,6 @@ func (c *lifecycleCache[T]) Start(ctx context.Context) {
 
 func (c *lifecycleCache[T]) SetIfAbsent(key string, value T) bool {
 	return c.running.SetIfAbsent(key, value)
-}
-
-func (c *lifecycleCache[T]) Has(key string, includeExpired bool) bool {
-	if includeExpired {
-		ok := c.evicting.Has(key)
-
-		if ok {
-			return true
-		}
-
-		return c.running.Has(key)
-	}
-
-	_, ok := c.Get(key)
-	return ok
 }
 
 func (c *lifecycleCache[T]) Get(key string) (T, bool) {
@@ -135,7 +112,6 @@ func (c *lifecycleCache[T]) Items() (items []T) {
 		if item.IsExpired() {
 			continue
 		}
-
 		items = append(items, item)
 	}
 	return items

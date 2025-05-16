@@ -5,28 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/go-redis/cache/v9"
+	"github.com/go-redis/cache/v8"
+	"github.com/go-redis/redis/v8"
 	resolver "github.com/miekg/dns"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
-
-// Rediser generalize RedisClient and RedisClusterClient, taken from github.com/go-redis/cache/v9
-type Rediser interface {
-	Set(ctx context.Context, key string, value interface{}, ttl time.Duration) *redis.StatusCmd
-	SetXX(ctx context.Context, key string, value interface{}, ttl time.Duration) *redis.BoolCmd
-	SetNX(ctx context.Context, key string, value interface{}, ttl time.Duration) *redis.BoolCmd
-
-	Get(ctx context.Context, key string) *redis.StringCmd
-	Del(ctx context.Context, keys ...string) *redis.IntCmd
-}
 
 const ttl = 0
 const redisTTL = 24 * time.Hour
@@ -37,13 +26,11 @@ const defaultRoutingIP = "127.0.0.1"
 const cachedDnsPrefix = "sandbox.dns."
 
 type DNS struct {
-	srv *resolver.Server
+	srv    *resolver.Server
+	logger *zap.Logger
 
-	// Temporally allowing to use both at the same time, after migration we will use only one cache
-	redisCache        *cache.Cache
-	redisClusterCache *cache.Cache
-
-	local *smap.Map[string]
+	remote *cache.Cache
+	local  *smap.Map[string]
 
 	closer struct {
 		once sync.Once
@@ -52,16 +39,11 @@ type DNS struct {
 	}
 }
 
-func New(ctx context.Context, redisClient Rediser, redisClusterClient Rediser) *DNS {
-	d := &DNS{}
+func New(ctx context.Context, rc *redis.Client, logger *zap.Logger) *DNS {
+	d := &DNS{logger: logger}
 
-	if redisClient != nil && !reflect.ValueOf(redisClient).IsNil() {
-		d.redisCache = cache.New(&cache.Options{Redis: redisClient, LocalCache: cache.NewTinyLFU(10_000, time.Hour)})
-
-		if redisClusterClient != nil && !reflect.ValueOf(redisClusterClient).IsNil() {
-			// No need for local cache, we never read from this redis
-			d.redisClusterCache = cache.New(&cache.Options{Redis: redisClusterClient})
-		}
+	if rc != nil {
+		d.remote = cache.New(&cache.Options{Redis: rc, LocalCache: cache.NewTinyLFU(10_000, time.Hour)})
 	} else {
 		d.local = smap.New[string]()
 	}
@@ -71,28 +53,13 @@ func New(ctx context.Context, redisClient Rediser, redisClusterClient Rediser) *
 
 func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
 	switch {
-	case d.redisCache != nil:
-		err := d.redisCache.Set(&cache.Item{
+	case d.remote != nil:
+		d.remote.Set(&cache.Item{
 			Ctx:   ctx,
 			TTL:   redisTTL,
 			Key:   d.cacheKey(sandboxID),
 			Value: ip,
 		})
-		if err != nil {
-			zap.L().Warn("error adding DNS item to redis cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
-		}
-
-		if d.redisClusterCache != nil {
-			err = d.redisClusterCache.Set(&cache.Item{
-				Ctx:   ctx,
-				TTL:   redisTTL,
-				Key:   d.cacheKey(sandboxID),
-				Value: ip,
-			})
-			if err != nil {
-				zap.L().Warn("error adding DNS item to redis cluster cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
-			}
-		}
 	case d.local != nil:
 		d.local.Insert(sandboxID, ip)
 	}
@@ -100,15 +67,9 @@ func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
 
 func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
 	switch {
-	case d.redisCache != nil:
-		if err := d.redisCache.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
-			zap.L().Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
-		}
-
-		if d.redisClusterCache != nil {
-			if err := d.redisClusterCache.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
-				zap.L().Debug("removing item from 2nd DNS cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
-			}
+	case d.remote != nil:
+		if err := d.remote.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
+			d.logger.Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox", sandboxID))
 		}
 	case d.local != nil:
 		d.local.RemoveCb(d.cacheKey(sandboxID), func(k string, v string, ok bool) bool { return v == ip })
@@ -118,36 +79,26 @@ func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
 func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 	var res string
 	switch {
-	case d.redisCache != nil:
-		if err := d.redisCache.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
+	case d.remote != nil:
+		if err := d.remote.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
 			if errors.Is(err, cache.ErrCacheMiss) {
-				zap.L().Warn("item missing in redisCache DNS cache", zap.String("sandbox_id", sandboxID))
-
-				if d.redisClusterCache != nil {
-					if err := d.redisClusterCache.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
-						if errors.Is(err, cache.ErrCacheMiss) {
-							zap.L().Debug("item missing in 2nd redisCache DNS cache", zap.String("sandbox_id", sandboxID))
-						} else {
-							zap.L().Error("resolving item from redisCache DNS cache", zap.String("sandbox_id", sandboxID), zap.Error(err))
-						}
-					}
-				}
+				d.logger.Warn("item missing in remote DNS cache", zap.String("sandbox", sandboxID))
 			} else {
-				zap.L().Error("resolving item from redisCache DNS cache", zap.String("sandbox_id", sandboxID), zap.Error(err))
+				d.logger.Error("resolving item from remote DNS cache", zap.String("sandbox", sandboxID), zap.Error(err))
 			}
 		}
 	case d.local != nil:
 		var ok bool
 		res, ok = d.local.Get(d.cacheKey(sandboxID))
 		if !ok {
-			zap.L().Warn("item not found in local DNS cache", zap.String("sandbox", sandboxID))
+			d.logger.Warn("item not found in local DNS cache", zap.String("sandbox", sandboxID))
 		}
 	}
 
 	addr := net.ParseIP(res)
 	if addr == nil {
 		if res != "" {
-			zap.L().Error("malformed address in cache", zap.Bool("local", d.local != nil), zap.String("addr", res))
+			d.logger.Error("malformed address in cache", zap.Bool("local", d.local != nil), zap.String("addr", res))
 		}
 
 		addr = net.ParseIP(defaultRoutingIP)
@@ -158,9 +109,9 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 
 func (d *DNS) cacheKey(id string) string {
 	switch {
-	case d.redisCache != nil:
-		// add a prefix to the redisCache cache items to make is
-		// reasonable to introspect the redisCache cache data, to
+	case d.remote != nil:
+		// add a prefix to the remote cache items to make is
+		// reasonable to introspect the remote cache data, to
 		// make it possible to safely use the redis cache for
 		// more than one set of cached items without fear of
 		// collision. Additionally the prefix allows us to
@@ -200,7 +151,7 @@ func (d *DNS) handleDNSRequest(ctx context.Context, w resolver.ResponseWriter, r
 	}
 
 	if err := w.WriteMsg(m); err != nil {
-		zap.L().Error("write DNS message", zap.Error(err))
+		d.logger.Error("write DNS message", zap.Error(err))
 	}
 }
 

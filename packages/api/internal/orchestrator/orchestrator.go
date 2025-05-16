@@ -3,11 +3,10 @@ package orchestrator
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net/http"
 	"os"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -16,25 +15,24 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 const (
-	// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks.
+	// cacheHookTimeout is the timeout for all requests inside cache insert/delete hooks
 	cacheHookTimeout = 5 * time.Minute
 
 	statusLogInterval = time.Second * 20
 )
 
 type Orchestrator struct {
-	httpClient    *http.Client
 	nomadClient   *nomadapi.Client
 	instanceCache *instance.InstanceCache
 	nodes         *smap.Map[*Node]
 	tracer        trace.Tracer
+	logger        *zap.SugaredLogger
 	analytics     *analyticscollector.Analytics
 	dns           *dns.DNS
 	dbClient      *db.DB
@@ -44,33 +42,31 @@ func New(
 	ctx context.Context,
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
+	logger *zap.Logger,
 	posthogClient *analyticscollector.PosthogClient,
-	redisClient dns.Rediser,
-	redisClusterClient dns.Rediser,
+	redisClient *redis.Client,
 	dbClient *db.DB,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
 	if err != nil {
-		zap.L().Error("Error initializing Analytics client", zap.Error(err))
+		logger.Error("Error initializing Analytics client", zap.Error(err))
 	}
 
-	dnsServer := dns.New(ctx, redisClient, redisClusterClient)
+	dnsServer := dns.New(ctx, redisClient, logger)
 
 	if env.IsLocal() {
-		zap.L().Info("Running locally, skipping starting DNS server")
+		logger.Info("Running locally, skipping starting DNS server")
 	} else {
-		zap.L().Info("Starting DNS server")
+		logger.Info("Starting DNS server")
 		dnsServer.Start(ctx, "0.0.0.0", os.Getenv("DNS_PORT"))
 	}
 
-	httpClient := &http.Client{
-		Timeout: nodeHealthCheckTimeout,
-	}
+	slogger := logger.Sugar()
 
 	o := Orchestrator{
-		httpClient:  httpClient,
 		analytics:   analyticsInstance,
 		nomadClient: nomadClient,
+		logger:      slogger,
 		tracer:      tracer,
 		nodes:       smap.New[*Node](),
 		dns:         dnsServer,
@@ -80,28 +76,17 @@ func New(
 	cache := instance.NewCache(
 		ctx,
 		analyticsInstance.Client,
-		o.getInsertInstanceFunction(ctx, cacheHookTimeout),
-		o.getDeleteInstanceFunction(ctx, posthogClient, cacheHookTimeout),
+		slogger,
+		o.getInsertInstanceFunction(ctx, slogger, cacheHookTimeout),
+		o.getDeleteInstanceFunction(ctx, posthogClient, slogger, cacheHookTimeout),
 	)
 
 	o.instanceCache = cache
 
 	if env.IsLocal() {
-		zap.L().Info("Skipping syncing sandboxes, running locally")
-		// Add a local node for local development, if there isn't any, it fails silently
-		err := o.connectToNode(ctx, &node.NodeInfo{
-			ID:                  "testclient",
-			OrchestratorAddress: fmt.Sprintf("%s:%s", "127.0.0.1", consts.OrchestratorPort),
-			IPAddress:           "127.0.0.1",
-		})
-
-		if err != nil {
-			zap.L().Error("Error connecting to local node. If you're starting the API server locally, make sure you run 'make connect-orchestrator' to connect to the node remotely before starting the local API server.", zap.Error(err))
-			return nil, err
-		}
+		logger.Info("Skipping syncing sandboxes, running locally")
 	} else {
 		go o.keepInSync(ctx, cache)
-		go o.startNodeAnalytics(ctx)
 	}
 
 	go o.startStatusLogging(ctx)
@@ -116,7 +101,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			zap.L().Info("Stopping status logging")
+			o.logger.Infof("Stopping status logging")
 
 			return
 		case <-ticker.C:
@@ -138,7 +123,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 				}
 			}
 
-			zap.L().Info("API internal status",
+			zap.L().Info("API internal status=====11111=",
 				zap.Int("sandboxes_count", o.instanceCache.Len()),
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", nodes),
@@ -157,7 +142,7 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 		}
 	}
 
-	zap.L().Info("shutting down node clients", zap.Int("error_count", len(errs)), zap.Int("node_count", len(nodes)))
+	o.logger.Infof("shutting down node clients: %d of %d nodes had errors", len(errs), len(nodes))
 
 	if err := o.analytics.Close(); err != nil {
 		errs = append(errs, err)

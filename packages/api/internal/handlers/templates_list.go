@@ -10,7 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -20,8 +20,8 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 
 	userID := c.Value(auth.UserIDContextKey).(uuid.UUID)
 
-	var team *queries.Team
-	teams, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
+	var team *models.Team
+	teams, err := a.db.GetTeams(ctx, userID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting teams"))
 
@@ -42,8 +42,8 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		}
 
 		for _, t := range teams {
-			if t.Team.ID == teamUUID {
-				team = &t.Team
+			if t.ID == teamUUID {
+				team = t
 				break
 			}
 		}
@@ -57,8 +57,8 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		}
 	} else {
 		for _, t := range teams {
-			if t.UsersTeam.IsDefault {
-				team = &t.Team
+			if t.Edges.UsersTeams[0].IsDefault {
+				team = t
 				break
 			}
 		}
