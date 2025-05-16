@@ -4,7 +4,7 @@ go 1.23.7
 
 require (
 	cloud.google.com/go/storage v1.50.0
-	connectrpc.com/connect v1.18.1
+	connectrpc.com/connect v1.16.2
 	entgo.io/ent v0.12.5
 	github.com/ClickHouse/clickhouse-go/v2 v2.33.1
 	github.com/aws/aws-sdk-go-v2 v1.36.3
