@@ -49,6 +49,18 @@ const (
 	ProcessSendSignalProcedure = "/process.Process/SendSignal"
 )
 
+// These variables are the protoreflect.Descriptor objects for the RPCs defined in this package.
+var (
+	processServiceDescriptor           = process.File_process_process_proto.Services().ByName("Process")
+	processListMethodDescriptor        = processServiceDescriptor.Methods().ByName("List")
+	processConnectMethodDescriptor     = processServiceDescriptor.Methods().ByName("Connect")
+	processStartMethodDescriptor       = processServiceDescriptor.Methods().ByName("Start")
+	processUpdateMethodDescriptor      = processServiceDescriptor.Methods().ByName("Update")
+	processStreamInputMethodDescriptor = processServiceDescriptor.Methods().ByName("StreamInput")
+	processSendInputMethodDescriptor   = processServiceDescriptor.Methods().ByName("SendInput")
+	processSendSignalMethodDescriptor  = processServiceDescriptor.Methods().ByName("SendSignal")
+)
+
 // ProcessClient is a client for the process.Process service.
 type ProcessClient interface {
 	List(context.Context, *connect.Request[process.ListRequest]) (*connect.Response[process.ListResponse], error)
@@ -70,48 +82,47 @@ type ProcessClient interface {
 // http://api.acme.com or https://acme.com/grpc).
 func NewProcessClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) ProcessClient {
 	baseURL = strings.TrimRight(baseURL, "/")
-	processMethods := process.File_process_process_proto.Services().ByName("Process").Methods()
 	return &processClient{
 		list: connect.NewClient[process.ListRequest, process.ListResponse](
 			httpClient,
 			baseURL+ProcessListProcedure,
-			connect.WithSchema(processMethods.ByName("List")),
+			connect.WithSchema(processListMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		connect: connect.NewClient[process.ConnectRequest, process.ConnectResponse](
 			httpClient,
 			baseURL+ProcessConnectProcedure,
-			connect.WithSchema(processMethods.ByName("Connect")),
+			connect.WithSchema(processConnectMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		start: connect.NewClient[process.StartRequest, process.StartResponse](
 			httpClient,
 			baseURL+ProcessStartProcedure,
-			connect.WithSchema(processMethods.ByName("Start")),
+			connect.WithSchema(processStartMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		update: connect.NewClient[process.UpdateRequest, process.UpdateResponse](
 			httpClient,
 			baseURL+ProcessUpdateProcedure,
-			connect.WithSchema(processMethods.ByName("Update")),
+			connect.WithSchema(processUpdateMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		streamInput: connect.NewClient[process.StreamInputRequest, process.StreamInputResponse](
 			httpClient,
 			baseURL+ProcessStreamInputProcedure,
-			connect.WithSchema(processMethods.ByName("StreamInput")),
+			connect.WithSchema(processStreamInputMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		sendInput: connect.NewClient[process.SendInputRequest, process.SendInputResponse](
 			httpClient,
 			baseURL+ProcessSendInputProcedure,
-			connect.WithSchema(processMethods.ByName("SendInput")),
+			connect.WithSchema(processSendInputMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		sendSignal: connect.NewClient[process.SendSignalRequest, process.SendSignalResponse](
 			httpClient,
 			baseURL+ProcessSendSignalProcedure,
-			connect.WithSchema(processMethods.ByName("SendSignal")),
+			connect.WithSchema(processSendSignalMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -181,47 +192,46 @@ type ProcessHandler interface {
 // By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
 // and JSON codecs. They also support gzip compression.
 func NewProcessHandler(svc ProcessHandler, opts ...connect.HandlerOption) (string, http.Handler) {
-	processMethods := process.File_process_process_proto.Services().ByName("Process").Methods()
 	processListHandler := connect.NewUnaryHandler(
 		ProcessListProcedure,
 		svc.List,
-		connect.WithSchema(processMethods.ByName("List")),
+		connect.WithSchema(processListMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	processConnectHandler := connect.NewServerStreamHandler(
 		ProcessConnectProcedure,
 		svc.Connect,
-		connect.WithSchema(processMethods.ByName("Connect")),
+		connect.WithSchema(processConnectMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	processStartHandler := connect.NewServerStreamHandler(
 		ProcessStartProcedure,
 		svc.Start,
-		connect.WithSchema(processMethods.ByName("Start")),
+		connect.WithSchema(processStartMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	processUpdateHandler := connect.NewUnaryHandler(
 		ProcessUpdateProcedure,
 		svc.Update,
-		connect.WithSchema(processMethods.ByName("Update")),
+		connect.WithSchema(processUpdateMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	processStreamInputHandler := connect.NewClientStreamHandler(
 		ProcessStreamInputProcedure,
 		svc.StreamInput,
-		connect.WithSchema(processMethods.ByName("StreamInput")),
+		connect.WithSchema(processStreamInputMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	processSendInputHandler := connect.NewUnaryHandler(
 		ProcessSendInputProcedure,
 		svc.SendInput,
-		connect.WithSchema(processMethods.ByName("SendInput")),
+		connect.WithSchema(processSendInputMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	processSendSignalHandler := connect.NewUnaryHandler(
 		ProcessSendSignalProcedure,
 		svc.SendSignal,
-		connect.WithSchema(processMethods.ByName("SendSignal")),
+		connect.WithSchema(processSendSignalMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/process.Process/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
