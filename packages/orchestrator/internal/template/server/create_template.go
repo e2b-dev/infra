@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -77,6 +78,11 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		err = s.builder.Build(buildContext, template, config.TemplateID, config.BuildID)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, err)
+
+			// Wait for the CLI to load all the logs
+			// This is a temporary ~fix for the CLI to load most of the logs before finishing the template build
+			// Ideally we should wait in the CLI for the last log message
+			time.Sleep(5 * time.Second)
 
 			cacheErr := s.buildCache.SetFailed(config.TemplateID, config.BuildID)
 			if cacheErr != nil {

@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -14,6 +16,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
@@ -22,8 +26,11 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
+
+const proxyPort = 5007
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -71,6 +78,27 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		return fmt.Errorf("could not create docker legacy client: %w", err)
 	}
 
+	// The sandbox map is shared between the server and the proxy
+	// to propagate information about sandbox routing.
+	sandboxes := smap.New[*sandbox.Sandbox]()
+
+	sandboxProxy, err := proxy.NewSandboxProxy(proxyPort, sandboxes)
+	if err != nil {
+		logger.Fatal("failed to create sandbox proxy", zap.Error(err))
+	}
+	go func() {
+		err := sandboxProxy.Start()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("failed to start sandbox proxy", zap.Error(err))
+		}
+	}()
+	defer func() {
+		err := sandboxProxy.Close(parentCtx)
+		if err != nil {
+			logger.Error("error closing sandbox proxy", zap.Error(err))
+		}
+	}()
+
 	persistence, err := storage.GetTemplateStorageProvider(ctx)
 	if err != nil {
 		return fmt.Errorf("could not create storage provider: %w", err)
@@ -111,6 +139,9 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		persistence,
 		devicePool,
 		networkPool,
+		sandboxProxy,
+		sandboxes,
+		clientID,
 	)
 
 	err = buildCache.Create(buildID, templateID)
@@ -132,7 +163,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		),
 		VCpuCount:       2,
 		MemoryMB:        1024,
-		StartCmd:        "",
+		StartCmd:        "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
 		DiskSizeMB:      1024,
 		BuildLogsWriter: logsWriter,
 		HugePages:       true,

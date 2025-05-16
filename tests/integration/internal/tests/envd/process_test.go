@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/tests/integration/internal/envd/process"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -54,9 +54,13 @@ func TestCommandKillNextApp(t *testing.T) {
 	})
 	setup.SetSandboxHeader(runDevReq.Header(), sbx.SandboxID, sbx.ClientID)
 	setup.SetUserHeader(runDevReq.Header(), "user")
-	runDevStream, err := envdClient.ProcessClient.Start(ctx, runDevReq)
+	serverCtx, serverCancel := context.WithCancel(ctx)
+	runDevStream, err := envdClient.ProcessClient.Start(serverCtx, runDevReq)
 	require.NoError(t, err)
-	defer runDevStream.Close()
+	defer func() {
+		serverCancel()
+		runDevStream.Close()
+	}()
 
 	// Read dev output
 	receiveDone := make(chan error, 1)
@@ -134,9 +138,16 @@ func TestCommandKillWithAnd(t *testing.T) {
 	})
 	setup.SetSandboxHeader(runDevReq.Header(), sbx.SandboxID, sbx.ClientID)
 	setup.SetUserHeader(runDevReq.Header(), "user")
-	runDevStream, err := envdClient.ProcessClient.Start(ctx, runDevReq)
+	serverCtx, serverCancel := context.WithCancel(ctx)
+	runDevStream, err := envdClient.ProcessClient.Start(serverCtx, runDevReq)
 	require.NoError(t, err)
-	defer runDevStream.Close()
+	defer func() {
+		serverCancel()
+		streamErr := runDevStream.Close()
+		if streamErr != nil {
+			t.Logf("Error closing stream: %v", streamErr)
+		}
+	}()
 
 	// Read dev output
 	receiveDone := make(chan error, 1)

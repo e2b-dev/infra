@@ -145,7 +145,12 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 		}
 
 		// update node status (if changed)
-		node.SetStatus(o.getNodeStatusConverted(nodeInfo.ServiceStatus))
+		nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
+		if !ok {
+			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), zap.String("node_id", node.Info.ID))
+			nodeStatus = api.NodeStatusUnhealthy
+		}
+		node.setStatus(nodeStatus)
 
 		activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
 		if instancesErr != nil {
@@ -161,7 +166,7 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 
 	if !syncRetrySuccess {
 		zap.L().Error("Failed to sync node after max retries, temporarily marking as draining", zap.String("node_id", node.Info.ID))
-		node.SetStatus(api.NodeStatusDraining)
+		node.setStatus(api.NodeStatusDraining)
 		return
 	}
 

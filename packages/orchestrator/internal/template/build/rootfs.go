@@ -187,7 +187,6 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	err := EnvInstanceTemplate.Execute(&scriptDef, struct {
 		EnvID       string
 		BuildID     string
-		StartCmd    string
 		FcAddress   string
 		MemoryLimit int
 	}{
@@ -195,7 +194,6 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 		FcAddress:   "169.254.0.21",
 		EnvID:       r.template.TemplateId,
 		BuildID:     r.template.BuildId,
-		StartCmd:    strings.ReplaceAll(r.template.StartCmd, "'", "\\'"),
 		MemoryLimit: int(math.Min(float64(r.template.MemoryMB)/2, 512)),
 	})
 	if err != nil {

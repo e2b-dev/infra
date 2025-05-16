@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
-	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
-	"github.com/e2b-dev/infra/tests/integration/internal/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -273,7 +273,7 @@ func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
 	assert.Equal(t, req.expectedResHttpStatus, res.StatusCode())
 
 	if res.StatusCode() == http.StatusBadGateway {
-		logs, err := getSandboxLogs(ctx, req.client, req.sbx)
+		logs, err := getSandboxLogs(t, ctx, req.client, req.sbx)
 		if err != nil {
 			t.Logf("Failed to get logs from sandbox %s: %s", req.sbx.JSON201.SandboxID, err)
 		} else {
@@ -282,7 +282,7 @@ func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
 	}
 }
 
-func getSandboxLogs(ctx context.Context, client *setup.EnvdClient, sbx *api.PostSandboxesResponse) (string, error) {
+func getSandboxLogs(t *testing.T, ctx context.Context, client *setup.EnvdClient, sbx *api.PostSandboxesResponse) (string, error) {
 	req := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd:  "journalctl",
@@ -291,15 +291,22 @@ func getSandboxLogs(ctx context.Context, client *setup.EnvdClient, sbx *api.Post
 	})
 	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
 	setup.SetUserHeader(req.Header(), "root")
-	stream, err := client.ProcessClient.Start(
-		ctx,
-		req,
-	)
+
+	serverCtx, serverCancel := context.WithCancel(ctx)
+	defer serverCancel()
+
+	stream, err := client.ProcessClient.Start(serverCtx, req)
 	if err != nil {
 		return "", fmt.Errorf("failed to get logs from sandbox: %w", err)
 	}
 
-	defer stream.Close()
+	defer func() {
+		serverCancel()
+		streamErr := stream.Close()
+		if streamErr != nil {
+			t.Logf("Error closing stream: %v", streamErr)
+		}
+	}()
 
 	out := []string{}
 

@@ -18,12 +18,15 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
 
+	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type GRPCServer struct {
-	version    string
+	info *service.ServiceInfo
+
 	grpc       *grpc.Server
 	grpcHealth *health.Server
 
@@ -34,7 +37,7 @@ type GRPCServer struct {
 	}
 }
 
-func New(version string) *GRPCServer {
+func New(info *service.ServiceInfo) *GRPCServer {
 	opts := []logging.Option{
 		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
@@ -75,7 +78,7 @@ func New(version string) *GRPCServer {
 	grpc_health_v1.RegisterHealthServer(srv, grpcHealth)
 
 	return &GRPCServer{
-		version:    version,
+		info:       info,
 		grpc:       srv,
 		grpcHealth: grpcHealth,
 	}
@@ -96,7 +99,7 @@ func (g *GRPCServer) Start(ctx context.Context, port uint) error {
 		return fmt.Errorf("failed to listen on port %d: %w", port, err)
 	}
 
-	healthcheck, err := NewHealthcheck(g, g.version)
+	healthcheck, err := e2bhealthcheck.NewHealthcheck(g.info)
 	if err != nil {
 		return fmt.Errorf("failed to create healthcheck: %w", err)
 	}
