@@ -2,14 +2,14 @@ package build
 
 import (
 	"io"
-	"strings"
-
-	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
+
+const instanceBuildPrefix = "b"
 
 type TemplateConfig struct {
 	*storage.TemplateFiles
@@ -60,7 +60,7 @@ func (e *TemplateConfig) ToSandboxConfig(envdVersion string) *orchestrator.Sandb
 		KernelVersion:      e.KernelVersion,
 		FirecrackerVersion: e.FirecrackerVersion,
 		HugePages:          e.HugePages,
-		SandboxId:          strings.ReplaceAll(uuid.New().String(), "-", ""),
+		SandboxId:          instanceBuildPrefix + id.Generate(),
 
 		EnvdVersion: envdVersion,
 		Vcpu:        e.VCpuCount,

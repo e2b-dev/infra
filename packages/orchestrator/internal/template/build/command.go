@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
@@ -42,47 +41,49 @@ func (b *TemplateBuilder) runCommand(
 	processC := processconnect.NewProcessClient(&hc, proxyHost)
 	grpc.SetSandboxHeader(createAppReq.Header(), proxyHost, sandboxID, b.clientID)
 	grpc.SetUserHeader(createAppReq.Header(), runAsUser)
-	createAppStream, err := processC.Start(ctx, createAppReq)
+
+	processCtx, processCancel := context.WithCancel(ctx)
+	defer processCancel()
+	createAppStream, err := processC.Start(processCtx, createAppReq)
 	if err != nil {
 		return fmt.Errorf("error starting process: %w", err)
 	}
-	defer createAppStream.Close()
+	defer func() {
+		processCancel()
+		createAppStream.Close()
+	}()
 
-	startCmdCtx, cancel := context.WithTimeout(ctx, cmdWait)
+	cmdCtx, cancel := context.WithTimeout(ctx, cmdWait)
 	defer cancel()
 
-	msgCh, msgErrCh := grpc.StreamToChannel(startCmdCtx, createAppStream)
+	msgCh, msgErrCh := grpc.StreamToChannel(cmdCtx, createAppStream)
 
-	var g errgroup.Group
-	g.Go(func() error {
-		for {
-			select {
-			case <-startCmdCtx.Done():
-				return nil
-			case err := <-msgErrCh:
-				return err
-			case msg := <-msgCh:
-				e := msg.Event
+	for {
+		select {
+		case <-cmdCtx.Done():
+			return nil
+		case err := <-msgErrCh:
+			return err
+		case msg := <-msgCh:
+			e := msg.Event
 
-				switch {
-				case e.GetData() != nil:
-					data := e.GetData()
-					b.logStream(postProcessor, "stdout", string(data.GetStdout()))
-					b.logStream(postProcessor, "stderr", string(data.GetStderr()))
+			switch {
+			case e.GetData() != nil:
+				data := e.GetData()
+				b.logStream(postProcessor, "stdout", string(data.GetStdout()))
+				b.logStream(postProcessor, "stderr", string(data.GetStderr()))
 
-				case e.GetEnd() != nil:
-					end := e.GetEnd()
-					name := fmt.Sprintf("exit %d", end.GetExitCode())
-					b.logStream(postProcessor, name, end.GetStatus())
+			case e.GetEnd() != nil:
+				end := e.GetEnd()
+				name := fmt.Sprintf("exit %d", end.GetExitCode())
+				b.logStream(postProcessor, name, end.GetStatus())
 
-					if end.GetExitCode() != 0 {
-						return fmt.Errorf("command failed: %s", end.GetStatus())
-					}
+				if end.GetExitCode() != 0 {
+					return fmt.Errorf("command failed: %s", end.GetStatus())
 				}
 			}
 		}
-	})
-	return g.Wait()
+	}
 }
 
 func (b *TemplateBuilder) logStream(postProcessor *writer.PostProcessor, name string, content string) {
