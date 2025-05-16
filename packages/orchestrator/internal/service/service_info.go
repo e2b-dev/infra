@@ -1,14 +1,34 @@
-package info
+package service
 
 import (
 	"context"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
+
+type Server struct {
+	orchestratorinfo.UnimplementedInfoServiceServer
+
+	info      *ServiceInfo
+	sandboxes *smap.Map[*sandbox.Sandbox]
+}
+
+func NewInfoService(_ context.Context, grpc *grpc.Server, info *ServiceInfo, sandboxes *smap.Map[*sandbox.Sandbox]) *Server {
+	s := &Server{
+		info:      info,
+		sandboxes: sandboxes,
+	}
+
+	orchestratorinfo.RegisterInfoServiceServer(grpc, s)
+	return s
+}
 
 func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestratorinfo.ServiceInfoResponse, error) {
 	info := s.info
