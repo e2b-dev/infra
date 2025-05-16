@@ -76,10 +76,10 @@ func (n *Node) setStatus(status api.NodeStatus) {
 	}
 }
 
-func (n *Node) SendStatusChange(ctx context.Context, nodeId string, s api.NodeStatus) error {
+func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
 	nodeStatus, ok := ApiNodeToOrchestratorStateMapper[s]
 	if !ok {
-		zap.L().Error("Unknown service info status", zap.Any("status", s), zap.String("node_id", nodeId))
+		zap.L().Error("Unknown service info status", zap.Any("status", s), zap.String("node_id", n.Info.ID))
 		return fmt.Errorf("unknown service info status: %s", s)
 	}
 
