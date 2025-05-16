@@ -352,7 +352,7 @@ paths:
   /v1/service-discovery/nodes/{nodeId}/drain:
     post:
       operationId: v1ServiceDiscoveryNodeDrain
-      description: Drain a node
+      description: Mark node as draining
       security:
         - ApiKeyAuth: [ ]
       tags: [service-discovery]
@@ -375,10 +375,10 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /v1/service-discovery/nodes/{nodeId}/update:
+  /v1/service-discovery/nodes/{nodeId}/kill:
     post:
-      operationId: v1ServiceDiscoveryNodeUpdate
-      description: Update a node with safe draining
+      operationId: v1ServiceDiscoveryNodeKill
+      description: Mark node as unhealthy
       security:
         - ApiKeyAuth: [ ]
       tags: [service-discovery]

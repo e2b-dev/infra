@@ -106,6 +106,7 @@ func (o *Orchestrator) sync() {
 		select {
 		case <-o.ctx.Done():
 			zap.L().Info("context done", zap.String("orchestrator sync id", o.ServiceId))
+			return
 		case <-ticker.C:
 			o.syncRun()
 		}

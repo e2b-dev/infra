@@ -47,8 +47,8 @@ type ServerInterface interface {
 	// (POST /v1/service-discovery/nodes/{nodeId}/drain)
 	V1ServiceDiscoveryNodeDrain(c *gin.Context, nodeId string)
 
-	// (POST /v1/service-discovery/nodes/{nodeId}/update)
-	V1ServiceDiscoveryNodeUpdate(c *gin.Context, nodeId string)
+	// (POST /v1/service-discovery/nodes/{nodeId}/kill)
+	V1ServiceDiscoveryNodeKill(c *gin.Context, nodeId string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -263,8 +263,8 @@ func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeDrain(c *gin.Context) {
 	siw.Handler.V1ServiceDiscoveryNodeDrain(c, nodeId)
 }
 
-// V1ServiceDiscoveryNodeUpdate operation middleware
-func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeUpdate(c *gin.Context) {
+// V1ServiceDiscoveryNodeKill operation middleware
+func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeKill(c *gin.Context) {
 
 	var err error
 
@@ -286,7 +286,7 @@ func (siw *ServerInterfaceWrapper) V1ServiceDiscoveryNodeUpdate(c *gin.Context) 
 		}
 	}
 
-	siw.Handler.V1ServiceDiscoveryNodeUpdate(c, nodeId)
+	siw.Handler.V1ServiceDiscoveryNodeKill(c, nodeId)
 }
 
 // GinServerOptions provides options for the Gin server.
@@ -327,5 +327,5 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/v1/service-discovery/nodes", wrapper.V1ServiceDiscoveryNodes)
 	router.GET(options.BaseURL+"/v1/service-discovery/nodes/orchestrators", wrapper.V1ServiceDiscoveryGetOrchestrators)
 	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeId/drain", wrapper.V1ServiceDiscoveryNodeDrain)
-	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeId/update", wrapper.V1ServiceDiscoveryNodeUpdate)
+	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:nodeId/kill", wrapper.V1ServiceDiscoveryNodeKill)
 }
