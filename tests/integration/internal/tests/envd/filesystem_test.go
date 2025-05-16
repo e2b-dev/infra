@@ -219,7 +219,7 @@ func TestStat(t *testing.T) {
 	entry := statResp.Msg.Entry
 
 	// Verify basic file info
-	assert.Equal(t, "/home/user/test.txt", entry.Name)
+	assert.Equal(t, "test.txt", entry.Name)
 	assert.Equal(t, filePath, entry.Path)
 	assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, entry.Type)
 
