@@ -44,7 +44,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("path is not a directory: %s", dirPath))
 	}
 
-	var entries []*rpc.EntryInfo
+	var entries []*rpc.EntryInfoExtended
 	err = filepath.WalkDir(dirPath, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -74,7 +74,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		owner, group := getFileOwnership(fileInfo)
 		fileMode := fileInfo.Mode()
 
-		entries = append(entries, &rpc.EntryInfo{
+		entries = append(entries, &rpc.EntryInfoExtended{
 			Name:         entry.Name(),
 			Type:         getEntryType(entry),
 			Path:         path,
