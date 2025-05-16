@@ -84,12 +84,12 @@ echo "Give 'user' ownership to /home/user"
 mkdir -p /home/user
 chown -R user:user /home/user
 
-echo "Give 'user' 777 permission to /usr/local"
+echo "Give 777 permission to /usr/local"
 chmod 777 -R /usr/local
 
 echo "Create /code directory"
 mkdir -p /code
-echo "Give 'user' 777 permission to /code"
+echo "Give 777 permission to /code"
 chmod 777 -R /code
 
 # Start systemd services
