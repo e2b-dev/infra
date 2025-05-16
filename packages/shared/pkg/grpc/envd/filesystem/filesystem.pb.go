@@ -9,6 +9,7 @@ package filesystem
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 )
@@ -460,7 +461,7 @@ type StatResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Entry *EntryInfo `protobuf:"bytes,1,opt,name=entry,proto3" json:"entry,omitempty"`
+	Entry *EntryInfoExtended `protobuf:"bytes,1,opt,name=entry,proto3" json:"entry,omitempty"`
 }
 
 func (x *StatResponse) Reset() {
@@ -495,7 +496,7 @@ func (*StatResponse) Descriptor() ([]byte, []int) {
 	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *StatResponse) GetEntry() *EntryInfo {
+func (x *StatResponse) GetEntry() *EntryInfoExtended {
 	if x != nil {
 		return x.Entry
 	}
@@ -565,6 +566,117 @@ func (x *EntryInfo) GetPath() string {
 	return ""
 }
 
+type EntryInfoExtended struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Name         string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Type         FileType               `protobuf:"varint,2,opt,name=type,proto3,enum=filesystem.FileType" json:"type,omitempty"`
+	Path         string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	Size         int64                  `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
+	Mode         uint32                 `protobuf:"varint,5,opt,name=mode,proto3" json:"mode,omitempty"`
+	Permissions  string                 `protobuf:"bytes,6,opt,name=permissions,proto3" json:"permissions,omitempty"`
+	Owner        string                 `protobuf:"bytes,7,opt,name=owner,proto3" json:"owner,omitempty"`
+	Group        string                 `protobuf:"bytes,8,opt,name=group,proto3" json:"group,omitempty"`
+	ModifiedTime *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=modified_time,json=modifiedTime,proto3" json:"modified_time,omitempty"`
+}
+
+func (x *EntryInfoExtended) Reset() {
+	*x = EntryInfoExtended{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_filesystem_filesystem_proto_msgTypes[9]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *EntryInfoExtended) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EntryInfoExtended) ProtoMessage() {}
+
+func (x *EntryInfoExtended) ProtoReflect() protoreflect.Message {
+	mi := &file_filesystem_filesystem_proto_msgTypes[9]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EntryInfoExtended.ProtoReflect.Descriptor instead.
+func (*EntryInfoExtended) Descriptor() ([]byte, []int) {
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *EntryInfoExtended) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *EntryInfoExtended) GetType() FileType {
+	if x != nil {
+		return x.Type
+	}
+	return FileType_FILE_TYPE_UNSPECIFIED
+}
+
+func (x *EntryInfoExtended) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *EntryInfoExtended) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+func (x *EntryInfoExtended) GetMode() uint32 {
+	if x != nil {
+		return x.Mode
+	}
+	return 0
+}
+
+func (x *EntryInfoExtended) GetPermissions() string {
+	if x != nil {
+		return x.Permissions
+	}
+	return ""
+}
+
+func (x *EntryInfoExtended) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *EntryInfoExtended) GetGroup() string {
+	if x != nil {
+		return x.Group
+	}
+	return ""
+}
+
+func (x *EntryInfoExtended) GetModifiedTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ModifiedTime
+	}
+	return nil
+}
+
 type ListDirRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -577,7 +689,7 @@ type ListDirRequest struct {
 func (x *ListDirRequest) Reset() {
 	*x = ListDirRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[9]
+		mi := &file_filesystem_filesystem_proto_msgTypes[10]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -590,7 +702,7 @@ func (x *ListDirRequest) String() string {
 func (*ListDirRequest) ProtoMessage() {}
 
 func (x *ListDirRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[9]
+	mi := &file_filesystem_filesystem_proto_msgTypes[10]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -603,7 +715,7 @@ func (x *ListDirRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDirRequest.ProtoReflect.Descriptor instead.
 func (*ListDirRequest) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{9}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListDirRequest) GetPath() string {
@@ -625,13 +737,13 @@ type ListDirResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Entries []*EntryInfo `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	Entries []*EntryInfoExtended `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
 }
 
 func (x *ListDirResponse) Reset() {
 	*x = ListDirResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[10]
+		mi := &file_filesystem_filesystem_proto_msgTypes[11]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -644,7 +756,7 @@ func (x *ListDirResponse) String() string {
 func (*ListDirResponse) ProtoMessage() {}
 
 func (x *ListDirResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[10]
+	mi := &file_filesystem_filesystem_proto_msgTypes[11]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -657,10 +769,10 @@ func (x *ListDirResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDirResponse.ProtoReflect.Descriptor instead.
 func (*ListDirResponse) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{10}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *ListDirResponse) GetEntries() []*EntryInfo {
+func (x *ListDirResponse) GetEntries() []*EntryInfoExtended {
 	if x != nil {
 		return x.Entries
 	}
@@ -679,7 +791,7 @@ type WatchDirRequest struct {
 func (x *WatchDirRequest) Reset() {
 	*x = WatchDirRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[11]
+		mi := &file_filesystem_filesystem_proto_msgTypes[12]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -692,7 +804,7 @@ func (x *WatchDirRequest) String() string {
 func (*WatchDirRequest) ProtoMessage() {}
 
 func (x *WatchDirRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[11]
+	mi := &file_filesystem_filesystem_proto_msgTypes[12]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -705,7 +817,7 @@ func (x *WatchDirRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchDirRequest.ProtoReflect.Descriptor instead.
 func (*WatchDirRequest) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{11}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *WatchDirRequest) GetPath() string {
@@ -734,7 +846,7 @@ type FilesystemEvent struct {
 func (x *FilesystemEvent) Reset() {
 	*x = FilesystemEvent{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[12]
+		mi := &file_filesystem_filesystem_proto_msgTypes[13]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -747,7 +859,7 @@ func (x *FilesystemEvent) String() string {
 func (*FilesystemEvent) ProtoMessage() {}
 
 func (x *FilesystemEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[12]
+	mi := &file_filesystem_filesystem_proto_msgTypes[13]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -760,7 +872,7 @@ func (x *FilesystemEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesystemEvent.ProtoReflect.Descriptor instead.
 func (*FilesystemEvent) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{12}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *FilesystemEvent) GetName() string {
@@ -793,7 +905,7 @@ type WatchDirResponse struct {
 func (x *WatchDirResponse) Reset() {
 	*x = WatchDirResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[13]
+		mi := &file_filesystem_filesystem_proto_msgTypes[14]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -806,7 +918,7 @@ func (x *WatchDirResponse) String() string {
 func (*WatchDirResponse) ProtoMessage() {}
 
 func (x *WatchDirResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[13]
+	mi := &file_filesystem_filesystem_proto_msgTypes[14]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -819,7 +931,7 @@ func (x *WatchDirResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchDirResponse.ProtoReflect.Descriptor instead.
 func (*WatchDirResponse) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{13}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{14}
 }
 
 func (m *WatchDirResponse) GetEvent() isWatchDirResponse_Event {
@@ -884,7 +996,7 @@ type CreateWatcherRequest struct {
 func (x *CreateWatcherRequest) Reset() {
 	*x = CreateWatcherRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[14]
+		mi := &file_filesystem_filesystem_proto_msgTypes[15]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -897,7 +1009,7 @@ func (x *CreateWatcherRequest) String() string {
 func (*CreateWatcherRequest) ProtoMessage() {}
 
 func (x *CreateWatcherRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[14]
+	mi := &file_filesystem_filesystem_proto_msgTypes[15]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -910,7 +1022,7 @@ func (x *CreateWatcherRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateWatcherRequest.ProtoReflect.Descriptor instead.
 func (*CreateWatcherRequest) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{14}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CreateWatcherRequest) GetPath() string {
@@ -938,7 +1050,7 @@ type CreateWatcherResponse struct {
 func (x *CreateWatcherResponse) Reset() {
 	*x = CreateWatcherResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[15]
+		mi := &file_filesystem_filesystem_proto_msgTypes[16]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -951,7 +1063,7 @@ func (x *CreateWatcherResponse) String() string {
 func (*CreateWatcherResponse) ProtoMessage() {}
 
 func (x *CreateWatcherResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[15]
+	mi := &file_filesystem_filesystem_proto_msgTypes[16]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -964,7 +1076,7 @@ func (x *CreateWatcherResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateWatcherResponse.ProtoReflect.Descriptor instead.
 func (*CreateWatcherResponse) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{15}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CreateWatcherResponse) GetWatcherId() string {
@@ -985,7 +1097,7 @@ type GetWatcherEventsRequest struct {
 func (x *GetWatcherEventsRequest) Reset() {
 	*x = GetWatcherEventsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[16]
+		mi := &file_filesystem_filesystem_proto_msgTypes[17]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -998,7 +1110,7 @@ func (x *GetWatcherEventsRequest) String() string {
 func (*GetWatcherEventsRequest) ProtoMessage() {}
 
 func (x *GetWatcherEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[16]
+	mi := &file_filesystem_filesystem_proto_msgTypes[17]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1011,7 +1123,7 @@ func (x *GetWatcherEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWatcherEventsRequest.ProtoReflect.Descriptor instead.
 func (*GetWatcherEventsRequest) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{16}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GetWatcherEventsRequest) GetWatcherId() string {
@@ -1032,7 +1144,7 @@ type GetWatcherEventsResponse struct {
 func (x *GetWatcherEventsResponse) Reset() {
 	*x = GetWatcherEventsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[17]
+		mi := &file_filesystem_filesystem_proto_msgTypes[18]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1045,7 +1157,7 @@ func (x *GetWatcherEventsResponse) String() string {
 func (*GetWatcherEventsResponse) ProtoMessage() {}
 
 func (x *GetWatcherEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[17]
+	mi := &file_filesystem_filesystem_proto_msgTypes[18]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1058,7 +1170,7 @@ func (x *GetWatcherEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWatcherEventsResponse.ProtoReflect.Descriptor instead.
 func (*GetWatcherEventsResponse) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{17}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetWatcherEventsResponse) GetEvents() []*FilesystemEvent {
@@ -1079,7 +1191,7 @@ type RemoveWatcherRequest struct {
 func (x *RemoveWatcherRequest) Reset() {
 	*x = RemoveWatcherRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[18]
+		mi := &file_filesystem_filesystem_proto_msgTypes[19]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1092,7 +1204,7 @@ func (x *RemoveWatcherRequest) String() string {
 func (*RemoveWatcherRequest) ProtoMessage() {}
 
 func (x *RemoveWatcherRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[18]
+	mi := &file_filesystem_filesystem_proto_msgTypes[19]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1105,7 +1217,7 @@ func (x *RemoveWatcherRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveWatcherRequest.ProtoReflect.Descriptor instead.
 func (*RemoveWatcherRequest) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{18}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *RemoveWatcherRequest) GetWatcherId() string {
@@ -1124,7 +1236,7 @@ type RemoveWatcherResponse struct {
 func (x *RemoveWatcherResponse) Reset() {
 	*x = RemoveWatcherResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[19]
+		mi := &file_filesystem_filesystem_proto_msgTypes[20]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1137,7 +1249,7 @@ func (x *RemoveWatcherResponse) String() string {
 func (*RemoveWatcherResponse) ProtoMessage() {}
 
 func (x *RemoveWatcherResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[19]
+	mi := &file_filesystem_filesystem_proto_msgTypes[20]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1150,7 +1262,7 @@ func (x *RemoveWatcherResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveWatcherResponse.ProtoReflect.Descriptor instead.
 func (*RemoveWatcherResponse) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{19}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{20}
 }
 
 type WatchDirResponse_StartEvent struct {
@@ -1162,7 +1274,7 @@ type WatchDirResponse_StartEvent struct {
 func (x *WatchDirResponse_StartEvent) Reset() {
 	*x = WatchDirResponse_StartEvent{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[20]
+		mi := &file_filesystem_filesystem_proto_msgTypes[21]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1175,7 +1287,7 @@ func (x *WatchDirResponse_StartEvent) String() string {
 func (*WatchDirResponse_StartEvent) ProtoMessage() {}
 
 func (x *WatchDirResponse_StartEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[20]
+	mi := &file_filesystem_filesystem_proto_msgTypes[21]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1188,7 +1300,7 @@ func (x *WatchDirResponse_StartEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchDirResponse_StartEvent.ProtoReflect.Descriptor instead.
 func (*WatchDirResponse_StartEvent) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{13, 0}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{14, 0}
 }
 
 type WatchDirResponse_KeepAlive struct {
@@ -1200,7 +1312,7 @@ type WatchDirResponse_KeepAlive struct {
 func (x *WatchDirResponse_KeepAlive) Reset() {
 	*x = WatchDirResponse_KeepAlive{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_filesystem_filesystem_proto_msgTypes[21]
+		mi := &file_filesystem_filesystem_proto_msgTypes[22]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1213,7 +1325,7 @@ func (x *WatchDirResponse_KeepAlive) String() string {
 func (*WatchDirResponse_KeepAlive) ProtoMessage() {}
 
 func (x *WatchDirResponse_KeepAlive) ProtoReflect() protoreflect.Message {
-	mi := &file_filesystem_filesystem_proto_msgTypes[21]
+	mi := &file_filesystem_filesystem_proto_msgTypes[22]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1226,7 +1338,7 @@ func (x *WatchDirResponse_KeepAlive) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchDirResponse_KeepAlive.ProtoReflect.Descriptor instead.
 func (*WatchDirResponse_KeepAlive) Descriptor() ([]byte, []int) {
-	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{13, 1}
+	return file_filesystem_filesystem_proto_rawDescGZIP(), []int{14, 1}
 }
 
 var File_filesystem_filesystem_proto protoreflect.FileDescriptor
@@ -1234,45 +1346,66 @@ var File_filesystem_filesystem_proto protoreflect.FileDescriptor
 var file_filesystem_filesystem_proto_rawDesc = []byte{
 	0x0a, 0x1b, 0x66, 0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x2f, 0x66, 0x69, 0x6c,
 	0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x12, 0x0a, 0x66,
-	0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x22, 0x47, 0x0a, 0x0b, 0x4d, 0x6f, 0x76,
-	0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x16, 0x0a, 0x06, 0x73, 0x6f, 0x75, 0x72,
-	0x63, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65,
-	0x12, 0x20, 0x0a, 0x0b, 0x64, 0x65, 0x73, 0x74, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18,
-	0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x64, 0x65, 0x73, 0x74, 0x69, 0x6e, 0x61, 0x74, 0x69,
-	0x6f, 0x6e, 0x22, 0x3b, 0x0a, 0x0c, 0x4d, 0x6f, 0x76, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
-	0x73, 0x65, 0x12, 0x2b, 0x0a, 0x05, 0x65, 0x6e, 0x74, 0x72, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28,
-	0x0b, 0x32, 0x15, 0x2e, 0x66, 0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x2e, 0x45,
-	0x6e, 0x74, 0x72, 0x79, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x05, 0x65, 0x6e, 0x74, 0x72, 0x79, 0x22,
-	0x24, 0x0a, 0x0e, 0x4d, 0x61, 0x6b, 0x65, 0x44, 0x69, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
-	0x74, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x61, 0x74, 0x68, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
-	0x04, 0x70, 0x61, 0x74, 0x68, 0x22, 0x3e, 0x0a, 0x0f, 0x4d, 0x61, 0x6b, 0x65, 0x44, 0x69, 0x72,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2b, 0x0a, 0x05, 0x65, 0x6e, 0x74, 0x72,
-	0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x66, 0x69, 0x6c, 0x65, 0x73, 0x79,
-	0x73, 0x74, 0x65, 0x6d, 0x2e, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x05,
-	0x65, 0x6e, 0x74, 0x72, 0x79, 0x22, 0x23, 0x0a, 0x0d, 0x52, 0x65, 0x6d, 0x6f, 0x76, 0x65, 0x52,
-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x61, 0x74, 0x68, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x70, 0x61, 0x74, 0x68, 0x22, 0x10, 0x0a, 0x0e, 0x52, 0x65,
-	0x6d, 0x6f, 0x76, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x21, 0x0a, 0x0b,
-	0x53, 0x74, 0x61, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x70,
-	0x61, 0x74, 0x68, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x70, 0x61, 0x74, 0x68, 0x22,
-	0x3b, 0x0a, 0x0c, 0x53, 0x74, 0x61, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12,
-	0x2b, 0x0a, 0x05, 0x65, 0x6e, 0x74, 0x72, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x15,
-	0x2e, 0x66, 0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x2e, 0x45, 0x6e, 0x74, 0x72,
-	0x79, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x05, 0x65, 0x6e, 0x74, 0x72, 0x79, 0x22, 0x5d, 0x0a, 0x09,
-	0x45, 0x6e, 0x74, 0x72, 0x79, 0x49, 0x6e, 0x66, 0x6f, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d,
-	0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x28, 0x0a,
-	0x04, 0x74, 0x79, 0x70, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x14, 0x2e, 0x66, 0x69,
-	0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x2e, 0x46, 0x69, 0x6c, 0x65, 0x54, 0x79, 0x70,
-	0x65, 0x52, 0x04, 0x74, 0x79, 0x70, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x61, 0x74, 0x68, 0x18,
-	0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x70, 0x61, 0x74, 0x68, 0x22, 0x3a, 0x0a, 0x0e, 0x4c,
-	0x69, 0x73, 0x74, 0x44, 0x69, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a,
-	0x04, 0x70, 0x61, 0x74, 0x68, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x70, 0x61, 0x74,
-	0x68, 0x12, 0x14, 0x0a, 0x05, 0x64, 0x65, 0x70, 0x74, 0x68, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d,
-	0x52, 0x05, 0x64, 0x65, 0x70, 0x74, 0x68, 0x22, 0x42, 0x0a, 0x0f, 0x4c, 0x69, 0x73, 0x74, 0x44,
-	0x69, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2f, 0x0a, 0x07, 0x65, 0x6e,
-	0x74, 0x72, 0x69, 0x65, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x66, 0x69,
-	0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x2e, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x49, 0x6e,
-	0x66, 0x6f, 0x52, 0x07, 0x65, 0x6e, 0x74, 0x72, 0x69, 0x65, 0x73, 0x22, 0x43, 0x0a, 0x0f, 0x57,
+	0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x1a, 0x1f, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
+	0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2f, 0x74, 0x69, 0x6d, 0x65, 0x73,
+	0x74, 0x61, 0x6d, 0x70, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0x47, 0x0a, 0x0b, 0x4d, 0x6f,
+	0x76, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x16, 0x0a, 0x06, 0x73, 0x6f, 0x75,
+	0x72, 0x63, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x73, 0x6f, 0x75, 0x72, 0x63,
+	0x65, 0x12, 0x20, 0x0a, 0x0b, 0x64, 0x65, 0x73, 0x74, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+	0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x64, 0x65, 0x73, 0x74, 0x69, 0x6e, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x22, 0x3b, 0x0a, 0x0c, 0x4d, 0x6f, 0x76, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x12, 0x2b, 0x0a, 0x05, 0x65, 0x6e, 0x74, 0x72, 0x79, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x0b, 0x32, 0x15, 0x2e, 0x66, 0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x2e,
+	0x45, 0x6e, 0x74, 0x72, 0x79, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x05, 0x65, 0x6e, 0x74, 0x72, 0x79,
+	0x22, 0x24, 0x0a, 0x0e, 0x4d, 0x61, 0x6b, 0x65, 0x44, 0x69, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65,
+	0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x61, 0x74, 0x68, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09,
+	0x52, 0x04, 0x70, 0x61, 0x74, 0x68, 0x22, 0x3e, 0x0a, 0x0f, 0x4d, 0x61, 0x6b, 0x65, 0x44, 0x69,
+	0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2b, 0x0a, 0x05, 0x65, 0x6e, 0x74,
+	0x72, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x66, 0x69, 0x6c, 0x65, 0x73,
+	0x79, 0x73, 0x74, 0x65, 0x6d, 0x2e, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x49, 0x6e, 0x66, 0x6f, 0x52,
+	0x05, 0x65, 0x6e, 0x74, 0x72, 0x79, 0x22, 0x23, 0x0a, 0x0d, 0x52, 0x65, 0x6d, 0x6f, 0x76, 0x65,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x61, 0x74, 0x68, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x70, 0x61, 0x74, 0x68, 0x22, 0x10, 0x0a, 0x0e, 0x52,
+	0x65, 0x6d, 0x6f, 0x76, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x21, 0x0a,
+	0x0b, 0x53, 0x74, 0x61, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04,
+	0x70, 0x61, 0x74, 0x68, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x70, 0x61, 0x74, 0x68,
+	0x22, 0x43, 0x0a, 0x0c, 0x53, 0x74, 0x61, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x12, 0x33, 0x0a, 0x05, 0x65, 0x6e, 0x74, 0x72, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32,
+	0x1d, 0x2e, 0x66, 0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x2e, 0x45, 0x6e, 0x74,
+	0x72, 0x79, 0x49, 0x6e, 0x66, 0x6f, 0x45, 0x78, 0x74, 0x65, 0x6e, 0x64, 0x65, 0x64, 0x52, 0x05,
+	0x65, 0x6e, 0x74, 0x72, 0x79, 0x22, 0x5d, 0x0a, 0x09, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x49, 0x6e,
+	0x66, 0x6f, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09,
+	0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x28, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x0e, 0x32, 0x14, 0x2e, 0x66, 0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65,
+	0x6d, 0x2e, 0x46, 0x69, 0x6c, 0x65, 0x54, 0x79, 0x70, 0x65, 0x52, 0x04, 0x74, 0x79, 0x70, 0x65,
+	0x12, 0x12, 0x0a, 0x04, 0x70, 0x61, 0x74, 0x68, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04,
+	0x70, 0x61, 0x74, 0x68, 0x22, 0x9c, 0x02, 0x0a, 0x11, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x49, 0x6e,
+	0x66, 0x6f, 0x45, 0x78, 0x74, 0x65, 0x6e, 0x64, 0x65, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61,
+	0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x28,
+	0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x14, 0x2e, 0x66,
+	0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x2e, 0x46, 0x69, 0x6c, 0x65, 0x54, 0x79,
+	0x70, 0x65, 0x52, 0x04, 0x74, 0x79, 0x70, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x61, 0x74, 0x68,
+	0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x70, 0x61, 0x74, 0x68, 0x12, 0x12, 0x0a, 0x04,
+	0x73, 0x69, 0x7a, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x03, 0x52, 0x04, 0x73, 0x69, 0x7a, 0x65,
+	0x12, 0x12, 0x0a, 0x04, 0x6d, 0x6f, 0x64, 0x65, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x04,
+	0x6d, 0x6f, 0x64, 0x65, 0x12, 0x20, 0x0a, 0x0b, 0x70, 0x65, 0x72, 0x6d, 0x69, 0x73, 0x73, 0x69,
+	0x6f, 0x6e, 0x73, 0x18, 0x06, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x70, 0x65, 0x72, 0x6d, 0x69,
+	0x73, 0x73, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x14, 0x0a, 0x05, 0x6f, 0x77, 0x6e, 0x65, 0x72, 0x18,
+	0x07, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x6f, 0x77, 0x6e, 0x65, 0x72, 0x12, 0x14, 0x0a, 0x05,
+	0x67, 0x72, 0x6f, 0x75, 0x70, 0x18, 0x08, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x67, 0x72, 0x6f,
+	0x75, 0x70, 0x12, 0x3f, 0x0a, 0x0d, 0x6d, 0x6f, 0x64, 0x69, 0x66, 0x69, 0x65, 0x64, 0x5f, 0x74,
+	0x69, 0x6d, 0x65, 0x18, 0x09, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67,
+	0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65,
+	0x73, 0x74, 0x61, 0x6d, 0x70, 0x52, 0x0c, 0x6d, 0x6f, 0x64, 0x69, 0x66, 0x69, 0x65, 0x64, 0x54,
+	0x69, 0x6d, 0x65, 0x22, 0x3a, 0x0a, 0x0e, 0x4c, 0x69, 0x73, 0x74, 0x44, 0x69, 0x72, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x61, 0x74, 0x68, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x04, 0x70, 0x61, 0x74, 0x68, 0x12, 0x14, 0x0a, 0x05, 0x64, 0x65, 0x70,
+	0x74, 0x68, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x05, 0x64, 0x65, 0x70, 0x74, 0x68, 0x22,
+	0x4a, 0x0a, 0x0f, 0x4c, 0x69, 0x73, 0x74, 0x44, 0x69, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x12, 0x37, 0x0a, 0x07, 0x65, 0x6e, 0x74, 0x72, 0x69, 0x65, 0x73, 0x18, 0x01, 0x20,
+	0x03, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x66, 0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d,
+	0x2e, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x49, 0x6e, 0x66, 0x6f, 0x45, 0x78, 0x74, 0x65, 0x6e, 0x64,
+	0x65, 0x64, 0x52, 0x07, 0x65, 0x6e, 0x74, 0x72, 0x69, 0x65, 0x73, 0x22, 0x43, 0x0a, 0x0f, 0x57,
 	0x61, 0x74, 0x63, 0x68, 0x44, 0x69, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12,
 	0x0a, 0x04, 0x70, 0x61, 0x74, 0x68, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x70, 0x61,
 	0x74, 0x68, 0x12, 0x1c, 0x0a, 0x09, 0x72, 0x65, 0x63, 0x75, 0x72, 0x73, 0x69, 0x76, 0x65, 0x18,
@@ -1404,7 +1537,7 @@ func file_filesystem_filesystem_proto_rawDescGZIP() []byte {
 }
 
 var file_filesystem_filesystem_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_filesystem_filesystem_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_filesystem_filesystem_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_filesystem_filesystem_proto_goTypes = []interface{}{
 	(FileType)(0),                       // 0: filesystem.FileType
 	(EventType)(0),                      // 1: filesystem.EventType
@@ -1417,54 +1550,58 @@ var file_filesystem_filesystem_proto_goTypes = []interface{}{
 	(*StatRequest)(nil),                 // 8: filesystem.StatRequest
 	(*StatResponse)(nil),                // 9: filesystem.StatResponse
 	(*EntryInfo)(nil),                   // 10: filesystem.EntryInfo
-	(*ListDirRequest)(nil),              // 11: filesystem.ListDirRequest
-	(*ListDirResponse)(nil),             // 12: filesystem.ListDirResponse
-	(*WatchDirRequest)(nil),             // 13: filesystem.WatchDirRequest
-	(*FilesystemEvent)(nil),             // 14: filesystem.FilesystemEvent
-	(*WatchDirResponse)(nil),            // 15: filesystem.WatchDirResponse
-	(*CreateWatcherRequest)(nil),        // 16: filesystem.CreateWatcherRequest
-	(*CreateWatcherResponse)(nil),       // 17: filesystem.CreateWatcherResponse
-	(*GetWatcherEventsRequest)(nil),     // 18: filesystem.GetWatcherEventsRequest
-	(*GetWatcherEventsResponse)(nil),    // 19: filesystem.GetWatcherEventsResponse
-	(*RemoveWatcherRequest)(nil),        // 20: filesystem.RemoveWatcherRequest
-	(*RemoveWatcherResponse)(nil),       // 21: filesystem.RemoveWatcherResponse
-	(*WatchDirResponse_StartEvent)(nil), // 22: filesystem.WatchDirResponse.StartEvent
-	(*WatchDirResponse_KeepAlive)(nil),  // 23: filesystem.WatchDirResponse.KeepAlive
+	(*EntryInfoExtended)(nil),           // 11: filesystem.EntryInfoExtended
+	(*ListDirRequest)(nil),              // 12: filesystem.ListDirRequest
+	(*ListDirResponse)(nil),             // 13: filesystem.ListDirResponse
+	(*WatchDirRequest)(nil),             // 14: filesystem.WatchDirRequest
+	(*FilesystemEvent)(nil),             // 15: filesystem.FilesystemEvent
+	(*WatchDirResponse)(nil),            // 16: filesystem.WatchDirResponse
+	(*CreateWatcherRequest)(nil),        // 17: filesystem.CreateWatcherRequest
+	(*CreateWatcherResponse)(nil),       // 18: filesystem.CreateWatcherResponse
+	(*GetWatcherEventsRequest)(nil),     // 19: filesystem.GetWatcherEventsRequest
+	(*GetWatcherEventsResponse)(nil),    // 20: filesystem.GetWatcherEventsResponse
+	(*RemoveWatcherRequest)(nil),        // 21: filesystem.RemoveWatcherRequest
+	(*RemoveWatcherResponse)(nil),       // 22: filesystem.RemoveWatcherResponse
+	(*WatchDirResponse_StartEvent)(nil), // 23: filesystem.WatchDirResponse.StartEvent
+	(*WatchDirResponse_KeepAlive)(nil),  // 24: filesystem.WatchDirResponse.KeepAlive
+	(*timestamppb.Timestamp)(nil),       // 25: google.protobuf.Timestamp
 }
 var file_filesystem_filesystem_proto_depIdxs = []int32{
 	10, // 0: filesystem.MoveResponse.entry:type_name -> filesystem.EntryInfo
 	10, // 1: filesystem.MakeDirResponse.entry:type_name -> filesystem.EntryInfo
-	10, // 2: filesystem.StatResponse.entry:type_name -> filesystem.EntryInfo
+	11, // 2: filesystem.StatResponse.entry:type_name -> filesystem.EntryInfoExtended
 	0,  // 3: filesystem.EntryInfo.type:type_name -> filesystem.FileType
-	10, // 4: filesystem.ListDirResponse.entries:type_name -> filesystem.EntryInfo
-	1,  // 5: filesystem.FilesystemEvent.type:type_name -> filesystem.EventType
-	22, // 6: filesystem.WatchDirResponse.start:type_name -> filesystem.WatchDirResponse.StartEvent
-	14, // 7: filesystem.WatchDirResponse.filesystem:type_name -> filesystem.FilesystemEvent
-	23, // 8: filesystem.WatchDirResponse.keepalive:type_name -> filesystem.WatchDirResponse.KeepAlive
-	14, // 9: filesystem.GetWatcherEventsResponse.events:type_name -> filesystem.FilesystemEvent
-	8,  // 10: filesystem.Filesystem.Stat:input_type -> filesystem.StatRequest
-	4,  // 11: filesystem.Filesystem.MakeDir:input_type -> filesystem.MakeDirRequest
-	2,  // 12: filesystem.Filesystem.Move:input_type -> filesystem.MoveRequest
-	11, // 13: filesystem.Filesystem.ListDir:input_type -> filesystem.ListDirRequest
-	6,  // 14: filesystem.Filesystem.Remove:input_type -> filesystem.RemoveRequest
-	13, // 15: filesystem.Filesystem.WatchDir:input_type -> filesystem.WatchDirRequest
-	16, // 16: filesystem.Filesystem.CreateWatcher:input_type -> filesystem.CreateWatcherRequest
-	18, // 17: filesystem.Filesystem.GetWatcherEvents:input_type -> filesystem.GetWatcherEventsRequest
-	20, // 18: filesystem.Filesystem.RemoveWatcher:input_type -> filesystem.RemoveWatcherRequest
-	9,  // 19: filesystem.Filesystem.Stat:output_type -> filesystem.StatResponse
-	5,  // 20: filesystem.Filesystem.MakeDir:output_type -> filesystem.MakeDirResponse
-	3,  // 21: filesystem.Filesystem.Move:output_type -> filesystem.MoveResponse
-	12, // 22: filesystem.Filesystem.ListDir:output_type -> filesystem.ListDirResponse
-	7,  // 23: filesystem.Filesystem.Remove:output_type -> filesystem.RemoveResponse
-	15, // 24: filesystem.Filesystem.WatchDir:output_type -> filesystem.WatchDirResponse
-	17, // 25: filesystem.Filesystem.CreateWatcher:output_type -> filesystem.CreateWatcherResponse
-	19, // 26: filesystem.Filesystem.GetWatcherEvents:output_type -> filesystem.GetWatcherEventsResponse
-	21, // 27: filesystem.Filesystem.RemoveWatcher:output_type -> filesystem.RemoveWatcherResponse
-	19, // [19:28] is the sub-list for method output_type
-	10, // [10:19] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	0,  // 4: filesystem.EntryInfoExtended.type:type_name -> filesystem.FileType
+	25, // 5: filesystem.EntryInfoExtended.modified_time:type_name -> google.protobuf.Timestamp
+	11, // 6: filesystem.ListDirResponse.entries:type_name -> filesystem.EntryInfoExtended
+	1,  // 7: filesystem.FilesystemEvent.type:type_name -> filesystem.EventType
+	23, // 8: filesystem.WatchDirResponse.start:type_name -> filesystem.WatchDirResponse.StartEvent
+	15, // 9: filesystem.WatchDirResponse.filesystem:type_name -> filesystem.FilesystemEvent
+	24, // 10: filesystem.WatchDirResponse.keepalive:type_name -> filesystem.WatchDirResponse.KeepAlive
+	15, // 11: filesystem.GetWatcherEventsResponse.events:type_name -> filesystem.FilesystemEvent
+	8,  // 12: filesystem.Filesystem.Stat:input_type -> filesystem.StatRequest
+	4,  // 13: filesystem.Filesystem.MakeDir:input_type -> filesystem.MakeDirRequest
+	2,  // 14: filesystem.Filesystem.Move:input_type -> filesystem.MoveRequest
+	12, // 15: filesystem.Filesystem.ListDir:input_type -> filesystem.ListDirRequest
+	6,  // 16: filesystem.Filesystem.Remove:input_type -> filesystem.RemoveRequest
+	14, // 17: filesystem.Filesystem.WatchDir:input_type -> filesystem.WatchDirRequest
+	17, // 18: filesystem.Filesystem.CreateWatcher:input_type -> filesystem.CreateWatcherRequest
+	19, // 19: filesystem.Filesystem.GetWatcherEvents:input_type -> filesystem.GetWatcherEventsRequest
+	21, // 20: filesystem.Filesystem.RemoveWatcher:input_type -> filesystem.RemoveWatcherRequest
+	9,  // 21: filesystem.Filesystem.Stat:output_type -> filesystem.StatResponse
+	5,  // 22: filesystem.Filesystem.MakeDir:output_type -> filesystem.MakeDirResponse
+	3,  // 23: filesystem.Filesystem.Move:output_type -> filesystem.MoveResponse
+	13, // 24: filesystem.Filesystem.ListDir:output_type -> filesystem.ListDirResponse
+	7,  // 25: filesystem.Filesystem.Remove:output_type -> filesystem.RemoveResponse
+	16, // 26: filesystem.Filesystem.WatchDir:output_type -> filesystem.WatchDirResponse
+	18, // 27: filesystem.Filesystem.CreateWatcher:output_type -> filesystem.CreateWatcherResponse
+	20, // 28: filesystem.Filesystem.GetWatcherEvents:output_type -> filesystem.GetWatcherEventsResponse
+	22, // 29: filesystem.Filesystem.RemoveWatcher:output_type -> filesystem.RemoveWatcherResponse
+	21, // [21:30] is the sub-list for method output_type
+	12, // [12:21] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_filesystem_filesystem_proto_init() }
@@ -1582,7 +1719,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ListDirRequest); i {
+			switch v := v.(*EntryInfoExtended); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1594,7 +1731,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[10].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ListDirResponse); i {
+			switch v := v.(*ListDirRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1606,7 +1743,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[11].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*WatchDirRequest); i {
+			switch v := v.(*ListDirResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1618,7 +1755,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[12].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*FilesystemEvent); i {
+			switch v := v.(*WatchDirRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1630,7 +1767,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[13].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*WatchDirResponse); i {
+			switch v := v.(*FilesystemEvent); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1642,7 +1779,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[14].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CreateWatcherRequest); i {
+			switch v := v.(*WatchDirResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1654,7 +1791,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[15].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CreateWatcherResponse); i {
+			switch v := v.(*CreateWatcherRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1666,7 +1803,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[16].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*GetWatcherEventsRequest); i {
+			switch v := v.(*CreateWatcherResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1678,7 +1815,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[17].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*GetWatcherEventsResponse); i {
+			switch v := v.(*GetWatcherEventsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1690,7 +1827,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[18].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*RemoveWatcherRequest); i {
+			switch v := v.(*GetWatcherEventsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1702,7 +1839,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[19].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*RemoveWatcherResponse); i {
+			switch v := v.(*RemoveWatcherRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1714,7 +1851,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[20].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*WatchDirResponse_StartEvent); i {
+			switch v := v.(*RemoveWatcherResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1726,6 +1863,18 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 		file_filesystem_filesystem_proto_msgTypes[21].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*WatchDirResponse_StartEvent); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_filesystem_filesystem_proto_msgTypes[22].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*WatchDirResponse_KeepAlive); i {
 			case 0:
 				return &v.state
@@ -1738,7 +1887,7 @@ func file_filesystem_filesystem_proto_init() {
 			}
 		}
 	}
-	file_filesystem_filesystem_proto_msgTypes[13].OneofWrappers = []interface{}{
+	file_filesystem_filesystem_proto_msgTypes[14].OneofWrappers = []interface{}{
 		(*WatchDirResponse_Start)(nil),
 		(*WatchDirResponse_Filesystem)(nil),
 		(*WatchDirResponse_Keepalive)(nil),
@@ -1749,7 +1898,7 @@ func file_filesystem_filesystem_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_filesystem_filesystem_proto_rawDesc,
 			NumEnums:      2,
-			NumMessages:   22,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
