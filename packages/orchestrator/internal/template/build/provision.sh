@@ -26,6 +26,10 @@ PermitEmptyPasswords yes
 PasswordAuthentication yes
 EOF
 
+echo "Creating sshd user"
+## fixes: sshd: Privilege separation user sshd does not exist
+useradd --system --no-create-home --shell /usr/sbin/nologin sshd
+
 echo "Don't wait for ttyS0 (serial console kernel logs)"
 systemctl mask serial-getty@ttyS0.service
 
