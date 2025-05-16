@@ -71,6 +71,17 @@ build-and-upload:
 	@rm -rf .shared/
 	@rm -rf .db/
 
+build-docker:
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
+	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
+	@rm -rf .shared/ .db/
+	@cp -r ../shared .shared/
+	@cp -r ../db .db/
+	@docker buildx install # sets up the buildx as default docker builder (otherwise the command below won't work)
+	@docker build --platform linux/amd64 --tag "$(IMAGE)" --load --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)" .
+	@rm -rf .shared/
+	@rm -rf .db/
+
 .PHONY: test
 test:
 	go test -v ./...

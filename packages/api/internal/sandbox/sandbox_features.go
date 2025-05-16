@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"log"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
@@ -18,6 +19,7 @@ func stripVersionPrefix(version string) string {
 func NewVersionInfo(fcVersion string) (info VersionInfo, err error) {
 	// The structure of the fcVersion is last_tag[-prerelease]_commit_hash
 	// Example: v1.0.0-release_1234567
+	log.Println("start NewVersionInfo", fcVersion)
 
 	parts := strings.Split(fcVersion, "_")
 
@@ -27,6 +29,7 @@ func NewVersionInfo(fcVersion string) (info VersionInfo, err error) {
 	if versionErr != nil {
 		return info, versionErr
 	}
+	log.Println("end NewVersionInfo", fcVersion)
 
 	info.lastReleaseVersion = *version
 	info.commitHash = parts[1]

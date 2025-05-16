@@ -51,7 +51,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(
 	// Sanitize ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	id := strings.ReplaceAll(sandboxID, "`", "")
-	query := fmt.Sprintf("{teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamID.String(), id)
+	query := fmt.Sprintf("{source=\"logs-collector\", service=\"envd\", teamID=`%s`, sandboxID=`%s`, category!=\"metrics\"}", teamID.String(), id)
 
 	res, err := a.lokiClient.QueryRange(query, int(*params.Limit), start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
 	if err != nil {

@@ -13,3 +13,6 @@ use (
 
 	./tests/integration
 )
+
+replace github.com/mitchellh/osext => golang.org/x/sys v0.33.0
+replace github.com/chenzhuoyu/iasm => github.com/cloudwego/iasm v0.2.0

@@ -7,12 +7,11 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
-	"github.com/e2b-dev/infra/packages/db/queries"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
+	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -20,18 +19,18 @@ func (a *APIStore) startSandbox(
 	ctx context.Context,
 	sandboxID string,
 	timeout time.Duration,
-	envVars map[string]string,
+	envVars,
 	metadata map[string]string,
 	alias string,
 	team authcache.AuthTeamInfo,
-	build queries.EnvBuild,
+	build *models.EnvBuild,
+	logger *logs.SandboxLogger,
 	requestHeader *http.Header,
 	isResume bool,
 	clientID *string,
 	baseTemplateID string,
 	autoPause bool,
-	envdAccessToken *string,
-) (*api.Sandbox, *api.APIError) {
+) (*api.Sandbox, error) {
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
 
@@ -46,16 +45,17 @@ func (a *APIStore) startSandbox(
 		startTime,
 		endTime,
 		timeout,
+		logger,
 		isResume,
 		clientID,
 		baseTemplateID,
 		autoPause,
-		envdAccessToken,
 	)
 	if instanceErr != nil {
-		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr.Err)
+		errMsg := fmt.Errorf("error when creating instance: %w", instanceErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
-		return nil, instanceErr
+
+		return nil, errMsg
 	}
 
 	telemetry.ReportEvent(ctx, "Created sandbox")
@@ -81,18 +81,13 @@ func (a *APIStore) startSandbox(
 		attribute.String("instance.id", sandbox.SandboxID),
 	)
 
-	sbxlogger.E(&sbxlogger.SandboxMetadata{
-		SandboxID:  sandbox.SandboxID,
-		TemplateID: *build.EnvID,
-		TeamID:     team.Team.ID.String(),
-	}).Info("Sandbox created", zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")))
+	logger.Infof("Sandbox created with - end time: %s", endTime.Format("2006-01-02 15:04:05 -07:00"))
 
 	return &api.Sandbox{
-		ClientID:        sandbox.ClientID,
-		SandboxID:       sandbox.SandboxID,
-		TemplateID:      *build.EnvID,
-		Alias:           &alias,
-		EnvdVersion:     *build.EnvdVersion,
-		EnvdAccessToken: envdAccessToken,
+		ClientID:    sandbox.ClientID,
+		SandboxID:   sandbox.SandboxID,
+		TemplateID:  *build.EnvID,
+		Alias:       &alias,
+		EnvdVersion: *build.EnvdVersion,
 	}, nil
 }

@@ -1,13 +1,9 @@
 package instance
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
-
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
 func (c *InstanceCache) Count() int {
@@ -30,9 +26,11 @@ func (c *InstanceCache) CountForTeam(teamID uuid.UUID) (count uint) {
 	return count
 }
 
-// Exists Check if the instance exists in the cache or is being evicted.
+// Exists Check if the instance exists in the cache.
 func (c *InstanceCache) Exists(instanceID string) bool {
-	return c.cache.Has(instanceID, true)
+	_, exists := c.cache.Get(instanceID)
+
+	return exists
 }
 
 // Get the item from the cache.
@@ -60,13 +58,7 @@ func (c *InstanceCache) GetInstances(teamID *uuid.UUID) (instances []*InstanceIn
 // Add the instance to the cache and start expiration timer.
 // If the instance already exists we do nothing - it was loaded from Orchestrator.
 // TODO: Any error here should delete the sandbox
-func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCreated bool) error {
-	sbxlogger.I(instance).Debug("Adding sandbox to cache",
-		zap.Bool("newly_created", newlyCreated),
-		zap.Time("start_time", instance.StartTime),
-		zap.Time("end_time", instance.GetEndTime()),
-	)
-
+func (c *InstanceCache) Add(instance *InstanceInfo, newlyCreated bool) error {
 	if instance.Instance == nil {
 		return fmt.Errorf("instance doesn't contain info about inself")
 	}
@@ -98,7 +90,7 @@ func (c *InstanceCache) Add(ctx context.Context, instance *InstanceInfo, newlyCr
 	}
 
 	c.Set(instance.Instance.SandboxID, instance)
-	c.UpdateCounters(ctx, instance, 1, newlyCreated)
+	c.UpdateCounters(instance, 1, newlyCreated)
 
 	// Release the reservation if it exists
 	c.reservations.release(instance.Instance.SandboxID)

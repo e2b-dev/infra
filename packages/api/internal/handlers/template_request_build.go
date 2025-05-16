@@ -8,12 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/constants"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
@@ -60,8 +58,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 
 	telemetry.ReportEvent(ctx, "started request for environment build")
 
-	var team *queries.Team
-	var tier *queries.Tier
+	var team *models.Team
 	// Prepare info for rebuilding env
 	userID, teams, err := a.GetUserAndTeams(c)
 	if err != nil {
@@ -85,9 +82,8 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		}
 
 		for _, t := range teams {
-			if t.Team.ID == teamUUID {
-				team = &t.Team
-				tier = &t.Tier
+			if t.ID == teamUUID {
+				team = t
 				break
 			}
 		}
@@ -102,9 +98,8 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		}
 	} else {
 		for _, t := range teams {
-			if t.UsersTeam.IsDefault {
-				team = &t.Team
-				tier = &t.Tier
+			if t.Edges.UsersTeams[0].IsDefault {
+				team = t
 				break
 			}
 		}
@@ -169,7 +164,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		telemetry.SetAttributes(ctx, attribute.Int("env.memory_mb", int(*body.MemoryMB)))
 	}
 
-	cpuCount, ramMB, apiError := getCPUAndRAM(tier, body.CpuCount, body.MemoryMB)
+	cpuCount, ramMB, apiError := getCPUAndRAM(team.Tier, body.CpuCount, body.MemoryMB)
 	if apiError != nil {
 		telemetry.ReportCriticalError(ctx, apiError.Err)
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
@@ -248,7 +243,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		SetVcpu(cpuCount).
 		SetKernelVersion(schema.DefaultKernelVersion).
 		SetFirecrackerVersion(schema.DefaultFirecrackerVersion).
-		SetFreeDiskSizeMB(tier.DiskMb).
+		SetFreeDiskSizeMB(team.Edges.TeamTier.DiskMB).
 		SetNillableStartCmd(body.StartCmd).
 		SetDockerfile(body.Dockerfile).
 		Exec(ctx)
@@ -362,7 +357,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		aliases = append(aliases, alias)
 	}
 
-	zap.L().Info("Built template", zap.String("template_id", templateID), zap.String("build_id", buildID.String()))
+	a.logger.Infof("Built template %s with build id %s", templateID, buildID.String())
 
 	return &api.Template{
 		TemplateID: templateID,
@@ -372,57 +367,50 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 	}
 }
 
-func getCPUAndRAM(tier *queries.Tier, cpuCount, memoryMB *int32) (int64, int64, *api.APIError) {
+func getCPUAndRAM(tierID string, cpuCount, memoryMB *int32) (int64, int64, *api.APIError) {
 	cpu := constants.DefaultTemplateCPU
 	ramMB := constants.DefaultTemplateMemory
 
+	// // Check if team can customize the resources
+	// if (cpuCount != nil || memoryMB != nil) && tierID == constants.BaseTierID {
+	// 	return 0, 0, &api.APIError{
+	// 		Err:       fmt.Errorf("team with tier %s can't customize resources", tierID),
+	// 		ClientMsg: "Team with this tier can't customize resources, don't specify cpu count or memory",
+	// 		Code:      http.StatusBadRequest,
+	// 	}
+	// }
+
 	if cpuCount != nil {
-		cpu = int64(*cpuCount)
-		if cpu < constants.MinTemplateCPU {
+		if *cpuCount < constants.MinTemplateCPU || *cpuCount > constants.MaxTemplateCPU {
 			return 0, 0, &api.APIError{
-				Err:       fmt.Errorf("CPU count must be at least %d", constants.MinTemplateCPU),
-				ClientMsg: fmt.Sprintf("CPU count must be at least %d", constants.MinTemplateCPU),
+				Err:       fmt.Errorf("customCPU must be between %d and %d", constants.MinTemplateCPU, constants.MaxTemplateCPU),
+				ClientMsg: fmt.Sprintf("CPU must be between %d and %d", constants.MinTemplateCPU, constants.MaxTemplateCPU),
 				Code:      http.StatusBadRequest,
 			}
 		}
 
-		if cpu > tier.MaxVcpu {
-			return 0, 0, &api.APIError{
-				Err:       fmt.Errorf("CPU count exceeds team limits (%d)", tier.MaxVcpu),
-				ClientMsg: fmt.Sprintf("CPU count can't be higher than %d (if you need to increase this limit, please contact support)", tier.MaxVcpu),
-				Code:      http.StatusBadRequest,
-			}
-		}
-
+		cpu = *cpuCount
 	}
 
 	if memoryMB != nil {
-		ramMB = int64(*memoryMB)
-
-		if ramMB < constants.MinTemplateMemory {
+		if *memoryMB < constants.MinTemplateMemory || *memoryMB > constants.MaxTemplateMemory {
 			return 0, 0, &api.APIError{
-				Err:       fmt.Errorf("memory must be at least %d MiB", constants.MinTemplateMemory),
-				ClientMsg: fmt.Sprintf("Memory must be at least %d MiB", constants.MinTemplateMemory),
+				Err:       fmt.Errorf("customMemory must be between %d and %d", constants.MinTemplateMemory, constants.MaxTemplateMemory),
+				ClientMsg: fmt.Sprintf("Memory must be between %d and %d", constants.MinTemplateMemory, constants.MaxTemplateMemory),
 				Code:      http.StatusBadRequest,
 			}
 		}
 
-		if ramMB%2 != 0 {
+		if *memoryMB%2 != 0 {
 			return 0, 0, &api.APIError{
-				Err:       fmt.Errorf("user provided memory size isn't divisible by 2"),
-				ClientMsg: "Memory must be divisible by 2",
+				Err:       fmt.Errorf("customMemory must be divisible by 2"),
+				ClientMsg: "Memory must be a divisible by 2",
 				Code:      http.StatusBadRequest,
 			}
 		}
 
-		if ramMB > tier.MaxRamMb {
-			return 0, 0, &api.APIError{
-				Err:       fmt.Errorf("memory exceeds team limits (%d MiB)", tier.MaxRamMb),
-				ClientMsg: fmt.Sprintf("Memory can't be higher than %d MiB (if you need to increase this limit, please contact support)", tier.MaxRamMb),
-				Code:      http.StatusBadRequest,
-			}
-		}
+		ramMB = *memoryMB
 	}
 
-	return cpu, ramMB, nil
+	return int64(cpu), int64(ramMB), nil
 }

@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -9,35 +8,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
-	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
-	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const (
-	InstanceIDPrefix    = "i"
-	metricTemplateAlias = metrics.MetricPrefix + "template.alias"
-)
-
-var (
-	// mostUsedTemplates is a map of the most used template aliases.
-	// It is used for monitoring and to reduce metric cardinality.
-	mostUsedTemplates = map[string]struct{}{
-		"base":                  {},
-		"code-interpreter-v1":   {},
-		"code-interpreter-beta": {},
-		"desktop":               {},
-	}
-)
+const InstanceIDPrefix = "i"
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -77,11 +59,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	_, templateSpan := a.Tracer.Start(ctx, "get-template")
 	defer templateSpan.End()
-
 	// Check if team has access to the environment
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
 	if checkErr != nil {
 		telemetry.ReportCriticalError(ctx, checkErr.Err)
+
 		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
 		return
 	}
@@ -90,21 +72,26 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "Checked team access")
 
 	c.Set("envID", env.TemplateID)
-	if aliases := env.Aliases; aliases != nil {
-		setTemplateNameMetric(c, *aliases)
-	}
 
 	sandboxID := InstanceIDPrefix + id.Generate()
 
 	c.Set("instanceID", sandboxID)
 
-	sbxlogger.E(&sbxlogger.SandboxMetadata{
-		SandboxID:  sandboxID,
-		TemplateID: env.TemplateID,
-		TeamID:     teamInfo.Team.ID.String(),
-	}).Debug("Started creating sandbox")
+	sandboxLogger := logs.NewSandboxLogger(
+		sandboxID,
+		env.TemplateID,
+		teamInfo.Team.ID.String(),
+		build.Vcpu,
+		build.RAMMB,
+		false,
+	)
+	sandboxLogger.Debugf("Started creating sandbox")
 
-	alias := firstAlias(env.Aliases)
+	var alias string
+	if env.Aliases != nil && len(*env.Aliases) > 0 {
+		alias = (*env.Aliases)[0]
+	}
+
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", teamInfo.Team.ID.String()),
 		attribute.String("env.id", env.TemplateID),
@@ -129,6 +116,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 		if timeout > time.Duration(teamInfo.Tier.MaxLengthHours)*time.Hour {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Timeout cannot be greater than %d hours", teamInfo.Tier.MaxLengthHours))
+
 			return
 		}
 	}
@@ -138,19 +126,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		autoPause = *body.AutoPause
 	}
 
-	var envdAccessToken *string = nil
-	if body.Secure != nil && *body.Secure == true {
-		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
-		if tokenErr != nil {
-			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), zap.String("sandboxID", sandboxID), zap.String("buildID", build.ID.String()))
-			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
-			return
-		}
-
-		envdAccessToken = &accessToken
-	}
-
-	sbx, createErr := a.startSandbox(
+	sandbox, err := a.startSandbox(
 		ctx,
 		sandboxID,
 		timeout,
@@ -158,74 +134,21 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		metadata,
 		alias,
 		teamInfo,
-		*build,
+		build,
+		sandboxLogger,
 		&c.Request.Header,
 		false,
 		nil,
 		env.TemplateID,
 		autoPause,
-		envdAccessToken,
 	)
-	if createErr != nil {
-		zap.L().Error("Failed to create sandbox", zap.Error(createErr.Err))
-		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, err.Error())
+
 		return
 	}
 
-	c.Set("nodeID", sbx.ClientID)
+	c.Set("nodeID", sandbox.ClientID)
 
-	c.JSON(http.StatusCreated, &sbx)
-}
-
-func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (string, *api.APIError) {
-	if envdVersion == nil {
-		return "", &api.APIError{
-			Code:      http.StatusBadRequest,
-			ClientMsg: "you need to re-build template to allow secure flag",
-			Err:       errors.New("envd version is required during envd access token creation"),
-		}
-	}
-
-	// check if the envd version is newer than 0.2.0
-	if semver.Compare(fmt.Sprintf("v%s", *envdVersion), "v0.2.0") < 0 {
-		return "", &api.APIError{
-			Code:      http.StatusBadRequest,
-			ClientMsg: "current template build does not support access flag, you need to re-build template to allow it",
-			Err:       errors.New("envd version is not supported for secure flag"),
-		}
-	}
-
-	key, err := a.envdAccessTokenGenerator.GenerateAccessToken(sandboxID)
-	if err != nil {
-		return "", &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: "error during sandbox access token generation",
-			Err:       err,
-		}
-	}
-
-	return key, nil
-
-}
-
-func setTemplateNameMetric(c *gin.Context, aliases []string) {
-	for _, alias := range aliases {
-		if _, exists := mostUsedTemplates[alias]; exists {
-			c.Set(metricTemplateAlias, alias)
-			return
-		}
-	}
-
-	// Fallback to 'other' if no match of mostUsedTemplates found
-	c.Set(metricTemplateAlias, "other")
-}
-
-func firstAlias(aliases *[]string) string {
-	if aliases == nil {
-		return ""
-	}
-	if len(*aliases) == 0 {
-		return ""
-	}
-	return (*aliases)[0]
+	c.JSON(http.StatusCreated, &sandbox)
 }

@@ -7,10 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
@@ -69,10 +67,10 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
-	var team *queries.Team
+	var team *models.Team
 	for _, t := range teams {
-		if t.Team.ID == template.TeamID {
-			team = &t.Team
+		if t.ID == template.TeamID {
+			team = t
 			break
 		}
 	}
@@ -126,7 +124,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	// delete all builds
-	deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIds)
+	deleteJobErr := a.templateManager.DeleteBuilds(ctx, template.ID, buildIds)
 	if deleteJobErr != nil {
 		errMsg := fmt.Errorf("error when deleting env files from storage: %w", deleteJobErr)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -142,7 +140,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "deleted environment", properties.Set("environment", template.ID))
 
-	zap.L().Info("Deleted env", zap.String("env_id", template.ID), zap.String("team_id", team.ID.String()))
+	a.logger.Infof("Deleted env '%s' from team '%s'", template.ID, team.ID)
 
 	c.JSON(http.StatusOK, nil)
 }
