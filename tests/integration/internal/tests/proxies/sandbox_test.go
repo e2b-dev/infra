@@ -16,12 +16,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/publicsuffix"
 
+	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
-func TestSandboxProxyPorts(t *testing.T) {
+func TestSandboxProxyWorkingPort(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -30,12 +31,12 @@ func TestSandboxProxyPorts(t *testing.T) {
 	envdClient := setup.GetEnvdClient(t, ctx)
 
 	serverCtx, serverCancel := context.WithCancel(ctx)
-	serverPort := 8000
+	port := 8000
 	// Start Python HTTP server
 	serverReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd:  "python",
-			Args: []string{"-m", "http.server", fmt.Sprintf("%d", serverPort)},
+			Args: []string{"-m", "http.server", fmt.Sprintf("%d", port)},
 		},
 	})
 	setup.SetSandboxHeader(serverReq.Header(), sbx.SandboxID, sbx.ClientID)
@@ -53,7 +54,6 @@ func TestSandboxProxyPorts(t *testing.T) {
 	// Wait for server to start
 	time.Sleep(time.Second)
 
-	// Test good port
 	client := &http.Client{
 		Timeout: 1 * time.Second,
 	}
@@ -61,109 +61,129 @@ func TestSandboxProxyPorts(t *testing.T) {
 	url, err := url.Parse(setup.EnvdProxy)
 	require.NoError(t, err)
 
-	var eTLD string
-	if url.Hostname() == "localhost" {
-		eTLD = url.Hostname()
-	} else {
-		eTLD, _ = publicsuffix.EffectiveTLDPlusOne(url.Hostname())
-	}
-
-	// Extract top level domain from EnvdProxy
-	host := fmt.Sprintf("%d-%s-%s.%s:%s", serverPort, sbx.SandboxID, sbx.ClientID, eTLD, url.Port())
-	url.Host = host
-
-	var goodResp *http.Response
+	var resp *http.Response
 	for i := 0; i < 10; i++ {
-		req := &http.Request{
-			Method: http.MethodGet,
-			URL:    url,
-			Header: http.Header{
-				"Host": []string{host},
-			},
-		}
-		goodResp, err = client.Do(req)
-		if err == nil && goodResp.StatusCode == http.StatusOK {
+		resp, err = doRequest(t, client, sbx, url, port, nil)
+		if err == nil && resp.StatusCode == http.StatusOK {
 			break
 		} else if err != nil {
 			t.Logf("Error: %v", err)
 		} else {
-			t.Logf("Status code: %d", goodResp.StatusCode)
-			_ = goodResp.Body.Close()
+			x, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Logf("[Status code: %d] Error reading response body: %v", resp.StatusCode, err)
+			} else {
+				t.Logf("[Status code: %d] Response body: %s", resp.StatusCode, string(x))
+			}
 		}
 
 		time.Sleep(500 * time.Millisecond)
 	}
 	require.NoError(t, err)
-	require.NotNil(t, goodResp)
-	assert.Equal(t, http.StatusOK, goodResp.StatusCode)
+	require.NotNil(t, resp)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
 
-	// Test bad port (3210)
-	badPort := 3210
-	host = fmt.Sprintf("%d-%s-%s.%s:%s", badPort, sbx.SandboxID, sbx.ClientID, eTLD, url.Port())
-	url.Host = host
+func TestSandboxProxyClosedPort(t *testing.T) {
+	c := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, c)
 
-	var badResp *http.Response
+	url, err := url.Parse(setup.EnvdProxy)
+	require.NoError(t, err)
+
+	// Test closed port
+	port := 3210
+
+	client := &http.Client{
+		Timeout: 1000 * time.Second,
+	}
+
+	var resp *http.Response
 	for i := 0; i < 10; i++ {
-		req := &http.Request{
-			Method: http.MethodGet,
-			URL:    url,
-			Header: http.Header{
-				"Host": []string{host},
-			},
-		}
-		badResp, err = client.Do(req)
-		if err == nil && badResp.StatusCode == http.StatusBadGateway {
+		resp, err = doRequest(t, client, sbx, url, port, nil)
+		if err == nil && resp.StatusCode == http.StatusBadGateway {
 			break
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 	require.NoError(t, err)
-	require.NotNil(t, badResp)
-	assert.Equal(t, http.StatusBadGateway, badResp.StatusCode)
-	assert.Equal(t, "application/json; charset=utf-8", badResp.Header.Get("Content-Type"))
+	require.NotNil(t, resp)
+	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+
+	assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
 	// Parse error response
 	var errorResp struct {
 		Message   string `json:"message"`
 		SandboxID string `json:"sandboxId"`
 		Port      int    `json:"port"`
 	}
-	err = json.NewDecoder(badResp.Body).Decode(&errorResp)
+	err = json.NewDecoder(resp.Body).Decode(&errorResp)
 	require.NoError(t, err)
 	assert.Equal(t, "The sandbox is running but port is not open", errorResp.Message)
 	assert.Equal(t, sbx.SandboxID, errorResp.SandboxID)
-	assert.Equal(t, badPort, errorResp.Port)
+	assert.Equal(t, port, errorResp.Port)
 
 	// Pretend to be a browser
 	for i := 0; i < 10; i++ {
-		req := &http.Request{
-			Method: http.MethodGet,
-			URL:    url,
-			Header: http.Header{
-				"Host":       []string{host},
-				"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"},
-			},
-		}
-		badResp, err = client.Do(req)
-		if err == nil && badResp.StatusCode == http.StatusBadGateway {
+		resp, err = doRequest(t, client, sbx, url, port, &http.Header{"User-Agent": []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}})
+		if err == nil && resp.StatusCode == http.StatusBadGateway {
 			break
 		} else if err != nil {
-			t.Logf("Error: %v", err)
-		} else {
-			t.Logf("Status code: %d", badResp.StatusCode)
-			_ = badResp.Body.Close()
+			x, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Logf("[Status code: %d] Error reading response body: %v", resp.StatusCode, err)
+			} else {
+				t.Logf("[Status code: %d] Response body: %s", resp.StatusCode, string(x))
+			}
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 	require.NoError(t, err)
-	require.NotNil(t, badResp)
-	assert.Equal(t, http.StatusBadGateway, badResp.StatusCode)
-	assert.Equal(t, "text/html; charset=utf-8", badResp.Header.Get("Content-Type"))
-	body, err := io.ReadAll(badResp.Body)
+	require.NotNil(t, resp)
+	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
 	assert.True(t, strings.HasPrefix(string(body), "<html"))
 	assert.True(t, strings.Contains(string(body), "The sandbox is running but port is not open"))
 	assert.True(t, strings.Contains(string(body), sbx.SandboxID))
-	assert.True(t, strings.Contains(string(body), fmt.Sprintf("%d", badPort)))
+	assert.True(t, strings.Contains(string(body), fmt.Sprintf("%d", port)))
 	assert.True(t, strings.HasSuffix(string(body), "</html>"))
+}
+
+func doRequest(t *testing.T, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Header) (*http.Response, error) {
+	var host string
+
+	if url.Hostname() == "localhost" {
+		host = fmt.Sprintf("%d-%s-%s.%s", port, sbx.SandboxID, sbx.ClientID, "localhost")
+	} else {
+		// Extract top level domain from EnvdProxy
+		eTLD, _ := publicsuffix.EffectiveTLDPlusOne(url.Hostname())
+		host = fmt.Sprintf("%d-%s-%s.%s:%s", port, sbx.SandboxID, sbx.ClientID, eTLD, url.Port())
+	}
+
+	header := http.Header{
+		"Host": []string{host},
+	}
+
+	if extraHeaders != nil {
+		for key, values := range *extraHeaders {
+			header[key] = values
+		}
+	}
+
+	req := &http.Request{
+		Method: http.MethodGet,
+		URL:    url,
+		Host:   host,
+		Header: header,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Logf("Error: %v", err)
+		return nil, err
+	}
+
+	return resp, nil
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -29,7 +30,7 @@ func SetupSandboxWithCleanupWithTimeout(t *testing.T, c *api.ClientWithResponses
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
-	assert.NotNil(t, createSandboxResponse.JSON201)
+	require.NotNil(t, createSandboxResponse.JSON201)
 
 	t.Cleanup(func() {
 		if t.Failed() {
