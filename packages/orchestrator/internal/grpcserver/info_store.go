@@ -1,4 +1,4 @@
-package info
+package grpcserver
 
 import (
 	"context"
@@ -6,9 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/servicetype"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -24,11 +22,11 @@ var (
 type Server struct {
 	orchestratorinfo.UnimplementedInfoServiceServer
 
-	info      *server.ServiceInfo
+	info      *ServiceInfo
 	sandboxes *smap.Map[*sandbox.Sandbox]
 }
 
-func NewInfoService(_ context.Context, grpc *grpcserver.GRPCServer, info *server.ServiceInfo, sandboxes *smap.Map[*sandbox.Sandbox]) *Server {
+func NewInfoService(_ context.Context, grpc *GRPCServer, info *ServiceInfo, sandboxes *smap.Map[*sandbox.Sandbox]) *Server {
 	service := &Server{
 		info:      info,
 		sandboxes: sandboxes,
@@ -39,7 +37,7 @@ func NewInfoService(_ context.Context, grpc *grpcserver.GRPCServer, info *server
 	return service
 }
 
-func NewInfoContainer(clientId string, sourceVersion string, sourceCommit string) *server.ServiceInfo {
+func NewInfoContainer(clientId string, sourceVersion string, sourceCommit string) *ServiceInfo {
 	services := servicetype.GetServices()
 	serviceRoles := make([]orchestratorinfo.ServiceInfoRole, 0)
 
@@ -49,7 +47,7 @@ func NewInfoContainer(clientId string, sourceVersion string, sourceCommit string
 		}
 	}
 
-	serviceInfo := &server.ServiceInfo{
+	serviceInfo := &ServiceInfo{
 		ClientId:  clientId,
 		ServiceId: uuid.NewString(),
 		Startup:   time.Now(),

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -19,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -28,7 +26,7 @@ import (
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
-	info            *ServiceInfo
+	info            *grpcserver.ServiceInfo
 	sandboxes       *smap.Map[*sandbox.Sandbox]
 	proxy           *proxy.SandboxProxy
 	tracer          trace.Tracer
@@ -43,39 +41,8 @@ type server struct {
 	useClickhouseMetrics string
 }
 
-type ServiceInfo struct {
-	ClientId  string
-	ServiceId string
-
-	SourceVersion string
-	SourceCommit  string
-
-	Startup time.Time
-	Roles   []orchestratorinfo.ServiceInfoRole
-
-	status   orchestratorinfo.ServiceInfoStatus
-	statusMu sync.RWMutex
-}
-
-func (s *ServiceInfo) GetStatus() orchestratorinfo.ServiceInfoStatus {
-	s.statusMu.RLock()
-	defer s.statusMu.RUnlock()
-
-	return s.status
-}
-
-func (s *ServiceInfo) SetStatus(status orchestratorinfo.ServiceInfoStatus) {
-	s.statusMu.Lock()
-	defer s.statusMu.Unlock()
-
-	if s.status != status {
-		zap.L().Info("Service status changed", zap.String("status", status.String()))
-		s.status = status
-	}
-}
-
 type Service struct {
-	info     *ServiceInfo
+	info     *grpcserver.ServiceInfo
 	server   *server
 	proxy    *proxy.SandboxProxy
 	shutdown struct {
@@ -99,7 +66,7 @@ func New(
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	tracer trace.Tracer,
-	info *ServiceInfo,
+	info *grpcserver.ServiceInfo,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) (*Service, error) {

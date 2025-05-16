@@ -10,39 +10,30 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	e2bHealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
 )
 
-const healthcheckFrequency = 5 * time.Second
-const healthcheckTimeout = 30 * time.Second
-
 type Healthcheck struct {
-	version string
-	grpc    *GRPCServer
+	info *ServiceInfo
+	grpc *GRPCServer
 
-	// TODO: Replace with status from SQL Lite
-	status  e2bHealth.Status
 	lastRun time.Time
 	mu      sync.RWMutex
 }
 
-func NewHealthcheck(grpc *GRPCServer, version string) (*Healthcheck, error) {
+func NewHealthcheck(grpc *GRPCServer, info *ServiceInfo) (*Healthcheck, error) {
 	return &Healthcheck{
-		version: version,
-		grpc:    grpc,
+		info: info,
+		grpc: grpc,
 
 		lastRun: time.Now(),
-		status:  e2bHealth.Unhealthy,
 		mu:      sync.RWMutex{},
 	}, nil
 }
 
-func (h *Healthcheck) Start(ctx context.Context, listener net.Listener) {
-	ticker := time.NewTicker(healthcheckFrequency)
-	defer ticker.Stop()
-
+func (h *Healthcheck) Start(_ context.Context, listener net.Listener) {
 	// Start /health HTTP server
 	routeMux := http.NewServeMux()
 	routeMux.HandleFunc("/health", h.healthHandler)
@@ -56,70 +47,28 @@ func (h *Healthcheck) Start(ctx context.Context, listener net.Listener) {
 			log.Fatal(err)
 		}
 	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			err := h.report(ctx)
-			if err != nil {
-				zap.L().Error("Error reporting healthcheck", zap.Error(err))
-			}
-		}
-	}
 }
 
-// report updates the health status.
-// This function is run in a goroutine every healthcheckFrequency for the reason of having
-// longer running tasks that might be too slow or resource intensive to be run
-// in the healthcheck http handler directly.
-func (h *Healthcheck) report(ctx context.Context) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	childCtx, cancel := context.WithTimeout(ctx, healthcheckTimeout)
-	defer cancel()
-
-	// Update last run on report
-	h.lastRun = time.Now()
-
-	// Report health of the gRPC
-	var err error
-	h.status, err = h.getGRPCHealth(childCtx)
-	if err != nil {
-		return err
+func (h *Healthcheck) getStatus() e2bHealth.Status {
+	switch h.info.GetStatus() {
+	case orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:
+		return e2bHealth.Healthy
+	case orchestratorinfo.ServiceInfoStatus_OrchestratorDraining:
+		return e2bHealth.Healthy // orchestration is currently not supporting draining and its manager by api/edge api
 	}
 
-	return nil
-}
-
-// getGRPCHealth returns the health status of the grpc.Server by calling the health service check.
-func (h *Healthcheck) getGRPCHealth(ctx context.Context) (e2bHealth.Status, error) {
-	c, err := h.grpc.HealthServer().Check(ctx, &healthpb.HealthCheckRequest{
-		// Empty string is the default service name
-		Service: "",
-	})
-	if err != nil {
-		return e2bHealth.Unhealthy, err
-	}
-
-	switch c.GetStatus() {
-	case healthpb.HealthCheckResponse_SERVING:
-		return e2bHealth.Healthy, nil
-	default:
-		return e2bHealth.Unhealthy, nil
-	}
+	return e2bHealth.Unhealthy
 }
 
 func (h *Healthcheck) healthHandler(w http.ResponseWriter, r *http.Request) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	response := e2bHealth.Response{Status: h.status, Version: h.version}
+	status := h.getStatus()
+	response := e2bHealth.Response{Status: status, Version: h.info.SourceCommit}
 
 	w.Header().Set("Content-Type", "application/json")
-	if h.status == e2bHealth.Unhealthy {
+	if status == e2bHealth.Unhealthy {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	} else {
 		w.WriteHeader(http.StatusOK)

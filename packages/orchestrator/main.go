@@ -18,7 +18,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/info"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -207,10 +206,10 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
 
-	grpcSrv := grpcserver.New(commitSHA)
-	tracer := otel.Tracer(serviceName)
+	serviceInfo := grpcserver.NewInfoContainer(clientID, version, commitSHA)
 
-	serviceInfo := info.NewInfoContainer(clientID, version, commitSHA)
+	grpcSrv := grpcserver.New(serviceInfo)
+	tracer := otel.Tracer(serviceName)
 
 	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
 	if err != nil {
@@ -249,7 +248,7 @@ func run(port, proxyPort uint) (success bool) {
 		closers = append([]Closeable{tmpl}, closers...)
 	}
 
-	info.NewInfoService(ctx, grpcSrv, serviceInfo, sandboxes)
+	grpcserver.NewInfoService(ctx, grpcSrv, serviceInfo, sandboxes)
 
 	g.Go(func() error {
 		zap.L().Info("Starting session proxy")

@@ -23,7 +23,8 @@ import (
 )
 
 type GRPCServer struct {
-	version    string
+	info *ServiceInfo
+
 	grpc       *grpc.Server
 	grpcHealth *health.Server
 
@@ -34,7 +35,7 @@ type GRPCServer struct {
 	}
 }
 
-func New(version string) *GRPCServer {
+func New(info *ServiceInfo) *GRPCServer {
 	opts := []logging.Option{
 		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
@@ -75,7 +76,7 @@ func New(version string) *GRPCServer {
 	grpc_health_v1.RegisterHealthServer(srv, grpcHealth)
 
 	return &GRPCServer{
-		version:    version,
+		info:       info,
 		grpc:       srv,
 		grpcHealth: grpcHealth,
 	}
@@ -96,7 +97,7 @@ func (g *GRPCServer) Start(ctx context.Context, port uint) error {
 		return fmt.Errorf("failed to listen on port %d: %w", port, err)
 	}
 
-	healthcheck, err := NewHealthcheck(g, g.version)
+	healthcheck, err := NewHealthcheck(g, g.info)
 	if err != nil {
 		return fmt.Errorf("failed to create healthcheck: %w", err)
 	}
