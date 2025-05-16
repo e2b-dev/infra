@@ -23,7 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/servicetype"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -109,8 +109,8 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("client ID is empty")
 	}
 
-	services := servicetype.GetServices()
-	serviceName := servicetype.GetServiceName(services)
+	services := service.GetServices()
+	serviceName := service.GetServiceName(services)
 
 	serviceError := make(chan error)
 	defer close(serviceError)
@@ -241,7 +241,7 @@ func run(port, proxyPort uint) (success bool) {
 	)
 
 	// Initialize the template manager only if the service is enabled
-	if slices.Contains(services, servicetype.TemplateManager) {
+	if slices.Contains(services, service.TemplateManager) {
 		tmpl := tmplserver.New(ctx, tracer, globalLogger, tmplSbxLoggerExternal, grpcSrv, networkPool, devicePool, clientID)
 
 		// Prepend to make sure it's awaited on graceful shutdown

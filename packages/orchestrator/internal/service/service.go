@@ -1,4 +1,4 @@
-package servicetype
+package service
 
 import (
 	"strings"

@@ -7,15 +7,15 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/servicetype"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 var (
-	serviceRolesMapper = map[servicetype.ServiceType]orchestratorinfo.ServiceInfoRole{
-		servicetype.Orchestrator:    orchestratorinfo.ServiceInfoRole_Orchestrator,
-		servicetype.TemplateManager: orchestratorinfo.ServiceInfoRole_TemplateManager,
+	serviceRolesMapper = map[service.ServiceType]orchestratorinfo.ServiceInfoRole{
+		service.Orchestrator:    orchestratorinfo.ServiceInfoRole_Orchestrator,
+		service.TemplateManager: orchestratorinfo.ServiceInfoRole_TemplateManager,
 	}
 )
 
@@ -38,7 +38,7 @@ func NewInfoService(_ context.Context, grpc *GRPCServer, info *ServiceInfo, sand
 }
 
 func NewInfoContainer(clientId string, sourceVersion string, sourceCommit string) *ServiceInfo {
-	services := servicetype.GetServices()
+	services := service.GetServices()
 	serviceRoles := make([]orchestratorinfo.ServiceInfoRole, 0)
 
 	for _, service := range services {
