@@ -160,8 +160,7 @@ func (m *Cache) Close() error {
 
 	return errors.Join(
 		m.mmap.Unmap(),
-		// TODO: Uncomment
-		//os.RemoveAll(m.filePath),
+		os.RemoveAll(m.filePath),
 	)
 }
 
