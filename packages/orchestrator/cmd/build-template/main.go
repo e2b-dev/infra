@@ -84,6 +84,12 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
+	go func() {
+		err := sandboxProxy.Start()
+		if err != nil {
+			zap.L().Fatal("failed to start sandbox proxy", zap.Error(err))
+		}
+	}()
 	defer func() {
 		err := sandboxProxy.Close(parentCtx)
 		if err != nil {
