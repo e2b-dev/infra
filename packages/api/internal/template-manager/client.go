@@ -81,13 +81,13 @@ func (a *GRPCClient) healthCheckSync(ctx context.Context) {
 				if healthStatusErr != nil {
 					zap.L().Error("failed to get health status of template manager", zap.Error(healthStatusErr))
 					infoStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorDraining
-				}
-
-				switch healthStatus.Status {
-				case templatemanager.HealthState_Healthy:
-					infoStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy
-				case templatemanager.HealthState_Draining:
-					infoStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorDraining
+				} else {
+					switch healthStatus.Status {
+					case templatemanager.HealthState_Healthy:
+						infoStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy
+					case templatemanager.HealthState_Draining:
+						infoStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorDraining
+					}
 				}
 			} else {
 				infoStatus = infoRes.ServiceStatus
@@ -95,7 +95,7 @@ func (a *GRPCClient) healthCheckSync(ctx context.Context) {
 
 			reqCtxCancel()
 
-			zap.L().Debug("template manager health status", zap.String("status", infoRes.ServiceStatus.String()))
+			zap.L().Debug("template manager health status", zap.String("status", infoStatus.String()))
 
 			a.health = infoStatus
 			a.lastHealthCheckAt = &reqCheckAt
