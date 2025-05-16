@@ -13,3 +13,7 @@ use (
 
 	./tests/integration
 )
+
+replace github.com/firecracker-microvm/firecracker-go-sdk => github.com/firecracker-microvm/firecracker-go-sdk v1.0.1-0.20250507211036-6f94916d70eb
+
+replace github.com/chenzhuoyu/iasm => github.com/cloudwego/iasm v0.2.0
