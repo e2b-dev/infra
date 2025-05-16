@@ -256,6 +256,9 @@ func run(port, proxyPort uint) (success bool) {
 			sandboxes,
 			clientID,
 		)
+		if err != nil {
+			zap.L().Fatal("failed to create template manager", zap.Error(err))
+		}
 
 		// Prepend to make sure it's awaited on graceful shutdown
 		closers = append([]Closeable{tmpl}, closers...)
