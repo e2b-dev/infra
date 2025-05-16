@@ -1,4 +1,4 @@
-package grpcserver
+package healthcheck
 
 import (
 	"context"
@@ -12,22 +12,20 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
-	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	e2borchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	e2bHealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
 )
 
 type Healthcheck struct {
 	info *service.ServiceInfo
-	grpc *GRPCServer
 
 	lastRun time.Time
 	mu      sync.RWMutex
 }
 
-func NewHealthcheck(grpc *GRPCServer, info *service.ServiceInfo) (*Healthcheck, error) {
+func NewHealthcheck(info *service.ServiceInfo) (*Healthcheck, error) {
 	return &Healthcheck{
 		info: info,
-		grpc: grpc,
 
 		lastRun: time.Now(),
 		mu:      sync.RWMutex{},
@@ -52,9 +50,9 @@ func (h *Healthcheck) Start(_ context.Context, listener net.Listener) {
 
 func (h *Healthcheck) getStatus() e2bHealth.Status {
 	switch h.info.GetStatus() {
-	case orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:
+	case e2borchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:
 		return e2bHealth.Healthy
-	case orchestratorinfo.ServiceInfoStatus_OrchestratorDraining:
+	case e2borchestratorinfo.ServiceInfoStatus_OrchestratorDraining:
 		return e2bHealth.Healthy // orchestration is currently not supporting draining and its manager by api/edge api
 	}
 

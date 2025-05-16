@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
 
+	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -98,7 +99,7 @@ func (g *GRPCServer) Start(ctx context.Context, port uint) error {
 		return fmt.Errorf("failed to listen on port %d: %w", port, err)
 	}
 
-	healthcheck, err := NewHealthcheck(g, g.info)
+	healthcheck, err := e2bhealthcheck.NewHealthcheck(g.info)
 	if err != nil {
 		return fmt.Errorf("failed to create healthcheck: %w", err)
 	}

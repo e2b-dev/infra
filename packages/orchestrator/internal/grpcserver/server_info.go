@@ -21,14 +21,13 @@ type Server struct {
 }
 
 func NewInfoService(_ context.Context, grpc *GRPCServer, info *service.ServiceInfo, sandboxes *smap.Map[*sandbox.Sandbox]) *Server {
-	service := &Server{
+	s := &Server{
 		info:      info,
 		sandboxes: sandboxes,
 	}
 
-	orchestratorinfo.RegisterInfoServiceServer(grpc.GRPCServer(), service)
-
-	return service
+	orchestratorinfo.RegisterInfoServiceServer(grpc.GRPCServer(), s)
+	return s
 }
 
 func (s *Server) ServiceInfo(_ context.Context, _ *emptypb.Empty) (*orchestratorinfo.ServiceInfoResponse, error) {
