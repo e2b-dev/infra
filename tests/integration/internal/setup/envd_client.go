@@ -2,18 +2,14 @@ package setup
 
 import (
 	"context"
-	"encoding/base64"
-	"fmt"
 	"net/http"
-	"net/url"
 	"testing"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem/filesystemconnect"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd/api"
-	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem/filesystemconnect"
-	"github.com/e2b-dev/infra/tests/integration/internal/envd/process/processconnect"
 )
-
-const envdPort = 49983
 
 type EnvdClient struct {
 	HTTPClient       *api.ClientWithResponses
@@ -60,11 +56,10 @@ func WithEnvdAccessToken(accessToken string) func(ctx context.Context, req *http
 }
 
 func SetSandboxHeader(header http.Header, sandboxID string, clientID string) {
-	domain := extractDomain(EnvdProxy)
-	// Construct the host (<port>-<sandbox id>-<old client id>.e2b.app)
-	host := fmt.Sprintf("%d-%s-%s.%s", envdPort, sandboxID, clientID, domain)
-
-	header.Set("Host", host)
+	err := grpc.SetSandboxHeader(header, EnvdProxy, sandboxID, clientID)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func SetAccessTokenHeader(header http.Header, accessToken string) {
@@ -72,17 +67,5 @@ func SetAccessTokenHeader(header http.Header, accessToken string) {
 }
 
 func SetUserHeader(header http.Header, user string) {
-	userString := fmt.Sprintf("%s:", user)
-	userBase64 := base64.StdEncoding.EncodeToString([]byte(userString))
-	basic := fmt.Sprintf("Basic %s", userBase64)
-	header.Set("Authorization", basic)
-}
-
-func extractDomain(input string) string {
-	parsedURL, err := url.Parse(input)
-	if err != nil || parsedURL.Host == "" {
-		panic(fmt.Errorf("invalid URL: %s", input))
-	}
-
-	return parsedURL.Hostname()
+	grpc.SetUserHeader(header, user)
 }

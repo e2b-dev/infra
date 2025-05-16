@@ -10,12 +10,6 @@ generate:
 	$(codegen) -old-config-style -generate client --package api $(openapi_api) > internal/api/client.gen.go
 	$(codegen) -old-config-style -generate models --package api $(openapi_api) > internal/api/models.gen.go
 
-	# Copy the envd grpc clients
-	rm -rf internal/envd/
-	mkdir -p internal/envd/
-	cp -r ../../packages/envd/internal/services/spec/ internal/envd/.
-	find internal/. -type f -exec perl -pi -e 's|github.com/e2b-dev/infra/packages/envd/internal/services/spec/|github.com/e2b-dev/infra/tests/integration/internal/envd/|g' {} +
-
 	# Create envd HTTP client
 	mkdir -p internal/envd/api/
 	$(codegen) -generate client --package api $(openapi_envd) > internal/envd/api/client.gen.go

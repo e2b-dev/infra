@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"os/signal"
 	"slices"
@@ -242,7 +244,18 @@ func run(port, proxyPort uint) (success bool) {
 
 	// Initialize the template manager only if the service is enabled
 	if slices.Contains(services, service.TemplateManager) {
-		tmpl := tmplserver.New(ctx, tracer, globalLogger, tmplSbxLoggerExternal, grpcSrv, networkPool, devicePool, clientID)
+		tmpl := tmplserver.New(
+			ctx,
+			tracer,
+			globalLogger,
+			tmplSbxLoggerExternal,
+			grpcSrv,
+			networkPool,
+			devicePool,
+			sandboxProxy,
+			sandboxes,
+			clientID,
+		)
 
 		// Prepend to make sure it's awaited on graceful shutdown
 		closers = append([]Closeable{tmpl}, closers...)
@@ -253,11 +266,12 @@ func run(port, proxyPort uint) (success bool) {
 	g.Go(func() error {
 		zap.L().Info("Starting session proxy")
 		proxyErr := sandboxProxy.Start()
-		if proxyErr != nil {
+		if proxyErr != nil && !errors.Is(proxyErr, http.ErrServerClosed) {
 			serviceError <- proxyErr
+			return proxyErr
 		}
 
-		return proxyErr
+		return nil
 	})
 
 	g.Go(func() (err error) {

@@ -45,12 +45,13 @@ generate:
 		if [ "$$choice" = "Y" ]; then \
 			go install github.com/bufbuild/buf/cmd/buf@v1.50.1 && \
 			go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1 && \
-			go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.18.1; \
+			go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.16.2; \
 		else \
 			exit 1; \
 		fi; \
 	fi
-	cd spec && buf generate
+	cd spec && buf generate --template buf.gen.yaml
+	cd spec && buf generate --template buf.gen.shared.yaml
 
 .PHONY: init-generate
 init-generate:

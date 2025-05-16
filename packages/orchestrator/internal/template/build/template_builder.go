@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
@@ -20,13 +21,15 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type TemplateBuilder struct {
-	logger *zap.Logger
-	tracer trace.Tracer
+	logger   *zap.Logger
+	tracer   trace.Tracer
+	clientID string
 
 	storage            storage.StorageProvider
 	devicePool         *nbd.DevicePool
@@ -36,6 +39,8 @@ type TemplateBuilder struct {
 	dockerClient       *client.Client
 	legacyDockerClient *docker.Client
 	templateStorage    *template.Storage
+	proxy              *proxy.SandboxProxy
+	sandboxes          *smap.Map[*sandbox.Sandbox]
 }
 
 const (
@@ -58,10 +63,14 @@ func NewBuilder(
 	storage storage.StorageProvider,
 	devicePool *nbd.DevicePool,
 	networkPool *network.Pool,
+	proxy *proxy.SandboxProxy,
+	sandboxes *smap.Map[*sandbox.Sandbox],
+	clientID string,
 ) *TemplateBuilder {
 	return &TemplateBuilder{
 		logger:             logger,
 		tracer:             tracer,
+		clientID:           clientID,
 		buildCache:         buildCache,
 		buildLogger:        buildLogger,
 		dockerClient:       dockerClient,
@@ -70,6 +79,8 @@ func NewBuilder(
 		storage:            storage,
 		devicePool:         devicePool,
 		networkPool:        networkPool,
+		proxy:              proxy,
+		sandboxes:          sandboxes,
 	}
 }
 
@@ -142,16 +153,25 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 		sbxTimeout,
 		rootfsPath,
 	)
+	if err != nil {
+		cleanupErr := cleanup.Run(ctx)
+		if cleanupErr != nil {
+			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
+		}
+
+		postProcessor.WriteMsg(fmt.Sprintf("Error creating sandbox: %v", err))
+		return fmt.Errorf("error creating sandbox: %w", err)
+	}
+	b.sandboxes.Insert(sbx.Metadata.Config.SandboxId, sbx)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)
 		if cleanupErr != nil {
 			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
 		}
+
+		b.sandboxes.Remove(sbx.Metadata.Config.SandboxId)
+		b.proxy.RemoveFromPool(sbx.StartID)
 	}()
-	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error creating sandbox: %v", err))
-		return fmt.Errorf("error creating sandbox: %w", err)
-	}
 
 	// Remove build files if build fails or times out
 	defer func() {
@@ -167,15 +187,29 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 		}
 	}()
 
+	// Start command
 	if template.StartCmd != "" {
-		postProcessor.WriteMsg("Waiting for start command to run...")
+		postProcessor.WriteMsg("Running start command")
+
 		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
 		// TODO: Remove this after we can add customizable wait time for building templates.
+		startCmdWait := waitTimeForStartCmd
 		if template.TemplateId == "zegbt9dl3l2ixqem82mm" || template.TemplateId == "ot5bidkk3j2so2j02uuz" || template.TemplateId == "0zeou1s7agaytqitvmzc" {
-			time.Sleep(120 * time.Second)
-		} else {
-			time.Sleep(waitTimeForStartCmd)
+			startCmdWait = 120 * time.Second
 		}
+		err := b.runCommand(
+			ctx,
+			postProcessor,
+			sbx.Metadata.Config.SandboxId,
+			startCmdWait,
+			template.StartCmd,
+			"root",
+		)
+		if err != nil {
+			postProcessor.WriteMsg(fmt.Sprintf("Error while running command: %v", err))
+			return fmt.Errorf("error running command: %w", err)
+		}
+
 		postProcessor.WriteMsg("Start command is running")
 		telemetry.ReportEvent(ctx, "waited for start command", attribute.Float64("seconds", float64(waitTimeForStartCmd/time.Second)))
 	}
@@ -199,16 +233,17 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig, e
 	)
 
 	postProcessor.Stop(err)
-	// Wait for the CLI to load all the logs
-	// This is a temporary ~fix for the CLI to load most of the logs before finishing the template build
-	// Ideally we should wait in the CLI for the last log message
-	time.Sleep(5 * time.Second)
 
 	uploadErr := <-uploadErrCh
 	if uploadErr != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error while uploading build files: %v", uploadErr))
 		return uploadErr
 	}
+
+	// Wait for the CLI to load all the logs
+	// This is a temporary ~fix for the CLI to load most of the logs before finishing the template build
+	// Ideally we should wait in the CLI for the last log message
+	time.Sleep(5 * time.Second)
 
 	buildMetadata := &templatemanager.TemplateBuildMetadata{RootfsSizeKey: int32(template.RootfsSizeMB()), EnvdVersionKey: envdVersion}
 	err = b.buildCache.SetSucceeded(envID, buildID, buildMetadata)

@@ -162,6 +162,7 @@ func main() {
 		IdleTimeout:  idleTimeout,
 	}
 
+	// TODO: Not used anymore in template build, replaced by direct envd command call.
 	if startCmdFlag != "" {
 		tag := "startCmd"
 		cwd := "/home/user"

@@ -14,6 +14,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
@@ -22,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
@@ -45,6 +48,8 @@ func New(ctx context.Context,
 	grpc *grpcserver.GRPCServer,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
+	proxy *proxy.SandboxProxy,
+	sandboxes *smap.Map[*sandbox.Sandbox],
 	clientID string,
 ) *ServerStore {
 	// Template Manager Initialization
@@ -87,6 +92,9 @@ func New(ctx context.Context,
 		persistence,
 		devicePool,
 		networkPool,
+		proxy,
+		sandboxes,
+		clientID,
 	)
 	store := &ServerStore{
 		tracer:           tracer,
