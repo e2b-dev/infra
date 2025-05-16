@@ -143,6 +143,80 @@ func TestFilePermissions(t *testing.T) {
 	}
 }
 
+func TestStat(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := setup.GetAPIClient()
+	sbx := utils.SetupSandboxWithCleanup(t, c)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+	filePath := "test.txt"
+	textFile, contentType := createTextFile(t, filePath, "Hello, World!")
+
+	createFileResp, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
+		ctx,
+		&envdapi.PostFilesParams{
+			Path:     &filePath,
+			Username: "user",
+		},
+		contentType,
+		textFile,
+		setup.WithSandbox(sbx.SandboxID, sbx.ClientID),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, createFileResp.StatusCode())
+
+	req := connect.NewRequest(&filesystem.StatRequest{
+		Path: filePath,
+	})
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetUserHeader(req.Header(), "user")
+	statResp, err := envdClient.FilesystemClient.Stat(ctx, req)
+	assert.NoError(t, err)
+
+	// Verify the stat response
+	assert.NotNil(t, statResp.Msg)
+	assert.NotNil(t, statResp.Msg.Entry)
+	entry := statResp.Msg.Entry
+
+	// Verify basic file info
+	assert.Equal(t, "test.txt", entry.Name)
+	assert.Equal(t, filePath, entry.Path)
+	assert.Equal(t, filesystem.FileType_FILE_TYPE_FILE, entry.Type)
+
+	// Verify permissions and ownership
+	assert.Equal(t, uint32(0644), entry.Mode)
+	assert.Equal(t, "-rw-r--r--", entry.Permissions)
+	assert.Equal(t, "user", entry.Owner)
+	assert.Equal(t, "user", entry.Group)
+
+	// Verify file size
+	assert.Equal(t, int64(13), entry.Size)
+
+	// Verify modified time
+	assert.NotNil(t, entry.ModifiedTime)
+}
+
+func createTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, string) {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", path)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	_, err = part.Write([]byte(content))
+	if err != nil {
+		tb.Fatal(err)
+	}
+	err = writer.Close()
+	if err != nil {
+		tb.Fatal(err)
+	}
+
+	return body, writer.FormDataContentType()
+}
+
 func TestRelativePath(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
