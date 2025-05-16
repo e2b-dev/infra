@@ -53,4 +53,4 @@ connect-orchestrator:
 		--format='value(name)' \
 		--zones=$(GCP_ZONE) | head -n1) && \
 	INSTANCE_ID=$$(gcloud compute instance-groups list-instances "$$CLIENT_IG" --project=$(GCP_PROJECT_ID) --zone=$(GCP_ZONE) --format='value(instance)' | head -n1) && \
-	gcloud compute ssh "$$INSTANCE_ID" --project=$(GCP_PROJECT_ID) --zone=$(GCP_ZONE) -- -NL 5007:localhost:5007  -NL 5008:localhost:5008 -o PermitLocalCommand=yes -o LocalCommand="echo 'SSH tunnel established'"
+	gcloud compute ssh "$$INSTANCE_ID" --project=$(GCP_PROJECT_ID) --zone=$(GCP_ZONE) -- -NL 5008:localhost:5008 -o PermitLocalCommand=yes -o LocalCommand="echo 'SSH tunnel established'"
