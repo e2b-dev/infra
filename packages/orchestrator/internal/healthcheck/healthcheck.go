@@ -53,7 +53,7 @@ func (h *Healthcheck) getStatus() e2bHealth.Status {
 	case e2borchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:
 		return e2bHealth.Healthy
 	case e2borchestratorinfo.ServiceInfoStatus_OrchestratorDraining:
-		return e2bHealth.Healthy // orchestration is currently not supporting draining and its manager by api/edge api
+		return e2bHealth.Draining
 	}
 
 	return e2bHealth.Unhealthy

@@ -18,7 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
-	orchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	e2bhealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -144,5 +144,6 @@ func (o *Orchestrator) getNodeHealth(node *node.NodeInfo) (bool, error) {
 		return false, fmt.Errorf("failed to decode health response: %w", err)
 	}
 
-	return healthResp.Status == e2bhealth.Healthy, nil
+	isUsable := healthResp.Status == e2bhealth.Healthy || healthResp.Status == e2bhealth.Draining
+	return isUsable, nil
 }
