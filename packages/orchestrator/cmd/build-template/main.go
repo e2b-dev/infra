@@ -155,7 +155,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		),
 		VCpuCount:       2,
 		MemoryMB:        1024,
-		StartCmd:        "",
+		StartCmd:        "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
 		DiskSizeMB:      1024,
 		BuildLogsWriter: logsWriter,
 		HugePages:       true,
