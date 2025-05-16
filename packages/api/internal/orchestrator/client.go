@@ -41,8 +41,8 @@ var (
 	}
 
 	ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfo.ServiceInfoStatus{
-		api.NodeStatusReady: orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy,
-		api.NodeStatusDraining: orchestratorinfo.ServiceInfoStatus_OrchestratorDraining,
+		api.NodeStatusReady:     orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy,
+		api.NodeStatusDraining:  orchestratorinfo.ServiceInfoStatus_OrchestratorDraining,
 		api.NodeStatusUnhealthy: orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy,
 	}
 )
