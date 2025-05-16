@@ -53,7 +53,14 @@ func (a *APIStore) PostNodesNodeID(c *gin.Context, nodeId api.NodeID) {
 		return
 	}
 
-	node.SetStatus(body.Status)
+	err = node.SendStatusChange(ctx, nodeId, body.Status)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when sending status change: %s", err))
+
+		errMsg := fmt.Errorf("error when sending status change: %w", err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+		return
+	}
 
 	c.Status(http.StatusNoContent)
 }
