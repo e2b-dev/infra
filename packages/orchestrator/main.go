@@ -253,7 +253,6 @@ func run(port, proxyPort uint) (success bool) {
 			devicePool,
 			sandboxProxy,
 			sandboxes,
-			clientID,
 		)
 
 		// Prepend to make sure it's awaited on graceful shutdown
