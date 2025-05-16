@@ -18,7 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
-	orchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	e2bhealth "github.com/e2b-dev/infra/packages/shared/pkg/health"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -32,6 +32,20 @@ type GRPCClient struct {
 
 	connection e2bgrpc.ClientConnInterface
 }
+
+var (
+	OrchestratorToApiNodeStateMapper = map[orchestratorinfo.ServiceInfoStatus]api.NodeStatus{
+		orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:   api.NodeStatusReady,
+		orchestratorinfo.ServiceInfoStatus_OrchestratorDraining:  api.NodeStatusDraining,
+		orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy: api.NodeStatusUnhealthy,
+	}
+
+	ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfo.ServiceInfoStatus{
+		api.NodeStatusReady:     orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy,
+		api.NodeStatusDraining:  orchestratorinfo.ServiceInfoStatus_OrchestratorDraining,
+		api.NodeStatusUnhealthy: orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy,
+	}
+)
 
 func NewClient(host string) (*GRPCClient, error) {
 	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()), grpc.WithBlock(), grpc.WithTimeout(time.Second))
@@ -84,7 +98,12 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 	if err != nil {
 		zap.L().Error("Failed to get node info", zap.Error(err))
 	} else {
-		nodeStatus = o.getNodeStatusConverted(nodeInfo.ServiceStatus)
+		nodeStatus, ok = OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
+		if !ok {
+			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), zap.String("node_id", node.ID))
+			nodeStatus = api.NodeStatusUnhealthy
+		}
+
 		nodeVersion = nodeInfo.ServiceVersion
 	}
 
@@ -110,20 +129,6 @@ func (o *Orchestrator) GetClient(nodeID string) (*GRPCClient, error) {
 	}
 
 	return n.Client, nil
-}
-
-func (o *Orchestrator) getNodeStatusConverted(s orchestratorinfo.ServiceInfoStatus) api.NodeStatus {
-	switch s {
-	case orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy:
-		return api.NodeStatusReady
-	case orchestratorinfo.ServiceInfoStatus_OrchestratorDraining:
-		return api.NodeStatusDraining
-	case orchestratorinfo.ServiceInfoStatus_OrchestratorUnhealthy:
-		return api.NodeStatusUnhealthy
-	default:
-		zap.L().Error("Unknown service info status", zap.Any("status", s))
-		return api.NodeStatusUnhealthy
-	}
 }
 
 func (o *Orchestrator) getNodeHealth(node *node.NodeInfo) (bool, error) {
