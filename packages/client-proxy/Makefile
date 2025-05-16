@@ -18,6 +18,20 @@ build-and-upload:
 	@docker build --platform linux/amd64 --tag "$(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(IMAGE)" --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" .
 	@rm -rf .shared/
 
+openapi := ../../spec/openapi-edge.yml
+codegen := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+
+.PHONY: generate
+generate:
+	$(codegen) -old-config-style -generate gin --package api $(openapi) > internal/edge/api/api.gen.go
+	$(codegen) -old-config-style -generate types --package api $(openapi) > internal/edge/api/types.gen.go
+	$(codegen) -old-config-style -generate spec --package api $(openapi) > internal/edge/api/spec.gen.go
+
+.PHONY: run
+run:
+	@echo "Running..."
+	@AWS_PROFILE=e2b_jirka SERVICE_DISCOVERY_EDGE_PROVIDER=STATIC SERVICE_DISCOVERY_EDGE_STATIC=xx_edge SERVICE_DISCOVERY_ORCHESTRATOR_PROVIDER=STATIC SERVICE_DISCOVERY_ORCHESTRATOR_STATIC=xx_orchestrator go run main.go
+
 .PHONY: test
 test:
 	go test -v ./...

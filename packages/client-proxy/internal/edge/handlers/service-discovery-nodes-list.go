@@ -1,0 +1,50 @@
+package handlers
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
+)
+
+func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
+	response := make([]api.ClusterNode, 0)
+
+	// iterate orchestrator pool
+	for _, orchestrator := range a.orchestratorPool.GetOrchestrators() {
+		response = append(
+			response,
+			api.ClusterNode{
+				Id:        orchestrator.ServiceId,
+				NodeId:    orchestrator.NodeId,
+				Status:    getOrchestratorStatusResolved(orchestrator.Status),
+				Type:      api.ClusterNodeTypeOrchestrator,
+				Version:   orchestrator.SourceVersion,
+				Commit:    orchestrator.SourceCommit,
+				Host:      orchestrator.Host,
+				StartedAt: orchestrator.Startup,
+			},
+		)
+	}
+
+	// iterate edge apis
+	// todo
+
+	// register itself
+	response = append(
+		response,
+		api.ClusterNode{
+			Id:        a.info.ServiceId,
+			NodeId:    a.info.NodeId,
+			Status:    a.info.GetStatus(),
+			Type:      api.ClusterNodeTypeEdge,
+			Version:   a.info.SourceVersion,
+			Commit:    a.info.SourceCommit,
+			Host:      a.info.Host,
+			StartedAt: a.info.Startup,
+		},
+	)
+
+	c.JSON(http.StatusOK, response)
+}

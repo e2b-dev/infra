@@ -104,7 +104,7 @@ func run(port, proxyPort uint) (success bool) {
 	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()
 
-	clientID := consul.GetClientID()
+	clientID := consul.GetNodeID()
 	if clientID == "" {
 		zap.L().Fatal("client ID is empty")
 	}

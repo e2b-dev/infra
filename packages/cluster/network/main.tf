@@ -25,8 +25,8 @@ locals {
       timeout_sec                     = 86400
       connection_draining_timeout_sec = 1
       http_health_check = {
-        request_path       = var.client_proxy_health_port.path
-        port               = var.client_proxy_health_port.port
+        request_path       = var.client_proxy_edge_api_port.path
+        port               = var.client_proxy_edge_api_port.port
         timeout_sec        = 3
         check_interval_sec = 3
       }
