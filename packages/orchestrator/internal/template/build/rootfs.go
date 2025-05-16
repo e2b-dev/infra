@@ -87,7 +87,7 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	}
 	telemetry.ReportEvent(childCtx, "set up filesystem")
 
-	postProcessor.WriteMsg("Creating file system")
+	postProcessor.WriteMsg("Creating file system and pulling Docker image")
 	err = oci.ToExt4(ctx, img, rootfsPath, maxRootfsSize)
 	if err != nil {
 		return fmt.Errorf("error creating ext4 filesystem: %w", err)
