@@ -183,7 +183,7 @@ func run() int {
 		edgeApiStore.SetDraining()
 
 		// we should wait for health check manager to notice that we are not ready for new traffic
-		if env.IsProduction() {
+		if !env.IsDevelopment() {
 			shutdownLogger.Info("waiting for draining state propagation", zap.Float64("wait_in_seconds", shutdownDrainingWait.Seconds()))
 			time.Sleep(shutdownDrainingWait)
 		}
@@ -203,7 +203,7 @@ func run() int {
 		edgeApiStore.SetUnhealthy()
 
 		// wait for the health check manager to notice that we are not healthy at all
-		if env.IsProduction() {
+		if !env.IsDevelopment() {
 			shutdownLogger.Info("waiting for unhealthy state propagation", zap.Float64("wait_in_seconds", shutdownUnhealthyWait.Seconds()))
 			time.Sleep(shutdownUnhealthyWait)
 		}
