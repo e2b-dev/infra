@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -82,12 +84,12 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 
 	sandboxProxy, err := proxy.NewSandboxProxy(proxyPort, sandboxes)
 	if err != nil {
-		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
+		logger.Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 	go func() {
 		err := sandboxProxy.Start()
-		if err != nil {
-			zap.L().Fatal("failed to start sandbox proxy", zap.Error(err))
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("failed to start sandbox proxy", zap.Error(err))
 		}
 	}()
 	defer func() {
