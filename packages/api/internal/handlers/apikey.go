@@ -85,19 +85,22 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 		keyValue := strings.Split(apiKey.APIKey, keys.ApiKeyPrefix)[1]
 
 		// TODO: remove this once we migrate to hashed API keys
-		KeyMask, err := keys.MaskKey(keys.ApiKeyPrefix, keyValue)
+		responseKeyMask, err := keys.MaskResponseKey(keys.ApiKeyPrefix, keyValue)
 		if err != nil {
 			fmt.Printf("masking API key failed %d: %v", apiKey.ID, err)
 			continue
 		}
 
 		teamAPIKeys[i] = api.TeamAPIKey{
-			Id:        apiKey.ID,
-			Name:      apiKey.Name,
-			KeyMask:   KeyMask,
-			CreatedAt: apiKey.CreatedAt,
-			CreatedBy: createdBy,
-			LastUsed:  apiKey.LastUsed,
+			Id:                apiKey.ID,
+			Name:              apiKey.Name,
+			KeyPrefix:         responseKeyMask.KeyPrefix,
+			TokenLength:       responseKeyMask.KeyLength,
+			MaskedTokenPrefix: responseKeyMask.MaskPrefix,
+			MaskedTokenSuffix: responseKeyMask.MaskSuffix,
+			CreatedAt:         apiKey.CreatedAt,
+			CreatedBy:         createdBy,
+			LastUsed:          apiKey.LastUsed,
 		}
 	}
 	c.JSON(http.StatusOK, teamAPIKeys)

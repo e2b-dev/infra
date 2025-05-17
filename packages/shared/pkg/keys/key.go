@@ -9,6 +9,7 @@ import (
 
 const (
 	keySuffixLength = 4
+	keyPrefixLength = 2
 
 	keyLength = 20
 )
@@ -19,6 +20,35 @@ type Key struct {
 	PrefixedRawValue string
 	HashedValue      string
 	MaskedValue      string
+}
+
+type MaskedResponseKey struct {
+	KeyPrefix  string
+	KeyLength  int
+	MaskPrefix string
+	MaskSuffix string
+}
+
+func MaskResponseKey(prefix, value string) (MaskedResponseKey, error) {
+	suffixOffset := len(value) - keySuffixLength
+	prefixOffset := keyPrefixLength
+
+	if suffixOffset < 0 {
+		return MaskedResponseKey{}, fmt.Errorf("mask value length is less than key suffix length (%d)", keySuffixLength)
+	}
+
+	maskPrefix := value[:prefixOffset]
+	maskSuffix := value[suffixOffset:]
+	keyLength := len(value)
+
+	maskedKeyResponseProperties := MaskedResponseKey{
+		KeyPrefix:  prefix,
+		KeyLength:  keyLength,
+		MaskPrefix: maskPrefix,
+		MaskSuffix: maskSuffix,
+	}
+
+	return maskedKeyResponseProperties, nil
 }
 
 func MaskKey(prefix string, value string) (string, error) {
