@@ -3,13 +3,12 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
-	"github.com/docker/docker/client"
-	docker "github.com/fsouza/go-dockerclient"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -21,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/systemd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -51,7 +51,7 @@ func New(ctx context.Context,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 	clientID string,
-) *ServerStore {
+) (*ServerStore, error) {
 	// Template Manager Initialization
 	if err := constants.CheckRequired(); err != nil {
 		log.Fatalf("Validation for environment variables failed: %v", err)
@@ -59,24 +59,14 @@ func New(ctx context.Context,
 
 	logger.Info("Initializing template manager")
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		panic(err)
-	}
-
-	legacyClient, err := docker.NewClientFromEnv()
-	if err != nil {
-		panic(err)
-	}
-
 	artifactRegistry, err := artifactregistry.NewClient(ctx)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("error creating artifact registry client: %v", err)
 	}
 
 	persistence, err := storage.GetTemplateStorageProvider(ctx)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("error getting template storage provider: %v", err)
 	}
 
 	templateStorage := template.NewStorage(persistence)
@@ -85,8 +75,6 @@ func New(ctx context.Context,
 		logger,
 		buildLogger,
 		tracer,
-		dockerClient,
-		legacyClient,
 		templateStorage,
 		buildCache,
 		persistence,
@@ -108,9 +96,14 @@ func New(ctx context.Context,
 		wg:               &sync.WaitGroup{},
 	}
 
+	err = systemd.BuildLayer()
+	if err != nil {
+		return nil, fmt.Errorf("error building systemd layer: %v", err)
+	}
+
 	templatemanager.RegisterTemplateServiceServer(grpc.GRPCServer(), store)
 
-	return store
+	return store, nil
 }
 
 func (s *ServerStore) Close(ctx context.Context) error {

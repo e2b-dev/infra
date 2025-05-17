@@ -244,7 +244,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	// Initialize the template manager only if the service is enabled
 	if slices.Contains(services, service.TemplateManager) {
-		tmpl := tmplserver.New(
+		tmpl, err := tmplserver.New(
 			ctx,
 			tracer,
 			globalLogger,
@@ -256,6 +256,9 @@ func run(port, proxyPort uint) (success bool) {
 			sandboxes,
 			clientID,
 		)
+		if err != nil {
+			zap.L().Fatal("failed to create template manager", zap.Error(err))
+		}
 
 		// Prepend to make sure it's awaited on graceful shutdown
 		closers = append([]Closeable{tmpl}, closers...)

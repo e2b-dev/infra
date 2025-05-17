@@ -9,8 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/docker/docker/client"
-	docker "github.com/fsouza/go-dockerclient"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -23,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/systemd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -68,14 +67,9 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 
 	tracer := otel.Tracer("test")
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	err = systemd.BuildLayer()
 	if err != nil {
-		return fmt.Errorf("could not create docker client: %w", err)
-	}
-
-	legacyClient, err := docker.NewClientFromEnv()
-	if err != nil {
-		return fmt.Errorf("could not create docker legacy client: %w", err)
+		return fmt.Errorf("error building systemd layer: %v", err)
 	}
 
 	// The sandbox map is shared between the server and the proxy
@@ -132,8 +126,6 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		logger,
 		logger,
 		tracer,
-		dockerClient,
-		legacyClient,
 		templateStorage,
 		buildCache,
 		persistence,
@@ -169,7 +161,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		HugePages:       true,
 	}
 
-	err = builder.Build(ctx, config, templateID, buildID)
+	_, err = builder.Build(ctx, config)
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}
