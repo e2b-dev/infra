@@ -34,7 +34,7 @@ jobs:
         e2b-domain:
           - "e2b-foxtrot.dev"
           - "e2b-juliett.dev"
-          - "e2b-staging.dev"
+#          - "e2b-staging.dev"
         include:
           - e2b-domain: "e2b-foxtrot.dev"
             api_key: E2B_API_KEY
