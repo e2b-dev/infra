@@ -1,5 +1,5 @@
 resource "google_compute_health_check" "nomad_check" {
-  name                = "${var.cluster_name}-nomad-api-check"
+  name                = "${var.cluster_name}-nomad-check"
   check_interval_sec  = 15
   timeout_sec         = 10
   healthy_threshold   = 2
@@ -15,29 +15,22 @@ resource "google_compute_health_check" "nomad_check" {
   }
 }
 
-
-resource "google_compute_instance_group_manager" "api_cluster" {
+resource "google_compute_instance_group_manager" "cluster" {
   name = "${var.cluster_name}-ig"
 
   version {
-    name              = google_compute_instance_template.api.id
-    instance_template = google_compute_instance_template.api.id
-  }
-
-
-  named_port {
-    name = var.client_proxy_health_port.name
-    port = var.client_proxy_health_port.port
+    name              = google_compute_instance_template.server.id
+    instance_template = google_compute_instance_template.server.id
   }
 
   named_port {
-    name = var.client_proxy_port.name
-    port = var.client_proxy_port.port
+    name = var.service_health_port.name
+    port = var.service_health_port.port
   }
 
   named_port {
-    name = var.api_port.name
-    port = var.api_port.port
+    name = var.service_port.name
+    port = var.service_port.port
   }
 
   auto_healing_policies {
@@ -48,30 +41,56 @@ resource "google_compute_instance_group_manager" "api_cluster" {
   # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
   # a rolling update.
   update_policy {
-    type                    = var.environment == "dev" ? "PROACTIVE" : "OPPORTUNISTIC"
-    minimal_action          = var.instance_group_update_policy_minimal_action
-    max_surge_fixed         = var.instance_group_update_policy_max_surge_fixed
-    max_surge_percent       = var.instance_group_update_policy_max_surge_percent
-    max_unavailable_fixed   = var.instance_group_update_policy_max_unavailable_fixed
-    max_unavailable_percent = var.instance_group_update_policy_max_unavailable_percent
-    replacement_method      = "SUBSTITUTE"
+    type                  = "PROACTIVE"
+    minimal_action        = "RESTART"
+    max_unavailable_fixed = 1
+    replacement_method    = "RECREATE"
   }
 
   base_instance_name = var.cluster_name
-  target_size        = var.cluster_size
   target_pools       = var.instance_group_target_pools
 
   depends_on = [
-    google_compute_instance_template.api,
+    google_compute_instance_template.server,
   ]
+}
+
+resource "google_compute_disk" "stateful_disk" {
+  for_each = toset([for i in range(1, var.cluster_size + 1) : tostring(i)])
+
+  name = "${var.cluster_name}-${each.key}-disk"
+  type = "pd-ssd"
+  zone = var.gcp_zone
+
+  size = 10
+}
+
+resource "google_compute_per_instance_config" "instances" {
+  for_each = toset([for i in range(1, var.cluster_size + 1) : tostring(i)])
+
+  instance_group_manager = google_compute_instance_group_manager.cluster.name
+
+  name = "${var.cluster_name}-${each.key}"
+
+  preserved_state {
+    disk {
+      device_name = google_compute_disk.stateful_disk[each.key].name
+      mode        = "READ_WRITE"
+      delete_rule = "ON_PERMANENT_INSTANCE_DELETION"
+      source      = google_compute_disk.stateful_disk[each.key].id
+    }
+
+    metadata = {
+      "job-constraint" = "${var.job_constraint_prefix}-${each.key}"
+    }
+  }
 }
 
 data "google_compute_image" "source_image" {
   family = var.image_family
 }
 
-
-resource "google_compute_instance_template" "api" {
+resource "google_compute_instance_template" "server" {
   name_prefix = "${var.cluster_name}-"
 
   instance_description = var.cluster_description
@@ -79,20 +98,17 @@ resource "google_compute_instance_template" "api" {
 
   labels = merge(
     var.labels,
-    (var.environment != "dev" ? {
-      goog-ops-agent-policy = "v2-x86-template-1-2-0-${var.gcp_zone}"
-    } : {})
   )
   tags                    = concat([var.cluster_tag_name], var.custom_tags)
   metadata_startup_script = var.startup_script
   metadata = merge(
-    { api_cluster = "TRUE" },
+    { monitoring_server_cluster = "TRUE" },
     {
       enable-osconfig         = "TRUE",
       enable-guest-attributes = "TRUE",
     },
     {
-      node-pool = "api"
+      node-pool = var.node_pool,
     },
     var.custom_metadata,
   )
