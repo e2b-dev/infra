@@ -79,6 +79,25 @@ func GetImage(ctx context.Context, tracer trace.Tracer, dockerTag string) (v1.Im
 	return img, nil
 }
 
+func GetImageSize(img v1.Image) (int64, error) {
+	imageSize := int64(0)
+
+	layers, err := img.Layers()
+	if err != nil {
+		return 0, fmt.Errorf("error getting image layers: %w", err)
+	}
+
+	for index, layer := range layers {
+		layerSize, err := layer.Size()
+		if err != nil {
+			return 0, fmt.Errorf("error getting layer (%d) size: %w", index, err)
+		}
+		imageSize += layerSize
+	}
+
+	return imageSize, nil
+}
+
 func ToExt4(ctx context.Context, img v1.Image, rootfsPath string, sizeLimit int64) error {
 	pr := mutate.Extract(img)
 	defer pr.Close()

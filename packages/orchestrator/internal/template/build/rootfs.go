@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 
+	"github.com/dustin/go-humanize"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
@@ -75,6 +76,12 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	if err != nil {
 		return fmt.Errorf("error requesting docker image: %w", err)
 	}
+
+	imageSize, err := oci.GetImageSize(img)
+	if err != nil {
+		return fmt.Errorf("error getting image size: %w", err)
+	}
+	postProcessor.WriteMsg(fmt.Sprintf("Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
 	postProcessor.WriteMsg("Setting up system files")
 	layers, err := additionalOCILayers(childCtx, r.template)
