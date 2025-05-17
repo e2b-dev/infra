@@ -240,11 +240,33 @@ func (c *apiClient) setMachineConfig(
 		Context: ctx,
 		Body:    machineConfig,
 	}
-
 	_, err := c.client.Operations.PutMachineConfiguration(&machineConfigParams)
 	if err != nil {
 		return fmt.Errorf("error setting fc machine config: %w", err)
 	}
+	return nil
+}
+
+// https://github.com/firecracker-microvm/firecracker/blob/main/docs/entropy.md#firecracker-implementation
+func (c *apiClient) setEntropyDevice(ctx context.Context, size int64, oneTimeBurst int64, refillTime int64) error {
+	entropyConfig := operations.PutEntropyDeviceParams{
+		Context: ctx,
+		Body: &models.EntropyDevice{
+			RateLimiter: &models.RateLimiter{
+				Bandwidth: &models.TokenBucket{
+					Size:         &size,
+					OneTimeBurst: &oneTimeBurst,
+					RefillTime:   &refillTime,
+				},
+			},
+		},
+	}
+
+	_, err := c.client.Operations.PutEntropyDevice(&entropyConfig)
+	if err != nil {
+		return fmt.Errorf("error setting fc entropy config: %w", err)
+	}
+
 	return nil
 }
 
