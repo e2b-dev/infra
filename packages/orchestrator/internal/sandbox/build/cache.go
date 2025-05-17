@@ -177,9 +177,18 @@ func (s *DiffStore) getPendingDeletesSize() int64 {
 
 // deleteOldestFromCache deletes the oldest item (smallest TTL) from the cache.
 // ttlcache has items in order by TTL
-func (s *DiffStore) deleteOldestFromCache() (bool, error) {
+func (s *DiffStore) deleteOldestFromCache() (suc bool, e error) {
+	defer func() {
+		// Because of bug in ttlcache RangeBackwards method, we need to handle potential panic until it gets fixed
+		if r := recover(); r != nil {
+			e = fmt.Errorf("recovered from panic in deleteOldestFromCache: %v", r)
+			suc = false
+
+			zap.L().Error("recovered from panic in deleteOldestFromCache", zap.Error(e))
+		}
+	}()
+
 	success := false
-	var e error
 	s.cache.RangeBackwards(func(item *ttlcache.Item[DiffStoreKey, Diff]) bool {
 		isDeleted := s.isBeingDeleted(item.Key())
 		if isDeleted {
