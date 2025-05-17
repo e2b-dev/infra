@@ -44,10 +44,10 @@ jobs:
             api_key: E2B_API_KEY_JULIETT
             access_token: E2B_ACCESS_TOKEN_JULIETT
             slack_channel: monitoring-infra
-          - e2b-domain: "e2b-staging.dev"
-            api_key: E2B_API_KEY
-            access_token: E2B_ACCESS_TOKEN
-            slack_channel: monitoring-infra-staging
+#          - e2b-domain: "e2b-staging.dev"
+#            api_key: E2B_API_KEY
+#            access_token: E2B_ACCESS_TOKEN
+#            slack_channel: monitoring-infra-staging
         test-command:
           - command: "tests/periodic-test/run-code.ts"
             name: "run code in sandbox"
