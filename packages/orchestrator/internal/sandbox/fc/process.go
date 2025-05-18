@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -163,7 +164,7 @@ func (p *Process) configure(
 		}
 
 		readerErr := scanner.Err()
-		if readerErr != nil {
+		if readerErr != nil && !errors.Is(readerErr, io.EOF) {
 			sbxlogger.I(sbxMetadata).Error("error reading fc stdout", zap.Error(readerErr))
 		}
 	}()
@@ -184,7 +185,7 @@ func (p *Process) configure(
 		}
 
 		readerErr := scanner.Err()
-		if readerErr != nil {
+		if readerErr != nil && !errors.Is(readerErr, io.EOF) {
 			sbxlogger.I(sbxMetadata).Error("error reading fc stderr", zap.Error(readerErr))
 		}
 	}()
