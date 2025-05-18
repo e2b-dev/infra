@@ -120,7 +120,12 @@ func (o *CowDevice) Close(ctx context.Context) error {
 
 	var errs []error
 
-	err := o.mnt.Close(childCtx)
+	err := o.Flush(childCtx)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("error flushing cow device: %w", err))
+	}
+
+	err = o.mnt.Close(childCtx)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error closing overlay mount: %w", err))
 	}

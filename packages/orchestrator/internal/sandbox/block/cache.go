@@ -160,7 +160,7 @@ func (m *Cache) Close() error {
 
 	return errors.Join(
 		m.mmap.Unmap(),
-		os.RemoveAll(m.filePath),
+		//os.RemoveAll(m.filePath),
 	)
 }
 
@@ -260,5 +260,5 @@ func (m *Cache) FileSize() (int64, error) {
 		return 0, fmt.Errorf("failed to get disk stats for path %s: %w", m.filePath, err)
 	}
 
-	return stat.Blocks * fsStat.Bsize, nil
+	return int64(stat.Blocks) * int64(fsStat.Bsize), nil
 }

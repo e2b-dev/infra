@@ -144,6 +144,44 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		localTemplate,
 		sbxTimeout,
 		rootfsPath,
+		false,
+	)
+	if err != nil {
+		cleanupErr := cleanup.Run(ctx)
+		if cleanupErr != nil {
+			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
+		}
+
+		postProcessor.WriteMsg(fmt.Sprintf("Error creating sandbox: %v", err))
+		return nil, fmt.Errorf("error creating sandbox: %w", err)
+	}
+	b.sandboxes.Insert(sbx.Metadata.Config.SandboxId, sbx)
+	defer func() {
+		cleanupErr := cleanup.Run(ctx)
+		if cleanupErr != nil {
+			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
+		}
+
+		b.sandboxes.Remove(sbx.Metadata.Config.SandboxId)
+		b.proxy.RemoveFromPool(sbx.StartID)
+	}()
+
+	time.Sleep(20 * time.Second)
+	cleanupErr := cleanup.Run(ctx)
+	if cleanupErr != nil {
+		b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
+	}
+
+	sbx, cleanup, err = sandbox.CreateSandbox(
+		ctx,
+		b.tracer,
+		b.networkPool,
+		b.devicePool,
+		template.ToSandboxConfig(envdVersion),
+		localTemplate,
+		sbxTimeout,
+		rootfsPath,
+		true,
 	)
 	if err != nil {
 		cleanupErr := cleanup.Run(ctx)

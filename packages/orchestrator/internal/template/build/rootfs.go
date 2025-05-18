@@ -11,7 +11,6 @@ import (
 	"github.com/dustin/go-humanize"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
-	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -215,6 +214,11 @@ BUILD_ID=%s
 		return nil, fmt.Errorf("error creating layer from files: %w", err)
 	}
 
+	busyBox, err := os.ReadFile("/bin/busybox")
+	if err != nil {
+		return nil, fmt.Errorf("error reading busybox: %w", err)
+	}
+
 	filesLayer, err := LayerFile(
 		map[string]layerFile{
 			// Setup system
@@ -224,10 +228,13 @@ BUILD_ID=%s
 
 			".e2b":                                 {[]byte(e2bFile), 0o644},
 			storage.GuestEnvdPath:                  {envdFileData, 0o777},
-			"provision.sh":                         {scriptDef.Bytes(), 0o777},
 			"etc/systemd/system/provision.service": {[]byte(provisionService), 0o644},
 			"etc/systemd/system/envd.service":      {[]byte(envdService), 0o644},
 			"etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf": {[]byte(autologinService), 0o644},
+
+			// Setup init system
+			"usr/sbin/init":  {busyBox, 0o755},
+			"etc/init.d/rcS": {scriptDef.Bytes(), 0o777},
 		},
 	)
 	if err != nil {
@@ -246,13 +253,7 @@ BUILD_ID=%s
 		return nil, fmt.Errorf("error creating layer from symlinks: %w", err)
 	}
 
-	systemdLayer, err := tarball.LayerFromFile("/systemd.tar")
-	if err != nil {
-		return nil, fmt.Errorf("error getting systemd layer: %w", err)
-	}
-
 	return []v1.Layer{
-		systemdLayer,
 		filesRemoveLayer,
 		filesLayer,
 		symlinkLayer,

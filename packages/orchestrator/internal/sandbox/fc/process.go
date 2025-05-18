@@ -190,7 +190,7 @@ func (p *Process) configure(
 		}
 	}()
 
-	err = os.Symlink("/dev/null", p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}

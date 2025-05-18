@@ -88,6 +88,7 @@ func CreateSandbox(
 	template template.Template,
 	sandboxTimeout time.Duration,
 	rootfsCOWCachePath string,
+	awaitEnvd bool,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -215,13 +216,15 @@ func CreateSandbox(
 		return sbx.Close(ctx, tracer)
 	})
 
-	err = sbx.waitForStart(
-		ctx,
-		tracer,
-		fcHandle,
-	)
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to wait for sandbox start: %w", err)
+	if awaitEnvd {
+		err = sbx.waitForStart(
+			ctx,
+			tracer,
+			fcHandle,
+		)
+		if err != nil {
+			return nil, cleanup, fmt.Errorf("failed to wait for sandbox start: %w", err)
+		}
 	}
 
 	// Set the sandbox as started now
