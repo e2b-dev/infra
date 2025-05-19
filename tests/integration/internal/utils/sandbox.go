@@ -20,13 +20,21 @@ func SetupSandboxWithCleanupWithTimeout(t *testing.T, c *api.ClientWithResponses
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
+	defaultMetadata := api.SandboxMetadata{
+		"sandboxType": "test",
+	}
+
 	var metadata *api.SandboxMetadata
 	if sbxMetadata != nil {
-		metadata = sbxMetadata
-	} else {
-		metadata = &api.SandboxMetadata{
-			"sandboxType": "test",
+		metadataOverride := defaultMetadata
+
+		for k, v := range *sbxMetadata {
+			metadataOverride[k] = v
 		}
+
+		metadata = &metadataOverride
+	} else {
+		metadata = &defaultMetadata
 	}
 
 	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
