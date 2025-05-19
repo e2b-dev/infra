@@ -23,11 +23,6 @@ func NewEdgeAPIStore(ctx context.Context, logger *zap.Logger, tracer trace.Trace
 		return nil
 	}
 
-	selfUpdateHandler := func() error {
-		(*drainingHandler)(true) // we want to restart service after update
-		panic("not implemented")
-	}
-
 	edgePort := internal.GetEdgeServicePort()
 	orchestratorPort := internal.GetOrchestratorServicePort()
 
@@ -46,11 +41,10 @@ func NewEdgeAPIStore(ctx context.Context, logger *zap.Logger, tracer trace.Trace
 	}
 	info.SetStatus(api.Healthy)
 
-	// todo
-	// edge pool
 	orchestratorsPool := e2borchestrators.NewOrchestratorsPool(ctx, logger, orchestratorsSD, tracer)
+	edgePool := e2borchestrators.NewEdgePool(ctx, logger, edgeSD, tracer, info.Host)
 
-	store, err := handlers.NewStore(ctx, logger, tracer, info, orchestratorsPool, edgeSD, &selfUpdateHandler, &selfDrainHandler)
+	store, err := handlers.NewStore(ctx, logger, tracer, info, orchestratorsPool, edgePool, &selfDrainHandler)
 	if err != nil {
 		return nil, err
 	}

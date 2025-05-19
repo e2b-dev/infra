@@ -22,15 +22,15 @@ import (
 type OrchestratorStatus string
 
 const (
-	syncInterval   = 10 * time.Second
-	syncMaxRetries = 3
+	orchestratorSyncInterval   = 10 * time.Second
+	orchestratorSyncMaxRetries = 3
 
 	OrchestratorStatusHealthy   OrchestratorStatus = "healthy"
 	OrchestratorStatusDraining  OrchestratorStatus = "draining"
 	OrchestratorStatusUnhealthy OrchestratorStatus = "unhealthy"
 )
 
-type Orchestrator struct {
+type OrchestratorNode struct {
 	ServiceId string
 	NodeId    string
 
@@ -40,7 +40,7 @@ type Orchestrator struct {
 	Host    string
 	Status  OrchestratorStatus
 	Startup time.Time
-	Roles []e2bgrpcorchestratorinfo.ServiceInfoRole
+	Roles   []e2bgrpcorchestratorinfo.ServiceInfoRole
 
 	Client *OrchestratorGRPCClient
 
@@ -63,7 +63,7 @@ type OrchestratorGRPCClient struct {
 	connection e2bgrpc.ClientConnInterface
 }
 
-func NewOrchestrator(ctx context.Context, host string) (*Orchestrator, error) {
+func NewOrchestrator(ctx context.Context, host string) (*OrchestratorNode, error) {
 	client, err := newClient(host)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GRPC client: %w", err)
@@ -71,7 +71,7 @@ func NewOrchestrator(ctx context.Context, host string) (*Orchestrator, error) {
 
 	ctx, ctxCancel := context.WithCancel(ctx)
 
-	o := &Orchestrator{
+	o := &OrchestratorNode{
 		Host:   host,
 		Client: client,
 
@@ -79,6 +79,7 @@ func NewOrchestrator(ctx context.Context, host string) (*Orchestrator, error) {
 		ctxCancel: ctxCancel,
 	}
 
+	// run the first sync immediately
 	err = o.syncRun()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize orchestrator, maybe its not ready yet: %w", err)
@@ -90,16 +91,13 @@ func NewOrchestrator(ctx context.Context, host string) (*Orchestrator, error) {
 	return o, nil
 }
 
-func (o *Orchestrator) Kill() error {
+func (o *OrchestratorNode) Kill() error {
 	o.ctxCancel()
 	return o.Client.close()
 }
 
-func (o *Orchestrator) sync() {
-	// Run the first sync immediately
-	o.syncRun()
-
-	ticker := time.NewTicker(syncInterval)
+func (o *OrchestratorNode) sync() {
+	ticker := time.NewTicker(orchestratorSyncInterval)
 	defer ticker.Stop()
 
 	for {
@@ -113,14 +111,14 @@ func (o *Orchestrator) sync() {
 	}
 }
 
-func (o *Orchestrator) syncRun() error {
+func (o *OrchestratorNode) syncRun() error {
 	o.mutex.Lock()
 	defer o.mutex.Unlock()
 
-	ctx, cancel := context.WithTimeout(o.ctx, syncInterval)
+	ctx, cancel := context.WithTimeout(o.ctx, orchestratorSyncInterval)
 	defer cancel()
 
-	for i := 0; i < syncMaxRetries; i++ {
+	for i := 0; i < orchestratorSyncMaxRetries; i++ {
 		status, err := o.Client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
 			zap.L().Error("failed to check health", zap.String("orchestrator id", o.ServiceId), zap.Error(err))
@@ -147,7 +145,7 @@ func (o *Orchestrator) syncRun() error {
 	return errors.New("failed to check orchestrator status")
 }
 
-func (o *Orchestrator) Close() error {
+func (o *OrchestratorNode) Close() error {
 	// close sync context
 	o.ctxCancel()
 	o.Status = OrchestratorStatusUnhealthy

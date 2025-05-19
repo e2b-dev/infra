@@ -26,6 +26,7 @@ generate:
 	$(codegen) -old-config-style -generate gin --package api $(openapi) > internal/edge/api/api.gen.go
 	$(codegen) -old-config-style -generate types --package api $(openapi) > internal/edge/api/types.gen.go
 	$(codegen) -old-config-style -generate spec --package api $(openapi) > internal/edge/api/spec.gen.go
+	$(codegen) -old-config-style -generate client --package api $(openapi) > internal/edge/api/client.gen.go
 
 .PHONY: run
 run:

@@ -49,7 +49,7 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 			EndTime:   timestamppb.New(endTime),
 		}
 
-		o, err := a.orchestratorsPool.GetOrchestrator(body.Sandbox.OrchestratorId)
+		o, err := a.orchestratorsPool.GetNode(body.Sandbox.OrchestratorId)
 		if err != nil {
 			if errors.Is(err, orchestratorPool.ErrOrchestratorNotFound) {
 				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Orchestrator not found: %s", err))

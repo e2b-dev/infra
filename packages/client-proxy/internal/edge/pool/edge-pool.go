@@ -14,30 +14,32 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-type OrchestratorsPool struct {
+type EdgePool struct {
 	discovery sd.ServiceDiscoveryAdapter
 
-	nodes *smap.Map[*OrchestratorNode]
-	mutex sync.Mutex
+	nodeSelfHost string
+	nodes        *smap.Map[*EdgeNode]
+	mutex        sync.Mutex
 
 	tracer trace.Tracer
 	logger *zap.Logger
 }
 
 const (
-	orchestratorsCacheRefreshInterval = 10 * time.Second
+	edgePoolCacheRefreshInterval = 10 * time.Second
 )
 
 var (
-	ErrOrchestratorNotFound = errors.New("orchestrator not found")
+	ErrEdgeNodeNotFound = errors.New("edge node not found")
 )
 
-func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer) *OrchestratorsPool {
-	pool := &OrchestratorsPool{
+func NewEdgePool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer, nodeSelfHost string) *EdgePool {
+	pool := &EdgePool{
 		discovery: discovery,
 
-		nodes: smap.New[*OrchestratorNode](),
-		mutex: sync.Mutex{},
+		nodeSelfHost: nodeSelfHost,
+		nodes:        smap.New[*EdgeNode](),
+		mutex:        sync.Mutex{},
 
 		logger: logger,
 		tracer: tracer,
@@ -49,24 +51,24 @@ func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.
 	return pool
 }
 
-func (p *OrchestratorsPool) GetOrchestrators() map[string]*OrchestratorNode {
+func (p *EdgePool) GetNodes() map[string]*EdgeNode {
 	return p.nodes.Items()
 }
 
-func (p *OrchestratorsPool) GetOrchestrator(id string) (*OrchestratorNode, error) {
+func (p *EdgePool) GetNode(id string) (*EdgeNode, error) {
 	o, ok := p.nodes.Get(id)
 	if !ok {
-		return nil, ErrOrchestratorNotFound
+		return nil, ErrEdgeNodeNotFound
 	}
 
 	return o, nil
 }
 
-func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
+func (p *EdgePool) keepInSync(ctx context.Context) {
 	// Run the first sync immediately
 	p.syncNodes(ctx)
 
-	ticker := time.NewTicker(orchestratorsCacheRefreshInterval)
+	ticker := time.NewTicker(edgePoolCacheRefreshInterval)
 	defer ticker.Stop()
 
 	for {
@@ -80,8 +82,8 @@ func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
 	}
 }
 
-func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
-	ctxTimeout, cancel := context.WithTimeout(ctx, orchestratorsCacheRefreshInterval)
+func (p *EdgePool) syncNodes(ctx context.Context) {
+	ctxTimeout, cancel := context.WithTimeout(ctx, edgePoolCacheRefreshInterval)
 	defer cancel()
 
 	spanCtx, span := p.tracer.Start(ctxTimeout, "pool-keep-in-sync")
@@ -101,9 +103,17 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 		go func(sdNode *sd.ServiceDiscoveryItem) {
 			defer wg.Done()
 
-			var found *OrchestratorNode = nil
+			var found *EdgeNode = nil
 
 			host := fmt.Sprintf("%s:%d", sdNode.NodeIp, sdNode.NodePort)
+
+			// todo: add it back
+			//// skip self registration
+			//if host == p.nodeSelfHost {
+			//	p.logger.Debug("Skipping self registration", zap.String("host", host))
+			//	return
+			//}
+
 			for _, node := range p.nodes.Items() {
 				if host == node.Host {
 					found = node
@@ -135,7 +145,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 	// disconnect nodes that are not in the list anymore
 	for _, node := range p.nodes.Items() {
 		wg.Add(1)
-		go func(node *OrchestratorNode) {
+		go func(node *EdgeNode) {
 			defer wg.Done()
 
 			found := false
@@ -152,7 +162,7 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 			if !found {
 				err := p.syncNode(spanCtx, node, false)
 				if err != nil {
-					p.logger.Error("Error during node sync", zap.Error(err))
+					p.logger.Error("Error during edge node sync", zap.Error(err))
 				}
 			}
 		}(node)
@@ -163,12 +173,12 @@ func (p *OrchestratorsPool) syncNodes(ctx context.Context) {
 	wg.Wait()
 }
 
-func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDiscoveryItem) error {
-	ctx, childSpan := p.tracer.Start(ctx, "connect-orchestrator-node")
+func (p *EdgePool) connectNode(ctx context.Context, node *sd.ServiceDiscoveryItem) error {
+	ctx, childSpan := p.tracer.Start(ctx, "connect-edge-node")
 	defer childSpan.End()
 
 	host := fmt.Sprintf("%s:%d", node.NodeIp, node.NodePort)
-	o, err := NewOrchestrator(ctx, host)
+	o, err := NewEdgeNode(ctx, host)
 	if err != nil {
 		return err
 	}
@@ -179,13 +189,13 @@ func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDis
 	return p.syncNode(ctx, o, true)
 }
 
-func (p *OrchestratorsPool) syncNode(ctx context.Context, node *OrchestratorNode, foundWithDiscovery bool) error {
-	ctx, childSpan := p.tracer.Start(ctx, "sync-orchestrator-node")
+func (p *EdgePool) syncNode(ctx context.Context, node *EdgeNode, foundWithDiscovery bool) error {
+	ctx, childSpan := p.tracer.Start(ctx, "sync-edge-node")
 	defer childSpan.End()
 
 	// close connection with node
 	if !foundWithDiscovery {
-		p.logger.Info("Orchestrator node node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
+		p.logger.Info("Edge node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
 
 		err := node.Close()
 		if err != nil {
@@ -200,7 +210,7 @@ func (p *OrchestratorsPool) syncNode(ctx context.Context, node *OrchestratorNode
 
 		p.nodes.Remove(node.ServiceId) // remove from pool
 
-		p.logger.Info("Orchestrator node node connection has been closed.", zap.String("node_id", node.ServiceId))
+		p.logger.Info("Edge node node connection has been closed.", zap.String("node_id", node.ServiceId))
 		return nil
 	}
 
