@@ -141,7 +141,6 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		networkPool,
 		sandboxProxy,
 		sandboxes,
-		clientID,
 	)
 
 	err = buildCache.Create(buildID, templateID)

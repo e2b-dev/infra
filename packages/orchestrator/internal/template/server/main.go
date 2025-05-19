@@ -50,7 +50,6 @@ func New(ctx context.Context,
 	devicePool *nbd.DevicePool,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
-	clientID string,
 ) *ServerStore {
 	// Template Manager Initialization
 	if err := constants.CheckRequired(); err != nil {
@@ -94,7 +93,6 @@ func New(ctx context.Context,
 		networkPool,
 		proxy,
 		sandboxes,
-		clientID,
 	)
 	store := &ServerStore{
 		tracer:           tracer,
