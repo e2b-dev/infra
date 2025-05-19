@@ -12,7 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-const oldRootfsBlockSize = 2 << 11  // 4 KiB
+const oldRootfsBlockSize = 2 << 11 // 4 KiB
 
 type Storage struct {
 	header *header.Header
