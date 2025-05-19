@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	keySuffixLength = 4
-	keyPrefixLength = 2
+	tokenValueSuffixLength = 4
+	tokenValuePrefixLength = 2
 
 	keyLength = 20
 )
@@ -31,21 +31,23 @@ type MaskedToken struct {
 
 // GetMaskedTokenProperties returns token masking properties in accordance to the OpenAPI response spec
 // NOTE: This is a temporary function which should eventually replace [MaskKey] when db migration is completed
-func GetMaskedTokenProperties(prefix, value string) (MaskedToken, error) {
-	suffixOffset := len(value) - keySuffixLength
-	prefixOffset := keyPrefixLength
+func GetMaskedTokenProperties(prefix, token string) (MaskedToken, error) {
+	tokenValue := strings.TrimPrefix(token, prefix)
+	tokenValueLength := len(tokenValue)
+
+	suffixOffset := tokenValueLength - tokenValueSuffixLength
+	prefixOffset := tokenValueLength - tokenValuePrefixLength
 
 	if suffixOffset < 0 {
-		return MaskedToken{}, fmt.Errorf("mask value length is less than key suffix length (%d)", keySuffixLength)
+		return MaskedToken{}, fmt.Errorf("mask value length is less than key suffix length (%d)", tokenValueSuffixLength)
 	}
 
-	maskPrefix := value[:prefixOffset]
-	maskSuffix := value[suffixOffset:]
-	tokenLength := len(value)
+	maskPrefix := tokenValue[:prefixOffset]
+	maskSuffix := tokenValue[suffixOffset:]
 
 	maskedTokenProperties := MaskedToken{
 		TokenPrefix:       prefix,
-		ValueLength:       tokenLength,
+		ValueLength:       tokenValueLength,
 		MaskedValuePrefix: maskPrefix,
 		MaskedValueSuffix: maskSuffix,
 	}
@@ -54,10 +56,10 @@ func GetMaskedTokenProperties(prefix, value string) (MaskedToken, error) {
 }
 
 func MaskKey(prefix string, value string) (string, error) {
-	suffixOffset := len(value) - keySuffixLength
+	suffixOffset := len(value) - tokenValueSuffixLength
 
 	if suffixOffset < 0 {
-		return "", fmt.Errorf("mask value length is less than key suffix length (%d)", keySuffixLength)
+		return "", fmt.Errorf("mask value length is less than key suffix length (%d)", tokenValueSuffixLength)
 	}
 
 	lastFour := value[suffixOffset:]
