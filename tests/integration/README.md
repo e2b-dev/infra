@@ -50,7 +50,7 @@ client := setup.GetEnvdClient(t, ctx)
 resp, err := client.HTTPClient.PostFilesWithBodyWithResponse(
     ctx,
     ...,
-    setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
+    setup.WithSandbox(sbx.JSON201.SandboxID),
 )
 ```
 
@@ -66,7 +66,7 @@ client := setup.GetEnvdClient(t, ctx)
 req := connect.NewRequest(&filesystem.ListDirRequest{
     Path: "/",
 })
-setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
+setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID)
 setup.SetUserHeader(req.Header(), "user")
 resp, err := client.FilesystemClient.ListDir(ctx, req)
 ```
