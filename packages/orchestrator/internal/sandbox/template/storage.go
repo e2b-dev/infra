@@ -12,6 +12,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
+const oldRootfsBlockSize = 2 << 11
+
 type Storage struct {
 	header *header.Header
 	source *build.File
@@ -67,8 +69,8 @@ func NewStorage(
 			BaseBuildId: id,
 			Size:        uint64(size),
 			Version:     1,
-			// We don't know the block size of the old style template, so we set it to header.RootfsBlockSize
-			BlockSize:  header.RootfsBlockSize,
+			// We don't know the block size of the old style template, so we set it to oldRootfsBlockSize
+			BlockSize:  oldRootfsBlockSize,
 			Generation: 1,
 		}, nil)
 	}
