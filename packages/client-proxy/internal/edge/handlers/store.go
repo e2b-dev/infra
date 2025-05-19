@@ -10,7 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
-	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/orchestrators"
+	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -18,7 +18,6 @@ import (
 type APIStore struct {
 	selfUpdateHandler *func() error
 	selfDrainHandler  *func() error
-
 
 	tracer           trace.Tracer
 	logger           *zap.Logger

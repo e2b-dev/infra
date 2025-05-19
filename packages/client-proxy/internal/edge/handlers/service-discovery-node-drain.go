@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/orchestrators"
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
@@ -32,7 +32,7 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, nodeId string, status or
 	// try to find orchestrator node first
 	o, err := a.orchestratorPool.GetOrchestrator(nodeId)
 	if err != nil {
-		if !errors.Is(err, orchestrators.ErrOrchestratorNotFound) {
+		if !errors.Is(err, pool.ErrOrchestratorNotFound) {
 			logger.Warn("Failed to get orchestrator", zap.Error(err))
 			return errors.New("Error when getting orchestrator node")
 		}

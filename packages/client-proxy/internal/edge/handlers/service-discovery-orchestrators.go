@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
-	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/orchestrators"
+	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	e2bgrpcorchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 

@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
-	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/orchestrators"
+	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 )
 
@@ -42,7 +42,7 @@ func NewEdgeAPIStore(ctx context.Context, logger *zap.Logger, tracer trace.Trace
 		SourceVersion: serviceVersion,
 		SourceCommit:  serviceCommit,
 		Startup:       time.Now(),
-		Host:  		   fmt.Sprintf("%s:%d", internal.GetNodeIP(), edgePort),
+		Host:          fmt.Sprintf("%s:%d", internal.GetNodeIP(), edgePort),
 	}
 	info.SetStatus(api.Healthy)
 
