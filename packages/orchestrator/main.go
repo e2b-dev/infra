@@ -79,8 +79,8 @@ func run(port, proxyPort uint) (success bool) {
 
 	// Check if the orchestrator crashed and restarted
 	// Skip this check in development mode
-	// TODO: Remove the check for template manager once we have graceful shutdown/rolling updates for the template manager
-	if !env.IsDevelopment() && !(len(services) == 1 && services[0] == service.TemplateManager) {
+	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
+	if !env.IsDevelopment() && !forceStop {
 		info, err := os.Stat(fileLockName)
 		if err == nil {
 			log.Fatalf("Orchestrator was already started at %s, exiting", info.ModTime())
