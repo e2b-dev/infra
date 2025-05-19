@@ -28,6 +28,7 @@ const (
 	maxRootfsSize = 15000 << ToMBShift
 
 	rootfsBuildFileName = "rootfs.ext4.build"
+	rootfsProvisionLink = "rootfs.ext4.build.provision"
 )
 
 type Rootfs struct {
@@ -115,7 +116,7 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	r.template.rootfsSize = rootfsFinalSize
 
 	// Check the rootfs filesystem corruption
-	ext4Check, err := ext4.CheckIntegrity(rootfsPath)
+	ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
 	zap.L().Debug("filesystem ext4 integrity",
 		zap.String("result", ext4Check),
 		zap.Error(err),
@@ -137,29 +138,6 @@ func additionalOCILayers(
 		return nil, fmt.Errorf("error executing provision script: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "executed provision script env")
-
-	provisionService := `[Unit]
-Description=Provision Script
-DefaultDependencies=no
-Before=network-pre.target network.target network-online.target sysinit.target systemd-hostnamed.service systemd-resolved.service
-Wants=network-pre.target
-Requires=local-fs.target
-After=local-fs.target
-OnFailure=emergency.target
-
-[Service]
-Type=oneshot
-ExecStart=/provision.sh
-RemainAfterExit=true
-
-# Fail boot if this service fails
-StandardError=journal
-TimeoutStartSec=0
-SuccessExitStatus=0
-
-[Install]
-WantedBy=sysinit.target
-`
 
 	memoryLimit := int(math.Min(float64(config.MemoryMB)/2, 512))
 	envdService := fmt.Sprintf(`[Unit]
@@ -202,18 +180,6 @@ BUILD_ID=%s
 		return nil, fmt.Errorf("error reading envd file: %w", err)
 	}
 
-	// Delete files from underlying layers
-	filesRemoveLayer, err := LayerFile(
-		map[string]layerFile{
-			"etc/.wh.hostname":    {[]byte{}, 0o644},
-			"etc/.wh.hosts":       {[]byte{}, 0o644},
-			"etc/.wh.resolv.conf": {[]byte{}, 0o644},
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error creating layer from files: %w", err)
-	}
-
 	busyBox, err := os.ReadFile("/bin/busybox")
 	if err != nil {
 		return nil, fmt.Errorf("error reading busybox: %w", err)
@@ -226,15 +192,37 @@ BUILD_ID=%s
 			"etc/hosts":       {[]byte(hosts), 0o644},
 			"etc/resolv.conf": {[]byte("nameserver 8.8.8.8"), 0o644},
 
-			".e2b":                                 {[]byte(e2bFile), 0o644},
-			storage.GuestEnvdPath:                  {envdFileData, 0o777},
-			"etc/systemd/system/provision.service": {[]byte(provisionService), 0o644},
-			"etc/systemd/system/envd.service":      {[]byte(envdService), 0o644},
+			".e2b":                            {[]byte(e2bFile), 0o644},
+			storage.GuestEnvdPath:             {envdFileData, 0o777},
+			"etc/systemd/system/envd.service": {[]byte(envdService), 0o644},
 			"etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf": {[]byte(autologinService), 0o644},
 
 			// Setup init system
-			"usr/sbin/init":  {busyBox, 0o755},
-			"etc/init.d/rcS": {scriptDef.Bytes(), 0o777},
+			"usr/bin/busybox": {busyBox, 0o755},
+			"usr/sbin/init":   {busyBox, 0o755},
+			"etc/init.d/rcS": {[]byte(`#!/bin/busybox ash
+echo "Mounting essential filesystems"
+# Ensure necessary mount points exist
+mkdir -p /proc /sys /dev
+
+# Mount essential filesystems
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+
+echo "System Init"`), 0o777},
+			"usr/local/bin/provision.sh": {scriptDef.Bytes(), 0o777},
+			"etc/inittab": {[]byte(`# Run system init
+::sysinit:/etc/init.d/rcS
+
+# Run the provision script
+::wait:/usr/local/bin/provision.sh
+
+# Reboot the system after the script
+# Running the poweroff or halt commands inside a Linux guest will bring it down but Firecracker process remains unaware of the guest shutdown so it lives on.
+# Running the reboot command in a Linux guest will gracefully bring down the guest system and also bring a graceful end to the Firecracker process.
+::once:/bin/busybox reboot
+::shutdown:/bin/busybox umount -a -r
+`), 0o777},
 		},
 	)
 	if err != nil {
@@ -243,10 +231,10 @@ BUILD_ID=%s
 
 	symlinkLayer, err := LayerSymlink(
 		map[string]string{
-			// Enable provision service autostart
-			"etc/systemd/system/sysinit.target.wants/provision.service": "etc/systemd/system/provision.service",
 			// Enable envd service autostart
 			"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",
+			// Enable chrony service autostart
+			"etc/systemd/system/multi-user.target.wants/chrony.service": "etc/systemd/system/chrony.service",
 		},
 	)
 	if err != nil {
@@ -254,7 +242,6 @@ BUILD_ID=%s
 	}
 
 	return []v1.Layer{
-		filesRemoveLayer,
 		filesLayer,
 		symlinkLayer,
 	}, nil

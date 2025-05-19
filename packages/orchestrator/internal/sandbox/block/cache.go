@@ -149,7 +149,7 @@ func (m *Cache) WriteAt(b []byte, off int64) (int, error) {
 	return m.WriteAtWithoutLock(b, off)
 }
 
-func (m *Cache) Close() error {
+func (m *Cache) Close() (e error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -158,10 +158,30 @@ func (m *Cache) Close() error {
 		return NewErrCacheClosed(m.filePath)
 	}
 
-	return errors.Join(
-		m.mmap.Unmap(),
-		//os.RemoveAll(m.filePath),
-	)
+	err := m.mmap.Flush()
+	if err != nil {
+		e = errors.Join(e, fmt.Errorf("error flushing mmap: %w", err))
+	}
+
+	err = m.mmap.Unmap()
+	if err != nil {
+		e = errors.Join(e, fmt.Errorf("error unmapping mmap: %w", err))
+	}
+
+	f, err := os.OpenFile(m.filePath, os.O_RDWR, 0o644)
+	if err != nil {
+		e = errors.Join(e, fmt.Errorf("error opening file: %w", err))
+	}
+
+	err = f.Sync()
+	if err != nil {
+		e = errors.Join(e, fmt.Errorf("error syncing file: %w", err))
+	}
+
+	// TODO: Move to to the scope of the caller
+	e = errors.Join(e, os.RemoveAll(m.filePath))
+
+	return e
 }
 
 func (m *Cache) Size() (int64, error) {

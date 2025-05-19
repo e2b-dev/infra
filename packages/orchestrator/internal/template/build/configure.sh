@@ -2,27 +2,7 @@
 export BASH_XTRACEFD=1
 set -euo pipefail
 
-echo "Starting provisioning script"
-
-# Install required packages if not already installed
-PACKAGES="openssh-server sudo socat chrony linuxptp"
-echo "Checking presence of the following packages: $PACKAGES"
-
-MISSING=()
-for pkg in $PACKAGES; do
-    if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
-        echo "Package $pkg is missing, will install it."
-        MISSING+=("$pkg")
-    fi
-done
-
-if [ ${#MISSING[@]} -ne 0 ]; then
-    echo "Missing packages detected, installing: ${MISSING[*]}"
-    apt-get -qq update
-    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get install -y --no-install-recommends "${MISSING[@]}"
-else
-    echo "All required packages are already installed."
-fi
+echo "Starting configuration script"
 
 # Add swapfile — we enable it in the preexec for envd
 configure_swap() {
@@ -37,31 +17,6 @@ configure_swap() {
 }
 
 configure_swap 128
-
-# Set up chrony.
-setup_chrony(){
-    echo "Setting up chrony"
-    mkdir -p /etc/chrony
-    cat <<EOF >/etc/chrony/chrony.conf
-refclock PHC /dev/ptp0 poll -1 dpoll -1 offset 0 trust prefer
-makestep 1 -1
-EOF
-
-    # Add a proxy config, as some environments expects it there (e.g. timemaster in Node Dockerimage)
-    echo "include /etc/chrony/chrony.conf" >/etc/chrony.conf
-
-    mkdir -p /etc/systemd/system/chrony.service.d
-    # The ExecStart= should be emptying the ExecStart= line in config.
-    cat <<EOF >/etc/systemd/system/chrony.service.d/override.conf
-[Service]
-ExecStart=
-ExecStart=/usr/sbin/chronyd
-User=root
-Group=root
-EOF
-}
-
-setup_chrony
 
 # Create default user.
 # if the /home/user directory exists, we copy the skeleton files to it because the adduser command
@@ -92,10 +47,6 @@ mkdir -p /code
 echo "Give 777 permission to /code"
 chmod 777 -R /code
 
-# Start systemd services
-systemctl daemon-reload
-systemctl enable chrony 2>&1
-
-echo "Finished provisioning script"
+echo "Finished configuration script"
 
 exit 0

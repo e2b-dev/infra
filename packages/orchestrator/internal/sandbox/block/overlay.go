@@ -84,7 +84,3 @@ func (o *Overlay) Close() error {
 func (o *Overlay) Header() *header.Header {
 	return o.device.Header()
 }
-
-func (o *Overlay) MarkAllAsDirty() {
-	o.cache.MarkAllAsDirty()
-}

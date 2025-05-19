@@ -16,6 +16,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	templatelocal "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
@@ -41,8 +43,10 @@ type TemplateBuilder struct {
 const (
 	templatesDirectory = "/tmp/templates"
 
-	sbxTimeout          = time.Hour
-	waitTimeForStartCmd = 20 * time.Second
+	sbxTimeout           = time.Hour
+	provisionTimeout     = 1 * time.Minute
+	configurationTimeout = 5 * time.Minute
+	waitTimeForStartCmd  = 20 * time.Second
 
 	cleanupTimeout = time.Second * 10
 )
@@ -133,7 +137,48 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		postProcessor.WriteMsg(fmt.Sprintf("Error building environment: %v", err))
 		return nil, err
 	}
+	defer func() {
+		err := localTemplate.Close()
+		if err != nil {
+			b.logger.Error("Error closing local template", zap.Error(err))
+		}
+	}()
 
+	// Provision sandbox with systemd and other vital parts
+	postProcessor.WriteMsg("Provisioning sandbox template")
+	// Just a symlink to the rootfs build file, so when the COW cache deletes the underlying file (here symlink),
+	// it will not delete the rootfs file. We use the rootfs again later on to start the sandbox template.
+	rootfsProvisionPath := filepath.Join(templateBuildDir, rootfsProvisionLink)
+	err = os.Symlink(rootfsPath, rootfsProvisionPath)
+	if err != nil {
+		postProcessor.WriteMsg(fmt.Sprintf("Error while creating provision rootfs: %v", err))
+		return nil, fmt.Errorf("error creating provision rootfs symlink: %w", err)
+	}
+
+	err = b.provisionSandbox(ctx, template, envdVersion, localTemplate, rootfsProvisionPath)
+	if err != nil {
+		postProcessor.WriteMsg(fmt.Sprintf("Error provisioning sandbox: %v", err))
+		return nil, fmt.Errorf("error provisioning sandbox: %w", err)
+	}
+
+	// Check the rootfs filesystem corruption
+	ext4Check, err := ext4.CheckIntegrity(rootfsPath, false)
+	zap.L().Debug("provisioned filesystem ext4 integrity",
+		zap.String("result", ext4Check),
+		zap.Error(err),
+	)
+	if err != nil {
+		postProcessor.WriteMsg(fmt.Sprintf("Error checking provisioned filesystem integrity: %v", err))
+		return nil, fmt.Errorf("error checking ext4 filesystem integrity: %w", err)
+	}
+
+	err = b.enlargeDiskAfterProvisioning(ctx, template, rootfsPath)
+	if err != nil {
+		postProcessor.WriteMsg(fmt.Sprintf("Error enlarging disk after provisioning: %v", err))
+		return nil, fmt.Errorf("error enlarging disk after provisioning: %w", err)
+	}
+
+	// Create sandbox for building template
 	postProcessor.WriteMsg("Creating sandbox template")
 	sbx, cleanup, err := sandbox.CreateSandbox(
 		ctx,
@@ -144,79 +189,33 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		localTemplate,
 		sbxTimeout,
 		rootfsPath,
-		false,
 	)
-	if err != nil {
-		cleanupErr := cleanup.Run(ctx)
-		if cleanupErr != nil {
-			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
-		}
-
-		postProcessor.WriteMsg(fmt.Sprintf("Error creating sandbox: %v", err))
-		return nil, fmt.Errorf("error creating sandbox: %w", err)
-	}
-	b.sandboxes.Insert(sbx.Metadata.Config.SandboxId, sbx)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)
 		if cleanupErr != nil {
 			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
 		}
-
-		b.sandboxes.Remove(sbx.Metadata.Config.SandboxId)
-		b.proxy.RemoveFromPool(sbx.StartID)
 	}()
-
-	time.Sleep(20 * time.Second)
-	cleanupErr := cleanup.Run(ctx)
-	if cleanupErr != nil {
-		b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
+	if err != nil {
+		postProcessor.WriteMsg(fmt.Sprintf("Error creating sandbox: %v", err))
+		return nil, fmt.Errorf("error creating sandbox: %w", err)
 	}
-
-	sbx, cleanup, err = sandbox.CreateSandbox(
+	err = sbx.WaitForStart(
 		ctx,
 		b.tracer,
-		b.networkPool,
-		b.devicePool,
-		template.ToSandboxConfig(envdVersion),
-		localTemplate,
-		sbxTimeout,
-		rootfsPath,
-		true,
 	)
 	if err != nil {
-		cleanupErr := cleanup.Run(ctx)
-		if cleanupErr != nil {
-			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
-		}
-
-		postProcessor.WriteMsg(fmt.Sprintf("Error creating sandbox: %v", err))
-		return nil, fmt.Errorf("error creating sandbox: %w", err)
+		postProcessor.WriteMsg(fmt.Sprintf("Failed waiting for sandbox start: %v", err))
+		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
+	// Add to proxy so we can call envd commands
 	b.sandboxes.Insert(sbx.Metadata.Config.SandboxId, sbx)
 	defer func() {
-		cleanupErr := cleanup.Run(ctx)
-		if cleanupErr != nil {
-			b.logger.Error("Error cleaning up sandbox", zap.Error(cleanupErr))
-		}
-
 		b.sandboxes.Remove(sbx.Metadata.Config.SandboxId)
 		b.proxy.RemoveFromPool(sbx.StartID)
 	}()
 
-	// Remove build files if build fails or times out
-	defer func() {
-		if err != nil {
-			removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
-			defer cancel()
-
-			removeErr := b.templateStorage.Remove(removeCtx, template.BuildId)
-			if removeErr != nil {
-				b.logger.Error("Error while removing build files", zap.Error(removeErr))
-				telemetry.ReportError(ctx, removeErr)
-			}
-		}
-	}()
-
+	// Run configuration script
 	var scriptDef bytes.Buffer
 	err = ConfigureScriptTemplate.Execute(&scriptDef, map[string]string{})
 	if err != nil {
@@ -226,8 +225,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		ctx,
 		postProcessor,
 		sbx.Metadata.Config.SandboxId,
-		// TODO: Make this user configurable, with health check too
-		2*time.Minute,
+		configurationTimeout,
 		scriptDef.String(),
 		"root",
 	)
@@ -242,6 +240,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 
 		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
 		// TODO: Remove this after we can add customizable wait time for building templates.
+		// TODO: Make this user configurable, with health check too
 		startCmdWait := waitTimeForStartCmd
 		if template.TemplateId == "zegbt9dl3l2ixqem82mm" || template.TemplateId == "ot5bidkk3j2so2j02uuz" || template.TemplateId == "0zeou1s7agaytqitvmzc" {
 			startCmdWait = 120 * time.Second
@@ -263,7 +262,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		telemetry.ReportEvent(ctx, "waited for start command", attribute.Float64("seconds", float64(waitTimeForStartCmd/time.Second)))
 	}
 
-	// PAUSE
+	// Pause sandbox
 	postProcessor.WriteMsg("Pausing sandbox template")
 	snapshot, err := sbx.Pause(
 		ctx,
@@ -274,6 +273,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		return nil, fmt.Errorf("error processing vm: %w", err)
 	}
 
+	// Upload
 	postProcessor.WriteMsg("Uploading template")
 	uploadErrCh := b.uploadTemplate(
 		ctx,
@@ -301,6 +301,20 @@ func (b *TemplateBuilder) uploadTemplate(
 	errCh := make(chan error, 1)
 
 	go func() {
+		// Remove build files if build fails or times out
+		var err error
+		defer func() {
+			if err != nil {
+				removeCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+				defer cancel()
+
+				removeErr := b.templateStorage.Remove(removeCtx, templateFiles.BuildId)
+				if removeErr != nil {
+					b.logger.Error("Error while removing build files", zap.Error(removeErr))
+					telemetry.ReportError(ctx, removeErr)
+				}
+			}
+		}()
 		defer close(errCh)
 
 		templateBuild := storage.NewTemplateBuild(
@@ -332,8 +346,83 @@ func (b *TemplateBuilder) uploadTemplate(
 		)
 
 		// Forward upload errors to errCh
-		errCh <- <-uploadErrCh
+		err = <-uploadErrCh
+		errCh <- err
 	}()
 
 	return errCh
+}
+
+func (b *TemplateBuilder) provisionSandbox(
+	ctx context.Context,
+	template *TemplateConfig,
+	envdVersion string,
+	localTemplate *templatelocal.LocalTemplate,
+	rootfsPath string,
+) (e error) {
+	ctx, childSpan := b.tracer.Start(ctx, "provision-sandbox")
+	defer childSpan.End()
+
+	sbx, cleanup, err := sandbox.CreateSandbox(
+		ctx,
+		b.tracer,
+		b.networkPool,
+		b.devicePool,
+		template.ToSandboxConfig(envdVersion),
+		localTemplate,
+		provisionTimeout,
+		rootfsPath,
+	)
+	defer func() {
+		cleanupErr := cleanup.Run(ctx)
+		if cleanupErr != nil {
+			e = fmt.Errorf("error cleaning up sandbox: %w", cleanupErr)
+		}
+	}()
+	if err != nil {
+		return fmt.Errorf("error creating sandbox: %w", err)
+	}
+	err = sbx.WaitForExit(
+		ctx,
+		b.tracer,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to wait for sandbox start: %w", err)
+	}
+
+	return nil
+}
+
+func (b *TemplateBuilder) enlargeDiskAfterProvisioning(
+	ctx context.Context,
+	template *TemplateConfig,
+	rootfsPath string,
+) error {
+	// Resize rootfs to accommodate for the provisioning script size change
+	rootfsFreeSpace, err := ext4.GetFreeSpace(ctx, b.tracer, rootfsPath, template.RootfsBlockSize())
+	if err != nil {
+		return fmt.Errorf("error getting free space: %w", err)
+	}
+	sizeDiff := template.DiskSizeMB<<ToMBShift - rootfsFreeSpace
+	if sizeDiff <= 0 {
+		zap.L().Debug("no need to enlarge rootfs, skipping")
+		return nil
+	}
+	zap.L().Debug("adding provision size diff to rootfs", zap.Int64("size", sizeDiff))
+	rootfsFinalSize, err := ext4.Enlarge(ctx, b.tracer, rootfsPath, sizeDiff)
+	if err != nil {
+		return fmt.Errorf("error enlarging rootfs: %w", err)
+	}
+	template.rootfsSize = rootfsFinalSize
+
+	// Check the rootfs filesystem corruption
+	ext4Check, err := ext4.CheckIntegrity(rootfsPath, false)
+	zap.L().Debug("final enlarge filesystem ext4 integrity",
+		zap.String("result", ext4Check),
+		zap.Error(err),
+	)
+	if err != nil {
+		return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
+	}
+	return nil
 }

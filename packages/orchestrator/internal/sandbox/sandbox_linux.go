@@ -43,7 +43,7 @@ var httpClient = http.Client{
 
 type Resources struct {
 	Slot     network.Slot
-	rootfs   *rootfs.CowDevice
+	rootfs   rootfs.Provider
 	memory   uffd.MemoryBackend
 	uffdExit chan error
 }
@@ -87,8 +87,7 @@ func CreateSandbox(
 	config *orchestrator.SandboxConfig,
 	template template.Template,
 	sandboxTimeout time.Duration,
-	rootfsCOWCachePath string,
-	awaitEnvd bool,
+	rootfsCachePath string,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -115,26 +114,21 @@ func CreateSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get rootfs: %w", err)
 	}
 
-	rootfsOverlay, err := createRootfsOverlay(
-		childCtx,
+	rootfsProvider, err := rootfs.NewDirectProvider(
 		tracer,
-		devicePool,
-		cleanup,
 		rootFS,
-		// Populate COW cache directly from the source file
-		// This is needed for marking all blocks as dirty and being able to read them from the cache
-		rootfsCOWCachePath,
+		// Populate direct cache directly from the source file
+		// This is needed for marking all blocks as dirty and being able to read them directly
+		rootfsCachePath,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
-	err = rootfsOverlay.MarkAllBlocksAsDirty()
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to mark all blocks as dirty: %w", err)
-	}
-
+	cleanup.Add(func(ctx context.Context) error {
+		return rootfsProvider.Close(ctx)
+	})
 	go func() {
-		runErr := rootfsOverlay.Start(childCtx)
+		runErr := rootfsProvider.Start(childCtx)
 		if runErr != nil {
 			zap.L().Error("rootfs overlay error", zap.Error(runErr))
 		}
@@ -152,19 +146,22 @@ func CreateSandbox(
 
 	resources := &Resources{
 		Slot:     ips,
-		rootfs:   rootfsOverlay,
+		rootfs:   rootfsProvider,
 		memory:   uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
 		uffdExit: make(chan error, 1),
 	}
 
 	/// ==== END of resources initialization ====
-
+	rootfsPath, err := rootfsProvider.Path()
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to get rootfs path: %w", err)
+	}
 	fcHandle, err := fc.NewProcess(
 		childCtx,
 		tracer,
 		ips,
 		sandboxFiles,
-		rootfsOverlay,
+		rootfsPath,
 		config.BaseTemplateId,
 		config.BuildId,
 	)
@@ -215,20 +212,6 @@ func CreateSandbox(
 	cleanup.AddPriority(func(ctx context.Context) error {
 		return sbx.Close(ctx, tracer)
 	})
-
-	if awaitEnvd {
-		err = sbx.waitForStart(
-			ctx,
-			tracer,
-			fcHandle,
-		)
-		if err != nil {
-			return nil, cleanup, fmt.Errorf("failed to wait for sandbox start: %w", err)
-		}
-	}
-
-	// Set the sandbox as started now
-	sbx.Metadata.StartedAt = time.Now()
 
 	return sbx, cleanup, nil
 }
@@ -340,13 +323,16 @@ func ResumeSandbox(
 	}
 
 	/// ==== END of resources initialization ====
-
+	rootfsPath, err := rootfsOverlay.Path()
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to get rootfs path: %w", err)
+	}
 	fcHandle, fcErr := fc.NewProcess(
 		uffdStartCtx,
 		tracer,
 		ips,
 		sandboxFiles,
-		rootfsOverlay,
+		rootfsPath,
 		baseTemplateID,
 		readonlyRootfs.Header().Metadata.BaseBuildId.String(),
 	)
@@ -408,17 +394,13 @@ func ResumeSandbox(
 		return sbx.Close(ctx, tracer)
 	})
 
-	err = sbx.waitForStart(
+	err = sbx.WaitForStart(
 		ctx,
 		tracer,
-		fcHandle,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
-
-	// Set the sandbox as started now
-	sbx.Metadata.StartedAt = time.Now()
 
 	go sbx.Checks.Start()
 
@@ -733,11 +715,11 @@ func createRootfsOverlay(
 	cleanup *Cleanup,
 	readonlyRootfs block.ReadonlyDevice,
 	targetCachePath string,
-) (*rootfs.CowDevice, error) {
+) (rootfs.Provider, error) {
 	_, overlaySpan := tracer.Start(ctx, "create-rootfs-overlay")
 	defer overlaySpan.End()
 
-	rootfsOverlay, err := rootfs.NewCowDevice(
+	rootfsOverlay, err := rootfs.NewNBDProvider(
 		tracer,
 		readonlyRootfs,
 		targetCachePath,
@@ -794,11 +776,42 @@ func serveMemory(
 	return fcUffd, nil
 }
 
-func (s *Sandbox) waitForStart(
+func (s *Sandbox) WaitForExit(
 	ctx context.Context,
 	tracer trace.Tracer,
-	fcProcess *fc.Process,
 ) error {
+	ctx, childSpan := tracer.Start(ctx, "sandbox-wait-for-exit")
+	defer childSpan.End()
+
+	timeout := time.Until(s.EndAt)
+
+	select {
+	case <-time.After(timeout):
+		return fmt.Errorf("waiting for exit took too long")
+	case <-ctx.Done():
+		return nil
+	case err := <-s.process.Exit:
+		if err == nil {
+			return nil
+		}
+		return fmt.Errorf("fc process exited prematurely: %w", err)
+	}
+}
+
+func (s *Sandbox) WaitForStart(
+	ctx context.Context,
+	tracer trace.Tracer,
+) (e error) {
+	ctx, childSpan := tracer.Start(ctx, "sandbox-wait-for-start")
+	defer childSpan.End()
+
+	defer func() {
+		if e != nil {
+			return
+		}
+		// Update the sandbox as started now
+		s.Metadata.StartedAt = time.Now()
+	}()
 	syncCtx, syncCancel := context.WithCancelCause(ctx)
 	defer syncCancel(nil)
 
@@ -809,7 +822,7 @@ func (s *Sandbox) waitForStart(
 			syncCancel(fmt.Errorf("syncing took too long"))
 		case <-syncCtx.Done():
 			return
-		case err := <-fcProcess.Exit:
+		case err := <-s.process.Exit:
 			syncCancel(fmt.Errorf("fc process exited prematurely: %w", err))
 		}
 	}()

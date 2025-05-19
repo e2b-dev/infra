@@ -21,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/systemd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -66,11 +65,6 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 	sbxlogger.SetSandboxLoggerInternal(logger)
 
 	tracer := otel.Tracer("test")
-
-	err = systemd.BuildLayer()
-	if err != nil {
-		return fmt.Errorf("error building systemd layer: %v", err)
-	}
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.

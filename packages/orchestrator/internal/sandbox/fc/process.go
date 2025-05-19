@@ -17,7 +17,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -40,9 +39,9 @@ type Process struct {
 
 	firecrackerSocketPath string
 
-	slot   network.Slot
-	rootfs *rootfs.CowDevice
-	files  *storage.SandboxFiles
+	slot       network.Slot
+	rootfsPath string
+	files      *storage.SandboxFiles
 
 	Exit chan error
 
@@ -56,7 +55,7 @@ func NewProcess(
 	tracer trace.Tracer,
 	slot network.Slot,
 	files *storage.SandboxFiles,
-	rootfs *rootfs.CowDevice,
+	rootfsPath string,
 	baseTemplateID string,
 	baseBuildID string,
 ) (*Process, error) {
@@ -123,7 +122,7 @@ func NewProcess(
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
-		rootfs:                rootfs,
+		rootfsPath:            rootfsPath,
 		files:                 files,
 		slot:                  slot,
 
@@ -295,11 +294,7 @@ func (p *Process) Create(
 	telemetry.ReportEvent(childCtx, "set fc boot source config")
 
 	// Rootfs
-	rootfsPath, err := p.rootfs.Path()
-	if err != nil {
-		return fmt.Errorf("error getting rootfs path: %w", err)
-	}
-	err = utils.SymlinkForce(rootfsPath, p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce(p.rootfsPath, p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -364,11 +359,7 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
 	}
 
-	device, err := p.rootfs.Path()
-	if err != nil {
-		return fmt.Errorf("error getting rootfs path: %w", err)
-	}
-	err = utils.SymlinkForce(device, p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce(p.rootfsPath, p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -423,7 +414,7 @@ func (p *Process) Stop() error {
 
 	err := p.cmd.Process.Kill()
 	if err != nil {
-		return fmt.Errorf("failed to send KILL to FC process: %w", err)
+		zap.L().Warn("failed to send KILL to FC process", zap.Error(err))
 	}
 
 	return nil

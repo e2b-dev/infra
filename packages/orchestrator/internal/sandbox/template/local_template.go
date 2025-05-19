@@ -1,8 +1,6 @@
 package template
 
 import (
-	"fmt"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -43,5 +41,5 @@ func (t *LocalTemplate) Rootfs() (block.ReadonlyDevice, error) {
 }
 
 func (t *LocalTemplate) Snapfile() (File, error) {
-	return nil, fmt.Errorf("snapfile not implemented for local template")
+	return nil, ErrNotImplemented{Msg: "snapfile not implemented for local template"}
 }

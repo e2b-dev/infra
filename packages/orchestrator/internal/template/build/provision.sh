@@ -3,22 +3,25 @@ set -euo pipefail
 
 echo "Starting provisioning script"
 
-echo "Mounting basic filesystems"
-mount -t proc none /proc
-mount -t sysfs none /sys
-mount -t devtmpfs none /dev
+# Install required packages if not already installed
+PACKAGES="systemd systemd-sysv openssh-server sudo socat chrony linuxptp"
+echo "Checking presence of the following packages: $PACKAGES"
 
-echo "Updating apt"
-apt update
+MISSING=()
+for pkg in $PACKAGES; do
+    if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+        echo "Package $pkg is missing, will install it."
+        MISSING+=("$pkg")
+    fi
+done
 
-echo "Installing packages"
-DEBIAN_FRONTEND=noninteractive apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --no-upgrade systemd systemd-sysv
-apt-get clean
-rm -rf \
-	/var/lib/apt/lists/* \
-	/etc/machine-id
-
+if [ ${#MISSING[@]} -ne 0 ]; then
+    echo "Missing packages detected, installing: ${MISSING[*]}"
+    apt-get -qq update
+    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get install -y --no-install-recommends "${MISSING[@]}"
+else
+    echo "All required packages are already installed."
+fi
 
 echo "Setting up shell"
 echo "export SHELL='/bin/bash'" >/etc/profile.d/shell.sh
@@ -32,6 +35,31 @@ echo "if [ -f ~/.bashrc ]; then source ~/.bashrc; fi; if [ -f ~/.profile ]; then
 echo "Remove root password"
 passwd -d root
 
+# Set up chrony.
+setup_chrony(){
+    echo "Setting up chrony"
+    mkdir -p /etc/chrony
+    cat <<EOF >/etc/chrony/chrony.conf
+refclock PHC /dev/ptp0 poll -1 dpoll -1 offset 0 trust prefer
+makestep 1 -1
+EOF
+
+    # Add a proxy config, as some environments expects it there (e.g. timemaster in Node Dockerimage)
+    echo "include /etc/chrony/chrony.conf" >/etc/chrony.conf
+
+    mkdir -p /etc/systemd/system/chrony.service.d
+    # The ExecStart= should be emptying the ExecStart= line in config.
+    cat <<EOF >/etc/systemd/system/chrony.service.d/override.conf
+[Service]
+ExecStart=
+ExecStart=/usr/sbin/chronyd
+User=root
+Group=root
+EOF
+}
+
+setup_chrony
+
 echo "Setting up SSH"
 mkdir -p /etc/ssh
 cat <<EOF >>/etc/ssh/sshd_config
@@ -43,11 +71,15 @@ EOF
 echo "Don't wait for ttyS0 (serial console kernel logs)"
 systemctl mask serial-getty@ttyS0.service
 
+# Clean machine-id from Docker
+rm -rf /etc/machine-id
+
 echo "Linking systemd to init"
 ln -sf /lib/systemd/systemd /usr/sbin/init
 ln -sf /lib/systemd/systemd /sbin/init
 
 echo "Finished provisioning script"
 
-poweroff -f
-echo "Shutdown"
+# Delete itself
+rm -rf /etc/init.d/rcS
+rm -rf /usr/local/bin/provision.sh
