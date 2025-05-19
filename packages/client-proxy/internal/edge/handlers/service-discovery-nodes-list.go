@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"sort"
 
 	"github.com/gin-gonic/gin"
 
@@ -57,6 +58,14 @@ func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
 			Commit:    a.info.SourceCommit,
 			Host:      a.info.Host,
 			StartedAt: a.info.Startup,
+		},
+	)
+
+	sort.Slice(
+		response,
+		func(i, j int) bool {
+			// older dates first
+			return response[i].StartedAt.Before(response[j].StartedAt)
 		},
 	)
 
