@@ -1,12 +1,12 @@
 -- name: GetSnapshotsWithCursor :many
 -- We must convert NULL alias into empty string, because sqlc will not generate string pointer to it and it will crash when NULL is received
-SELECT COALESCE(ea.alias, '') as alias, sqlc.embed(s), sqlc.embed(eb)
+SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, sqlc.embed(s), sqlc.embed(eb)
 FROM "public"."snapshots" s
 JOIN "public"."envs" e ON e.id = s.env_id
 LEFT JOIN LATERAL (
-    SELECT alias FROM "public"."env_aliases" ea
-    WHERE ea.env_id = s.base_env_id
-    LIMIT 1
+    SELECT ARRAY_AGG(alias ORDER BY alias) AS aliases
+    FROM "public"."env_aliases"
+    WHERE env_id = s.base_env_id
 ) ea ON TRUE
 JOIN LATERAL (
     SELECT eb.*

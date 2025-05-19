@@ -212,8 +212,8 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 		build := record.EnvBuild
 
 		var alias *string
-		if record.Alias != "" {
-			alias = &record.Alias
+		if record.Aliases != nil && len(record.Aliases) > 0 {
+			alias = &record.Aliases[0]
 		}
 
 		sandbox := utils.PaginatedSandbox{
