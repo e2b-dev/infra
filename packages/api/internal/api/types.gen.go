@@ -87,17 +87,17 @@ type CreatedTeamAPIKey struct {
 	// LastUsed Last time this API key was used
 	LastUsed *time.Time `json:"lastUsed"`
 
-	// MaskedTokenPrefix Prefix used in masked version of token
-	MaskedTokenPrefix string `json:"maskedTokenPrefix"`
+	// MaskedValuePrefix Prefix used in masked version of token
+	MaskedValuePrefix string `json:"maskedValuePrefix"`
 
-	// MaskedTokenSuffix Suffix used in masked version of token
-	MaskedTokenSuffix string `json:"maskedTokenSuffix"`
+	// MaskedValueSuffix Suffix used in masked version of token
+	MaskedValueSuffix string `json:"maskedValueSuffix"`
 
 	// Name Name of the API key
 	Name string `json:"name"`
 
-	// TokenLength Length of the API key token
-	TokenLength int `json:"tokenLength"`
+	// ValueLength Length of the API key token
+	ValueLength int `json:"valueLength"`
 }
 
 // EnvVars defines model for EnvVars.
@@ -397,17 +397,17 @@ type TeamAPIKey struct {
 	// LastUsed Last time this API key was used
 	LastUsed *time.Time `json:"lastUsed"`
 
-	// MaskedTokenPrefix Prefix used in masked version of token
-	MaskedTokenPrefix string `json:"maskedTokenPrefix"`
+	// MaskedValuePrefix Prefix used in masked version of token
+	MaskedValuePrefix string `json:"maskedValuePrefix"`
 
-	// MaskedTokenSuffix Suffix used in masked version of token
-	MaskedTokenSuffix string `json:"maskedTokenSuffix"`
+	// MaskedValueSuffix Suffix used in masked version of token
+	MaskedValueSuffix string `json:"maskedValueSuffix"`
 
 	// Name Name of the API key
 	Name string `json:"name"`
 
-	// TokenLength Length of the API key token
-	TokenLength int `json:"tokenLength"`
+	// ValueLength Length of the API key token
+	ValueLength int `json:"valueLength"`
 }
 
 // TeamUser defines model for TeamUser.

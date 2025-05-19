@@ -661,12 +661,10 @@ components:
         - id
         - name
         - keyPrefix
-        - tokenLength
-        - maskedTokenPrefix
-        - maskedTokenSuffix
+        - valueLength
+        - maskedValuePrefix
+        - maskedValueSuffix
         - createdAt
-        - createdBy
-        - lastUsed
       properties:
         id:
           type: string
@@ -678,13 +676,13 @@ components:
         keyPrefix:
           type: string
           description: Prefix that identifies the key type
-        tokenLength:
+        valueLength:
           type: integer
           description: Length of the API key token
-        maskedTokenPrefix:
+        maskedValuePrefix:
           type: string
           description: Prefix used in masked version of token
-        maskedTokenSuffix:
+        maskedValueSuffix:
           type: string
           description: Suffix used in masked version of token
         createdAt:
@@ -704,38 +702,36 @@ components:
     CreatedTeamAPIKey:
       required:
         - id
-        - name
         - key
         - keyPrefix
-        - tokenLength
-        - maskedTokenPrefix
-        - maskedTokenSuffix
+        - valueLength
+        - maskedValuePrefix
+        - maskedValueSuffix
+        - name
         - createdAt
-        - createdBy
-        - lastUsed
       properties:
         id:
           type: string
           format: uuid
           description: Identifier of the API key
-        name:
-          type: string
-          description: Name of the API key
         key:
           type: string
           description: Raw value of the API key
         keyPrefix:
           type: string
           description: Prefix that identifies the key type
-        tokenLength:
+        valueLength:
           type: integer
           description: Length of the API key token
-        maskedTokenPrefix:
+        maskedValuePrefix:
           type: string
           description: Prefix used in masked version of token
-        maskedTokenSuffix:
+        maskedValueSuffix:
           type: string
           description: Suffix used in masked version of token
+        name:
+          type: string
+          description: Name of the API key
         createdAt:
           type: string
           format: date-time
