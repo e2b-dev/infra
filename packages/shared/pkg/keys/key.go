@@ -29,6 +29,8 @@ type MaskedResponseKey struct {
 	MaskSuffix string
 }
 
+// MaskResponseKey masks a key in accordance to the OpenAPI response spec, used in key retrieval endpoints
+// NOTE: This is a temporary function which should eventually replace [MaskKey] when db migration is completed
 func MaskResponseKey(prefix, value string) (MaskedResponseKey, error) {
 	suffixOffset := len(value) - keySuffixLength
 	prefixOffset := keyPrefixLength
