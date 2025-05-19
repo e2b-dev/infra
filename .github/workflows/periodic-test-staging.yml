@@ -1,4 +1,4 @@
-name: Periodic Tests
+name: Periodic Tests Staging
 
 on:
   schedule:
@@ -30,14 +30,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        e2b-domain: ["e2b-foxtrot.dev", "e2b-juliett.dev"]
+        e2b-domain: ["e2b-staging.dev"]
         include:
-          - e2b-domain: "e2b-foxtrot.dev"
+          - e2b-domain: "e2b-staging.dev"
             api_key: E2B_API_KEY
             access_token: E2B_ACCESS_TOKEN
-          - e2b-domain: "e2b-juliett.dev"
-            api_key: E2B_API_KEY_JULIETT
-            access_token: E2B_ACCESS_TOKEN_JULIETT
         test-config:
           - test_command: "tests/periodic-test/run-code.ts"
             test_name: "run code in sandbox"
@@ -59,7 +56,7 @@ jobs:
           e2b-domain: ${{ matrix.e2b-domain }}
           api_key: ${{ matrix.api_key }}
           access_token: ${{ matrix.access_token }}
-          slack_channel: monitoring-infra
+          slack_channel: monitoring-infra-staging
           test_name: ${{ matrix.test-config.test_name }}
           test_command: ${{ matrix.test-config.test_command }}
           test_dir: ${{ matrix.test-config.test_dir }}
