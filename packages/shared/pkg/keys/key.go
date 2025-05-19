@@ -38,8 +38,12 @@ func GetMaskedIdentifierProperties(prefix, identifier string) (MaskedIdentifier,
 	suffixOffset := identifierValueLength - identifierValueSuffixLength
 	prefixOffset := identifierValuePrefixLength
 
-	if suffixOffset <= 0 {
-		return MaskedIdentifier{}, fmt.Errorf("mask value length is less than or equal to identifier suffix length (%d), which would expose the entire identifier (%d)", identifierValueSuffixLength, identifierValueLength)
+	if suffixOffset < 0 {
+		return MaskedIdentifier{}, fmt.Errorf("mask value length is less than identifier suffix length (%d)", identifierValueSuffixLength)
+	}
+
+	if suffixOffset == 0 {
+		return MaskedIdentifier{}, fmt.Errorf("mask value length is equal to identifier suffix length (%d), which would expose the entire identifier in the mask", identifierValueSuffixLength)
 	}
 
 	// cap prefixOffset by suffixOffset to prevent overlap with the suffix.
@@ -64,7 +68,11 @@ func MaskKey(prefix string, value string) (string, error) {
 	suffixOffset := len(value) - identifierValueSuffixLength
 
 	if suffixOffset < 0 {
-		return "", fmt.Errorf("mask value length is less than key suffix length (%d)", identifierValueSuffixLength)
+		return "", fmt.Errorf("mask value length is less than or equal to key suffix length (%d)", identifierValueSuffixLength)
+	}
+
+	if suffixOffset == 0 {
+		return "", fmt.Errorf("mask value length is equal to key suffix length (%d), which would expose the entire key in the mask", identifierValueSuffixLength)
 	}
 
 	lastFour := value[suffixOffset:]
