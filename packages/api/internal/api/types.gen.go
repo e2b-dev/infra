@@ -72,14 +72,23 @@ type CreatedTeamAPIKey struct {
 	// Key Raw value of the API key
 	Key string `json:"key"`
 
-	// KeyMask Mask of the API key
-	KeyMask string `json:"keyMask"`
+	// KeyPrefix Prefix that identifies the key type
+	KeyPrefix string `json:"keyPrefix"`
 
 	// LastUsed Last time this API key was used
 	LastUsed *time.Time `json:"lastUsed"`
 
+	// MaskedTokenPrefix Prefix used in masked version of token
+	MaskedTokenPrefix string `json:"maskedTokenPrefix"`
+
+	// MaskedTokenSuffix Suffix used in masked version of token
+	MaskedTokenSuffix string `json:"maskedTokenSuffix"`
+
 	// Name Name of the API key
 	Name string `json:"name"`
+
+	// TokenLength Length of the API key token
+	TokenLength int `json:"tokenLength"`
 }
 
 // EnvVars defines model for EnvVars.

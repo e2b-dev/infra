@@ -694,7 +694,10 @@ components:
         - id
         - name
         - key
-        - keyMask
+        - keyPrefix
+        - tokenLength
+        - maskedTokenPrefix
+        - maskedTokenSuffix
         - createdAt
         - createdBy
         - lastUsed
@@ -709,9 +712,18 @@ components:
         key:
           type: string
           description: Raw value of the API key
-        keyMask:
+        keyPrefix:
           type: string
-          description: Mask of the API key
+          description: Prefix that identifies the key type
+        tokenLength:
+          type: integer
+          description: Length of the API key token
+        maskedTokenPrefix:
+          type: string
+          description: Prefix used in masked version of token
+        maskedTokenSuffix:
+          type: string
+          description: Suffix used in masked version of token
         createdAt:
           type: string
           format: date-time

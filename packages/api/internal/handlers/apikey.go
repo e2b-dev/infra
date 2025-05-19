@@ -169,11 +169,23 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		return
 	}
 
+	responseKeyMask, err := keys.MaskResponseKey(keys.ApiKeyPrefix, apiKey.APIKey)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating response key mask: %s", err))
+
+		errMsg := fmt.Errorf("error when masking response key for creating API key %d: %w", apiKey.ID, err)
+		telemetry.ReportCriticalError(ctx, errMsg)
+
+		return
+	}
+
 	c.JSON(http.StatusCreated, api.CreatedTeamAPIKey{
-		Id:      apiKey.ID,
-		Key:     apiKey.APIKey,
-		KeyMask: apiKey.APIKeyMask,
-		Name:    apiKey.Name,
+		Id:                apiKey.ID,
+		Key:               apiKey.APIKey,
+		KeyPrefix:         responseKeyMask.KeyPrefix,
+		TokenLength:       responseKeyMask.KeyLength,
+		MaskedTokenPrefix: responseKeyMask.MaskPrefix,
+		MaskedTokenSuffix: responseKeyMask.MaskSuffix,
 		CreatedBy: &api.TeamUser{
 			Id:    user.ID,
 			Email: user.Email,
