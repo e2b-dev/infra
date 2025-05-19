@@ -9,25 +9,25 @@ import (
 
 func TestMaskKey(t *testing.T) {
 	t.Run("succeeds: value longer than suffix length", func(t *testing.T) {
-		masked, err := MaskKey("test_", "1234567890") // len 10, suffixLen 4
+		masked, err := MaskKey("test_", "1234567890")
 		assert.NoError(t, err)
 		assert.Equal(t, "test_******7890", masked)
 	})
 
 	t.Run("succeeds: empty prefix, value longer than suffix length", func(t *testing.T) {
-		masked, err := MaskKey("", "1234567890") // len 10, suffixLen 4
+		masked, err := MaskKey("", "1234567890")
 		assert.NoError(t, err)
 		assert.Equal(t, "******7890", masked)
 	})
 
 	t.Run("error: value length less than suffix length", func(t *testing.T) {
-		_, err := MaskKey("test", "123") // len 3, suffixLen 4
+		_, err := MaskKey("test", "123")
 		assert.Error(t, err)
 		assert.EqualError(t, err, fmt.Sprintf("mask value length is less than or equal to key suffix length (%d)", identifierValueSuffixLength))
 	})
 
 	t.Run("error: value length equals suffix length", func(t *testing.T) {
-		_, err := MaskKey("test", "1234") // len 4, suffixLen 4
+		_, err := MaskKey("test", "1234")
 		assert.Error(t, err)
 		assert.EqualError(t, err, fmt.Sprintf("mask value length is equal to key suffix length (%d), which would expose the entire key in the mask", identifierValueSuffixLength))
 	})
@@ -122,7 +122,6 @@ func TestGetMaskedIdentifierProperties(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Call GetMaskedIdentifierProperties with tc.prefix and tc.value
 			result, err := GetMaskedIdentifierProperties(tc.prefix, tc.value)
 
 			if tc.expectedErrString != "" {
