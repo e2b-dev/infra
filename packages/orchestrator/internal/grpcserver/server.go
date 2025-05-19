@@ -124,6 +124,8 @@ func (g *GRPCServer) Start(ctx context.Context, port uint) error {
 
 	g.shutdown.op = func(ctx context.Context) error {
 		// mark services as unhealthy so now new request will be accepted
+		// gRPC's Stop and GracefulStop will close the listener, so this will also close the listener for the health check
+		// we should probably wrap the listener with noop close, so we can close the listener ourselves
 		select {
 		case <-ctx.Done():
 			zap.L().Info("Stopping grpc server")
