@@ -15,6 +15,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -164,7 +166,7 @@ func TestStat(t *testing.T) {
 		textFile,
 		setup.WithSandbox(sbx.SandboxID, sbx.ClientID),
 	)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, createFileResp.StatusCode())
 
 	req := connect.NewRequest(&filesystem.StatRequest{
@@ -173,11 +175,11 @@ func TestStat(t *testing.T) {
 	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
 	setup.SetUserHeader(req.Header(), "user")
 	statResp, err := envdClient.FilesystemClient.Stat(ctx, req)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify the stat response
-	assert.NotNil(t, statResp.Msg)
-	assert.NotNil(t, statResp.Msg.Entry)
+	require.NotNil(t, statResp.Msg)
+	require.NotNil(t, statResp.Msg.Entry)
 	entry := statResp.Msg.Entry
 
 	// Verify basic file info
@@ -195,7 +197,7 @@ func TestStat(t *testing.T) {
 	assert.Equal(t, int64(13), entry.Size)
 
 	// Verify modified time
-	assert.NotNil(t, entry.ModifiedTime)
+	require.NotNil(t, entry.ModifiedTime)
 }
 
 func createTextFile(tb testing.TB, path string, content string) (*bytes.Buffer, string) {
