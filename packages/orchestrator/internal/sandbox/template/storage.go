@@ -67,8 +67,9 @@ func NewStorage(
 			BaseBuildId: id,
 			Size:        uint64(size),
 			Version:     1,
-			BlockSize:   h.Metadata.BlockSize,
-			Generation:  1,
+			// We don't know the block size of the old style template, so we set it to header.RootfsBlockSize
+			BlockSize:  header.RootfsBlockSize,
+			Generation: 1,
 		}, nil)
 	}
 
