@@ -36,10 +36,15 @@ func GetMaskedIdentifierProperties(prefix, identifier string) (MaskedIdentifier,
 	identifierValueLength := len(identifierValue)
 
 	suffixOffset := identifierValueLength - identifierValueSuffixLength
-	prefixOffset := identifierValueLength - identifierValuePrefixLength
+	prefixOffset := identifierValuePrefixLength
 
-	if suffixOffset < 0 {
-		return MaskedIdentifier{}, fmt.Errorf("mask value length is less than key suffix length (%d)", identifierValueSuffixLength)
+	if suffixOffset <= 0 {
+		return MaskedIdentifier{}, fmt.Errorf("mask value length is less than or equal to identifier suffix length (%d), which would expose the entire identifier (%d)", identifierValueSuffixLength, identifierValueLength)
+	}
+
+	// cap prefixOffset by suffixOffset to prevent overlap with the suffix.
+	if prefixOffset > suffixOffset {
+		prefixOffset = suffixOffset
 	}
 
 	maskPrefix := identifierValue[:prefixOffset]
