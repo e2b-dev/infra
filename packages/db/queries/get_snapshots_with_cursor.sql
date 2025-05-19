@@ -21,7 +21,7 @@ WHERE
     e.team_id = @team_id
     AND s.metadata @> @metadata
     AND (
-        (s.created_at < @cursor_time)
+        s.created_at < @cursor_time
         OR
         (s.created_at = @cursor_time AND s.sandbox_id > @cursor_id)
     )
