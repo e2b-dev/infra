@@ -97,7 +97,7 @@ func TestListDir(t *testing.T) {
 				Path:  testFolder,
 				Depth: tt.depth,
 			})
-			setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
+			setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 			setup.SetUserHeader(req.Header(), "user")
 			folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
 			assert.NoError(t, err)
@@ -154,7 +154,7 @@ func TestFilePermissions(t *testing.T) {
 			Args: []string{"-la", "/home/user"},
 		},
 	})
-	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
 	stream, err := envdClient.ProcessClient.Start(
 		ctx,
@@ -211,7 +211,7 @@ func createDir(tb testing.TB, sbx *api.Sandbox, path string) {
 	req := connect.NewRequest(&filesystem.MakeDirRequest{
 		Path: path,
 	})
-	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
 	_, err := client.FilesystemClient.MakeDir(ctx, req)
 	if err != nil {

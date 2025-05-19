@@ -62,7 +62,7 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 
 	// set up the request to list the directory
 	req := connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
-	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
 
 	_, err := envdClient.FilesystemClient.ListDir(ctx, req)
@@ -125,7 +125,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 
 	// set up the request to list the directory
 	req := connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
-	setup.SetSandboxHeader(req.Header(), sbxMeta.SandboxID, sbxMeta.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbxMeta.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
 	setup.SetAccessTokenHeader(req.Header(), *sbxMeta.EnvdAccessToken)
 
@@ -194,7 +194,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 
 	// set up the request to list the directory
 	req := connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
-	setup.SetSandboxHeader(req.Header(), sbxMeta.SandboxID, sbxMeta.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbxMeta.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
 	setup.SetAccessTokenHeader(req.Header(), *sbxMeta.EnvdAccessToken)
 
@@ -289,7 +289,7 @@ func getSandboxLogs(t *testing.T, ctx context.Context, client *setup.EnvdClient,
 			Args: []string{"-u", "envd"},
 		},
 	})
-	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID)
 	setup.SetUserHeader(req.Header(), "root")
 
 	serverCtx, serverCancel := context.WithCancel(ctx)
