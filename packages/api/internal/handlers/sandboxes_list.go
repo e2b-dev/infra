@@ -220,7 +220,7 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 			ListedSandbox: api.ListedSandbox{
 				ClientID:   "00000000", // for backwards compatibility we need to return a client id
 				Alias:      alias,
-				TemplateID: snapshot.EnvID,
+				TemplateID: snapshot.BaseEnvID,
 				SandboxID:  snapshot.SandboxID,
 				StartedAt:  snapshot.SandboxStartedAt.Time,
 				CpuCount:   int32(build.Vcpu),
@@ -250,7 +250,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo)
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
 				ClientID:   info.Instance.ClientID,
-				TemplateID: info.Instance.TemplateID,
+				TemplateID: info.BaseTemplateID,
 				Alias:      info.Instance.Alias,
 				SandboxID:  info.Instance.SandboxID,
 				StartedAt:  info.StartTime,
