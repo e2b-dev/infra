@@ -46,7 +46,7 @@ func TestListDir(t *testing.T) {
 		},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbx.SandboxID, sbx.ClientID),
+		setup.WithSandbox(sbx.SandboxID),
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, createFileResp.StatusCode())
@@ -133,7 +133,7 @@ func TestCreateFile(t *testing.T) {
 		},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbx.SandboxID, sbx.ClientID),
+		setup.WithSandbox(sbx.SandboxID),
 	)
 	assert.NoError(t, err)
 

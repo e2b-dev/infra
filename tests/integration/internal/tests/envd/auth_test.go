@@ -140,7 +140,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 		&envdapi.PostFilesParams{Path: &filePath, Username: "user"},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbxMeta.SandboxID, sbxMeta.ClientID),
+		setup.WithSandbox(sbxMeta.SandboxID),
 		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
 	)
 
@@ -169,7 +169,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
 		&envdapi.GetFilesParams{Path: &filePath, Username: "user"},
-		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
+		setup.WithSandbox(sbx.JSON201.SandboxID),
 		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
 	)
 
@@ -209,7 +209,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 		&envdapi.PostFilesParams{Path: &filePath, Username: "user"},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbxMeta.SandboxID, sbxMeta.ClientID),
+		setup.WithSandbox(sbxMeta.SandboxID),
 		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
 	)
 
@@ -238,7 +238,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
 		&envdapi.GetFilesParams{Path: &filePath, Username: "user"},
-		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
+		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
 	if err != nil {
@@ -258,7 +258,7 @@ type envdInitCall struct {
 }
 
 func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
-	envdReqSetup := []envdapi.RequestEditorFn{setup.WithSandbox(req.sbx.JSON201.SandboxID, req.sbx.JSON201.ClientID)}
+	envdReqSetup := []envdapi.RequestEditorFn{setup.WithSandbox(req.sbx.JSON201.SandboxID)}
 	if req.authToken != nil {
 		envdReqSetup = append(envdReqSetup, setup.WithEnvdAccessToken(*req.authToken))
 	}
