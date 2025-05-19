@@ -48,25 +48,14 @@ type CreatedAccessToken struct {
 	CreatedAt time.Time `json:"createdAt"`
 
 	// Id Identifier of the access token
-	Id openapi_types.UUID `json:"id"`
-
-	// MaskedValuePrefix Prefix used in masked version of token
-	MaskedValuePrefix string `json:"maskedValuePrefix"`
-
-	// MaskedValueSuffix Suffix used in masked version of token
-	MaskedValueSuffix string `json:"maskedValueSuffix"`
+	Id      openapi_types.UUID       `json:"id"`
+	Masking IdentifierMaskingDetails `json:"masking"`
 
 	// Name Name of the access token
 	Name string `json:"name"`
 
 	// Token The fully created access token
 	Token string `json:"token"`
-
-	// TokenPrefix Prefix that identifies the token type
-	TokenPrefix string `json:"tokenPrefix"`
-
-	// ValueLength Length of the access token
-	ValueLength int `json:"valueLength"`
 }
 
 // CreatedTeamAPIKey defines model for CreatedTeamAPIKey.
@@ -81,23 +70,12 @@ type CreatedTeamAPIKey struct {
 	// Key Raw value of the API key
 	Key string `json:"key"`
 
-	// KeyPrefix Prefix that identifies the key type
-	KeyPrefix string `json:"keyPrefix"`
-
 	// LastUsed Last time this API key was used
-	LastUsed *time.Time `json:"lastUsed"`
-
-	// MaskedValuePrefix Prefix used in masked version of token
-	MaskedValuePrefix string `json:"maskedValuePrefix"`
-
-	// MaskedValueSuffix Suffix used in masked version of token
-	MaskedValueSuffix string `json:"maskedValueSuffix"`
+	LastUsed *time.Time               `json:"lastUsed"`
+	Masking  IdentifierMaskingDetails `json:"masking"`
 
 	// Name Name of the API key
 	Name string `json:"name"`
-
-	// ValueLength Length of the API key token
-	ValueLength int `json:"valueLength"`
 }
 
 // EnvVars defines model for EnvVars.
@@ -110,6 +88,21 @@ type Error struct {
 
 	// Message Error
 	Message string `json:"message"`
+}
+
+// IdentifierMaskingDetails defines model for IdentifierMaskingDetails.
+type IdentifierMaskingDetails struct {
+	// MaskedValuePrefix Prefix used in masked version of the token or key
+	MaskedValuePrefix string `json:"maskedValuePrefix"`
+
+	// MaskedValueSuffix Suffix used in masked version of the token or key
+	MaskedValueSuffix string `json:"maskedValueSuffix"`
+
+	// Prefix Prefix that identifies the token or key type
+	Prefix string `json:"prefix"`
+
+	// ValueLength Length of the token or key
+	ValueLength int `json:"valueLength"`
 }
 
 // ListedSandbox defines model for ListedSandbox.
@@ -391,23 +384,12 @@ type TeamAPIKey struct {
 	// Id Identifier of the API key
 	Id openapi_types.UUID `json:"id"`
 
-	// KeyPrefix Prefix that identifies the key type
-	KeyPrefix string `json:"keyPrefix"`
-
 	// LastUsed Last time this API key was used
-	LastUsed *time.Time `json:"lastUsed"`
-
-	// MaskedValuePrefix Prefix used in masked version of token
-	MaskedValuePrefix string `json:"maskedValuePrefix"`
-
-	// MaskedValueSuffix Suffix used in masked version of token
-	MaskedValueSuffix string `json:"maskedValueSuffix"`
+	LastUsed *time.Time               `json:"lastUsed"`
+	Masking  IdentifierMaskingDetails `json:"masking"`
 
 	// Name Name of the API key
 	Name string `json:"name"`
-
-	// ValueLength Length of the API key token
-	ValueLength int `json:"valueLength"`
 }
 
 // TeamUser defines model for TeamUser.

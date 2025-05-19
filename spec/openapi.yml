@@ -615,10 +615,7 @@ components:
         - id
         - name
         - token
-        - tokenPrefix
-        - valueLength
-        - maskedValuePrefix
-        - maskedValueSuffix
+        - masking
         - createdAt
       properties:
         id:
@@ -631,18 +628,8 @@ components:
         token:
           type: string
           description: The fully created access token
-        tokenPrefix:
-          type: string
-          description: Prefix that identifies the token type
-        valueLength:
-          type: integer
-          description: Length of the access token
-        maskedValuePrefix:
-          type: string
-          description: Prefix used in masked version of token
-        maskedValueSuffix:
-          type: string
-          description: Suffix used in masked version of token
+        masking:
+          $ref: "#/components/schemas/IdentifierMaskingDetails"
         createdAt:
           type: string
           format: date-time
@@ -660,10 +647,7 @@ components:
       required:
         - id
         - name
-        - keyPrefix
-        - valueLength
-        - maskedValuePrefix
-        - maskedValueSuffix
+        - masking
         - createdAt
       properties:
         id:
@@ -673,18 +657,8 @@ components:
         name:
           type: string
           description: Name of the API key
-        keyPrefix:
-          type: string
-          description: Prefix that identifies the key type
-        valueLength:
-          type: integer
-          description: Length of the API key token
-        maskedValuePrefix:
-          type: string
-          description: Prefix used in masked version of token
-        maskedValueSuffix:
-          type: string
-          description: Suffix used in masked version of token
+        masking:
+          $ref: "#/components/schemas/IdentifierMaskingDetails"
         createdAt:
           type: string
           format: date-time
@@ -703,10 +677,7 @@ components:
       required:
         - id
         - key
-        - keyPrefix
-        - valueLength
-        - maskedValuePrefix
-        - maskedValueSuffix
+        - masking
         - name
         - createdAt
       properties:
@@ -717,18 +688,8 @@ components:
         key:
           type: string
           description: Raw value of the API key
-        keyPrefix:
-          type: string
-          description: Prefix that identifies the key type
-        valueLength:
-          type: integer
-          description: Length of the API key token
-        maskedValuePrefix:
-          type: string
-          description: Prefix used in masked version of token
-        maskedValueSuffix:
-          type: string
-          description: Suffix used in masked version of token
+        masking:
+          $ref: "#/components/schemas/IdentifierMaskingDetails"
         name:
           type: string
           description: Name of the API key
@@ -774,6 +735,26 @@ components:
         message:
           type: string
           description: Error
+
+    IdentifierMaskingDetails:
+      required:
+        - prefix
+        - valueLength
+        - maskedValuePrefix
+        - maskedValueSuffix
+      properties:
+        prefix:
+          type: string
+          description: Prefix that identifies the token or key type
+        valueLength:
+          type: integer
+          description: Length of the token or key
+        maskedValuePrefix:
+          type: string
+          description: Prefix used in masked version of the token or key
+        maskedValueSuffix:
+          type: string
+          description: Suffix used in masked version of the token or key
 
 tags:
   - name: templates

@@ -58,7 +58,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 		return
 	}
 
-	maskedToken, err := keys.GetMaskedTokenProperties(keys.AccessTokenPrefix, accessToken.PrefixedRawValue)
+	maskedToken, err := keys.GetMaskedIdentifierProperties(keys.AccessTokenPrefix, accessToken.PrefixedRawValue)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when masking access token: %s", err))
 
@@ -69,14 +69,16 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, api.CreatedAccessToken{
-		Id:                accessTokenDB.ID,
-		Token:             accessToken.PrefixedRawValue,
-		TokenPrefix:       keys.AccessTokenPrefix,
-		ValueLength:       len(accessToken.PrefixedRawValue),
-		MaskedValuePrefix: maskedToken.MaskedValuePrefix,
-		MaskedValueSuffix: maskedToken.MaskedValueSuffix,
-		Name:              accessTokenDB.Name,
-		CreatedAt:         accessTokenDB.CreatedAt,
+		Id:    accessTokenDB.ID,
+		Token: accessToken.PrefixedRawValue,
+		Masking: api.IdentifierMaskingDetails{
+			Prefix:            maskedToken.Prefix,
+			ValueLength:       maskedToken.ValueLength,
+			MaskedValuePrefix: maskedToken.MaskedValuePrefix,
+			MaskedValueSuffix: maskedToken.MaskedValueSuffix,
+		},
+		Name:      accessTokenDB.Name,
+		CreatedAt: accessTokenDB.CreatedAt,
 	})
 }
 

@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	tokenValueSuffixLength = 4
-	tokenValuePrefixLength = 2
+	identifierValueSuffixLength = 4
+	identifierValuePrefixLength = 2
 
 	keyLength = 20
 )
@@ -22,44 +22,44 @@ type Key struct {
 	MaskedValue      string
 }
 
-type MaskedToken struct {
-	TokenPrefix       string
+type MaskedIdentifier struct {
+	Prefix            string
 	ValueLength       int
 	MaskedValuePrefix string
 	MaskedValueSuffix string
 }
 
-// GetMaskedTokenProperties returns token masking properties in accordance to the OpenAPI response spec
-// NOTE: This is a temporary function which should eventually replace [MaskKey] when db migration is completed
-func GetMaskedTokenProperties(prefix, token string) (MaskedToken, error) {
-	tokenValue := strings.TrimPrefix(token, prefix)
-	tokenValueLength := len(tokenValue)
+// GetMaskedIdentifierProperties returns identifier masking properties in accordance to the OpenAPI response spec
+// NOTE: This is a temporary function which should eventually replace [MaskKey]/[GenerateKey] when db migration is completed
+func GetMaskedIdentifierProperties(prefix, identifier string) (MaskedIdentifier, error) {
+	identifierValue := strings.TrimPrefix(identifier, prefix)
+	identifierValueLength := len(identifierValue)
 
-	suffixOffset := tokenValueLength - tokenValueSuffixLength
-	prefixOffset := tokenValueLength - tokenValuePrefixLength
+	suffixOffset := identifierValueLength - identifierValueSuffixLength
+	prefixOffset := identifierValueLength - identifierValuePrefixLength
 
 	if suffixOffset < 0 {
-		return MaskedToken{}, fmt.Errorf("mask value length is less than key suffix length (%d)", tokenValueSuffixLength)
+		return MaskedIdentifier{}, fmt.Errorf("mask value length is less than key suffix length (%d)", identifierValueSuffixLength)
 	}
 
-	maskPrefix := tokenValue[:prefixOffset]
-	maskSuffix := tokenValue[suffixOffset:]
+	maskPrefix := identifierValue[:prefixOffset]
+	maskSuffix := identifierValue[suffixOffset:]
 
-	maskedTokenProperties := MaskedToken{
-		TokenPrefix:       prefix,
-		ValueLength:       tokenValueLength,
+	maskedIdentifierProperties := MaskedIdentifier{
+		Prefix:            prefix,
+		ValueLength:       identifierValueLength,
 		MaskedValuePrefix: maskPrefix,
 		MaskedValueSuffix: maskSuffix,
 	}
 
-	return maskedTokenProperties, nil
+	return maskedIdentifierProperties, nil
 }
 
 func MaskKey(prefix string, value string) (string, error) {
-	suffixOffset := len(value) - tokenValueSuffixLength
+	suffixOffset := len(value) - identifierValueSuffixLength
 
 	if suffixOffset < 0 {
-		return "", fmt.Errorf("mask value length is less than key suffix length (%d)", tokenValueSuffixLength)
+		return "", fmt.Errorf("mask value length is less than key suffix length (%d)", identifierValueSuffixLength)
 	}
 
 	lastFour := value[suffixOffset:]
@@ -75,15 +75,15 @@ func GenerateKey(prefix string) (Key, error) {
 		return Key{}, err
 	}
 
-	generatedToken := hex.EncodeToString(keyBytes)
+	generatedIdentifier := hex.EncodeToString(keyBytes)
 
-	mask, err := MaskKey(prefix, generatedToken)
+	mask, err := MaskKey(prefix, generatedIdentifier)
 	if err != nil {
 		return Key{}, err
 	}
 
 	return Key{
-		PrefixedRawValue: prefix + generatedToken,
+		PrefixedRawValue: prefix + generatedIdentifier,
 		HashedValue:      hasher.Hash(keyBytes),
 		MaskedValue:      mask,
 	}, nil
