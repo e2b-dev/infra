@@ -51,6 +51,9 @@ jobs:
           # - command: "tests/periodic-test/cli-logs.ts"
           #   name: "cli logs"
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Run test
         uses: ./.github/workflows/periodic-test-job.yml
         with:
