@@ -1,0 +1,74 @@
+name: Periodic Test Job
+description: Run periodic tests on the E2B platform and notify via Slack if they fail.
+
+inputs:
+  dev:
+    description: "Only testing the workflow"
+  e2b-domain:
+    description: "The domain"
+  api_key:
+    description: "The API key"
+  access_token:
+    description: "The access token"
+  test_name:
+    description: "The name of the test to run"
+  test_command:
+    description: "The command to run the test"
+  test_dir:
+    description: "The directory where the test is located"
+  slack_webhook:
+    description: "The Slack webhook URL for notifications"
+  slack_channel:
+    description: "The Slack channel to send notifications to"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install deno
+      uses: denoland/setup-deno@v2
+
+    - name: GitHub Action for npx
+      uses: mikeal/npx@1.0.0
+
+    - name: Set env variables from secrets
+      if: always()
+      run: |
+        echo "E2B_API_KEY=${{ secrets[format('{0}', inputs.api_key)] }}" >> $GITHUB_ENV
+        echo "E2B_ACCESS_TOKEN=${{ secrets[format('{0}', inputs.access_token)] }}" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Set Slack channel based on dev input
+      run: |
+        if [ "${{ inputs.dev }}" == "true" ]; then
+          echo "SLACK_CHANNEL=monitoring-infra-testing" >> $GITHUB_ENV
+        else
+          echo "SLACK_CHANNEL=${{ inputs.slack_channel }}" >> $GITHUB_ENV
+        fi
+      shell: bash
+
+    - name: ${{ inputs.test_name }}
+      working-directory: ${{ inputs.test_dir }}
+      env:
+        E2B_API_KEY: ${{ env.E2B_API_KEY }}
+        E2B_ACCESS_TOKEN: ${{ env.E2B_ACCESS_TOKEN }}
+        E2B_DOMAIN: ${{ inputs.e2b-domain }}
+      run: deno run --allow-all ${{ inputs.test_command }}
+      shell: bash
+
+    - name: Periodic check failed - Slack Notification
+      if: failure()
+      uses: rtCamp/action-slack-notify@v2
+      env:
+        SLACK_COLOR: "#ff0000"
+        SLACK_USERNAME: "Periodic Check"
+        MSG_MINIMAL: true
+        SLACK_FOOTER: ""
+        SLACKIFY_MARKDOWN: true
+        # $name failed $link to workflow run
+        SLACK_MESSAGE: "Check for **${{ inputs.test_name }}** failed \n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        SLACK_TITLE: "[${{ inputs.e2b-domain }}] check failed"
+        SLACK_WEBHOOK: ${{ inputs.slack_webhook }}
+        SLACK_CHANNEL: ${{ env.SLACK_CHANNEL }}
