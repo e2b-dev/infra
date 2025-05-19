@@ -628,7 +628,7 @@ components:
         token:
           type: string
           description: The fully created access token
-        masking:
+        mask:
           $ref: "#/components/schemas/IdentifierMaskingDetails"
         createdAt:
           type: string
@@ -657,7 +657,7 @@ components:
         name:
           type: string
           description: Name of the API key
-        masking:
+        mask:
           $ref: "#/components/schemas/IdentifierMaskingDetails"
         createdAt:
           type: string
@@ -688,7 +688,7 @@ components:
         key:
           type: string
           description: Raw value of the API key
-        masking:
+        mask:
           $ref: "#/components/schemas/IdentifierMaskingDetails"
         name:
           type: string

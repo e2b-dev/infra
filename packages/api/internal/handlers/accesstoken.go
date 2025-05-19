@@ -74,7 +74,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	c.JSON(http.StatusCreated, api.CreatedAccessToken{
 		Id:    accessTokenDB.ID,
 		Token: accessToken.PrefixedRawValue,
-		Masking: api.IdentifierMaskingDetails{
+		Mask: &api.IdentifierMaskingDetails{
 			Prefix:            maskedToken.Prefix,
 			ValueLength:       maskedToken.ValueLength,
 			MaskedValuePrefix: maskedToken.MaskedValuePrefix,
