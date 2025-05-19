@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -44,7 +43,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("path is not a directory: %s", dirPath))
 	}
 
-	var entries []*rpc.EntryInfoExtended
+	var entries []*rpc.EntryInfo
 	err = filepath.WalkDir(dirPath, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -66,24 +65,10 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 			return filepath.SkipDir
 		}
 
-		fileInfo, err := entry.Info()
-		if err != nil {
-			return err
-		}
-
-		owner, group := getFileOwnership(fileInfo)
-		fileMode := fileInfo.Mode()
-
-		entries = append(entries, &rpc.EntryInfoExtended{
-			Name:         entry.Name(),
-			Type:         getEntryType(entry),
-			Path:         path,
-			Size:         fileInfo.Size(),
-			Mode:         uint32(fileMode.Perm()),
-			Permissions:  fileMode.String(),
-			Owner:        owner,
-			Group:        group,
-			ModifiedTime: timestamppb.New(fileInfo.ModTime()),
+		entries = append(entries, &rpc.EntryInfo{
+			Name: entry.Name(),
+			Type: getEntryType(entry),
+			Path: path,
 		})
 
 		return nil
