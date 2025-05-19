@@ -50,14 +50,23 @@ type CreatedAccessToken struct {
 	// Id Identifier of the access token
 	Id openapi_types.UUID `json:"id"`
 
+	// MaskedValuePrefix Prefix used in masked version of token
+	MaskedValuePrefix string `json:"maskedValuePrefix"`
+
+	// MaskedValueSuffix Suffix used in masked version of token
+	MaskedValueSuffix string `json:"maskedValueSuffix"`
+
 	// Name Name of the access token
 	Name string `json:"name"`
 
-	// Token Raw value of the access token
+	// Token The fully created access token
 	Token string `json:"token"`
 
-	// TokenMask Mask of the access token
-	TokenMask string `json:"tokenMask"`
+	// TokenPrefix Prefix that identifies the token type
+	TokenPrefix string `json:"tokenPrefix"`
+
+	// ValueLength Length of the access token
+	ValueLength int `json:"valueLength"`
 }
 
 // CreatedTeamAPIKey defines model for CreatedTeamAPIKey.

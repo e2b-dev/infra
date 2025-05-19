@@ -85,7 +85,7 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 		keyValue := strings.Split(apiKey.APIKey, keys.ApiKeyPrefix)[1]
 
 		// TODO: remove this once we migrate to hashed API keys
-		responseKeyMask, err := keys.MaskResponseKey(keys.ApiKeyPrefix, keyValue)
+		maskedKeyProperties, err := keys.GetMaskedTokenProperties(keys.ApiKeyPrefix, keyValue)
 		if err != nil {
 			fmt.Printf("masking API key failed %d: %v", apiKey.ID, err)
 			continue
@@ -94,10 +94,10 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 		teamAPIKeys[i] = api.TeamAPIKey{
 			Id:                apiKey.ID,
 			Name:              apiKey.Name,
-			KeyPrefix:         responseKeyMask.KeyPrefix,
-			TokenLength:       responseKeyMask.KeyLength,
-			MaskedTokenPrefix: responseKeyMask.MaskPrefix,
-			MaskedTokenSuffix: responseKeyMask.MaskSuffix,
+			KeyPrefix:         maskedKeyProperties.TokenPrefix,
+			TokenLength:       maskedKeyProperties.ValueLength,
+			MaskedTokenPrefix: maskedKeyProperties.MaskedValuePrefix,
+			MaskedTokenSuffix: maskedKeyProperties.MaskedValueSuffix,
 			CreatedAt:         apiKey.CreatedAt,
 			CreatedBy:         createdBy,
 			LastUsed:          apiKey.LastUsed,
@@ -169,7 +169,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		return
 	}
 
-	responseKeyMask, err := keys.MaskResponseKey(keys.ApiKeyPrefix, apiKey.APIKey)
+	maskedKeyProperties, err := keys.GetMaskedTokenProperties(keys.ApiKeyPrefix, apiKey.APIKey)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating response key mask: %s", err))
 
@@ -182,10 +182,10 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 	c.JSON(http.StatusCreated, api.CreatedTeamAPIKey{
 		Id:                apiKey.ID,
 		Key:               apiKey.APIKey,
-		KeyPrefix:         responseKeyMask.KeyPrefix,
-		TokenLength:       responseKeyMask.KeyLength,
-		MaskedTokenPrefix: responseKeyMask.MaskPrefix,
-		MaskedTokenSuffix: responseKeyMask.MaskSuffix,
+		KeyPrefix:         maskedKeyProperties.TokenPrefix,
+		TokenLength:       maskedKeyProperties.ValueLength,
+		MaskedTokenPrefix: maskedKeyProperties.MaskedValuePrefix,
+		MaskedTokenSuffix: maskedKeyProperties.MaskedValueSuffix,
 		CreatedBy: &api.TeamUser{
 			Id:    user.ID,
 			Email: user.Email,

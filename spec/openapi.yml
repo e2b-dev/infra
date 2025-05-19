@@ -615,7 +615,10 @@ components:
         - id
         - name
         - token
-        - tokenMask
+        - tokenPrefix
+        - valueLength
+        - maskedValuePrefix
+        - maskedValueSuffix
         - createdAt
       properties:
         id:
@@ -627,10 +630,19 @@ components:
           description: Name of the access token
         token:
           type: string
-          description: Raw value of the access token
-        tokenMask:
+          description: The fully created access token
+        tokenPrefix:
           type: string
-          description: Mask of the access token
+          description: Prefix that identifies the token type
+        valueLength:
+          type: integer
+          description: Length of the access token
+        maskedValuePrefix:
+          type: string
+          description: Prefix used in masked version of token
+        maskedValueSuffix:
+          type: string
+          description: Suffix used in masked version of token
         createdAt:
           type: string
           format: date-time

@@ -22,35 +22,35 @@ type Key struct {
 	MaskedValue      string
 }
 
-type MaskedResponseKey struct {
-	KeyPrefix  string
-	KeyLength  int
-	MaskPrefix string
-	MaskSuffix string
+type MaskedToken struct {
+	TokenPrefix       string
+	ValueLength       int
+	MaskedValuePrefix string
+	MaskedValueSuffix string
 }
 
-// MaskResponseKey masks a key in accordance to the OpenAPI response spec, used in key retrieval endpoints
+// GetMaskedTokenProperties returns token masking properties in accordance to the OpenAPI response spec
 // NOTE: This is a temporary function which should eventually replace [MaskKey] when db migration is completed
-func MaskResponseKey(prefix, value string) (MaskedResponseKey, error) {
+func GetMaskedTokenProperties(prefix, value string) (MaskedToken, error) {
 	suffixOffset := len(value) - keySuffixLength
 	prefixOffset := keyPrefixLength
 
 	if suffixOffset < 0 {
-		return MaskedResponseKey{}, fmt.Errorf("mask value length is less than key suffix length (%d)", keySuffixLength)
+		return MaskedToken{}, fmt.Errorf("mask value length is less than key suffix length (%d)", keySuffixLength)
 	}
 
 	maskPrefix := value[:prefixOffset]
 	maskSuffix := value[suffixOffset:]
-	keyLength := len(value)
+	tokenLength := len(value)
 
-	maskedKeyResponseProperties := MaskedResponseKey{
-		KeyPrefix:  prefix,
-		KeyLength:  keyLength,
-		MaskPrefix: maskPrefix,
-		MaskSuffix: maskSuffix,
+	maskedTokenProperties := MaskedToken{
+		TokenPrefix:       prefix,
+		ValueLength:       tokenLength,
+		MaskedValuePrefix: maskPrefix,
+		MaskedValueSuffix: maskSuffix,
 	}
 
-	return maskedKeyResponseProperties, nil
+	return maskedTokenProperties, nil
 }
 
 func MaskKey(prefix string, value string) (string, error) {
