@@ -132,7 +132,7 @@
       },
       "disableTextWrap": false,
       "editorMode": "builder",
-      "expr": "nomad_client_host_disk_available{disk=\"/dev/sdb\"} / 1073741824",
+      "expr": "nomad_client_host_disk_available{disk=\"/dev/sdb\", node_pool=\"default\"} / 1073741824",
       "fullMetaSearch": false,
       "includeNullMetadata": true,
       "instant": false,
