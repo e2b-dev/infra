@@ -33,13 +33,6 @@ runs:
     - name: GitHub Action for npx
       uses: mikeal/npx@1.0.0
 
-    - name: Set env variables from secrets
-      if: always()
-      run: |
-        echo "E2B_API_KEY=${{ secrets[format('{0}', inputs.api_key)] }}" >> $GITHUB_ENV
-        echo "E2B_ACCESS_TOKEN=${{ secrets[format('{0}', inputs.access_token)] }}" >> $GITHUB_ENV
-      shell: bash
-
     - name: Set Slack channel based on dev input
       run: |
         if [ "${{ inputs.dev }}" == "true" ]; then
@@ -52,8 +45,8 @@ runs:
     - name: ${{ inputs.test_name }}
       working-directory: ${{ inputs.test_dir }}
       env:
-        E2B_API_KEY: ${{ env.E2B_API_KEY }}
-        E2B_ACCESS_TOKEN: ${{ env.E2B_ACCESS_TOKEN }}
+        E2B_API_KEY: ${{ inputs.api_key }}
+        E2B_ACCESS_TOKEN: ${{ inputs.access_token }}
         E2B_DOMAIN: ${{ inputs.e2b-domain }}
       run: deno run --allow-all ${{ inputs.test_command }}
       shell: bash

@@ -54,13 +54,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set env variables from secrets
+        if: always()
+        run: |
+          echo "E2B_API_KEY=${{ secrets[format('{0}', inputs.api_key)] }}" >> $GITHUB_ENV
+          echo "E2B_ACCESS_TOKEN=${{ secrets[format('{0}', inputs.access_token)] }}" >> $GITHUB_ENV
+
       - name: Run test
         uses: ./.github/actions/periodic-test
         with:
           dev: ${{ inputs.dev }}
           e2b-domain: ${{ matrix.e2b-domain }}
-          api_key: ${{ matrix.api_key }}
-          access_token: ${{ matrix.access_token }}
+          api_key: ${{ env.E2B_API_KEY }}
+          access_token: ${{ env.E2B_ACCESS_TOKEN }}
           slack_channel: monitoring-infra-staging
           test_name: ${{ matrix.test-config.test_name }}
           test_command: ${{ matrix.test-config.test_command }}
