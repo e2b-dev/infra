@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -58,7 +59,9 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 		return
 	}
 
-	maskedToken, err := keys.GetMaskedIdentifierProperties(keys.AccessTokenPrefix, accessToken.PrefixedRawValue)
+	valueWithoutPrefix := strings.TrimPrefix(accessToken.PrefixedRawValue, keys.AccessTokenPrefix)
+
+	maskedToken, err := keys.GetMaskedIdentifierProperties(keys.AccessTokenPrefix, valueWithoutPrefix)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when masking access token: %s", err))
 

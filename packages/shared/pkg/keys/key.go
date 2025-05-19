@@ -31,11 +31,10 @@ type MaskedIdentifier struct {
 
 // GetMaskedIdentifierProperties returns identifier masking properties in accordance to the OpenAPI response spec
 // NOTE: This is a temporary function which should eventually replace [MaskKey]/[GenerateKey] when db migration is completed
-func GetMaskedIdentifierProperties(prefix, identifier string) (MaskedIdentifier, error) {
-	identifierValue := strings.TrimPrefix(identifier, prefix)
-	identifierValueLength := len(identifierValue)
+func GetMaskedIdentifierProperties(prefix, value string) (MaskedIdentifier, error) {
+	valueLength := len(value)
 
-	suffixOffset := identifierValueLength - identifierValueSuffixLength
+	suffixOffset := valueLength - identifierValueSuffixLength
 	prefixOffset := identifierValuePrefixLength
 
 	if suffixOffset < 0 {
@@ -51,12 +50,12 @@ func GetMaskedIdentifierProperties(prefix, identifier string) (MaskedIdentifier,
 		prefixOffset = suffixOffset
 	}
 
-	maskPrefix := identifierValue[:prefixOffset]
-	maskSuffix := identifierValue[suffixOffset:]
+	maskPrefix := value[:prefixOffset]
+	maskSuffix := value[suffixOffset:]
 
 	maskedIdentifierProperties := MaskedIdentifier{
 		Prefix:            prefix,
-		ValueLength:       identifierValueLength,
+		ValueLength:       valueLength,
 		MaskedValuePrefix: maskPrefix,
 		MaskedValueSuffix: maskSuffix,
 	}

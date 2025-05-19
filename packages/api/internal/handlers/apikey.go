@@ -171,7 +171,9 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		return
 	}
 
-	maskedKeyProperties, err := keys.GetMaskedIdentifierProperties(keys.ApiKeyPrefix, apiKey.APIKey)
+	valueWithoutPrefix := strings.TrimPrefix(apiKey.APIKey, keys.ApiKeyPrefix)
+
+	maskedKeyProperties, err := keys.GetMaskedIdentifierProperties(keys.ApiKeyPrefix, valueWithoutPrefix)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating response key mask: %s", err))
 
