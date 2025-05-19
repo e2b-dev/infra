@@ -126,13 +126,15 @@ func (g *GRPCServer) Start(ctx context.Context, port uint) error {
 		// mark services as unhealthy so now new request will be accepted
 		select {
 		case <-ctx.Done():
+			zap.L().Info("Stopping grpc server")
 			g.grpc.Stop()
 		default:
+			zap.L().Info("Stopping grpc server gracefully")
 			g.grpc.GracefulStop()
 		}
 		m.Close()
 
-		return lis.Close()
+		return nil
 	}
 
 	// Start serving traffic, blocking call
@@ -150,5 +152,6 @@ func (g *GRPCServer) Close(ctx context.Context) error {
 		g.shutdown.err = g.shutdown.op(ctx)
 		g.shutdown.op = nil
 	})
+
 	return g.shutdown.err
 }
