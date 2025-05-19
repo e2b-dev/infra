@@ -59,7 +59,6 @@ type GetSnapshotsWithCursorRow struct {
 	EnvBuild EnvBuild
 }
 
-// We must convert NULL alias into empty string, because sqlc will not generate string pointer to it and it will crash when NULL is received
 func (q *Queries) GetSnapshotsWithCursor(ctx context.Context, arg GetSnapshotsWithCursorParams) ([]GetSnapshotsWithCursorRow, error) {
 	rows, err := q.db.Query(ctx, getSnapshotsWithCursor,
 		arg.Limit,
