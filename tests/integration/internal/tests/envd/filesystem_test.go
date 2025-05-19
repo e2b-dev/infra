@@ -162,7 +162,7 @@ func TestStat(t *testing.T) {
 		},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbx.SandboxID, sbx.ClientID),
+		setup.WithSandbox(sbx.SandboxID),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, createFileResp.StatusCode())
@@ -170,7 +170,7 @@ func TestStat(t *testing.T) {
 	req := connect.NewRequest(&filesystem.StatRequest{
 		Path: filePath,
 	})
-	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
 	statResp, err := envdClient.FilesystemClient.Stat(ctx, req)
 	require.NoError(t, err)
