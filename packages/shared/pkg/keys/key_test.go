@@ -1,6 +1,7 @@
 package keys
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,4 +42,89 @@ func TestGenerateKey(t *testing.T) {
 		assert.Regexp(t, "^\\*+[0-9a-f]{4}$", key.MaskedValue)
 		assert.Regexp(t, "^\\$sha256\\$.*", key.HashedValue)
 	})
+}
+
+func TestGetMaskedIdentifierProperties(t *testing.T) {
+	type testCase struct {
+		name              string
+		prefix            string
+		identifier        string
+		expectedResult    MaskedIdentifier
+		expectedErrString string
+	}
+
+	testCases := []testCase{
+		{
+			name:       "succeeds with long identifier",
+			prefix:     "pk_",
+			identifier: "pk_abcdefghij", // value "abcdefghij", len 10
+			expectedResult: MaskedIdentifier{
+				Prefix:            "pk_",
+				ValueLength:       10,
+				MaskedValuePrefix: "abcdefgh", // value[:10-2]
+				MaskedValueSuffix: "ghij",     // value[10-4:]
+			},
+			expectedErrString: "",
+		},
+		{
+			name:       "succeeds with identifier length equal to suffix display length",
+			prefix:     "sk_",
+			identifier: "sk_abcd", // value "abcd", len 4
+			expectedResult: MaskedIdentifier{
+				Prefix:            "sk_",
+				ValueLength:       4,
+				MaskedValuePrefix: "ab",   // value[:4-2]
+				MaskedValueSuffix: "abcd", // value[4-4:]
+			},
+			expectedErrString: "",
+		},
+		{
+			name:       "succeeds with identifier length slightly longer than suffix display length and empty prefix",
+			prefix:     "",
+			identifier: "abcde", // value "abcde", len 5
+			expectedResult: MaskedIdentifier{
+				Prefix:            "",
+				ValueLength:       5,
+				MaskedValuePrefix: "abc",  // value[:5-2]
+				MaskedValueSuffix: "bcde", // value[5-4:]
+			},
+			expectedErrString: "",
+		},
+		{
+			name:              "fails when identifier value is too short",
+			prefix:            "err_",
+			identifier:        "err_abc", // value "abc", len 3
+			expectedResult:    MaskedIdentifier{},
+			expectedErrString: fmt.Sprintf("mask value length is less than key suffix length (%d)", identifierValueSuffixLength),
+		},
+		{
+			name:              "fails with empty prefix and identifier value too short",
+			prefix:            "",
+			identifier:        "ab", // value "ab", len 2
+			expectedResult:    MaskedIdentifier{},
+			expectedErrString: fmt.Sprintf("mask value length is less than key suffix length (%d)", identifierValueSuffixLength),
+		},
+		{
+			name:              "fails when identifier value is empty (identifier matches prefix)",
+			prefix:            "onlyprefix_",
+			identifier:        "onlyprefix_", // value "", len 0
+			expectedResult:    MaskedIdentifier{},
+			expectedErrString: fmt.Sprintf("mask value length is less than key suffix length (%d)", identifierValueSuffixLength),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := GetMaskedIdentifierProperties(tc.prefix, tc.identifier)
+
+			if tc.expectedErrString != "" {
+				assert.Error(t, err)
+				assert.EqualError(t, err, tc.expectedErrString)
+				assert.Equal(t, tc.expectedResult, result) // Expect zero value for result on error
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedResult, result)
+			}
+		})
+	}
 }
