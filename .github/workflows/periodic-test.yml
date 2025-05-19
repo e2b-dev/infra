@@ -24,8 +24,8 @@ permissions:
   contents: read
 
 jobs:
-  matrix-tests:
-    name: Run matrix of periodic tests
+  checks:
+    name: Check
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -51,8 +51,10 @@ jobs:
           - test_command: "tests/periodic-test/internet-works.ts"
             test_name: "internet connectivity inside of sandbox"
             test_dir: "."
+          # - command: "tests/periodic-test/cli-logs.ts"
+          #   name: "cli logs"
     steps:
-      - name: Call reusable workflow
+      - name: Run test
         uses: ./.github/workflows/periodic-test-job.yml
         with:
           dev: ${{ inputs.dev }}
