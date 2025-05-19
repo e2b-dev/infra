@@ -39,13 +39,13 @@ func StreamToChannel[Res any](ctx context.Context, stream *connect.ServerStreamF
 	return out, errCh
 }
 
-func SetSandboxHeader(header http.Header, hostname string, sandboxID string, clientID string) error {
+func SetSandboxHeader(header http.Header, hostname string, sandboxID string) error {
 	domain, err := extractDomain(hostname)
 	if err != nil {
 		return fmt.Errorf("failed to extract domain from hostname: %w", err)
 	}
 	// Construct the host (<port>-<sandbox id>-<old client id>.e2b.app)
-	host := fmt.Sprintf("%d-%s-%s.%s", consts.DefaultEnvdServerPort, sandboxID, clientID, domain)
+	host := fmt.Sprintf("%d-%s-00000000.%s", consts.DefaultEnvdServerPort, sandboxID, domain)
 
 	header.Set("Host", host)
 
