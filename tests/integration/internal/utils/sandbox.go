@@ -13,19 +13,34 @@ import (
 )
 
 // SetupSandboxWithCleanupWithTimeout creates a new sandbox with specific timeout and returns its data
-func SetupSandboxWithCleanupWithTimeout(t *testing.T, c *api.ClientWithResponses, sbxTimeout int32) *api.Sandbox {
+func SetupSandboxWithCleanupWithTimeout(t *testing.T, c *api.ClientWithResponses, sbxTimeout int32, sbxMetadata *api.SandboxMetadata) *api.Sandbox {
 	t.Helper()
 
 	// t.Context() doesn't work with go vet, so we use our own context
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
+	defaultMetadata := api.SandboxMetadata{
+		"sandboxType": "test",
+	}
+
+	var metadata *api.SandboxMetadata
+	if sbxMetadata != nil {
+		metadataOverride := defaultMetadata
+
+		for k, v := range *sbxMetadata {
+			metadataOverride[k] = v
+		}
+
+		metadata = &metadataOverride
+	} else {
+		metadata = &defaultMetadata
+	}
+
 	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
-		Metadata: &api.SandboxMetadata{
-			"sandboxType": "test",
-		},
+		Metadata:   metadata,
 	}, setup.WithAPIKey())
 
 	assert.NoError(t, err)
@@ -44,7 +59,7 @@ func SetupSandboxWithCleanupWithTimeout(t *testing.T, c *api.ClientWithResponses
 
 // SetupSandboxWithCleanup creates a new sandbox and returns its data
 func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses) *api.Sandbox {
-	return SetupSandboxWithCleanupWithTimeout(t, c, 30)
+	return SetupSandboxWithCleanupWithTimeout(t, c, 30, nil)
 }
 
 // TeardownSandbox kills the sandbox with the given ID

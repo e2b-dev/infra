@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
@@ -67,8 +68,15 @@ func (b *TemplateBuilder) runCommand(
 			return nil
 		case err := <-msgErrCh:
 			return err
-		case msg := <-msgCh:
+		case msg, ok := <-msgCh:
+			if !ok {
+				return nil
+			}
 			e := msg.Event
+			if e == nil {
+				zap.L().Error("received nil command event")
+				return nil
+			}
 
 			switch {
 			case e.GetData() != nil:

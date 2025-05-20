@@ -47,9 +47,13 @@ func TestSandboxList(t *testing.T) {
 func TestSandboxListWithFilter(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	sbx := utils.SetupSandboxWithCleanup(t, c)
+	// standard sandbox
+	_ = utils.SetupSandboxWithCleanup(t, c)
 
-	metadataString := "sandboxType=test"
+	// sandbox with custom metadata
+	sbx := utils.SetupSandboxWithCleanupWithTimeout(t, c, 30, &api.SandboxMetadata{"favouriteColor": "blue"})
+
+	metadataString := "favouriteColor=blue"
 
 	// List with filter
 	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
