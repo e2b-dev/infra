@@ -49,7 +49,7 @@ func New(ctx context.Context,
 	devicePool *nbd.DevicePool,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
-) *ServerStore {
+) (*ServerStore, error) {
 	// Template Manager Initialization
 	if err := constants.CheckRequired(); err != nil {
 		log.Fatalf("Validation for environment variables failed: %v", err)
