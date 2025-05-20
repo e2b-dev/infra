@@ -58,11 +58,11 @@ func (s *StorageLocal) Acquire() (*Slot, error) {
 	// we skip the first slot because it's the host slot
 	slotIdx := 1
 
-	select {
-	case <-acquireTimeoutCtx.Done():
-		return nil, fmt.Errorf("failed to acquire IP slot: timeout")
-	default:
-		for {
+	for {
+		select {
+		case <-acquireTimeoutCtx.Done():
+			return nil, fmt.Errorf("failed to acquire IP slot: timeout")
+		default:
 			if len(s.acquiredNs) >= s.slotsSize {
 				return nil, fmt.Errorf("failed to acquire IP slot: no empty slots found")
 			}
