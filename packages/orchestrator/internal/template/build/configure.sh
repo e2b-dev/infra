@@ -4,19 +4,9 @@ set -euo pipefail
 
 echo "Starting configuration script"
 
-# Add swapfile — we enable it in the preexec for envd
-configure_swap() {
-    echo "Configuring swap to ${1} MiB"
-    mkdir /swap
-    fallocate -l "${1}"M /swap/swapfile
-    chmod 600 /swap/swapfile
-    mkswap /swap/swapfile
-    # Enable swap immediately
-    echo 0 > /proc/sys/vm/swappiness
-    swapon /swap/swapfile
-}
-
-configure_swap 128
+echo "Enable swap"
+echo 0 > /proc/sys/vm/swappiness
+swapon /swap/swapfile
 
 # Create default user.
 # if the /home/user directory exists, we copy the skeleton files to it because the adduser command

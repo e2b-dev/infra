@@ -68,6 +68,16 @@ PermitEmptyPasswords yes
 PasswordAuthentication yes
 EOF
 
+configure_swap() {
+    echo "Configuring swap to ${1} MiB"
+    mkdir /swap
+    fallocate -l "${1}"M /swap/swapfile
+    chmod 600 /swap/swapfile
+    mkswap /swap/swapfile
+}
+
+configure_swap 128
+
 echo "Don't wait for ttyS0 (serial console kernel logs)"
 systemctl mask serial-getty@ttyS0.service
 
