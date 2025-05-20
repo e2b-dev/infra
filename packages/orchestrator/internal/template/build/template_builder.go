@@ -83,6 +83,19 @@ type Result struct {
 	RootfsSizeMB int64
 }
 
+// Build builds the template, uploads it to storage and returns the result metadata.
+// It works the following:
+// 1. Get docker image from the remote repository
+// 2. Inject new file layers with the required setup for hostname, dns, envd service configuration, basic provisioning script that is run before most of VM services
+// 3. Extract ext4 filesystem
+// 4. Start FC VM with BusyBox init that runs just the provisioning script, wait for exit. This will install systemd, that is later used for proper VM boot.
+// 5. Start the FC VM (using systemd) and wait for Envd
+// 5. Run two additional commands:
+//   - configuration script (enable swap, create user, change folder permissions, etc.)
+//   - start command (if defined)
+//
+// 6. Snapshot
+// 7. Upload template
 func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (*Result, error) {
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
