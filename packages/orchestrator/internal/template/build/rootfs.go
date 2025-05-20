@@ -197,9 +197,14 @@ BUILD_ID=%s
 			"etc/systemd/system/envd.service": {[]byte(envdService), 0o644},
 			"etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf": {[]byte(autologinService), 0o644},
 
+			// Provision script
+			"usr/local/bin/provision.sh": {scriptDef.Bytes(), 0o777},
 			// Setup init system
 			"usr/bin/busybox": {busyBox, 0o755},
-			"etc/init.d/rcS": {[]byte(`#!/bin/busybox ash
+			// Set to bin/init so it's not in conflict with systemd
+			// Any rewrite of the init file when booted from it will corrupt the filesystem
+			"usr/bin/init": {busyBox, 0o755},
+			"etc/init.d/rcS": {[]byte(`#!/usr/bin/busybox ash
 echo "Mounting essential filesystems"
 # Ensure necessary mount points exist
 mkdir -p /proc /sys /dev
@@ -209,7 +214,6 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 
 echo "System Init"`), 0o777},
-			"usr/local/bin/provision.sh": {scriptDef.Bytes(), 0o777},
 			"etc/inittab": {[]byte(`# Run system init
 ::sysinit:/etc/init.d/rcS
 
@@ -219,8 +223,8 @@ echo "System Init"`), 0o777},
 # Reboot the system after the script
 # Running the poweroff or halt commands inside a Linux guest will bring it down but Firecracker process remains unaware of the guest shutdown so it lives on.
 # Running the reboot command in a Linux guest will gracefully bring down the guest system and also bring a graceful end to the Firecracker process.
-::once:/bin/busybox reboot
-::shutdown:/bin/busybox umount -a -r
+::once:/usr/bin/busybox reboot
+::shutdown:/usr/bin/busybox umount -a -r
 `), 0o777},
 		},
 	)

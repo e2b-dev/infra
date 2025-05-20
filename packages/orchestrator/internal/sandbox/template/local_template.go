@@ -41,5 +41,5 @@ func (t *LocalTemplate) Rootfs() (block.ReadonlyDevice, error) {
 }
 
 func (t *LocalTemplate) Snapfile() (File, error) {
-	return nil, ErrNotImplemented{Msg: "snapfile not implemented for local template"}
+	return nil, &NotImplementedError{Msg: "snapfile not implemented for local template"}
 }

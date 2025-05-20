@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -124,25 +125,25 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	// Created here to be able to pass it to CreateSandbox for populating COW cache
 	rootfsPath := filepath.Join(templateBuildDir, rootfsBuildFileName)
 
-	localTemplate, err := Build(
+	rootfs, memfile, err := Build(
 		ctx,
 		b.tracer,
 		template,
 		postProcessor,
-		templateCacheFiles,
 		templateBuildDir,
 		rootfsPath,
 	)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error building environment: %v", err))
-		return nil, err
+		return nil, fmt.Errorf("error building environment: %w", err)
 	}
-	defer func() {
-		err := localTemplate.Close()
-		if err != nil {
-			b.logger.Error("Error closing local template", zap.Error(err))
-		}
-	}()
+
+	localTemplate, err := templatelocal.NewLocalTemplate(templateCacheFiles, rootfs, memfile)
+	if err != nil {
+		postProcessor.WriteMsg(fmt.Sprintf("Error creating local template: %v", err))
+		return nil, fmt.Errorf("error creating local template: %w", err)
+	}
+	defer localTemplate.Close()
 
 	// Provision sandbox with systemd and other vital parts
 	postProcessor.WriteMsg("Provisioning sandbox template")
@@ -162,7 +163,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	}
 
 	// Check the rootfs filesystem corruption
-	ext4Check, err := ext4.CheckIntegrity(rootfsPath, false)
+	ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
 	zap.L().Debug("provisioned filesystem ext4 integrity",
 		zap.String("result", ext4Check),
 		zap.Error(err),
@@ -176,6 +177,11 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error enlarging disk after provisioning: %v", err))
 		return nil, fmt.Errorf("error enlarging disk after provisioning: %w", err)
+	}
+
+	err = rootfs.UpdateSize()
+	if err != nil {
+		return nil, fmt.Errorf("error updating rootfs size: %w", err)
 	}
 
 	// Create sandbox for building template
@@ -373,7 +379,7 @@ func (b *TemplateBuilder) provisionSandbox(
 		localTemplate,
 		provisionTimeout,
 		rootfsPath,
-		"/usr/bin/busybox",
+		"/bin/init",
 	)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)
@@ -413,6 +419,11 @@ func (b *TemplateBuilder) enlargeDiskAfterProvisioning(
 	zap.L().Debug("adding provision size diff to rootfs", zap.Int64("size", sizeDiff))
 	rootfsFinalSize, err := ext4.Enlarge(ctx, b.tracer, rootfsPath, sizeDiff)
 	if err != nil {
+		// Debug filesystem stats on error
+		cmd := exec.Command("tune2fs", "-l", rootfsPath)
+		output, dErr := cmd.Output()
+		zap.L().Error(string(output), zap.Error(dErr))
+
 		return fmt.Errorf("error enlarging rootfs: %w", err)
 	}
 	template.rootfsSize = rootfsFinalSize

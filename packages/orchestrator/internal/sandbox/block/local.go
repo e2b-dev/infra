@@ -12,10 +12,7 @@ import (
 
 type Local struct {
 	f    *os.File
-	size int64
 	path string
-
-	blockSize int64
 
 	header *header.Header
 }
@@ -38,11 +35,9 @@ func NewLocal(path string, blockSize int64, buildID uuid.UUID) (*Local, error) {
 	), nil)
 
 	return &Local{
-		f:         f,
-		size:      info.Size(),
-		path:      path,
-		blockSize: blockSize,
-		header:    h,
+		f:      f,
+		path:   path,
+		header: h,
 	}, nil
 }
 
@@ -55,13 +50,12 @@ func (d *Local) ReadAt(p []byte, off int64) (int, error) {
 	return copy(p, slice), nil
 }
 
-// THIS IS NOT UP TO DATE AFTER RESIZE
 func (d *Local) Size() (int64, error) {
-	return d.size, nil
+	return int64(d.header.Metadata.Size), nil
 }
 
 func (d *Local) BlockSize() int64 {
-	return d.blockSize
+	return int64(d.header.Metadata.BlockSize)
 }
 
 func (d *Local) Close() (e error) {
@@ -79,8 +73,9 @@ func (d *Local) Close() (e error) {
 
 func (d *Local) Slice(off, length int64) ([]byte, error) {
 	end := off + length
-	if end > d.size {
-		end = d.size
+	size := int64(d.header.Metadata.Size)
+	if end > size {
+		end = size
 		length = end - off
 	}
 
@@ -95,4 +90,15 @@ func (d *Local) Slice(off, length int64) ([]byte, error) {
 
 func (d *Local) Header() *header.Header {
 	return d.header
+}
+
+func (d *Local) UpdateSize() error {
+	info, err := d.f.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	d.header.Metadata.Size = uint64(info.Size())
+
+	return nil
 }

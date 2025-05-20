@@ -9,11 +9,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-type ErrNotImplemented struct {
+type NotImplementedError struct {
 	Msg string
 }
 
-func (e ErrNotImplemented) Error() string {
+func (e NotImplementedError) Error() string {
 	return fmt.Sprintf("not implemented: %s", e.Msg)
 }
 
@@ -44,7 +44,10 @@ func closeTemplate(t Template) (e error) {
 
 	snapfile, err := t.Snapfile()
 	if err != nil {
-		if !errors.Is(err, ErrNotImplemented{}) {
+		var ni *NotImplementedError
+		if errors.As(err, &ni) {
+			// ignore
+		} else {
 			e = errors.Join(e, err)
 		}
 	} else {
