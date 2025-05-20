@@ -68,11 +68,12 @@ func NewStorage(
 		// TODO: This is a workaround for the old style template without a header.
 		// We don't know the block size of the old style template, so we set it manually.
 		var blockSize uint64
-		if fileType == build.Memfile {
+		switch {
+		case fileType == build.Memfile:
 			blockSize = oldMemfileHugePageSize
-		} else if fileType == build.Rootfs {
+		case fileType == build.Rootfs:
 			blockSize = oldRootfsBlockSize
-		} else {
+		default:
 			return nil, fmt.Errorf("unsupported file type: %s", fileType)
 		}
 
