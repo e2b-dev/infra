@@ -19,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -64,7 +63,7 @@ func New(ctx context.Context,
 
 	persistence, err := storage.GetTemplateStorageProvider(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error getting template storage provider: %v", err)
+		panic(err)
 	}
 
 	templateStorage := template.NewStorage(persistence)
