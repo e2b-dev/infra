@@ -199,7 +199,6 @@ BUILD_ID=%s
 
 			// Setup init system
 			"usr/bin/busybox": {busyBox, 0o755},
-			"usr/sbin/init":   {busyBox, 0o755},
 			"etc/init.d/rcS": {[]byte(`#!/bin/busybox ash
 echo "Mounting essential filesystems"
 # Ensure necessary mount points exist

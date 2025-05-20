@@ -88,6 +88,7 @@ func CreateSandbox(
 	template template.Template,
 	sandboxTimeout time.Duration,
 	rootfsCachePath string,
+	initScriptPath string,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -180,6 +181,7 @@ func CreateSandbox(
 		config.Vcpu,
 		config.RamMb,
 		config.HugePages,
+		initScriptPath,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create FC: %w", err)

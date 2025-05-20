@@ -66,6 +66,8 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 
 	tracer := otel.Tracer("test")
 
+	logger.Info("building template", zap.String("templateID", templateID), zap.String("buildID", buildID))
+
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
 	sandboxes := smap.New[*sandbox.Sandbox]()

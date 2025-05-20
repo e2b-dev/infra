@@ -250,6 +250,7 @@ func (p *Process) Create(
 	vCPUCount int64,
 	memoryMB int64,
 	hugePages bool,
+	initScriptPath string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
@@ -273,7 +274,7 @@ func (p *Process) Create(
 		"console":                             "ttyS0",
 		"loglevel":                            "5", //KERN_NOTICE
 		"systemd.journald.forward_to_console": "",
-		"init":                                "/sbin/init",
+		"init":                                initScriptPath,
 		"ip":                                  ipv4,
 		"ipv6.disable":                        "0",
 		"ipv6.autoconf":                       "1",

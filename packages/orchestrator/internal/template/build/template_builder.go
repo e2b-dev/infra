@@ -189,6 +189,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		localTemplate,
 		sbxTimeout,
 		rootfsPath,
+		"/sbin/init",
 	)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)
@@ -372,6 +373,7 @@ func (b *TemplateBuilder) provisionSandbox(
 		localTemplate,
 		provisionTimeout,
 		rootfsPath,
+		"/usr/bin/busybox",
 	)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)

@@ -76,7 +76,6 @@ rm -rf /etc/machine-id
 
 echo "Linking systemd to init"
 ln -sf /lib/systemd/systemd /usr/sbin/init
-ln -sf /lib/systemd/systemd /sbin/init
 
 echo "Finished provisioning script"
 
