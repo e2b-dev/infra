@@ -2,7 +2,6 @@ package network
 
 import (
 	"fmt"
-	"strconv"
 	"sync"
 )
 
@@ -44,8 +43,4 @@ func (s *StorageMemory) Release(ips *Slot) error {
 	s.freeSlots[ips.Idx] = false
 
 	return nil
-}
-
-func getMemoryKey(slotIdx int) string {
-	return strconv.Itoa(slotIdx)
 }
