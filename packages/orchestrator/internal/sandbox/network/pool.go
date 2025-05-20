@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
@@ -29,7 +30,7 @@ type Pool struct {
 	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, clientID string) (*Pool, error) {
+func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, clientID string, tracer trace.Tracer) (*Pool, error) {
 	newSlots := make(chan Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan Slot, reusedSlotsPoolSize)
 
@@ -43,7 +44,7 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, cli
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}
 
-	slotStorage, err := NewStorage(slotsSize, clientID)
+	slotStorage, err := NewStorage(slotsSize, clientID, tracer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)
 	}

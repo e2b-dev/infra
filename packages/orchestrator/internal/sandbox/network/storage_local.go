@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -17,11 +18,12 @@ type StorageLocal struct {
 	foreignNs    map[string]struct{}
 	acquiredNs   map[string]struct{}
 	acquiredNsMu sync.Mutex
+	tracer       trace.Tracer
 }
 
 const netNamespacesDir = "/var/run/netns"
 
-func NewStorageLocal(slotsSize int) (*StorageLocal, error) {
+func NewStorageLocal(slotsSize int, tracer trace.Tracer) (*StorageLocal, error) {
 	// get namespaces that we want to always skip
 	foreignNs, err := getForeignNamespaces()
 	if err != nil {
@@ -39,15 +41,19 @@ func NewStorageLocal(slotsSize int) (*StorageLocal, error) {
 		slotsSize:    slotsSize,
 		acquiredNs:   make(map[string]struct{}, slotsSize),
 		acquiredNsMu: sync.Mutex{},
+		tracer:       tracer,
 	}, nil
 }
 
 func (s *StorageLocal) Acquire() (*Slot, error) {
-	s.acquiredNsMu.Lock()
-	defer s.acquiredNsMu.Unlock()
-
 	acquireTimeoutCtx, acquireCancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer acquireCancel()
+
+	_, span := s.tracer.Start(acquireTimeoutCtx, "network-namespace-acquire")
+	defer span.End()
+
+	s.acquiredNsMu.Lock()
+	defer s.acquiredNsMu.Unlock()
 
 	// we skip the first slot because it's the host slot
 	slotIdx := 1
