@@ -12,7 +12,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-const oldRootfsBlockSize = 2 << 11 // 4 KiB
+const oldMemfileHugePageSize = 2 << 20 // 2 MiB
+const oldRootfsBlockSize = 2 << 11     // 4 KiB
 
 type Storage struct {
 	header *header.Header
@@ -64,14 +65,24 @@ func NewStorage(
 			return nil, fmt.Errorf("failed to parse build id: %w", err)
 		}
 
+		// TODO: This is a workaround for the old style template without a header.
+		// We don't know the block size of the old style template, so we set it manually.
+		var blockSize uint64
+		if fileType == build.Memfile {
+			blockSize = oldMemfileHugePageSize
+		} else if fileType == build.Rootfs {
+			blockSize = oldRootfsBlockSize
+		} else {
+			return nil, fmt.Errorf("unsupported file type: %s", fileType)
+		}
+
 		h = header.NewHeader(&header.Metadata{
 			BuildId:     id,
 			BaseBuildId: id,
 			Size:        uint64(size),
 			Version:     1,
-			// We don't know the block size of the old style template, so we set it to oldRootfsBlockSize
-			BlockSize:  oldRootfsBlockSize,
-			Generation: 1,
+			BlockSize:   blockSize,
+			Generation:  1,
 		}, nil)
 	}
 
