@@ -159,7 +159,7 @@ func (d *Dispatch) Handle() error {
 				case NBDCmdDisconnect:
 					return nil // All done
 				case NBDCmdFlush:
-					return fmt.Errorf("not supported: flush")
+					return fmt.Errorf("not supported: Flush")
 				case NBDCmdRead:
 					rp += 28
 					err := d.cmdRead(request.Handle, request.From, request.Length)
