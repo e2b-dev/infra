@@ -29,6 +29,9 @@ const (
 
 	rootfsBuildFileName = "rootfs.ext4.build"
 	rootfsProvisionLink = "rootfs.ext4.build.provision"
+
+	busyBoxInitPath = "/bin/init"
+	systemdInitPath = "/sbin/init"
 )
 
 type Rootfs struct {
@@ -203,7 +206,7 @@ BUILD_ID=%s
 			"usr/bin/busybox": {busyBox, 0o755},
 			// Set to bin/init so it's not in conflict with systemd
 			// Any rewrite of the init file when booted from it will corrupt the filesystem
-			"usr/bin/init": {busyBox, 0o755},
+			"usr" + busyBoxInitPath: {busyBox, 0o755},
 			"etc/init.d/rcS": {[]byte(`#!/usr/bin/busybox ash
 echo "Mounting essential filesystems"
 # Ensure necessary mount points exist
