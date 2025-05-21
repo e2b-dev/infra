@@ -88,8 +88,8 @@ func (s *StorageLocal) Acquire() (*Slot, error) {
 				return nil, fmt.Errorf("error checking if namespace is available: %v", err)
 			}
 
-			// todo: maybe we should append it into foreign namespaces?
 			if !available {
+				s.foreignNs[slotName] = struct{}{}
 				zap.L().Debug("Skipping slot because not available", zap.String("slot", slotName))
 				continue
 			}
