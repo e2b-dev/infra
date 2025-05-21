@@ -207,7 +207,7 @@ components:
           $ref: '#/components/schemas/Timestamp'
         endTime:
           $ref: '#/components/schemas/Timestamp'
-      required: [sandbox]
+      required: [sandbox, startTime, endTime]
 
     SandboxCreateResponse:
       type: object
@@ -249,11 +249,11 @@ components:
         buildId:            { type: string }
         sandboxId:          { type: string }
         teamId:             { type: string }
-        baseTemplateId:     { type: string }
+        baseTemplateId:     { type: string, nullable: true }
         kernelVersion:      { type: string }
         firecrackerVersion: { type: string }
         envdVersion:        { type: string }
-        alias:              { type: string }
+        alias:              { type: string, nullable: true }
         envdAccessToken:    { type: string }
         snapshot:           { type: boolean }
         autoPause:          { type: boolean }
@@ -268,7 +268,7 @@ components:
         metadata:
           type: object
           additionalProperties: { type: string }
-      required: [orchestratorId, templateId, buildId, sandboxId, kernelVersion, firecrackerVersion, envdVersion, hugePages]
+      required: [orchestratorId, templateId, buildId, sandboxId, teamId, kernelVersion, firecrackerVersion, envdVersion, snapshot, hugePages, vCPU, ramMB]
 
     RunningSandbox:
       type: object

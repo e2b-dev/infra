@@ -137,9 +137,9 @@ type RunningSandbox struct {
 
 // SandboxConfig defines model for SandboxConfig.
 type SandboxConfig struct {
-	Alias              *string            `json:"alias,omitempty"`
+	Alias              *string            `json:"alias"`
 	AutoPause          *bool              `json:"autoPause,omitempty"`
-	BaseTemplateId     *string            `json:"baseTemplateId,omitempty"`
+	BaseTemplateId     *string            `json:"baseTemplateId"`
 	BuildId            string             `json:"buildId"`
 	EnvVars            *map[string]string `json:"envVars,omitempty"`
 	EnvdAccessToken    *string            `json:"envdAccessToken,omitempty"`
@@ -152,20 +152,20 @@ type SandboxConfig struct {
 	MaxSandboxLength *int64             `json:"maxSandboxLength,omitempty"`
 	Metadata         *map[string]string `json:"metadata,omitempty"`
 	OrchestratorId   string             `json:"orchestratorId"`
-	RamMB            *int64             `json:"ramMB,omitempty"`
+	RamMB            int64              `json:"ramMB"`
 	SandboxId        string             `json:"sandboxId"`
-	Snapshot         *bool              `json:"snapshot,omitempty"`
-	TeamId           *string            `json:"teamId,omitempty"`
+	Snapshot         bool               `json:"snapshot"`
+	TeamId           string             `json:"teamId"`
 	TemplateId       string             `json:"templateId"`
 	TotalDiskSizeMB  *int64             `json:"totalDiskSizeMB,omitempty"`
-	VCPU             *int64             `json:"vCPU,omitempty"`
+	VCPU             int64              `json:"vCPU"`
 }
 
 // SandboxCreateRequest defines model for SandboxCreateRequest.
 type SandboxCreateRequest struct {
-	EndTime   *Timestamp    `json:"endTime,omitempty"`
+	EndTime   Timestamp     `json:"endTime"`
 	Sandbox   SandboxConfig `json:"sandbox"`
-	StartTime *Timestamp    `json:"startTime,omitempty"`
+	StartTime Timestamp     `json:"startTime"`
 }
 
 // SandboxCreateResponse defines model for SandboxCreateResponse.
