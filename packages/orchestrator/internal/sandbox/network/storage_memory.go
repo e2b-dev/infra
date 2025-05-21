@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"sync"
@@ -20,7 +21,7 @@ func NewStorageMemory(slotsSize int) (*StorageMemory, error) {
 	}, nil
 }
 
-func (s *StorageMemory) Acquire() (*Slot, error) {
+func (s *StorageMemory) Acquire(_ context.Context) (*Slot, error) {
 	s.freeSlotsMu.Lock()
 	defer s.freeSlotsMu.Unlock()
 

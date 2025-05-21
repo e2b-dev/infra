@@ -115,7 +115,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		}
 	}()
 
-	networkPool, err := network.NewPool(ctx, 8, 8, clientID)
+	networkPool, err := network.NewPool(ctx, 8, 8, clientID, tracer)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
