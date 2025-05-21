@@ -4,7 +4,7 @@ set -euo pipefail
 echo "Starting provisioning script"
 
 # Install required packages if not already installed
-PACKAGES="systemd systemd-sysv openssh-server sudo socat chrony linuxptp"
+PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp"
 echo "Checking presence of the following packages: $PACKAGES"
 
 MISSING=()
