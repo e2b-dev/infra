@@ -63,7 +63,7 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 		case <-acquireTimeoutCtx.Done():
 			return nil, fmt.Errorf("failed to acquire IP slot: timeout")
 		default:
-			if len(s.acquiredNs) >= s.slotsSize {
+			if len(s.acquiredNs) > s.slotsSize {
 				return nil, fmt.Errorf("failed to acquire IP slot: no empty slots found")
 			}
 
@@ -95,7 +95,7 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 			}
 
 			s.acquiredNs[slotName] = struct{}{}
-			slotKey := getMemoryKey(slotIdx)
+			slotKey := getLocalKey(slotIdx)
 
 			return NewSlot(slotKey, slotIdx), nil
 		}
@@ -162,6 +162,6 @@ func getSlotName(slotIdx int) string {
 	return fmt.Sprintf("ns-%s", slotIdxStr)
 }
 
-func getMemoryKey(slotIdx int) string {
+func getLocalKey(slotIdx int) string {
 	return strconv.Itoa(slotIdx)
 }
