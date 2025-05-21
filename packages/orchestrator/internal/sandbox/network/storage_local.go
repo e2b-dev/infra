@@ -45,12 +45,12 @@ func NewStorageLocal(slotsSize int, tracer trace.Tracer) (*StorageLocal, error) 
 	}, nil
 }
 
-func (s *StorageLocal) Acquire() (*Slot, error) {
-	acquireTimeoutCtx, acquireCancel := context.WithTimeout(context.Background(), time.Millisecond*500)
-	defer acquireCancel()
-
-	_, span := s.tracer.Start(acquireTimeoutCtx, "network-namespace-acquire")
+func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
+	spanCtx, span := s.tracer.Start(ctx, "network-namespace-acquire")
 	defer span.End()
+
+	acquireTimeoutCtx, acquireCancel := context.WithTimeout(spanCtx, time.Millisecond*500)
+	defer acquireCancel()
 
 	s.acquiredNsMu.Lock()
 	defer s.acquiredNsMu.Unlock()

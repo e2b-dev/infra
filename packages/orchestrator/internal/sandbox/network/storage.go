@@ -1,13 +1,15 @@
 package network
 
 import (
+	"context"
+
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
 type Storage interface {
-	Acquire() (*Slot, error)
+	Acquire(ctx context.Context) (*Slot, error)
 	Release(*Slot) error
 }
 

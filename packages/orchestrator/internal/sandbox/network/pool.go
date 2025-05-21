@@ -73,7 +73,7 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, cli
 }
 
 func (p *Pool) createNetworkSlot() (*Slot, error) {
-	ips, err := p.slotStorage.Acquire()
+	ips, err := p.slotStorage.Acquire(p.ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network: %w", err)
 	}

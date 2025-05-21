@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"slices"
@@ -47,7 +48,7 @@ func newConsulClient(token string) (*consulApi.Client, error) {
 	return consulClient, nil
 }
 
-func (s *StorageKV) Acquire() (*Slot, error) {
+func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 	kv := s.consulClient.KV()
 
 	var slot *Slot
