@@ -118,6 +118,15 @@ func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+func Shrink(ctx context.Context, ext4Path string) error {
+	cmd := exec.CommandContext(ctx, "resize2fs", "-M", ext4Path)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to shrink ext4 image: %w\nOutput: %s", err, string(output))
+	}
+	return nil
+}
+
 // parseFreeBlocks extracts the "Free blocks:" value from debugfs output
 func parseFreeBlocks(debugfsOutput string) (int64, error) {
 	re := regexp.MustCompile(`Free blocks:\s+(\d+)`)

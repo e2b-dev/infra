@@ -5,7 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
@@ -50,6 +54,56 @@ func getRepositoryAuth() (authn.Authenticator, error) {
 		Username: cfg.Username,
 		Password: cfg.Password,
 	}, nil
+}
+
+func PullImage(ctx context.Context, tracer trace.Tracer, dockerTag string) (string, error) {
+	_, span := tracer.Start(ctx, "buildah-pull-image")
+	defer span.End()
+
+	auth, err := getRepositoryAuth()
+	if err != nil {
+		return "", fmt.Errorf("failed to get repository auth: %w", err)
+	}
+
+	var args []string
+
+	if basicAuth, ok := auth.(*authn.Basic); ok {
+		args = append(args, "--creds", fmt.Sprintf("%s:%s", basicAuth.Username, basicAuth.Password))
+	} else {
+		return "", fmt.Errorf("unsupported authenticator type: %T", auth)
+	}
+
+	args = append(args, dockerTag)
+
+	cmd := exec.CommandContext(ctx, "buildah", append([]string{"pull"}, args...)...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("buildah pull failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
+
+func MountImage(ctx context.Context, tracer trace.Tracer, image string) (string, error) {
+	_, span := tracer.Start(ctx, "buildah-mount-image")
+	defer span.End()
+
+	// Create a container from the image
+	createCmd := exec.CommandContext(ctx, "buildah", "from", image)
+	containerIDBytes, err := createCmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("buildah from failed: %w\nOutput: %s", err, string(containerIDBytes))
+	}
+	containerID := strings.TrimSpace(string(containerIDBytes))
+
+	// Mount container
+	mountCmd := exec.CommandContext(ctx, "buildah", "mount", containerID)
+	mountOutput, err := mountCmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("buildah mount failed: %w\nOutput: %s", err, string(mountOutput))
+	}
+
+	return strings.TrimSpace(string(mountOutput)), nil
 }
 
 func GetImage(ctx context.Context, tracer trace.Tracer, dockerTag string) (v1.Image, error) {
@@ -122,6 +176,53 @@ func ToExt4(ctx context.Context, img v1.Image, rootfsPath string, sizeLimit int6
 		}
 		return fmt.Errorf("error converting tar to ext4: %w", err)
 	}
+
+	return nil
+}
+
+func ToExt4FromMount(ctx context.Context, mountPath string, outputPath string, diskSize int64) error {
+	diskSizeMB := diskSize >> ToMBShift
+
+	// Step 1: Create sparse file
+	cmd := exec.Command(
+		"dd",
+		"if=/dev/zero",
+		"of="+outputPath,
+		"bs=1M",
+		"count=0",
+		fmt.Sprintf("seek=%d", diskSizeMB),
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to create sparse file: %w\nOutput: %s", err, string(output))
+	}
+	zap.L().Debug("created sparse file")
+
+	// Step 2: Format with ext4
+	if err := exec.Command("mkfs.ext4", "-F", outputPath).Run(); err != nil {
+		return fmt.Errorf("failed to mkfs.ext4: %w", err)
+	}
+	zap.L().Debug("formatted ext4")
+
+	// Step 4: Mount device ext4
+	tmpMountDir := filepath.Join(os.TempDir(), "ext4-mount", uuid.New().String())
+	if err := os.MkdirAll(tmpMountDir, 0755); err != nil {
+		return fmt.Errorf("failed to create mount dir: %w", err)
+	}
+	defer os.RemoveAll(tmpMountDir)
+
+	cmd = exec.Command("mount", "-o", "loop", outputPath, tmpMountDir)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to mount ext4 image: %w", err)
+	}
+	defer exec.Command("umount", tmpMountDir).Run()
+	zap.L().Debug("mounted ext4")
+
+	// Step 5: Copy files into new ext4
+	if err := exec.Command("rsync", "-aAX", "--inplace", "--whole-file", "--exclude={\"/proc/*\",\"/tmp/*\",\"/dev/*\"}", mountPath+"/", tmpMountDir+"/").Run(); err != nil {
+		return fmt.Errorf("failed to rsync rootfs: %w", err)
+	}
+	zap.L().Debug("files copied")
 
 	return nil
 }
