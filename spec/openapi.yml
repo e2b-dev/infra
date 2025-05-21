@@ -548,10 +548,14 @@ components:
         - createFails
         - sandboxStartingCount
         - version
+        - commit
       properties:
         version:
           type: string
           description: Version of the orchestrator
+        commit:
+          type: string
+          description: Commit of the orchestrator
         nodeID:
           type: string
           description: Identifier of the node
@@ -586,10 +590,14 @@ components:
         - cachedBuilds
         - createFails
         - version
+        - commit
       properties:
         version:
           type: string
           description: Version of the orchestrator
+        commit:
+          type: string
+          description: Commit of the orchestrator
         nodeID:
           type: string
           description: Identifier of the node
