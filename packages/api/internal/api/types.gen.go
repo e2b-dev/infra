@@ -176,6 +176,9 @@ type Node struct {
 	// AllocatedMemoryMiB Amount of allocated memory in MiB
 	AllocatedMemoryMiB int32 `json:"allocatedMemoryMiB"`
 
+	// Commit Commit of the orchestrator
+	Commit string `json:"commit"`
+
 	// CreateFails Number of sandbox create fails
 	CreateFails uint64 `json:"createFails"`
 
@@ -199,6 +202,9 @@ type Node struct {
 type NodeDetail struct {
 	// CachedBuilds List of cached builds id on the node
 	CachedBuilds []string `json:"cachedBuilds"`
+
+	// Commit Commit of the orchestrator
+	Commit string `json:"commit"`
 
 	// CreateFails Number of sandbox create fails
 	CreateFails uint64 `json:"createFails"`
