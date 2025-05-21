@@ -113,14 +113,6 @@ func (sd *AwsEc2ServiceDiscovery) sync(ctx context.Context) {
 					continue
 				}
 
-				// println tags
-				println("printing tags for instance", *instance.InstanceId)
-				for _, tag := range instance.Tags {
-					println(*tag.Key, *tag.Value)
-
-					//	sd.logger.Debug("Tag", zap.String("key", *tag.Key), zap.String("value", *tag.Value))
-				}
-
 				ip := *instance.PrivateIpAddress
 				key := fmt.Sprintf("%s:%d", ip, sd.port)
 
