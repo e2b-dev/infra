@@ -66,7 +66,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 			return filepath.SkipDir
 		}
 
-		fileInfo, err := os.Stat(path)
+		fileInfo, err := entry.Info()
 		if err != nil {
 			return err
 		}
