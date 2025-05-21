@@ -1,8 +1,6 @@
 package pool
 
 import (
-	"fmt"
-	"math/rand"
 	"sync/atomic"
 	"time"
 
@@ -26,35 +24,16 @@ type ProxyPool struct {
 	currentConnsCounter  atomic.Int64
 }
 
-func New(sizePerConnectionKey, maxClientConns int, idleTimeout time.Duration) *ProxyPool {
+func New(maxClientConns int, idleTimeout time.Duration) *ProxyPool {
 	return &ProxyPool{
-		pool:                 smap.New[*proxyClient](),
-		sizePerConnectionKey: sizePerConnectionKey,
-		maxClientConns:       maxClientConns,
-		idleTimeout:          idleTimeout,
+		pool:           smap.New[*proxyClient](),
+		maxClientConns: maxClientConns,
+		idleTimeout:    idleTimeout,
 	}
-}
-
-func getClientKey(connectionKey string, poolIdx int) string {
-	return fmt.Sprintf("%s:%d", connectionKey, poolIdx)
-}
-
-func (p *ProxyPool) keys(connectionKey string) []string {
-	keys := make([]string, 0, p.sizePerConnectionKey)
-
-	for poolIdx := range p.sizePerConnectionKey {
-		keys = append(keys, getClientKey(connectionKey, poolIdx))
-	}
-
-	return keys
 }
 
 func (p *ProxyPool) Get(d *Destination) *proxyClient {
-	randomIdx := rand.Intn(p.sizePerConnectionKey)
-
-	key := getClientKey(d.ConnectionKey, randomIdx)
-
-	return p.pool.Upsert(key, nil, func(exist bool, inMapValue *proxyClient, newValue *proxyClient) *proxyClient {
+	return p.pool.Upsert(d.ConnectionKey, nil, func(exist bool, inMapValue *proxyClient, newValue *proxyClient) *proxyClient {
 		if exist && inMapValue != nil {
 			return inMapValue
 		}
@@ -88,15 +67,13 @@ func (p *ProxyPool) Get(d *Destination) *proxyClient {
 }
 
 func (p *ProxyPool) Close(connectionKey string) {
-	for _, key := range p.keys(connectionKey) {
-		p.pool.RemoveCb(key, func(key string, proxy *proxyClient, exists bool) bool {
-			if proxy != nil {
-				proxy.closeIdleConnections()
-			}
+	p.pool.RemoveCb(connectionKey, func(key string, proxy *proxyClient, exists bool) bool {
+		if proxy != nil {
+			proxy.closeIdleConnections()
+		}
 
-			return true
-		})
-	}
+		return true
+	})
 }
 
 func (p *ProxyPool) TotalConnections() uint64 {

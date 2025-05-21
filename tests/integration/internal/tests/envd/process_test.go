@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/tests/integration/internal/envd/process"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -19,7 +19,7 @@ func TestCommandKillNextApp(t *testing.T) {
 	defer cancel()
 
 	client := setup.GetAPIClient()
-	sbx := utils.SetupSandboxWithCleanupWithTimeout(t, client, 300)
+	sbx := utils.SetupSandboxWithCleanupWithTimeout(t, client, 300, nil)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
@@ -32,7 +32,7 @@ func TestCommandKillNextApp(t *testing.T) {
 			},
 		},
 	})
-	setup.SetSandboxHeader(createAppReq.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetSandboxHeader(createAppReq.Header(), sbx.SandboxID)
 	setup.SetUserHeader(createAppReq.Header(), "user")
 	createAppStream, err := envdClient.ProcessClient.Start(ctx, createAppReq)
 	require.NoError(t, err)
@@ -52,11 +52,15 @@ func TestCommandKillNextApp(t *testing.T) {
 			Cwd:  &cwd,
 		},
 	})
-	setup.SetSandboxHeader(runDevReq.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetSandboxHeader(runDevReq.Header(), sbx.SandboxID)
 	setup.SetUserHeader(runDevReq.Header(), "user")
-	runDevStream, err := envdClient.ProcessClient.Start(ctx, runDevReq)
+	serverCtx, serverCancel := context.WithCancel(ctx)
+	runDevStream, err := envdClient.ProcessClient.Start(serverCtx, runDevReq)
 	require.NoError(t, err)
-	defer runDevStream.Close()
+	defer func() {
+		serverCancel()
+		runDevStream.Close()
+	}()
 
 	// Read dev output
 	receiveDone := make(chan error, 1)
@@ -82,7 +86,7 @@ func TestCommandKillNextApp(t *testing.T) {
 	time.Sleep(10 * time.Second)
 
 	listReq := connect.NewRequest(&process.ListRequest{})
-	setup.SetSandboxHeader(listReq.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetSandboxHeader(listReq.Header(), sbx.SandboxID)
 	setup.SetUserHeader(listReq.Header(), "user")
 	listResp, err := envdClient.ProcessClient.List(ctx, listReq)
 	require.NoError(t, err)
@@ -100,7 +104,7 @@ func TestCommandKillNextApp(t *testing.T) {
 				},
 			},
 		})
-		setup.SetSandboxHeader(killReq.Header(), sbx.SandboxID, sbx.ClientID)
+		setup.SetSandboxHeader(killReq.Header(), sbx.SandboxID)
 		setup.SetUserHeader(killReq.Header(), "user")
 		_, err := envdClient.ProcessClient.SendSignal(ctx, killReq)
 		assert.NoError(t, err)
@@ -121,7 +125,7 @@ func TestCommandKillWithAnd(t *testing.T) {
 	defer cancel()
 
 	client := setup.GetAPIClient()
-	sbx := utils.SetupSandboxWithCleanupWithTimeout(t, client, 300)
+	sbx := utils.SetupSandboxWithCleanupWithTimeout(t, client, 300, nil)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
@@ -132,11 +136,18 @@ func TestCommandKillWithAnd(t *testing.T) {
 			Args: []string{"-l", "-c", "sleep 30 && echo done"},
 		},
 	})
-	setup.SetSandboxHeader(runDevReq.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetSandboxHeader(runDevReq.Header(), sbx.SandboxID)
 	setup.SetUserHeader(runDevReq.Header(), "user")
-	runDevStream, err := envdClient.ProcessClient.Start(ctx, runDevReq)
+	serverCtx, serverCancel := context.WithCancel(ctx)
+	runDevStream, err := envdClient.ProcessClient.Start(serverCtx, runDevReq)
 	require.NoError(t, err)
-	defer runDevStream.Close()
+	defer func() {
+		serverCancel()
+		streamErr := runDevStream.Close()
+		if streamErr != nil {
+			t.Logf("Error closing stream: %v", streamErr)
+		}
+	}()
 
 	// Read dev output
 	receiveDone := make(chan error, 1)
@@ -162,7 +173,7 @@ func TestCommandKillWithAnd(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	listReq := connect.NewRequest(&process.ListRequest{})
-	setup.SetSandboxHeader(listReq.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetSandboxHeader(listReq.Header(), sbx.SandboxID)
 	setup.SetUserHeader(listReq.Header(), "user")
 	listResp, err := envdClient.ProcessClient.List(ctx, listReq)
 	require.NoError(t, err)
@@ -180,7 +191,7 @@ func TestCommandKillWithAnd(t *testing.T) {
 				},
 			},
 		})
-		setup.SetSandboxHeader(killReq.Header(), sbx.SandboxID, sbx.ClientID)
+		setup.SetSandboxHeader(killReq.Header(), sbx.SandboxID)
 		setup.SetUserHeader(killReq.Header(), "user")
 		_, err := envdClient.ProcessClient.SendSignal(ctx, killReq)
 		assert.NoError(t, err)

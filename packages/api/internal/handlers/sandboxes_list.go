@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -19,14 +20,32 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/db/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const defaultSandboxListLimit int32 = 1000
 
 func (a *APIStore) getPausedSandboxes(ctx context.Context, teamID uuid.UUID, runningSandboxesIDs []string, metadataFilter *map[string]string, limit int32, cursorTime time.Time, cursorID string) ([]utils.PaginatedSandbox, error) {
-	snapshots, err := a.db.GetTeamSnapshotsWithCursor(ctx, teamID, runningSandboxesIDs, int(limit), metadataFilter, cursorTime, cursorID)
+	// Apply limit + 1 to check if there are more results
+	queryLimit := int32(limit) + 1
+	queryMetadata := types.JSONBStringMap{}
+	if metadataFilter != nil {
+		queryMetadata = *metadataFilter
+	}
+
+	snapshots, err := a.sqlcDB.GetSnapshotsWithCursor(
+		ctx, queries.GetSnapshotsWithCursorParams{
+			Limit:                 queryLimit,
+			TeamID:                teamID,
+			Metadata:              queryMetadata,
+			CursorTime:            pgtype.Timestamptz{Time: cursorTime, Valid: true},
+			CursorID:              cursorID,
+			SnapshotExcludeSbxIds: runningSandboxesIDs,
+		},
+	)
+
 	if err != nil {
 		return nil, fmt.Errorf("error getting team snapshots: %s", err)
 	}
@@ -179,35 +198,37 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	if nextToken != nil {
 		c.Header("X-Next-Token", *nextToken)
 	}
-	c.Header("X-Total-Items", strconv.Itoa(len(sandboxes)))
 
+	c.Header("X-Total-Items", strconv.Itoa(len(sandboxes)))
 	c.JSON(http.StatusOK, sandboxes)
 }
 
-func snapshotsToPaginatedSandboxes(snapshots []*models.Snapshot) []utils.PaginatedSandbox {
+func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow) []utils.PaginatedSandbox {
 	sandboxes := make([]utils.PaginatedSandbox, 0)
 
 	// Add snapshots to results
-	for _, snapshot := range snapshots {
-		env := snapshot.Edges.Env
+	for _, record := range snapshots {
+		snapshot := record.Snapshot
+		build := record.EnvBuild
 
-		snapshotBuilds := env.Edges.Builds
-		if len(snapshotBuilds) == 0 {
-			continue
+		var alias *string
+		if record.Aliases != nil && len(record.Aliases) > 0 {
+			alias = &record.Aliases[0]
 		}
 
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
 				ClientID:   "00000000", // for backwards compatibility we need to return a client id
-				TemplateID: env.ID,
+				Alias:      alias,
+				TemplateID: snapshot.BaseEnvID,
 				SandboxID:  snapshot.SandboxID,
-				StartedAt:  snapshot.SandboxStartedAt,
-				CpuCount:   int32(snapshotBuilds[0].Vcpu),
-				MemoryMB:   int32(snapshotBuilds[0].RAMMB),
-				EndAt:      snapshot.CreatedAt,
+				StartedAt:  snapshot.SandboxStartedAt.Time,
+				CpuCount:   int32(build.Vcpu),
+				MemoryMB:   int32(build.RamMb),
+				EndAt:      snapshot.CreatedAt.Time,
 				State:      api.Paused,
 			},
-			PaginationTimestamp: snapshot.CreatedAt,
+			PaginationTimestamp: snapshot.CreatedAt.Time,
 		}
 
 		if snapshot.Metadata != nil {
@@ -229,7 +250,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []*instance.InstanceInfo)
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
 				ClientID:   info.Instance.ClientID,
-				TemplateID: info.Instance.TemplateID,
+				TemplateID: info.BaseTemplateID,
 				Alias:      info.Instance.Alias,
 				SandboxID:  info.Instance.SandboxID,
 				StartedAt:  info.StartTime,

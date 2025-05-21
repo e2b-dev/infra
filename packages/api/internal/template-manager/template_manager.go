@@ -30,7 +30,7 @@ type TemplateManager struct {
 	buildCache *templatecache.TemplatesBuildCache
 }
 
-var (
+const (
 	syncInterval             = time.Minute * 1
 	syncTimeout              = time.Minute * 15
 	syncWaitingStateDeadline = time.Minute * 20
@@ -119,7 +119,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	}
 
 	checker := &PollBuildStatus{
-		statusClient:          tm.grpc.Client,
+		statusClient:          tm.grpc.TemplateClient,
 		logger:                logger,
 		templateID:            templateID,
 		buildID:               buildID,

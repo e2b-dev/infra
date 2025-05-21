@@ -2,7 +2,6 @@
 -- +goose StatementBegin
 
 -- Add new schema named "auth"
-CREATE SCHEMA IF NOT EXISTS "auth";
 CREATE SCHEMA IF NOT EXISTS "extensions";
 
 -- Create "tiers" table
@@ -84,14 +83,6 @@ CREATE TABLE IF NOT EXISTS "public"."team_api_keys"
     CONSTRAINT "team_api_keys_teams_team_api_keys" FOREIGN KEY ("team_id") REFERENCES "public"."teams" ("id") ON UPDATE NO ACTION ON DELETE CASCADE
 );
 ALTER TABLE "public"."team_api_keys" ENABLE ROW LEVEL SECURITY;
-
--- Create "users" table
-CREATE TABLE IF NOT EXISTS "auth"."users"
-(
-    "id"    uuid                   NOT NULL DEFAULT gen_random_uuid(),
-    "email" character varying(255) NOT NULL,
-    PRIMARY KEY ("id")
-);
 
 -- Create "access_tokens" table
 CREATE TABLE IF NOT EXISTS "public"."access_tokens"

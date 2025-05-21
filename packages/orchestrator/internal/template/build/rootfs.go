@@ -37,6 +37,8 @@ const (
 	// Max size of the rootfs file in MB.
 	maxRootfsSize = 15000 << ToMBShift
 	cacheTimeout  = "48h"
+
+	rootfsBuildFileName = "rootfs.ext4.build"
 )
 
 var authConfig = registry.AuthConfig{
@@ -48,7 +50,7 @@ type Rootfs struct {
 	client       *client.Client
 	legacyClient *docker.Client
 
-	env *Env
+	template *TemplateConfig
 }
 
 type MultiWriter struct {
@@ -66,14 +68,22 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func NewRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, env *Env, docker *client.Client, legacyDocker *docker.Client) (*Rootfs, error) {
+func NewRootfs(
+	ctx context.Context,
+	tracer trace.Tracer,
+	postProcessor *writer.PostProcessor,
+	template *TemplateConfig,
+	docker *client.Client,
+	legacyDocker *docker.Client,
+	rootfsPath string,
+) error {
 	childCtx, childSpan := tracer.Start(ctx, "new-rootfs")
 	defer childSpan.End()
 
 	rootfs := &Rootfs{
 		client:       docker,
 		legacyClient: legacyDocker,
-		env:          env,
+		template:     template,
 	}
 
 	postProcessor.WriteMsg("Pulling Docker image...")
@@ -83,21 +93,21 @@ func NewRootfs(ctx context.Context, tracer trace.Tracer, postProcessor *writer.P
 
 		rootfs.cleanupDockerImage(childCtx, tracer)
 
-		return nil, errMsg
+		return errMsg
 	}
 	postProcessor.WriteMsg("Pulled Docker image.")
 
 	postProcessor.WriteMsg("Creating file system")
-	err = rootfs.createRootfsFile(childCtx, tracer, postProcessor)
+	err = rootfs.createRootfsFile(childCtx, tracer, postProcessor, rootfsPath)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs file: %w", err)
 
 		rootfs.cleanupDockerImage(childCtx, tracer)
 
-		return nil, errMsg
+		return errMsg
 	}
 
-	return rootfs, nil
+	return nil
 }
 
 func (r *Rootfs) pullDockerImage(ctx context.Context, tracer trace.Tracer) error {
@@ -165,10 +175,10 @@ func (r *Rootfs) cleanupDockerImage(ctx context.Context, tracer trace.Tracer) {
 }
 
 func (r *Rootfs) dockerTag() string {
-	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.env.TemplateId, r.env.BuildId)
+	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.template.TemplateId, r.template.BuildId)
 }
 
-func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor) error {
+func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, rootfsPath string) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-rootfs-file")
 	defer childSpan.End()
 
@@ -177,15 +187,14 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	err := EnvInstanceTemplate.Execute(&scriptDef, struct {
 		EnvID       string
 		BuildID     string
-		StartCmd    string
 		FcAddress   string
 		MemoryLimit int
 	}{
-		FcAddress:   fcAddr,
-		EnvID:       r.env.TemplateId,
-		BuildID:     r.env.BuildId,
-		StartCmd:    strings.ReplaceAll(r.env.StartCmd, "'", "\\'"),
-		MemoryLimit: int(math.Min(float64(r.env.MemoryMB)/2, 512)),
+		// TODO: remove this value as it's not used in the provision script anymore
+		FcAddress:   "169.254.0.21",
+		EnvID:       r.template.TemplateId,
+		BuildID:     r.template.BuildId,
+		MemoryLimit: int(math.Min(float64(r.template.MemoryMB)/2, 512)),
 	})
 	if err != nil {
 		errMsg := fmt.Errorf("error executing provision script: %w", err)
@@ -194,10 +203,10 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 		return errMsg
 	}
 
-	telemetry.ReportEvent(childCtx, "executed provision script env")
+	telemetry.ReportEvent(childCtx, "executed provision script template")
 
 	pidsLimit := int64(200)
-	memory := max(r.env.MemoryMB, 512) << ToMBShift
+	memory := max(r.template.MemoryMB, 512) << ToMBShift
 
 	cont, err := r.client.ContainerCreate(childCtx, &container.Config{
 		Image:        r.dockerTag(),
@@ -216,7 +225,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 		Resources: container.Resources{
 			Memory:     memory,
 			CPUPeriod:  100000,
-			CPUQuota:   r.env.VCpuCount * 100000,
+			CPUQuota:   r.template.VCpuCount * 100000,
 			MemorySwap: memory,
 			PidsLimit:  &pidsLimit,
 		},
@@ -370,7 +379,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 			writers: []io.Writer{containerStdoutWriter, postProcessor},
 		}
 		errWriter := &MultiWriter{
-			writers: []io.Writer{containerStderrWriter, r.env.BuildLogsWriter, postProcessor},
+			writers: []io.Writer{containerStderrWriter, r.template.BuildLogsWriter, postProcessor},
 		}
 
 		logsErr := r.legacyClient.Logs(docker.LogsOptions{
@@ -448,7 +457,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	}
 
 	postProcessor.WriteMsg("Extracting file system")
-	rootfsFile, err := os.Create(r.env.BuildRootfsPath())
+	rootfsFile, err := os.Create(rootfsPath)
 	if err != nil {
 		errMsg := fmt.Errorf("error creating rootfs file: %w", err)
 		telemetry.ReportCriticalError(childCtx, errMsg)
@@ -499,7 +508,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	err = tar2ext4.ConvertTarToExt4(pr, rootfsFile, tar2ext4.MaximumDiskSize(maxRootfsSize))
 	if err != nil {
 		if strings.Contains(err.Error(), "disk exceeded maximum size") {
-			r.env.BuildLogsWriter.Write([]byte(fmt.Sprintf("Build failed - exceeded maximum size %v MB.\n", maxRootfsSize>>ToMBShift)))
+			r.template.BuildLogsWriter.Write([]byte(fmt.Sprintf("Build failed - exceeded maximum size %v MB.\n", maxRootfsSize>>ToMBShift)))
 		}
 
 		errMsg := fmt.Errorf("error converting tar to ext4: %w", err)
@@ -514,7 +523,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	tuneContext, tuneSpan := tracer.Start(childCtx, "tune-rootfs-file-cmd")
 	defer tuneSpan.End()
 
-	cmd := exec.CommandContext(tuneContext, "tune2fs", "-O ^read-only", r.env.BuildRootfsPath())
+	cmd := exec.CommandContext(tuneContext, "tune2fs", "-O ^read-only", rootfsPath)
 
 	tuneStdoutWriter := telemetry.NewEventWriter(tuneContext, "stdout")
 	cmd.Stdout = tuneStdoutWriter
@@ -543,9 +552,9 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	telemetry.ReportEvent(childCtx, "statted rootfs file")
 
 	// In bytes
-	rootfsSize := rootfsStats.Size() + r.env.DiskSizeMB<<ToMBShift
+	rootfsSize := rootfsStats.Size() + r.template.DiskSizeMB<<ToMBShift
 
-	r.env.rootfsSize = rootfsSize
+	r.template.rootfsSize = rootfsSize
 
 	err = rootfsFile.Truncate(rootfsSize)
 	if err != nil {
@@ -560,7 +569,7 @@ func (r *Rootfs) createRootfsFile(ctx context.Context, tracer trace.Tracer, post
 	resizeContext, resizeSpan := tracer.Start(childCtx, "resize-rootfs-file-cmd")
 	defer resizeSpan.End()
 
-	cmd = exec.CommandContext(resizeContext, "resize2fs", r.env.BuildRootfsPath())
+	cmd = exec.CommandContext(resizeContext, "resize2fs", rootfsPath)
 
 	resizeStdoutWriter := telemetry.NewEventWriter(resizeContext, "stdout")
 	cmd.Stdout = resizeStdoutWriter

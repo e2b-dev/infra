@@ -146,14 +146,12 @@ components:
       type: integer
       format: int32
       minimum: 1
-      maximum: 8
       description: CPU cores for the sandbox
 
     MemoryMB:
       type: integer
       format: int32
       minimum: 128
-      maximum: 8192
       description: Memory for the sandbox in MB
 
     SandboxMetadata:
@@ -550,10 +548,14 @@ components:
         - createFails
         - sandboxStartingCount
         - version
+        - commit
       properties:
         version:
           type: string
           description: Version of the orchestrator
+        commit:
+          type: string
+          description: Commit of the orchestrator
         nodeID:
           type: string
           description: Identifier of the node
@@ -588,10 +590,14 @@ components:
         - cachedBuilds
         - createFails
         - version
+        - commit
       properties:
         version:
           type: string
           description: Version of the orchestrator
+        commit:
+          type: string
+          description: Commit of the orchestrator
         nodeID:
           type: string
           description: Identifier of the node
@@ -617,7 +623,7 @@ components:
         - id
         - name
         - token
-        - tokenMask
+        - masking
         - createdAt
       properties:
         id:
@@ -629,10 +635,9 @@ components:
           description: Name of the access token
         token:
           type: string
-          description: Raw value of the access token
-        tokenMask:
-          type: string
-          description: Mask of the access token
+          description: The fully created access token
+        mask:
+          $ref: "#/components/schemas/IdentifierMaskingDetails"
         createdAt:
           type: string
           format: date-time
@@ -650,10 +655,8 @@ components:
       required:
         - id
         - name
-        - keyMask
+        - masking
         - createdAt
-        - createdBy
-        - lastUsed
       properties:
         id:
           type: string
@@ -662,9 +665,8 @@ components:
         name:
           type: string
           description: Name of the API key
-        keyMask:
-          type: string
-          description: Mask of the API key
+        mask:
+          $ref: "#/components/schemas/IdentifierMaskingDetails"
         createdAt:
           type: string
           format: date-time
@@ -682,26 +684,23 @@ components:
     CreatedTeamAPIKey:
       required:
         - id
-        - name
         - key
-        - keyMask
+        - masking
+        - name
         - createdAt
-        - createdBy
-        - lastUsed
       properties:
         id:
           type: string
           format: uuid
           description: Identifier of the API key
-        name:
-          type: string
-          description: Name of the API key
         key:
           type: string
           description: Raw value of the API key
-        keyMask:
+        mask:
+          $ref: "#/components/schemas/IdentifierMaskingDetails"
+        name:
           type: string
-          description: Mask of the API key
+          description: Name of the API key
         createdAt:
           type: string
           format: date-time
@@ -744,6 +743,26 @@ components:
         message:
           type: string
           description: Error
+
+    IdentifierMaskingDetails:
+      required:
+        - prefix
+        - valueLength
+        - maskedValuePrefix
+        - maskedValueSuffix
+      properties:
+        prefix:
+          type: string
+          description: Prefix that identifies the token or key type
+        valueLength:
+          type: integer
+          description: Length of the token or key
+        maskedValuePrefix:
+          type: string
+          description: Prefix used in masked version of the token or key
+        maskedValueSuffix:
+          type: string
+          description: Suffix used in masked version of the token or key
 
 tags:
   - name: templates
@@ -1203,6 +1222,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Template"
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "500":

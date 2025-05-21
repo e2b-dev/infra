@@ -48,6 +48,7 @@ func NewInstanceInfo(
 	Node *node.NodeInfo,
 	AutoPause bool,
 	EnvdAccessToken *string,
+	BaseTemplateID string,
 ) *InstanceInfo {
 	instance := &InstanceInfo{
 		Instance:           Instance,
@@ -67,6 +68,7 @@ func NewInstanceInfo(
 		Node:               Node,
 		AutoPause:          atomic.Bool{},
 		Pausing:            utils.NewSetOnce[*node.NodeInfo](),
+		BaseTemplateID:     BaseTemplateID,
 		mu:                 sync.RWMutex{},
 	}
 
@@ -79,6 +81,7 @@ type InstanceInfo struct {
 	Instance           *api.Sandbox
 	TeamID             *uuid.UUID
 	BuildID            *uuid.UUID
+	BaseTemplateID     string
 	Metadata           map[string]string
 	MaxInstanceLength  time.Duration
 	StartTime          time.Time

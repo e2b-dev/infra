@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
@@ -64,11 +65,11 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
-	var team *models.Team
+	var team *queries.Team
 	// Check if the user has access to the template
 	for _, t := range teams {
-		if t.ID == envDB.TeamID {
-			team = t
+		if t.Team.ID == envDB.TeamID {
+			team = &t.Team
 			break
 		}
 	}

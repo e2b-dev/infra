@@ -10,9 +10,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
-	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )
 
 var (
@@ -21,11 +23,13 @@ var (
 )
 
 type GRPCClient struct {
-	Client     template_manager.TemplateServiceClient
+	TemplateClient templatemanager.TemplateServiceClient
+	InfoClient     orchestratorinfo.InfoServiceClient
+
 	connection e2bgrpc.ClientConnInterface
 
 	lastHealthCheckAt *time.Time
-	health            template_manager.HealthState
+	health            orchestratorinfo.ServiceInfoStatus
 }
 
 func NewClient(ctx context.Context) (*GRPCClient, error) {
@@ -41,8 +45,10 @@ func NewClient(ctx context.Context) (*GRPCClient, error) {
 	}
 
 	client := &GRPCClient{
-		Client:            template_manager.NewTemplateServiceClient(conn),
-		health:            template_manager.HealthState_Healthy,
+		TemplateClient: templatemanager.NewTemplateServiceClient(conn),
+		InfoClient:     orchestratorinfo.NewInfoServiceClient(conn),
+
+		health:            orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy,
 		lastHealthCheckAt: nil,
 		connection:        conn,
 	}
@@ -63,24 +69,36 @@ func (a *GRPCClient) healthCheckSync(ctx context.Context) {
 			return
 		case <-ticker.C:
 			reqCtx, reqCtxCancel := context.WithTimeout(ctx, 5*time.Second)
-			healthStatus, err := a.Client.HealthStatus(reqCtx, nil)
-			reqCtxCancel()
+			reqCheckAt := time.Now()
 
-			healthCheckAt := time.Now()
-			a.lastHealthCheckAt = &healthCheckAt
+			infoStatus := a.health
+			infoRes, infoErr := a.InfoClient.ServiceInfo(reqCtx, &emptypb.Empty{})
+			if infoErr != nil {
+				// try  use deprecated health check that is there because back compatibility
+				healthStatus, healthStatusErr := a.TemplateClient.HealthStatus(reqCtx, nil)
+				reqCtxCancel()
 
-			if err != nil {
-				zap.L().Error("failed to get health status of template manager", zap.Error(err))
-
-				a.lastHealthCheckAt = &healthCheckAt
-				a.health = template_manager.HealthState_Draining
-				continue
+				if healthStatusErr != nil {
+					zap.L().Error("failed to get health status of template manager", zap.Error(healthStatusErr))
+					infoStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorDraining
+				} else {
+					switch healthStatus.Status {
+					case templatemanager.HealthState_Healthy:
+						infoStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy
+					case templatemanager.HealthState_Draining:
+						infoStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorDraining
+					}
+				}
+			} else {
+				infoStatus = infoRes.ServiceStatus
 			}
 
-			zap.L().Debug("template manager health status", zap.String("status", healthStatus.Status.String()))
+			reqCtxCancel()
 
-			a.lastHealthCheckAt = &healthCheckAt
-			a.health = healthStatus.Status
+			zap.L().Debug("template manager health status", zap.String("status", infoStatus.String()))
+
+			a.health = infoStatus
+			a.lastHealthCheckAt = &reqCheckAt
 		}
 	}
 }
@@ -95,5 +113,5 @@ func (a *GRPCClient) Close() error {
 }
 
 func (a *GRPCClient) IsReadyForBuildPlacement() bool {
-	return a.health == template_manager.HealthState_Healthy
+	return a.health == orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy
 }

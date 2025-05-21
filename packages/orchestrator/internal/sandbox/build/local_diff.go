@@ -38,7 +38,7 @@ func NewLocalDiffFile(
 	}, nil
 }
 
-func (f *LocalDiffFile) ToDiff(
+func (f *LocalDiffFile) CloseToDiff(
 	blockSize int64,
 ) (Diff, error) {
 	defer f.Close()

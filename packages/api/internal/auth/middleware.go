@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -14,9 +13,11 @@ import (
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -74,11 +75,6 @@ func (a *commonAuthenticator[T]) getHeaderKeysFromRequest(req *http.Request) (st
 
 // Authenticate uses the specified validator to ensure an API key is valid.
 func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
-	// Our security scheme is named ApiKeyAuth, ensure this is the case
-	if input.SecuritySchemeName != a.securitySchemeName {
-		return fmt.Errorf("security scheme %s != '%s'", a.securitySchemeName, input.SecuritySchemeName)
-	}
-
 	// Now, we need to get the API key from the request
 	headerKey, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
@@ -92,10 +88,15 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	// If the API key is valid, we will get a result back
 	result, validationError := a.validationFunction(ctx, headerKey)
 	if validationError != nil {
-		log.Printf("validation error %v", validationError.Err)
+		zap.L().Info("validation error", zap.Error(validationError.Err))
 		telemetry.ReportError(ctx, fmt.Errorf("%s %w", a.errorMessage, validationError.Err))
 
-		return fmt.Errorf(a.errorMessage)
+		var forbiddenError *db.TeamForbiddenError
+		if errors.As(validationError.Err, &forbiddenError) {
+			return fmt.Errorf("Forbidden: %w", validationError.Err)
+		}
+
+		return fmt.Errorf("%s\n%s (%w)", a.errorMessage, validationError.ClientMsg, validationError.Err)
 	}
 
 	telemetry.ReportEvent(ctx, "api key validated")

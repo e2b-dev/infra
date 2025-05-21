@@ -1,9 +1,10 @@
-package servicetype
+package service
 
 import (
 	"strings"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type ServiceType string
@@ -60,4 +61,8 @@ func GetServiceName(services []ServiceType) string {
 	}
 
 	return builder.String()
+}
+
+func GetClientID() string {
+	return utils.RequiredEnv("NODE_ID", "Nomad ID of the instance node")
 }

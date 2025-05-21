@@ -4,6 +4,7 @@ go 1.23.7
 
 require (
 	cloud.google.com/go/artifactregistry v1.16.0
+	connectrpc.com/connect v1.16.2
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
 	github.com/Microsoft/hcsshim v0.12.9
 	github.com/bits-and-blooms/bitset v1.22.0

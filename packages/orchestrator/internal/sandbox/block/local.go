@@ -6,17 +6,24 @@ import (
 	"os"
 
 	"github.com/edsrzf/mmap-go"
+	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type Local struct {
 	m    mmap.MMap
 	size int64
 	path string
+
+	blockSize int64
+
+	header *header.Header
 }
 
-func NewLocal(path string) (*Local, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY, 0o777)
+func NewLocal(path string, blockSize int64, buildID uuid.UUID) (*Local, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY, os.ModePerm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
@@ -33,10 +40,18 @@ func NewLocal(path string) (*Local, error) {
 		return nil, fmt.Errorf("failed to map region: %w", err)
 	}
 
+	h := header.NewHeader(header.NewTemplateMetadata(
+		buildID,
+		uint64(blockSize),
+		uint64(info.Size()),
+	), nil)
+
 	return &Local{
-		m:    m,
-		size: info.Size(),
-		path: path,
+		m:         m,
+		size:      info.Size(),
+		path:      path,
+		blockSize: blockSize,
+		header:    h,
 	}, nil
 }
 
@@ -53,6 +68,10 @@ func (d *Local) Size() (int64, error) {
 	return d.size, nil
 }
 
+func (d *Local) BlockSize() int64 {
+	return d.blockSize
+}
+
 func (d *Local) Close() error {
 	return errors.Join(
 		d.m.Unmap(),
@@ -67,4 +86,8 @@ func (d *Local) Slice(off, length int64) ([]byte, error) {
 	}
 
 	return d.m[off:end], nil
+}
+
+func (d *Local) Header() *header.Header {
+	return d.header
 }

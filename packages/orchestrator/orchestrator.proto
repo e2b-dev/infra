@@ -88,8 +88,6 @@ message SandboxListCachedBuildsResponse {
   repeated CachedBuildInfo builds = 1;
 }
 
-
-
 service SandboxService {
   rpc Create(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc Update(SandboxUpdateRequest) returns (google.protobuf.Empty);

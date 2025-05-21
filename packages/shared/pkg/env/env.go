@@ -4,12 +4,12 @@ import "os"
 
 var environment = GetEnv("ENVIRONMENT", "local")
 
-func IsProduction() bool {
-	return environment == "prod"
-}
-
 func IsLocal() bool {
 	return environment == "local"
+}
+
+func IsDevelopment() bool {
+	return environment == "dev" || environment == "local"
 }
 
 func IsDebug() bool {

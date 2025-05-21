@@ -6,30 +6,46 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
 // SetupSandboxWithCleanupWithTimeout creates a new sandbox with specific timeout and returns its data
-func SetupSandboxWithCleanupWithTimeout(t *testing.T, c *api.ClientWithResponses, sbxTimeout int32) *api.Sandbox {
+func SetupSandboxWithCleanupWithTimeout(t *testing.T, c *api.ClientWithResponses, sbxTimeout int32, sbxMetadata *api.SandboxMetadata) *api.Sandbox {
 	t.Helper()
 
 	// t.Context() doesn't work with go vet, so we use our own context
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
+	defaultMetadata := api.SandboxMetadata{
+		"sandboxType": "test",
+	}
+
+	var metadata *api.SandboxMetadata
+	if sbxMetadata != nil {
+		metadataOverride := defaultMetadata
+
+		for k, v := range *sbxMetadata {
+			metadataOverride[k] = v
+		}
+
+		metadata = &metadataOverride
+	} else {
+		metadata = &defaultMetadata
+	}
+
 	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		Timeout:    &sbxTimeout,
-		Metadata: &api.SandboxMetadata{
-			"sandboxType": "test",
-		},
+		Metadata:   metadata,
 	}, setup.WithAPIKey())
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, createSandboxResponse.StatusCode())
-	assert.NotNil(t, createSandboxResponse.JSON201)
+	require.NotNil(t, createSandboxResponse.JSON201)
 
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -43,7 +59,7 @@ func SetupSandboxWithCleanupWithTimeout(t *testing.T, c *api.ClientWithResponses
 
 // SetupSandboxWithCleanup creates a new sandbox and returns its data
 func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses) *api.Sandbox {
-	return SetupSandboxWithCleanupWithTimeout(t, c, 30)
+	return SetupSandboxWithCleanupWithTimeout(t, c, 30, nil)
 }
 
 // TeardownSandbox kills the sandbox with the given ID

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -44,19 +45,19 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: config.BuildID}),
 	)
 
-	template := &build.Env{
+	template := &build.TemplateConfig{
 		TemplateFiles: storage.NewTemplateFiles(
 			config.TemplateID,
 			config.BuildID,
 			config.KernelVersion,
 			config.FirecrackerVersion,
-			config.HugePages,
 		),
 		VCpuCount:       int64(config.VCpuCount),
 		MemoryMB:        int64(config.MemoryMB),
 		StartCmd:        config.StartCommand,
 		DiskSizeMB:      int64(config.DiskSizeMB),
 		BuildLogsWriter: logsWriter,
+		HugePages:       config.HugePages,
 	}
 
 	err := s.buildCache.Create(config.BuildID, config.TemplateID)
@@ -76,9 +77,16 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 		err = s.builder.Build(buildContext, template, config.TemplateID, config.BuildID)
 		if err != nil {
+			telemetry.ReportCriticalError(ctx, err)
+
+			// Wait for the CLI to load all the logs
+			// This is a temporary ~fix for the CLI to load most of the logs before finishing the template build
+			// Ideally we should wait in the CLI for the last log message
+			time.Sleep(5 * time.Second)
+
 			cacheErr := s.buildCache.SetFailed(config.TemplateID, config.BuildID)
 			if cacheErr != nil {
-				s.logger.Error("Error during failing template build in cache", zap.Error(err))
+				s.logger.Error("Error while setting build state to failed", zap.Error(err))
 			}
 
 			s.logger.Error("Error while building template", zap.Error(err))

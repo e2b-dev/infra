@@ -8,7 +8,7 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
-	filesystem "github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
+	filesystem "github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	http "net/http"
 	strings "strings"
 )
@@ -56,6 +56,20 @@ const (
 	FilesystemRemoveWatcherProcedure = "/filesystem.Filesystem/RemoveWatcher"
 )
 
+// These variables are the protoreflect.Descriptor objects for the RPCs defined in this package.
+var (
+	filesystemServiceDescriptor                = filesystem.File_filesystem_filesystem_proto.Services().ByName("Filesystem")
+	filesystemStatMethodDescriptor             = filesystemServiceDescriptor.Methods().ByName("Stat")
+	filesystemMakeDirMethodDescriptor          = filesystemServiceDescriptor.Methods().ByName("MakeDir")
+	filesystemMoveMethodDescriptor             = filesystemServiceDescriptor.Methods().ByName("Move")
+	filesystemListDirMethodDescriptor          = filesystemServiceDescriptor.Methods().ByName("ListDir")
+	filesystemRemoveMethodDescriptor           = filesystemServiceDescriptor.Methods().ByName("Remove")
+	filesystemWatchDirMethodDescriptor         = filesystemServiceDescriptor.Methods().ByName("WatchDir")
+	filesystemCreateWatcherMethodDescriptor    = filesystemServiceDescriptor.Methods().ByName("CreateWatcher")
+	filesystemGetWatcherEventsMethodDescriptor = filesystemServiceDescriptor.Methods().ByName("GetWatcherEvents")
+	filesystemRemoveWatcherMethodDescriptor    = filesystemServiceDescriptor.Methods().ByName("RemoveWatcher")
+)
+
 // FilesystemClient is a client for the filesystem.Filesystem service.
 type FilesystemClient interface {
 	Stat(context.Context, *connect.Request[filesystem.StatRequest]) (*connect.Response[filesystem.StatResponse], error)
@@ -79,60 +93,59 @@ type FilesystemClient interface {
 // http://api.acme.com or https://acme.com/grpc).
 func NewFilesystemClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) FilesystemClient {
 	baseURL = strings.TrimRight(baseURL, "/")
-	filesystemMethods := filesystem.File_filesystem_filesystem_proto.Services().ByName("Filesystem").Methods()
 	return &filesystemClient{
 		stat: connect.NewClient[filesystem.StatRequest, filesystem.StatResponse](
 			httpClient,
 			baseURL+FilesystemStatProcedure,
-			connect.WithSchema(filesystemMethods.ByName("Stat")),
+			connect.WithSchema(filesystemStatMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		makeDir: connect.NewClient[filesystem.MakeDirRequest, filesystem.MakeDirResponse](
 			httpClient,
 			baseURL+FilesystemMakeDirProcedure,
-			connect.WithSchema(filesystemMethods.ByName("MakeDir")),
+			connect.WithSchema(filesystemMakeDirMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		move: connect.NewClient[filesystem.MoveRequest, filesystem.MoveResponse](
 			httpClient,
 			baseURL+FilesystemMoveProcedure,
-			connect.WithSchema(filesystemMethods.ByName("Move")),
+			connect.WithSchema(filesystemMoveMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		listDir: connect.NewClient[filesystem.ListDirRequest, filesystem.ListDirResponse](
 			httpClient,
 			baseURL+FilesystemListDirProcedure,
-			connect.WithSchema(filesystemMethods.ByName("ListDir")),
+			connect.WithSchema(filesystemListDirMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		remove: connect.NewClient[filesystem.RemoveRequest, filesystem.RemoveResponse](
 			httpClient,
 			baseURL+FilesystemRemoveProcedure,
-			connect.WithSchema(filesystemMethods.ByName("Remove")),
+			connect.WithSchema(filesystemRemoveMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		watchDir: connect.NewClient[filesystem.WatchDirRequest, filesystem.WatchDirResponse](
 			httpClient,
 			baseURL+FilesystemWatchDirProcedure,
-			connect.WithSchema(filesystemMethods.ByName("WatchDir")),
+			connect.WithSchema(filesystemWatchDirMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		createWatcher: connect.NewClient[filesystem.CreateWatcherRequest, filesystem.CreateWatcherResponse](
 			httpClient,
 			baseURL+FilesystemCreateWatcherProcedure,
-			connect.WithSchema(filesystemMethods.ByName("CreateWatcher")),
+			connect.WithSchema(filesystemCreateWatcherMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		getWatcherEvents: connect.NewClient[filesystem.GetWatcherEventsRequest, filesystem.GetWatcherEventsResponse](
 			httpClient,
 			baseURL+FilesystemGetWatcherEventsProcedure,
-			connect.WithSchema(filesystemMethods.ByName("GetWatcherEvents")),
+			connect.WithSchema(filesystemGetWatcherEventsMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 		removeWatcher: connect.NewClient[filesystem.RemoveWatcherRequest, filesystem.RemoveWatcherResponse](
 			httpClient,
 			baseURL+FilesystemRemoveWatcherProcedure,
-			connect.WithSchema(filesystemMethods.ByName("RemoveWatcher")),
+			connect.WithSchema(filesystemRemoveWatcherMethodDescriptor),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -216,59 +229,58 @@ type FilesystemHandler interface {
 // By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
 // and JSON codecs. They also support gzip compression.
 func NewFilesystemHandler(svc FilesystemHandler, opts ...connect.HandlerOption) (string, http.Handler) {
-	filesystemMethods := filesystem.File_filesystem_filesystem_proto.Services().ByName("Filesystem").Methods()
 	filesystemStatHandler := connect.NewUnaryHandler(
 		FilesystemStatProcedure,
 		svc.Stat,
-		connect.WithSchema(filesystemMethods.ByName("Stat")),
+		connect.WithSchema(filesystemStatMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	filesystemMakeDirHandler := connect.NewUnaryHandler(
 		FilesystemMakeDirProcedure,
 		svc.MakeDir,
-		connect.WithSchema(filesystemMethods.ByName("MakeDir")),
+		connect.WithSchema(filesystemMakeDirMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	filesystemMoveHandler := connect.NewUnaryHandler(
 		FilesystemMoveProcedure,
 		svc.Move,
-		connect.WithSchema(filesystemMethods.ByName("Move")),
+		connect.WithSchema(filesystemMoveMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	filesystemListDirHandler := connect.NewUnaryHandler(
 		FilesystemListDirProcedure,
 		svc.ListDir,
-		connect.WithSchema(filesystemMethods.ByName("ListDir")),
+		connect.WithSchema(filesystemListDirMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	filesystemRemoveHandler := connect.NewUnaryHandler(
 		FilesystemRemoveProcedure,
 		svc.Remove,
-		connect.WithSchema(filesystemMethods.ByName("Remove")),
+		connect.WithSchema(filesystemRemoveMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	filesystemWatchDirHandler := connect.NewServerStreamHandler(
 		FilesystemWatchDirProcedure,
 		svc.WatchDir,
-		connect.WithSchema(filesystemMethods.ByName("WatchDir")),
+		connect.WithSchema(filesystemWatchDirMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	filesystemCreateWatcherHandler := connect.NewUnaryHandler(
 		FilesystemCreateWatcherProcedure,
 		svc.CreateWatcher,
-		connect.WithSchema(filesystemMethods.ByName("CreateWatcher")),
+		connect.WithSchema(filesystemCreateWatcherMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	filesystemGetWatcherEventsHandler := connect.NewUnaryHandler(
 		FilesystemGetWatcherEventsProcedure,
 		svc.GetWatcherEvents,
-		connect.WithSchema(filesystemMethods.ByName("GetWatcherEvents")),
+		connect.WithSchema(filesystemGetWatcherEventsMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	filesystemRemoveWatcherHandler := connect.NewUnaryHandler(
 		FilesystemRemoveWatcherProcedure,
 		svc.RemoveWatcher,
-		connect.WithSchema(filesystemMethods.ByName("RemoveWatcher")),
+		connect.WithSchema(filesystemRemoveWatcherMethodDescriptor),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/filesystem.Filesystem/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

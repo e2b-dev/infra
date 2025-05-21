@@ -12,10 +12,10 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
-	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
-	"github.com/e2b-dev/infra/tests/integration/internal/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -46,7 +46,7 @@ func TestListDir(t *testing.T) {
 		},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbx.SandboxID, sbx.ClientID),
+		setup.WithSandbox(sbx.SandboxID),
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, createFileResp.StatusCode())
@@ -97,7 +97,7 @@ func TestListDir(t *testing.T) {
 				Path:  testFolder,
 				Depth: tt.depth,
 			})
-			setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
+			setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 			setup.SetUserHeader(req.Header(), "user")
 			folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
 			assert.NoError(t, err)
@@ -133,7 +133,7 @@ func TestCreateFile(t *testing.T) {
 		},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbx.SandboxID, sbx.ClientID),
+		setup.WithSandbox(sbx.SandboxID),
 	)
 	assert.NoError(t, err)
 
@@ -154,7 +154,7 @@ func TestFilePermissions(t *testing.T) {
 			Args: []string{"-la", "/home/user"},
 		},
 	})
-	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
 	stream, err := envdClient.ProcessClient.Start(
 		ctx,
@@ -211,7 +211,7 @@ func createDir(tb testing.TB, sbx *api.Sandbox, path string) {
 	req := connect.NewRequest(&filesystem.MakeDirRequest{
 		Path: path,
 	})
-	setup.SetSandboxHeader(req.Header(), sbx.SandboxID, sbx.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
 	_, err := client.FilesystemClient.MakeDir(ctx, req)
 	if err != nil {

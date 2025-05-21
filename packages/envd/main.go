@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	// Greater than in orchestrator proxy.
+	// Downstream timeout should be greater than upstream (in orchestrator proxy).
 	idleTimeout = 640 * time.Second
 	maxAge      = 2 * time.Hour
 
@@ -162,6 +162,7 @@ func main() {
 		IdleTimeout:  idleTimeout,
 	}
 
+	// TODO: Not used anymore in template build, replaced by direct envd command call.
 	if startCmdFlag != "" {
 		tag := "startCmd"
 		cwd := "/home/user"

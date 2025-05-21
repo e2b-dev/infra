@@ -22,7 +22,6 @@ const (
 	orchestratorProxyPort = 5007 // orchestrator proxy port
 	maxRetries            = 3
 
-	minOrchestratorProxyConns = 3
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// Also it's a good practice to set it to a value higher than the idle timeout of the backend service
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
@@ -39,7 +38,6 @@ var dnsClient = dns.Client{}
 func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 	proxy := reverse_proxy.New(
 		port,
-		minOrchestratorProxyConns,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
 			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)

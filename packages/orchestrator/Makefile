@@ -15,6 +15,7 @@ generate:
 	# https://grpc.io/docs/languages/go/quickstart/
 	@echo "Generating..."
 	@protoc --go_out=../shared/pkg/grpc/orchestrator/ --go_opt=paths=source_relative --go-grpc_out=../shared/pkg/grpc/orchestrator/ --go-grpc_opt=paths=source_relative orchestrator.proto
+	@protoc --go_out=../shared/pkg/grpc/orchestrator-info/ --go_opt=paths=source_relative --go-grpc_out=../shared/pkg/grpc/orchestrator-info/ --go-grpc_opt=paths=source_relative info.proto
 	@protoc --go_out=../shared/pkg/grpc/template-manager/ --go_opt=paths=source_relative --go-grpc_out=../shared/pkg/grpc/template-manager/ --go-grpc_opt=paths=source_relative template-manager.proto
 	@echo "Done"
 

@@ -121,6 +121,11 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	snap := lastSnapshot.Snapshot
 	build := lastSnapshot.EnvBuild
 
+	alias := ""
+	if lastSnapshot.Aliases != nil && len(lastSnapshot.Aliases) > 0 {
+		alias = lastSnapshot.Aliases[0]
+	}
+
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
 		TemplateID: *build.EnvID,
@@ -145,7 +150,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		timeout,
 		nil,
 		snap.Metadata,
-		"",
+		alias,
 		teamInfo,
 		build,
 		&c.Request.Header,

@@ -22,6 +22,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const startScript = `mount --make-rprivate / &&
@@ -34,30 +35,19 @@ ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrack
 var startScriptTemplate = txtTemplate.Must(txtTemplate.New("fc-start").Parse(startScript))
 
 type Process struct {
-	uffdReady chan struct{}
-	snapfile  template.File
-
 	cmd *exec.Cmd
 
-	metadata *MmdsMetadata
-
-	uffdSocketPath        string
 	firecrackerSocketPath string
 
+	slot   network.Slot
 	rootfs *rootfs.CowDevice
 	files  *storage.SandboxFiles
 
 	Exit chan error
 
 	client *apiClient
-}
 
-func (p *Process) LoggerMetadata() sbxlogger.SandboxMetadata {
-	return sbxlogger.SandboxMetadata{
-		SandboxID:  p.metadata.SandboxId,
-		TemplateID: p.metadata.TemplateId,
-		TeamID:     p.metadata.TeamId,
-	}
+	buildRootfsPath string
 }
 
 func NewProcess(
@@ -65,14 +55,11 @@ func NewProcess(
 	tracer trace.Tracer,
 	slot network.Slot,
 	files *storage.SandboxFiles,
-	mmdsMetadata *MmdsMetadata,
-	snapfile template.File,
 	rootfs *rootfs.CowDevice,
-	uffdReady chan struct{},
 	baseTemplateID string,
+	baseBuildID string,
 ) (*Process, error) {
 	childCtx, childSpan := tracer.Start(ctx, "initialize-fc", trace.WithAttributes(
-		attribute.String("sandbox.id", mmdsMetadata.SandboxId),
 		attribute.Int("sandbox.slot.index", slot.Idx),
 	))
 	defer childSpan.End()
@@ -81,17 +68,17 @@ func NewProcess(
 
 	baseBuild := storage.NewTemplateFiles(
 		baseTemplateID,
-		rootfs.BaseBuildId,
+		baseBuildID,
 		files.KernelVersion,
 		files.FirecrackerVersion,
-		files.Hugepages(),
 	)
 
+	buildRootfsPath := baseBuild.SandboxRootfsPath()
 	err := startScriptTemplate.Execute(&fcStartScript, map[string]interface{}{
 		"rootfsPath":        files.SandboxCacheRootfsLinkPath(),
 		"kernelPath":        files.CacheKernelPath(),
-		"buildDir":          baseBuild.BuildDir(),
-		"buildRootfsPath":   baseBuild.BuildRootfsPath(),
+		"buildDir":          baseBuild.SandboxBuildDir(),
+		"buildRootfsPath":   buildRootfsPath,
 		"buildKernelPath":   files.BuildKernelPath(),
 		"buildKernelDir":    files.BuildKernelDir(),
 		"namespaceID":       slot.NamespaceID(),
@@ -132,24 +119,32 @@ func NewProcess(
 
 	return &Process{
 		Exit:                  make(chan error, 1),
-		uffdReady:             uffdReady,
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
-		metadata:              mmdsMetadata,
-		uffdSocketPath:        files.SandboxUffdSocketPath(),
-		snapfile:              snapfile,
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
 		rootfs:                rootfs,
 		files:                 files,
+		slot:                  slot,
+
+		buildRootfsPath: buildRootfsPath,
 	}, nil
 }
 
-func (p *Process) Start(
+func (p *Process) configure(
 	ctx context.Context,
 	tracer trace.Tracer,
+	sandboxID string,
+	templateID string,
+	teamID string,
 ) error {
-	childCtx, childSpan := tracer.Start(ctx, "start-fc")
+	childCtx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
+
+	sbxMetadata := sbxlogger.SandboxMetadata{
+		SandboxID:  sandboxID,
+		TemplateID: templateID,
+		TeamID:     teamID,
+	}
 
 	stdoutReader, err := p.cmd.StdoutPipe()
 	if err != nil {
@@ -164,12 +159,12 @@ func (p *Process) Start(
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			sbxlogger.I(p).Info("stdout: "+line, zap.String("sandbox_id", p.metadata.SandboxId))
+			sbxlogger.I(sbxMetadata).Info("stdout: "+line, zap.String("sandbox_id", sandboxID))
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			sbxlogger.I(p).Error("error reading fc stdout", zap.Error(readerErr))
+			sbxlogger.I(sbxMetadata).Error("error reading fc stdout", zap.Error(readerErr))
 		}
 	}()
 
@@ -185,12 +180,12 @@ func (p *Process) Start(
 
 		for scanner.Scan() {
 			line := scanner.Text()
-			sbxlogger.I(p).Error("stderr: "+line, zap.String("sandbox_id", p.metadata.SandboxId))
+			sbxlogger.I(sbxMetadata).Error("stderr: "+line, zap.String("sandbox_id", sandboxID))
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
-			sbxlogger.I(p).Error("error reading fc stderr", zap.Error(readerErr))
+			sbxlogger.I(sbxMetadata).Error("error reading fc stderr", zap.Error(readerErr))
 		}
 	}()
 
@@ -220,8 +215,9 @@ func (p *Process) Start(
 				}
 			}
 
-			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
+			zap.L().Error("error waiting for fc process", zap.Error(waitErr))
 
+			errMsg := fmt.Errorf("error waiting for fc process: %w", waitErr)
 			p.Exit <- errMsg
 
 			cancelStart(errMsg)
@@ -242,26 +238,129 @@ func (p *Process) Start(
 		return errors.Join(errMsg, fcStopErr)
 	}
 
+	return nil
+}
+
+func (p *Process) Create(
+	ctx context.Context,
+	tracer trace.Tracer,
+	templateID string,
+	teamID string,
+	vCPUCount int64,
+	memoryMB int64,
+	hugePages bool,
+) error {
+	childCtx, childSpan := tracer.Start(ctx, "create-fc")
+	defer childSpan.End()
+
+	err := p.configure(
+		childCtx,
+		tracer,
+		"",
+		templateID,
+		teamID,
+	)
+	if err != nil {
+		fcStopErr := p.Stop()
+
+		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
+	}
+
+	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
+	ipv4 := fmt.Sprintf("%s::%s:%s:instance:%s:off:%s", p.slot.NamespaceIP(), p.slot.TapIP(), p.slot.TapMaskString(), p.slot.VpeerName(), p.slot.TapName())
+	kernelArgs := fmt.Sprintf("quiet loglevel=1 ip=%s ipv6.disable=0 ipv6.autoconf=1 reboot=k panic=1 pci=off nomodules i8042.nokbd i8042.noaux random.trust_cpu=on", ipv4)
+	err = p.client.setBootSource(childCtx, kernelArgs, p.files.BuildKernelPath())
+	if err != nil {
+		fcStopErr := p.Stop()
+
+		return errors.Join(fmt.Errorf("error setting fc boot source config: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(childCtx, "set fc boot source config")
+
+	// Rootfs
+	rootfsPath, err := p.rootfs.Path()
+	if err != nil {
+		return fmt.Errorf("error getting rootfs path: %w", err)
+	}
+	err = utils.SymlinkForce(rootfsPath, p.files.SandboxCacheRootfsLinkPath())
+	if err != nil {
+		return fmt.Errorf("error symlinking rootfs: %w", err)
+	}
+
+	err = p.client.setRootfsDrive(childCtx, p.buildRootfsPath)
+	if err != nil {
+		fcStopErr := p.Stop()
+
+		return errors.Join(fmt.Errorf("error setting fc drivers config: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(childCtx, "set fc drivers config")
+
+	// Network
+	err = p.client.setNetworkInterface(childCtx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC())
+	if err != nil {
+		fcStopErr := p.Stop()
+
+		return errors.Join(fmt.Errorf("error setting fc network config: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(childCtx, "set fc network config")
+
+	err = p.client.setMachineConfig(childCtx, vCPUCount, memoryMB, hugePages)
+	if err != nil {
+		fcStopErr := p.Stop()
+
+		return errors.Join(fmt.Errorf("error setting fc machine config: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(childCtx, "set fc machine config")
+
+	err = p.client.startVM(childCtx)
+	if err != nil {
+		fcStopErr := p.Stop()
+
+		return errors.Join(fmt.Errorf("error starting fc: %w", err), fcStopErr)
+	}
+
+	telemetry.ReportEvent(childCtx, "started fc")
+	return nil
+}
+
+func (p *Process) Resume(
+	ctx context.Context,
+	tracer trace.Tracer,
+	mmdsMetadata *MmdsMetadata,
+	uffdSocketPath string,
+	snapfile template.File,
+	uffdReady chan struct{},
+) error {
+	childCtx, childSpan := tracer.Start(ctx, "resume-fc")
+	defer childSpan.End()
+
+	err := p.configure(
+		childCtx,
+		tracer,
+		mmdsMetadata.SandboxId,
+		mmdsMetadata.TemplateId,
+		mmdsMetadata.TeamId,
+	)
+	if err != nil {
+		fcStopErr := p.Stop()
+
+		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
+	}
+
 	device, err := p.rootfs.Path()
 	if err != nil {
 		return fmt.Errorf("error getting rootfs path: %w", err)
 	}
-
-	err = os.Remove(p.files.SandboxCacheRootfsLinkPath())
-	if err != nil {
-		return fmt.Errorf("error removing rootfs symlink: %w", err)
-	}
-
-	err = os.Symlink(device, p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce(device, p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
 
 	err = p.client.loadSnapshot(
-		startCtx,
-		p.uffdSocketPath,
-		p.uffdReady,
-		p.snapfile,
+		childCtx,
+		uffdSocketPath,
+		uffdReady,
+		snapfile,
 	)
 	if err != nil {
 		fcStopErr := p.Stop()
@@ -269,14 +368,14 @@ func (p *Process) Start(
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
-	err = p.client.resumeVM(startCtx)
+	err = p.client.resumeVM(childCtx)
 	if err != nil {
 		fcStopErr := p.Stop()
 
 		return errors.Join(fmt.Errorf("error resuming vm: %w", err), fcStopErr)
 	}
 
-	err = p.client.setMmds(startCtx, p.metadata)
+	err = p.client.setMmds(childCtx, mmdsMetadata)
 	if err != nil {
 		fcStopErr := p.Stop()
 
@@ -320,7 +419,7 @@ func (p *Process) Pause(ctx context.Context, tracer trace.Tracer) error {
 	return p.client.pauseVM(ctx)
 }
 
-// VM needs to be paused before creating a snapshot.
+// CreateSnapshot VM needs to be paused before creating a snapshot.
 func (p *Process) CreateSnapshot(ctx context.Context, tracer trace.Tracer, snapfilePath string, memfilePath string) error {
 	ctx, childSpan := tracer.Start(ctx, "create-snapshot-fc")
 	defer childSpan.End()

@@ -219,6 +219,7 @@ func (o *Orchestrator) CreateSandbox(
 		node.Info,
 		autoPause,
 		envdAuthToken,
+		baseTemplateID,
 	)
 
 	cacheErr := o.instanceCache.Add(childCtx, instanceInfo, true)

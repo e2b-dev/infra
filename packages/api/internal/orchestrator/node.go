@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -32,6 +33,7 @@ type Node struct {
 
 	Info *node.NodeInfo
 
+	commit   string
 	version  string
 	status   api.NodeStatus
 	statusMu sync.RWMutex
@@ -65,7 +67,7 @@ func (n *Node) Status() api.NodeStatus {
 	return n.status
 }
 
-func (n *Node) SetStatus(status api.NodeStatus) {
+func (n *Node) setStatus(status api.NodeStatus) {
 	n.statusMu.Lock()
 	defer n.statusMu.Unlock()
 
@@ -73,6 +75,22 @@ func (n *Node) SetStatus(status api.NodeStatus) {
 		zap.L().Info("Node status changed", zap.String("node_id", n.Info.ID), zap.String("status", string(status)))
 		n.status = status
 	}
+}
+
+func (n *Node) SendStatusChange(ctx context.Context, s api.NodeStatus) error {
+	nodeStatus, ok := ApiNodeToOrchestratorStateMapper[s]
+	if !ok {
+		zap.L().Error("Unknown service info status", zap.Any("status", s), zap.String("node_id", n.Info.ID))
+		return fmt.Errorf("unknown service info status: %s", s)
+	}
+
+	_, err := n.Client.Info.ServiceStatusOverride(ctx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: nodeStatus})
+	if err != nil {
+		zap.L().Error("Failed to send status change", zap.Error(err))
+		return err
+	}
+
+	return nil
 }
 
 func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]*node.NodeInfo, error) {
@@ -114,6 +132,7 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 			CreateFails:          n.createFails.Load(),
 			SandboxStartingCount: n.sbxsInProgress.Count(),
 			Version:              n.version,
+			Commit:               n.commit,
 		}
 	}
 
@@ -149,6 +168,7 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 				CachedBuilds: builds,
 				CreateFails:  n.createFails.Load(),
 				Version:      n.version,
+				Commit:       n.commit,
 			}
 		}
 	}

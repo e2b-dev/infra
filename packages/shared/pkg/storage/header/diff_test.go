@@ -28,13 +28,13 @@ func TestCreateDiff_Hugepage(t *testing.T) {
 	dirty.Set(4)
 
 	diff := bytes.NewBuffer(nil)
-	_, emptyBlocks, err := CreateDiff(source, int64(blockSize), dirty, diff)
+	m, err := WriteDiff(source, int64(blockSize), dirty, diff)
 	assert.NoError(t, err)
 
 	expectedDiffData := createSource(blockSize, []byte{1, 5})
 	assert.Equal(t, expectedDiffData, diff.Bytes())
 
-	assert.Equal(t, "0000000000000000000000000000000000000000000000000000000000000010.", emptyBlocks.DumpAsBits())
+	assert.Equal(t, "0000000000000000000000000000000000000000000000000000000000000010.", m.Empty.DumpAsBits())
 }
 
 func TestCreateDiff_RootfsBlock(t *testing.T) {
@@ -48,13 +48,13 @@ func TestCreateDiff_RootfsBlock(t *testing.T) {
 	dirty.Set(4)
 
 	diff := bytes.NewBuffer(nil)
-	_, emptyBlocks, err := CreateDiff(source, int64(blockSize), dirty, diff)
+	m, err := WriteDiff(source, int64(blockSize), dirty, diff)
 	assert.NoError(t, err)
 
 	expectedDiffData := createSource(blockSize, []byte{1, 5})
 	assert.Equal(t, expectedDiffData, diff.Bytes())
 
-	assert.Equal(t, "0000000000000000000000000000000000000000000000000000000000000010.", emptyBlocks.DumpAsBits())
+	assert.Equal(t, "0000000000000000000000000000000000000000000000000000000000000010.", m.Empty.DumpAsBits())
 }
 
 func TestCreateDiff_UnsupportedBlockSize(t *testing.T) {
@@ -68,7 +68,7 @@ func TestCreateDiff_UnsupportedBlockSize(t *testing.T) {
 	dirty.Set(4)
 
 	diff := bytes.NewBuffer(nil)
-	_, _, err := CreateDiff(source, int64(blockSize), dirty, diff)
+	_, err := WriteDiff(source, int64(blockSize), dirty, diff)
 
 	assert.Error(t, err)
 }
@@ -86,10 +86,10 @@ func TestCreateDiff_AllEmptyBlocks(t *testing.T) {
 	dirty.Set(4)
 
 	diff := bytes.NewBuffer(nil)
-	_, emptyBlocks, err := CreateDiff(source, int64(blockSize), dirty, diff)
+	m, err := WriteDiff(source, int64(blockSize), dirty, diff)
 	assert.NoError(t, err)
 
-	assert.Equal(t, "0000000000000000000000000000000000000000000000000000000000011111.", emptyBlocks.DumpAsBits())
+	assert.Equal(t, "0000000000000000000000000000000000000000000000000000000000011111.", m.Empty.DumpAsBits())
 }
 
 func TestCreateDiff_EmptyDirtyBitset(t *testing.T) {
@@ -101,14 +101,14 @@ func TestCreateDiff_EmptyDirtyBitset(t *testing.T) {
 	// No blocks are marked as dirty
 
 	diff := bytes.NewBuffer(nil)
-	dirtyResult, emptyBlocks, err := CreateDiff(source, int64(blockSize), dirty, diff)
+	m, err := WriteDiff(source, int64(blockSize), dirty, diff)
 	assert.NoError(t, err)
 
 	// Verify no data was written to diff
 	assert.Equal(t, 0, diff.Len())
 
-	assert.Equal(t, "", dirtyResult.DumpAsBits())
-	assert.Equal(t, "", emptyBlocks.DumpAsBits())
+	assert.Equal(t, "", m.Dirty.DumpAsBits())
+	assert.Equal(t, "", m.Empty.DumpAsBits())
 }
 
 type errorReader struct{}
@@ -125,7 +125,7 @@ func TestCreateDiff_ReadError(t *testing.T) {
 	dirty.Set(0) // Mark one block as dirty to trigger ReadAt
 
 	diff := bytes.NewBuffer(nil)
-	_, _, err := CreateDiff(source, int64(blockSize), dirty, diff)
+	_, err := WriteDiff(source, int64(blockSize), dirty, diff)
 
 	// Verify that the error from ReadAt is propagated
 	assert.Error(t, err)
@@ -150,7 +150,7 @@ func TestCreateDiff_WriteError(t *testing.T) {
 	dirty.Set(0) // Mark one block as dirty to trigger Write
 
 	diff := errorWriter{}
-	_, _, err := CreateDiff(source, int64(blockSize), dirty, diff)
+	_, err := WriteDiff(source, int64(blockSize), dirty, diff)
 
 	// Verify that the error from Write is propagated
 	assert.Error(t, err)
@@ -171,12 +171,12 @@ func TestCreateDiff_LargeIndex(t *testing.T) {
 	dirty.Set(largeIndex)
 
 	diff := bytes.NewBuffer(nil)
-	dirtyResult, emptyBlocks, err := CreateDiff(largeSource, int64(blockSize), dirty, diff)
+	m, err := WriteDiff(largeSource, int64(blockSize), dirty, diff)
 	assert.NoError(t, err)
 
 	// Verify the large index is still marked as dirty
-	assert.True(t, dirtyResult.Test(largeIndex))
-	assert.False(t, emptyBlocks.Test(largeIndex))
+	assert.True(t, m.Dirty.Test(largeIndex))
+	assert.False(t, m.Empty.Test(largeIndex))
 
 	// Verify the data was written to diff
 	assert.Equal(t, blockSize, diff.Len())

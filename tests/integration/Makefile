@@ -10,12 +10,6 @@ generate:
 	$(codegen) -old-config-style -generate client --package api $(openapi_api) > internal/api/client.gen.go
 	$(codegen) -old-config-style -generate models --package api $(openapi_api) > internal/api/models.gen.go
 
-	# Copy the envd grpc clients
-	rm -rf internal/envd/
-	mkdir -p internal/envd/
-	cp -r ../../packages/envd/internal/services/spec/ internal/envd/.
-	find internal/. -type f -exec perl -pi -e 's|github.com/e2b-dev/infra/packages/envd/internal/services/spec/|github.com/e2b-dev/infra/tests/integration/internal/envd/|g' {} +
-
 	# Create envd HTTP client
 	mkdir -p internal/envd/api/
 	$(codegen) -generate client --package api $(openapi_envd) > internal/envd/api/client.gen.go
@@ -31,22 +25,25 @@ seed:
 	@echo "Applying seeds"
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) \
 		TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY) \
+		TESTS_E2B_ACCESS_TOKEN=$(TESTS_E2B_ACCESS_TOKEN) \
 		TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID) \
 		TESTS_SANDBOX_BUILD_ID=$(TESTS_SANDBOX_BUILD_ID) \
 		go run seed.go
 	@echo "Done"
 
 .PHONY: test
-test:
+test: test/.
+test/%:
 	export TESTS_API_SERVER_URL=$(TESTS_API_SERVER_URL); \
 	export TESTS_ORCHESTRATOR_HOST=$(TESTS_ORCHESTRATOR_HOST); \
 	export TESTS_ENVD_PROXY=$(TESTS_ENVD_PROXY); \
 	export TESTS_SANDBOX_TEMPLATE_ID=$(TESTS_SANDBOX_TEMPLATE_ID); \
 	export TESTS_E2B_API_KEY=$(TESTS_E2B_API_KEY); \
+	export TESTS_E2B_ACCESS_TOKEN=$(TESTS_E2B_ACCESS_TOKEN); \
 	export TESTS_SUPABASE_TOKEN=$(TESTS_SUPABASE_TOKEN); \
 	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
 	go test -v ./internal/main_test.go -count=1 && \
-	go run gotest.tools/gotestsum@latest --rerun-fails=2 --packages="./internal/tests/..." --format standard-verbose --junitfile=test-results.xml -- -count=1
+	go run gotest.tools/gotestsum@latest --rerun-fails=2 --packages="./internal/tests/$(notdir $@)/..." --format standard-verbose --junitfile=test-results.xml -- -count=1
 
 .PHONY: connect-orchestrator
 connect-orchestrator:

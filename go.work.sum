@@ -1909,6 +1909,7 @@ cloud.google.com/go/workflows v1.12.5 h1:hH511zmS93oE6j64m/eiGWnfgqailh/S8+f3MVN
 cloud.google.com/go/workflows v1.12.5/go.mod h1:KbK5/Ef28G8MKLXcsvt/laH1Vka4CKeQj0I1/wEiByo=
 cloud.google.com/go/workflows v1.13.2 h1:jYIxrDOVCGvTBHIAVhqQ+P8fhE0trm+Hf2hgL1YzmK0=
 cloud.google.com/go/workflows v1.13.2/go.mod h1:l5Wj2Eibqba4BsADIRzPLaevLmIuYF2W+wfFBkRG3vU=
+connectrpc.com/connect v1.16.2/go.mod h1:n2kgwskMHXC+lVqb18wngEpF95ldBHXjZYJussz5FRc=
 dario.cat/mergo v1.0.0 h1:AGCNq9Evsj31mOgNPcLyXc+4PNABt905YmuqPYYpBWk=
 dario.cat/mergo v1.0.0/go.mod h1:uNxQE+84aUszobStD9th8a29P2fMDhsBdgRYvZOxGmk=
 dmitri.shuralyov.com/gpu/mtl v0.0.0-20190408044501-666a987793e9 h1:VpgP7xuJadIUuKccphEpTJnWhS2jkQyMt6Y7pJCD7fY=
@@ -3261,6 +3262,8 @@ github.com/insomniacslk/dhcp v0.0.0-20240829085014-a3a4c1f04475/go.mod h1:KclMyH
 github.com/intel/goresctrl v0.2.0/go.mod h1:+CZdzouYFn5EsxgqAQTEzMfwKwuc0fVdMrT9FCCAVRQ=
 github.com/intel/goresctrl v0.3.0 h1:K2D3GOzihV7xSBedGxONSlaw/un1LZgWsc9IfqipN4c=
 github.com/intel/goresctrl v0.3.0/go.mod h1:fdz3mD85cmP9sHD8JUlrNWAxvwM86CrbmVXltEKd7zk=
+github.com/invopop/yaml v0.3.1 h1:f0+ZpmhfBSS4MhG+4HYseMdJhoeeopbSKbq5Rpeelso=
+github.com/invopop/yaml v0.3.1/go.mod h1:PMOp3nn4/12yEZUFfmOuNHJsZToEEOwoWsT+D81KkeA=
 github.com/iris-contrib/go.uuid v2.0.0+incompatible h1:XZubAYg61/JwnJNbZilGjf3b3pB80+OQg2qf6c8BfWE=
 github.com/iris-contrib/go.uuid v2.0.0+incompatible/go.mod h1:iz2lgM/1UnEf1kP0L/+fafWORmlnuysV2EMP8MW+qe0=
 github.com/iris-contrib/httpexpect/v2 v2.15.2 h1:T9THsdP1woyAqKHwjkEsbCnMefsAFvk8iJJKokcJ3Go=
@@ -5283,7 +5286,6 @@ gopkg.in/tomb.v2 v2.0.0-20140626144623-14b3d72120e8/go.mod h1:BHsqpu/nsuzkT5BpiH
 gopkg.in/warnings.v0 v0.1.2/go.mod h1:jksf8JmL6Qr/oQM2OXTHunEvvTAsrWBLb6OOjuVWRNI=
 gopkg.in/yaml.v2 v2.2.7/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
 gotest.tools/v3 v3.0.3 h1:4AuOwCGf4lLR9u3YOe2awrHygurzhO/HeQ6laiA6Sx0=
-gotest.tools/v3 v3.5.1/go.mod h1:isy3WKz7GK6uNw/sbHzfKBLvlvXwUyV06n6brMxxopU=
 honnef.co/go/tools v0.0.0-20180728063816-88497007e858/go.mod h1:rf3lG4BRIbNafJWhAfAdb/ePZxsR/4RtNHQocxwk9r4=
 honnef.co/go/tools v0.1.3/go.mod h1:NgwopIslSNH47DimFoV78dnkksY2EFtX0ajyb3K/las=
 honnef.co/go/tools v0.3.2 h1:ytYb4rOqyp1TSa2EPvNVwtPQJctSELKaMyLfqNP4+34=

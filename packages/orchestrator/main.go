@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"os/signal"
 	"slices"
@@ -17,14 +18,13 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/consul"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/servicetype"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	tmplserver "github.com/e2b-dev/infra/packages/orchestrator/internal/template/server"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -41,6 +41,10 @@ type Closeable interface {
 const (
 	defaultPort      = 5008
 	defaultProxyPort = 5007
+
+	version = "0.1.0"
+
+	fileLockName = "/orchestrator.lock"
 )
 
 var forceStop = env.GetEnv("FORCE_STOP", "false") == "true"
@@ -53,33 +57,68 @@ func main() {
 
 	if *port > math.MaxUint16 {
 		log.Fatalf("%d is larger than maximum possible port %d", port, math.MaxInt16)
-		os.Exit(1)
 	}
 
 	if *proxyPort > math.MaxUint16 {
 		log.Fatalf("%d is larger than maximum possible proxy port %d", proxyPort, math.MaxInt16)
-		os.Exit(1)
 	}
 
-	result := run(*port, *proxyPort)
+	success := run(*port, *proxyPort)
 
-	if result == false {
+	log.Println("Stopping orchestrator, success:", success)
+
+	if success == false {
 		os.Exit(1)
 	}
 }
 
 func run(port, proxyPort uint) (success bool) {
 	success = true
+
+	services := service.GetServices()
+
+	// Check if the orchestrator crashed and restarted
+	// Skip this check in development mode
+	// We don't want to lock if the service is running with force stop; the subsequent start would fail.
+	if !env.IsDevelopment() && !forceStop {
+		info, err := os.Stat(fileLockName)
+		if err == nil {
+			log.Fatalf("Orchestrator was already started at %s, exiting", info.ModTime())
+		}
+
+		f, err := os.Create(fileLockName)
+		if err != nil {
+			log.Fatalf("Failed to create lock file %s: %v", fileLockName, err)
+		}
+		defer func() {
+			fileErr := f.Close()
+			if fileErr != nil {
+				log.Printf("Failed to close lock file %s: %v", fileLockName, fileErr)
+			}
+
+			// Remove the lock file on graceful shutdown
+			if success == true {
+				if fileErr = os.Remove(fileLockName); fileErr != nil {
+					log.Printf("Failed to remove lock file %s: %v", fileLockName, fileErr)
+				}
+			}
+		}()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	sig, sigCancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()
 
-	clientID := consul.GetClientID()
+	clientID := service.GetClientID()
+	if clientID == "" {
+		zap.L().Fatal("client ID is empty")
+	}
 
-	services := servicetype.GetServices()
-	serviceName := servicetype.GetServiceName(services)
+	serviceName := service.GetServiceName(services)
+	serviceError := make(chan error)
+	defer close(serviceError)
 
 	var g errgroup.Group
 	// defer waiting on the group so that this runs even when
@@ -162,20 +201,23 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	networkPool, err := network.NewPool(sig, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
+	tracer := otel.Tracer(serviceName)
+
+	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
 
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(ctx)
 	if err != nil {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
 
-	grpcSrv := grpcserver.New(commitSHA)
-	tracer := otel.Tracer(serviceName)
+	serviceInfo := service.NewInfoContainer(clientID, version, commitSHA)
 
-	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, clientID, commitSHA, sandboxProxy, sandboxes)
+	grpcSrv := grpcserver.New(serviceInfo)
+
+	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -205,43 +247,73 @@ func run(port, proxyPort uint) (success bool) {
 	)
 
 	// Initialize the template manager only if the service is enabled
-	if slices.Contains(services, servicetype.TemplateManager) {
-		tmpl := tmplserver.New(ctx, grpcSrv, globalLogger, tmplSbxLoggerExternal, tracer)
+	if slices.Contains(services, service.TemplateManager) {
+		tmpl := tmplserver.New(
+			ctx,
+			tracer,
+			globalLogger,
+			tmplSbxLoggerExternal,
+			grpcSrv,
+			networkPool,
+			devicePool,
+			sandboxProxy,
+			sandboxes,
+		)
 
 		// Prepend to make sure it's awaited on graceful shutdown
 		closers = append([]Closeable{tmpl}, closers...)
 	}
 
+	service.NewInfoService(ctx, grpcSrv.GRPCServer(), serviceInfo, sandboxes)
+
 	g.Go(func() error {
 		zap.L().Info("Starting session proxy")
-		return sandboxProxy.Start()
-	})
+		proxyErr := sandboxProxy.Start()
+		if proxyErr != nil && !errors.Is(proxyErr, http.ErrServerClosed) {
+			proxyErr = fmt.Errorf("proxy server: %w", proxyErr)
+			zap.L().Error("error starting proxy server", zap.Error(proxyErr))
 
-	g.Go(func() (err error) {
-		defer func() {
-			// recover the panic because the service manages a number of go routines
-			// that can panic, so catching this here allows for the rest of the process
-			// to terminate in a more orderly manner.
-			if perr := recover(); perr != nil {
-				// many of the panics use log.Panicf which means we're going to log
-				// some panic messages twice, but this seems ok, and temporary while
-				// we clean up logging.
-				log.Printf("caught panic in service: %v", perr)
-				err = errors.Join(err, fmt.Errorf("server panic: %v", perr))
+			select {
+			case serviceError <- proxyErr:
+			default:
+				// Don't block if the serviceError channel is already closed
+				// or if the error is already sent
 			}
-		}()
 
-		// this sets the error declared above so the function
-		// in the defer can check it.
-		if err = grpcSrv.Start(ctx, port); err != nil {
-			return fmt.Errorf("grpc service: %w", err)
+			return proxyErr
 		}
 
 		return nil
 	})
 
-	<-sig.Done()
-	log.Printf("Shutdown signal received")
+	g.Go(func() (err error) {
+		// this sets the error declared above so the function
+		// in the defer can check it.
+		grpcErr := grpcSrv.Start(ctx, port)
+		if grpcErr != nil {
+			grpcErr = fmt.Errorf("grpc server: %w", grpcErr)
+			zap.L().Error("grpc server error", zap.Error(grpcErr))
+
+			select {
+			case serviceError <- grpcErr:
+			default:
+				// Don't block if the serviceError channel is already closed
+				// or if the error is already sent
+			}
+
+			return grpcErr
+		}
+
+		return nil
+	})
+
+	// Wait for the shutdown signal or if some service fails
+	select {
+	case <-sig.Done():
+		zap.L().Info("Shutdown signal received")
+	case serviceErr := <-serviceError:
+		zap.L().Error("Service error", zap.Error(serviceErr))
+	}
 
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 	defer cancelCloseCtx()
@@ -250,16 +322,16 @@ func run(port, proxyPort uint) (success bool) {
 	}
 
 	for _, c := range closers {
-		log.Printf("Closing %T, forced: %v", c, forceStop)
+		zap.L().Info(fmt.Sprintf("Closing %T, forced: %v", c, forceStop))
 		if err := c.Close(closeCtx); err != nil {
-			log.Printf("error during shutdown: %v", err)
+			zap.L().Error("error during shutdown", zap.Error(err))
 			success = false
 		}
 	}
 
-	log.Println("Waiting for services to finish")
+	zap.L().Info("Waiting for services to finish")
 	if err := g.Wait(); err != nil {
-		log.Printf("service group error: %v", err)
+		zap.L().Error("service group error", zap.Error(err))
 		success = false
 	}
 
