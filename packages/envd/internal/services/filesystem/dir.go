@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -65,10 +66,24 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 			return filepath.SkipDir
 		}
 
+		fileInfo, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+
+		owner, group := getFileOwnership(fileInfo)
+		fileMode := fileInfo.Mode()
+
 		entries = append(entries, &rpc.EntryInfo{
-			Name: entry.Name(),
-			Type: getEntryType(entry),
-			Path: path,
+			Name:         entry.Name(),
+			Type:         getEntryType(entry),
+			Path:         path,
+			Size:         fileInfo.Size(),
+			Mode:         uint32(fileMode.Perm()),
+			Permissions:  fileMode.String(),
+			Owner:        owner,
+			Group:        group,
+			ModifiedTime: timestamppb.New(fileInfo.ModTime()),
 		})
 
 		return nil
