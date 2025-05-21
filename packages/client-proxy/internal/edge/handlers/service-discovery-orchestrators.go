@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"sort"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -18,12 +19,13 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 		response = append(
 			response,
 			api.ClusterOrchestratorNode{
-				Id:      node.ServiceId,
-				NodeId:  node.NodeId,
-				Version: node.SourceVersion,
-				Commit:  node.SourceCommit,
-				Status:  getOrchestratorStatusResolved(node.Status),
-				Roles:   getOrchestratorRolesResolved(node.Roles),
+				Id:        node.ServiceId,
+				NodeId:    node.NodeId,
+				Version:   node.SourceVersion,
+				Commit:    node.SourceCommit,
+				StartedAt: node.Startup,
+				Status:    getOrchestratorStatusResolved(node.Status),
+				Roles:     getOrchestratorRolesResolved(node.Roles),
 
 				MetricRamMBUsed:        node.MetricMemoryUsedInMB.Load(),
 				MetricVCpuUsed:         node.MetricVCpuUsed.Load(),
@@ -32,6 +34,14 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 			},
 		)
 	}
+
+	sort.Slice(
+		response,
+		func(i, j int) bool {
+			// older dates first
+			return response[i].StartedAt.Before(response[j].StartedAt)
+		},
+	)
 
 	c.JSON(http.StatusOK, response)
 }

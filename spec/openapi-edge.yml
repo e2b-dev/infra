@@ -151,6 +151,10 @@ components:
         commit:
           type: string
           description: Service Version
+        startedAt:
+          type: string
+          format: date-time
+          description: Time when the node was registered
         roles:
           type: array
           items:
@@ -178,6 +182,7 @@ components:
         - nodeId
         - version
         - commit
+        - startedAt
         - status
         - roles
         - metricVCpuUsed

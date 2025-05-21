@@ -108,6 +108,9 @@ type ClusterOrchestratorNode struct {
 	NodeId string                    `json:"nodeId"`
 	Roles  []ClusterOrchestratorRole `json:"roles"`
 
+	// StartedAt Time when the node was registered
+	StartedAt time.Time `json:"startedAt"`
+
 	// Status State of the cluster node
 	Status ClusterNodeStatus `json:"status"`
 
