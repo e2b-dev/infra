@@ -46,7 +46,7 @@ func NewStorageLocal(slotsSize int, tracer trace.Tracer) (*StorageLocal, error) 
 }
 
 func (s *StorageLocal) Acquire() (*Slot, error) {
-	acquireTimeoutCtx, acquireCancel := context.WithTimeout(context.Background(), time.Second*5)
+	acquireTimeoutCtx, acquireCancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 	defer acquireCancel()
 
 	_, span := s.tracer.Start(acquireTimeoutCtx, "network-namespace-acquire")
