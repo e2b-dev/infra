@@ -38,5 +38,3 @@ echo "Give 777 permission to /code"
 chmod 777 -R /code
 
 echo "Finished configuration script"
-
-exit 0
