@@ -30,8 +30,9 @@ const (
 	rootfsBuildFileName = "rootfs.ext4.build"
 	rootfsProvisionLink = "rootfs.ext4.build.provision"
 
-	busyBoxInitPath = "/bin/init"
-	systemdInitPath = "/sbin/init"
+	busyBoxBinaryPath = "/bin/busybox"
+	busyBoxInitPath   = "usr/bin/init"
+	systemdInitPath   = "/sbin/init"
 )
 
 type Rootfs struct {
@@ -183,9 +184,9 @@ BUILD_ID=%s
 		return nil, fmt.Errorf("error reading envd file: %w", err)
 	}
 
-	busyBox, err := os.ReadFile("/bin/busybox")
+	busyBox, err := os.ReadFile(busyBoxBinaryPath)
 	if err != nil {
-		return nil, fmt.Errorf("error reading busybox: %w", err)
+		return nil, fmt.Errorf("error reading busybox binary: %w", err)
 	}
 
 	filesLayer, err := LayerFile(
@@ -206,7 +207,7 @@ BUILD_ID=%s
 			"usr/bin/busybox": {busyBox, 0o755},
 			// Set to bin/init so it's not in conflict with systemd
 			// Any rewrite of the init file when booted from it will corrupt the filesystem
-			"usr" + busyBoxInitPath: {busyBox, 0o755},
+			busyBoxInitPath: {busyBox, 0o755},
 			"etc/init.d/rcS": {[]byte(`#!/usr/bin/busybox ash
 echo "Mounting essential filesystems"
 # Ensure necessary mount points exist
