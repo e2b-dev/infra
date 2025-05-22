@@ -21,13 +21,13 @@ func LayerFile(filemap map[string]layerFile) (v1.Layer, error) {
 	b := &bytes.Buffer{}
 	w := tar.NewWriter(b)
 
-	fn := []string{}
+	names := []string{}
 	for f := range filemap {
-		fn = append(fn, f)
+		names = append(names, f)
 	}
-	sort.Strings(fn)
+	sort.Strings(names)
 
-	for _, f := range fn {
+	for _, f := range names {
 		c := filemap[f]
 		if err := w.WriteHeader(&tar.Header{
 			Name: f,

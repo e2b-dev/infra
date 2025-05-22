@@ -99,8 +99,8 @@ func GetImageSize(img v1.Image) (int64, error) {
 }
 
 func ToExt4(ctx context.Context, img v1.Image, rootfsPath string, sizeLimit int64) error {
-	pr := mutate.Extract(img)
-	defer pr.Close()
+	r := mutate.Extract(img)
+	defer r.Close()
 
 	rootfsFile, err := os.Create(rootfsPath)
 	if err != nil {
@@ -116,7 +116,7 @@ func ToExt4(ctx context.Context, img v1.Image, rootfsPath string, sizeLimit int6
 	}()
 
 	// Convert tar to ext4 image
-	if err := tar2ext4.Convert(pr, rootfsFile, tar2ext4.ConvertWhiteout, tar2ext4.MaximumDiskSize(sizeLimit)); err != nil {
+	if err := tar2ext4.Convert(r, rootfsFile, tar2ext4.ConvertWhiteout, tar2ext4.MaximumDiskSize(sizeLimit)); err != nil {
 		if strings.Contains(err.Error(), "disk exceeded maximum size") {
 			return fmt.Errorf("build failed - exceeded maximum size %v MB", sizeLimit>>ToMBShift)
 		}
