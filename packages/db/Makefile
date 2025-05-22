@@ -6,7 +6,7 @@ goose := GOOSE_DBSTRING=$(POSTGRES_CONNECTION_STRING) go tool goose -table "_mig
 .PHONY: migrate
 migrate:migrate/up
 migrate:migrate/down
-migrate/%:goose-init
+migrate/%:
 	@echo "Applying Postgres migration *$(notdir $@)*"
 	@$(goose) $(notdir $@)
 	@echo "Done"
