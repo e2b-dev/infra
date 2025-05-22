@@ -226,7 +226,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		postProcessor.WriteMsg(fmt.Sprintf("Error creating sandbox: %v", err))
 		return nil, fmt.Errorf("error creating sandbox: %w", err)
 	}
-	err = sbx.WaitForStart(
+	err = sbx.WaitForEnvd(
 		ctx,
 		b.tracer,
 	)

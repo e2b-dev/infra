@@ -396,7 +396,7 @@ func ResumeSandbox(
 		return sbx.Close(ctx, tracer)
 	})
 
-	err = sbx.WaitForStart(
+	err = sbx.WaitForEnvd(
 		ctx,
 		tracer,
 	)
@@ -800,7 +800,7 @@ func (s *Sandbox) WaitForExit(
 	}
 }
 
-func (s *Sandbox) WaitForStart(
+func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
 	tracer trace.Tracer,
 ) (e error) {
