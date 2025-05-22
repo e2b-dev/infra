@@ -64,7 +64,7 @@ func (o *Orchestrator) getSandboxes(ctx context.Context, node *nNode.NodeInfo) (
 					SandboxID:  config.SandboxId,
 					TemplateID: config.TemplateId,
 					Alias:      config.Alias,
-					ClientID:   sbx.ClientId,
+					ClientID:   node.ID, // TODO: this is a fix, because the orchestrator returns incorrect node ID
 				},
 				&teamID,
 				&buildID,
