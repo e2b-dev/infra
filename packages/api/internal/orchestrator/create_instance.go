@@ -55,39 +55,36 @@ func (o *Orchestrator) CreateSandbox(
 	defer childSpan.End()
 
 	// Check if team has reached max instances
-	exceeded, releaseTeamSandboxReservation, err := o.instanceCache.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
-	if exceeded {
-		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances)
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
-
-		return nil, &api.APIError{
-			Code: http.StatusTooManyRequests,
-			ClientMsg: fmt.Sprintf(
-				"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-					"please contact us at 'https://e2b.dev/docs/getting-help'", team.Tier.ConcurrentInstances),
-			Err: errMsg,
-		}
-	}
+	releaseTeamSandboxReservation, err := o.instanceCache.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
 	if err != nil {
-		var alreadyExistsErr *instance.ErrAlreadyBeingStarted
-		if errors.As(err, &alreadyExistsErr) {
-			zap.L().Warn("sandbox already being started", zap.String("sandboxID", sandboxID), zap.Error(err))
+		var limitErr *instance.ErrSandboxLimitExceeded
+		var alreadyErr *instance.ErrAlreadyBeingStarted
 
+		telemetry.ReportCriticalError(ctx, err)
+
+		switch {
+		case errors.As(err, &limitErr):
+			return nil, &api.APIError{
+				Code: http.StatusTooManyRequests,
+				ClientMsg: fmt.Sprintf(
+					"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
+						"please contact us at 'https://e2b.dev/docs/getting-help'", team.Tier.ConcurrentInstances),
+				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances),
+			}
+		case errors.As(err, &alreadyErr):
+			zap.L().Warn("sandbox already being started", zap.String("sandboxID", sandboxID), zap.Error(err))
 			return nil, &api.APIError{
 				Code:      http.StatusConflict,
 				ClientMsg: fmt.Sprintf("Sandbox %s is already being started", sandboxID),
 				Err:       err,
 			}
-		}
-
-		zap.L().Error("failed to reserve sandbox for team", zap.String("teamID", team.Team.ID.String()), zap.String("sandboxID", sandboxID), zap.Error(err))
-		errMsg := fmt.Errorf("failed to reserve sandbox for team '%s': %w", team.Team.ID, err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return nil, &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: "Failed to reserve sandbox for team",
-			Err:       errMsg,
+		default:
+			zap.L().Error("failed to reserve sandbox for team", zap.String("sandboxID", sandboxID), zap.Error(err))
+			return nil, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: fmt.Sprintf("Failed to create sandbox: %s", err),
+				Err:       err,
+			}
 		}
 	}
 

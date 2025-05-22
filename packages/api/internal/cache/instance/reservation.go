@@ -70,7 +70,15 @@ func (e *ErrAlreadyBeingStarted) Error() string {
 	return fmt.Sprintf("sandbox %s is already being started", e.sandboxID)
 }
 
-func (c *InstanceCache) Reserve(instanceID string, team uuid.UUID, limit int64) (exceededLimit bool, release func(), err error) {
+type ErrSandboxLimitExceeded struct {
+	teamID string
+}
+
+func (e *ErrSandboxLimitExceeded) Error() string {
+	return fmt.Sprintf("sandbox %s has exceeded the limit", e.teamID)
+}
+
+func (c *InstanceCache) Reserve(instanceID string, team uuid.UUID, limit int64) (release func(), err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -82,17 +90,17 @@ func (c *InstanceCache) Reserve(instanceID string, team uuid.UUID, limit int64) 
 	}
 
 	if int64(len(ids)) >= limit {
-		return true, nil, nil
+		return nil, &ErrSandboxLimitExceeded{teamID: team.String()}
 	}
 
 	inserted := c.reservations.insertIfAbsent(instanceID, team)
 	if !inserted {
-		return false, nil, &ErrAlreadyBeingStarted{
+		return nil, &ErrAlreadyBeingStarted{
 			sandboxID: instanceID,
 		}
 	}
 
-	return false, func() {
+	return func() {
 		// We will call this method with defer to ensure the reservation is released even if the function panics/returns an error.
 		c.reservations.release(instanceID)
 	}, nil
