@@ -20,15 +20,11 @@ type DiffCreator interface {
 }
 
 type RootfsDiffCreator struct {
-	rootfs   *rootfs.CowDevice
+	rootfs   rootfs.Provider
 	stopHook func(context.Context) error
 }
 
 func (r *RootfsDiffCreator) process(ctx context.Context, out io.Writer) (*header.DiffMetadata, error) {
-	if err := r.rootfs.Flush(ctx); err != nil {
-		return nil, fmt.Errorf("failed to flush rootfs: %w", err)
-	}
-
 	return r.rootfs.ExportDiff(ctx, out, r.stopHook)
 }
 

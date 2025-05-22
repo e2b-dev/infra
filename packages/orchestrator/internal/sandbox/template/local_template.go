@@ -1,8 +1,6 @@
 package template
 
 import (
-	"fmt"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -18,12 +16,12 @@ func NewLocalTemplate(
 	files *storage.TemplateCacheFiles,
 	rootfs block.ReadonlyDevice,
 	memfile block.ReadonlyDevice,
-) (*LocalTemplate, error) {
+) *LocalTemplate {
 	return &LocalTemplate{
 		files:   files,
 		memfile: memfile,
 		rootfs:  rootfs,
-	}, nil
+	}
 }
 
 func (t *LocalTemplate) Close() error {
@@ -43,5 +41,5 @@ func (t *LocalTemplate) Rootfs() (block.ReadonlyDevice, error) {
 }
 
 func (t *LocalTemplate) Snapfile() (File, error) {
-	return nil, fmt.Errorf("snapfile not implemented for local template")
+	return nil, &NotImplementedError{Msg: "snapfile not implemented for local template"}
 }

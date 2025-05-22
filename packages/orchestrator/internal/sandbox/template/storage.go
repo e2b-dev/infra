@@ -114,3 +114,7 @@ func (d *Storage) Slice(off, length int64) ([]byte, error) {
 func (d *Storage) Header() *header.Header {
 	return d.header
 }
+
+func (d *Storage) Close() error {
+	return nil
+}
