@@ -218,7 +218,7 @@ function generate_supervisor_config {
   local -r nomad_data_dir="$3"
   local -r nomad_bin_dir="$4"
   local -r nomad_log_dir="$5"
-  local -r nomad_user="$6"
+  local nomad_user="$6"
   local -r use_sudo="$7"
 
   if [[ "$use_sudo" == "true" ]]; then
