@@ -17,7 +17,7 @@ runs:
       uses: actions/cache@v4
       with:
         path: ${{ steps.go-cache-paths.outputs.go-build }}
-        key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum', '**/go.mod', 'go.work') }}
+        key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum', '**/go.mod') }}
 
     - name: Build Packages
       run: |
