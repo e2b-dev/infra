@@ -15,7 +15,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/mod/semver"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
@@ -829,21 +828,11 @@ func (s *Sandbox) WaitForEnvd(
 		}
 	}()
 
-	if semver.Compare(fmt.Sprintf("v%s", s.Metadata.Config.EnvdVersion), "v0.1.1") >= 0 {
-		initErr := s.initEnvd(syncCtx, tracer, s.Metadata.Config.EnvVars, s.Metadata.Config.EnvdAccessToken)
-		if initErr != nil {
-			return fmt.Errorf("failed to init new envd: %w", initErr)
-		} else {
-			telemetry.ReportEvent(syncCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Config.SandboxId))
-		}
+	initErr := s.initEnvd(syncCtx, tracer, s.Metadata.Config.EnvVars, s.Metadata.Config.EnvdAccessToken)
+	if initErr != nil {
+		return fmt.Errorf("failed to init new envd: %w", initErr)
 	} else {
-		syncErr := s.syncOldEnvd(syncCtx)
-		if syncErr != nil {
-			telemetry.ReportError(syncCtx, fmt.Errorf("failed to sync old envd: %w", syncErr))
-			return fmt.Errorf("failed to sync old envd: %w", syncErr)
-		} else {
-			telemetry.ReportEvent(syncCtx, fmt.Sprintf("[sandbox %s]: synced old envd", s.Metadata.Config.SandboxId))
-		}
+		telemetry.ReportEvent(syncCtx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Config.SandboxId))
 	}
 
 	return nil

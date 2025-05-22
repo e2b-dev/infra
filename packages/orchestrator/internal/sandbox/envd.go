@@ -52,27 +52,6 @@ func doRequestWithInfiniteRetries(ctx context.Context, method, address string, r
 	}
 }
 
-func (s *Sandbox) syncOldEnvd(ctx context.Context) error {
-	address := fmt.Sprintf("http://%s:%d/sync", s.Slot.HostIP(), consts.OldEnvdServerPort)
-
-	response, err := doRequestWithInfiniteRetries(ctx, "POST", address, nil, nil)
-	if err != nil {
-		return fmt.Errorf("failed to sync envd: %w", err)
-	}
-
-	_, err = io.Copy(io.Discard, response.Body)
-	if err != nil {
-		return err
-	}
-
-	err = response.Body.Close()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 type PostInitJSONBody struct {
 	EnvVars     *map[string]string `json:"envVars"`
 	AccessToken *string            `json:"accessToken,omitempty"`
