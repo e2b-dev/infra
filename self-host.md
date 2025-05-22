@@ -126,11 +126,6 @@ E2B is using [Firecracker](https://github.com/firecracker-microvm/firecracker) f
 You can build your own kernel and Firecracker version from source by running `make build-and-upload-fc-components`
 
 - Note: This needs to be done on a Linux machine due to case-sensitive requirements for the file system--you'll error out during the automated git section with a complaint about unsaved changes. Kernel and versions could alternatively be sourced elsewhere.
-- You will still have to copy `envd-v0.0.1` from public bucket by running the command bellow or you can build it from [this commit](https://github.com/e2b-dev/infra/tree/703da3b2b8ef4af450f9874228e7406bdfc75d4a)
-
-```
-gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-env-pipeline/envd-v0.0.1
-```
 
 ### Make commands cheat sheet
 
