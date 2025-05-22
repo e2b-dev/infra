@@ -15,6 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	templatelocal "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
@@ -22,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -208,7 +210,11 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		localTemplate,
 		sbxTimeout,
 		rootfsPath,
-		systemdInitPath,
+		fc.ProcessOptions{
+			InitScriptPath:      systemdInitPath,
+			KernelLogs:          env.IsDevelopment(),
+			SystemdToKernelLogs: env.IsDevelopment(),
+		},
 	)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)
@@ -392,7 +398,12 @@ func (b *TemplateBuilder) provisionSandbox(
 		localTemplate,
 		provisionTimeout,
 		rootfsPath,
-		busyBoxInitPath,
+		fc.ProcessOptions{
+			InitScriptPath: busyBoxInitPath,
+			// Always show kernel logs during the provisioning phase,
+			// the sandbox is then started with systemd and without kernel logs.
+			KernelLogs: true,
+		},
 	)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)

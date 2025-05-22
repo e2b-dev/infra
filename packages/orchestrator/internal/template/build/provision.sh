@@ -79,6 +79,7 @@ configure_swap() {
 configure_swap 128
 
 echo "Don't wait for ttyS0 (serial console kernel logs)"
+# This is required when the Firecracker kernel args has specified console=ttyS0
 systemctl mask serial-getty@ttyS0.service
 
 # Clean machine-id from Docker

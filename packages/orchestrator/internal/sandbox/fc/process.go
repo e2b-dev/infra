@@ -33,6 +33,17 @@ ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrack
 
 var startScriptTemplate = txtTemplate.Must(txtTemplate.New("fc-start").Parse(startScript))
 
+type ProcessOptions struct {
+	// InitScriptPath is the path to the init script that will be executed inside the VM on kernel start.
+	InitScriptPath string
+
+	// KernelLogs is a flag to enable kernel logs output to the process stdout.
+	KernelLogs bool
+	// SystemdToKernelLogs is a flag to enable systemd logs output to the console.
+	// It enabled the kernel logs by default too.
+	SystemdToKernelLogs bool
+}
+
 type Process struct {
 	cmd *exec.Cmd
 
@@ -249,7 +260,7 @@ func (p *Process) Create(
 	vCPUCount int64,
 	memoryMB int64,
 	hugePages bool,
-	initScriptPath string,
+	options ProcessOptions,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
@@ -270,20 +281,37 @@ func (p *Process) Create(
 	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
 	ipv4 := fmt.Sprintf("%s::%s:%s:instance:%s:off:%s", p.slot.NamespaceIP(), p.slot.TapIP(), p.slot.TapMaskString(), p.slot.VpeerName(), p.slot.TapName())
 	args := KernelArgs{
-		"console":                             "ttyS0",
-		"loglevel":                            "5", //KERN_NOTICE
-		"systemd.journald.forward_to_console": "",
-		"init":                                initScriptPath,
-		"ip":                                  ipv4,
-		"ipv6.disable":                        "0",
-		"ipv6.autoconf":                       "1",
-		"reboot":                              "k",
-		"panic":                               "1",
-		"pci":                                 "off",
-		"i8042.nokbd":                         "",
-		"i8042.noaux":                         "",
-		"random.trust_cpu":                    "on",
+		// Disable kernel logs for production to speed the the FC operations
+		"quiet":    "",
+		"loglevel": "1",
+
+		// Define kernel init path
+		"init": options.InitScriptPath,
+
+		// Networking IPv4 and IPv6
+		"ip":            ipv4,
+		"ipv6.disable":  "0",
+		"ipv6.autoconf": "1",
+
+		// Wait 1 second before exiting FC after panic or reboot
+		"panic": "1",
+
+		"reboot":           "k",
+		"pci":              "off",
+		"i8042.nokbd":      "",
+		"i8042.noaux":      "",
+		"random.trust_cpu": "on",
 	}
+	if options.SystemdToKernelLogs {
+		args["systemd.journald.forward_to_console"] = ""
+	}
+	if options.KernelLogs || options.SystemdToKernelLogs {
+		// Forward kernel logs to the ttyS0, which will be picked up by the stdout of FC process
+		delete(args, "quiet")
+		args["console"] = "ttyS0"
+		args["loglevel"] = "5" //KERN_NOTICE
+	}
+
 	kernelArgs := args.String()
 	err = p.client.setBootSource(childCtx, kernelArgs, p.files.BuildKernelPath())
 	if err != nil {
