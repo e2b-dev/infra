@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/orchestrator
 
-go 1.23.7
+go 1.24.3
 
 require (
 	cloud.google.com/go/artifactregistry v1.16.0

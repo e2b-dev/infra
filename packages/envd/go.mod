@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/envd
 
-go 1.23.7
+go 1.24.3
 
 require (
 	connectrpc.com/authn v0.1.0
