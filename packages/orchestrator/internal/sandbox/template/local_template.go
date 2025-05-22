@@ -16,12 +16,12 @@ func NewLocalTemplate(
 	files *storage.TemplateCacheFiles,
 	rootfs block.ReadonlyDevice,
 	memfile block.ReadonlyDevice,
-) (*LocalTemplate, error) {
+) *LocalTemplate {
 	return &LocalTemplate{
 		files:   files,
 		memfile: memfile,
 		rootfs:  rootfs,
-	}, nil
+	}
 }
 
 func (t *LocalTemplate) Close() error {

@@ -153,11 +153,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		return nil, fmt.Errorf("error building environment: %w", err)
 	}
 
-	localTemplate, err := templatelocal.NewLocalTemplate(templateCacheFiles, rootfs, memfile)
-	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error creating local template: %v", err))
-		return nil, fmt.Errorf("error creating local template: %w", err)
-	}
+	localTemplate := templatelocal.NewLocalTemplate(templateCacheFiles, rootfs, memfile)
 	defer localTemplate.Close()
 
 	// Provision sandbox with systemd and other vital parts
