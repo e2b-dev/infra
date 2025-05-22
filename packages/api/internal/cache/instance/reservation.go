@@ -23,16 +23,11 @@ func NewReservationCache() *ReservationCache {
 	}
 }
 
-func (r *ReservationCache) reserve(instanceID string, team uuid.UUID) error {
-	inserted := r.reservations.InsertIfAbsent(instanceID, &Reservation{
+func (r *ReservationCache) insertIfAbsent(instanceID string, team uuid.UUID) bool {
+	return r.reservations.InsertIfAbsent(instanceID, &Reservation{
 		team:       team,
 		instanceID: instanceID,
 	})
-	if !inserted {
-		return fmt.Errorf("reservation for instance %s already exists", instanceID)
-	}
-
-	return nil
 }
 
 func (r *ReservationCache) release(instanceID string) {
@@ -67,7 +62,15 @@ func (c *InstanceCache) list(teamID uuid.UUID) (instanceIDs []string) {
 	return instanceIDs
 }
 
-func (c *InstanceCache) Reserve(instanceID string, team uuid.UUID, limit int64) (error, func()) {
+type ErrAlreadyBeingStarted struct {
+	sandboxID string
+}
+
+func (e *ErrAlreadyBeingStarted) Error() string {
+	return fmt.Sprintf("sandbox %s is already being started", e.sandboxID)
+}
+
+func (c *InstanceCache) Reserve(instanceID string, team uuid.UUID, limit int64) (exceededLimit bool, release func(), err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -79,16 +82,18 @@ func (c *InstanceCache) Reserve(instanceID string, team uuid.UUID, limit int64) 
 	}
 
 	if int64(len(ids)) >= limit {
-		return fmt.Errorf("team %s has reached the limit of reserved instances", team), nil
+		return true, nil, nil
 	}
 
-	err := c.reservations.reserve(instanceID, team)
-	if err != nil {
-		return fmt.Errorf("error when reserving instance: %w", err), nil
+	inserted := c.reservations.insertIfAbsent(instanceID, team)
+	if !inserted {
+		return false, nil, &ErrAlreadyBeingStarted{
+			sandboxID: instanceID,
+		}
 	}
 
-	return nil, func() {
+	return false, func() {
 		// We will call this method with defer to ensure the reservation is released even if the function panics/returns an error.
 		c.reservations.release(instanceID)
-	}
+	}, nil
 }
