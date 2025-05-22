@@ -50,6 +50,7 @@ const (
 	provisionTimeout     = 1 * time.Minute
 	configurationTimeout = 5 * time.Minute
 	waitTimeForStartCmd  = 20 * time.Second
+	waitEnvdTimeout      = 60 * time.Second
 
 	cleanupTimeout = time.Second * 10
 )
@@ -225,6 +226,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	err = sbx.WaitForEnvd(
 		ctx,
 		b.tracer,
+		waitEnvdTimeout,
 	)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Failed waiting for sandbox start: %v", err))

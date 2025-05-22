@@ -34,7 +34,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var envdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
+var defaultEnvdTimeout = utils.Must(time.ParseDuration(env.GetEnv("ENVD_TIMEOUT", "10s")))
 
 var httpClient = http.Client{
 	Timeout: 10 * time.Second,
@@ -398,6 +398,7 @@ func ResumeSandbox(
 	err = sbx.WaitForEnvd(
 		ctx,
 		tracer,
+		defaultEnvdTimeout,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to wait for sandbox start: %w", err)
@@ -802,6 +803,7 @@ func (s *Sandbox) WaitForExit(
 func (s *Sandbox) WaitForEnvd(
 	ctx context.Context,
 	tracer trace.Tracer,
+	timeout time.Duration,
 ) (e error) {
 	ctx, childSpan := tracer.Start(ctx, "sandbox-wait-for-start")
 	defer childSpan.End()
@@ -818,8 +820,8 @@ func (s *Sandbox) WaitForEnvd(
 
 	go func() {
 		select {
-		// Ensure the syncing takes at most envdTimeout seconds.
-		case <-time.After(envdTimeout):
+		// Ensure the syncing takes at most timeout seconds.
+		case <-time.After(timeout):
 			syncCancel(fmt.Errorf("syncing took too long"))
 		case <-syncCtx.Done():
 			return
