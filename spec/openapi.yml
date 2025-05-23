@@ -623,7 +623,7 @@ components:
         - id
         - name
         - token
-        - masking
+        - mask
         - createdAt
       properties:
         id:
@@ -655,7 +655,7 @@ components:
       required:
         - id
         - name
-        - masking
+        - mask
         - createdAt
       properties:
         id:
@@ -685,7 +685,7 @@ components:
       required:
         - id
         - key
-        - masking
+        - mask
         - name
         - createdAt
       properties:

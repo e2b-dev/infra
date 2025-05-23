@@ -48,8 +48,8 @@ type CreatedAccessToken struct {
 	CreatedAt time.Time `json:"createdAt"`
 
 	// Id Identifier of the access token
-	Id   openapi_types.UUID        `json:"id"`
-	Mask *IdentifierMaskingDetails `json:"mask,omitempty"`
+	Id   openapi_types.UUID       `json:"id"`
+	Mask IdentifierMaskingDetails `json:"mask"`
 
 	// Name Name of the access token
 	Name string `json:"name"`
@@ -71,8 +71,8 @@ type CreatedTeamAPIKey struct {
 	Key string `json:"key"`
 
 	// LastUsed Last time this API key was used
-	LastUsed *time.Time                `json:"lastUsed"`
-	Mask     *IdentifierMaskingDetails `json:"mask,omitempty"`
+	LastUsed *time.Time               `json:"lastUsed"`
+	Mask     IdentifierMaskingDetails `json:"mask"`
 
 	// Name Name of the API key
 	Name string `json:"name"`
@@ -391,8 +391,8 @@ type TeamAPIKey struct {
 	Id openapi_types.UUID `json:"id"`
 
 	// LastUsed Last time this API key was used
-	LastUsed *time.Time                `json:"lastUsed"`
-	Mask     *IdentifierMaskingDetails `json:"mask,omitempty"`
+	LastUsed *time.Time               `json:"lastUsed"`
+	Mask     IdentifierMaskingDetails `json:"mask"`
 
 	// Name Name of the API key
 	Name string `json:"name"`
