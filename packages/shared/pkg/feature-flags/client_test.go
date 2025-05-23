@@ -14,7 +14,9 @@ const (
 func TestOfflineDatastore(t *testing.T) {
 	clientCtx := ldcontext.NewBuilder(flagName).Build()
 	client, err := NewClient(0)
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	assert.NoError(t, err)
 

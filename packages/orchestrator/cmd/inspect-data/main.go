@@ -28,13 +28,14 @@ func main() {
 	var storagePath string
 	var blockSize int64
 
-	if *kind == "memfile" {
+	switch *kind {
+	case "memfile":
 		storagePath = template.StorageMemfilePath()
 		blockSize = 2097152
-	} else if *kind == "rootfs" {
+	case "rootfs":
 		storagePath = template.StorageRootfsPath()
 		blockSize = 4096
-	} else {
+	default:
 		log.Fatalf("invalid kind: %s", *kind)
 	}
 

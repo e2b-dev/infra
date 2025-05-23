@@ -26,11 +26,12 @@ func main() {
 
 	var storagePath string
 
-	if *kind == "memfile" {
+	switch *kind {
+	case "memfile":
 		storagePath = template.StorageMemfileHeaderPath()
-	} else if *kind == "rootfs" {
+	case "rootfs":
 		storagePath = template.StorageRootfsHeaderPath()
-	} else {
+	default:
 		log.Fatalf("invalid kind: %s", *kind)
 	}
 

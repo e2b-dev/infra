@@ -11,5 +11,19 @@ formatters:
         - prefix(github.com/e2b-dev/infra)
 linters:
   default: none
+  enable:
+    - staticcheck
+    - govet
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - -S1002  # Omit comparison with boolean constant
+        - -SA1019  # TODO: Remove (Using a deprecated function, variable, constant or field)
+        - -ST1000  # Incorrect or missing package comment
+        - -ST1020  # The documentation of an exported function should start with the function’s name
+        - -ST1021  # The documentation of an exported type should start with type’s name
+        - -ST1003  # Poorly chosen identifier
+
 run:
   go: 1.24.3

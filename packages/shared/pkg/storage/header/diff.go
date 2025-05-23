@@ -71,10 +71,10 @@ func WriteDiff(source io.ReaderAt, blockSize int64, dirty *bitset.BitSet, diff i
 
 func IsEmptyBlock(block []byte, blockSize int64) (bool, error) {
 	var emptyBuf []byte
-	switch {
-	case blockSize == HugepageSize:
+	switch blockSize {
+	case HugepageSize:
 		emptyBuf = EmptyHugePage
-	case blockSize == RootfsBlockSize:
+	case RootfsBlockSize:
 		emptyBuf = EmptyBlock
 	default:
 		return false, fmt.Errorf("block size not supported: %d", blockSize)
