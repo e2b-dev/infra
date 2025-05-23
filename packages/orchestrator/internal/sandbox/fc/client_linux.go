@@ -203,7 +203,7 @@ func (c *apiClient) setNetworkInterface(ctx context.Context, ifaceID string, tap
 	}
 
 	mmdsVersion := "V2"
-	mmdsConfig := operations.PutMmdsParams{
+	mmdsConfig := operations.PutMmdsConfigParams{
 		Context: ctx,
 		Body: &models.MmdsConfig{
 			Version:           &mmdsVersion,
@@ -211,7 +211,7 @@ func (c *apiClient) setNetworkInterface(ctx context.Context, ifaceID string, tap
 		},
 	}
 
-	_, err = c.client.Operations.PutMmds(&mmdsConfig)
+	_, err = c.client.Operations.PutMmdsConfig(&mmdsConfig)
 	if err != nil {
 		return fmt.Errorf("error setting network mmds data: %w", err)
 	}

@@ -19,7 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-type CowDevice struct {
+type NBDProvider struct {
 	overlay *block.Overlay
 	mnt     *nbd.DirectPathMount
 
@@ -33,7 +33,7 @@ type CowDevice struct {
 	tracer trace.Tracer
 }
 
-func NewCowDevice(tracer trace.Tracer, rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (*CowDevice, error) {
+func NewNBDProvider(tracer trace.Tracer, rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool) (Provider, error) {
 	size, err := rootfs.Size()
 	if err != nil {
 		return nil, fmt.Errorf("error getting device size: %w", err)
@@ -50,18 +50,18 @@ func NewCowDevice(tracer trace.Tracer, rootfs block.ReadonlyDevice, cachePath st
 
 	mnt := nbd.NewDirectPathMount(tracer, overlay, devicePool)
 
-	return &CowDevice{
+	return &NBDProvider{
 		tracer:             tracer,
 		mnt:                mnt,
 		overlay:            overlay,
 		ready:              utils.NewSetOnce[string](),
-		blockSize:          blockSize,
 		finishedOperations: make(chan struct{}, 1),
+		blockSize:          blockSize,
 		devicePool:         devicePool,
 	}, nil
 }
 
-func (o *CowDevice) Start(ctx context.Context) error {
+func (o *NBDProvider) Start(ctx context.Context) error {
 	deviceIndex, err := o.mnt.Open(ctx)
 	if err != nil {
 		return o.ready.SetError(fmt.Errorf("error opening overlay file: %w", err))
@@ -70,7 +70,7 @@ func (o *CowDevice) Start(ctx context.Context) error {
 	return o.ready.SetValue(nbd.GetDevicePath(deviceIndex))
 }
 
-func (o *CowDevice) ExportDiff(
+func (o *NBDProvider) ExportDiff(
 	parentCtx context.Context,
 	out io.Writer,
 	stopSandbox func(ctx context.Context) error,
@@ -114,13 +114,18 @@ func (o *CowDevice) ExportDiff(
 	return m, nil
 }
 
-func (o *CowDevice) Close(ctx context.Context) error {
+func (o *NBDProvider) Close(ctx context.Context) error {
 	childCtx, childSpan := o.tracer.Start(ctx, "cow-close")
 	defer childSpan.End()
 
 	var errs []error
 
-	err := o.mnt.Close(childCtx)
+	err := o.flush(childCtx)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("error flushing cow device: %w", err))
+	}
+
+	err = o.mnt.Close(childCtx)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error closing overlay mount: %w", err))
 	}
@@ -137,12 +142,12 @@ func (o *CowDevice) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (o *CowDevice) Path() (string, error) {
+func (o *NBDProvider) Path() (string, error) {
 	return o.ready.Wait()
 }
 
-// Flush flushes the data to the operating system's buffer.
-func (o *CowDevice) Flush(ctx context.Context) error {
+// flush flushes the data to the operating system's buffer.
+func (o *NBDProvider) flush(ctx context.Context) error {
 	telemetry.ReportEvent(ctx, "flushing cow device")
 	defer telemetry.ReportEvent(ctx, "flushing cow done")
 
@@ -176,10 +181,5 @@ func (o *CowDevice) Flush(ctx context.Context) error {
 		return fmt.Errorf("failed to sync cow path: %w", err)
 	}
 
-	return nil
-}
-
-func (o *CowDevice) MarkAllBlocksAsDirty() error {
-	o.overlay.MarkAllAsDirty()
 	return nil
 }

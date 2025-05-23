@@ -9,8 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/docker/docker/client"
-	docker "github.com/fsouza/go-dockerclient"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -68,15 +66,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 
 	tracer := otel.Tracer("test")
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		return fmt.Errorf("could not create docker client: %w", err)
-	}
-
-	legacyClient, err := docker.NewClientFromEnv()
-	if err != nil {
-		return fmt.Errorf("could not create docker legacy client: %w", err)
-	}
+	logger.Info("building template", zap.String("templateID", templateID), zap.String("buildID", buildID))
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
@@ -115,7 +105,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		}
 	}()
 
-	networkPool, err := network.NewPool(ctx, 8, 8, clientID)
+	networkPool, err := network.NewPool(ctx, 8, 8, clientID, tracer)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}
@@ -132,8 +122,6 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		logger,
 		logger,
 		tracer,
-		dockerClient,
-		legacyClient,
 		templateStorage,
 		buildCache,
 		persistence,
@@ -168,7 +156,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		HugePages:       true,
 	}
 
-	err = builder.Build(ctx, config, templateID, buildID)
+	_, err = builder.Build(ctx, config)
 	if err != nil {
 		return fmt.Errorf("error building template: %w", err)
 	}

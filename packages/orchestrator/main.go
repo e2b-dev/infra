@@ -117,7 +117,6 @@ func run(port, proxyPort uint) (success bool) {
 	}
 
 	serviceName := service.GetServiceName(services)
-
 	serviceError := make(chan error)
 	defer close(serviceError)
 
@@ -202,7 +201,9 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID)
+	tracer := otel.Tracer(serviceName)
+
+	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
@@ -215,7 +216,6 @@ func run(port, proxyPort uint) (success bool) {
 	serviceInfo := service.NewInfoContainer(clientID, version, commitSHA)
 
 	grpcSrv := grpcserver.New(serviceInfo)
-	tracer := otel.Tracer(serviceName)
 
 	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
 	if err != nil {
@@ -248,7 +248,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	// Initialize the template manager only if the service is enabled
 	if slices.Contains(services, service.TemplateManager) {
-		tmpl := tmplserver.New(
+		tmpl, err := tmplserver.New(
 			ctx,
 			tracer,
 			globalLogger,
@@ -259,6 +259,9 @@ func run(port, proxyPort uint) (success bool) {
 			sandboxProxy,
 			sandboxes,
 		)
+		if err != nil {
+			zap.L().Fatal("failed to create template manager", zap.Error(err))
+		}
 
 		// Prepend to make sure it's awaited on graceful shutdown
 		closers = append([]Closeable{tmpl}, closers...)

@@ -84,6 +84,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 	nodeStatus := api.NodeStatusUnhealthy
 	nodeVersion := "unknown"
+	nodeCommit := "unknown"
 
 	ok, err := o.getNodeHealth(node)
 	if err != nil {
@@ -105,6 +106,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 		}
 
 		nodeVersion = nodeInfo.ServiceVersion
+		nodeCommit = nodeInfo.ServiceCommit
 	}
 
 	o.nodes.Insert(
@@ -114,6 +116,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 			buildCache:     buildCache,
 			status:         nodeStatus,
 			version:        nodeVersion,
+			commit:         nodeCommit,
 			sbxsInProgress: smap.New[*sbxInProgress](),
 			createFails:    atomic.Uint64{},
 		},
