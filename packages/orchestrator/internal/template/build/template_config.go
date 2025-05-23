@@ -3,6 +3,8 @@ package build
 import (
 	"io"
 
+	"github.com/google/uuid"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -61,10 +63,10 @@ func (e *TemplateConfig) ToSandboxConfig(envdVersion string) *orchestrator.Sandb
 		FirecrackerVersion: e.FirecrackerVersion,
 		HugePages:          e.HugePages,
 		SandboxId:          instanceBuildPrefix + id.Generate(),
-
-		EnvdVersion: envdVersion,
-		Vcpu:        e.VCpuCount,
-		RamMb:       e.MemoryMB,
+		ExecutionId:        uuid.New().String(),
+		EnvdVersion:        envdVersion,
+		Vcpu:               e.VCpuCount,
+		RamMb:              e.MemoryMB,
 
 		BaseTemplateId: e.TemplateId,
 	}

@@ -33,6 +33,7 @@ var (
 
 func NewInstanceInfo(
 	Instance *api.Sandbox,
+	ExecutionID string,
 	TeamID *uuid.UUID,
 	BuildID *uuid.UUID,
 	Metadata map[string]string,
@@ -50,8 +51,14 @@ func NewInstanceInfo(
 	EnvdAccessToken *string,
 	BaseTemplateID string,
 ) *InstanceInfo {
+	// TODO: Temporary workaround, until all orchestrators report this
+	if ExecutionID == "" {
+		ExecutionID = uuid.New().String()
+	}
+
 	instance := &InstanceInfo{
 		Instance:           Instance,
+		ExecutionID:        ExecutionID,
 		TeamID:             TeamID,
 		BuildID:            BuildID,
 		Metadata:           Metadata,
@@ -79,6 +86,7 @@ func NewInstanceInfo(
 
 type InstanceInfo struct {
 	Instance           *api.Sandbox
+	ExecutionID        string
 	TeamID             *uuid.UUID
 	BuildID            *uuid.UUID
 	BaseTemplateID     string

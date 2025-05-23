@@ -236,7 +236,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	b.sandboxes.Insert(sbx.Metadata.Config.SandboxId, sbx)
 	defer func() {
 		b.sandboxes.Remove(sbx.Metadata.Config.SandboxId)
-		b.proxy.RemoveFromPool(sbx.StartID)
+		b.proxy.RemoveFromPool(sbx.Metadata.Config.ExecutionId)
 	}()
 
 	// Run configuration script

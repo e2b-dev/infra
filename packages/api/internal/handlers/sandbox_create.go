@@ -25,6 +25,7 @@ import (
 
 const (
 	InstanceIDPrefix    = "i"
+	UniqueIDPrefix      = "u"
 	metricTemplateAlias = metrics.MetricPrefix + "template.alias"
 )
 
@@ -95,6 +96,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	sandboxID := InstanceIDPrefix + id.Generate()
+	uniqueSandboxID := UniqueIDPrefix + id.Generate()
 
 	c.Set("instanceID", sandboxID)
 

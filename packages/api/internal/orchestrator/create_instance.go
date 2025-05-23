@@ -37,6 +37,7 @@ var (
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
+	executionID,
 	alias string,
 	team authcache.AuthTeamInfo,
 	build queries.EnvBuild,
@@ -112,6 +113,7 @@ func (o *Orchestrator) CreateSandbox(
 			TeamId:             team.Team.ID.String(),
 			BuildId:            build.ID.String(),
 			SandboxId:          sandboxID,
+			ExecutionId:        executionID,
 			KernelVersion:      build.KernelVersion,
 			FirecrackerVersion: build.FirecrackerVersion,
 			EnvdVersion:        *build.EnvdVersion,
@@ -225,6 +227,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	instanceInfo := instance.NewInstanceInfo(
 		&sbx,
+		executionID,
 		&team.Team.ID,
 		&build.ID,
 		metadata,
