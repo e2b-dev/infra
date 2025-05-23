@@ -146,6 +146,7 @@ func additionalOCILayers(
 	memoryLimit := int(math.Min(float64(config.MemoryMB)/2, 512))
 	envdService := fmt.Sprintf(`[Unit]
 Description=Env Daemon Service
+After=multi-user.target
 
 [Service]
 Type=simple
