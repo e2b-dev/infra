@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/shared
 
-go 1.23.7
+go 1.24.3
 
 require (
 	cloud.google.com/go/storage v1.50.0
