@@ -70,7 +70,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 			return err
 		}
 
-		entryInfo := EntryInfoFromFileInfo(fileInfo, path)
+		entryInfo := entryInfoFromFileInfo(fileInfo, path)
 
 		entries = append(entries, entryInfo)
 
