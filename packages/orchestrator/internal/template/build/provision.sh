@@ -94,6 +94,9 @@ rm -rf /etc/machine-id
 echo "Linking systemd to init"
 ln -sf /lib/systemd/systemd /usr/sbin/init
 
+echo "Unlocking immutable configuration"
+chattr -i /etc/resolv.conf
+
 echo "Finished provisioning script"
 
 # Delete itself
