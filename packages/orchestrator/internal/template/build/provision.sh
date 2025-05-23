@@ -3,6 +3,9 @@ set -euo pipefail
 
 echo "Starting provisioning script"
 
+echo "Making configuration immutable"
+chattr +i /etc/resolv.conf
+
 # Install required packages if not already installed
 PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp"
 echo "Checking presence of the following packages: $PACKAGES"
@@ -90,6 +93,9 @@ rm -rf /etc/machine-id
 
 echo "Linking systemd to init"
 ln -sf /lib/systemd/systemd /usr/sbin/init
+
+echo "Unlocking immutable configuration"
+chattr -i /etc/resolv.conf
 
 echo "Finished provisioning script"
 
