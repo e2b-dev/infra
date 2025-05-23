@@ -82,6 +82,9 @@ echo "Don't wait for ttyS0 (serial console kernel logs)"
 # This is required when the Firecracker kernel args has specified console=ttyS0
 systemctl mask serial-getty@ttyS0.service
 
+echo "Disable network online wait"
+systemctl mask systemd-networkd-wait-online.service
+
 # Clean machine-id from Docker
 rm -rf /etc/machine-id
 
