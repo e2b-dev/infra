@@ -37,10 +37,11 @@ func (a *APIStore) startSandbox(
 	endTime := startTime.Add(timeout)
 
 	// Unique ID for the execution (from start/resume to stop/pause)
-	executionID := uuid.New()
+	executionID := uuid.New().String()
 	sandbox, instanceErr := a.orchestrator.CreateSandbox(
 		ctx,
 		sandboxID,
+		executionID,
 		alias,
 		team,
 		build,
