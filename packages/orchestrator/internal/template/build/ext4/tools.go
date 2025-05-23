@@ -36,29 +36,13 @@ func Enlarge(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSiz
 	ctx, resizeSpan := tracer.Start(ctx, "resize-ext4")
 	defer resizeSpan.End()
 
-	rootfsFile, err := os.OpenFile(rootfsPath, os.O_RDWR, 0)
+	rootfsSize, err := enlargeFile(ctx, tracer, rootfsPath, addSize)
 	if err != nil {
-		return 0, fmt.Errorf("error opening rootfs file: %w", err)
+		return 0, fmt.Errorf("error enlarging rootfs file: %w", err)
 	}
-	defer rootfsFile.Close()
-
-	rootfsStats, err := rootfsFile.Stat()
-	if err != nil {
-		return 0, fmt.Errorf("error statting rootfs file: %w", err)
-	}
-
-	telemetry.ReportEvent(ctx, fmt.Sprintf("statted rootfs file (size: %d)", rootfsStats.Size()))
-
-	// In bytes
-	rootfsSize := rootfsStats.Size() + addSize
-
-	err = rootfsFile.Truncate(rootfsSize)
-	if err != nil {
-		return 0, fmt.Errorf("error truncating rootfs file: %w", err)
-	}
-	telemetry.ReportEvent(ctx, "truncated rootfs file to size of build + defaultDiskSizeMB")
 
 	// Resize the ext4 filesystem
+	// The underlying file must be synced to the filesystem
 	cmd := exec.CommandContext(ctx, "resize2fs", rootfsPath)
 	resizeStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
 	cmd.Stdout = resizeStdoutWriter
@@ -130,4 +114,32 @@ func parseFreeBlocks(debugfsOutput string) (int64, error) {
 		return 0, fmt.Errorf("could not parse free blocks: %w", err)
 	}
 	return freeBlocks, nil
+}
+
+func enlargeFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSize int64) (int64, error) {
+	ctx, resizeSpan := tracer.Start(ctx, "resize-ext4-file")
+	defer resizeSpan.End()
+
+	rootfsFile, err := os.OpenFile(rootfsPath, os.O_RDWR, 0)
+	if err != nil {
+		return 0, fmt.Errorf("error opening rootfs file: %w", err)
+	}
+	defer rootfsFile.Close()
+
+	rootfsStats, err := rootfsFile.Stat()
+	if err != nil {
+		return 0, fmt.Errorf("error statting rootfs file: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, fmt.Sprintf("statted rootfs file (size: %d)", rootfsStats.Size()))
+
+	// In bytes
+	rootfsSize := rootfsStats.Size() + addSize
+
+	err = rootfsFile.Truncate(rootfsSize)
+	if err != nil {
+		return 0, fmt.Errorf("error truncating rootfs file: %w", err)
+	}
+	telemetry.ReportEvent(ctx, "truncated rootfs file to size of build + defaultDiskSizeMB")
+	return rootfsSize, err
 }
