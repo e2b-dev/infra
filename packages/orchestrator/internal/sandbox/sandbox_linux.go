@@ -51,7 +51,6 @@ type Metadata struct {
 	Config    *orchestrator.SandboxConfig
 	StartedAt time.Time
 	EndAt     time.Time
-	StartID   string
 }
 
 type Sandbox struct {
@@ -151,7 +150,7 @@ func CreateSandbox(
 		uffdExit: make(chan error, 1),
 	}
 
-	/// ==== END of resources initialization ====
+	// / ==== END of resources initialization ====
 	rootfsPath, err := rootfsProvider.Path()
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get rootfs path: %w", err)
@@ -190,7 +189,6 @@ func CreateSandbox(
 	metadata := &Metadata{
 		Config: config,
 
-		StartID:   uuid.New().String(),
 		StartedAt: time.Now(),
 		EndAt:     time.Now().Add(sandboxTimeout),
 	}
@@ -323,7 +321,7 @@ func ResumeSandbox(
 		uffdExit: uffdExit,
 	}
 
-	/// ==== END of resources initialization ====
+	// / ==== END of resources initialization ====
 	rootfsPath, err := rootfsOverlay.Path()
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get rootfs path: %w", err)
@@ -369,7 +367,6 @@ func ResumeSandbox(
 	metadata := &Metadata{
 		Config: config,
 
-		StartID:   uuid.New().String(),
 		StartedAt: startedAt,
 		EndAt:     endAt,
 	}

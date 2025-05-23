@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -39,6 +40,11 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("client.id", s.info.ClientId),
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
+
+	// TODO: Temporary workaround, remove API changes deployed
+	if req.Sandbox.GetExecutionId() == "" {
+		req.Sandbox.ExecutionId = uuid.New().String()
+	}
 
 	sbx, cleanup, err := sandbox.ResumeSandbox(
 		childCtx,
@@ -92,11 +98,11 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 				return false
 			}
 
-			return sbx.StartID == v.StartID
+			return sbx.Config.ExecutionId == v.Config.ExecutionId
 		})
 
 		// Remove the proxies assigned to the sandbox from the pool to prevent them from being reused.
-		s.proxy.RemoveFromPool(sbx.StartID)
+		s.proxy.RemoveFromPool(sbx.Config.ExecutionId)
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
 	}()
