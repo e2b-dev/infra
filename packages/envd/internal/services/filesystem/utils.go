@@ -9,6 +9,7 @@ import (
 	"path"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type osEntry interface {
@@ -55,4 +56,21 @@ func getFileOwnership(fileInfo os.FileInfo) (owner, group string) {
 	}
 
 	return owner, group
+}
+
+func EntryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
+	owner, group := getFileOwnership(fileInfo)
+	fileMode := fileInfo.Mode()
+
+	return &rpc.EntryInfo{
+		Name:         fileInfo.Name(),
+		Type:         getEntryType(fileInfo),
+		Path:         path,
+		Size:         fileInfo.Size(),
+		Mode:         uint32(fileMode.Perm()),
+		Permissions:  fileMode.String(),
+		Owner:        owner,
+		Group:        group,
+		ModifiedTime: timestamppb.New(fileInfo.ModTime()),
+	}
 }
