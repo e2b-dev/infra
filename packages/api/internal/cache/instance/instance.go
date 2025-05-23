@@ -51,11 +51,6 @@ func NewInstanceInfo(
 	EnvdAccessToken *string,
 	BaseTemplateID string,
 ) *InstanceInfo {
-	// TODO: Temporary workaround, until all orchestrators report this
-	if ExecutionID == "" {
-		ExecutionID = uuid.New().String()
-	}
-
 	instance := &InstanceInfo{
 		Instance:           Instance,
 		ExecutionID:        ExecutionID,
