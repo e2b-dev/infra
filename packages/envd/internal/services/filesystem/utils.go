@@ -60,7 +60,7 @@ func getFileOwnership(fileInfo os.FileInfo) (owner, group string) {
 	return owner, group
 }
 
-func EntryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
+func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
 	owner, group := getFileOwnership(fileInfo)
 	fileMode := fileInfo.Mode()
 

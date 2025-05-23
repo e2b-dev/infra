@@ -164,16 +164,7 @@ func walkDir(requestedPath string, dirPath string, depth int) (entries []*rpc.En
 		owner, group := getFileOwnership(fileInfo)
 		fileMode := fileInfo.Mode()
 
-		entries = append(entries, &rpc.EntryInfo{
-			Name:         entry.Name(),
-			Type:         getEntryType(entry),
-			Path:         path,
-			Size:         fileInfo.Size(),
-			Mode:         uint32(fileMode.Perm()),
-			Permissions:  fileMode.String(),
-			Owner:        owner,
-			Group:        group,
-			ModifiedTime: timestamppb.New(fileInfo.ModTime()),
+		entries = append(entries, entryInfoFromFileInfo(fileInfo, path))
 		})
 
 		return nil
