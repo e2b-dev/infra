@@ -334,9 +334,15 @@ func (b *TemplateBuilder) uploadTemplate(
 
 				removeErr := b.templateStorage.Remove(removeCtx, templateFiles.BuildId)
 				if removeErr != nil {
-					b.logger.Error("Error while removing build files", zap.Error(removeErr))
+					b.logger.Error("error while removing build files", zap.Error(removeErr))
 					telemetry.ReportError(ctx, removeErr)
 				}
+			}
+		}()
+		defer func() {
+			err := snapshot.Close(ctx)
+			if err != nil {
+				zap.L().Error("error closing snapshot", zap.Error(err), zap.String("build_id", templateFiles.BuildId), zap.String("template_id", templateFiles.TemplateId))
 			}
 		}()
 		defer close(errCh)
@@ -369,9 +375,14 @@ func (b *TemplateBuilder) uploadTemplate(
 			&rootfsDiffPath,
 		)
 
-		// Forward upload errors to errCh
+		// Wait for the upload to finish
 		err = <-uploadErrCh
-		errCh <- err
+		if err != nil {
+			errCh <- fmt.Errorf("error uploading template build: %w", err)
+			return
+		}
+
+		errCh <- nil
 	}()
 
 	return errCh

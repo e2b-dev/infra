@@ -9,14 +9,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-type NotImplementedError struct {
-	Msg string
-}
-
-func (e NotImplementedError) Error() string {
-	return fmt.Sprintf("not implemented: %s", e.Msg)
-}
-
 type Template interface {
 	Files() *storage.TemplateCacheFiles
 	Memfile() (block.ReadonlyDevice, error)
@@ -44,12 +36,7 @@ func closeTemplate(t Template) (e error) {
 
 	snapfile, err := t.Snapfile()
 	if err != nil {
-		var ni *NotImplementedError
-		if errors.As(err, &ni) {
-			// ignore
-		} else {
-			e = errors.Join(e, err)
-		}
+		e = errors.Join(e, err)
 	} else {
 		closable = append(closable, snapfile)
 	}

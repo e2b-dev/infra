@@ -41,5 +41,15 @@ func (t *LocalTemplate) Rootfs() (block.ReadonlyDevice, error) {
 }
 
 func (t *LocalTemplate) Snapfile() (File, error) {
-	return nil, &NotImplementedError{Msg: "snapfile not implemented for local template"}
+	return &NoopSnapfile{}, nil
+}
+
+type NoopSnapfile struct{}
+
+func (n *NoopSnapfile) Close() error {
+	return nil
+}
+
+func (n *NoopSnapfile) Path() string {
+	return "/dev/null"
 }
