@@ -3,6 +3,9 @@ set -euo pipefail
 
 echo "Starting provisioning script"
 
+echo "Making configuration immutable"
+chattr +i /etc/resolv.conf
+
 # Install required packages if not already installed
 PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp"
 echo "Checking presence of the following packages: $PACKAGES"
