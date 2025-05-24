@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"time"
 
+	"github.com/containernetworking/plugins/pkg/ns"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -111,27 +114,98 @@ func (p *Pool) populate(ctx context.Context) error {
 	}
 }
 
-func (p *Pool) Get(ctx context.Context) (Slot, error) {
+func (p *Pool) Get(ctx context.Context, allowInternet bool) (Slot, error) {
+	var slot Slot
+
 	select {
-	case slot := <-p.reusedSlots:
+	case s := <-p.reusedSlots:
 		p.reusedSlotCounter.Add(ctx, -1)
 		telemetry.ReportEvent(ctx, "reused network slot")
 
-		return slot, nil
+		slot = s
 	default:
 		select {
 		case <-ctx.Done():
 			return Slot{}, ctx.Err()
-		case slot := <-p.newSlots:
+		case s := <-p.newSlots:
 			p.newSlotCounter.Add(ctx, -1)
 			telemetry.ReportEvent(ctx, "new network slot")
 
-			return slot, nil
+			slot = s
 		}
 	}
+
+	go func() (e error) {
+		defer func() {
+			if e != nil {
+				zap.L().Error("error resetting slot internet access", zap.Error(e))
+			}
+		}()
+		start := time.Now()
+		n, err := ns.GetNS(filepath.Join("/run/netns", slot.NamespaceID()))
+		if err != nil {
+			return fmt.Errorf("failed to get slot network namespace '%s': %w", slot.NamespaceID(), err)
+		}
+		defer n.Close()
+
+		err = n.Do(func(netNS ns.NetNS) error {
+			if !allowInternet {
+				err := slot.Firewall.AddBlockedIP("0.0.0.0/0")
+				if err != nil {
+					return fmt.Errorf("error setting firewall rules: %w", err)
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed execution in network namespace '%s': %w", slot.NamespaceID(), err)
+		}
+		zap.L().Debug("slot internet access configured",
+			zap.String("namespace_id", slot.NamespaceID()),
+			zap.String("took", time.Since(start).String()),
+		)
+
+		return nil
+	}()
+
+	return slot, nil
 }
 
 func (p *Pool) Return(slot Slot) error {
+	start := time.Now()
+
+	go func() (e error) {
+		defer func() {
+			if e != nil {
+				zap.L().Error("error resetting slot internet access", zap.Error(e))
+			}
+		}()
+
+		n, err := ns.GetNS(filepath.Join("/run/netns", slot.NamespaceID()))
+		if err != nil {
+			return fmt.Errorf("failed to get slot network namespace '%s': %w", slot.NamespaceID(), err)
+		}
+		defer n.Close()
+
+		err = n.Do(func(netNS ns.NetNS) error {
+			err := slot.Firewall.ResetAllCustom()
+			if err != nil {
+				return fmt.Errorf("error cleaning firewall rules: %w", err)
+			}
+
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed execution in network namespace '%s': %w", slot.NamespaceID(), err)
+		}
+		zap.L().Debug("slot internet access reset",
+			zap.String("namespace_id", slot.NamespaceID()),
+			zap.String("took", time.Since(start).String()),
+		)
+		return nil
+	}()
+
 	select {
 	case p.reusedSlots <- slot:
 		p.reusedSlotCounter.Add(context.Background(), 1)
