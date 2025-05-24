@@ -22,5 +22,10 @@ func NewMemory(memoryBuildDir string, sizeMb int64) (string, error) {
 		return "", fmt.Errorf("error truncating blank memfile: %w", err)
 	}
 
+	err = emptyMemoryFile.Sync()
+	if err != nil {
+		return "", fmt.Errorf("error syncing blank memfile: %w", err)
+	}
+
 	return emptyMemoryFilePath, nil
 }
