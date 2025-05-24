@@ -708,7 +708,7 @@ func getNetworkSlot(
 	networkCtx, networkSpan := tracer.Start(ctx, "get-network-slot")
 	defer networkSpan.End()
 
-	ips, err := networkPool.Get(networkCtx)
+	ips, err := networkPool.Get(networkCtx, true)
 	if err != nil {
 		return network.Slot{}, fmt.Errorf("failed to get network slot: %w", err)
 	}

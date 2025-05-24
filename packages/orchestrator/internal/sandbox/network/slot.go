@@ -20,6 +20,8 @@ const (
 type Slot struct {
 	Key string
 	Idx int
+
+	Firewall *Firewall
 }
 
 func NewSlot(key string, idx int) *Slot {
@@ -115,4 +117,14 @@ func (s *Slot) TapCIDR() string {
 
 func (s *Slot) TapMAC() string {
 	return "02:FC:00:00:00:05"
+}
+
+func (s *Slot) InitializeFirewall() error {
+	fw, err := NewFirewall(s.TapName())
+	if err != nil {
+		return fmt.Errorf("error initializing firewall: %w", err)
+	}
+	s.Firewall = fw
+
+	return nil
 }

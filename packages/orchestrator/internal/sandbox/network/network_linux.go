@@ -195,9 +195,9 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error creating postrouting rule from vpeer: %w", err)
 	}
 
-	err = s.addBlockingRules(tables)
+	err = s.InitializeFirewall()
 	if err != nil {
-		return fmt.Errorf("error adding blocking rules: %w", err)
+		return fmt.Errorf("error initializing slot firewall: %w", err)
 	}
 
 	// Go back to original namespace
