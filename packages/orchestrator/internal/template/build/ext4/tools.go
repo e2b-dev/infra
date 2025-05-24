@@ -140,6 +140,11 @@ func enlargeFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, ad
 	if err != nil {
 		return 0, fmt.Errorf("error truncating rootfs file: %w", err)
 	}
+
+	if err := rootfsFile.Sync(); err != nil {
+		return 0, fmt.Errorf("error syncing rootfs file: %w", err)
+	}
+
 	telemetry.ReportEvent(ctx, "truncated rootfs file to size of build + defaultDiskSizeMB")
 	return rootfsSize, err
 }

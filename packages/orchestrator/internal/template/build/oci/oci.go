@@ -123,5 +123,9 @@ func ToExt4(ctx context.Context, img v1.Image, rootfsPath string, sizeLimit int6
 		return fmt.Errorf("error converting tar to ext4: %w", err)
 	}
 
+	if err := rootfsFile.Sync(); err != nil {
+		return fmt.Errorf("error syncing rootfs file: %w", err)
+	}
+
 	return nil
 }
