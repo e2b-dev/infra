@@ -3,8 +3,8 @@
 
 set -e
 
-readonly NOMAD_CONFIG_FILE="default.hcl"
 readonly SUPERVISOR_CONFIG_PATH="/etc/supervisor/conf.d/run-nomad.conf"
+readonly NOMAD_CONFIG_FILE="default.hcl"
 
 readonly COMPUTE_INSTANCE_METADATA_URL="http://metadata.google.internal/computeMetadata/v1"
 readonly GOOGLE_CLOUD_METADATA_REQUEST_HEADER="Metadata-Flavor: Google"
@@ -65,7 +65,17 @@ function get_instance_custom_metadata_value {
   local -r key="$1"
 
   log_info "Looking up Custom Instance Metadata value for key \"$key\""
-  get_instance_metadata_value "instance/attributes/$key"
+  local response
+  response=$(curl --silent --show-error --location --header "$GOOGLE_CLOUD_METADATA_REQUEST_HEADER" --write-out "%{http_code}" "$COMPUTE_INSTANCE_METADATA_URL/instance/attributes/$key")
+  local status_code="${response: -3}"
+  local content="${response%???}"
+
+  if [[ "$status_code" == "200" ]]; then
+    echo "$content"
+  else
+    log_warn "Failed to get metadata for key \"$key\" with status code $status_code"
+    echo ""
+  fi
 }
 
 # Get the ID of the Project in which this Compute Instance currently resides
@@ -130,12 +140,15 @@ function generate_nomad_config {
   local instance_ip_address=""
   local instance_region=""
   local instance_zone=""
+  local job_constraint=""
+  local node_pool=""
 
   instance_name=$(get_instance_name)
   instance_ip_address=$(get_instance_ip_address)
   instance_region=$(get_instance_region)
   zone=$(get_instance_zone)
-
+  job_constraint=$(get_instance_custom_metadata_value "job-constraint" || true)
+  node_pool=$(get_instance_custom_metadata_value "node-pool" || echo "unassigned")
 
   log_info "Creating default Nomad config file in $config_path"
   cat >"$config_path" <<EOF
@@ -155,9 +168,10 @@ leave_on_terminate = true
 
 client {
   enabled = true
-  node_pool = "api"
+  node_pool = "$node_pool"
   meta {
-    "node_pool" = "api"
+    "node_pool" = "$node_pool"
+    ${job_constraint:+"\"job_constraint\"" = "\"$job_constraint\""}
   }
   max_kill_timeout = "24h"
 }
@@ -261,10 +275,9 @@ function get_owner_of_path {
 }
 
 function run {
-  local nodepool="default"
   local all_args=()
 
-  while [[ $# > 0 ]]; do
+  while [[ $# -gt 0 ]]; do
     local key="$1"
 
     case "$key" in
@@ -283,7 +296,11 @@ function run {
     shift
   done
 
-
+  export ARCH_CNI=$([ $(uname -m) = aarch64 ] && echo arm64 || echo amd64)
+  export CNI_PLUGIN_VERSION=v1.6.2
+  curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGIN_VERSION}/cni-plugins-linux-${ARCH_CNI}-${CNI_PLUGIN_VERSION}".tgz &&
+    sudo mkdir -p /opt/cni/bin &&
+    sudo tar -C /opt/cni/bin -xzf cni-plugins.tgz
 
   use_sudo="true"
 
@@ -291,13 +308,9 @@ function run {
   assert_is_installed "curl"
 
   config_dir=$(cd "$SCRIPT_DIR/../config" && pwd)
-
   data_dir=$(cd "$SCRIPT_DIR/../data" && pwd)
-
   bin_dir=$(cd "$SCRIPT_DIR/../bin" && pwd)
-
   log_dir=$(cd "$SCRIPT_DIR/../log" && pwd)
-
   user=$(get_owner_of_path "$config_dir")
 
   generate_nomad_config "$server" "$client" "$num_servers" "$config_dir" "$user" "$consul_token"
