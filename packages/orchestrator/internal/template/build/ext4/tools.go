@@ -140,6 +140,13 @@ func enlargeFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, ad
 	if err != nil {
 		return 0, fmt.Errorf("error truncating rootfs file: %w", err)
 	}
+
+	// Sync the metadata and data to disk.
+	// This is important to ensure that the file is fully written when used by other processes, like FC.
+	if err := rootfsFile.Sync(); err != nil {
+		return 0, fmt.Errorf("error syncing rootfs file: %w", err)
+	}
+
 	telemetry.ReportEvent(ctx, "truncated rootfs file to size of build + defaultDiskSizeMB")
 	return rootfsSize, err
 }
