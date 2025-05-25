@@ -70,6 +70,10 @@ func seed(db *db.DB, data SeedData) error {
 	// Access token
 	tokenWithoutPrefix := strings.TrimPrefix(data.AccessToken, keys.AccessTokenPrefix)
 	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)
+	if err != nil {
+		return fmt.Errorf("failed to decode access token: %w", err)
+	}
+
 	accessTokenHash := hasher.Hash(accessTokenBytes)
 
 	accessTokenMask, err := keys.MaskKey(keys.ApiKeyPrefix, tokenWithoutPrefix)

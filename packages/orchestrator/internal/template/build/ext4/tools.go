@@ -57,7 +57,7 @@ func Enlarge(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSiz
 }
 
 func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, blockSize int64) (int64, error) {
-	ctx, statSpan := tracer.Start(ctx, "stat-ext4-file")
+	_, statSpan := tracer.Start(ctx, "stat-ext4-file")
 	defer statSpan.End()
 
 	cmd := exec.Command("debugfs", "-R", "stats", rootfsPath)

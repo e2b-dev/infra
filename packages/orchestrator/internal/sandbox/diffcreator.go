@@ -45,10 +45,10 @@ func (r *MemoryDiffCreator) process(ctx context.Context, out io.Writer) (h *head
 	}()
 
 	memfileSource, err := os.Open(r.memfile.Path())
-	defer memfileSource.Close()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open memfile: %w", err)
 	}
+	defer memfileSource.Close()
 
 	return header.WriteDiffWithTrace(
 		ctx,

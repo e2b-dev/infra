@@ -221,8 +221,8 @@ func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
 			return false
 		}
 
-		// We depend on the startTime not changing to uniquely identify instance in the cache.
-		return v.Instance.SandboxID == instanceInfo.Instance.SandboxID && v.StartTime == instanceInfo.StartTime
+		// Make sure it's the same instance and not a sandbox which has been already resumed
+		return v.ExecutionID == instanceInfo.ExecutionID
 	})
 }
 
@@ -240,16 +240,16 @@ func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (*no
 	return value, nil
 }
 
-func (c *InstanceInfo) PauseDone(err error) {
+func (i *InstanceInfo) PauseDone(err error) {
 	if err == nil {
-		err := c.Pausing.SetValue(c.Node)
+		err := i.Pausing.SetValue(i.Node)
 		if err != nil {
 			zap.L().Error("error setting PauseDone value", zap.Error(err))
 
 			return
 		}
 	} else {
-		err := c.Pausing.SetError(err)
+		err := i.Pausing.SetError(err)
 		if err != nil {
 			zap.L().Error("error setting PauseDone error", zap.Error(err))
 
