@@ -216,11 +216,14 @@ BUILD_ID=%s
 			"etc/init.d/rcS": {[]byte(`#!/usr/bin/busybox ash
 echo "Mounting essential filesystems"
 # Ensure necessary mount points exist
-mkdir -p /proc /sys /dev
+mkdir -p /proc /sys /dev /tmp /run
 
 # Mount essential filesystems
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mount -t tmpfs tmpfs /tmp
+mount -t tmpfs tmpfs /run
 
 echo "System Init"`), 0o777},
 			"etc/inittab": {[]byte(`# Run system init
@@ -233,7 +236,10 @@ echo "System Init"`), 0o777},
 # Running the poweroff or halt commands inside a Linux guest will bring it down but Firecracker process remains unaware of the guest shutdown so it lives on.
 # Running the reboot command in a Linux guest will gracefully bring down the guest system and also bring a graceful end to the Firecracker process.
 ::once:/usr/bin/busybox reboot
-::shutdown:/usr/bin/busybox umount -a -r
+
+# Clean shutdown of filesystems and swap
+::shutdown:/usr/bin/busybox swapoff -a
+::shutdown:/usr/bin/busybox umount -a -r -v
 `), 0o777},
 		},
 	)

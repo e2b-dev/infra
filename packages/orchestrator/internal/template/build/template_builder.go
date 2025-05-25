@@ -176,14 +176,17 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 
 	// Check the rootfs filesystem corruption
 	ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
-	zap.L().Debug("provisioned filesystem ext4 integrity",
-		zap.String("result", ext4Check),
-		zap.Error(err),
-	)
 	if err != nil {
+		zap.L().Error("provisioned filesystem ext4 integrity",
+			zap.String("result", ext4Check),
+			zap.Error(err),
+		)
 		postProcessor.WriteMsg(fmt.Sprintf("Error checking provisioned filesystem integrity: %v", err))
 		return nil, fmt.Errorf("error checking ext4 filesystem integrity: %w", err)
 	}
+	zap.L().Debug("provisioned filesystem ext4 integrity",
+		zap.String("result", ext4Check),
+	)
 
 	err = b.enlargeDiskAfterProvisioning(ctx, template, rootfsPath)
 	if err != nil {
@@ -463,12 +466,15 @@ func (b *TemplateBuilder) enlargeDiskAfterProvisioning(
 
 	// Check the rootfs filesystem corruption
 	ext4Check, err := ext4.CheckIntegrity(rootfsPath, false)
-	zap.L().Debug("final enlarge filesystem ext4 integrity",
-		zap.String("result", ext4Check),
-		zap.Error(err),
-	)
 	if err != nil {
+		zap.L().Error("final enlarge filesystem ext4 integrity",
+			zap.String("result", ext4Check),
+			zap.Error(err),
+		)
 		return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
 	}
+	zap.L().Debug("final enlarge filesystem ext4 integrity",
+		zap.String("result", ext4Check),
+	)
 	return nil
 }

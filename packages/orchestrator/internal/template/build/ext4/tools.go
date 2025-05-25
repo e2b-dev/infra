@@ -3,7 +3,6 @@ package ext4
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -50,6 +50,7 @@ func Enlarge(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSiz
 	cmd.Stderr = resizeStderrWriter
 	err = cmd.Run()
 	if err != nil {
+		DebugInfo(rootfsPath)
 		return 0, fmt.Errorf("error resizing rootfs file: %w", err)
 	}
 
@@ -80,26 +81,25 @@ func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, b
 }
 
 func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
+	DebugInfo(rootfsPath)
 	args := "-nf"
 	if fix {
 		args = "-pf"
 	}
 	cmd := exec.Command("e2fsck", args, rootfsPath)
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			var o bytes.Buffer
-			o.Write(exitErr.Stderr)
-			o.WriteString("\n\n")
-			o.Write(out)
-			return o.String(), fmt.Errorf("error running e2fsck: %w", err)
-		} else {
-			return string(out), fmt.Errorf("error running e2fsck: %w", err)
-		}
+		return string(out), fmt.Errorf("error running e2fsck: %w", err)
 	}
 
 	return strings.TrimSpace(string(out)), nil
+}
+
+func DebugInfo(rootfsPath string) {
+	cmd := exec.Command("tune2fs", "-l", rootfsPath)
+	output, err := cmd.CombinedOutput()
+
+	zap.L().Debug("tune2fs -l output", zap.String("output", string(output)), zap.Error(err))
 }
 
 // parseFreeBlocks extracts the "Free blocks:" value from debugfs output
@@ -147,6 +147,6 @@ func enlargeFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, ad
 		return 0, fmt.Errorf("error syncing rootfs file: %w", err)
 	}
 
-	telemetry.ReportEvent(ctx, "truncated rootfs file to size of build + defaultDiskSizeMB")
+	telemetry.ReportEvent(ctx, "truncated rootfs file to size of build + defaultDiskSizeMB", attribute.Int64("size", rootfsSize))
 	return rootfsSize, err
 }
