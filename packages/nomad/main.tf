@@ -390,6 +390,12 @@ resource "nomad_job" "loki" {
   })
 }
 
+resource "nomad_job" "template-cache" {
+  jobspec = templatefile("${path.module}/template-cache.hcl", {
+    gcp_zone = var.gcp_zone
+  })
+}
+
 # create a bucket for clickhouse
 resource "google_storage_bucket" "clickhouse_bucket" {
   name     = "${var.gcp_project_id}-clickhouse-bucket"
