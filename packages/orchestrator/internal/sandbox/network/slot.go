@@ -128,3 +128,16 @@ func (s *Slot) InitializeFirewall() error {
 
 	return nil
 }
+
+func (s *Slot) CloseFirewall() error {
+	if s.Firewall == nil {
+		return nil
+	}
+
+	if err := s.Firewall.Close(); err != nil {
+		return fmt.Errorf("error closing firewall: %w", err)
+	}
+	s.Firewall = nil
+
+	return nil
+}

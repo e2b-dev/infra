@@ -243,6 +243,11 @@ func (s *Slot) CreateNetwork() error {
 func (s *Slot) RemoveNetwork() error {
 	var errs []error
 
+	err := s.CloseFirewall()
+	if err != nil {
+		return fmt.Errorf("error closing firewall: %w", err)
+	}
+
 	tables, err := iptables.New()
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error initializing iptables: %w", err))

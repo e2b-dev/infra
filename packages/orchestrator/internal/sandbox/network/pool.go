@@ -138,7 +138,7 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (Slot, error) {
 	go func() (e error) {
 		defer func() {
 			if e != nil {
-				zap.L().Error("error resetting slot internet access", zap.Error(e))
+				zap.L().Error("error setting slot internet access", zap.Error(e))
 			}
 		}()
 		start := time.Now()

@@ -34,7 +34,7 @@ type Firewall struct {
 // NewFirewall creates the table, chain, sets, seeds the block-set,
 // installs all rules, and flushes to kernel.
 func NewFirewall(tapIf string) (*Firewall, error) {
-	conn, err := nftables.New()
+	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
 	}
@@ -88,6 +88,10 @@ func NewFirewall(tapIf string) (*Firewall, error) {
 	return fw, nil
 }
 
+func (fw *Firewall) Close() error {
+	return fw.conn.CloseLasting()
+}
+
 // installRules wires up: (i) established → ACCEPT, (ii) in allowSet → ACCEPT,
 // then if !allowInternet a catch-all DROP, and (iii) in blockSet → DROP.
 func (fw *Firewall) installRules() error {
@@ -113,7 +117,7 @@ func (fw *Firewall) installRules() error {
 	if err != nil {
 		return fmt.Errorf("build rule for established/related: %w", err)
 	}
-	fw.conn.AddRule(&nftables.Rule{
+	fw.conn.InsertRule(&nftables.Rule{
 		Table: fw.table, Chain: fw.chain,
 		Exprs: append(ifaceMatch,
 			exprs...,
