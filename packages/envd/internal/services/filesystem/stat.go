@@ -31,13 +31,7 @@ func (Service) Stat(ctx context.Context, req *connect.Request[rpc.StatRequest]) 
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error statting file: %w", err))
 	}
 
-	return connect.NewResponse(
-		&rpc.StatResponse{
-			Entry: &rpc.EntryInfo{
-				Name: fileInfo.Name(),
-				Type: getEntryType(fileInfo),
-				Path: path,
-			},
-		},
-	), nil
+	entry := entryInfoFromFileInfo(fileInfo, path)
+
+	return connect.NewResponse(&rpc.StatResponse{Entry: entry}), nil
 }
