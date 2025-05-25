@@ -38,13 +38,14 @@ func main() {
 	var baseStoragePath string
 	var diffStoragePath string
 
-	if *kind == "memfile" {
+	switch *kind {
+	case "memfile":
 		baseStoragePath = baseTemplate.StorageMemfileHeaderPath()
 		diffStoragePath = diffTemplate.StorageMemfileHeaderPath()
-	} else if *kind == "rootfs" {
+	case "rootfs":
 		baseStoragePath = baseTemplate.StorageRootfsHeaderPath()
 		diffStoragePath = diffTemplate.StorageRootfsHeaderPath()
-	} else {
+	default:
 		log.Fatalf("invalid kind: %s", *kind)
 	}
 

@@ -22,7 +22,7 @@ type SandboxLoggerConfig struct {
 func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
 	level := zap.NewAtomicLevelAt(zap.DebugLevel)
 
-	core := zapcore.NewNopCore()
+	var core zapcore.Core
 	if !config.IsInternal && config.CollectorAddress != "" {
 		// Add Vector exporter to the core
 		vectorEncoder := zapcore.NewJSONEncoder(logger.GetEncoderConfig(zapcore.DefaultLineEnding))

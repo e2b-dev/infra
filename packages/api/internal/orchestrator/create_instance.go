@@ -31,7 +31,7 @@ const (
 )
 
 var (
-	sandboxCreateFailedError = fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
+	errSandboxCreateFailed = fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
 )
 
 func (o *Orchestrator) CreateSandbox(
@@ -160,7 +160,7 @@ func (o *Orchestrator) CreateSandbox(
 			return nil, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: "Failed to create sandbox",
-				Err:       sandboxCreateFailedError,
+				Err:       errSandboxCreateFailed,
 			}
 		}
 

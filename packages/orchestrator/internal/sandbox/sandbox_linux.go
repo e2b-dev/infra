@@ -276,6 +276,9 @@ func ResumeSandbox(
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 	)
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
+	}
 
 	go func() {
 		runErr := rootfsOverlay.Start(childCtx)

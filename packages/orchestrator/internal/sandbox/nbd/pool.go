@@ -239,18 +239,16 @@ func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 
 // Get device slot if there is one available.
 func (d *DevicePool) GetDevice(ctx context.Context) (DeviceSlot, error) {
-	for {
-		select {
-		case <-ctx.Done():
-			return 0, ctx.Err()
-		default:
-		}
-
-		slot := <-d.slots
-		d.slotCounter.Add(d.ctx, -1)
-
-		return slot, nil
+	select {
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	default:
 	}
+
+	slot := <-d.slots
+	d.slotCounter.Add(d.ctx, -1)
+
+	return slot, nil
 }
 
 // ReleaseDevice will return an error if the device is not free and not release the slot — you can retry.

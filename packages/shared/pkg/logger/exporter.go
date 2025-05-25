@@ -38,11 +38,9 @@ func NewBufferedHTTPWriter(ctx context.Context, endpoint string) zapcore.WriteSy
 	}
 
 	go func() {
-		select {
-		case <-ctx.Done():
-			if err := httpWriter.Stop(); err != nil {
-				fmt.Printf("Error stopping HTTP writer: %v\n", err)
-			}
+		<-ctx.Done()
+		if err := httpWriter.Stop(); err != nil {
+			fmt.Printf("Error stopping HTTP writer: %v\n", err)
 		}
 	}()
 
