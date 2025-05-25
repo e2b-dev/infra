@@ -68,13 +68,16 @@ func (c *Checks) Stop() {
 func (c *Checks) LogMetrics(ctx context.Context) {
 	logger := c.sandbox
 
-	switch {
-	case c.useLokiMetrics == "true":
+	if c.useLokiMetrics == "true" {
 		logger.LogMetricsLoki(ctx)
-	case c.useClickhouseMetrics == "true":
+	}
+
+	if c.useClickhouseMetrics == "true" {
 		logger.LogMetricsClickhouse(ctx)
-	default:
-		// ensure backward compatibility if neither are set
+	}
+
+	// ensure backward compatibility if neither are set
+	if c.useClickhouseMetrics != "true" && c.useLokiMetrics != "true" {
 		logger.LogMetricsLoki(ctx)
 	}
 }
