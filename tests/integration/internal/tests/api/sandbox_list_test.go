@@ -52,10 +52,12 @@ func TestSandboxListWithFilter(t *testing.T) {
 	// standard sandbox
 	_ = utils.SetupSandboxWithCleanup(t, c)
 
-	// sandbox with custom metadata
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(30), utils.WithMetadata(api.SandboxMetadata{"favouriteColor": "blue"}))
+	metadataKey := "favouriteColor"
+	metadataValue := "blue"
+	metadataString := fmt.Sprintf("%s=%s", metadataKey, metadataValue)
 
-	metadataString := "favouriteColor=blue"
+	// sandbox with custom metadata
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 
 	// List with filter
 	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
@@ -99,11 +101,11 @@ func TestSandboxListRunning(t *testing.T) {
 func TestSandboxListPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	uniqueString := id.Generate()
-	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
+	metadataKey := "uniqueIdentifier"
+	metadataValue := id.Generate()
+	metadataString := fmt.Sprintf("%s=%s", metadataKey, metadataValue)
 
-	// Create and pause a sandbox
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 	sandboxID := sbx.SandboxID
 
 	pauseSandbox(t, c, sandboxID)
@@ -132,14 +134,14 @@ func TestSandboxListPaused(t *testing.T) {
 func TestSandboxListPaginationRunning(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	uniqueString := id.Generate()
-	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
+	metadataKey := "uniqueIdentifier"
+	metadataValue := id.Generate()
+	metadataString := fmt.Sprintf("%s=%s", metadataKey, metadataValue)
 
-	// Create two sandboxes
-	sbx1 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
+	sbx1 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 	sandbox1ID := sbx1.SandboxID
 
-	sbx2 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
+	sbx2 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 	sandbox2ID := sbx2.SandboxID
 
 	// Test pagination with limit
@@ -179,15 +181,15 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 func TestSandboxListPaginationPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	uniqueString := id.Generate()
-	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
+	metadataKey := "uniqueIdentifier"
+	metadataValue := id.Generate()
+	metadataString := fmt.Sprintf("%s=%s", metadataKey, metadataValue)
 
-	// Create two paused sandboxes
-	sbx1 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
+	sbx1 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 	sandbox1ID := sbx1.SandboxID
 	pauseSandbox(t, c, sandbox1ID)
 
-	sbx2 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
+	sbx2 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 	sandbox2ID := sbx2.SandboxID
 	pauseSandbox(t, c, sandbox2ID)
 
@@ -228,14 +230,14 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	uniqueString := id.Generate()
-	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
+	metadataKey := "uniqueIdentifier"
+	metadataValue := id.Generate()
+	metadataString := fmt.Sprintf("%s=%s", metadataKey, metadataValue)
 
-	// Create two sandboxes
-	sbx1 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
+	sbx1 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
+	sbx2 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
+
 	sandbox1ID := sbx1.SandboxID
-
-	sbx2 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
 	sandbox2ID := sbx2.SandboxID
 
 	// Pause the second sandbox
@@ -279,11 +281,11 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 func TestSandboxListRunningV1(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	uniqueString := id.Generate()
-	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
+	metadataKey := "uniqueIdentifier"
+	metadataValue := id.Generate()
+	metadataString := fmt.Sprintf("%s=%s", metadataKey, metadataValue)
 
-	// Create a sandbox
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 
 	// List running sandboxes
 	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
@@ -308,10 +310,11 @@ func TestSandboxListRunningV1(t *testing.T) {
 func TestSandboxListWithFilterV1(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	uniqueString := id.Generate()
-	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
+	metadataKey := "uniqueIdentifier"
+	metadataValue := id.Generate()
+	metadataString := fmt.Sprintf("%s=%s", metadataKey, metadataValue)
 
-	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
 
 	// List with filter
 	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
