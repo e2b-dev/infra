@@ -7,8 +7,6 @@ LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
 .PHONY: init
 init:
 	brew install protobuf
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
 
 upload:
 	./upload.sh $(GCP_PROJECT_ID)
@@ -39,26 +37,8 @@ build-and-upload:
 .PHONY: generate
 generate:
 	go generate ./...
-	@if ! command -v buf >/dev/null 2>&1; then \
-		echo "buf is not installed. Do you want to install it?  (Y/n): "; \
-		read choice; \
-		if [ "$$choice" = "Y" ]; then \
-			go install github.com/bufbuild/buf/cmd/buf@v1.50.1 && \
-			go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1 && \
-			go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.16.2; \
-		else \
-			exit 1; \
-		fi; \
-	fi
-	cd spec && buf generate --template buf.gen.yaml
-	cd spec && buf generate --template buf.gen.shared.yaml
-
-.PHONY: init-generate
-init-generate:
-	go install github.com/bufbuild/buf/cmd/buf@latest
-	go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-	go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
+	cd spec && go tool buf generate --template buf.gen.yaml
+	cd spec && go tool buf generate --template buf.gen.shared.yaml
 
 .PHONY: test
 test:

@@ -11,12 +11,6 @@ migrate/%:
 	@$(goose) $(notdir $@)
 	@echo "Done"
 
-.PHONY: init
-init:
-	@echo "Installing sqlc"
-	brew install sqlc
-	@echo "Done"
-
 .PHONY: build-debug
 build-debug:
 	go mod download
@@ -35,11 +29,7 @@ status:
 	@$(goose) status
 
 .PHONY: generate
-generate: sqlc-init
+generate:
 	rm -rf queries/*.go
-	sqlc generate
-
-.PHONY: sqlc-init
-sqlc-init:
-	@go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0
+	go tool sqlc generate
 
