@@ -50,7 +50,7 @@ func Enlarge(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSiz
 	cmd.Stderr = resizeStderrWriter
 	err = cmd.Run()
 	if err != nil {
-		DebugInfo(rootfsPath)
+		logMetadata(rootfsPath)
 		return 0, fmt.Errorf("error resizing rootfs file: %w", err)
 	}
 
@@ -81,7 +81,7 @@ func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, b
 }
 
 func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
-	DebugInfo(rootfsPath)
+	logMetadata(rootfsPath)
 	args := "-nf"
 	if fix {
 		args = "-pf"
@@ -95,11 +95,11 @@ func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func DebugInfo(rootfsPath string) {
+func logMetadata(rootfsPath string) {
 	cmd := exec.Command("tune2fs", "-l", rootfsPath)
 	output, err := cmd.CombinedOutput()
 
-	zap.L().Debug("tune2fs -l output", zap.String("output", string(output)), zap.Error(err))
+	zap.L().Debug("tune2fs -l output", zap.String("path", rootfsPath), zap.String("output", string(output)), zap.Error(err))
 }
 
 // parseFreeBlocks extracts the "Free blocks:" value from debugfs output
