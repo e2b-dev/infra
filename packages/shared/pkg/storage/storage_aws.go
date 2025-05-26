@@ -90,7 +90,8 @@ func (a *AWSBucketStorageObjectProvider) WriteTo(dst io.Writer) (int64, error) {
 
 	resp, err := a.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &a.bucketName, Key: &a.path})
 	if err != nil {
-		if errors.Is(err, &types.NoSuchKey{}) {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
 			return 0, ErrorObjectNotExist
 		}
 
@@ -159,7 +160,8 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, 
 	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+int64(len(buff))-1))
 	resp, err := a.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &a.bucketName, Key: &a.path, Range: readRange})
 	if err != nil {
-		if errors.Is(err, &types.NoSuchKey{}) {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
 			return 0, ErrorObjectNotExist
 		}
 
