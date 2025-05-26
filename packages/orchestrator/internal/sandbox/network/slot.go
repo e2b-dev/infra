@@ -160,20 +160,12 @@ func (s *Slot) ConfigureInternet(allowInternet bool) (e error) {
 	defer n.Close()
 
 	err = n.Do(func(netNS ns.NetNS) error {
-		//if !allowInternet {
-		//err := slot.Firewall.AddBlockedIP("0.0.0.0/1")
-		//if err != nil {
-		//	return fmt.Errorf("error setting firewall rules: %w", err)
-		//}
-		//err = slot.Firewall.AddBlockedIP("128.0.0.0/1")
-		//if err != nil {
-		//	return fmt.Errorf("error setting firewall rules: %w", err)
-		//}
-		err = s.Firewall.AddBlockedIP("0.0.0.0/0")
-		if err != nil {
-			return fmt.Errorf("error setting firewall rules: %w", err)
+		if !allowInternet {
+			err = s.Firewall.AddBlockedIP("0.0.0.0/0")
+			if err != nil {
+				return fmt.Errorf("error setting firewall rules: %w", err)
+			}
 		}
-		//}
 
 		return nil
 	})
@@ -183,7 +175,7 @@ func (s *Slot) ConfigureInternet(allowInternet bool) (e error) {
 	zap.L().Debug("slot internet access configured",
 		zap.String("namespace_id", s.NamespaceID()),
 		zap.Bool("allow_internet", allowInternet),
-		zap.String("took", time.Since(start).String()),
+		zap.Int64("took", time.Since(start).Nanoseconds()),
 	)
 
 	return nil
@@ -211,7 +203,7 @@ func (s *Slot) ResetInternet() error {
 	}
 	zap.L().Debug("slot internet access reset",
 		zap.String("namespace_id", s.NamespaceID()),
-		zap.String("took", time.Since(start).String()),
+		zap.Int64("took", time.Since(start).Nanoseconds()),
 	)
 	return nil
 }

@@ -235,7 +235,7 @@ func (fw *Firewall) ResetAllowedCustom() error {
 	initIps := make([]string, 0)
 
 	// Allow Logs Collector IP for logs
-	if ip := os.Getenv("LOGS_COLLECTOR_IP"); ip != "" {
+	if ip := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP"); ip != "" {
 		ip = strings.TrimPrefix(ip, "http://") + "/32"
 		initIps = append(initIps, ip)
 	}
