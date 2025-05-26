@@ -17,10 +17,10 @@ type SandboxConfig struct {
 	timeout  int32
 }
 
-type SandboxOption func(config SandboxConfig)
+type SandboxOption func(config *SandboxConfig)
 
 func WithMetadata(metadata api.SandboxMetadata) SandboxOption {
-	return func(config SandboxConfig) {
+	return func(config *SandboxConfig) {
 		for key, value := range metadata {
 			config.metadata[key] = value
 		}
@@ -28,7 +28,7 @@ func WithMetadata(metadata api.SandboxMetadata) SandboxOption {
 }
 
 func WithTimeout(timeout int32) SandboxOption {
-	return func(config SandboxConfig) {
+	return func(config *SandboxConfig) {
 		config.timeout = timeout
 	}
 }
@@ -49,7 +49,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 	}
 
 	for _, option := range options {
-		option(config)
+		option(&config)
 	}
 
 	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
