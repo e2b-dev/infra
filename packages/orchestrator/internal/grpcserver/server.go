@@ -50,6 +50,7 @@ func New(info *service.ServiceInfo) *GRPCServer {
 		"/TemplateService/HealthStatus",
 		"/InfoService/ServiceInfo",
 	)
+
 	srv := grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 			MinTime:             5 * time.Second, // Minimum time between pings from client
