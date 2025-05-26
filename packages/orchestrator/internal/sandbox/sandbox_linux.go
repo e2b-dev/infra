@@ -101,7 +101,7 @@ func CreateSandbox(
 
 	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, allowInternet)
 	defer func() {
-		// Ensure the slot is returned so it's cleaned up properly
+		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
 	}()
 
@@ -262,7 +262,7 @@ func ResumeSandbox(
 
 	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, allowInternet)
 	defer func() {
-		// Ensure the slot is returned so it's cleaned up properly
+		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
 		<-ipsCh
 	}()
 

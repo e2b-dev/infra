@@ -159,18 +159,21 @@ func (s *Slot) ConfigureInternet(ctx context.Context, tracer trace.Tracer, allow
 	))
 	defer span.End()
 
-	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
+	if allowInternet {
+		// Internet access is allowed by default.
+		return nil
+	}
+
+	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		if !allowInternet {
-			err = s.Firewall.AddBlockedIP("0.0.0.0/0")
-			if err != nil {
-				return fmt.Errorf("error setting firewall rules: %w", err)
-			}
+		err = s.Firewall.AddBlockedIP("0.0.0.0/0")
+		if err != nil {
+			return fmt.Errorf("error setting firewall rules: %w", err)
 		}
 
 		return nil
@@ -188,7 +191,7 @@ func (s *Slot) ResetInternet(ctx context.Context, tracer trace.Tracer) error {
 	))
 	defer span.End()
 
-	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
+	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}

@@ -21,7 +21,7 @@ type StorageLocal struct {
 	tracer       trace.Tracer
 }
 
-const NetNamespacesDir = "/var/run/netns"
+const netNamespacesDir = "/var/run/netns"
 
 func NewStorageLocal(slotsSize int, tracer trace.Tracer) (*StorageLocal, error) {
 	// get namespaces that we want to always skip
@@ -113,7 +113,7 @@ func (s *StorageLocal) Release(ips *Slot) error {
 }
 
 func isNamespaceAvailable(name string) (bool, error) {
-	nsPath := filepath.Join(NetNamespacesDir, name)
+	nsPath := filepath.Join(netNamespacesDir, name)
 	_, err := os.Stat(nsPath)
 
 	if os.IsNotExist(err) {
@@ -131,7 +131,7 @@ func isNamespaceAvailable(name string) (bool, error) {
 func getForeignNamespaces() ([]string, error) {
 	var ns []string
 
-	files, err := os.ReadDir(NetNamespacesDir)
+	files, err := os.ReadDir(netNamespacesDir)
 	if err != nil {
 		// Folder does not exist, so we can assume no namespaces are in use
 		if os.IsNotExist(err) {
