@@ -106,7 +106,7 @@ module "cluster" {
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
 
-  client_proxy_health_port     = var.client_proxy_health_port
+  client_proxy_edge_api_port   = var.client_proxy_edge_api_port
   client_proxy_port            = var.client_proxy_port
   api_port                     = var.api_port
   docker_reverse_proxy_port    = var.docker_reverse_proxy_port
@@ -207,9 +207,9 @@ module "nomad" {
   redis_url_secret_version                  = module.api.redis_url_secret_version
   sandbox_access_token_hash_seed            = module.api.sandbox_access_token_hash_seed
 
-  client_proxy_port                = var.client_proxy_port
-  client_proxy_health_port         = var.client_proxy_health_port
-  client_proxy_docker_image_digest = module.client_proxy.client_proxy_docker_image_digest
+  edge_proxy_port          = var.client_proxy_port
+  edge_api_port            = var.client_proxy_edge_api_port
+  edge_docker_image_digest = module.client_proxy.client_proxy_docker_image_digest
 
   domain_name = var.domain_name
 
