@@ -65,11 +65,14 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 			return filepath.SkipDir
 		}
 
-		entries = append(entries, &rpc.EntryInfo{
-			Name: entry.Name(),
-			Type: getEntryType(entry),
-			Path: path,
-		})
+		fileInfo, err := entry.Info()
+		if err != nil {
+			return err
+		}
+
+		entryInfo := entryInfoFromFileInfo(fileInfo, path)
+
+		entries = append(entries, entryInfo)
 
 		return nil
 	})
