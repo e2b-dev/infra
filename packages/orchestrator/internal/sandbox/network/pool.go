@@ -111,7 +111,7 @@ func (p *Pool) populate(ctx context.Context) error {
 	}
 }
 
-func (p *Pool) Get(ctx context.Context, allowInternet bool) (Slot, error) {
+func (p *Pool) Get(ctx context.Context, tracer trace.Tracer, allowInternet bool) (Slot, error) {
 	var slot Slot
 
 	select {
@@ -132,7 +132,7 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (Slot, error) {
 		}
 	}
 
-	err := slot.ConfigureInternet(allowInternet)
+	err := slot.ConfigureInternet(ctx, tracer, allowInternet)
 	if err != nil {
 		return Slot{}, fmt.Errorf("error setting slot internet access: %w", err)
 	}
@@ -140,8 +140,8 @@ func (p *Pool) Get(ctx context.Context, allowInternet bool) (Slot, error) {
 	return slot, nil
 }
 
-func (p *Pool) Return(slot Slot) error {
-	err := slot.ResetInternet()
+func (p *Pool) Return(ctx context.Context, tracer trace.Tracer, slot Slot) error {
+	err := slot.ResetInternet(ctx, tracer)
 	if err != nil {
 		// Cleanup the slot if resetting internet fails
 		if cerr := p.cleanup(slot); cerr != nil {

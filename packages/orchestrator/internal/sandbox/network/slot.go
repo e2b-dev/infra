@@ -1,13 +1,14 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"path/filepath"
-	"time"
 
 	"github.com/containernetworking/plugins/pkg/ns"
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // We are using a more debuggable IP address allocation for now that only covers 255 addresses.
@@ -151,15 +152,20 @@ func (s *Slot) CloseFirewall() error {
 	return nil
 }
 
-func (s *Slot) ConfigureInternet(allowInternet bool) (e error) {
-	start := time.Now()
+func (s *Slot) ConfigureInternet(ctx context.Context, tracer trace.Tracer, allowInternet bool) (e error) {
+	_, span := tracer.Start(ctx, "slot-internet-configure", trace.WithAttributes(
+		attribute.String("namespace_id", s.NamespaceID()),
+		attribute.Bool("allow_internet", allowInternet),
+	))
+	defer span.End()
+
 	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
 	}
 	defer n.Close()
 
-	err = n.Do(func(netNS ns.NetNS) error {
+	err = n.Do(func(_ ns.NetNS) error {
 		if !allowInternet {
 			err = s.Firewall.AddBlockedIP("0.0.0.0/0")
 			if err != nil {
@@ -173,19 +179,14 @@ func (s *Slot) ConfigureInternet(allowInternet bool) (e error) {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
 	}
 
-	took := time.Since(start)
-	zap.L().Debug("slot internet access configured",
-		zap.String("namespace_id", s.NamespaceID()),
-		zap.Bool("allow_internet", allowInternet),
-		zap.Duration("took", took),
-		zap.String("took_humanized", took.String()),
-	)
-
 	return nil
 }
 
-func (s *Slot) ResetInternet() error {
-	start := time.Now()
+func (s *Slot) ResetInternet(ctx context.Context, tracer trace.Tracer) error {
+	_, span := tracer.Start(ctx, "slot-internet-reset", trace.WithAttributes(
+		attribute.String("namespace_id", s.NamespaceID()),
+	))
+	defer span.End()
 
 	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
 	if err != nil {
@@ -193,7 +194,7 @@ func (s *Slot) ResetInternet() error {
 	}
 	defer n.Close()
 
-	err = n.Do(func(netNS ns.NetNS) error {
+	err = n.Do(func(_ ns.NetNS) error {
 		err := s.Firewall.ResetAllCustom()
 		if err != nil {
 			return fmt.Errorf("error cleaning firewall rules: %w", err)
@@ -205,11 +206,5 @@ func (s *Slot) ResetInternet() error {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
 	}
 
-	took := time.Since(start)
-	zap.L().Debug("slot internet access reset",
-		zap.String("namespace_id", s.NamespaceID()),
-		zap.Duration("took", took),
-		zap.String("took_humanized", took.String()),
-	)
 	return nil
 }

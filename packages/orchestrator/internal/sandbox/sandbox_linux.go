@@ -711,7 +711,7 @@ func getNetworkSlot(
 	networkCtx, networkSpan := tracer.Start(ctx, "get-network-slot")
 	defer networkSpan.End()
 
-	ips, err := networkPool.Get(networkCtx, allowInternet)
+	ips, err := networkPool.Get(networkCtx, tracer, allowInternet)
 	if err != nil {
 		return network.Slot{}, fmt.Errorf("failed to get network slot: %w", err)
 	}
@@ -720,10 +720,13 @@ func getNetworkSlot(
 		_, span := tracer.Start(ctx, "network-slot-clean")
 		defer span.End()
 
-		returnErr := networkPool.Return(ips)
-		if returnErr != nil {
-			return fmt.Errorf("failed to return network slot: %w", returnErr)
-		}
+		// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
+		go func() {
+			returnErr := networkPool.Return(context.Background(), tracer, ips)
+			if returnErr != nil {
+				zap.L().Error("failed to return network slot", zap.Error(returnErr))
+			}
+		}()
 
 		return nil
 	})
