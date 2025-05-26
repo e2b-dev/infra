@@ -155,7 +155,7 @@ func CreateSandbox(
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get rootfs path: %w", err)
 	}
-	ips, _ := <-ipsCh
+	ips := <-ipsCh
 	if ips.err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
 	}
@@ -335,7 +335,7 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get rootfs path: %w", err)
 	}
-	ips, _ := <-ipsCh
+	ips := <-ipsCh
 	if ips.err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
 	}
