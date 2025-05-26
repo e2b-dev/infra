@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	envdapi "github.com/e2b-dev/infra/tests/integration/internal/envd/api"
-	"github.com/e2b-dev/infra/tests/integration/internal/envd/filesystem"
-	"github.com/e2b-dev/infra/tests/integration/internal/envd/process"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -62,7 +62,7 @@ func TestAccessToAuthorizedPathWithoutToken(t *testing.T) {
 
 	// set up the request to list the directory
 	req := connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
-	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
 
 	_, err := envdClient.FilesystemClient.ListDir(ctx, req)
@@ -125,7 +125,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 
 	// set up the request to list the directory
 	req := connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
-	setup.SetSandboxHeader(req.Header(), sbxMeta.SandboxID, sbxMeta.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbxMeta.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
 	setup.SetAccessTokenHeader(req.Header(), *sbxMeta.EnvdAccessToken)
 
@@ -140,7 +140,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 		&envdapi.PostFilesParams{Path: &filePath, Username: "user"},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbxMeta.SandboxID, sbxMeta.ClientID),
+		setup.WithSandbox(sbxMeta.SandboxID),
 		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
 	)
 
@@ -169,7 +169,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithValidAccessToken(t *testing.T
 	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
 		&envdapi.GetFilesParams{Path: &filePath, Username: "user"},
-		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
+		setup.WithSandbox(sbx.JSON201.SandboxID),
 		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
 	)
 
@@ -194,7 +194,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 
 	// set up the request to list the directory
 	req := connect.NewRequest(&filesystem.ListDirRequest{Path: "/"})
-	setup.SetSandboxHeader(req.Header(), sbxMeta.SandboxID, sbxMeta.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbxMeta.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
 	setup.SetAccessTokenHeader(req.Header(), *sbxMeta.EnvdAccessToken)
 
@@ -209,7 +209,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 		&envdapi.PostFilesParams{Path: &filePath, Username: "user"},
 		contentType,
 		textFile,
-		setup.WithSandbox(sbxMeta.SandboxID, sbxMeta.ClientID),
+		setup.WithSandbox(sbxMeta.SandboxID),
 		setup.WithEnvdAccessToken(*sbxMeta.EnvdAccessToken),
 	)
 
@@ -238,7 +238,7 @@ func TestAccessAuthorizedPathWithResumedSandboxWithoutAccessToken(t *testing.T) 
 	fileResponse, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
 		&envdapi.GetFilesParams{Path: &filePath, Username: "user"},
-		setup.WithSandbox(sbx.JSON201.SandboxID, sbx.JSON201.ClientID),
+		setup.WithSandbox(sbx.JSON201.SandboxID),
 	)
 
 	if err != nil {
@@ -258,7 +258,7 @@ type envdInitCall struct {
 }
 
 func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
-	envdReqSetup := []envdapi.RequestEditorFn{setup.WithSandbox(req.sbx.JSON201.SandboxID, req.sbx.JSON201.ClientID)}
+	envdReqSetup := []envdapi.RequestEditorFn{setup.WithSandbox(req.sbx.JSON201.SandboxID)}
 	if req.authToken != nil {
 		envdReqSetup = append(envdReqSetup, setup.WithEnvdAccessToken(*req.authToken))
 	}
@@ -273,7 +273,7 @@ func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
 	assert.Equal(t, req.expectedResHttpStatus, res.StatusCode())
 
 	if res.StatusCode() == http.StatusBadGateway {
-		logs, err := getSandboxLogs(ctx, req.client, req.sbx)
+		logs, err := getSandboxLogs(t, ctx, req.client, req.sbx)
 		if err != nil {
 			t.Logf("Failed to get logs from sandbox %s: %s", req.sbx.JSON201.SandboxID, err)
 		} else {
@@ -282,24 +282,31 @@ func sandboxEnvdInitCall(t *testing.T, ctx context.Context, req envdInitCall) {
 	}
 }
 
-func getSandboxLogs(ctx context.Context, client *setup.EnvdClient, sbx *api.PostSandboxesResponse) (string, error) {
+func getSandboxLogs(t *testing.T, ctx context.Context, client *setup.EnvdClient, sbx *api.PostSandboxesResponse) (string, error) {
 	req := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd:  "journalctl",
 			Args: []string{"-u", "envd"},
 		},
 	})
-	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID, sbx.JSON201.ClientID)
+	setup.SetSandboxHeader(req.Header(), sbx.JSON201.SandboxID)
 	setup.SetUserHeader(req.Header(), "root")
-	stream, err := client.ProcessClient.Start(
-		ctx,
-		req,
-	)
+
+	serverCtx, serverCancel := context.WithCancel(ctx)
+	defer serverCancel()
+
+	stream, err := client.ProcessClient.Start(serverCtx, req)
 	if err != nil {
 		return "", fmt.Errorf("failed to get logs from sandbox: %w", err)
 	}
 
-	defer stream.Close()
+	defer func() {
+		serverCancel()
+		streamErr := stream.Close()
+		if streamErr != nil {
+			t.Logf("Error closing stream: %v", streamErr)
+		}
+	}()
 
 	out := []string{}
 

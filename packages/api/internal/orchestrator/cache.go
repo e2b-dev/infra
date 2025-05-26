@@ -9,9 +9,11 @@ import (
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -29,6 +31,8 @@ const reportTimeout = 4 * time.Minute
 type closeType string
 
 const (
+	syncMaxRetries = 4
+
 	ClosePause  closeType = "pause"
 	CloseDelete closeType = "delete"
 )
@@ -131,13 +135,40 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *Node, nodes []*node.N
 		return
 	}
 
-	activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
-	if instancesErr != nil {
-		zap.L().Error("Error getting instances", zap.Error(instancesErr))
-		return
+	syncRetrySuccess := false
+
+	for range syncMaxRetries {
+		nodeInfo, err := node.Client.Info.ServiceInfo(ctx, &emptypb.Empty{})
+		if err != nil {
+			zap.L().Error("Error getting node info", zap.Error(err))
+			continue
+		}
+
+		// update node status (if changed)
+		nodeStatus, ok := OrchestratorToApiNodeStateMapper[nodeInfo.ServiceStatus]
+		if !ok {
+			zap.L().Error("Unknown service info status", zap.Any("status", nodeInfo.ServiceStatus), zap.String("node_id", node.Info.ID))
+			nodeStatus = api.NodeStatusUnhealthy
+		}
+		node.setStatus(nodeStatus)
+
+		activeInstances, instancesErr := o.getSandboxes(ctx, node.Info)
+		if instancesErr != nil {
+			zap.L().Error("Error getting instances", zap.Error(instancesErr))
+			continue
+		}
+
+		instanceCache.Sync(ctx, activeInstances, node.Info.ID)
+
+		syncRetrySuccess = true
+		break
 	}
 
-	instanceCache.Sync(ctx, activeInstances, node.Info.ID)
+	if !syncRetrySuccess {
+		zap.L().Error("Failed to sync node after max retries, temporarily marking as draining", zap.String("node_id", node.Info.ID))
+		node.setStatus(api.NodeStatusDraining)
+		return
+	}
 
 	builds, buildsErr := o.listCachedBuilds(ctx, node.Info.ID)
 	if buildsErr != nil {
@@ -183,6 +214,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			o.analytics,
 			info.TeamID.String(),
 			info.Instance.SandboxID,
+			info.ExecutionID,
 			info.Instance.TemplateID,
 			stopTime,
 			ct,
@@ -245,6 +277,7 @@ func reportInstanceStopAnalytics(
 	analytics *analyticscollector.Analytics,
 	teamID string,
 	sandboxID string,
+	executionID string,
 	templateID string,
 	stopTime time.Time,
 	ct closeType,
@@ -266,6 +299,7 @@ func reportInstanceStopAnalytics(
 		TeamId:        teamID,
 		EnvironmentId: templateID,
 		InstanceId:    sandboxID,
+		ExecutionId:   executionID,
 		Timestamp:     timestamppb.New(stopTime),
 		Duration:      float32(duration),
 	})
@@ -306,6 +340,7 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 			o.analytics,
 			info.TeamID.String(),
 			info.Instance.SandboxID,
+			info.ExecutionID,
 			info.Instance.TemplateID,
 			info.BuildID.String(),
 		)
@@ -325,6 +360,7 @@ func reportInstanceStartAnalytics(
 	analytics *analyticscollector.Analytics,
 	teamID string,
 	sandboxID string,
+	executionID string,
 	templateID string,
 	buildID string,
 ) {
@@ -333,6 +369,7 @@ func reportInstanceStartAnalytics(
 
 	_, err := analytics.Client.InstanceStarted(childCtx, &analyticscollector.InstanceStartedEvent{
 		InstanceId:    sandboxID,
+		ExecutionId:   executionID,
 		EnvironmentId: templateID,
 		BuildId:       buildID,
 		TeamId:        teamID,

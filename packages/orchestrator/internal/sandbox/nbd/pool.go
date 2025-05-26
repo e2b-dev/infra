@@ -47,7 +47,9 @@ type (
 //
 // Use `sudo modprobe nbd nbds_max=4096` to set the max number of devices to 4096, which is a good default for now.
 type DevicePool struct {
-	ctx context.Context
+	ctx  context.Context
+	exit chan error
+
 	// We use the bitset to speedup the free device lookup.
 	usedSlots *bitset.BitSet
 	mu        sync.Mutex
@@ -57,7 +59,7 @@ type DevicePool struct {
 	slotCounter metric.Int64UpDownCounter
 }
 
-func NewDevicePool() (*DevicePool, error) {
+func NewDevicePool(ctx context.Context) (*DevicePool, error) {
 	maxDevices, err := getMaxDevices()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get max devices: %w", err)
@@ -73,7 +75,8 @@ func NewDevicePool() (*DevicePool, error) {
 	}
 
 	pool := &DevicePool{
-		ctx:         context.Background(),
+		ctx:         ctx,
+		exit:        make(chan error, 1),
 		usedSlots:   bitset.New(maxDevices),
 		slots:       make(chan DeviceSlot, maxSlotsReady),
 		slotCounter: counter,
@@ -84,6 +87,8 @@ func NewDevicePool() (*DevicePool, error) {
 		if err != nil {
 			zap.L().Fatal("failed during populating device pool", zap.Error(err))
 		}
+
+		zap.L().Info("device pool populate closed")
 	}()
 
 	return pool, nil
@@ -115,6 +120,8 @@ func (d *DevicePool) Populate() error {
 		select {
 		case <-d.ctx.Done():
 			return d.ctx.Err()
+		case err := <-d.exit:
+			return err
 		default:
 			device, err := d.getFreeDeviceSlot()
 			if err != nil {
@@ -124,7 +131,14 @@ func (d *DevicePool) Populate() error {
 			}
 
 			d.slotCounter.Add(d.ctx, 1)
-			d.slots <- *device
+
+			// Use select to avoid panic if context is canceled before writing
+			select {
+			case err := <-d.exit:
+				return err
+			case d.slots <- *device:
+				// sent successfully
+			}
 		}
 	}
 }
@@ -225,18 +239,16 @@ func (d *DevicePool) getFreeDeviceSlot() (*DeviceSlot, error) {
 
 // Get device slot if there is one available.
 func (d *DevicePool) GetDevice(ctx context.Context) (DeviceSlot, error) {
-	for {
-		select {
-		case <-ctx.Done():
-			return 0, ctx.Err()
-		default:
-		}
-
-		slot := <-d.slots
-		d.slotCounter.Add(d.ctx, -1)
-
-		return slot, nil
+	select {
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	default:
 	}
+
+	slot := <-d.slots
+	d.slotCounter.Add(d.ctx, -1)
+
+	return slot, nil
 }
 
 // ReleaseDevice will return an error if the device is not free and not release the slot — you can retry.
@@ -288,20 +300,18 @@ func GetDevicePath(slot DeviceSlot) DevicePath {
 }
 
 func (d *DevicePool) Close(_ context.Context) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	zap.L().Info("Closing device pool", zap.Uint("used_slots", d.usedSlots.Count()))
 
-	if d.slots != nil {
-		close(d.slots)
-	}
+	close(d.exit)
 
+	var errs error
 	for slotIdx, e := d.usedSlots.NextSet(0); e; slotIdx, e = d.usedSlots.NextSet(slotIdx + 1) {
 		slot := DeviceSlot(slotIdx)
 		err := d.ReleaseDeviceWithRetry(slot)
 		if err != nil {
-			return fmt.Errorf("failed to release device %d: %w", slot, err)
+			errs = errors.Join(errs, fmt.Errorf("failed to release device %d: %w", slot, err))
 		}
 	}
 
-	return nil
+	return errs
 }

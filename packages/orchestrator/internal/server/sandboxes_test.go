@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -41,11 +42,13 @@ func Test_server_List(t *testing.T) {
 			},
 			data: []*sandbox.Sandbox{
 				{
-					Config: &orchestrator.SandboxConfig{
-						TemplateId: "template-id",
+					Metadata: &sandbox.Metadata{
+						Config: &orchestrator.SandboxConfig{
+							TemplateId: "template-id",
+						},
+						StartedAt: startTime,
+						EndAt:     endTime,
 					},
-					StartedAt: startTime,
-					EndAt:     endTime,
 				},
 			},
 			want: &orchestrator.SandboxListResponse{
@@ -66,6 +69,7 @@ func Test_server_List(t *testing.T) {
 			s := &server{
 				sandboxes: smap.New[*sandbox.Sandbox](),
 				tracer:    noop.NewTracerProvider().Tracer(""),
+				info:      &service.ServiceInfo{},
 			}
 			for _, sbx := range tt.data {
 				s.sandboxes.Insert(sbx.Config.SandboxId, sbx)

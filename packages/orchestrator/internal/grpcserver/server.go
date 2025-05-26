@@ -18,12 +18,15 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
 
+	e2bhealthcheck "github.com/e2b-dev/infra/packages/orchestrator/internal/healthcheck"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type GRPCServer struct {
-	version    string
+	info *service.ServiceInfo
+
 	grpc       *grpc.Server
 	grpcHealth *health.Server
 
@@ -34,12 +37,18 @@ type GRPCServer struct {
 	}
 }
 
-func New(version string) *GRPCServer {
+func New(info *service.ServiceInfo) *GRPCServer {
 	opts := []logging.Option{
 		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
 		logging.WithFieldsFromContext(logging.ExtractFields),
 	}
+
+	ignoredLoggingRoutes := logger.WithoutRoutes(
+		logger.HealthCheckRoute,
+		"/TemplateService/TemplateBuildStatus",
+		"/TemplateService/HealthStatus",
+	)
 	srv := grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 			MinTime:             5 * time.Second, // Minimum time between pings from client
@@ -54,13 +63,13 @@ func New(version string) *GRPCServer {
 			recovery.UnaryServerInterceptor(),
 			selector.UnaryServerInterceptor(
 				logging.UnaryServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-				logger.WithoutHealthCheck(),
+				ignoredLoggingRoutes,
 			),
 		),
 		grpc.ChainStreamInterceptor(
 			selector.StreamServerInterceptor(
 				logging.StreamServerInterceptor(logger.GRPCLogger(zap.L()), opts...),
-				logger.WithoutHealthCheck(),
+				ignoredLoggingRoutes,
 			),
 		),
 	)
@@ -69,7 +78,7 @@ func New(version string) *GRPCServer {
 	grpc_health_v1.RegisterHealthServer(srv, grpcHealth)
 
 	return &GRPCServer{
-		version:    version,
+		info:       info,
 		grpc:       srv,
 		grpcHealth: grpcHealth,
 	}
@@ -90,7 +99,7 @@ func (g *GRPCServer) Start(ctx context.Context, port uint) error {
 		return fmt.Errorf("failed to listen on port %d: %w", port, err)
 	}
 
-	healthcheck, err := NewHealthcheck(g, g.version)
+	healthcheck, err := e2bhealthcheck.NewHealthcheck(g.info)
 	if err != nil {
 		return fmt.Errorf("failed to create healthcheck: %w", err)
 	}
@@ -115,15 +124,19 @@ func (g *GRPCServer) Start(ctx context.Context, port uint) error {
 
 	g.shutdown.op = func(ctx context.Context) error {
 		// mark services as unhealthy so now new request will be accepted
+		// gRPC's Stop and GracefulStop will close the listener, so this will also close the listener for the health check
+		// we should probably wrap the listener with noop close, so we can close the listener ourselves
 		select {
 		case <-ctx.Done():
+			zap.L().Info("Stopping grpc server")
 			g.grpc.Stop()
 		default:
+			zap.L().Info("Stopping grpc server gracefully")
 			g.grpc.GracefulStop()
 		}
 		m.Close()
 
-		return lis.Close()
+		return nil
 	}
 
 	// Start serving traffic, blocking call
@@ -141,5 +154,6 @@ func (g *GRPCServer) Close(ctx context.Context) error {
 		g.shutdown.err = g.shutdown.op(ctx)
 		g.shutdown.op = nil
 	})
+
 	return g.shutdown.err
 }

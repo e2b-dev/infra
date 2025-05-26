@@ -51,6 +51,8 @@ const buildStatus = await streamCommandOutput('npx', [
     'build',
     '--name',
     templateName,
+    '--cmd',
+    'echo \'start cmd debug\' && sleep 10 && echo \'done starting command debug\'',
 ]);
 
 if (buildStatus.status.code !== 0) {

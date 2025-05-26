@@ -33,6 +33,7 @@ var (
 
 func NewInstanceInfo(
 	Instance *api.Sandbox,
+	ExecutionID string,
 	TeamID *uuid.UUID,
 	BuildID *uuid.UUID,
 	Metadata map[string]string,
@@ -48,9 +49,11 @@ func NewInstanceInfo(
 	Node *node.NodeInfo,
 	AutoPause bool,
 	EnvdAccessToken *string,
+	BaseTemplateID string,
 ) *InstanceInfo {
 	instance := &InstanceInfo{
 		Instance:           Instance,
+		ExecutionID:        ExecutionID,
 		TeamID:             TeamID,
 		BuildID:            BuildID,
 		Metadata:           Metadata,
@@ -67,6 +70,7 @@ func NewInstanceInfo(
 		Node:               Node,
 		AutoPause:          atomic.Bool{},
 		Pausing:            utils.NewSetOnce[*node.NodeInfo](),
+		BaseTemplateID:     BaseTemplateID,
 		mu:                 sync.RWMutex{},
 	}
 
@@ -77,8 +81,10 @@ func NewInstanceInfo(
 
 type InstanceInfo struct {
 	Instance           *api.Sandbox
+	ExecutionID        string
 	TeamID             *uuid.UUID
 	BuildID            *uuid.UUID
+	BaseTemplateID     string
 	Metadata           map[string]string
 	MaxInstanceLength  time.Duration
 	StartTime          time.Time
@@ -215,8 +221,8 @@ func (c *InstanceCache) UnmarkAsPausing(instanceInfo *InstanceInfo) {
 			return false
 		}
 
-		// We depend on the startTime not changing to uniquely identify instance in the cache.
-		return v.Instance.SandboxID == instanceInfo.Instance.SandboxID && v.StartTime == instanceInfo.StartTime
+		// Make sure it's the same instance and not a sandbox which has been already resumed
+		return v.ExecutionID == instanceInfo.ExecutionID
 	})
 }
 
@@ -234,16 +240,16 @@ func (c *InstanceCache) WaitForPause(ctx context.Context, sandboxID string) (*no
 	return value, nil
 }
 
-func (c *InstanceInfo) PauseDone(err error) {
+func (i *InstanceInfo) PauseDone(err error) {
 	if err == nil {
-		err := c.Pausing.SetValue(c.Node)
+		err := i.Pausing.SetValue(i.Node)
 		if err != nil {
 			zap.L().Error("error setting PauseDone value", zap.Error(err))
 
 			return
 		}
 	} else {
-		err := c.Pausing.SetError(err)
+		err := i.Pausing.SetError(err)
 		if err != nil {
 			zap.L().Error("error setting PauseDone error", zap.Error(err))
 

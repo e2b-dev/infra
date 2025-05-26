@@ -119,7 +119,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	}
 
 	checker := &PollBuildStatus{
-		statusClient:          tm.grpc.Client,
+		statusClient:          tm.grpc.TemplateClient,
 		logger:                logger,
 		templateID:            templateID,
 		buildID:               buildID,

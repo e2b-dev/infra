@@ -74,7 +74,7 @@ func (db *DB) NewSnapshotBuild(
 			return nil, fmt.Errorf("failed to create env '%s': %w", snapshotConfig.SandboxID, err)
 		}
 
-		s, err = tx.
+		err = tx.
 			Snapshot.
 			Create().
 			SetSandboxID(snapshotConfig.SandboxID).
@@ -83,19 +83,19 @@ func (db *DB) NewSnapshotBuild(
 			SetMetadata(snapshotConfig.Metadata).
 			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
 			SetEnvSecure(snapshotConfig.EnvdSecured).
-			Save(ctx)
+			Exec(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create snapshot '%s': %w", snapshotConfig.SandboxID, err)
 		}
 	} else {
 		e = s.Edges.Env
 		// Update existing snapshot with new metadata and pause time
-		s, err = tx.
+		err = tx.
 			Snapshot.
 			UpdateOne(s).
 			SetMetadata(snapshotConfig.Metadata).
 			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
-			Save(ctx)
+			Exec(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update snapshot '%s': %w", snapshotConfig.SandboxID, err)
 		}
@@ -153,77 +153,4 @@ func (db *DB) GetSnapshotBuilds(ctx context.Context, sandboxID string, teamID uu
 	}
 
 	return e, e.Edges.Builds, nil
-}
-
-func (db *DB) GetTeamSnapshotsWithCursor(
-	ctx context.Context,
-	teamID uuid.UUID,
-	excludeSandboxIDs []string,
-	limit int,
-	metadataFilter *map[string]string,
-	cursorTime time.Time,
-	cursorID string,
-) (
-	[]*models.Snapshot,
-	error,
-) {
-	query := db.
-		Client.
-		Snapshot.
-		Query().
-		Where(
-			snapshot.HasEnvWith(
-				env.And(
-					env.TeamID(teamID),
-					env.HasBuildsWith(envbuild.StatusEQ(envbuild.StatusSuccess)),
-				),
-			),
-		).
-		WithEnv(func(query *models.EnvQuery) {
-			query.WithBuilds(func(query *models.EnvBuildQuery) {
-				query.Order(models.Desc(envbuild.FieldFinishedAt))
-			})
-		})
-
-	// Apply cursor-based filtering if cursor is provided
-	query = query.Where(
-		snapshot.Or(
-			snapshot.CreatedAtLT(cursorTime),
-			snapshot.And(
-				snapshot.CreatedAtEQ(cursorTime),
-				snapshot.SandboxIDGT(cursorID),
-			),
-		),
-	)
-
-	// Apply metadata filtering
-	if metadataFilter != nil {
-		query = query.Where(snapshot.MetadataContains(*metadataFilter))
-	}
-
-	// Order by created_at (descending), then by sandbox_id (ascending) for stability
-	query = query.Order(models.Desc(snapshot.FieldCreatedAt), models.Asc(snapshot.FieldSandboxID))
-
-	// Apply limit + 1 to check if there are more results
-	query = query.Limit(limit + 1)
-
-	snapshots, err := query.All(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get snapshots for team '%s': %w", teamID, err)
-	}
-
-	// Remove snapshots with excludeSandboxIDs
-	excludeMap := make(map[string]struct{}, len(excludeSandboxIDs))
-	for _, id := range excludeSandboxIDs {
-		excludeMap[id] = struct{}{}
-	}
-
-	filteredSnapshots := make([]*models.Snapshot, 0, len(snapshots))
-	for _, snapshot := range snapshots {
-		if _, excluded := excludeMap[snapshot.SandboxID]; !excluded {
-			filteredSnapshots = append(filteredSnapshots, snapshot)
-		}
-	}
-
-	return filteredSnapshots, nil
 }

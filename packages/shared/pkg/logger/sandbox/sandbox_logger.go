@@ -35,18 +35,18 @@ func (sl *SandboxLogger) Metrics(metrics SandboxMetricsFields) {
 }
 
 func (sl *SandboxLogger) Healthcheck(action HealthCheckAction) {
-	switch {
-	case action == Success:
+	switch action {
+	case Success:
 		sl.Info("Sandbox healthcheck recovered",
 			zap.Bool("healthcheck", true))
-	case action == Fail:
+	case Fail:
 		sl.Error("Sandbox healthcheck started failing",
 			zap.Bool("healthcheck", false))
-	case action == ReportSuccess:
+	case ReportSuccess:
 		sl.Info(
 			"Control sandbox healthcheck was successful",
 			zap.Bool("healthcheck", true))
-	case action == ReportFail:
+	case ReportFail:
 		sl.Error("Control sandbox healthcheck was unsuccessful",
 			zap.Bool("healthcheck", false))
 	}

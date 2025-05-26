@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
-	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -26,8 +24,6 @@ import (
 
 const (
 	requestTimeout = 60 * time.Second
-
-	maxParalellSnapshotting = 8
 )
 
 func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreateRequest) (*orchestrator.SandboxCreateResponse, error) {
@@ -41,11 +37,16 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("template.id", req.Sandbox.TemplateId),
 		attribute.String("kernel.version", req.Sandbox.KernelVersion),
 		attribute.String("sandbox.id", req.Sandbox.SandboxId),
-		attribute.String("client.id", s.clientID),
+		attribute.String("client.id", s.info.ClientId),
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
-	sbx, cleanup, err := sandbox.NewSandbox(
+	// TODO: Temporary workaround, remove API changes deployed
+	if req.Sandbox.GetExecutionId() == "" {
+		req.Sandbox.ExecutionId = uuid.New().String()
+	}
+
+	sbx, cleanup, err := sandbox.ResumeSandbox(
 		childCtx,
 		s.tracer,
 		s.networkPool,
@@ -54,9 +55,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
-		req.Sandbox.Snapshot,
 		req.Sandbox.BaseTemplateId,
-		s.clientID,
 		s.devicePool,
 		s.clickhouseStore,
 		s.useLokiMetrics,
@@ -99,17 +98,17 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 				return false
 			}
 
-			return sbx.StartID == v.StartID
+			return sbx.Config.ExecutionId == v.Config.ExecutionId
 		})
 
 		// Remove the proxies assigned to the sandbox from the pool to prevent them from being reused.
-		s.proxy.RemoveFromPool(sbx.StartID)
+		s.proxy.RemoveFromPool(sbx.Config.ExecutionId)
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
 	}()
 
 	return &orchestrator.SandboxCreateResponse{
-		ClientId: s.clientID,
+		ClientId: s.info.ClientId,
 	}, nil
 }
 
@@ -119,7 +118,7 @@ func (s *server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	childSpan.SetAttributes(
 		attribute.String("sandbox.id", req.SandboxId),
-		attribute.String("client.id", s.clientID),
+		attribute.String("client.id", s.info.ClientId),
 	)
 
 	item, ok := s.sandboxes.Get(req.SandboxId)
@@ -154,7 +153,7 @@ func (s *server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
 			Config:    sbx.Config,
-			ClientId:  s.clientID,
+			ClientId:  s.info.ClientId,
 			StartTime: timestamppb.New(sbx.StartedAt),
 			EndTime:   timestamppb.New(sbx.EndAt),
 		})
@@ -174,7 +173,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	childSpan.SetAttributes(
 		attribute.String("sandbox.id", in.SandboxId),
-		attribute.String("client.id", s.clientID),
+		attribute.String("client.id", s.info.ClientId),
 	)
 
 	sbx, ok := s.sandboxes.Get(in.SandboxId)
@@ -196,8 +195,8 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	defer cancelLogginCtx()
 
 	// Check health metrics before stopping the sandbox
-	sbx.Healthcheck(loggingCtx, true)
-	sbx.LogMetrics(loggingCtx)
+	sbx.Checks.Healthcheck(loggingCtx, true)
+	sbx.Checks.LogMetrics(loggingCtx)
 
 	err := sbx.Stop(ctx)
 	if err != nil {
@@ -207,24 +206,9 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	return &emptypb.Empty{}, nil
 }
 
-var pauseQueue = semaphore.NewWeighted(maxParalellSnapshotting)
-
 func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
 	ctx, childSpan := s.tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
-
-	err := pauseQueue.Acquire(ctx, 1)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, err)
-
-		return nil, status.New(codes.ResourceExhausted, err.Error()).Err()
-	}
-
-	releaseOnce := sync.OnceFunc(func() {
-		pauseQueue.Release(1)
-	})
-
-	defer releaseOnce()
 
 	s.pauseMu.Lock()
 
@@ -247,7 +231,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		in.BuildId,
 		sbx.Config.KernelVersion,
 		sbx.Config.FirecrackerVersion,
-		sbx.Config.HugePages,
 	).NewTemplateCacheFiles()
 	if err != nil {
 		errMsg := fmt.Errorf("error creating template files: %w", err)
@@ -270,15 +253,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		}()
 	}()
 
-	err = os.MkdirAll(snapshotTemplateFiles.CacheDir(), 0o755)
-	if err != nil {
-		errMsg := fmt.Errorf("error creating sandbox cache dir '%s': %w", snapshotTemplateFiles.CacheDir(), err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return nil, status.New(codes.Internal, errMsg.Error()).Err()
-	}
-
-	snapshot, err := sbx.Snapshot(ctx, s.tracer, snapshotTemplateFiles, releaseOnce)
+	snapshot, err := sbx.Pause(ctx, s.tracer, snapshotTemplateFiles)
 	if err != nil {
 		errMsg := fmt.Errorf("error snapshotting sandbox '%s': %w", in.SandboxId, err)
 		telemetry.ReportCriticalError(ctx, errMsg)
@@ -291,7 +266,6 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		snapshotTemplateFiles.BuildId,
 		snapshotTemplateFiles.KernelVersion,
 		snapshotTemplateFiles.FirecrackerVersion,
-		snapshotTemplateFiles.Hugepages(),
 		snapshot.MemfileDiffHeader,
 		snapshot.RootfsDiffHeader,
 		snapshot.Snapfile,
@@ -349,7 +323,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 		err = <-b.Upload(
 			context.Background(),
-			snapshotTemplateFiles.CacheSnapfilePath(),
+			snapshot.Snapfile.Path(),
 			memfilePath,
 			rootfsPath,
 		)

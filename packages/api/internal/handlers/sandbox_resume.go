@@ -114,12 +114,17 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		}
 
 		zap.L().Error("Error getting last snapshot", zap.String("sandboxID", sandboxID), zap.Error(err))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting snapshot"))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting snapshot")
 		return
 	}
 
 	snap := lastSnapshot.Snapshot
 	build := lastSnapshot.EnvBuild
+
+	alias := ""
+	if len(lastSnapshot.Aliases) > 0 {
+		alias = lastSnapshot.Aliases[0]
+	}
 
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
@@ -145,7 +150,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		timeout,
 		nil,
 		snap.Metadata,
-		"",
+		alias,
 		teamInfo,
 		build,
 		&c.Request.Header,

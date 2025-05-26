@@ -12,6 +12,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
+const oldMemfileHugePageSize = 2 << 20 // 2 MiB
+const oldRootfsBlockSize = 2 << 11     // 4 KiB
+
 type Storage struct {
 	header *header.Header
 	source *build.File
@@ -22,7 +25,6 @@ func NewStorage(
 	store *build.DiffStore,
 	buildId string,
 	fileType build.DiffType,
-	blockSize int64,
 	h *header.Header,
 	persistence storage.StorageProvider,
 ) (*Storage, error) {
@@ -63,12 +65,24 @@ func NewStorage(
 			return nil, fmt.Errorf("failed to parse build id: %w", err)
 		}
 
+		// TODO: This is a workaround for the old style template without a header.
+		// We don't know the block size of the old style template, so we set it manually.
+		var blockSize uint64
+		switch fileType {
+		case build.Memfile:
+			blockSize = oldMemfileHugePageSize
+		case build.Rootfs:
+			blockSize = oldRootfsBlockSize
+		default:
+			return nil, fmt.Errorf("unsupported file type: %s", fileType)
+		}
+
 		h = header.NewHeader(&header.Metadata{
 			BuildId:     id,
 			BaseBuildId: id,
 			Size:        uint64(size),
 			Version:     1,
-			BlockSize:   uint64(blockSize),
+			BlockSize:   blockSize,
 			Generation:  1,
 		}, nil)
 	}
@@ -89,10 +103,18 @@ func (d *Storage) Size() (int64, error) {
 	return int64(d.header.Metadata.Size), nil
 }
 
+func (d *Storage) BlockSize() int64 {
+	return int64(d.header.Metadata.BlockSize)
+}
+
 func (d *Storage) Slice(off, length int64) ([]byte, error) {
 	return d.source.Slice(off, length)
 }
 
 func (d *Storage) Header() *header.Header {
 	return d.header
+}
+
+func (d *Storage) Close() error {
+	return nil
 }

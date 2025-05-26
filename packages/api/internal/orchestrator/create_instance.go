@@ -3,12 +3,14 @@ package orchestrator
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -29,12 +31,13 @@ const (
 )
 
 var (
-	sandboxCreateFailedError = fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
+	errSandboxCreateFailed = fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
 )
 
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
+	executionID,
 	alias string,
 	team authcache.AuthTeamInfo,
 	build queries.EnvBuild,
@@ -53,17 +56,36 @@ func (o *Orchestrator) CreateSandbox(
 	defer childSpan.End()
 
 	// Check if team has reached max instances
-	err, releaseTeamSandboxReservation := o.instanceCache.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
+	releaseTeamSandboxReservation, err := o.instanceCache.Reserve(sandboxID, team.Team.ID, team.Tier.ConcurrentInstances)
 	if err != nil {
-		errMsg := fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances)
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("%w (error: %w)", errMsg, err))
+		var limitErr *instance.ErrSandboxLimitExceeded
+		var alreadyErr *instance.ErrAlreadyBeingStarted
 
-		return nil, &api.APIError{
-			Code: http.StatusTooManyRequests,
-			ClientMsg: fmt.Sprintf(
-				"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
-					"please contact us at 'https://e2b.dev/docs/getting-help'", team.Tier.ConcurrentInstances),
-			Err: errMsg,
+		telemetry.ReportCriticalError(ctx, err)
+
+		switch {
+		case errors.As(err, &limitErr):
+			return nil, &api.APIError{
+				Code: http.StatusTooManyRequests,
+				ClientMsg: fmt.Sprintf(
+					"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
+						"please contact us at 'https://e2b.dev/docs/getting-help'", team.Tier.ConcurrentInstances),
+				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances),
+			}
+		case errors.As(err, &alreadyErr):
+			zap.L().Warn("sandbox already being started", zap.String("sandboxID", sandboxID), zap.Error(err))
+			return nil, &api.APIError{
+				Code:      http.StatusConflict,
+				ClientMsg: fmt.Sprintf("Sandbox %s is already being started", sandboxID),
+				Err:       err,
+			}
+		default:
+			zap.L().Error("failed to reserve sandbox for team", zap.String("sandboxID", sandboxID), zap.Error(err))
+			return nil, &api.APIError{
+				Code:      http.StatusInternalServerError,
+				ClientMsg: fmt.Sprintf("Failed to create sandbox: %s", err),
+				Err:       err,
+			}
 		}
 	}
 
@@ -91,6 +113,7 @@ func (o *Orchestrator) CreateSandbox(
 			TeamId:             team.Team.ID.String(),
 			BuildId:            build.ID.String(),
 			SandboxId:          sandboxID,
+			ExecutionId:        executionID,
 			KernelVersion:      build.KernelVersion,
 			FirecrackerVersion: build.FirecrackerVersion,
 			EnvdVersion:        *build.EnvdVersion,
@@ -137,7 +160,7 @@ func (o *Orchestrator) CreateSandbox(
 			return nil, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: "Failed to create sandbox",
-				Err:       sandboxCreateFailedError,
+				Err:       errSandboxCreateFailed,
 			}
 		}
 
@@ -204,6 +227,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	instanceInfo := instance.NewInstanceInfo(
 		&sbx,
+		executionID,
 		&team.Team.ID,
 		&build.ID,
 		metadata,
@@ -219,6 +243,7 @@ func (o *Orchestrator) CreateSandbox(
 		node.Info,
 		autoPause,
 		envdAuthToken,
+		baseTemplateID,
 	)
 
 	cacheErr := o.instanceCache.Add(childCtx, instanceInfo, true)

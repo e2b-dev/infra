@@ -31,7 +31,7 @@ const (
 )
 
 var (
-	Version = "0.2.0"
+	Version = "0.2.1"
 
 	commitSHA string
 
@@ -162,6 +162,7 @@ func main() {
 		IdleTimeout:  idleTimeout,
 	}
 
+	// TODO: Not used anymore in template build, replaced by direct envd command call.
 	if startCmdFlag != "" {
 		tag := "startCmd"
 		cwd := "/home/user"

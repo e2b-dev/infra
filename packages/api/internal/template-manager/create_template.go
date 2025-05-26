@@ -45,7 +45,7 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("template manager is not ready for build placement")
 	}
 
-	_, err = tm.grpc.Client.TemplateCreate(ctx, &template_manager.TemplateCreateRequest{
+	_, err = tm.grpc.TemplateClient.TemplateCreate(ctx, &template_manager.TemplateCreateRequest{
 		Template: &template_manager.TemplateConfig{
 			TemplateID:         templateID,
 			BuildID:            buildID.String(),

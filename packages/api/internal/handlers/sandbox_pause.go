@@ -45,7 +45,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		}
 
 		zap.L().Error("Error getting snapshot", zap.Error(fErr), zap.String("sandboxID", sandboxID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error pausing sandbox"))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
 		return
 	}
 

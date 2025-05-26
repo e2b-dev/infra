@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -17,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
@@ -26,13 +26,14 @@ import (
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
+
+	info            *service.ServiceInfo
 	sandboxes       *smap.Map[*sandbox.Sandbox]
 	proxy           *proxy.SandboxProxy
 	tracer          trace.Tracer
 	networkPool     *network.Pool
 	templateCache   *template.Cache
 	pauseMu         sync.Mutex
-	clientID        string // nomad node id
 	devicePool      *nbd.DevicePool
 	clickhouseStore chdb.Store
 	persistence     storage.StorageProvider
@@ -42,7 +43,7 @@ type server struct {
 }
 
 type Service struct {
-	version  string
+	info     *service.ServiceInfo
 	server   *server
 	proxy    *proxy.SandboxProxy
 	shutdown struct {
@@ -66,16 +67,11 @@ func New(
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	tracer trace.Tracer,
-	clientID string,
-	version string,
+	info *service.ServiceInfo,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) (*Service, error) {
-	if clientID == "" {
-		return nil, errors.New("clientID is required")
-	}
-
-	srv := &Service{version: version}
+	srv := &Service{info: info}
 
 	templateCache, err := template.NewCache(ctx)
 	if err != nil {
@@ -113,12 +109,12 @@ func New(
 		}
 
 		srv.server = &server{
+			info:                 info,
 			tracer:               tracer,
 			proxy:                srv.proxy,
 			sandboxes:            sandboxes,
 			networkPool:          networkPool,
 			templateCache:        templateCache,
-			clientID:             clientID,
 			devicePool:           devicePool,
 			clickhouseStore:      clickhouseStore,
 			useLokiMetrics:       useLokiMetrics,

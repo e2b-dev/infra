@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
@@ -29,7 +30,7 @@ type Pool struct {
 	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, clientID string) (*Pool, error) {
+func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, clientID string, tracer trace.Tracer) (*Pool, error) {
 	newSlots := make(chan Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan Slot, reusedSlotsPoolSize)
 
@@ -43,7 +44,7 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, cli
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}
 
-	slotStorage, err := NewStorage(slotsSize, clientID)
+	slotStorage, err := NewStorage(slotsSize, clientID, tracer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)
 	}
@@ -64,13 +65,15 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, cli
 		if err != nil {
 			zap.L().Fatal("error when populating network slot pool", zap.Error(err))
 		}
+
+		zap.L().Info("network slot pool populate closed")
 	}()
 
 	return pool, nil
 }
 
 func (p *Pool) createNetworkSlot() (*Slot, error) {
-	ips, err := p.slotStorage.Acquire()
+	ips, err := p.slotStorage.Acquire(p.ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network: %w", err)
 	}
@@ -87,10 +90,13 @@ func (p *Pool) createNetworkSlot() (*Slot, error) {
 }
 
 func (p *Pool) populate(ctx context.Context) error {
+	defer close(p.newSlots)
+
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			// Do not return an error here, this is expected on close
+			return nil
 		default:
 			slot, err := p.createNetworkSlot()
 			if err != nil {
@@ -158,6 +164,8 @@ func (p *Pool) cleanup(slot Slot) error {
 func (p *Pool) Close(_ context.Context) error {
 	p.cancel()
 
+	zap.L().Info("Closing network pool")
+
 	for slot := range p.newSlots {
 		err := p.cleanup(slot)
 		if err != nil {
@@ -165,6 +173,7 @@ func (p *Pool) Close(_ context.Context) error {
 		}
 	}
 
+	close(p.reusedSlots)
 	for slot := range p.reusedSlots {
 		err := p.cleanup(slot)
 		if err != nil {

@@ -32,19 +32,18 @@ func (u *Uffd) TrackAndReturnNil() error {
 }
 
 type Uffd struct {
-	Exit  chan error
-	Ready chan struct{}
+	exitCh  chan error
+	readyCh chan struct{}
 
 	exitReader *os.File
 	exitWriter *os.File
 
-	Stop func() error
+	stopFn func() error
 
 	lis *net.UnixListener
 
 	memfile    *block.TrackedSliceDevice
 	socketPath string
-	clientID   string
 }
 
 func (u *Uffd) Disable() error {
@@ -55,7 +54,7 @@ func (u *Uffd) Dirty() *bitset.BitSet {
 	return u.memfile.Dirty()
 }
 
-func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64, clientID string) (*Uffd, error) {
+func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64) (*Uffd, error) {
 	pRead, pWrite, err := os.Pipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exit fd: %w", err)
@@ -67,13 +66,13 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64, clien
 	}
 
 	return &Uffd{
-		Exit:       make(chan error, 1),
-		Ready:      make(chan struct{}, 1),
+		exitCh:     make(chan error, 1),
+		readyCh:    make(chan struct{}, 1),
 		exitReader: pRead,
 		exitWriter: pWrite,
 		memfile:    trackedMemfile,
 		socketPath: socketPath,
-		Stop: sync.OnceValue(func() error {
+		stopFn: sync.OnceValue(func() error {
 			_, writeErr := pWrite.Write([]byte{0})
 			if writeErr != nil {
 				return fmt.Errorf("failed write to exit writer: %w", writeErr)
@@ -81,7 +80,6 @@ func New(memfile block.ReadonlyDevice, socketPath string, blockSize int64, clien
 
 			return nil
 		}),
-		clientID: clientID,
 	}, nil
 }
 
@@ -104,10 +102,10 @@ func (u *Uffd) Start(sandboxId string) error {
 		closeErr := u.lis.Close()
 		writerErr := u.exitWriter.Close()
 
-		u.Exit <- errors.Join(handleErr, closeErr, writerErr)
+		u.exitCh <- errors.Join(handleErr, closeErr, writerErr)
 
-		close(u.Ready)
-		close(u.Exit)
+		close(u.readyCh)
+		close(u.exitCh)
 	}()
 
 	return nil
@@ -181,7 +179,7 @@ func (u *Uffd) handle(sandboxId string) (err error) {
 		}
 	}()
 
-	u.Ready <- struct{}{}
+	u.readyCh <- struct{}{}
 
 	err = Serve(
 		int(uffd),
@@ -190,11 +188,22 @@ func (u *Uffd) handle(sandboxId string) (err error) {
 		u.exitReader.Fd(),
 		u.Stop,
 		sandboxId,
-		u.clientID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed handling uffd: %w", err)
 	}
 
 	return nil
+}
+
+func (u *Uffd) Stop() error {
+	return u.stopFn()
+}
+
+func (u *Uffd) Ready() chan struct{} {
+	return u.readyCh
+}
+
+func (u *Uffd) Exit() chan error {
+	return u.exitCh
 }

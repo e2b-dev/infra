@@ -158,13 +158,12 @@ build-and-upload/%:
 
 .PHONY: copy-public-builds
 copy-public-builds:
-	gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-env-pipeline/envd-v0.0.1
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
 
 .PHONY: generate
-generate: generate/api generate/orchestrator generate/template-manager generate/envd generate/db
+generate: generate/api generate/orchestrator generate/envd generate/db
 generate/%:
 	@echo "Generating code for *$(notdir $@)*"
 	$(MAKE) -C packages/$(notdir $@) generate

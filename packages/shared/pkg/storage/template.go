@@ -3,8 +3,6 @@ package storage
 import (
 	"fmt"
 	"path/filepath"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const (
@@ -14,13 +12,8 @@ const (
 	KernelMountDir = "/fc-vm"
 	KernelName     = "vmlinux.bin"
 
-	HostOldEnvdPath  = "/fc-envd/envd-v0.0.1"
-	HostEnvdPath     = "/fc-envd/envd"
-	GuestOldEnvdPath = "/usr/bin/envd-v0.0.1"
-	GuestEnvdPath    = "/usr/bin/envd"
-
-	EnvdVersionKey = "envd_version"
-	RootfsSizeKey  = "rootfs_size"
+	HostEnvdPath  = "/fc-envd/envd"
+	GuestEnvdPath = "/usr/bin/envd"
 
 	FirecrackerVersionsDir = "/fc-versions"
 	FirecrackerBinaryName  = "firecracker"
@@ -34,16 +27,11 @@ const (
 	HeaderSuffix = ".header"
 )
 
-// Path to the directory where the kernel can be accessed inside when the dirs are mounted.
-var KernelMountedPath = filepath.Join(KernelMountDir, KernelName)
-
 type TemplateFiles struct {
 	TemplateId         string
 	BuildId            string
 	KernelVersion      string
 	FirecrackerVersion string
-
-	hugePages bool
 }
 
 func NewTemplateFiles(
@@ -51,14 +39,12 @@ func NewTemplateFiles(
 	buildId,
 	kernelVersion,
 	firecrackerVersion string,
-	hugePages bool,
 ) *TemplateFiles {
 	return &TemplateFiles{
 		TemplateId:         templateId,
 		BuildId:            buildId,
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
-		hugePages:          hugePages,
 	}
 }
 
@@ -111,42 +97,10 @@ func (t *TemplateFiles) StorageSnapfilePath() string {
 	return fmt.Sprintf("%s/%s", t.StorageDir(), SnapfileName)
 }
 
-func (t *TemplateFiles) BuildDir() string {
+func (t *TemplateFiles) SandboxBuildDir() string {
 	return filepath.Join(EnvsDisk, t.TemplateId, buildDirName, t.BuildId)
 }
 
-func (t *TemplateFiles) BuildMemfilePath() string {
-	return filepath.Join(t.BuildDir(), MemfileName)
-}
-
-func (t *TemplateFiles) BuildRootfsPath() string {
-	return filepath.Join(t.BuildDir(), RootfsName)
-}
-
-func (t *TemplateFiles) BuildMemfileDiffPath() string {
-	return filepath.Join(t.BuildDir(), fmt.Sprintf("%s.diff", MemfileName))
-}
-
-func (t *TemplateFiles) BuildRootfsDiffPath() string {
-	return filepath.Join(t.BuildDir(), fmt.Sprintf("%s.diff", RootfsName))
-}
-
-func (t *TemplateFiles) BuildSnapfilePath() string {
-	return filepath.Join(t.BuildDir(), SnapfileName)
-}
-
-func (t *TemplateFiles) Hugepages() bool {
-	return t.hugePages
-}
-
-func (t *TemplateFiles) MemfilePageSize() int64 {
-	if t.hugePages {
-		return header.HugepageSize
-	}
-
-	return header.PageSize
-}
-
-func (t *TemplateFiles) RootfsBlockSize() int64 {
-	return header.RootfsBlockSize
+func (t *TemplateFiles) SandboxRootfsPath() string {
+	return filepath.Join(t.SandboxBuildDir(), RootfsName)
 }

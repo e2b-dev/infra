@@ -11,7 +11,7 @@ import (
 )
 
 func (tm *TemplateManager) DeleteBuild(ctx context.Context, buildId uuid.UUID) error {
-	_, err := tm.grpc.Client.TemplateBuildDelete(
+	_, err := tm.grpc.TemplateClient.TemplateBuildDelete(
 		ctx, &template_manager.TemplateBuildDeleteRequest{
 			BuildID: buildId.String(),
 		},

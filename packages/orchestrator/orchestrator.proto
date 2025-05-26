@@ -38,6 +38,7 @@ message SandboxConfig {
   optional bool auto_pause = 18;
 
   optional string envd_access_token = 19;
+  string execution_id = 20;
 }
 
 message SandboxCreateRequest {
@@ -87,8 +88,6 @@ message CachedBuildInfo {
 message SandboxListCachedBuildsResponse {
   repeated CachedBuildInfo builds = 1;
 }
-
-
 
 service SandboxService {
   rpc Create(SandboxCreateRequest) returns (SandboxCreateResponse);

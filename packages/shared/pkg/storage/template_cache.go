@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
@@ -9,7 +10,6 @@ import (
 
 const (
 	templateCacheDir = "/orchestrator/template"
-	snapshotCacheDir = "/mnt/snapshot-cache"
 )
 
 type TemplateCacheFiles struct {
@@ -18,28 +18,29 @@ type TemplateCacheFiles struct {
 	CacheIdentifier string
 }
 
-func (f *TemplateFiles) NewTemplateCacheFiles() (*TemplateCacheFiles, error) {
+func (t *TemplateFiles) NewTemplateCacheFiles() (*TemplateCacheFiles, error) {
 	identifier, err := uuid.NewRandom()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate identifier: %w", err)
 	}
 
-	return &TemplateCacheFiles{
-		TemplateFiles:   f,
+	tcf := &TemplateCacheFiles{
+		TemplateFiles:   t,
 		CacheIdentifier: identifier.String(),
-	}, nil
-}
+	}
 
-func (c *TemplateCacheFiles) CacheDir() string {
-	return filepath.Join(templateCacheDir, c.TemplateId, c.BuildId, "cache", c.CacheIdentifier)
-}
+	err = os.MkdirAll(tcf.cacheDir(), os.ModePerm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cache dir '%s': %w", tcf.cacheDir(), err)
+	}
 
-func (c *TemplateCacheFiles) CacheMemfileFullSnapshotPath() string {
-	name := fmt.Sprintf("%s-%s-%s.full", c.BuildId, MemfileName, c.CacheIdentifier)
-
-	return filepath.Join(snapshotCacheDir, name)
+	return tcf, nil
 }
 
 func (c *TemplateCacheFiles) CacheSnapfilePath() string {
-	return filepath.Join(c.CacheDir(), SnapfileName)
+	return filepath.Join(c.cacheDir(), SnapfileName)
+}
+
+func (c *TemplateCacheFiles) cacheDir() string {
+	return filepath.Join(templateCacheDir, c.TemplateId, c.BuildId, "cache", c.CacheIdentifier)
 }

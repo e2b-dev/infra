@@ -12,10 +12,15 @@ import (
 )
 
 const getLastSnapshot = `-- name: GetLastSnapshot :one
-SELECT s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version
+SELECT COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases, s.created_at, s.env_id, s.sandbox_id, s.id, s.metadata, s.base_env_id, s.sandbox_started_at, s.env_secure, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version
 FROM "public"."snapshots" s
 JOIN "public"."envs" e ON s.env_id  = e.id
 JOIN "public"."env_builds" eb ON e.id = eb.env_id
+LEFT JOIN LATERAL (
+    SELECT ARRAY_AGG(alias ORDER BY alias) AS aliases
+    FROM "public"."env_aliases"
+    WHERE env_id = s.base_env_id
+) ea ON TRUE
 WHERE s.sandbox_id = $1 AND eb.status = 'success' AND e.team_id = $2
 ORDER BY eb.finished_at DESC
 LIMIT 1
@@ -27,6 +32,7 @@ type GetLastSnapshotParams struct {
 }
 
 type GetLastSnapshotRow struct {
+	Aliases  []string
 	Snapshot Snapshot
 	EnvBuild EnvBuild
 }
@@ -35,6 +41,7 @@ func (q *Queries) GetLastSnapshot(ctx context.Context, arg GetLastSnapshotParams
 	row := q.db.QueryRow(ctx, getLastSnapshot, arg.SandboxID, arg.TeamID)
 	var i GetLastSnapshotRow
 	err := row.Scan(
+		&i.Aliases,
 		&i.Snapshot.CreatedAt,
 		&i.Snapshot.EnvID,
 		&i.Snapshot.SandboxID,

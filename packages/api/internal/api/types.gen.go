@@ -48,16 +48,14 @@ type CreatedAccessToken struct {
 	CreatedAt time.Time `json:"createdAt"`
 
 	// Id Identifier of the access token
-	Id openapi_types.UUID `json:"id"`
+	Id   openapi_types.UUID       `json:"id"`
+	Mask IdentifierMaskingDetails `json:"mask"`
 
 	// Name Name of the access token
 	Name string `json:"name"`
 
-	// Token Raw value of the access token
+	// Token The fully created access token
 	Token string `json:"token"`
-
-	// TokenMask Mask of the access token
-	TokenMask string `json:"tokenMask"`
 }
 
 // CreatedTeamAPIKey defines model for CreatedTeamAPIKey.
@@ -72,11 +70,9 @@ type CreatedTeamAPIKey struct {
 	// Key Raw value of the API key
 	Key string `json:"key"`
 
-	// KeyMask Mask of the API key
-	KeyMask string `json:"keyMask"`
-
 	// LastUsed Last time this API key was used
-	LastUsed *time.Time `json:"lastUsed"`
+	LastUsed *time.Time               `json:"lastUsed"`
+	Mask     IdentifierMaskingDetails `json:"mask"`
 
 	// Name Name of the API key
 	Name string `json:"name"`
@@ -92,6 +88,21 @@ type Error struct {
 
 	// Message Error
 	Message string `json:"message"`
+}
+
+// IdentifierMaskingDetails defines model for IdentifierMaskingDetails.
+type IdentifierMaskingDetails struct {
+	// MaskedValuePrefix Prefix used in masked version of the token or key
+	MaskedValuePrefix string `json:"maskedValuePrefix"`
+
+	// MaskedValueSuffix Suffix used in masked version of the token or key
+	MaskedValueSuffix string `json:"maskedValueSuffix"`
+
+	// Prefix Prefix that identifies the token or key type
+	Prefix string `json:"prefix"`
+
+	// ValueLength Length of the token or key
+	ValueLength int `json:"valueLength"`
 }
 
 // ListedSandbox defines model for ListedSandbox.
@@ -165,6 +176,9 @@ type Node struct {
 	// AllocatedMemoryMiB Amount of allocated memory in MiB
 	AllocatedMemoryMiB int32 `json:"allocatedMemoryMiB"`
 
+	// Commit Commit of the orchestrator
+	Commit string `json:"commit"`
+
 	// CreateFails Number of sandbox create fails
 	CreateFails uint64 `json:"createFails"`
 
@@ -188,6 +202,9 @@ type Node struct {
 type NodeDetail struct {
 	// CachedBuilds List of cached builds id on the node
 	CachedBuilds []string `json:"cachedBuilds"`
+
+	// Commit Commit of the orchestrator
+	Commit string `json:"commit"`
 
 	// CreateFails Number of sandbox create fails
 	CreateFails uint64 `json:"createFails"`
@@ -373,11 +390,9 @@ type TeamAPIKey struct {
 	// Id Identifier of the API key
 	Id openapi_types.UUID `json:"id"`
 
-	// KeyMask Mask of the API key
-	KeyMask string `json:"keyMask"`
-
 	// LastUsed Last time this API key was used
-	LastUsed *time.Time `json:"lastUsed"`
+	LastUsed *time.Time               `json:"lastUsed"`
+	Mask     IdentifierMaskingDetails `json:"mask"`
 
 	// Name Name of the API key
 	Name string `json:"name"`

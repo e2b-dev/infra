@@ -75,7 +75,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	}
 
 	if team == nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("User does not have access to the template"))
+		a.sendAPIStoreError(c, http.StatusForbidden, "User does not have access to the template")
 
 		err = fmt.Errorf("user '%s' does not have access to the template '%s'", userID, templateID)
 		telemetry.ReportCriticalError(ctx, err)
@@ -107,7 +107,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	// make sure there is no other build in progress for the same template
 	if concurrentlyRunningBuilds > 0 {
-		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("There is already a build in progress for the template"))
+		a.sendAPIStoreError(c, http.StatusConflict, "There is already a build in progress for the template")
 		err = fmt.Errorf("there is already a build in progress for the template '%s'", templateID)
 		telemetry.ReportCriticalError(ctx, err)
 		return
