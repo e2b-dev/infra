@@ -17,8 +17,8 @@ import (
 
 const (
 	awsOperationTimeout = 5 * time.Second
-	awsWriteTimeout     = 14 * time.Second
-	awsReadTimeout      = 10 * time.Second
+	awsWriteTimeout     = 30 * time.Second
+	awsReadTimeout      = 15 * time.Second
 )
 
 type AWSBucketStorageProvider struct {
