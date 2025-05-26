@@ -96,18 +96,7 @@ func TestCommandKillNextApp(t *testing.T) {
 	// Kill all processes
 	for _, proc := range listResp.Msg.Processes {
 		t.Logf("killing process PID=%d CMD=%s", proc.Pid, proc.Config.Cmd)
-		killReq := connect.NewRequest(&process.SendSignalRequest{
-			Signal: process.Signal_SIGNAL_SIGKILL,
-			Process: &process.ProcessSelector{
-				Selector: &process.ProcessSelector_Pid{
-					Pid: proc.Pid,
-				},
-			},
-		})
-		setup.SetSandboxHeader(killReq.Header(), sbx.SandboxID)
-		setup.SetUserHeader(killReq.Header(), "user")
-		_, err := envdClient.ProcessClient.SendSignal(ctx, killReq)
-		assert.NoError(t, err)
+		killPid(t, ctx, envdClient, sbx.SandboxID, proc.Pid)
 	}
 
 	// Final process list
@@ -183,18 +172,7 @@ func TestCommandKillWithAnd(t *testing.T) {
 	// Kill all processes
 	for _, proc := range listResp.Msg.Processes {
 		t.Logf("killing process PID=%d CMD=%s", proc.Pid, proc.Config.Cmd)
-		killReq := connect.NewRequest(&process.SendSignalRequest{
-			Signal: process.Signal_SIGNAL_SIGKILL,
-			Process: &process.ProcessSelector{
-				Selector: &process.ProcessSelector_Pid{
-					Pid: proc.Pid,
-				},
-			},
-		})
-		setup.SetSandboxHeader(killReq.Header(), sbx.SandboxID)
-		setup.SetUserHeader(killReq.Header(), "user")
-		_, err := envdClient.ProcessClient.SendSignal(ctx, killReq)
-		assert.NoError(t, err)
+		killPid(t, ctx, envdClient, sbx.SandboxID, proc.Pid)
 	}
 
 	// Final process list
@@ -204,5 +182,46 @@ func TestCommandKillWithAnd(t *testing.T) {
 	assert.Len(t, finalListResp.Msg.Processes, 0, "Expected no processes running")
 	for _, proc := range finalListResp.Msg.Processes {
 		t.Errorf("remaining process: PID=%d CMD=%s", proc.Pid, proc.Config.Cmd)
+	}
+}
+
+// killPid kills a process by its PID and waits for it to terminate.
+func killPid(
+	t *testing.T,
+	ctx context.Context,
+	envdClient *setup.EnvdClient,
+	sandboxID string,
+	pid uint32,
+) {
+	// Connect to the process
+	connectReq := connect.NewRequest(&process.ConnectRequest{
+		Process: &process.ProcessSelector{
+			Selector: &process.ProcessSelector_Pid{
+				Pid: pid,
+			},
+		},
+	})
+	setup.SetSandboxHeader(connectReq.Header(), sandboxID)
+	setup.SetUserHeader(connectReq.Header(), "user")
+	connectResp, err := envdClient.ProcessClient.Connect(ctx, connectReq)
+	assert.NoError(t, err)
+
+	// Send SIGKILL to the process (doesn't await the termination)
+	killReq := connect.NewRequest(&process.SendSignalRequest{
+		Signal: process.Signal_SIGNAL_SIGKILL,
+		Process: &process.ProcessSelector{
+			Selector: &process.ProcessSelector_Pid{
+				Pid: pid,
+			},
+		},
+	})
+	setup.SetSandboxHeader(killReq.Header(), sandboxID)
+	setup.SetUserHeader(killReq.Header(), "user")
+	_, err = envdClient.ProcessClient.SendSignal(ctx, killReq)
+	assert.NoError(t, err)
+
+	// Wait for the process to terminate
+	for connectResp.Receive() {
+		t.Logf("waiting for process kill: %s", connectResp.Msg())
 	}
 }
