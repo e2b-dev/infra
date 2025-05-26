@@ -215,5 +215,5 @@ connect-orchestrator:
 
 .PHONY: fmt
 fmt:
-	@./scripts/golangci-lint-install.sh
+	@./scripts/golangci-lint-install.sh "2.1.6"
 	golangci-lint fmt
