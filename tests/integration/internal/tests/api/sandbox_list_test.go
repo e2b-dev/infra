@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -51,7 +53,7 @@ func TestSandboxListWithFilter(t *testing.T) {
 	_ = utils.SetupSandboxWithCleanup(t, c)
 
 	// sandbox with custom metadata
-	sbx := utils.SetupSandboxWithCleanupWithTimeout(t, c, 30, &api.SandboxMetadata{"favouriteColor": "blue"})
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(30), utils.WithMetadata(api.SandboxMetadata{"favouriteColor": "blue"}))
 
 	metadataString := "favouriteColor=blue"
 
@@ -68,10 +70,11 @@ func TestSandboxListWithFilter(t *testing.T) {
 func TestSandboxListRunning(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	// Create a sandbox
-	sbx := utils.SetupSandboxWithCleanup(t, c)
+	uniqueString := id.Generate()
+	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
 
-	metadataString := "sandboxType=test"
+	// Create a sandbox
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
 
 	// List running sandboxes
 	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
@@ -96,13 +99,14 @@ func TestSandboxListRunning(t *testing.T) {
 func TestSandboxListPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
+	uniqueString := id.Generate()
+	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
+
 	// Create and pause a sandbox
-	sbx := utils.SetupSandboxWithCleanup(t, c)
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
 	sandboxID := sbx.SandboxID
 
 	pauseSandbox(t, c, sandboxID)
-
-	metadataString := "sandboxType=test"
 
 	// List paused sandboxes
 	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
@@ -128,16 +132,18 @@ func TestSandboxListPaused(t *testing.T) {
 func TestSandboxListPaginationRunning(t *testing.T) {
 	c := setup.GetAPIClient()
 
+	uniqueString := id.Generate()
+	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
+
 	// Create two sandboxes
-	sbx1 := utils.SetupSandboxWithCleanup(t, c)
+	sbx1 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
 	sandbox1ID := sbx1.SandboxID
 
-	sbx2 := utils.SetupSandboxWithCleanup(t, c)
+	sbx2 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
 	sandbox2ID := sbx2.SandboxID
 
 	// Test pagination with limit
 	var limit int32 = 1
-	metadataString := "sandboxType=test"
 
 	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
 		Limit:    &limit,
@@ -173,18 +179,20 @@ func TestSandboxListPaginationRunning(t *testing.T) {
 func TestSandboxListPaginationPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
+	uniqueString := id.Generate()
+	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
+
 	// Create two paused sandboxes
-	sbx1 := utils.SetupSandboxWithCleanup(t, c)
+	sbx1 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
 	sandbox1ID := sbx1.SandboxID
 	pauseSandbox(t, c, sandbox1ID)
 
-	sbx2 := utils.SetupSandboxWithCleanup(t, c)
+	sbx2 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
 	sandbox2ID := sbx2.SandboxID
 	pauseSandbox(t, c, sandbox2ID)
 
 	// Test pagination with limit
 	var limit int32 = 1
-	metadataString := "sandboxType=test"
 
 	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
 		Limit:    &limit,
@@ -220,11 +228,14 @@ func TestSandboxListPaginationPaused(t *testing.T) {
 func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 	c := setup.GetAPIClient()
 
+	uniqueString := id.Generate()
+	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
+
 	// Create two sandboxes
-	sbx1 := utils.SetupSandboxWithCleanup(t, c)
+	sbx1 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
 	sandbox1ID := sbx1.SandboxID
 
-	sbx2 := utils.SetupSandboxWithCleanup(t, c)
+	sbx2 := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
 	sandbox2ID := sbx2.SandboxID
 
 	// Pause the second sandbox
@@ -232,7 +243,6 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 
 	// Test pagination with limit
 	var limit int32 = 1
-	metadataString := "sandboxType=test"
 
 	listResponse, err := c.GetV2SandboxesWithResponse(context.Background(), &api.GetV2SandboxesParams{
 		Limit:    &limit,
@@ -269,10 +279,11 @@ func TestSandboxListPaginationRunningAndPaused(t *testing.T) {
 func TestSandboxListRunningV1(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	// Create a sandbox
-	sbx := utils.SetupSandboxWithCleanup(t, c)
+	uniqueString := id.Generate()
+	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
 
-	metadataString := "sandboxType=test"
+	// Create a sandbox
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
 
 	// List running sandboxes
 	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
@@ -297,9 +308,10 @@ func TestSandboxListRunningV1(t *testing.T) {
 func TestSandboxListWithFilterV1(t *testing.T) {
 	c := setup.GetAPIClient()
 
-	sbx := utils.SetupSandboxWithCleanup(t, c)
+	uniqueString := id.Generate()
+	metadataString := fmt.Sprintf("sandboxType=%s", uniqueString)
 
-	metadataString := "sandboxType=test"
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{"sandboxType": uniqueString}))
 
 	// List with filter
 	listResponse, err := c.GetSandboxesWithResponse(context.Background(), &api.GetSandboxesParams{
