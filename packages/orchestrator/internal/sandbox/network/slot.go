@@ -172,10 +172,13 @@ func (s *Slot) ConfigureInternet(allowInternet bool) (e error) {
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
 	}
+
+	took := time.Since(start)
 	zap.L().Debug("slot internet access configured",
 		zap.String("namespace_id", s.NamespaceID()),
 		zap.Bool("allow_internet", allowInternet),
-		zap.Int64("took", time.Since(start).Nanoseconds()),
+		zap.Duration("took", took),
+		zap.String("took_humanized", took.String()),
 	)
 
 	return nil
@@ -201,9 +204,12 @@ func (s *Slot) ResetInternet() error {
 	if err != nil {
 		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
 	}
+
+	took := time.Since(start)
 	zap.L().Debug("slot internet access reset",
 		zap.String("namespace_id", s.NamespaceID()),
-		zap.Int64("took", time.Since(start).Nanoseconds()),
+		zap.Duration("took", took),
+		zap.String("took_humanized", took.String()),
 	)
 	return nil
 }
