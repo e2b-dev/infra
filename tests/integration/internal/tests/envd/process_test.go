@@ -19,7 +19,7 @@ func TestCommandKillNextApp(t *testing.T) {
 	defer cancel()
 
 	client := setup.GetAPIClient()
-	sbx := utils.SetupSandboxWithCleanupWithTimeout(t, client, 300, nil)
+	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(300))
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
@@ -125,7 +125,7 @@ func TestCommandKillWithAnd(t *testing.T) {
 	defer cancel()
 
 	client := setup.GetAPIClient()
-	sbx := utils.SetupSandboxWithCleanupWithTimeout(t, client, 300, nil)
+	sbx := utils.SetupSandboxWithCleanup(t, client, utils.WithTimeout(300))
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
