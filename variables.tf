@@ -48,6 +48,12 @@ variable "build_machine_type" {
   type = string
 }
 
+variable "postgres_connection_string" {
+  type      = string
+  sensitive = true
+}
+
+
 variable "client_proxy_health_port" {
   type = object({
     name = string

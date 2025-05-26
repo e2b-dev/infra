@@ -33,14 +33,6 @@ resource "docker_image" "api_image" {
   platform      = "linux/amd64/v8"
 }
 
-resource "google_secret_manager_secret" "postgres_connection_string" {
-  secret_id = "${var.prefix}postgres-connection-string"
-
-  replication {
-    auto {}
-  }
-}
-
 resource "google_secret_manager_secret" "supabase_jwt_secrets" {
   secret_id = "${var.prefix}supabase-jwt-secrets"
 

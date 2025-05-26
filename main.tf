@@ -127,6 +127,12 @@ module "cluster" {
   prefix = var.prefix
 }
 
+module "db" {
+  source = "./packages/db"
+
+  postgresql_connection_string = var.postgres_connection_string
+}
+
 module "api" {
   source = "./packages/api"
 
@@ -183,22 +189,23 @@ module "nomad" {
   clickhouse_database          = "default"
 
   # API
-  api_machine_count                         = var.api_cluster_size
-  logs_proxy_address                        = "http://${module.cluster.logs_proxy_ip}"
-  api_port                                  = var.api_port
-  environment                               = var.environment
-  google_service_account_key                = module.init.google_service_account_key
-  api_docker_image_digest                   = module.api.api_docker_image_digest
-  api_secret                                = module.api.api_secret
-  custom_envs_repository_name               = module.api.custom_envs_repository_name
-  postgres_connection_string_secret_name    = module.api.postgres_connection_string_secret_name
-  supabase_jwt_secrets_secret_name          = module.api.supabase_jwt_secrets_secret_name
-  posthog_api_key_secret_name               = module.api.posthog_api_key_secret_name
-  analytics_collector_host_secret_name      = module.init.analytics_collector_host_secret_name
-  analytics_collector_api_token_secret_name = module.init.analytics_collector_api_token_secret_name
-  api_admin_token                           = module.api.api_admin_token
-  redis_url_secret_version                  = module.api.redis_url_secret_version
-  sandbox_access_token_hash_seed            = module.api.sandbox_access_token_hash_seed
+  api_machine_count                               = var.api_cluster_size
+  logs_proxy_address                              = "http://${module.cluster.logs_proxy_ip}"
+  api_port                                        = var.api_port
+  environment                                     = var.environment
+  google_service_account_key                      = module.init.google_service_account_key
+  api_docker_image_digest                         = module.api.api_docker_image_digest
+  api_secret                                      = module.api.api_secret
+  custom_envs_repository_name                     = module.api.custom_envs_repository_name
+  postgres_connection_string_api                  = module.db.postgres_connection_string_api
+  postgres_connection_string_docker_reverse_proxy = module.db.postgres_connection_string_docker_reverse_proxy
+  supabase_jwt_secrets_secret_name                = module.api.supabase_jwt_secrets_secret_name
+  posthog_api_key_secret_name                     = module.api.posthog_api_key_secret_name
+  analytics_collector_host_secret_name            = module.init.analytics_collector_host_secret_name
+  analytics_collector_api_token_secret_name       = module.init.analytics_collector_api_token_secret_name
+  api_admin_token                                 = module.api.api_admin_token
+  redis_url_secret_version                        = module.api.redis_url_secret_version
+  sandbox_access_token_hash_seed                  = module.api.sandbox_access_token_hash_seed
 
   client_proxy_port                = var.client_proxy_port
   client_proxy_health_port         = var.client_proxy_health_port

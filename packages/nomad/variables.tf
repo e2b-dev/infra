@@ -88,7 +88,11 @@ variable "posthog_api_key_secret_name" {
   type = string
 }
 
-variable "postgres_connection_string_secret_name" {
+variable "postgres_connection_string_api" {
+  type = string
+}
+
+variable "postgres_connection_string_docker_reverse_proxy" {
   type = string
 }
 

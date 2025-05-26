@@ -1,8 +1,4 @@
 # API
-data "google_secret_manager_secret_version" "postgres_connection_string" {
-  secret = var.postgres_connection_string_secret_name
-}
-
 data "google_secret_manager_secret_version" "supabase_jwt_secrets" {
   secret = var.supabase_jwt_secrets_secret_name
 }
@@ -49,7 +45,7 @@ resource "nomad_job" "api" {
     port_name                      = var.api_port.name
     port_number                    = var.api_port.port
     api_docker_image               = var.api_docker_image_digest
-    postgres_connection_string     = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    postgres_connection_string     = var.postgres_connection_string_api
     supabase_jwt_secrets           = data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data
     posthog_api_key                = data.google_secret_manager_secret_version.posthog_api_key.secret_data
     environment                    = var.environment
@@ -89,7 +85,7 @@ resource "nomad_job" "docker_reverse_proxy" {
     vars = {
       gcp_zone                      = var.gcp_zone
       image_name                    = var.docker_reverse_proxy_docker_image_digest
-      postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+      postgres_connection_string    = var.postgres_connection_string_docker_reverse_proxy
       google_service_account_secret = var.docker_reverse_proxy_service_account_key
       port_number                   = var.docker_reverse_proxy_port.port
       port_name                     = var.docker_reverse_proxy_port.name
