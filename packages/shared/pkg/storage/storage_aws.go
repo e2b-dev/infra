@@ -170,7 +170,7 @@ func (a *AWSBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, 
 
 	defer resp.Body.Close()
 
-	return resp.Body.Read(buff)
+	return io.ReadFull(resp.Body, buff)
 }
 
 func (a *AWSBucketStorageObjectProvider) Size() (int64, error) {
