@@ -83,7 +83,7 @@ func TestCommandKillNextApp(t *testing.T) {
 	}()
 
 	// Wait for the next dev to start and list processes
-	time.Sleep(10 * time.Second)
+	time.Sleep(30 * time.Second)
 
 	listReq := connect.NewRequest(&process.ListRequest{})
 	setup.SetSandboxHeader(listReq.Header(), sbx.SandboxID)
