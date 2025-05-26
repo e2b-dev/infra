@@ -81,19 +81,20 @@ func CreateSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
 	networkPool *network.Pool,
-	devicePool *nbd.DevicePool,
+	_ *nbd.DevicePool,
 	config *orchestrator.SandboxConfig,
 	template template.Template,
 	sandboxTimeout time.Duration,
 	rootfsCachePath string,
 	processOptions fc.ProcessOptions,
+	allowInternet bool,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
 	cleanup := NewCleanup()
 
-	ips, err := getNetworkSlot(childCtx, tracer, networkPool, cleanup)
+	ips, err := getNetworkSlot(childCtx, tracer, networkPool, cleanup, allowInternet)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
 	}
@@ -229,6 +230,7 @@ func ResumeSandbox(
 	endAt time.Time,
 	baseTemplateID string,
 	devicePool *nbd.DevicePool,
+	allowInternet bool,
 	clickhouseStore chdb.Store,
 	useLokiMetrics string,
 	useClickhouseMetrics string,
@@ -248,7 +250,7 @@ func ResumeSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
-	ips, err := getNetworkSlot(childCtx, tracer, networkPool, cleanup)
+	ips, err := getNetworkSlot(childCtx, tracer, networkPool, cleanup, allowInternet)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
 	}
@@ -704,11 +706,12 @@ func getNetworkSlot(
 	tracer trace.Tracer,
 	networkPool *network.Pool,
 	cleanup *Cleanup,
+	allowInternet bool,
 ) (network.Slot, error) {
 	networkCtx, networkSpan := tracer.Start(ctx, "get-network-slot")
 	defer networkSpan.End()
 
-	ips, err := networkPool.Get(networkCtx, true)
+	ips, err := networkPool.Get(networkCtx, allowInternet)
 	if err != nil {
 		return network.Slot{}, fmt.Errorf("failed to get network slot: %w", err)
 	}

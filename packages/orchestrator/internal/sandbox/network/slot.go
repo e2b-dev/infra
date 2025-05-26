@@ -3,6 +3,11 @@ package network
 import (
 	"fmt"
 	"net"
+	"path/filepath"
+	"time"
+
+	"github.com/containernetworking/plugins/pkg/ns"
+	"go.uber.org/zap"
 )
 
 // We are using a more debuggable IP address allocation for now that only covers 255 addresses.
@@ -120,6 +125,10 @@ func (s *Slot) TapMAC() string {
 }
 
 func (s *Slot) InitializeFirewall() error {
+	if s.Firewall != nil {
+		return fmt.Errorf("firewall is already initialized for slot %s", s.Key)
+	}
+
 	fw, err := NewFirewall(s.TapName())
 	if err != nil {
 		return fmt.Errorf("error initializing firewall: %w", err)
@@ -139,5 +148,70 @@ func (s *Slot) CloseFirewall() error {
 	}
 	s.Firewall = nil
 
+	return nil
+}
+
+func (s *Slot) ConfigureInternet(allowInternet bool) (e error) {
+	start := time.Now()
+	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
+	if err != nil {
+		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	defer n.Close()
+
+	err = n.Do(func(netNS ns.NetNS) error {
+		//if !allowInternet {
+		//err := slot.Firewall.AddBlockedIP("0.0.0.0/1")
+		//if err != nil {
+		//	return fmt.Errorf("error setting firewall rules: %w", err)
+		//}
+		//err = slot.Firewall.AddBlockedIP("128.0.0.0/1")
+		//if err != nil {
+		//	return fmt.Errorf("error setting firewall rules: %w", err)
+		//}
+		err = s.Firewall.AddBlockedIP("0.0.0.0/0")
+		if err != nil {
+			return fmt.Errorf("error setting firewall rules: %w", err)
+		}
+		//}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	zap.L().Debug("slot internet access configured",
+		zap.String("namespace_id", s.NamespaceID()),
+		zap.Bool("allow_internet", allowInternet),
+		zap.String("took", time.Since(start).String()),
+	)
+
+	return nil
+}
+
+func (s *Slot) ResetInternet() error {
+	start := time.Now()
+
+	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
+	if err != nil {
+		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	defer n.Close()
+
+	err = n.Do(func(netNS ns.NetNS) error {
+		err := s.Firewall.ResetAllCustom()
+		if err != nil {
+			return fmt.Errorf("error cleaning firewall rules: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	zap.L().Debug("slot internet access reset",
+		zap.String("namespace_id", s.NamespaceID()),
+		zap.String("took", time.Since(start).String()),
+	)
 	return nil
 }

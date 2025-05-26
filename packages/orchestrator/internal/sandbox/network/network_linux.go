@@ -245,7 +245,7 @@ func (s *Slot) RemoveNetwork() error {
 
 	err := s.CloseFirewall()
 	if err != nil {
-		return fmt.Errorf("error closing firewall: %w", err)
+		errs = append(errs, fmt.Errorf("error closing firewall: %w", err))
 	}
 
 	tables, err := iptables.New()

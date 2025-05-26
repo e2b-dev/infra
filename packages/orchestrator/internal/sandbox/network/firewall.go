@@ -13,7 +13,10 @@ import (
 	"github.com/ngrok/firewall_toolkit/pkg/set"
 )
 
-// your original CIDR list
+const (
+	tableName = "slot-firewall"
+)
+
 var blockedRanges = []string{
 	"10.0.0.0/8",
 	"169.254.0.0/16",
@@ -21,7 +24,6 @@ var blockedRanges = []string{
 	"172.16.0.0/12",
 }
 
-// Firewall wraps a nftables.Conn + two dynamic sets.
 type Firewall struct {
 	conn         *nftables.Conn
 	table        *nftables.Table
@@ -31,17 +33,14 @@ type Firewall struct {
 	tapInterface string
 }
 
-// NewFirewall creates the table, chain, sets, seeds the block-set,
-// installs all rules, and flushes to kernel.
 func NewFirewall(tapIf string) (*Firewall, error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
 	}
 
-	// 1) create an "inet" table and a forward chain
 	table := conn.AddTable(&nftables.Table{
-		Name:   "slot-firewall",
+		Name:   tableName,
 		Family: nftables.TableFamilyINet,
 	})
 	acceptPolicy := nftables.ChainPolicyAccept
@@ -54,7 +53,7 @@ func NewFirewall(tapIf string) (*Firewall, error) {
 		Policy:   &acceptPolicy,
 	})
 
-	// 2) build the block-set and allow-set
+	// Create block-set and allow-set
 	blockSet, err := set.New(conn, table, "filtered_blocklist", nftables.TypeIPAddr)
 	if err != nil {
 		return nil, fmt.Errorf("new block set: %w", err)
@@ -63,8 +62,6 @@ func NewFirewall(tapIf string) (*Firewall, error) {
 	if err != nil {
 		return nil, fmt.Errorf("new allow set: %w", err)
 	}
-
-	// populate allow set
 
 	fw := &Firewall{
 		conn:         conn,
@@ -75,15 +72,15 @@ func NewFirewall(tapIf string) (*Firewall, error) {
 		tapInterface: tapIf,
 	}
 
-	// 3) install the three top-level rules
+	// Add firewall rules to the chain
 	if err := fw.installRules(); err != nil {
 		return nil, err
 	}
 
-	// populate default block set with the original CIDRs
+	// Populate the sets with initial data
 	err = fw.ResetAllCustom()
 	if err != nil {
-		return nil, fmt.Errorf("clear initial block set: %w", err)
+		return nil, fmt.Errorf("error while configuring initial block set: %w", err)
 	}
 	return fw, nil
 }
@@ -92,12 +89,10 @@ func (fw *Firewall) Close() error {
 	return fw.conn.CloseLasting()
 }
 
-// installRules wires up: (i) established → ACCEPT, (ii) in allowSet → ACCEPT,
-// then if !allowInternet a catch-all DROP, and (iii) in blockSet → DROP.
 func (fw *Firewall) installRules() error {
 	m := fw.tapInterface
 
-	// helper for matching our tap interface
+	// helper for the tap interface
 	ifaceMatch := []expr.Any{
 		&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
 		&expr.Cmp{
@@ -107,7 +102,7 @@ func (fw *Firewall) installRules() error {
 		},
 	}
 
-	// A) allow ESTABLISHED,RELATED
+	// Allow ESTABLISHED,RELATED
 	exprs, err := rule.Build(
 		expr.VerdictAccept,
 		rule.TransportProtocol(expressions.TCP),
@@ -124,7 +119,7 @@ func (fw *Firewall) installRules() error {
 		),
 	})
 
-	// B) allow anything in our allowSet
+	// Allow anything in allowSet
 	fw.conn.InsertRule(&nftables.Rule{
 		Table: fw.table, Chain: fw.chain,
 		Exprs: append(ifaceMatch,
@@ -134,7 +129,7 @@ func (fw *Firewall) installRules() error {
 		),
 	})
 
-	// D) drop anything in blockSet
+	// Drop anything in blockSet
 	fw.conn.AddRule(&nftables.Rule{
 		Table: fw.table, Chain: fw.chain,
 		Exprs: append(ifaceMatch,
@@ -153,6 +148,7 @@ func (fw *Firewall) installRules() error {
 
 // AddBlockedIP adds a single CIDR to the block set at runtime.
 func (fw *Firewall) AddBlockedIP(cidr string) error {
+	// 0.0.0.0/0 is not valid IP per GoLang, so we handle it as a special case
 	if cidr == "0.0.0.0/0" {
 		fw.conn.FlushSet(fw.blockSet.Set())
 
@@ -162,7 +158,6 @@ func (fw *Firewall) AddBlockedIP(cidr string) error {
 				IntervalEnd: true},
 		}
 
-		// add everything in newSetData to the set
 		if err := fw.conn.SetAddElements(fw.blockSet.Set(), toAppend); err != nil {
 			return fmt.Errorf("add elements to block set: %w", err)
 		}
@@ -222,7 +217,7 @@ func (fw *Firewall) ResetAllCustom() error {
 	return nil
 }
 
-// ResetBlockedCustom resets the block set back to your original four ranges.
+// ResetBlockedCustom resets the block set back to original ranges.
 func (fw *Firewall) ResetBlockedCustom() error {
 	initData, err := set.AddressStringsToSetData(blockedRanges)
 	if err != nil {
@@ -235,9 +230,11 @@ func (fw *Firewall) ResetBlockedCustom() error {
 	return fw.conn.Flush()
 }
 
-// ResetAllowedCustom wipes out everything from the allow set.
+// ResetAllowedCustom resets allow set back to original ranges.
 func (fw *Firewall) ResetAllowedCustom() error {
 	initIps := make([]string, 0)
+
+	// Allow Logs Collector IP for logs
 	if ip := os.Getenv("LOGS_COLLECTOR_IP"); ip != "" {
 		ip = strings.TrimPrefix(ip, "http://") + "/32"
 		initIps = append(initIps, ip)
