@@ -46,7 +46,7 @@ run-debug:
 	ORCHESTRATOR_SERVICES=$(ORCHESTRATOR_SERVICES) \
 	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
-	./bin/orchestrator
+	./bin/orchestrator --wait 0
 
 .PHONY: upload/orchestrator
 upload/orchestrator:
