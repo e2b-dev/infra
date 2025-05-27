@@ -90,21 +90,23 @@ jobs:
           DOMAIN:      ${{ matrix.e2b-domain }}
           RUN_LINK:    ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WEBHOOK_URL: ${{ secrets.GRAFANA_ALERT_WEBHOOK }}
+          TEST_NAME:   ${{ matrix.test-command.name }}
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq jq  # jq for JSON assembly
 
           # Map GH status → Grafana state
-          if [ "$JOB_STATUS" = "success" ]; then
-            STATE="ok"
-          else
-            STATE="alerting"
-          fi
+          STATE=$([ "$JOB_STATUS" = "success" ] && echo ok || echo alerting)
 
-          # A stable UID per domain + check name (groups flapping alerts nicely)
-          ALERT_UID="periodic-tests-${DOMAIN//./-}-${STATE}"
+          # slug-ify the test name (lowercase, a–z/0–9, hyphens)
+          TEST_SLUG=$(echo "$TEST_NAME" \
+                      | tr '[:upper:]' '[:lower:]' \
+                      | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
 
-          TITLE="Periodic tests – ${DOMAIN} – ${STATE^^}"
-          MESSAGE="Job **${DOMAIN}** finished with status **${JOB_STATUS}** for command **${{ matrix.test-command.name }}** in workflow run $RUN_LINK"
+          # Unique per (domain + test) – same UID for ok/alerting so OnCall auto-resolves
+          ALERT_UID="periodic-tests-${DOMAIN//./-}-${TEST_SLUG}"
+
+          TITLE="Periodic tests – ${DOMAIN} – ${TEST_NAME} – ${STATE^^}"
+          MESSAGE="**${TEST_NAME}** on **${DOMAIN}** finished with status **${JOB_STATUS}**. See logs: $RUN_LINK"
 
           # You can attach a branch-status badge or any other image. Optional.
           IMAGE_URL="https://github.com/${{ github.repository }}/actions/workflows/${{ github.workflow }}.yml/badge.svg?branch=${{ github.ref_name }}"
