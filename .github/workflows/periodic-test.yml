@@ -121,6 +121,7 @@ jobs:
             --arg message "$MESSAGE" \
             --arg image_url "$IMAGE_URL" \
             --arg domain "$DOMAIN" \
+            --arg dev "${{ inputs.dev }}" \
             '{alert_uid: $alert_uid,
               title: $title,
               state: $state,
@@ -129,6 +130,7 @@ jobs:
               severity: "warning",
               status: $status,
               domain: $domain,
+              dev: $dev,
               annotations: {Project: $domain},
               image_url: $image_url}' \
           | curl -s -X POST -H 'Content-Type: application/json' -d @- "$WEBHOOK_URL"
