@@ -70,8 +70,7 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aws/aws-sdk-go v1.55.7 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bep/godartsass v1.2.0 // indirect
-	github.com/bep/godartsass/v2 v2.1.0 // indirect
+	github.com/bep/godartsass/v2 v2.3.2 // indirect
 	github.com/bep/golibsass v1.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/bytedance/sonic v1.12.4 // indirect
@@ -112,7 +111,7 @@ require (
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/gohugoio/hugo v0.134.3 // indirect
+	github.com/gohugoio/hugo v0.139.4 // indirect
 	github.com/golang-migrate/migrate/v4 v4.18.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
