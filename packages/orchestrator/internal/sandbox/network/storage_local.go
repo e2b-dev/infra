@@ -72,13 +72,11 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 
 			// skip the slot if it's already in use by foreign program
 			if _, found := s.foreignNs[slotName]; found {
-				zap.L().Debug("Skipping slot because already use by foreign program", zap.String("slot", slotName))
 				continue
 			}
 
 			// skip the slot if it's already acquired
 			if _, found := s.acquiredNs[slotName]; found {
-				zap.L().Debug("Skipping slot because already acquired", zap.String("slot", slotName))
 				continue
 			}
 
