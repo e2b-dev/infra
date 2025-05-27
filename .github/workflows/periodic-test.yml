@@ -128,6 +128,7 @@ jobs:
               message: $message,
               severity: "warning",
               status: $status,
+              domain: $domain,
               annotations: {Project: $domain},
               image_url: $image_url}' \
           | curl -s -X POST -H 'Content-Type: application/json' -d @- "$WEBHOOK_URL"
