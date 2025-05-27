@@ -109,7 +109,7 @@ jobs:
           MESSAGE="**${TEST_NAME}** on **${DOMAIN}** finished with status **${JOB_STATUS}**. See logs: $RUN_LINK"
 
           # You can attach a branch-status badge or any other image. Optional.
-          IMAGE_URL="https://github.com/${{ github.repository }}/actions/workflows/${{ github.workflow }}.yml/badge.svg?branch=${{ github.ref_name }}"
+          IMAGE_URL="https://github.com/${{ github.repository }}/actions/workflows/periodic-test.yml/badge.svg?branch=${{ github.ref_name }}"
 
           jq -n \
             --arg alert_uid "$ALERT_UID" \
