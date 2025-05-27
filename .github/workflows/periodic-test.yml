@@ -105,7 +105,7 @@ jobs:
           # Unique per (domain + test) – same UID for ok/alerting so OnCall auto-resolves
           ALERT_UID="periodic-tests-${DOMAIN//./-}-${TEST_SLUG}"
 
-          TITLE="Periodic tests – ${DOMAIN} – ${TEST_NAME} – ${STATE^^}"
+          TITLE="Periodic tests | ${DOMAIN} | ${TEST_NAME}"
           MESSAGE="**${TEST_NAME}** on **${DOMAIN}** finished with status **${JOB_STATUS}**. See logs: $RUN_LINK"
 
           # You can attach a branch-status badge or any other image. Optional.
