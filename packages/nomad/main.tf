@@ -358,10 +358,14 @@ resource "random_id" "orchestrator_job" {
   byte_length = 8
 }
 
+locals {
+  latest_orchestrator_job_id = var.environment == "dev" ? "dev" : random_id.orchestrator_job.hex
+}
+
 resource "nomad_variable" "orchestrator_hash" {
   path = "nomad/jobs"
   items = {
-    latest_orchestrator_job_id = random_id.orchestrator_job.hex
+    latest_orchestrator_job_id = local.latest_orchestrator_job_id
   }
 }
 
@@ -371,11 +375,11 @@ resource "nomad_job" "orchestrator" {
   jobspec = templatefile("${path.module}/orchestrator.hcl", merge(
     local.orchestrator_envs,
     {
-      latest_orchestrator_job_id = random_id.orchestrator_job.hex
+      latest_orchestrator_job_id = local.latest_orchestrator_job_id
     }
   ))
 
-  depends_on = [nomad_variable.orchestrator_hash]
+  depends_on = [nomad_variable.orchestrator_hash, random_id.orchestrator_job]
 }
 
 data "google_storage_bucket_object" "template_manager" {
