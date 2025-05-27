@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"sync/atomic"
 
 	"github.com/containernetworking/plugins/pkg/ns"
 	"go.opentelemetry.io/otel/attribute"
@@ -28,6 +29,8 @@ type Slot struct {
 	Idx int
 
 	Firewall *Firewall
+	// firewallCustomRules is used to track if custom firewall rules are set for the slot and need a cleanup.
+	firewallCustomRules atomic.Bool
 }
 
 func NewSlot(key string, idx int) *Slot {
@@ -164,6 +167,8 @@ func (s *Slot) ConfigureInternet(ctx context.Context, tracer trace.Tracer, allow
 		return nil
 	}
 
+	s.firewallCustomRules.Store(true)
+
 	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
 	if err != nil {
 		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
@@ -190,6 +195,10 @@ func (s *Slot) ResetInternet(ctx context.Context, tracer trace.Tracer) error {
 		attribute.String("namespace_id", s.NamespaceID()),
 	))
 	defer span.End()
+
+	if !s.firewallCustomRules.CompareAndSwap(true, false) {
+		return nil
+	}
 
 	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
 	if err != nil {
