@@ -130,7 +130,7 @@ jobs:
               severity: "warning",
               status: $status,
               domain: $domain,
-              dev: $dev,
+              dev: ($dev == "true"),
               annotations: {Project: $domain},
               image_url: $image_url}' \
           | curl -s -X POST -H 'Content-Type: application/json' -d @- "$WEBHOOK_URL"
