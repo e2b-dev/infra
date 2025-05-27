@@ -107,7 +107,7 @@ jobs:
           ALERT_UID="periodic-tests-${DOMAIN//./-}-${TEST_SLUG}"
 
           TITLE="Periodic tests | ${DOMAIN} | ${TEST_NAME}"
-          MESSAGE="${TEST_NAME} on ${DOMAIN} finished with status ${JOB_STATUS}."
+          MESSAGE="${TEST_NAME} on ${DOMAIN} finished."
 
           # You can attach a branch-status badge or any other image. Optional.
           IMAGE_URL="https://github.com/${{ github.repository }}/actions/workflows/periodic-test.yml/badge.svg?branch=${{ github.ref_name }}"
