@@ -103,10 +103,10 @@ jobs:
                       | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
 
           # Unique per (domain + test) – same UID for state so OnCall auto-resolves
-          ALERT_UID="periodic-tests"
+          ALERT_UID="periodic-tests-${DOMAIN//./-}-${TEST_SLUG}"
 
           TITLE="Periodic tests | ${DOMAIN} | ${TEST_NAME}"
-          MESSAGE="**${TEST_NAME}** on **${DOMAIN}** finished with status **${JOB_STATUS}**. See logs: $RUN_LINK"
+          MESSAGE="${TEST_NAME} on ${DOMAIN} finished with status ${JOB_STATUS}."
 
           # You can attach a branch-status badge or any other image. Optional.
           IMAGE_URL="https://github.com/${{ github.repository }}/actions/workflows/periodic-test.yml/badge.svg?branch=${{ github.ref_name }}"
