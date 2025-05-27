@@ -118,9 +118,7 @@ jobs:
             --arg link_to_upstream_details "$RUN_LINK" \
             --arg message "$MESSAGE" \
             --arg image_url "$IMAGE_URL" \
-            --argjson annotations '{
-              "Project": $DOMAIN
-            }' \
+            --arg domain "$DOMAIN" \
             '{alert_uid: $alert_uid,
               title: $title,
               state: $state,
@@ -128,6 +126,6 @@ jobs:
               message: $message,
               severity: "warning",
               status: $state,
-              annotations: $annotations,
+              annotations: {Project: $domain},
               image_url: $image_url}' \
           | curl -s -X POST -H 'Content-Type: application/json' -d @- "$WEBHOOK_URL"
