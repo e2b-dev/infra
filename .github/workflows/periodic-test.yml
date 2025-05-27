@@ -95,14 +95,14 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq jq  # jq for JSON assembly
 
           # Map GH status → Grafana state
-          STATE=$([ "$JOB_STATUS" = "success" ] && echo ok || echo alerting)
+          STATE=$([ "$JOB_STATUS" = "success" ] && echo resolved || echo firing)
 
           # slug-ify the test name (lowercase, a–z/0–9, hyphens)
           TEST_SLUG=$(echo "$TEST_NAME" \
                       | tr '[:upper:]' '[:lower:]' \
                       | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
 
-          # Unique per (domain + test) – same UID for ok/alerting so OnCall auto-resolves
+          # Unique per (domain + test) – same UID for state so OnCall auto-resolves
           ALERT_UID="periodic-tests-${DOMAIN//./-}-${TEST_SLUG}"
 
           TITLE="Periodic tests | ${DOMAIN} | ${TEST_NAME}"
@@ -118,10 +118,16 @@ jobs:
             --arg link_to_upstream_details "$RUN_LINK" \
             --arg message "$MESSAGE" \
             --arg image_url "$IMAGE_URL" \
+            --argjson annotations '{
+              "Project": $DOMAIN
+            }' \
             '{alert_uid: $alert_uid,
               title: $title,
               state: $state,
               link_to_upstream_details: $link_to_upstream_details,
               message: $message,
+              severity: "warning",
+              status: $state,
+              annotations: $annotations,
               image_url: $image_url}' \
           | curl -s -X POST -H 'Content-Type: application/json' -d @- "$WEBHOOK_URL"
