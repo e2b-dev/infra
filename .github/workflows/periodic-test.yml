@@ -95,7 +95,8 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq jq  # jq for JSON assembly
 
           # Map GH status → Grafana state
-          STATE=$([ "$JOB_STATUS" = "success" ] && echo resolved || echo firing)
+          STATE=$([ "$JOB_STATUS" = "success" ] && echo ok || echo alerting)
+          STATUS=$([ "$JOB_STATUS" = "success" ] && echo resolved || echo firing)
 
           # slug-ify the test name (lowercase, a–z/0–9, hyphens)
           TEST_SLUG=$(echo "$TEST_NAME" \
@@ -115,6 +116,7 @@ jobs:
             --arg alert_uid "$ALERT_UID" \
             --arg title "$TITLE" \
             --arg state "$STATE" \
+            --arg status "$STATUS" \
             --arg link_to_upstream_details "$RUN_LINK" \
             --arg message "$MESSAGE" \
             --arg image_url "$IMAGE_URL" \
@@ -125,7 +127,7 @@ jobs:
               link_to_upstream_details: $link_to_upstream_details,
               message: $message,
               severity: "warning",
-              status: $state,
+              status: $status,
               annotations: {Project: $domain},
               image_url: $image_url}' \
           | curl -s -X POST -H 'Content-Type: application/json' -d @- "$WEBHOOK_URL"
