@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -215,6 +216,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 			KernelLogs:          env.IsDevelopment(),
 			SystemdToKernelLogs: env.IsDevelopment(),
 		},
+		config.AllowSandboxInternet,
 	)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)
@@ -416,6 +418,8 @@ func (b *TemplateBuilder) provisionSandbox(
 			// the sandbox is then started with systemd and without kernel logs.
 			KernelLogs: true,
 		},
+		// Allow sandbox internet access during provisioning
+		true,
 	)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)

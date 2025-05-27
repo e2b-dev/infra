@@ -49,7 +49,7 @@ type Process struct {
 
 	firecrackerSocketPath string
 
-	slot       network.Slot
+	slot       *network.Slot
 	rootfsPath string
 	files      *storage.SandboxFiles
 
@@ -63,7 +63,7 @@ type Process struct {
 func NewProcess(
 	ctx context.Context,
 	tracer trace.Tracer,
-	slot network.Slot,
+	slot *network.Slot,
 	files *storage.SandboxFiles,
 	rootfsPath string,
 	baseTemplateID string,

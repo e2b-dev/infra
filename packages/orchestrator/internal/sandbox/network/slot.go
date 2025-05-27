@@ -1,8 +1,15 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"path/filepath"
+	"sync/atomic"
+
+	"github.com/containernetworking/plugins/pkg/ns"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // We are using a more debuggable IP address allocation for now that only covers 255 addresses.
@@ -20,6 +27,10 @@ const (
 type Slot struct {
 	Key string
 	Idx int
+
+	Firewall *Firewall
+	// firewallCustomRules is used to track if custom firewall rules are set for the slot and need a cleanup.
+	firewallCustomRules atomic.Bool
 }
 
 func NewSlot(key string, idx int) *Slot {
@@ -115,4 +126,97 @@ func (s *Slot) TapCIDR() string {
 
 func (s *Slot) TapMAC() string {
 	return "02:FC:00:00:00:05"
+}
+
+func (s *Slot) InitializeFirewall() error {
+	if s.Firewall != nil {
+		return fmt.Errorf("firewall is already initialized for slot %s", s.Key)
+	}
+
+	fw, err := NewFirewall(s.TapName())
+	if err != nil {
+		return fmt.Errorf("error initializing firewall: %w", err)
+	}
+	s.Firewall = fw
+
+	return nil
+}
+
+func (s *Slot) CloseFirewall() error {
+	if s.Firewall == nil {
+		return nil
+	}
+
+	if err := s.Firewall.Close(); err != nil {
+		return fmt.Errorf("error closing firewall: %w", err)
+	}
+	s.Firewall = nil
+
+	return nil
+}
+
+func (s *Slot) ConfigureInternet(ctx context.Context, tracer trace.Tracer, allowInternet bool) (e error) {
+	_, span := tracer.Start(ctx, "slot-internet-configure", trace.WithAttributes(
+		attribute.String("namespace_id", s.NamespaceID()),
+		attribute.Bool("allow_internet", allowInternet),
+	))
+	defer span.End()
+
+	if allowInternet {
+		// Internet access is allowed by default.
+		return nil
+	}
+
+	s.firewallCustomRules.Store(true)
+
+	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	if err != nil {
+		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	defer n.Close()
+
+	err = n.Do(func(_ ns.NetNS) error {
+		err = s.Firewall.AddBlockedIP("0.0.0.0/0")
+		if err != nil {
+			return fmt.Errorf("error setting firewall rules: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+	}
+
+	return nil
+}
+
+func (s *Slot) ResetInternet(ctx context.Context, tracer trace.Tracer) error {
+	_, span := tracer.Start(ctx, "slot-internet-reset", trace.WithAttributes(
+		attribute.String("namespace_id", s.NamespaceID()),
+	))
+	defer span.End()
+
+	if !s.firewallCustomRules.CompareAndSwap(true, false) {
+		return nil
+	}
+
+	n, err := ns.GetNS(filepath.Join(netNamespacesDir, s.NamespaceID()))
+	if err != nil {
+		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	defer n.Close()
+
+	err = n.Do(func(_ ns.NetNS) error {
+		err := s.Firewall.ResetAllCustom()
+		if err != nil {
+			return fmt.Errorf("error cleaning firewall rules: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+	}
+
+	return nil
 }

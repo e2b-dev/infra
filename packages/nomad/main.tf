@@ -412,6 +412,7 @@ resource "nomad_job" "template_manager" {
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+    logs_collector_public_ip     = var.logs_proxy_address
     orchestrator_services        = "template-manager"
   })
 }
