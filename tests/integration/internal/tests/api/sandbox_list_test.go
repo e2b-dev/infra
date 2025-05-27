@@ -18,7 +18,7 @@ import (
 func pauseSandbox(t *testing.T, c *api.ClientWithResponses, sandboxID string) {
 	pauseSandboxResponse, err := c.PostSandboxesSandboxIDPauseWithResponse(context.Background(), sandboxID, setup.WithAPIKey())
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, pauseSandboxResponse.StatusCode())
 }
 
