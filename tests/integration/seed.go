@@ -31,7 +31,7 @@ func main() {
 		log.Fatalf("POSTGRES_CONNECTION_STRING is not set")
 	}
 
-	database, err := db.NewClient()
+	database, err := db.NewClient(1, 1)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -70,6 +70,10 @@ func seed(db *db.DB, data SeedData) error {
 	// Access token
 	tokenWithoutPrefix := strings.TrimPrefix(data.AccessToken, keys.AccessTokenPrefix)
 	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)
+	if err != nil {
+		return fmt.Errorf("failed to decode access token: %w", err)
+	}
+
 	accessTokenHash := hasher.Hash(accessTokenBytes)
 
 	accessTokenMask, err := keys.MaskKey(keys.ApiKeyPrefix, tokenWithoutPrefix)

@@ -13,37 +13,37 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_NAME="$(basename "$0")"
 
 function log {
-  local readonly level="$1"
-  local readonly message="$2"
-  local readonly timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+  local -r level="$1"
+  local -r message="$2"
+  local -r timestamp=$(date +"%Y-%m-%d %H:%M:%S")
   echo >&2 -e "${timestamp} [${level}] [$SCRIPT_NAME] ${message}"
 }
 
 function log_info {
-  local readonly message="$1"
+  local -r message="$1"
   log "INFO" "$message"
 }
 
 function log_warn {
-  local readonly message="$1"
+  local -r message="$1"
   log "WARN" "$message"
 }
 
 function log_error {
-  local readonly message="$1"
+  local -r message="$1"
   log "ERROR" "$message"
 }
 
 # Based on code from: http://stackoverflow.com/a/16623897/483528
 function strip_prefix {
-  local readonly str="$1"
-  local readonly prefix="$2"
+  local -r str="$1"
+  local -r prefix="$2"
   echo "${str#$prefix}"
 }
 
 function assert_not_empty {
-  local readonly arg_name="$1"
-  local readonly arg_value="$2"
+  local -r arg_name="$1"
+  local -r arg_value="$2"
 
   if [[ -z "$arg_value" ]]; then
     log_error "The value for '$arg_name' cannot be empty"
@@ -54,7 +54,7 @@ function assert_not_empty {
 
 # Get the value at a specific Instance Metadata path.
 function get_instance_metadata_value {
-  local readonly path="$1"
+  local -r path="$1"
 
   log_info "Looking up Metadata value at $COMPUTE_INSTANCE_METADATA_URL/$path"
   curl --silent --show-error --location --header "$GOOGLE_CLOUD_METADATA_REQUEST_HEADER" "$COMPUTE_INSTANCE_METADATA_URL/$path"
@@ -62,7 +62,7 @@ function get_instance_metadata_value {
 
 # Get the value of the given Custom Metadata Key
 function get_instance_custom_metadata_value {
-  local readonly key="$1"
+  local -r key="$1"
 
   log_info "Looking up Custom Instance Metadata value for key \"$key\""
   get_instance_metadata_value "instance/attributes/$key"
@@ -109,7 +109,7 @@ function get_instance_ip_address {
 }
 
 function assert_is_installed {
-  local readonly name="$1"
+  local -r name="$1"
 
   if [[ ! $(command -v ${name}) ]]; then
     log_error "The binary '$name' is required by this script but is not installed or in the system's PATH."
@@ -118,13 +118,13 @@ function assert_is_installed {
 }
 
 function generate_nomad_config {
-  local readonly server="$1"
-  local readonly client="$2"
-  local readonly num_servers="$3"
-  local readonly config_dir="$4"
-  local readonly user="$5"
-  local readonly consul_token="$6"
-  local readonly config_path="$config_dir/$NOMAD_CONFIG_FILE"
+  local -r server="$1"
+  local -r client="$2"
+  local -r num_servers="$3"
+  local -r config_dir="$4"
+  local -r user="$5"
+  local -r consul_token="$6"
+  local -r config_path="$config_dir/$NOMAD_CONFIG_FILE"
 
   local instance_name=""
   local instance_ip_address=""
@@ -213,13 +213,13 @@ EOF
 }
 
 function generate_supervisor_config {
-  local readonly supervisor_config_path="$1"
-  local readonly nomad_config_dir="$2"
-  local readonly nomad_data_dir="$3"
-  local readonly nomad_bin_dir="$4"
-  local readonly nomad_log_dir="$5"
-  local readonly nomad_user="$6"
-  local readonly use_sudo="$7"
+  local -r supervisor_config_path="$1"
+  local -r nomad_config_dir="$2"
+  local -r nomad_data_dir="$3"
+  local -r nomad_bin_dir="$4"
+  local -r nomad_log_dir="$5"
+  local nomad_user="$6"
+  local -r use_sudo="$7"
 
   if [[ "$use_sudo" == "true" ]]; then
     log_info "The --use-sudo flag is set, so running Nomad as the root user"
@@ -255,7 +255,7 @@ function bootstrap {
   done
   log_info "Nomad server started."
 
-  local readonly nomad_token="$1"
+  local -r nomad_token="$1"
   log_info "Bootstrapping Nomad"
   echo "$nomad_token" >"/tmp/nomad.token"
   nomad acl bootstrap /tmp/nomad.token
@@ -264,7 +264,7 @@ function bootstrap {
 
 # Based on: http://unix.stackexchange.com/a/7732/215969
 function get_owner_of_path {
-  local readonly path="$1"
+  local -r path="$1"
   ls -ld "$path" | awk '{print $3}'
 }
 

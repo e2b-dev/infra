@@ -158,7 +158,6 @@ build-and-upload/%:
 
 .PHONY: copy-public-builds
 copy-public-builds:
-	gsutil cp -r gs://e2b-prod-public-builds/envd-v0.0.1 gs://$(GCP_PROJECT_ID)-fc-env-pipeline/envd-v0.0.1
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_PROJECT_ID)-fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_PROJECT_ID)-fc-versions/
 
@@ -216,9 +215,5 @@ connect-orchestrator:
 
 .PHONY: fmt
 fmt:
-	@command -v golangci-lint >/dev/null 2>&1 || { \
-		echo >&2 "golangci-lint not found, please install it first. Run following command please:\n"; \
-		echo >&2 'curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.1.6\n'; \
-		exit 1; \
-	}
+	@./scripts/golangci-lint-install.sh "2.1.6"
 	golangci-lint fmt

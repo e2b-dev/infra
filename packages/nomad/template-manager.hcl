@@ -62,6 +62,7 @@ job "template-manager" {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
         ORCHESTRATOR_SERVICES         = "${orchestrator_services}"
+        LOGS_COLLECTOR_PUBLIC_IP      = "${logs_collector_public_ip}"
 %{ if !update_stanza }
         FORCE_STOP                    = "true"
 %{ endif }

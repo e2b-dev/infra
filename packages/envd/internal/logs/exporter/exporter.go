@@ -110,7 +110,7 @@ func (w *HTTPExporter) start() {
 
 			err = w.sendInstanceLogs(logsWithOpts, mmdsOpts.Address)
 			if err != nil {
-				log.Printf(fmt.Sprintf("error sending instance logs: %+v", err))
+				log.Printf("error sending instance logs: %+v", err)
 
 				printLog(logLine)
 

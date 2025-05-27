@@ -4,7 +4,7 @@ IMAGE := e2b-orchestration/api
 
 
 openapi := ../../spec/openapi.yml
-codegen := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
 .PHONY: generate
@@ -41,17 +41,9 @@ run:
 	./bin/api --port 3000
 
 # Run the API using air
-.PHONY: dev-init
-dev-init:
-	go install github.com/air-verse/air@latest
-
 .PHONY: dev
 dev:
-	@if [ ! -f "${GOPATH}/bin/air" ]; then \
-		echo "air not found in ${GOPATH}/bin/air, please run 'make dev-init' first"; \
-		exit 1; \
-	fi
-	${GOPATH}/bin/air
+	go tool air
 
 # You run the parametrized command like this:
 # make metric=heap interval=90 profiler

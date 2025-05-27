@@ -17,7 +17,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	database, err := db.NewClient()
+	database, err := db.NewClient(1, 1)
 	if err != nil {
 		panic(err)
 	}
@@ -98,7 +98,6 @@ func main() {
 	}
 
 	// Create template
-	data, err = os.ReadFile("e2b.toml")
 	_, err = database.Client.Env.Create().SetTeam(t).SetID("rki5dems9wqfm4r03t7g").SetPublic(true).Save(ctx)
 	if err != nil {
 		panic(err)

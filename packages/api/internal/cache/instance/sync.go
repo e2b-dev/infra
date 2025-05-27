@@ -2,6 +2,7 @@ package instance
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -38,7 +39,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 		c.cache.Remove(instanceID)
 
 		msg := fmt.Sprintf("Sandbox '%s' reached maximal allowed uptime", instanceID)
-		return nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: fmt.Errorf(msg)}
+		return nil, &api.APIError{Code: http.StatusForbidden, ClientMsg: msg, Err: errors.New(msg)}
 	} else {
 		maxAllowedTTL := getMaxAllowedTTL(now, instance.StartTime, duration, instance.MaxInstanceLength)
 

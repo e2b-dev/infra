@@ -28,7 +28,8 @@ type GuestRegionUffdMapping struct {
 
 func getMapping(addr uintptr, mappings []GuestRegionUffdMapping) (*GuestRegionUffdMapping, error) {
 	for _, m := range mappings {
-		if !(addr >= m.BaseHostVirtAddr && addr < m.BaseHostVirtAddr+m.Size) {
+		if addr < m.BaseHostVirtAddr || m.BaseHostVirtAddr+m.Size <= addr {
+			// Outside the mapping
 			continue
 		}
 

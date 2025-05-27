@@ -3,7 +3,7 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 
 openapi_api := ../../spec/openapi.yml
 openapi_envd := ../../packages/envd/spec/envd.yaml
-codegen := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+codegen := go tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 .PHONY: generate
 generate:
@@ -43,7 +43,11 @@ test/%:
 	export TESTS_SUPABASE_TOKEN=$(TESTS_SUPABASE_TOKEN); \
 	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
 	go test -v ./internal/main_test.go -count=1 && \
-	go run gotest.tools/gotestsum@latest --rerun-fails=2 --packages="./internal/tests/$(notdir $@)/..." --format standard-verbose --junitfile=test-results.xml -- -count=1
+	TEST_PATH="./internal/tests/$(subst test/,,$@)"; \
+	case "$${TEST_PATH}" in \
+		*.go) go tool gotestsum --rerun-fails=2 --packages="$$TEST_PATH" --format standard-verbose --junitfile=test-results.xml -- -count=1 ;; \
+		*) go tool gotestsum --rerun-fails=2 --packages="$$TEST_PATH/..." --format standard-verbose --junitfile=test-results.xml -- -count=1 ;; \
+	esac
 
 .PHONY: connect-orchestrator
 connect-orchestrator:

@@ -6,8 +6,6 @@ client := gcloud compute instances list --format='csv(name)' --project $(GCP_PRO
 .PHONY: init
 init:
 	brew install protobuf
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
 
 .PHONY: generate
 generate:
@@ -48,7 +46,7 @@ run-debug:
 	ORCHESTRATOR_SERVICES=$(ORCHESTRATOR_SERVICES) \
 	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
-	./bin/orchestrator
+	./bin/orchestrator --wait 0
 
 .PHONY: upload/orchestrator
 upload/orchestrator:

@@ -2,58 +2,82 @@ package build
 
 import (
 	"archive/tar"
-	"fmt"
+	"bytes"
 	"io"
-	"os"
+	"sort"
+
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 )
 
-func addFileToTarWriter(writer *tar.Writer, file fileToTar) error {
-	f, err := os.Open(file.localPath)
-	if err != nil {
-		errMsg := fmt.Errorf("error opening file: %w", err)
-
-		return errMsg
-	}
-
-	defer func() {
-		closeErr := f.Close()
-		if closeErr != nil {
-			errMsg := fmt.Errorf("error closing file: %w", closeErr)
-			fmt.Print(errMsg)
-		}
-	}()
-
-	stat, err := f.Stat()
-	if err != nil {
-		errMsg := fmt.Errorf("error statting file: %w", err)
-
-		return errMsg
-	}
-
-	hdr := &tar.Header{
-		Name: file.tarPath, // The name of the file in the tar archive
-		Mode: 0o777,
-		Size: stat.Size(),
-	}
-
-	err = writer.WriteHeader(hdr)
-	if err != nil {
-		errMsg := fmt.Errorf("error writing tar header: %w", err)
-
-		return errMsg
-	}
-
-	_, err = io.Copy(writer, f)
-	if err != nil {
-		errMsg := fmt.Errorf("error copying file to tar: %w", err)
-
-		return errMsg
-	}
-
-	return nil
+type layerFile struct {
+	Bytes []byte
+	Mode  int64 // Permission and mode bits
 }
 
-type fileToTar struct {
-	localPath string
-	tarPath   string
+// LayerFile creates a layer from a single file map. These layers are reproducible and consistent.
+// A filemap is a path -> file content map representing a file system.
+func LayerFile(filemap map[string]layerFile) (v1.Layer, error) {
+	b := &bytes.Buffer{}
+	w := tar.NewWriter(b)
+
+	names := []string{}
+	for f := range filemap {
+		names = append(names, f)
+	}
+	sort.Strings(names)
+
+	for _, f := range names {
+		c := filemap[f]
+		if err := w.WriteHeader(&tar.Header{
+			Name: f,
+			Size: int64(len(c.Bytes)),
+			Mode: c.Mode,
+		}); err != nil {
+			return nil, err
+		}
+		if _, err := w.Write(c.Bytes); err != nil {
+			return nil, err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+
+	// Return a new copy of the buffer each time it's opened.
+	return tarball.LayerFromOpener(func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewBuffer(b.Bytes())), nil
+	})
+}
+
+// LayerSymlink creates a layer from a single symlink map. These layers are reproducible and consistent.
+func LayerSymlink(symlinks map[string]string) (v1.Layer, error) {
+	b := &bytes.Buffer{}
+	w := tar.NewWriter(b)
+
+	names := make([]string, 0, len(symlinks))
+	for name := range symlinks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		target := symlinks[name]
+		if err := w.WriteHeader(&tar.Header{
+			Name:     name,
+			Mode:     0o777,
+			Typeflag: tar.TypeSymlink,
+			Linkname: target,
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+
+	return tarball.LayerFromOpener(func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewBuffer(b.Bytes())), nil
+	})
 }

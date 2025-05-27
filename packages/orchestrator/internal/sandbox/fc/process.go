@@ -16,7 +16,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -34,14 +33,25 @@ ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrack
 
 var startScriptTemplate = txtTemplate.Must(txtTemplate.New("fc-start").Parse(startScript))
 
+type ProcessOptions struct {
+	// InitScriptPath is the path to the init script that will be executed inside the VM on kernel start.
+	InitScriptPath string
+
+	// KernelLogs is a flag to enable kernel logs output to the process stdout.
+	KernelLogs bool
+	// SystemdToKernelLogs is a flag to enable systemd logs output to the console.
+	// It enabled the kernel logs by default too.
+	SystemdToKernelLogs bool
+}
+
 type Process struct {
 	cmd *exec.Cmd
 
 	firecrackerSocketPath string
 
-	slot   network.Slot
-	rootfs *rootfs.CowDevice
-	files  *storage.SandboxFiles
+	slot       *network.Slot
+	rootfsPath string
+	files      *storage.SandboxFiles
 
 	Exit chan error
 
@@ -53,9 +63,9 @@ type Process struct {
 func NewProcess(
 	ctx context.Context,
 	tracer trace.Tracer,
-	slot network.Slot,
+	slot *network.Slot,
 	files *storage.SandboxFiles,
-	rootfs *rootfs.CowDevice,
+	rootfsPath string,
 	baseTemplateID string,
 	baseBuildID string,
 ) (*Process, error) {
@@ -122,7 +132,7 @@ func NewProcess(
 		cmd:                   cmd,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
-		rootfs:                rootfs,
+		rootfsPath:            rootfsPath,
 		files:                 files,
 		slot:                  slot,
 
@@ -189,7 +199,7 @@ func (p *Process) configure(
 		}
 	}()
 
-	err = os.Symlink("/dev/null", p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -244,11 +254,13 @@ func (p *Process) configure(
 func (p *Process) Create(
 	ctx context.Context,
 	tracer trace.Tracer,
+	sandboxID string,
 	templateID string,
 	teamID string,
 	vCPUCount int64,
 	memoryMB int64,
 	hugePages bool,
+	options ProcessOptions,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
@@ -256,7 +268,7 @@ func (p *Process) Create(
 	err := p.configure(
 		childCtx,
 		tracer,
-		"",
+		sandboxID,
 		templateID,
 		teamID,
 	)
@@ -268,7 +280,40 @@ func (p *Process) Create(
 
 	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
 	ipv4 := fmt.Sprintf("%s::%s:%s:instance:%s:off:%s", p.slot.NamespaceIP(), p.slot.TapIP(), p.slot.TapMaskString(), p.slot.VpeerName(), p.slot.TapName())
-	kernelArgs := fmt.Sprintf("quiet loglevel=1 ip=%s ipv6.disable=0 ipv6.autoconf=1 reboot=k panic=1 pci=off nomodules i8042.nokbd i8042.noaux random.trust_cpu=on", ipv4)
+	args := KernelArgs{
+		// Disable kernel logs for production to speed the FC operations
+		// https://github.com/firecracker-microvm/firecracker/blob/main/docs/prod-host-setup.md#logging-and-performance
+		"quiet":    "",
+		"loglevel": "1",
+
+		// Define kernel init path
+		"init": options.InitScriptPath,
+
+		// Networking IPv4 and IPv6
+		"ip":            ipv4,
+		"ipv6.disable":  "0",
+		"ipv6.autoconf": "1",
+
+		// Wait 1 second before exiting FC after panic or reboot
+		"panic": "1",
+
+		"reboot":           "k",
+		"pci":              "off",
+		"i8042.nokbd":      "",
+		"i8042.noaux":      "",
+		"random.trust_cpu": "on",
+	}
+	if options.SystemdToKernelLogs {
+		args["systemd.journald.forward_to_console"] = ""
+	}
+	if options.KernelLogs || options.SystemdToKernelLogs {
+		// Forward kernel logs to the ttyS0, which will be picked up by the stdout of FC process
+		delete(args, "quiet")
+		args["console"] = "ttyS0"
+		args["loglevel"] = "5" //KERN_NOTICE
+	}
+
+	kernelArgs := args.String()
 	err = p.client.setBootSource(childCtx, kernelArgs, p.files.BuildKernelPath())
 	if err != nil {
 		fcStopErr := p.Stop()
@@ -278,11 +323,7 @@ func (p *Process) Create(
 	telemetry.ReportEvent(childCtx, "set fc boot source config")
 
 	// Rootfs
-	rootfsPath, err := p.rootfs.Path()
-	if err != nil {
-		return fmt.Errorf("error getting rootfs path: %w", err)
-	}
-	err = utils.SymlinkForce(rootfsPath, p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce(p.rootfsPath, p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -347,11 +388,7 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error starting fc process: %w", err), fcStopErr)
 	}
 
-	device, err := p.rootfs.Path()
-	if err != nil {
-		return fmt.Errorf("error getting rootfs path: %w", err)
-	}
-	err = utils.SymlinkForce(device, p.files.SandboxCacheRootfsLinkPath())
+	err = utils.SymlinkForce(p.rootfsPath, p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -406,7 +443,7 @@ func (p *Process) Stop() error {
 
 	err := p.cmd.Process.Kill()
 	if err != nil {
-		return fmt.Errorf("failed to send KILL to FC process: %w", err)
+		zap.L().Warn("failed to send KILL to FC process", zap.Error(err))
 	}
 
 	return nil

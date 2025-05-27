@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -13,6 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -40,6 +42,11 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
+	// TODO: Temporary workaround, remove API changes deployed
+	if req.Sandbox.GetExecutionId() == "" {
+		req.Sandbox.ExecutionId = uuid.New().String()
+	}
+
 	sbx, cleanup, err := sandbox.ResumeSandbox(
 		childCtx,
 		s.tracer,
@@ -51,6 +58,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.EndTime.AsTime(),
 		req.Sandbox.BaseTemplateId,
 		s.devicePool,
+		config.AllowSandboxInternet,
 		s.clickhouseStore,
 		s.useLokiMetrics,
 		s.useClickhouseMetrics,
@@ -92,11 +100,11 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 				return false
 			}
 
-			return sbx.StartID == v.StartID
+			return sbx.Config.ExecutionId == v.Config.ExecutionId
 		})
 
 		// Remove the proxies assigned to the sandbox from the pool to prevent them from being reused.
-		s.proxy.RemoveFromPool(sbx.StartID)
+		s.proxy.RemoveFromPool(sbx.Config.ExecutionId)
 
 		sbxlogger.E(sbx).Info("Sandbox killed")
 	}()

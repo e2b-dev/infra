@@ -31,30 +31,30 @@ function print_usage {
 }
 
 function log {
-  local readonly level="$1"
-  local readonly message="$2"
-  local readonly timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+  local -r level="$1"
+  local -r message="$2"
+  local -r timestamp=$(date +"%Y-%m-%d %H:%M:%S")
   >&2 echo -e "${timestamp} [${level}] [$SCRIPT_NAME] ${message}"
 }
 
 function log_info {
-  local readonly message="$1"
+  local -r message="$1"
   log "INFO" "$message"
 }
 
 function log_warn {
-  local readonly message="$1"
+  local -r message="$1"
   log "WARN" "$message"
 }
 
 function log_error {
-  local readonly message="$1"
+  local -r message="$1"
   log "ERROR" "$message"
 }
 
 function assert_not_empty {
-  local readonly arg_name="$1"
-  local readonly arg_value="$2"
+  local -r arg_name="$1"
+  local -r arg_value="$2"
 
   if [[ -z "$arg_value" ]]; then
     log_error "The value for '$arg_name' cannot be empty"
@@ -99,12 +99,12 @@ function install_dependencies {
 }
 
 function user_exists {
-  local readonly username="$1"
+  local -r username="$1"
   id "$username" >/dev/null 2>&1
 }
 
 function create_nomad_user {
-  local readonly username="$1"
+  local -r username="$1"
 
   if $(user_exists "$username"); then
     echo "User $username already exists. Will not create again."
@@ -115,8 +115,8 @@ function create_nomad_user {
 }
 
 function create_nomad_install_paths {
-  local readonly path="$1"
-  local readonly username="$2"
+  local -r path="$1"
+  local -r username="$2"
 
   log_info "Creating install dirs for Nomad at $path"
   sudo mkdir -p "$path"
@@ -130,14 +130,14 @@ function create_nomad_install_paths {
 }
 
 function install_binaries {
-  local readonly version="$1"
-  local readonly path="$2"
-  local readonly username="$3"
+  local -r version="$1"
+  local -r path="$2"
+  local -r username="$3"
 
-  local readonly url="https://releases.hashicorp.com/nomad/${version}/nomad_${version}_linux_amd64.zip"
-  local readonly download_path="/tmp/nomad_${version}_linux_amd64.zip"
-  local readonly bin_dir="$path/bin"
-  local readonly nomad_dest_path="$bin_dir/nomad"
+  local -r url="https://releases.hashicorp.com/nomad/${version}/nomad_${version}_linux_amd64.zip"
+  local -r download_path="/tmp/nomad_${version}_linux_amd64.zip"
+  local -r bin_dir="$path/bin"
+  local -r nomad_dest_path="$bin_dir/nomad"
 
   log_info "Downloading Nomad $version from $url to $download_path"
   curl -o "$download_path" "$url"
@@ -148,7 +148,7 @@ function install_binaries {
   sudo chown "$username:$username" "$nomad_dest_path"
   sudo chmod a+x "$nomad_dest_path"
 
-  local readonly symlink_path="$SYSTEM_BIN_DIR/nomad"
+  local -r symlink_path="$SYSTEM_BIN_DIR/nomad"
   if [[ -f "$symlink_path" ]]; then
     log_info "Symlink $symlink_path already exists. Will not add again."
   else

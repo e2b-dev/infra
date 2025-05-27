@@ -113,9 +113,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	if params.State == nil {
 		states = append(states, api.Running, api.Paused)
 	} else {
-		for _, s := range *params.State {
-			states = append(states, s)
-		}
+		states = append(states, *params.State...)
 	}
 
 	limit := defaultSandboxListLimit
@@ -212,7 +210,7 @@ func snapshotsToPaginatedSandboxes(snapshots []queries.GetSnapshotsWithCursorRow
 		build := record.EnvBuild
 
 		var alias *string
-		if record.Aliases != nil && len(record.Aliases) > 0 {
+		if len(record.Aliases) > 0 {
 			alias = &record.Aliases[0]
 		}
 

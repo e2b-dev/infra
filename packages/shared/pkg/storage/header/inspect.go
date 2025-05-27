@@ -90,22 +90,22 @@ func ValidateMappings(mappings []*BuildMap, size, blockSize uint64) error {
 
 	for _, mapping := range mappings {
 		if currentOffset != mapping.Offset {
-			return fmt.Errorf("mapping validation failed: the following mapping\n- %s\ndoes not start at the correct offset: expected %d (block %d), got %d (block %d)\n", mapping.Format(blockSize), currentOffset, currentOffset/blockSize, mapping.Offset, mapping.Offset/blockSize)
+			return fmt.Errorf("mapping validation failed: the following mapping\n- %s\ndoes not start at the correct offset: expected %d (block %d), got %d (block %d)", mapping.Format(blockSize), currentOffset, currentOffset/blockSize, mapping.Offset, mapping.Offset/blockSize)
 		}
 
 		if mapping.Length%blockSize != 0 {
-			return fmt.Errorf("mapping validation failed: the following mapping\n- %s\nhas an invalid length: %d. It should be a multiple of block size: %d\n", mapping.Format(blockSize), mapping.Length, blockSize)
+			return fmt.Errorf("mapping validation failed: the following mapping\n- %s\nhas an invalid length: %d. It should be a multiple of block size: %d", mapping.Format(blockSize), mapping.Length, blockSize)
 		}
 
 		if currentOffset+mapping.Length > size {
-			return fmt.Errorf("mapping validation failed: the following mapping\n- %s\ngoes beyond the size: %d (current offset) + %d (length) > %d (size)\n", mapping.Format(blockSize), currentOffset, mapping.Length, size)
+			return fmt.Errorf("mapping validation failed: the following mapping\n- %s\ngoes beyond the size: %d (current offset) + %d (length) > %d (size)", mapping.Format(blockSize), currentOffset, mapping.Length, size)
 		}
 
 		currentOffset += mapping.Length
 	}
 
 	if currentOffset != size {
-		return fmt.Errorf("mapping validation failed: the following mapping\n- %s\ndoes not cover the whole size: %d (current offset) != %d (size)\n", mappings[len(mappings)-1].Format(blockSize), currentOffset, size)
+		return fmt.Errorf("mapping validation failed: the following mapping\n- %s\ndoes not cover the whole size: %d (current offset) != %d (size)", mappings[len(mappings)-1].Format(blockSize), currentOffset, size)
 	}
 
 	return nil

@@ -23,7 +23,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 	var team *queries.Team
 	teams, err := a.sqlcDB.GetTeamsWithUsersTeams(ctx, userID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting teams"))
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting teams")
 
 		err = fmt.Errorf("error when getting teams: %w", err)
 		telemetry.ReportCriticalError(ctx, err)

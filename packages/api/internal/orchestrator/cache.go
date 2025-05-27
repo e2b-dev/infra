@@ -214,6 +214,7 @@ func (o *Orchestrator) getDeleteInstanceFunction(
 			o.analytics,
 			info.TeamID.String(),
 			info.Instance.SandboxID,
+			info.ExecutionID,
 			info.Instance.TemplateID,
 			stopTime,
 			ct,
@@ -276,6 +277,7 @@ func reportInstanceStopAnalytics(
 	analytics *analyticscollector.Analytics,
 	teamID string,
 	sandboxID string,
+	executionID string,
 	templateID string,
 	stopTime time.Time,
 	ct closeType,
@@ -297,6 +299,7 @@ func reportInstanceStopAnalytics(
 		TeamId:        teamID,
 		EnvironmentId: templateID,
 		InstanceId:    sandboxID,
+		ExecutionId:   executionID,
 		Timestamp:     timestamppb.New(stopTime),
 		Duration:      float32(duration),
 	})
@@ -337,6 +340,7 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 			o.analytics,
 			info.TeamID.String(),
 			info.Instance.SandboxID,
+			info.ExecutionID,
 			info.Instance.TemplateID,
 			info.BuildID.String(),
 		)
@@ -356,6 +360,7 @@ func reportInstanceStartAnalytics(
 	analytics *analyticscollector.Analytics,
 	teamID string,
 	sandboxID string,
+	executionID string,
 	templateID string,
 	buildID string,
 ) {
@@ -364,6 +369,7 @@ func reportInstanceStartAnalytics(
 
 	_, err := analytics.Client.InstanceStarted(childCtx, &analyticscollector.InstanceStartedEvent{
 		InstanceId:    sandboxID,
+		ExecutionId:   executionID,
 		EnvironmentId: templateID,
 		BuildId:       buildID,
 		TeamId:        teamID,

@@ -71,11 +71,13 @@ func (c *Checks) LogMetrics(ctx context.Context) {
 	if c.useLokiMetrics == "true" {
 		logger.LogMetricsLoki(ctx)
 	}
+
 	if c.useClickhouseMetrics == "true" {
 		logger.LogMetricsClickhouse(ctx)
 	}
+
 	// ensure backward compatibility if neither are set
-	if !(c.useClickhouseMetrics == "true") && !(c.useLokiMetrics == "true") {
+	if c.useClickhouseMetrics != "true" && c.useLokiMetrics != "true" {
 		logger.LogMetricsLoki(ctx)
 	}
 }

@@ -108,8 +108,6 @@ func newProxyClient(
 				zap.L().Error("sandbox error handler called", zap.Error(err))
 
 				http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
-
-				return
 			},
 			ModifyResponse: func(r *http.Response) error {
 				t, ok := r.Request.Context().Value(DestinationContextKey{}).(*Destination)

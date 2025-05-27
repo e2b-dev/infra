@@ -29,6 +29,7 @@ jobs:
     name: Check
     runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         # each domain is a different cluster
         e2b-domain:
@@ -39,15 +40,12 @@ jobs:
           - e2b-domain: "e2b-foxtrot.dev"
             api_key: E2B_API_KEY
             access_token: E2B_ACCESS_TOKEN
-            slack_channel: monitoring-infra
           - e2b-domain: "e2b-juliett.dev"
             api_key: E2B_API_KEY_JULIETT
             access_token: E2B_ACCESS_TOKEN_JULIETT
-            slack_channel: monitoring-infra
           - e2b-domain: "e2b-staging.dev"
             api_key: E2B_API_KEY
             access_token: E2B_ACCESS_TOKEN
-            slack_channel: monitoring-infra-staging
         test-command:
           - command: "tests/periodic-test/run-code.ts"
             name: "run code in sandbox"
@@ -60,12 +58,10 @@ jobs:
             name: "internet connectivity inside of sandbox"
           # - command: "tests/periodic-test/cli-logs.ts"
           #   name: "cli logs"
-      fail-fast: false
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v4
 
       - name: Install deno
         uses: denoland/setup-deno@v2
@@ -79,15 +75,6 @@ jobs:
           echo "E2B_API_KEY=${{ secrets[format('{0}', matrix.api_key)] }}" >> $GITHUB_ENV
           echo "E2B_ACCESS_TOKEN=${{ secrets[format('{0}', matrix.access_token)] }}" >> $GITHUB_ENV
 
-      - name: Set Slack channel based on dev input
-        if: always()
-        run: |
-          if [ "${{ inputs.dev }}" == "true" ]; then
-            echo "SLACK_CHANNEL=monitoring-infra-testing" >> $GITHUB_ENV
-          else
-            echo "SLACK_CHANNEL=${{ matrix.slack_channel }}" >> $GITHUB_ENV
-          fi
-
       - name: ${{ matrix.test-command.name }}
         run: deno run --allow-all ${{ matrix.test-command.command }}
         working-directory: ${{ matrix.test-command.dir }}
@@ -96,17 +83,54 @@ jobs:
           E2B_ACCESS_TOKEN: ${{ env.E2B_ACCESS_TOKEN }}
           E2B_DOMAIN: ${{ matrix.e2b-domain }}
 
-      - name: Periodic check failed - Slack Notification
-        uses: rtCamp/action-slack-notify@v2
-        if: failure()
+      - name: Send Grafana OnCall webhook
+        if: always()
         env:
-          SLACK_COLOR: "#ff0000"
-          SLACK_USERNAME: "Periodic Check"
-          MSG_MINIMAL: true
-          SLACK_FOOTER: ""
-          SLACKIFY_MARKDOWN: true
-          # $name failed $link to workflow run
-          SLACK_MESSAGE: "Check for **${{ matrix.test-command.name }}** failed \n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          SLACK_TITLE: "[${{ matrix.e2b-domain }}] check failed"
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          SLACK_CHANNEL: ${{ env.SLACK_CHANNEL }}
+          JOB_STATUS:  ${{ job.status }}
+          DOMAIN:      ${{ matrix.e2b-domain }}
+          RUN_LINK:    ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WEBHOOK_URL: ${{ secrets.GRAFANA_ALERT_WEBHOOK }}
+          TEST_NAME:   ${{ matrix.test-command.name }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq jq  # jq for JSON assembly
+
+          # Map GH status → Grafana state
+          STATE=$([ "$JOB_STATUS" = "success" ] && echo ok || echo alerting)
+          STATUS=$([ "$JOB_STATUS" = "success" ] && echo resolved || echo firing)
+
+          # slug-ify the test name (lowercase, a–z/0–9, hyphens)
+          TEST_SLUG=$(echo "$TEST_NAME" \
+                      | tr '[:upper:]' '[:lower:]' \
+                      | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
+
+          # Unique per (domain + test) – same UID for state so OnCall auto-resolves
+          ALERT_UID="periodic-tests-${DOMAIN//./-}-${TEST_SLUG}"
+
+          TITLE="Periodic tests | ${DOMAIN} | ${TEST_NAME}"
+          MESSAGE="${TEST_NAME} on ${DOMAIN} finished."
+
+          # You can attach a branch-status badge or any other image. Optional.
+          IMAGE_URL="https://github.com/${{ github.repository }}/actions/workflows/periodic-test.yml/badge.svg?branch=${{ github.ref_name }}"
+
+          jq -n \
+            --arg alert_uid "$ALERT_UID" \
+            --arg title "$TITLE" \
+            --arg state "$STATE" \
+            --arg status "$STATUS" \
+            --arg link_to_upstream_details "$RUN_LINK" \
+            --arg message "$MESSAGE" \
+            --arg image_url "$IMAGE_URL" \
+            --arg domain "$DOMAIN" \
+            --arg dev "${{ inputs.dev }}" \
+            '{alert_uid: $alert_uid,
+              title: $title,
+              state: $state,
+              link_to_upstream_details: $link_to_upstream_details,
+              message: $message,
+              severity: "warning",
+              status: $status,
+              domain: $domain,
+              dev: ($dev == "true"),
+              annotations: {Project: $domain},
+              image_url: $image_url}' \
+          | curl -s -X POST -H 'Content-Type: application/json' -d @- "$WEBHOOK_URL"

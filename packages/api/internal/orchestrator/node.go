@@ -203,7 +203,7 @@ func (o *Orchestrator) GetNodeDetail(nodeID string) *api.NodeDetail {
 
 func (n *Node) SyncBuilds(builds []*orchestrator.CachedBuildInfo) {
 	for _, build := range builds {
-		n.buildCache.Set(build.BuildId, struct{}{}, build.ExpirationTime.AsTime().Sub(time.Now()))
+		n.buildCache.Set(build.BuildId, struct{}{}, time.Until(build.ExpirationTime.AsTime()))
 	}
 }
 
@@ -215,7 +215,6 @@ func (n *Node) InsertBuild(buildID string) {
 
 	// Set the build in the cache for 2 minutes, it should get updated with the correct time from the orchestrator during sync
 	n.buildCache.Set(buildID, struct{}{}, 2*time.Minute)
-	return
 }
 
 func (o *Orchestrator) NodeCount() int {

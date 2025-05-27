@@ -41,5 +41,5 @@ func Sync() error {
 
 func WaitForSync() {
 	syncingLock.RLock()
-	syncingLock.RUnlock()
+	defer syncingLock.RUnlock()
 }

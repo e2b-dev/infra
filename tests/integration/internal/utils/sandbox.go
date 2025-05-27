@@ -12,35 +12,50 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
-// SetupSandboxWithCleanupWithTimeout creates a new sandbox with specific timeout and returns its data
-func SetupSandboxWithCleanupWithTimeout(t *testing.T, c *api.ClientWithResponses, sbxTimeout int32, sbxMetadata *api.SandboxMetadata) *api.Sandbox {
+type SandboxConfig struct {
+	metadata api.SandboxMetadata
+	timeout  int32
+}
+
+type SandboxOption func(config *SandboxConfig)
+
+func WithMetadata(metadata api.SandboxMetadata) SandboxOption {
+	return func(config *SandboxConfig) {
+		for key, value := range metadata {
+			config.metadata[key] = value
+		}
+	}
+}
+
+func WithTimeout(timeout int32) SandboxOption {
+	return func(config *SandboxConfig) {
+		config.timeout = timeout
+	}
+}
+
+// SetupSandboxWithCleanup creates a new sandbox and returns its data
+func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options ...SandboxOption) *api.Sandbox {
 	t.Helper()
 
 	// t.Context() doesn't work with go vet, so we use our own context
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	defaultMetadata := api.SandboxMetadata{
-		"sandboxType": "test",
+	config := SandboxConfig{
+		timeout: 30, // default timeout
+		metadata: api.SandboxMetadata{
+			"sandboxType": "test",
+		},
 	}
 
-	var metadata *api.SandboxMetadata
-	if sbxMetadata != nil {
-		metadataOverride := defaultMetadata
-
-		for k, v := range *sbxMetadata {
-			metadataOverride[k] = v
-		}
-
-		metadata = &metadataOverride
-	} else {
-		metadata = &defaultMetadata
+	for _, option := range options {
+		option(&config)
 	}
 
 	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
-		Timeout:    &sbxTimeout,
-		Metadata:   metadata,
+		Timeout:    &config.timeout,
+		Metadata:   &config.metadata,
 	}, setup.WithAPIKey())
 
 	assert.NoError(t, err)
@@ -55,11 +70,6 @@ func SetupSandboxWithCleanupWithTimeout(t *testing.T, c *api.ClientWithResponses
 	})
 
 	return createSandboxResponse.JSON201
-}
-
-// SetupSandboxWithCleanup creates a new sandbox and returns its data
-func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses) *api.Sandbox {
-	return SetupSandboxWithCleanupWithTimeout(t, c, 30, nil)
 }
 
 // TeardownSandbox kills the sandbox with the given ID
