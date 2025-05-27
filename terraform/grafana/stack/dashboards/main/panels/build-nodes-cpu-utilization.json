@@ -111,7 +111,7 @@
         ],
         "perSeriesAligner": "ALIGN_MEAN",
         "preprocessor": "none",
-        "projectName": "e2b-foxtrot",
+        "projectName": "${gcp_project_id}",
         "view": "FULL"
       }
     }
