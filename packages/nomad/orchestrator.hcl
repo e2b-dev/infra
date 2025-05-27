@@ -5,13 +5,6 @@ job "orchestrator-${latest_orchestrator_job_id}" {
   priority = 90
 
   group "client-orchestrator" {
-# TODO: Return after migrating to the new version
-#    network {
-#      port "orchestrator" {
-#        static = "${port}"
-#      }
-#    }
-
     service {
       name = "orchestrator"
       port = "${port}"
