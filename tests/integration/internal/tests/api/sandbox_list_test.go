@@ -338,7 +338,7 @@ func TestSandboxListSortedV1(t *testing.T) {
 	listResponse, err := c.GetSandboxesWithResponse(context.Background(), nil, setup.WithAPIKey())
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, listResponse.StatusCode())
-	assert.GreaterOrEqual(t, 3, len(*listResponse.JSON200))
+	assert.GreaterOrEqual(t, len(*listResponse.JSON200), 3)
 
 	// Verify all sandboxes are in the list
 	contains := 0
