@@ -103,7 +103,7 @@ jobs:
                       | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
 
           # Unique per (domain + test) – same UID for state so OnCall auto-resolves
-          ALERT_UID="periodic-tests-${DOMAIN//./-}-${TEST_SLUG}"
+          ALERT_UID="periodic-tests"
 
           TITLE="Periodic tests | ${DOMAIN} | ${TEST_NAME}"
           MESSAGE="**${TEST_NAME}** on **${DOMAIN}** finished with status **${JOB_STATUS}**. See logs: $RUN_LINK"
