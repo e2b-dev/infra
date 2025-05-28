@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
+	artefactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artefacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -34,14 +35,15 @@ type TemplateBuilder struct {
 	logger *zap.Logger
 	tracer trace.Tracer
 
-	storage         storage.StorageProvider
-	devicePool      *nbd.DevicePool
-	networkPool     *network.Pool
-	buildCache      *cache.BuildCache
-	buildLogger     *zap.Logger
-	templateStorage *template.Storage
-	proxy           *proxy.SandboxProxy
-	sandboxes       *smap.Map[*sandbox.Sandbox]
+	storage          storage.StorageProvider
+	devicePool       *nbd.DevicePool
+	networkPool      *network.Pool
+	buildCache       *cache.BuildCache
+	buildLogger      *zap.Logger
+	templateStorage  *template.Storage
+	artifactRegistry artefactsregistry.ArtefactsRegistry
+	proxy            *proxy.SandboxProxy
+	sandboxes        *smap.Map[*sandbox.Sandbox]
 }
 
 const (
@@ -63,22 +65,24 @@ func NewBuilder(
 	templateStorage *template.Storage,
 	buildCache *cache.BuildCache,
 	storage storage.StorageProvider,
+	artifactRegistry artefactsregistry.ArtefactsRegistry,
 	devicePool *nbd.DevicePool,
 	networkPool *network.Pool,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) *TemplateBuilder {
 	return &TemplateBuilder{
-		logger:          logger,
-		tracer:          tracer,
-		buildCache:      buildCache,
-		buildLogger:     buildLogger,
-		templateStorage: templateStorage,
-		storage:         storage,
-		devicePool:      devicePool,
-		networkPool:     networkPool,
-		proxy:           proxy,
-		sandboxes:       sandboxes,
+		logger:           logger,
+		tracer:           tracer,
+		buildCache:       buildCache,
+		buildLogger:      buildLogger,
+		templateStorage:  templateStorage,
+		storage:          storage,
+		artifactRegistry: artifactRegistry,
+		devicePool:       devicePool,
+		networkPool:      networkPool,
+		proxy:            proxy,
+		sandboxes:        sandboxes,
 	}
 }
 
@@ -147,6 +151,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		b.tracer,
 		template,
 		postProcessor,
+		b.artifactRegistry,
 		templateBuildDir,
 		rootfsPath,
 	)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
+	artefactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artefacts-registry"
 )
 
 //go:embed provision.sh
@@ -26,6 +27,7 @@ func Build(
 	tracer trace.Tracer,
 	templateConfig *TemplateConfig,
 	postProcessor *writer.PostProcessor,
+	artifactRegistry artefactsregistry.ArtefactsRegistry,
 	templateBuildDir string,
 	rootfsPath string,
 ) (r *block.Local, m *block.Local, e error) {
@@ -33,7 +35,7 @@ func Build(
 	defer childSpan.End()
 
 	// Create a rootfs file
-	rtfs := NewRootfs(templateConfig)
+	rtfs := NewRootfs(templateConfig, artifactRegistry)
 	err := rtfs.createExt4Filesystem(childCtx, tracer, postProcessor, rootfsPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating rootfs for template '%s' during build '%s': %w", templateConfig.TemplateId, templateConfig.BuildId, err)
