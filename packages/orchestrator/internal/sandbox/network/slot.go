@@ -18,7 +18,8 @@ import (
 
 const (
 	// This is the maximum number of IP addresses that can be allocated.
-	slotsSize = 256 * 256 / vrtAddressPerSlot
+	// Last address is reserved for broadcast, we need to subtract with, second address reserved for Veth.
+	slotsSize = (256 * 256 / vrtAddressPerSlot) - vrtAddressPerSlot
 
 	defaultHostNetworkCIDR = "10.11.0.0/16"
 	defaultVrtNetworkCIDR  = "10.12.0.0/16"
