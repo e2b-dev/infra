@@ -9,36 +9,22 @@ runs:
         TEMPLATE_ID: "2j6ly824owf4awgai1xo"
         KERNEL_VERSION: "vmlinux-6.1.102"
         FIRECRACKER_VERSION: "v1.10.1_1fcdaec"
-        # Rootfs Docker image repository
-        GCP_DOCKER_REPOSITORY_NAME: "custom-environments-tests"
-        # Not used, but required to be defined
-        GOOGLE_SERVICE_ACCOUNT_BASE64: "required-but-not-needed"
       run: |
         # Generate an unique build ID for the template for this run
         export BUILD_ID=$(uuidgen)
+
         echo "This build unique ID: ${BUILD_ID}"
-        
+
+        docker pull e2bdev/base:latest
+        docker tag e2bdev/base:latest ${TEMPLATE_ID}:${BUILD_ID}
+
         echo "TESTS_SANDBOX_TEMPLATE_ID=${TEMPLATE_ID}" >> .env.test
         echo "TESTS_SANDBOX_BUILD_ID=${BUILD_ID}" >> .env.test
-        
-        # This is for a template manager
-        echo "GCP_DOCKER_REPOSITORY_NAME=${GCP_DOCKER_REPOSITORY_NAME}" >> .env.test
-        echo "GOOGLE_SERVICE_ACCOUNT_BASE64=${GOOGLE_SERVICE_ACCOUNT_BASE64}" >> .env.test
-        
-        # Manually reupload Docker image from common build ID
-        export DOCKER_IMAGE_PATH="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_DOCKER_REPOSITORY_NAME}/${TEMPLATE_ID}"
-        echo "Docker image template path: ${DOCKER_IMAGE_PATH}"
-        
-        gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
-        docker pull "${DOCKER_IMAGE_PATH}:98130b63-ca75-431d-956a-9d829d14d317"
-        docker tag "${DOCKER_IMAGE_PATH}:98130b63-ca75-431d-956a-9d829d14d317" "${DOCKER_IMAGE_PATH}:${BUILD_ID}"
-        docker push "${DOCKER_IMAGE_PATH}:${BUILD_ID}"
-        
+
         make -C packages/orchestrator build-template \
+          ARTEFACTS_REGISTRY_PROVIDER=Local \
           TEMPLATE_ID=${TEMPLATE_ID} \
           BUILD_ID=${BUILD_ID} \
           KERNEL_VERSION=${KERNEL_VERSION} \
-          FC_VERSION=${FC_VERSION} \
-          GCP_DOCKER_REPOSITORY_NAME=${GCP_DOCKER_REPOSITORY_NAME} \
-          GOOGLE_SERVICE_ACCOUNT_BASE64=${GOOGLE_SERVICE_ACCOUNT_BASE64}
+          FC_VERSION=${FC_VERSION}
       shell: bash
