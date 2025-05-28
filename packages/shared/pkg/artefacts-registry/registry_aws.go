@@ -1,0 +1,136 @@
+package artefacts_registry
+
+import (
+	"context"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ecr"
+	"github.com/aws/aws-sdk-go-v2/service/ecr/types"
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+)
+
+type AWSArtefactsRegistry struct {
+	repositoryName string
+	client         *ecr.Client
+}
+
+var (
+	AwsRepositoryNameEnvVar = "AWS_DOCKER_REPOSITORY_NAME"
+	AwsRepositoryName       = os.Getenv(AwsRepositoryNameEnvVar)
+)
+
+func NewAWSArtefactsRegistry(ctx context.Context) (*AWSArtefactsRegistry, error) {
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if AwsRepositoryName == "" {
+		return nil, fmt.Errorf("%s environment variable is not set", AwsRepositoryNameEnvVar)
+	}
+
+	client := ecr.NewFromConfig(cfg)
+
+	return &AWSArtefactsRegistry{
+		repositoryName: AwsRepositoryName,
+		client:         client,
+	}, nil
+}
+
+func (g *AWSArtefactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
+	imageIds := []types.ImageIdentifier{
+		{ImageTag: &buildId},
+	}
+
+	// for AWS implementation we are using only build id as image tag
+	res, err := g.client.BatchDeleteImage(ctx, &ecr.BatchDeleteImageInput{RepositoryName: &g.repositoryName, ImageIds: imageIds})
+	if err != nil {
+		return fmt.Errorf("failed to delete image from aws ecr: %w", err)
+	}
+
+	if len(res.Failures) > 0 {
+		if res.Failures[0].FailureCode == types.ImageFailureCodeImageNotFound {
+			return ErrImageNotExists
+		}
+
+		return errors.New("failed to delete image from aws ecr")
+	}
+
+	return nil
+}
+
+func (g *AWSArtefactsRegistry) GetUrl(ctx context.Context, templateId string, buildId string) (string, error) {
+	res, err := g.client.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{RepositoryNames: []string{g.repositoryName}})
+	if err != nil {
+		return "", fmt.Errorf("failed to describe aws ecr repository: %w", err)
+	}
+
+	if len(res.Repositories) == 0 {
+		return "", fmt.Errorf("repository %s not found", g.repositoryName)
+	}
+
+	return fmt.Sprintf("%s:%s", *res.Repositories[0].RepositoryUri, buildId), nil
+}
+
+func (g *AWSArtefactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error) {
+	imageUrl, err := g.GetUrl(ctx, templateId, buildId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get image URL: %w", err)
+	}
+
+	ref, err := name.ParseReference(imageUrl)
+	if err != nil {
+		return nil, fmt.Errorf("invalid image reference: %w", err)
+	}
+
+	auth, err := g.getAuthToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get auth: %w", err)
+	}
+
+	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform))
+	if err != nil {
+		return nil, fmt.Errorf("error pulling image: %w", err)
+	}
+
+	return img, nil
+}
+
+func (g *AWSArtefactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, error) {
+	res, err := g.client.GetAuthorizationToken(ctx, &ecr.GetAuthorizationTokenInput{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get aws ecr auth token: %w", err)
+	}
+
+	if len(res.AuthorizationData) == 0 {
+		return nil, fmt.Errorf("no aws ecr auth token found")
+	}
+
+	authData := res.AuthorizationData[0]
+	decodedToken, err := base64.StdEncoding.DecodeString(*authData.AuthorizationToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode aws ecr auth token: %w", err)
+	}
+
+	// split into username and password
+	parts := strings.SplitN(string(decodedToken), ":", 2)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid aws ecr auth token")
+	}
+
+	username := parts[0]
+	password := parts[1]
+
+	return &authn.Basic{
+		Username: username,
+		Password: password,
+	}, nil
+}
