@@ -31,6 +31,7 @@ message TemplateStatusRequest {
 // Data required for deleting a template.
 message TemplateBuildDeleteRequest {
   string buildID = 1;
+  string templateID = 2;
 }
 
 message TemplateBuildMetadata {
