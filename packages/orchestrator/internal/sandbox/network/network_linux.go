@@ -69,15 +69,16 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error setting vpeer device up: %w", err)
 	}
 
-	ip, ipNet, err := net.ParseCIDR(s.VpeerCIDR())
+	vPeerIp := s.VpeerIP()
+	_, vrtIpNet, err := net.ParseCIDR(s.VrtCIDR())
 	if err != nil {
 		return fmt.Errorf("error parsing vpeer CIDR: %w", err)
 	}
 
 	err = netlink.AddrAdd(vpeer, &netlink.Addr{
 		IPNet: &net.IPNet{
-			IP:   ip,
-			Mask: ipNet.Mask,
+			IP:   vPeerIp,
+			Mask: vrtIpNet.Mask,
 		},
 	})
 	if err != nil {
@@ -105,15 +106,16 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error setting veth device up: %w", err)
 	}
 
-	ip, ipNet, err = net.ParseCIDR(s.VethCIDR())
+	vethIp := s.VethIP()
+	_, vrtIpNet, err = net.ParseCIDR(s.VrtCIDR())
 	if err != nil {
-		return fmt.Errorf("error parsing veth CIDR: %w", err)
+		return fmt.Errorf("error parsing vpeer CIDR: %w", err)
 	}
 
 	err = netlink.AddrAdd(vethInHost, &netlink.Addr{
 		IPNet: &net.IPNet{
-			IP:   ip,
-			Mask: ipNet.Mask,
+			IP:   vethIp,
+			Mask: vrtIpNet.Mask,
 		},
 	})
 	if err != nil {
@@ -144,7 +146,7 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error setting tap device up: %w", err)
 	}
 
-	ip, ipNet, err = net.ParseCIDR(s.TapCIDR())
+	ip, ipNet, err := net.ParseCIDR(s.TapCIDR())
 	if err != nil {
 		return fmt.Errorf("error parsing tap CIDR: %w", err)
 	}
@@ -173,7 +175,7 @@ func (s *Slot) CreateNetwork() error {
 	// Add NS default route
 	err = netlink.RouteAdd(&netlink.Route{
 		Scope: netlink.SCOPE_UNIVERSE,
-		Gw:    net.ParseIP(s.VethIP()),
+		Gw:    s.VethIP(),
 	})
 	if err != nil {
 		return fmt.Errorf("error adding default NS route: %w", err)
@@ -185,12 +187,12 @@ func (s *Slot) CreateNetwork() error {
 	}
 
 	// Add NAT routing rules to NS
-	err = tables.Append("nat", "POSTROUTING", "-o", s.VpeerName(), "-s", s.NamespaceIP(), "-j", "SNAT", "--to", s.HostIP())
+	err = tables.Append("nat", "POSTROUTING", "-o", s.VpeerName(), "-s", s.NamespaceIP(), "-j", "SNAT", "--to", s.HostIPString())
 	if err != nil {
 		return fmt.Errorf("error creating postrouting rule to vpeer: %w", err)
 	}
 
-	err = tables.Append("nat", "PREROUTING", "-i", s.VpeerName(), "-d", s.HostIP(), "-j", "DNAT", "--to", s.NamespaceIP())
+	err = tables.Append("nat", "PREROUTING", "-i", s.VpeerName(), "-d", s.HostIPString(), "-j", "DNAT", "--to", s.NamespaceIP())
 	if err != nil {
 		return fmt.Errorf("error creating postrouting rule from vpeer: %w", err)
 	}
@@ -207,14 +209,18 @@ func (s *Slot) CreateNetwork() error {
 	}
 
 	// Add routing from host to FC namespace
-	_, ipNet, err = net.ParseCIDR(s.HostCIDR())
+	hostIp := s.HostIP()
+	_, hostNet, err := net.ParseCIDR(s.HostCIDR())
 	if err != nil {
-		return fmt.Errorf("error parsing host snapshot CIDR: %w", err)
+		return fmt.Errorf("error parsing host CIDR: %w", err)
 	}
 
 	err = netlink.RouteAdd(&netlink.Route{
-		Gw:  net.ParseIP(s.VpeerIP()),
-		Dst: ipNet,
+		Gw: s.VpeerIP(),
+		Dst: &net.IPNet{
+			IP:   hostIp,
+			Mask: hostNet.Mask,
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("error adding route from host to FC: %w", err)
@@ -276,7 +282,7 @@ func (s *Slot) RemoveNetwork() error {
 		errs = append(errs, fmt.Errorf("error parsing host snapshot CIDR: %w", err))
 	} else {
 		err = netlink.RouteDel(&netlink.Route{
-			Gw:  net.ParseIP(s.VpeerIP()),
+			Gw:  s.VpeerIP(),
 			Dst: ipNet,
 		})
 		if err != nil {
