@@ -87,6 +87,16 @@ func StartCmd(v string) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldEQ(FieldStartCmd, v))
 }
 
+// ReadyCmd applies equality check predicate on the "ready_cmd" field. It's identical to ReadyCmdEQ.
+func ReadyCmd(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldEQ(FieldReadyCmd, v))
+}
+
+// ReadyTimeout applies equality check predicate on the "ready_timeout" field. It's identical to ReadyTimeoutEQ.
+func ReadyTimeout(v int32) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldEQ(FieldReadyTimeout, v))
+}
+
 // Vcpu applies equality check predicate on the "vcpu" field. It's identical to VcpuEQ.
 func Vcpu(v int64) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldEQ(FieldVcpu, v))
@@ -495,6 +505,131 @@ func StartCmdEqualFold(v string) predicate.EnvBuild {
 // StartCmdContainsFold applies the ContainsFold predicate on the "start_cmd" field.
 func StartCmdContainsFold(v string) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldContainsFold(FieldStartCmd, v))
+}
+
+// ReadyCmdEQ applies the EQ predicate on the "ready_cmd" field.
+func ReadyCmdEQ(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldEQ(FieldReadyCmd, v))
+}
+
+// ReadyCmdNEQ applies the NEQ predicate on the "ready_cmd" field.
+func ReadyCmdNEQ(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldNEQ(FieldReadyCmd, v))
+}
+
+// ReadyCmdIn applies the In predicate on the "ready_cmd" field.
+func ReadyCmdIn(vs ...string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldIn(FieldReadyCmd, vs...))
+}
+
+// ReadyCmdNotIn applies the NotIn predicate on the "ready_cmd" field.
+func ReadyCmdNotIn(vs ...string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldNotIn(FieldReadyCmd, vs...))
+}
+
+// ReadyCmdGT applies the GT predicate on the "ready_cmd" field.
+func ReadyCmdGT(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldGT(FieldReadyCmd, v))
+}
+
+// ReadyCmdGTE applies the GTE predicate on the "ready_cmd" field.
+func ReadyCmdGTE(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldGTE(FieldReadyCmd, v))
+}
+
+// ReadyCmdLT applies the LT predicate on the "ready_cmd" field.
+func ReadyCmdLT(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldLT(FieldReadyCmd, v))
+}
+
+// ReadyCmdLTE applies the LTE predicate on the "ready_cmd" field.
+func ReadyCmdLTE(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldLTE(FieldReadyCmd, v))
+}
+
+// ReadyCmdContains applies the Contains predicate on the "ready_cmd" field.
+func ReadyCmdContains(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldContains(FieldReadyCmd, v))
+}
+
+// ReadyCmdHasPrefix applies the HasPrefix predicate on the "ready_cmd" field.
+func ReadyCmdHasPrefix(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldHasPrefix(FieldReadyCmd, v))
+}
+
+// ReadyCmdHasSuffix applies the HasSuffix predicate on the "ready_cmd" field.
+func ReadyCmdHasSuffix(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldHasSuffix(FieldReadyCmd, v))
+}
+
+// ReadyCmdIsNil applies the IsNil predicate on the "ready_cmd" field.
+func ReadyCmdIsNil() predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldIsNull(FieldReadyCmd))
+}
+
+// ReadyCmdNotNil applies the NotNil predicate on the "ready_cmd" field.
+func ReadyCmdNotNil() predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldNotNull(FieldReadyCmd))
+}
+
+// ReadyCmdEqualFold applies the EqualFold predicate on the "ready_cmd" field.
+func ReadyCmdEqualFold(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldEqualFold(FieldReadyCmd, v))
+}
+
+// ReadyCmdContainsFold applies the ContainsFold predicate on the "ready_cmd" field.
+func ReadyCmdContainsFold(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldContainsFold(FieldReadyCmd, v))
+}
+
+// ReadyTimeoutEQ applies the EQ predicate on the "ready_timeout" field.
+func ReadyTimeoutEQ(v int32) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldEQ(FieldReadyTimeout, v))
+}
+
+// ReadyTimeoutNEQ applies the NEQ predicate on the "ready_timeout" field.
+func ReadyTimeoutNEQ(v int32) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldNEQ(FieldReadyTimeout, v))
+}
+
+// ReadyTimeoutIn applies the In predicate on the "ready_timeout" field.
+func ReadyTimeoutIn(vs ...int32) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldIn(FieldReadyTimeout, vs...))
+}
+
+// ReadyTimeoutNotIn applies the NotIn predicate on the "ready_timeout" field.
+func ReadyTimeoutNotIn(vs ...int32) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldNotIn(FieldReadyTimeout, vs...))
+}
+
+// ReadyTimeoutGT applies the GT predicate on the "ready_timeout" field.
+func ReadyTimeoutGT(v int32) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldGT(FieldReadyTimeout, v))
+}
+
+// ReadyTimeoutGTE applies the GTE predicate on the "ready_timeout" field.
+func ReadyTimeoutGTE(v int32) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldGTE(FieldReadyTimeout, v))
+}
+
+// ReadyTimeoutLT applies the LT predicate on the "ready_timeout" field.
+func ReadyTimeoutLT(v int32) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldLT(FieldReadyTimeout, v))
+}
+
+// ReadyTimeoutLTE applies the LTE predicate on the "ready_timeout" field.
+func ReadyTimeoutLTE(v int32) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldLTE(FieldReadyTimeout, v))
+}
+
+// ReadyTimeoutIsNil applies the IsNil predicate on the "ready_timeout" field.
+func ReadyTimeoutIsNil() predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldIsNull(FieldReadyTimeout))
+}
+
+// ReadyTimeoutNotNil applies the NotNil predicate on the "ready_timeout" field.
+func ReadyTimeoutNotNil() predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldNotNull(FieldReadyTimeout))
 }
 
 // VcpuEQ applies the EQ predicate on the "vcpu" field.

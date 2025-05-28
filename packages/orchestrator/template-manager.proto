@@ -17,6 +17,9 @@ message TemplateConfig {
   string firecrackerVersion = 7;
   string startCommand = 8;
   bool hugePages = 9;
+
+  string readyCommand = 10;
+  int32 readyTimeout = 11;
 }
 
 message TemplateCreateRequest {
