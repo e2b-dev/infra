@@ -100,6 +100,18 @@ resource "google_storage_bucket" "fc_template_bucket" {
   labels = var.labels
 }
 
+resource "time_sleep" "destroy_wait_5000_seconds" {
+  depends_on       = [google_storage_bucket.fc_template_bucket]
+  destroy_duration = "5000s"
+}
+
+resource "google_storage_anywhere_cache" "cache" {
+  bucket     = google_storage_bucket.fc_template_bucket.name
+  zone       = var.gcp_zone
+  ttl        = "3601s"
+  depends_on = [time_sleep.destroy_wait_5000_seconds]
+}
+
 resource "google_storage_bucket_iam_member" "loki_storage_iam" {
   bucket = google_storage_bucket.loki_storage_bucket.name
   role   = "roles/storage.objectUser"

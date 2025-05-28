@@ -8,6 +8,11 @@ variable "gcp_region" {
   description = "The GCP region"
 }
 
+variable "gcp_zone" {
+  type        = string
+  description = "The GCP zone"
+}
+
 variable "gcp_service_account_email" {
   type        = string
   description = "The GCP service account email"
