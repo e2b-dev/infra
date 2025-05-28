@@ -23,6 +23,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+const maxReadyTimeout = 5 * time.Minute
+const defaultReadyTimeout = 2 * time.Minute
+
 // PostTemplatesTemplateIDBuildsBuildID triggers a new build after the user pushes the Docker image to the registry
 func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID api.TemplateID, buildID api.BuildID) {
 	ctx := c.Request.Context()
@@ -131,9 +134,28 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	startTime := time.Now()
 	build := envDB.Edges.Builds[0]
-	startCmd := ""
+	var startCmd string
 	if build.StartCmd != nil {
 		startCmd = *build.StartCmd
+	}
+
+	var readyCmd string
+	var readyTimeout time.Duration
+	if build.ReadyCmd != nil {
+		readyCmd = *build.ReadyCmd
+
+		if build.ReadyTimeout != nil {
+			readyTimeout = time.Duration(*build.ReadyTimeout) * time.Second
+		} else {
+			readyTimeout = defaultReadyTimeout
+		}
+
+		if readyTimeout > maxReadyTimeout {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Ready timeout cannot be greater than %f seconds", maxReadyTimeout.Seconds()))
+			err = fmt.Errorf("ready timeout cannot be greater than %f seconds: %d", maxReadyTimeout.Seconds(), readyTimeout)
+			telemetry.ReportCriticalError(ctx, err)
+			return
+		}
 	}
 
 	// only waiting builds can be triggered
@@ -156,6 +178,8 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		build.Vcpu,
 		build.FreeDiskSizeMB,
 		build.RAMMB,
+		readyCmd,
+		readyTimeout,
 	)
 
 	if buildErr != nil {

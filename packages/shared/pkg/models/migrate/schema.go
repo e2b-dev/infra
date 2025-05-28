@@ -94,6 +94,8 @@ var (
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"waiting", "building", "snapshotting", "failed", "success", "uploaded"}, Default: "waiting", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "dockerfile", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "start_cmd", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "ready_cmd", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "ready_timeout", Type: field.TypeInt32, Nullable: true},
 		{Name: "vcpu", Type: field.TypeInt64},
 		{Name: "ram_mb", Type: field.TypeInt64},
 		{Name: "free_disk_size_mb", Type: field.TypeInt64},
@@ -111,7 +113,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "env_builds_envs_builds",
-				Columns:    []*schema.Column{EnvBuildsColumns[14]},
+				Columns:    []*schema.Column{EnvBuildsColumns[16]},
 				RefColumns: []*schema.Column{EnvsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},

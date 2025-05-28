@@ -62,11 +62,11 @@ func init() {
 	// envbuild.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	envbuild.DefaultUpdatedAt = envbuildDescUpdatedAt.Default.(func() time.Time)
 	// envbuildDescKernelVersion is the schema descriptor for kernel_version field.
-	envbuildDescKernelVersion := envbuildFields[12].Descriptor()
+	envbuildDescKernelVersion := envbuildFields[14].Descriptor()
 	// envbuild.DefaultKernelVersion holds the default value on creation for the kernel_version field.
 	envbuild.DefaultKernelVersion = envbuildDescKernelVersion.Default.(string)
 	// envbuildDescFirecrackerVersion is the schema descriptor for firecracker_version field.
-	envbuildDescFirecrackerVersion := envbuildFields[13].Descriptor()
+	envbuildDescFirecrackerVersion := envbuildFields[15].Descriptor()
 	// envbuild.DefaultFirecrackerVersion holds the default value on creation for the firecracker_version field.
 	envbuild.DefaultFirecrackerVersion = envbuildDescFirecrackerVersion.Default.(string)
 	snapshotFields := schema.Snapshot{}.Fields()

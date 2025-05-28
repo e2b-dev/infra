@@ -29,6 +29,10 @@ const (
 	FieldDockerfile = "dockerfile"
 	// FieldStartCmd holds the string denoting the start_cmd field in the database.
 	FieldStartCmd = "start_cmd"
+	// FieldReadyCmd holds the string denoting the ready_cmd field in the database.
+	FieldReadyCmd = "ready_cmd"
+	// FieldReadyTimeout holds the string denoting the ready_timeout field in the database.
+	FieldReadyTimeout = "ready_timeout"
 	// FieldVcpu holds the string denoting the vcpu field in the database.
 	FieldVcpu = "vcpu"
 	// FieldRAMMB holds the string denoting the ram_mb field in the database.
@@ -66,6 +70,8 @@ var Columns = []string{
 	FieldStatus,
 	FieldDockerfile,
 	FieldStartCmd,
+	FieldReadyCmd,
+	FieldReadyTimeout,
 	FieldVcpu,
 	FieldRAMMB,
 	FieldFreeDiskSizeMB,
@@ -167,6 +173,16 @@ func ByDockerfile(opts ...sql.OrderTermOption) OrderOption {
 // ByStartCmd orders the results by the start_cmd field.
 func ByStartCmd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStartCmd, opts...).ToFunc()
+}
+
+// ByReadyCmd orders the results by the ready_cmd field.
+func ByReadyCmd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReadyCmd, opts...).ToFunc()
+}
+
+// ByReadyTimeout orders the results by the ready_timeout field.
+func ByReadyTimeout(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReadyTimeout, opts...).ToFunc()
 }
 
 // ByVcpu orders the results by the vcpu field.

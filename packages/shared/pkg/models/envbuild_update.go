@@ -139,6 +139,53 @@ func (ebu *EnvBuildUpdate) ClearStartCmd() *EnvBuildUpdate {
 	return ebu
 }
 
+// SetReadyCmd sets the "ready_cmd" field.
+func (ebu *EnvBuildUpdate) SetReadyCmd(s string) *EnvBuildUpdate {
+	ebu.mutation.SetReadyCmd(s)
+	return ebu
+}
+
+// SetNillableReadyCmd sets the "ready_cmd" field if the given value is not nil.
+func (ebu *EnvBuildUpdate) SetNillableReadyCmd(s *string) *EnvBuildUpdate {
+	if s != nil {
+		ebu.SetReadyCmd(*s)
+	}
+	return ebu
+}
+
+// ClearReadyCmd clears the value of the "ready_cmd" field.
+func (ebu *EnvBuildUpdate) ClearReadyCmd() *EnvBuildUpdate {
+	ebu.mutation.ClearReadyCmd()
+	return ebu
+}
+
+// SetReadyTimeout sets the "ready_timeout" field.
+func (ebu *EnvBuildUpdate) SetReadyTimeout(i int32) *EnvBuildUpdate {
+	ebu.mutation.ResetReadyTimeout()
+	ebu.mutation.SetReadyTimeout(i)
+	return ebu
+}
+
+// SetNillableReadyTimeout sets the "ready_timeout" field if the given value is not nil.
+func (ebu *EnvBuildUpdate) SetNillableReadyTimeout(i *int32) *EnvBuildUpdate {
+	if i != nil {
+		ebu.SetReadyTimeout(*i)
+	}
+	return ebu
+}
+
+// AddReadyTimeout adds i to the "ready_timeout" field.
+func (ebu *EnvBuildUpdate) AddReadyTimeout(i int32) *EnvBuildUpdate {
+	ebu.mutation.AddReadyTimeout(i)
+	return ebu
+}
+
+// ClearReadyTimeout clears the value of the "ready_timeout" field.
+func (ebu *EnvBuildUpdate) ClearReadyTimeout() *EnvBuildUpdate {
+	ebu.mutation.ClearReadyTimeout()
+	return ebu
+}
+
 // SetVcpu sets the "vcpu" field.
 func (ebu *EnvBuildUpdate) SetVcpu(i int64) *EnvBuildUpdate {
 	ebu.mutation.ResetVcpu()
@@ -372,6 +419,21 @@ func (ebu *EnvBuildUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if ebu.mutation.StartCmdCleared() {
 		_spec.ClearField(envbuild.FieldStartCmd, field.TypeString)
 	}
+	if value, ok := ebu.mutation.ReadyCmd(); ok {
+		_spec.SetField(envbuild.FieldReadyCmd, field.TypeString, value)
+	}
+	if ebu.mutation.ReadyCmdCleared() {
+		_spec.ClearField(envbuild.FieldReadyCmd, field.TypeString)
+	}
+	if value, ok := ebu.mutation.ReadyTimeout(); ok {
+		_spec.SetField(envbuild.FieldReadyTimeout, field.TypeInt32, value)
+	}
+	if value, ok := ebu.mutation.AddedReadyTimeout(); ok {
+		_spec.AddField(envbuild.FieldReadyTimeout, field.TypeInt32, value)
+	}
+	if ebu.mutation.ReadyTimeoutCleared() {
+		_spec.ClearField(envbuild.FieldReadyTimeout, field.TypeInt32)
+	}
 	if value, ok := ebu.mutation.Vcpu(); ok {
 		_spec.SetField(envbuild.FieldVcpu, field.TypeInt64, value)
 	}
@@ -571,6 +633,53 @@ func (ebuo *EnvBuildUpdateOne) SetNillableStartCmd(s *string) *EnvBuildUpdateOne
 // ClearStartCmd clears the value of the "start_cmd" field.
 func (ebuo *EnvBuildUpdateOne) ClearStartCmd() *EnvBuildUpdateOne {
 	ebuo.mutation.ClearStartCmd()
+	return ebuo
+}
+
+// SetReadyCmd sets the "ready_cmd" field.
+func (ebuo *EnvBuildUpdateOne) SetReadyCmd(s string) *EnvBuildUpdateOne {
+	ebuo.mutation.SetReadyCmd(s)
+	return ebuo
+}
+
+// SetNillableReadyCmd sets the "ready_cmd" field if the given value is not nil.
+func (ebuo *EnvBuildUpdateOne) SetNillableReadyCmd(s *string) *EnvBuildUpdateOne {
+	if s != nil {
+		ebuo.SetReadyCmd(*s)
+	}
+	return ebuo
+}
+
+// ClearReadyCmd clears the value of the "ready_cmd" field.
+func (ebuo *EnvBuildUpdateOne) ClearReadyCmd() *EnvBuildUpdateOne {
+	ebuo.mutation.ClearReadyCmd()
+	return ebuo
+}
+
+// SetReadyTimeout sets the "ready_timeout" field.
+func (ebuo *EnvBuildUpdateOne) SetReadyTimeout(i int32) *EnvBuildUpdateOne {
+	ebuo.mutation.ResetReadyTimeout()
+	ebuo.mutation.SetReadyTimeout(i)
+	return ebuo
+}
+
+// SetNillableReadyTimeout sets the "ready_timeout" field if the given value is not nil.
+func (ebuo *EnvBuildUpdateOne) SetNillableReadyTimeout(i *int32) *EnvBuildUpdateOne {
+	if i != nil {
+		ebuo.SetReadyTimeout(*i)
+	}
+	return ebuo
+}
+
+// AddReadyTimeout adds i to the "ready_timeout" field.
+func (ebuo *EnvBuildUpdateOne) AddReadyTimeout(i int32) *EnvBuildUpdateOne {
+	ebuo.mutation.AddReadyTimeout(i)
+	return ebuo
+}
+
+// ClearReadyTimeout clears the value of the "ready_timeout" field.
+func (ebuo *EnvBuildUpdateOne) ClearReadyTimeout() *EnvBuildUpdateOne {
+	ebuo.mutation.ClearReadyTimeout()
 	return ebuo
 }
 
@@ -836,6 +945,21 @@ func (ebuo *EnvBuildUpdateOne) sqlSave(ctx context.Context) (_node *EnvBuild, er
 	}
 	if ebuo.mutation.StartCmdCleared() {
 		_spec.ClearField(envbuild.FieldStartCmd, field.TypeString)
+	}
+	if value, ok := ebuo.mutation.ReadyCmd(); ok {
+		_spec.SetField(envbuild.FieldReadyCmd, field.TypeString, value)
+	}
+	if ebuo.mutation.ReadyCmdCleared() {
+		_spec.ClearField(envbuild.FieldReadyCmd, field.TypeString)
+	}
+	if value, ok := ebuo.mutation.ReadyTimeout(); ok {
+		_spec.SetField(envbuild.FieldReadyTimeout, field.TypeInt32, value)
+	}
+	if value, ok := ebuo.mutation.AddedReadyTimeout(); ok {
+		_spec.AddField(envbuild.FieldReadyTimeout, field.TypeInt32, value)
+	}
+	if ebuo.mutation.ReadyTimeoutCleared() {
+		_spec.ClearField(envbuild.FieldReadyTimeout, field.TypeInt32)
 	}
 	if value, ok := ebuo.mutation.Vcpu(); ok {
 		_spec.SetField(envbuild.FieldVcpu, field.TypeInt64, value)

@@ -22,7 +22,6 @@ func (b *TemplateBuilder) runCommand(
 	ctx context.Context,
 	postProcessor *writer.PostProcessor,
 	sandboxID string,
-	cmdWait time.Duration,
 	command string,
 	runAsUser string,
 	cwd *string,
@@ -59,15 +58,12 @@ func (b *TemplateBuilder) runCommand(
 		createAppStream.Close()
 	}()
 
-	cmdCtx, cancel := context.WithTimeout(ctx, cmdWait)
-	defer cancel()
-
-	msgCh, msgErrCh := grpc.StreamToChannel(cmdCtx, createAppStream)
+	msgCh, msgErrCh := grpc.StreamToChannel(ctx, createAppStream)
 
 	for {
 		select {
-		case <-cmdCtx.Done():
-			return nil
+		case <-ctx.Done():
+			return ctx.Err()
 		case err := <-msgErrCh:
 			return err
 		case msg, ok := <-msgCh:

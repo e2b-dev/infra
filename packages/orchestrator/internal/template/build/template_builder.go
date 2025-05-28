@@ -3,6 +3,7 @@ package build
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -52,6 +53,8 @@ const (
 	configurationTimeout = 5 * time.Minute
 	waitTimeForStartCmd  = 20 * time.Second
 	waitEnvdTimeout      = 60 * time.Second
+
+	readyCommandRetryInterval = 2 * time.Second
 
 	cleanupTimeout = time.Second * 10
 )
@@ -238,17 +241,19 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	if err != nil {
 		return nil, fmt.Errorf("error executing provision script: %w", err)
 	}
+
+	configCtx, configCancel := context.WithTimeout(ctx, configurationTimeout)
+	defer configCancel()
 	err = b.runCommand(
-		ctx,
+		configCtx,
 		postProcessor,
 		sbx.Metadata.Config.SandboxId,
-		configurationTimeout,
 		scriptDef.String(),
 		"root",
 		nil,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error running script: %w", err)
+		return nil, fmt.Errorf("error running configuration script: %w", err)
 	}
 
 	// Start command
@@ -262,18 +267,61 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		if template.TemplateId == "zegbt9dl3l2ixqem82mm" || template.TemplateId == "ot5bidkk3j2so2j02uuz" || template.TemplateId == "0zeou1s7agaytqitvmzc" {
 			startCmdWait = 120 * time.Second
 		}
+
+		hasReadyCmd := template.ReadyCmd != "" && template.ReadyTimeout > 0
+		if hasReadyCmd {
+			startCmdWait = template.ReadyTimeout
+		}
+
+		startCtx, startCancel := context.WithTimeout(ctx, startCmdWait)
+		defer startCancel()
+
+		if hasReadyCmd {
+			go func() {
+				for {
+					cwd := "/home/user"
+					err := b.runCommand(
+						startCtx,
+						postProcessor,
+						sbx.Metadata.Config.SandboxId,
+						template.ReadyCmd,
+						"root",
+						&cwd,
+					)
+
+					if err == nil {
+						postProcessor.WriteMsg("Template is ready")
+						startCancel()
+						return
+					} else {
+						postProcessor.WriteMsg(fmt.Sprintf("Template not ready yet: %v", err))
+					}
+
+					select {
+					case <-startCtx.Done():
+						postProcessor.WriteMsg("Ready command timed out")
+						return
+					case <-time.After(readyCommandRetryInterval):
+						// Wait for readyCommandRetryInterval time before retrying the ready command
+						break
+					}
+				}
+			}()
+		}
+
 		cwd := "/home/user"
 		err := b.runCommand(
-			ctx,
+			startCtx,
 			postProcessor,
 			sbx.Metadata.Config.SandboxId,
-			startCmdWait,
 			template.StartCmd,
 			"root",
 			&cwd,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("error running command: %w", err)
+			if (hasReadyCmd && !errors.Is(err, context.Canceled)) || !hasReadyCmd && !errors.Is(err, context.DeadlineExceeded) {
+				return nil, fmt.Errorf("error running start command: %w", err)
+			}
 		}
 
 		postProcessor.WriteMsg("Start command is running")
