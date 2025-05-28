@@ -69,16 +69,10 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error setting vpeer device up: %w", err)
 	}
 
-	vPeerIp := s.VpeerIP()
-	_, vrtIpNet, err := net.ParseCIDR(s.VrtCIDR())
-	if err != nil {
-		return fmt.Errorf("error parsing vpeer CIDR: %w", err)
-	}
-
 	err = netlink.AddrAdd(vpeer, &netlink.Addr{
 		IPNet: &net.IPNet{
-			IP:   vPeerIp,
-			Mask: vrtIpNet.Mask,
+			IP:   s.VpeerIP(),
+			Mask: s.VrtMask(),
 		},
 	})
 	if err != nil {
@@ -106,16 +100,10 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error setting veth device up: %w", err)
 	}
 
-	vethIp := s.VethIP()
-	_, vrtIpNet, err = net.ParseCIDR(s.VrtCIDR())
-	if err != nil {
-		return fmt.Errorf("error parsing vpeer CIDR: %w", err)
-	}
-
 	err = netlink.AddrAdd(vethInHost, &netlink.Addr{
 		IPNet: &net.IPNet{
-			IP:   vethIp,
-			Mask: vrtIpNet.Mask,
+			IP:   s.VethIP(),
+			Mask: s.VrtMask(),
 		},
 	})
 	if err != nil {
@@ -146,15 +134,10 @@ func (s *Slot) CreateNetwork() error {
 		return fmt.Errorf("error setting tap device up: %w", err)
 	}
 
-	ip, ipNet, err := net.ParseCIDR(s.TapCIDR())
-	if err != nil {
-		return fmt.Errorf("error parsing tap CIDR: %w", err)
-	}
-
 	err = netlink.AddrAdd(tap, &netlink.Addr{
 		IPNet: &net.IPNet{
-			IP:   ip,
-			Mask: ipNet.Mask,
+			IP:   s.TapIP(),
+			Mask: s.TapCIDR(),
 		},
 	})
 	if err != nil {
@@ -209,17 +192,11 @@ func (s *Slot) CreateNetwork() error {
 	}
 
 	// Add routing from host to FC namespace
-	hostIp := s.HostIP()
-	_, hostNet, err := net.ParseCIDR(s.HostCIDR())
-	if err != nil {
-		return fmt.Errorf("error parsing host CIDR: %w", err)
-	}
-
 	err = netlink.RouteAdd(&netlink.Route{
 		Gw: s.VpeerIP(),
 		Dst: &net.IPNet{
-			IP:   hostIp,
-			Mask: hostNet.Mask,
+			IP:   s.HostIP(),
+			Mask: s.HostMask(),
 		},
 	})
 	if err != nil {
@@ -277,17 +254,12 @@ func (s *Slot) RemoveNetwork() error {
 	}
 
 	// Delete routing from host to FC namespace
-	_, ipNet, err := net.ParseCIDR(s.HostCIDR())
+	err = netlink.RouteDel(&netlink.Route{
+		Gw:  s.VpeerIP(),
+		Dst: s.HostNet(),
+	})
 	if err != nil {
-		errs = append(errs, fmt.Errorf("error parsing host snapshot CIDR: %w", err))
-	} else {
-		err = netlink.RouteDel(&netlink.Route{
-			Gw:  s.VpeerIP(),
-			Dst: ipNet,
-		})
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting route from host to FC: %w", err))
-		}
+		errs = append(errs, fmt.Errorf("error deleting route from host to FC: %w", err))
 	}
 
 	// Delete veth device

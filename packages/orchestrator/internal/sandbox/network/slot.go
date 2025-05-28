@@ -3,6 +3,7 @@ package network
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"path/filepath"
 	"sync/atomic"
@@ -10,17 +11,12 @@ import (
 	"github.com/containernetworking/plugins/pkg/ns"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	netutils "k8s.io/utils/net"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
 const (
-	// This is the maximum number of IP addresses that can be allocated.
-	// Last address is reserved for broadcast, we need to subtract with, second address reserved for Veth.
-	slotsSize = (256 * 256 / vrtAddressPerSlot) - vrtAddressPerSlot
-
 	defaultHostNetworkCIDR = "10.11.0.0/16"
 	defaultVrtNetworkCIDR  = "10.12.0.0/16"
 
@@ -36,6 +32,7 @@ const (
 
 var hostNetworkCIDR = getHostNetworkCIDR()
 var vrtNetworkCIDR = getVrtNetworkCIDR()
+var vrtSlotsSize = getVrtSlotsSize()
 
 // Slot network allocation
 //
@@ -49,25 +46,82 @@ var vrtNetworkCIDR = getVrtNetworkCIDR()
 //
 // Vrt addresses (vpeer and veth) are allocated from a /31 CIDR block so we can use CIDR for network link routing.
 // By default, they are using 10.12.0.0/16 CIDR block, that can be configured via environment variable.
-// Vpeer receives the first IP in the block, and Veth receives the second IP. Block is calculated as (slot index * vrtAddressPerSlot).
+// Vpeer receives the first IP in the block, and Veth receives the second IP. Block is calculated as (slot index * addresses per slot allocation).
 // Vrt address per slot is always 2, so we can allocate /31 CIDR block for each slot.
-//
-// With default CIDR /16 we can allocate up to 32 768 slots with following calculation (256 * 256) / 2
-// We are cutting CIDR in half because we need 2 IPs per slot (Vpeer and Veth).
 type Slot struct {
 	Key string
 	Idx int
 
 	Firewall *Firewall
+
 	// firewallCustomRules is used to track if custom firewall rules are set for the slot and need a cleanup.
 	firewallCustomRules atomic.Bool
+
+	vPeerIp net.IP
+	vEthIp  net.IP
+	vrtMask net.IPMask
+
+	tapIp   net.IP
+	tapMask net.IPMask
+
+	// HostIP is IP address for the sandbox from the host machine.
+	// You can use it to make requests to the sandbox.
+	hostIp   net.IP
+	hostNet  *net.IPNet
+	hostCIDR string
 }
 
-func NewSlot(key string, idx int) *Slot {
-	return &Slot{
+func NewSlot(key string, idx int) (*Slot, error) {
+	vEthIp, err := netutils.GetIndexedIP(vrtNetworkCIDR, idx*vrtAddressPerSlot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get veth indexed IP: %w", err)
+	}
+
+	vPeerIp, err := netutils.GetIndexedIP(vrtNetworkCIDR, idx*vrtAddressPerSlot+1)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vpeer indexed IP: %w", err)
+	}
+
+	vrtCIDR := fmt.Sprintf("%s/%d", vPeerIp.String(), vrtMask)
+	_, vrtNet, err := net.ParseCIDR(vrtCIDR)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse vrt CIDR: %w", err)
+	}
+
+	hostIp, err := netutils.GetIndexedIP(hostNetworkCIDR, idx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get host IP: %w", err)
+	}
+
+	hostCIDR := fmt.Sprintf("%s/%d", hostIp.String(), hostMask)
+	_, hostNet, err := net.ParseCIDR(hostCIDR)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse host CIDR: %w", err)
+	}
+
+	tapCIDR := fmt.Sprintf("%s/%d", tapIp, tapMask)
+	tapIp, tapNet, err := net.ParseCIDR(tapCIDR)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse tap CIDR: %w", err)
+	}
+
+	slot := &Slot{
 		Key: key,
 		Idx: idx,
+
+		vPeerIp: vPeerIp,
+		vEthIp:  vEthIp,
+		vrtMask: vrtNet.Mask,
+
+		tapIp:   tapIp,
+		tapMask: tapNet.Mask,
+
+		hostIp:   hostIp,
+		hostNet:  hostNet,
+		hostCIDR: hostCIDR,
 	}
+
+	return slot, nil
 }
 
 func (s *Slot) VpeerName() string {
@@ -75,46 +129,39 @@ func (s *Slot) VpeerName() string {
 }
 
 func (s *Slot) VpeerIP() net.IP {
-	ip, err := netutils.GetIndexedIP(vrtNetworkCIDR, s.Idx*vrtAddressPerSlot)
-	if err != nil {
-		zap.L().Error("Failed to get indexed IP", zap.Int("index", s.Idx), zap.Error(err))
-	}
-	return ip
+	return s.vPeerIp
 }
 
 func (s *Slot) VethIP() net.IP {
-	ip, err := netutils.GetIndexedIP(vrtNetworkCIDR, s.Idx*vrtAddressPerSlot+1)
-	if err != nil {
-		zap.L().Error("Failed to get indexed IP", zap.Int("index", s.Idx), zap.Error(err))
-	}
-	return ip
+	return s.vEthIp
 }
 
 func (s *Slot) VethName() string {
 	return fmt.Sprintf("veth-%d", s.Idx)
 }
 
-func (s *Slot) VrtCIDR() string {
-	return fmt.Sprintf("%s/%d", s.VpeerIP().String(), vrtMask)
+func (s *Slot) VrtMask() net.IPMask {
+	return s.vrtMask
 }
 
-// HostIP is IP address for the sandbox from the host machine.
-// You can use it to make requests to the sandbox.
 func (s *Slot) HostIP() net.IP {
-	ip, err := netutils.GetIndexedIP(hostNetworkCIDR, s.Idx)
-	if err != nil {
-		zap.L().Error("Failed to get indexed IP", zap.Int("index", s.Idx), zap.Error(err))
-	}
-
-	return ip
+	return s.hostIp
 }
 
 func (s *Slot) HostIPString() string {
 	return s.HostIP().String()
 }
 
+func (s *Slot) HostMask() net.IPMask {
+	return s.hostNet.Mask
+}
+
+func (s *Slot) HostNet() *net.IPNet {
+	return s.hostNet
+}
+
 func (s *Slot) HostCIDR() string {
-	return fmt.Sprintf("%s/%d", s.HostIPString(), hostMask)
+	return s.hostCIDR
 }
 
 func (s *Slot) NamespaceIP() string {
@@ -129,8 +176,12 @@ func (s *Slot) TapName() string {
 	return tapInterfaceName
 }
 
-func (s *Slot) TapIP() string {
-	return tapIp
+func (s *Slot) TapIP() net.IP {
+	return s.tapIp
+}
+
+func (s *Slot) TapIPString() string {
+	return s.tapIp.String()
 }
 
 func (s *Slot) TapMask() int {
@@ -142,8 +193,8 @@ func (s *Slot) TapMaskString() string {
 	return net.IP(mask).String()
 }
 
-func (s *Slot) TapCIDR() string {
-	return fmt.Sprintf("%s/%d", s.TapIP(), s.TapMask())
+func (s *Slot) TapCIDR() net.IPMask {
+	return s.tapMask
 }
 
 func (s *Slot) TapMAC() string {
@@ -246,25 +297,35 @@ func (s *Slot) ResetInternet(ctx context.Context, tracer trace.Tracer) error {
 func getHostNetworkCIDR() *net.IPNet {
 	cidr := env.GetEnv("SANDBOXES_HOST_NETWORK_CIDR", defaultHostNetworkCIDR)
 
-	zap.L().Info("Using host network cidr", zap.String("cidr", cidr))
-
 	_, subnet, err := net.ParseCIDR(cidr)
 	if err != nil {
-		zap.L().Fatal("Failed to parse host network CIDR", zap.String("cidr", cidr), zap.Error(err))
+		log.Fatalf("Failed to parse network CIDR %s: %v", cidr, err)
 	}
 
+	log.Println("Using host network cidr", "cidr", cidr)
 	return subnet
 }
 
 func getVrtNetworkCIDR() *net.IPNet {
 	cidr := env.GetEnv("SANDBOXES_VRT_NETWORK_CIDR", defaultVrtNetworkCIDR)
 
-	zap.L().Info("Using vrt network cidr", zap.String("cidr", cidr))
-
 	_, subnet, err := net.ParseCIDR(cidr)
 	if err != nil {
-		zap.L().Fatal("Failed to parse network CIDR", zap.String("cidr", cidr), zap.Error(err))
+		log.Fatalf("Failed to parse network CIDR %s: %v", cidr, err)
 	}
 
+	log.Printf("Using vrt network cidr %s", cidr)
 	return subnet
+}
+
+func getVrtSlotsSize() int {
+	ones, _ := getVrtNetworkCIDR().Mask.Size()
+	totalIPs := 1 << (32 - ones)
+
+	// from total CIDR size we don't want to allocate last address (broadcast) and one reserve for vPeer that is idx + 1
+	slotsUpperReserved := 2
+	slotsSize := (totalIPs / vrtAddressPerSlot) - slotsUpperReserved
+
+	log.Printf("Using network slot size: %d", slotsSize)
+	return slotsSize
 }
