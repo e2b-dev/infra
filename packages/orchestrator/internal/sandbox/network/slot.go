@@ -18,7 +18,7 @@ import (
 
 const (
 	// This is the maximum number of IP addresses that can be allocated.
-	slotsSize = 256 * 256 // corresponds to /16 CIDR block
+	slotsSize = 256 * 256 / vrtAddressPerSlot
 
 	defaultHostNetworkCIDR = "10.11.0.0/16"
 	defaultVrtNetworkCIDR  = "10.12.0.0/16"
