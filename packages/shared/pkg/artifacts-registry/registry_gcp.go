@@ -8,14 +8,11 @@ import (
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
 	"cloud.google.com/go/artifactregistry/apiv1/artifactregistrypb"
-	"github.com/gogo/status"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"google.golang.org/grpc/codes"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 type GCPArtifactsRegistry struct {
@@ -37,23 +34,8 @@ func NewGCPArtifactsRegistry(ctx context.Context) (*GCPArtifactsRegistry, error)
 }
 
 func (g *GCPArtifactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
-	packageName := g.getDockerImagePath(templateId)
-
-	op, err := g.registry.DeletePackage(ctx, &artifactregistrypb.DeletePackageRequest{Name: packageName})
-	if err != nil {
-		if status.Code(err) == codes.NotFound {
-			return ErrImageNotExists
-		}
-
-		return fmt.Errorf("error deleting package %s: %w", packageName, err)
-	}
-
-	waitErr := op.Wait(ctx)
-	if waitErr != nil {
-		return fmt.Errorf("error waiting for package deletion %s: %w", packageName, waitErr)
-	}
-
-	return nil
+	tagPath := g.getDockerImageTagPath(templateId, buildId)
+	return g.registry.DeleteTag(ctx, &artifactregistrypb.DeleteTagRequest{Name: tagPath})
 }
 
 func (g *GCPArtifactsRegistry) GetTag(ctx context.Context, templateId string, buildId string) (string, error) {
@@ -61,7 +43,7 @@ func (g *GCPArtifactsRegistry) GetTag(ctx context.Context, templateId string, bu
 }
 
 func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error) {
-	imageUrl, err := g.GetUrl(ctx, templateId, buildId)
+	imageUrl, err := g.GetTag(ctx, templateId, buildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get image URL: %w", err)
 	}
@@ -113,4 +95,8 @@ func (g *GCPArtifactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, 
 func (g *GCPArtifactsRegistry) getDockerImagePath(templateId string) string {
 	// DockerImagesURL is the URL to the docker images in the artifact registry
 	return fmt.Sprintf("projects/%s/locations/%s/repositories/%s/packages/%s", consts.GCPProject, consts.GCPRegion, consts.DockerRegistry, templateId)
+}
+
+func (g *GCPArtifactsRegistry) getDockerImageTagPath(templateId string, buildId string) string {
+	return fmt.Sprintf("%s/tags/%s", g.getDockerImagePath(templateId), buildId)
 }
