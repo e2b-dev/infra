@@ -197,8 +197,8 @@ require (
 
 replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 
-// Fix non existed garyburd/redigo from Microsoft/hcsshim/test v0.0.0
-replace github.com/docker/distribution => github.com/docker/distribution v2.8.3+incompatible
+// Fix non existent garyburd/redigo from Microsoft/hcsshim/test v0.0.0
+replace github.com/garyburd/redigo => github.com/gomodule/redigo v1.9.2
 
 tool (
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc
