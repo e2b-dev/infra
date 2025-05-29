@@ -56,7 +56,7 @@ func (g *GCPArtifactsRegistry) Delete(ctx context.Context, templateId string, bu
 	return nil
 }
 
-func (g *GCPArtifactsRegistry) GetUrl(ctx context.Context, templateId string, buildId string) (string, error) {
+func (g *GCPArtifactsRegistry) GetTag(ctx context.Context, templateId string, buildId string) (string, error) {
 	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, templateId, buildId), nil
 }
 

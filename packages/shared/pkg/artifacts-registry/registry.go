@@ -28,7 +28,7 @@ var (
 )
 
 type ArtifactsRegistry interface {
-	GetUrl(ctx context.Context, templateId string, buildId string) (string, error)
+	GetTag(ctx context.Context, templateId string, buildId string) (string, error)
 	GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error)
 	Delete(ctx context.Context, templateId string, buildId string) error
 }

@@ -67,7 +67,7 @@ func (g *AWSArtifactsRegistry) Delete(ctx context.Context, templateId string, bu
 	return nil
 }
 
-func (g *AWSArtifactsRegistry) GetUrl(ctx context.Context, templateId string, buildId string) (string, error) {
+func (g *AWSArtifactsRegistry) GetTag(ctx context.Context, templateId string, buildId string) (string, error) {
 	res, err := g.client.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{RepositoryNames: []string{g.repositoryName}})
 	if err != nil {
 		return "", fmt.Errorf("failed to describe aws ecr repository: %w", err)
@@ -81,7 +81,7 @@ func (g *AWSArtifactsRegistry) GetUrl(ctx context.Context, templateId string, bu
 }
 
 func (g *AWSArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error) {
-	imageUrl, err := g.GetUrl(ctx, templateId, buildId)
+	imageUrl, err := g.GetTag(ctx, templateId, buildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get image URL: %w", err)
 	}

@@ -21,12 +21,12 @@ func (g *LocalArtifactsRegistry) Delete(ctx context.Context, templateId string, 
 	return nil
 }
 
-func (g *LocalArtifactsRegistry) GetUrl(ctx context.Context, templateId string, buildId string) (string, error) {
+func (g *LocalArtifactsRegistry) GetTag(ctx context.Context, templateId string, buildId string) (string, error) {
 	return fmt.Sprintf("%s:%s", templateId, buildId), nil
 }
 
 func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error) {
-	imageUrl, err := g.GetUrl(ctx, templateId, buildId)
+	imageUrl, err := g.GetTag(ctx, templateId, buildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get image URL: %w", err)
 	}
