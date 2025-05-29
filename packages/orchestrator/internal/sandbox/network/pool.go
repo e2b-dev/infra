@@ -44,7 +44,7 @@ func NewPool(ctx context.Context, newSlotsPoolSize, reusedSlotsPoolSize int, cli
 		return nil, fmt.Errorf("failed to create reused slot counter: %w", err)
 	}
 
-	slotStorage, err := NewStorage(slotsSize, clientID, tracer)
+	slotStorage, err := NewStorage(vrtSlotsSize, clientID, tracer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create slot storage: %w", err)
 	}

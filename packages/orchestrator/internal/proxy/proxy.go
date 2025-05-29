@@ -45,7 +45,7 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*Sandbox
 
 			url := &url.URL{
 				Scheme: "http",
-				Host:   fmt.Sprintf("%s:%d", sbx.Slot.HostIP(), port),
+				Host:   fmt.Sprintf("%s:%d", sbx.Slot.HostIPString(), port),
 			}
 
 			return &pool.Destination{
@@ -60,7 +60,7 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*Sandbox
 				RequestLogger: zap.L().With(
 					zap.String("host", r.Host),
 					zap.String("sandbox_id", sbx.Config.SandboxId),
-					zap.String("sandbox_ip", sbx.Slot.HostIP()),
+					zap.String("sandbox_ip", sbx.Slot.HostIPString()),
 					zap.String("team_id", sbx.Config.TeamId),
 					zap.String("sandbox_req_port", url.Port()),
 					zap.String("sandbox_req_path", r.URL.Path),
