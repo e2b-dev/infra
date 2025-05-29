@@ -111,7 +111,8 @@ jobs:
 
           # Attach a branch-status badge.
           BADGE_COLOR=$([ "$JOB_STATUS" = "success" ] && echo brightgreen || echo red)
-          IMAGE_URL="https://img.shields.io/badge/${ALERT_UID}-${JOB_STATUS}-${BADGE_COLOR}"
+          BADGE_LABEL_ESCAPED=$(echo "$ALERT_UID" | sed 's/-/--/g')
+          IMAGE_URL="https://img.shields.io/badge/${BADGE_LABEL_ESCAPED}-${JOB_STATUS}-${BADGE_COLOR}"
 
           jq -n \
             --arg alert_uid "$ALERT_UID" \
