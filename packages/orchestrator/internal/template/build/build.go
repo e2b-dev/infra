@@ -35,7 +35,7 @@ func Build(
 	defer childSpan.End()
 
 	// Create a rootfs file
-	rtfs := NewRootfs(templateConfig, artifactRegistry)
+	rtfs := NewRootfs(artifactRegistry, templateConfig)
 	err := rtfs.createExt4Filesystem(childCtx, tracer, postProcessor, rootfsPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating rootfs for template '%s' during build '%s': %w", templateConfig.TemplateId, templateConfig.BuildId, err)

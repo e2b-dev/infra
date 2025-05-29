@@ -55,7 +55,7 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func NewRootfs(template *TemplateConfig, artifactRegistry artifactsregistry.ArtifactsRegistry) *Rootfs {
+func NewRootfs(artifactRegistry artifactsregistry.ArtifactsRegistry, template *TemplateConfig) *Rootfs {
 	return &Rootfs{
 		template:         template,
 		artifactRegistry: artifactRegistry,
