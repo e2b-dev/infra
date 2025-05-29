@@ -3,14 +3,12 @@ package build
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -51,11 +49,7 @@ const (
 	sbxTimeout           = time.Hour
 	provisionTimeout     = 5 * time.Minute
 	configurationTimeout = 5 * time.Minute
-	waitTimeForStartCmd  = 20 * time.Second
 	waitEnvdTimeout      = 60 * time.Second
-
-	readyCommandRetryInterval = 2 * time.Second
-	readyCommandTimeout       = 5 * time.Minute
 
 	cleanupTimeout = time.Second * 10
 )
@@ -259,72 +253,16 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 
 	// Start command
 	if template.StartCmd != "" {
-		postProcessor.WriteMsg("Running start command")
-
-		if template.ReadyCmd == "" {
-			// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
-			// TODO: Remove this after we can add customizable wait time for building templates.
-			// TODO: Make this user configurable, with health check too
-			template.ReadyCmd = fmt.Sprintf("sleep %d", int(waitTimeForStartCmd.Seconds()))
-			if template.TemplateId == "zegbt9dl3l2ixqem82mm" || template.TemplateId == "ot5bidkk3j2so2j02uuz" || template.TemplateId == "0zeou1s7agaytqitvmzc" {
-				template.ReadyCmd = fmt.Sprintf("sleep %d", int((120 * time.Second).Seconds()))
-			}
-		}
-
-		startCtx, startCancel := context.WithTimeout(ctx, readyCommandTimeout)
-		defer startCancel()
-
-		go func() {
-			for {
-				cwd := "/home/user"
-				err := b.runCommand(
-					startCtx,
-					postProcessor,
-					sbx.Metadata.Config.SandboxId,
-					template.ReadyCmd,
-					"root",
-					&cwd,
-				)
-
-				if err == nil {
-					postProcessor.WriteMsg("Template is ready")
-					startCancel()
-					return
-				} else {
-					postProcessor.WriteMsg(fmt.Sprintf("Template not ready yet: %v", err))
-				}
-
-				select {
-				case <-startCtx.Done():
-					if errors.Is(startCtx.Err(), context.DeadlineExceeded) {
-						postProcessor.WriteMsg("Ready command timed out")
-					}
-					return
-				case <-time.After(readyCommandRetryInterval):
-					// Wait for readyCommandRetryInterval time before retrying the ready command
-					break
-				}
-			}
-		}()
-
-		cwd := "/home/user"
-		err := b.runCommand(
-			startCtx,
+		err = b.runStartCommand(
+			ctx,
 			postProcessor,
+			template,
 			sbx.Metadata.Config.SandboxId,
-			template.StartCmd,
-			"root",
-			&cwd,
 		)
-		// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
-		if err != nil && !errors.Is(err, context.Canceled) {
+
+		if err != nil {
 			return nil, fmt.Errorf("error running start command: %w", err)
 		}
-
-		// Cancel the context for the ready command if it is still running
-		startCancel()
-		postProcessor.WriteMsg("Start command is running")
-		telemetry.ReportEvent(ctx, "waited for start command", attribute.Float64("seconds", float64(waitTimeForStartCmd/time.Second)))
 	}
 
 	// Pause sandbox
