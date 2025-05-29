@@ -34,15 +34,15 @@ jobs:
         # each domain is a different cluster
         e2b-domain:
           - "e2b-foxtrot.dev"
-#          - "e2b-juliett.dev"
+          - "e2b-juliett.dev"
           - "e2b-staging.dev"
         include:
           - e2b-domain: "e2b-foxtrot.dev"
             api_key: E2B_API_KEY
             access_token: E2B_ACCESS_TOKEN
-#          - e2b-domain: "e2b-juliett.dev"
-#            api_key: E2B_API_KEY_JULIETT
-#            access_token: E2B_ACCESS_TOKEN_JULIETT
+          - e2b-domain: "e2b-juliett.dev"
+            api_key: E2B_API_KEY_JULIETT
+            access_token: E2B_ACCESS_TOKEN_JULIETT
           - e2b-domain: "e2b-staging.dev"
             api_key: E2B_API_KEY
             access_token: E2B_ACCESS_TOKEN

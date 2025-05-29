@@ -25,10 +25,12 @@ func (b *TemplateBuilder) runCommand(
 	cmdWait time.Duration,
 	command string,
 	runAsUser string,
+	cwd *string,
 ) error {
 	createAppReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd: "/bin/bash",
+			Cwd: cwd,
 			Args: []string{
 				"-l", "-c", command,
 			},

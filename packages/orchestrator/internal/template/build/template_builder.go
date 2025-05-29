@@ -257,6 +257,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		configurationTimeout,
 		scriptDef.String(),
 		"root",
+		nil,
 	)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error while running script: %v", err))
@@ -274,6 +275,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		if template.TemplateId == "zegbt9dl3l2ixqem82mm" || template.TemplateId == "ot5bidkk3j2so2j02uuz" || template.TemplateId == "0zeou1s7agaytqitvmzc" {
 			startCmdWait = 120 * time.Second
 		}
+		cwd := "/home/user"
 		err := b.runCommand(
 			ctx,
 			postProcessor,
@@ -281,6 +283,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 			startCmdWait,
 			template.StartCmd,
 			"root",
+			&cwd,
 		)
 		if err != nil {
 			postProcessor.WriteMsg(fmt.Sprintf("Error while running command: %v", err))
