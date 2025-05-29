@@ -95,6 +95,19 @@ func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+func ReadFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, filePath string) (string, error) {
+	_, statSpan := tracer.Start(ctx, "ext4-read-file")
+	defer statSpan.End()
+
+	cmd := exec.Command("debugfs", "-R", fmt.Sprintf("cat \"%s\"", filePath), rootfsPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return "1", fmt.Errorf("error reading file: %w", err)
+	}
+
+	return string(out), nil
+}
+
 func logMetadata(rootfsPath string) {
 	cmd := exec.Command("tune2fs", "-l", rootfsPath)
 	output, err := cmd.CombinedOutput()

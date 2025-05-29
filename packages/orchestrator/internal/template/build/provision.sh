@@ -1,6 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
+# Use a temporary log file
+LOGFILE=$(mktemp)
+# Trap to clean up on exit
+trap 'rm -f "$LOGFILE"' EXIT
+# Start logging in the background, prefixing lines
+( tail -f "$LOGFILE" | sed -u 's/^/{{ .LogPrefixExternal }}/' ) &
+# Redirect all output to the logfile
+exec >"$LOGFILE" 2>&1
+
 echo "Starting provisioning script"
 
 echo "Making configuration immutable"
@@ -21,7 +30,7 @@ done
 if [ ${#MISSING[@]} -ne 0 ]; then
     echo "Missing packages detected, installing: ${MISSING[*]}"
     apt-get -qq update
-    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get install -y --no-install-recommends "${MISSING[@]}"
+    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq install -y --no-install-recommends "${MISSING[@]}"
 else
     echo "All required packages are already installed."
 fi
@@ -102,3 +111,6 @@ echo "Finished provisioning script"
 # Delete itself
 rm -rf /etc/init.d/rcS
 rm -rf /usr/local/bin/provision.sh
+
+# Report successful provisioning
+echo -n "0" > "{{ .ResultPath }}"

@@ -30,6 +30,10 @@ const (
 	rootfsBuildFileName = "rootfs.ext4.build"
 	rootfsProvisionLink = "rootfs.ext4.build.provision"
 
+	// provisionScriptFileName is a path where the provision script stores it's exit code.
+	provisionScriptResultPath = "/provision.result"
+	logExternalPrefix         = "[external] "
+
 	busyBoxBinaryPath = "/bin/busybox"
 	busyBoxInitPath   = "usr/bin/init"
 	systemdInitPath   = "/sbin/init"
@@ -135,7 +139,13 @@ func additionalOCILayers(
 	config *TemplateConfig,
 ) ([]v1.Layer, error) {
 	var scriptDef bytes.Buffer
-	err := ProvisionScriptTemplate.Execute(&scriptDef, struct{}{})
+	err := ProvisionScriptTemplate.Execute(&scriptDef, struct {
+		ResultPath        string
+		LogPrefixExternal string
+	}{
+		ResultPath:        provisionScriptResultPath,
+		LogPrefixExternal: logExternalPrefix,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("error executing provision script: %w", err)
 	}

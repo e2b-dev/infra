@@ -6,8 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	txtTemplate "text/template"
 
@@ -42,6 +44,13 @@ type ProcessOptions struct {
 	// SystemdToKernelLogs is a flag to enable systemd logs output to the console.
 	// It enabled the kernel logs by default too.
 	SystemdToKernelLogs bool
+
+	// LogFilterPrefix is a prefix for filtering logs from the process stdout/stderr.
+	LogFilterPrefix string
+	// Stdout is the writer to which the process stdout will be written.
+	Stdout io.Writer
+	// Stderr is the writer to which the process stderr will be written.
+	Stderr io.Writer
 }
 
 type Process struct {
@@ -146,6 +155,9 @@ func (p *Process) configure(
 	sandboxID string,
 	templateID string,
 	teamID string,
+	stdout io.Writer,
+	stderr io.Writer,
+	logFilterPrefix string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
@@ -168,13 +180,14 @@ func (p *Process) configure(
 
 		for scanner.Scan() {
 			line := scanner.Text()
-
-			sbxlogger.I(sbxMetadata).Info("stdout: "+line, zap.String("sandbox_id", sandboxID))
+			sbxlogger.I(sbxMetadata).Info("stdout: " + line)
+			logExternal(stdout, logFilterPrefix, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
 			sbxlogger.I(sbxMetadata).Error("error reading fc stdout", zap.Error(readerErr))
+			logExternal(stderr, logFilterPrefix, readerErr.Error())
 		}
 	}()
 
@@ -190,12 +203,14 @@ func (p *Process) configure(
 
 		for scanner.Scan() {
 			line := scanner.Text()
-			sbxlogger.I(sbxMetadata).Error("stderr: "+line, zap.String("sandbox_id", sandboxID))
+			sbxlogger.I(sbxMetadata).Error("stderr: " + line)
+			logExternal(stderr, logFilterPrefix, line)
 		}
 
 		readerErr := scanner.Err()
 		if readerErr != nil {
 			sbxlogger.I(sbxMetadata).Error("error reading fc stderr", zap.Error(readerErr))
+			logExternal(stderr, logFilterPrefix, readerErr.Error())
 		}
 	}()
 
@@ -265,12 +280,22 @@ func (p *Process) Create(
 	childCtx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
 
+	if options.Stdout == nil {
+		options.Stdout = io.Discard
+	}
+	if options.Stderr == nil {
+		options.Stderr = io.Discard
+	}
+
 	err := p.configure(
 		childCtx,
 		tracer,
 		sandboxID,
 		templateID,
 		teamID,
+		options.Stdout,
+		options.Stderr,
+		options.LogFilterPrefix,
 	)
 	if err != nil {
 		fcStopErr := p.Stop()
@@ -381,6 +406,9 @@ func (p *Process) Resume(
 		mmdsMetadata.SandboxId,
 		mmdsMetadata.TemplateId,
 		mmdsMetadata.TeamId,
+		io.Discard,
+		io.Discard,
+		"",
 	)
 	if err != nil {
 		fcStopErr := p.Stop()
@@ -462,4 +490,15 @@ func (p *Process) CreateSnapshot(ctx context.Context, tracer trace.Tracer, snapf
 	defer childSpan.End()
 
 	return p.client.createSnapshot(ctx, snapfilePath, memfilePath)
+}
+
+func logExternal(
+	writer io.Writer,
+	logFilterPrefix string,
+	line string,
+) {
+	noPrefixLine := strings.TrimPrefix(line, logFilterPrefix)
+	if logFilterPrefix == "" || noPrefixLine != line {
+		writer.Write([]byte(noPrefixLine + "\n"))
+	}
 }
