@@ -110,7 +110,7 @@ jobs:
           MESSAGE="${TEST_NAME} on ${DOMAIN} finished. Link: ${RUN_LINK}"
 
           # Attach a branch-status badge.
-          BADGE_COLOR=$([ "$JOB_STATUS" = "success" ] && echo brightgreen || echo red)
+          BADGE_COLOR=$([ "$JOB_STATUS" = "success" ] && echo brightgreen || echo CB2431)
           BADGE_LABEL_ESCAPED=$(echo "$ALERT_UID" | sed 's/-/--/g')
           IMAGE_URL="https://img.shields.io/badge/${BADGE_LABEL_ESCAPED}-${JOB_STATUS}-${BADGE_COLOR}"
 
