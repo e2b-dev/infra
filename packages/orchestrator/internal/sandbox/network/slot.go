@@ -21,8 +21,8 @@ const (
 	defaultVrtNetworkCIDR  = "10.12.0.0/16"
 
 	hostMask          = 32
-	vrtMask           = 31 // 2 usable Ips per block (Vpeer and Veth ips)
-	vrtAddressPerSlot = 1 << (32 - vrtMask)
+	vrtMask           = 31 // 2 usable ips per block (vpeer and veth)
+	vrtAddressPerSlot = 2  // vrt addresses per slot (vpeer and veth)
 
 	tapMask          = 30
 	tapInterfaceName = "tap0"
@@ -32,7 +32,7 @@ const (
 
 var hostNetworkCIDR = getHostNetworkCIDR()
 var vrtNetworkCIDR = getVrtNetworkCIDR()
-var vrtSlotsSize = getVrtSlotsSize()
+var vrtSlotsSize = GetVrtSlotsSize()
 
 // Slot network allocation
 //
@@ -318,14 +318,17 @@ func getVrtNetworkCIDR() *net.IPNet {
 	return subnet
 }
 
-func getVrtSlotsSize() int {
+func GetVrtSlotsSize() int {
 	ones, _ := getVrtNetworkCIDR().Mask.Size()
+
+	// total IPs in the CIDR block
 	totalIPs := 1 << (32 - ones)
 
-	// from total CIDR size we don't want to allocate last address (broadcast) and one reserve for vPeer that is idx + 1
-	slotsUpperReserved := 2
-	slotsSize := (totalIPs / vrtAddressPerSlot) - slotsUpperReserved
+	// total slots that we can allocate
+	// we need to divide total IPs by number of addresses per slot (vpeer and veth)
+	// then we subtract the number of addresses so it will not overflow, because we are adding them incrementally by slot index
+	totalSlots := (totalIPs / vrtAddressPerSlot) - vrtAddressPerSlot
 
-	log.Printf("Using network slot size: %d", slotsSize)
-	return slotsSize
+	log.Printf("Using network slot size: %d", totalSlots)
+	return totalSlots
 }
