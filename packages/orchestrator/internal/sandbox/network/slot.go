@@ -72,6 +72,10 @@ type Slot struct {
 }
 
 func NewSlot(key string, idx int) (*Slot, error) {
+	if idx < 1 || idx > vrtSlotsSize {
+		return nil, fmt.Errorf("slot index %d is out of range [1, %d)", idx, vrtSlotsSize)
+	}
+
 	vEthIp, err := netutils.GetIndexedIP(vrtNetworkCIDR, idx*vrtAddressPerSlot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get veth indexed IP: %w", err)
