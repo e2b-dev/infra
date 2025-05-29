@@ -63,7 +63,6 @@ func (b *TemplateBuilder) runStartCommand(
 				return
 			case <-time.After(readyCommandRetryInterval):
 				// Wait for readyCommandRetryInterval time before retrying the ready command
-				break
 			}
 		}
 	}()
