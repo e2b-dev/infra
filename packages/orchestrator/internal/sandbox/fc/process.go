@@ -1,11 +1,11 @@
 package fc
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapio"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
@@ -42,6 +43,13 @@ type ProcessOptions struct {
 	// SystemdToKernelLogs is a flag to enable systemd logs output to the console.
 	// It enabled the kernel logs by default too.
 	SystemdToKernelLogs bool
+
+	// LogFilterPrefix is a prefix for filtering logs from the process stdout/stderr.
+	LogFilterPrefix string
+	// Stdout is the writer to which the process stdout will be written.
+	Stdout io.Writer
+	// Stderr is the writer to which the process stderr will be written.
+	Stderr io.Writer
 }
 
 type Process struct {
@@ -146,6 +154,9 @@ func (p *Process) configure(
 	sandboxID string,
 	templateID string,
 	teamID string,
+	stdoutExternal io.Writer,
+	stderrExternal io.Writer,
+	logFilterPrefix string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
@@ -156,50 +167,15 @@ func (p *Process) configure(
 		TeamID:     teamID,
 	}
 
-	stdoutReader, err := p.cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("error creating fc stdout pipe: %w", err)
-	}
+	stdoutWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.InfoLevel}
+	externalStdout := &PrefixFilteredWriter{Writer: stdoutExternal, prefixFilter: logFilterPrefix}
+	p.cmd.Stdout = io.MultiWriter(stdoutWriter, externalStdout)
 
-	go func() {
-		// The stdout should be closed with the process cmd automatically, as it uses the StdoutPipe()
-		// TODO: Better handling of processing all logs before calling wait
-		scanner := bufio.NewScanner(stdoutReader)
+	stderrWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.ErrorLevel}
+	externalStderr := &PrefixFilteredWriter{Writer: stderrExternal, prefixFilter: logFilterPrefix}
+	p.cmd.Stderr = io.MultiWriter(stderrWriter, externalStderr)
 
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			sbxlogger.I(sbxMetadata).Info("stdout: "+line, zap.String("sandbox_id", sandboxID))
-		}
-
-		readerErr := scanner.Err()
-		if readerErr != nil {
-			sbxlogger.I(sbxMetadata).Error("error reading fc stdout", zap.Error(readerErr))
-		}
-	}()
-
-	stderrReader, err := p.cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("error creating fc stderr pipe: %w", err)
-	}
-
-	go func() {
-		// The stderr should be closed with the process cmd automatically, as it uses the StderrPipe()
-		// TODO: Better handling of processing all logs before calling wait
-		scanner := bufio.NewScanner(stderrReader)
-
-		for scanner.Scan() {
-			line := scanner.Text()
-			sbxlogger.I(sbxMetadata).Error("stderr: "+line, zap.String("sandbox_id", sandboxID))
-		}
-
-		readerErr := scanner.Err()
-		if readerErr != nil {
-			sbxlogger.I(sbxMetadata).Error("error reading fc stderr", zap.Error(readerErr))
-		}
-	}()
-
-	err = utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath())
+	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -213,6 +189,12 @@ func (p *Process) configure(
 	defer cancelStart(fmt.Errorf("fc finished starting"))
 
 	go func() {
+		defer stderrWriter.Close()
+		defer stdoutWriter.Close()
+
+		defer externalStderr.Close()
+		defer externalStdout.Close()
+
 		waitErr := p.cmd.Wait()
 		if waitErr != nil {
 			var exitErr *exec.ExitError
@@ -265,12 +247,22 @@ func (p *Process) Create(
 	childCtx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
 
+	if options.Stdout == nil {
+		options.Stdout = io.Discard
+	}
+	if options.Stderr == nil {
+		options.Stderr = io.Discard
+	}
+
 	err := p.configure(
 		childCtx,
 		tracer,
 		sandboxID,
 		templateID,
 		teamID,
+		options.Stdout,
+		options.Stderr,
+		options.LogFilterPrefix,
 	)
 	if err != nil {
 		fcStopErr := p.Stop()
@@ -381,6 +373,9 @@ func (p *Process) Resume(
 		mmdsMetadata.SandboxId,
 		mmdsMetadata.TemplateId,
 		mmdsMetadata.TeamId,
+		io.Discard,
+		io.Discard,
+		"",
 	)
 	if err != nil {
 		fcStopErr := p.Stop()
