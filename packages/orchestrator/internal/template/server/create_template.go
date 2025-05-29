@@ -55,6 +55,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		VCpuCount:       int64(config.VCpuCount),
 		MemoryMB:        int64(config.MemoryMB),
 		StartCmd:        config.StartCommand,
+		ReadyCmd:        config.ReadyCommand,
 		DiskSizeMB:      int64(config.DiskSizeMB),
 		BuildLogsWriter: logsWriter,
 		HugePages:       config.HugePages,

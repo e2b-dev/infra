@@ -23,11 +23,6 @@ type AccessToken struct {
 	Name            string
 }
 
-type AuthUser struct {
-	ID    uuid.UUID
-	Email string
-}
-
 type Env struct {
 	ID         string
 	CreatedAt  time.Time
@@ -64,6 +59,7 @@ type EnvBuild struct {
 	FirecrackerVersion string
 	EnvID              *string
 	EnvdVersion        *string
+	ReadyCmd           *string
 }
 
 type Snapshot struct {
@@ -119,4 +115,5 @@ type UsersTeam struct {
 	TeamID    uuid.UUID
 	IsDefault bool
 	AddedBy   *uuid.UUID
+	CreatedAt pgtype.Timestamp
 }

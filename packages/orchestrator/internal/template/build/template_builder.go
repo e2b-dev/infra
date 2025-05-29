@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -50,7 +49,6 @@ const (
 	sbxTimeout           = time.Hour
 	provisionTimeout     = 5 * time.Minute
 	configurationTimeout = 5 * time.Minute
-	waitTimeForStartCmd  = 20 * time.Second
 	waitEnvdTimeout      = 60 * time.Second
 
 	cleanupTimeout = time.Second * 10
@@ -250,48 +248,35 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	if err != nil {
 		return nil, fmt.Errorf("error executing provision script: %w", err)
 	}
+
+	configCtx, configCancel := context.WithTimeout(ctx, configurationTimeout)
+	defer configCancel()
 	err = b.runCommand(
-		ctx,
+		configCtx,
 		postProcessor,
 		sbx.Metadata.Config.SandboxId,
-		configurationTimeout,
 		scriptDef.String(),
 		"root",
 		nil,
 	)
 	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error while running script: %v", err))
-		return nil, fmt.Errorf("error running script: %w", err)
+		postProcessor.WriteMsg(fmt.Sprintf("Error while running configuration: %v", err))
+		return nil, fmt.Errorf("error running configuration: %w", err)
 	}
 
 	// Start command
 	if template.StartCmd != "" {
-		postProcessor.WriteMsg("Running start command")
-
-		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
-		// TODO: Remove this after we can add customizable wait time for building templates.
-		// TODO: Make this user configurable, with health check too
-		startCmdWait := waitTimeForStartCmd
-		if template.TemplateId == "zegbt9dl3l2ixqem82mm" || template.TemplateId == "ot5bidkk3j2so2j02uuz" || template.TemplateId == "0zeou1s7agaytqitvmzc" {
-			startCmdWait = 120 * time.Second
-		}
-		cwd := "/home/user"
-		err := b.runCommand(
+		err = b.runStartCommand(
 			ctx,
 			postProcessor,
+			template,
 			sbx.Metadata.Config.SandboxId,
-			startCmdWait,
-			template.StartCmd,
-			"root",
-			&cwd,
 		)
-		if err != nil {
-			postProcessor.WriteMsg(fmt.Sprintf("Error while running command: %v", err))
-			return nil, fmt.Errorf("error running command: %w", err)
-		}
 
-		postProcessor.WriteMsg("Start command is running")
-		telemetry.ReportEvent(ctx, "waited for start command", attribute.Float64("seconds", float64(waitTimeForStartCmd/time.Second)))
+		if err != nil {
+			postProcessor.WriteMsg(fmt.Sprintf("Error while running start command: %v", err))
+			return nil, fmt.Errorf("error running start command: %w", err)
+		}
 	}
 
 	// Pause sandbox
