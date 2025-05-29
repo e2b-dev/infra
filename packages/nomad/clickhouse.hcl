@@ -1,169 +1,18 @@
 job "clickhouse" {
   type        = "service"
-  node_pool   = "monitoring"
+  node_pool   = "${node_pool}"
 
-  update {
-    // TODO: Can we use this to roll updates properly?
-    max_parallel = 1
-  }
-
-  %{ for i in range("${keeper_count}") }
-  group "keeper-${i + 1}" {
-    count = 1
-
-    restart {
-      attempts = 10
-      delay    = "30s"
-      interval = "10m"
-      mode     = "delay"
-    }
- 
-    constraint {
-      attribute = "$${meta.job_constraint}"
-      value     = "clickhouse-keeper-${i + 1}"
-    }
-
-    network {
-      mode = "bridge"
-
-      dns {
-        servers = ["172.17.0.1", "8.8.8.8", "8.8.4.4", "169.254.169.254"]
-      }
-
-      port "keeper" {
-        static = "${clickhouse_keeper_port}"
-        to = "${clickhouse_keeper_port}"
-      }
-
-      port "raft" {
-        static = 9234
-        to = 9234
-      }
-    }
-
-    service {
-      name = "clickhouse-keeper-${i + 1}"
-      port = "keeper"
-    }
-
-    service {
-      name = "clickhouse-keeper-raft-${i + 1}"
-      port = "raft"
-    }
-
-    task "clickhouse-keeper" {
-      driver = "docker"
-
-      config {
-        image = "clickhouse/clickhouse-server:${clickhouse_version}"
-        ports = ["keeper", "raft"]
-
-        extra_hosts = [
-          "clickhouse-keeper-${i + 1}.service.consul:127.0.0.1",
-          "clickhouse-keeper-raft-${i + 1}.service.consul:127.0.0.1",
-        ]
-
-        volumes = [
-          "/clickhouse/data/clickhouse-keeper-${i + 1}:/var/lib/clickhouse",
-          "local/keeper.xml:/etc/clickhouse-server/config.d/keeper_config.xml",
-        ]
-      }
-
-      resources {
-        cpu    = 400
-        memory = 512
-      }
-
-      template {
-        destination = "local/keeper.xml"
-        data        = <<EOF
-<?xml version="1.0"?>
-<clickhouse>
-
-    <logger>
-        <console>1</console>
-        <level>information</level>
-    </logger>
-
-    <keeper_server>
-        <log_storage_disk>log_s3</log_storage_disk>
-        <latest_log_storage_disk>log_local</latest_log_storage_disk>
-
-        <snapshot_storage_disk>snapshot_s3</snapshot_storage_disk>
-        <latest_snapshot_storage_disk>snapshot_s3</latest_snapshot_storage_disk>
-
-        <state_storage_disk>state_s3</state_storage_disk>
-        <latest_state_storage_disk>state_s3</latest_state_storage_disk>
-
-        <tcp_port>${clickhouse_keeper_port}</tcp_port>
-        <server_id>${i + 1}</server_id>
-
-         <raft_configuration>
-         %{ for j in range("${keeper_count}") }
-            <server>
-                <id>${j + 1}</id>
-                <hostname>clickhouse-keeper-raft-${j + 1}.service.consul</hostname>
-                <port>9234</port>
-            </server>
-            %{ endfor }
-        </raft_configuration>
-
-        <coordination_settings>
-            <operation_timeout_ms>10000</operation_timeout_ms>
-            <session_timeout_ms>30000</session_timeout_ms>
-        </coordination_settings>
-    </keeper_server>
-
-    <storage_configuration>
-        <disks>
-            <log_local>
-                <type>local</type>
-                <path>/var/lib/clickhouse/coordination/logs/</path>
-            </log_local>
-            <log_s3>
-                <type>s3</type>
-                <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/keeper-${i + 1}/logs/</endpoint>
-                <access_key_id>${hmac_key}</access_key_id>
-                <secret_access_key>${hmac_secret}</secret_access_key>
-                <support_batch_delete>false</support_batch_delete>
-            </log_s3>
-            <snapshot_s3>
-                <type>s3</type>
-                <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/keeper-${i + 1}/snapshots/</endpoint>
-                <access_key_id>${hmac_key}</access_key_id>
-                <secret_access_key>${hmac_secret}</secret_access_key>
-                <support_batch_delete>false</support_batch_delete>
-            </snapshot_s3>
-            <state_s3>
-                <type>s3</type>
-                <endpoint>https://storage.googleapis.com/${gcs_bucket}/${gcs_folder}/keeper-${i + 1}/state/</endpoint>
-                <access_key_id>${hmac_key}</access_key_id>
-                <secret_access_key>${hmac_secret}</secret_access_key>
-                <support_batch_delete>false</support_batch_delete>
-            </state_s3>
-        </disks>
-    </storage_configuration>
-</clickhouse> 
-EOF
-      }
-    }
-  }
-  %{ endfor }
+// TODO: Add rolling updates
 
 %{ for i in range("${server_count}") }
   group "server-${i + 1}" {
     count = 1
 
-    restart {
-      attempts = 10
-      delay    = "30s"
-      interval = "10m"
-      mode     = "delay"
-    }
+// TODO: Set restarts
 
     constraint {
       attribute = "$${meta.job_constraint}"
-      value     = "clickhouse-server-${i + 1}"
+      value     = "${job_constraint_prefix}-${i + 1}"
     }
 
     network {
@@ -173,7 +22,7 @@ EOF
         servers = ["172.17.0.1", "8.8.8.8", "8.8.4.4", "169.254.169.254"]
       }
 
-      port "http" {
+      port "clickhouse-http" {
         static = 8123
         to = 8123
       }
@@ -182,39 +31,40 @@ EOF
         static = "${clickhouse_server_port}"
         to = "${clickhouse_server_port}"
       }
-
-      port "interserver" {
-        static = 9009
-        to = 9009
-      }
-    }
-
-    service {
-      name = "clickhouse-http-${i + 1}"
-      port = "http"
     }
 
     service {
       name = "clickhouse-server-${i + 1}"
       port = "clickhouse-server"
-    }
+      tags = ["tcp"]
 
-    service {
-      name = "clickhouse-interserver-${i + 1}"
-      port = "interserver"
+      check {
+        type     = "http"
+        path     = "/ping"
+        port     = "clickhouse-http"
+        interval = "10s"
+        timeout  = "5s"
+      }
     }
 
     task "clickhouse-server" {
       driver = "docker"
 
+      # TODO: Ipv6 isn't working, will be fixed later (works like this for now)
+      env {
+           AWS_ENABLE_IPV6="false"
+      }
+
       config {
         image = "clickhouse/clickhouse-server:${clickhouse_version}"
-        ports = ["http", "clickhouse-server", "interserver"]
+        ports = ["clickhouse-server", "clickhouse-http"]
+
+        ulimit {
+          nofile = "262144:262144"
+        }
 
         extra_hosts = [
-          "clickhouse-http-${i + 1}.service.consul:127.0.0.1",
-          "clickhouse-${i + 1}.service.consul:127.0.0.1",
-          "clickhouse-interserver-${i + 1}.service.consul:127.0.0.1",
+          "clickhouse-server-${i + 1}.service.consul:127.0.0.1",
         ]
 
         volumes = [
@@ -223,51 +73,46 @@ EOF
           "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
           "local/macros.xml:/etc/clickhouse-server/config.d/macros.xml",
         ]
-
-        ulimit {
-          nofile = "262144:262144"
-        }
       }
 
       resources {
-        cpu    = 500
-        memory = 1024
+        cpu    = 4000
+        memory = 8192
       }
 
-      // TODO: Join the configs for server
       template {
         destination = "local/config.xml"
         data        = <<EOF
 <?xml version="1.0"?>
 <clickhouse>
-     # this is undocumented but needed to enable waiting for for shutdown for a custom amount of time 
-     # see https://github.com/ClickHouse/ClickHouse/pull/77515 for more details
+<!-- this is undocumented but needed to enable waiting for for shutdown for a custom amount of time  -->
+<!-- see https://github.com/ClickHouse/ClickHouse/pull/77515 for more details  -->
     <shutdown_wait_unfinished>60</shutdown_wait_unfinished>
     <shutdown_wait_unfinished_queries>1</shutdown_wait_unfinished_queries>
 
+    <!-- Use up 80% of available RAM to be on the safer side, default is 90% -->
+    <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+
     <logger>
+        <formatting>
+            <type>json</type>
+            <names>
+                <date_time>date_time</date_time>
+                <thread_id>thread_id</thread_id>
+                <level>level</level>
+                <query_id>query_id</query_id>
+                <logger_name>logger_name</logger_name>
+                <message>message</message>
+                <source_file>source_file</source_file>
+                <source_line>source_line</source_line>
+            </names>
+        </formatting>
         <console>1</console>
-         <level>information</level>
+        <level>information</level>
     </logger>
-
-    <replicated_merge_tree>
-        <storage_policy>s3</storage_policy>
-    </replicated_merge_tree>
-
-    <distributed_ddl>
-        <path>/var/lib/clickhouse/task_queue/ddl</path>
-    </distributed_ddl>
 
     <default_replica_path>/var/lib/clickhouse/tables/{shard}/{database}/{table}</default_replica_path>
 
-    <zookeeper>
-        %{ for j in range("${keeper_count}") }
-        <node>
-            <host>clickhouse-keeper-${j + 1}.service.consul</host>
-            <port>${clickhouse_keeper_port}</port>
-        </node>
-        %{ endfor }
-    </zookeeper>
     <storage_configuration>
          <disks>
             <s3>
@@ -276,7 +121,8 @@ EOF
                 <access_key_id>${hmac_key}</access_key_id>
                 <secret_access_key>${hmac_secret}</secret_access_key>
                 <support_batch_delete>false</support_batch_delete>
-                # <metadata_type>plain_rewritable</metadata_type>
+                <object_removal_strategy>async</object_removal_strategy>
+<!--            <metadata_type>plain_rewritable</metadata_type> -->
             </s3>
         </disks>
            <policies>
@@ -291,30 +137,29 @@ EOF
     </storage_configuration>
     <remote_servers replace="true">
       <cluster>
-        <secret>mysecretphrase</secret>
-            <shard>
-                <internal_replication>true</internal_replication>
-                %{ for j in range("${server_count}") }
-                <replica>
-                    <host>clickhouse-server-${j + 1}.service.consul</host>
-                    <port>${clickhouse_server_port}</port>
-                </replica>
-                %{ endfor }
-            </shard>
-        </cluster>
+        <!-- a secret for servers to use to communicate to each other  -->
+        <secret>${server_secret}</secret>
+        %{ for j in range("${server_count}") }
+        <shard>
+          <replica>
+            <host>clickhouse-server-${j + 1}.service.consul</host>
+            <port>${clickhouse_server_port}</port>
+            <user>${username}</user>
+            <password>${password}</password>
+          </replica>
+        </shard>
+      %{ endfor }
+      </cluster>
     </remote_servers>
 
     <listen_host>0.0.0.0</listen_host>
 
-    <http_port>8123</http_port>
     <tcp_port>${clickhouse_server_port}</tcp_port>
-
-    <interserver_http_host>clickhouse-interserver-${i + 1}.service.consul</interserver_http_host>
-    <interserver_http_port>9009</interserver_http_port>
 </clickhouse>
 EOF
       }
 
+# TODO: make sure default user isn't created or drop it (it has no password and it's superuser)
       template {
         destination = "local/users.xml"
         data        = <<EOF
@@ -322,9 +167,9 @@ EOF
 <clickhouse>
     <users>
         <${username}>
-            <password_sha256_hex>${password_sha256_hex}</password_sha256_hex>
+            <password>${password}</password>
             <networks>
-                <ip>::/0</ip>
+              <ip>10.0.0.0/8</ip> <!-- restrict to internal traffic -->
             </networks>
             <profile>default</profile>
             <quota>default</quota>
@@ -342,10 +187,10 @@ EOF
 <clickhouse>
     <macros>
         <cluster>cluster</cluster>
-        <shard>01</shard>
-        <replica>0${i + 1}</replica>
+        <shard>0${i + 1}</shard>
+        <replica>01</replica>
     </macros>
-</clickhouse> 
+</clickhouse>
 EOF
       }
     }

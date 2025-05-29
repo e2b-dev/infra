@@ -48,12 +48,55 @@ variable "build_machine_type" {
   type = string
 }
 
-variable "clickhouse_server_machine_type" {
+variable "clickhouse_cluster_size" {
+  type = number
+}
+
+variable "clickhouse_machine_type" {
   type = string
 }
 
-variable "clickhouse_keeper_machine_type" {
-  type = string
+variable "clickhouse_database_name" {
+  description = "The name of the ClickHouse database to create."
+  type        = string
+  default     = "default"
+}
+
+variable "clickhouse_job_constraint_prefix" {
+  description = "The prefix to use for the job constraint of the instance in the metadata."
+  type        = string
+  default     = "clickhouse"
+}
+
+variable "clickhouse_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
+  default     = "clickhouse"
+}
+
+variable "clickhouse_server_service_port" {
+  type = object({
+    name = string
+    port = number
+  })
+  default = {
+    name = "clickhouse"
+    port = 9000
+  }
+}
+
+
+variable "clickhouse_health_port" {
+  type = object({
+    name = string
+    port = number
+    path = string
+  })
+  default = {
+    name = "clickhouse-health"
+    port = 8123
+    path = "/health"
+  }
 }
 
 variable "client_proxy_health_port" {

@@ -61,9 +61,9 @@ resource "nomad_job" "api" {
     redis_url                      = "redis://redis.service.consul:${var.redis_port.port}"
     redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
     dns_port_number                = var.api_dns_port_number
-    clickhouse_connection_string   = var.clickhouse_connection_string
+    clickhouse_connection_string   = "clickhouse-server-1.service.consul:9000" # TODO: This will be replaced by load balancer address in following PRs
     clickhouse_username            = var.clickhouse_username
-    clickhouse_password            = var.clickhouse_password
+    clickhouse_password            = random_password.clickhouse_password.result
     clickhouse_database            = var.clickhouse_database
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
   })
@@ -333,9 +333,9 @@ locals {
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
-    clickhouse_connection_string = var.clickhouse_connection_string
+    clickhouse_connection_string = "clickhouse-server-1.service.consul:9000" # TODO: This will be replaced by load balancer address in following PRs
     clickhouse_username          = var.clickhouse_username
-    clickhouse_password          = var.clickhouse_password
+    clickhouse_password          = random_password.clickhouse_password.result
     clickhouse_database          = var.clickhouse_database
   }
 
@@ -434,6 +434,45 @@ resource "nomad_job" "loki" {
   })
 }
 
+# Create only one user for simplicity now, will separate users in following PRs
+resource "random_password" "clickhouse_password" {
+  length  = 32
+  special = false
+}
+
+resource "google_secret_manager_secret" "clickhouse_password" {
+  secret_id = "${var.prefix}clickhouse-password"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "clickhouse_password_value" {
+  secret = google_secret_manager_secret.clickhouse_password.id
+
+  secret_data = random_password.clickhouse_password.result
+}
+
+resource "random_password" "clickhouse_server_secret" {
+  length  = 32
+  special = false
+}
+
+resource "google_secret_manager_secret" "clickhouse_server_secret" {
+  secret_id = "${var.prefix}clickhouse-server-secret"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "clickhouse_server_secret_value" {
+  secret = google_secret_manager_secret.clickhouse_server_secret.id
+
+  secret_data = random_password.clickhouse_server_secret.result
+}
+
 resource "google_service_account" "clickhouse_service_account" {
   account_id   = "${var.prefix}clickhouse-service-account"
   display_name = "${var.prefix}clickhouse-service-account"
@@ -450,30 +489,23 @@ resource "google_storage_hmac_key" "clickhouse_hmac_key" {
 }
 
 resource "nomad_job" "clickhouse" {
+  # TODO: Currently only in dev
+  count = var.environment == "dev" ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
     zone                   = var.gcp_zone
-    clickhouse_version     = "25.1.5.31"
+    server_secret          = random_password.clickhouse_server_secret.result
+    clickhouse_version     = "25.4.5.24"
     gcs_bucket             = var.clickhouse_bucket_name
     gcs_folder             = "clickhouse-data"
     hmac_key               = google_storage_hmac_key.clickhouse_hmac_key.access_id
     hmac_secret            = google_storage_hmac_key.clickhouse_hmac_key.secret
     username               = var.clickhouse_username
-    password_sha256_hex    = sha256(var.clickhouse_password)
-    clickhouse_keeper_port = var.clickhouse_keeper_port.port
+    password               = random_password.clickhouse_password.result
     clickhouse_server_port = var.clickhouse_server_port.port
-    keeper_count           = var.clickhouse_keeper_count
     server_count           = var.clickhouse_server_count
+    resources_memory_gib   = 8
+
+    job_constraint_prefix = var.clickhouse_job_constraint_prefix
+    node_pool             = var.clickhouse_node_pool
   })
 }
-
-# resource "consul_node" "clickhouse_lb" {
-#   name    = "clickhouse-lb"
-#   address = 
-# }
-
-# resource "consul_service" "clickhouse" {
-#   name = "clickhouse"
-#   node = consul_node.clickhouse_lb.name
-#   port = 9000
-#   tags = ["clickhouse"]
-# }

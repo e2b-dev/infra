@@ -3,7 +3,7 @@ resource "google_compute_health_check" "nomad_check" {
   check_interval_sec  = 15
   timeout_sec         = 10
   healthy_threshold   = 2
-  unhealthy_threshold = 10 # 50 seconds
+  unhealthy_threshold = 10
 
   log_config {
     enable = true
@@ -24,13 +24,8 @@ resource "google_compute_instance_group_manager" "cluster" {
   }
 
   named_port {
-    name = var.service_health_port.name
-    port = var.service_health_port.port
-  }
-
-  named_port {
-    name = var.service_port.name
-    port = var.service_port.port
+    name = var.clickhouse_health_port.name
+    port = var.clickhouse_health_port.port
   }
 
   auto_healing_policies {
@@ -41,7 +36,7 @@ resource "google_compute_instance_group_manager" "cluster" {
   # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
   # a rolling update.
   update_policy {
-    type                  = "PROACTIVE"
+    type                  = var.environment == "dev" ? "PROACTIVE" : "OPPORTUNISTIC"
     minimal_action        = "RESTART"
     max_unavailable_fixed = 1
     replacement_method    = "RECREATE"
@@ -102,7 +97,6 @@ resource "google_compute_instance_template" "server" {
   tags                    = concat([var.cluster_tag_name], var.custom_tags)
   metadata_startup_script = var.startup_script
   metadata = merge(
-    { monitoring_server_cluster = "TRUE" },
     {
       enable-osconfig         = "TRUE",
       enable-guest-attributes = "TRUE",
@@ -127,10 +121,7 @@ resource "google_compute_instance_template" "server" {
   network_interface {
     network = var.network_name
 
-    dynamic "access_config" {
-      for_each = var.assign_public_ip_addresses ? ["public_ip"] : []
-      content {}
-    }
+    access_config {}
   }
 
   # For a full list of oAuth 2.0 Scopes, see https://developers.google.com/identity/protocols/googlescopes
@@ -151,9 +142,5 @@ resource "google_compute_instance_template" "server" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     create_before_destroy = true
-
-    # TODO: Temporary workaround to avoid unnecessary updates to the instance template.
-    #  This should be removed once cluster size is removed from the metadata
-    ignore_changes = [metadata]
   }
 }

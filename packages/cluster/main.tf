@@ -6,6 +6,7 @@ locals {
     "scripts/run-nomad.sh"               = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
     "scripts/run-api-nomad.sh"           = substr(filesha256("${path.module}/scripts/run-api-nomad.sh"), 0, 5)
     "scripts/run-build-cluster-nomad.sh" = substr(filesha256("${path.module}/scripts/run-build-cluster-nomad.sh"), 0, 5)
+    "scripts/run-clickhouse-nomad.sh"    = substr(filesha256("${path.module}/scripts/run-clickhouse-nomad.sh"), 0, 5)
   }
 }
 
@@ -64,6 +65,7 @@ variable "setup_files" {
   default = {
     "scripts/run-nomad.sh"               = "run-nomad",
     "scripts/run-api-nomad.sh"           = "run-api-nomad",
+    "scripts/run-clickhouse-nomad.sh"    = "run-clickhouse-nomad",
     "scripts/run-build-cluster-nomad.sh" = "run-build-cluster-nomad",
     "scripts/run-consul.sh"              = "run-consul"
   }
@@ -199,10 +201,10 @@ module "api_cluster" {
   depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-api-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
 }
 
-module "monitoring_cluster" {
-  source = "./monitoring-cluster"
+module "clickhouse_cluster" {
+  source = "./clickhouse-cluster"
 
-  startup_script = templatefile("${path.module}/scripts/start-api.sh", {
+  startup_script = templatefile("${path.module}/scripts/start-clickhouse.sh", {
     CLUSTER_TAG_NAME             = var.cluster_tag_name
     SCRIPTS_BUCKET               = var.cluster_setup_bucket_name
     FC_KERNELS_BUCKET_NAME       = var.fc_kernels_bucket_name
@@ -214,30 +216,32 @@ module "monitoring_cluster" {
     NOMAD_TOKEN                  = var.nomad_acl_token_secret
     CONSUL_TOKEN                 = var.consul_acl_token_secret
     RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
-    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-api-nomad.sh"]
+    RUN_NOMAD_FILE_NAME          = var.setup_files["scripts/run-clickhouse-nomad.sh"]
+    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-clickhouse-nomad.sh"]
     CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
     CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
   })
 
   environment = var.environment
-  prefix      = var.prefix
 
   cluster_tag_name = var.cluster_tag_name
   gcp_zone         = var.gcp_zone
 
   image_family = var.api_image_family
 
-  clickhouse_server_machine_type = var.clickhouse_server_machine_type
-  clickhouse_keeper_machine_type = var.clickhouse_keeper_machine_type
-
+  machine_type = var.clickhouse_machine_type
+  cluster_size = var.clickhouse_cluster_size
   network_name = var.network_name
 
-  nomad_port = var.nomad_port
+  job_constraint_prefix = var.clickhouse_job_constraint_prefix
+  node_pool             = var.clickhouse_node_pool
 
-  service_account_email = var.google_service_account_email
+  nomad_port             = var.nomad_port
+  clickhouse_health_port = var.clickhouse_health_port
+  service_account_email  = var.google_service_account_email
 
   labels     = var.labels
-  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-api-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
+  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-clickhouse-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
 }
 
 module "build_cluster" {

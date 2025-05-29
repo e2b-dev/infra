@@ -3,14 +3,29 @@
 # You must provide a value for each of these parameters.
 # ---------------------------------------------------------------------------------------------------------------------
 
-variable "prefix" {
-  description = "The prefix for the cluster name."
+variable "environment" {
+  description = "The environment (e.g. staging, prod, dev)."
   type        = string
 }
 
-variable "environment" {
-  description = "The environment (e.g. staging, prod)."
+variable "job_constraint_prefix" {
+  description = "The prefix to use for the job constraint of the instance in the metadata."
   type        = string
+}
+
+variable "node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
+}
+
+variable "machine_type" {
+  description = "The machine type of the Compute Instance to run for each node in the cluster (e.g. n1-standard-1)."
+  type        = string
+}
+
+variable "cluster_size" {
+  description = "The number of nodes to have in the Nomad cluster. We strongly recommended that you use either 3 or 5."
+  type        = number
 }
 
 variable "gcp_zone" {
@@ -43,74 +58,19 @@ variable "nomad_port" {
   type        = number
 }
 
-variable "keeper_cluster_size" {
-  description = "The number of nodes to have in the Nomad cluster. We strongly recommended that you use either 3 or 5."
-  type        = number
-  default     = 3
-}
-
-variable "clickhouse_keeper_machine_type" {
-  description = "The machine type of the Compute Instance to run for each node in the cluster (e.g. n1-standard-1)."
-  type        = string
-}
-
-variable "server_cluster_size" {
-  type    = number
-  default = 2
-}
-
-variable "clickhouse_server_machine_type" {
-  description = "The machine type of the Compute Instance to run for each node in the cluster."
-  type        = string
-}
-
-variable "keeper_service_port" {
-  type = object({
-    name = string
-    port = number
-  })
-  default = {
-    name = "clickhouse-keeper"
-    port = 9181
-  }
-}
-
-variable "keeper_service_health_port" {
+variable "clickhouse_health_port" {
   type = object({
     name = string
     port = number
     path = string
   })
-  default = {
-    name = "clickhouse-keeper-health"
-    port = 9181
-    path = "/health"
-  }
 }
 
-variable "server_service_port" {
-  type = object({
-    name = string
-    port = number
-  })
-  default = {
-    name = "clickhouse"
-    port = 9000
-  }
-}
+# ---------------------------------------------------------------------------------------------------------------------
+# OPTIONAL PARAMETERS
+# You can provide a value for each of these parameters.
+# ---------------------------------------------------------------------------------------------------------------------
 
-variable "server_service_health_port" {
-  type = object({
-    name = string
-    port = number
-    path = string
-  })
-  default = {
-    name = "clickhouse-health"
-    port = 8123
-    path = "/health"
-  }
-}
 
 variable "instance_group_target_pools" {
   description = "To use a Load Balancer with the Consul cluster, you must populate this value. Specifically, this is the list of Target Pool URLs to which new Compute Instances in the Instance Group created by this module will be added. Note that updating the Target Pools attribute does not affect existing Compute Instances."
@@ -141,15 +101,28 @@ variable "labels" {
 }
 
 # Metadata
-
-variable "metadata_key_name_for_cluster_size" {
-  description = "The key name to be used for the custom metadata attribute that represents the size of the Nomad cluster."
-  type        = string
-  default     = "cluster-size"
-}
-
 variable "custom_metadata" {
   description = "A map of metadata key value pairs to assign to the Compute Instance metadata."
   type        = map(string)
   default     = {}
+}
+
+variable "cluster_name" {
+  description = "The name of the Nomad cluster (e.g. nomad-stage). This variable is used to namespace all resources created by this module."
+  type        = string
+  default     = "clickhouse"
+}
+
+# Disk Settings
+
+variable "root_volume_disk_size_gb" {
+  description = "The size, in GB, of the root disk volume on each Consul node."
+  type        = number
+  default     = 200
+}
+
+variable "root_volume_disk_type" {
+  description = "The GCE disk type. Can be either pd-ssd, local-ssd, or pd-standard"
+  type        = string
+  default     = "pd-ssd"
 }

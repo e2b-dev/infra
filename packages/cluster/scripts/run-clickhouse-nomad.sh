@@ -130,12 +130,15 @@ function generate_nomad_config {
   local instance_ip_address=""
   local instance_region=""
   local instance_zone=""
+  local job_constraint=""
+  local node_pool=""
 
   instance_name=$(get_instance_name)
   instance_ip_address=$(get_instance_ip_address)
   instance_region=$(get_instance_region)
   zone=$(get_instance_zone)
-
+  job_constraint=$(get_instance_custom_metadata_value "job-constraint" || true)
+  node_pool=$(get_instance_custom_metadata_value "node-pool" || echo "unassigned")
 
   log_info "Creating default Nomad config file in $config_path"
   cat >"$config_path" <<EOF
@@ -155,9 +158,10 @@ leave_on_terminate = true
 
 client {
   enabled = true
-  node_pool = "api"
+  node_pool = "$node_pool"
   meta {
-    "node_pool" = "api"
+    "node_pool" = "$node_pool"
+    ${job_constraint:+"\"job_constraint\"" = "\"$job_constraint\""}
   }
   max_kill_timeout = "24h"
 }
@@ -261,10 +265,9 @@ function get_owner_of_path {
 }
 
 function run {
-  local nodepool="default"
   local all_args=()
 
-  while [[ $# > 0 ]]; do
+  while [[ $# -gt 0 ]]; do
     local key="$1"
 
     case "$key" in
@@ -283,7 +286,13 @@ function run {
     shift
   done
 
-
+  # Install CNI plugin for networking in Nomad (bridge mode)
+  ARCH_CNI=$([ "$(uname -m)" = aarch64 ] && echo arm64 || echo amd64)
+  export ARCH_CNI
+  export CNI_PLUGIN_VERSION=v1.6.2
+  curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGIN_VERSION}/cni-plugins-linux-${ARCH_CNI}-${CNI_PLUGIN_VERSION}".tgz &&
+    sudo mkdir -p /opt/cni/bin &&
+    sudo tar -C /opt/cni/bin -xzf cni-plugins.tgz
 
   use_sudo="true"
 

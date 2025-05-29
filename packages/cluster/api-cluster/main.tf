@@ -91,9 +91,6 @@ resource "google_compute_instance_template" "api" {
       enable-osconfig         = "TRUE",
       enable-guest-attributes = "TRUE",
     },
-    {
-      node-pool = "api"
-    },
     var.custom_metadata,
   )
 

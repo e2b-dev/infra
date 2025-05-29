@@ -219,35 +219,17 @@ variable "redis_port" {
 }
 
 # Clickhouse
-variable "clickhouse_connection_string" {
-  type = string
-}
-
 variable "clickhouse_username" {
-  type = string
-}
-
-variable "clickhouse_password" {
-  type = string
+  type    = string
+  default = "e2b"
 }
 
 variable "clickhouse_database" {
   type = string
 }
 
-variable "clickhouse_keeper_count" {
-  type = number
-}
-
 variable "clickhouse_server_count" {
   type = number
-}
-
-variable "clickhouse_keeper_port" {
-  type = object({
-    name = string
-    port = number
-  })
 }
 
 variable "clickhouse_server_port" {
@@ -255,4 +237,14 @@ variable "clickhouse_server_port" {
     name = string
     port = number
   })
+}
+
+variable "clickhouse_job_constraint_prefix" {
+  description = "The prefix to use for the job constraint of the instance in the metadata."
+  type        = string
+}
+
+variable "clickhouse_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
 }
