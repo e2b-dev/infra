@@ -12,6 +12,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
@@ -36,7 +38,17 @@ func NewGCPArtifactsRegistry(ctx context.Context) (*GCPArtifactsRegistry, error)
 
 func (g *GCPArtifactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
 	tagPath := g.getDockerImageTagPath(templateId, buildId)
-	return g.registry.DeleteTag(ctx, &artifactregistrypb.DeleteTagRequest{Name: tagPath})
+	err := g.registry.DeleteTag(ctx, &artifactregistrypb.DeleteTagRequest{Name: tagPath})
+
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return ErrImageNotExists
+		}
+
+		return fmt.Errorf("error deleting tag %s: %v", tagPath, err)
+	}
+
+	return nil
 }
 
 func (g *GCPArtifactsRegistry) GetTag(ctx context.Context, templateId string, buildId string) (string, error) {
