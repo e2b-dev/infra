@@ -2361,8 +2361,6 @@ type EnvBuildMutation struct {
 	dockerfile            *string
 	start_cmd             *string
 	ready_cmd             *string
-	ready_timeout         *int32
-	addready_timeout      *int32
 	vcpu                  *int64
 	addvcpu               *int64
 	ram_mb                *int64
@@ -2839,76 +2837,6 @@ func (m *EnvBuildMutation) ResetReadyCmd() {
 	delete(m.clearedFields, envbuild.FieldReadyCmd)
 }
 
-// SetReadyTimeout sets the "ready_timeout" field.
-func (m *EnvBuildMutation) SetReadyTimeout(i int32) {
-	m.ready_timeout = &i
-	m.addready_timeout = nil
-}
-
-// ReadyTimeout returns the value of the "ready_timeout" field in the mutation.
-func (m *EnvBuildMutation) ReadyTimeout() (r int32, exists bool) {
-	v := m.ready_timeout
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldReadyTimeout returns the old "ready_timeout" field's value of the EnvBuild entity.
-// If the EnvBuild object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *EnvBuildMutation) OldReadyTimeout(ctx context.Context) (v *int32, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldReadyTimeout is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldReadyTimeout requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldReadyTimeout: %w", err)
-	}
-	return oldValue.ReadyTimeout, nil
-}
-
-// AddReadyTimeout adds i to the "ready_timeout" field.
-func (m *EnvBuildMutation) AddReadyTimeout(i int32) {
-	if m.addready_timeout != nil {
-		*m.addready_timeout += i
-	} else {
-		m.addready_timeout = &i
-	}
-}
-
-// AddedReadyTimeout returns the value that was added to the "ready_timeout" field in this mutation.
-func (m *EnvBuildMutation) AddedReadyTimeout() (r int32, exists bool) {
-	v := m.addready_timeout
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearReadyTimeout clears the value of the "ready_timeout" field.
-func (m *EnvBuildMutation) ClearReadyTimeout() {
-	m.ready_timeout = nil
-	m.addready_timeout = nil
-	m.clearedFields[envbuild.FieldReadyTimeout] = struct{}{}
-}
-
-// ReadyTimeoutCleared returns if the "ready_timeout" field was cleared in this mutation.
-func (m *EnvBuildMutation) ReadyTimeoutCleared() bool {
-	_, ok := m.clearedFields[envbuild.FieldReadyTimeout]
-	return ok
-}
-
-// ResetReadyTimeout resets all changes to the "ready_timeout" field.
-func (m *EnvBuildMutation) ResetReadyTimeout() {
-	m.ready_timeout = nil
-	m.addready_timeout = nil
-	delete(m.clearedFields, envbuild.FieldReadyTimeout)
-}
-
 // SetVcpu sets the "vcpu" field.
 func (m *EnvBuildMutation) SetVcpu(i int64) {
 	m.vcpu = &i
@@ -3329,7 +3257,7 @@ func (m *EnvBuildMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EnvBuildMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 15)
 	if m.created_at != nil {
 		fields = append(fields, envbuild.FieldCreatedAt)
 	}
@@ -3353,9 +3281,6 @@ func (m *EnvBuildMutation) Fields() []string {
 	}
 	if m.ready_cmd != nil {
 		fields = append(fields, envbuild.FieldReadyCmd)
-	}
-	if m.ready_timeout != nil {
-		fields = append(fields, envbuild.FieldReadyTimeout)
 	}
 	if m.vcpu != nil {
 		fields = append(fields, envbuild.FieldVcpu)
@@ -3402,8 +3327,6 @@ func (m *EnvBuildMutation) Field(name string) (ent.Value, bool) {
 		return m.StartCmd()
 	case envbuild.FieldReadyCmd:
 		return m.ReadyCmd()
-	case envbuild.FieldReadyTimeout:
-		return m.ReadyTimeout()
 	case envbuild.FieldVcpu:
 		return m.Vcpu()
 	case envbuild.FieldRAMMB:
@@ -3443,8 +3366,6 @@ func (m *EnvBuildMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldStartCmd(ctx)
 	case envbuild.FieldReadyCmd:
 		return m.OldReadyCmd(ctx)
-	case envbuild.FieldReadyTimeout:
-		return m.OldReadyTimeout(ctx)
 	case envbuild.FieldVcpu:
 		return m.OldVcpu(ctx)
 	case envbuild.FieldRAMMB:
@@ -3524,13 +3445,6 @@ func (m *EnvBuildMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetReadyCmd(v)
 		return nil
-	case envbuild.FieldReadyTimeout:
-		v, ok := value.(int32)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetReadyTimeout(v)
-		return nil
 	case envbuild.FieldVcpu:
 		v, ok := value.(int64)
 		if !ok {
@@ -3588,9 +3502,6 @@ func (m *EnvBuildMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *EnvBuildMutation) AddedFields() []string {
 	var fields []string
-	if m.addready_timeout != nil {
-		fields = append(fields, envbuild.FieldReadyTimeout)
-	}
 	if m.addvcpu != nil {
 		fields = append(fields, envbuild.FieldVcpu)
 	}
@@ -3611,8 +3522,6 @@ func (m *EnvBuildMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *EnvBuildMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
-	case envbuild.FieldReadyTimeout:
-		return m.AddedReadyTimeout()
 	case envbuild.FieldVcpu:
 		return m.AddedVcpu()
 	case envbuild.FieldRAMMB:
@@ -3630,13 +3539,6 @@ func (m *EnvBuildMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *EnvBuildMutation) AddField(name string, value ent.Value) error {
 	switch name {
-	case envbuild.FieldReadyTimeout:
-		v, ok := value.(int32)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddReadyTimeout(v)
-		return nil
 	case envbuild.FieldVcpu:
 		v, ok := value.(int64)
 		if !ok {
@@ -3688,9 +3590,6 @@ func (m *EnvBuildMutation) ClearedFields() []string {
 	if m.FieldCleared(envbuild.FieldReadyCmd) {
 		fields = append(fields, envbuild.FieldReadyCmd)
 	}
-	if m.FieldCleared(envbuild.FieldReadyTimeout) {
-		fields = append(fields, envbuild.FieldReadyTimeout)
-	}
 	if m.FieldCleared(envbuild.FieldTotalDiskSizeMB) {
 		fields = append(fields, envbuild.FieldTotalDiskSizeMB)
 	}
@@ -3725,9 +3624,6 @@ func (m *EnvBuildMutation) ClearField(name string) error {
 		return nil
 	case envbuild.FieldReadyCmd:
 		m.ClearReadyCmd()
-		return nil
-	case envbuild.FieldReadyTimeout:
-		m.ClearReadyTimeout()
 		return nil
 	case envbuild.FieldTotalDiskSizeMB:
 		m.ClearTotalDiskSizeMB()
@@ -3766,9 +3662,6 @@ func (m *EnvBuildMutation) ResetField(name string) error {
 		return nil
 	case envbuild.FieldReadyCmd:
 		m.ResetReadyCmd()
-		return nil
-	case envbuild.FieldReadyTimeout:
-		m.ResetReadyTimeout()
 		return nil
 	case envbuild.FieldVcpu:
 		m.ResetVcpu()

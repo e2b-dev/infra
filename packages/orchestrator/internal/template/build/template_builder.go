@@ -55,6 +55,7 @@ const (
 	waitEnvdTimeout      = 60 * time.Second
 
 	readyCommandRetryInterval = 2 * time.Second
+	readyCommandTimeout       = 5 * time.Minute
 
 	cleanupTimeout = time.Second * 10
 )
@@ -268,9 +269,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 			startCmdWait = 120 * time.Second
 		}
 
-		hasReadyCmd := template.ReadyCmd != "" && template.ReadyTimeout > 0
+		hasReadyCmd := template.ReadyCmd != ""
 		if hasReadyCmd {
-			startCmdWait = template.ReadyTimeout
+			startCmdWait = readyCommandTimeout
 		}
 
 		startCtx, startCancel := context.WithTimeout(ctx, startCmdWait)

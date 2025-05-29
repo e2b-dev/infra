@@ -35,8 +35,6 @@ type EnvBuild struct {
 	StartCmd *string `json:"start_cmd,omitempty"`
 	// ReadyCmd holds the value of the "ready_cmd" field.
 	ReadyCmd *string `json:"ready_cmd,omitempty"`
-	// ReadyTimeout holds the value of the "ready_timeout" field.
-	ReadyTimeout *int32 `json:"ready_timeout,omitempty"`
 	// Vcpu holds the value of the "vcpu" field.
 	Vcpu int64 `json:"vcpu,omitempty"`
 	// RAMMB holds the value of the "ram_mb" field.
@@ -84,7 +82,7 @@ func (*EnvBuild) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case envbuild.FieldReadyTimeout, envbuild.FieldVcpu, envbuild.FieldRAMMB, envbuild.FieldFreeDiskSizeMB, envbuild.FieldTotalDiskSizeMB:
+		case envbuild.FieldVcpu, envbuild.FieldRAMMB, envbuild.FieldFreeDiskSizeMB, envbuild.FieldTotalDiskSizeMB:
 			values[i] = new(sql.NullInt64)
 		case envbuild.FieldEnvID, envbuild.FieldStatus, envbuild.FieldDockerfile, envbuild.FieldStartCmd, envbuild.FieldReadyCmd, envbuild.FieldKernelVersion, envbuild.FieldFirecrackerVersion, envbuild.FieldEnvdVersion:
 			values[i] = new(sql.NullString)
@@ -165,13 +163,6 @@ func (eb *EnvBuild) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				eb.ReadyCmd = new(string)
 				*eb.ReadyCmd = value.String
-			}
-		case envbuild.FieldReadyTimeout:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field ready_timeout", values[i])
-			} else if value.Valid {
-				eb.ReadyTimeout = new(int32)
-				*eb.ReadyTimeout = int32(value.Int64)
 			}
 		case envbuild.FieldVcpu:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -290,11 +281,6 @@ func (eb *EnvBuild) String() string {
 	if v := eb.ReadyCmd; v != nil {
 		builder.WriteString("ready_cmd=")
 		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
-	if v := eb.ReadyTimeout; v != nil {
-		builder.WriteString("ready_timeout=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
 	builder.WriteString("vcpu=")

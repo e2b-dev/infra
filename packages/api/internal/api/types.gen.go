@@ -479,9 +479,6 @@ type TemplateBuildRequest struct {
 	// ReadyCmd Ready check command to execute in the template after the build
 	ReadyCmd *string `json:"readyCmd,omitempty"`
 
-	// ReadyTimeout Maximum time in seconds for the ready check command wait
-	ReadyTimeout *int32 `json:"readyTimeout,omitempty"`
-
 	// StartCmd Start command to execute in the template after the build
 	StartCmd *string `json:"startCmd,omitempty"`
 

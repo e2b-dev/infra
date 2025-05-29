@@ -59,6 +59,7 @@ type EnvBuild struct {
 	FirecrackerVersion string
 	EnvID              *string
 	EnvdVersion        *string
+	ReadyCmd           *string
 }
 
 type Snapshot struct {
