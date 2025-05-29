@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -36,7 +36,8 @@ const (
 )
 
 type Rootfs struct {
-	template *TemplateConfig
+	template         *TemplateConfig
+	artifactRegistry artifactsregistry.ArtifactsRegistry
 }
 
 type MultiWriter struct {
@@ -54,15 +55,11 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func NewRootfs(
-	template *TemplateConfig,
-) *Rootfs {
+func NewRootfs(artifactRegistry artifactsregistry.ArtifactsRegistry, template *TemplateConfig) *Rootfs {
 	return &Rootfs{
-		template: template,
+		template:         template,
+		artifactRegistry: artifactRegistry,
 	}
-}
-func (r *Rootfs) dockerTag() string {
-	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.template.TemplateId, r.template.BuildId)
 }
 
 func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, rootfsPath string) (e error) {
@@ -76,7 +73,8 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	}()
 
 	postProcessor.WriteMsg("Requesting Docker Image")
-	img, err := oci.GetImage(childCtx, tracer, r.dockerTag())
+
+	img, err := oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateId, r.template.BuildId)
 	if err != nil {
 		return fmt.Errorf("error requesting docker image: %w", err)
 	}

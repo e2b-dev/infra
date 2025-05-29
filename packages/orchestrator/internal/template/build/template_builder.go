@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -34,21 +35,22 @@ type TemplateBuilder struct {
 	logger *zap.Logger
 	tracer trace.Tracer
 
-	storage         storage.StorageProvider
-	devicePool      *nbd.DevicePool
-	networkPool     *network.Pool
-	buildCache      *cache.BuildCache
-	buildLogger     *zap.Logger
-	templateStorage *template.Storage
-	proxy           *proxy.SandboxProxy
-	sandboxes       *smap.Map[*sandbox.Sandbox]
+	storage          storage.StorageProvider
+	devicePool       *nbd.DevicePool
+	networkPool      *network.Pool
+	buildCache       *cache.BuildCache
+	buildLogger      *zap.Logger
+	templateStorage  *template.Storage
+	artifactRegistry artifactsregistry.ArtifactsRegistry
+	proxy            *proxy.SandboxProxy
+	sandboxes        *smap.Map[*sandbox.Sandbox]
 }
 
 const (
 	templatesDirectory = "/tmp/templates"
 
 	sbxTimeout           = time.Hour
-	provisionTimeout     = 1 * time.Minute
+	provisionTimeout     = 5 * time.Minute
 	configurationTimeout = 5 * time.Minute
 	waitTimeForStartCmd  = 20 * time.Second
 	waitEnvdTimeout      = 60 * time.Second
@@ -63,22 +65,24 @@ func NewBuilder(
 	templateStorage *template.Storage,
 	buildCache *cache.BuildCache,
 	storage storage.StorageProvider,
+	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	devicePool *nbd.DevicePool,
 	networkPool *network.Pool,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) *TemplateBuilder {
 	return &TemplateBuilder{
-		logger:          logger,
-		tracer:          tracer,
-		buildCache:      buildCache,
-		buildLogger:     buildLogger,
-		templateStorage: templateStorage,
-		storage:         storage,
-		devicePool:      devicePool,
-		networkPool:     networkPool,
-		proxy:           proxy,
-		sandboxes:       sandboxes,
+		logger:           logger,
+		tracer:           tracer,
+		buildCache:       buildCache,
+		buildLogger:      buildLogger,
+		templateStorage:  templateStorage,
+		storage:          storage,
+		artifactRegistry: artifactRegistry,
+		devicePool:       devicePool,
+		networkPool:      networkPool,
+		proxy:            proxy,
+		sandboxes:        sandboxes,
 	}
 }
 
@@ -147,6 +151,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		b.tracer,
 		template,
 		postProcessor,
+		b.artifactRegistry,
 		templateBuildDir,
 		rootfsPath,
 	)
@@ -257,6 +262,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		configurationTimeout,
 		scriptDef.String(),
 		"root",
+		nil,
 	)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error while running script: %v", err))
@@ -274,6 +280,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		if template.TemplateId == "zegbt9dl3l2ixqem82mm" || template.TemplateId == "ot5bidkk3j2so2j02uuz" || template.TemplateId == "0zeou1s7agaytqitvmzc" {
 			startCmdWait = 120 * time.Second
 		}
+		cwd := "/home/user"
 		err := b.runCommand(
 			ctx,
 			postProcessor,
@@ -281,6 +288,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 			startCmdWait,
 			template.StartCmd,
 			"root",
+			&cwd,
 		)
 		if err != nil {
 			postProcessor.WriteMsg(fmt.Sprintf("Error while running command: %v", err))

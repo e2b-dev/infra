@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
+	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -27,9 +28,15 @@ func (a *APIStore) deleteSnapshot(
 		return err
 	}
 
-	envBuildIDs := make([]uuid.UUID, 0)
+	envBuildIDs := make([]template_manager.DeleteBuild, 0)
 	for _, build := range builds {
-		envBuildIDs = append(envBuildIDs, build.ID)
+		envBuildIDs = append(
+			envBuildIDs,
+			template_manager.DeleteBuild{
+				BuildID:    build.ID,
+				TemplateId: *build.EnvID,
+			},
+		)
 	}
 
 	dbErr := a.db.DeleteEnv(ctx, env.ID)
