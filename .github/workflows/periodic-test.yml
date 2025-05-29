@@ -107,10 +107,12 @@ jobs:
           ALERT_UID="periodic-tests-${DOMAIN//./-}-${TEST_SLUG}"
 
           TITLE="Periodic tests | ${DOMAIN} | ${TEST_NAME}"
-          MESSAGE="${TEST_NAME} on ${DOMAIN} finished."
+          MESSAGE="${TEST_NAME} on ${DOMAIN} finished. Link: ${RUN_LINK}"
 
-          # You can attach a branch-status badge or any other image. Optional.
-          IMAGE_URL="https://github.com/${{ github.repository }}/actions/workflows/periodic-test.yml/badge.svg?branch=${{ github.ref_name }}"
+          # Attach a branch-status badge.
+          BADGE_COLOR=$([ "$JOB_STATUS" = "success" ] && echo brightgreen || echo CB2431)
+          BADGE_LABEL_ESCAPED=$(echo "$ALERT_UID" | sed 's/-/--/g')
+          IMAGE_URL="https://img.shields.io/badge/${BADGE_LABEL_ESCAPED}-${JOB_STATUS}-${BADGE_COLOR}"
 
           jq -n \
             --arg alert_uid "$ALERT_UID" \
