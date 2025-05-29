@@ -10,13 +10,13 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg"
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/chmodels"
 )
 
 // fake clickhouse store
 type fakeClickhouseStore struct {
-	*chdb.MockStore
+	*clickhouse.MockClient
 	metrics []chmodels.Metrics
 	err     error
 }
@@ -29,7 +29,7 @@ var aTimestamp = time.Now().Add(-time.Hour * 24)
 
 func TestAPIStore_getSandboxesSandboxIDMetricsClickhouse(t *testing.T) {
 	type fields struct {
-		clickhouseStore chdb.Store
+		clickhouseStore clickhouse.Clickhouse
 	}
 	type args struct {
 		ctx       context.Context
@@ -50,7 +50,7 @@ func TestAPIStore_getSandboxesSandboxIDMetricsClickhouse(t *testing.T) {
 			name: "test",
 			fields: fields{
 				clickhouseStore: &fakeClickhouseStore{
-					chdb.NewMockStore(),
+					clickhouse.NewMockStore(),
 					[]chmodels.Metrics{
 						{
 							SandboxID:      "sandbox1",
@@ -86,7 +86,7 @@ func TestAPIStore_getSandboxesSandboxIDMetricsClickhouse(t *testing.T) {
 			name: "test error",
 			fields: fields{
 				clickhouseStore: &fakeClickhouseStore{
-					chdb.NewMockStore(),
+					clickhouse.NewMockStore(),
 					[]chmodels.Metrics{},
 					errors.New("test error"),
 				},

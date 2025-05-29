@@ -13,11 +13,11 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -52,7 +52,7 @@ type Sandbox struct {
 	Slot            network.Slot
 	EndAt           time.Time
 	StartedAt       time.Time
-	ClickhouseStore chdb.Store
+	ClickhouseStore clickhouse.Clickhouse
 
 	useLokiMetrics       string
 	useClickhouseMetrics string
@@ -82,7 +82,7 @@ func NewSandbox(
 	baseTemplateID string,
 	clientID string,
 	devicePool *nbd.DevicePool,
-	clickhouseStore chdb.Store,
+	clickhouseStore clickhouse.Clickhouse,
 	useLokiMetrics string,
 	useClickhouseMetrics string,
 ) (*Sandbox, *Cleanup, error) {

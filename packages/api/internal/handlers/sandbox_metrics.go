@@ -104,7 +104,7 @@ func (a *APIStore) GetSandboxesSandboxIDMetricsFromClickhouse(
 	end := time.Now().UTC()
 	start := end.Add(-duration)
 
-	metrics, err := a.clickhouseStore.QueryMetrics(ctx, sandboxID, teamID, start.Unix(), limit)
+	metrics, err := a.clickhouseStore.QueryMetrics(ctx, sandboxID, teamID, start, limit)
 	if err != nil {
 		return nil, fmt.Errorf("error when returning metrics for sandbox: %w", err)
 	}

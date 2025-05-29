@@ -20,10 +20,11 @@ generate:
 .PHONY: build
 build:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@rm -rf .shared/
+	@rm -rf .shared/ .clickhouse/
 	@cp -r ../shared .shared/
+	@cp -r ../clickhouse .clickhouse/
 	@docker build --platform linux/amd64 --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" .
-	@rm -rf .shared/
+	@rm -rf .shared/ .clickhouse/
 
 .PHONY: build-local
 build-local:
