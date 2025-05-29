@@ -135,8 +135,8 @@ http {
         client_max_body_size 2M;
         client_header_buffer_size 1k;
         large_client_header_buffers 2 2M;
-        client_body_timeout 10s;
-        keepalive_timeout 10;
+        client_body_timeout 60s;
+        keepalive_timeout 60;
     }
 
     server {
