@@ -1,7 +1,6 @@
 package fc
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -9,13 +8,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 	txtTemplate "text/template"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapio"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/socket"
@@ -155,8 +154,8 @@ func (p *Process) configure(
 	sandboxID string,
 	templateID string,
 	teamID string,
-	stdout io.Writer,
-	stderr io.Writer,
+	stdoutExternal io.Writer,
+	stderrExternal io.Writer,
 	logFilterPrefix string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "configure-fc")
@@ -168,53 +167,15 @@ func (p *Process) configure(
 		TeamID:     teamID,
 	}
 
-	stdoutReader, err := p.cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("error creating fc stdout pipe: %w", err)
-	}
+	stdoutWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.InfoLevel}
+	externalStdout := &PrefixFilteredWriter{Writer: stdoutExternal, prefixFilter: logFilterPrefix}
+	p.cmd.Stdout = io.MultiWriter(stdoutWriter, externalStdout)
 
-	go func() {
-		// The stdout should be closed with the process cmd automatically, as it uses the StdoutPipe()
-		// TODO: Better handling of processing all logs before calling wait
-		scanner := bufio.NewScanner(stdoutReader)
+	stderrWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.ErrorLevel}
+	externalStderr := &PrefixFilteredWriter{Writer: stderrExternal, prefixFilter: logFilterPrefix}
+	p.cmd.Stderr = io.MultiWriter(stderrWriter, externalStderr)
 
-		for scanner.Scan() {
-			line := scanner.Text()
-			sbxlogger.I(sbxMetadata).Info("stdout: " + line)
-			logExternal(stdout, logFilterPrefix, line)
-		}
-
-		readerErr := scanner.Err()
-		if readerErr != nil {
-			sbxlogger.I(sbxMetadata).Error("error reading fc stdout", zap.Error(readerErr))
-			logExternal(stderr, logFilterPrefix, readerErr.Error())
-		}
-	}()
-
-	stderrReader, err := p.cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("error creating fc stderr pipe: %w", err)
-	}
-
-	go func() {
-		// The stderr should be closed with the process cmd automatically, as it uses the StderrPipe()
-		// TODO: Better handling of processing all logs before calling wait
-		scanner := bufio.NewScanner(stderrReader)
-
-		for scanner.Scan() {
-			line := scanner.Text()
-			sbxlogger.I(sbxMetadata).Error("stderr: " + line)
-			logExternal(stderr, logFilterPrefix, line)
-		}
-
-		readerErr := scanner.Err()
-		if readerErr != nil {
-			sbxlogger.I(sbxMetadata).Error("error reading fc stderr", zap.Error(readerErr))
-			logExternal(stderr, logFilterPrefix, readerErr.Error())
-		}
-	}()
-
-	err = utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath())
+	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
 		return fmt.Errorf("error symlinking rootfs: %w", err)
 	}
@@ -228,6 +189,12 @@ func (p *Process) configure(
 	defer cancelStart(fmt.Errorf("fc finished starting"))
 
 	go func() {
+		defer stderrWriter.Close()
+		defer stdoutWriter.Close()
+
+		defer externalStderr.Close()
+		defer externalStdout.Close()
+
 		waitErr := p.cmd.Wait()
 		if waitErr != nil {
 			var exitErr *exec.ExitError
@@ -490,15 +457,4 @@ func (p *Process) CreateSnapshot(ctx context.Context, tracer trace.Tracer, snapf
 	defer childSpan.End()
 
 	return p.client.createSnapshot(ctx, snapfilePath, memfilePath)
-}
-
-func logExternal(
-	writer io.Writer,
-	logFilterPrefix string,
-	line string,
-) {
-	noPrefixLine := strings.TrimPrefix(line, logFilterPrefix)
-	if logFilterPrefix == "" || noPrefixLine != line {
-		writer.Write([]byte(noPrefixLine + "\n"))
-	}
 }
