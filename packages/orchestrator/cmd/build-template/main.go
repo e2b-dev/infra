@@ -22,7 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
-	artefactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artefacts-registry"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -117,9 +117,9 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		}
 	}()
 
-	artefactsRegistry, err := artefactsregistry.GetArtefactsRegistryProvider()
+	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider()
 	if err != nil {
-		return fmt.Errorf("error getting artefacts registry provider: %v", err)
+		return fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
 	templateStorage := template.NewStorage(persistence)
@@ -131,7 +131,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		templateStorage,
 		buildCache,
 		persistence,
-		artefactsRegistry,
+		artifactRegistry,
 		devicePool,
 		networkPool,
 		sandboxProxy,

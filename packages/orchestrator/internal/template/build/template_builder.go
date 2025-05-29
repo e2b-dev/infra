@@ -24,7 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
-	artefactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artefacts-registry"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -41,7 +41,7 @@ type TemplateBuilder struct {
 	buildCache       *cache.BuildCache
 	buildLogger      *zap.Logger
 	templateStorage  *template.Storage
-	artifactRegistry artefactsregistry.ArtefactsRegistry
+	artifactRegistry artifactsregistry.ArtifactsRegistry
 	proxy            *proxy.SandboxProxy
 	sandboxes        *smap.Map[*sandbox.Sandbox]
 }
@@ -65,7 +65,7 @@ func NewBuilder(
 	templateStorage *template.Storage,
 	buildCache *cache.BuildCache,
 	storage storage.StorageProvider,
-	artifactRegistry artefactsregistry.ArtefactsRegistry,
+	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	devicePool *nbd.DevicePool,
 	networkPool *network.Pool,
 	proxy *proxy.SandboxProxy,

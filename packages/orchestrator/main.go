@@ -42,7 +42,7 @@ type Closeable interface {
 const (
 	defaultPort      = 5008
 	defaultProxyPort = 5007
-	defaultWait      = 30
+	defaultWait      = 0
 
 	version = "0.1.0"
 

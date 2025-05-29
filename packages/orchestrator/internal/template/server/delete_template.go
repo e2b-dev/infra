@@ -21,7 +21,7 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 		return nil, errors.New("template id and build id are required fields")
 	}
 
-	err := template.Delete(childCtx, s.tracer, s.artefactsRegistry, s.templateStorage, in.TemplateID, in.BuildID)
+	err := template.Delete(childCtx, s.tracer, s.artifactsregistry, s.templateStorage, in.TemplateID, in.BuildID)
 	if err != nil {
 		return nil, err
 	}

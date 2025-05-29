@@ -1,4 +1,4 @@
-package artefacts_registry
+package artifacts_registry
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-type GCPArtefactsRegistry struct {
+type GCPArtifactsRegistry struct {
 	registry *artifactregistry.Client
 }
 
@@ -27,16 +27,16 @@ var gcpAuthConfig = authn.Basic{
 	Password: consts.GoogleServiceAccountSecret,
 }
 
-func NewGCPArtefactsRegistry(ctx context.Context) (*GCPArtefactsRegistry, error) {
+func NewGCPArtifactsRegistry(ctx context.Context) (*GCPArtifactsRegistry, error) {
 	registry, err := artifactregistry.NewClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error creating artifact registry client: %v", err)
 	}
 
-	return &GCPArtefactsRegistry{registry: registry}, nil
+	return &GCPArtifactsRegistry{registry: registry}, nil
 }
 
-func (g *GCPArtefactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
+func (g *GCPArtifactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
 	packageName := g.getDockerImagePath(templateId)
 
 	op, err := g.registry.DeletePackage(ctx, &artifactregistrypb.DeletePackageRequest{Name: packageName})
@@ -56,11 +56,11 @@ func (g *GCPArtefactsRegistry) Delete(ctx context.Context, templateId string, bu
 	return nil
 }
 
-func (g *GCPArtefactsRegistry) GetUrl(ctx context.Context, templateId string, buildId string) (string, error) {
+func (g *GCPArtifactsRegistry) GetUrl(ctx context.Context, templateId string, buildId string) (string, error) {
 	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, templateId, buildId), nil
 }
 
-func (g *GCPArtefactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error) {
+func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error) {
 	imageUrl, err := g.GetUrl(ctx, templateId, buildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get image URL: %w", err)
@@ -84,7 +84,7 @@ func (g *GCPArtefactsRegistry) GetImage(ctx context.Context, templateId string, 
 	return img, nil
 }
 
-func (g *GCPArtefactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, error) {
+func (g *GCPArtifactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, error) {
 	authCfg := consts.DockerAuthConfig
 	if authCfg == "" {
 		return &gcpAuthConfig, nil
@@ -110,7 +110,7 @@ func (g *GCPArtefactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, 
 	}, nil
 }
 
-func (g *GCPArtefactsRegistry) getDockerImagePath(templateId string) string {
+func (g *GCPArtifactsRegistry) getDockerImagePath(templateId string) string {
 	// DockerImagesURL is the URL to the docker images in the artifact registry
 	return fmt.Sprintf("projects/%s/locations/%s/repositories/%s/packages/%s", consts.GCPProject, consts.GCPRegion, consts.DockerRegistry, templateId)
 }

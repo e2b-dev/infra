@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	artefactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artefacts-registry"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -37,7 +37,7 @@ const (
 
 type Rootfs struct {
 	template         *TemplateConfig
-	artifactRegistry artefactsregistry.ArtefactsRegistry
+	artifactRegistry artifactsregistry.ArtifactsRegistry
 }
 
 type MultiWriter struct {
@@ -55,7 +55,7 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func NewRootfs(template *TemplateConfig, artifactRegistry artefactsregistry.ArtefactsRegistry) *Rootfs {
+func NewRootfs(template *TemplateConfig, artifactRegistry artifactsregistry.ArtifactsRegistry) *Rootfs {
 	return &Rootfs{
 		template:         template,
 		artifactRegistry: artifactRegistry,

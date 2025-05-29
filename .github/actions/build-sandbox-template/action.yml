@@ -22,7 +22,7 @@ runs:
         echo "TESTS_SANDBOX_BUILD_ID=${BUILD_ID}" >> .env.test
 
         make -C packages/orchestrator build-template \
-          ARTEFACTS_REGISTRY_PROVIDER=Local \
+          ARTIFACTS_REGISTRY_PROVIDER=Local \
           TEMPLATE_ID=${TEMPLATE_ID} \
           BUILD_ID=${BUILD_ID} \
           KERNEL_VERSION=${KERNEL_VERSION} \

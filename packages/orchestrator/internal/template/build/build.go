@@ -11,7 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	artefactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artefacts-registry"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 )
 
 //go:embed provision.sh
@@ -27,7 +27,7 @@ func Build(
 	tracer trace.Tracer,
 	templateConfig *TemplateConfig,
 	postProcessor *writer.PostProcessor,
-	artifactRegistry artefactsregistry.ArtefactsRegistry,
+	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	templateBuildDir string,
 	rootfsPath string,
 ) (r *block.Local, m *block.Local, e error) {

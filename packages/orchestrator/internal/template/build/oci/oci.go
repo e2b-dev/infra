@@ -11,13 +11,13 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"go.opentelemetry.io/otel/trace"
 
-	artefactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artefacts-registry"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const ToMBShift = 20
 
-func GetImage(ctx context.Context, tracer trace.Tracer, artifactRegistry artefactsregistry.ArtefactsRegistry, templateId string, buildId string) (v1.Image, error) {
+func GetImage(ctx context.Context, tracer trace.Tracer, artifactRegistry artifactsregistry.ArtifactsRegistry, templateId string, buildId string) (v1.Image, error) {
 	childCtx, childSpan := tracer.Start(ctx, "pull-docker-image")
 	defer childSpan.End()
 

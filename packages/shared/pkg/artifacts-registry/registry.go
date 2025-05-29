@@ -1,4 +1,4 @@
-package artefacts_registry
+package artifacts_registry
 
 import (
 	"context"
@@ -20,20 +20,20 @@ const (
 
 	DefaultRegistryProvider RegistryProvider = GCPStorageProvider
 
-	storageProviderEnv = "ARTEFACTS_REGISTRY_PROVIDER"
+	storageProviderEnv = "ARTIFACTS_REGISTRY_PROVIDER"
 )
 
 var (
 	ErrImageNotExists = errors.New("image does not exist")
 )
 
-type ArtefactsRegistry interface {
+type ArtifactsRegistry interface {
 	GetUrl(ctx context.Context, templateId string, buildId string) (string, error)
 	GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error)
 	Delete(ctx context.Context, templateId string, buildId string) error
 }
 
-func GetArtefactsRegistryProvider() (ArtefactsRegistry, error) {
+func GetArtifactsRegistryProvider() (ArtifactsRegistry, error) {
 	var provider = RegistryProvider(env.GetEnv(storageProviderEnv, string(DefaultRegistryProvider)))
 
 	setupCtx, setupCtxCancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -41,12 +41,12 @@ func GetArtefactsRegistryProvider() (ArtefactsRegistry, error) {
 
 	switch provider {
 	case AWSStorageProvider:
-		return NewAWSArtefactsRegistry(setupCtx)
+		return NewAWSArtifactsRegistry(setupCtx)
 	case GCPStorageProvider:
-		return NewGCPArtefactsRegistry(setupCtx)
+		return NewGCPArtifactsRegistry(setupCtx)
 	case LocalStorageProvider:
-		return NewLocalArtefactsRegistry()
+		return NewLocalArtifactsRegistry()
 	}
 
-	return nil, fmt.Errorf("unknown artefacts registry provider: %s", provider)
+	return nil, fmt.Errorf("unknown artifacts registry provider: %s", provider)
 }

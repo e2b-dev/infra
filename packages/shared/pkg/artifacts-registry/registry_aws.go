@@ -1,4 +1,4 @@
-package artefacts_registry
+package artifacts_registry
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
 
-type AWSArtefactsRegistry struct {
+type AWSArtifactsRegistry struct {
 	repositoryName string
 	client         *ecr.Client
 }
@@ -27,7 +27,7 @@ var (
 	AwsRepositoryName       = os.Getenv(AwsRepositoryNameEnvVar)
 )
 
-func NewAWSArtefactsRegistry(ctx context.Context) (*AWSArtefactsRegistry, error) {
+func NewAWSArtifactsRegistry(ctx context.Context) (*AWSArtifactsRegistry, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -39,13 +39,13 @@ func NewAWSArtefactsRegistry(ctx context.Context) (*AWSArtefactsRegistry, error)
 
 	client := ecr.NewFromConfig(cfg)
 
-	return &AWSArtefactsRegistry{
+	return &AWSArtifactsRegistry{
 		repositoryName: AwsRepositoryName,
 		client:         client,
 	}, nil
 }
 
-func (g *AWSArtefactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
+func (g *AWSArtifactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
 	imageIds := []types.ImageIdentifier{
 		{ImageTag: &buildId},
 	}
@@ -67,7 +67,7 @@ func (g *AWSArtefactsRegistry) Delete(ctx context.Context, templateId string, bu
 	return nil
 }
 
-func (g *AWSArtefactsRegistry) GetUrl(ctx context.Context, templateId string, buildId string) (string, error) {
+func (g *AWSArtifactsRegistry) GetUrl(ctx context.Context, templateId string, buildId string) (string, error) {
 	res, err := g.client.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{RepositoryNames: []string{g.repositoryName}})
 	if err != nil {
 		return "", fmt.Errorf("failed to describe aws ecr repository: %w", err)
@@ -80,7 +80,7 @@ func (g *AWSArtefactsRegistry) GetUrl(ctx context.Context, templateId string, bu
 	return fmt.Sprintf("%s:%s", *res.Repositories[0].RepositoryUri, buildId), nil
 }
 
-func (g *AWSArtefactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error) {
+func (g *AWSArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error) {
 	imageUrl, err := g.GetUrl(ctx, templateId, buildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get image URL: %w", err)
@@ -104,7 +104,7 @@ func (g *AWSArtefactsRegistry) GetImage(ctx context.Context, templateId string, 
 	return img, nil
 }
 
-func (g *AWSArtefactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, error) {
+func (g *AWSArtifactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, error) {
 	res, err := g.client.GetAuthorizationToken(ctx, &ecr.GetAuthorizationTokenInput{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get aws ecr auth token: %w", err)

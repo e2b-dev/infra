@@ -18,7 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
-	artefactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artefacts-registry"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -33,7 +33,7 @@ type ServerStore struct {
 	buildCache        *cache.BuildCache
 	buildLogger       *zap.Logger
 	templateStorage   *template.Storage
-	artefactsRegistry artefactsregistry.ArtefactsRegistry
+	artifactsregistry artifactsregistry.ArtifactsRegistry
 	healthStatus      templatemanager.HealthState
 	wg                *sync.WaitGroup // wait group for running builds
 }
@@ -55,9 +55,9 @@ func New(ctx context.Context,
 		return nil, fmt.Errorf("error getting template storage provider: %v", err)
 	}
 
-	artefactsRegistry, err := artefactsregistry.GetArtefactsRegistryProvider()
+	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider()
 	if err != nil {
-		return nil, fmt.Errorf("error getting artefacts registry provider: %v", err)
+		return nil, fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
 	templateStorage := template.NewStorage(persistence)
@@ -69,7 +69,7 @@ func New(ctx context.Context,
 		templateStorage,
 		buildCache,
 		persistence,
-		artefactsRegistry,
+		artifactsregistry,
 		devicePool,
 		networkPool,
 		proxy,
@@ -82,7 +82,7 @@ func New(ctx context.Context,
 		builder:           builder,
 		buildCache:        buildCache,
 		buildLogger:       buildLogger,
-		artefactsRegistry: artefactsRegistry,
+		artifactsregistry: artifactsregistry,
 		templateStorage:   templateStorage,
 		healthStatus:      templatemanager.HealthState_Healthy,
 		wg:                &sync.WaitGroup{},

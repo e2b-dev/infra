@@ -1,4 +1,4 @@
-package artefacts_registry
+package artifacts_registry
 
 import (
 	"context"
@@ -9,23 +9,23 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/daemon"
 )
 
-type LocalArtefactsRegistry struct {
+type LocalArtifactsRegistry struct {
 }
 
-func NewLocalArtefactsRegistry() (*LocalArtefactsRegistry, error) {
-	return &LocalArtefactsRegistry{}, nil
+func NewLocalArtifactsRegistry() (*LocalArtifactsRegistry, error) {
+	return &LocalArtifactsRegistry{}, nil
 }
 
-func (g *LocalArtefactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
+func (g *LocalArtifactsRegistry) Delete(ctx context.Context, templateId string, buildId string) error {
 	// for now, just assume local image can be deleted manually
 	return nil
 }
 
-func (g *LocalArtefactsRegistry) GetUrl(ctx context.Context, templateId string, buildId string) (string, error) {
+func (g *LocalArtifactsRegistry) GetUrl(ctx context.Context, templateId string, buildId string) (string, error) {
 	return fmt.Sprintf("%s:%s", templateId, buildId), nil
 }
 
-func (g *LocalArtefactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error) {
+func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error) {
 	imageUrl, err := g.GetUrl(ctx, templateId, buildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get image URL: %w", err)
