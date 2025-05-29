@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -116,6 +117,11 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		}
 	}()
 
+	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider()
+	if err != nil {
+		return fmt.Errorf("error getting artifacts registry provider: %v", err)
+	}
+
 	templateStorage := template.NewStorage(persistence)
 	buildCache := cache.NewBuildCache()
 	builder := build.NewBuilder(
@@ -125,6 +131,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		templateStorage,
 		buildCache,
 		persistence,
+		artifactRegistry,
 		devicePool,
 		networkPool,
 		sandboxProxy,
