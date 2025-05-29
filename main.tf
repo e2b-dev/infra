@@ -71,6 +71,7 @@ module "buckets" {
   gcp_service_account_email = module.init.service_account_email
   gcp_project_id            = var.gcp_project_id
   gcp_region                = var.gcp_region
+  gcp_zone                  = var.gcp_zone
 
   fc_template_bucket_name     = length(var.template_bucket_name) > 0 ? var.template_bucket_name : "${var.gcp_project_id}-fc-templates"
   fc_template_bucket_location = var.template_bucket_location
