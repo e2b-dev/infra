@@ -21,8 +21,8 @@ const (
 	defaultVrtNetworkCIDR  = "10.12.0.0/16"
 
 	hostMask          = 32
-	vrtMask           = 31 // 2 usable ips per block (vpeer and veth)
-	vrtAddressPerSlot = 2  // vrt addresses per slot (vpeer and veth)
+	vrtMask           = 31                  // 2 usable ips per block (vpeer and veth)
+	vrtAddressPerSlot = 1 << (32 - vrtMask) // vrt addresses per slot (vpeer and veth)
 
 	tapMask          = 30
 	tapInterfaceName = "tap0"

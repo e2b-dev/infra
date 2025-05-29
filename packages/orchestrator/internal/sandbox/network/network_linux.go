@@ -193,11 +193,8 @@ func (s *Slot) CreateNetwork() error {
 
 	// Add routing from host to FC namespace
 	err = netlink.RouteAdd(&netlink.Route{
-		Gw: s.VpeerIP(),
-		Dst: &net.IPNet{
-			IP:   s.HostIP(),
-			Mask: s.HostMask(),
-		},
+		Gw:  s.VpeerIP(),
+		Dst: s.HostNet(),
 	})
 	if err != nil {
 		return fmt.Errorf("error adding route from host to FC: %w", err)
