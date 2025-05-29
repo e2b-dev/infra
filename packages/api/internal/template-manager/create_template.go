@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
@@ -28,7 +27,6 @@ func (tm *TemplateManager) CreateTemplate(
 	diskSizeMB,
 	memoryMB int64,
 	readyCommand string,
-	readyTimeout time.Duration,
 ) error {
 	ctx, span := t.Start(ctx, "create-template",
 		trace.WithAttributes(
@@ -60,7 +58,6 @@ func (tm *TemplateManager) CreateTemplate(
 			HugePages:          features.HasHugePages(),
 			StartCommand:       startCommand,
 			ReadyCommand:       readyCommand,
-			ReadyTimeout:       int32(readyTimeout.Seconds()),
 		},
 	})
 

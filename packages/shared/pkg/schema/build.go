@@ -36,7 +36,6 @@ func (EnvBuild) Fields() []ent.Field {
 		field.String("dockerfile").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
 		field.String("start_cmd").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
 		field.String("ready_cmd").SchemaType(map[string]string{dialect.Postgres: "text"}).Optional().Nillable(),
-		field.Int32("ready_timeout").Optional().Nillable(),
 		field.Int64("vcpu"),
 		field.Int64("ram_mb"),
 		field.Int64("free_disk_size_mb"),

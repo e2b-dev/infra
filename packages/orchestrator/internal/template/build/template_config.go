@@ -2,7 +2,6 @@ package build
 
 import (
 	"io"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -40,9 +39,6 @@ type TemplateConfig struct {
 
 	// Command to run to check if the template is ready.
 	ReadyCmd string
-
-	// Ready command timeout.
-	ReadyTimeout time.Duration
 }
 
 // Real size in MB of rootfs after building the template

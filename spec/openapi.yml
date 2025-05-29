@@ -492,11 +492,6 @@ components:
         readyCmd:
           description: Ready check command to execute in the template after the build
           type: string
-        readyTimeout:
-          description: Maximum time in seconds for the ready check command wait
-          type: integer
-          format: int32
-          minimum: 0
         cpuCount:
           $ref: "#/components/schemas/CPUCount"
         memoryMB:

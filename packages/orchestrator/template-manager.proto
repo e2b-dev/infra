@@ -19,7 +19,6 @@ message TemplateConfig {
   bool hugePages = 9;
 
   string readyCommand = 10;
-  int32 readyTimeout = 11;
 }
 
 message TemplateCreateRequest {

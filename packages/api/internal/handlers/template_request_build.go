@@ -172,9 +172,6 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 	if body.ReadyCmd != nil {
 		telemetry.SetAttributes(ctx, attribute.String("env.ready_cmd", *body.ReadyCmd))
 	}
-	if body.ReadyTimeout != nil {
-		telemetry.SetAttributes(ctx, attribute.Int("env.ready_timeout", int(*body.ReadyTimeout)))
-	}
 
 	if body.CpuCount != nil {
 		telemetry.SetAttributes(ctx, attribute.Int("env.cpu", int(*body.CpuCount)))
@@ -266,7 +263,6 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		SetFreeDiskSizeMB(tier.DiskMb).
 		SetNillableStartCmd(body.StartCmd).
 		SetNillableReadyCmd(body.ReadyCmd).
-		SetNillableReadyTimeout(body.ReadyTimeout).
 		SetDockerfile(body.Dockerfile).
 		Exec(ctx)
 	if err != nil {

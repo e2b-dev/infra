@@ -137,20 +137,6 @@ func (ebc *EnvBuildCreate) SetNillableReadyCmd(s *string) *EnvBuildCreate {
 	return ebc
 }
 
-// SetReadyTimeout sets the "ready_timeout" field.
-func (ebc *EnvBuildCreate) SetReadyTimeout(i int32) *EnvBuildCreate {
-	ebc.mutation.SetReadyTimeout(i)
-	return ebc
-}
-
-// SetNillableReadyTimeout sets the "ready_timeout" field if the given value is not nil.
-func (ebc *EnvBuildCreate) SetNillableReadyTimeout(i *int32) *EnvBuildCreate {
-	if i != nil {
-		ebc.SetReadyTimeout(*i)
-	}
-	return ebc
-}
-
 // SetVcpu sets the "vcpu" field.
 func (ebc *EnvBuildCreate) SetVcpu(i int64) *EnvBuildCreate {
 	ebc.mutation.SetVcpu(i)
@@ -389,10 +375,6 @@ func (ebc *EnvBuildCreate) createSpec() (*EnvBuild, *sqlgraph.CreateSpec) {
 		_spec.SetField(envbuild.FieldReadyCmd, field.TypeString, value)
 		_node.ReadyCmd = &value
 	}
-	if value, ok := ebc.mutation.ReadyTimeout(); ok {
-		_spec.SetField(envbuild.FieldReadyTimeout, field.TypeInt32, value)
-		_node.ReadyTimeout = &value
-	}
 	if value, ok := ebc.mutation.Vcpu(); ok {
 		_spec.SetField(envbuild.FieldVcpu, field.TypeInt64, value)
 		_node.Vcpu = value
@@ -602,30 +584,6 @@ func (u *EnvBuildUpsert) UpdateReadyCmd() *EnvBuildUpsert {
 // ClearReadyCmd clears the value of the "ready_cmd" field.
 func (u *EnvBuildUpsert) ClearReadyCmd() *EnvBuildUpsert {
 	u.SetNull(envbuild.FieldReadyCmd)
-	return u
-}
-
-// SetReadyTimeout sets the "ready_timeout" field.
-func (u *EnvBuildUpsert) SetReadyTimeout(v int32) *EnvBuildUpsert {
-	u.Set(envbuild.FieldReadyTimeout, v)
-	return u
-}
-
-// UpdateReadyTimeout sets the "ready_timeout" field to the value that was provided on create.
-func (u *EnvBuildUpsert) UpdateReadyTimeout() *EnvBuildUpsert {
-	u.SetExcluded(envbuild.FieldReadyTimeout)
-	return u
-}
-
-// AddReadyTimeout adds v to the "ready_timeout" field.
-func (u *EnvBuildUpsert) AddReadyTimeout(v int32) *EnvBuildUpsert {
-	u.Add(envbuild.FieldReadyTimeout, v)
-	return u
-}
-
-// ClearReadyTimeout clears the value of the "ready_timeout" field.
-func (u *EnvBuildUpsert) ClearReadyTimeout() *EnvBuildUpsert {
-	u.SetNull(envbuild.FieldReadyTimeout)
 	return u
 }
 
@@ -930,34 +888,6 @@ func (u *EnvBuildUpsertOne) UpdateReadyCmd() *EnvBuildUpsertOne {
 func (u *EnvBuildUpsertOne) ClearReadyCmd() *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.ClearReadyCmd()
-	})
-}
-
-// SetReadyTimeout sets the "ready_timeout" field.
-func (u *EnvBuildUpsertOne) SetReadyTimeout(v int32) *EnvBuildUpsertOne {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.SetReadyTimeout(v)
-	})
-}
-
-// AddReadyTimeout adds v to the "ready_timeout" field.
-func (u *EnvBuildUpsertOne) AddReadyTimeout(v int32) *EnvBuildUpsertOne {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.AddReadyTimeout(v)
-	})
-}
-
-// UpdateReadyTimeout sets the "ready_timeout" field to the value that was provided on create.
-func (u *EnvBuildUpsertOne) UpdateReadyTimeout() *EnvBuildUpsertOne {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.UpdateReadyTimeout()
-	})
-}
-
-// ClearReadyTimeout clears the value of the "ready_timeout" field.
-func (u *EnvBuildUpsertOne) ClearReadyTimeout() *EnvBuildUpsertOne {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.ClearReadyTimeout()
 	})
 }
 
@@ -1449,34 +1379,6 @@ func (u *EnvBuildUpsertBulk) UpdateReadyCmd() *EnvBuildUpsertBulk {
 func (u *EnvBuildUpsertBulk) ClearReadyCmd() *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.ClearReadyCmd()
-	})
-}
-
-// SetReadyTimeout sets the "ready_timeout" field.
-func (u *EnvBuildUpsertBulk) SetReadyTimeout(v int32) *EnvBuildUpsertBulk {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.SetReadyTimeout(v)
-	})
-}
-
-// AddReadyTimeout adds v to the "ready_timeout" field.
-func (u *EnvBuildUpsertBulk) AddReadyTimeout(v int32) *EnvBuildUpsertBulk {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.AddReadyTimeout(v)
-	})
-}
-
-// UpdateReadyTimeout sets the "ready_timeout" field to the value that was provided on create.
-func (u *EnvBuildUpsertBulk) UpdateReadyTimeout() *EnvBuildUpsertBulk {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.UpdateReadyTimeout()
-	})
-}
-
-// ClearReadyTimeout clears the value of the "ready_timeout" field.
-func (u *EnvBuildUpsertBulk) ClearReadyTimeout() *EnvBuildUpsertBulk {
-	return u.Update(func(s *EnvBuildUpsert) {
-		s.ClearReadyTimeout()
 	})
 }
 
