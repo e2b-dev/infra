@@ -48,7 +48,7 @@ const (
 	templatesDirectory = "/tmp/templates"
 
 	sbxTimeout           = time.Hour
-	provisionTimeout     = 1 * time.Minute
+	provisionTimeout     = 5 * time.Minute
 	configurationTimeout = 5 * time.Minute
 	waitTimeForStartCmd  = 20 * time.Second
 	waitEnvdTimeout      = 60 * time.Second
