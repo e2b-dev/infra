@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/logs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
@@ -357,13 +357,19 @@ func ResumeSandbox(
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get snapfile: %w", err)
 	}
+
+	logsConfiguration, err := logs.GetSandboxLogsConfiguration()
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to get logs configuration: %w", err)
+	}
+
 	fcStartErr := fcHandle.Resume(
 		uffdStartCtx,
 		tracer,
 		&fc.MmdsMetadata{
 			SandboxId:            config.SandboxId,
 			TemplateId:           config.TemplateId,
-			LogsCollectorAddress: os.Getenv("LOGS_COLLECTOR_PUBLIC_IP"),
+			LogsCollectorAddress: logsConfiguration.Endpoint,
 			TraceId:              traceID,
 			TeamId:               config.TeamId,
 		},

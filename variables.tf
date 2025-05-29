@@ -48,14 +48,14 @@ variable "build_machine_type" {
   type = string
 }
 
-variable "client_proxy_health_port" {
+variable "client_proxy_edge_api_port" {
   type = object({
     name = string
     port = number
     path = string
   })
   default = {
-    name = "health"
+    name = "edge-api"
     port = 3001
     path = "/health"
   }
@@ -150,7 +150,7 @@ variable "orchestrator_proxy_port" {
 
 variable "template_manager_port" {
   type    = number
-  default = 5009
+  default = 5008 // we want to use the same port for both because of edge api
 }
 
 variable "environment" {

@@ -3,14 +3,14 @@ package network
 import (
 	"fmt"
 	"net/netip"
-	"os"
-	"strings"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
 	"github.com/ngrok/firewall_toolkit/pkg/expressions"
 	"github.com/ngrok/firewall_toolkit/pkg/rule"
 	"github.com/ngrok/firewall_toolkit/pkg/set"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/logs"
 )
 
 const (
@@ -234,12 +234,13 @@ func (fw *Firewall) ResetBlockedCustom() error {
 func (fw *Firewall) ResetAllowedCustom() error {
 	initIps := make([]string, 0)
 
-	// Allow Logs Collector IP for logs
-	if ip := os.Getenv("LOGS_COLLECTOR_PUBLIC_IP"); ip != "" {
-		ip = strings.TrimPrefix(ip, "http://") + "/32"
-		initIps = append(initIps, ip)
+	// allow forward to logs collector IP CIDR
+	logsConfiguration, err := logs.GetSandboxLogsConfiguration()
+	if err != nil {
+		return fmt.Errorf("failed to get logs configuration: %w", err)
 	}
 
+	initIps = append(initIps, logsConfiguration.Cidr)
 	initData, err := set.AddressStringsToSetData(initIps)
 	if err != nil {
 		return fmt.Errorf("parse initial allow CIDRs: %w", err)
