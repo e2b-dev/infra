@@ -31,6 +31,13 @@ ln -s {{ .rootfsPath }} {{ .buildRootfsPath }} &&
 ln -s {{ .kernelPath }} {{ .buildKernelPath }} &&
 ip netns exec {{ .namespaceID }} {{ .firecrackerPath }} --api-sock {{ .firecrackerSocket }}`
 
+// Default entropy device bandwidth rate limiter config
+const (
+	size         = 1000
+	oneTimeBurst = 0
+	refillTime   = 100
+)
+
 var startScriptTemplate = txtTemplate.Must(txtTemplate.New("fc-start").Parse(startScript))
 
 type ProcessOptions struct {
@@ -352,6 +359,14 @@ func (p *Process) Create(
 		return errors.Join(fmt.Errorf("error setting fc machine config: %w", err), fcStopErr)
 	}
 	telemetry.ReportEvent(childCtx, "set fc machine config")
+
+	err = p.client.setEntropyDevice(childCtx, size, oneTimeBurst, refillTime)
+	if err != nil {
+		fcStopErr := p.Stop()
+
+		return errors.Join(fmt.Errorf("error setting fc entropy config: %w", err), fcStopErr)
+	}
+	telemetry.ReportEvent(childCtx, "set fc entropy config")
 
 	err = p.client.startVM(childCtx)
 	if err != nil {
