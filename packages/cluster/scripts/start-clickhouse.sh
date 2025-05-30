@@ -59,19 +59,38 @@ DNS=127.0.0.1:8600
 DNSSEC=false
 Domains=~consul
 EOF
-systemctl restart systemd-resolved
 
-touch /etc/docker/daemon.json
-cat <<EOF >/etc/docker/daemon.json
-{
-  "dns": [ "172.17.0.1", "169.254.169.254" ],
-  "dns-search": [
-    "europe-central2-c.c.e2b-staging-kuba.internal",
-    "c.e2b-staging-kuba.internal",
-    "google.internal"
-  ]
-}
+# Expose systemd-resolved’s DNS stub on the Docker bridge so that
+# containers can resolve *.consul names.
+#
+# Context
+# -----------------
+# systemd-resolved already forwards *.consul → 127.0.0.1:8600
+# (configured in /etc/systemd/resolved.conf.d/consul.conf).
+# When the host’s /etc/resolv.conf contains only 127.0.0.53,
+# Docker copies /run/systemd/resolve/resolve.conf into every container.
+# 127.0.0.53 is bound only to the host loopback interface,
+# so DNS look-ups fail inside containers on the default bridge network.
+#
+# Fix
+# -----------------
+# Make the stub resolver listen on docker0 (typically 172.17.0.1) via DNSStubListenerExtra
+# Tell Docker to use that address (Nomad job config):
+# network {
+#   mode = "bridge"
+#     dns {
+#       servers = ["172.17.0.1", "8.8.8.8", "8.8.4.4", "169.254.169.254"]
+#   }
+# }
+#
+# Ref: https://web.archive.org/web/20250529054655/https://felix.ehrenpfort.de/notes/2022-06-22-use-consul-dns-interface-inside-docker-container/
+touch /etc/systemd/resolved.conf.d/docker.conf
+cat <<EOF >/etc/systemd/resolved.conf.d/docker.conf
+[Resolve]
+DNSStubListener=yes
+DNSStubListenerExtra=172.17.0.1
 EOF
+systemctl restart systemd-resolved
 
 # These variables are passed in via Terraform template interpolation
 /opt/consul/bin/run-consul.sh --client \
