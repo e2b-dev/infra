@@ -319,6 +319,10 @@ data "external" "orchestrator_checksum" {
 
 
 locals {
+  clickhouse_servers = join(",", [
+    for i in range(1, var.clickhouse_server_count + 1) :
+    format("clickhouse-server-%d.service.consul:9000", i)
+  ])
   orchestrator_envs = {
     gcp_zone         = var.gcp_zone
     port             = var.orchestrator_port
@@ -333,10 +337,9 @@ locals {
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
-    clickhouse_connection_string = "clickhouse-server-1.service.consul:9000" # TODO: This will be replaced by load balancer address in following PRs
-    clickhouse_username          = var.clickhouse_username
-    clickhouse_password          = random_password.clickhouse_password.result
-    clickhouse_database          = var.clickhouse_database
+    write_to_clickhouse          = var.environment == "dev" ? true : false
+    # TODO: This will be replaced by load balancer address in following PRs (this wouldn't work with adding more servers)
+    clickhouse_connection_string = "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@${local.clickhouse_servers}/${var.clickhouse_database}"
   }
 
   orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(

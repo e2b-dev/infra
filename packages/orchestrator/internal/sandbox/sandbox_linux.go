@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -24,7 +25,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
-	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -64,7 +64,7 @@ type Sandbox struct {
 
 	template template.Template
 
-	ClickhouseStore chdb.Store
+	clickhouse clickhouse.Clickhouse
 
 	Checks *Checks
 }
@@ -214,7 +214,7 @@ func CreateSandbox(
 
 		cleanup: cleanup,
 
-		ClickhouseStore: nil,
+		clickhouse: nil,
 	}
 
 	sbx.Checks = NewChecks(sbx, "", "")
@@ -241,7 +241,7 @@ func ResumeSandbox(
 	baseTemplateID string,
 	devicePool *nbd.DevicePool,
 	allowInternet bool,
-	clickhouseStore chdb.Store,
+	clickhouseStore clickhouse.Clickhouse,
 	useLokiMetrics string,
 	useClickhouseMetrics string,
 ) (*Sandbox, *Cleanup, error) {
@@ -401,11 +401,12 @@ func ResumeSandbox(
 
 		cleanup: cleanup,
 
-		ClickhouseStore: clickhouseStore,
+		clickhouse: clickhouseStore,
 	}
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
+	zap.L().Info("starting health check", zap.String("clickouse", useClickhouseMetrics), zap.String("loki", useLokiMetrics))
 	sbx.Checks = NewChecks(sbx, useLokiMetrics, useClickhouseMetrics)
 
 	cleanup.AddPriority(func(ctx context.Context) error {

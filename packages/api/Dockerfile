@@ -10,6 +10,14 @@ RUN go mod download
 
 COPY .shared/pkg pkg
 
+# Clickhouse
+WORKDIR /build/clickhouse
+
+COPY .clickhouse/go.mod .clickhouse/go.sum ./
+RUN go mod download
+
+COPY .clickhouse/pkg pkg
+
 # DB
 WORKDIR /build/db
 
