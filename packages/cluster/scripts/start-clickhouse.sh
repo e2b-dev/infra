@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-# This script is meant to be run in the User Data of each EC2 Instance while it's booting. The script uses the
-# run-nomad and run-consul scripts to configure and start Nomad and Consul in client mode. Note that this script
-# assumes it's running in an AMI built from the Packer template in examples/nomad-consul-ami/nomad-consul.json.
-
 set -euo pipefail
 
 
@@ -17,7 +13,24 @@ set -x
 exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 
 ulimit -n 1048576
-export GOMAXPROCS='nproc'
+
+# Get the GCP instance name
+INSTANCE_NAME=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/name" -H "Metadata-Flavor: Google")
+
+# Define the disk and mount point
+DISK="/dev/disk/by-id/google-$INSTANCE_NAME-disk"
+MOUNT_POINT="/clickhouse"
+
+# Create filesystem if not already formatted
+if ! blkid $DISK; then
+  mkfs.xfs -f -b size=4096 $DISK
+fi
+
+# Create mount point
+mkdir -p $MOUNT_POINT
+
+# Mount the disk
+mount -o noatime $DISK $MOUNT_POINT
 
 sudo tee -a /etc/sysctl.conf <<EOF
 # Increase the maximum number of socket connections
