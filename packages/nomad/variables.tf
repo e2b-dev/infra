@@ -147,6 +147,10 @@ variable "launch_darkly_api_key_secret_name" {
   type = string
 }
 
+variable "clickhouse_bucket_name" {
+  type = string
+}
+
 variable "loki_bucket_name" {
   type = string
 }
@@ -215,18 +219,32 @@ variable "redis_port" {
 }
 
 # Clickhouse
-variable "clickhouse_connection_string" {
-  type = string
-}
-
 variable "clickhouse_username" {
-  type = string
-}
-
-variable "clickhouse_password" {
-  type = string
+  type    = string
+  default = "e2b"
 }
 
 variable "clickhouse_database" {
   type = string
+}
+
+variable "clickhouse_server_count" {
+  type = number
+}
+
+variable "clickhouse_server_port" {
+  type = object({
+    name = string
+    port = number
+  })
+}
+
+variable "clickhouse_job_constraint_prefix" {
+  description = "The prefix to use for the job constraint of the instance in the metadata."
+  type        = string
+}
+
+variable "clickhouse_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
 }

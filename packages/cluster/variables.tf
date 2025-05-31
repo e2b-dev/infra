@@ -210,3 +210,32 @@ variable "labels" {
   description = "The labels to attach to resources created by this module"
   type        = map(string)
 }
+
+variable "clickhouse_cluster_size" {
+  description = "The number of ClickHouse nodes in the cluster."
+  type        = number
+}
+
+variable "clickhouse_machine_type" {
+  description = "The machine type of the Compute Instance to run for each node in the cluster."
+  type        = string
+}
+
+
+variable "clickhouse_job_constraint_prefix" {
+  description = "The prefix to use for the job constraint of the instance in the metadata."
+  type        = string
+}
+
+variable "clickhouse_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
+}
+
+variable "clickhouse_health_port" {
+  type = object({
+    name = string
+    port = number
+    path = string
+  })
+}
