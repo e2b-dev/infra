@@ -37,7 +37,7 @@ resource "google_compute_instance_group_manager" "cluster" {
   # a rolling update.
   update_policy {
     type                  = var.environment == "dev" ? "PROACTIVE" : "OPPORTUNISTIC"
-    minimal_action        = "RESTART"
+    minimal_action        = "REPLACE"
     max_unavailable_fixed = 1
     replacement_method    = "RECREATE"
   }
