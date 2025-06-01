@@ -14,6 +14,9 @@ exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&
 
 ulimit -n 1048576
 
+# --- Mount stateful disk ---
+# Needed for ClickHouse to persist data across instance replacement
+
 # Get the GCP instance name
 INSTANCE_NAME=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/name" -H "Metadata-Flavor: Google")
 
@@ -27,10 +30,12 @@ if ! blkid $DISK; then
 fi
 
 # Create mount point
-mkdir -p $MOUNT_POINT
+mkdir -p "$MOUNT_POINT"
 
 # Mount the disk
-mount -o noatime $DISK $MOUNT_POINT
+mount -o noatime "$DISK" "$MOUNT_POINT"
+
+# -------------------------------
 
 sudo tee -a /etc/sysctl.conf <<EOF
 # Increase the maximum number of socket connections
@@ -115,5 +120,5 @@ systemctl restart systemd-resolved
 
 /opt/nomad/bin/run-nomad.sh --consul-token "${CONSUL_TOKEN}" &
 
-# Install clickhouse client
+# Install clickhouse client to make it easier to interact with the ClickHouse server
 cd /usr/local/bin && curl https://clickhouse.com/ | sh && sudo ./clickhouse install &
