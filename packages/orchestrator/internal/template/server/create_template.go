@@ -60,7 +60,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		HugePages:       config.HugePages,
 	}
 
-	err := s.buildCache.Create(config.BuildID, config.TemplateID)
+	buildInfo, err := s.buildCache.Create(config.TemplateID, config.BuildID)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
@@ -68,9 +68,10 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		defer buildInfo.Cancel()
 
 		buildContext, buildSpan := s.tracer.Start(
-			trace.ContextWithSpanContext(context.Background(), childSpan.SpanContext()),
+			trace.ContextWithSpanContext(buildInfo.GetContext(), childSpan.SpanContext()),
 			"template-background-build",
 		)
 		defer buildSpan.End()

@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -20,10 +20,12 @@ const (
 )
 
 type BuildInfo struct {
-	envID    string
-	status   template_manager.TemplateBuildState
-	metadata *template_manager.TemplateBuildMetadata
-	mu       sync.RWMutex
+	envID     string
+	status    template_manager.TemplateBuildState
+	metadata  *template_manager.TemplateBuildMetadata
+	mu        sync.RWMutex
+	ctx       context.Context
+	ctxCancel context.CancelFunc
 }
 
 func (b *BuildInfo) IsRunning() bool {
@@ -61,16 +63,43 @@ func (b *BuildInfo) GetStatus() template_manager.TemplateBuildState {
 	return b.status
 }
 
+func (b *BuildInfo) GetContext() context.Context {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	return b.ctx
+}
+
+func (b *BuildInfo) Cancel() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.ctxCancel()
+}
+
 type BuildCache struct {
-	cache   *ttlcache.Cache[string, *BuildInfo]
-	counter metric.Int64UpDownCounter
+	cache *ttlcache.Cache[string, *BuildInfo]
 
 	mu sync.Mutex
 }
 
 func NewBuildCache() *BuildCache {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
-	counter, err := meters.GetUpDownCounter(meters.BuildCounterMeterName)
+	_, err := meters.GetObservableUpDownCounter(meters.BuildCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+		cacheItems := utils.MapValues(cache.Items())
+		observer.Observe(int64(len(
+			utils.Filter(cacheItems, func(items *ttlcache.Item[string, *BuildInfo]) bool {
+				if items == nil || items.Value() == nil {
+					return false
+				}
+
+				// Only count builds that are still running
+				return items.Value().IsRunning()
+			}),
+		)))
+
+		return nil
+	})
 	if err != nil {
 		zap.L().Error("error creating counter", zap.Error(err))
 	}
@@ -78,46 +107,49 @@ func NewBuildCache() *BuildCache {
 	go cache.Start()
 
 	return &BuildCache{
-		cache:   cache,
-		counter: counter,
+		cache: cache,
 	}
 }
 
 // Get returns the build info.
-func (c *BuildCache) Get(buildID string) (*BuildInfo, error) {
-	item := c.cache.Get(buildID)
+func (c *BuildCache) Get(buildIDOrEnvID string) (*BuildInfo, error) {
+	item := c.cache.Get(buildIDOrEnvID)
 	if item == nil {
-		return nil, fmt.Errorf("build %s not found in cache", buildID)
+		return nil, fmt.Errorf("build %s not found in cache", buildIDOrEnvID)
 	}
 
 	value := item.Value()
 	if value == nil {
-		return nil, fmt.Errorf("build %s not found in cache", buildID)
+		return nil, fmt.Errorf("build %s not found in cache", buildIDOrEnvID)
 	}
 
 	return value, nil
 }
 
 // Create creates a new build if it doesn't exist in the cache or the build was already finished.
-func (c *BuildCache) Create(buildID string, envID string) error {
+func (c *BuildCache) Create(envID string, buildID string) (*BuildInfo, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	item := c.cache.Get(buildID, ttlcache.WithDisableTouchOnHit[string, *BuildInfo]())
 	if item != nil {
-		return fmt.Errorf("build %s for env %s already exists in cache", buildID, envID)
+		return nil, fmt.Errorf("build %s for env %s already exists in cache", buildID, envID)
 	}
 
-	info := BuildInfo{
-		envID:    envID,
-		status:   template_manager.TemplateBuildState_Building,
-		metadata: nil,
+	ctx, cancel := context.WithCancel(context.Background())
+
+	info := &BuildInfo{
+		envID:     envID,
+		status:    template_manager.TemplateBuildState_Building,
+		metadata:  nil,
+		ctx:       ctx,
+		ctxCancel: cancel,
 	}
 
-	c.cache.Set(buildID, &info, buildInfoExpiration)
-	c.updateCounter(envID, buildID, 1)
+	c.cache.Set(buildID, info, buildInfoExpiration)
+	c.cache.Set(envID, info, buildInfoExpiration)
 
-	return nil
+	return info, nil
 }
 
 func (c *BuildCache) SetSucceeded(envID string, buildID string, metadata *template_manager.TemplateBuildMetadata) error {
@@ -129,9 +161,11 @@ func (c *BuildCache) SetSucceeded(envID string, buildID string, metadata *templa
 		return fmt.Errorf("build %s not found in cache: %w", buildID, err)
 	}
 
+	// Just to touch the item in the cache to update its expiration time
+	_, _ = c.Get(envID)
+
 	item.status = template_manager.TemplateBuildState_Completed
 	item.metadata = metadata
-	c.updateCounter(envID, buildID, -1)
 	return nil
 }
 
@@ -144,22 +178,17 @@ func (c *BuildCache) SetFailed(envID string, buildID string) error {
 		return fmt.Errorf("build %s not found in cache: %w", buildID, err)
 	}
 
-	item.status = template_manager.TemplateBuildState_Failed
-	c.updateCounter(envID, buildID, -1)
-	return nil
-}
+	// Just to touch the item in the cache to update its expiration time
+	_, _ = c.Get(envID)
 
-func (c *BuildCache) updateCounter(envID string, buildID string, value int64) {
-	c.counter.Add(context.Background(), value,
-		metric.WithAttributes(attribute.String("env_id", envID)),
-		metric.WithAttributes(attribute.String("build_id", buildID)),
-	)
+	item.status = template_manager.TemplateBuildState_Failed
+	return nil
 }
 
 func (c *BuildCache) Delete(envID string, buildID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.cache.Delete(buildID)
 	c.cache.Delete(envID)
-	c.updateCounter(envID, buildID, -1)
 }
