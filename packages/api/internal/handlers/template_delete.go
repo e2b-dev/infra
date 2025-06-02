@@ -5,11 +5,11 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -120,9 +120,12 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	// get all build ids
-	buildIds := make([]uuid.UUID, len(template.Edges.Builds))
+	buildIds := make([]template_manager.DeleteBuild, len(template.Edges.Builds))
 	for i, build := range template.Edges.Builds {
-		buildIds[i] = build.ID
+		buildIds[i] = template_manager.DeleteBuild{
+			BuildID:    build.ID,
+			TemplateId: *build.EnvID,
+		}
 	}
 
 	// delete all builds

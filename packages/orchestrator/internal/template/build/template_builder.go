@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -34,21 +35,22 @@ type TemplateBuilder struct {
 	logger *zap.Logger
 	tracer trace.Tracer
 
-	storage         storage.StorageProvider
-	devicePool      *nbd.DevicePool
-	networkPool     *network.Pool
-	buildCache      *cache.BuildCache
-	buildLogger     *zap.Logger
-	templateStorage *template.Storage
-	proxy           *proxy.SandboxProxy
-	sandboxes       *smap.Map[*sandbox.Sandbox]
+	storage          storage.StorageProvider
+	devicePool       *nbd.DevicePool
+	networkPool      *network.Pool
+	buildCache       *cache.BuildCache
+	buildLogger      *zap.Logger
+	templateStorage  *template.Storage
+	artifactRegistry artifactsregistry.ArtifactsRegistry
+	proxy            *proxy.SandboxProxy
+	sandboxes        *smap.Map[*sandbox.Sandbox]
 }
 
 const (
 	templatesDirectory = "/tmp/templates"
 
 	sbxTimeout           = time.Hour
-	provisionTimeout     = 1 * time.Minute
+	provisionTimeout     = 5 * time.Minute
 	configurationTimeout = 5 * time.Minute
 	waitTimeForStartCmd  = 20 * time.Second
 	waitEnvdTimeout      = 60 * time.Second
@@ -63,22 +65,24 @@ func NewBuilder(
 	templateStorage *template.Storage,
 	buildCache *cache.BuildCache,
 	storage storage.StorageProvider,
+	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	devicePool *nbd.DevicePool,
 	networkPool *network.Pool,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) *TemplateBuilder {
 	return &TemplateBuilder{
-		logger:          logger,
-		tracer:          tracer,
-		buildCache:      buildCache,
-		buildLogger:     buildLogger,
-		templateStorage: templateStorage,
-		storage:         storage,
-		devicePool:      devicePool,
-		networkPool:     networkPool,
-		proxy:           proxy,
-		sandboxes:       sandboxes,
+		logger:           logger,
+		tracer:           tracer,
+		buildCache:       buildCache,
+		buildLogger:      buildLogger,
+		templateStorage:  templateStorage,
+		storage:          storage,
+		artifactRegistry: artifactRegistry,
+		devicePool:       devicePool,
+		networkPool:      networkPool,
+		proxy:            proxy,
+		sandboxes:        sandboxes,
 	}
 }
 
@@ -147,6 +151,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		b.tracer,
 		template,
 		postProcessor,
+		b.artifactRegistry,
 		templateBuildDir,
 		rootfsPath,
 	)
@@ -478,10 +483,20 @@ func (b *TemplateBuilder) enlargeDiskAfterProvisioning(
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
-		return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
+
+		// Occasionally there is Block bitmap differences. For this reason, we retry with fix.
+		ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
+		zap.L().Error("final enlarge filesystem ext4 integrity - retry with fix",
+			zap.String("result", ext4Check),
+			zap.Error(err),
+		)
+		if err != nil {
+			return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
+		}
+	} else {
+		zap.L().Debug("final enlarge filesystem ext4 integrity",
+			zap.String("result", ext4Check),
+		)
 	}
-	zap.L().Debug("final enlarge filesystem ext4 integrity",
-		zap.String("result", ext4Check),
-	)
 	return nil
 }

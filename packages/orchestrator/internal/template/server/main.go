@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
-	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -19,8 +17,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -29,15 +27,15 @@ import (
 
 type ServerStore struct {
 	templatemanager.UnimplementedTemplateServiceServer
-	tracer           trace.Tracer
-	logger           *zap.Logger
-	builder          *build.TemplateBuilder
-	buildCache       *cache.BuildCache
-	buildLogger      *zap.Logger
-	templateStorage  *template.Storage
-	artifactRegistry *artifactregistry.Client
-	healthStatus     templatemanager.HealthState
-	wg               *sync.WaitGroup // wait group for running builds
+	tracer            trace.Tracer
+	logger            *zap.Logger
+	builder           *build.TemplateBuilder
+	buildCache        *cache.BuildCache
+	buildLogger       *zap.Logger
+	templateStorage   *template.Storage
+	artifactsregistry artifactsregistry.ArtifactsRegistry
+	healthStatus      templatemanager.HealthState
+	wg                *sync.WaitGroup // wait group for running builds
 }
 
 func New(ctx context.Context,
@@ -50,21 +48,16 @@ func New(ctx context.Context,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) (*ServerStore, error) {
-	// Template Manager Initialization
-	if err := constants.CheckRequired(); err != nil {
-		log.Fatalf("Validation for environment variables failed: %v", err)
-	}
-
 	logger.Info("Initializing template manager")
-
-	artifactRegistry, err := artifactregistry.NewClient(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("error creating artifact registry client: %v", err)
-	}
 
 	persistence, err := storage.GetTemplateStorageProvider(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting template storage provider: %v", err)
+	}
+
+	artifactsregistry, err := artifactsregistry.GetArtifactsRegistryProvider()
+	if err != nil {
+		return nil, fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
 	templateStorage := template.NewStorage(persistence)
@@ -76,21 +69,23 @@ func New(ctx context.Context,
 		templateStorage,
 		buildCache,
 		persistence,
+		artifactsregistry,
 		devicePool,
 		networkPool,
 		proxy,
 		sandboxes,
 	)
+
 	store := &ServerStore{
-		tracer:           tracer,
-		logger:           logger,
-		builder:          builder,
-		buildCache:       buildCache,
-		buildLogger:      buildLogger,
-		artifactRegistry: artifactRegistry,
-		templateStorage:  templateStorage,
-		healthStatus:     templatemanager.HealthState_Healthy,
-		wg:               &sync.WaitGroup{},
+		tracer:            tracer,
+		logger:            logger,
+		builder:           builder,
+		buildCache:        buildCache,
+		buildLogger:       buildLogger,
+		artifactsregistry: artifactsregistry,
+		templateStorage:   templateStorage,
+		healthStatus:      templatemanager.HealthState_Healthy,
+		wg:                &sync.WaitGroup{},
 	}
 
 	templatemanager.RegisterTemplateServiceServer(grpc.GRPCServer(), store)

@@ -63,7 +63,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		}
 
 		if status {
-			return NewSlot(key, slotIdx), nil
+			return NewSlot(key, slotIdx)
 		}
 
 		return nil, nil
