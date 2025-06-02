@@ -483,10 +483,20 @@ func (b *TemplateBuilder) enlargeDiskAfterProvisioning(
 			zap.String("result", ext4Check),
 			zap.Error(err),
 		)
-		return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
+
+		// Occasionally there is Block bitmap differences. For this reason, we retry with fix.
+		ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
+		zap.L().Error("final enlarge filesystem ext4 integrity - retry with fix",
+			zap.String("result", ext4Check),
+			zap.Error(err),
+		)
+		if err != nil {
+			return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
+		}
+	} else {
+		zap.L().Debug("final enlarge filesystem ext4 integrity",
+			zap.String("result", ext4Check),
+		)
 	}
-	zap.L().Debug("final enlarge filesystem ext4 integrity",
-		zap.String("result", ext4Check),
-	)
 	return nil
 }
