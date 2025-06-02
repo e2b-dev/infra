@@ -107,7 +107,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	logsWriter := template.BuildLogsWriter
 	postProcessor := writer.NewPostProcessor(ctx, logsWriter)
 	go postProcessor.Start()
-	defer postProcessor.Stop(e)
+	defer func() {
+		postProcessor.Stop(e)
+	}()
 
 	envdVersion, err := GetEnvdVersion(ctx)
 	if err != nil {
