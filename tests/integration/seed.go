@@ -76,7 +76,7 @@ func seed(db *db.DB, data SeedData) error {
 
 	accessTokenHash := hasher.Hash(accessTokenBytes)
 
-	accessTokenMask, err := keys.MaskKey(keys.ApiKeyPrefix, tokenWithoutPrefix)
+	accessTokenMask, err := keys.MaskKey(keys.AccessTokenPrefix, tokenWithoutPrefix)
 	if err != nil {
 		return fmt.Errorf("failed to mask access token: %w", err)
 	}
@@ -86,6 +86,7 @@ func seed(db *db.DB, data SeedData) error {
 		SetAccessToken(data.AccessToken).
 		SetAccessTokenHash(accessTokenHash).
 		SetAccessTokenMask(accessTokenMask).
+		SetName("Integration Tests Access Token").
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create user: %w", err)
