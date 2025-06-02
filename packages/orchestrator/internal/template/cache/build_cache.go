@@ -86,22 +86,26 @@ type BuildCache struct {
 func NewBuildCache() *BuildCache {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
 	_, err := meters.GetObservableUpDownCounter(meters.BuildCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
-		cacheItems := utils.MapValues(cache.Items())
-		observer.Observe(int64(len(
-			utils.Filter(cacheItems, func(items *ttlcache.Item[string, *BuildInfo]) bool {
-				if items == nil || items.Value() == nil {
-					return false
-				}
+		items := utils.MapValues(cache.Items())
 
-				// Only count builds that are still running
-				return items.Value().IsRunning()
-			}),
-		)))
+		// Deduplicate by BuildEnvID. All builds are twice in the cache: once by buildID and once by envID.
+		uniqueItems := utils.UniqueBy(items, func(item *ttlcache.Item[string, *BuildInfo]) string {
+			if item == nil || item.Value() == nil {
+				return ""
+			}
+			return item.Value().GetBuildEnvID()
+		})
 
+		// Filter running builds
+		runningCount := len(utils.Filter(uniqueItems, func(item *ttlcache.Item[string, *BuildInfo]) bool {
+			return item != nil && item.Value() != nil && item.Value().IsRunning()
+		}))
+
+		observer.Observe(int64(runningCount))
 		return nil
 	})
 	if err != nil {
-		zap.L().Error("error creating counter", zap.Error(err))
+		zap.L().Error("error creating counter", zap.Error(err), zap.Any("counter_name", meters.BuildCounterMeterName))
 	}
 
 	go cache.Start()
