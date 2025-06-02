@@ -158,7 +158,7 @@ func (c *PollBuildStatus) poll(ctx context.Context) {
 		case <-ticker.C:
 			c.logger.Info("Checking template build status")
 
-			err, completeStatus := c.checkBuildStatus(ctx)
+			err, buildCompleted := c.checkBuildStatus(ctx)
 			if err != nil {
 				c.logger.Error("Build status polling received unrecoverable error", zap.Error(err))
 
@@ -171,7 +171,7 @@ func (c *PollBuildStatus) poll(ctx context.Context) {
 
 			// build status can return empty error when build is still in progress
 			// this will cause fast return to avoid pooling when build is already finished
-			if completeStatus {
+			if buildCompleted {
 				return
 			}
 		}
@@ -266,12 +266,12 @@ func (c *PollBuildStatus) checkBuildStatus(ctx context.Context) (error, bool) {
 
 	c.logger.Debug("dispatching based on status", zap.Any("status", c.status))
 
-	err, completeStatus := c.dispatchBasedOnStatus(ctx, c.status)
+	err, buildCompleted := c.dispatchBasedOnStatus(ctx, c.status)
 	if err != nil {
 		return errors.Wrap(err, "error when dispatching build status"), false
 	}
 
-	return nil, completeStatus
+	return nil, buildCompleted
 }
 
 func (tm *TemplateManager) removeFromProcessingQueue(buildID uuid.UUID) {
