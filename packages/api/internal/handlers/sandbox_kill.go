@@ -59,7 +59,7 @@ func (a *APIStore) deleteSnapshot(
 		deleteJobErr := a.templateManager.DeleteBuilds(deleteCtx, envBuildIDs)
 		if deleteJobErr != nil {
 			zap.L().Warn("Error deleting snapshot builds", zap.Error(deleteJobErr), zap.String("sandboxID", sandboxID))
-			telemetry.ReportError(ctx, deleteJobErr)
+			telemetry.ReportError(deleteCtx, deleteJobErr)
 		}
 	}()
 
