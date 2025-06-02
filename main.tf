@@ -94,11 +94,13 @@ module "cluster" {
   client_cluster_auto_scaling_max = var.client_cluster_auto_scaling_max
   api_cluster_size                = var.api_cluster_size
   build_cluster_size              = var.build_cluster_size
+  clickhouse_cluster_size         = var.clickhouse_cluster_size
 
-  server_machine_type = var.server_machine_type
-  client_machine_type = var.client_machine_type
-  api_machine_type    = var.api_machine_type
-  build_machine_type  = var.build_machine_type
+  server_machine_type     = var.server_machine_type
+  client_machine_type     = var.client_machine_type
+  api_machine_type        = var.api_machine_type
+  build_machine_type      = var.build_machine_type
+  clickhouse_machine_type = var.clickhouse_machine_type
 
   logs_health_proxy_port = var.logs_health_proxy_port
   logs_proxy_port        = var.logs_proxy_port
@@ -117,6 +119,10 @@ module "cluster" {
   fc_env_pipeline_bucket_name = module.buckets.fc_env_pipeline_bucket_name
   fc_kernels_bucket_name      = module.buckets.fc_kernels_bucket_name
   fc_versions_bucket_name     = module.buckets.fc_versions_bucket_name
+
+  clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
+  clickhouse_node_pool             = var.clickhouse_node_pool
+  clickhouse_health_port           = var.clickhouse_health_port
 
   consul_acl_token_secret = module.init.consul_acl_token_secret
   nomad_acl_token_secret  = module.init.nomad_acl_token_secret
@@ -177,10 +183,12 @@ module "nomad" {
   otel_tracing_print      = var.otel_tracing_print
 
   # Clickhouse
-  clickhouse_connection_string = "clickhouse.service.consul:9000"
-  clickhouse_username          = "clickhouse"
-  clickhouse_password          = module.init.clickhouse_password_secret_data
-  clickhouse_database          = "default"
+  clickhouse_database              = var.clickhouse_database_name
+  clickhouse_bucket_name           = module.buckets.clickhouse_bucket_name
+  clickhouse_server_count          = var.clickhouse_cluster_size
+  clickhouse_server_port           = var.clickhouse_server_service_port
+  clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
+  clickhouse_node_pool             = var.clickhouse_node_pool
 
   # API
   api_machine_count                         = var.api_cluster_size
