@@ -71,7 +71,7 @@ resource "google_compute_per_instance_config" "instances" {
     disk {
       device_name = google_compute_disk.stateful_disk[each.key].name
       mode        = "READ_WRITE"
-      delete_rule = "ON_PERMANENT_INSTANCE_DELETION"
+      delete_rule = var.environment == "dev" ? "ON_PERMANENT_INSTANCE_DELETION" : "NEVER"
       source      = google_compute_disk.stateful_disk[each.key].id
     }
 
