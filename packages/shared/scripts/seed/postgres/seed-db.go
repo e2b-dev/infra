@@ -2,20 +2,24 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/accesstoken"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/team"
 )
 
 func main() {
 	ctx := context.Background()
+	hasher := keys.NewSHA256Hashing()
 
 	database, err := db.NewClient(1, 1)
 	if err != nil {
@@ -85,14 +89,47 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	// Create access token
-	_, err = database.Client.AccessToken.Create().SetUser(user).SetAccessToken(accessToken).Save(ctx)
+	tokenWithoutPrefix := strings.TrimPrefix(accessToken, keys.AccessTokenPrefix)
+	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)
+	if err != nil {
+		panic(err)
+	}
+	accessTokenHash := hasher.Hash(accessTokenBytes)
+	accessTokenMask, err := keys.MaskKey(keys.AccessTokenPrefix, tokenWithoutPrefix)
+	if err != nil {
+		panic(err)
+	}
+	_, err = database.Client.AccessToken.Create().
+		SetUser(user).
+		SetAccessToken(accessToken).
+		SetAccessTokenHash(accessTokenHash).
+		SetAccessTokenMask(accessTokenMask).
+		SetName("Seed Access Token").
+		Save(ctx)
 	if err != nil {
 		panic(err)
 	}
 
 	// Create team api key
-	_, err = database.Client.TeamAPIKey.Create().SetTeam(t).SetAPIKey(teamAPIKey).Save(ctx)
+	keyWithoutPrefix := strings.TrimPrefix(teamAPIKey, keys.ApiKeyPrefix)
+	apiKeyBytes, err := hex.DecodeString(keyWithoutPrefix)
+	if err != nil {
+		panic(err)
+	}
+	apiKeyHash := hasher.Hash(apiKeyBytes)
+	apiKeyMask, err := keys.MaskKey(keys.ApiKeyPrefix, keyWithoutPrefix)
+	if err != nil {
+		panic(err)
+	}
+	_, err = database.Client.TeamAPIKey.Create().
+		SetTeam(t).
+		SetAPIKey(teamAPIKey).
+		SetAPIKeyHash(apiKeyHash).
+		SetAPIKeyMask(apiKeyMask).
+		SetName("Seed API Key").
+		Save(ctx)
 	if err != nil {
 		panic(err)
 	}
