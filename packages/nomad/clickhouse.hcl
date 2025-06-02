@@ -71,7 +71,6 @@ job "clickhouse" {
           "/clickhouse/data/clickhouse-server-${i + 1}:/var/lib/clickhouse",
           "local/config.xml:/etc/clickhouse-server/config.d/config.xml",
           "local/users.xml:/etc/clickhouse-server/users.d/users.xml",
-          "local/macros.xml:/etc/clickhouse-server/config.d/macros.xml",
         ]
       }
 
@@ -176,20 +175,6 @@ EOF
             <access_management>1</access_management>
         </${username}>
     </users>
-</clickhouse>
-EOF
-      }
-
-      template {
-        destination = "local/macros.xml"
-        data        = <<EOF
-<?xml version="1.0"?>
-<clickhouse>
-    <macros>
-        <cluster>cluster</cluster>
-        <shard>0${i + 1}</shard>
-        <replica>01</replica>
-    </macros>
 </clickhouse>
 EOF
       }
