@@ -3,6 +3,9 @@ set -euo pipefail
 
 echo "Starting provisioning script"
 
+# fix: dpkg-statoverride: warning: --update given but /var/log/chrony does not exist
+mkdir -p /var/log/chrony
+
 echo "Making configuration immutable"
 chattr +i /etc/resolv.conf
 
@@ -21,7 +24,7 @@ done
 if [ ${#MISSING[@]} -ne 0 ]; then
     echo "Missing packages detected, installing: ${MISSING[*]}"
     apt-get -qq update
-    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq install -y --no-install-recommends "${MISSING[@]}"
+    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends "${MISSING[@]}"
 else
     echo "All required packages are already installed."
 fi
