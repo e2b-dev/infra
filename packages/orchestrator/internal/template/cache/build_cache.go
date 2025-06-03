@@ -20,7 +20,6 @@ const (
 )
 
 type BuildInfo struct {
-	envID     string
 	status    template_manager.TemplateBuildState
 	metadata  *template_manager.TemplateBuildMetadata
 	mu        sync.RWMutex
@@ -40,13 +39,6 @@ func (b *BuildInfo) IsFailed() bool {
 	defer b.mu.RUnlock()
 
 	return b.status == template_manager.TemplateBuildState_Failed
-}
-
-func (b *BuildInfo) GetBuildEnvID() string {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.envID
 }
 
 func (b *BuildInfo) GetMetadata() *template_manager.TemplateBuildMetadata {
@@ -88,16 +80,8 @@ func NewBuildCache() *BuildCache {
 	_, err := meters.GetObservableUpDownCounter(meters.BuildCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		items := utils.MapValues(cache.Items())
 
-		// Deduplicate by BuildEnvID. All builds are twice in the cache: once by buildID and once by envID.
-		uniqueItems := utils.UniqueBy(items, func(item *ttlcache.Item[string, *BuildInfo]) string {
-			if item == nil || item.Value() == nil {
-				return ""
-			}
-			return item.Value().GetBuildEnvID()
-		})
-
 		// Filter running builds
-		runningCount := len(utils.Filter(uniqueItems, func(item *ttlcache.Item[string, *BuildInfo]) bool {
+		runningCount := len(utils.Filter(items, func(item *ttlcache.Item[string, *BuildInfo]) bool {
 			return item != nil && item.Value() != nil && item.Value().IsRunning()
 		}))
 
@@ -116,34 +100,33 @@ func NewBuildCache() *BuildCache {
 }
 
 // Get returns the build info.
-func (c *BuildCache) Get(buildIDOrEnvID string) (*BuildInfo, error) {
-	item := c.cache.Get(buildIDOrEnvID)
+func (c *BuildCache) Get(buildID string) (*BuildInfo, error) {
+	item := c.cache.Get(buildID)
 	if item == nil {
-		return nil, fmt.Errorf("build %s not found in cache", buildIDOrEnvID)
+		return nil, fmt.Errorf("build %s not found in cache", buildID)
 	}
 
 	value := item.Value()
 	if value == nil {
-		return nil, fmt.Errorf("build %s not found in cache", buildIDOrEnvID)
+		return nil, fmt.Errorf("build %s not found in cache", buildID)
 	}
 
 	return value, nil
 }
 
 // Create creates a new build if it doesn't exist in the cache or the build was already finished.
-func (c *BuildCache) Create(envID string, buildID string) (*BuildInfo, error) {
+func (c *BuildCache) Create(buildID string) (*BuildInfo, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	item := c.cache.Get(buildID, ttlcache.WithDisableTouchOnHit[string, *BuildInfo]())
 	if item != nil {
-		return nil, fmt.Errorf("build %s for env %s already exists in cache", buildID, envID)
+		return nil, fmt.Errorf("build %s already exists in cache", buildID)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	info := &BuildInfo{
-		envID:     envID,
 		status:    template_manager.TemplateBuildState_Building,
 		metadata:  nil,
 		ctx:       ctx,
@@ -151,12 +134,11 @@ func (c *BuildCache) Create(envID string, buildID string) (*BuildInfo, error) {
 	}
 
 	c.cache.Set(buildID, info, buildInfoExpiration)
-	c.cache.Set(envID, info, buildInfoExpiration)
 
 	return info, nil
 }
 
-func (c *BuildCache) SetSucceeded(envID string, buildID string, metadata *template_manager.TemplateBuildMetadata) error {
+func (c *BuildCache) SetSucceeded(buildID string, metadata *template_manager.TemplateBuildMetadata) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -164,16 +146,13 @@ func (c *BuildCache) SetSucceeded(envID string, buildID string, metadata *templa
 	if err != nil {
 		return fmt.Errorf("build %s not found in cache: %w", buildID, err)
 	}
-
-	// Just to touch the item in the cache to update its expiration time
-	_, _ = c.Get(envID)
 
 	item.status = template_manager.TemplateBuildState_Completed
 	item.metadata = metadata
 	return nil
 }
 
-func (c *BuildCache) SetFailed(envID string, buildID string) error {
+func (c *BuildCache) SetFailed(buildID string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -182,17 +161,13 @@ func (c *BuildCache) SetFailed(envID string, buildID string) error {
 		return fmt.Errorf("build %s not found in cache: %w", buildID, err)
 	}
 
-	// Just to touch the item in the cache to update its expiration time
-	_, _ = c.Get(envID)
-
 	item.status = template_manager.TemplateBuildState_Failed
 	return nil
 }
 
-func (c *BuildCache) Delete(envID string, buildID string) {
+func (c *BuildCache) Delete(buildID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.cache.Delete(buildID)
-	c.cache.Delete(envID)
 }

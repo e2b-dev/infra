@@ -60,7 +60,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		HugePages:       config.HugePages,
 	}
 
-	buildInfo, err := s.buildCache.Create(config.TemplateID, config.BuildID)
+	buildInfo, err := s.buildCache.Create(config.BuildID)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
@@ -87,7 +87,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		}
 
 		buildMetadata := &templatemanager.TemplateBuildMetadata{RootfsSizeKey: int32(template.RootfsSizeMB()), EnvdVersionKey: res.EnvdVersion}
-		err = s.buildCache.SetSucceeded(template.TemplateId, template.BuildId, buildMetadata)
+		err = s.buildCache.SetSucceeded(template.BuildId, buildMetadata)
 		if err != nil {
 			s.reportBuildFailed(buildContext, s.buildLogger, template, fmt.Errorf("error while setting build state to succeeded: %w", err))
 			return
@@ -101,7 +101,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 func (s *ServerStore) reportBuildFailed(ctx context.Context, logger *zap.Logger, config *build.TemplateConfig, err error) {
 	telemetry.ReportCriticalError(ctx, err)
-	cacheErr := s.buildCache.SetFailed(config.TemplateId, config.BuildId)
+	cacheErr := s.buildCache.SetFailed(config.BuildId)
 	if cacheErr != nil {
 		s.logger.Error("Error while setting build state to failed", zap.Error(err))
 	}

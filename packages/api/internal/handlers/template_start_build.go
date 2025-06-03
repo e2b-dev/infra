@@ -102,7 +102,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		).
 		All(ctx)
 	if err != nil {
-		zap.L().Error("Error when getting count of running builds", zap.Error(err))
+		zap.L().Error("Error when getting running builds", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
 		telemetry.ReportCriticalError(ctx, err)
 		return

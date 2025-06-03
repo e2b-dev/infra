@@ -28,7 +28,7 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 		return nil, errors.New("template id and build id are required fields")
 	}
 
-	c, err := s.buildCache.Get(in.TemplateID)
+	c, err := s.buildCache.Get(in.BuildID)
 	if err == nil {
 		// Only handle if the build is in the cache
 		zap.L().Info("Canceling running template build", zap.String("template_id", in.TemplateID), zap.String("build_id", in.TemplateID))
