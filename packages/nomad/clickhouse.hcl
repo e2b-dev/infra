@@ -34,9 +34,9 @@ job "clickhouse" {
     }
 
     service {
-      name = "clickhouse-server-${i + 1}"
+      name = "clickhouse"
       port = "clickhouse-server"
-      tags = ["tcp"]
+      tags = ["server-${i + 1}"]
 
       check {
         type     = "http"
@@ -64,7 +64,7 @@ job "clickhouse" {
         }
 
         extra_hosts = [
-          "clickhouse-server-${i + 1}.service.consul:127.0.0.1",
+          "server-${i + 1}.clickhouse.service.consul:127.0.0.1",
         ]
 
         volumes = [
@@ -134,6 +134,7 @@ job "clickhouse" {
             </s3>
         </policies>
     </storage_configuration>
+
     <remote_servers replace="true">
       <cluster>
         <!-- a secret for servers to use to communicate to each other  -->
@@ -141,7 +142,7 @@ job "clickhouse" {
         %{ for j in range("${server_count}") }
         <shard>
           <replica>
-            <host>clickhouse-server-${j + 1}.service.consul</host>
+            <host>server-${j + 1}.clickhouse.service.consul</host>
             <port>${clickhouse_server_port}</port>
             <user>${username}</user>
             <password>${password}</password>

@@ -61,7 +61,7 @@ resource "nomad_job" "api" {
     redis_url                      = "redis://redis.service.consul:${var.redis_port.port}"
     redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
     dns_port_number                = var.api_dns_port_number
-    clickhouse_connection_string   = "clickhouse-server-1.service.consul:9000" # TODO: This will be replaced by load balancer address in following PRs
+    clickhouse_connection_string   = "clickhouse.service.consul:9000"
     clickhouse_username            = var.clickhouse_username
     clickhouse_password            = random_password.clickhouse_password.result
     clickhouse_database            = var.clickhouse_database
@@ -333,7 +333,7 @@ locals {
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
-    clickhouse_connection_string = "clickhouse-server-1.service.consul:9000" # TODO: This will be replaced by load balancer address in following PRs
+    clickhouse_connection_string = "clickhouse.service.consul:9000"
     clickhouse_username          = var.clickhouse_username
     clickhouse_password          = random_password.clickhouse_password.result
     clickhouse_database          = var.clickhouse_database
