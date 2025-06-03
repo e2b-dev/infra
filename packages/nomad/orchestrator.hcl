@@ -70,9 +70,7 @@ EOT
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
-        CLICKHOUSE_USERNAME          = "${clickhouse_username}"
-        CLICKHOUSE_PASSWORD          = "${clickhouse_password}"
-        CLICKHOUSE_DATABASE          = "${clickhouse_database}"
+        WRITE_CLICKHOUSE_METRICS     = "${write_to_clickhouse}"
       }
 
       config {
