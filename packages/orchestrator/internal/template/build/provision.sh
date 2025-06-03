@@ -1,21 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-# Create a temporary logfile
-LOGFILE=$(mktemp)
-# Start background tail process and capture its PID
-( tail -f "$LOGFILE" | sed -u 's/^/{{ .LogPrefixExternal }}/' ) &
-TAIL_PID=$!
-# Define cleanup trap
-cleanup() {
-    kill "$TAIL_PID" 2>/dev/null
-    wait "$TAIL_PID" 2>/dev/null
-    rm -f "$LOGFILE"
-}
-trap cleanup EXIT
-# Redirect all output to the logfile
-exec >"$LOGFILE" 2>&1
-
 echo "Starting provisioning script"
 
 echo "Making configuration immutable"

@@ -140,11 +140,9 @@ func additionalOCILayers(
 ) ([]v1.Layer, error) {
 	var scriptDef bytes.Buffer
 	err := ProvisionScriptTemplate.Execute(&scriptDef, struct {
-		ResultPath        string
-		LogPrefixExternal string
+		ResultPath string
 	}{
-		ResultPath:        provisionScriptResultPath,
-		LogPrefixExternal: logExternalPrefix,
+		ResultPath: provisionScriptResultPath,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error executing provision script: %w", err)
@@ -234,11 +232,11 @@ mount -t tmpfs tmpfs /tmp
 mount -t tmpfs tmpfs /run
 
 echo "System Init"`), 0o777},
-			"etc/inittab": {[]byte(`# Run system init
+			"etc/inittab": {[]byte(fmt.Sprintf(`# Run system init
 ::sysinit:/etc/init.d/rcS
 
-# Run the provision script
-::wait:/usr/local/bin/provision.sh
+# Run the provision script, prefix the output with a log prefix
+::wait:/bin/sh -c '/usr/local/bin/provision.sh 2>&1 | sed "s/^/%s/"'
 
 # Reboot the system after the script
 # Running the poweroff or halt commands inside a Linux guest will bring it down but Firecracker process remains unaware of the guest shutdown so it lives on.
@@ -248,7 +246,7 @@ echo "System Init"`), 0o777},
 # Clean shutdown of filesystems and swap
 ::shutdown:/usr/bin/busybox swapoff -a
 ::shutdown:/usr/bin/busybox umount -a -r -v
-`), 0o777},
+`, logExternalPrefix)), 0o777},
 		},
 	)
 	if err != nil {
