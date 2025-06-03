@@ -460,6 +460,11 @@ func (b *TemplateBuilder) provisionSandbox(
 		return fmt.Errorf("error reading provision result: %w", err)
 	}
 	defer ext4.RemoveFile(ctx, b.tracer, rootfsPath, provisionScriptResultPath)
+
+	// Fallback to "1" if the file is empty or not found
+	if exitStatus == "" {
+		exitStatus = "1"
+	}
 	if exitStatus != "0" {
 		return fmt.Errorf("provision script failed with exit status: %s", exitStatus)
 	}
