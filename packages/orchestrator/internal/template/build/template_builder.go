@@ -3,6 +3,7 @@ package build
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -94,7 +96,7 @@ type Result struct {
 // 5. Start the FC VM (using systemd) and wait for Envd
 // 5. Run two additional commands:
 //   - configuration script (enable swap, create user, change folder permissions, etc.)
-//   - start command (if defined)
+//   - start command (if defined), together with the ready command (always with default value if not defined)
 //
 // 6. Snapshot
 // 7. Upload template
@@ -252,17 +254,48 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	}
 
 	// Start command
-	if template.StartCmd != "" {
-		err = b.runStartCommand(
-			ctx,
-			postProcessor,
-			template,
-			sbx.Metadata.Config.SandboxId,
-		)
+	readyCtx, readyCancel := context.WithCancel(ctx)
+	defer readyCancel()
 
-		if err != nil {
-			return nil, fmt.Errorf("error running start command: %w", err)
-		}
+	var startCmd errgroup.Group
+	if template.StartCmd != "" {
+		postProcessor.WriteMsg("Running start command")
+		startCmd.Go(func() error {
+			cwd := "/home/user"
+			err := b.runCommand(
+				ctx,
+				postProcessor,
+				sbx.Metadata.Config.SandboxId,
+				template.StartCmd,
+				"root",
+				&cwd,
+			)
+			// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
+			if err != nil && !errors.Is(err, context.Canceled) {
+				return fmt.Errorf("error running start command: %w", err)
+			}
+
+			return nil
+		})
+	}
+
+	// Ready command
+	err = b.runReadyCommand(
+		readyCtx,
+		postProcessor,
+		template,
+		sbx.Metadata.Config.SandboxId,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error running ready command: %w", err)
+	}
+
+	// Cancel the start command context (it's running in the background anyway).
+	// If it has already finished, check the error.
+	readyCancel()
+	err = startCmd.Wait()
+	if err != nil {
+		return nil, fmt.Errorf("error running start command: %w", err)
 	}
 
 	// Pause sandbox
