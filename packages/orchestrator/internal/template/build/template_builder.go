@@ -244,6 +244,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	err = b.runCommand(
 		configCtx,
 		postProcessor,
+		"config",
 		sbx.Metadata.Config.SandboxId,
 		scriptDef.String(),
 		"root",
@@ -265,6 +266,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 			err := b.runCommand(
 				ctx,
 				postProcessor,
+				"start",
 				sbx.Metadata.Config.SandboxId,
 				template.StartCmd,
 				"root",

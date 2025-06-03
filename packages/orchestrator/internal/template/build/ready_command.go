@@ -30,11 +30,12 @@ func (b *TemplateBuilder) runReadyCommand(
 		telemetry.ReportEvent(ctx, "waited for template ready", attribute.Float64("seconds", time.Since(startTime).Seconds()))
 	}()
 
-	postProcessor.WriteMsg("Waiting for template readiness")
+	postProcessor.WriteMsg("Waiting for template to be ready")
 
 	if template.ReadyCmd == "" {
 		template.ReadyCmd = getDefaultReadyCommand(template)
 	}
+	postProcessor.WriteMsg(fmt.Sprintf("[ready cmd]: %s", template.ReadyCmd))
 
 	ctx, cancel := context.WithTimeout(ctx, readyCommandTimeout)
 	defer cancel()
@@ -46,6 +47,7 @@ wait:
 		err := b.runCommand(
 			ctx,
 			postProcessor,
+			"ready",
 			sandboxID,
 			template.ReadyCmd,
 			"root",

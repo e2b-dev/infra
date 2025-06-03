@@ -21,6 +21,7 @@ const httpTimeout = 600 * time.Second
 func (b *TemplateBuilder) runCommand(
 	ctx context.Context,
 	postProcessor *writer.PostProcessor,
+	id string,
 	sandboxID string,
 	command string,
 	runAsUser string,
@@ -79,13 +80,13 @@ func (b *TemplateBuilder) runCommand(
 			switch {
 			case e.GetData() != nil:
 				data := e.GetData()
-				b.logStream(postProcessor, "stdout", string(data.GetStdout()))
-				b.logStream(postProcessor, "stderr", string(data.GetStderr()))
+				b.logStream(postProcessor, id, "stdout", string(data.GetStdout()))
+				b.logStream(postProcessor, id, "stderr", string(data.GetStderr()))
 
 			case e.GetEnd() != nil:
 				end := e.GetEnd()
 				name := fmt.Sprintf("exit %d", end.GetExitCode())
-				b.logStream(postProcessor, name, end.GetStatus())
+				b.logStream(postProcessor, id, name, end.GetStatus())
 
 				if end.GetExitCode() != 0 {
 					return fmt.Errorf("command failed: %s", end.GetStatus())
@@ -95,7 +96,7 @@ func (b *TemplateBuilder) runCommand(
 	}
 }
 
-func (b *TemplateBuilder) logStream(postProcessor *writer.PostProcessor, name string, content string) {
+func (b *TemplateBuilder) logStream(postProcessor *writer.PostProcessor, id string, name string, content string) {
 	if content == "" {
 		return
 	}
@@ -104,7 +105,7 @@ func (b *TemplateBuilder) logStream(postProcessor *writer.PostProcessor, name st
 		if line == "" {
 			continue
 		}
-		msg := fmt.Sprintf("[cmd] [%s]: %s", name, line)
+		msg := fmt.Sprintf("[%s] [%s]: %s", id, name, line)
 		postProcessor.WriteMsg(msg)
 		b.buildLogger.Info(msg)
 	}
