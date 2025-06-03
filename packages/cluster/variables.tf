@@ -211,6 +211,11 @@ variable "labels" {
   type        = map(string)
 }
 
+variable "clickhouse_cluster_name" {
+  type    = string
+  default = "clickhouse"
+}
+
 variable "clickhouse_cluster_size" {
   description = "The number of ClickHouse nodes in the cluster."
   type        = number

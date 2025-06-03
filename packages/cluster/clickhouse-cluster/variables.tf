@@ -110,7 +110,6 @@ variable "custom_metadata" {
 variable "cluster_name" {
   description = "The name of the Nomad cluster (e.g. nomad-stage). This variable is used to namespace all resources created by this module."
   type        = string
-  default     = "clickhouse"
 }
 
 # Disk Settings
