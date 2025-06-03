@@ -15,12 +15,12 @@ import (
 
 // fake clickhouse store
 type fakeClickhouseStore struct {
-	*clickhouse.MockClient
+	clickhouse.Clickhouse
 	metrics []clickhouse.Metrics
 	err     error
 }
 
-func (f *fakeClickhouseStore) QueryMetrics(ctx context.Context, sandboxID, teamID string, start int64, limit int) ([]clickhouse.Metrics, error) {
+func (f *fakeClickhouseStore) QueryMetrics(ctx context.Context, sandboxID, teamID string, start time.Time, limit int) ([]clickhouse.Metrics, error) {
 	return f.metrics, f.err
 }
 
