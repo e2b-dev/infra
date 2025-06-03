@@ -4,14 +4,21 @@ import (
 	"context"
 	"errors"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanager.TemplateBuildDeleteRequest) (*emptypb.Empty, error) {
-	childCtx, childSpan := s.tracer.Start(ctx, "template-delete-request")
+	childCtx, childSpan := s.tracer.Start(ctx, "template-delete-request", trace.WithAttributes(
+		attribute.String("template.id", in.TemplateID),
+		attribute.String("build.id", in.BuildID),
+	))
 	defer childSpan.End()
 
 	s.wg.Add(1)
@@ -21,7 +28,15 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 		return nil, errors.New("template id and build id are required fields")
 	}
 
-	err := template.Delete(childCtx, s.tracer, s.artifactsregistry, s.templateStorage, in.TemplateID, in.BuildID)
+	c, err := s.buildCache.Get(in.BuildID)
+	if err == nil {
+		// Only handle if the build is in the cache
+		zap.L().Info("Canceling running template build", zap.String("template_id", in.TemplateID), zap.String("build_id", in.TemplateID))
+		telemetry.ReportEvent(ctx, "cancel in progress template build")
+		c.Cancel()
+	}
+
+	err = template.Delete(childCtx, s.tracer, s.artifactsregistry, s.templateStorage, in.TemplateID, in.BuildID)
 	if err != nil {
 		return nil, err
 	}
