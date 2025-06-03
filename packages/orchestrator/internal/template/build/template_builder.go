@@ -274,6 +274,8 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 			)
 			// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
 			if err != nil && !errors.Is(err, context.Canceled) {
+				// Cancel the ready command context, so the ready command does not wait anymore if an error occurs.
+				readyCancel()
 				return fmt.Errorf("error running start command: %w", err)
 			}
 

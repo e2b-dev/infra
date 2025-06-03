@@ -59,7 +59,7 @@ wait:
 			cancel()
 			break wait
 		} else {
-			postProcessor.WriteMsg(fmt.Sprintf("Template is not ready yet: %v", err))
+			postProcessor.WriteMsg(fmt.Sprintf("Template is not ready: %v", err))
 		}
 
 		select {
