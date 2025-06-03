@@ -10,6 +10,7 @@ require (
 	github.com/containernetworking/plugins v1.6.0
 	github.com/coreos/go-iptables v0.8.0
 	github.com/dustin/go-humanize v1.0.1
+	github.com/e2b-dev/infra/packages/clickhouse v0.0.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
@@ -53,9 +54,8 @@ require (
 	cloud.google.com/go/longrunning v0.6.3 // indirect
 	cloud.google.com/go/monitoring v1.21.2 // indirect
 	cloud.google.com/go/storage v1.50.0 // indirect
-	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/ClickHouse/ch-go v0.65.1 // indirect
-	github.com/ClickHouse/clickhouse-go/v2 v2.33.1 // indirect
+	github.com/ClickHouse/clickhouse-go/v2 v2.34.0 // indirect
 	github.com/DataDog/datadog-go/v5 v5.2.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.26.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.49.0 // indirect
@@ -121,7 +121,6 @@ require (
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-openapi/validate v0.24.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-migrate/migrate/v4 v4.18.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
@@ -183,7 +182,6 @@ require (
 	go.opentelemetry.io/otel/sdk/log v0.10.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.35.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.6.0 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
@@ -201,8 +199,7 @@ require (
 
 replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 
-// Fix non existent garyburd/redigo from Microsoft/hcsshim/test v0.0.0
-replace github.com/garyburd/redigo => github.com/gomodule/redigo v1.9.2
+replace github.com/e2b-dev/infra/packages/clickhouse v0.0.0 => ../clickhouse
 
 tool (
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc

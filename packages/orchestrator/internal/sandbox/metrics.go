@@ -10,9 +10,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
 )
 
 const (
@@ -96,7 +96,7 @@ func (s *Sandbox) LogMetricsClickhouse(ctx context.Context) {
 			sbxlogger.E(s).Warn("failed to get metrics from envd", zap.Error(err))
 		} else {
 			// XXX update upstream types to avoid this conversion
-			metrics := chmodels.Metrics{
+			metrics := clickhouse.Metrics{
 				SandboxID:      s.Config.SandboxId,
 				TeamID:         s.Config.TeamId,
 				Timestamp:      time.Unix(envdMetrics.Timestamp, 0),
@@ -106,7 +106,7 @@ func (s *Sandbox) LogMetricsClickhouse(ctx context.Context) {
 				CPUUsedPercent: envdMetrics.CPUUsedPercent,
 			}
 
-			err := s.ClickhouseStore.InsertMetrics(ctx, metrics)
+			err := s.clickhouse.InsertMetrics(ctx, metrics)
 			if err != nil {
 				sbxlogger.E(s).Warn("failed to insert metrics in ClickHouse", zap.Error(err))
 			}

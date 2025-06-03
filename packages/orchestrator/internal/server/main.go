@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
@@ -17,7 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
-	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -35,7 +36,7 @@ type server struct {
 	templateCache   *template.Cache
 	pauseMu         sync.Mutex
 	devicePool      *nbd.DevicePool
-	clickhouseStore chdb.Store
+	clickhouseStore clickhouse.Clickhouse
 	persistence     storage.StorageProvider
 
 	useLokiMetrics       string
@@ -91,18 +92,11 @@ func New(
 
 		useLokiMetrics := os.Getenv("WRITE_LOKI_METRICS")
 		useClickhouseMetrics := os.Getenv("WRITE_CLICKHOUSE_METRICS")
-		readClickhouseMetrics := os.Getenv("READ_CLICKHOUSE_METRICS")
 
-		var clickhouseStore chdb.Store = nil
+		var clickhouseStore clickhouse.Clickhouse = clickhouse.NewMockStore()
 
-		if readClickhouseMetrics == "true" || useClickhouseMetrics == "true" {
-			clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
-				ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
-				Username:         os.Getenv("CLICKHOUSE_USERNAME"),
-				Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
-				Database:         os.Getenv("CLICKHOUSE_DATABASE"),
-				Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
-			})
+		if useClickhouseMetrics == "true" {
+			clickhouseStore, err = clickhouse.New(os.Getenv("CLICKHOUSE_CONNECTION_STRING"))
 			if err != nil {
 				return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
 			}
