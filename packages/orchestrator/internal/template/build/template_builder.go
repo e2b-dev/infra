@@ -412,6 +412,9 @@ func (b *TemplateBuilder) provisionSandbox(
 	ctx, childSpan := b.tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
 
+	logsWriter := &writer.PrefixFilteredWriter{Writer: postProcessor, PrefixFilter: logExternalPrefix}
+	defer logsWriter.Close()
+
 	sbx, cleanup, err := sandbox.CreateSandbox(
 		ctx,
 		b.tracer,
@@ -428,9 +431,8 @@ func (b *TemplateBuilder) provisionSandbox(
 			KernelLogs: true,
 
 			// Show provision script logs to the user
-			LogFilterPrefix: logExternalPrefix,
-			Stdout:          postProcessor,
-			Stderr:          postProcessor,
+			Stdout: logsWriter,
+			Stderr: logsWriter,
 		},
 		// Allow sandbox internet access during provisioning
 		true,
@@ -457,6 +459,7 @@ func (b *TemplateBuilder) provisionSandbox(
 	if err != nil {
 		return fmt.Errorf("error reading provision result: %w", err)
 	}
+	defer ext4.RemoveFile(ctx, b.tracer, rootfsPath, provisionScriptResultPath)
 	if exitStatus != "0" {
 		return fmt.Errorf("provision script failed with exit status: %s", exitStatus)
 	}

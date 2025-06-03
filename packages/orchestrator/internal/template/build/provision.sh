@@ -1,12 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-# Use a temporary log file
+# Create a temporary logfile
 LOGFILE=$(mktemp)
-# Trap to clean up on exit
-trap 'rm -f "$LOGFILE"' EXIT
-# Start logging in the background, prefixing lines
+# Start background tail process and capture its PID
 ( tail -f "$LOGFILE" | sed -u 's/^/{{ .LogPrefixExternal }}/' ) &
+TAIL_PID=$!
+# Define cleanup trap
+cleanup() {
+    kill "$TAIL_PID" 2>/dev/null
+    wait "$TAIL_PID" 2>/dev/null
+    rm -f "$LOGFILE"
+}
+trap cleanup EXIT
 # Redirect all output to the logfile
 exec >"$LOGFILE" 2>&1
 

@@ -1,4 +1,4 @@
-package fc
+package writer
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 
 type PrefixFilteredWriter struct {
 	io.Writer
-	prefixFilter string
+	PrefixFilter string
 	buff         bytes.Buffer
 }
 
@@ -75,8 +75,8 @@ func (w *PrefixFilteredWriter) flush(allowEmpty bool) {
 // the prefixed messages. It removes the configured prefix from the line.
 func (w *PrefixFilteredWriter) log(b []byte) {
 	line := string(b)
-	noPrefixLine := strings.TrimPrefix(line, w.prefixFilter)
-	if w.prefixFilter == "" || noPrefixLine != line {
+	noPrefixLine := strings.TrimPrefix(line, w.PrefixFilter)
+	if w.PrefixFilter == "" || noPrefixLine != line {
 		toWrite := []byte(noPrefixLine + "\n")
 		w.Writer.Write(toWrite)
 	}

@@ -44,8 +44,6 @@ type ProcessOptions struct {
 	// It enabled the kernel logs by default too.
 	SystemdToKernelLogs bool
 
-	// LogFilterPrefix is a prefix for filtering logs from the process stdout/stderr.
-	LogFilterPrefix string
 	// Stdout is the writer to which the process stdout will be written.
 	Stdout io.Writer
 	// Stderr is the writer to which the process stderr will be written.
@@ -156,7 +154,6 @@ func (p *Process) configure(
 	teamID string,
 	stdoutExternal io.Writer,
 	stderrExternal io.Writer,
-	logFilterPrefix string,
 ) error {
 	childCtx, childSpan := tracer.Start(ctx, "configure-fc")
 	defer childSpan.End()
@@ -168,12 +165,18 @@ func (p *Process) configure(
 	}
 
 	stdoutWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.InfoLevel}
-	externalStdout := &PrefixFilteredWriter{Writer: stdoutExternal, prefixFilter: logFilterPrefix}
-	p.cmd.Stdout = io.MultiWriter(stdoutWriter, externalStdout)
+	stdoutWriters := []io.Writer{stdoutWriter}
+	if stdoutExternal != nil {
+		stdoutWriters = append(stdoutWriters, stdoutExternal)
+	}
+	p.cmd.Stdout = io.MultiWriter(stdoutWriters...)
 
 	stderrWriter := &zapio.Writer{Log: sbxlogger.I(sbxMetadata).Logger, Level: zap.ErrorLevel}
-	externalStderr := &PrefixFilteredWriter{Writer: stderrExternal, prefixFilter: logFilterPrefix}
-	p.cmd.Stderr = io.MultiWriter(stderrWriter, externalStderr)
+	stderrWriters := []io.Writer{stderrWriter}
+	if stderrExternal != nil {
+		stderrWriters = append(stderrWriters, stderrExternal)
+	}
+	p.cmd.Stderr = io.MultiWriter(stderrWriters...)
 
 	err := utils.SymlinkForce("/dev/null", p.files.SandboxCacheRootfsLinkPath())
 	if err != nil {
@@ -191,9 +194,6 @@ func (p *Process) configure(
 	go func() {
 		defer stderrWriter.Close()
 		defer stdoutWriter.Close()
-
-		defer externalStderr.Close()
-		defer externalStdout.Close()
 
 		waitErr := p.cmd.Wait()
 		if waitErr != nil {
@@ -247,13 +247,6 @@ func (p *Process) Create(
 	childCtx, childSpan := tracer.Start(ctx, "create-fc")
 	defer childSpan.End()
 
-	if options.Stdout == nil {
-		options.Stdout = io.Discard
-	}
-	if options.Stderr == nil {
-		options.Stderr = io.Discard
-	}
-
 	err := p.configure(
 		childCtx,
 		tracer,
@@ -262,7 +255,6 @@ func (p *Process) Create(
 		teamID,
 		options.Stdout,
 		options.Stderr,
-		options.LogFilterPrefix,
 	)
 	if err != nil {
 		fcStopErr := p.Stop()
@@ -373,9 +365,8 @@ func (p *Process) Resume(
 		mmdsMetadata.SandboxId,
 		mmdsMetadata.TemplateId,
 		mmdsMetadata.TeamId,
-		io.Discard,
-		io.Discard,
-		"",
+		nil,
+		nil,
 	)
 	if err != nil {
 		fcStopErr := p.Stop()

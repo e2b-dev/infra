@@ -108,6 +108,21 @@ func ReadFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, fileP
 	return string(out), nil
 }
 
+func RemoveFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, filePath string) error {
+	_, statSpan := tracer.Start(ctx, "ext4-remove-file")
+	defer statSpan.End()
+
+	// -w is used to open the filesystem in writable mode
+	cmd := exec.Command("debugfs", "-w", "-R", fmt.Sprintf("rm \"%s\"", filePath), rootfsPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		zap.L().Error("error removing file", zap.Error(err), zap.String("output", string(out)))
+		return fmt.Errorf("error removing file: %w", err)
+	}
+
+	return nil
+}
+
 func logMetadata(rootfsPath string) {
 	cmd := exec.Command("tune2fs", "-l", rootfsPath)
 	output, err := cmd.CombinedOutput()
