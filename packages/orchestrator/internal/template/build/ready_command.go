@@ -26,7 +26,9 @@ func (b *TemplateBuilder) runReadyCommand(
 	sandboxID string,
 ) error {
 	startTime := time.Now()
-	defer telemetry.ReportEvent(ctx, "waited for template ready", attribute.Float64("seconds", time.Since(startTime).Seconds()))
+	defer func() {
+		telemetry.ReportEvent(ctx, "waited for template ready", attribute.Float64("seconds", time.Since(startTime).Seconds()))
+	}()
 
 	postProcessor.WriteMsg("Waiting for template readiness")
 
@@ -38,6 +40,7 @@ func (b *TemplateBuilder) runReadyCommand(
 	defer cancel()
 
 	// Start the ready check
+wait:
 	for {
 		cwd := "/home/user"
 		err := b.runCommand(
@@ -52,7 +55,7 @@ func (b *TemplateBuilder) runReadyCommand(
 		if err == nil {
 			// Template is ready
 			cancel()
-			break
+			break wait
 		} else {
 			postProcessor.WriteMsg(fmt.Sprintf("Template is not ready yet: %v", err))
 		}
@@ -63,7 +66,7 @@ func (b *TemplateBuilder) runReadyCommand(
 				postProcessor.WriteMsg(fmt.Sprintf("Ready command timed out, exceeding %s", readyCommandTimeout))
 			}
 			// Template is ready, the start command finished before the ready command
-			break
+			break wait
 		case <-time.After(readyCommandRetryInterval):
 			// Wait for readyCommandRetryInterval time before retrying the ready command
 		}
