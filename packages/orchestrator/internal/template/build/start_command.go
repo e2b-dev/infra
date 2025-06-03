@@ -78,7 +78,6 @@ func (b *TemplateBuilder) runStartCommand(
 	)
 	// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
 	if err != nil && !errors.Is(err, context.Canceled) {
-		postProcessor.WriteMsg(fmt.Sprintf("Error while running start command: %v", err))
 		return fmt.Errorf("error running start command: %w", err)
 	}
 
