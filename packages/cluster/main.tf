@@ -229,6 +229,7 @@ module "clickhouse_cluster" {
 
   image_family = var.api_image_family
 
+  cluster_name = "${var.prefix}${var.clickhouse_cluster_name}"
   machine_type = var.clickhouse_machine_type
   cluster_size = var.clickhouse_cluster_size
   network_name = var.network_name
