@@ -174,7 +174,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		return nil, fmt.Errorf("error creating provision rootfs symlink: %w", err)
 	}
 
-	err = b.provisionSandbox(ctx, template, envdVersion, localTemplate, rootfsProvisionPath)
+	err = b.provisionSandbox(ctx, postProcessor, template, envdVersion, localTemplate, rootfsProvisionPath)
 	if err != nil {
 		postProcessor.WriteMsg(fmt.Sprintf("Error provisioning sandbox: %v", err))
 		return nil, fmt.Errorf("error provisioning sandbox: %w", err)
@@ -403,6 +403,7 @@ func (b *TemplateBuilder) uploadTemplate(
 
 func (b *TemplateBuilder) provisionSandbox(
 	ctx context.Context,
+	postProcessor *writer.PostProcessor,
 	template *TemplateConfig,
 	envdVersion string,
 	localTemplate *templatelocal.LocalTemplate,
@@ -410,6 +411,9 @@ func (b *TemplateBuilder) provisionSandbox(
 ) (e error) {
 	ctx, childSpan := b.tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
+
+	logsWriter := &writer.PrefixFilteredWriter{Writer: postProcessor, PrefixFilter: logExternalPrefix}
+	defer logsWriter.Close()
 
 	sbx, cleanup, err := sandbox.CreateSandbox(
 		ctx,
@@ -425,6 +429,10 @@ func (b *TemplateBuilder) provisionSandbox(
 			// Always show kernel logs during the provisioning phase,
 			// the sandbox is then started with systemd and without kernel logs.
 			KernelLogs: true,
+
+			// Show provision script logs to the user
+			Stdout: logsWriter,
+			Stderr: logsWriter,
 		},
 		// Allow sandbox internet access during provisioning
 		true,
@@ -444,6 +452,21 @@ func (b *TemplateBuilder) provisionSandbox(
 	)
 	if err != nil {
 		return fmt.Errorf("failed to wait for sandbox start: %w", err)
+	}
+
+	// Verify the provisioning script exit status
+	exitStatus, err := ext4.ReadFile(ctx, b.tracer, rootfsPath, provisionScriptResultPath)
+	if err != nil {
+		return fmt.Errorf("error reading provision result: %w", err)
+	}
+	defer ext4.RemoveFile(ctx, b.tracer, rootfsPath, provisionScriptResultPath)
+
+	// Fallback to "1" if the file is empty or not found
+	if exitStatus == "" {
+		exitStatus = "1"
+	}
+	if exitStatus != "0" {
+		return fmt.Errorf("provision script failed with exit status: %s", exitStatus)
 	}
 
 	return nil

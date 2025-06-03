@@ -70,7 +70,7 @@ job "template-manager" {
 
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/template-manager && local/template-manager --port ${port}"]
+        args    = ["-c", " chmod +x local/template-manager && local/template-manager --port ${port} --wait 0"]
       }
 
       artifact {
