@@ -6,10 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -25,10 +22,8 @@ func (b *TemplateBuilder) runReadyCommand(
 	template *TemplateConfig,
 	sandboxID string,
 ) error {
-	startTime := time.Now()
-	defer func() {
-		telemetry.ReportEvent(ctx, "waited for template ready", attribute.Float64("seconds", time.Since(startTime).Seconds()))
-	}()
+	ctx, span := b.tracer.Start(ctx, "run-ready-command")
+	defer span.End()
 
 	postProcessor.WriteMsg("Waiting for template to be ready")
 
