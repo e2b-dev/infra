@@ -41,7 +41,6 @@ func (b *TemplateBuilder) runReadyCommand(
 	defer cancel()
 
 	// Start the ready check
-wait:
 	for {
 		cwd := "/home/user"
 		err := b.runCommand(
@@ -55,9 +54,8 @@ wait:
 		)
 
 		if err == nil {
-			// Template is ready
-			cancel()
-			break wait
+			postProcessor.WriteMsg("Template is ready")
+			return nil
 		} else {
 			postProcessor.WriteMsg(fmt.Sprintf("Template is not ready: %v", err))
 		}
@@ -68,17 +66,12 @@ wait:
 				postProcessor.WriteMsg(fmt.Sprintf("Ready command timed out, exceeding %s", readyCommandTimeout))
 			}
 			// Template is ready, the start command finished before the ready command
-			break wait
+			postProcessor.WriteMsg("Template is ready")
+			return nil
 		case <-time.After(readyCommandRetryInterval):
 			// Wait for readyCommandRetryInterval time before retrying the ready command
 		}
 	}
-
-	// Cancel the context for the ready command if it is still running
-	cancel()
-	postProcessor.WriteMsg("Template is ready")
-
-	return nil
 }
 
 func getDefaultReadyCommand(template *TemplateConfig) string {
