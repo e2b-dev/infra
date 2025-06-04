@@ -255,8 +255,8 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	}
 
 	// Start command
-	readyCtx, readyCancel := context.WithCancel(ctx)
-	defer readyCancel()
+	commandsCtx, commandsCancel := context.WithCancel(ctx)
+	defer commandsCancel()
 
 	var startCmd errgroup.Group
 	if template.StartCmd != "" {
@@ -264,7 +264,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		startCmd.Go(func() error {
 			cwd := "/home/user"
 			err := b.runCommand(
-				ctx,
+				commandsCtx,
 				postProcessor,
 				"start",
 				sbx.Metadata.Config.SandboxId,
@@ -275,7 +275,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 			// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
 			if err != nil && !errors.Is(err, context.Canceled) {
 				// Cancel the ready command context, so the ready command does not wait anymore if an error occurs.
-				readyCancel()
+				commandsCancel()
 				return fmt.Errorf("error running start command: %w", err)
 			}
 
@@ -285,7 +285,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 
 	// Ready command
 	err = b.runReadyCommand(
-		readyCtx,
+		commandsCtx,
 		postProcessor,
 		template,
 		sbx.Metadata.Config.SandboxId,
@@ -296,7 +296,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 
 	// Cancel the start command context (it's running in the background anyway).
 	// If it has already finished, check the error.
-	readyCancel()
+	commandsCancel()
 	err = startCmd.Wait()
 	if err != nil {
 		return nil, fmt.Errorf("error running start command: %w", err)
