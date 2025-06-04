@@ -2,8 +2,8 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"time"
@@ -13,8 +13,10 @@ import (
 	"go.uber.org/zap"
 
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	orchestratorspool "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
-	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
+	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 )
 
@@ -36,12 +38,12 @@ const (
 
 var dnsClient = dns.Client{}
 
-func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
-	proxy := reverse_proxy.New(
+func NewClientProxy(port uint, catalog *sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (*reverseproxy.Proxy, error) {
+	proxy := reverseproxy.New(
 		port,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
-			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
+			sandboxId, port, err := reverseproxy.ParseHost(r.Host)
 			if err != nil {
 				return nil, err
 			}
@@ -53,44 +55,61 @@ func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 				zap.String("sandbox_req_path", r.URL.Path),
 			)
 
-			msg := new(dns.Msg)
-
-			// Set the question
-			msg.SetQuestion(fmt.Sprintf("%s.", sandboxId), dns.TypeA)
-
-			var node string
-			for i := range maxRetries {
-				// Send the query to the server
-				resp, _, dnsErr := dnsClient.Exchange(msg, dnsServer)
-
-				// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
-				if dnsErr != nil || len(resp.Answer) == 0 {
-					err = dnsErr
-					logger.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxId, err), zap.Error(err), zap.Int("retry", i+1))
-					// Jitter
-					time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
-
-					continue
-				}
-
-				node = resp.Answer[0].(*dns.A).A.String()
-
-				// The sandbox was not found, we want to return this information to the user
-				if node == "127.0.0.1" {
-					return nil, reverse_proxy.NewErrSandboxNotFound(sandboxId)
-				}
-
-				break
-			}
-
-			// There's no answer, we can't proxy the request
+			// todo: here we should for some time support both catalog and dns query
+			i, err := catalog.GetSandbox(sandboxId)
 			if err != nil {
-				logger.Error("DNS resolving for sandbox failed", l.WithSandboxID(sandboxId), zap.Error(err))
-
-				return nil, fmt.Errorf("DNS resolving for sandbox failed: %w", err)
+				if errors.Is(err, sandboxes.SandboxNotFoundError) {
+					return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+				}
 			}
 
-			logger = logger.With(zap.String("node", node))
+			o, err := orchestrators.GetOrchestrator(i.OrchestratorId)
+			if err != nil {
+				return nil, fmt.Errorf("orchestrator node not found: %w", err)
+			}
+
+			node := o.Ip
+
+			/*
+				msg := new(dns.Msg)
+
+				// Set the question
+				msg.SetQuestion(fmt.Sprintf("%s.", sandboxId), dns.TypeA)
+
+				var node string
+				for i := range maxRetries {
+					// Send the query to the server
+					resp, _, dnsErr := dnsClient.Exchange(msg, dnsServer)
+
+					// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
+					if dnsErr != nil || len(resp.Answer) == 0 {
+						err = dnsErr
+						logger.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxId, err), zap.Error(err), zap.Int("retry", i+1))
+						// Jitter
+						time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+
+						continue
+					}
+
+					node = resp.Answer[0].(*dns.A).A.String()
+
+					// The sandbox was not found, we want to return this information to the user
+					if node == "127.0.0.1" {
+						return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+					}
+
+					break
+				}
+
+				// There's no answer, we can't proxy the request
+				if err != nil {
+					logger.Error("DNS resolving for sandbox failed", l.WithSandboxID(sandboxId), zap.Error(err))
+
+					return nil, fmt.Errorf("DNS resolving for sandbox failed: %w", err)
+				}
+
+				logger = logger.With(zap.String("node", node))
+			*/
 
 			// We've resolved the node to proxy the request to
 			logger.Debug("Proxying request")

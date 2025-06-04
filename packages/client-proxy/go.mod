@@ -102,4 +102,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
+replace github.com/ugorji/go v1.1.4 => github.com/ugorji/go/codec v1.2.12
+
 replace github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
