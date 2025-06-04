@@ -27,6 +27,29 @@ func (b *TemplateBuilder) runCommand(
 	runAsUser string,
 	cwd *string,
 ) error {
+	return b.runCommandWithConfirmation(
+		ctx,
+		postProcessor,
+		id,
+		sandboxID,
+		command,
+		runAsUser,
+		cwd,
+		// No confirmation needed for this command
+		make(chan struct{}),
+	)
+}
+
+func (b *TemplateBuilder) runCommandWithConfirmation(
+	ctx context.Context,
+	postProcessor *writer.PostProcessor,
+	id string,
+	sandboxID string,
+	command string,
+	runAsUser string,
+	cwd *string,
+	confirmCh chan<- struct{},
+) error {
 	createAppReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd: "/bin/bash",
@@ -51,6 +74,8 @@ func (b *TemplateBuilder) runCommand(
 	processCtx, processCancel := context.WithCancel(ctx)
 	defer processCancel()
 	commandStream, err := processC.Start(processCtx, createAppReq)
+	// Confirm the command has executed before proceeding
+	close(confirmCh)
 	if err != nil {
 		return fmt.Errorf("error starting process: %w", err)
 	}

@@ -259,11 +259,12 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	defer commandsCancel()
 
 	var startCmd errgroup.Group
+	startCmdConfirm := make(chan struct{})
 	if template.StartCmd != "" {
 		postProcessor.WriteMsg("Running start command")
 		startCmd.Go(func() error {
 			cwd := "/home/user"
-			err := b.runCommand(
+			err := b.runCommandWithConfirmation(
 				commandsCtx,
 				postProcessor,
 				"start",
@@ -271,6 +272,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 				template.StartCmd,
 				"root",
 				&cwd,
+				startCmdConfirm,
 			)
 			// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
 			if err != nil && !errors.Is(err, context.Canceled) {
@@ -281,6 +283,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 
 			return nil
 		})
+	} else {
+		// If no start command is defined, we still need to confirm that the start command has started.
+		close(startCmdConfirm)
 	}
 
 	// Ready command
@@ -294,6 +299,12 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		return nil, fmt.Errorf("error running ready command: %w", err)
 	}
 
+	// Wait for the start command to start executing.
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("error waiting for start command: %w", commandsCtx.Err())
+	case <-startCmdConfirm:
+	}
 	// Cancel the start command context (it's running in the background anyway).
 	// If it has already finished, check the error.
 	commandsCancel()
