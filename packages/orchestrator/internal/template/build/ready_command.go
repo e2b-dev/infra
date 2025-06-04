@@ -32,6 +32,7 @@ func (b *TemplateBuilder) runReadyCommand(
 	}
 	postProcessor.WriteMsg(fmt.Sprintf("[ready cmd]: %s", template.ReadyCmd))
 
+	startTime := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, readyCommandTimeout)
 	defer cancel()
 
@@ -58,7 +59,7 @@ func (b *TemplateBuilder) runReadyCommand(
 		select {
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return fmt.Errorf("ready command timed out after %s: %w", readyCommandTimeout, ctx.Err())
+				return fmt.Errorf("ready command timed out after %s", time.Since(startTime))
 			}
 			// Template is ready, the start command finished before the ready command
 			postProcessor.WriteMsg("Template is ready")

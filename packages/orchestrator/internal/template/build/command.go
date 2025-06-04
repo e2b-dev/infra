@@ -50,16 +50,16 @@ func (b *TemplateBuilder) runCommand(
 
 	processCtx, processCancel := context.WithCancel(ctx)
 	defer processCancel()
-	createAppStream, err := processC.Start(processCtx, createAppReq)
+	commandStream, err := processC.Start(processCtx, createAppReq)
 	if err != nil {
 		return fmt.Errorf("error starting process: %w", err)
 	}
 	defer func() {
 		processCancel()
-		createAppStream.Close()
+		commandStream.Close()
 	}()
 
-	msgCh, msgErrCh := grpc.StreamToChannel(ctx, createAppStream)
+	msgCh, msgErrCh := grpc.StreamToChannel(ctx, commandStream)
 
 	for {
 		select {
