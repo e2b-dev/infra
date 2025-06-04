@@ -72,7 +72,7 @@ module "buckets" {
   gcp_project_id            = var.gcp_project_id
   gcp_region                = var.gcp_region
 
-  fc_template_bucket_name     = length(var.template_bucket_name) > 0 ? var.template_bucket_name : "${var.gcp_project_id}-fc-templates"
+  fc_template_bucket_name     = var.template_bucket_name != "" ? var.template_bucket_name : "${var.gcp_project_id}-fc-templates"
   fc_template_bucket_location = var.template_bucket_location
 
   labels = var.labels
