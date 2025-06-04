@@ -22,10 +22,12 @@ variable "server_machine_type" {
 
 variable "client_cluster_size" {
   type = number
+  default = 0
 }
 
 variable "client_regional_cluster_size" {
   type = number
+  default = 0
 }
 
 variable "client_cluster_auto_scaling_max" {
