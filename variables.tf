@@ -29,7 +29,8 @@ variable "client_regional_cluster_size" {
 }
 
 variable "client_cluster_auto_scaling_max" {
-  type = number
+  type    = number
+  default = 0
 }
 
 variable "client_machine_type" {
