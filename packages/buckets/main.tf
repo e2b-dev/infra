@@ -79,6 +79,20 @@ resource "google_storage_bucket" "fc_env_pipeline_bucket" {
   labels = var.labels
 }
 
+resource "google_storage_bucket" "clickhouse_bucket" {
+  name     = "${var.gcp_project_id}-clickhouse"
+  location = var.gcp_region
+
+  public_access_prevention    = "enforced"
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+
+  soft_delete_policy {
+    retention_duration_seconds = 0
+  }
+
+  labels = var.labels
+}
 
 resource "google_storage_bucket" "fc_template_bucket" {
   location = var.gcp_region
@@ -159,8 +173,6 @@ resource "google_storage_bucket_iam_member" "fc_template_bucket_iam_reader" {
   role   = "roles/storage.legacyBucketReader"
   member = "serviceAccount:${var.gcp_service_account_email}"
 }
-
-
 
 resource "google_storage_bucket" "public_builds_storage_bucket" {
   count    = var.gcp_project_id == "e2b-prod" ? 1 : 0

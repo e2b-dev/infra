@@ -21,11 +21,18 @@ variable "server_machine_type" {
 }
 
 variable "client_cluster_size" {
-  type = number
+  type    = number
+  default = 0
+}
+
+variable "client_regional_cluster_size" {
+  type    = number
+  default = 0
 }
 
 variable "client_cluster_auto_scaling_max" {
-  type = number
+  type    = number
+  default = 0
 }
 
 variable "client_machine_type" {
@@ -46,6 +53,57 @@ variable "build_cluster_size" {
 
 variable "build_machine_type" {
   type = string
+}
+
+variable "clickhouse_cluster_size" {
+  type = number
+}
+
+variable "clickhouse_machine_type" {
+  type = string
+}
+
+variable "clickhouse_database_name" {
+  description = "The name of the ClickHouse database to create."
+  type        = string
+  default     = "default"
+}
+
+variable "clickhouse_job_constraint_prefix" {
+  description = "The prefix to use for the job constraint of the instance in the metadata."
+  type        = string
+  default     = "clickhouse"
+}
+
+variable "clickhouse_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
+  default     = "clickhouse"
+}
+
+variable "clickhouse_server_service_port" {
+  type = object({
+    name = string
+    port = number
+  })
+  default = {
+    name = "clickhouse"
+    port = 9000
+  }
+}
+
+
+variable "clickhouse_health_port" {
+  type = object({
+    name = string
+    port = number
+    path = string
+  })
+  default = {
+    name = "clickhouse-health"
+    port = 8123
+    path = "/health"
+  }
 }
 
 variable "client_proxy_health_port" {
@@ -214,6 +272,7 @@ variable "template_bucket_location" {
 variable "template_bucket_name" {
   type        = string
   description = "The name of the FC template bucket"
+  default     = ""
 }
 
 variable "redis_managed" {

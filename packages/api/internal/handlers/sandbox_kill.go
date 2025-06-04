@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
@@ -28,26 +29,39 @@ func (a *APIStore) deleteSnapshot(
 		return err
 	}
 
-	envBuildIDs := make([]template_manager.DeleteBuild, 0)
-	for _, build := range builds {
-		envBuildIDs = append(
-			envBuildIDs,
-			template_manager.DeleteBuild{
-				BuildID:    build.ID,
-				TemplateId: *build.EnvID,
-			},
-		)
-	}
-
 	dbErr := a.db.DeleteEnv(ctx, env.ID)
 	if dbErr != nil {
 		return fmt.Errorf("error deleting env from db: %w", dbErr)
 	}
 
-	deleteJobErr := a.templateManager.DeleteBuilds(ctx, envBuildIDs)
-	if deleteJobErr != nil {
-		return fmt.Errorf("error deleting builds from storage: %w", deleteJobErr)
-	}
+	go func() {
+		// remove any snapshots when the sandbox is not running
+		deleteCtx, span := a.Tracer.Start(context.Background(), "delete-snapshot")
+		defer span.End()
+		span.SetAttributes(attribute.String("sandbox.id", sandboxID))
+		span.SetAttributes(attribute.String("env.id", env.ID))
+
+		envBuildIDs := make([]template_manager.DeleteBuild, 0)
+		for _, build := range builds {
+			envBuildIDs = append(
+				envBuildIDs,
+				template_manager.DeleteBuild{
+					BuildID:    build.ID,
+					TemplateId: *build.EnvID,
+				},
+			)
+		}
+
+		if len(envBuildIDs) == 0 {
+			return
+		}
+
+		deleteJobErr := a.templateManager.DeleteBuilds(deleteCtx, envBuildIDs)
+		if deleteJobErr != nil {
+			zap.L().Warn("Error deleting snapshot builds", zap.Error(deleteJobErr), zap.String("sandboxID", sandboxID))
+			telemetry.ReportError(deleteCtx, deleteJobErr)
+		}
+	}()
 
 	a.templateCache.Invalidate(env.ID)
 

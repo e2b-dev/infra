@@ -20,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -123,13 +122,11 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 	}
 
 	templateStorage := template.NewStorage(persistence)
-	buildCache := cache.NewBuildCache()
 	builder := build.NewBuilder(
 		logger,
 		logger,
 		tracer,
 		templateStorage,
-		buildCache,
 		persistence,
 		artifactRegistry,
 		devicePool,
@@ -137,11 +134,6 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		sandboxProxy,
 		sandboxes,
 	)
-
-	err = buildCache.Create(buildID, templateID)
-	if err != nil {
-		return fmt.Errorf("error while creating build cache: %w", err)
-	}
 
 	logsWriter := writer.New(
 		logger.

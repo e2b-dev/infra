@@ -48,6 +48,7 @@ func New(info *service.ServiceInfo) *GRPCServer {
 		logger.HealthCheckRoute,
 		"/TemplateService/TemplateBuildStatus",
 		"/TemplateService/HealthStatus",
+		"/InfoService/ServiceInfo",
 	)
 	srv := grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{

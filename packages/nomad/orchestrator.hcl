@@ -47,7 +47,7 @@ if [ "{{with nomadVar "nomad/jobs" }}{{ .latest_orchestrator_job_id }}{{ end }}"
 fi
 EOT
       }
-      
+
       config {
         command = "local/check-placement.sh"
       }

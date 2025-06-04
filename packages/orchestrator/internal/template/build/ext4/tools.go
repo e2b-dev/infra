@@ -82,9 +82,9 @@ func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, b
 
 func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
 	logMetadata(rootfsPath)
-	args := "-nf"
+	args := "-nfv"
 	if fix {
-		args = "-pf"
+		args = "-pfv"
 	}
 	cmd := exec.Command("e2fsck", args, rootfsPath)
 	out, err := cmd.CombinedOutput()
@@ -93,6 +93,34 @@ func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
 	}
 
 	return strings.TrimSpace(string(out)), nil
+}
+
+func ReadFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, filePath string) (string, error) {
+	_, statSpan := tracer.Start(ctx, "ext4-read-file")
+	defer statSpan.End()
+
+	cmd := exec.Command("debugfs", "-R", fmt.Sprintf("cat \"%s\"", filePath), rootfsPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return "1", fmt.Errorf("error reading file: %w", err)
+	}
+
+	return string(out), nil
+}
+
+func RemoveFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, filePath string) error {
+	_, statSpan := tracer.Start(ctx, "ext4-remove-file")
+	defer statSpan.End()
+
+	// -w is used to open the filesystem in writable mode
+	cmd := exec.Command("debugfs", "-w", "-R", fmt.Sprintf("rm \"%s\"", filePath), rootfsPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		zap.L().Error("error removing file", zap.Error(err), zap.String("output", string(out)))
+		return fmt.Errorf("error removing file: %w", err)
+	}
+
+	return nil
 }
 
 func logMetadata(rootfsPath string) {
