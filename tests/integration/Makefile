@@ -54,8 +54,7 @@ connect-orchestrator:
 	CLIENT_IG=$$(gcloud compute instance-groups list \
 		--project=$(GCP_PROJECT_ID) \
 		--filter="name~'^.*client.*'" \
-		--format='value(name)' \
-		--zones=$(GCP_ZONE) | head -n1) && \
+		--format='value(name)' | head -n1) && \
 	INSTANCE_INFO=$$(gcloud compute instance-groups list-instances "$$CLIENT_IG" --project=$(GCP_PROJECT_ID) --zone=$(GCP_ZONE) --format='value(instance,zone)' | head -n1) && \
 	INSTANCE_ID=$$(echo "$$INSTANCE_INFO" | awk '{print $$1}') && \
 	INSTANCE_ZONE=$$(echo "$$INSTANCE_INFO" | awk '{print $$2}') && \
