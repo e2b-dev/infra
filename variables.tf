@@ -21,12 +21,12 @@ variable "server_machine_type" {
 }
 
 variable "client_cluster_size" {
-  type = number
+  type    = number
   default = 0
 }
 
 variable "client_regional_cluster_size" {
-  type = number
+  type    = number
   default = 0
 }
 
@@ -272,6 +272,7 @@ variable "template_bucket_location" {
 variable "template_bucket_name" {
   type        = string
   description = "The name of the FC template bucket"
+  default     = ""
 }
 
 variable "redis_managed" {
