@@ -8,6 +8,7 @@ TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
 
 # Set the terraform environment variable only if the environment variable is set
+# Strip the passed variable name (it's space sensitive) and check if the variable is set, if yes return TF_VAR_<variable_name>=<value>
 define tfvar
 $(if $(value $(strip $(1))), TF_VAR_$(shell echo $(strip $(1)) | tr A-Z a-z)=$($(strip $(1))))
 endef
