@@ -303,12 +303,6 @@ data "google_storage_bucket_object" "orchestrator" {
   bucket = var.fc_env_pipeline_bucket_name
 }
 
-
-data "google_compute_machine_types" "client" {
-  zone   = var.gcp_zone
-  filter = "name = \"${var.client_machine_type}\""
-}
-
 data "external" "orchestrator_checksum" {
   program = ["bash", "${path.module}/checksum.sh"]
 
@@ -320,7 +314,6 @@ data "external" "orchestrator_checksum" {
 
 locals {
   orchestrator_envs = {
-    gcp_zone         = var.gcp_zone
     port             = var.orchestrator_port
     proxy_port       = var.orchestrator_proxy_port
     environment      = var.environment

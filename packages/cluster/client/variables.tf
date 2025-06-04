@@ -8,6 +8,11 @@ variable "environment" {
   type        = string
 }
 
+variable "gcp_region" {
+  description = "The GCP region in which the server cluster will be created (e.g. us-central1-a)."
+  type        = string
+}
+
 variable "gcp_zone" {
   description = "The GCP zone in which the server cluster will be created (e.g. us-central1-a)."
   type        = string
@@ -24,7 +29,12 @@ variable "machine_type" {
 }
 
 variable "cluster_size" {
-  description = "The number of nodes to have in the Nomad cluster. We strongly recommended that you use either 3 or 5."
+  description = "The number of nodes to have in the client cluster."
+  type        = number
+}
+
+variable "regional_cluster_size" {
+  description = "The number of nodes to have in the regional cluster."
   type        = number
 }
 

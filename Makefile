@@ -5,36 +5,39 @@ ENV_FILE := $(PWD)/.env.${ENV}
 
 TF := $(shell which terraform)
 TERRAFORM_STATE_BUCKET ?= $(GCP_PROJECT_ID)-terraform-state
-OTEL_TRACING_PRINT ?= false
 TEMPLATE_BUCKET_LOCATION ?= $(GCP_REGION)
-CLIENT_CLUSTER_AUTO_SCALING_MAX ?= 0
-REDIS_MANAGED ?= false
-GRAFANA_MANAGED ?= false
 
-tf_vars := TF_VAR_client_machine_type=$(CLIENT_MACHINE_TYPE) \
-	TF_VAR_client_cluster_size=$(CLIENT_CLUSTER_SIZE) \
-	TF_VAR_client_cluster_auto_scaling_max=$(CLIENT_CLUSTER_AUTO_SCALING_MAX) \
-	TF_VAR_api_machine_type=$(API_MACHINE_TYPE) \
-	TF_VAR_api_cluster_size=$(API_CLUSTER_SIZE) \
-	TF_VAR_build_machine_type=$(BUILD_MACHINE_TYPE) \
-	TF_VAR_build_cluster_size=$(BUILD_CLUSTER_SIZE) \
-	TF_VAR_server_machine_type=$(SERVER_MACHINE_TYPE) \
-	TF_VAR_server_cluster_size=$(SERVER_CLUSTER_SIZE) \
-	TF_VAR_clickhouse_cluster_size=$(CLICKHOUSE_CLUSTER_SIZE) \
-	TF_VAR_clickhouse_machine_type=$(CLICKHOUSE_MACHINE_TYPE) \
-	TF_VAR_gcp_project_id=$(GCP_PROJECT_ID) \
-	TF_VAR_gcp_region=$(GCP_REGION) \
-	TF_VAR_gcp_zone=$(GCP_ZONE) \
-	TF_VAR_domain_name=$(DOMAIN_NAME) \
-	TF_VAR_additional_domains=$(ADDITIONAL_DOMAINS) \
-	TF_VAR_prefix=$(PREFIX) \
-	TF_VAR_terraform_state_bucket=$(TERRAFORM_STATE_BUCKET) \
-	TF_VAR_otel_tracing_print=$(OTEL_TRACING_PRINT) \
-	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
-	TF_VAR_template_bucket_name=$(TEMPLATE_BUCKET_NAME) \
-	TF_VAR_template_bucket_location=$(TEMPLATE_BUCKET_LOCATION) \
-	TF_VAR_redis_managed=$(REDIS_MANAGED) \
-	TF_VAR_grafana_managed=$(GRAFANA_MANAGED)
+# Set the terraform environment variable only if the environment variable is set
+# Strip the passed variable name (it's space sensitive) and check if the variable is set, if yes return TF_VAR_<variable_name>=<value> with the variable name in lower case
+define tfvar
+$(if $(value $(strip $(1))), TF_VAR_$(shell echo $(strip $(1)) | tr A-Z a-z)=$($(strip $(1))))
+endef
+
+tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
+	$(call tfvar, CLIENT_MACHINE_TYPE) \
+	$(call tfvar, CLIENT_CLUSTER_SIZE) \
+	$(call tfvar, CLIENT_REGIONAL_CLUSTER_SIZE) \
+	$(call tfvar, CLIENT_CLUSTER_AUTO_SCALING_MAX) \
+	$(call tfvar, API_MACHINE_TYPE) \
+	$(call tfvar, API_CLUSTER_SIZE) \
+	$(call tfvar, BUILD_MACHINE_TYPE) \
+	$(call tfvar, BUILD_CLUSTER_SIZE) \
+	$(call tfvar, SERVER_MACHINE_TYPE) \
+	$(call tfvar, SERVER_CLUSTER_SIZE) \
+	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \
+	$(call tfvar, CLICKHOUSE_MACHINE_TYPE) \
+	$(call tfvar, GCP_PROJECT_ID) \
+	$(call tfvar, GCP_REGION) \
+	$(call tfvar, GCP_ZONE) \
+	$(call tfvar, DOMAIN_NAME) \
+	$(call tfvar, ADDITIONAL_DOMAINS) \
+	$(call tfvar, PREFIX) \
+	$(call tfvar, TERRAFORM_STATE_BUCKET) \
+	$(call tfvar, OTEL_TRACING_PRINT) \
+	$(call tfvar, TEMPLATE_BUCKET_NAME) \
+	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
+	$(call tfvar, REDIS_MANAGED) \
+	$(call tfvar, GRAFANA_MANAGED)
 
 # Login for Packer and Docker (uses gcloud user creds)
 # Login for Terraform (uses application default creds)

@@ -7,11 +7,6 @@ variable "environment" {
   type        = string
 }
 
-variable "notification_email_secret_version" {
-  # we're just using this variable to propagate the whole dependency
-  type = any
-}
-
 variable "cloudflare_api_token_secret_name" {
   type = string
 }
@@ -111,6 +106,9 @@ variable "client_cluster_size" {
   type = number
 }
 
+variable "client_regional_cluster_size" {
+  type = number
+}
 
 variable "client_cluster_auto_scaling_max" {
   type = number

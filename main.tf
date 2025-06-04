@@ -91,6 +91,7 @@ module "cluster" {
 
   server_cluster_size             = var.server_cluster_size
   client_cluster_size             = var.client_cluster_size
+  client_regional_cluster_size    = var.client_regional_cluster_size
   client_cluster_auto_scaling_max = var.client_cluster_auto_scaling_max
   api_cluster_size                = var.api_cluster_size
   build_cluster_size              = var.build_cluster_size
@@ -126,8 +127,6 @@ module "cluster" {
 
   consul_acl_token_secret = module.init.consul_acl_token_secret
   nomad_acl_token_secret  = module.init.nomad_acl_token_secret
-
-  notification_email_secret_version = module.init.notification_email_secret_version
 
   labels = var.labels
   prefix = var.prefix
