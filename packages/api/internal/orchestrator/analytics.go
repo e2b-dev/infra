@@ -23,6 +23,9 @@ func (o *Orchestrator) reportLongRunningSandboxes(parentCtx context.Context) {
 
 	for {
 		select {
+		case <-parentCtx.Done():
+			zap.L().Info("Stopping node analytics reporting due to context cancellation")
+			return
 		case <-ticker.C:
 			ctx, cancel := context.WithTimeout(parentCtx, syncAnalyticsTime)
 
@@ -34,17 +37,14 @@ func (o *Orchestrator) reportLongRunningSandboxes(parentCtx context.Context) {
 				}
 			}
 
-			reportNodeAnalytics(ctx, o.analytics, longRunningSandboxes)
+			sendAnalyticsForLongRunningSandboxes(ctx, o.analytics, longRunningSandboxes)
 			cancel()
-		case <-parentCtx.Done():
-			zap.L().Info("Stopping node analytics reporting due to context cancellation")
-			return
 		}
 	}
 }
 
-// reportNodeAnalytics sends long-running instances event to analytics
-func reportNodeAnalytics(ctx context.Context, analytics *analyticscollector.Analytics, instances []*instance.InstanceInfo) {
+// sendAnalyticsForLongRunningSandboxes sends long-running instances event to analytics
+func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyticscollector.Analytics, instances []*instance.InstanceInfo) {
 	instanceIds := make([]string, len(instances))
 	executionIds := make([]string, len(instances))
 	for idx, i := range instances {
