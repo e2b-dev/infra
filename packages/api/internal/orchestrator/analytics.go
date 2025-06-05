@@ -27,8 +27,6 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 			zap.L().Info("Stopping node analytics reporting due to context cancellation")
 			return
 		case <-ticker.C:
-			childCtx, cancel := context.WithTimeout(ctx, syncAnalyticsTime)
-
 			sandboxes := o.instanceCache.Items()
 			longRunningSandboxes := make([]*instance.InstanceInfo, 0, len(sandboxes))
 			for _, sandbox := range sandboxes {
@@ -37,8 +35,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 				}
 			}
 
-			sendAnalyticsForLongRunningSandboxes(childCtx, o.analytics, longRunningSandboxes)
-			cancel()
+			sendAnalyticsForLongRunningSandboxes(ctx, o.analytics, longRunningSandboxes)
 		}
 	}
 }
@@ -50,6 +47,9 @@ func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyt
 		return
 	}
 
+	childCtx, cancel := context.WithTimeout(ctx, syncAnalyticsTime)
+	defer cancel()
+
 	instanceIds := make([]string, len(instances))
 	executionIds := make([]string, len(instances))
 	for idx, i := range instances {
@@ -57,7 +57,13 @@ func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyt
 		executionIds[idx] = i.ExecutionID
 	}
 
-	_, err := analytics.Client.RunningInstances(ctx, &analyticscollector.RunningInstancesEvent{InstanceIds: instanceIds, ExecutionIds: executionIds, Timestamp: timestamppb.Now()})
+	_, err := analytics.Client.RunningInstances(childCtx,
+		&analyticscollector.RunningInstancesEvent{
+			InstanceIds:  instanceIds,
+			ExecutionIds: executionIds,
+			Timestamp:    timestamppb.Now(),
+		},
+	)
 	if err != nil {
 		zap.L().Error("error sending running instances event to analytics", zap.Error(err))
 	}
