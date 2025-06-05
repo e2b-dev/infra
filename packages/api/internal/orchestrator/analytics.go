@@ -17,17 +17,17 @@ const (
 	oldSandboxThreshold = 30 * time.Minute // Threshold to consider a sandbox as old
 )
 
-func (o *Orchestrator) reportLongRunningSandboxes(parentCtx context.Context) {
+func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 	ticker := time.NewTicker(syncAnalyticsTime)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-parentCtx.Done():
+		case <-ctx.Done():
 			zap.L().Info("Stopping node analytics reporting due to context cancellation")
 			return
 		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(parentCtx, syncAnalyticsTime)
+			childCtx, cancel := context.WithTimeout(ctx, syncAnalyticsTime)
 
 			sandboxes := o.instanceCache.Items()
 			longRunningSandboxes := make([]*instance.InstanceInfo, 0, len(sandboxes))
@@ -37,7 +37,7 @@ func (o *Orchestrator) reportLongRunningSandboxes(parentCtx context.Context) {
 				}
 			}
 
-			sendAnalyticsForLongRunningSandboxes(ctx, o.analytics, longRunningSandboxes)
+			sendAnalyticsForLongRunningSandboxes(childCtx, o.analytics, longRunningSandboxes)
 			cancel()
 		}
 	}
