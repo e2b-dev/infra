@@ -45,6 +45,11 @@ func (o *Orchestrator) reportLongRunningSandboxes(ctx context.Context) {
 
 // sendAnalyticsForLongRunningSandboxes sends long-running instances event to analytics
 func sendAnalyticsForLongRunningSandboxes(ctx context.Context, analytics *analyticscollector.Analytics, instances []*instance.InstanceInfo) {
+	if len(instances) == 0 {
+		zap.L().Debug("No long-running instances to report to analytics")
+		return
+	}
+
 	instanceIds := make([]string, len(instances))
 	executionIds := make([]string, len(instances))
 	for idx, i := range instances {
