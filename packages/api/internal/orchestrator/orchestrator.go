@@ -101,7 +101,7 @@ func New(
 		}
 	} else {
 		go o.keepInSync(ctx, cache)
-		go o.startNodeAnalytics(ctx)
+		go o.reportLongRunningSandboxes(ctx)
 	}
 
 	go o.startStatusLogging(ctx)
