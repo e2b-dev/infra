@@ -1,5 +1,4 @@
 job "logs-collector" {
-  datacenters = ["${gcp_zone}"]
   type        = "system"
   node_pool    = "all"
 
