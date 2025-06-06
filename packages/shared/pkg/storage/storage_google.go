@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"time"
 
@@ -46,22 +45,8 @@ type GCPBucketStorageProviderOptions struct {
 	transportProxy *proxyTransport
 }
 
-type GCPBucketStorageProviderOption func(*GCPBucketStorageProviderOptions)
-
-func WithProxy(proxyURL string) GCPBucketStorageProviderOption {
-	return func(o *GCPBucketStorageProviderOptions) {
-		o.transportProxy = newProxyTransport(proxyURL)
-	}
-}
-
-func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, opts ...GCPBucketStorageProviderOption) (*GCPBucketStorageProvider, error) {
-	var providerOptions GCPBucketStorageProviderOptions
-
-	for _, opt := range opts {
-		opt(&providerOptions)
-	}
-
-	// Create the legact GCP storage client with proper credentials
+func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, proxyURL string) (*GCPBucketStorageProvider, error) {
+	// Create the legacy GCP storage client with proper credentials
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
@@ -71,11 +56,11 @@ func NewGCPBucketStorageProvider(ctx context.Context, bucketName string, opts ..
 		bucket: client.Bucket(bucketName),
 	}
 
-	if providerOptions.transportProxy != nil {
+	if proxyURL != "" {
 		// We need to create a transport this way to set up the credentials.
-		ht, err := htransport.NewTransport(ctx, providerOptions.transportProxy)
+		ht, err := htransport.NewTransport(ctx, newProxyTransport(proxyURL))
 		if err != nil {
-			return nil, fmt.Errorf("failed to create GCS client: %w", err)
+			return nil, fmt.Errorf("failed to create proxy transport: %w", err)
 		}
 
 		httpClient := &http.Client{
@@ -120,8 +105,6 @@ func (g *GCPBucketStorageProvider) GetDetails() string {
 }
 
 func (g *GCPBucketStorageProvider) OpenObject(ctx context.Context, path string) (StorageObjectProvider, error) {
-	fmt.Fprintf(os.Stderr, "OpenObject: %s\n", path)
-
 	handle := g.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -165,25 +148,28 @@ func (g *GCPBucketStorageObjectProvider) Size() (int64, error) {
 	return attrs.Size, nil
 }
 func (g *GCPBucketStorageObjectProvider) ReadAt(buff []byte, off int64) (n int, err error) {
-	if g.proxiedHandle != nil {
-		n, err := g.readAt(buff, off, false)
-		if err != nil {
-			zap.L().Error("ReadAt: proxied handle failed, falling back to non-proxied handle", zap.String("path", g.path), zap.Bool("proxied", false), zap.Int64("off", off), zap.Int("len(buff)", len(buff)), zap.Error(err))
-			return g.readAt(buff, off, true)
-		}
-		return n, nil
+	if g.proxiedHandle == nil {
+		return g.readAt(buff, off, false)
 	}
 
-	return g.readAt(buff, off, false)
+	n, err = g.readAt(buff, off, true)
+	if err != nil {
+		zap.L().Warn("ReadAt: proxied handle failed, falling back to non-proxied handle", zap.String("path", g.path), zap.Bool("proxied", false), zap.Int64("off", off), zap.Int("len(buff)", len(buff)), zap.Error(err))
+		n, err = g.readAt(buff, off, false)
+		if err != nil {
+			zap.L().Warn("ReadAt: non-proxied handle failed", zap.String("path", g.path), zap.Bool("proxied", false), zap.Int64("off", off), zap.Int("len(buff)", len(buff)), zap.Error(err))
+		}
+		return n, err
+	}
+
+	return n, nil
 }
 
 func (g *GCPBucketStorageObjectProvider) readAt(buff []byte, off int64, proxied bool) (n int, err error) {
-	zap.L().Debug("Reading at GCS", zap.String("path", g.path), zap.Int64("off", off), zap.Int("len(buff)", len(buff)), zap.Bool("proxied", proxied))
 	ctx, cancel := context.WithTimeout(g.ctx, googleReadTimeout)
 	defer cancel()
 
 	var reader *storage.Reader
-	// The file should not be gzip compressed
 	if proxied {
 		reader, err = g.proxiedHandle.NewRangeReader(ctx, off, int64(len(buff)))
 	} else {
@@ -191,6 +177,7 @@ func (g *GCPBucketStorageObjectProvider) readAt(buff []byte, off int64, proxied 
 	}
 
 	if err != nil {
+		zap.L().Error("ReadAt: failed to create GCS reader", zap.String("path", g.path), zap.Bool("proxied", proxied), zap.Int64("off", off), zap.Int("len(buff)", len(buff)), zap.Error(err))
 		return 0, fmt.Errorf("failed to create GCS reader: %w", err)
 	}
 
@@ -215,16 +202,16 @@ func (g *GCPBucketStorageObjectProvider) readAt(buff []byte, off int64, proxied 
 }
 
 func (g *GCPBucketStorageObjectProvider) ReadFrom(src io.Reader) (int64, error) {
-	if g.proxiedHandle != nil {
-		n, err := g.readFrom(src, true)
-		if err != nil {
-			zap.L().Error("ReadFrom: proxied handle failed, falling back to non-proxied handle", zap.String("path", g.path), zap.Error(err))
-			return g.readFrom(src, false)
-		}
-		return n, nil
+	if g.proxiedHandle == nil {
+		return g.readFrom(src, false)
 	}
 
-	return g.readFrom(src, false)
+	n, err := g.readFrom(src, true)
+	if err != nil {
+		zap.L().Error("ReadFrom: proxied handle failed, falling back to non-proxied handle", zap.String("path", g.path), zap.Error(err))
+		return g.readFrom(src, false)
+	}
+	return n, nil
 }
 
 func (g *GCPBucketStorageObjectProvider) readFrom(src io.Reader, proxied bool) (int64, error) {
