@@ -159,6 +159,10 @@ variable "clickhouse_bucket_name" {
   type = string
 }
 
+variable "template_cache_proxy_url" {
+  type = string
+}
+
 variable "loki_bucket_name" {
   type = string
 }

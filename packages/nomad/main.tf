@@ -325,6 +325,7 @@ locals {
     logs_collector_public_ip     = var.logs_proxy_address
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
+    template_cache_proxy_url     = var.template_cache_proxy_url
     otel_collector_grpc_endpoint = "localhost:4317"
     clickhouse_connection_string = "clickhouse.service.consul:9000"
     clickhouse_username          = var.clickhouse_username
@@ -407,6 +408,7 @@ resource "nomad_job" "template_manager" {
     template_manager_checksum    = data.external.template_manager.result.hex
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
+    template_cache_proxy_url     = var.template_cache_proxy_url
     otel_collector_grpc_endpoint = "localhost:4317"
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
     logs_collector_public_ip     = var.logs_proxy_address

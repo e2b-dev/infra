@@ -289,6 +289,12 @@ variable "template_bucket_name" {
   default     = ""
 }
 
+variable "template_cache_proxy_url" {
+  type        = string
+  description = "The URL of the template cache proxy"
+  default     = ""
+}
+
 variable "redis_managed" {
   default = false
   type    = bool
