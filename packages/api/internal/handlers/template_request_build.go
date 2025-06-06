@@ -169,6 +169,10 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		telemetry.SetAttributes(ctx, attribute.String("env.start_cmd", *body.StartCmd))
 	}
 
+	if body.ReadyCmd != nil {
+		telemetry.SetAttributes(ctx, attribute.String("env.ready_cmd", *body.ReadyCmd))
+	}
+
 	if body.CpuCount != nil {
 		telemetry.SetAttributes(ctx, attribute.Int("env.cpu", int(*body.CpuCount)))
 	}
@@ -258,6 +262,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		SetFirecrackerVersion(schema.DefaultFirecrackerVersion).
 		SetFreeDiskSizeMB(tier.DiskMb).
 		SetNillableStartCmd(body.StartCmd).
+		SetNillableReadyCmd(body.ReadyCmd).
 		SetDockerfile(body.Dockerfile).
 		Exec(ctx)
 	if err != nil {

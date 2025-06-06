@@ -123,6 +123,20 @@ func (ebc *EnvBuildCreate) SetNillableStartCmd(s *string) *EnvBuildCreate {
 	return ebc
 }
 
+// SetReadyCmd sets the "ready_cmd" field.
+func (ebc *EnvBuildCreate) SetReadyCmd(s string) *EnvBuildCreate {
+	ebc.mutation.SetReadyCmd(s)
+	return ebc
+}
+
+// SetNillableReadyCmd sets the "ready_cmd" field if the given value is not nil.
+func (ebc *EnvBuildCreate) SetNillableReadyCmd(s *string) *EnvBuildCreate {
+	if s != nil {
+		ebc.SetReadyCmd(*s)
+	}
+	return ebc
+}
+
 // SetVcpu sets the "vcpu" field.
 func (ebc *EnvBuildCreate) SetVcpu(i int64) *EnvBuildCreate {
 	ebc.mutation.SetVcpu(i)
@@ -357,6 +371,10 @@ func (ebc *EnvBuildCreate) createSpec() (*EnvBuild, *sqlgraph.CreateSpec) {
 		_spec.SetField(envbuild.FieldStartCmd, field.TypeString, value)
 		_node.StartCmd = &value
 	}
+	if value, ok := ebc.mutation.ReadyCmd(); ok {
+		_spec.SetField(envbuild.FieldReadyCmd, field.TypeString, value)
+		_node.ReadyCmd = &value
+	}
 	if value, ok := ebc.mutation.Vcpu(); ok {
 		_spec.SetField(envbuild.FieldVcpu, field.TypeInt64, value)
 		_node.Vcpu = value
@@ -548,6 +566,24 @@ func (u *EnvBuildUpsert) UpdateStartCmd() *EnvBuildUpsert {
 // ClearStartCmd clears the value of the "start_cmd" field.
 func (u *EnvBuildUpsert) ClearStartCmd() *EnvBuildUpsert {
 	u.SetNull(envbuild.FieldStartCmd)
+	return u
+}
+
+// SetReadyCmd sets the "ready_cmd" field.
+func (u *EnvBuildUpsert) SetReadyCmd(v string) *EnvBuildUpsert {
+	u.Set(envbuild.FieldReadyCmd, v)
+	return u
+}
+
+// UpdateReadyCmd sets the "ready_cmd" field to the value that was provided on create.
+func (u *EnvBuildUpsert) UpdateReadyCmd() *EnvBuildUpsert {
+	u.SetExcluded(envbuild.FieldReadyCmd)
+	return u
+}
+
+// ClearReadyCmd clears the value of the "ready_cmd" field.
+func (u *EnvBuildUpsert) ClearReadyCmd() *EnvBuildUpsert {
+	u.SetNull(envbuild.FieldReadyCmd)
 	return u
 }
 
@@ -831,6 +867,27 @@ func (u *EnvBuildUpsertOne) UpdateStartCmd() *EnvBuildUpsertOne {
 func (u *EnvBuildUpsertOne) ClearStartCmd() *EnvBuildUpsertOne {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.ClearStartCmd()
+	})
+}
+
+// SetReadyCmd sets the "ready_cmd" field.
+func (u *EnvBuildUpsertOne) SetReadyCmd(v string) *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetReadyCmd(v)
+	})
+}
+
+// UpdateReadyCmd sets the "ready_cmd" field to the value that was provided on create.
+func (u *EnvBuildUpsertOne) UpdateReadyCmd() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateReadyCmd()
+	})
+}
+
+// ClearReadyCmd clears the value of the "ready_cmd" field.
+func (u *EnvBuildUpsertOne) ClearReadyCmd() *EnvBuildUpsertOne {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.ClearReadyCmd()
 	})
 }
 
@@ -1301,6 +1358,27 @@ func (u *EnvBuildUpsertBulk) UpdateStartCmd() *EnvBuildUpsertBulk {
 func (u *EnvBuildUpsertBulk) ClearStartCmd() *EnvBuildUpsertBulk {
 	return u.Update(func(s *EnvBuildUpsert) {
 		s.ClearStartCmd()
+	})
+}
+
+// SetReadyCmd sets the "ready_cmd" field.
+func (u *EnvBuildUpsertBulk) SetReadyCmd(v string) *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.SetReadyCmd(v)
+	})
+}
+
+// UpdateReadyCmd sets the "ready_cmd" field to the value that was provided on create.
+func (u *EnvBuildUpsertBulk) UpdateReadyCmd() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.UpdateReadyCmd()
+	})
+}
+
+// ClearReadyCmd clears the value of the "ready_cmd" field.
+func (u *EnvBuildUpsertBulk) ClearReadyCmd() *EnvBuildUpsertBulk {
+	return u.Update(func(s *EnvBuildUpsert) {
+		s.ClearReadyCmd()
 	})
 }
 

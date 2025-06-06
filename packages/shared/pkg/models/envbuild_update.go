@@ -139,6 +139,26 @@ func (ebu *EnvBuildUpdate) ClearStartCmd() *EnvBuildUpdate {
 	return ebu
 }
 
+// SetReadyCmd sets the "ready_cmd" field.
+func (ebu *EnvBuildUpdate) SetReadyCmd(s string) *EnvBuildUpdate {
+	ebu.mutation.SetReadyCmd(s)
+	return ebu
+}
+
+// SetNillableReadyCmd sets the "ready_cmd" field if the given value is not nil.
+func (ebu *EnvBuildUpdate) SetNillableReadyCmd(s *string) *EnvBuildUpdate {
+	if s != nil {
+		ebu.SetReadyCmd(*s)
+	}
+	return ebu
+}
+
+// ClearReadyCmd clears the value of the "ready_cmd" field.
+func (ebu *EnvBuildUpdate) ClearReadyCmd() *EnvBuildUpdate {
+	ebu.mutation.ClearReadyCmd()
+	return ebu
+}
+
 // SetVcpu sets the "vcpu" field.
 func (ebu *EnvBuildUpdate) SetVcpu(i int64) *EnvBuildUpdate {
 	ebu.mutation.ResetVcpu()
@@ -372,6 +392,12 @@ func (ebu *EnvBuildUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if ebu.mutation.StartCmdCleared() {
 		_spec.ClearField(envbuild.FieldStartCmd, field.TypeString)
 	}
+	if value, ok := ebu.mutation.ReadyCmd(); ok {
+		_spec.SetField(envbuild.FieldReadyCmd, field.TypeString, value)
+	}
+	if ebu.mutation.ReadyCmdCleared() {
+		_spec.ClearField(envbuild.FieldReadyCmd, field.TypeString)
+	}
 	if value, ok := ebu.mutation.Vcpu(); ok {
 		_spec.SetField(envbuild.FieldVcpu, field.TypeInt64, value)
 	}
@@ -571,6 +597,26 @@ func (ebuo *EnvBuildUpdateOne) SetNillableStartCmd(s *string) *EnvBuildUpdateOne
 // ClearStartCmd clears the value of the "start_cmd" field.
 func (ebuo *EnvBuildUpdateOne) ClearStartCmd() *EnvBuildUpdateOne {
 	ebuo.mutation.ClearStartCmd()
+	return ebuo
+}
+
+// SetReadyCmd sets the "ready_cmd" field.
+func (ebuo *EnvBuildUpdateOne) SetReadyCmd(s string) *EnvBuildUpdateOne {
+	ebuo.mutation.SetReadyCmd(s)
+	return ebuo
+}
+
+// SetNillableReadyCmd sets the "ready_cmd" field if the given value is not nil.
+func (ebuo *EnvBuildUpdateOne) SetNillableReadyCmd(s *string) *EnvBuildUpdateOne {
+	if s != nil {
+		ebuo.SetReadyCmd(*s)
+	}
+	return ebuo
+}
+
+// ClearReadyCmd clears the value of the "ready_cmd" field.
+func (ebuo *EnvBuildUpdateOne) ClearReadyCmd() *EnvBuildUpdateOne {
+	ebuo.mutation.ClearReadyCmd()
 	return ebuo
 }
 
@@ -836,6 +882,12 @@ func (ebuo *EnvBuildUpdateOne) sqlSave(ctx context.Context) (_node *EnvBuild, er
 	}
 	if ebuo.mutation.StartCmdCleared() {
 		_spec.ClearField(envbuild.FieldStartCmd, field.TypeString)
+	}
+	if value, ok := ebuo.mutation.ReadyCmd(); ok {
+		_spec.SetField(envbuild.FieldReadyCmd, field.TypeString, value)
+	}
+	if ebuo.mutation.ReadyCmdCleared() {
+		_spec.ClearField(envbuild.FieldReadyCmd, field.TypeString)
 	}
 	if value, ok := ebuo.mutation.Vcpu(); ok {
 		_spec.SetField(envbuild.FieldVcpu, field.TypeInt64, value)
