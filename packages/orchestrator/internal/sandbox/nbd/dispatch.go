@@ -211,25 +211,26 @@ func (d *Dispatch) cmdRead(cmdHandle uint64, cmdFrom uint64, cmdLength uint32) e
 	d.shuttingDownLock.Unlock()
 
 	performRead := func(handle uint64, from uint64, length uint32) error {
-		errchan := make(chan error)
+		// buffered to avoid goroutine leak
+		errchan := make(chan error, 1)
 		data := make([]byte, length)
 
 		go func() {
-			_, e := d.prov.ReadAt(data, int64(from))
-			errchan <- e
+			_, err := d.prov.ReadAt(data, int64(from))
+			errchan <- err
 		}()
 
 		// Wait until either the ReadAt completed, or our context is cancelled...
-		var e error
 		select {
 		case <-d.ctx.Done():
-			e = d.ctx.Err()
-		case e = <-errchan:
+			return d.writeResponse(1, handle, []byte{})
+		case err := <-errchan:
+			if err != nil {
+				return d.writeResponse(1, handle, []byte{})
+			}
 		}
 
-		if e != nil {
-			return d.writeResponse(1, handle, []byte{})
-		}
+		// read was successful
 		return d.writeResponse(0, handle, data)
 	}
 
@@ -259,25 +260,24 @@ func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) er
 	d.shuttingDownLock.Unlock()
 
 	performWrite := func(handle uint64, from uint64, data []byte) error {
-		errchan := make(chan error)
+		errchan := make(chan error, 1)
 		go func() {
-			_, e := d.prov.WriteAt(data, int64(from))
-			errchan <- e
+			_, err := d.prov.WriteAt(data, int64(from))
+			errchan <- err
 		}()
 
 		// Wait until either the WriteAt completed, or our context is cancelled...
-		var e error
 		select {
 		case <-d.ctx.Done():
-			e = d.ctx.Err()
-		case e = <-errchan:
+			return d.writeResponse(1, handle, []byte{})
+		case err := <-errchan:
+			if err != nil {
+				return d.writeResponse(1, handle, []byte{})
+			}
 		}
 
-		errorValue := uint32(0)
-		if e != nil {
-			errorValue = 1
-		}
-		return d.writeResponse(errorValue, handle, []byte{})
+		// write was successful
+		return d.writeResponse(0, handle, []byte{})
 	}
 
 	go func() {
