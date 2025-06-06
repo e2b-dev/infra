@@ -11,7 +11,6 @@ import (
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -98,9 +97,8 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		).
 		All(ctx)
 	if err != nil {
-		zap.L().Error("Error when getting running builds", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "Error when getting running builds", err)
 		return
 	}
 
@@ -117,9 +115,8 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		})))
 		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
 		if deleteJobErr != nil {
-			errMsg := fmt.Errorf("error when canceling running build: %w", deleteJobErr)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build cancel request")
-			telemetry.ReportCriticalError(ctx, errMsg)
+			telemetry.ReportCriticalError(ctx, "error when canceling running build", deleteJobErr)
 			return
 		}
 		telemetry.ReportEvent(ctx, "canceled running builds")

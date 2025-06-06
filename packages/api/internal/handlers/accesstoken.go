@@ -61,9 +61,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	maskedToken, err := keys.GetMaskedIdentifierProperties(keys.AccessTokenPrefix, valueWithoutPrefix)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when masking access token: %s", err))
-
-		errMsg := fmt.Errorf("error when masking access token: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when masking access token", err)
 
 		return
 	}

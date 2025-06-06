@@ -58,9 +58,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 	body, err := utils.ParseBody[api.TemplateBuildRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
-
-		err = fmt.Errorf("invalid request body: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "invalid request body", err)
 
 		return nil
 	}
@@ -256,8 +254,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when inserting build: %s", err))
 
-		err = fmt.Errorf("error when inserting build: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "error when inserting build", err)
 
 		return nil
 	}

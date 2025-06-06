@@ -169,8 +169,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating response key mask: %s", err))
 
-		errMsg := fmt.Errorf("error when masking response key for creating API key %d: %w", apiKey.ID, err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, fmt.Sprintf("error when masking response key for creating API key %d", apiKey.ID), err)
 
 		return
 	}

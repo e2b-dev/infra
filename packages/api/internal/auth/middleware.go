@@ -89,7 +89,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	result, validationError := a.validationFunction(ctx, headerKey)
 	if validationError != nil {
 		zap.L().Info("validation error", zap.Error(validationError.Err))
-		telemetry.ReportError(ctx, fmt.Errorf("%s %w", a.errorMessage, validationError.Err))
+		telemetry.ReportError(ctx, a.errorMessage, validationError.Err)
 
 		var forbiddenError *db.TeamForbiddenError
 		if errors.As(validationError.Err, &forbiddenError) {

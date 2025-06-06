@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -43,8 +44,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
-		errMsg := fmt.Errorf("error when parsing build id: %w", err)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportError(ctx, "error when parsing build id", err)
 		a.sendAPIStoreError(c, http.StatusBadRequest, "Invalid build id")
 		return
 	}
@@ -61,8 +61,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 			return
 		}
 
-		errMsg := fmt.Errorf("error when getting template: %w", err)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportError(ctx, "error when getting template", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
 		return
 	}
@@ -76,8 +75,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	}
 
 	if team == nil {
-		msg := fmt.Errorf("user doesn't have access to env '%s'", templateID)
-		telemetry.ReportError(ctx, msg)
+		telemetry.ReportError(ctx, "user doesn't have access to env", fmt.Errorf("user doesn't have access to env '%s'", templateID), attribute.String("templateID", templateID))
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You don't have access to this sandbox template (%s)", templateID))
 		return
 	}
@@ -138,8 +136,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 			}
 		}
 	} else {
-		errMsg := fmt.Errorf("error when returning logs for template build: %w", err)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportError(ctx, "error when returning logs for template build", err)
 		zap.L().Error("error when returning logs for template build", zap.Error(err), zap.String("buildID", buildID))
 	}
 
