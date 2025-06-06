@@ -50,7 +50,7 @@ func (b *TemplateBuilder) runCommandWithConfirmation(
 	cwd *string,
 	confirmCh chan<- struct{},
 ) error {
-	createAppReq := connect.NewRequest(&process.StartRequest{
+	runCmdReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
 			Cmd: "/bin/bash",
 			Cwd: cwd,
@@ -65,15 +65,15 @@ func (b *TemplateBuilder) runCommandWithConfirmation(
 	}
 	proxyHost := fmt.Sprintf("http://localhost%s", b.proxy.GetAddr())
 	processC := processconnect.NewProcessClient(&hc, proxyHost)
-	err := grpc.SetSandboxHeader(createAppReq.Header(), proxyHost, sandboxID)
+	err := grpc.SetSandboxHeader(runCmdReq.Header(), proxyHost, sandboxID)
 	if err != nil {
 		return fmt.Errorf("failed to set sandbox header: %w", err)
 	}
-	grpc.SetUserHeader(createAppReq.Header(), runAsUser)
+	grpc.SetUserHeader(runCmdReq.Header(), runAsUser)
 
 	processCtx, processCancel := context.WithCancel(ctx)
 	defer processCancel()
-	commandStream, err := processC.Start(processCtx, createAppReq)
+	commandStream, err := processC.Start(processCtx, runCmdReq)
 	// Confirm the command has executed before proceeding
 	close(confirmCh)
 	if err != nil {
