@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -44,7 +43,10 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 		SetUserID(userID).
 		SetAccessToken(accessToken.PrefixedRawValue).
 		SetAccessTokenHash(accessToken.HashedValue).
-		SetAccessTokenMask(accessToken.MaskedValue).
+		SetAccessTokenPrefix(accessToken.Masked.Prefix).
+		SetAccessTokenLength(accessToken.Masked.ValueLength).
+		SetAccessTokenMaskPrefix(accessToken.Masked.MaskedValuePrefix).
+		SetAccessTokenMaskSuffix(accessToken.Masked.MaskedValueSuffix).
 		SetName(body.Name).
 		Save(ctx)
 
@@ -56,24 +58,14 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 		return
 	}
 
-	valueWithoutPrefix := strings.TrimPrefix(accessToken.PrefixedRawValue, keys.AccessTokenPrefix)
-
-	maskedToken, err := keys.GetMaskedIdentifierProperties(keys.AccessTokenPrefix, valueWithoutPrefix)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when masking access token: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when masking access token", err)
-
-		return
-	}
-
 	c.JSON(http.StatusCreated, api.CreatedAccessToken{
 		Id:    accessTokenDB.ID,
 		Token: accessToken.PrefixedRawValue,
 		Mask: api.IdentifierMaskingDetails{
-			Prefix:            maskedToken.Prefix,
-			ValueLength:       maskedToken.ValueLength,
-			MaskedValuePrefix: maskedToken.MaskedValuePrefix,
-			MaskedValueSuffix: maskedToken.MaskedValueSuffix,
+			Prefix:            accessTokenDB.AccessTokenPrefix,
+			ValueLength:       accessTokenDB.AccessTokenLength,
+			MaskedValuePrefix: accessTokenDB.AccessTokenMaskPrefix,
+			MaskedValueSuffix: accessTokenDB.AccessTokenMaskSuffix,
 		},
 		Name:      accessTokenDB.Name,
 		CreatedAt: accessTokenDB.CreatedAt,

@@ -37,9 +37,27 @@ func (atc *AccessTokenCreate) SetAccessTokenHash(s string) *AccessTokenCreate {
 	return atc
 }
 
-// SetAccessTokenMask sets the "access_token_mask" field.
-func (atc *AccessTokenCreate) SetAccessTokenMask(s string) *AccessTokenCreate {
-	atc.mutation.SetAccessTokenMask(s)
+// SetAccessTokenPrefix sets the "access_token_prefix" field.
+func (atc *AccessTokenCreate) SetAccessTokenPrefix(s string) *AccessTokenCreate {
+	atc.mutation.SetAccessTokenPrefix(s)
+	return atc
+}
+
+// SetAccessTokenLength sets the "access_token_length" field.
+func (atc *AccessTokenCreate) SetAccessTokenLength(i int) *AccessTokenCreate {
+	atc.mutation.SetAccessTokenLength(i)
+	return atc
+}
+
+// SetAccessTokenMaskPrefix sets the "access_token_mask_prefix" field.
+func (atc *AccessTokenCreate) SetAccessTokenMaskPrefix(s string) *AccessTokenCreate {
+	atc.mutation.SetAccessTokenMaskPrefix(s)
+	return atc
+}
+
+// SetAccessTokenMaskSuffix sets the "access_token_mask_suffix" field.
+func (atc *AccessTokenCreate) SetAccessTokenMaskSuffix(s string) *AccessTokenCreate {
+	atc.mutation.SetAccessTokenMaskSuffix(s)
 	return atc
 }
 
@@ -137,8 +155,17 @@ func (atc *AccessTokenCreate) check() error {
 	if _, ok := atc.mutation.AccessTokenHash(); !ok {
 		return &ValidationError{Name: "access_token_hash", err: errors.New(`models: missing required field "AccessToken.access_token_hash"`)}
 	}
-	if _, ok := atc.mutation.AccessTokenMask(); !ok {
-		return &ValidationError{Name: "access_token_mask", err: errors.New(`models: missing required field "AccessToken.access_token_mask"`)}
+	if _, ok := atc.mutation.AccessTokenPrefix(); !ok {
+		return &ValidationError{Name: "access_token_prefix", err: errors.New(`models: missing required field "AccessToken.access_token_prefix"`)}
+	}
+	if _, ok := atc.mutation.AccessTokenLength(); !ok {
+		return &ValidationError{Name: "access_token_length", err: errors.New(`models: missing required field "AccessToken.access_token_length"`)}
+	}
+	if _, ok := atc.mutation.AccessTokenMaskPrefix(); !ok {
+		return &ValidationError{Name: "access_token_mask_prefix", err: errors.New(`models: missing required field "AccessToken.access_token_mask_prefix"`)}
+	}
+	if _, ok := atc.mutation.AccessTokenMaskSuffix(); !ok {
+		return &ValidationError{Name: "access_token_mask_suffix", err: errors.New(`models: missing required field "AccessToken.access_token_mask_suffix"`)}
 	}
 	if _, ok := atc.mutation.Name(); !ok {
 		return &ValidationError{Name: "name", err: errors.New(`models: missing required field "AccessToken.name"`)}
@@ -194,9 +221,21 @@ func (atc *AccessTokenCreate) createSpec() (*AccessToken, *sqlgraph.CreateSpec) 
 		_spec.SetField(accesstoken.FieldAccessTokenHash, field.TypeString, value)
 		_node.AccessTokenHash = value
 	}
-	if value, ok := atc.mutation.AccessTokenMask(); ok {
-		_spec.SetField(accesstoken.FieldAccessTokenMask, field.TypeString, value)
-		_node.AccessTokenMask = value
+	if value, ok := atc.mutation.AccessTokenPrefix(); ok {
+		_spec.SetField(accesstoken.FieldAccessTokenPrefix, field.TypeString, value)
+		_node.AccessTokenPrefix = value
+	}
+	if value, ok := atc.mutation.AccessTokenLength(); ok {
+		_spec.SetField(accesstoken.FieldAccessTokenLength, field.TypeInt, value)
+		_node.AccessTokenLength = value
+	}
+	if value, ok := atc.mutation.AccessTokenMaskPrefix(); ok {
+		_spec.SetField(accesstoken.FieldAccessTokenMaskPrefix, field.TypeString, value)
+		_node.AccessTokenMaskPrefix = value
+	}
+	if value, ok := atc.mutation.AccessTokenMaskSuffix(); ok {
+		_spec.SetField(accesstoken.FieldAccessTokenMaskSuffix, field.TypeString, value)
+		_node.AccessTokenMaskSuffix = value
 	}
 	if value, ok := atc.mutation.Name(); ok {
 		_spec.SetField(accesstoken.FieldName, field.TypeString, value)
@@ -323,8 +362,17 @@ func (u *AccessTokenUpsertOne) UpdateNewValues() *AccessTokenUpsertOne {
 		if _, exists := u.create.mutation.AccessTokenHash(); exists {
 			s.SetIgnore(accesstoken.FieldAccessTokenHash)
 		}
-		if _, exists := u.create.mutation.AccessTokenMask(); exists {
-			s.SetIgnore(accesstoken.FieldAccessTokenMask)
+		if _, exists := u.create.mutation.AccessTokenPrefix(); exists {
+			s.SetIgnore(accesstoken.FieldAccessTokenPrefix)
+		}
+		if _, exists := u.create.mutation.AccessTokenLength(); exists {
+			s.SetIgnore(accesstoken.FieldAccessTokenLength)
+		}
+		if _, exists := u.create.mutation.AccessTokenMaskPrefix(); exists {
+			s.SetIgnore(accesstoken.FieldAccessTokenMaskPrefix)
+		}
+		if _, exists := u.create.mutation.AccessTokenMaskSuffix(); exists {
+			s.SetIgnore(accesstoken.FieldAccessTokenMaskSuffix)
 		}
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(accesstoken.FieldCreatedAt)
@@ -577,8 +625,17 @@ func (u *AccessTokenUpsertBulk) UpdateNewValues() *AccessTokenUpsertBulk {
 			if _, exists := b.mutation.AccessTokenHash(); exists {
 				s.SetIgnore(accesstoken.FieldAccessTokenHash)
 			}
-			if _, exists := b.mutation.AccessTokenMask(); exists {
-				s.SetIgnore(accesstoken.FieldAccessTokenMask)
+			if _, exists := b.mutation.AccessTokenPrefix(); exists {
+				s.SetIgnore(accesstoken.FieldAccessTokenPrefix)
+			}
+			if _, exists := b.mutation.AccessTokenLength(); exists {
+				s.SetIgnore(accesstoken.FieldAccessTokenLength)
+			}
+			if _, exists := b.mutation.AccessTokenMaskPrefix(); exists {
+				s.SetIgnore(accesstoken.FieldAccessTokenMaskPrefix)
+			}
+			if _, exists := b.mutation.AccessTokenMaskSuffix(); exists {
+				s.SetIgnore(accesstoken.FieldAccessTokenMaskSuffix)
 			}
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(accesstoken.FieldCreatedAt)

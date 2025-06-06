@@ -85,7 +85,10 @@ func seed(db *db.DB, data SeedData) error {
 		SetUser(user).
 		SetAccessToken(data.AccessToken).
 		SetAccessTokenHash(accessTokenHash).
-		SetAccessTokenMask(accessTokenMask).
+		SetAccessTokenPrefix(accessTokenMask.Prefix).
+		SetAccessTokenLength(accessTokenMask.ValueLength).
+		SetAccessTokenMaskPrefix(accessTokenMask.MaskedValuePrefix).
+		SetAccessTokenMaskSuffix(accessTokenMask.MaskedValueSuffix).
 		SetName("Integration Tests Access Token").
 		Exec(ctx)
 	if err != nil {
@@ -128,7 +131,10 @@ func seed(db *db.DB, data SeedData) error {
 		SetTeam(t).
 		SetAPIKey(data.APIKey).
 		SetAPIKeyHash(apiKeyHash).
-		SetAPIKeyMask(apiKeyMask).
+		SetAPIKeyPrefix(apiKeyMask.Prefix).
+		SetAPIKeyLength(apiKeyMask.ValueLength).
+		SetAPIKeyMaskPrefix(apiKeyMask.MaskedValuePrefix).
+		SetAPIKeyMaskSuffix(apiKeyMask.MaskedValueSuffix).
 		SetName("Integration Tests API Key").
 		Save(ctx)
 	if err != nil {
