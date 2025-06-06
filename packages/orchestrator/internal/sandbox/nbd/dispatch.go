@@ -260,6 +260,7 @@ func (d *Dispatch) cmdWrite(cmdHandle uint64, cmdFrom uint64, cmdData []byte) er
 	d.shuttingDownLock.Unlock()
 
 	performWrite := func(handle uint64, from uint64, data []byte) error {
+		// buffered to avoid goroutine leak
 		errchan := make(chan error, 1)
 		go func() {
 			_, err := d.prov.WriteAt(data, int64(from))
