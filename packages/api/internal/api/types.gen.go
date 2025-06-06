@@ -476,6 +476,9 @@ type TemplateBuildRequest struct {
 	// MemoryMB Memory for the sandbox in MB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
 
+	// ReadyCmd Ready check command to execute in the template after the build
+	ReadyCmd *string `json:"readyCmd,omitempty"`
+
 	// StartCmd Start command to execute in the template after the build
 	StartCmd *string `json:"startCmd,omitempty"`
 

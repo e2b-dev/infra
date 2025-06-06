@@ -82,14 +82,23 @@ func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, b
 
 func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
 	logMetadata(rootfsPath)
+	accExitCode := 0
 	args := "-nfv"
 	if fix {
+		// 0 - No errors
+		// 1 - File system errors corrected
+		// 2 - File system errors corrected, a system should be rebooted
+		accExitCode = 2
 		args = "-pfv"
 	}
 	cmd := exec.Command("e2fsck", args, rootfsPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(out), fmt.Errorf("error running e2fsck: %w", err)
+		exitCode := cmd.ProcessState.ExitCode()
+
+		if exitCode > accExitCode {
+			return string(out), fmt.Errorf("error running e2fsck: %w", err)
+		}
 	}
 
 	return strings.TrimSpace(string(out)), nil

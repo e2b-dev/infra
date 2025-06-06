@@ -3,15 +3,16 @@ package build
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
@@ -50,7 +51,6 @@ const (
 	sbxTimeout           = time.Hour
 	provisionTimeout     = 5 * time.Minute
 	configurationTimeout = 5 * time.Minute
-	waitTimeForStartCmd  = 20 * time.Second
 	waitEnvdTimeout      = 60 * time.Second
 
 	cleanupTimeout = time.Second * 10
@@ -96,7 +96,7 @@ type Result struct {
 // 5. Start the FC VM (using systemd) and wait for Envd
 // 5. Run two additional commands:
 //   - configuration script (enable swap, create user, change folder permissions, etc.)
-//   - start command (if defined)
+//   - start command (if defined), together with the ready command (always with default value if not defined)
 //
 // 6. Snapshot
 // 7. Upload template
@@ -238,46 +238,79 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	if err != nil {
 		return nil, fmt.Errorf("error executing provision script: %w", err)
 	}
+
+	configCtx, configCancel := context.WithTimeout(ctx, configurationTimeout)
+	defer configCancel()
 	err = b.runCommand(
-		ctx,
+		configCtx,
 		postProcessor,
+		"config",
 		sbx.Metadata.Config.SandboxId,
-		configurationTimeout,
 		scriptDef.String(),
 		"root",
 		nil,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error running script: %w", err)
+		return nil, fmt.Errorf("error running configuration script: %w", err)
 	}
 
 	// Start command
+	commandsCtx, commandsCancel := context.WithCancel(ctx)
+	defer commandsCancel()
+
+	var startCmd errgroup.Group
+	startCmdConfirm := make(chan struct{})
 	if template.StartCmd != "" {
 		postProcessor.WriteMsg("Running start command")
+		startCmd.Go(func() error {
+			cwd := "/home/user"
+			err := b.runCommandWithConfirmation(
+				commandsCtx,
+				postProcessor,
+				"start",
+				sbx.Metadata.Config.SandboxId,
+				template.StartCmd,
+				"root",
+				&cwd,
+				startCmdConfirm,
+			)
+			// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
+			if err != nil && !errors.Is(err, context.Canceled) {
+				// Cancel the ready command context, so the ready command does not wait anymore if an error occurs.
+				commandsCancel()
+				return fmt.Errorf("error running start command: %w", err)
+			}
 
-		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
-		// TODO: Remove this after we can add customizable wait time for building templates.
-		// TODO: Make this user configurable, with health check too
-		startCmdWait := waitTimeForStartCmd
-		if template.TemplateId == "zegbt9dl3l2ixqem82mm" || template.TemplateId == "ot5bidkk3j2so2j02uuz" || template.TemplateId == "0zeou1s7agaytqitvmzc" {
-			startCmdWait = 120 * time.Second
-		}
-		cwd := "/home/user"
-		err := b.runCommand(
-			ctx,
-			postProcessor,
-			sbx.Metadata.Config.SandboxId,
-			startCmdWait,
-			template.StartCmd,
-			"root",
-			&cwd,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("error running command: %w", err)
-		}
+			return nil
+		})
+	} else {
+		// If no start command is defined, we still need to confirm that the start command has started.
+		close(startCmdConfirm)
+	}
 
-		postProcessor.WriteMsg("Start command is running")
-		telemetry.ReportEvent(ctx, "waited for start command", attribute.Float64("seconds", float64(waitTimeForStartCmd/time.Second)))
+	// Ready command
+	err = b.runReadyCommand(
+		commandsCtx,
+		postProcessor,
+		template,
+		sbx.Metadata.Config.SandboxId,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error running ready command: %w", err)
+	}
+
+	// Wait for the start command to start executing.
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("error waiting for start command: %w", commandsCtx.Err())
+	case <-startCmdConfirm:
+	}
+	// Cancel the start command context (it's running in the background anyway).
+	// If it has already finished, check the error.
+	commandsCancel()
+	err = startCmd.Wait()
+	if err != nil {
+		return nil, fmt.Errorf("error running start command: %w", err)
 	}
 
 	// Pause sandbox

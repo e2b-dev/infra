@@ -131,9 +131,14 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	startTime := time.Now()
 	build := envDB.Edges.Builds[0]
-	startCmd := ""
+	var startCmd string
 	if build.StartCmd != nil {
 		startCmd = *build.StartCmd
+	}
+
+	var readyCmd string
+	if build.ReadyCmd != nil {
+		readyCmd = *build.ReadyCmd
 	}
 
 	// only waiting builds can be triggered
@@ -156,6 +161,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		build.Vcpu,
 		build.FreeDiskSizeMB,
 		build.RAMMB,
+		readyCmd,
 	)
 
 	if buildErr != nil {
