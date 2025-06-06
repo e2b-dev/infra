@@ -2,6 +2,7 @@ package keys
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,19 +35,27 @@ func TestMaskKey(t *testing.T) {
 }
 
 func TestGenerateKey(t *testing.T) {
+	keyLength := 40
+
 	t.Run("succeeds", func(t *testing.T) {
 		key, err := GenerateKey("test_")
 		assert.NoError(t, err)
 		assert.Regexp(t, "^test_.*", key.PrefixedRawValue)
-		assert.Regexp(t, `^test_\*+[0-9a-f]{4}$`, key.MaskedValue)
+		assert.Equal(t, "test_", key.Masked.Prefix)
+		assert.GreaterOrEqual(t, keyLength, key.Masked.ValueLength)
+		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(identifierValuePrefixLength)+"}$", key.Masked.MaskedValuePrefix)
+		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(identifierValueSuffixLength)+"}$", key.Masked.MaskedValueSuffix)
 		assert.Regexp(t, "^\\$sha256\\$.*", key.HashedValue)
 	})
 
 	t.Run("no prefix", func(t *testing.T) {
 		key, err := GenerateKey("")
 		assert.NoError(t, err)
-		assert.Regexp(t, "^[0-9a-f]{40}$", key.PrefixedRawValue)
-		assert.Regexp(t, `^\*+[0-9a-f]{4}$`, key.MaskedValue)
+		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(keyLength)+"}$", key.PrefixedRawValue)
+		assert.Equal(t, "", key.Masked.Prefix)
+		assert.GreaterOrEqual(t, keyLength, key.Masked.ValueLength)
+		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(identifierValuePrefixLength)+"}$", key.Masked.MaskedValuePrefix)
+		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(identifierValueSuffixLength)+"}$", key.Masked.MaskedValueSuffix)
 		assert.Regexp(t, "^\\$sha256\\$.*", key.HashedValue)
 	})
 }
@@ -122,7 +131,7 @@ func TestGetMaskedIdentifierProperties(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := GetMaskedIdentifierProperties(tc.prefix, tc.value)
+			result, err := MaskKey(tc.prefix, tc.value)
 
 			if tc.expectedErrString != "" {
 				assert.Error(t, err)
