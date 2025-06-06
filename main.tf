@@ -240,6 +240,9 @@ module "nomad" {
   # Redis
   redis_port = var.redis_port
 
+  # Template cache
+  template_cache_port = var.template_cache_port
+
   launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
 }
 

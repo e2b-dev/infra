@@ -115,6 +115,14 @@ variable "client_proxy_port" {
   })
 }
 
+variable "template_cache_port" {
+  type = object({
+    name        = string
+    port        = number
+    status_port = number
+  })
+}
+
 variable "domain_name" {
   type = string
 }

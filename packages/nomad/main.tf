@@ -429,7 +429,10 @@ resource "nomad_job" "loki" {
 
 resource "nomad_job" "template-cache" {
   jobspec = templatefile("${path.module}/template-cache.hcl", {
-    gcp_zone = var.gcp_zone
+    gcp_zone           = var.gcp_zone
+    port_number        = var.template_cache_port.port
+    status_port_number = var.template_cache_port.status_port
+    port_name          = var.template_cache_port.name
   })
 }
 

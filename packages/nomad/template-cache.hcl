@@ -10,17 +10,17 @@ job "template-cache" {
 
     network {
       port "template-cache" {
-        static = 28778
+        static = "${port_number}"
       }
     
       port "status" {
-        static = 3004
+        static = "${status_port_number}"
       }  
     }
 
     service {
       name = "template-cache"
-      port = "template-cache"
+      port = "${port_name}"
 
       check {
         type     = "http"
@@ -113,7 +113,7 @@ http {
     proxy_cache mycache;
 
     server {
-        listen 28778;  # Change this if another service is on 8080
+        listen ${port_number};
 
         slice              20m;
         proxy_cache_key    $host$uri$is_args$args$slice_range;
@@ -122,7 +122,6 @@ http {
         proxy_cache_valid  200 206 1h;
 
         location / {
-            # Use mTLS?
             proxy_pass https://storage.googleapis.com;
             proxy_set_header Host storage.googleapis.com;
 
@@ -140,7 +139,7 @@ http {
     }
 
     server {
-      listen 3004;
+      listen ${status_port_number};
       location /health {
         access_log off;
         add_header 'Content-Type' 'application/json';

@@ -130,6 +130,20 @@ variable "client_proxy_port" {
   }
 }
 
+variable "template_cache_port" {
+  type = object({
+    name        = string
+    port        = number
+    status_port = number
+  })
+  default = {
+    name        = "template-cache"
+    port        = 28778
+    status_port = 3004
+  }
+}
+
+
 variable "logs_proxy_port" {
   type = object({
     name = string
