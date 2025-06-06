@@ -272,7 +272,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error adding snapshot to template cache", err)
 
-		return nil, status.Errorf(codes.Internal, "error adding snapshot to template cache: %w", err)
+		return nil, status.Errorf(codes.Internal, "error adding snapshot to template cache: %s", err)
 	}
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
