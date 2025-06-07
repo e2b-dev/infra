@@ -84,14 +84,14 @@ du -h "${envd_dir}/envd"
 # Download kernels
 kernels_dir="/fc-kernels"
 mkdir -p $kernels_dir
-gcloud storage cp --recursive gs://e2b-prod-public-builds/kernels/* "${kernels_dir}"
+gsutil -m cp -r gs://e2b-prod-public-builds/kernels/* "${kernels_dir}"
 chmod -R 755 $kernels_dir
 ls -lh $kernels_dir
 
 # Download FC versions
 fc_versions_dir="/fc-versions"
 mkdir -p $fc_versions_dir
-gcloud storage cp --recursive gs://e2b-prod-public-builds/firecrackers/* "${fc_versions_dir}"
+gsutil -m cp -r gs://e2b-prod-public-builds/firecrackers/* "${fc_versions_dir}"
 chmod -R 755 $fc_versions_dir
 ls -lh $fc_versions_dir
 
