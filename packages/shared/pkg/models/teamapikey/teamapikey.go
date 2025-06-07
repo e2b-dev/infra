@@ -18,8 +18,14 @@ const (
 	FieldAPIKey = "api_key"
 	// FieldAPIKeyHash holds the string denoting the api_key_hash field in the database.
 	FieldAPIKeyHash = "api_key_hash"
-	// FieldAPIKeyMask holds the string denoting the api_key_mask field in the database.
-	FieldAPIKeyMask = "api_key_mask"
+	// FieldAPIKeyPrefix holds the string denoting the api_key_prefix field in the database.
+	FieldAPIKeyPrefix = "api_key_prefix"
+	// FieldAPIKeyLength holds the string denoting the api_key_length field in the database.
+	FieldAPIKeyLength = "api_key_length"
+	// FieldAPIKeyMaskPrefix holds the string denoting the api_key_mask_prefix field in the database.
+	FieldAPIKeyMaskPrefix = "api_key_mask_prefix"
+	// FieldAPIKeyMaskSuffix holds the string denoting the api_key_mask_suffix field in the database.
+	FieldAPIKeyMaskSuffix = "api_key_mask_suffix"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -59,7 +65,10 @@ var Columns = []string{
 	FieldID,
 	FieldAPIKey,
 	FieldAPIKeyHash,
-	FieldAPIKeyMask,
+	FieldAPIKeyPrefix,
+	FieldAPIKeyLength,
+	FieldAPIKeyMaskPrefix,
+	FieldAPIKeyMaskSuffix,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldTeamID,
@@ -103,9 +112,24 @@ func ByAPIKeyHash(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAPIKeyHash, opts...).ToFunc()
 }
 
-// ByAPIKeyMask orders the results by the api_key_mask field.
-func ByAPIKeyMask(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldAPIKeyMask, opts...).ToFunc()
+// ByAPIKeyPrefix orders the results by the api_key_prefix field.
+func ByAPIKeyPrefix(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPIKeyPrefix, opts...).ToFunc()
+}
+
+// ByAPIKeyLength orders the results by the api_key_length field.
+func ByAPIKeyLength(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPIKeyLength, opts...).ToFunc()
+}
+
+// ByAPIKeyMaskPrefix orders the results by the api_key_mask_prefix field.
+func ByAPIKeyMaskPrefix(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPIKeyMaskPrefix, opts...).ToFunc()
+}
+
+// ByAPIKeyMaskSuffix orders the results by the api_key_mask_suffix field.
+func ByAPIKeyMaskSuffix(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPIKeyMaskSuffix, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

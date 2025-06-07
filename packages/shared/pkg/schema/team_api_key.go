@@ -21,7 +21,12 @@ func (TeamAPIKey) Fields() []ent.Field {
 		field.UUID("id", uuid.UUID{}).Immutable().Unique().Annotations(entsql.Default("gen_random_uuid()")),
 		field.String("api_key").Unique().Sensitive().SchemaType(map[string]string{dialect.Postgres: "character varying(44)"}),
 		field.String("api_key_hash").Unique().Sensitive().SchemaType(map[string]string{dialect.Postgres: "character varying(64)"}),
-		field.String("api_key_mask").SchemaType(map[string]string{dialect.Postgres: "character varying(44)"}),
+
+		field.String("api_key_prefix").Immutable().SchemaType(map[string]string{dialect.Postgres: "character varying(10)"}),
+		field.Int("api_key_length").Immutable(),
+		field.String("api_key_mask_prefix").Immutable().SchemaType(map[string]string{dialect.Postgres: "character varying(5)"}),
+		field.String("api_key_mask_suffix").Immutable().SchemaType(map[string]string{dialect.Postgres: "character varying(5)"}),
+
 		field.Time("created_at").Immutable().Default(time.Now).Annotations(
 			entsql.Default("CURRENT_TIMESTAMP"),
 		),

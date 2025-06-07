@@ -67,9 +67,24 @@ func APIKeyHash(v string) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyHash, v))
 }
 
-// APIKeyMask applies equality check predicate on the "api_key_mask" field. It's identical to APIKeyMaskEQ.
-func APIKeyMask(v string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyMask, v))
+// APIKeyPrefix applies equality check predicate on the "api_key_prefix" field. It's identical to APIKeyPrefixEQ.
+func APIKeyPrefix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyPrefix, v))
+}
+
+// APIKeyLength applies equality check predicate on the "api_key_length" field. It's identical to APIKeyLengthEQ.
+func APIKeyLength(v int) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyLength, v))
+}
+
+// APIKeyMaskPrefix applies equality check predicate on the "api_key_mask_prefix" field. It's identical to APIKeyMaskPrefixEQ.
+func APIKeyMaskPrefix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyMaskPrefix, v))
+}
+
+// APIKeyMaskSuffix applies equality check predicate on the "api_key_mask_suffix" field. It's identical to APIKeyMaskSuffixEQ.
+func APIKeyMaskSuffix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyMaskSuffix, v))
 }
 
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
@@ -232,69 +247,239 @@ func APIKeyHashContainsFold(v string) predicate.TeamAPIKey {
 	return predicate.TeamAPIKey(sql.FieldContainsFold(FieldAPIKeyHash, v))
 }
 
-// APIKeyMaskEQ applies the EQ predicate on the "api_key_mask" field.
-func APIKeyMaskEQ(v string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyMask, v))
+// APIKeyPrefixEQ applies the EQ predicate on the "api_key_prefix" field.
+func APIKeyPrefixEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyPrefix, v))
 }
 
-// APIKeyMaskNEQ applies the NEQ predicate on the "api_key_mask" field.
-func APIKeyMaskNEQ(v string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldNEQ(FieldAPIKeyMask, v))
+// APIKeyPrefixNEQ applies the NEQ predicate on the "api_key_prefix" field.
+func APIKeyPrefixNEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNEQ(FieldAPIKeyPrefix, v))
 }
 
-// APIKeyMaskIn applies the In predicate on the "api_key_mask" field.
-func APIKeyMaskIn(vs ...string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldIn(FieldAPIKeyMask, vs...))
+// APIKeyPrefixIn applies the In predicate on the "api_key_prefix" field.
+func APIKeyPrefixIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIn(FieldAPIKeyPrefix, vs...))
 }
 
-// APIKeyMaskNotIn applies the NotIn predicate on the "api_key_mask" field.
-func APIKeyMaskNotIn(vs ...string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldNotIn(FieldAPIKeyMask, vs...))
+// APIKeyPrefixNotIn applies the NotIn predicate on the "api_key_prefix" field.
+func APIKeyPrefixNotIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotIn(FieldAPIKeyPrefix, vs...))
 }
 
-// APIKeyMaskGT applies the GT predicate on the "api_key_mask" field.
-func APIKeyMaskGT(v string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldGT(FieldAPIKeyMask, v))
+// APIKeyPrefixGT applies the GT predicate on the "api_key_prefix" field.
+func APIKeyPrefixGT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGT(FieldAPIKeyPrefix, v))
 }
 
-// APIKeyMaskGTE applies the GTE predicate on the "api_key_mask" field.
-func APIKeyMaskGTE(v string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldGTE(FieldAPIKeyMask, v))
+// APIKeyPrefixGTE applies the GTE predicate on the "api_key_prefix" field.
+func APIKeyPrefixGTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGTE(FieldAPIKeyPrefix, v))
 }
 
-// APIKeyMaskLT applies the LT predicate on the "api_key_mask" field.
-func APIKeyMaskLT(v string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldLT(FieldAPIKeyMask, v))
+// APIKeyPrefixLT applies the LT predicate on the "api_key_prefix" field.
+func APIKeyPrefixLT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLT(FieldAPIKeyPrefix, v))
 }
 
-// APIKeyMaskLTE applies the LTE predicate on the "api_key_mask" field.
-func APIKeyMaskLTE(v string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldLTE(FieldAPIKeyMask, v))
+// APIKeyPrefixLTE applies the LTE predicate on the "api_key_prefix" field.
+func APIKeyPrefixLTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLTE(FieldAPIKeyPrefix, v))
 }
 
-// APIKeyMaskContains applies the Contains predicate on the "api_key_mask" field.
-func APIKeyMaskContains(v string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldContains(FieldAPIKeyMask, v))
+// APIKeyPrefixContains applies the Contains predicate on the "api_key_prefix" field.
+func APIKeyPrefixContains(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContains(FieldAPIKeyPrefix, v))
 }
 
-// APIKeyMaskHasPrefix applies the HasPrefix predicate on the "api_key_mask" field.
-func APIKeyMaskHasPrefix(v string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldHasPrefix(FieldAPIKeyMask, v))
+// APIKeyPrefixHasPrefix applies the HasPrefix predicate on the "api_key_prefix" field.
+func APIKeyPrefixHasPrefix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasPrefix(FieldAPIKeyPrefix, v))
 }
 
-// APIKeyMaskHasSuffix applies the HasSuffix predicate on the "api_key_mask" field.
-func APIKeyMaskHasSuffix(v string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldHasSuffix(FieldAPIKeyMask, v))
+// APIKeyPrefixHasSuffix applies the HasSuffix predicate on the "api_key_prefix" field.
+func APIKeyPrefixHasSuffix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasSuffix(FieldAPIKeyPrefix, v))
 }
 
-// APIKeyMaskEqualFold applies the EqualFold predicate on the "api_key_mask" field.
-func APIKeyMaskEqualFold(v string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldEqualFold(FieldAPIKeyMask, v))
+// APIKeyPrefixEqualFold applies the EqualFold predicate on the "api_key_prefix" field.
+func APIKeyPrefixEqualFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEqualFold(FieldAPIKeyPrefix, v))
 }
 
-// APIKeyMaskContainsFold applies the ContainsFold predicate on the "api_key_mask" field.
-func APIKeyMaskContainsFold(v string) predicate.TeamAPIKey {
-	return predicate.TeamAPIKey(sql.FieldContainsFold(FieldAPIKeyMask, v))
+// APIKeyPrefixContainsFold applies the ContainsFold predicate on the "api_key_prefix" field.
+func APIKeyPrefixContainsFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContainsFold(FieldAPIKeyPrefix, v))
+}
+
+// APIKeyLengthEQ applies the EQ predicate on the "api_key_length" field.
+func APIKeyLengthEQ(v int) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyLength, v))
+}
+
+// APIKeyLengthNEQ applies the NEQ predicate on the "api_key_length" field.
+func APIKeyLengthNEQ(v int) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNEQ(FieldAPIKeyLength, v))
+}
+
+// APIKeyLengthIn applies the In predicate on the "api_key_length" field.
+func APIKeyLengthIn(vs ...int) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIn(FieldAPIKeyLength, vs...))
+}
+
+// APIKeyLengthNotIn applies the NotIn predicate on the "api_key_length" field.
+func APIKeyLengthNotIn(vs ...int) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotIn(FieldAPIKeyLength, vs...))
+}
+
+// APIKeyLengthGT applies the GT predicate on the "api_key_length" field.
+func APIKeyLengthGT(v int) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGT(FieldAPIKeyLength, v))
+}
+
+// APIKeyLengthGTE applies the GTE predicate on the "api_key_length" field.
+func APIKeyLengthGTE(v int) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGTE(FieldAPIKeyLength, v))
+}
+
+// APIKeyLengthLT applies the LT predicate on the "api_key_length" field.
+func APIKeyLengthLT(v int) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLT(FieldAPIKeyLength, v))
+}
+
+// APIKeyLengthLTE applies the LTE predicate on the "api_key_length" field.
+func APIKeyLengthLTE(v int) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLTE(FieldAPIKeyLength, v))
+}
+
+// APIKeyMaskPrefixEQ applies the EQ predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyMaskPrefix, v))
+}
+
+// APIKeyMaskPrefixNEQ applies the NEQ predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixNEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNEQ(FieldAPIKeyMaskPrefix, v))
+}
+
+// APIKeyMaskPrefixIn applies the In predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIn(FieldAPIKeyMaskPrefix, vs...))
+}
+
+// APIKeyMaskPrefixNotIn applies the NotIn predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixNotIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotIn(FieldAPIKeyMaskPrefix, vs...))
+}
+
+// APIKeyMaskPrefixGT applies the GT predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixGT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGT(FieldAPIKeyMaskPrefix, v))
+}
+
+// APIKeyMaskPrefixGTE applies the GTE predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixGTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGTE(FieldAPIKeyMaskPrefix, v))
+}
+
+// APIKeyMaskPrefixLT applies the LT predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixLT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLT(FieldAPIKeyMaskPrefix, v))
+}
+
+// APIKeyMaskPrefixLTE applies the LTE predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixLTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLTE(FieldAPIKeyMaskPrefix, v))
+}
+
+// APIKeyMaskPrefixContains applies the Contains predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixContains(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContains(FieldAPIKeyMaskPrefix, v))
+}
+
+// APIKeyMaskPrefixHasPrefix applies the HasPrefix predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixHasPrefix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasPrefix(FieldAPIKeyMaskPrefix, v))
+}
+
+// APIKeyMaskPrefixHasSuffix applies the HasSuffix predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixHasSuffix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasSuffix(FieldAPIKeyMaskPrefix, v))
+}
+
+// APIKeyMaskPrefixEqualFold applies the EqualFold predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixEqualFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEqualFold(FieldAPIKeyMaskPrefix, v))
+}
+
+// APIKeyMaskPrefixContainsFold applies the ContainsFold predicate on the "api_key_mask_prefix" field.
+func APIKeyMaskPrefixContainsFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContainsFold(FieldAPIKeyMaskPrefix, v))
+}
+
+// APIKeyMaskSuffixEQ applies the EQ predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEQ(FieldAPIKeyMaskSuffix, v))
+}
+
+// APIKeyMaskSuffixNEQ applies the NEQ predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixNEQ(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNEQ(FieldAPIKeyMaskSuffix, v))
+}
+
+// APIKeyMaskSuffixIn applies the In predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldIn(FieldAPIKeyMaskSuffix, vs...))
+}
+
+// APIKeyMaskSuffixNotIn applies the NotIn predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixNotIn(vs ...string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldNotIn(FieldAPIKeyMaskSuffix, vs...))
+}
+
+// APIKeyMaskSuffixGT applies the GT predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixGT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGT(FieldAPIKeyMaskSuffix, v))
+}
+
+// APIKeyMaskSuffixGTE applies the GTE predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixGTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldGTE(FieldAPIKeyMaskSuffix, v))
+}
+
+// APIKeyMaskSuffixLT applies the LT predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixLT(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLT(FieldAPIKeyMaskSuffix, v))
+}
+
+// APIKeyMaskSuffixLTE applies the LTE predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixLTE(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldLTE(FieldAPIKeyMaskSuffix, v))
+}
+
+// APIKeyMaskSuffixContains applies the Contains predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixContains(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContains(FieldAPIKeyMaskSuffix, v))
+}
+
+// APIKeyMaskSuffixHasPrefix applies the HasPrefix predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixHasPrefix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasPrefix(FieldAPIKeyMaskSuffix, v))
+}
+
+// APIKeyMaskSuffixHasSuffix applies the HasSuffix predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixHasSuffix(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldHasSuffix(FieldAPIKeyMaskSuffix, v))
+}
+
+// APIKeyMaskSuffixEqualFold applies the EqualFold predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixEqualFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldEqualFold(FieldAPIKeyMaskSuffix, v))
+}
+
+// APIKeyMaskSuffixContainsFold applies the ContainsFold predicate on the "api_key_mask_suffix" field.
+func APIKeyMaskSuffixContainsFold(v string) predicate.TeamAPIKey {
+	return predicate.TeamAPIKey(sql.FieldContainsFold(FieldAPIKeyMaskSuffix, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -67,9 +67,24 @@ func AccessTokenHash(v string) predicate.AccessToken {
 	return predicate.AccessToken(sql.FieldEQ(FieldAccessTokenHash, v))
 }
 
-// AccessTokenMask applies equality check predicate on the "access_token_mask" field. It's identical to AccessTokenMaskEQ.
-func AccessTokenMask(v string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldEQ(FieldAccessTokenMask, v))
+// AccessTokenPrefix applies equality check predicate on the "access_token_prefix" field. It's identical to AccessTokenPrefixEQ.
+func AccessTokenPrefix(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldEQ(FieldAccessTokenPrefix, v))
+}
+
+// AccessTokenLength applies equality check predicate on the "access_token_length" field. It's identical to AccessTokenLengthEQ.
+func AccessTokenLength(v int) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldEQ(FieldAccessTokenLength, v))
+}
+
+// AccessTokenMaskPrefix applies equality check predicate on the "access_token_mask_prefix" field. It's identical to AccessTokenMaskPrefixEQ.
+func AccessTokenMaskPrefix(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldEQ(FieldAccessTokenMaskPrefix, v))
+}
+
+// AccessTokenMaskSuffix applies equality check predicate on the "access_token_mask_suffix" field. It's identical to AccessTokenMaskSuffixEQ.
+func AccessTokenMaskSuffix(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldEQ(FieldAccessTokenMaskSuffix, v))
 }
 
 // Name applies equality check predicate on the "name" field. It's identical to NameEQ.
@@ -217,69 +232,239 @@ func AccessTokenHashContainsFold(v string) predicate.AccessToken {
 	return predicate.AccessToken(sql.FieldContainsFold(FieldAccessTokenHash, v))
 }
 
-// AccessTokenMaskEQ applies the EQ predicate on the "access_token_mask" field.
-func AccessTokenMaskEQ(v string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldEQ(FieldAccessTokenMask, v))
+// AccessTokenPrefixEQ applies the EQ predicate on the "access_token_prefix" field.
+func AccessTokenPrefixEQ(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldEQ(FieldAccessTokenPrefix, v))
 }
 
-// AccessTokenMaskNEQ applies the NEQ predicate on the "access_token_mask" field.
-func AccessTokenMaskNEQ(v string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldNEQ(FieldAccessTokenMask, v))
+// AccessTokenPrefixNEQ applies the NEQ predicate on the "access_token_prefix" field.
+func AccessTokenPrefixNEQ(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldNEQ(FieldAccessTokenPrefix, v))
 }
 
-// AccessTokenMaskIn applies the In predicate on the "access_token_mask" field.
-func AccessTokenMaskIn(vs ...string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldIn(FieldAccessTokenMask, vs...))
+// AccessTokenPrefixIn applies the In predicate on the "access_token_prefix" field.
+func AccessTokenPrefixIn(vs ...string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldIn(FieldAccessTokenPrefix, vs...))
 }
 
-// AccessTokenMaskNotIn applies the NotIn predicate on the "access_token_mask" field.
-func AccessTokenMaskNotIn(vs ...string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldNotIn(FieldAccessTokenMask, vs...))
+// AccessTokenPrefixNotIn applies the NotIn predicate on the "access_token_prefix" field.
+func AccessTokenPrefixNotIn(vs ...string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldNotIn(FieldAccessTokenPrefix, vs...))
 }
 
-// AccessTokenMaskGT applies the GT predicate on the "access_token_mask" field.
-func AccessTokenMaskGT(v string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldGT(FieldAccessTokenMask, v))
+// AccessTokenPrefixGT applies the GT predicate on the "access_token_prefix" field.
+func AccessTokenPrefixGT(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldGT(FieldAccessTokenPrefix, v))
 }
 
-// AccessTokenMaskGTE applies the GTE predicate on the "access_token_mask" field.
-func AccessTokenMaskGTE(v string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldGTE(FieldAccessTokenMask, v))
+// AccessTokenPrefixGTE applies the GTE predicate on the "access_token_prefix" field.
+func AccessTokenPrefixGTE(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldGTE(FieldAccessTokenPrefix, v))
 }
 
-// AccessTokenMaskLT applies the LT predicate on the "access_token_mask" field.
-func AccessTokenMaskLT(v string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldLT(FieldAccessTokenMask, v))
+// AccessTokenPrefixLT applies the LT predicate on the "access_token_prefix" field.
+func AccessTokenPrefixLT(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldLT(FieldAccessTokenPrefix, v))
 }
 
-// AccessTokenMaskLTE applies the LTE predicate on the "access_token_mask" field.
-func AccessTokenMaskLTE(v string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldLTE(FieldAccessTokenMask, v))
+// AccessTokenPrefixLTE applies the LTE predicate on the "access_token_prefix" field.
+func AccessTokenPrefixLTE(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldLTE(FieldAccessTokenPrefix, v))
 }
 
-// AccessTokenMaskContains applies the Contains predicate on the "access_token_mask" field.
-func AccessTokenMaskContains(v string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldContains(FieldAccessTokenMask, v))
+// AccessTokenPrefixContains applies the Contains predicate on the "access_token_prefix" field.
+func AccessTokenPrefixContains(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldContains(FieldAccessTokenPrefix, v))
 }
 
-// AccessTokenMaskHasPrefix applies the HasPrefix predicate on the "access_token_mask" field.
-func AccessTokenMaskHasPrefix(v string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldHasPrefix(FieldAccessTokenMask, v))
+// AccessTokenPrefixHasPrefix applies the HasPrefix predicate on the "access_token_prefix" field.
+func AccessTokenPrefixHasPrefix(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldHasPrefix(FieldAccessTokenPrefix, v))
 }
 
-// AccessTokenMaskHasSuffix applies the HasSuffix predicate on the "access_token_mask" field.
-func AccessTokenMaskHasSuffix(v string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldHasSuffix(FieldAccessTokenMask, v))
+// AccessTokenPrefixHasSuffix applies the HasSuffix predicate on the "access_token_prefix" field.
+func AccessTokenPrefixHasSuffix(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldHasSuffix(FieldAccessTokenPrefix, v))
 }
 
-// AccessTokenMaskEqualFold applies the EqualFold predicate on the "access_token_mask" field.
-func AccessTokenMaskEqualFold(v string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldEqualFold(FieldAccessTokenMask, v))
+// AccessTokenPrefixEqualFold applies the EqualFold predicate on the "access_token_prefix" field.
+func AccessTokenPrefixEqualFold(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldEqualFold(FieldAccessTokenPrefix, v))
 }
 
-// AccessTokenMaskContainsFold applies the ContainsFold predicate on the "access_token_mask" field.
-func AccessTokenMaskContainsFold(v string) predicate.AccessToken {
-	return predicate.AccessToken(sql.FieldContainsFold(FieldAccessTokenMask, v))
+// AccessTokenPrefixContainsFold applies the ContainsFold predicate on the "access_token_prefix" field.
+func AccessTokenPrefixContainsFold(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldContainsFold(FieldAccessTokenPrefix, v))
+}
+
+// AccessTokenLengthEQ applies the EQ predicate on the "access_token_length" field.
+func AccessTokenLengthEQ(v int) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldEQ(FieldAccessTokenLength, v))
+}
+
+// AccessTokenLengthNEQ applies the NEQ predicate on the "access_token_length" field.
+func AccessTokenLengthNEQ(v int) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldNEQ(FieldAccessTokenLength, v))
+}
+
+// AccessTokenLengthIn applies the In predicate on the "access_token_length" field.
+func AccessTokenLengthIn(vs ...int) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldIn(FieldAccessTokenLength, vs...))
+}
+
+// AccessTokenLengthNotIn applies the NotIn predicate on the "access_token_length" field.
+func AccessTokenLengthNotIn(vs ...int) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldNotIn(FieldAccessTokenLength, vs...))
+}
+
+// AccessTokenLengthGT applies the GT predicate on the "access_token_length" field.
+func AccessTokenLengthGT(v int) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldGT(FieldAccessTokenLength, v))
+}
+
+// AccessTokenLengthGTE applies the GTE predicate on the "access_token_length" field.
+func AccessTokenLengthGTE(v int) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldGTE(FieldAccessTokenLength, v))
+}
+
+// AccessTokenLengthLT applies the LT predicate on the "access_token_length" field.
+func AccessTokenLengthLT(v int) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldLT(FieldAccessTokenLength, v))
+}
+
+// AccessTokenLengthLTE applies the LTE predicate on the "access_token_length" field.
+func AccessTokenLengthLTE(v int) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldLTE(FieldAccessTokenLength, v))
+}
+
+// AccessTokenMaskPrefixEQ applies the EQ predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixEQ(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldEQ(FieldAccessTokenMaskPrefix, v))
+}
+
+// AccessTokenMaskPrefixNEQ applies the NEQ predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixNEQ(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldNEQ(FieldAccessTokenMaskPrefix, v))
+}
+
+// AccessTokenMaskPrefixIn applies the In predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixIn(vs ...string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldIn(FieldAccessTokenMaskPrefix, vs...))
+}
+
+// AccessTokenMaskPrefixNotIn applies the NotIn predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixNotIn(vs ...string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldNotIn(FieldAccessTokenMaskPrefix, vs...))
+}
+
+// AccessTokenMaskPrefixGT applies the GT predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixGT(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldGT(FieldAccessTokenMaskPrefix, v))
+}
+
+// AccessTokenMaskPrefixGTE applies the GTE predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixGTE(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldGTE(FieldAccessTokenMaskPrefix, v))
+}
+
+// AccessTokenMaskPrefixLT applies the LT predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixLT(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldLT(FieldAccessTokenMaskPrefix, v))
+}
+
+// AccessTokenMaskPrefixLTE applies the LTE predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixLTE(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldLTE(FieldAccessTokenMaskPrefix, v))
+}
+
+// AccessTokenMaskPrefixContains applies the Contains predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixContains(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldContains(FieldAccessTokenMaskPrefix, v))
+}
+
+// AccessTokenMaskPrefixHasPrefix applies the HasPrefix predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixHasPrefix(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldHasPrefix(FieldAccessTokenMaskPrefix, v))
+}
+
+// AccessTokenMaskPrefixHasSuffix applies the HasSuffix predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixHasSuffix(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldHasSuffix(FieldAccessTokenMaskPrefix, v))
+}
+
+// AccessTokenMaskPrefixEqualFold applies the EqualFold predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixEqualFold(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldEqualFold(FieldAccessTokenMaskPrefix, v))
+}
+
+// AccessTokenMaskPrefixContainsFold applies the ContainsFold predicate on the "access_token_mask_prefix" field.
+func AccessTokenMaskPrefixContainsFold(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldContainsFold(FieldAccessTokenMaskPrefix, v))
+}
+
+// AccessTokenMaskSuffixEQ applies the EQ predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixEQ(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldEQ(FieldAccessTokenMaskSuffix, v))
+}
+
+// AccessTokenMaskSuffixNEQ applies the NEQ predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixNEQ(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldNEQ(FieldAccessTokenMaskSuffix, v))
+}
+
+// AccessTokenMaskSuffixIn applies the In predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixIn(vs ...string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldIn(FieldAccessTokenMaskSuffix, vs...))
+}
+
+// AccessTokenMaskSuffixNotIn applies the NotIn predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixNotIn(vs ...string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldNotIn(FieldAccessTokenMaskSuffix, vs...))
+}
+
+// AccessTokenMaskSuffixGT applies the GT predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixGT(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldGT(FieldAccessTokenMaskSuffix, v))
+}
+
+// AccessTokenMaskSuffixGTE applies the GTE predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixGTE(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldGTE(FieldAccessTokenMaskSuffix, v))
+}
+
+// AccessTokenMaskSuffixLT applies the LT predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixLT(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldLT(FieldAccessTokenMaskSuffix, v))
+}
+
+// AccessTokenMaskSuffixLTE applies the LTE predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixLTE(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldLTE(FieldAccessTokenMaskSuffix, v))
+}
+
+// AccessTokenMaskSuffixContains applies the Contains predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixContains(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldContains(FieldAccessTokenMaskSuffix, v))
+}
+
+// AccessTokenMaskSuffixHasPrefix applies the HasPrefix predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixHasPrefix(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldHasPrefix(FieldAccessTokenMaskSuffix, v))
+}
+
+// AccessTokenMaskSuffixHasSuffix applies the HasSuffix predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixHasSuffix(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldHasSuffix(FieldAccessTokenMaskSuffix, v))
+}
+
+// AccessTokenMaskSuffixEqualFold applies the EqualFold predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixEqualFold(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldEqualFold(FieldAccessTokenMaskSuffix, v))
+}
+
+// AccessTokenMaskSuffixContainsFold applies the ContainsFold predicate on the "access_token_mask_suffix" field.
+func AccessTokenMaskSuffixContainsFold(v string) predicate.AccessToken {
+	return predicate.AccessToken(sql.FieldContainsFold(FieldAccessTokenMaskSuffix, v))
 }
 
 // NameEQ applies the EQ predicate on the "name" field.

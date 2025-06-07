@@ -61,20 +61,6 @@ func (taku *TeamAPIKeyUpdate) SetNillableAPIKeyHash(s *string) *TeamAPIKeyUpdate
 	return taku
 }
 
-// SetAPIKeyMask sets the "api_key_mask" field.
-func (taku *TeamAPIKeyUpdate) SetAPIKeyMask(s string) *TeamAPIKeyUpdate {
-	taku.mutation.SetAPIKeyMask(s)
-	return taku
-}
-
-// SetNillableAPIKeyMask sets the "api_key_mask" field if the given value is not nil.
-func (taku *TeamAPIKeyUpdate) SetNillableAPIKeyMask(s *string) *TeamAPIKeyUpdate {
-	if s != nil {
-		taku.SetAPIKeyMask(*s)
-	}
-	return taku
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (taku *TeamAPIKeyUpdate) SetUpdatedAt(t time.Time) *TeamAPIKeyUpdate {
 	taku.mutation.SetUpdatedAt(t)
@@ -263,9 +249,6 @@ func (taku *TeamAPIKeyUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if value, ok := taku.mutation.APIKeyHash(); ok {
 		_spec.SetField(teamapikey.FieldAPIKeyHash, field.TypeString, value)
 	}
-	if value, ok := taku.mutation.APIKeyMask(); ok {
-		_spec.SetField(teamapikey.FieldAPIKeyMask, field.TypeString, value)
-	}
 	if value, ok := taku.mutation.UpdatedAt(); ok {
 		_spec.SetField(teamapikey.FieldUpdatedAt, field.TypeTime, value)
 	}
@@ -391,20 +374,6 @@ func (takuo *TeamAPIKeyUpdateOne) SetAPIKeyHash(s string) *TeamAPIKeyUpdateOne {
 func (takuo *TeamAPIKeyUpdateOne) SetNillableAPIKeyHash(s *string) *TeamAPIKeyUpdateOne {
 	if s != nil {
 		takuo.SetAPIKeyHash(*s)
-	}
-	return takuo
-}
-
-// SetAPIKeyMask sets the "api_key_mask" field.
-func (takuo *TeamAPIKeyUpdateOne) SetAPIKeyMask(s string) *TeamAPIKeyUpdateOne {
-	takuo.mutation.SetAPIKeyMask(s)
-	return takuo
-}
-
-// SetNillableAPIKeyMask sets the "api_key_mask" field if the given value is not nil.
-func (takuo *TeamAPIKeyUpdateOne) SetNillableAPIKeyMask(s *string) *TeamAPIKeyUpdateOne {
-	if s != nil {
-		takuo.SetAPIKeyMask(*s)
 	}
 	return takuo
 }
@@ -626,9 +595,6 @@ func (takuo *TeamAPIKeyUpdateOne) sqlSave(ctx context.Context) (_node *TeamAPIKe
 	}
 	if value, ok := takuo.mutation.APIKeyHash(); ok {
 		_spec.SetField(teamapikey.FieldAPIKeyHash, field.TypeString, value)
-	}
-	if value, ok := takuo.mutation.APIKeyMask(); ok {
-		_spec.SetField(teamapikey.FieldAPIKeyMask, field.TypeString, value)
 	}
 	if value, ok := takuo.mutation.UpdatedAt(); ok {
 		_spec.SetField(teamapikey.FieldUpdatedAt, field.TypeTime, value)

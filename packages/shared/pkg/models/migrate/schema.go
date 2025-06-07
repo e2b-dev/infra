@@ -14,7 +14,10 @@ var (
 		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
 		{Name: "access_token", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "access_token_hash", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "access_token_mask", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "access_token_prefix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(10)"}},
+		{Name: "access_token_length", Type: field.TypeInt},
+		{Name: "access_token_mask_prefix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(5)"}},
+		{Name: "access_token_mask_suffix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(5)"}},
 		{Name: "name", Type: field.TypeString, Default: "Unnamed Access Token", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "created_at", Type: field.TypeTime, Nullable: true, Default: "CURRENT_TIMESTAMP"},
 		{Name: "user_id", Type: field.TypeUUID},
@@ -27,7 +30,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "access_tokens_users_access_tokens",
-				Columns:    []*schema.Column{AccessTokensColumns[6]},
+				Columns:    []*schema.Column{AccessTokensColumns[9]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -173,7 +176,10 @@ var (
 		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
 		{Name: "api_key", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "character varying(44)"}},
 		{Name: "api_key_hash", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "character varying(64)"}},
-		{Name: "api_key_mask", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(44)"}},
+		{Name: "api_key_prefix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(10)"}},
+		{Name: "api_key_length", Type: field.TypeInt},
+		{Name: "api_key_mask_prefix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(5)"}},
+		{Name: "api_key_mask_suffix", Type: field.TypeString, SchemaType: map[string]string{"postgres": "character varying(5)"}},
 		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
 		{Name: "updated_at", Type: field.TypeTime, Nullable: true},
 		{Name: "name", Type: field.TypeString, Default: "Unnamed API Key", SchemaType: map[string]string{"postgres": "text"}},
@@ -189,13 +195,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "team_api_keys_teams_team_api_keys",
-				Columns:    []*schema.Column{TeamAPIKeysColumns[8]},
+				Columns:    []*schema.Column{TeamAPIKeysColumns[11]},
 				RefColumns: []*schema.Column{TeamsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
 			{
 				Symbol:     "team_api_keys_users_created_api_keys",
-				Columns:    []*schema.Column{TeamAPIKeysColumns[9]},
+				Columns:    []*schema.Column{TeamAPIKeysColumns[12]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.SetNull,
 			},

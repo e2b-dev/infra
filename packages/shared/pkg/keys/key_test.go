@@ -2,6 +2,7 @@ package keys
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,42 +12,54 @@ func TestMaskKey(t *testing.T) {
 	t.Run("succeeds: value longer than suffix length", func(t *testing.T) {
 		masked, err := MaskKey("test_", "1234567890")
 		assert.NoError(t, err)
-		assert.Equal(t, "test_******7890", masked)
+		assert.Equal(t, "test_", masked.Prefix)
+		assert.Equal(t, "12", masked.MaskedValuePrefix)
+		assert.Equal(t, "7890", masked.MaskedValueSuffix)
 	})
 
 	t.Run("succeeds: empty prefix, value longer than suffix length", func(t *testing.T) {
 		masked, err := MaskKey("", "1234567890")
 		assert.NoError(t, err)
-		assert.Equal(t, "******7890", masked)
+		assert.Equal(t, "", masked.Prefix)
+		assert.Equal(t, "12", masked.MaskedValuePrefix)
+		assert.Equal(t, "7890", masked.MaskedValueSuffix)
 	})
 
 	t.Run("error: value length less than suffix length", func(t *testing.T) {
 		_, err := MaskKey("test", "123")
 		assert.Error(t, err)
-		assert.EqualError(t, err, fmt.Sprintf("mask value length is less than or equal to key suffix length (%d)", identifierValueSuffixLength))
+		assert.EqualError(t, err, fmt.Sprintf("mask value length is less than identifier suffix length (%d)", identifierValueSuffixLength))
 	})
 
 	t.Run("error: value length equals suffix length", func(t *testing.T) {
 		_, err := MaskKey("test", "1234")
 		assert.Error(t, err)
-		assert.EqualError(t, err, fmt.Sprintf("mask value length is equal to key suffix length (%d), which would expose the entire key in the mask", identifierValueSuffixLength))
+		assert.EqualError(t, err, fmt.Sprintf("mask value length is equal to identifier suffix length (%d), which would expose the entire identifier in the mask", identifierValueSuffixLength))
 	})
 }
 
 func TestGenerateKey(t *testing.T) {
+	keyLength := 40
+
 	t.Run("succeeds", func(t *testing.T) {
 		key, err := GenerateKey("test_")
 		assert.NoError(t, err)
 		assert.Regexp(t, "^test_.*", key.PrefixedRawValue)
-		assert.Regexp(t, `^test_\*+[0-9a-f]{4}$`, key.MaskedValue)
+		assert.Equal(t, "test_", key.Masked.Prefix)
+		assert.Equal(t, keyLength, key.Masked.ValueLength)
+		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(identifierValuePrefixLength)+"}$", key.Masked.MaskedValuePrefix)
+		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(identifierValueSuffixLength)+"}$", key.Masked.MaskedValueSuffix)
 		assert.Regexp(t, "^\\$sha256\\$.*", key.HashedValue)
 	})
 
 	t.Run("no prefix", func(t *testing.T) {
 		key, err := GenerateKey("")
 		assert.NoError(t, err)
-		assert.Regexp(t, "^[0-9a-f]{40}$", key.PrefixedRawValue)
-		assert.Regexp(t, `^\*+[0-9a-f]{4}$`, key.MaskedValue)
+		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(keyLength)+"}$", key.PrefixedRawValue)
+		assert.Equal(t, "", key.Masked.Prefix)
+		assert.Equal(t, keyLength, key.Masked.ValueLength)
+		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(identifierValuePrefixLength)+"}$", key.Masked.MaskedValuePrefix)
+		assert.Regexp(t, "^[0-9a-f]{"+strconv.Itoa(identifierValueSuffixLength)+"}$", key.Masked.MaskedValueSuffix)
 		assert.Regexp(t, "^\\$sha256\\$.*", key.HashedValue)
 	})
 }
@@ -122,7 +135,7 @@ func TestGetMaskedIdentifierProperties(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := GetMaskedIdentifierProperties(tc.prefix, tc.value)
+			result, err := MaskKey(tc.prefix, tc.value)
 
 			if tc.expectedErrString != "" {
 				assert.Error(t, err)
