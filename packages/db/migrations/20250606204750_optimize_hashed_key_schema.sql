@@ -3,17 +3,17 @@
 
 -- Add new columns to team_api_keys table
 ALTER TABLE team_api_keys
-    ADD COLUMN IF NOT EXISTS api_key_prefix VARCHAR(44),
+    ADD COLUMN IF NOT EXISTS api_key_prefix VARCHAR(10),
     ADD COLUMN IF NOT EXISTS api_key_length INTEGER,
-    ADD COLUMN IF NOT EXISTS api_key_mask_prefix VARCHAR(44),
-    ADD COLUMN IF NOT EXISTS api_key_mask_suffix VARCHAR(44);
+    ADD COLUMN IF NOT EXISTS api_key_mask_prefix VARCHAR(5),
+    ADD COLUMN IF NOT EXISTS api_key_mask_suffix VARCHAR(5);
 
 -- Add new columns to access_tokens table
 ALTER TABLE access_tokens
-    ADD COLUMN IF NOT EXISTS access_token_prefix TEXT,
+    ADD COLUMN IF NOT EXISTS access_token_prefix VARCHAR(10),
     ADD COLUMN IF NOT EXISTS access_token_length INTEGER,
-    ADD COLUMN IF NOT EXISTS access_token_mask_prefix TEXT,
-    ADD COLUMN IF NOT EXISTS access_token_mask_suffix TEXT;
+    ADD COLUMN IF NOT EXISTS access_token_mask_prefix VARCHAR(5),
+    ADD COLUMN IF NOT EXISTS access_token_mask_suffix VARCHAR(5);
 
 
 -- +goose StatementEnd
