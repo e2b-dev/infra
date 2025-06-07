@@ -203,7 +203,7 @@ func (c *InstanceCache) Set(key string, value *InstanceInfo) {
 		go func() {
 			err := c.insertInstance(value)
 			if err != nil {
-				fmt.Printf("error inserting instance: %v", err)
+				zap.L().Error("error inserting instance", zap.Error(err))
 			}
 		}()
 	}

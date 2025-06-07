@@ -41,7 +41,7 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 		}
 	}
 
-	telemetry.ReportError(ctx, errMsg)
+	telemetry.ReportError(ctx, message, errMsg)
 
 	c.Error(errMsg)
 

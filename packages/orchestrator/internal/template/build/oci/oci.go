@@ -65,7 +65,7 @@ func ToExt4(ctx context.Context, img v1.Image, rootfsPath string, sizeLimit int6
 	defer func() {
 		rootfsErr := rootfsFile.Close()
 		if rootfsErr != nil {
-			telemetry.ReportError(ctx, fmt.Errorf("error closing rootfs file: %w", rootfsErr))
+			telemetry.ReportError(ctx, "error closing rootfs file", rootfsErr)
 		} else {
 			telemetry.ReportEvent(ctx, "closed rootfs file")
 		}
