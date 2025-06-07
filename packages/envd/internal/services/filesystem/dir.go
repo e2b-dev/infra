@@ -44,6 +44,13 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("path is not a directory: %s", dirPath))
 	}
 
+	isSupportedVersion := false
+
+	packageVersion := req.Header().Get("package_version")
+	if packageVersion != "" && packageVersion >= "1.5.2" {
+		isSupportedVersion = true
+	}
+
 	var entries []*rpc.EntryInfo
 	err = filepath.WalkDir(dirPath, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
@@ -75,15 +82,18 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		fileMode := fileInfo.Mode()
 
 		entryInfo := &rpc.EntryInfo{
-			Name:         fileInfo.Name(),
-			Type:         getEntryType(fileInfo),
-			Path:         path,
-			Size:         fileInfo.Size(),
-			Mode:         uint32(fileMode.Perm()),
-			Permissions:  fileInfo.Mode().String(),
-			Owner:        owner,
-			Group:        group,
-			ModifiedTime: timestamppb.New(fileInfo.ModTime()),
+			Name: fileInfo.Name(),
+			Type: getEntryType(fileInfo),
+			Path: path,
+		}
+
+		if isSupportedVersion {
+			entryInfo.Size = fileInfo.Size()
+			entryInfo.Mode = uint32(fileMode.Perm())
+			entryInfo.Permissions = fileInfo.Mode().String()
+			entryInfo.Owner = owner
+			entryInfo.Group = group
+			entryInfo.ModifiedTime = timestamppb.New(fileInfo.ModTime())
 		}
 
 		entries = append(entries, entryInfo)
