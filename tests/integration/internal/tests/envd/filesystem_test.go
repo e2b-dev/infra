@@ -87,6 +87,7 @@ func TestListDir(t *testing.T) {
 			})
 			setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 			setup.SetUserHeader(req.Header(), "user")
+			setup.SetPackageVersionHeader(req.Header(), "1.5.x")
 			folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
 			assert.NoError(t, err)
 
@@ -234,6 +235,7 @@ func TestListDirFileEntry(t *testing.T) {
 	})
 	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
+	setup.SetPackageVersionHeader(req.Header(), "1.5.x")
 	folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
 	require.NoError(t, err)
 
@@ -278,6 +280,7 @@ func TestListDirEntry(t *testing.T) {
 	})
 	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
+	setup.SetPackageVersionHeader(req.Header(), "1.5.x")
 	folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
 	require.NoError(t, err)
 
@@ -337,6 +340,7 @@ func TestListDirMixedEntries(t *testing.T) {
 	})
 	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
+	setup.SetPackageVersionHeader(req.Header(), "1.5.x")
 	folderListResp, err := envdClient.FilesystemClient.ListDir(ctx, req)
 	require.NoError(t, err)
 
