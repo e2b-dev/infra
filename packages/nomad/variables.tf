@@ -115,6 +115,14 @@ variable "client_proxy_port" {
   })
 }
 
+variable "template_cache_port" {
+  type = object({
+    name        = string
+    port        = number
+    status_port = number
+  })
+}
+
 variable "domain_name" {
   type = string
 }
@@ -148,6 +156,10 @@ variable "launch_darkly_api_key_secret_name" {
 }
 
 variable "clickhouse_bucket_name" {
+  type = string
+}
+
+variable "template_cache_proxy_url" {
   type = string
 }
 

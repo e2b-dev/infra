@@ -71,6 +71,7 @@ module "buckets" {
   gcp_service_account_email = module.init.service_account_email
   gcp_project_id            = var.gcp_project_id
   gcp_region                = var.gcp_region
+  gcp_zone                  = var.gcp_zone
 
   fc_template_bucket_name     = var.template_bucket_name != "" ? var.template_bucket_name : "${var.gcp_project_id}-fc-templates"
   fc_template_bucket_location = var.template_bucket_location
@@ -234,10 +235,14 @@ module "nomad" {
   # Template manager
   template_manager_port          = var.template_manager_port
   template_bucket_name           = module.buckets.fc_template_bucket_name
+  template_cache_proxy_url       = var.template_cache_proxy_url
   template_manager_machine_count = var.build_cluster_size
 
   # Redis
   redis_port = var.redis_port
+
+  # Template cache
+  template_cache_port = var.template_cache_port
 
   launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
 }
