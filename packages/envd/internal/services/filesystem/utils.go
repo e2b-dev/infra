@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type osEntry interface {
@@ -73,9 +74,10 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string, sdkVersion string)
 	if sdkVersion != "" && sdkVersion >= "1.5.2" {
 		entry.Size = fileInfo.Size()
 		entry.Mode = uint32(fileMode.Perm())
-		entry.Permissions = fileMode.String()
+		entry.Permissions = fileInfo.Mode().String()
 		entry.Owner = owner
 		entry.Group = group
+		entry.ModifiedTime = timestamppb.New(fileInfo.ModTime())
 	}
 
 	return entry
