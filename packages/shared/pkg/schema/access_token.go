@@ -19,10 +19,10 @@ func (AccessToken) Fields() []ent.Field {
 		field.String("access_token").Unique().Immutable().Sensitive().SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("access_token_hash").Immutable().Unique().Sensitive().SchemaType(map[string]string{dialect.Postgres: "text"}),
 
-		field.String("access_token_prefix").Immutable().SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.String("access_token_prefix").Immutable().SchemaType(map[string]string{dialect.Postgres: "character varying(10)"}),
 		field.Int("access_token_length").Immutable(),
-		field.String("access_token_mask_prefix").Immutable().SchemaType(map[string]string{dialect.Postgres: "text"}),
-		field.String("access_token_mask_suffix").Immutable().SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.String("access_token_mask_prefix").Immutable().SchemaType(map[string]string{dialect.Postgres: "character varying(5)"}),
+		field.String("access_token_mask_suffix").Immutable().SchemaType(map[string]string{dialect.Postgres: "character varying(5)"}),
 
 		field.String("name").SchemaType(map[string]string{dialect.Postgres: "text"}).Default("Unnamed Access Token"),
 		field.UUID("user_id", uuid.UUID{}),
