@@ -76,7 +76,7 @@ func entryInfoFromFileInfo(fileInfo os.FileInfo, path string, sdkVersion string)
 	if sdkVersion != "" && sdkVersion >= "1.5.2" {
 		entry.Size = fileInfo.Size()
 		entry.Mode = uint32(fileMode.Perm())
-		entry.Permissions = fileInfo.Mode().String()
+		entry.Permissions = fileMode.String()
 		entry.Owner = owner
 		entry.Group = group
 		entry.ModifiedTime = timestamppb.New(fileInfo.ModTime())
