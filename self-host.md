@@ -63,12 +63,12 @@ Check if you can use config for terraform state management
 9. Secrets are created and stored in GCP Secrets Manager. Once created, that is the source of truth--you will need to update values there to make changes. Create a secret value for the following secrets:
   - e2b-cloudflare-api-token
       > Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> Account API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
-  - e2b-supabase-jwt-secrets (optional / required to self-host the [E2B dashboard](https://github.com/e2b-dev/dashboard))
-      > Get Supabase JWT Secret: go to the [Supabase dashboard](https://supabase.com/dashboard) -> Select your Project -> Project Settings -> Data API -> JWT Settings
   - e2b-grafana-api-key (optional) - read more in [grafana README](./terraform/grafana/README.md)
   - Posthog API keys for monitoring (optional)
 10. Run `make plan-without-jobs` and then `make apply`
 11. Fill out the following secret in the GCP Secrets Manager:
+  - e2b-supabase-jwt-secrets (optional / required to self-host the [E2B dashboard](https://github.com/e2b-dev/dashboard))
+      > Get Supabase JWT Secret: go to the [Supabase dashboard](https://supabase.com/dashboard) -> Select your Project -> Project Settings -> Data API -> JWT Settings
   - e2b-postgres-connection-string
     > This is the same value as for the `POSTGRES_CONNECTION_STRING` env variable.
 12. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console
