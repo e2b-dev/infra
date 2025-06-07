@@ -59,20 +59,3 @@ func getFileOwnership(fileInfo os.FileInfo) (owner, group string) {
 
 	return owner, group
 }
-
-func entryInfoFromFileInfo(fileInfo os.FileInfo, path string) *rpc.EntryInfo {
-	owner, group := getFileOwnership(fileInfo)
-	fileMode := fileInfo.Mode()
-
-	return &rpc.EntryInfo{
-		Name:         fileInfo.Name(),
-		Type:         getEntryType(fileInfo),
-		Path:         path,
-		Size:         fileInfo.Size(),
-		Mode:         uint32(fileMode.Perm()),
-		Permissions:  fileMode.String(),
-		Owner:        owner,
-		Group:        group,
-		ModifiedTime: timestamppb.New(fileInfo.ModTime()),
-	}
-}
