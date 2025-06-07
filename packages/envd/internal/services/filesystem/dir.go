@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -44,12 +43,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("path is not a directory: %s", dirPath))
 	}
 
-	isSupportedVersion := false
-
-	packageVersion := req.Header().Get("package_version")
-	if packageVersion != "" && packageVersion >= "1.5.2" {
-		isSupportedVersion = true
-	}
+	sdkVersion := req.Header().Get("package_version")
 
 	var entries []*rpc.EntryInfo
 	err = filepath.WalkDir(dirPath, func(path string, entry os.DirEntry, err error) error {
@@ -78,23 +72,7 @@ func (Service) ListDir(ctx context.Context, req *connect.Request[rpc.ListDirRequ
 			return err
 		}
 
-		owner, group := getFileOwnership(fileInfo)
-		fileMode := fileInfo.Mode()
-
-		entryInfo := &rpc.EntryInfo{
-			Name: fileInfo.Name(),
-			Type: getEntryType(fileInfo),
-			Path: path,
-		}
-
-		if isSupportedVersion {
-			entryInfo.Size = fileInfo.Size()
-			entryInfo.Mode = uint32(fileMode.Perm())
-			entryInfo.Permissions = fileInfo.Mode().String()
-			entryInfo.Owner = owner
-			entryInfo.Group = group
-			entryInfo.ModifiedTime = timestamppb.New(fileInfo.ModTime())
-		}
+		entryInfo := entryInfoFromFileInfo(fileInfo, path, sdkVersion)
 
 		entries = append(entries, entryInfo)
 
