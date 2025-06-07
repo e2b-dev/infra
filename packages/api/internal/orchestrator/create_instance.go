@@ -31,12 +31,13 @@ const (
 )
 
 var (
-	sandboxCreateFailedError = fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
+	errSandboxCreateFailed = fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
 )
 
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
+	executionID,
 	alias string,
 	team authcache.AuthTeamInfo,
 	build queries.EnvBuild,
@@ -112,6 +113,7 @@ func (o *Orchestrator) CreateSandbox(
 			TeamId:             team.Team.ID.String(),
 			BuildId:            build.ID.String(),
 			SandboxId:          sandboxID,
+			ExecutionId:        executionID,
 			KernelVersion:      build.KernelVersion,
 			FirecrackerVersion: build.FirecrackerVersion,
 			EnvdVersion:        *build.EnvdVersion,
@@ -158,7 +160,7 @@ func (o *Orchestrator) CreateSandbox(
 			return nil, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: "Failed to create sandbox",
-				Err:       sandboxCreateFailedError,
+				Err:       errSandboxCreateFailed,
 			}
 		}
 
@@ -225,6 +227,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	instanceInfo := instance.NewInstanceInfo(
 		&sbx,
+		executionID,
 		&team.Team.ID,
 		&build.ID,
 		metadata,

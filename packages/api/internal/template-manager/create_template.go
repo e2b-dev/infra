@@ -26,6 +26,7 @@ func (tm *TemplateManager) CreateTemplate(
 	vCpuCount,
 	diskSizeMB,
 	memoryMB int64,
+	readyCommand string,
 ) error {
 	ctx, span := t.Start(ctx, "create-template",
 		trace.WithAttributes(
@@ -56,6 +57,7 @@ func (tm *TemplateManager) CreateTemplate(
 			FirecrackerVersion: firecrackerVersion,
 			HugePages:          features.HasHugePages(),
 			StartCommand:       startCommand,
+			ReadyCommand:       readyCommand,
 		},
 	})
 

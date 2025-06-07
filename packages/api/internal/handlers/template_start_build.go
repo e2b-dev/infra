@@ -14,11 +14,13 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // PostTemplatesTemplateIDBuildsBuildID triggers a new build after the user pushes the Docker image to the registry
@@ -75,7 +77,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	}
 
 	if team == nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("User does not have access to the template"))
+		a.sendAPIStoreError(c, http.StatusForbidden, "User does not have access to the template")
 
 		err = fmt.Errorf("user '%s' does not have access to the template '%s'", userID, templateID)
 		telemetry.ReportCriticalError(ctx, err)
@@ -98,26 +100,45 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 			envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding),
 			envbuild.IDNotIn(buildUUID),
 		).
-		Count(ctx)
+		All(ctx)
 	if err != nil {
-		zap.L().Error("Error when getting count of running builds", zap.Error(err))
+		zap.L().Error("Error when getting running builds", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
-		return
-	}
-
-	// make sure there is no other build in progress for the same template
-	if concurrentlyRunningBuilds > 0 {
-		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("There is already a build in progress for the template"))
-		err = fmt.Errorf("there is already a build in progress for the template '%s'", templateID)
 		telemetry.ReportCriticalError(ctx, err)
 		return
 	}
 
+	// make sure there is no other build in progress for the same template
+	if len(concurrentlyRunningBuilds) > 0 {
+		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b *models.EnvBuild) template_manager.DeleteBuild {
+			return template_manager.DeleteBuild{
+				TemplateId: envDB.ID,
+				BuildID:    b.ID,
+			}
+		})
+		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b template_manager.DeleteBuild) string {
+			return fmt.Sprintf("%s/%s", b.TemplateId, b.BuildID)
+		})))
+		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
+		if deleteJobErr != nil {
+			errMsg := fmt.Errorf("error when canceling running build: %w", deleteJobErr)
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build cancel request")
+			telemetry.ReportCriticalError(ctx, errMsg)
+			return
+		}
+		telemetry.ReportEvent(ctx, "canceled running builds")
+	}
+
 	startTime := time.Now()
 	build := envDB.Edges.Builds[0]
-	startCmd := ""
+	var startCmd string
 	if build.StartCmd != nil {
 		startCmd = *build.StartCmd
+	}
+
+	var readyCmd string
+	if build.ReadyCmd != nil {
+		readyCmd = *build.ReadyCmd
 	}
 
 	// only waiting builds can be triggered
@@ -140,6 +161,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		build.Vcpu,
 		build.FreeDiskSizeMB,
 		build.RAMMB,
+		readyCmd,
 	)
 
 	if buildErr != nil {

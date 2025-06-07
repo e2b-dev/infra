@@ -17,6 +17,8 @@ message TemplateConfig {
   string firecrackerVersion = 7;
   string startCommand = 8;
   bool hugePages = 9;
+
+  string readyCommand = 10;
 }
 
 message TemplateCreateRequest {
@@ -31,6 +33,7 @@ message TemplateStatusRequest {
 // Data required for deleting a template.
 message TemplateBuildDeleteRequest {
   string buildID = 1;
+  string templateID = 2;
 }
 
 message TemplateBuildMetadata {

@@ -38,7 +38,7 @@ func (a *APIStore) Proxy(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	repoPrefix := fmt.Sprintf("/v2/e2b/custom-envs/")
+	repoPrefix := "/v2/e2b/custom-envs/"
 	realRepoPrefix := fmt.Sprintf("/v2/%s/%s/", consts.GCPProject, consts.DockerRegistry)
 	if !strings.HasPrefix(path, repoPrefix) && !strings.HasPrefix(path, realRepoPrefix) {
 		// The request shouldn't need any other endpoints, we deny access
@@ -72,5 +72,4 @@ func (a *APIStore) Proxy(w http.ResponseWriter, req *http.Request) {
 	req.URL.Path = strings.Replace(req.URL.Path, repoPrefix, realRepoPrefix, 1)
 
 	a.ServeHTTP(w, req)
-	return
 }

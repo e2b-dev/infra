@@ -7,11 +7,6 @@ variable "environment" {
   type        = string
 }
 
-variable "notification_email_secret_version" {
-  # we're just using this variable to propagate the whole dependency
-  type = any
-}
-
 variable "cloudflare_api_token_secret_name" {
   type = string
 }
@@ -111,6 +106,9 @@ variable "client_cluster_size" {
   type = number
 }
 
+variable "client_regional_cluster_size" {
+  type = number
+}
 
 variable "client_cluster_auto_scaling_max" {
   type = number
@@ -209,4 +207,38 @@ variable "nomad_port" {
 variable "labels" {
   description = "The labels to attach to resources created by this module"
   type        = map(string)
+}
+
+variable "clickhouse_cluster_name" {
+  type    = string
+  default = "clickhouse"
+}
+
+variable "clickhouse_cluster_size" {
+  description = "The number of ClickHouse nodes in the cluster."
+  type        = number
+}
+
+variable "clickhouse_machine_type" {
+  description = "The machine type of the Compute Instance to run for each node in the cluster."
+  type        = string
+}
+
+
+variable "clickhouse_job_constraint_prefix" {
+  description = "The prefix to use for the job constraint of the instance in the metadata."
+  type        = string
+}
+
+variable "clickhouse_node_pool" {
+  description = "The name of the Nomad pool."
+  type        = string
+}
+
+variable "clickhouse_health_port" {
+  type = object({
+    name = string
+    port = number
+    path = string
+  })
 }

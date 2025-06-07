@@ -17,7 +17,6 @@ type UpDownCounterType string
 
 const (
 	SandboxCountMeterName                  UpDownCounterType = "api.env.instance.running"
-	BuildCounterMeterName                  UpDownCounterType = "api.env.build.running"
 	NewNetworkSlotSPoolCounterMeterName    UpDownCounterType = "orchestrator.network.slots_pool.new"
 	ReusedNetworkSlotSPoolCounterMeterName UpDownCounterType = "orchestrator.network.slots_pool.reused"
 	NBDkSlotSReadyPoolCounterMeterName     UpDownCounterType = "orchestrator.nbd.slots_pool.read"
@@ -35,6 +34,8 @@ const (
 	OrchestratorProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "orchestrator.proxy.server.connections.open"
 	OrchestratorProxyPoolConnectionsMeterCounterName   ObservableUpDownCounterType = "orchestrator.proxy.pool.connections.open"
 	OrchestratorProxyPoolSizeMeterCounterName          ObservableUpDownCounterType = "orchestrator.proxy.pool.size"
+
+	BuildCounterMeterName ObservableUpDownCounterType = "api.env.build.running"
 )
 
 var meter = otel.GetMeterProvider().Meter("nomad")
@@ -53,7 +54,6 @@ var counterUnits = map[CounterType]string{
 
 var upDownCounterDesc = map[UpDownCounterType]string{
 	SandboxCountMeterName:                  "Counter of started instances.",
-	BuildCounterMeterName:                  "Counter of running builds.",
 	ReusedNetworkSlotSPoolCounterMeterName: "Number of reused network slots ready to be used.",
 	NewNetworkSlotSPoolCounterMeterName:    "Number of new network slots ready to be used.",
 	NBDkSlotSReadyPoolCounterMeterName:     "Number of nbd slots ready to be used.",
@@ -61,7 +61,6 @@ var upDownCounterDesc = map[UpDownCounterType]string{
 
 var upDownCounterUnits = map[UpDownCounterType]string{
 	SandboxCountMeterName:                  "{sandbox}",
-	BuildCounterMeterName:                  "{build}",
 	ReusedNetworkSlotSPoolCounterMeterName: "{slot}",
 	NewNetworkSlotSPoolCounterMeterName:    "{slot}",
 	NBDkSlotSReadyPoolCounterMeterName:     "{slot}",
@@ -75,6 +74,7 @@ var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	OrchestratorProxyServerConnectionsMeterCounterName: "Open connections to the orchestrator proxy from client proxies.",
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "Open connections from the orchestrator proxy to sandboxes.",
 	OrchestratorProxyPoolSizeMeterCounterName:          "Size of the orchestrator proxy pool.",
+	BuildCounterMeterName:                              "Counter of running builds.",
 }
 
 var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
@@ -85,6 +85,7 @@ var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
 	OrchestratorProxyServerConnectionsMeterCounterName: "{connection}",
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "{connection}",
 	OrchestratorProxyPoolSizeMeterCounterName:          "{transport}",
+	BuildCounterMeterName:                              "{build}",
 }
 
 func GetCounter(name CounterType) (metric.Int64Counter, error) {

@@ -6,6 +6,7 @@ locals {
     "scripts/run-nomad.sh"               = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
     "scripts/run-api-nomad.sh"           = substr(filesha256("${path.module}/scripts/run-api-nomad.sh"), 0, 5)
     "scripts/run-build-cluster-nomad.sh" = substr(filesha256("${path.module}/scripts/run-build-cluster-nomad.sh"), 0, 5)
+    "scripts/run-clickhouse-nomad.sh"    = substr(filesha256("${path.module}/scripts/run-clickhouse-nomad.sh"), 0, 5)
   }
 }
 
@@ -64,6 +65,7 @@ variable "setup_files" {
   default = {
     "scripts/run-nomad.sh"               = "run-nomad",
     "scripts/run-api-nomad.sh"           = "run-api-nomad",
+    "scripts/run-clickhouse-nomad.sh"    = "run-clickhouse-nomad",
     "scripts/run-build-cluster-nomad.sh" = "run-build-cluster-nomad",
     "scripts/run-consul.sh"              = "run-consul"
   }
@@ -136,8 +138,11 @@ module "client_cluster" {
   cluster_name             = "${var.prefix}${var.client_cluster_name}"
   cluster_auto_scaling_max = var.client_cluster_auto_scaling_max
   cluster_size             = var.client_cluster_size
+  regional_cluster_size    = var.client_regional_cluster_size
   cluster_tag_name         = var.cluster_tag_name
-  gcp_zone                 = var.gcp_zone
+
+  gcp_region = var.gcp_region
+  gcp_zone   = var.gcp_zone
 
   machine_type = var.client_machine_type
   image_family = var.client_image_family
@@ -199,7 +204,49 @@ module "api_cluster" {
   depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-api-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
 }
 
+module "clickhouse_cluster" {
+  source = "./clickhouse-cluster"
 
+  startup_script = templatefile("${path.module}/scripts/start-clickhouse.sh", {
+    CLUSTER_TAG_NAME             = var.cluster_tag_name
+    SCRIPTS_BUCKET               = var.cluster_setup_bucket_name
+    FC_KERNELS_BUCKET_NAME       = var.fc_kernels_bucket_name
+    FC_VERSIONS_BUCKET_NAME      = var.fc_versions_bucket_name
+    FC_ENV_PIPELINE_BUCKET_NAME  = var.fc_env_pipeline_bucket_name
+    DOCKER_CONTEXTS_BUCKET_NAME  = var.docker_contexts_bucket_name
+    GCP_REGION                   = var.gcp_region
+    GOOGLE_SERVICE_ACCOUNT_KEY   = var.google_service_account_key
+    NOMAD_TOKEN                  = var.nomad_acl_token_secret
+    CONSUL_TOKEN                 = var.consul_acl_token_secret
+    RUN_CONSUL_FILE_HASH         = local.file_hash["scripts/run-consul.sh"]
+    RUN_NOMAD_FILE_NAME          = var.setup_files["scripts/run-clickhouse-nomad.sh"]
+    RUN_NOMAD_FILE_HASH          = local.file_hash["scripts/run-clickhouse-nomad.sh"]
+    CONSUL_GOSSIP_ENCRYPTION_KEY = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
+    CONSUL_DNS_REQUEST_TOKEN     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
+  })
+
+  environment = var.environment
+
+  cluster_tag_name = var.cluster_tag_name
+  gcp_zone         = var.gcp_zone
+
+  image_family = var.api_image_family
+
+  cluster_name = "${var.prefix}${var.clickhouse_cluster_name}"
+  machine_type = var.clickhouse_machine_type
+  cluster_size = var.clickhouse_cluster_size
+  network_name = var.network_name
+
+  job_constraint_prefix = var.clickhouse_job_constraint_prefix
+  node_pool             = var.clickhouse_node_pool
+
+  nomad_port             = var.nomad_port
+  clickhouse_health_port = var.clickhouse_health_port
+  service_account_email  = var.google_service_account_email
+
+  labels     = var.labels
+  depends_on = [google_storage_bucket_object.setup_config_objects["scripts/run-clickhouse-nomad.sh"], google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"]]
+}
 
 module "build_cluster" {
   source = "./build-cluster"
@@ -258,9 +305,10 @@ module "network" {
   domain_name               = var.domain_name
   additional_domains        = var.additional_domains
 
-  client_instance_group    = module.client_cluster.instance_group
-  client_proxy_port        = var.client_proxy_port
-  client_proxy_health_port = var.client_proxy_health_port
+  client_instance_group          = module.client_cluster.instance_group
+  client_regional_instance_group = module.client_cluster.regional_instance_group
+  client_proxy_port              = var.client_proxy_port
+  client_proxy_health_port       = var.client_proxy_health_port
 
   api_instance_group    = module.api_cluster.instance_group
   build_instance_group  = module.build_cluster.instance_group
@@ -274,17 +322,4 @@ module "network" {
 
   labels = var.labels
   prefix = var.prefix
-}
-
-module "security" {
-  source = "./security"
-
-  gcp_project_id = var.gcp_project_id
-  gcp_zone       = var.gcp_zone
-
-  environment = var.environment
-  prefix      = var.prefix
-
-  vpc_network_name                  = var.network_name
-  notification_email_secret_version = var.notification_email_secret_version
 }

@@ -41,7 +41,7 @@ var httpClient = http.Client{
 }
 
 type Resources struct {
-	Slot     network.Slot
+	Slot     *network.Slot
 	rootfs   rootfs.Provider
 	memory   uffd.MemoryBackend
 	uffdExit chan error
@@ -51,7 +51,6 @@ type Metadata struct {
 	Config    *orchestrator.SandboxConfig
 	StartedAt time.Time
 	EndAt     time.Time
-	StartID   string
 }
 
 type Sandbox struct {
@@ -78,26 +77,33 @@ func (m *Metadata) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
+type networkSlotRes struct {
+	slot *network.Slot
+	err  error
+}
+
 func CreateSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
 	networkPool *network.Pool,
-	devicePool *nbd.DevicePool,
+	_ *nbd.DevicePool,
 	config *orchestrator.SandboxConfig,
 	template template.Template,
 	sandboxTimeout time.Duration,
 	rootfsCachePath string,
 	processOptions fc.ProcessOptions,
+	allowInternet bool,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
 
 	cleanup := NewCleanup()
 
-	ips, err := getNetworkSlot(childCtx, tracer, networkPool, cleanup)
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
-	}
+	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, allowInternet)
+	defer func() {
+		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
+		<-ipsCh
+	}()
 
 	sandboxFiles := template.Files().NewSandboxFiles(config.SandboxId)
 	cleanup.Add(func(ctx context.Context) error {
@@ -144,22 +150,19 @@ func CreateSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get memfile size: %w", err)
 	}
 
-	resources := &Resources{
-		Slot:     ips,
-		rootfs:   rootfsProvider,
-		memory:   uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
-		uffdExit: make(chan error, 1),
-	}
-
-	/// ==== END of resources initialization ====
+	// / ==== END of resources initialization ====
 	rootfsPath, err := rootfsProvider.Path()
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get rootfs path: %w", err)
 	}
+	ips := <-ipsCh
+	if ips.err != nil {
+		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
+	}
 	fcHandle, err := fc.NewProcess(
 		childCtx,
 		tracer,
-		ips,
+		ips.slot,
 		sandboxFiles,
 		rootfsPath,
 		config.BaseTemplateId,
@@ -187,10 +190,16 @@ func CreateSandbox(
 	}
 	telemetry.ReportEvent(childCtx, "created fc process")
 
+	resources := &Resources{
+		Slot:     ips.slot,
+		rootfs:   rootfsProvider,
+		memory:   uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
+		uffdExit: make(chan error, 1),
+	}
+
 	metadata := &Metadata{
 		Config: config,
 
-		StartID:   uuid.New().String(),
 		StartedAt: time.Now(),
 		EndAt:     time.Now().Add(sandboxTimeout),
 	}
@@ -231,6 +240,7 @@ func ResumeSandbox(
 	endAt time.Time,
 	baseTemplateID string,
 	devicePool *nbd.DevicePool,
+	allowInternet bool,
 	clickhouseStore chdb.Store,
 	useLokiMetrics string,
 	useClickhouseMetrics string,
@@ -250,10 +260,11 @@ func ResumeSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
 
-	ips, err := getNetworkSlot(childCtx, tracer, networkPool, cleanup)
-	if err != nil {
-		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
-	}
+	ipsCh := getNetworkSlotAsync(childCtx, tracer, networkPool, cleanup, allowInternet)
+	defer func() {
+		// Ensure the slot is received from chan so the slot is cleaned up properly in cleanup
+		<-ipsCh
+	}()
 
 	sandboxFiles := t.Files().NewSandboxFiles(config.SandboxId)
 	cleanup.Add(func(ctx context.Context) error {
@@ -278,6 +289,9 @@ func ResumeSandbox(
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
 	)
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
+	}
 
 	go func() {
 		runErr := rootfsOverlay.Start(childCtx)
@@ -316,22 +330,19 @@ func ResumeSandbox(
 		cancelUffdStartCtx(fmt.Errorf("uffd process exited: %w", errors.Join(uffdWaitErr, context.Cause(uffdStartCtx))))
 	}()
 
-	resources := &Resources{
-		Slot:     ips,
-		rootfs:   rootfsOverlay,
-		memory:   fcUffd,
-		uffdExit: uffdExit,
-	}
-
-	/// ==== END of resources initialization ====
+	// / ==== END of resources initialization ====
 	rootfsPath, err := rootfsOverlay.Path()
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to get rootfs path: %w", err)
 	}
+	ips := <-ipsCh
+	if ips.err != nil {
+		return nil, cleanup, fmt.Errorf("failed to get network slot: %w", err)
+	}
 	fcHandle, fcErr := fc.NewProcess(
 		uffdStartCtx,
 		tracer,
-		ips,
+		ips.slot,
 		sandboxFiles,
 		rootfsPath,
 		baseTemplateID,
@@ -366,10 +377,16 @@ func ResumeSandbox(
 
 	telemetry.ReportEvent(childCtx, "initialized FC")
 
+	resources := &Resources{
+		Slot:     ips.slot,
+		rootfs:   rootfsOverlay,
+		memory:   fcUffd,
+		uffdExit: uffdExit,
+	}
+
 	metadata := &Metadata{
 		Config: config,
 
-		StartID:   uuid.New().String(),
 		StartedAt: startedAt,
 		EndAt:     endAt,
 	}
@@ -568,6 +585,24 @@ type Snapshot struct {
 	Snapfile          *template.LocalFileLink
 }
 
+func (s *Snapshot) Close(_ context.Context) error {
+	var errs []error
+
+	if err := s.MemfileDiff.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("failed to close memfile diff: %w", err))
+	}
+
+	if err := s.RootfsDiff.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("failed to close rootfs diff: %w", err))
+	}
+
+	if err := s.Snapfile.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("failed to close snapfile: %w", err))
+	}
+
+	return errors.Join(errs...)
+}
+
 func pauseProcessMemory(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -681,33 +716,46 @@ func pauseProcessRootfs(
 	return rootfsDiff, header.NewHeader(rootfsMetadata, rootfsMappings), nil
 }
 
-func getNetworkSlot(
+func getNetworkSlotAsync(
 	ctx context.Context,
 	tracer trace.Tracer,
 	networkPool *network.Pool,
 	cleanup *Cleanup,
-) (network.Slot, error) {
+	allowInternet bool,
+) chan networkSlotRes {
 	networkCtx, networkSpan := tracer.Start(ctx, "get-network-slot")
 	defer networkSpan.End()
 
-	ips, err := networkPool.Get(networkCtx)
-	if err != nil {
-		return network.Slot{}, fmt.Errorf("failed to get network slot: %w", err)
-	}
+	r := make(chan networkSlotRes, 1)
 
-	cleanup.Add(func(ctx context.Context) error {
-		_, span := tracer.Start(ctx, "network-slot-clean")
-		defer span.End()
+	go func() {
+		defer close(r)
 
-		returnErr := networkPool.Return(ips)
-		if returnErr != nil {
-			return fmt.Errorf("failed to return network slot: %w", returnErr)
+		ips, err := networkPool.Get(networkCtx, tracer, allowInternet)
+		if err != nil {
+			r <- networkSlotRes{nil, fmt.Errorf("failed to get network slot: %w", err)}
+			return
 		}
 
-		return nil
-	})
+		cleanup.Add(func(ctx context.Context) error {
+			_, span := tracer.Start(ctx, "network-slot-clean")
+			defer span.End()
 
-	return ips, nil
+			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
+			go func() {
+				returnErr := networkPool.Return(context.Background(), tracer, ips)
+				if returnErr != nil {
+					zap.L().Error("failed to return network slot", zap.Error(returnErr))
+				}
+			}()
+
+			return nil
+		})
+
+		r <- networkSlotRes{ips, nil}
+	}()
+
+	return r
 }
 
 func createRootfsOverlay(

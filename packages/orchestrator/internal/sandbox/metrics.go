@@ -29,7 +29,7 @@ type SandboxMetrics struct {
 }
 
 func (s *Sandbox) GetMetrics(ctx context.Context) (SandboxMetrics, error) {
-	address := fmt.Sprintf("http://%s:%d/metrics", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
+	address := fmt.Sprintf("http://%s:%d/metrics", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
 	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
 	if err != nil {

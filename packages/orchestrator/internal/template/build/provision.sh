@@ -3,6 +3,12 @@ set -euo pipefail
 
 echo "Starting provisioning script"
 
+# fix: dpkg-statoverride: warning: --update given but /var/log/chrony does not exist
+mkdir -p /var/log/chrony
+
+echo "Making configuration immutable"
+chattr +i /etc/resolv.conf
+
 # Install required packages if not already installed
 PACKAGES="systemd systemd-sysv openssh-server sudo chrony linuxptp"
 echo "Checking presence of the following packages: $PACKAGES"
@@ -18,7 +24,7 @@ done
 if [ ${#MISSING[@]} -ne 0 ]; then
     echo "Missing packages detected, installing: ${MISSING[*]}"
     apt-get -qq update
-    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get install -y --no-install-recommends "${MISSING[@]}"
+    DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends "${MISSING[@]}"
 else
     echo "All required packages are already installed."
 fi
@@ -91,8 +97,14 @@ rm -rf /etc/machine-id
 echo "Linking systemd to init"
 ln -sf /lib/systemd/systemd /usr/sbin/init
 
+echo "Unlocking immutable configuration"
+chattr -i /etc/resolv.conf
+
 echo "Finished provisioning script"
 
 # Delete itself
 rm -rf /etc/init.d/rcS
 rm -rf /usr/local/bin/provision.sh
+
+# Report successful provisioning
+echo -n "0" > "{{ .ResultPath }}"

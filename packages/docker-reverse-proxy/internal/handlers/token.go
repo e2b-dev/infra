@@ -20,7 +20,7 @@ type DockerToken struct {
 }
 
 // The scope is in format "repository:<project>/<repo>/<templateID>:<action>"
-var scopeRegex = regexp.MustCompile(fmt.Sprintf(`^repository:e2b/custom-envs/(?P<templateID>[^:]+):(?P<action>[^:]+)$`))
+var scopeRegex = regexp.MustCompile(`^repository:e2b/custom-envs/(?P<templateID>[^:]+):(?P<action>[^:]+)$`)
 
 // GetToken validates if user has access to template and then returns a new token for the required scope
 func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
@@ -130,10 +130,10 @@ func getToken(templateID string) (*DockerToken, error) {
 	r.Header.Set("Authorization", fmt.Sprintf("Basic %s", consts.EncodedDockerCredentials))
 
 	resp, err := http.DefaultClient.Do(r)
-	defer resp.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token for scope - %s: %w", templateID, err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body := make([]byte, resp.ContentLength)

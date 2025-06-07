@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -20,10 +20,11 @@ const (
 )
 
 type BuildInfo struct {
-	envID    string
-	status   template_manager.TemplateBuildState
-	metadata *template_manager.TemplateBuildMetadata
-	mu       sync.RWMutex
+	status    template_manager.TemplateBuildState
+	metadata  *template_manager.TemplateBuildMetadata
+	mu        sync.RWMutex
+	ctx       context.Context
+	ctxCancel context.CancelFunc
 }
 
 func (b *BuildInfo) IsRunning() bool {
@@ -40,13 +41,6 @@ func (b *BuildInfo) IsFailed() bool {
 	return b.status == template_manager.TemplateBuildState_Failed
 }
 
-func (b *BuildInfo) GetBuildEnvID() string {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.envID
-}
-
 func (b *BuildInfo) GetMetadata() *template_manager.TemplateBuildMetadata {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -61,25 +55,47 @@ func (b *BuildInfo) GetStatus() template_manager.TemplateBuildState {
 	return b.status
 }
 
+func (b *BuildInfo) GetContext() context.Context {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	return b.ctx
+}
+
+func (b *BuildInfo) Cancel() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.ctxCancel()
+}
+
 type BuildCache struct {
-	cache   *ttlcache.Cache[string, *BuildInfo]
-	counter metric.Int64UpDownCounter
+	cache *ttlcache.Cache[string, *BuildInfo]
 
 	mu sync.Mutex
 }
 
 func NewBuildCache() *BuildCache {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
-	counter, err := meters.GetUpDownCounter(meters.BuildCounterMeterName)
+	_, err := meters.GetObservableUpDownCounter(meters.BuildCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+		items := utils.MapValues(cache.Items())
+
+		// Filter running builds
+		runningCount := len(utils.Filter(items, func(item *ttlcache.Item[string, *BuildInfo]) bool {
+			return item != nil && item.Value() != nil && item.Value().IsRunning()
+		}))
+
+		observer.Observe(int64(runningCount))
+		return nil
+	})
 	if err != nil {
-		zap.L().Error("error creating counter", zap.Error(err))
+		zap.L().Error("error creating counter", zap.Error(err), zap.Any("counter_name", meters.BuildCounterMeterName))
 	}
 
 	go cache.Start()
 
 	return &BuildCache{
-		cache:   cache,
-		counter: counter,
+		cache: cache,
 	}
 }
 
@@ -99,28 +115,30 @@ func (c *BuildCache) Get(buildID string) (*BuildInfo, error) {
 }
 
 // Create creates a new build if it doesn't exist in the cache or the build was already finished.
-func (c *BuildCache) Create(buildID string, envID string) error {
+func (c *BuildCache) Create(buildID string) (*BuildInfo, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	item := c.cache.Get(buildID, ttlcache.WithDisableTouchOnHit[string, *BuildInfo]())
 	if item != nil {
-		return fmt.Errorf("build %s for env %s already exists in cache", buildID, envID)
+		return nil, fmt.Errorf("build %s already exists in cache", buildID)
 	}
 
-	info := BuildInfo{
-		envID:    envID,
-		status:   template_manager.TemplateBuildState_Building,
-		metadata: nil,
+	ctx, cancel := context.WithCancel(context.Background())
+
+	info := &BuildInfo{
+		status:    template_manager.TemplateBuildState_Building,
+		metadata:  nil,
+		ctx:       ctx,
+		ctxCancel: cancel,
 	}
 
-	c.cache.Set(buildID, &info, buildInfoExpiration)
-	c.updateCounter(envID, buildID, 1)
+	c.cache.Set(buildID, info, buildInfoExpiration)
 
-	return nil
+	return info, nil
 }
 
-func (c *BuildCache) SetSucceeded(envID string, buildID string, metadata *template_manager.TemplateBuildMetadata) error {
+func (c *BuildCache) SetSucceeded(buildID string, metadata *template_manager.TemplateBuildMetadata) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -131,11 +149,10 @@ func (c *BuildCache) SetSucceeded(envID string, buildID string, metadata *templa
 
 	item.status = template_manager.TemplateBuildState_Completed
 	item.metadata = metadata
-	c.updateCounter(envID, buildID, -1)
 	return nil
 }
 
-func (c *BuildCache) SetFailed(envID string, buildID string) error {
+func (c *BuildCache) SetFailed(buildID string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -145,21 +162,12 @@ func (c *BuildCache) SetFailed(envID string, buildID string) error {
 	}
 
 	item.status = template_manager.TemplateBuildState_Failed
-	c.updateCounter(envID, buildID, -1)
 	return nil
 }
 
-func (c *BuildCache) updateCounter(envID string, buildID string, value int64) {
-	c.counter.Add(context.Background(), value,
-		metric.WithAttributes(attribute.String("env_id", envID)),
-		metric.WithAttributes(attribute.String("build_id", buildID)),
-	)
-}
-
-func (c *BuildCache) Delete(envID string, buildID string) {
+func (c *BuildCache) Delete(buildID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.cache.Delete(envID)
-	c.updateCounter(envID, buildID, -1)
+	c.cache.Delete(buildID)
 }

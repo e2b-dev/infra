@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
@@ -35,9 +36,12 @@ func (a *APIStore) startSandbox(
 	startTime := time.Now()
 	endTime := startTime.Add(timeout)
 
+	// Unique ID for the execution (from start/resume to stop/pause)
+	executionID := uuid.New().String()
 	sandbox, instanceErr := a.orchestrator.CreateSandbox(
 		ctx,
 		sandboxID,
+		executionID,
 		alias,
 		team,
 		build,

@@ -158,6 +158,10 @@ func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.Cre
 	watcherId := "w" + id.Generate()
 
 	w, err := CreateFileWatcher(watchPath, req.Msg.Recursive, watcherId, s.logger)
+	if err != nil {
+		return nil, err
+	}
+
 	s.watchers.Store(watcherId, w)
 
 	return connect.NewResponse(&rpc.CreateWatcherResponse{

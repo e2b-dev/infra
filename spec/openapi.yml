@@ -489,6 +489,9 @@ components:
         startCmd:
           description: Start command to execute in the template after the build
           type: string
+        readyCmd:
+          description: Ready check command to execute in the template after the build
+          type: string
         cpuCount:
           $ref: "#/components/schemas/CPUCount"
         memoryMB:
@@ -623,7 +626,7 @@ components:
         - id
         - name
         - token
-        - masking
+        - mask
         - createdAt
       properties:
         id:
@@ -655,7 +658,7 @@ components:
       required:
         - id
         - name
-        - masking
+        - mask
         - createdAt
       properties:
         id:
@@ -685,7 +688,7 @@ components:
       required:
         - id
         - key
-        - masking
+        - mask
         - name
         - createdAt
       properties:

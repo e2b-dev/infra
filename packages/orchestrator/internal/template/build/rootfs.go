@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -30,13 +30,18 @@ const (
 	rootfsBuildFileName = "rootfs.ext4.build"
 	rootfsProvisionLink = "rootfs.ext4.build.provision"
 
+	// provisionScriptFileName is a path where the provision script stores it's exit code.
+	provisionScriptResultPath = "/provision.result"
+	logExternalPrefix         = "[external] "
+
 	busyBoxBinaryPath = "/bin/busybox"
 	busyBoxInitPath   = "usr/bin/init"
 	systemdInitPath   = "/sbin/init"
 )
 
 type Rootfs struct {
-	template *TemplateConfig
+	template         *TemplateConfig
+	artifactRegistry artifactsregistry.ArtifactsRegistry
 }
 
 type MultiWriter struct {
@@ -54,15 +59,11 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func NewRootfs(
-	template *TemplateConfig,
-) *Rootfs {
+func NewRootfs(artifactRegistry artifactsregistry.ArtifactsRegistry, template *TemplateConfig) *Rootfs {
 	return &Rootfs{
-		template: template,
+		template:         template,
+		artifactRegistry: artifactRegistry,
 	}
-}
-func (r *Rootfs) dockerTag() string {
-	return fmt.Sprintf("%s-docker.pkg.dev/%s/%s/%s:%s", consts.GCPRegion, consts.GCPProject, consts.DockerRegistry, r.template.TemplateId, r.template.BuildId)
 }
 
 func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, rootfsPath string) (e error) {
@@ -76,7 +77,8 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	}()
 
 	postProcessor.WriteMsg("Requesting Docker Image")
-	img, err := oci.GetImage(childCtx, tracer, r.dockerTag())
+
+	img, err := oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateId, r.template.BuildId)
 	if err != nil {
 		return fmt.Errorf("error requesting docker image: %w", err)
 	}
@@ -137,7 +139,11 @@ func additionalOCILayers(
 	config *TemplateConfig,
 ) ([]v1.Layer, error) {
 	var scriptDef bytes.Buffer
-	err := ProvisionScriptTemplate.Execute(&scriptDef, struct{}{})
+	err := ProvisionScriptTemplate.Execute(&scriptDef, struct {
+		ResultPath string
+	}{
+		ResultPath: provisionScriptResultPath,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("error executing provision script: %w", err)
 	}
@@ -216,25 +222,31 @@ BUILD_ID=%s
 			"etc/init.d/rcS": {[]byte(`#!/usr/bin/busybox ash
 echo "Mounting essential filesystems"
 # Ensure necessary mount points exist
-mkdir -p /proc /sys /dev
+mkdir -p /proc /sys /dev /tmp /run
 
 # Mount essential filesystems
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mount -t tmpfs tmpfs /tmp
+mount -t tmpfs tmpfs /run
 
 echo "System Init"`), 0o777},
-			"etc/inittab": {[]byte(`# Run system init
+			"etc/inittab": {[]byte(fmt.Sprintf(`# Run system init
 ::sysinit:/etc/init.d/rcS
 
-# Run the provision script
-::wait:/usr/local/bin/provision.sh
+# Run the provision script, prefix the output with a log prefix
+::wait:/bin/sh -c '/usr/local/bin/provision.sh 2>&1 | sed "s/^/%s/"'
 
 # Reboot the system after the script
 # Running the poweroff or halt commands inside a Linux guest will bring it down but Firecracker process remains unaware of the guest shutdown so it lives on.
 # Running the reboot command in a Linux guest will gracefully bring down the guest system and also bring a graceful end to the Firecracker process.
 ::once:/usr/bin/busybox reboot
-::shutdown:/usr/bin/busybox umount -a -r
-`), 0o777},
+
+# Clean shutdown of filesystems and swap
+::shutdown:/usr/bin/busybox swapoff -a
+::shutdown:/usr/bin/busybox umount -a -r -v
+`, logExternalPrefix)), 0o777},
 		},
 	)
 	if err != nil {

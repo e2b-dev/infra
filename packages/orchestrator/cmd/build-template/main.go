@@ -20,8 +20,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -116,25 +116,24 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		}
 	}()
 
+	artifactRegistry, err := artifactsregistry.GetArtifactsRegistryProvider()
+	if err != nil {
+		return fmt.Errorf("error getting artifacts registry provider: %v", err)
+	}
+
 	templateStorage := template.NewStorage(persistence)
-	buildCache := cache.NewBuildCache()
 	builder := build.NewBuilder(
 		logger,
 		logger,
 		tracer,
 		templateStorage,
-		buildCache,
 		persistence,
+		artifactRegistry,
 		devicePool,
 		networkPool,
 		sandboxProxy,
 		sandboxes,
 	)
-
-	err = buildCache.Create(buildID, templateID)
-	if err != nil {
-		return fmt.Errorf("error while creating build cache: %w", err)
-	}
 
 	logsWriter := writer.New(
 		logger.

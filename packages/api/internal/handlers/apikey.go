@@ -94,7 +94,7 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 		teamAPIKeys[i] = api.TeamAPIKey{
 			Id:   apiKey.ID,
 			Name: apiKey.Name,
-			Mask: &api.IdentifierMaskingDetails{
+			Mask: api.IdentifierMaskingDetails{
 				Prefix:            maskedKeyProperties.Prefix,
 				ValueLength:       maskedKeyProperties.ValueLength,
 				MaskedValuePrefix: maskedKeyProperties.MaskedValuePrefix,
@@ -187,7 +187,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		Id:   apiKey.ID,
 		Name: apiKey.Name,
 		Key:  apiKey.APIKey,
-		Mask: &api.IdentifierMaskingDetails{
+		Mask: api.IdentifierMaskingDetails{
 			Prefix:            maskedKeyProperties.Prefix,
 			ValueLength:       maskedKeyProperties.ValueLength,
 			MaskedValuePrefix: maskedKeyProperties.MaskedValuePrefix,

@@ -3,16 +3,18 @@ package build
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -21,8 +23,8 @@ import (
 	templatelocal "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
+	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -33,23 +35,22 @@ type TemplateBuilder struct {
 	logger *zap.Logger
 	tracer trace.Tracer
 
-	storage         storage.StorageProvider
-	devicePool      *nbd.DevicePool
-	networkPool     *network.Pool
-	buildCache      *cache.BuildCache
-	buildLogger     *zap.Logger
-	templateStorage *template.Storage
-	proxy           *proxy.SandboxProxy
-	sandboxes       *smap.Map[*sandbox.Sandbox]
+	storage          storage.StorageProvider
+	devicePool       *nbd.DevicePool
+	networkPool      *network.Pool
+	buildLogger      *zap.Logger
+	templateStorage  *template.Storage
+	artifactRegistry artifactsregistry.ArtifactsRegistry
+	proxy            *proxy.SandboxProxy
+	sandboxes        *smap.Map[*sandbox.Sandbox]
 }
 
 const (
 	templatesDirectory = "/tmp/templates"
 
 	sbxTimeout           = time.Hour
-	provisionTimeout     = 1 * time.Minute
+	provisionTimeout     = 5 * time.Minute
 	configurationTimeout = 5 * time.Minute
-	waitTimeForStartCmd  = 20 * time.Second
 	waitEnvdTimeout      = 60 * time.Second
 
 	cleanupTimeout = time.Second * 10
@@ -60,24 +61,24 @@ func NewBuilder(
 	buildLogger *zap.Logger,
 	tracer trace.Tracer,
 	templateStorage *template.Storage,
-	buildCache *cache.BuildCache,
 	storage storage.StorageProvider,
+	artifactRegistry artifactsregistry.ArtifactsRegistry,
 	devicePool *nbd.DevicePool,
 	networkPool *network.Pool,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
 ) *TemplateBuilder {
 	return &TemplateBuilder{
-		logger:          logger,
-		tracer:          tracer,
-		buildCache:      buildCache,
-		buildLogger:     buildLogger,
-		templateStorage: templateStorage,
-		storage:         storage,
-		devicePool:      devicePool,
-		networkPool:     networkPool,
-		proxy:           proxy,
-		sandboxes:       sandboxes,
+		logger:           logger,
+		tracer:           tracer,
+		buildLogger:      buildLogger,
+		templateStorage:  templateStorage,
+		storage:          storage,
+		artifactRegistry: artifactRegistry,
+		devicePool:       devicePool,
+		networkPool:      networkPool,
+		proxy:            proxy,
+		sandboxes:        sandboxes,
 	}
 }
 
@@ -95,41 +96,35 @@ type Result struct {
 // 5. Start the FC VM (using systemd) and wait for Envd
 // 5. Run two additional commands:
 //   - configuration script (enable swap, create user, change folder permissions, etc.)
-//   - start command (if defined)
+//   - start command (if defined), together with the ready command (always with default value if not defined)
 //
 // 6. Snapshot
 // 7. Upload template
-func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (*Result, error) {
+func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (r *Result, e error) {
 	ctx, childSpan := b.tracer.Start(ctx, "build")
 	defer childSpan.End()
-
-	_, err := b.buildCache.Get(template.BuildId)
-	if err != nil {
-		return nil, err
-	}
 
 	logsWriter := template.BuildLogsWriter
 	postProcessor := writer.NewPostProcessor(ctx, logsWriter)
 	go postProcessor.Start()
-	defer postProcessor.Stop(err)
+	defer func() {
+		postProcessor.Stop(e)
+	}()
 
 	envdVersion, err := GetEnvdVersion(ctx)
 	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error while getting envd version: %v", err))
-		return nil, err
+		return nil, fmt.Errorf("error getting envd version: %w", err)
 	}
 
 	templateCacheFiles, err := template.NewTemplateCacheFiles()
 	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error while creating template files: %v", err))
-		return nil, err
+		return nil, fmt.Errorf("error creating template files: %w", err)
 	}
 
 	templateBuildDir := filepath.Join(templatesDirectory, template.BuildId)
 	err = os.MkdirAll(templateBuildDir, 0777)
 	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error while creating template directory: %v", err))
-		return nil, fmt.Errorf("error initializing directories for building template '%s' during build '%s': %w", template.TemplateId, template.BuildId, err)
+		return nil, fmt.Errorf("error creating template build directory: %w", err)
 	}
 	defer func() {
 		err := os.RemoveAll(templateBuildDir)
@@ -146,11 +141,11 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		b.tracer,
 		template,
 		postProcessor,
+		b.artifactRegistry,
 		templateBuildDir,
 		rootfsPath,
 	)
 	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error building environment: %v", err))
 		return nil, fmt.Errorf("error building environment: %w", err)
 	}
 
@@ -164,30 +159,29 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	rootfsProvisionPath := filepath.Join(templateBuildDir, rootfsProvisionLink)
 	err = os.Symlink(rootfsPath, rootfsProvisionPath)
 	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error while creating provision rootfs: %v", err))
-		return nil, fmt.Errorf("error creating provision rootfs symlink: %w", err)
+		return nil, fmt.Errorf("error creating provision rootfs: %w", err)
 	}
 
-	err = b.provisionSandbox(ctx, template, envdVersion, localTemplate, rootfsProvisionPath)
+	err = b.provisionSandbox(ctx, postProcessor, template, envdVersion, localTemplate, rootfsProvisionPath)
 	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error provisioning sandbox: %v", err))
 		return nil, fmt.Errorf("error provisioning sandbox: %w", err)
 	}
 
 	// Check the rootfs filesystem corruption
 	ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
+	if err != nil {
+		zap.L().Error("provisioned filesystem ext4 integrity",
+			zap.String("result", ext4Check),
+			zap.Error(err),
+		)
+		return nil, fmt.Errorf("error checking provisioned filesystem integrity: %w", err)
+	}
 	zap.L().Debug("provisioned filesystem ext4 integrity",
 		zap.String("result", ext4Check),
-		zap.Error(err),
 	)
-	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error checking provisioned filesystem integrity: %v", err))
-		return nil, fmt.Errorf("error checking ext4 filesystem integrity: %w", err)
-	}
 
 	err = b.enlargeDiskAfterProvisioning(ctx, template, rootfsPath)
 	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error enlarging disk after provisioning: %v", err))
 		return nil, fmt.Errorf("error enlarging disk after provisioning: %w", err)
 	}
 
@@ -212,6 +206,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 			KernelLogs:          env.IsDevelopment(),
 			SystemdToKernelLogs: env.IsDevelopment(),
 		},
+		config.AllowSandboxInternet,
 	)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)
@@ -220,7 +215,6 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		}
 	}()
 	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error creating sandbox: %v", err))
 		return nil, fmt.Errorf("error creating sandbox: %w", err)
 	}
 	err = sbx.WaitForEnvd(
@@ -229,14 +223,13 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		waitEnvdTimeout,
 	)
 	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Failed waiting for sandbox start: %v", err))
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 	// Add to proxy so we can call envd commands
 	b.sandboxes.Insert(sbx.Metadata.Config.SandboxId, sbx)
 	defer func() {
 		b.sandboxes.Remove(sbx.Metadata.Config.SandboxId)
-		b.proxy.RemoveFromPool(sbx.StartID)
+		b.proxy.RemoveFromPool(sbx.Metadata.Config.ExecutionId)
 	}()
 
 	// Run configuration script
@@ -245,45 +238,79 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 	if err != nil {
 		return nil, fmt.Errorf("error executing provision script: %w", err)
 	}
+
+	configCtx, configCancel := context.WithTimeout(ctx, configurationTimeout)
+	defer configCancel()
 	err = b.runCommand(
-		ctx,
+		configCtx,
 		postProcessor,
+		"config",
 		sbx.Metadata.Config.SandboxId,
-		configurationTimeout,
 		scriptDef.String(),
 		"root",
+		nil,
 	)
 	if err != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error while running script: %v", err))
-		return nil, fmt.Errorf("error running script: %w", err)
+		return nil, fmt.Errorf("error running configuration script: %w", err)
 	}
 
 	// Start command
+	commandsCtx, commandsCancel := context.WithCancel(ctx)
+	defer commandsCancel()
+
+	var startCmd errgroup.Group
+	startCmdConfirm := make(chan struct{})
 	if template.StartCmd != "" {
 		postProcessor.WriteMsg("Running start command")
+		startCmd.Go(func() error {
+			cwd := "/home/user"
+			err := b.runCommandWithConfirmation(
+				commandsCtx,
+				postProcessor,
+				"start",
+				sbx.Metadata.Config.SandboxId,
+				template.StartCmd,
+				"root",
+				&cwd,
+				startCmdConfirm,
+			)
+			// If the ctx is canceled, the ready command succeeded and no start command await is necessary.
+			if err != nil && !errors.Is(err, context.Canceled) {
+				// Cancel the ready command context, so the ready command does not wait anymore if an error occurs.
+				commandsCancel()
+				return fmt.Errorf("error running start command: %w", err)
+			}
 
-		// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
-		// TODO: Remove this after we can add customizable wait time for building templates.
-		// TODO: Make this user configurable, with health check too
-		startCmdWait := waitTimeForStartCmd
-		if template.TemplateId == "zegbt9dl3l2ixqem82mm" || template.TemplateId == "ot5bidkk3j2so2j02uuz" || template.TemplateId == "0zeou1s7agaytqitvmzc" {
-			startCmdWait = 120 * time.Second
-		}
-		err := b.runCommand(
-			ctx,
-			postProcessor,
-			sbx.Metadata.Config.SandboxId,
-			startCmdWait,
-			template.StartCmd,
-			"root",
-		)
-		if err != nil {
-			postProcessor.WriteMsg(fmt.Sprintf("Error while running command: %v", err))
-			return nil, fmt.Errorf("error running command: %w", err)
-		}
+			return nil
+		})
+	} else {
+		// If no start command is defined, we still need to confirm that the start command has started.
+		close(startCmdConfirm)
+	}
 
-		postProcessor.WriteMsg("Start command is running")
-		telemetry.ReportEvent(ctx, "waited for start command", attribute.Float64("seconds", float64(waitTimeForStartCmd/time.Second)))
+	// Ready command
+	err = b.runReadyCommand(
+		commandsCtx,
+		postProcessor,
+		template,
+		sbx.Metadata.Config.SandboxId,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error running ready command: %w", err)
+	}
+
+	// Wait for the start command to start executing.
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("error waiting for start command: %w", commandsCtx.Err())
+	case <-startCmdConfirm:
+	}
+	// Cancel the start command context (it's running in the background anyway).
+	// If it has already finished, check the error.
+	commandsCancel()
+	err = startCmd.Wait()
+	if err != nil {
+		return nil, fmt.Errorf("error running start command: %w", err)
 	}
 
 	// Pause sandbox
@@ -307,8 +334,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 
 	uploadErr := <-uploadErrCh
 	if uploadErr != nil {
-		postProcessor.WriteMsg(fmt.Sprintf("Error while uploading template: %v", uploadErr))
-		return nil, fmt.Errorf("error uploading build files: %w", uploadErr)
+		return nil, fmt.Errorf("error uploading template: %w", uploadErr)
 	}
 
 	return &Result{
@@ -334,9 +360,15 @@ func (b *TemplateBuilder) uploadTemplate(
 
 				removeErr := b.templateStorage.Remove(removeCtx, templateFiles.BuildId)
 				if removeErr != nil {
-					b.logger.Error("Error while removing build files", zap.Error(removeErr))
+					b.logger.Error("error while removing build files", zap.Error(removeErr))
 					telemetry.ReportError(ctx, removeErr)
 				}
+			}
+		}()
+		defer func() {
+			err := snapshot.Close(ctx)
+			if err != nil {
+				zap.L().Error("error closing snapshot", zap.Error(err), zap.String("build_id", templateFiles.BuildId), zap.String("template_id", templateFiles.TemplateId))
 			}
 		}()
 		defer close(errCh)
@@ -369,9 +401,14 @@ func (b *TemplateBuilder) uploadTemplate(
 			&rootfsDiffPath,
 		)
 
-		// Forward upload errors to errCh
+		// Wait for the upload to finish
 		err = <-uploadErrCh
-		errCh <- err
+		if err != nil {
+			errCh <- fmt.Errorf("error uploading template build: %w", err)
+			return
+		}
+
+		errCh <- nil
 	}()
 
 	return errCh
@@ -379,6 +416,7 @@ func (b *TemplateBuilder) uploadTemplate(
 
 func (b *TemplateBuilder) provisionSandbox(
 	ctx context.Context,
+	postProcessor *writer.PostProcessor,
 	template *TemplateConfig,
 	envdVersion string,
 	localTemplate *templatelocal.LocalTemplate,
@@ -386,6 +424,9 @@ func (b *TemplateBuilder) provisionSandbox(
 ) (e error) {
 	ctx, childSpan := b.tracer.Start(ctx, "provision-sandbox")
 	defer childSpan.End()
+
+	logsWriter := &writer.PrefixFilteredWriter{Writer: postProcessor, PrefixFilter: logExternalPrefix}
+	defer logsWriter.Close()
 
 	sbx, cleanup, err := sandbox.CreateSandbox(
 		ctx,
@@ -401,7 +442,13 @@ func (b *TemplateBuilder) provisionSandbox(
 			// Always show kernel logs during the provisioning phase,
 			// the sandbox is then started with systemd and without kernel logs.
 			KernelLogs: true,
+
+			// Show provision script logs to the user
+			Stdout: logsWriter,
+			Stderr: logsWriter,
 		},
+		// Allow sandbox internet access during provisioning
+		true,
 	)
 	defer func() {
 		cleanupErr := cleanup.Run(ctx)
@@ -418,6 +465,21 @@ func (b *TemplateBuilder) provisionSandbox(
 	)
 	if err != nil {
 		return fmt.Errorf("failed to wait for sandbox start: %w", err)
+	}
+
+	// Verify the provisioning script exit status
+	exitStatus, err := ext4.ReadFile(ctx, b.tracer, rootfsPath, provisionScriptResultPath)
+	if err != nil {
+		return fmt.Errorf("error reading provision result: %w", err)
+	}
+	defer ext4.RemoveFile(ctx, b.tracer, rootfsPath, provisionScriptResultPath)
+
+	// Fallback to "1" if the file is empty or not found
+	if exitStatus == "" {
+		exitStatus = "1"
+	}
+	if exitStatus != "0" {
+		return fmt.Errorf("provision script failed with exit status: %s", exitStatus)
 	}
 
 	return nil
@@ -452,12 +514,25 @@ func (b *TemplateBuilder) enlargeDiskAfterProvisioning(
 
 	// Check the rootfs filesystem corruption
 	ext4Check, err := ext4.CheckIntegrity(rootfsPath, false)
-	zap.L().Debug("final enlarge filesystem ext4 integrity",
-		zap.String("result", ext4Check),
-		zap.Error(err),
-	)
 	if err != nil {
-		return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
+		zap.L().Error("final enlarge filesystem ext4 integrity",
+			zap.String("result", ext4Check),
+			zap.Error(err),
+		)
+
+		// Occasionally there is Block bitmap differences. For this reason, we retry with fix.
+		ext4Check, err := ext4.CheckIntegrity(rootfsPath, true)
+		zap.L().Error("final enlarge filesystem ext4 integrity - retry with fix",
+			zap.String("result", ext4Check),
+			zap.Error(err),
+		)
+		if err != nil {
+			return fmt.Errorf("error checking final enlarge filesystem integrity: %w", err)
+		}
+	} else {
+		zap.L().Debug("final enlarge filesystem ext4 integrity",
+			zap.String("result", ext4Check),
+		)
 	}
 	return nil
 }

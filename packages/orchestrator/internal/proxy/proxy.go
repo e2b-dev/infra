@@ -45,7 +45,7 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*Sandbox
 
 			url := &url.URL{
 				Scheme: "http",
-				Host:   fmt.Sprintf("%s:%d", sbx.Slot.HostIP(), port),
+				Host:   fmt.Sprintf("%s:%d", sbx.Slot.HostIPString(), port),
 			}
 
 			return &pool.Destination{
@@ -56,11 +56,11 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*Sandbox
 				IncludeSandboxIdInProxyErrorLogger: true,
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
 				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
-				ConnectionKey: sbx.StartID,
+				ConnectionKey: sbx.Config.ExecutionId,
 				RequestLogger: zap.L().With(
 					zap.String("host", r.Host),
 					zap.String("sandbox_id", sbx.Config.SandboxId),
-					zap.String("sandbox_ip", sbx.Slot.HostIP()),
+					zap.String("sandbox_ip", sbx.Slot.HostIPString()),
 					zap.String("team_id", sbx.Config.TeamId),
 					zap.String("sandbox_req_port", url.Port()),
 					zap.String("sandbox_req_path", r.URL.Path),

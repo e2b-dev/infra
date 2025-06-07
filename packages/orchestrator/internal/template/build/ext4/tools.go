@@ -3,7 +3,6 @@ package ext4
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -50,6 +50,7 @@ func Enlarge(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSiz
 	cmd.Stderr = resizeStderrWriter
 	err = cmd.Run()
 	if err != nil {
+		logMetadata(rootfsPath)
 		return 0, fmt.Errorf("error resizing rootfs file: %w", err)
 	}
 
@@ -57,7 +58,7 @@ func Enlarge(ctx context.Context, tracer trace.Tracer, rootfsPath string, addSiz
 }
 
 func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, blockSize int64) (int64, error) {
-	ctx, statSpan := tracer.Start(ctx, "stat-ext4-file")
+	_, statSpan := tracer.Start(ctx, "stat-ext4-file")
 	defer statSpan.End()
 
 	cmd := exec.Command("debugfs", "-R", "stats", rootfsPath)
@@ -80,26 +81,62 @@ func GetFreeSpace(ctx context.Context, tracer trace.Tracer, rootfsPath string, b
 }
 
 func CheckIntegrity(rootfsPath string, fix bool) (string, error) {
-	args := "-nf"
+	logMetadata(rootfsPath)
+	accExitCode := 0
+	args := "-nfv"
 	if fix {
-		args = "-pf"
+		// 0 - No errors
+		// 1 - File system errors corrected
+		// 2 - File system errors corrected, a system should be rebooted
+		accExitCode = 2
+		args = "-pfv"
 	}
 	cmd := exec.Command("e2fsck", args, rootfsPath)
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			var o bytes.Buffer
-			o.Write(exitErr.Stderr)
-			o.WriteString("\n\n")
-			o.Write(out)
-			return o.String(), fmt.Errorf("error running e2fsck: %w", err)
-		} else {
+		exitCode := cmd.ProcessState.ExitCode()
+
+		if exitCode > accExitCode {
 			return string(out), fmt.Errorf("error running e2fsck: %w", err)
 		}
 	}
 
 	return strings.TrimSpace(string(out)), nil
+}
+
+func ReadFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, filePath string) (string, error) {
+	_, statSpan := tracer.Start(ctx, "ext4-read-file")
+	defer statSpan.End()
+
+	cmd := exec.Command("debugfs", "-R", fmt.Sprintf("cat \"%s\"", filePath), rootfsPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return "1", fmt.Errorf("error reading file: %w", err)
+	}
+
+	return string(out), nil
+}
+
+func RemoveFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, filePath string) error {
+	_, statSpan := tracer.Start(ctx, "ext4-remove-file")
+	defer statSpan.End()
+
+	// -w is used to open the filesystem in writable mode
+	cmd := exec.Command("debugfs", "-w", "-R", fmt.Sprintf("rm \"%s\"", filePath), rootfsPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		zap.L().Error("error removing file", zap.Error(err), zap.String("output", string(out)))
+		return fmt.Errorf("error removing file: %w", err)
+	}
+
+	return nil
+}
+
+func logMetadata(rootfsPath string) {
+	cmd := exec.Command("tune2fs", "-l", rootfsPath)
+	output, err := cmd.CombinedOutput()
+
+	zap.L().Debug("tune2fs -l output", zap.String("path", rootfsPath), zap.String("output", string(output)), zap.Error(err))
 }
 
 // parseFreeBlocks extracts the "Free blocks:" value from debugfs output
@@ -140,6 +177,13 @@ func enlargeFile(ctx context.Context, tracer trace.Tracer, rootfsPath string, ad
 	if err != nil {
 		return 0, fmt.Errorf("error truncating rootfs file: %w", err)
 	}
-	telemetry.ReportEvent(ctx, "truncated rootfs file to size of build + defaultDiskSizeMB")
+
+	// Sync the metadata and data to disk.
+	// This is important to ensure that the file is fully written when used by other processes, like FC.
+	if err := rootfsFile.Sync(); err != nil {
+		return 0, fmt.Errorf("error syncing rootfs file: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "truncated rootfs file to size of build + defaultDiskSizeMB", attribute.Int64("size", rootfsSize))
 	return rootfsSize, err
 }

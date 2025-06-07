@@ -1,13 +1,9 @@
 ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
-client := gcloud compute instances list --format='csv(name)' --project $(GCP_PROJECT_ID) | grep "client"
-
 .PHONY: init
 init:
 	brew install protobuf
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
 
 .PHONY: generate
 generate:
@@ -48,7 +44,7 @@ run-debug:
 	ORCHESTRATOR_SERVICES=$(ORCHESTRATOR_SERVICES) \
 	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
-	./bin/orchestrator
+	./bin/orchestrator --wait 0
 
 .PHONY: upload/orchestrator
 upload/orchestrator:
@@ -71,24 +67,6 @@ mock:
 .PHONY: mock-nbd
 mock-nbd:
 	sudo go run -gcflags=all="-N -l" cmd/mock-nbd/mock.go
-
-.PHONY: killall
-killall:
-	gcloud compute instance-groups list-instances $(PREFIX)orch-client-ig \
-          	  --zone=$(GCP_ZONE) \
-          	  --project=$(GCP_PROJECT_ID) \
-          	  --format="value(instance)" \
-          	  --quiet | xargs -I {} -P 5 sh -c "gcloud compute ssh {} --project=$(GCP_PROJECT_ID) --zone=$(GCP_ZONE) --command='sudo killall -9 firecracker'"
-	@echo "Killing all firecracker processes"
-
-.PHONY: kill-old
-kill-old:
-	gcloud compute instance-groups list-instances $(PREFIX)orch-client-ig \
-          	  --zone=$(GCP_ZONE) \
-          	  --project=$(GCP_PROJECT_ID) \
-          	  --format="value(instance)" \
-          	  --quiet | xargs -I {} -P 5 sh -c "gcloud compute ssh {} --project=$(GCP_PROJECT_ID) --zone=$(GCP_ZONE) --command='sudo killall -9 --older-than 24h firecracker'"
-	@echo "Killing all firecracker processes"
 
 .PHONY: mock-snapshot
 mock-snapshot:

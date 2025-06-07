@@ -71,12 +71,12 @@ func NewAPIStore(ctx context.Context) *APIStore {
 
 	zap.L().Info("initializing API store and services")
 
-	dbClient, err := db.NewClient()
+	dbClient, err := db.NewClient(40, 20)
 	if err != nil {
 		zap.L().Fatal("initializing Supabase client", zap.Error(err))
 	}
 
-	sqlcDB, err := sqlcdb.NewClient(ctx)
+	sqlcDB, err := sqlcdb.NewClient(ctx, sqlcdb.WithMaxConnections(40), sqlcdb.WithMinIdle(5))
 	if err != nil {
 		zap.L().Fatal("initializing SQLC client", zap.Error(err))
 	}

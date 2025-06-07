@@ -61,9 +61,9 @@ resource "nomad_job" "api" {
     redis_url                      = "redis://redis.service.consul:${var.redis_port.port}"
     redis_cluster_url              = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : ""
     dns_port_number                = var.api_dns_port_number
-    clickhouse_connection_string   = var.clickhouse_connection_string
+    clickhouse_connection_string   = "clickhouse.service.consul:9000"
     clickhouse_username            = var.clickhouse_username
-    clickhouse_password            = var.clickhouse_password
+    clickhouse_password            = random_password.clickhouse_password.result
     clickhouse_database            = var.clickhouse_database
     sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
   })
@@ -303,12 +303,6 @@ data "google_storage_bucket_object" "orchestrator" {
   bucket = var.fc_env_pipeline_bucket_name
 }
 
-
-data "google_compute_machine_types" "client" {
-  zone   = var.gcp_zone
-  filter = "name = \"${var.client_machine_type}\""
-}
-
 data "external" "orchestrator_checksum" {
   program = ["bash", "${path.module}/checksum.sh"]
 
@@ -317,9 +311,9 @@ data "external" "orchestrator_checksum" {
   }
 }
 
-resource "nomad_job" "orchestrator" {
-  jobspec = templatefile("${path.module}/orchestrator.hcl", {
-    gcp_zone         = var.gcp_zone
+
+locals {
+  orchestrator_envs = {
     port             = var.orchestrator_port
     proxy_port       = var.orchestrator_proxy_port
     environment      = var.environment
@@ -332,11 +326,53 @@ resource "nomad_job" "orchestrator" {
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
-    clickhouse_connection_string = var.clickhouse_connection_string
+    clickhouse_connection_string = "clickhouse.service.consul:9000"
     clickhouse_username          = var.clickhouse_username
-    clickhouse_password          = var.clickhouse_password
+    clickhouse_password          = random_password.clickhouse_password.result
     clickhouse_database          = var.clickhouse_database
-  })
+  }
+
+  orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(
+    local.orchestrator_envs,
+    {
+      latest_orchestrator_job_id = "placeholder",
+    }
+  ))
+}
+
+
+
+resource "random_id" "orchestrator_job" {
+  keepers = {
+    # Use both the orchestrator job (including vars) definition and the latest orchestrator checksum to detect changes
+    orchestrator_job = sha256("${local.orchestrator_job_check}-${data.external.orchestrator_checksum.result.hex}")
+  }
+
+  byte_length = 8
+}
+
+locals {
+  latest_orchestrator_job_id = var.environment == "dev" ? "dev" : random_id.orchestrator_job.hex
+}
+
+resource "nomad_variable" "orchestrator_hash" {
+  path = "nomad/jobs"
+  items = {
+    latest_orchestrator_job_id = local.latest_orchestrator_job_id
+  }
+}
+
+resource "nomad_job" "orchestrator" {
+  deregister_on_id_change = false
+
+  jobspec = templatefile("${path.module}/orchestrator.hcl", merge(
+    local.orchestrator_envs,
+    {
+      latest_orchestrator_job_id = local.latest_orchestrator_job_id
+    }
+  ))
+
+  depends_on = [nomad_variable.orchestrator_hash, random_id.orchestrator_job]
 }
 
 data "google_storage_bucket_object" "template_manager" {
@@ -373,6 +409,7 @@ resource "nomad_job" "template_manager" {
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+    logs_collector_public_ip     = var.logs_proxy_address
     orchestrator_services        = "template-manager"
   })
 }
@@ -390,40 +427,78 @@ resource "nomad_job" "loki" {
   })
 }
 
-# create a bucket for clickhouse
-resource "google_storage_bucket" "clickhouse_bucket" {
-  name     = "${var.gcp_project_id}-clickhouse-bucket"
-  location = var.gcp_region
+# Create only one user for simplicity now, will separate users in following PRs
+resource "random_password" "clickhouse_password" {
+  length  = 32
+  special = false
 }
 
-// create service account for bucket
+resource "google_secret_manager_secret" "clickhouse_password" {
+  secret_id = "${var.prefix}clickhouse-password"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "clickhouse_password_value" {
+  secret = google_secret_manager_secret.clickhouse_password.id
+
+  secret_data = random_password.clickhouse_password.result
+}
+
+resource "random_password" "clickhouse_server_secret" {
+  length  = 32
+  special = false
+}
+
+resource "google_secret_manager_secret" "clickhouse_server_secret" {
+  secret_id = "${var.prefix}clickhouse-server-secret"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "clickhouse_server_secret_value" {
+  secret = google_secret_manager_secret.clickhouse_server_secret.id
+
+  secret_data = random_password.clickhouse_server_secret.result
+}
+
 resource "google_service_account" "clickhouse_service_account" {
   account_id   = "${var.prefix}clickhouse-service-account"
   display_name = "${var.prefix}clickhouse-service-account"
 }
 
-# attach service account to bucket 
 resource "google_storage_bucket_iam_member" "clickhouse_service_account_iam" {
-  bucket = google_storage_bucket.clickhouse_bucket.name
+  bucket = var.clickhouse_bucket_name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.clickhouse_service_account.email}"
 }
 
-# hmac key for service account
 resource "google_storage_hmac_key" "clickhouse_hmac_key" {
   service_account_email = google_service_account.clickhouse_service_account.email
 }
 
-# Add this with your other Nomad jobs
 resource "nomad_job" "clickhouse" {
+  # TODO: Currently only in dev
+  count = var.environment == "dev" ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
-    zone                = var.gcp_zone
-    clickhouse_version  = "25.1.5.31" # Or make this a variable
-    gcs_bucket          = google_storage_bucket.clickhouse_bucket.name
-    gcs_folder          = "clickhouse-data"
-    hmac_key            = google_storage_hmac_key.clickhouse_hmac_key.access_id
-    hmac_secret         = google_storage_hmac_key.clickhouse_hmac_key.secret
-    username            = var.clickhouse_username
-    password_sha256_hex = sha256(var.clickhouse_password)
+    zone                   = var.gcp_zone
+    server_secret          = random_password.clickhouse_server_secret.result
+    clickhouse_version     = "25.4.5.24"
+    gcs_bucket             = var.clickhouse_bucket_name
+    gcs_folder             = "clickhouse-data"
+    hmac_key               = google_storage_hmac_key.clickhouse_hmac_key.access_id
+    hmac_secret            = google_storage_hmac_key.clickhouse_hmac_key.secret
+    username               = var.clickhouse_username
+    password               = random_password.clickhouse_password.result
+    clickhouse_server_port = var.clickhouse_server_port.port
+    server_count           = var.clickhouse_server_count
+    resources_memory_gib   = 8
+
+    job_constraint_prefix = var.clickhouse_job_constraint_prefix
+    node_pool             = var.clickhouse_node_pool
   })
 }

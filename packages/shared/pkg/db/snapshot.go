@@ -74,7 +74,7 @@ func (db *DB) NewSnapshotBuild(
 			return nil, fmt.Errorf("failed to create env '%s': %w", snapshotConfig.SandboxID, err)
 		}
 
-		s, err = tx.
+		err = tx.
 			Snapshot.
 			Create().
 			SetSandboxID(snapshotConfig.SandboxID).
@@ -83,19 +83,19 @@ func (db *DB) NewSnapshotBuild(
 			SetMetadata(snapshotConfig.Metadata).
 			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
 			SetEnvSecure(snapshotConfig.EnvdSecured).
-			Save(ctx)
+			Exec(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create snapshot '%s': %w", snapshotConfig.SandboxID, err)
 		}
 	} else {
 		e = s.Edges.Env
 		// Update existing snapshot with new metadata and pause time
-		s, err = tx.
+		err = tx.
 			Snapshot.
 			UpdateOne(s).
 			SetMetadata(snapshotConfig.Metadata).
 			SetSandboxStartedAt(snapshotConfig.SandboxStartedAt).
-			Save(ctx)
+			Exec(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update snapshot '%s': %w", snapshotConfig.SandboxID, err)
 		}

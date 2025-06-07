@@ -77,6 +77,70 @@ resource "google_compute_instance_group_manager" "client_cluster" {
   ]
 }
 
+resource "google_compute_region_autoscaler" "client" {
+  provider = google-beta
+
+  name   = "${var.cluster_name}-client-autoscaler"
+  region = var.gcp_region
+  target = google_compute_region_instance_group_manager.client_cluster.id
+
+  autoscaling_policy {
+    max_replicas    = var.regional_cluster_size + var.cluster_auto_scaling_max
+    min_replicas    = var.regional_cluster_size
+    cooldown_period = 240
+    mode            = "ONLY_SCALE_OUT"
+
+    cpu_utilization {
+      target = 0.6
+    }
+  }
+}
+
+resource "google_compute_region_instance_group_manager" "client_cluster" {
+  name   = "${var.cluster_name}-rig"
+  region = var.gcp_region
+
+  version {
+    name              = google_compute_instance_template.client.id
+    instance_template = google_compute_instance_template.client.id
+  }
+
+  named_port {
+    name = var.logs_health_proxy_port.name
+    port = var.logs_health_proxy_port.port
+  }
+
+  named_port {
+    name = var.logs_proxy_port.name
+    port = var.logs_proxy_port.port
+  }
+
+  auto_healing_policies {
+    health_check      = google_compute_health_check.nomad_check.id
+    initial_delay_sec = 600
+  }
+
+  # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
+  # a rolling update.
+  update_policy {
+    type                    = var.environment == "dev" ? "PROACTIVE" : "OPPORTUNISTIC"
+    minimal_action          = var.instance_group_update_policy_minimal_action
+    max_surge_fixed         = var.instance_group_update_policy_max_surge_fixed
+    max_surge_percent       = var.instance_group_update_policy_max_surge_percent
+    max_unavailable_fixed   = var.instance_group_update_policy_max_unavailable_fixed
+    max_unavailable_percent = var.instance_group_update_policy_max_unavailable_percent
+    replacement_method      = "SUBSTITUTE"
+  }
+
+  base_instance_name = var.cluster_name
+  target_pools       = var.instance_group_target_pools
+
+  depends_on = [
+    google_compute_instance_template.client,
+  ]
+}
+
+
 data "google_compute_image" "source_image" {
   family = var.image_family
 }
@@ -151,9 +215,5 @@ resource "google_compute_instance_template" "client" {
   # which this Terraform resource depends will also need this lifecycle statement.
   lifecycle {
     create_before_destroy = true
-
-    # TODO: Temporary workaround to avoid unnecessary updates to the instance template.
-    #  This should be removed once cluster size is removed from the metadata
-    ignore_changes = [metadata]
   }
 }

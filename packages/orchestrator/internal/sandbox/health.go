@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Sandbox) HealthCheck(ctx context.Context) (bool, error) {
-	address := fmt.Sprintf("http://%s:%d/health", s.Slot.HostIP(), consts.DefaultEnvdServerPort)
+	address := fmt.Sprintf("http://%s:%d/health", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
 	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
 	if err != nil {
