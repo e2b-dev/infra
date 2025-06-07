@@ -30,6 +30,14 @@ const (
 	ClusterOrchestratorRoleTemplateManager ClusterOrchestratorRole = "templateManager"
 )
 
+// Defines values for TemplateBuildStatusResponseStatus.
+const (
+	TemplateBuildStatusResponseStatusBuilding TemplateBuildStatusResponseStatus = "building"
+	TemplateBuildStatusResponseStatusError    TemplateBuildStatusResponseStatus = "error"
+	TemplateBuildStatusResponseStatusReady    TemplateBuildStatusResponseStatus = "ready"
+	TemplateBuildStatusResponseStatusWaiting  TemplateBuildStatusResponseStatus = "waiting"
+)
+
 // ClusterNode defines model for ClusterNode.
 type ClusterNode struct {
 	// Commit Source code version of the node
@@ -134,7 +142,7 @@ type Error struct {
 type RunningSandbox struct {
 	ClientId  *string        `json:"client_id,omitempty"`
 	Config    *SandboxConfig `json:"config,omitempty"`
-	EndEime   *Timestamp     `json:"endEime,omitempty"`
+	EndTime   *Timestamp     `json:"endTime,omitempty"`
 	StartTime *Timestamp     `json:"startTime,omitempty"`
 }
 
@@ -192,6 +200,39 @@ type SandboxUpdateRequest struct {
 	EndTime Timestamp `json:"endTime"`
 }
 
+// TemplateBuildCreateRequest defines model for TemplateBuildCreateRequest.
+type TemplateBuildCreateRequest struct {
+	BuildId            string `json:"buildId"`
+	DiskSizeMB         int64  `json:"diskSizeMB"`
+	FirecrackerVersion string `json:"firecrackerVersion"`
+	HugePages          bool   `json:"hugePages"`
+	KernelVersion      string `json:"kernelVersion"`
+	OrchestratorId     string `json:"orchestratorId"`
+	RamMB              int64  `json:"ramMB"`
+	ReadyCommand       string `json:"readyCommand"`
+	StartCommand       string `json:"startCommand"`
+	TemplateId         string `json:"templateId"`
+	VCPU               int64  `json:"vCPU"`
+}
+
+// TemplateBuildStatusResponse defines model for TemplateBuildStatusResponse.
+type TemplateBuildStatusResponse struct {
+	// BuildID Identifier of the build
+	BuildID string `json:"buildID"`
+
+	// Logs Build logs
+	Logs []string `json:"logs"`
+
+	// Status Status of the template
+	Status TemplateBuildStatusResponseStatus `json:"status"`
+
+	// TemplateID Identifier of the template
+	TemplateID string `json:"templateID"`
+}
+
+// TemplateBuildStatusResponseStatus Status of the template
+type TemplateBuildStatusResponseStatus string
+
 // Timestamp defines model for Timestamp.
 type Timestamp = time.Time
 
@@ -210,6 +251,26 @@ type N404 = Error
 // N500 defines model for 500.
 type N500 = Error
 
+// V1ListSandboxesParams defines parameters for V1ListSandboxes.
+type V1ListSandboxesParams struct {
+	OrchestratorId string `form:"orchestratorId" json:"orchestratorId"`
+}
+
+// V1TemplateBuildDeleteParams defines parameters for V1TemplateBuildDelete.
+type V1TemplateBuildDeleteParams struct {
+	TemplateId     string `form:"template_id" json:"template_id"`
+	OrchestratorId string `form:"orchestrator_id" json:"orchestrator_id"`
+}
+
+// V1TemplateBuildStatusParams defines parameters for V1TemplateBuildStatus.
+type V1TemplateBuildStatusParams struct {
+	OrchestratorId string `form:"orchestrator_id" json:"orchestrator_id"`
+	TemplateId     string `form:"template_id" json:"template_id"`
+
+	// LogsOffset Index of the starting build log that should be returned with the template
+	LogsOffset *int32 `form:"logs_offset,omitempty" json:"logs_offset,omitempty"`
+}
+
 // V1CreateSandboxJSONRequestBody defines body for V1CreateSandbox for application/json ContentType.
 type V1CreateSandboxJSONRequestBody = SandboxCreateRequest
 
@@ -218,3 +279,6 @@ type V1UpdateSandboxJSONRequestBody = SandboxUpdateRequest
 
 // V1PauseSandboxJSONRequestBody defines body for V1PauseSandbox for application/json ContentType.
 type V1PauseSandboxJSONRequestBody = SandboxPauseRequest
+
+// V1TemplateBuildCreateJSONRequestBody defines body for V1TemplateBuildCreate for application/json ContentType.
+type V1TemplateBuildCreateJSONRequestBody = TemplateBuildCreateRequest

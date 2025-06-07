@@ -305,8 +305,8 @@ module "network" {
   domain_name               = var.domain_name
   additional_domains        = var.additional_domains
 
-  client_instance_group      = module.client_cluster.instance_group
-  client_regional_instance_group = module.client_cluster.regional_instance_groupclient_proxy_port          = var.client_proxy_port
+  client_instance_group          = module.client_cluster.instance_group
+  client_regional_instance_group = module.client_cluster.regional_instance_group
 
   client_proxy_port          = var.client_proxy_port
   client_proxy_edge_api_port = var.client_proxy_edge_api_port

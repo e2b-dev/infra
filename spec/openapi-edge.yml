@@ -284,8 +284,69 @@ components:
           type: string
         startTime:
           $ref: '#/components/schemas/Timestamp'
-        endEime:
+        endTime:
           $ref: '#/components/schemas/Timestamp'
+
+    TemplateBuildCreateRequest:
+      type: object
+      properties:
+        orchestratorId: { type: string }
+        buildId:        { type: string }
+        templateId:     { type: string }
+
+        hugePages:       { type: boolean }
+        ramMB:           { type: integer, format: int64 }
+        vCPU:            { type: integer, format: int64 }
+        diskSizeMB: { type: integer, format: int64 }
+
+        kernelVersion:      { type: string }
+        firecrackerVersion: { type: string }
+
+        startCommand: { type: string }
+        readyCommand: { type: string }
+      required:
+        - orchestratorId
+        - templateId
+        - buildId
+
+        - hugePages
+        - ramMB
+        - vCPU
+        - diskSizeMB
+
+        - kernelVersion
+        - firecrackerVersion
+
+        - startCommand
+        - readyCommand
+
+    TemplateBuildStatusResponse:
+      required:
+        - templateID
+        - buildID
+        - status
+        - logs
+      properties:
+        logs:
+          default: []
+          description: Build logs
+          type: array
+          items:
+            type: string
+        templateID:
+          type: string
+          description: Identifier of the template
+        buildID:
+          type: string
+          description: Identifier of the build
+        status:
+          type: string
+          description: Status of the template
+          enum:
+            - building
+            - waiting
+            - ready
+            - error
 
     Timestamp:
       type: string
@@ -303,8 +364,6 @@ paths:
       responses:
         "200":
           description: Request was successful
-        "401":
-          $ref: "#/components/responses/401"
 
   /health/traffic:
     get:
@@ -313,8 +372,6 @@ paths:
       responses:
         "200":
           description: Request was successful
-        "401":
-          $ref: "#/components/responses/401"
 
   /v1/info:
     get:
@@ -354,7 +411,7 @@ paths:
           "500":
             $ref: "#/components/responses/500"
 
-  /v1/service-discovery/nodes/{nodeId}/drain:
+  /v1/service-discovery/nodes/{node_id}/drain:
     post:
       operationId: v1ServiceDiscoveryNodeDrain
       description: Mark node as draining
@@ -362,7 +419,7 @@ paths:
         - ApiKeyAuth: [ ]
       tags: [service-discovery]
       parameters:
-        - name: nodeId
+        - name: node_id
           in: path
           required: true
           description: Node ID
@@ -380,7 +437,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /v1/service-discovery/nodes/{nodeId}/kill:
+  /v1/service-discovery/nodes/{node_id}/kill:
     post:
       operationId: v1ServiceDiscoveryNodeKill
       description: Mark node as unhealthy
@@ -388,7 +445,7 @@ paths:
         - ApiKeyAuth: [ ]
       tags: [service-discovery]
       parameters:
-        - name: nodeId
+        - name: node_id
           in: path
           required: true
           description: Node ID
@@ -422,6 +479,10 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ClusterOrchestratorNode"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
 
   /v1/sandboxes:
     post:
@@ -443,13 +504,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SandboxCreateResponse'
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
 
     get:
       operationId: v1ListSandboxes
-      summary: List running sandboxes
+      summary: List running sandboxes for an orchestrator
       security:
         - ApiKeyAuth: [ ]
       tags: [sandboxes]
+      parameters:
+        - name: orchestratorId
+          in: query
+          required: true
+          schema:
+            type: string
       responses:
         "200":
           description: List of sandboxes
@@ -457,6 +530,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SandboxListResponse'
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
 
   /v1/sandboxes/{sandbox_id}:
     parameters:
@@ -467,6 +546,12 @@ paths:
       security:
         - ApiKeyAuth: [ ]
       tags: [sandboxes]
+      parameters:
+        - name: sandbox_id
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -476,6 +561,12 @@ paths:
       responses:
         "204":
           description: Updated (no content)
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
 
     delete:
       operationId: v1DeleteSandbox
@@ -483,9 +574,21 @@ paths:
       security:
         - ApiKeyAuth: [ ]
       tags: [sandboxes]
+      parameters:
+        - name: sandbox_id
+          in: path
+          required: true
+          schema:
+            type: string
       responses:
         "204":
           description: Deleted (no content)
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
 
   /v1/sandboxes/{sandbox_id}/pause:
     parameters:
@@ -496,6 +599,12 @@ paths:
       security:
         - ApiKeyAuth: [ ]
       tags: [sandboxes]
+      parameters:
+        - name: sandbox_id
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -505,3 +614,109 @@ paths:
       responses:
         "204":
           description: Paused (no content)
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/templates/builds:
+    post:
+      operationId: v1TemplateBuildCreate
+      summary: Create a new template build
+      security:
+        - ApiKeyAuth: [ ]
+      tags: [templates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateBuildCreateRequest'
+      responses:
+        "201":
+          description: Build started
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/templates/builds/{build_id}:
+    get:
+      operationId: v1TemplateBuildStatus
+      summary: Template build status
+      security:
+        - ApiKeyAuth: [ ]
+      tags: [templates]
+      parameters:
+        - name: build_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: orchestrator_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: template_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: logs_offset
+          schema:
+            default: 0
+            type: integer
+            format: int32
+            minimum: 0
+          description: Index of the starting build log that should be returned with the template
+      responses:
+        "200":
+          description: Successfully returned the template build logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateBuildStatusResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+    delete:
+      operationId: v1TemplateBuildDelete
+      summary: Template build delete
+      security:
+        - ApiKeyAuth: [ ]
+      tags: [templates]
+      parameters:
+        - name: build_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: template_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: orchestrator_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successfully deleted template build
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"

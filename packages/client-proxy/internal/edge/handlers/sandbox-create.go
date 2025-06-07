@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -10,7 +9,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	grpcorchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -27,22 +25,10 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 		return
 	}
 
-	orchestrator, err := a.orchestratorPool.GetOrchestrator(body.Sandbox.OrchestratorId)
-	if err != nil {
-		if errors.Is(err, pool.ErrOrchestratorNotFound) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, "Orchestrator not found")
-			telemetry.ReportCriticalError(ctx, fmt.Errorf("orchestrator not found: %w", err))
-			return
-		}
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting orchestrator")
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("error when getting orchestrator: %w", err))
-		return
-	}
-
-	if orchestrator.Status != pool.OrchestratorStatusHealthy {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Orchestrator is not ready for sandbox placement")
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("orchestrator is not ready for sandbox placement: %w", err))
+	orchestrator, findErr := a.getOrchestratorNode(body.Sandbox.OrchestratorId)
+	if findErr != nil {
+		a.sendAPIStoreError(c, findErr.prettyErrorCode, findErr.prettyErrorMessage)
+		telemetry.ReportCriticalError(ctx, findErr.internalError)
 		return
 	}
 

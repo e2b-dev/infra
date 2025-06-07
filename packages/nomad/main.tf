@@ -109,8 +109,10 @@ resource "nomad_job" "client_proxy" {
       update_stanza = var.api_machine_count > 1
 
       gcp_zone    = var.gcp_zone
-      redis_url   = "redis://redis.service.consul:${var.redis_port.port}"
       environment = var.environment
+
+      redis_url = "redis://redis.service.consul:${var.redis_port.port}"
+      loki_url  = "http://loki.service.consul:${var.loki_service_port.port}"
 
       proxy_port_name   = var.edge_proxy_port.name
       proxy_port        = var.edge_proxy_port.port

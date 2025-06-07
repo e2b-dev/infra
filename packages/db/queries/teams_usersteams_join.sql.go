@@ -12,7 +12,7 @@ import (
 )
 
 const getTeamsWithUsersTeams = `-- name: GetTeamsWithUsersTeams :many
-SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, ut.id, ut.user_id, ut.team_id, ut.is_default, ut.added_by, ut.created_at
+SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, ut.id, ut.user_id, ut.team_id, ut.is_default, ut.added_by, ut.created_at
 FROM "public"."teams" t
 JOIN "public"."users_teams" ut ON ut.team_id = t.id
 WHERE ut.user_id = $1
@@ -41,6 +41,7 @@ func (q *Queries) GetTeamsWithUsersTeams(ctx context.Context, userID uuid.UUID) 
 			&i.Team.Email,
 			&i.Team.IsBanned,
 			&i.Team.BlockedReason,
+			&i.Team.ClusterID,
 			&i.UsersTeam.ID,
 			&i.UsersTeam.UserID,
 			&i.UsersTeam.TeamID,

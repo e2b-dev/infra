@@ -30,10 +30,10 @@ func (a *APIStore) V1DeleteSandbox(c *gin.Context, sandboxId api.SandboxId) {
 		return
 	}
 
-	orchestrator, err := a.orchestratorPool.GetOrchestrator(sbx.OrchestratorId)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting sandbox orchestrator")
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("error when getting orchestrator: %w", err))
+	orchestrator, findErr := a.getOrchestratorNode(sbx.OrchestratorId)
+	if findErr != nil {
+		a.sendAPIStoreError(c, findErr.prettyErrorCode, findErr.prettyErrorMessage)
+		telemetry.ReportCriticalError(ctx, findErr.internalError)
 		return
 	}
 

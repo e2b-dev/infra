@@ -93,6 +93,7 @@ job "client-proxy" {
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
         REDIS_URL                     = "${redis_url}"
+        LOKI_URL                      = "${loki_url}"
 
         %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
