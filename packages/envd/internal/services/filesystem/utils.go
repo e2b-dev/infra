@@ -13,6 +13,8 @@ import (
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 )
 
 type osEntry interface {
