@@ -173,6 +173,7 @@ func TestStat(t *testing.T) {
 	})
 	setup.SetSandboxHeader(req.Header(), sbx.SandboxID)
 	setup.SetUserHeader(req.Header(), "user")
+	setup.SetPackageVersionHeader(req.Header(), "1.5.x")
 	statResp, err := envdClient.FilesystemClient.Stat(ctx, req)
 	require.NoError(t, err)
 

@@ -59,3 +59,24 @@ func getFileOwnership(fileInfo os.FileInfo) (owner, group string) {
 
 	return owner, group
 }
+
+func entryInfoFromFileInfo(fileInfo os.FileInfo, path string, sdkVersion string) *rpc.EntryInfo {
+	owner, group := getFileOwnership(fileInfo)
+	fileMode := fileInfo.Mode()
+
+	entry := &rpc.EntryInfo{
+		Name: fileInfo.Name(),
+		Type: getEntryType(fileInfo),
+		Path: path,
+	}
+
+	if sdkVersion != "" && sdkVersion >= "1.5.2" {
+		entry.Size = fileInfo.Size()
+		entry.Mode = uint32(fileMode.Perm())
+		entry.Permissions = fileMode.String()
+		entry.Owner = owner
+		entry.Group = group
+	}
+
+	return entry
+}
