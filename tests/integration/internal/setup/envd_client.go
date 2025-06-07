@@ -69,3 +69,7 @@ func SetAccessTokenHeader(header http.Header, accessToken string) {
 func SetUserHeader(header http.Header, user string) {
 	grpc.SetUserHeader(header, user)
 }
+
+func SetPackageVersionHeader(header http.Header, version string) {
+	header.Set("package_version", version)
+}
