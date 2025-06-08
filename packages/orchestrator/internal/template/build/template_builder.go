@@ -46,7 +46,7 @@ type TemplateBuilder struct {
 }
 
 const (
-	templatesDirectory = "/tmp/templates"
+	templatesDirectory = "/tmp/build-templates"
 
 	sbxTimeout           = time.Hour
 	provisionTimeout     = 5 * time.Minute
