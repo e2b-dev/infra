@@ -7,9 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	e2bgrpcorchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
 func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {

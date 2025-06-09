@@ -23,10 +23,10 @@ codegen := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@lates
 
 .PHONY: generate
 generate:
-	$(codegen) -old-config-style -generate gin --package api $(openapi) > internal/edge/api/api.gen.go
-	$(codegen) -old-config-style -generate types --package api $(openapi) > internal/edge/api/types.gen.go
-	$(codegen) -old-config-style -generate spec --package api $(openapi) > internal/edge/api/spec.gen.go
-	$(codegen) -old-config-style -generate client --package api $(openapi) > internal/edge/api/client.gen.go
+	$(codegen) -old-config-style -generate gin --package api $(openapi) > ../shared/pkg/http/edge/api.gen.go
+	$(codegen) -old-config-style -generate types --package api $(openapi) > ../shared/pkg/http/edge/types.gen.go
+	$(codegen) -old-config-style -generate spec --package api $(openapi) > ../shared/pkg/http/edge/spec.gen.go
+	$(codegen) -old-config-style -generate client --package api $(openapi) > ../shared/pkg/http/edge/client.gen.go
 
 .PHONY: test
 test:

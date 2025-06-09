@@ -11,12 +11,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	logger_provider "github.com/e2b-dev/infra/packages/proxy/internal/edge/logger-provider"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	e2borchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 

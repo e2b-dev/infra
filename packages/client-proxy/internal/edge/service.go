@@ -10,12 +10,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/proxy/internal"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
 	e2binfo "github.com/e2b-dev/infra/packages/proxy/internal/edge/info"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
+	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
 func NewEdgeAPIStore(

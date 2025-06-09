@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
+	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
 const (

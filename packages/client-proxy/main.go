@@ -23,12 +23,12 @@ import (
 
 	"github.com/e2b-dev/infra/packages/proxy/internal"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge"
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	e2bproxy "github.com/e2b-dev/infra/packages/proxy/internal/proxy"
 	service_discovery "github.com/e2b-dev/infra/packages/proxy/internal/service-discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"

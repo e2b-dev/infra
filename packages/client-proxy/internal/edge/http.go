@@ -14,8 +14,8 @@ import (
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/api"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/handlers"
+	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
 
 const (
