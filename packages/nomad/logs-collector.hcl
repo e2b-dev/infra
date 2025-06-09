@@ -84,6 +84,24 @@ source = """
 del(."_path")
 .sandboxID = .instanceID
 .timestamp = parse_timestamp(.timestamp, format: "%+") ?? now()
+# Normalize keys
+if exists(.sandbox_id) {
+  .sandboxID = .sandbox_id
+}
+if exists(.build_id) {
+  .buildID = .build_id
+}
+if exists(.env_id) {
+  .envID = .env_id
+}
+if exists(.team_id) {
+  .teamID = .team_id
+}
+if exists(.sandbox_id) {
+  .sandboxID = .sandbox_id
+}
+
+# Apply defaults if not already set
 if !exists(.envID) {
   .envID = "unknown"
 }
@@ -101,7 +119,7 @@ if !exists(.buildID) {
 }
 if !exists(.service) {
   .service = "envd"
- }
+}
 """
 
 [transforms.internal_routing]
