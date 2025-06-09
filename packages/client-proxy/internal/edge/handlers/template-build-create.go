@@ -49,7 +49,7 @@ func (a *APIStore) V1TemplateBuildCreate(c *gin.Context) {
 	)
 
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating template build")
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error creating template: %s", err))
 		telemetry.ReportCriticalError(ctx, fmt.Errorf("error when creating template build: %w", err))
 		return
 	}
