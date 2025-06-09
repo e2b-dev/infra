@@ -1,6 +1,10 @@
 package sbxlogger
 
-import "go.uber.org/zap"
+import (
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+)
 
 type SandboxMetadata struct {
 	SandboxID  string
@@ -18,9 +22,9 @@ func (sm SandboxMetadata) LoggerMetadata() SandboxMetadata {
 
 func (sm SandboxMetadata) Fields() []zap.Field {
 	return []zap.Field{
-		zap.String("sandboxID", sm.SandboxID),
-		zap.String("templateID", sm.TemplateID),
-		zap.String("teamID", sm.TeamID),
+		logger.WithSandboxID(sm.SandboxID),
+		logger.WithTemplateID(sm.TemplateID),
+		logger.WithTeamID(sm.TeamID),
 
 		// Fields for Vector
 		zap.String("instanceID", sm.SandboxID),

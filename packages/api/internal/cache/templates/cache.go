@@ -17,6 +17,7 @@ import (
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
 
@@ -172,7 +173,7 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 	}
 
 	zap.L().Info("Setting template build status",
-		zap.String("buildID", buildID.String()),
+		logger.WithBuildID(buildID.String()),
 		zap.String("to_status", status.String()),
 		zap.String("from_status", item.Value().BuildStatus.String()),
 		zap.String("reason", reason),
@@ -184,7 +185,7 @@ func (c *TemplatesBuildCache) SetStatus(buildID uuid.UUID, status envbuild.Statu
 func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templateID string) (*TemplateBuildInfo, error) {
 	item := c.cache.Get(buildID)
 	if item == nil {
-		zap.L().Debug("Template build info not found in cache, fetching from DB", zap.String("buildID", buildID.String()))
+		zap.L().Debug("Template build info not found in cache, fetching from DB", logger.WithBuildID(buildID.String()))
 
 		envDB, envDBErr := c.db.GetEnv(ctx, templateID)
 		if envDBErr != nil {
@@ -218,7 +219,7 @@ func (c *TemplatesBuildCache) Get(ctx context.Context, buildID uuid.UUID, templa
 		return item.Value(), nil
 	}
 
-	zap.L().Debug("Template build info found in cache", zap.String("buildID", buildID.String()))
+	zap.L().Debug("Template build info found in cache", logger.WithBuildID(buildID.String()))
 
 	return item.Value(), nil
 }

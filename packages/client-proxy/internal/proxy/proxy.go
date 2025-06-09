@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -47,7 +48,7 @@ func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 
 			logger := zap.L().With(
 				zap.String("host", r.Host),
-				zap.String("sandbox_id", sandboxId),
+				l.WithSandboxID(sandboxId),
 				zap.Uint64("sandbox_req_port", port),
 				zap.String("sandbox_req_path", r.URL.Path),
 			)
@@ -84,7 +85,7 @@ func NewClientProxy(port uint) (*reverse_proxy.Proxy, error) {
 
 			// There's no answer, we can't proxy the request
 			if err != nil {
-				logger.Error("DNS resolving for sandbox failed", zap.String("sandbox_id", sandboxId), zap.Error(err))
+				logger.Error("DNS resolving for sandbox failed", l.WithSandboxID(sandboxId), zap.Error(err))
 
 				return nil, fmt.Errorf("DNS resolving for sandbox failed: %w", err)
 			}

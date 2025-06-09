@@ -1,1 +1,4 @@
-FROM e2bdev/base:latest
+FROM ubuntu:latest
+
+RUN useradd -m user && \
+    chown -R user:user /home/user

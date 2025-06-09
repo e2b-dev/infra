@@ -22,7 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -52,7 +52,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 	defer cancel()
 
 	clientID := "build-template-cmd"
-	logger, err := logger.NewLogger(ctx, logger.LoggerConfig{
+	logger, err := l.NewLogger(ctx, l.LoggerConfig{
 		ServiceName: clientID,
 		IsInternal:  true,
 		IsDebug:     true,
@@ -66,7 +66,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 
 	tracer := otel.Tracer("test")
 
-	logger.Info("building template", zap.String("templateID", templateID), zap.String("buildID", buildID))
+	logger.Info("building template", l.WithTemplateID(templateID), l.WithBuildID(buildID))
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.

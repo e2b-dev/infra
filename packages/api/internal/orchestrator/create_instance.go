@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -73,14 +74,14 @@ func (o *Orchestrator) CreateSandbox(
 				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances),
 			}
 		case errors.As(err, &alreadyErr):
-			zap.L().Warn("sandbox already being started", zap.String("sandboxID", sandboxID), zap.Error(err))
+			zap.L().Warn("sandbox already being started", logger.WithSandboxID(sandboxID), zap.Error(err))
 			return nil, &api.APIError{
 				Code:      http.StatusConflict,
 				ClientMsg: fmt.Sprintf("Sandbox %s is already being started", sandboxID),
 				Err:       err,
 			}
 		default:
-			zap.L().Error("failed to reserve sandbox for team", zap.String("sandboxID", sandboxID), zap.Error(err))
+			zap.L().Error("failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
 			return nil, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: fmt.Sprintf("Failed to create sandbox: %s", err),

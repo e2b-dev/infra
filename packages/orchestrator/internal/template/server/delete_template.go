@@ -11,13 +11,14 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanager.TemplateBuildDeleteRequest) (*emptypb.Empty, error) {
 	childCtx, childSpan := s.tracer.Start(ctx, "template-delete-request", trace.WithAttributes(
-		attribute.String("template.id", in.TemplateID),
-		attribute.String("build.id", in.BuildID),
+		telemetry.WithTemplateID(in.TemplateID),
+		telemetry.WithBuildID(in.BuildID),
 	))
 	defer childSpan.End()
 
@@ -31,7 +32,7 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 	c, err := s.buildCache.Get(in.BuildID)
 	if err == nil {
 		// Only handle if the build is in the cache
-		zap.L().Info("Canceling running template build", zap.String("template_id", in.TemplateID), zap.String("build_id", in.TemplateID))
+		zap.L().Info("Canceling running template build", logger.WithTemplateID(in.TemplateID), logger.WithBuildID(in.TemplateID))
 		telemetry.ReportEvent(ctx, "cancel in progress template build")
 		c.Cancel()
 	}

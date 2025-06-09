@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -24,7 +25,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 	config := templateRequest.Template
 	childSpan.SetAttributes(
-		attribute.String("env.id", config.TemplateID),
+		telemetry.WithTemplateID(config.TemplateID),
 		attribute.String("env.build.id", config.BuildID),
 		attribute.String("env.kernel.version", config.KernelVersion),
 		attribute.String("env.firecracker.version", config.FirecrackerVersion),
@@ -35,7 +36,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	)
 
 	if s.healthStatus == templatemanager.HealthState_Draining {
-		s.logger.Error("Requesting template creation while server is draining is not possible", zap.String("envID", config.TemplateID))
+		s.logger.Error("Requesting template creation while server is draining is not possible", logger.WithTemplateID(config.TemplateID))
 		return nil, fmt.Errorf("server is draining")
 	}
 

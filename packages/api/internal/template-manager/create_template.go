@@ -30,7 +30,7 @@ func (tm *TemplateManager) CreateTemplate(
 ) error {
 	ctx, span := t.Start(ctx, "create-template",
 		trace.WithAttributes(
-			attribute.String("env.id", templateID),
+			telemetry.WithTemplateID(templateID),
 		),
 	)
 	defer span.End()

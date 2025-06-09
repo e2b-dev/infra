@@ -35,7 +35,7 @@ import (
 	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -151,7 +151,7 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.AP
 
 				reqLogger := logger
 				if teamID != "" {
-					reqLogger = logger.With(zap.String("team_id", teamID))
+					reqLogger = logger.With(l.WithTeamID(teamID))
 				}
 
 				ginzap.Ginzap(reqLogger, time.RFC3339Nano, true)(c)
@@ -211,11 +211,11 @@ func run() int {
 		defer otlpCleanup(ctx)
 	}
 
-	logger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
+	logger := zap.Must(l.NewLogger(ctx, l.LoggerConfig{
 		ServiceName: serviceName,
 		IsInternal:  true,
 		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{logger.GetOTELCore(serviceName)},
+		Cores:       []zapcore.Core{l.GetOTELCore(serviceName)},
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
