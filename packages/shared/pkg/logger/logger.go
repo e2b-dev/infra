@@ -11,21 +11,6 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var LocalEncoderConfig = zapcore.EncoderConfig{
-	TimeKey:        "T",
-	LevelKey:       "L",
-	NameKey:        "N",
-	CallerKey:      "C",
-	FunctionKey:    zapcore.OmitKey,
-	MessageKey:     "M",
-	StacktraceKey:  "S",
-	LineEnding:     zapcore.DefaultLineEnding,
-	EncodeLevel:    zapcore.CapitalColorLevelEncoder,
-	EncodeTime:     zapcore.ISO8601TimeEncoder,
-	EncodeDuration: zapcore.StringDurationEncoder,
-	EncodeCaller:   zapcore.ShortCallerEncoder,
-}
-
 type LoggerConfig struct {
 	// ServiceName is the name of the service that the logger is being created for.
 	// The service name is added to every log entry.
@@ -43,7 +28,7 @@ type LoggerConfig struct {
 	Cores []zapcore.Core
 }
 
-func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, error) {
+func NewLogger(_ context.Context, loggerConfig LoggerConfig) (*zap.Logger, error) {
 	var level zap.AtomicLevel
 	if loggerConfig.IsDebug {
 		level = zap.NewAtomicLevelAt(zap.DebugLevel)
@@ -52,13 +37,15 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 	}
 
 	config := zap.Config{
-		Level:             level,
 		DisableStacktrace: loggerConfig.DisableStacktrace,
 		// Takes stacktraces more liberally
-		Development:   true,
-		Sampling:      nil,
+		Development: true,
+		Sampling:    nil,
+
+		// Console core
 		Encoding:      "console",
-		EncoderConfig: LocalEncoderConfig,
+		EncoderConfig: GetConsoleEncoderConfig(),
+		Level:         level,
 		OutputPaths: []string{
 			"stdout",
 		},
@@ -90,17 +77,13 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 	return logger, nil
 }
 
-func GetEncoderConfig(lineEnding string) zapcore.EncoderConfig {
-	return zapcore.EncoderConfig{
-		TimeKey:       "timestamp",
-		MessageKey:    "message",
-		LevelKey:      "level",
-		EncodeLevel:   zapcore.LowercaseLevelEncoder,
-		NameKey:       "logger",
-		StacktraceKey: "stacktrace",
-		EncodeTime:    zapcore.RFC3339NanoTimeEncoder,
-		LineEnding:    lineEnding,
-	}
+func GetConsoleEncoderConfig() zapcore.EncoderConfig {
+	cfg := zap.NewDevelopmentEncoderConfig()
+	cfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	cfg.CallerKey = zapcore.OmitKey
+	cfg.ConsoleSeparator = "  "
+
+	return cfg
 }
 
 func GetOTELCore(serviceName string) zapcore.Core {
