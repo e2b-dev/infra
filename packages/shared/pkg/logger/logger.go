@@ -11,6 +11,21 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+var LocalEncoderConfig = zapcore.EncoderConfig{
+	TimeKey:        "T",
+	LevelKey:       "L",
+	NameKey:        "N",
+	CallerKey:      "C",
+	FunctionKey:    zapcore.OmitKey,
+	MessageKey:     "M",
+	StacktraceKey:  "S",
+	LineEnding:     zapcore.DefaultLineEnding,
+	EncodeLevel:    zapcore.CapitalColorLevelEncoder,
+	EncodeTime:     zapcore.ISO8601TimeEncoder,
+	EncodeDuration: zapcore.StringDurationEncoder,
+	EncodeCaller:   zapcore.ShortCallerEncoder,
+}
+
 type LoggerConfig struct {
 	// ServiceName is the name of the service that the logger is being created for.
 	// The service name is added to every log entry.
@@ -42,8 +57,8 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 		// Takes stacktraces more liberally
 		Development:   true,
 		Sampling:      nil,
-		Encoding:      "json",
-		EncoderConfig: GetEncoderConfig(zapcore.DefaultLineEnding),
+		Encoding:      "console",
+		EncoderConfig: LocalEncoderConfig,
 		OutputPaths: []string{
 			"stdout",
 		},

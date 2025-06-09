@@ -6,6 +6,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -25,7 +26,12 @@ func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
 	var core zapcore.Core
 	if !config.IsInternal && config.CollectorAddress != "" {
 		// Add Vector exporter to the core
-		vectorEncoder := zapcore.NewJSONEncoder(logger.GetEncoderConfig(zapcore.DefaultLineEnding))
+		var vectorEncoder zapcore.Encoder
+		if env.IsLocal() {
+			vectorEncoder = zapcore.NewConsoleEncoder(logger.LocalEncoderConfig)
+		} else {
+			vectorEncoder = zapcore.NewJSONEncoder(logger.GetEncoderConfig(zapcore.DefaultLineEnding))
+		}
 		httpWriter := logger.NewBufferedHTTPWriter(ctx, config.CollectorAddress)
 		core = zapcore.NewCore(
 			vectorEncoder,
