@@ -97,9 +97,6 @@ if exists(.env_id) {
 if exists(.team_id) {
   .teamID = .team_id
 }
-if exists(.sandbox_id) {
-  .sandboxID = .sandbox_id
-}
 
 # Apply defaults if not already set
 if !exists(.envID) {
