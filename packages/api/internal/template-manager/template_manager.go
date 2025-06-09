@@ -33,7 +33,7 @@ type TemplateManager struct {
 const (
 	syncInterval             = time.Minute * 1
 	syncTimeout              = time.Minute * 15
-	syncWaitingStateDeadline = time.Minute * 20
+	syncWaitingStateDeadline = time.Minute * 40
 )
 
 func New(ctx context.Context, db *db.DB, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
