@@ -360,8 +360,7 @@ func (b *TemplateBuilder) uploadTemplate(
 
 				removeErr := b.templateStorage.Remove(removeCtx, templateFiles.BuildId)
 				if removeErr != nil {
-					b.logger.Error("error while removing build files", zap.Error(removeErr))
-					telemetry.ReportError(ctx, removeErr)
+					telemetry.ReportError(ctx, "error while removing build files", removeErr)
 				}
 			}
 		}()

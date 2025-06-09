@@ -74,7 +74,7 @@ func (a *APIStore) getSandboxesMetrics(
 			if err != nil {
 				timeoutCount.Add(1)
 				err := fmt.Errorf("context cancelled while waiting for rate limiter: %w", ctx.Err())
-				telemetry.ReportError(ctx, err)
+				telemetry.ReportError(ctx, "context cancelled while waiting for rate limiter", err)
 				results <- metricsResult{
 					sandbox: s,
 					err:     err,
@@ -95,7 +95,7 @@ func (a *APIStore) getSandboxesMetrics(
 
 			if err != nil {
 				errorCount.Add(1)
-				telemetry.ReportError(ctx, fmt.Errorf("failed to fetch metrics for sandbox %s: %w", s.SandboxID, err))
+				telemetry.ReportError(ctx, "failed to fetch metrics for sandbox", err, attribute.String("sandboxID", s.SandboxID))
 			} else {
 				successCount.Add(1)
 			}
@@ -205,8 +205,7 @@ func (a *APIStore) GetSandboxesMetrics(c *gin.Context, params api.GetSandboxesMe
 
 	sandboxesWithMetrics, err := a.getSandboxesMetrics(ctx, team.ID, sandboxes)
 	if err != nil {
-		zap.L().Error("Error fetching metrics for sandboxes", zap.Error(err))
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "error fetching metrics for sandboxes", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning metrics for sandboxes for team '%s'", team.ID))
 
 		return

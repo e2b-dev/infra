@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -139,7 +138,7 @@ func (o *Orchestrator) GetNodes() []*api.Node {
 	for _, sbx := range o.instanceCache.Items() {
 		n, ok := nodes[sbx.Instance.ClientID]
 		if !ok {
-			fmt.Fprintf(os.Stderr, "node [%s] for sandbox [%s] wasn't found \n", sbx.Instance.ClientID, sbx.Instance.SandboxID)
+			zap.L().Error("node for sandbox wasn't found", zap.String("client_id", sbx.Instance.ClientID), zap.String("sandbox_id", sbx.Instance.SandboxID))
 			continue
 		}
 

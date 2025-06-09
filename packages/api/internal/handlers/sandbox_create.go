@@ -55,8 +55,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 
-		errMsg := fmt.Errorf("error when parsing request: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
 
 		return
 	}
@@ -67,8 +66,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid environment ID: %s", err))
 
-		errMsg := fmt.Errorf("error when cleaning env ID: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when cleaning env ID", err)
 
 		return
 	}
@@ -81,7 +79,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	// Check if team has access to the environment
 	env, build, checkErr := a.templateCache.Get(ctx, cleanedAliasOrEnvID, teamInfo.Team.ID, true)
 	if checkErr != nil {
-		telemetry.ReportCriticalError(ctx, checkErr.Err)
+		telemetry.ReportCriticalError(ctx, "error when getting template", checkErr.Err)
 		a.sendAPIStoreError(c, checkErr.Code, checkErr.ClientMsg)
 		return
 	}

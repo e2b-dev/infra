@@ -34,8 +34,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid env ID: %s", aliasOrTemplateID))
 
-		err = fmt.Errorf("invalid env ID: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "invalid env ID", err)
 
 		return
 	}
@@ -45,8 +44,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
-		err = fmt.Errorf("error when getting default team: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "error when getting default team", err)
 
 		return
 	}
@@ -64,12 +62,13 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 
 	notFound := models.IsNotFound(err)
 	if notFound {
-		telemetry.ReportError(ctx, fmt.Errorf("template '%s' not found", aliasOrTemplateID))
+		telemetry.ReportError(ctx, "template not found", fmt.Errorf("template '%s' not found", aliasOrTemplateID))
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("the sandbox template '%s' wasn't found", cleanedAliasOrEnvID))
 
 		return
 	} else if err != nil {
-		telemetry.ReportError(ctx, fmt.Errorf("failed to get env '%s': %w", aliasOrTemplateID, err))
+		telemetry.ReportError(ctx, "failed to get env", err, attribute.String("env_id", aliasOrTemplateID))
+
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting env")
 
 		return
@@ -84,8 +83,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	}
 
 	if team == nil {
-		errMsg := fmt.Errorf("user '%s' doesn't have access to the sandbox template '%s'", userID, cleanedAliasOrEnvID)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportError(ctx, "user doesn't have access to the sandbox template", fmt.Errorf("user '%s' doesn't have access to the sandbox template '%s'", userID, cleanedAliasOrEnvID))
 
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) don't have access to sandbox template '%s'", userID, cleanedAliasOrEnvID))
 
@@ -99,8 +97,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		})
 
 		if dbErr != nil {
-			errMsg := fmt.Errorf("error when updating env: %w", dbErr)
-			telemetry.ReportError(ctx, errMsg)
+			telemetry.ReportError(ctx, "error when updating env", dbErr)
 
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when updating env")
 			return

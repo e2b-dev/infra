@@ -61,7 +61,7 @@ func (o *Orchestrator) CreateSandbox(
 		var limitErr *instance.ErrSandboxLimitExceeded
 		var alreadyErr *instance.ErrAlreadyBeingStarted
 
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "failed to reserve sandbox for team", err)
 
 		switch {
 		case errors.As(err, &limitErr):
@@ -167,13 +167,12 @@ func (o *Orchestrator) CreateSandbox(
 		if node == nil {
 			node, err = o.getLeastBusyNode(childCtx, nodesExcluded)
 			if err != nil {
-				errMsg := fmt.Errorf("failed to get least busy node: %w", err)
-				telemetry.ReportError(childCtx, errMsg)
+				telemetry.ReportError(childCtx, "failed to get least busy node", err)
 
 				return nil, &api.APIError{
 					Code:      http.StatusInternalServerError,
 					ClientMsg: "Failed to get node to place sandbox on.",
-					Err:       errMsg,
+					Err:       fmt.Errorf("failed to get least busy node: %w", err),
 				}
 			}
 		}
@@ -248,8 +247,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	cacheErr := o.instanceCache.Add(childCtx, instanceInfo, true)
 	if cacheErr != nil {
-		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportError(ctx, "error when adding instance to cache", cacheErr)
 
 		deleted := o.DeleteInstance(childCtx, sbx.SandboxID, false)
 		if !deleted {
@@ -259,7 +257,7 @@ func (o *Orchestrator) CreateSandbox(
 		return nil, &api.APIError{
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Failed to create sandbox",
-			Err:       errMsg,
+			Err:       fmt.Errorf("error when adding instance to cache: %w", cacheErr),
 		}
 	}
 

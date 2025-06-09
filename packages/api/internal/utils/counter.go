@@ -2,9 +2,10 @@ package utils
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 )
@@ -69,7 +70,7 @@ func (t *TemplateSpawnCounter) flushCounters(dbClient *db.DB) {
 	for templateID, counter := range updates {
 		err := dbClient.UpdateEnvLastUsed(context.Background(), int64(counter.count), counter.lastUpdate, templateID)
 		if err != nil {
-			log.Println("Error updating template spawn count:", err)
+			zap.L().Error("error updating template spawn count", zap.Error(err))
 		}
 	}
 }
