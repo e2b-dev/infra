@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
