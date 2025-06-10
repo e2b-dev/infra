@@ -42,12 +42,9 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 	logger := a.logger.With(zap.String("service_id", serviceId))
 
 	// try to find orchestrator node first
-	o, err := a.orchestratorPool.GetOrchestrator(serviceId)
-	if err != nil {
-		if !errors.Is(err, pool.ErrOrchestratorNotFound) {
-			logger.Warn("Failed to get orchestrator", zap.Error(err))
-			return errors.New("Error when getting orchestrator node")
-		}
+	o, ok := a.orchestratorPool.GetOrchestrator(serviceId)
+	if !ok {
+		return errors.New("orchestrator node not found")
 	}
 
 	if o != nil {

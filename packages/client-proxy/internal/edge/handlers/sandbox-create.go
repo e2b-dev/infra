@@ -8,9 +8,9 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	grpcorchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -100,7 +100,7 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 	zap.L().Info("Created sandbox", zap.String("sandbox_id", body.Sandbox.SandboxId), zap.String("client_id", sbxResponse.ClientId))
 
 	c.JSON(
-		http.StatusOK,
+		http.StatusCreated,
 		api.SandboxCreateResponse{ClientId: sbxResponse.ClientId},
 	)
 }

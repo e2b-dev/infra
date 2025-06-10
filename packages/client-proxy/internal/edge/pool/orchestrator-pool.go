@@ -16,9 +16,7 @@ import (
 
 type OrchestratorsPool struct {
 	discovery sd.ServiceDiscoveryAdapter
-
-	nodes *smap.Map[*OrchestratorNode]
-	mutex sync.RWMutex
+	nodes     *smap.Map[*OrchestratorNode]
 
 	tracer trace.Tracer
 	logger *zap.Logger
@@ -37,7 +35,6 @@ func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.
 		discovery: discovery,
 
 		nodes: smap.New[*OrchestratorNode](),
-		mutex: sync.RWMutex{},
 
 		logger: logger,
 		tracer: tracer,
@@ -50,22 +47,11 @@ func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.
 }
 
 func (p *OrchestratorsPool) GetOrchestrators() map[string]*OrchestratorNode {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
 	return p.nodes.Items()
 }
 
-func (p *OrchestratorsPool) GetOrchestrator(id string) (*OrchestratorNode, error) {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
-	o, ok := p.nodes.Get(id)
-	if !ok {
-		return nil, ErrOrchestratorNotFound
-	}
-
-	return o, nil
+func (p *OrchestratorsPool) GetOrchestrator(id string) (node *OrchestratorNode, ok bool) {
+	return p.nodes.Get(id)
 }
 
 func (p *OrchestratorsPool) keepInSync(ctx context.Context) {
@@ -178,9 +164,7 @@ func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDis
 		return err
 	}
 
-	p.mutex.Lock()
 	p.nodes.Insert(o.ServiceId, o)
-	p.mutex.Unlock()
 
 	// call initial node sync
 	return p.syncNode(ctx, o, true)
@@ -205,10 +189,7 @@ func (p *OrchestratorsPool) syncNode(ctx context.Context, node *OrchestratorNode
 			p.logger.Error("Error closing connection to node", zap.Error(err))
 		}
 
-		p.mutex.Lock()
 		p.nodes.Remove(node.ServiceId) // remove from pool
-		p.mutex.Unlock()
-
 		p.logger.Info("Orchestrator node node connection has been closed.", zap.String("node_id", node.ServiceId))
 		return nil
 	}

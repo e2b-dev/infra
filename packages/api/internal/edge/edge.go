@@ -54,13 +54,8 @@ func NewPool(ctx context.Context, db *client.Client, tracer trace.Tracer) (*Pool
 	return p, nil
 }
 
-func (p *Pool) GetClusterByTeam(teamId string) (*Cluster, error) {
-	cluster, exists := p.pool.Get(teamId)
-	if !exists {
-		return nil, ErrClusterNotFound
-	}
-
-	return cluster, nil
+func (p *Pool) GetClusterByTeam(teamId string) (*Cluster, bool) {
+	return p.pool.Get(teamId)
 }
 
 func (p *Pool) syncBackground() {

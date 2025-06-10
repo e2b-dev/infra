@@ -89,20 +89,12 @@ func parseBody[B any](ctx context.Context, c *gin.Context) (body B, err error) {
 }
 
 func (a *APIStore) getOrchestratorNode(orchestratorId string) (*e2borchestrators.OrchestratorNode, *APIUserFacingError) {
-	orchestrator, err := a.orchestratorPool.GetOrchestrator(orchestratorId)
-	if err != nil {
-		if errors.Is(err, e2borchestrators.ErrOrchestratorNotFound) {
-			return nil, &APIUserFacingError{
-				internalError:      fmt.Errorf("orchestrator not found: %w", err),
-				prettyErrorCode:    http.StatusBadRequest,
-				prettyErrorMessage: "Orchestrator not found",
-			}
-		}
-
+	orchestrator, ok := a.orchestratorPool.GetOrchestrator(orchestratorId)
+	if !ok {
 		return nil, &APIUserFacingError{
-			internalError:      fmt.Errorf("error when getting orchestrator: %w", err),
-			prettyErrorCode:    http.StatusInternalServerError,
-			prettyErrorMessage: "Error when getting orchestrator",
+			internalError:      fmt.Errorf("orchestrator not found: %s", orchestratorId),
+			prettyErrorCode:    http.StatusBadRequest,
+			prettyErrorMessage: "Orchestrator not found",
 		}
 	}
 
