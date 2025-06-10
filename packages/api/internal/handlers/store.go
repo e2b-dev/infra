@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -61,6 +62,8 @@ type APIStore struct {
 	templateSpawnCounter     *utils.TemplateSpawnCounter
 	clickhouseStore          chdb.Store
 	envdAccessTokenGenerator *sandbox.EnvdAccessTokenGenerator
+	edge                     *edge.Pool
+
 	// should use something like this: https://github.com/spf13/viper
 	// but for now this is good
 	readMetricsFromClickHouse string
@@ -177,6 +180,11 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Fatal("initializing access token generator failed", zap.Error(err))
 	}
 
+	edgePool, err := edge.NewPool(ctx, sqlcDB, tracer)
+	if err != nil {
+		zap.L().Fatal("initializing edge clusters failed", zap.Error(err))
+	}
+
 	a := &APIStore{
 		Healthy:                   false,
 		orchestrator:              orch,
@@ -193,6 +201,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		clickhouseStore:           clickhouseStore,
 		envdAccessTokenGenerator:  accessTokenGenerator,
 		readMetricsFromClickHouse: readMetricsFromClickHouse,
+		edge:                      edgePool,
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
