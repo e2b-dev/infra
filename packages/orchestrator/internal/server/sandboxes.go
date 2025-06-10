@@ -42,11 +42,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
-	// TODO: Temporary workaround, remove API changes deployed
-	if req.Sandbox.GetExecutionId() == "" {
-		req.Sandbox.ExecutionId = uuid.New().String()
-	}
-
 	sbx, cleanup, err := sandbox.ResumeSandbox(
 		childCtx,
 		s.tracer,
