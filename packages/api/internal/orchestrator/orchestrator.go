@@ -9,6 +9,7 @@ import (
 	"time"
 
 	nomadapi "github.com/hashicorp/nomad/api"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -48,8 +49,6 @@ func New(
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
-	redisClient dns.Rediser,
-	redisClusterClient dns.Rediser,
 	dbClient *db.DB,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics()
@@ -57,7 +56,36 @@ func New(
 		zap.L().Error("Error initializing Analytics client", zap.Error(err))
 	}
 
-	dnsServer := dns.New(ctx, redisClient, redisClusterClient)
+	var redisClient dns.Rediser
+	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
+		// For managed Redis Cluster in GCP we should use Cluster Client, because
+		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
+		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
+		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
+		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs:        []string{redisClusterUrl},
+			MinIdleConns: 1,
+		})
+	} else if rurl := os.Getenv("REDIS_URL"); rurl != "" {
+
+		redisClient = redis.NewClient(&redis.Options{
+			Addr:         rurl,
+			MinIdleConns: 1,
+		})
+	} else {
+		zap.L().Warn("REDIS_URL not set, using local caches")
+	}
+
+	if redisClient != nil {
+		_, err := redisClient.Ping(ctx).Result()
+		if err != nil {
+			zap.L().Fatal("could not connect to Redis", zap.Error(err))
+		}
+
+		zap.L().Info("connected to Redis cluster")
+	}
+
+	dnsServer := dns.New(ctx, redisClient)
 
 	if env.IsLocal() {
 		zap.L().Info("Running locally, skipping starting DNS server")
