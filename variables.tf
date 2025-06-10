@@ -106,6 +106,22 @@ variable "clickhouse_health_port" {
   }
 }
 
+variable "client_proxy_count" {
+  type    = number
+  default = 1
+}
+
+
+variable "client_proxy_resources_ram_mb" {
+  type    = number
+  default = 1024
+}
+
+variable "client_proxy_resources_cpu_count" {
+  type    = number
+  default = 1
+}
+
 variable "client_proxy_health_port" {
   type = object({
     name = string
@@ -216,6 +232,16 @@ variable "environment" {
   default = "prod"
 }
 
+variable "otel_collector_resources_ram_mb" {
+  type    = number
+  default = 1024
+}
+
+variable "otel_collector_resources_cpu_count" {
+  type    = number
+  default = 0.5
+}
+
 variable "otel_tracing_print" {
   description = "Whether to print OTEL traces to stdout"
   type        = bool
@@ -251,6 +277,16 @@ variable "labels" {
 variable "terraform_state_bucket" {
   description = "The name of the bucket to store terraform state in"
   type        = string
+}
+
+variable "loki_resources_ram_mb" {
+  type    = number
+  default = 2048
+}
+
+variable "loki_resources_cpu_count" {
+  type    = number
+  default = 1
 }
 
 variable "loki_service_port" {

@@ -34,6 +34,14 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, TERRAFORM_STATE_BUCKET) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
+	$(call tfvar, CLIENT_PROXY_COUNT) \
+	$(call tfvar, CLIENT_PROXY_CPU_COUNT) \
+	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \
+	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
+	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
+	$(call tfvar, OTEL_TRACING_PRINT) \
+	$(call tfvar, OTEL_COLLECTOR_RESOURCES_CPU_COUNT) \
+	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
 	$(call tfvar, REDIS_MANAGED) \

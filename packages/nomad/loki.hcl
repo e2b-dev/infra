@@ -47,9 +47,9 @@ job "loki" {
       }
 
       resources {
-        memory_max = 4096
-        memory = 2048
-        cpu    = 1000
+        memory_max = ${memory_mb * 1.5}
+        memory     = ${memory_mb}
+        cpu        = ${cpu_count * 1000}
       }
 
       template {

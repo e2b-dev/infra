@@ -207,6 +207,10 @@ module "nomad" {
   redis_url_secret_version                  = module.api.redis_url_secret_version
   sandbox_access_token_hash_seed            = module.api.sandbox_access_token_hash_seed
 
+  # Click Proxy
+  client_proxy_count               = var.client_proxy_count
+  client_proxy_resources_cpu_count = var.client_proxy_resources_cpu_count
+  client_proxy_resources_ram_mb    = var.client_proxy_resources_ram_mb
   client_proxy_port                = var.client_proxy_port
   client_proxy_health_port         = var.client_proxy_health_port
   client_proxy_docker_image_digest = module.client_proxy.client_proxy_docker_image_digest
@@ -218,8 +222,15 @@ module "nomad" {
   logs_proxy_port        = var.logs_proxy_port
 
   # Logs
+  loki_resources_ram_mb    = var.loki_resources_ram_mb
+  loki_resources_cpu_count = var.loki_resources_cpu_count
+
   loki_bucket_name  = module.buckets.loki_bucket_name
   loki_service_port = var.loki_service_port
+
+  # Otel Colelctor
+  otel_collector_resources_ram_mb    = var.otel_collector_resources_ram_mb
+  otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
 
   # Docker reverse proxy
   docker_reverse_proxy_docker_image_digest = module.docker_reverse_proxy.docker_reverse_proxy_docker_image_digest

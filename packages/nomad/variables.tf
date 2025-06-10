@@ -22,6 +22,14 @@ variable "nomad_port" {
   type = number
 }
 
+variable "otel_collector_resources_ram_mb" {
+  type = number
+}
+
+variable "otel_collector_resources_cpu_count" {
+  type = number
+}
+
 variable "otel_tracing_print" {
   type = bool
 }
@@ -96,6 +104,18 @@ variable "supabase_jwt_secrets_secret_name" {
   type = string
 }
 
+variable "client_proxy_count" {
+  type = number
+}
+
+variable "client_proxy_resources_ram_mb" {
+  type = number
+}
+
+variable "client_proxy_resources_cpu_count" {
+  type = number
+}
+
 variable "client_proxy_docker_image_digest" {
   type = string
 }
@@ -149,6 +169,14 @@ variable "launch_darkly_api_key_secret_name" {
 
 variable "clickhouse_bucket_name" {
   type = string
+}
+
+variable "loki_resources_ram_mb" {
+  type = number
+}
+
+variable "loki_resources_cpu_count" {
+  type = number
 }
 
 variable "loki_bucket_name" {
