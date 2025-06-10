@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
@@ -67,7 +68,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 
 		return
 	} else if err != nil {
-		telemetry.ReportError(ctx, "failed to get env", err, attribute.String("env_id", aliasOrTemplateID))
+		telemetry.ReportError(ctx, "failed to get env", err, telemetry.WithTemplateID(aliasOrTemplateID))
 
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting env")
 
@@ -108,7 +109,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 		attribute.String("user.id", userID.String()),
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
-		attribute.String("env.id", template.ID),
+		telemetry.WithTemplateID(template.ID),
 	)
 
 	a.templateCache.Invalidate(template.ID)
@@ -119,7 +120,7 @@ func (a *APIStore) PatchTemplatesTemplateID(c *gin.Context, aliasOrTemplateID ap
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "updated environment", properties.Set("environment", template.ID))
 
-	zap.L().Info("Updated env", zap.String("env_id", template.ID), zap.String("team_id", team.ID.String()))
+	zap.L().Info("Updated env", logger.WithTemplateID(template.ID), logger.WithTeamID(team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
 }

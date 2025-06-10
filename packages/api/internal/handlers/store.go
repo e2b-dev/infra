@@ -26,7 +26,7 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
@@ -268,9 +268,19 @@ func (a *APIStore) GetTeamFromAPIKey(ctx context.Context, apiKey string) (authca
 	team, tier, err := a.authCache.GetOrSet(ctx, apiKey, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
 		return a.db.GetTeamAuth(ctx, key)
 	})
+
 	if err != nil {
 		var usageErr *db.TeamForbiddenError
 		if errors.As(err, &usageErr) {
+			return authcache.AuthTeamInfo{}, &api.APIError{
+				Err:       err,
+				ClientMsg: err.Error(),
+				Code:      http.StatusForbidden,
+			}
+		}
+
+		var blockedErr *db.TeamBlockedError
+		if errors.As(err, &blockedErr) {
 			return authcache.AuthTeamInfo{}, &api.APIError{
 				Err:       err,
 				ClientMsg: err.Error(),
@@ -384,14 +394,25 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, teamID string) 
 	team, tier, err := a.authCache.GetOrSet(ctx, teamID, func(ctx context.Context, key string) (*models.Team, *models.Tier, error) {
 		return a.db.GetTeamByIDAndUserIDAuth(ctx, teamID, userID)
 	})
-	if errors.Is(err, &db.TeamForbiddenError{}) {
-		return authcache.AuthTeamInfo{}, &api.APIError{
-			Err:       fmt.Errorf("failed getting team: %w", err),
-			ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
-			Code:      http.StatusUnauthorized,
-		}
-	}
 	if err != nil {
+		var usageErr *db.TeamForbiddenError
+		if errors.As(err, &usageErr) {
+			return authcache.AuthTeamInfo{}, &api.APIError{
+				Err:       fmt.Errorf("failed getting team: %w", err),
+				ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
+				Code:      http.StatusForbidden,
+			}
+		}
+
+		var blockedErr *db.TeamBlockedError
+		if errors.As(err, &blockedErr) {
+			return authcache.AuthTeamInfo{}, &api.APIError{
+				Err:       fmt.Errorf("failed getting team: %w", err),
+				ClientMsg: fmt.Sprintf("Blocked: %s", err.Error()),
+				Code:      http.StatusForbidden,
+			}
+		}
+
 		return authcache.AuthTeamInfo{}, &api.APIError{
 			Err:       fmt.Errorf("failed getting team: %w", err),
 			ClientMsg: "Backend authentication failed",

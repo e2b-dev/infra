@@ -18,6 +18,7 @@ import (
 const (
 	securityErrPrefix  = "error in openapi3filter.SecurityRequirementsError: security requirements failed: "
 	forbiddenErrPrefix = "team forbidden: "
+	blockedErrPrefix   = "team blocked: "
 )
 
 func ErrorHandler(c *gin.Context, message string, statusCode int) {
@@ -52,6 +53,19 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 			gin.H{
 				"code":    http.StatusForbidden,
 				"message": strings.TrimPrefix(message, forbiddenErrPrefix),
+			},
+		)
+
+		return
+	}
+
+	// Handle blocked errors
+	if strings.HasPrefix(message, blockedErrPrefix) {
+		c.AbortWithStatusJSON(
+			http.StatusForbidden,
+			gin.H{
+				"code":    http.StatusForbidden,
+				"message": strings.TrimPrefix(message, blockedErrPrefix),
 			},
 		)
 
@@ -96,6 +110,7 @@ func MultiErrorHandler(me openapi3.MultiError) error {
 		err = unwrapped[0]
 
 		var teamForbidden *db.TeamForbiddenError
+		var teamBlocked *db.TeamBlockedError
 		// Return only the first non-missing authorization header error (if possible)
 		for _, errW := range unwrapped {
 			if errors.Is(errW, auth.ErrNoAuthHeader) {
@@ -104,6 +119,10 @@ func MultiErrorHandler(me openapi3.MultiError) error {
 
 			if errors.As(errW, &teamForbidden) {
 				return fmt.Errorf("%s%s", forbiddenErrPrefix, err.Error())
+			}
+
+			if errors.As(errW, &teamBlocked) {
+				return fmt.Errorf("%s%s", blockedErrPrefix, err.Error())
 			}
 
 			err = errW

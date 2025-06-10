@@ -69,7 +69,7 @@ func (a *APIStore) LegacyGetSandboxIDMetrics(
 
 			err := json.Unmarshal([]byte(entry.Line), &metric)
 			if err != nil {
-				telemetry.ReportCriticalError(ctx, "failed to unmarshal metric", err, attribute.String("sandbox_id", sandboxID))
+				telemetry.ReportCriticalError(ctx, "failed to unmarshal metric", err, telemetry.WithSandboxID(sandboxID))
 
 				continue
 			}
@@ -166,13 +166,13 @@ func (a *APIStore) GetSandboxesSandboxIDMetrics(
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("instance.id", sandboxID),
-		attribute.String("team.id", teamID),
+		telemetry.WithTeamID(teamID),
 	)
 
 	metrics, err := a.readMetricsBasedOnConfig(ctx, sandboxID, teamID, a)
 
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error returning metrics for sandbox", err, attribute.String("sandboxID", sandboxID))
+		telemetry.ReportCriticalError(ctx, "error returning metrics for sandbox", err, telemetry.WithSandboxID(sandboxID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error returning metrics for sandbox '%s'", sandboxID))
 
 		return

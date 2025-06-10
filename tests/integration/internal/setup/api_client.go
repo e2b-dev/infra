@@ -22,9 +22,13 @@ func GetAPIClient() *api.ClientWithResponses {
 	return c
 }
 
-func WithAPIKey() func(ctx context.Context, req *http.Request) error {
+func WithAPIKey(apiKey ...string) func(ctx context.Context, req *http.Request) error {
 	return func(ctx context.Context, req *http.Request) error {
-		req.Header.Set("X-API-Key", APIKey)
+		apiKey_ := APIKey
+		if len(apiKey) > 0 {
+			apiKey_ = apiKey[0]
+		}
+		req.Header.Set("X-API-Key", apiKey_)
 
 		return nil
 	}
@@ -50,13 +54,17 @@ func WithSupabaseToken(t *testing.T) func(ctx context.Context, req *http.Request
 	}
 }
 
-func WithSupabaseTeam(t *testing.T) func(ctx context.Context, req *http.Request) error {
-	if SupabaseTeamID == "" {
+func WithSupabaseTeam(t *testing.T, teamID ...string) func(ctx context.Context, req *http.Request) error {
+	teamID_ := SupabaseTeamID
+	if len(teamID) > 0 {
+		teamID_ = teamID[0]
+	}
+	if teamID_ == "" {
 		t.Skip("Supabase team ID is not set")
 	}
 
 	return func(ctx context.Context, req *http.Request) error {
-		req.Header.Set("X-Supabase-Team", SupabaseTeamID)
+		req.Header.Set("X-Supabase-Team", teamID_)
 
 		return nil
 	}

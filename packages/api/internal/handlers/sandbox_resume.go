@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cache/instance"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -80,7 +81,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	sbxCache, err := a.orchestrator.GetSandbox(sandboxID)
 	if err == nil {
 		zap.L().Debug("Sandbox is already running",
-			zap.String("sandbox_id", sandboxID),
+			logger.WithSandboxID(sandboxID),
 			zap.Time("end_time", sbxCache.GetEndTime()),
 			zap.Bool("auto_pause", sbxCache.AutoPause.Load()),
 			zap.Time("start_time", sbxCache.StartTime),
@@ -107,12 +108,12 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	lastSnapshot, err := a.sqlcDB.GetLastSnapshot(ctx, queries.GetLastSnapshotParams{SandboxID: sandboxID, TeamID: teamInfo.Team.ID})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			zap.L().Debug("Snapshot not found", zap.String("sandboxID", sandboxID))
+			zap.L().Debug("Snapshot not found", logger.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox snapshot not found")
 			return
 		}
 
-		zap.L().Error("Error getting last snapshot", zap.String("sandboxID", sandboxID), zap.Error(err))
+		zap.L().Error("Error getting last snapshot", logger.WithSandboxID(sandboxID), zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting snapshot")
 		return
 	}
@@ -135,7 +136,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	if snap.EnvSecure {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), zap.String("envdID", *build.EnvID), zap.String("envBuildID", build.ID.String()))
+			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), logger.WithTemplateID(*build.EnvID), logger.WithBuildID(build.ID.String()))
 			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
 			return
 		}

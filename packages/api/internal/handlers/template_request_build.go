@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
@@ -126,7 +127,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		if err != nil {
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template '%s' for team '%s'", templateID, team.ID.String()))
 
-			telemetry.ReportCriticalError(ctx, "error when getting template", err, attribute.String("template_id", templateID), attribute.String("team_id", team.ID.String()))
+			telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(templateID), telemetry.WithTeamID(team.ID.String()))
 
 			return nil
 		}
@@ -146,9 +147,9 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		attribute.String("user.id", userID.String()),
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
-		attribute.String("env.id", templateID),
+		telemetry.WithTemplateID(templateID),
 		attribute.String("env.team.tier", team.Tier),
-		attribute.String("build.id", buildID.String()),
+		telemetry.WithBuildID(buildID.String()),
 		attribute.String("env.dockerfile", body.Dockerfile),
 	)
 
@@ -361,7 +362,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		aliases = append(aliases, alias)
 	}
 
-	zap.L().Info("Built template", zap.String("template_id", templateID), zap.String("build_id", buildID.String()))
+	zap.L().Info("Built template", logger.WithTemplateID(templateID), logger.WithBuildID(buildID.String()))
 
 	return &api.Template{
 		TemplateID: templateID,

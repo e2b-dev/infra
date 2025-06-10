@@ -106,6 +106,22 @@ variable "clickhouse_health_port" {
   }
 }
 
+variable "client_proxy_count" {
+  type    = number
+  default = 1
+}
+
+
+variable "client_proxy_resources_memory_mb" {
+  type    = number
+  default = 1024
+}
+
+variable "client_proxy_resources_cpu_count" {
+  type    = number
+  default = 1
+}
+
 variable "client_proxy_health_port" {
   type = object({
     name = string
@@ -196,6 +212,17 @@ variable "nomad_port" {
   default = 4646
 }
 
+variable "allow_sandbox_internet" {
+  type    = bool
+  default = true
+}
+
+variable "client_cluster_cache_disk_size_gb" {
+  type        = number
+  description = "The size of the root disk for the orchestrator machines in GB"
+  default     = 500
+}
+
 variable "orchestrator_port" {
   type    = number
   default = 5008
@@ -214,6 +241,16 @@ variable "template_manager_port" {
 variable "environment" {
   type    = string
   default = "prod"
+}
+
+variable "otel_collector_resources_memory_mb" {
+  type    = number
+  default = 1024
+}
+
+variable "otel_collector_resources_cpu_count" {
+  type    = number
+  default = 0.5
 }
 
 variable "otel_tracing_print" {
@@ -251,6 +288,16 @@ variable "labels" {
 variable "terraform_state_bucket" {
   description = "The name of the bucket to store terraform state in"
   type        = string
+}
+
+variable "loki_resources_memory_mb" {
+  type    = number
+  default = 2048
+}
+
+variable "loki_resources_cpu_count" {
+  type    = number
+  default = 1
 }
 
 variable "loki_service_port" {

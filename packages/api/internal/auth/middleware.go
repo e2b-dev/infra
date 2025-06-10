@@ -80,7 +80,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, a.errorMessage, err)
 
-		return fmt.Errorf("%v %w", a.errorMessage, err)
+		return fmt.Errorf("%s %w", a.errorMessage, err)
 	}
 
 	telemetry.ReportEvent(ctx, "api key extracted")
@@ -94,6 +94,11 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 		var forbiddenError *db.TeamForbiddenError
 		if errors.As(validationError.Err, &forbiddenError) {
 			return fmt.Errorf("forbidden: %w", validationError.Err)
+		}
+
+		var blockedError *db.TeamBlockedError
+		if errors.As(validationError.Err, &blockedError) {
+			return fmt.Errorf("blocked: %w", validationError.Err)
 		}
 
 		return fmt.Errorf("%s\n%s (%w)", a.errorMessage, validationError.ClientMsg, validationError.Err)

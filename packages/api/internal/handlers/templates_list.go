@@ -72,7 +72,7 @@ func (a *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("user.id", userID.String()),
-		attribute.String("team.id", team.ID.String()),
+		telemetry.WithTeamID(team.ID.String()),
 	)
 
 	envs, err := a.db.GetEnvs(ctx, team.ID)

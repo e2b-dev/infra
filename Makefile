@@ -16,6 +16,7 @@ endef
 tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, CLIENT_MACHINE_TYPE) \
 	$(call tfvar, CLIENT_CLUSTER_SIZE) \
+	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_SIZE_GB) \
 	$(call tfvar, CLIENT_REGIONAL_CLUSTER_SIZE) \
 	$(call tfvar, CLIENT_CLUSTER_AUTO_SCALING_MAX) \
 	$(call tfvar, API_MACHINE_TYPE) \
@@ -34,6 +35,15 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, TERRAFORM_STATE_BUCKET) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
+	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
+	$(call tfvar, CLIENT_PROXY_COUNT) \
+	$(call tfvar, CLIENT_PROXY_CPU_COUNT) \
+	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \
+	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
+	$(call tfvar, LOKI_RESOURCES_MEMORY_MB) \
+	$(call tfvar, OTEL_TRACING_PRINT) \
+	$(call tfvar, OTEL_COLLECTOR_RESOURCES_CPU_COUNT) \
+	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
 	$(call tfvar, REDIS_MANAGED) \
@@ -64,10 +74,7 @@ init:
 download-prod-env:
 	@ hcp auth login
 	@ hcp profile init --vault-secrets
-	@ hcp vault-secrets secrets read env_$(ENV) >/dev/null 2>&1 && echo "Environment found, writing to the .env.$(ENV) file" || { echo "Environment $(ENV) does not exist"; exit 1; }
-	@ rm -f ".env.$(ENV)"
-	@ hcp vault-secrets secrets open env_$(ENV) -o ".env.$(ENV)"
-	@ DECODED=$$(cat ".env.$(ENV)" | base64 -d) && echo "$$DECODED" > ".env.$(ENV)"
+	@  ./scripts/download-prod-env.sh ${ENV}
 
 # Updates production environment from .env file, this is used only for E2B.dev production
 # Uses HCP CLI to update secrets from HCP Vault Secrets
@@ -75,13 +82,22 @@ download-prod-env:
 update-prod-env:
 	@ hcp auth login
 	@ hcp profile init --vault-secrets
-	@ cat ".env.$(ENV)" | base64 -w 0 | tr -d '\n' | hcp vault-secrets secrets create env_$(ENV) --data-file=-
+	@ ./scripts/update-prod-env.sh ${ENV}
 
 .PHONY: plan
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(TF) fmt -recursive
-	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode
+	@ $(TF) fmt -recursive
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode; \
+	status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		echo "No changes."; \
+	elif [ $$status -eq 2 ]; then \
+		echo "Changes detected."; \
+	else \
+		echo "Error during plan."; \
+		exit $$status; \
+	fi
 
 # Deploy all jobs in Nomad
 .PHONY: plan-only-jobs

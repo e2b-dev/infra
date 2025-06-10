@@ -26,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -204,7 +205,7 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		fc.ProcessOptions{
 			InitScriptPath:      systemdInitPath,
 			KernelLogs:          env.IsDevelopment(),
-			SystemdToKernelLogs: env.IsDevelopment(),
+			SystemdToKernelLogs: false,
 		},
 		config.AllowSandboxInternet,
 	)
@@ -367,7 +368,7 @@ func (b *TemplateBuilder) uploadTemplate(
 		defer func() {
 			err := snapshot.Close(ctx)
 			if err != nil {
-				zap.L().Error("error closing snapshot", zap.Error(err), zap.String("build_id", templateFiles.BuildId), zap.String("template_id", templateFiles.TemplateId))
+				zap.L().Error("error closing snapshot", zap.Error(err), logger.WithBuildID(templateFiles.BuildId), logger.WithTemplateID(templateFiles.TemplateId))
 			}
 		}()
 		defer close(errCh)
