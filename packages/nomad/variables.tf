@@ -228,6 +228,9 @@ variable "client_machine_type" {
   type = string
 }
 
+variable "allow_sandbox_internet" {
+  type = bool
+}
 
 # Template manager
 variable "template_manager_port" {

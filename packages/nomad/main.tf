@@ -336,6 +336,7 @@ locals {
     clickhouse_username          = var.clickhouse_username
     clickhouse_password          = random_password.clickhouse_password.result
     clickhouse_database          = var.clickhouse_database
+    allow_sandbox_internet       = var.allow_sandbox_internet
   }
 
   orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(
@@ -417,6 +418,7 @@ resource "nomad_job" "template_manager" {
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
     logs_collector_public_ip     = var.logs_proxy_address
     orchestrator_services        = "template-manager"
+    allow_sandbox_internet       = var.allow_sandbox_internet
   })
 }
 resource "nomad_job" "loki" {

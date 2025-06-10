@@ -212,6 +212,11 @@ variable "nomad_port" {
   default = 4646
 }
 
+variable "allow_sandbox_internet" {
+  type    = bool
+  default = true
+}
+
 variable "orchestrator_port" {
   type    = number
   default = 5008

@@ -73,6 +73,7 @@ EOT
         CLICKHOUSE_USERNAME          = "${clickhouse_username}"
         CLICKHOUSE_PASSWORD          = "${clickhouse_password}"
         CLICKHOUSE_DATABASE          = "${clickhouse_database}"
+        ALLOW_SANDBOX_INTERNET       = "${allow_sandbox_internet}"
       }
 
       config {
