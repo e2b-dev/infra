@@ -42,11 +42,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		attribute.String("envd.version", req.Sandbox.EnvdVersion),
 	)
 
-	// TODO: Temporary workaround, remove when API changes are deployed
-	if req.Sandbox.AllowInternetAccess == nil {
-		req.Sandbox.AllowInternetAccess = &config.AllowSandboxInternet
-	}
-
 	metricsWriteFlag, flagErr := s.featureFlags.BoolFlag(featureflags.MetricsWriteFlagName, req.Sandbox.SandboxId)
 	if flagErr != nil {
 		zap.L().Error("soft failing during metrics write feature flag receive", zap.Error(flagErr))
