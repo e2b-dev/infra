@@ -127,7 +127,7 @@ func InitOTLPExporter(ctx context.Context, serviceName, serviceVersion string, i
 			}),
 		)
 		if metricErr != nil {
-			panic(fmt.Errorf("failed to create metric exporter: %w", err))
+			panic(fmt.Errorf("failed to create metric exporter: %w", metricErr))
 		}
 
 		meterProvider := metric.NewMeterProvider(

@@ -44,7 +44,7 @@ job "otel-collector" {
 
       config {
         network_mode = "host"
-        image        = "otel/opentelemetry-collector-contrib:0.99.0"
+        image        = "otel/opentelemetry-collector-contrib:0.123.0"
 
         volumes = [
           "local/config:/config",
@@ -101,11 +101,16 @@ receivers:
 processors:
   batch:
     timeout: 5s
+
+  batch/clickhouse:
+    timeout: 5s
+    send_batch_size: 100000
+
+  # keep only metrics that are used
   filter:
     metrics:
       include:
         match_type: regexp
-        # Exclude metrics that start with `http`, `go`, `rpc`, or `nomad` but aren't `nomad.client`
         metric_names:
           - "nomad_client_host_cpu_idle"
           - "nomad_client_host_disk_available"
@@ -124,6 +129,14 @@ processors:
         # Exclude `rpc.server.duration` as it's processed in `filter/rpc_duration_only`
         metric_names:
           - "rpc.server.duration.*"
+
+  filter/clickhouse:
+    metrics:
+      include:
+        match_type: regexp
+        metric_names:
+          - "e2b.*"
+
   metricstransform:
     transforms:
       - include: "nomad_client_host_cpu_idle"
@@ -133,6 +146,7 @@ processors:
           - action: aggregate_labels
             aggregation_type: sum
             label_set: [instance, node_id, node_status, node_pool]
+
   filter/rpc_duration_only:
     metrics:
       include:
@@ -161,7 +175,16 @@ exporters:
     endpoint: "${grafana_otlp_url}/otlp"
     auth:
       authenticator: basicauth/grafana_cloud
-
+  clickhouse:
+    endpoint: tcp://${clickhouse_host}:${clickhouse_port}
+    database: ${clickhouse_database}
+    username: ${clickhouse_username}
+    password: ${clickhouse_password}
+    async_insert: true
+    create_schema: false
+    metrics_tables:
+      gauge:
+        name: "metrics_gauge"
 service:
   telemetry:
     logs:
@@ -184,6 +207,10 @@ service:
       processors: [filter/rpc_duration_only, resource/remove_instance, batch]
       exporters:
         - otlphttp/grafana_cloud
+    metrics/clickhouse:
+      receivers:  [otlp]
+      processors: [filter/clickhouse, batch/clickhouse]
+      exporters:  [clickhouse]
     traces:
       receivers:
         - otlp
