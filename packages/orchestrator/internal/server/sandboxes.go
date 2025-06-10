@@ -51,6 +51,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	sbx, cleanup, err := sandbox.ResumeSandbox(
 		childCtx,
 		s.tracer,
+		s.meterProvider,
 		s.networkPool,
 		s.templateCache,
 		req.Sandbox,
@@ -60,9 +61,8 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.Sandbox.BaseTemplateId,
 		s.devicePool,
 		config.AllowSandboxInternet,
-		s.clickhouseStore,
-		s.useLokiMetrics,
-		s.useClickhouseMetrics,
+		config.WriteLokiMetrics,
+		config.WriteClickhouseMetrics,
 	)
 	if err != nil {
 		zap.L().Error("failed to create sandbox, cleaning up", zap.Error(err))

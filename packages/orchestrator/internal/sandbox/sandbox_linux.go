@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -24,7 +25,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/uffd"
-	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -63,8 +63,6 @@ type Sandbox struct {
 	process *fc.Process
 
 	template template.Template
-
-	ClickhouseStore chdb.Store
 
 	Checks *Checks
 }
@@ -213,11 +211,13 @@ func CreateSandbox(
 		process:  fcHandle,
 
 		cleanup: cleanup,
-
-		ClickhouseStore: nil,
 	}
 
-	sbx.Checks = NewChecks(sbx, "", "")
+	checks, err := NewChecks(nil, sbx, false, false)
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to create health check: %w", err)
+	}
+	sbx.Checks = checks
 
 	cleanup.AddPriority(func(ctx context.Context) error {
 		return sbx.Close(ctx, tracer)
@@ -232,6 +232,7 @@ func CreateSandbox(
 func ResumeSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
+	metricsProvider *metrics.MeterProvider,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,
@@ -240,10 +241,9 @@ func ResumeSandbox(
 	endAt time.Time,
 	baseTemplateID string,
 	devicePool *nbd.DevicePool,
-	allowInternet bool,
-	clickhouseStore chdb.Store,
-	useLokiMetrics string,
-	useClickhouseMetrics string,
+	allowInternet,
+	useLokiMetrics,
+	useClickhouseMetrics bool,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
 	defer childSpan.End()
@@ -400,13 +400,16 @@ func ResumeSandbox(
 		process:  fcHandle,
 
 		cleanup: cleanup,
-
-		ClickhouseStore: clickhouseStore,
 	}
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
-	sbx.Checks = NewChecks(sbx, useLokiMetrics, useClickhouseMetrics)
+	zap.L().Info("starting health check", zap.Bool("clickouse", useClickhouseMetrics), zap.Bool("loki", useLokiMetrics))
+	checks, err := NewChecks(metricsProvider, sbx, useLokiMetrics, useClickhouseMetrics)
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("failed to create health check: %w", err)
+	}
+	sbx.Checks = checks
 
 	cleanup.AddPriority(func(ctx context.Context) error {
 		return sbx.Close(ctx, tracer)
