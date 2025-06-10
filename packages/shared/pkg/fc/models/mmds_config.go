@@ -28,7 +28,7 @@ type MmdsConfig struct {
 	NetworkInterfaces []string `json:"network_interfaces"`
 
 	// Enumeration indicating the MMDS version to be configured.
-	// Enum: [V1 V2]
+	// Enum: ["V1","V2"]
 	Version *string `json:"version,omitempty"`
 }
 

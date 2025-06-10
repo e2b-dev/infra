@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PutBalloonNoContent) Code() int {
 }
 
 func (o *PutBalloonNoContent) Error() string {
-	return fmt.Sprintf("[PUT /balloon][%d] putBalloonNoContent ", 204)
+	return fmt.Sprintf("[PUT /balloon][%d] putBalloonNoContent", 204)
 }
 
 func (o *PutBalloonNoContent) String() string {
-	return fmt.Sprintf("[PUT /balloon][%d] putBalloonNoContent ", 204)
+	return fmt.Sprintf("[PUT /balloon][%d] putBalloonNoContent", 204)
 }
 
 func (o *PutBalloonNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PutBalloonBadRequest) Code() int {
 }
 
 func (o *PutBalloonBadRequest) Error() string {
-	return fmt.Sprintf("[PUT /balloon][%d] putBalloonBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /balloon][%d] putBalloonBadRequest %s", 400, payload)
 }
 
 func (o *PutBalloonBadRequest) String() string {
-	return fmt.Sprintf("[PUT /balloon][%d] putBalloonBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /balloon][%d] putBalloonBadRequest %s", 400, payload)
 }
 
 func (o *PutBalloonBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PutBalloonDefault) Code() int {
 }
 
 func (o *PutBalloonDefault) Error() string {
-	return fmt.Sprintf("[PUT /balloon][%d] putBalloon default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /balloon][%d] putBalloon default %s", o._statusCode, payload)
 }
 
 func (o *PutBalloonDefault) String() string {
-	return fmt.Sprintf("[PUT /balloon][%d] putBalloon default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /balloon][%d] putBalloon default %s", o._statusCode, payload)
 }
 
 func (o *PutBalloonDefault) GetPayload() *models.Error {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb/chmodels"
 )
 
 func (c *ClickHouseStore) InsertMetrics(ctx context.Context, metrics chmodels.Metrics) error {

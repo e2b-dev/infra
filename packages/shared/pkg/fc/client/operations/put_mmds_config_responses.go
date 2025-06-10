@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PutMmdsConfigNoContent) Code() int {
 }
 
 func (o *PutMmdsConfigNoContent) Error() string {
-	return fmt.Sprintf("[PUT /mmds/config][%d] putMmdsConfigNoContent ", 204)
+	return fmt.Sprintf("[PUT /mmds/config][%d] putMmdsConfigNoContent", 204)
 }
 
 func (o *PutMmdsConfigNoContent) String() string {
-	return fmt.Sprintf("[PUT /mmds/config][%d] putMmdsConfigNoContent ", 204)
+	return fmt.Sprintf("[PUT /mmds/config][%d] putMmdsConfigNoContent", 204)
 }
 
 func (o *PutMmdsConfigNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PutMmdsConfigBadRequest) Code() int {
 }
 
 func (o *PutMmdsConfigBadRequest) Error() string {
-	return fmt.Sprintf("[PUT /mmds/config][%d] putMmdsConfigBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /mmds/config][%d] putMmdsConfigBadRequest %s", 400, payload)
 }
 
 func (o *PutMmdsConfigBadRequest) String() string {
-	return fmt.Sprintf("[PUT /mmds/config][%d] putMmdsConfigBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /mmds/config][%d] putMmdsConfigBadRequest %s", 400, payload)
 }
 
 func (o *PutMmdsConfigBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PutMmdsConfigDefault) Code() int {
 }
 
 func (o *PutMmdsConfigDefault) Error() string {
-	return fmt.Sprintf("[PUT /mmds/config][%d] putMmdsConfig default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /mmds/config][%d] putMmdsConfig default %s", o._statusCode, payload)
 }
 
 func (o *PutMmdsConfigDefault) String() string {
-	return fmt.Sprintf("[PUT /mmds/config][%d] putMmdsConfig default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /mmds/config][%d] putMmdsConfig default %s", o._statusCode, payload)
 }
 
 func (o *PutMmdsConfigDefault) GetPayload() *models.Error {

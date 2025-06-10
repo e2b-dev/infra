@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -85,11 +86,11 @@ func (o *PutEntropyDeviceNoContent) Code() int {
 }
 
 func (o *PutEntropyDeviceNoContent) Error() string {
-	return fmt.Sprintf("[PUT /entropy][%d] putEntropyDeviceNoContent ", 204)
+	return fmt.Sprintf("[PUT /entropy][%d] putEntropyDeviceNoContent", 204)
 }
 
 func (o *PutEntropyDeviceNoContent) String() string {
-	return fmt.Sprintf("[PUT /entropy][%d] putEntropyDeviceNoContent ", 204)
+	return fmt.Sprintf("[PUT /entropy][%d] putEntropyDeviceNoContent", 204)
 }
 
 func (o *PutEntropyDeviceNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -146,11 +147,13 @@ func (o *PutEntropyDeviceDefault) Code() int {
 }
 
 func (o *PutEntropyDeviceDefault) Error() string {
-	return fmt.Sprintf("[PUT /entropy][%d] putEntropyDevice default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /entropy][%d] putEntropyDevice default %s", o._statusCode, payload)
 }
 
 func (o *PutEntropyDeviceDefault) String() string {
-	return fmt.Sprintf("[PUT /entropy][%d] putEntropyDevice default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /entropy][%d] putEntropyDevice default %s", o._statusCode, payload)
 }
 
 func (o *PutEntropyDeviceDefault) GetPayload() *models.Error {

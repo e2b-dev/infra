@@ -22,7 +22,7 @@ type VM struct {
 
 	// state
 	// Required: true
-	// Enum: [Paused Resumed]
+	// Enum: ["Paused","Resumed"]
 	State *string `json:"state"`
 }
 

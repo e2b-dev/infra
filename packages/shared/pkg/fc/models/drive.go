@@ -21,7 +21,7 @@ import (
 type Drive struct {
 
 	// Represents the caching strategy for the block device.
-	// Enum: [Unsafe Writeback]
+	// Enum: ["Unsafe","Writeback"]
 	CacheType *string `json:"cache_type,omitempty"`
 
 	// drive id
@@ -29,7 +29,7 @@ type Drive struct {
 	DriveID *string `json:"drive_id"`
 
 	// Type of the IO engine used by the device. "Async" is supported on host kernels newer than 5.10.51. This field is optional for virtio-block config and should be omitted for vhost-user-block configuration.
-	// Enum: [Sync Async]
+	// Enum: ["Sync","Async"]
 	IoEngine *string `json:"io_engine,omitempty"`
 
 	// Is block read only. This field is required for virtio-block config and should be omitted for vhost-user-block configuration.

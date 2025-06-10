@@ -26,7 +26,7 @@ type MemoryBackend struct {
 
 	// backend type
 	// Required: true
-	// Enum: [File Uffd]
+	// Enum: ["File","Uffd"]
 	BackendType *string `json:"backend_type"`
 }
 

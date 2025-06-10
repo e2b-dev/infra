@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PutGuestNetworkInterfaceByIDNoContent) Code() int {
 }
 
 func (o *PutGuestNetworkInterfaceByIDNoContent) Error() string {
-	return fmt.Sprintf("[PUT /network-interfaces/{iface_id}][%d] putGuestNetworkInterfaceByIdNoContent ", 204)
+	return fmt.Sprintf("[PUT /network-interfaces/{iface_id}][%d] putGuestNetworkInterfaceByIdNoContent", 204)
 }
 
 func (o *PutGuestNetworkInterfaceByIDNoContent) String() string {
-	return fmt.Sprintf("[PUT /network-interfaces/{iface_id}][%d] putGuestNetworkInterfaceByIdNoContent ", 204)
+	return fmt.Sprintf("[PUT /network-interfaces/{iface_id}][%d] putGuestNetworkInterfaceByIdNoContent", 204)
 }
 
 func (o *PutGuestNetworkInterfaceByIDNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PutGuestNetworkInterfaceByIDBadRequest) Code() int {
 }
 
 func (o *PutGuestNetworkInterfaceByIDBadRequest) Error() string {
-	return fmt.Sprintf("[PUT /network-interfaces/{iface_id}][%d] putGuestNetworkInterfaceByIdBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /network-interfaces/{iface_id}][%d] putGuestNetworkInterfaceByIdBadRequest %s", 400, payload)
 }
 
 func (o *PutGuestNetworkInterfaceByIDBadRequest) String() string {
-	return fmt.Sprintf("[PUT /network-interfaces/{iface_id}][%d] putGuestNetworkInterfaceByIdBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /network-interfaces/{iface_id}][%d] putGuestNetworkInterfaceByIdBadRequest %s", 400, payload)
 }
 
 func (o *PutGuestNetworkInterfaceByIDBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PutGuestNetworkInterfaceByIDDefault) Code() int {
 }
 
 func (o *PutGuestNetworkInterfaceByIDDefault) Error() string {
-	return fmt.Sprintf("[PUT /network-interfaces/{iface_id}][%d] putGuestNetworkInterfaceByID default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /network-interfaces/{iface_id}][%d] putGuestNetworkInterfaceByID default %s", o._statusCode, payload)
 }
 
 func (o *PutGuestNetworkInterfaceByIDDefault) String() string {
-	return fmt.Sprintf("[PUT /network-interfaces/{iface_id}][%d] putGuestNetworkInterfaceByID default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /network-interfaces/{iface_id}][%d] putGuestNetworkInterfaceByID default %s", o._statusCode, payload)
 }
 
 func (o *PutGuestNetworkInterfaceByIDDefault) GetPayload() *models.Error {

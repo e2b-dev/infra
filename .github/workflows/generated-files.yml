@@ -1,0 +1,45 @@
+name: Generated files
+
+on: [workflow_call]
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    env:
+      PROTO_VER: "29.3"
+      PROTOC_GEN_GO_VER: "1.28.1"
+      PROTOC_GEN_GO_GRPC_VER: "1.2.0"
+      PROTOC_GEN_CONNECT_GO_VER: "v1.18.1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.work'
+      - name: Install dependencies
+        run: |
+          # Install protoc
+          wget https://github.com/protocolbuffers/protobuf/releases/download/v${PROTO_VER}/protoc-${PROTO_VER}-linux-x86_64.zip
+          sudo unzip -d /usr/local protoc-${PROTO_VER}-linux-x86_64.zip
+          export PATH=$PATH:/usr/local/bin
+          
+          # Install protoc-gen-go
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v${PROTOC_GEN_GO_VER}
+          
+          # Install protoc-gen-go-grpc
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v${PROTOC_GEN_GO_GRPC_VER}
+          
+          # Install protoc-gen-connect-go 
+          go install connectrpc.com/connect/cmd/protoc-gen-connect-go@${PROTOC_GEN_CONNECT_GO_VER}
+      - name: Run generate command
+        run: make generate
+      - name: Check diff
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo
+            echo "❌ Unexpected changes in generated files!"
+            echo "Run `make generate` and commit the changes."
+            exit 1
+          fi

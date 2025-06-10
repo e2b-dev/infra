@@ -21,7 +21,7 @@ import (
 type Logger struct {
 
 	// Set the level. The possible values are case-insensitive.
-	// Enum: [Error Warning Info Debug Trace Off]
+	// Enum: ["Error","Warning","Info","Debug","Trace","Off"]
 	Level *string `json:"level,omitempty"`
 
 	// Path to the named pipe or file for the human readable log output.

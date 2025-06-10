@@ -165,7 +165,7 @@ copy-public-builds:
 
 
 .PHONY: generate
-generate: generate/api generate/orchestrator generate/envd generate/db
+generate: generate/api generate/orchestrator generate/envd generate/db generate/shared
 generate/%:
 	@echo "Generating code for *$(notdir $@)*"
 	$(MAKE) -C packages/$(notdir $@) generate
