@@ -119,6 +119,7 @@ resource "nomad_job" "client_proxy" {
       proxy_port        = var.edge_proxy_port.port
       api_port_name     = var.edge_api_port.name
       api_port          = var.edge_api_port.port
+      api_secret        = var.edge_api_secret
       orchestrator_port = var.orchestrator_port
 
       image_name = var.edge_docker_image_digest

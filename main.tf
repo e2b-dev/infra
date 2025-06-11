@@ -164,6 +164,7 @@ module "docker_reverse_proxy" {
 module "client_proxy" {
   source = "./packages/client-proxy"
 
+  prefix         = var.prefix
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
 
@@ -217,6 +218,7 @@ module "nomad" {
 
   edge_proxy_port          = var.edge_proxy_port
   edge_api_port            = var.edge_api_port
+  edge_api_secret          = module.client_proxy.edge_api_secret
   edge_docker_image_digest = module.client_proxy.client_proxy_docker_image_digest
 
   domain_name = var.domain_name

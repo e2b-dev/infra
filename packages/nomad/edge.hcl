@@ -88,6 +88,7 @@ job "client-proxy" {
         NODE_IP = "$${attr.unique.network.ip-address}"
 
         EDGE_PORT         = "${api_port}"
+        EDGE_SECRET       = "${api_secret}"
         PROXY_PORT        = "${proxy_port}"
         ORCHESTRATOR_PORT = "${orchestrator_port}"
 
