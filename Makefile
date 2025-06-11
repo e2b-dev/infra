@@ -80,8 +80,8 @@ update-prod-env:
 .PHONY: plan
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	$(TF) fmt -recursive
-	$(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode; \
+	@ $(TF) fmt -recursive
+	@ $(tf_vars) $(TF) plan -out=.tfplan.$(ENV) -compact-warnings -detailed-exitcode; \
 	status=$$?; \
 	if [ $$status -eq 0 ]; then \
 		echo "No changes."; \
