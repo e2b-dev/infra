@@ -1,6 +1,8 @@
 package internal
 
 import (
+	"os"
+
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -9,6 +11,7 @@ import (
 
 const (
 	edgePortEnv         = "EDGE_PORT"
+	edgeSecretEnv       = "EDGE_SECRET"
 	proxyPortEnv        = "PROXY_PORT"
 	orchestratorPortEnv = "ORCHESTRATOR_PORT"
 
@@ -24,6 +27,15 @@ func GetEdgeServicePort() int {
 	}
 
 	return p
+}
+
+func GetEdgeServiceSecret() string {
+	secret := os.Getenv(edgeSecretEnv)
+	if secret == "" {
+		zap.L().Fatal("Failed to get edge service secret")
+	}
+
+	return secret
 }
 
 func GetProxyServicePort() int {
