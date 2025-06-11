@@ -8,7 +8,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.222.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/getkin/kin-openapi v0.132.0
+	github.com/gin-contrib/cors v1.7.5
 	github.com/gin-contrib/size v1.0.2
+	github.com/gin-contrib/zap v1.1.5
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-redsync/redsync/v4 v4.13.0
 	github.com/google/uuid v1.6.0
@@ -107,13 +109,11 @@ require (
 	github.com/gogo/status v1.1.1 // indirect
 	// https://github.com/grafana/loki/issues/2826. This is the equivalent of the main branch at 2023/11/27 (d62d4e37d1f3dba83cf10a1f6db82830794e1c05)
 	github.com/grafana/loki v0.0.0-20231124145642-d62d4e37d1f3
-	github.com/hashicorp/nomad/api v0.0.0-20231208134655-099ee06a607c // indirect
 )
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/onsi/gomega v1.36.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
@@ -179,6 +179,7 @@ require (
 	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/hashicorp/memberlist v0.5.0 // indirect
+	github.com/hashicorp/nomad/api v0.0.0-20231208134655-099ee06a607c // indirect
 	github.com/hashicorp/serf v0.10.1 // indirect
 	github.com/huandu/xstrings v1.4.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
@@ -196,6 +197,7 @@ require (
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/oapi-codegen/runtime v1.1.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
+	github.com/onsi/gomega v1.36.3 // indirect
 	github.com/opentracing-contrib/go-grpc v0.0.0-20210225150812-73cb765af46e // indirect
 	github.com/opentracing-contrib/go-stdlib v1.0.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect

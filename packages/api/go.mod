@@ -8,7 +8,7 @@ require (
 	github.com/e2b-dev/infra/packages/db v0.0.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/getkin/kin-openapi v0.132.0
-	github.com/gin-contrib/cors v1.6.0
+	github.com/gin-contrib/cors v1.7.5
 	github.com/gin-contrib/size v1.0.2
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-redis/redis/v8 v8.11.5 // indirect
@@ -30,7 +30,7 @@ require (
 
 require (
 	github.com/flowchartsman/retry v1.2.0
-	github.com/gin-contrib/zap v1.1.4
+	github.com/gin-contrib/zap v1.1.5
 	github.com/go-redis/cache/v9 v9.0.0
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/go-cmp v0.7.0
