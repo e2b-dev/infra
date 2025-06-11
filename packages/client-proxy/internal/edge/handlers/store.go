@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/trace"
@@ -36,13 +38,13 @@ type APIUserFacingError struct {
 	prettyErrorCode    int
 }
 
-func NewStore(_ context.Context, logger *zap.Logger, tracer trace.Tracer, info *info.ServiceInfo, orchestratorsPool *e2borchestrators.OrchestratorsPool, edgePool *e2borchestrators.EdgePool, catalog *sandboxes.SandboxesCatalog) (*APIStore, error) {
+func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info *info.ServiceInfo, orchestratorsPool *e2borchestrators.OrchestratorsPool, edgePool *e2borchestrators.EdgePool, catalog *sandboxes.SandboxesCatalog) (*APIStore, error) {
 	queryLogsProvider, err := logger_provider.GetLogsQueryProvider()
 	if err != nil {
 		return nil, fmt.Errorf("error when getting logs query provider: %w", err)
 	}
 
-	return &APIStore{
+	store := &APIStore{
 		orchestratorPool:  orchestratorsPool,
 		edgePool:          edgePool,
 		queryLogsProvider: queryLogsProvider,
@@ -51,7 +53,34 @@ func NewStore(_ context.Context, logger *zap.Logger, tracer trace.Tracer, info *
 		tracer:    tracer,
 		logger:    logger,
 		sandboxes: catalog,
-	}, nil
+	}
+
+	// Wait till there's at least one orchestrator available
+	// we don't want to source API until we are sure service discovery and pool is ready to use
+	go func() {
+		if env.IsDebug() {
+			zap.L().Info("Skipping orchestrator readiness check in debug mode")
+			store.info.SetStatus(api.Healthy)
+			return
+		}
+
+		ticker := time.NewTicker(5 * time.Millisecond)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				list := orchestratorsPool.GetOrchestrators()
+				if len(list) > 0 {
+					zap.L().Info("Marking API as healthy, at least one orchestrator is available")
+					store.info.SetStatus(api.Healthy)
+					return
+				}
+			}
+		}
+	}()
+
+	return store, nil
 }
 
 func (a *APIStore) SetDraining() {
