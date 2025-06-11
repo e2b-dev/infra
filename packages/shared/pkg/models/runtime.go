@@ -38,11 +38,11 @@ func init() {
 	// env.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	env.DefaultUpdatedAt = envDescUpdatedAt.Default.(func() time.Time)
 	// envDescBuildCount is the schema descriptor for build_count field.
-	envDescBuildCount := envFields[6].Descriptor()
+	envDescBuildCount := envFields[7].Descriptor()
 	// env.DefaultBuildCount holds the default value on creation for the build_count field.
 	env.DefaultBuildCount = envDescBuildCount.Default.(int32)
 	// envDescSpawnCount is the schema descriptor for spawn_count field.
-	envDescSpawnCount := envFields[7].Descriptor()
+	envDescSpawnCount := envFields[8].Descriptor()
 	// env.DefaultSpawnCount holds the default value on creation for the spawn_count field.
 	env.DefaultSpawnCount = envDescSpawnCount.Default.(int64)
 	envaliasFields := schema.EnvAlias{}.Fields()

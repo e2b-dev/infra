@@ -26,6 +26,7 @@ func (Env) Fields() []ent.Field {
 		field.Time("updated_at").Default(time.Now),
 		field.UUID("team_id", uuid.UUID{}),
 		field.UUID("created_by", uuid.UUID{}).Optional().Nillable(),
+		field.UUID("cluster_id", uuid.UUID{}).Optional().Nillable(),
 		field.Bool("public").Annotations(entsql.Default("false")),
 		field.Int32("build_count").Default(1),
 		field.Int64("spawn_count").Default(0).Comment("Number of times the env was spawned"),

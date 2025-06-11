@@ -22,6 +22,8 @@ const (
 	FieldTeamID = "team_id"
 	// FieldCreatedBy holds the string denoting the created_by field in the database.
 	FieldCreatedBy = "created_by"
+	// FieldClusterID holds the string denoting the cluster_id field in the database.
+	FieldClusterID = "cluster_id"
 	// FieldPublic holds the string denoting the public field in the database.
 	FieldPublic = "public"
 	// FieldBuildCount holds the string denoting the build_count field in the database.
@@ -88,6 +90,7 @@ var Columns = []string{
 	FieldUpdatedAt,
 	FieldTeamID,
 	FieldCreatedBy,
+	FieldClusterID,
 	FieldPublic,
 	FieldBuildCount,
 	FieldSpawnCount,
@@ -141,6 +144,11 @@ func ByTeamID(opts ...sql.OrderTermOption) OrderOption {
 // ByCreatedBy orders the results by the created_by field.
 func ByCreatedBy(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedBy, opts...).ToFunc()
+}
+
+// ByClusterID orders the results by the cluster_id field.
+func ByClusterID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClusterID, opts...).ToFunc()
 }
 
 // ByPublic orders the results by the public field.

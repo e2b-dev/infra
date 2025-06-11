@@ -3,6 +3,9 @@ package template_manager
 import (
 	"context"
 	"fmt"
+	"github.com/e2b-dev/infra/packages/api/internal/edge"
+	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	"slices"
 	"sync"
 	"time"
 
@@ -28,6 +31,7 @@ type TemplateManager struct {
 	db         *db.DB
 	lock       sync.Mutex
 	processing map[uuid.UUID]processingBuilds
+	edge       *edge.Pool
 	buildCache *templatecache.TemplatesBuildCache
 }
 
@@ -37,7 +41,7 @@ const (
 	syncWaitingStateDeadline = time.Minute * 40
 )
 
-func New(ctx context.Context, db *db.DB, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
+func New(ctx context.Context, db *db.DB, buildCache *templatecache.TemplatesBuildCache, edge *edge.Pool) (*TemplateManager, error) {
 	client, err := NewClient(ctx)
 	if err != nil {
 		return nil, err
@@ -46,10 +50,45 @@ func New(ctx context.Context, db *db.DB, buildCache *templatecache.TemplatesBuil
 	return &TemplateManager{
 		grpc:       client,
 		db:         db,
-		lock:       sync.Mutex{},
-		processing: make(map[uuid.UUID]processingBuilds),
+		edge:       edge,
 		buildCache: buildCache,
+
+		processing: make(map[uuid.UUID]processingBuilds),
+		lock:       sync.Mutex{},
 	}, nil
+}
+
+func (tm *TemplateManager) GetBuildPlacementClient(ctx context.Context, teamId uuid.UUID, clusterNodeId *string, requirePlacement bool) (BuildPlacement, error) {
+	cluster, ok := tm.edge.GetClusterByTeam(teamId)
+	if !ok || clusterNodeId == nil {
+		return NewLocalBuildPlacement(tm.grpc), nil
+	}
+
+	clusterTemplateManagers, err := cluster.GetTemplateBuilders(ctx)
+	if err != nil {
+		zap.L().Error("Error getting template builders from cluster", zap.Error(err))
+		return nil, err
+	}
+
+	statusesAllowed := []api.ClusterNodeStatus{api.Healthy}
+	if !requirePlacement {
+		statusesAllowed = append(statusesAllowed, api.Draining)
+	}
+
+	for _, clusterManager := range *clusterTemplateManagers {
+		if clusterManager.Id != *clusterNodeId {
+			continue
+		}
+
+		if !slices.Contains(statusesAllowed, clusterManager.Status) {
+			return nil, errors.Errorf("cluster %s is not ready to work with, status %s is not enough", *clusterNodeId, clusterManager.Status)
+		}
+
+		return NewClusteredBuildPlacement(cluster, *clusterNodeId), nil
+	}
+
+	zap.L().Error("Template manager not found in cluster", logger.WithClusterId(cluster.Id), logger.WithClusterNodeId(*clusterNodeId))
+	return nil, fmt.Errorf("template manager with id %s not found in cluster %s", *clusterNodeId, cluster.Id.String())
 }
 
 func (tm *TemplateManager) Close() error {

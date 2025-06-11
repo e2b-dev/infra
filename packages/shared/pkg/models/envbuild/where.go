@@ -127,6 +127,11 @@ func EnvdVersion(v string) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldEQ(FieldEnvdVersion, v))
 }
 
+// ClusterNodeID applies equality check predicate on the "cluster_node_id" field. It's identical to ClusterNodeIDEQ.
+func ClusterNodeID(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldEQ(FieldClusterNodeID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldEQ(FieldCreatedAt, v))
@@ -950,6 +955,81 @@ func EnvdVersionEqualFold(v string) predicate.EnvBuild {
 // EnvdVersionContainsFold applies the ContainsFold predicate on the "envd_version" field.
 func EnvdVersionContainsFold(v string) predicate.EnvBuild {
 	return predicate.EnvBuild(sql.FieldContainsFold(FieldEnvdVersion, v))
+}
+
+// ClusterNodeIDEQ applies the EQ predicate on the "cluster_node_id" field.
+func ClusterNodeIDEQ(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldEQ(FieldClusterNodeID, v))
+}
+
+// ClusterNodeIDNEQ applies the NEQ predicate on the "cluster_node_id" field.
+func ClusterNodeIDNEQ(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldNEQ(FieldClusterNodeID, v))
+}
+
+// ClusterNodeIDIn applies the In predicate on the "cluster_node_id" field.
+func ClusterNodeIDIn(vs ...string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldIn(FieldClusterNodeID, vs...))
+}
+
+// ClusterNodeIDNotIn applies the NotIn predicate on the "cluster_node_id" field.
+func ClusterNodeIDNotIn(vs ...string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldNotIn(FieldClusterNodeID, vs...))
+}
+
+// ClusterNodeIDGT applies the GT predicate on the "cluster_node_id" field.
+func ClusterNodeIDGT(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldGT(FieldClusterNodeID, v))
+}
+
+// ClusterNodeIDGTE applies the GTE predicate on the "cluster_node_id" field.
+func ClusterNodeIDGTE(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldGTE(FieldClusterNodeID, v))
+}
+
+// ClusterNodeIDLT applies the LT predicate on the "cluster_node_id" field.
+func ClusterNodeIDLT(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldLT(FieldClusterNodeID, v))
+}
+
+// ClusterNodeIDLTE applies the LTE predicate on the "cluster_node_id" field.
+func ClusterNodeIDLTE(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldLTE(FieldClusterNodeID, v))
+}
+
+// ClusterNodeIDContains applies the Contains predicate on the "cluster_node_id" field.
+func ClusterNodeIDContains(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldContains(FieldClusterNodeID, v))
+}
+
+// ClusterNodeIDHasPrefix applies the HasPrefix predicate on the "cluster_node_id" field.
+func ClusterNodeIDHasPrefix(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldHasPrefix(FieldClusterNodeID, v))
+}
+
+// ClusterNodeIDHasSuffix applies the HasSuffix predicate on the "cluster_node_id" field.
+func ClusterNodeIDHasSuffix(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldHasSuffix(FieldClusterNodeID, v))
+}
+
+// ClusterNodeIDIsNil applies the IsNil predicate on the "cluster_node_id" field.
+func ClusterNodeIDIsNil() predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldIsNull(FieldClusterNodeID))
+}
+
+// ClusterNodeIDNotNil applies the NotNil predicate on the "cluster_node_id" field.
+func ClusterNodeIDNotNil() predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldNotNull(FieldClusterNodeID))
+}
+
+// ClusterNodeIDEqualFold applies the EqualFold predicate on the "cluster_node_id" field.
+func ClusterNodeIDEqualFold(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldEqualFold(FieldClusterNodeID, v))
+}
+
+// ClusterNodeIDContainsFold applies the ContainsFold predicate on the "cluster_node_id" field.
+func ClusterNodeIDContainsFold(v string) predicate.EnvBuild {
+	return predicate.EnvBuild(sql.FieldContainsFold(FieldClusterNodeID, v))
 }
 
 // HasEnv applies the HasEdge predicate on the "env" edge.
