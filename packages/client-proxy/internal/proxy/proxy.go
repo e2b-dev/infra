@@ -15,7 +15,6 @@ import (
 
 	orchestratorspool "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
-	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -37,7 +36,11 @@ const (
 	clientProxyConnectionKey = "client-proxy"
 )
 
-var dnsClient = dns.Client{}
+var (
+	dnsClient = dns.Client{}
+
+	ErrNodeNotFound = errors.New("node not found")
+)
 
 func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 	var err error
@@ -47,10 +50,10 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 
 	var node string
 	for i := range maxRetries {
-		// Send the query to the server
+		// send the query to the server
 		resp, _, dnsErr := dnsClient.Exchange(msg, dnsServer)
 
-		// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
+		// the api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
 		if dnsErr != nil || len(resp.Answer) == 0 {
 			err = dnsErr
 			logger.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxId, err), zap.Error(err), zap.Int("retry", i+1))
@@ -62,23 +65,36 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 
 		node = resp.Answer[0].(*dns.A).A.String()
 
-		// The sandbox was not found, we want to return this information to the user
+		// the sandbox was not found, we want to return this information to the user
 		if node == "127.0.0.1" {
-			return "", reverseproxy.NewErrSandboxNotFound(sandboxId)
+			return "", ErrNodeNotFound
 		}
 
 		break
 	}
 
-	// There's no answer, we can't proxy the request
+	// there's no answer, we can't proxy the request
 	if err != nil {
-		logger.Error("DNS resolving for sandbox failed", l.WithSandboxID(sandboxId), zap.Error(err))
-
-		return "", fmt.Errorf("DNS resolving for sandbox failed: %w", err)
+		return "", ErrNodeNotFound
 	}
 
-	logger = logger.With(zap.String("node", node))
 	return node, nil
+}
+
+func redisResolution(sandboxId string, logger *zap.Logger, catalog *sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
+	s, err := catalog.GetSandbox(sandboxId)
+	if err != nil {
+		if !errors.Is(err, sandboxes.SandboxNotFoundError) {
+			return "", ErrNodeNotFound
+		}
+	}
+
+	o, ok := orchestrators.GetOrchestrator(s.OrchestratorId)
+	if !ok {
+		return "", errors.New("orchestrator not found")
+	}
+
+	return o.Ip, nil
 }
 
 func NewClientProxy(port uint, catalog *sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (*reverseproxy.Proxy, error) {
@@ -100,42 +116,45 @@ func NewClientProxy(port uint, catalog *sandboxes.SandboxesCatalog, orchestrator
 
 			var nodeIp string
 
-			// try to get the sandbox from the catalog (backed by redis)
-			s, err := catalog.GetSandbox(sandboxId)
-			if err != nil {
-				if !errors.Is(err, sandboxes.SandboxNotFoundError) {
-					return nil, fmt.Errorf("error getting node where sandbox is placed: %w", err)
-				}
-
-				// fallback to api dns resolution
-				record, err := dnsResolution(sandboxId, logger)
+			/*
+				// todo: support for Redis and backwards compatibility DNS resolution
+				nodeIp, err = redisResolution(sandboxId, logger, catalog, orchestrators)
 				if err != nil {
-					return nil, err
+					if !errors.Is(err, ErrNodeNotFound) {
+						logger.Warn("failed to resolve node ip with Redis resolution", zap.Error(err))
+					}
+
+					nodeIp, err = dnsResolution(sandboxId, logger)
+					if err != nil {
+						if !errors.Is(err, ErrNodeNotFound) {
+							logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err))
+						}
+
+						return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
+					}
 				}
-				nodeIp = record
-			} else {
-				o, ok := orchestrators.GetOrchestrator(s.OrchestratorId)
-				if !ok {
-					return nil, fmt.Errorf("orchestrator %s for sandbox %s not found", s.OrchestratorId, sandboxId)
+			*/
+
+			nodeIp, err = dnsResolution(sandboxId, logger)
+			if err != nil {
+				if !errors.Is(err, ErrNodeNotFound) {
+					logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err))
 				}
 
-				nodeIp = o.Ip
+				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
-			// We've resolved the node to proxy the request to
 			logger.Debug("Proxying request", zap.String("node_ip", nodeIp))
 
-			url := &url.URL{
-				Scheme: "http",
-				Host:   fmt.Sprintf("%s:%d", nodeIp, orchestratorProxyPort),
-			}
-
 			return &pool.Destination{
-				Url:           url,
 				SandboxId:     sandboxId,
 				RequestLogger: logger,
 				SandboxPort:   port,
 				ConnectionKey: clientProxyConnectionKey,
+				Url: &url.URL{
+					Scheme: "http",
+					Host:   fmt.Sprintf("%s:%d", nodeIp, orchestratorProxyPort),
+				},
 			}, nil
 		},
 	)
