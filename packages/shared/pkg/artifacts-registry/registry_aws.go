@@ -104,6 +104,14 @@ func (g *AWSArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 	return img, nil
 }
 
+func (g *AWSArtifactsRegistry) GetLayer(ctx context.Context, buildId string, layerHash string, platform v1.Platform) (v1.Image, error) {
+	panic("not implemented")
+}
+
+func (g *AWSArtifactsRegistry) PushLayer(ctx context.Context, buildId string, layerHash string, layer v1.Image) error {
+	panic("not implemented")
+}
+
 func (g *AWSArtifactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, error) {
 	res, err := g.client.GetAuthorizationToken(ctx, &ecr.GetAuthorizationTokenInput{})
 	if err != nil {

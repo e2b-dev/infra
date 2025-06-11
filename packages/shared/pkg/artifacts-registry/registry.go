@@ -28,6 +28,8 @@ var ErrImageNotExists = errors.New("image does not exist")
 type ArtifactsRegistry interface {
 	GetTag(ctx context.Context, templateId string, buildId string) (string, error)
 	GetImage(ctx context.Context, templateId string, buildId string, platform containerregistry.Platform) (containerregistry.Image, error)
+	GetLayer(ctx context.Context, buildId string, layerHash string, platform containerregistry.Platform) (containerregistry.Image, error)
+	PushLayer(ctx context.Context, buildId string, layerHash string, layer containerregistry.Image) error
 	Delete(ctx context.Context, templateId string, buildId string) error
 }
 
