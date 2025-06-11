@@ -108,7 +108,7 @@ resource "nomad_job" "client_proxy" {
       update_stanza = var.api_machine_count > 1
       count         = var.client_proxy_count
       cpu_count     = var.client_proxy_resources_cpu_count
-      ram_mb        = var.client_proxy_resources_ram_mb
+      memory_mb     = var.client_proxy_resources_memory_mb
 
       gcp_zone           = var.gcp_zone
       port_name          = var.client_proxy_port.name
@@ -202,7 +202,7 @@ data "google_secret_manager_secret_version" "grafana_username" {
 
 resource "nomad_job" "otel_collector" {
   jobspec = templatefile("${path.module}/otel-collector.hcl", {
-    ram_mb    = var.otel_collector_resources_ram_mb
+    memory_mb = var.otel_collector_resources_memory_mb
     cpu_count = var.otel_collector_resources_cpu_count
 
     grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
@@ -430,7 +430,7 @@ resource "nomad_job" "loki" {
     prevent_colocation = var.api_machine_count > 2
     loki_bucket_name   = var.loki_bucket_name
 
-    memory_mb                = var.loki_resources_ram_mb
+    memory_mb                = var.loki_resources_memory_mb
     cpu_count                = var.loki_resources_cpu_count
     loki_service_port_number = var.loki_service_port.port
     loki_service_port_name   = var.loki_service_port.name

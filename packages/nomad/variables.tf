@@ -22,7 +22,7 @@ variable "nomad_port" {
   type = number
 }
 
-variable "otel_collector_resources_ram_mb" {
+variable "otel_collector_resources_memory_mb" {
   type = number
 }
 
@@ -108,7 +108,7 @@ variable "client_proxy_count" {
   type = number
 }
 
-variable "client_proxy_resources_ram_mb" {
+variable "client_proxy_resources_memory_mb" {
   type = number
 }
 
@@ -171,7 +171,7 @@ variable "clickhouse_bucket_name" {
   type = string
 }
 
-variable "loki_resources_ram_mb" {
+variable "loki_resources_memory_mb" {
   type = number
 }
 

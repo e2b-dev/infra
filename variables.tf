@@ -112,7 +112,7 @@ variable "client_proxy_count" {
 }
 
 
-variable "client_proxy_resources_ram_mb" {
+variable "client_proxy_resources_memory_mb" {
   type    = number
   default = 1024
 }
@@ -243,7 +243,7 @@ variable "environment" {
   default = "prod"
 }
 
-variable "otel_collector_resources_ram_mb" {
+variable "otel_collector_resources_memory_mb" {
   type    = number
   default = 1024
 }
@@ -290,7 +290,7 @@ variable "terraform_state_bucket" {
   type        = string
 }
 
-variable "loki_resources_ram_mb" {
+variable "loki_resources_memory_mb" {
   type    = number
   default = 2048
 }

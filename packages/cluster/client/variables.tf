@@ -137,7 +137,7 @@ variable "root_volume_disk_type" {
 }
 
 variable "cache_volume_disk_size_gb" {
-  description = "The size, in GB, of the cache disk volume on each Consul node."
+  description = "The size, in GB, of the disk for an orchestrator cache."
   type        = number
 }
 # Update Policy

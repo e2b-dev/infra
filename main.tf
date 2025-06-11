@@ -89,15 +89,15 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
 
-  client_regional_cluster_size    = var.client_regional_cluster_size
-  client_cluster_auto_scaling_max = var.client_cluster_auto_scaling_max
+  client_regional_cluster_size      = var.client_regional_cluster_size
+  client_cluster_auto_scaling_max   = var.client_cluster_auto_scaling_max
   client_cluster_cache_disk_size_gb = var.client_cluster_cache_disk_size_gb
 
-  api_cluster_size                = var.api_cluster_size
-  build_cluster_size              = var.build_cluster_size
-  clickhouse_cluster_size         = var.clickhouse_cluster_size
-  client_cluster_size             = var.client_cluster_size
-  server_cluster_size             = var.server_cluster_size
+  api_cluster_size        = var.api_cluster_size
+  build_cluster_size      = var.build_cluster_size
+  clickhouse_cluster_size = var.clickhouse_cluster_size
+  client_cluster_size     = var.client_cluster_size
+  server_cluster_size     = var.server_cluster_size
 
   server_machine_type     = var.server_machine_type
   client_machine_type     = var.client_machine_type
@@ -212,7 +212,7 @@ module "nomad" {
   # Click Proxy
   client_proxy_count               = var.client_proxy_count
   client_proxy_resources_cpu_count = var.client_proxy_resources_cpu_count
-  client_proxy_resources_ram_mb    = var.client_proxy_resources_ram_mb
+  client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
   client_proxy_port                = var.client_proxy_port
   client_proxy_health_port         = var.client_proxy_health_port
   client_proxy_docker_image_digest = module.client_proxy.client_proxy_docker_image_digest
@@ -224,14 +224,14 @@ module "nomad" {
   logs_proxy_port        = var.logs_proxy_port
 
   # Logs
-  loki_resources_ram_mb    = var.loki_resources_ram_mb
+  loki_resources_memory_mb = var.loki_resources_memory_mb
   loki_resources_cpu_count = var.loki_resources_cpu_count
 
   loki_bucket_name  = module.buckets.loki_bucket_name
   loki_service_port = var.loki_service_port
 
   # Otel Colelctor
-  otel_collector_resources_ram_mb    = var.otel_collector_resources_ram_mb
+  otel_collector_resources_memory_mb = var.otel_collector_resources_memory_mb
   otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
 
   # Docker reverse proxy
