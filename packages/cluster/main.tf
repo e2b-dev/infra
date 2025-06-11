@@ -140,6 +140,7 @@ module "client_cluster" {
   cluster_size             = var.client_cluster_size
   regional_cluster_size    = var.client_regional_cluster_size
   cluster_tag_name         = var.cluster_tag_name
+  cache_volume_disk_size_gb= var.client_regional_cluster_size
 
   gcp_region = var.gcp_region
   gcp_zone   = var.gcp_zone

@@ -184,7 +184,7 @@ resource "google_compute_instance_template" "client" {
     auto_delete  = true
     boot         = false
     type         = "PERSISTENT"
-    disk_size_gb = 500
+    disk_size_gb = var.cache_volume_disk_size_gb
     disk_type    = "pd-ssd"
   }
 

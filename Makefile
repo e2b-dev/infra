@@ -16,6 +16,7 @@ endef
 tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, CLIENT_MACHINE_TYPE) \
 	$(call tfvar, CLIENT_CLUSTER_SIZE) \
+	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_SIZE_GB) \
 	$(call tfvar, CLIENT_REGIONAL_CLUSTER_SIZE) \
 	$(call tfvar, CLIENT_CLUSTER_AUTO_SCALING_MAX) \
 	$(call tfvar, API_MACHINE_TYPE) \

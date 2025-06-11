@@ -89,13 +89,15 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
 
-  server_cluster_size             = var.server_cluster_size
-  client_cluster_size             = var.client_cluster_size
   client_regional_cluster_size    = var.client_regional_cluster_size
   client_cluster_auto_scaling_max = var.client_cluster_auto_scaling_max
+  client_cluster_cache_disk_size_gb = var.client_cluster_cache_disk_size_gb
+
   api_cluster_size                = var.api_cluster_size
   build_cluster_size              = var.build_cluster_size
   clickhouse_cluster_size         = var.clickhouse_cluster_size
+  client_cluster_size             = var.client_cluster_size
+  server_cluster_size             = var.server_cluster_size
 
   server_machine_type     = var.server_machine_type
   client_machine_type     = var.client_machine_type

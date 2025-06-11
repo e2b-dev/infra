@@ -217,6 +217,12 @@ variable "allow_sandbox_internet" {
   default = true
 }
 
+variable "client_cluster_cache_disk_size_gb" {
+  type        = number
+  description = "The size of the root disk for the orchestrator machines in GB"
+  default     = 500
+}
+
 variable "orchestrator_port" {
   type    = number
   default = 5008

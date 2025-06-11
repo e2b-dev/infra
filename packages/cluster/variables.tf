@@ -118,6 +118,10 @@ variable "client_machine_type" {
   type = string
 }
 
+variable "client_cluster_cache_disk_size_gb" {
+  type = number
+}
+
 variable "gcp_project_id" {
   type = string
 }
