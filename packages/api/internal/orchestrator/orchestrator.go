@@ -64,7 +64,6 @@ func New(
 			MinIdleConns: 1,
 		})
 	} else if rurl := os.Getenv("REDIS_URL"); rurl != "" {
-
 		redisClient = redis.NewClient(&redis.Options{
 			Addr:         rurl,
 			MinIdleConns: 1,
