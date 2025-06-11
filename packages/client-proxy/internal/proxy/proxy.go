@@ -159,29 +159,35 @@ func NewClientProxy(port uint, catalog *sandboxes.SandboxesCatalog, orchestrator
 		},
 	)
 
-	_, err := meters.GetObservableUpDownCounter(meters.ClientProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(proxy.CurrentServerConnections()))
-
-		return nil
-	})
+	_, err := meters.GetObservableUpDownCounter(
+		meters.ClientProxyPoolConnectionsMeterCounterName,
+		func(ctx context.Context, observer metric.Int64Observer) error {
+			observer.Observe(proxy.CurrentServerConnections())
+			return nil
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("error registering client proxy connections metric (%s): %w", meters.ClientProxyPoolConnectionsMeterCounterName, err)
 	}
 
-	_, err = meters.GetObservableUpDownCounter(meters.ClientProxyPoolSizeMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(proxy.CurrentPoolSize()))
-
-		return nil
-	})
+	_, err = meters.GetObservableUpDownCounter(
+		meters.ClientProxyPoolSizeMeterCounterName,
+		func(ctx context.Context, observer metric.Int64Observer) error {
+			observer.Observe(int64(proxy.CurrentPoolSize()))
+			return nil
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("error registering client proxy pool size metric (%s): %w", meters.ClientProxyPoolSizeMeterCounterName, err)
 	}
 
-	_, err = meters.GetObservableUpDownCounter(meters.ClientProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
-		observer.Observe(int64(proxy.CurrentPoolConnections()))
-
-		return nil
-	})
+	_, err = meters.GetObservableUpDownCounter(
+		meters.ClientProxyServerConnectionsMeterCounterName,
+		func(ctx context.Context, observer metric.Int64Observer) error {
+			observer.Observe(proxy.CurrentPoolConnections())
+			return nil
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("error registering client proxy server connections metric (%s): %w", meters.ClientProxyServerConnectionsMeterCounterName, err)
 	}
