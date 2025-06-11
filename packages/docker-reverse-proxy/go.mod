@@ -16,6 +16,7 @@ require (
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/dchest/uniuri v1.2.0 // indirect
 	github.com/go-openapi/inflect v0.19.0 // indirect
+	github.com/go-test/deep v1.0.8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/hcl/v2 v2.19.1 // indirect
