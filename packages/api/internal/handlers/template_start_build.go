@@ -11,7 +11,6 @@ import (
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -32,8 +31,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid build ID: %s", buildID))
 
-		err = fmt.Errorf("invalid build ID: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "invalid build ID", err)
 
 		return
 	}
@@ -42,8 +40,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting default team: %s", err))
 
-		err = fmt.Errorf("error when getting default team: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "error when getting default team", err)
 
 		return
 	}
@@ -61,8 +58,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
 
-		err = fmt.Errorf("error when getting env: %w", err)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "error when getting env", err, telemetry.WithTemplateID(templateID))
 
 		return
 	}
@@ -79,16 +75,15 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	if team == nil {
 		a.sendAPIStoreError(c, http.StatusForbidden, "User does not have access to the template")
 
-		err = fmt.Errorf("user '%s' does not have access to the template '%s'", userID, templateID)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "user does not have access to the template", err, telemetry.WithTemplateID(templateID))
 
 		return
 	}
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("user.id", userID.String()),
-		attribute.String("team.id", team.ID.String()),
-		attribute.String("template.id", templateID),
+		telemetry.WithTeamID(team.ID.String()),
+		telemetry.WithTemplateID(templateID),
 	)
 
 	concurrentlyRunningBuilds, err := a.db.
@@ -102,9 +97,8 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		).
 		All(ctx)
 	if err != nil {
-		zap.L().Error("Error when getting running builds", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "Error when getting running builds", err)
 		return
 	}
 
@@ -121,9 +115,8 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		})))
 		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
 		if deleteJobErr != nil {
-			errMsg := fmt.Errorf("error when canceling running build: %w", deleteJobErr)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build cancel request")
-			telemetry.ReportCriticalError(ctx, errMsg)
+			telemetry.ReportCriticalError(ctx, "error when canceling running build", deleteJobErr)
 			return
 		}
 		telemetry.ReportEvent(ctx, "canceled running builds")
@@ -144,8 +137,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	// only waiting builds can be triggered
 	if build.Status != envbuild.StatusWaiting {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
-		err = fmt.Errorf("build is not in waiting state: %s", build.Status)
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.Status), telemetry.WithTemplateID(templateID))
 		return
 	}
 
@@ -165,9 +157,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	)
 
 	if buildErr != nil {
-		buildErr = fmt.Errorf("error when building env: %w", buildErr)
-		zap.L().Error("build failed", zap.Error(buildErr))
-		telemetry.ReportCriticalError(ctx, buildErr)
+		telemetry.ReportCriticalError(ctx, "build failed", buildErr, telemetry.WithTemplateID(templateID))
 
 		err = a.templateManager.SetStatus(
 			ctx,
@@ -177,7 +167,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 			fmt.Sprintf("error when building env: %s", buildErr),
 		)
 		if err != nil {
-			telemetry.ReportCriticalError(ctx, fmt.Errorf("error when setting build status: %w", err))
+			telemetry.ReportCriticalError(ctx, "error when setting build status", err)
 		}
 
 		return
@@ -193,12 +183,12 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		"starting build",
 	)
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("error when setting build status: %w", err))
+		telemetry.ReportCriticalError(ctx, "error when setting build status", err)
 
 		return
 	}
 
-	telemetry.ReportEvent(ctx, "created new environment", attribute.String("env.id", templateID))
+	telemetry.ReportEvent(ctx, "created new environment", telemetry.WithTemplateID(templateID))
 
 	// Do not wait for global build sync trigger it immediately
 	go func() {

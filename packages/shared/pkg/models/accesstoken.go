@@ -20,7 +20,7 @@ type AccessToken struct {
 	// ID of the ent.
 	ID uuid.UUID `json:"id,omitempty"`
 	// AccessToken holds the value of the "access_token" field.
-	AccessToken string `json:"access_token,omitempty"`
+	AccessToken string `json:"-"`
 	// AccessTokenHash holds the value of the "access_token_hash" field.
 	AccessTokenHash string `json:"-"`
 	// AccessTokenMask holds the value of the "access_token_mask" field.
@@ -168,8 +168,7 @@ func (at *AccessToken) String() string {
 	var builder strings.Builder
 	builder.WriteString("AccessToken(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", at.ID))
-	builder.WriteString("access_token=")
-	builder.WriteString(at.AccessToken)
+	builder.WriteString("access_token=<sensitive>")
 	builder.WriteString(", ")
 	builder.WriteString("access_token_hash=<sensitive>")
 	builder.WriteString(", ")

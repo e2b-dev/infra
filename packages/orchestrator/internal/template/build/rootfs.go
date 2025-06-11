@@ -72,7 +72,7 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 
 	defer func() {
 		if e != nil {
-			telemetry.ReportCriticalError(childCtx, e)
+			telemetry.ReportCriticalError(childCtx, "failed to create ext4 filesystem", e)
 		}
 	}()
 

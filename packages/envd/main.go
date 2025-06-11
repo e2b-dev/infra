@@ -103,6 +103,18 @@ func withCORS(h http.Handler) http.Handler {
 			"Access-Control-Request-Private-Network",
 			"Access-Control-Expose-Headers",
 			"Keepalive-Ping-Interval", // for gRPC
+			// Custom headers sent from SDK
+			"browser",
+			"lang",
+			"lang_version",
+			"machine",
+			"os",
+			"package_version",
+			"processor",
+			"publisher",
+			"release",
+			"sdk_runtime",
+			"system",
 		),
 		ExposedHeaders: append(
 			connectcors.ExposedHeaders(),

@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -175,7 +176,7 @@ func (u *Uffd) handle(sandboxId string) (err error) {
 	defer func() {
 		closeErr := syscall.Close(int(uffd))
 		if closeErr != nil {
-			zap.L().Error("failed to close uffd", zap.String("sandbox_id", sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
+			zap.L().Error("failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
 	}()
 

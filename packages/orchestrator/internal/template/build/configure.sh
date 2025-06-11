@@ -13,7 +13,8 @@ swapon /swap/swapfile
 # will ignore the directory if it exists, but we want to include the skeleton files in the home directory
 # in our case.
 echo "Create default user 'user' (if doesn't exist yet)"
-ADDUSER_OUTPUT=$(adduser -disabled-password --gecos "" user 2>&1)
+ADDUSER_OUTPUT=$(adduser -disabled-password --gecos "" user 2>&1 || true)
+echo "$ADDUSER_OUTPUT"
 if echo "$ADDUSER_OUTPUT" | grep -q "The home directory \`/home/user' already exists"; then
     # Copy skeleton files if they don't exist in the home directory
     echo "Copy skeleton files to /home/user"

@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -59,9 +60,9 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*Sandbox
 				ConnectionKey: sbx.Config.ExecutionId,
 				RequestLogger: zap.L().With(
 					zap.String("host", r.Host),
-					zap.String("sandbox_id", sbx.Config.SandboxId),
+					logger.WithSandboxID(sbx.Config.SandboxId),
 					zap.String("sandbox_ip", sbx.Slot.HostIPString()),
-					zap.String("team_id", sbx.Config.TeamId),
+					logger.WithTeamID(sbx.Config.TeamId),
 					zap.String("sandbox_req_port", url.Port()),
 					zap.String("sandbox_req_path", r.URL.Path),
 				),

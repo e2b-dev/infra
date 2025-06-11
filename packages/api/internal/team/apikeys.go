@@ -16,10 +16,9 @@ import (
 func CreateAPIKey(ctx context.Context, db *db.DB, teamID uuid.UUID, userID uuid.UUID, name string) (*models.TeamAPIKey, error) {
 	teamApiKey, err := keys.GenerateKey(keys.ApiKeyPrefix)
 	if err != nil {
-		errMsg := fmt.Errorf("error when generating team API key: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when generating team API key", err)
 
-		return nil, errMsg
+		return nil, fmt.Errorf("error when generating team API key: %w", err)
 	}
 
 	apiKey, err := db.Client.TeamAPIKey.
@@ -34,8 +33,9 @@ func CreateAPIKey(ctx context.Context, db *db.DB, teamID uuid.UUID, userID uuid.
 		SetName(name).
 		Save(ctx)
 	if err != nil {
-		errMsg := fmt.Errorf("error when creating API key: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when creating API key", err)
+
+		return nil, fmt.Errorf("error when creating API key: %w", err)
 	}
 
 	return apiKey, nil

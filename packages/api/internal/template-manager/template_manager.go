@@ -15,6 +15,7 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 )
 
@@ -33,7 +34,7 @@ type TemplateManager struct {
 const (
 	syncInterval             = time.Minute * 1
 	syncTimeout              = time.Minute * 15
-	syncWaitingStateDeadline = time.Minute * 20
+	syncWaitingStateDeadline = time.Minute * 40
 )
 
 func New(ctx context.Context, db *db.DB, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
@@ -92,7 +93,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	// remove from processing queue when done
 	defer tm.removeFromProcessingQueue(buildID)
 
-	logger := zap.L().With(zap.String("buildID", buildID.String()), zap.String("envID", templateID))
+	logger := zap.L().With(logger.WithBuildID(buildID.String()), logger.WithTemplateID(templateID))
 
 	envBuildDb, err := tm.db.GetEnvBuild(childCtx, buildID)
 	if err != nil {
