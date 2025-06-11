@@ -60,7 +60,7 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 			orchestratorStatus = orchestratorinfo.ServiceInfoStatus_OrchestratorHealthy
 		default:
 			logger.Error("failed to transform node status to orchestrator status", zap.String("status", string(status)))
-			return errors.New("Failed to transform node status to orchestrator status")
+			return errors.New("failed to transform node status to orchestrator status")
 		}
 
 		_, err := o.Client.Info.ServiceStatusOverride(
@@ -79,7 +79,7 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 	e, err := a.edgePool.GetNode(serviceId)
 	if err != nil {
 		logger.Error("failed to get edge node", zap.Error(err))
-		return errors.New("Failed to get edge node")
+		return errors.New("failed to get edge node")
 	}
 
 	switch status {
