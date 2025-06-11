@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -17,7 +16,7 @@ func (a *APIStore) V1TemplateBuildDelete(c *gin.Context, buildId string, params 
 	orchestrator, findErr := a.getTemplateManagerNode(params.OrchestratorId)
 	if findErr != nil {
 		a.sendAPIStoreError(c, findErr.prettyErrorCode, findErr.prettyErrorMessage)
-		telemetry.ReportCriticalError(ctx, findErr.internalError)
+		telemetry.ReportCriticalError(ctx, findErr.prettyErrorMessage, findErr.internalError)
 		return
 	}
 
@@ -30,7 +29,7 @@ func (a *APIStore) V1TemplateBuildDelete(c *gin.Context, buildId string, params 
 
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting template build")
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("error when deleting template build: %w", err))
+		telemetry.ReportCriticalError(ctx, "error when deleting template build", err)
 		return
 	}
 

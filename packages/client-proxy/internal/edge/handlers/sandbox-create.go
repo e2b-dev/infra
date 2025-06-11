@@ -20,15 +20,14 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 	body, err := parseBody[api.V1CreateSandboxJSONRequestBody](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
-		errMsg := fmt.Errorf("error when parsing request: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
 		return
 	}
 
 	orchestrator, findErr := a.getOrchestratorNode(body.Sandbox.OrchestratorId)
 	if findErr != nil {
 		a.sendAPIStoreError(c, findErr.prettyErrorCode, findErr.prettyErrorMessage)
-		telemetry.ReportCriticalError(ctx, findErr.internalError)
+		telemetry.ReportCriticalError(ctx, findErr.prettyErrorMessage, findErr.internalError)
 		return
 	}
 
@@ -76,8 +75,7 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 	if err != nil {
 		zap.L().Error("Error when creating sandbox", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when creating sandbox")
-		errMsg := fmt.Errorf("error when creating sandbox: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when creating sandbox", err)
 		return
 	}
 
@@ -92,8 +90,7 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 	if err != nil {
 		zap.L().Error("Error when storing sandbox metadata", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when storing sandbox metadata")
-		errMsg := fmt.Errorf("error when storing sandbox metadata: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when storing sandbox metadata", err)
 		return
 	}
 

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -21,19 +20,19 @@ func (a *APIStore) V1DeleteSandbox(c *gin.Context, sandboxId api.SandboxId) {
 	if err != nil {
 		if errors.Is(err, sandboxes.SandboxNotFoundError) {
 			a.sendAPIStoreError(c, http.StatusNotFound, "Sandbox not found")
-			telemetry.ReportCriticalError(ctx, fmt.Errorf("sandbox not found: %w", err))
+			telemetry.ReportCriticalError(ctx, "sandbox not found", err)
 			return
 		}
 
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting sandbox")
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("error when getting sandbox: %w", err))
+		telemetry.ReportCriticalError(ctx, "error when getting sandbox", err)
 		return
 	}
 
 	orchestrator, findErr := a.getOrchestratorNode(sbx.OrchestratorId)
 	if findErr != nil {
 		a.sendAPIStoreError(c, findErr.prettyErrorCode, findErr.prettyErrorMessage)
-		telemetry.ReportCriticalError(ctx, findErr.internalError)
+		telemetry.ReportCriticalError(ctx, findErr.prettyErrorMessage, findErr.internalError)
 		return
 	}
 
@@ -41,8 +40,7 @@ func (a *APIStore) V1DeleteSandbox(c *gin.Context, sandboxId api.SandboxId) {
 	if err != nil {
 		zap.L().Error("Error when deleting sandbox", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when deleting sandbox")
-		errMsg := fmt.Errorf("error when deleting sandbox: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when deleting sandbox", err)
 		return
 	}
 
