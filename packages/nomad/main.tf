@@ -101,7 +101,6 @@ resource "nomad_job" "docker_reverse_proxy" {
   }
 }
 
-// todo: rename it to edge
 resource "nomad_job" "client_proxy" {
   jobspec = templatefile("${path.module}/edge.hcl",
     {

@@ -61,7 +61,7 @@ variable "build_machine_type" {
   type = string
 }
 
-variable "client_proxy_health_port" {
+variable "edge_api_port" {
   type = object({
     name = string
     port = number
@@ -69,7 +69,7 @@ variable "client_proxy_health_port" {
   })
 }
 
-variable "client_proxy_port" {
+variable "edge_proxy_port" {
   type = object({
     name = string
     port = number

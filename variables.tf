@@ -116,7 +116,8 @@ variable "client_proxy_resources_cpu_count" {
   default = 1
 }
 
-variable "client_proxy_edge_api_port" {
+
+variable "edge_api_port" {
   type = object({
     name = string
     port = number
@@ -129,7 +130,7 @@ variable "client_proxy_edge_api_port" {
   }
 }
 
-variable "client_proxy_port" {
+variable "edge_proxy_port" {
   type = object({
     name = string
     port = number
