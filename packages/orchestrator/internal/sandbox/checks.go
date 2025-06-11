@@ -78,6 +78,8 @@ func (c *Checks) Start() {
 
 func (c *Checks) Stop() {
 	c.ctx.Lock()
+	defer c.ctx.Unlock()
+
 	c.ctx.Cancel()
 
 	if c.unregisterMetrics != nil {
