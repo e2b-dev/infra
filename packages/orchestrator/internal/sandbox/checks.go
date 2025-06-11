@@ -56,7 +56,7 @@ func NewChecks(metricsProvider *metrics.MeterProvider, sandbox *Sandbox, useLoki
 }
 
 func (c *Checks) getMetrics(ctx context.Context) (*metrics.SandboxMetrics, error) {
-	if !isGTEVersion(c.sandbox.Config.EnvdVersion, minEnvdVersionForMetrcis) {
+	if !isGTEVersion(c.sandbox.Config.EnvdVersion, minEnvdVersionForMetrics) {
 		return nil, nil
 	}
 
@@ -85,8 +85,6 @@ func (c *Checks) Stop() {
 			sbxlogger.I(c.sandbox).Error("failed to unregister metrics", zap.Error(err))
 		}
 	}
-
-	c.ctx.Unlock()
 }
 
 func (c *Checks) LogMetrics(ctx context.Context) {
