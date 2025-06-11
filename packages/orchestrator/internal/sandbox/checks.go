@@ -56,16 +56,16 @@ func NewChecks(metricsProvider *metrics.MeterProvider, sandbox *Sandbox, useLoki
 }
 
 func (c *Checks) getMetrics(ctx context.Context) (*metrics.SandboxMetrics, error) {
-	if isGTEVersion(c.sandbox.Config.EnvdVersion, minEnvdVersionForMetrcis) {
-		envdMetrics, err := c.sandbox.GetMetrics(ctx)
-		if err != nil {
-			sbxlogger.E(c.sandbox).Warn("failed to get metrics from envd", zap.Error(err))
-		}
-
-		return envdMetrics, err
+	if !isGTEVersion(c.sandbox.Config.EnvdVersion, minEnvdVersionForMetrcis) {
+		return nil, nil
 	}
 
-	return nil, nil
+	envdMetrics, err := c.sandbox.GetMetrics(ctx)
+	if err != nil {
+		sbxlogger.E(c.sandbox).Warn("failed to get metrics from envd", zap.Error(err))
+	}
+
+	return envdMetrics, err
 }
 
 func (c *Checks) IsHealthy() bool {
