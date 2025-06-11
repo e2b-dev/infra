@@ -17,15 +17,14 @@ func (a *APIStore) V1TemplateBuildCreate(c *gin.Context) {
 	body, err := parseBody[api.TemplateBuildCreateRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
-		errMsg := fmt.Errorf("error when parsing request: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
 		return
 	}
 
 	orchestrator, findErr := a.getTemplateManagerNode(body.OrchestratorId)
 	if findErr != nil {
 		a.sendAPIStoreError(c, findErr.prettyErrorCode, findErr.prettyErrorMessage)
-		telemetry.ReportCriticalError(ctx, findErr.internalError)
+		telemetry.ReportCriticalError(ctx, findErr.prettyErrorMessage, findErr.internalError)
 		return
 	}
 
@@ -50,7 +49,7 @@ func (a *APIStore) V1TemplateBuildCreate(c *gin.Context) {
 
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error creating template: %s", err))
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("error when creating template build: %w", err))
+		telemetry.ReportCriticalError(ctx, "error when creating template build", err)
 		return
 	}
 

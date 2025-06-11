@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
@@ -24,7 +23,7 @@ func (a *APIStore) V1TemplateBuildStatus(c *gin.Context, buildId string, params 
 	orchestrator, findErr := a.getTemplateManagerNode(params.OrchestratorId)
 	if findErr != nil {
 		a.sendAPIStoreError(c, findErr.prettyErrorCode, findErr.prettyErrorMessage)
-		telemetry.ReportCriticalError(ctx, findErr.internalError)
+		telemetry.ReportCriticalError(ctx, findErr.prettyErrorMessage, findErr.internalError)
 		return
 	}
 
@@ -37,7 +36,7 @@ func (a *APIStore) V1TemplateBuildStatus(c *gin.Context, buildId string, params 
 
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when fetching template build status")
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("error when fetching template build: %w", err))
+		telemetry.ReportCriticalError(ctx, "error when fetching template build", err)
 		return
 	}
 
@@ -65,7 +64,7 @@ func (a *APIStore) V1TemplateBuildStatus(c *gin.Context, buildId string, params 
 	logsRaw, err := a.queryLogsProvider.QueryBuildLogs(ctx, params.TemplateId, buildId, start, end, templateBuildLogsLimit, offset)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when fetching template build logs")
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("error when fetching template build logs: %w", err))
+		telemetry.ReportCriticalError(ctx, "error when fetching template build logs", err)
 		return
 	}
 

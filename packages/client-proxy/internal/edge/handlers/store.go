@@ -80,7 +80,7 @@ func parseBody[B any](ctx context.Context, c *gin.Context) (body B, err error) {
 	err = c.Bind(&body)
 	if err != nil {
 		bodyErr := fmt.Errorf("error when parsing request: %w", err)
-		telemetry.ReportCriticalError(ctx, bodyErr)
+		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
 		return body, bodyErr
 	}
 

@@ -56,15 +56,14 @@ func (l *LokiQueryProvider) QueryBuildLogs(ctx context.Context, templateId strin
 
 	res, err := l.client.QueryRange(query, limit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
 	if err != nil {
-		errMsg := fmt.Errorf("error when returning logs for template build: %w", err)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportError(ctx, "error when returning logs for template build", err)
 		zap.L().Error("error when returning logs for template build", zap.Error(err), zap.String("buildId", buildId))
 		return make([]LogEntry, 0), nil
 	}
 
 	logs, err := l.lokiResponseMapper(res, offset)
 	if err != nil {
-		telemetry.ReportError(ctx, fmt.Errorf("error when mapping build logs: %w", err))
+		telemetry.ReportError(ctx, "error when mapping build logs", err)
 		zap.L().Error("error when mapping logs for template build", zap.Error(err), zap.String("buildId", buildId))
 		return make([]LogEntry, 0), nil
 	}
@@ -81,15 +80,14 @@ func (l *LokiQueryProvider) QuerySandboxLogs(ctx context.Context, teamId string,
 
 	res, err := l.client.QueryRange(query, limit, start, end, logproto.FORWARD, time.Duration(0), time.Duration(0), true)
 	if err != nil {
-		errMsg := fmt.Errorf("error when returning logs for sandbox: %w", err)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportError(ctx, "error when returning logs for sandbox", err)
 		zap.L().Error("error when returning logs for sandbox", zap.Error(err), zap.String("sandboxId", sandboxId))
 		return make([]LogEntry, 0), nil
 	}
 
 	logs, err := l.lokiResponseMapper(res, offset)
 	if err != nil {
-		telemetry.ReportError(ctx, fmt.Errorf("error when mapping sandbox logs: %w", err))
+		telemetry.ReportError(ctx, "error when mapping sandbox logs", err)
 		zap.L().Error("error when mapping logs for sandbox", zap.Error(err), zap.String("sandboxId", sandboxId))
 		return make([]LogEntry, 0), nil
 	}
