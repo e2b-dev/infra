@@ -144,7 +144,9 @@ func (a *APIStore) getTemplateManagerNode(orchestratorId string) (*e2borchestrat
 		return nil, err
 	}
 
-	if !slices.Contains(orchestrator.Roles, e2borchestrator.ServiceInfoRole_TemplateManager) {
+	if !slices.Contains(
+
+		orchestrator.Roles, e2borchestrator.ServiceInfoRole_TemplateManager) {
 		return nil, &APIUserFacingError{
 			internalError:      errors.New("orchestrator is not marked as template builder"),
 			prettyErrorCode:    http.StatusBadRequest,
