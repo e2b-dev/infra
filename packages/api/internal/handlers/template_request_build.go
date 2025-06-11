@@ -203,6 +203,12 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 	}
 	defer tx.Rollback()
 
+	var clusterId *uuid.UUID
+	cluster, ok := a.edge.GetClusterByTeam(team.ID)
+	if ok {
+		clusterId = &cluster.Id
+	}
+
 	// Create the template / or update the build count
 	err = tx.
 		Env.
@@ -210,6 +216,7 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		SetID(templateID).
 		SetTeamID(team.ID).
 		SetCreatedBy(*userID).
+		SetNillableClusterID(clusterId).
 		SetPublic(false).
 		OnConflictColumns(env.FieldID).
 		UpdateUpdatedAt().

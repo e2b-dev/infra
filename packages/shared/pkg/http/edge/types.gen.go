@@ -43,7 +43,7 @@ type ClusterNode struct {
 	// Commit Source code version of the node
 	Commit string `json:"commit"`
 
-	// Host Node private IPv4 address and service port
+	// Host Node private host address and service port
 	Host string `json:"host"`
 
 	// Id Service ID
@@ -96,6 +96,9 @@ type ClusterNodeType string
 type ClusterOrchestratorNode struct {
 	// Commit Service Version
 	Commit string `json:"commit"`
+
+	// Host Node private host address and service port
+	Host string `json:"host"`
 
 	// Id Service ID
 	Id string `json:"id"`
@@ -161,7 +164,7 @@ type SandboxConfig struct {
 
 	// MaxSandboxLength Maximum duration in hours
 	MaxSandboxLength *int64             `json:"maxSandboxLength,omitempty"`
-	Metadata         *map[string]string `json:"metadata,omitempty"`
+	Metadata         *map[string]string `json:"metadata"`
 	OrchestratorId   string             `json:"orchestratorId"`
 	RamMB            int64              `json:"ramMB"`
 	SandboxId        string             `json:"sandboxId"`

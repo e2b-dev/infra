@@ -84,6 +84,26 @@ func (eu *EnvUpdate) ClearCreatedBy() *EnvUpdate {
 	return eu
 }
 
+// SetClusterID sets the "cluster_id" field.
+func (eu *EnvUpdate) SetClusterID(u uuid.UUID) *EnvUpdate {
+	eu.mutation.SetClusterID(u)
+	return eu
+}
+
+// SetNillableClusterID sets the "cluster_id" field if the given value is not nil.
+func (eu *EnvUpdate) SetNillableClusterID(u *uuid.UUID) *EnvUpdate {
+	if u != nil {
+		eu.SetClusterID(*u)
+	}
+	return eu
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (eu *EnvUpdate) ClearClusterID() *EnvUpdate {
+	eu.mutation.ClearClusterID()
+	return eu
+}
+
 // SetPublic sets the "public" field.
 func (eu *EnvUpdate) SetPublic(b bool) *EnvUpdate {
 	eu.mutation.SetPublic(b)
@@ -364,6 +384,12 @@ func (eu *EnvUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := eu.mutation.UpdatedAt(); ok {
 		_spec.SetField(env.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if value, ok := eu.mutation.ClusterID(); ok {
+		_spec.SetField(env.FieldClusterID, field.TypeUUID, value)
+	}
+	if eu.mutation.ClusterIDCleared() {
+		_spec.ClearField(env.FieldClusterID, field.TypeUUID)
 	}
 	if value, ok := eu.mutation.Public(); ok {
 		_spec.SetField(env.FieldPublic, field.TypeBool, value)
@@ -661,6 +687,26 @@ func (euo *EnvUpdateOne) SetNillableCreatedBy(u *uuid.UUID) *EnvUpdateOne {
 // ClearCreatedBy clears the value of the "created_by" field.
 func (euo *EnvUpdateOne) ClearCreatedBy() *EnvUpdateOne {
 	euo.mutation.ClearCreatedBy()
+	return euo
+}
+
+// SetClusterID sets the "cluster_id" field.
+func (euo *EnvUpdateOne) SetClusterID(u uuid.UUID) *EnvUpdateOne {
+	euo.mutation.SetClusterID(u)
+	return euo
+}
+
+// SetNillableClusterID sets the "cluster_id" field if the given value is not nil.
+func (euo *EnvUpdateOne) SetNillableClusterID(u *uuid.UUID) *EnvUpdateOne {
+	if u != nil {
+		euo.SetClusterID(*u)
+	}
+	return euo
+}
+
+// ClearClusterID clears the value of the "cluster_id" field.
+func (euo *EnvUpdateOne) ClearClusterID() *EnvUpdateOne {
+	euo.mutation.ClearClusterID()
 	return euo
 }
 
@@ -974,6 +1020,12 @@ func (euo *EnvUpdateOne) sqlSave(ctx context.Context) (_node *Env, err error) {
 	}
 	if value, ok := euo.mutation.UpdatedAt(); ok {
 		_spec.SetField(env.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if value, ok := euo.mutation.ClusterID(); ok {
+		_spec.SetField(env.FieldClusterID, field.TypeUUID, value)
+	}
+	if euo.mutation.ClusterIDCleared() {
+		_spec.ClearField(env.FieldClusterID, field.TypeUUID)
 	}
 	if value, ok := euo.mutation.Public(); ok {
 		_spec.SetField(env.FieldPublic, field.TypeBool, value)

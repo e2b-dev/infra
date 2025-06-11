@@ -9,6 +9,9 @@ import (
 // AccessToken is the predicate function for accesstoken builders.
 type AccessToken func(*sql.Selector)
 
+// Cluster is the predicate function for cluster builders.
+type Cluster func(*sql.Selector)
+
 // Env is the predicate function for env builders.
 type Env func(*sql.Selector)
 

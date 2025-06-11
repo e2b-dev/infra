@@ -28,6 +28,8 @@ type Env struct {
 	TeamID uuid.UUID `json:"team_id,omitempty"`
 	// CreatedBy holds the value of the "created_by" field.
 	CreatedBy *uuid.UUID `json:"created_by,omitempty"`
+	// ClusterID holds the value of the "cluster_id" field.
+	ClusterID *uuid.UUID `json:"cluster_id,omitempty"`
 	// Public holds the value of the "public" field.
 	Public bool `json:"public,omitempty"`
 	// BuildCount holds the value of the "build_count" field.
@@ -117,7 +119,7 @@ func (*Env) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case env.FieldCreatedBy:
+		case env.FieldCreatedBy, env.FieldClusterID:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case env.FieldPublic:
 			values[i] = new(sql.NullBool)
@@ -174,6 +176,13 @@ func (e *Env) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				e.CreatedBy = new(uuid.UUID)
 				*e.CreatedBy = *value.S.(*uuid.UUID)
+			}
+		case env.FieldClusterID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field cluster_id", values[i])
+			} else if value.Valid {
+				e.ClusterID = new(uuid.UUID)
+				*e.ClusterID = *value.S.(*uuid.UUID)
 			}
 		case env.FieldPublic:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -271,6 +280,11 @@ func (e *Env) String() string {
 	builder.WriteString(", ")
 	if v := e.CreatedBy; v != nil {
 		builder.WriteString("created_by=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := e.ClusterID; v != nil {
+		builder.WriteString("cluster_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

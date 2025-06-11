@@ -71,19 +71,31 @@ func NewTemplateCache(db *sqlcdb.Client) *TemplateCache {
 	}
 }
 
-func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID, public bool) (*api.Template, *queries.EnvBuild, *api.APIError) {
+func (c *TemplateCache) getCacheKey(aliasOrEnvID string, clusterId *uuid.UUID) string {
+	if clusterId == nil {
+		return aliasOrEnvID
+	}
+
+	return aliasOrEnvID + "_" + clusterId.String()
+}
+
+func (c *TemplateCache) Get(ctx context.Context, aliasOrEnvID string, teamID uuid.UUID, clusterId *uuid.UUID, public bool) (*api.Template, *queries.EnvBuild, *api.APIError) {
 	var item *ttlcache.Item[string, *TemplateInfo]
 	var templateInfo *TemplateInfo
 
 	var build *queries.EnvBuild
 
-	templateID, found := c.aliasCache.Get(aliasOrEnvID)
+	buildCacheKey := c.getCacheKey(aliasOrEnvID, clusterId)
+	templateID, found := c.aliasCache.Get(buildCacheKey)
 	if found == true {
 		item = c.cache.Get(templateID)
 	}
 
+	// todo: we need to store template cache (alias) for multiple clusters
+	// we cannot easily do cache prefix because someone can name template the same as cluster ID + alias and we will have a collision
+
 	if item == nil {
-		result, err := c.db.GetEnvWithBuild(ctx, aliasOrEnvID)
+		result, err := c.db.GetEnvWithBuild(ctx, queries.GetEnvWithBuildParams{ClusterID: clusterId, AliasOrEnvID: aliasOrEnvID})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: fmt.Sprintf("template '%s' not found", aliasOrEnvID), Err: err}

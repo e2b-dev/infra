@@ -7,20 +7,22 @@ package queries
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const getEnvWithBuild = `-- name: GetEnvWithBuild :one
 WITH s AS NOT MATERIALIZED (
     SELECT ea.env_id as env_id
     FROM public.env_aliases as ea
-    WHERE ea.alias = $1
+    WHERE ea.alias = $2
     UNION
-    SELECT $1 as env_id
+    SELECT $2 as env_id
 )
 
-SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, aliases
+SELECT e.id, e.created_at, e.updated_at, e.public, e.build_count, e.spawn_count, e.last_spawned_at, e.team_id, e.created_by, e.cluster_id, eb.id, eb.created_at, eb.updated_at, eb.finished_at, eb.status, eb.dockerfile, eb.start_cmd, eb.vcpu, eb.ram_mb, eb.free_disk_size_mb, eb.total_disk_size_mb, eb.kernel_version, eb.firecracker_version, eb.env_id, eb.envd_version, eb.ready_cmd, eb.cluster_node_id, aliases
 FROM s
-JOIN public.envs AS e ON e.id = s.env_id
+JOIN public.envs AS e ON e.id = s.env_id AND e.cluster_id = $1
 JOIN public.env_builds AS eb ON eb.env_id = e.id
 AND eb.status = 'uploaded'
 CROSS JOIN LATERAL (
@@ -32,6 +34,11 @@ ORDER BY eb.finished_at DESC
 LIMIT 1
 `
 
+type GetEnvWithBuildParams struct {
+	ClusterID    *uuid.UUID
+	AliasOrEnvID string
+}
+
 type GetEnvWithBuildRow struct {
 	Env      Env
 	EnvBuild EnvBuild
@@ -39,8 +46,8 @@ type GetEnvWithBuildRow struct {
 }
 
 // get the env_id when querying by alias; if not, @alias_or_env_id should be env_id
-func (q *Queries) GetEnvWithBuild(ctx context.Context, aliasOrEnvID string) (GetEnvWithBuildRow, error) {
-	row := q.db.QueryRow(ctx, getEnvWithBuild, aliasOrEnvID)
+func (q *Queries) GetEnvWithBuild(ctx context.Context, arg GetEnvWithBuildParams) (GetEnvWithBuildRow, error) {
+	row := q.db.QueryRow(ctx, getEnvWithBuild, arg.ClusterID, arg.AliasOrEnvID)
 	var i GetEnvWithBuildRow
 	err := row.Scan(
 		&i.Env.ID,
@@ -52,6 +59,7 @@ func (q *Queries) GetEnvWithBuild(ctx context.Context, aliasOrEnvID string) (Get
 		&i.Env.LastSpawnedAt,
 		&i.Env.TeamID,
 		&i.Env.CreatedBy,
+		&i.Env.ClusterID,
 		&i.EnvBuild.ID,
 		&i.EnvBuild.CreatedAt,
 		&i.EnvBuild.UpdatedAt,
@@ -68,6 +76,7 @@ func (q *Queries) GetEnvWithBuild(ctx context.Context, aliasOrEnvID string) (Get
 		&i.EnvBuild.EnvID,
 		&i.EnvBuild.EnvdVersion,
 		&i.EnvBuild.ReadyCmd,
+		&i.EnvBuild.ClusterNodeID,
 		&i.Aliases,
 	)
 	return i, err

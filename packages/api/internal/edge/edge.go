@@ -7,6 +7,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
+	"slices"
 	"sync"
 	"time"
 
@@ -54,8 +55,8 @@ func NewPool(ctx context.Context, db *client.Client, tracer trace.Tracer) (*Pool
 	return p, nil
 }
 
-func (p *Pool) GetClusterByTeam(teamId string) (*Cluster, bool) {
-	return p.pool.Get(teamId)
+func (p *Pool) GetClusterByTeam(teamId uuid.UUID) (*Cluster, bool) {
+	return p.pool.Get(teamId.String())
 }
 
 func (p *Pool) syncBackground() {
@@ -148,7 +149,7 @@ func (p *Pool) sync(ctx context.Context) error {
 		// cluster disconnect takes time
 		wg.Add(1)
 		go func(team string, teamCluster *Cluster) {
-			zap.L().Info("removing cluster from pool", zap.String("team_id", teamId), zap.String("cluster_id", teamCluster.id.String()))
+			zap.L().Info("removing cluster from pool", zap.String("team_id", teamId), zap.String("cluster_id", teamCluster.Id.String()))
 			teamCluster.Disconnect()
 			p.pool.Remove(team)
 			wg.Done()
@@ -165,8 +166,8 @@ func (p *Pool) sync(ctx context.Context) error {
 type Cluster struct {
 	ctx    context.Context
 	secret string
-	id     uuid.UUID
 
+	Id     uuid.UUID
 	Client *api.ClientWithResponses
 }
 
@@ -179,10 +180,39 @@ func NewCluster(ctx context.Context, endpoint string, secret string, id uuid.UUI
 	// todo: maybe we should impl some middleware that will inject secret into every request?
 	return &Cluster{
 		ctx:    ctx,
-		id:     id,
+		Id:     id.String(),
 		Client: client,
 		secret: secret,
 	}, nil
+}
+
+func (c *Cluster) getOrchestrators(ctx context.Context) (*[]api.ClusterOrchestratorNode, error) {
+	res, err := c.Client.V1ServiceDiscoveryGetOrchestratorsWithResponse(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.JSON200 == nil {
+		return nil, errors.New("failed to get template builders, response is nil")
+	}
+
+	return res.JSON200, nil
+}
+
+func (c *Cluster) GetTemplateBuilders(ctx context.Context) (*[]api.ClusterOrchestratorNode, error) {
+	orchestrators, err := c.getOrchestrators(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	templateBuilders := make([]api.ClusterOrchestratorNode, 0)
+	for _, orchestrator := range *orchestrators {
+		if slices.Contains(orchestrator.Roles, api.ClusterOrchestratorRoleTemplateManager) {
+			templateBuilders = append(templateBuilders, orchestrator)
+		}
+	}
+
+	return &templateBuilders, nil
 }
 
 func (c *Cluster) Disconnect() {

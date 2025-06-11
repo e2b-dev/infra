@@ -10,7 +10,7 @@ WITH s AS NOT MATERIALIZED (
 
 SELECT sqlc.embed(e), sqlc.embed(eb), aliases
 FROM s
-JOIN public.envs AS e ON e.id = s.env_id
+JOIN public.envs AS e ON e.id = s.env_id AND e.cluster_id = @cluster_id
 JOIN public.env_builds AS eb ON eb.env_id = e.id
 AND eb.status = 'uploaded'
 CROSS JOIN LATERAL (

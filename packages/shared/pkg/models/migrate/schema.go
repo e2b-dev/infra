@@ -33,11 +33,24 @@ var (
 			},
 		},
 	}
+	// ClustersColumns holds the columns for the "clusters" table.
+	ClustersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true, Default: "gen_random_uuid()"},
+		{Name: "endpoint", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "token", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+	}
+	// ClustersTable holds the schema information for the "clusters" table.
+	ClustersTable = &schema.Table{
+		Name:       "clusters",
+		Columns:    ClustersColumns,
+		PrimaryKey: []*schema.Column{ClustersColumns[0]},
+	}
 	// EnvsColumns holds the columns for the "envs" table.
 	EnvsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "created_at", Type: field.TypeTime, Default: "CURRENT_TIMESTAMP"},
 		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "cluster_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "public", Type: field.TypeBool, Default: "false"},
 		{Name: "build_count", Type: field.TypeInt32, Default: 1},
 		{Name: "spawn_count", Type: field.TypeInt64, Comment: "Number of times the env was spawned", Default: 0},
@@ -53,13 +66,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "envs_teams_envs",
-				Columns:    []*schema.Column{EnvsColumns[7]},
+				Columns:    []*schema.Column{EnvsColumns[8]},
 				RefColumns: []*schema.Column{TeamsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "envs_users_created_envs",
-				Columns:    []*schema.Column{EnvsColumns[8]},
+				Columns:    []*schema.Column{EnvsColumns[9]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -102,6 +115,7 @@ var (
 		{Name: "kernel_version", Type: field.TypeString, Default: "vmlinux-6.1.102", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "firecracker_version", Type: field.TypeString, Default: "v1.10.1_1fcdaec", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "envd_version", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "cluster_node_id", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "env_id", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 	}
 	// EnvBuildsTable holds the schema information for the "env_builds" table.
@@ -112,7 +126,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "env_builds_envs_builds",
-				Columns:    []*schema.Column{EnvBuildsColumns[15]},
+				Columns:    []*schema.Column{EnvBuildsColumns[16]},
 				RefColumns: []*schema.Column{EnvsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -263,6 +277,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AccessTokensTable,
+		ClustersTable,
 		EnvsTable,
 		EnvAliasesTable,
 		EnvBuildsTable,
@@ -278,6 +293,7 @@ var (
 func init() {
 	AccessTokensTable.ForeignKeys[0].RefTable = UsersTable
 	AccessTokensTable.Annotation = &entsql.Annotation{}
+	ClustersTable.Annotation = &entsql.Annotation{}
 	EnvsTable.ForeignKeys[0].RefTable = TeamsTable
 	EnvsTable.ForeignKeys[1].RefTable = UsersTable
 	EnvsTable.Annotation = &entsql.Annotation{}

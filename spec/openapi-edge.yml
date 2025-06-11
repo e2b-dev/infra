@@ -105,7 +105,7 @@ components:
           description: Source code version of the node
         host:
           type: string
-          description: Node private IPv4 address and service port
+          description: Node private host address and service port
         startedAt:
           type: string
           format: date-time
@@ -151,6 +151,9 @@ components:
         commit:
           type: string
           description: Service Version
+        host:
+          type: string
+          description: Node private host address and service port
         startedAt:
           type: string
           format: date-time
@@ -182,6 +185,7 @@ components:
         - nodeId
         - version
         - commit
+        - host
         - startedAt
         - status
         - roles
@@ -272,6 +276,7 @@ components:
           additionalProperties: { type: string }
         metadata:
           type: object
+          nullable: true
           additionalProperties: { type: string }
       required: [orchestratorId, templateId, buildId, sandboxId, teamId, kernelVersion, firecrackerVersion, envdVersion, snapshot, hugePages, vCPU, ramMB]
 

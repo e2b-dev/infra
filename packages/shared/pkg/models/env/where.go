@@ -87,6 +87,11 @@ func CreatedBy(v uuid.UUID) predicate.Env {
 	return predicate.Env(sql.FieldEQ(FieldCreatedBy, v))
 }
 
+// ClusterID applies equality check predicate on the "cluster_id" field. It's identical to ClusterIDEQ.
+func ClusterID(v uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldEQ(FieldClusterID, v))
+}
+
 // Public applies equality check predicate on the "public" field. It's identical to PublicEQ.
 func Public(v bool) predicate.Env {
 	return predicate.Env(sql.FieldEQ(FieldPublic, v))
@@ -235,6 +240,56 @@ func CreatedByIsNil() predicate.Env {
 // CreatedByNotNil applies the NotNil predicate on the "created_by" field.
 func CreatedByNotNil() predicate.Env {
 	return predicate.Env(sql.FieldNotNull(FieldCreatedBy))
+}
+
+// ClusterIDEQ applies the EQ predicate on the "cluster_id" field.
+func ClusterIDEQ(v uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldEQ(FieldClusterID, v))
+}
+
+// ClusterIDNEQ applies the NEQ predicate on the "cluster_id" field.
+func ClusterIDNEQ(v uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldNEQ(FieldClusterID, v))
+}
+
+// ClusterIDIn applies the In predicate on the "cluster_id" field.
+func ClusterIDIn(vs ...uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldIn(FieldClusterID, vs...))
+}
+
+// ClusterIDNotIn applies the NotIn predicate on the "cluster_id" field.
+func ClusterIDNotIn(vs ...uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldNotIn(FieldClusterID, vs...))
+}
+
+// ClusterIDGT applies the GT predicate on the "cluster_id" field.
+func ClusterIDGT(v uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldGT(FieldClusterID, v))
+}
+
+// ClusterIDGTE applies the GTE predicate on the "cluster_id" field.
+func ClusterIDGTE(v uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldGTE(FieldClusterID, v))
+}
+
+// ClusterIDLT applies the LT predicate on the "cluster_id" field.
+func ClusterIDLT(v uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldLT(FieldClusterID, v))
+}
+
+// ClusterIDLTE applies the LTE predicate on the "cluster_id" field.
+func ClusterIDLTE(v uuid.UUID) predicate.Env {
+	return predicate.Env(sql.FieldLTE(FieldClusterID, v))
+}
+
+// ClusterIDIsNil applies the IsNil predicate on the "cluster_id" field.
+func ClusterIDIsNil() predicate.Env {
+	return predicate.Env(sql.FieldIsNull(FieldClusterID))
+}
+
+// ClusterIDNotNil applies the NotNil predicate on the "cluster_id" field.
+func ClusterIDNotNil() predicate.Env {
+	return predicate.Env(sql.FieldNotNull(FieldClusterID))
 }
 
 // PublicEQ applies the EQ predicate on the "public" field.
