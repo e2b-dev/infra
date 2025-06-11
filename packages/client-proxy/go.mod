@@ -8,7 +8,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.222.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/getkin/kin-openapi v0.132.0
-	github.com/gin-contrib/cors v1.7.5
 	github.com/gin-contrib/size v1.0.2
 	github.com/gin-contrib/zap v1.1.5
 	github.com/gin-gonic/gin v1.10.1
