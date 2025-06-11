@@ -7,10 +7,15 @@ import (
 	"io"
 	"math"
 	"os"
+	"strconv"
 
+	"dagger.io/dagger"
 	"github.com/dustin/go-humanize"
+	"github.com/google/go-containerregistry/pkg/crane"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -88,6 +93,17 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 		return containerregistry.Config{}, fmt.Errorf("error getting image size: %w", err)
 	}
 	postProcessor.WriteMsg(fmt.Sprintf("Docker image size: %s", humanize.Bytes(uint64(imageSize))))
+
+	imagePath, err := r.todoBuildLayers(ctx, tracer, img)
+	if err != nil {
+		return containerregistry.Config{}, fmt.Errorf("error building layers: %w", err)
+	}
+	defer os.Remove(imagePath)
+
+	img, err = tarball.ImageFromPath(imagePath, nil)
+	if err != nil {
+		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
+	}
 
 	postProcessor.WriteMsg("Setting up system files")
 	layers, err := additionalOCILayers(childCtx, r.template)
@@ -290,4 +306,127 @@ echo "System Init"`), 0o777},
 		filesLayer,
 		symlinkLayer,
 	}, nil
+}
+
+func (r *Rootfs) todoBuildLayers(ctx context.Context, tracer trace.Tracer, img containerregistry.Image) (string, error) {
+	ctx, span := tracer.Start(ctx, "build-layers")
+	defer span.End()
+
+	// Start Virtual Dagger runner
+
+	// Start Virtual Dagger runner
+
+	err := os.Setenv("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "tcp://127.0.0.1:1234")
+	if err != nil {
+		return "", fmt.Errorf("failed to set Dagger environment variable: %w", err)
+	}
+	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stdout))
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to Dagger: %w", err)
+	}
+	defer client.Close()
+
+	layerSourceImage, err := os.CreateTemp("", "layer-image-*.tar")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	defer layerSourceImage.Close()
+
+	err = crane.Save(img, uuid.New().String(), layerSourceImage.Name())
+	if err != nil {
+		return "", fmt.Errorf("failed to write source image to temporary file: %w", err)
+	}
+	layerSourceImagePath := layerSourceImage.Name()
+
+	for i := 0; i < 5; i++ {
+		err := func() error {
+			defer os.Remove(layerSourceImagePath)
+
+			layerOutputImage, err := os.CreateTemp("", "layer-image-*.tar")
+			if err != nil {
+				return fmt.Errorf("failed to create temporary file: %w", err)
+			}
+			defer layerOutputImage.Close()
+			layerOutputImagePath := layerOutputImage.Name()
+
+			hash, err := r.buildLayer(ctx, tracer, client, layerSourceImagePath, layerOutputImagePath, img, strconv.Itoa(i))
+			if err != nil {
+				return err
+			}
+
+			zap.L().Debug("built layer",
+				zap.String("layer_hash", hash),
+				zap.String("layer_source_image", layerSourceImagePath),
+				zap.String("layer_output_image", layerOutputImagePath),
+			)
+
+			layerSourceImagePath = layerOutputImagePath
+			return nil
+		}()
+		if err != nil {
+			return "", fmt.Errorf("error building layer %d: %w", i+1, err)
+		}
+	}
+
+	return layerSourceImagePath, nil
+}
+
+func (r *Rootfs) buildLayer(ctx context.Context, tracer trace.Tracer, client *dagger.Client, sourceFilePath string, targetFilePath string, img containerregistry.Image, command string) (string, error) {
+	ctx, span := tracer.Start(ctx, "build-layer")
+	defer span.End()
+
+	zap.L().Debug("building layer",
+		zap.String("source_file_path", sourceFilePath),
+		zap.String("target_file_path", targetFilePath),
+		zap.String("command", command),
+	)
+
+	sourceLayer := client.Host().File(sourceFilePath)
+	container := client.Container().
+		Import(sourceLayer).
+		WithExec([]string{"sh", "-c", "echo Hello Dagger! > /info-" + command + ".txt"})
+
+	stderr, err := container.Stderr(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get container stderr: %w", err)
+	}
+	zap.L().Debug("container stderr", zap.String("stderr", stderr))
+
+	stdout, err := container.Stdout(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get container stdout: %w", err)
+	}
+	zap.L().Debug("container stdout", zap.String("stdout", stdout))
+
+	tar := container.AsTarball()
+	export, err := tar.Export(ctx, targetFilePath)
+	if err != nil {
+		return "", err
+	}
+
+	zap.L().Debug("exported layer",
+		zap.String("source_file_path", sourceFilePath),
+		zap.String("target_file_path", targetFilePath),
+		zap.String("command", command),
+		zap.String("export", export),
+	)
+
+	img, err = tarball.ImageFromPath(targetFilePath, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get image from Dagger: %w", err)
+	}
+
+	hash := uuid.New().String()
+	err = r.artifactRegistry.PushLayer(ctx, r.template.BuildId, hash, img)
+	if err != nil {
+		return "", err
+	}
+
+	zap.L().Debug("pushed layer",
+		zap.String("source_file_path", sourceFilePath),
+		zap.String("target_file_path", targetFilePath),
+		zap.String("command", command),
+	)
+
+	return hash, nil
 }

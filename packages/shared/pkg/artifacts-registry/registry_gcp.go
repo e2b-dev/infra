@@ -78,6 +78,53 @@ func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 	return img, nil
 }
 
+func (g *GCPArtifactsRegistry) GetLayer(ctx context.Context, buildId string, layerHash string, platform v1.Platform) (v1.Image, error) {
+	imageUrl, err := g.GetTag(ctx, buildId, layerHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get image URL: %w", err)
+	}
+
+	ref, err := name.ParseReference(imageUrl)
+	if err != nil {
+		return nil, fmt.Errorf("invalid image reference: %w", err)
+	}
+
+	auth, err := g.getAuthToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get auth: %w", err)
+	}
+
+	img, err := remote.Image(ref, remote.WithAuth(auth), remote.WithPlatform(platform))
+	if err != nil {
+		return nil, fmt.Errorf("error pulling image: %w", err)
+	}
+
+	return img, nil
+}
+
+func (g *GCPArtifactsRegistry) PushLayer(ctx context.Context, buildId string, layerHash string, layer v1.Image) error {
+	imageUrl, err := g.GetTag(ctx, buildId, layerHash)
+	if err != nil {
+		return fmt.Errorf("failed to get image URL: %w", err)
+	}
+
+	ref, err := name.ParseReference(imageUrl)
+	if err != nil {
+		return fmt.Errorf("invalid image reference: %w", err)
+	}
+
+	auth, err := g.getAuthToken(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get auth: %w", err)
+	}
+
+	if err := remote.Write(ref, layer, remote.WithAuth(auth)); err != nil {
+		return fmt.Errorf("error pushing layer: %w", err)
+	}
+
+	return nil
+}
+
 func (g *GCPArtifactsRegistry) getAuthToken(ctx context.Context) (*authn.Basic, error) {
 	authCfg := consts.DockerAuthConfig
 	if authCfg == "" {
