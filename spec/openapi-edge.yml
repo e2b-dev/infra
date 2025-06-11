@@ -278,7 +278,7 @@ components:
           type: object
           nullable: true
           additionalProperties: { type: string }
-      required: [orchestratorId, templateId, buildId, sandboxId, teamId, kernelVersion, firecrackerVersion, envdVersion, snapshot, hugePages, vCPU, ramMB]
+      required: [orchestratorId, templateId, buildId, sandboxId, teamId, kernelVersion, firecrackerVersion, envdVersion, snapshot, hugePages, totalDiskSizeMB, vCPU, ramMB, maxSandboxLength]
 
     RunningSandbox:
       type: object
