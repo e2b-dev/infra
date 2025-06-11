@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -12,10 +13,12 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	orchestratorspool "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
+	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
+	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -36,68 +39,95 @@ const (
 
 var dnsClient = dns.Client{}
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint) (*reverse_proxy.Proxy, error) {
-	proxy := reverse_proxy.New(
+func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
+	var err error
+
+	msg := new(dns.Msg)
+	msg.SetQuestion(fmt.Sprintf("%s.", sandboxId), dns.TypeA)
+
+	var node string
+	for i := range maxRetries {
+		// Send the query to the server
+		resp, _, dnsErr := dnsClient.Exchange(msg, dnsServer)
+
+		// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
+		if dnsErr != nil || len(resp.Answer) == 0 {
+			err = dnsErr
+			logger.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxId, err), zap.Error(err), zap.Int("retry", i+1))
+
+			// Jitter
+			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+			continue
+		}
+
+		node = resp.Answer[0].(*dns.A).A.String()
+
+		// The sandbox was not found, we want to return this information to the user
+		if node == "127.0.0.1" {
+			return "", reverseproxy.NewErrSandboxNotFound(sandboxId)
+		}
+
+		break
+	}
+
+	// There's no answer, we can't proxy the request
+	if err != nil {
+		logger.Error("DNS resolving for sandbox failed", l.WithSandboxID(sandboxId), zap.Error(err))
+
+		return "", fmt.Errorf("DNS resolving for sandbox failed: %w", err)
+	}
+
+	logger = logger.With(zap.String("node", node))
+	return node, nil
+}
+
+func NewClientProxy(port uint, catalog *sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (*reverseproxy.Proxy, error) {
+	proxy := reverseproxy.New(
 		port,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
-			sandboxId, port, err := reverse_proxy.ParseHost(r.Host)
+			sandboxId, port, err := reverseproxy.ParseHost(r.Host)
 			if err != nil {
 				return nil, err
 			}
 
 			logger := zap.L().With(
 				zap.String("host", r.Host),
-				l.WithSandboxID(sandboxId),
+				zap.String("sandbox_id", sandboxId),
 				zap.Uint64("sandbox_req_port", port),
 				zap.String("sandbox_req_path", r.URL.Path),
 			)
 
-			msg := new(dns.Msg)
+			var nodeIp string
 
-			// Set the question
-			msg.SetQuestion(fmt.Sprintf("%s.", sandboxId), dns.TypeA)
-
-			var node string
-			for i := range maxRetries {
-				// Send the query to the server
-				resp, _, dnsErr := dnsClient.Exchange(msg, dnsServer)
-
-				// The api server wasn't found, maybe the API server is rolling and the DNS server is not updated yet
-				if dnsErr != nil || len(resp.Answer) == 0 {
-					err = dnsErr
-					logger.Warn(fmt.Sprintf("host for sandbox %s not found: %s", sandboxId, err), zap.Error(err), zap.Int("retry", i+1))
-					// Jitter
-					time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
-
-					continue
-				}
-
-				node = resp.Answer[0].(*dns.A).A.String()
-
-				// The sandbox was not found, we want to return this information to the user
-				if node == "127.0.0.1" {
-					return nil, reverse_proxy.NewErrSandboxNotFound(sandboxId)
-				}
-
-				break
-			}
-
-			// There's no answer, we can't proxy the request
+			// try to get the sandbox from the catalog (backed by redis)
+			s, err := catalog.GetSandbox(sandboxId)
 			if err != nil {
-				logger.Error("DNS resolving for sandbox failed", l.WithSandboxID(sandboxId), zap.Error(err))
+				if !errors.Is(err, sandboxes.SandboxNotFoundError) {
+					return nil, fmt.Errorf("error getting node where sandbox is placed: %w", err)
+				}
 
-				return nil, fmt.Errorf("DNS resolving for sandbox failed: %w", err)
+				// fallback to api dns resolution
+				record, err := dnsResolution(sandboxId, logger)
+				if err != nil {
+					return nil, err
+				}
+				nodeIp = record
+			} else {
+				o, ok := orchestrators.GetOrchestrator(s.OrchestratorId)
+				if !ok {
+					return nil, fmt.Errorf("orchestrator %s for sandbox %s not found", s.OrchestratorId, sandboxId)
+				}
+
+				nodeIp = o.Ip
 			}
-
-			logger = logger.With(zap.String("node", node))
 
 			// We've resolved the node to proxy the request to
-			logger.Debug("Proxying request")
+			logger.Debug("Proxying request", zap.String("node_ip", nodeIp))
 
 			url := &url.URL{
 				Scheme: "http",
-				Host:   fmt.Sprintf("%s:%d", node, orchestratorProxyPort),
+				Host:   fmt.Sprintf("%s:%d", nodeIp, orchestratorProxyPort),
 			}
 
 			return &pool.Destination{
@@ -110,32 +140,31 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 		},
 	)
 
-	meter := meterProvider.Meter(serviceName)
-	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.ClientProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err := meters.GetObservableUpDownCounter(meters.ClientProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(proxy.CurrentServerConnections()))
 
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error registering client proxy connections metric (%s): %w", telemetry.ClientProxyPoolConnectionsMeterCounterName, err)
+		return nil, fmt.Errorf("error registering client proxy connections metric (%s): %w", meters.ClientProxyPoolConnectionsMeterCounterName, err)
 	}
 
-	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.ClientProxyPoolSizeMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err = meters.GetObservableUpDownCounter(meters.ClientProxyPoolSizeMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(proxy.CurrentPoolSize()))
 
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error registering client proxy pool size metric (%s): %w", telemetry.ClientProxyPoolSizeMeterCounterName, err)
+		return nil, fmt.Errorf("error registering client proxy pool size metric (%s): %w", meters.ClientProxyPoolSizeMeterCounterName, err)
 	}
 
-	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.ClientProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err = meters.GetObservableUpDownCounter(meters.ClientProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(proxy.CurrentPoolConnections()))
 
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error registering client proxy server connections metric (%s): %w", telemetry.ClientProxyServerConnectionsMeterCounterName, err)
+		return nil, fmt.Errorf("error registering client proxy server connections metric (%s): %w", meters.ClientProxyServerConnectionsMeterCounterName, err)
 	}
 
 	return proxy, nil
