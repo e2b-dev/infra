@@ -28,8 +28,8 @@ job "clickhouse" {
       }
 
       port "clickhouse-metrics" {
-        static = 9363
-        to = 9363
+        static = "${clickhouse_metrics_port}"
+        to = "${clickhouse_metrics_port}"
       }
 
       port "clickhouse-server" {
@@ -164,7 +164,7 @@ job "clickhouse" {
     </asynchronous_metric_log>
 
     <prometheus>
-        <port>9363</port>
+        <port>${clickhouse_metrics_port}</port>
         <endpoint>/metrics</endpoint>
         <metrics>true</metrics>
         <asynchronous_metrics>true</asynchronous_metrics>

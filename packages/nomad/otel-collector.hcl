@@ -102,10 +102,16 @@ receivers:
     config:
       scrape_configs:
         - job_name: clickhouse
-          static_configs: [{ targets: ['server-1.clickhouse.service.consul:9363', 'server-2.clickhouse.service.consul:9363'] }]
           scrape_interval: 30s
           metrics_path: '/metrics'
-
+          consul_sd_configs:
+          - services: ['clickhouse']
+            token: "${consul_token}"
+          relabel_configs:
+          - source_labels: [__address__]
+            regex: '(.*):9000'
+            replacement: '$1:9363'
+            target_label: __address__
 processors:
   batch:
     timeout: 5s

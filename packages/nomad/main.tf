@@ -203,6 +203,7 @@ resource "nomad_job" "otel_collector" {
     grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
     grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
     consul_token                 = var.consul_acl_token_secret
+    clickhouse_metrics_port      = var.clickhouse_metrics_port
 
     gcp_zone = var.gcp_zone
   })
@@ -485,18 +486,19 @@ resource "nomad_job" "clickhouse" {
   # TODO: Currently only in dev
   count = var.environment == "dev" ? 1 : 0
   jobspec = templatefile("${path.module}/clickhouse.hcl", {
-    zone                   = var.gcp_zone
-    server_secret          = random_password.clickhouse_server_secret.result
-    clickhouse_version     = "25.4.5.24"
-    gcs_bucket             = var.clickhouse_bucket_name
-    gcs_folder             = "clickhouse-data"
-    hmac_key               = google_storage_hmac_key.clickhouse_hmac_key.access_id
-    hmac_secret            = google_storage_hmac_key.clickhouse_hmac_key.secret
-    username               = var.clickhouse_username
-    password               = random_password.clickhouse_password.result
-    clickhouse_server_port = var.clickhouse_server_port.port
-    server_count           = var.clickhouse_server_count
-    resources_memory_gib   = 8
+    zone                    = var.gcp_zone
+    server_secret           = random_password.clickhouse_server_secret.result
+    clickhouse_version      = "25.4.5.24"
+    gcs_bucket              = var.clickhouse_bucket_name
+    gcs_folder              = "clickhouse-data"
+    hmac_key                = google_storage_hmac_key.clickhouse_hmac_key.access_id
+    hmac_secret             = google_storage_hmac_key.clickhouse_hmac_key.secret
+    username                = var.clickhouse_username
+    password                = random_password.clickhouse_password.result
+    clickhouse_metrics_port = var.clickhouse_metrics_port
+    clickhouse_server_port  = var.clickhouse_server_port.port
+    server_count            = var.clickhouse_server_count
+    resources_memory_gib    = 8
 
     job_constraint_prefix = var.clickhouse_job_constraint_prefix
     node_pool             = var.clickhouse_node_pool
