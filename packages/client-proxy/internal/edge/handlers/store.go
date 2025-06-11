@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"net/http"
 	"slices"
 	"time"
@@ -16,6 +16,7 @@ import (
 	logger_provider "github.com/e2b-dev/infra/packages/proxy/internal/edge/logger-provider"
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	e2borchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -145,7 +146,7 @@ func (a *APIStore) getTemplateManagerNode(orchestratorId string) (*e2borchestrat
 
 	if !slices.Contains(orchestrator.Roles, e2borchestrator.ServiceInfoRole_TemplateManager) {
 		return nil, &APIUserFacingError{
-			internalError:      fmt.Errorf("orchestrator does not support template builds: %w", err),
+			internalError:      errors.New("orchestrator is not marked as template builder"),
 			prettyErrorCode:    http.StatusBadRequest,
 			prettyErrorMessage: "Orchestrator does not support template builds",
 		}

@@ -94,7 +94,7 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 		return
 	}
 
-	zap.L().Info("Created sandbox", zap.String("sandbox_id", body.Sandbox.SandboxId), zap.String("client_id", sbxResponse.ClientId))
+	zap.L().Info("Created sandbox", zap.String("sandbox_id", body.Sandbox.SandboxId))
 
 	c.JSON(
 		http.StatusCreated,

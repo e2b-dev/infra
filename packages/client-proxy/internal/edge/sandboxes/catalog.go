@@ -16,8 +16,6 @@ import (
 type SandboxInfo struct {
 	OrchestratorId string `json:"orchestrator_id"`
 	TemplateId     string `json:"template_id"`
-
-	//StartedAt time.Time
 }
 
 type SandboxesCatalog struct {
@@ -36,7 +34,7 @@ const (
 )
 
 var (
-	SandboxNotFoundError = errors.New("sandbox not found")
+	ErrSandboxNotFound = errors.New("sandbox not found")
 )
 
 func NewSandboxesCatalog(ctx context.Context, redisClient *redis.Client, redisSync *redsync.Redsync, tracer trace.Tracer) *SandboxesCatalog {
@@ -68,7 +66,7 @@ func (c *SandboxesCatalog) GetSandbox(sandboxId string) (*SandboxInfo, error) {
 
 	data, err := c.redisClient.Get(ctx, c.getCatalogKey(sandboxId)).Bytes()
 	if err != nil {
-		return nil, SandboxNotFoundError
+		return nil, ErrSandboxNotFound
 	}
 
 	var info *SandboxInfo

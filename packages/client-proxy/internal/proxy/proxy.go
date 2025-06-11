@@ -84,7 +84,7 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 func redisResolution(sandboxId string, logger *zap.Logger, catalog *sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
 	s, err := catalog.GetSandbox(sandboxId)
 	if err != nil {
-		if !errors.Is(err, sandboxes.SandboxNotFoundError) {
+		if !errors.Is(err, sandboxes.ErrSandboxNotFound) {
 			return "", ErrNodeNotFound
 		}
 	}
