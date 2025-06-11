@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -105,7 +106,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	alias := firstAlias(env.Aliases)
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", teamInfo.Team.ID.String()),
-		attribute.String("env.id", env.TemplateID),
+		telemetry.WithTemplateID(env.TemplateID),
 		attribute.String("env.alias", alias),
 		attribute.String("env.kernel.version", build.KernelVersion),
 		attribute.String("env.firecracker.version", build.FirecrackerVersion),
@@ -140,7 +141,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	if body.Secure != nil && *body.Secure == true {
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
-			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), zap.String("sandboxID", sandboxID), zap.String("buildID", build.ID.String()))
+			zap.L().Error("Secure envd access token error", zap.Error(tokenErr.Err), logger.WithSandboxID(sandboxID), logger.WithBuildID(build.ID.String()))
 			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
 			return
 		}

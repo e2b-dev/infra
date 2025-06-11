@@ -12,6 +12,7 @@ import (
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envalias"
@@ -56,12 +57,12 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 
 	notFound := models.IsNotFound(err)
 	if notFound {
-		telemetry.ReportError(ctx, "template not found", nil, attribute.String("templateID", aliasOrTemplateID))
+		telemetry.ReportError(ctx, "template not found", nil, telemetry.WithTemplateID(aliasOrTemplateID))
 		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("the sandbox template '%s' wasn't found", cleanedAliasOrEnvID))
 
 		return
 	} else if err != nil {
-		telemetry.ReportError(ctx, "failed to get template", fmt.Errorf("failed to get template: %w", err), attribute.String("templateID", aliasOrTemplateID))
+		telemetry.ReportError(ctx, "failed to get template", fmt.Errorf("failed to get template: %w", err), telemetry.WithTemplateID(aliasOrTemplateID))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
 
 		return
@@ -76,7 +77,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	if team == nil {
-		telemetry.ReportError(ctx, "user doesn't have access to the sandbox template", nil, attribute.String("templateID", cleanedAliasOrEnvID), attribute.String("userID", userID.String()))
+		telemetry.ReportError(ctx, "user doesn't have access to the sandbox template", nil, telemetry.WithTemplateID(cleanedAliasOrEnvID), attribute.String("userID", userID.String()))
 
 		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) don't have access to sandbox template '%s'", userID, cleanedAliasOrEnvID))
 
@@ -87,7 +88,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		attribute.String("user.id", userID.String()),
 		attribute.String("env.team.id", team.ID.String()),
 		attribute.String("env.team.name", team.Name),
-		attribute.String("env.id", template.ID),
+		telemetry.WithTemplateID(template.ID),
 	)
 
 	// check if base env has snapshots
@@ -100,7 +101,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	if hasSnapshots {
-		telemetry.ReportError(ctx, "base template has paused sandboxes", nil, attribute.String("templateID", template.ID))
+		telemetry.ReportError(ctx, "base template has paused sandboxes", nil, telemetry.WithTemplateID(template.ID))
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("cannot delete template '%s' because there are paused sandboxes using it", template.ID))
 
 		return
@@ -140,7 +141,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "deleted environment", properties.Set("environment", template.ID))
 
-	zap.L().Info("Deleted env", zap.String("env_id", template.ID), zap.String("team_id", team.ID.String()))
+	zap.L().Info("Deleted env", logger.WithTemplateID(template.ID), logger.WithTeamID(team.ID.String()))
 
 	c.JSON(http.StatusOK, nil)
 }

@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -40,7 +41,7 @@ func (p *ProxyPool) Get(d *Destination) *proxyClient {
 
 		withFields := make([]zap.Field, 0)
 		if d.IncludeSandboxIdInProxyErrorLogger {
-			withFields = append(withFields, zap.String("sandbox_id", d.SandboxId))
+			withFields = append(withFields, logger.WithSandboxID(d.SandboxId))
 		}
 
 		logger, err := zap.NewStdLogAt(zap.L().With(withFields...), zap.ErrorLevel)

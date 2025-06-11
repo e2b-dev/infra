@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -35,7 +36,7 @@ func (a *APIStore) getSandboxesMetrics(
 	// Add operation telemetry
 	telemetry.ReportEvent(ctx, "fetch metrics for sandboxes")
 	telemetry.SetAttributes(ctx,
-		attribute.String("team.id", teamID.String()),
+		telemetry.WithTeamID(teamID.String()),
 		attribute.Int("sandboxes.count", len(sandboxes)),
 	)
 
@@ -95,7 +96,7 @@ func (a *APIStore) getSandboxesMetrics(
 
 			if err != nil {
 				errorCount.Add(1)
-				telemetry.ReportError(ctx, "failed to fetch metrics for sandbox", err, attribute.String("sandboxID", s.SandboxID))
+				telemetry.ReportError(ctx, "failed to fetch metrics for sandbox", err, telemetry.WithSandboxID(s.SandboxID))
 			} else {
 				successCount.Add(1)
 			}
@@ -150,7 +151,7 @@ func (a *APIStore) getSandboxesMetrics(
 	// Log operation summary
 	if len(metricsErrors) == 0 {
 		zap.L().Info("Completed fetching sandbox metrics without errors",
-			zap.String("team_id", teamID.String()),
+			logger.WithTeamID(teamID.String()),
 			zap.Int32("total_sandboxes", int32(len(sandboxes))),
 			zap.Int32("successful_fetches", successCount.Load()),
 			zap.Int32("timeouts", timeoutCount.Load()),
@@ -165,7 +166,7 @@ func (a *APIStore) getSandboxesMetrics(
 		err := errors.Join(metricsErrors...)
 
 		zap.L().Error("Received errors while fetching metrics for some sandboxes",
-			zap.String("team_id", teamID.String()),
+			logger.WithTeamID(teamID.String()),
 			zap.Int32("total_sandboxes", int32(len(sandboxes))),
 			zap.Int32("successful_fetches", successCount.Load()),
 			zap.Int32("failed_fetches", errorCount.Load()),

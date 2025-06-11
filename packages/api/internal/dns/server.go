@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -79,7 +80,7 @@ func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
 			Value: ip,
 		})
 		if err != nil {
-			zap.L().Warn("error adding DNS item to redis cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
+			zap.L().Warn("error adding DNS item to redis cache", zap.Error(err), logger.WithSandboxID(sandboxID))
 		}
 
 		if d.redisClusterCache != nil {
@@ -90,7 +91,7 @@ func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
 				Value: ip,
 			})
 			if err != nil {
-				zap.L().Warn("error adding DNS item to redis cluster cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
+				zap.L().Warn("error adding DNS item to redis cluster cache", zap.Error(err), logger.WithSandboxID(sandboxID))
 			}
 		}
 	case d.local != nil:
@@ -102,12 +103,12 @@ func (d *DNS) Remove(ctx context.Context, sandboxID, ip string) {
 	switch {
 	case d.redisCache != nil:
 		if err := d.redisCache.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
-			zap.L().Debug("removing item from DNS cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
+			zap.L().Debug("removing item from DNS cache", zap.Error(err), logger.WithSandboxID(sandboxID))
 		}
 
 		if d.redisClusterCache != nil {
 			if err := d.redisClusterCache.Delete(ctx, d.cacheKey(sandboxID)); err != nil {
-				zap.L().Debug("removing item from 2nd DNS cache", zap.Error(err), zap.String("sandbox_id", sandboxID))
+				zap.L().Debug("removing item from 2nd DNS cache", zap.Error(err), logger.WithSandboxID(sandboxID))
 			}
 		}
 	case d.local != nil:
@@ -121,26 +122,26 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 	case d.redisCache != nil:
 		if err := d.redisCache.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
 			if errors.Is(err, cache.ErrCacheMiss) {
-				zap.L().Warn("item missing in redisCache DNS cache", zap.String("sandbox_id", sandboxID))
+				zap.L().Warn("item missing in redisCache DNS cache", logger.WithSandboxID(sandboxID))
 
 				if d.redisClusterCache != nil {
 					if err := d.redisClusterCache.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
 						if errors.Is(err, cache.ErrCacheMiss) {
-							zap.L().Debug("item missing in 2nd redisCache DNS cache", zap.String("sandbox_id", sandboxID))
+							zap.L().Debug("item missing in 2nd redisCache DNS cache", logger.WithSandboxID(sandboxID))
 						} else {
-							zap.L().Error("resolving item from redisCache DNS cache", zap.String("sandbox_id", sandboxID), zap.Error(err))
+							zap.L().Error("resolving item from redisCache DNS cache", logger.WithSandboxID(sandboxID), zap.Error(err))
 						}
 					}
 				}
 			} else {
-				zap.L().Error("resolving item from redisCache DNS cache", zap.String("sandbox_id", sandboxID), zap.Error(err))
+				zap.L().Error("resolving item from redisCache DNS cache", logger.WithSandboxID(sandboxID), zap.Error(err))
 			}
 		}
 	case d.local != nil:
 		var ok bool
 		res, ok = d.local.Get(d.cacheKey(sandboxID))
 		if !ok {
-			zap.L().Warn("item not found in local DNS cache", zap.String("sandbox", sandboxID))
+			zap.L().Warn("item not found in local DNS cache", logger.WithSandboxID(sandboxID))
 		}
 	}
 

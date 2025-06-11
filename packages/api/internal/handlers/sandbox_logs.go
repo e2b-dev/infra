@@ -35,7 +35,7 @@ func (a *APIStore) GetSandboxesSandboxIDLogs(
 
 	telemetry.SetAttributes(ctx,
 		attribute.String("instance.id", sandboxID),
-		attribute.String("team.id", teamID.String()),
+		telemetry.WithTeamID(teamID.String()),
 	)
 
 	var start time.Time
