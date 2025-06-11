@@ -404,7 +404,6 @@ func ResumeSandbox(
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
-	zap.L().Info("starting health check", zap.Bool("clickouse", useClickhouseMetrics), zap.Bool("loki", useLokiMetrics))
 	checks, err := NewChecks(metricsProvider, sbx, useLokiMetrics, useClickhouseMetrics)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create health check: %w", err)
