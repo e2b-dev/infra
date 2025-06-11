@@ -40,6 +40,7 @@ jobs:
           if [ -n "$(git status --porcelain)" ]; then
             echo
             echo "❌ Unexpected changes in generated files!"
-            echo "Run `make generate` and commit the changes."
+            git status --porcelain
+            echo "Run 'make generate' and commit the changes."
             exit 1
           fi
