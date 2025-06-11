@@ -128,6 +128,10 @@ variable "edge_api_port" {
   })
 }
 
+variable "edge_api_secret" {
+  type = string
+}
+
 variable "edge_proxy_port" {
   type = object({
     name = string
