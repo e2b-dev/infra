@@ -189,7 +189,7 @@ func (p *EdgePool) connectNode(ctx context.Context, node *sd.ServiceDiscoveryIte
 }
 
 func (p *EdgePool) syncNode(ctx context.Context, node *EdgeNode, foundWithDiscovery bool) error {
-	ctx, childSpan := p.tracer.Start(ctx, "sync-edge-node")
+	_, childSpan := p.tracer.Start(ctx, "sync-edge-node")
 	defer childSpan.End()
 
 	// close connection with node

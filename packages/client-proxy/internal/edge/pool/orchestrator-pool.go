@@ -171,7 +171,7 @@ func (p *OrchestratorsPool) connectNode(ctx context.Context, node *sd.ServiceDis
 }
 
 func (p *OrchestratorsPool) syncNode(ctx context.Context, node *OrchestratorNode, foundWithDiscovery bool) error {
-	ctx, childSpan := p.tracer.Start(ctx, "sync-orchestrator-node")
+	_, childSpan := p.tracer.Start(ctx, "sync-orchestrator-node")
 	defer childSpan.End()
 
 	// close connection with node

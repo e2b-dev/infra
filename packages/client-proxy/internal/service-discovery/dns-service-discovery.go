@@ -85,7 +85,7 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 		return
 	default:
 		for _, host := range sd.hosts {
-			for _ = range dnsMaxRetries {
+			for range dnsMaxRetries {
 				hostIps, err := dnsResolver.LookupIP(ctxTimeout, "ip", host)
 				if err != nil {
 					sd.logger.Error("DNS service discovery failed", zap.Error(err))

@@ -69,7 +69,7 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 
 		if err != nil {
 			logger.Error("failed to request orchestrator status change", zap.Error(err))
-			return errors.New("Failed to request orchestrator status change")
+			return errors.New("failed to request orchestrator status change")
 		}
 
 		return nil
@@ -88,12 +88,12 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 	case api.Unhealthy:
 		_, err = e.Client.V1ServiceDiscoveryNodeKill(ctx, serviceId)
 	default:
-		return errors.New("Failed to transform node status to api call")
+		return errors.New("failed to transform node status to api call")
 	}
 
 	if err != nil {
 		logger.Error("failed to request edge node status change", zap.Error(err))
-		return errors.New("Failed to request edge node status change")
+		return errors.New("failed to request edge node status change")
 	}
 
 	return nil

@@ -87,7 +87,6 @@ func run() int {
 	orchestratorPort := internal.GetOrchestratorServicePort()
 
 	exitCode := atomic.Int32{}
-	exitTermination := true
 
 	wg := sync.WaitGroup{}
 
@@ -234,13 +233,6 @@ func run() int {
 		if ginErr != nil {
 			exitCode.Add(1)
 			shutdownLogger.Error("edge http service shutdown error", zap.Error(ginErr))
-		}
-
-		// todo: when running with systemd, we should not exit because it will be restarted
-		// there should be flag for exit disabling or some other way to signal that we are done without restarting process
-		// still its should be able to exit because to self-update requests that
-		if !exitTermination {
-			// todo: implement this
 		}
 	}()
 
