@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -100,7 +99,7 @@ func (a *APIStore) getOrchestratorNode(orchestratorId string) (*e2borchestrators
 
 	if orchestrator.Status != e2borchestrators.OrchestratorStatusHealthy {
 		return nil, &APIUserFacingError{
-			internalError:      fmt.Errorf("orchestrator is not ready for build placement: %w", err),
+			internalError:      fmt.Errorf("orchestrator is not ready for build placement"),
 			prettyErrorCode:    http.StatusBadRequest,
 			prettyErrorMessage: "Orchestrator is not ready for build placement",
 		}

@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 )
@@ -64,7 +63,7 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 			return errors.New("Failed to transform node status to orchestrator status")
 		}
 
-		_, err = o.Client.Info.ServiceStatusOverride(
+		_, err := o.Client.Info.ServiceStatusOverride(
 			findCtx, &orchestratorinfo.ServiceStatusChangeRequest{ServiceStatus: orchestratorStatus},
 		)
 

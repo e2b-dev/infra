@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	orchestratorspool "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -15,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	orchestratorspool "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"

@@ -24,8 +24,9 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 				Version:   node.SourceVersion,
 				Commit:    node.SourceCommit,
 				StartedAt: node.Startup,
-				Status:    getOrchestratorStatusResolved(node.Status),
-				Roles:     getOrchestratorRolesResolved(node.Roles),
+
+				Status: getOrchestratorStatusResolved(node.Status),
+				Roles:  getOrchestratorRolesResolved(node.Roles),
 
 				MetricRamMBUsed:        node.MetricMemoryUsedInMB.Load(),
 				MetricVCpuUsed:         node.MetricVCpuUsed.Load(),
