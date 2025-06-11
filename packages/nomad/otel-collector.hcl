@@ -167,8 +167,12 @@ processors:
           - ClickHouseProfileEvents_SlowRead
 
           # ──────  Memory ──────
-          - ClickHouseMetrics_MemoryTracking      # per-query allocator
-          - ClickHouseAsyncMetrics_MemoryResident   # resident set size
+          - ClickHouseAsyncMetrics_CGroupMemoryUsed
+          - ClickHouseAsyncMetrics_CGroupMemoryTotal
+
+          # ──────  Network ──────
+          - ClickHouseMetrics_NetworkSend
+          - ClickHouseMetrics_NetworkReceive
 
           # ──────  Disk / S3 traffic ──────
           - ClickHouseAsyncMetrics_DiskTotal_default
