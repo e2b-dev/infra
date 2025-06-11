@@ -23,6 +23,7 @@ jobs:
           # Install protoc
           wget https://github.com/protocolbuffers/protobuf/releases/download/v${PROTO_VER}/protoc-${PROTO_VER}-linux-x86_64.zip
           sudo unzip -d /usr/local protoc-${PROTO_VER}-linux-x86_64.zip
+          rm protoc-${PROTO_VER}-linux-x86_64.zip
           export PATH=$PATH:/usr/local/bin
           
           # Install protoc-gen-go
