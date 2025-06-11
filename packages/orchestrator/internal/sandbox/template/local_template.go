@@ -44,6 +44,11 @@ func (t *LocalTemplate) Snapfile() (File, error) {
 	return &NoopSnapfile{}, nil
 }
 
+func (t *LocalTemplate) ReplaceMemfile(memfile block.ReadonlyDevice) error {
+	t.memfile = memfile
+	return nil
+}
+
 type NoopSnapfile struct{}
 
 func (n *NoopSnapfile) Close() error {
