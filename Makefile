@@ -16,6 +16,7 @@ endef
 tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, CLIENT_MACHINE_TYPE) \
 	$(call tfvar, CLIENT_CLUSTER_SIZE) \
+	$(call tfvar, CLIENT_CLUSTER_CACHE_DISK_SIZE_GB) \
 	$(call tfvar, CLIENT_REGIONAL_CLUSTER_SIZE) \
 	$(call tfvar, CLIENT_CLUSTER_AUTO_SCALING_MAX) \
 	$(call tfvar, API_MACHINE_TYPE) \
@@ -34,6 +35,15 @@ tf_vars := 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, TERRAFORM_STATE_BUCKET) \
 	$(call tfvar, OTEL_TRACING_PRINT) \
+	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
+	$(call tfvar, CLIENT_PROXY_COUNT) \
+	$(call tfvar, CLIENT_PROXY_CPU_COUNT) \
+	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \
+	$(call tfvar, LOKI_RESOURCES_CPU_COUNT) \
+	$(call tfvar, LOKI_RESOURCES_MEMORY_MB) \
+	$(call tfvar, OTEL_TRACING_PRINT) \
+	$(call tfvar, OTEL_COLLECTOR_RESOURCES_CPU_COUNT) \
+	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
 	$(call tfvar, REDIS_MANAGED) \

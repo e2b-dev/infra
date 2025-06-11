@@ -135,11 +135,12 @@ module "client_cluster" {
 
   environment = var.environment
 
-  cluster_name             = "${var.prefix}${var.client_cluster_name}"
-  cluster_auto_scaling_max = var.client_cluster_auto_scaling_max
-  cluster_size             = var.client_cluster_size
-  regional_cluster_size    = var.client_regional_cluster_size
-  cluster_tag_name         = var.cluster_tag_name
+  cluster_name              = "${var.prefix}${var.client_cluster_name}"
+  cluster_auto_scaling_max  = var.client_cluster_auto_scaling_max
+  cluster_size              = var.client_cluster_size
+  regional_cluster_size     = var.client_regional_cluster_size
+  cluster_tag_name          = var.cluster_tag_name
+  cache_volume_disk_size_gb = var.client_cluster_cache_disk_size_gb
 
   gcp_region = var.gcp_region
   gcp_zone   = var.gcp_zone

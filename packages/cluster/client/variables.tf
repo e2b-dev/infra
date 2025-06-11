@@ -136,6 +136,10 @@ variable "root_volume_disk_type" {
   default     = "pd-ssd"
 }
 
+variable "cache_volume_disk_size_gb" {
+  description = "The size, in GB, of the disk for an orchestrator cache."
+  type        = number
+}
 # Update Policy
 
 

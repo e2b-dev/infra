@@ -22,6 +22,14 @@ variable "nomad_port" {
   type = number
 }
 
+variable "otel_collector_resources_memory_mb" {
+  type = number
+}
+
+variable "otel_collector_resources_cpu_count" {
+  type = number
+}
+
 variable "otel_tracing_print" {
   type = bool
 }
@@ -96,6 +104,18 @@ variable "supabase_jwt_secrets_secret_name" {
   type = string
 }
 
+variable "client_proxy_count" {
+  type = number
+}
+
+variable "client_proxy_resources_memory_mb" {
+  type = number
+}
+
+variable "client_proxy_resources_cpu_count" {
+  type = number
+}
+
 variable "client_proxy_docker_image_digest" {
   type = string
 }
@@ -151,6 +171,14 @@ variable "clickhouse_bucket_name" {
   type = string
 }
 
+variable "loki_resources_memory_mb" {
+  type = number
+}
+
+variable "loki_resources_cpu_count" {
+  type = number
+}
+
 variable "loki_bucket_name" {
   type = string
 }
@@ -200,6 +228,9 @@ variable "client_machine_type" {
   type = string
 }
 
+variable "allow_sandbox_internet" {
+  type = bool
+}
 
 # Template manager
 variable "template_manager_port" {
