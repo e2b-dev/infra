@@ -26,9 +26,8 @@ type Checks struct {
 	healthy atomic.Bool
 
 	// Metrics target
-	useLokiMetrics       bool
-	useClickhouseMetrics bool
-	unregisterMetrics    func() error
+	useLokiMetrics    bool
+	unregisterMetrics func() error
 }
 
 func NewChecks(metricsProvider *metrics.MeterProvider, sandbox *Sandbox, useLokiMetrics, useClickhouseMetrics bool) (*Checks, error) {
@@ -39,14 +38,13 @@ func NewChecks(metricsProvider *metrics.MeterProvider, sandbox *Sandbox, useLoki
 		ctx:     healthcheckCtx,
 		healthy: atomic.Bool{}, // defaults to `false`
 
-		useLokiMetrics:       useLokiMetrics,
-		useClickhouseMetrics: useClickhouseMetrics,
+		useLokiMetrics: useLokiMetrics,
 	}
 	// By default, the sandbox should be healthy, if the status change we report it.
 	h.healthy.Store(true)
 
 	if metricsProvider != nil && useClickhouseMetrics {
-		unregister, err := metricsProvider.RegisterSandbox(sandbox.Config.SandboxId, sandbox.Config.TeamId, h.getMetrics)
+		unregister, err := metricsProvider.StartMonitoringSandbox(sandbox.Config.SandboxId, sandbox.Config.TeamId, h.getMetrics)
 		if err != nil {
 			return nil, err
 		}
@@ -95,11 +93,6 @@ func (c *Checks) LogMetrics(ctx context.Context) {
 	logger := c.sandbox
 
 	if c.useLokiMetrics {
-		logger.LogMetricsLoki(ctx)
-	}
-
-	// ensure backward compatibility if neither are set
-	if !c.useClickhouseMetrics && !c.useLokiMetrics {
 		logger.LogMetricsLoki(ctx)
 	}
 }
