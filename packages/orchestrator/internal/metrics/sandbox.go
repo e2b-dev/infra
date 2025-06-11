@@ -16,7 +16,7 @@ type SandboxMetrics struct {
 	MemUsedMiB     int64   `json:"mem_used_mib"`  // Used virtual memory in MiB
 }
 
-func (mp *MeterProvider) RegisterSandbox(sandboxID, teamID string, getMetrics GetSandboxMetricsFunc) (metric.Registration, error) {
+func (mp *MeterProvider) StartMonitoringSandbox(sandboxID, teamID string, getMetrics GetSandboxMetricsFunc) (metric.Registration, error) {
 	attributes := metric.WithAttributes(attribute.String("sandbox_id", sandboxID), attribute.String("team_id", teamID))
 
 	cpuTotal, err := mp.getGaugeInt(SandboxCpuTotalGaugeName)
