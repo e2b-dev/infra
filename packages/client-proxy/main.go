@@ -83,6 +83,7 @@ func run() int {
 
 	proxyPort := internal.GetProxyServicePort()
 	edgePort := internal.GetEdgeServicePort()
+	edgeSecret := internal.GetEdgeServiceSecret()
 	orchestratorPort := internal.GetOrchestratorServicePort()
 
 	exitCode := atomic.Int32{}
@@ -135,7 +136,7 @@ func run() int {
 	}
 
 	// Edge API server
-	edgerGinServer := edge.NewGinServer(ctx, logger, edgeApiStore, edgePort, edgeApiSwagger)
+	edgerGinServer := edge.NewGinServer(ctx, logger, edgeApiStore, edgeApiSwagger, tracer, edgePort, edgeSecret)
 
 	wg.Add(1)
 	go func() {
