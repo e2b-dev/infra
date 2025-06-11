@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 // maxSlotsReady is the number of slots that are ready to be used.
@@ -59,7 +59,7 @@ type DevicePool struct {
 	slotCounter metric.Int64UpDownCounter
 }
 
-func NewDevicePool(ctx context.Context) (*DevicePool, error) {
+func NewDevicePool(ctx context.Context, meter metric.Meter) (*DevicePool, error) {
 	maxDevices, err := getMaxDevices()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get max devices: %w", err)
@@ -69,7 +69,7 @@ func NewDevicePool(ctx context.Context) (*DevicePool, error) {
 		return nil, errors.New("max devices is 0")
 	}
 
-	counter, err := meters.GetUpDownCounter(meters.NBDkSlotSReadyPoolCounterMeterName)
+	counter, err := telemetry.GetUpDownCounter(meter, telemetry.NBDkSlotSReadyPoolCounterMeterName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get slot pool counter: %w", err)
 	}

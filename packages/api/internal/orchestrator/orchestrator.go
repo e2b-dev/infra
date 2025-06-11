@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -30,18 +31,20 @@ const (
 )
 
 type Orchestrator struct {
-	httpClient    *http.Client
-	nomadClient   *nomadapi.Client
-	instanceCache *instance.InstanceCache
-	nodes         *smap.Map[*Node]
-	tracer        trace.Tracer
-	analytics     *analyticscollector.Analytics
-	dns           *dns.DNS
-	dbClient      *db.DB
+	httpClient      *http.Client
+	nomadClient     *nomadapi.Client
+	instanceCache   *instance.InstanceCache
+	nodes           *smap.Map[*Node]
+	tracer          trace.Tracer
+	analytics       *analyticscollector.Analytics
+	dns             *dns.DNS
+	dbClient        *db.DB
+	telemetryClient *telemetry.Client
 }
 
 func New(
 	ctx context.Context,
+	telemetryClient *telemetry.Client,
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
@@ -68,17 +71,20 @@ func New(
 	}
 
 	o := Orchestrator{
-		httpClient:  httpClient,
-		analytics:   analyticsInstance,
-		nomadClient: nomadClient,
-		tracer:      tracer,
-		nodes:       smap.New[*Node](),
-		dns:         dnsServer,
-		dbClient:    dbClient,
+		httpClient:      httpClient,
+		analytics:       analyticsInstance,
+		nomadClient:     nomadClient,
+		tracer:          tracer,
+		nodes:           smap.New[*Node](),
+		dns:             dnsServer,
+		dbClient:        dbClient,
+		telemetryClient: telemetryClient,
 	}
 
+	meter := telemetryClient.MeterProvider.Meter("api[")
 	cache := instance.NewCache(
 		ctx,
+		meter,
 		analyticsInstance.Client,
 		o.getInsertInstanceFunction(ctx, cacheHookTimeout),
 		o.getDeleteInstanceFunction(ctx, posthogClient, cacheHookTimeout),

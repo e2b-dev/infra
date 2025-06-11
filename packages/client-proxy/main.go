@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/log/global"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -25,7 +26,7 @@ import (
 )
 
 const (
-	ServiceName     = "client-proxy"
+	serviceName     = "client-proxy"
 	healthCheckPort = 3001
 	port            = 3002
 )
@@ -41,19 +42,26 @@ func run() int {
 	defer sigCancel()
 
 	instanceID := uuid.New().String()
-	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA, instanceID)
+	// Setup telemetry
+	telemetryClient, err := telemetry.New(ctx, serviceName, commitSHA, instanceID)
+	if err != nil {
+		zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
+	}
 	defer func() {
-		err := stopOtlp(ctx)
+		err := telemetryClient.Shutdown(ctx)
 		if err != nil {
 			log.Printf("telemetry shutdown:%v\n", err)
 		}
 	}()
+	global.SetLoggerProvider(telemetryClient.LogsProvider)
+
+	meter := telemetryClient.MeterProvider.Meter(serviceName)
 
 	logger := zap.Must(e2bLogger.NewLogger(ctx, e2bLogger.LoggerConfig{
-		ServiceName: ServiceName,
+		ServiceName: serviceName,
 		IsInternal:  true,
 		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{e2bLogger.GetOTELCore(ServiceName)},
+		Cores:       []zapcore.Core{e2bLogger.GetOTELCore(serviceName)},
 	}))
 	defer func() {
 		err := logger.Sync()
@@ -90,7 +98,7 @@ func run() int {
 	}()
 
 	// Proxy request to the correct node
-	proxy, err := client_proxy.NewClientProxy(port)
+	proxy, err := client_proxy.NewClientProxy(meter, port)
 	if err != nil {
 		logger.Error("failed to create client proxy", zap.Error(err))
 

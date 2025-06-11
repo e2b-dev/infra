@@ -19,9 +19,9 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type server struct {
@@ -64,6 +64,7 @@ type Service struct {
 func New(
 	ctx context.Context,
 	grpc *grpcserver.GRPCServer,
+	telemetryClient *telemetry.Client,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	tracer trace.Tracer,
@@ -121,14 +122,16 @@ func New(
 			useClickhouseMetrics: useClickhouseMetrics,
 			persistence:          persistence,
 		}
-		_, err = meters.GetObservableUpDownCounter(meters.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+
+		meter := telemetryClient.MeterProvider.Meter("orchestrator")
+		_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
 			observer.Observe(int64(srv.server.sandboxes.Count()))
 
 			return nil
 		})
 
 		if err != nil {
-			zap.L().Error("Error registering sandbox count metric", zap.Any("metric_name", meters.OrchestratorSandboxCountMeterName), zap.Error(err))
+			zap.L().Error("Error registering sandbox count metric", zap.Any("metric_name", telemetry.OrchestratorSandboxCountMeterName), zap.Error(err))
 		}
 	}
 

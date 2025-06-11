@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 )
 
@@ -15,7 +16,7 @@ const MetricPrefix = "metric."
 // Middleware returns middleware that will trace incoming requests.
 // The service parameter should describe the name of the (virtual)
 // server handling the request.
-func Middleware(service string, options ...Option) gin.HandlerFunc {
+func Middleware(meter metric.Meter, service string, options ...Option) gin.HandlerFunc {
 	cfg := defaultConfig()
 	for _, option := range options {
 		option.apply(cfg)
@@ -23,7 +24,7 @@ func Middleware(service string, options ...Option) gin.HandlerFunc {
 
 	recorder := cfg.recorder
 	if recorder == nil {
-		recorder = GetRecorder(service)
+		recorder = GetRecorder(meter, service)
 	}
 
 	return func(ginCtx *gin.Context) {

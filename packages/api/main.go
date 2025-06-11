@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -23,6 +24,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
+	"go.opentelemetry.io/otel/log/global"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -59,7 +61,7 @@ var (
 	expectedMigrationTimestamp string
 )
 
-func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
+func NewGinServer(ctx context.Context, telemetryClient *telemetry.Client, logger *zap.Logger, apiStore *handlers.APIStore, swagger *openapi3.T, port int) *http.Server {
 	// Clear out the servers array in the swagger spec, that skips validating
 	// that server names match. We don't know how this thing will be run.
 	swagger.Servers = nil
@@ -69,14 +71,14 @@ func NewGinServer(ctx context.Context, logger *zap.Logger, apiStore *handlers.AP
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel
 		customMiddleware.ExcludeRoutes(
-			tracingMiddleware.Middleware(serviceName),
+			tracingMiddleware.Middleware(telemetryClient.TracerProvider, serviceName),
 			"/health",
 			"/sandboxes/:sandboxID/refreshes",
 			"/templates/:templateID/builds/:buildID/logs",
 			"/templates/:templateID/builds/:buildID/status",
 		),
 		customMiddleware.IncludeRoutes(
-			metricsMiddleware.Middleware(serviceName),
+			metricsMiddleware.Middleware(telemetryClient.MeterProvider.Meter("api-metrics"), serviceName),
 			"/sandboxes",
 			"/sandboxes/:sandboxID",
 			"/sandboxes/:sandboxID/pause",
@@ -206,10 +208,17 @@ func run() int {
 	flag.Parse()
 
 	instanceID := uuid.New().String()
-	if !env.IsLocal() {
-		otlpCleanup := telemetry.InitOTLPExporter(ctx, serviceName, commitSHA, instanceID)
-		defer otlpCleanup(ctx)
+	telemetryClient, err := telemetry.New(ctx, serviceName, commitSHA, instanceID)
+	if err != nil {
+		zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
 	}
+	defer func() {
+		err := telemetryClient.Shutdown(ctx)
+		if err != nil {
+			log.Printf("telemetry shutdown:%v\n", err)
+		}
+	}()
+	global.SetLoggerProvider(telemetryClient.LogsProvider)
 
 	logger := zap.Must(l.NewLogger(ctx, l.LoggerConfig{
 		ServiceName: serviceName,
@@ -315,11 +324,11 @@ func run() int {
 	// Create an instance of our handler which satisfies the generated interface
 	//  (use the outer context rather than the signal handling
 	//   context so it doesn't exit first.)
-	apiStore := handlers.NewAPIStore(ctx)
+	apiStore := handlers.NewAPIStore(ctx, telemetryClient)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	// pass the signal context so that handlers know when shutdown is happening.
-	s := NewGinServer(ctx, logger, apiStore, swagger, port)
+	s := NewGinServer(ctx, telemetryClient, logger, apiStore, swagger, port)
 
 	// ////////////////////////
 	//

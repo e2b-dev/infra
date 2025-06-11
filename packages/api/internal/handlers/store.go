@@ -16,7 +16,6 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/redis/go-redis/v9"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -33,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 var supabaseJWTSecretsString = strings.TrimSpace(os.Getenv("SUPABASE_JWT_SECRETS"))
@@ -50,6 +50,7 @@ type APIStore struct {
 	Healthy                  bool
 	posthog                  *analyticscollector.PosthogClient
 	Tracer                   trace.Tracer
+	Telemetry                *telemetry.Client
 	orchestrator             *orchestrator.Orchestrator
 	templateManager          *template_manager.TemplateManager
 	db                       *db.DB
@@ -66,8 +67,8 @@ type APIStore struct {
 	readMetricsFromClickHouse string
 }
 
-func NewAPIStore(ctx context.Context) *APIStore {
-	tracer := otel.Tracer("api")
+func NewAPIStore(ctx context.Context, telemetryClient *telemetry.Client) *APIStore {
+	tracer := telemetryClient.TracerProvider.Tracer("api")
 
 	zap.L().Info("initializing API store and services")
 
@@ -145,13 +146,13 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		zap.L().Info("connected to Redis cluster", zap.String("url", redisClusterUrl))
 	}
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, posthogClient, redisClient, redisClusterClient, dbClient)
+	orch, err := orchestrator.New(ctx, telemetryClient, tracer, nomadClient, posthogClient, redisClient, redisClusterClient, dbClient)
 	if err != nil {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(ctx, dbClient, templateBuildsCache)
+	templateManager, err := template_manager.New(ctx, telemetryClient.TracerProvider, telemetryClient.MeterProvider, dbClient, templateBuildsCache)
 	if err != nil {
 		zap.L().Fatal("initializing Template manager client", zap.Error(err))
 	}
@@ -183,6 +184,7 @@ func NewAPIStore(ctx context.Context) *APIStore {
 		templateManager:           templateManager,
 		db:                        dbClient,
 		sqlcDB:                    sqlcDB,
+		Telemetry:                 telemetryClient,
 		Tracer:                    tracer,
 		posthog:                   posthogClient,
 		lokiClient:                lokiClient,
