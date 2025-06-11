@@ -17,8 +17,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
-const metricExportPeriod = 5 * time.Second
-
 var otelCollectorGRPCEndpoint = os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 
 type MeterProvider struct {
@@ -30,7 +28,7 @@ type MeterProvider struct {
 	meterProvider *sdkmetric.MeterProvider
 }
 
-func NewE2BMetricProvider(ctx context.Context, serviceVersion string, instanceID string) (*MeterProvider, error) {
+func NewSandboxMetricProvider(ctx context.Context, serviceVersion string, instanceID string, exportPeriod time.Duration) (*MeterProvider, error) {
 	attributes := []attribute.KeyValue{
 		semconv.ServiceName("e2b"),
 		semconv.ServiceVersion(serviceVersion),
@@ -77,7 +75,7 @@ func NewE2BMetricProvider(ctx context.Context, serviceVersion string, instanceID
 		sdkmetric.WithReader(
 			sdkmetric.NewPeriodicReader(
 				metricExporter,
-				sdkmetric.WithInterval(metricExportPeriod),
+				sdkmetric.WithInterval(exportPeriod),
 			),
 		),
 	)

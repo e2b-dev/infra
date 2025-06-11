@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -22,6 +23,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+const metricExportPeriod = 5 * time.Second
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
@@ -86,7 +89,7 @@ func New(
 
 		srv.persistence = persistence
 
-		meterProvider, err := metrics.NewE2BMetricProvider(ctx, info.SourceVersion, info.ClientId)
+		meterProvider, err := metrics.NewSandboxMetricProvider(ctx, info.SourceVersion, info.ClientId, metricExportPeriod)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create meter provider: %w", err)
 		}
