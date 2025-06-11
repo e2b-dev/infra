@@ -163,7 +163,7 @@ type SandboxConfig struct {
 	KernelVersion      string             `json:"kernelVersion"`
 
 	// MaxSandboxLength Maximum duration in hours
-	MaxSandboxLength *int64             `json:"maxSandboxLength,omitempty"`
+	MaxSandboxLength int64              `json:"maxSandboxLength"`
 	Metadata         *map[string]string `json:"metadata"`
 	OrchestratorId   string             `json:"orchestratorId"`
 	RamMB            int64              `json:"ramMB"`
@@ -171,7 +171,7 @@ type SandboxConfig struct {
 	Snapshot         bool               `json:"snapshot"`
 	TeamId           string             `json:"teamId"`
 	TemplateId       string             `json:"templateId"`
-	TotalDiskSizeMB  *int64             `json:"totalDiskSizeMB,omitempty"`
+	TotalDiskSizeMB  int64              `json:"totalDiskSizeMB"`
 	VCPU             int64              `json:"vCPU"`
 }
 
