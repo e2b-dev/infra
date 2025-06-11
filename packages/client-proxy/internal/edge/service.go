@@ -38,8 +38,8 @@ func NewEdgeAPIStore(
 		Host:          fmt.Sprintf("%s:%d", internal.GetNodeIP(), edgePort),
 	}
 
-	// todo: we should with health status until service discovery is resolved so we are not returning empty lists
-	info.SetStatus(api.Healthy)
+	// service starts in unhealthy state, and we are waiting for initial health check to pass
+	info.SetStatus(api.Unhealthy)
 
 	edgePool := e2borchestrators.NewEdgePool(ctx, logger, edgeSD, tracer, info.Host)
 	store, err := handlers.NewStore(ctx, logger, tracer, info, orchestrators, edgePool, catalog)
