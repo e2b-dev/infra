@@ -30,6 +30,8 @@ var (
 type ArtifactsRegistry interface {
 	GetTag(ctx context.Context, templateId string, buildId string) (string, error)
 	GetImage(ctx context.Context, templateId string, buildId string, platform v1.Platform) (v1.Image, error)
+	GetLayer(ctx context.Context, buildId string, layerHash string, platform v1.Platform) (v1.Image, error)
+	PushLayer(ctx context.Context, buildId string, layerHash string, layer v1.Image) error
 	Delete(ctx context.Context, templateId string, buildId string) error
 }
 

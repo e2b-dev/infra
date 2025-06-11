@@ -38,3 +38,11 @@ func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, templateId string
 
 	return daemon.Image(ref, daemon.WithContext(ctx))
 }
+
+func (g *LocalArtifactsRegistry) GetLayer(ctx context.Context, buildId string, layerHash string, platform v1.Platform) (v1.Image, error) {
+	panic("GetLayer is not implemented for LocalArtifactsRegistry")
+}
+
+func (g *LocalArtifactsRegistry) PushLayer(ctx context.Context, buildId string, layerHash string, layer v1.Image) error {
+	panic("PushLayer is not implemented for LocalArtifactsRegistry")
+}
