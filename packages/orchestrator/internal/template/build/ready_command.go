@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 )
 
@@ -19,8 +20,10 @@ const (
 func (b *TemplateBuilder) runReadyCommand(
 	ctx context.Context,
 	postProcessor *writer.PostProcessor,
-	template *TemplateConfig,
+	template *templateconfig.TemplateConfig,
 	sandboxID string,
+	runAsUser string,
+	cwd *string,
 	envVars map[string]string,
 ) error {
 	ctx, span := b.tracer.Start(ctx, "run-ready-command")
@@ -39,15 +42,14 @@ func (b *TemplateBuilder) runReadyCommand(
 
 	// Start the ready check
 	for {
-		cwd := "/home/user"
 		err := b.runCommand(
 			ctx,
 			postProcessor,
 			"ready",
 			sandboxID,
 			template.ReadyCmd,
-			"root",
-			&cwd,
+			runAsUser,
+			cwd,
 			envVars,
 		)
 
@@ -72,7 +74,7 @@ func (b *TemplateBuilder) runReadyCommand(
 	}
 }
 
-func getDefaultReadyCommand(template *TemplateConfig) string {
+func getDefaultReadyCommand(template *templateconfig.TemplateConfig) string {
 	if template.StartCmd == "" {
 		return fmt.Sprintf("sleep %d", 0)
 	}
@@ -80,7 +82,7 @@ func getDefaultReadyCommand(template *TemplateConfig) string {
 	// HACK: This is a temporary fix for a customer that needs a bigger time to start the command.
 	// TODO: Remove this after we can add customizable wait time for building templates.
 	// TODO: Make this user configurable, with health check too
-	if template.TemplateId == "zegbt9dl3l2ixqem82mm" || template.TemplateId == "ot5bidkk3j2so2j02uuz" || template.TemplateId == "0zeou1s7agaytqitvmzc" {
+	if template.TemplateID == "zegbt9dl3l2ixqem82mm" || template.TemplateID == "ot5bidkk3j2so2j02uuz" || template.TemplateID == "0zeou1s7agaytqitvmzc" {
 		return fmt.Sprintf("sleep %d", int((120 * time.Second).Seconds()))
 	}
 

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -23,6 +24,34 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/schema"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+type BuildTemplateRequest struct {
+	TemplateID api.TemplateID
+	IsNew      bool
+	UserID     uuid.UUID
+	Team       *queries.Team
+	Tier       *queries.Tier
+	Dockerfile string
+	Alias      *string
+	StartCmd   *string
+	ReadyCmd   *string
+	CpuCount   *int32
+	MemoryMB   *int32
+}
+
+type TemplateBuildResponse struct {
+	TemplateID         string
+	BuildID            string
+	Public             bool
+	Aliases            *[]string
+	KernelVersion      string
+	FirecrackerVersion string
+	StartCmd           *string
+	ReadyCmd           *string
+	VCpu               int64
+	MemoryMB           int64
+	FreeDiskSizeMB     int64
+}
 
 func (a *APIStore) PostTemplates(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -53,6 +82,297 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, templateID api.Templa
 	}
 }
 
+func (a *APIStore) BuildTemplate(ctx context.Context, req BuildTemplateRequest) (*TemplateBuildResponse, *api.APIError) {
+	telemetry.ReportEvent(ctx, "started request for environment build")
+
+	if !req.IsNew {
+		// Check if the user has access to the template
+		_, err := a.db.Client.Env.Query().Where(env.ID(req.TemplateID), env.TeamID(req.Team.ID)).Only(ctx)
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(req.TemplateID), telemetry.WithTeamID(req.Team.ID.String()))
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Error when getting template '%s' for team '%s'", req.TemplateID, req.Team.ID.String()),
+				Code:      http.StatusNotFound,
+			}
+		}
+	}
+
+	// Generate a build id for the new build
+	buildID, err := uuid.NewRandom()
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when generating build id", err)
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: "Failed to generate build id",
+			Code:      http.StatusInternalServerError,
+		}
+	}
+
+	telemetry.SetAttributes(ctx,
+		attribute.String("user.id", req.UserID.String()),
+		attribute.String("env.team.id", req.Team.ID.String()),
+		attribute.String("env.team.name", req.Team.Name),
+		telemetry.WithTemplateID(req.TemplateID),
+		attribute.String("env.team.tier", req.Team.Tier),
+		telemetry.WithBuildID(buildID.String()),
+		attribute.String("env.dockerfile", req.Dockerfile),
+	)
+
+	if req.Alias != nil {
+		telemetry.SetAttributes(ctx, attribute.String("env.alias", *req.Alias))
+	}
+	if req.StartCmd != nil {
+		telemetry.SetAttributes(ctx, attribute.String("env.start_cmd", *req.StartCmd))
+	}
+
+	if req.ReadyCmd != nil {
+		telemetry.SetAttributes(ctx, attribute.String("env.ready_cmd", *req.ReadyCmd))
+	}
+
+	if req.CpuCount != nil {
+		telemetry.SetAttributes(ctx, attribute.Int("env.cpu", int(*req.CpuCount)))
+	}
+
+	if req.MemoryMB != nil {
+		telemetry.SetAttributes(ctx, attribute.Int("env.memory_mb", int(*req.MemoryMB)))
+	}
+
+	cpuCount, ramMB, apiError := getCPUAndRAM(req.Tier, req.CpuCount, req.MemoryMB)
+	if apiError != nil {
+		telemetry.ReportCriticalError(ctx, "error when getting CPU and RAM", apiError.Err)
+		return nil, apiError
+	}
+
+	var alias string
+	if req.Alias != nil {
+		alias, err = id.CleanEnvID(*req.Alias)
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "invalid alias", err)
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Invalid alias: %s", alias),
+				Code:      http.StatusBadRequest,
+			}
+		}
+	}
+
+	// Start a transaction to prevent partial updates
+	tx, err := a.db.Client.Tx(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when starting transaction", err)
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when starting transaction: %s", err),
+			Code:      http.StatusInternalServerError,
+		}
+	}
+	defer tx.Rollback()
+
+	// Create the template / or update the build count
+	err = tx.
+		Env.
+		Create().
+		SetID(req.TemplateID).
+		SetTeamID(req.Team.ID).
+		SetCreatedBy(req.UserID).
+		SetPublic(false).
+		OnConflictColumns(env.FieldID).
+		UpdateUpdatedAt().
+		Update(func(e *models.EnvUpsert) {
+			e.AddBuildCount(1)
+		}).
+		Exec(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when updating env", err)
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
+			Code:      http.StatusInternalServerError,
+		}
+	}
+
+	// Mark the previous not started builds as failed
+	err = tx.EnvBuild.Update().Where(
+		envbuild.EnvID(req.TemplateID),
+		envbuild.StatusEQ(envbuild.StatusWaiting),
+	).SetStatus(envbuild.StatusFailed).SetFinishedAt(time.Now()).Exec(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when updating env", err)
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when updating template: %s", err),
+			Code:      http.StatusInternalServerError,
+		}
+	}
+
+	// Insert the new build
+	build, err := tx.EnvBuild.Create().
+		SetID(buildID).
+		SetEnvID(req.TemplateID).
+		SetStatus(envbuild.StatusWaiting).
+		SetRAMMB(ramMB).
+		SetVcpu(cpuCount).
+		SetKernelVersion(schema.DefaultKernelVersion).
+		SetFirecrackerVersion(schema.DefaultFirecrackerVersion).
+		SetFreeDiskSizeMB(req.Tier.DiskMb).
+		SetNillableStartCmd(req.StartCmd).
+		SetNillableReadyCmd(req.ReadyCmd).
+		SetDockerfile(req.Dockerfile).
+		Save(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when inserting build", err)
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when inserting build: %s", err),
+			Code:      http.StatusInternalServerError,
+		}
+	}
+
+	// Check if the alias is available and claim it
+	if alias != "" {
+		envs, err := tx.
+			Env.
+			Query().
+			Where(env.ID(alias)).
+			All(ctx)
+		if err != nil {
+			telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Error when querying alias '%s': %s", alias, err),
+				Code:      http.StatusInternalServerError,
+			}
+		}
+
+		if len(envs) > 0 {
+			err := fmt.Errorf("alias '%s' is already used", alias)
+			telemetry.ReportCriticalError(ctx, "conflict of alias", err, attribute.String("alias", alias))
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Alias '%s' is already used", alias),
+				Code:      http.StatusConflict,
+			}
+		}
+
+		aliasDB, err := tx.EnvAlias.Query().Where(envalias.ID(alias)).Only(ctx)
+		if err != nil {
+			if !models.IsNotFound(err) {
+				telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))
+				return nil, &api.APIError{
+					Err:       err,
+					ClientMsg: fmt.Sprintf("Error when querying for alias: %s", err),
+					Code:      http.StatusInternalServerError,
+				}
+			}
+
+			count, err := tx.EnvAlias.Delete().Where(envalias.EnvID(req.TemplateID), envalias.IsRenamable(true)).Exec(ctx)
+			if err != nil {
+				telemetry.ReportCriticalError(ctx, "error when deleting template alias", err, attribute.String("alias", alias))
+				return nil, &api.APIError{
+					Err:       err,
+					ClientMsg: fmt.Sprintf("Error when deleting template alias: %s", err),
+					Code:      http.StatusInternalServerError,
+				}
+			}
+
+			if count > 0 {
+				telemetry.ReportEvent(ctx, "deleted old aliases", attribute.Int("env.alias.count", count))
+			}
+
+			err = tx.
+				EnvAlias.
+				Create().
+				SetEnvID(req.TemplateID).SetIsRenamable(true).SetID(alias).
+				Exec(ctx)
+			if err != nil {
+				telemetry.ReportCriticalError(ctx, "error when inserting alias", err, attribute.String("alias", alias))
+				return nil, &api.APIError{
+					Err:       err,
+					ClientMsg: fmt.Sprintf("Error when inserting alias '%s': %s", alias, err),
+					Code:      http.StatusInternalServerError,
+				}
+			}
+		} else if aliasDB.EnvID != req.TemplateID {
+			err := fmt.Errorf("alias '%s' already used", alias)
+			telemetry.ReportCriticalError(ctx, "alias already used", err, attribute.String("alias", alias))
+			return nil, &api.APIError{
+				Err:       err,
+				ClientMsg: fmt.Sprintf("Alias '%s' already used", alias),
+				Code:      http.StatusForbidden,
+			}
+		}
+
+		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
+	}
+
+	// Commit the transaction
+	err = tx.Commit()
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when committing transaction", err)
+		return nil, &api.APIError{
+			Err:       err,
+			ClientMsg: fmt.Sprintf("Error when committing transaction: %s", err),
+			Code:      http.StatusInternalServerError,
+		}
+	}
+
+	telemetry.SetAttributes(ctx,
+		attribute.String("env.alias", alias),
+		attribute.Int64("build.cpu_count", cpuCount),
+		attribute.Int64("build.ram_mb", ramMB),
+	)
+	telemetry.ReportEvent(ctx, "started updating environment")
+
+	var aliases []string
+	if alias != "" {
+		aliases = append(aliases, alias)
+	}
+
+	zap.L().Info("template build requested", logger.WithTemplateID(req.TemplateID), logger.WithBuildID(buildID.String()))
+
+	return &TemplateBuildResponse{
+		TemplateID:         *build.EnvID,
+		BuildID:            build.ID.String(),
+		Public:             false,
+		Aliases:            &aliases,
+		KernelVersion:      build.KernelVersion,
+		FirecrackerVersion: build.FirecrackerVersion,
+		StartCmd:           build.StartCmd,
+		ReadyCmd:           build.ReadyCmd,
+		VCpu:               build.Vcpu,
+		MemoryMB:           build.RAMMB,
+		FreeDiskSizeMB:     build.FreeDiskSizeMB,
+	}, nil
+}
+
+// findTeamAndTier finds the appropriate team and tier based on the provided teamID or returns the default team
+func findTeamAndTier(teams []queries.GetTeamsWithUsersTeamsWithTierRow, teamID *string) (*queries.Team, *queries.Tier, error) {
+	if teamID != nil {
+		teamUUID, err := uuid.Parse(*teamID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid team ID: %s", *teamID)
+		}
+
+		for _, t := range teams {
+			if t.Team.ID == teamUUID {
+				return &t.Team, &t.Tier, nil
+			}
+		}
+
+		return nil, nil, fmt.Errorf("team '%s' not found", *teamID)
+	}
+
+	// Find default team
+	for _, t := range teams {
+		if t.UsersTeam.IsDefault {
+			return &t.Team, &t.Tier, nil
+		}
+	}
+
+	return nil, nil, fmt.Errorf("default team not found")
+}
+
 func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateID, new bool) *api.Template {
 	ctx := c.Request.Context()
 
@@ -64,10 +384,6 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		return nil
 	}
 
-	telemetry.ReportEvent(ctx, "started request for environment build")
-
-	var team *queries.Team
-	var tier *queries.Tier
 	// Prepare info for rebuilding env
 	userID, teams, err := a.GetUserAndTeams(c)
 	if err != nil {
@@ -78,318 +394,56 @@ func (a *APIStore) TemplateRequestBuild(c *gin.Context, templateID api.TemplateI
 		return nil
 	}
 
-	if body.TeamID != nil {
-		teamUUID, err := uuid.Parse(*body.TeamID)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid team ID: %s", *body.TeamID))
-
-			telemetry.ReportCriticalError(ctx, "invalid team ID", err)
-
-			return nil
-		}
-
-		for _, t := range teams {
-			if t.Team.ID == teamUUID {
-				team = &t.Team
-				tier = &t.Tier
-				break
-			}
-		}
-
-		if team == nil {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Team '%s' not found", *body.TeamID))
-
-			telemetry.ReportCriticalError(ctx, "team not found", err)
-
-			return nil
-		}
-	} else {
-		for _, t := range teams {
-			if t.UsersTeam.IsDefault {
-				team = &t.Team
-				tier = &t.Tier
-				break
-			}
-		}
-
-		if team == nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Default team not found")
-
-			telemetry.ReportCriticalError(ctx, "default team not found", err)
-
-			return nil
-		}
-	}
-
-	if !new {
-		// Check if the user has access to the template
-		_, err = a.db.Client.Env.Query().Where(env.ID(templateID), env.TeamID(team.ID)).Only(ctx)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template '%s' for team '%s'", templateID, team.ID.String()))
-
-			telemetry.ReportCriticalError(ctx, "error when getting template", err, telemetry.WithTemplateID(templateID), telemetry.WithTeamID(team.ID.String()))
-
-			return nil
-		}
-	}
-
-	// Generate a build id for the new build
-	buildID, err := uuid.NewRandom()
+	// Find the team and tier
+	team, tier, err := findTeamAndTier(teams, body.TeamID)
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "error when generating build id", err)
+		var statusCode int
+		if body.TeamID != nil {
+			statusCode = http.StatusNotFound
+		} else {
+			statusCode = http.StatusInternalServerError
+		}
 
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to generate build id")
-
+		a.sendAPIStoreError(c, statusCode, err.Error())
+		telemetry.ReportCriticalError(ctx, "error finding team and tier", err)
 		return nil
 	}
 
-	telemetry.SetAttributes(ctx,
-		attribute.String("user.id", userID.String()),
-		attribute.String("env.team.id", team.ID.String()),
-		attribute.String("env.team.name", team.Name),
-		telemetry.WithTemplateID(templateID),
-		attribute.String("env.team.tier", team.Tier),
-		telemetry.WithBuildID(buildID.String()),
-		attribute.String("env.dockerfile", body.Dockerfile),
-	)
-
-	if body.Alias != nil {
-		telemetry.SetAttributes(ctx, attribute.String("env.alias", *body.Alias))
-	}
-	if body.StartCmd != nil {
-		telemetry.SetAttributes(ctx, attribute.String("env.start_cmd", *body.StartCmd))
+	// Create the build
+	buildReq := BuildTemplateRequest{
+		TemplateID: templateID,
+		IsNew:      new,
+		UserID:     *userID,
+		Team:       team,
+		Tier:       tier,
+		Dockerfile: body.Dockerfile,
+		Alias:      body.Alias,
+		StartCmd:   body.StartCmd,
+		ReadyCmd:   body.ReadyCmd,
+		CpuCount:   body.CpuCount,
+		MemoryMB:   body.MemoryMB,
 	}
 
-	if body.ReadyCmd != nil {
-		telemetry.SetAttributes(ctx, attribute.String("env.ready_cmd", *body.ReadyCmd))
-	}
-
-	if body.CpuCount != nil {
-		telemetry.SetAttributes(ctx, attribute.Int("env.cpu", int(*body.CpuCount)))
-	}
-
-	if body.MemoryMB != nil {
-		telemetry.SetAttributes(ctx, attribute.Int("env.memory_mb", int(*body.MemoryMB)))
-	}
-
-	cpuCount, ramMB, apiError := getCPUAndRAM(tier, body.CpuCount, body.MemoryMB)
+	template, apiError := a.BuildTemplate(ctx, buildReq)
 	if apiError != nil {
-		telemetry.ReportCriticalError(ctx, "error when getting CPU and RAM", apiError.Err)
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
-
-		return nil
-	}
-
-	var alias string
-	if body.Alias != nil {
-		alias, err = id.CleanEnvID(*body.Alias)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid alias: %s", alias))
-
-			telemetry.ReportCriticalError(ctx, "invalid alias", err)
-
-			return nil
-		}
-	}
-
-	// Start a transaction to prevent partial updates
-	tx, err := a.db.Client.Tx(ctx)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when starting transaction: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when starting transaction", err)
-
-		return nil
-	}
-	defer tx.Rollback()
-
-	// Create the template / or update the build count
-	err = tx.
-		Env.
-		Create().
-		SetID(templateID).
-		SetTeamID(team.ID).
-		SetCreatedBy(*userID).
-		SetPublic(false).
-		SetNillableClusterID(team.ClusterID).
-		OnConflictColumns(env.FieldID).
-		UpdateUpdatedAt().
-		Update(func(e *models.EnvUpsert) {
-			e.AddBuildCount(1)
-		}).
-		Exec(ctx)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating template: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when updating env", err)
-
-		return nil
-	}
-
-	// Mark the previous not started builds as failed
-	err = tx.EnvBuild.Update().Where(
-		envbuild.EnvID(templateID),
-		envbuild.StatusEQ(envbuild.StatusWaiting),
-	).SetStatus(envbuild.StatusFailed).SetFinishedAt(time.Now()).Exec(ctx)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating template: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when updating env", err)
-
-		return nil
-	}
-
-	var builderNodeID *string
-	if team.ClusterID != nil {
-		cluster, found := a.clustersPool.GetClusterById(*team.ClusterID)
-		if !found {
-			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Cluster with ID '%s' not found", *team.ClusterID))
-			telemetry.ReportCriticalError(ctx, "cluster not found", fmt.Errorf("cluster with ID '%s' not found", *team.ClusterID), telemetry.WithTemplateID(templateID))
-			return nil
-		}
-
-		clusterNode, err := cluster.GetAvailableTemplateBuilder(ctx)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting available template builder: %s", err))
-			telemetry.ReportCriticalError(ctx, "error when getting available template builder", err, telemetry.WithTemplateID(templateID))
-			return nil
-		}
-
-		builderNodeID = &clusterNode.NodeID
-	}
-
-	// Insert the new build
-	err = tx.EnvBuild.Create().
-		SetID(buildID).
-		SetEnvID(templateID).
-		SetStatus(envbuild.StatusWaiting).
-		SetRAMMB(ramMB).
-		SetVcpu(cpuCount).
-		SetKernelVersion(schema.DefaultKernelVersion).
-		SetFirecrackerVersion(schema.DefaultFirecrackerVersion).
-		SetFreeDiskSizeMB(tier.DiskMb).
-		SetNillableStartCmd(body.StartCmd).
-		SetNillableReadyCmd(body.ReadyCmd).
-		SetNillableClusterNodeID(builderNodeID).
-		SetDockerfile(body.Dockerfile).
-		Exec(ctx)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when inserting build: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when inserting build", err)
-
-		return nil
-	}
-
-	// Check if the alias is available and claim it
-	if alias != "" {
-		envs, err := tx.
-			Env.
-			Query().
-			Where(env.ID(alias)).
-			All(ctx)
-		if err != nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when querying alias '%s': %s", alias, err))
-
-			telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))
-
-			return nil
-		}
-
-		if len(envs) > 0 {
-			a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Alias '%s' is already used", alias))
-
-			telemetry.ReportCriticalError(ctx, "conflict of alias", err, attribute.String("alias", alias))
-
-			return nil
-		}
-
-		aliasDB, err := tx.EnvAlias.Query().Where(envalias.ID(alias)).Only(ctx)
-		if err != nil {
-			if !models.IsNotFound(err) {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when querying for alias: %s", err))
-
-				telemetry.ReportCriticalError(ctx, "error when checking alias", err, attribute.String("alias", alias))
-
-				return nil
-
-			}
-
-			count, err := tx.EnvAlias.Delete().Where(envalias.EnvID(templateID), envalias.IsRenamable(true)).Exec(ctx)
-			if err != nil {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting template alias: %s", err))
-
-				telemetry.ReportCriticalError(ctx, "error when deleting template alias", err, attribute.String("alias", alias))
-
-				return nil
-			}
-
-			if count > 0 {
-				telemetry.ReportEvent(ctx, "deleted old aliases", attribute.Int("env.alias.count", count))
-			}
-
-			err = tx.
-				EnvAlias.
-				Create().
-				SetEnvID(templateID).SetIsRenamable(true).SetID(alias).
-				Exec(ctx)
-			if err != nil {
-				a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when inserting alias '%s': %s", alias, err))
-
-				telemetry.ReportCriticalError(ctx, "error when inserting alias", err, attribute.String("alias", alias))
-
-				return nil
-
-			}
-		} else if aliasDB.EnvID != templateID {
-			a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("Alias '%s' already used", alias))
-
-			telemetry.ReportCriticalError(ctx, "alias already used", err, attribute.String("alias", alias))
-
-			return nil
-		}
-
-		telemetry.ReportEvent(ctx, "inserted alias", attribute.String("env.alias", alias))
-	}
-
-	// Commit the transaction
-	err = tx.Commit()
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when committing transaction: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when committing transaction", err)
-
+		telemetry.ReportCriticalError(ctx, "build template request failed", err)
 		return nil
 	}
 
 	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
 	a.posthog.IdentifyAnalyticsTeam(team.ID.String(), team.Name)
 	a.posthog.CreateAnalyticsUserEvent(userID.String(), team.ID.String(), "submitted environment build request", properties.
-		Set("environment", templateID).
-		Set("build_id", buildID).
-		Set("alias", alias),
+		Set("environment", template.TemplateID).
+		Set("build_id", template.BuildID).
+		Set("alias", body.Alias),
 	)
-
-	telemetry.SetAttributes(ctx,
-		attribute.String("env.alias", alias),
-		attribute.Int64("build.cpu_count", cpuCount),
-		attribute.Int64("build.ram_mb", ramMB),
-	)
-	telemetry.ReportEvent(ctx, "started updating environment")
-
-	var aliases []string
-
-	if alias != "" {
-		aliases = append(aliases, alias)
-	}
-
-	zap.L().Info("Built template", logger.WithTemplateID(templateID), logger.WithBuildID(buildID.String()))
 
 	return &api.Template{
-		TemplateID: templateID,
-		BuildID:    buildID.String(),
-		Public:     false,
-		Aliases:    &aliases,
+		TemplateID: template.TemplateID,
+		BuildID:    template.BuildID,
+		Public:     template.Public,
+		Aliases:    template.Aliases,
 	}
 }
 

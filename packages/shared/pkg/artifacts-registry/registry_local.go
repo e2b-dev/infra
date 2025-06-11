@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/daemon"
@@ -24,7 +25,7 @@ func (g *LocalArtifactsRegistry) GetTag(ctx context.Context, templateId string, 
 	return fmt.Sprintf("%s:%s", templateId, buildId), nil
 }
 
-func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, platform containerregistry.Platform) (containerregistry.Image, error) {
+func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, templateId string, buildId string, _ containerregistry.Platform) (containerregistry.Image, error) {
 	imageUrl, err := g.GetTag(ctx, templateId, buildId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get image URL: %w", err)
@@ -41,4 +42,23 @@ func (g *LocalArtifactsRegistry) GetImage(ctx context.Context, templateId string
 	}
 
 	return img, nil
+}
+
+func (g *LocalArtifactsRegistry) GetLayer(ctx context.Context, templateId string, layerHash string, _ containerregistry.Platform) (containerregistry.Image, error) {
+	imageUrl, err := g.GetTag(ctx, templateId, layerHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get image URL: %w", err)
+	}
+
+	ref, err := name.ParseReference(imageUrl)
+	if err != nil {
+		return nil, fmt.Errorf("invalid image reference: %w", err)
+	}
+
+	return daemon.Image(ref, daemon.WithContext(ctx))
+}
+
+func (g *LocalArtifactsRegistry) GetAuthToken(ctx context.Context) (*authn.Basic, error) {
+	// Local registry does not require authentication
+	return &authn.Basic{}, nil
 }

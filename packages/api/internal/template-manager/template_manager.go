@@ -37,12 +37,13 @@ type TemplateManager struct {
 	edgePool *edge.Pool
 	db       *db.DB
 
-	lock       sync.Mutex
-	tracer     trace.Tracer
-	processing map[uuid.UUID]processingBuilds
-	buildCache *templatecache.TemplatesBuildCache
-	lokiClient *loki.DefaultClient
-	sqlcDB     *sqlcdb.Client
+	lock          sync.Mutex
+	tracer        trace.Tracer
+	processing    map[uuid.UUID]processingBuilds
+	buildCache    *templatecache.TemplatesBuildCache
+	templateCache *templatecache.TemplateCache
+	lokiClient    *loki.DefaultClient
+	sqlcDB        *sqlcdb.Client
 
 	localClient       *grpclient.GRPCClient
 	localClientMutex  sync.RWMutex
@@ -63,20 +64,32 @@ const (
 
 var ErrLocalTemplateManagerNotAvailable = errors.New("local template manager is not available")
 
-func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, db *db.DB, sqlcDB *sqlcdb.Client, edgePool *edge.Pool, lokiClient *loki.DefaultClient, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
+func New(
+	ctx context.Context,
+	tracer trace.Tracer,
+	tracerProvider trace.TracerProvider,
+	meterProvider metric.MeterProvider,
+	db *db.DB,
+	sqlcDB *sqlcdb.Client,
+	edgePool *edge.Pool,
+	lokiClient *loki.DefaultClient,
+	buildCache *templatecache.TemplatesBuildCache,
+	templateCache *templatecache.TemplateCache,
+) (*TemplateManager, error) {
 	client, err := createClient(tracerProvider, meterProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
 
 	tm := &TemplateManager{
-		grpc:       client,
-		db:         db,
-		sqlcDB:     sqlcDB,
-		tracer:     tracer,
-		buildCache: buildCache,
-		edgePool:   edgePool,
-		lokiClient: lokiClient,
+		grpc:          client,
+		db:            db,
+		sqlcDB:        sqlcDB,
+		tracer:        tracer,
+		buildCache:    buildCache,
+		templateCache: templateCache,
+		edgePool:      edgePool,
+		lokiClient:    lokiClient,
 
 		localClient:       client,
 		localClientMutex:  sync.RWMutex{},

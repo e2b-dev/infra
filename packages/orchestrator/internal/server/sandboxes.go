@@ -17,7 +17,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	featureflags "github.com/e2b-dev/infra/packages/shared/pkg/feature-flags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -65,7 +64,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		childSpan.SpanContext().TraceID().String(),
 		req.StartTime.AsTime(),
 		req.EndTime.AsTime(),
-		req.Sandbox.BaseTemplateId,
 		s.devicePool,
 		config.AllowSandboxInternet,
 		metricsWriteFlag,
@@ -281,51 +279,7 @@ func (s *server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	go func() {
-		var memfilePath *string
-
-		switch r := snapshot.MemfileDiff.(type) {
-		case *build.NoDiff:
-			break
-		default:
-			memfileLocalPath, err := r.CachePath()
-			if err != nil {
-				sbxlogger.I(sbx).Error("error getting memfile diff path", zap.Error(err))
-
-				return
-			}
-
-			memfilePath = &memfileLocalPath
-		}
-
-		var rootfsPath *string
-
-		switch r := snapshot.RootfsDiff.(type) {
-		case *build.NoDiff:
-			break
-		default:
-			rootfsLocalPath, err := r.CachePath()
-			if err != nil {
-				sbxlogger.I(sbx).Error("error getting rootfs diff path", zap.Error(err))
-
-				return
-			}
-
-			rootfsPath = &rootfsLocalPath
-		}
-
-		b := storage.NewTemplateBuild(
-			snapshot.MemfileDiffHeader,
-			snapshot.RootfsDiffHeader,
-			s.persistence,
-			snapshotTemplateFiles.TemplateFiles,
-		)
-
-		err = <-b.Upload(
-			context.Background(),
-			snapshot.Snapfile.Path(),
-			memfilePath,
-			rootfsPath,
-		)
+		err := snapshot.Upload(context.Background(), s.persistence, snapshotTemplateFiles.TemplateFiles)
 		if err != nil {
 			sbxlogger.I(sbx).Error("error uploading sandbox snapshot", zap.Error(err))
 

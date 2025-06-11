@@ -83,7 +83,7 @@ func CreateSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
 	networkPool *network.Pool,
-	_ *nbd.DevicePool,
+	devicePool *nbd.DevicePool,
 	config *orchestrator.SandboxConfig,
 	template template.Template,
 	sandboxTimeout time.Duration,
@@ -117,13 +117,23 @@ func CreateSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get rootfs: %w", err)
 	}
 
-	rootfsProvider, err := rootfs.NewDirectProvider(
-		tracer,
-		rootFS,
-		// Populate direct cache directly from the source file
-		// This is needed for marking all blocks as dirty and being able to read them directly
-		rootfsCachePath,
-	)
+	var rootfsProvider rootfs.Provider
+	if rootfsCachePath == "" {
+		rootfsProvider, err = rootfs.NewNBDProvider(
+			tracer,
+			rootFS,
+			sandboxFiles.SandboxCacheRootfsPath(),
+			devicePool,
+		)
+	} else {
+		rootfsProvider, err = rootfs.NewDirectProvider(
+			tracer,
+			rootFS,
+			// Populate direct cache directly from the source file
+			// This is needed for marking all blocks as dirty and being able to read them directly
+			rootfsCachePath,
+		)
+	}
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
@@ -162,8 +172,11 @@ func CreateSandbox(
 		ips.slot,
 		sandboxFiles,
 		rootfsPath,
-		config.BaseTemplateId,
-		config.BuildId,
+		// The BaseTemplateID is always the same as config value for new sandboxes
+		config.TemplateId,
+		// The rootfs build ID is from the header, because it needs to be the same from
+		// the first FS creation.
+		rootFS.Header().Metadata.BaseBuildId.String(),
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to init FC: %w", err)
@@ -237,7 +250,6 @@ func ResumeSandbox(
 	traceID string,
 	startedAt time.Time,
 	endAt time.Time,
-	baseTemplateID string,
 	devicePool *nbd.DevicePool,
 	allowInternet,
 	useClickhouseMetrics bool,
@@ -278,18 +290,18 @@ func ResumeSandbox(
 		return nil, cleanup, fmt.Errorf("failed to get rootfs: %w", err)
 	}
 
-	rootfsOverlay, err := createRootfsOverlay(
-		childCtx,
+	rootfsOverlay, err := rootfs.NewNBDProvider(
 		tracer,
-		devicePool,
-		cleanup,
 		readonlyRootfs,
 		sandboxFiles.SandboxCacheRootfsPath(),
+		devicePool,
 	)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create rootfs overlay: %w", err)
 	}
-
+	cleanup.Add(func(ctx context.Context) error {
+		return rootfsOverlay.Close(ctx)
+	})
 	go func() {
 		runErr := rootfsOverlay.Start(childCtx)
 		if runErr != nil {
@@ -342,7 +354,7 @@ func ResumeSandbox(
 		ips.slot,
 		sandboxFiles,
 		rootfsPath,
-		baseTemplateID,
+		config.BaseTemplateId,
 		readonlyRootfs.Header().Metadata.BaseBuildId.String(),
 	)
 	if fcErr != nil {
@@ -578,32 +590,6 @@ func (s *Sandbox) Pause(
 	}, nil
 }
 
-type Snapshot struct {
-	MemfileDiff       build.Diff
-	MemfileDiffHeader *header.Header
-	RootfsDiff        build.Diff
-	RootfsDiffHeader  *header.Header
-	Snapfile          *template.LocalFileLink
-}
-
-func (s *Snapshot) Close(_ context.Context) error {
-	var errs []error
-
-	if err := s.MemfileDiff.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close memfile diff: %w", err))
-	}
-
-	if err := s.RootfsDiff.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close rootfs diff: %w", err))
-	}
-
-	if err := s.Snapfile.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close snapfile: %w", err))
-	}
-
-	return errors.Join(errs...)
-}
-
 func pauseProcessMemory(
 	ctx context.Context,
 	tracer trace.Tracer,
@@ -757,41 +743,6 @@ func getNetworkSlotAsync(
 	}()
 
 	return r
-}
-
-func createRootfsOverlay(
-	ctx context.Context,
-	tracer trace.Tracer,
-	devicePool *nbd.DevicePool,
-	cleanup *Cleanup,
-	readonlyRootfs block.ReadonlyDevice,
-	targetCachePath string,
-) (rootfs.Provider, error) {
-	_, overlaySpan := tracer.Start(ctx, "create-rootfs-overlay")
-	defer overlaySpan.End()
-
-	rootfsOverlay, err := rootfs.NewNBDProvider(
-		tracer,
-		readonlyRootfs,
-		targetCachePath,
-		devicePool,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create overlay file: %w", err)
-	}
-
-	cleanup.Add(func(ctx context.Context) error {
-		childCtx, span := tracer.Start(ctx, "rootfs-overlay-close")
-		defer span.End()
-
-		if rootfsOverlayErr := rootfsOverlay.Close(childCtx); rootfsOverlayErr != nil {
-			return fmt.Errorf("failed to close overlay file: %w", rootfsOverlayErr)
-		}
-
-		return nil
-	})
-
-	return rootfsOverlay, nil
 }
 
 func serveMemory(

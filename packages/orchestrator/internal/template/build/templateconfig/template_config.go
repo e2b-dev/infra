@@ -1,18 +1,21 @@
-package build
+package templateconfig
 
 import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const instanceBuildPrefix = "b"
 
 type TemplateConfig struct {
-	*storage.TemplateFiles
+	TemplateID         string
+	BuildID            string
+	KernelVersion      string
+	FirecrackerVersion string
 
 	// Command to run when building the template.
 	StartCmd string
@@ -27,18 +30,24 @@ type TemplateConfig struct {
 	DiskSizeMB int64
 
 	// Real size of the rootfs after building the template.
-	rootfsSize int64
+	RootfsSize int64
 
 	// HugePages sets whether the VM use huge pages.
 	HugePages bool
 
 	// Command to run to check if the template is ready.
 	ReadyCmd string
+
+	// FromImage is the base image to use for building the template.
+	FromImage string
+
+	// Steps to build the template.
+	Steps []*templatemanager.TemplateStep
 }
 
 // Real size in MB of rootfs after building the template
 func (e *TemplateConfig) RootfsSizeMB() int64 {
-	return e.rootfsSize >> 20
+	return e.RootfsSize >> 20
 }
 
 func (e *TemplateConfig) MemfilePageSize() int64 {
@@ -55,8 +64,8 @@ func (e *TemplateConfig) RootfsBlockSize() int64 {
 
 func (e *TemplateConfig) ToSandboxConfig(envdVersion string) *orchestrator.SandboxConfig {
 	return &orchestrator.SandboxConfig{
-		TemplateId:         e.TemplateId,
-		BuildId:            e.BuildId,
+		TemplateId:         e.TemplateID,
+		BuildId:            e.BuildID,
 		KernelVersion:      e.KernelVersion,
 		FirecrackerVersion: e.FirecrackerVersion,
 		HugePages:          e.HugePages,
@@ -66,6 +75,6 @@ func (e *TemplateConfig) ToSandboxConfig(envdVersion string) *orchestrator.Sandb
 		Vcpu:               e.VCpuCount,
 		RamMb:              e.MemoryMB,
 
-		BaseTemplateId: e.TemplateId,
+		BaseTemplateId: e.TemplateID,
 	}
 }

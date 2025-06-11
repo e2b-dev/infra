@@ -19,7 +19,9 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/templateconfig"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
@@ -123,6 +125,11 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		return fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
+	templateCache, err := sbxtemplate.NewCache(ctx)
+	if err != nil {
+		zap.L().Fatal("failed to create template cache", zap.Error(err))
+	}
+
 	templateStorage := template.NewStorage(persistence)
 	builder := build.NewBuilder(
 		logger,
@@ -135,6 +142,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		networkPool,
 		sandboxProxy,
 		sandboxes,
+		templateCache,
 	)
 
 	logsWriter := writer.New(
@@ -142,18 +150,12 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 			With(zap.Field{Type: zapcore.StringType, Key: "envID", String: templateID}).
 			With(zap.Field{Type: zapcore.StringType, Key: "buildID", String: buildID}),
 	)
-	config := &build.TemplateConfig{
-		TemplateFiles: storage.NewTemplateFiles(
-			templateID,
-			buildID,
-			kernelVersion,
-			fcVersion,
-		),
-		VCpuCount:  2,
-		MemoryMB:   1024,
-		StartCmd:   "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
-		DiskSizeMB: 1024,
-		HugePages:  true,
+	config := &templateconfig.TemplateConfig{
+		VCpuCount:       2,
+		MemoryMB:        1024,
+		StartCmd:        "echo 'start cmd debug' && sleep 10 && echo 'done starting command debug'",
+		DiskSizeMB:      1024,
+		HugePages:       true,
 	}
 
 	_, err = builder.Build(ctx, config, logsWriter)

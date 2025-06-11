@@ -148,3 +148,10 @@ func (t *storageTemplate) Rootfs() (block.ReadonlyDevice, error) {
 func (t *storageTemplate) Snapfile() (File, error) {
 	return t.snapfile.Wait()
 }
+
+func (t *storageTemplate) ReplaceMemfile(memfile block.ReadonlyDevice) error {
+	m := utils.NewSetOnce[block.ReadonlyDevice]()
+	m.SetValue(memfile)
+	t.memfile = m
+	return nil
+}

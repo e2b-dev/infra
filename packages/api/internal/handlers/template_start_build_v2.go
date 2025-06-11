@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -14,58 +15,31 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
+	apiutils "github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// CheckAndCancelConcurrentBuilds checks for concurrent builds and cancels them if found
-func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateID api.TemplateID, buildID uuid.UUID) error {
-	concurrentlyRunningBuilds, err := a.db.
-		Client.
-		EnvBuild.
-		Query().
-		Where(
-			envbuild.EnvID(templateID),
-			envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding),
-			envbuild.IDNotIn(buildID),
-		).
-		All(ctx)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "Error when getting running builds", err)
-		return fmt.Errorf("error when getting running builds: %w", err)
-	}
-
-	// make sure there is no other build in progress for the same template
-	if len(concurrentlyRunningBuilds) > 0 {
-		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b *models.EnvBuild) template_manager.DeleteBuild {
-			return template_manager.DeleteBuild{
-				TemplateID: templateID,
-				BuildID:    b.ID,
-			}
-		})
-		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b template_manager.DeleteBuild) string {
-			return fmt.Sprintf("%s/%s", b.TemplateID, b.BuildID)
-		})))
-		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
-		if deleteJobErr != nil {
-			telemetry.ReportCriticalError(ctx, "error when canceling running build", deleteJobErr)
-			return fmt.Errorf("error when canceling running build: %w", deleteJobErr)
-		}
-		telemetry.ReportEvent(ctx, "canceled running builds")
-	}
-
-	return nil
+type dockerfileStore struct {
+	FromImage string              `json:"from_image"`
+	Steps     *[]api.TemplateStep `json:"steps"`
 }
 
-// PostTemplatesTemplateIDBuildsBuildID triggers a new build after the user pushes the Docker image to the registry
-func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID api.TemplateID, buildID api.BuildID) {
+// PostV2TemplatesTemplateIDBuildsBuildID triggers a new build
+func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID api.TemplateID, buildID api.BuildID) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContext(ctx)
+
+	body, err := apiutils.ParseBody[api.TemplateBuildStartV2](ctx, c)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %s", err))
+		telemetry.ReportCriticalError(ctx, "invalid request body", err)
+
+		return
+	}
 
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
@@ -142,10 +116,25 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
-	// team is part of the cluster but template build is not assigned to a cluster node so its invalid stats
-	if team.ClusterID != nil && build.ClusterNodeID == nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "build is not assigned to a cluster node")
-		telemetry.ReportCriticalError(ctx, "build is not assigned to a cluster node", nil, telemetry.WithTemplateID(templateID))
+	stepsMarshalled, err := json.Marshal(dockerfileStore{
+		FromImage: body.FromImage,
+		Steps:     body.Steps,
+	})
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when processing steps: %s", err))
+		telemetry.ReportCriticalError(ctx, "error when processing steps", err, telemetry.WithTemplateID(templateID))
+		return
+	}
+
+	err = a.db.Client.EnvBuild.Update().
+		SetNillableStartCmd(body.StartCmd).
+		SetNillableReadyCmd(body.ReadyCmd).
+		SetDockerfile(string(stepsMarshalled)).
+		Where(envbuild.ID(buildUUID)).
+		Exec(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when updating build", err)
+		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when updating build: %s", err))
 		return
 	}
 
@@ -157,26 +146,26 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		buildUUID,
 		build.KernelVersion,
 		build.FirecrackerVersion,
-		build.StartCmd,
+		body.StartCmd,
 		build.Vcpu,
 		build.FreeDiskSizeMB,
 		build.RAMMB,
-		build.ReadyCmd,
-		"",
-		nil,
+		body.ReadyCmd,
+		body.FromImage,
+		body.Steps,
 		team.ClusterID,
 		build.ClusterNodeID,
 	)
 
 	if buildErr != nil {
 		telemetry.ReportCriticalError(ctx, "build failed", buildErr, telemetry.WithTemplateID(templateID))
-		msg := fmt.Sprintf("error when building env: %s", buildErr)
+
 		err = a.templateManager.SetStatus(
 			ctx,
 			templateID,
 			buildUUID,
 			envbuild.StatusFailed,
-			&msg,
+			fmt.Sprintf("error when building env: %s", buildErr),
 		)
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error when setting build status", err)
@@ -192,10 +181,11 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		templateID,
 		buildUUID,
 		envbuild.StatusBuilding,
-		nil,
+		"starting build",
 	)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when setting build status", err)
+
 		return
 	}
 
