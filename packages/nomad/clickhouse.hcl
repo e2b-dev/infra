@@ -27,6 +27,11 @@ job "clickhouse" {
         to = 8123
       }
 
+      port "clickhouse-metrics" {
+        static = 9363
+        to = 9363
+      }
+
       port "clickhouse-server" {
         static = "${clickhouse_server_port}"
         to = "${clickhouse_server_port}"
@@ -153,6 +158,19 @@ job "clickhouse" {
     </remote_servers>
 
     <listen_host>0.0.0.0</listen_host>
+
+    <asynchronous_metric_log>
+        <max_age>86400</max_age>  <!-- 1 day TTL -->
+    </asynchronous_metric_log>
+
+    <prometheus>
+        <port>9363</port>
+        <endpoint>/metrics</endpoint>
+        <metrics>true</metrics>
+        <asynchronous_metrics>true</asynchronous_metrics>
+        <events>true</events>
+        <errors>true</errors>
+    </prometheus>
 
     <tcp_port>${clickhouse_server_port}</tcp_port>
 </clickhouse>
