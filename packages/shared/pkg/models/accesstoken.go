@@ -23,8 +23,14 @@ type AccessToken struct {
 	AccessToken string `json:"-"`
 	// AccessTokenHash holds the value of the "access_token_hash" field.
 	AccessTokenHash string `json:"-"`
-	// AccessTokenMask holds the value of the "access_token_mask" field.
-	AccessTokenMask string `json:"access_token_mask,omitempty"`
+	// AccessTokenPrefix holds the value of the "access_token_prefix" field.
+	AccessTokenPrefix string `json:"access_token_prefix,omitempty"`
+	// AccessTokenLength holds the value of the "access_token_length" field.
+	AccessTokenLength int `json:"access_token_length,omitempty"`
+	// AccessTokenMaskPrefix holds the value of the "access_token_mask_prefix" field.
+	AccessTokenMaskPrefix string `json:"access_token_mask_prefix,omitempty"`
+	// AccessTokenMaskSuffix holds the value of the "access_token_mask_suffix" field.
+	AccessTokenMaskSuffix string `json:"access_token_mask_suffix,omitempty"`
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
 	// UserID holds the value of the "user_id" field.
@@ -64,7 +70,9 @@ func (*AccessToken) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case accesstoken.FieldAccessToken, accesstoken.FieldAccessTokenHash, accesstoken.FieldAccessTokenMask, accesstoken.FieldName:
+		case accesstoken.FieldAccessTokenLength:
+			values[i] = new(sql.NullInt64)
+		case accesstoken.FieldAccessToken, accesstoken.FieldAccessTokenHash, accesstoken.FieldAccessTokenPrefix, accesstoken.FieldAccessTokenMaskPrefix, accesstoken.FieldAccessTokenMaskSuffix, accesstoken.FieldName:
 			values[i] = new(sql.NullString)
 		case accesstoken.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -103,11 +111,29 @@ func (at *AccessToken) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				at.AccessTokenHash = value.String
 			}
-		case accesstoken.FieldAccessTokenMask:
+		case accesstoken.FieldAccessTokenPrefix:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field access_token_mask", values[i])
+				return fmt.Errorf("unexpected type %T for field access_token_prefix", values[i])
 			} else if value.Valid {
-				at.AccessTokenMask = value.String
+				at.AccessTokenPrefix = value.String
+			}
+		case accesstoken.FieldAccessTokenLength:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field access_token_length", values[i])
+			} else if value.Valid {
+				at.AccessTokenLength = int(value.Int64)
+			}
+		case accesstoken.FieldAccessTokenMaskPrefix:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field access_token_mask_prefix", values[i])
+			} else if value.Valid {
+				at.AccessTokenMaskPrefix = value.String
+			}
+		case accesstoken.FieldAccessTokenMaskSuffix:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field access_token_mask_suffix", values[i])
+			} else if value.Valid {
+				at.AccessTokenMaskSuffix = value.String
 			}
 		case accesstoken.FieldName:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -172,8 +198,17 @@ func (at *AccessToken) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("access_token_hash=<sensitive>")
 	builder.WriteString(", ")
-	builder.WriteString("access_token_mask=")
-	builder.WriteString(at.AccessTokenMask)
+	builder.WriteString("access_token_prefix=")
+	builder.WriteString(at.AccessTokenPrefix)
+	builder.WriteString(", ")
+	builder.WriteString("access_token_length=")
+	builder.WriteString(fmt.Sprintf("%v", at.AccessTokenLength))
+	builder.WriteString(", ")
+	builder.WriteString("access_token_mask_prefix=")
+	builder.WriteString(at.AccessTokenMaskPrefix)
+	builder.WriteString(", ")
+	builder.WriteString("access_token_mask_suffix=")
+	builder.WriteString(at.AccessTokenMaskSuffix)
 	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(at.Name)
