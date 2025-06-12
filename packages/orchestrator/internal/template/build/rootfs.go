@@ -3,11 +3,13 @@ package build
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
 	"strconv"
+	"time"
 
 	"dagger.io/dagger"
 	"github.com/dustin/go-humanize"
@@ -18,11 +20,18 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapio"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/oci"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -47,6 +56,10 @@ const (
 type Rootfs struct {
 	template         *TemplateConfig
 	artifactRegistry artifactsregistry.ArtifactsRegistry
+
+	networkPool   *network.Pool
+	templateCache *template.Cache
+	devicePool    *nbd.DevicePool
 }
 
 type MultiWriter struct {
@@ -64,14 +77,28 @@ func (mw *MultiWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func NewRootfs(artifactRegistry artifactsregistry.ArtifactsRegistry, template *TemplateConfig) *Rootfs {
+func NewRootfs(
+	artifactRegistry artifactsregistry.ArtifactsRegistry,
+	template *TemplateConfig,
+	networkPool *network.Pool,
+	templateCache *template.Cache,
+	devicePool *nbd.DevicePool,
+) *Rootfs {
 	return &Rootfs{
 		template:         template,
 		artifactRegistry: artifactRegistry,
+		networkPool:      networkPool,
+		templateCache:    templateCache,
+		devicePool:       devicePool,
 	}
 }
 
-func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, postProcessor *writer.PostProcessor, rootfsPath string) (c containerregistry.Config, e error) {
+func (r *Rootfs) createExt4Filesystem(
+	ctx context.Context,
+	tracer trace.Tracer,
+	postProcessor *writer.PostProcessor,
+	rootfsPath string,
+) (c containerregistry.Config, e error) {
 	childCtx, childSpan := tracer.Start(ctx, "create-ext4-file")
 	defer childSpan.End()
 
@@ -94,7 +121,8 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	}
 	postProcessor.WriteMsg(fmt.Sprintf("Docker image size: %s", humanize.Bytes(uint64(imageSize))))
 
-	imagePath, err := r.todoBuildLayers(ctx, tracer, img)
+	// Template build layers
+	imagePath, err := r.todoBuildLayers(ctx, tracer, postProcessor, img)
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error building layers: %w", err)
 	}
@@ -104,6 +132,7 @@ func (r *Rootfs) createExt4Filesystem(ctx context.Context, tracer trace.Tracer, 
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
 	}
+	// Template build layers
 
 	postProcessor.WriteMsg("Setting up system files")
 	layers, err := additionalOCILayers(childCtx, r.template)
@@ -308,19 +337,68 @@ echo "System Init"`), 0o777},
 	}, nil
 }
 
-func (r *Rootfs) todoBuildLayers(ctx context.Context, tracer trace.Tracer, img containerregistry.Image) (string, error) {
+func (r *Rootfs) todoBuildLayers(
+	ctx context.Context,
+	tracer trace.Tracer,
+	postProcessor *writer.PostProcessor,
+	img containerregistry.Image,
+) (path string, e error) {
 	ctx, span := tracer.Start(ctx, "build-layers")
 	defer span.End()
 
 	// Start Virtual Dagger runner
+	config := &orchestrator.SandboxConfig{
+		TemplateId:         "p9kw2u9cc1zj1cov2zru",
+		BuildId:            "6bea9b8c-7344-4e8d-bfdc-16b10876606c",
+		KernelVersion:      "vmlinux-6.1.102",
+		FirecrackerVersion: "v1.10.1_1fcdaec",
+		HugePages:          true,
+		SandboxId:          instanceBuildPrefix + id.Generate(),
+		ExecutionId:        uuid.New().String(),
+		EnvdVersion:        "0.2.0",
+		Vcpu:               8,
+		RamMb:              8 * 1024,
 
+		BaseTemplateId: "p9kw2u9cc1zj1cov2zru",
+	}
+	sbx, cleanup, err := sandbox.ResumeSandbox(
+		ctx,
+		tracer,
+		nil,
+		r.networkPool,
+		r.templateCache,
+		config,
+		uuid.New().String(),
+		time.Now(),
+		time.Now().Add(60*time.Minute),
+		"p9kw2u9cc1zj1cov2zru",
+		r.devicePool,
+		true,
+		false,
+	)
+	defer func() {
+		cleanupErr := cleanup.Run(ctx)
+		if cleanupErr != nil {
+			e = errors.Join(e, fmt.Errorf("error cleaning up sandbox: %w", cleanupErr))
+		}
+	}()
+	if err != nil {
+		return "", fmt.Errorf("error creating sandbox: %w", err)
+	}
 	// Start Virtual Dagger runner
 
-	err := os.Setenv("_EXPERIMENTAL_DAGGER_RUNNER_HOST", "tcp://127.0.0.1:1234")
+	err = os.Setenv("_EXPERIMENTAL_DAGGER_RUNNER_HOST", fmt.Sprintf("tcp://%s:1234", sbx.Slot.HostIPString()))
 	if err != nil {
 		return "", fmt.Errorf("failed to set Dagger environment variable: %w", err)
 	}
-	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stdout))
+
+	loggerWriter := &zapio.Writer{Log: zap.L(), Level: zap.DebugLevel}
+	defer loggerWriter.Close()
+	userWriter := &writer.PrefixFilteredWriter{Writer: postProcessor, PrefixFilter: ""}
+	defer userWriter.Close()
+
+	daggerWriters := io.MultiWriter(userWriter, loggerWriter)
+	client, err := dagger.Connect(ctx, dagger.WithLogOutput(daggerWriters))
 	if err != nil {
 		return "", fmt.Errorf("failed to connect to Dagger: %w", err)
 	}
