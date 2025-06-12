@@ -106,11 +106,7 @@ variable "client_cluster_size" {
   type = number
 }
 
-variable "client_regional_cluster_size" {
-  type = number
-}
-
-variable "client_cluster_auto_scaling_max" {
+variable "client_cluster_size_max" {
   type = number
 }
 
