@@ -117,7 +117,7 @@ processors:
   batch:
     timeout: 5s
 
-  batch/metrics:
+  batch/clickhouse:
     timeout: 5s
     send_batch_size: 100000
 
@@ -198,7 +198,7 @@ processors:
           - ClickHouseMetrics_HTTPConnectionsTotal
 
 
-  filter/metrics:
+  filter/external_metrics:
     metrics:
       include:
         match_type: regexp
@@ -280,9 +280,9 @@ service:
       processors: [filter/clickhouse, batch]
       exporters:
         - otlphttp/grafana_cloud
-    metrics/clickhouse:
+    metrics/external:
       receivers:  [otlp]
-      processors: [filter/metrics, batch/metrics]
+      processors: [filter/external_metrics, batch/clickhouse]
       exporters:  [clickhouse]
     traces:
       receivers:
