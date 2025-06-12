@@ -25,7 +25,7 @@ func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
 	var core zapcore.Core
 	if !config.IsInternal && config.CollectorAddress != "" {
 		// Add Vector exporter to the core
-		vectorEncoder := zapcore.NewJSONEncoder(logger.GetEncoderConfig(zapcore.DefaultLineEnding))
+		vectorEncoder := zapcore.NewJSONEncoder(GetSandboxEncoderConfig())
 		httpWriter := logger.NewBufferedHTTPWriter(ctx, config.CollectorAddress)
 		core = zapcore.NewCore(
 			vectorEncoder,
@@ -51,4 +51,17 @@ func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
 	}
 
 	return lg
+}
+
+func GetSandboxEncoderConfig() zapcore.EncoderConfig {
+	return zapcore.EncoderConfig{
+		TimeKey:       "timestamp",
+		MessageKey:    "message",
+		LevelKey:      "level",
+		EncodeLevel:   zapcore.LowercaseLevelEncoder,
+		NameKey:       "logger",
+		StacktraceKey: "stacktrace",
+		EncodeTime:    zapcore.RFC3339NanoTimeEncoder,
+		LineEnding:    zapcore.DefaultLineEnding,
+	}
 }

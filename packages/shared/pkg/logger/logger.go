@@ -28,7 +28,7 @@ type LoggerConfig struct {
 	Cores []zapcore.Core
 }
 
-func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, error) {
+func NewLogger(_ context.Context, loggerConfig LoggerConfig) (*zap.Logger, error) {
 	var level zap.AtomicLevel
 	if loggerConfig.IsDebug {
 		level = zap.NewAtomicLevelAt(zap.DebugLevel)
@@ -37,13 +37,15 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 	}
 
 	config := zap.Config{
-		Level:             level,
 		DisableStacktrace: loggerConfig.DisableStacktrace,
 		// Takes stacktraces more liberally
-		Development:   true,
-		Sampling:      nil,
-		Encoding:      "json",
-		EncoderConfig: GetEncoderConfig(zapcore.DefaultLineEnding),
+		Development: true,
+		Sampling:    nil,
+
+		// Console core
+		Encoding:      "console",
+		EncoderConfig: GetConsoleEncoderConfig(),
+		Level:         level,
 		OutputPaths: []string{
 			"stdout",
 		},
@@ -75,17 +77,13 @@ func NewLogger(ctx context.Context, loggerConfig LoggerConfig) (*zap.Logger, err
 	return logger, nil
 }
 
-func GetEncoderConfig(lineEnding string) zapcore.EncoderConfig {
-	return zapcore.EncoderConfig{
-		TimeKey:       "timestamp",
-		MessageKey:    "message",
-		LevelKey:      "level",
-		EncodeLevel:   zapcore.LowercaseLevelEncoder,
-		NameKey:       "logger",
-		StacktraceKey: "stacktrace",
-		EncodeTime:    zapcore.RFC3339NanoTimeEncoder,
-		LineEnding:    lineEnding,
-	}
+func GetConsoleEncoderConfig() zapcore.EncoderConfig {
+	cfg := zap.NewDevelopmentEncoderConfig()
+	cfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	cfg.CallerKey = zapcore.OmitKey
+	cfg.ConsoleSeparator = "  "
+
+	return cfg
 }
 
 func GetOTELCore(serviceName string) zapcore.Core {
