@@ -52,7 +52,7 @@ func (s *Sandbox) GetMetrics(ctx context.Context) (*metrics.SandboxMetrics, erro
 }
 
 func (s *Sandbox) LogMetricsLoki(ctx context.Context) {
-	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrcis) {
+	if isGTEVersion(s.Config.EnvdVersion, minEnvdVersionForMetrics) {
 		m, err := s.GetMetrics(ctx)
 		if err != nil {
 			sbxlogger.E(s).Warn("failed to get metrics", zap.Error(err))
