@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
@@ -123,6 +124,11 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		return fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
+	templateCache, err := sbxtemplate.NewCache(ctx)
+	if err != nil {
+		zap.L().Fatal("failed to create template cache", zap.Error(err))
+	}
+
 	templateStorage := template.NewStorage(persistence)
 	builder := build.NewBuilder(
 		logger,
@@ -135,6 +141,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		networkPool,
 		sandboxProxy,
 		sandboxes,
+		templateCache,
 	)
 
 	logsWriter := writer.New(

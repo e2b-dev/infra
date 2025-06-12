@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/server"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/constants"
@@ -235,6 +236,11 @@ func run(port, proxyPort uint) (success bool) {
 
 	grpcSrv := grpcserver.New(tel.TracerProvider, tel.MeterProvider, serviceInfo)
 
+	templateCache, err := template.NewCache(ctx)
+	if err != nil {
+		zap.L().Fatal("failed to create template cache", zap.Error(err))
+	}
+
 	featureFlags, err := featureflags.NewClient()
 	if err != nil {
 		zap.L().Fatal("failed to create feature flags client", zap.Error(err))
@@ -245,7 +251,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox observer", zap.Error(err))
 	}
 
-	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, templateCache, tracer, serviceInfo, sandboxProxy, sandboxes, featureFlags)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
@@ -290,6 +296,7 @@ func run(port, proxyPort uint) (success bool) {
 			devicePool,
 			sandboxProxy,
 			sandboxes,
+			templateCache,
 		)
 		if err != nil {
 			zap.L().Fatal("failed to create template manager", zap.Error(err))
