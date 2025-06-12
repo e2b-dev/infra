@@ -61,9 +61,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint, sandboxes *s
 				RequestLogger: zap.L().With(
 					zap.String("host", r.Host),
 					logger.WithSandboxID(sbx.Config.SandboxId),
-					logger.WithSandboxID(sbx.Config.SandboxId),
 					zap.String("sandbox_ip", sbx.Slot.HostIPString()),
-					logger.WithTeamID(sbx.Config.TeamId),
 					logger.WithTeamID(sbx.Config.TeamId),
 					zap.String("sandbox_req_port", url.Port()),
 					zap.String("sandbox_req_path", r.URL.Path),

@@ -49,7 +49,6 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 			logger := zap.L().With(
 				zap.String("host", r.Host),
 				l.WithSandboxID(sandboxId),
-				l.WithSandboxID(sandboxId),
 				zap.Uint64("sandbox_req_port", port),
 				zap.String("sandbox_req_path", r.URL.Path),
 			)
@@ -86,7 +85,6 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 
 			// There's no answer, we can't proxy the request
 			if err != nil {
-				logger.Error("DNS resolving for sandbox failed", l.WithSandboxID(sandboxId), zap.Error(err))
 				logger.Error("DNS resolving for sandbox failed", l.WithSandboxID(sandboxId), zap.Error(err))
 
 				return nil, fmt.Errorf("DNS resolving for sandbox failed: %w", err)
