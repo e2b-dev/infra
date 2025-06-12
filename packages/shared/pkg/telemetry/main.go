@@ -9,12 +9,15 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/log"
+	noopLogs "go.opentelemetry.io/otel/log/noop"
 	"go.opentelemetry.io/otel/metric"
+	noopMetric "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
+	noopTrace "go.opentelemetry.io/otel/trace/noop"
 )
 
 const metricExportPeriod = 15 * time.Second
@@ -105,4 +108,16 @@ func (t *Client) Shutdown(ctx context.Context) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+func NewNoopClient() *Client {
+	return &Client{
+		MetricExporter:  &noopMetricExporter{},
+		MeterProvider:   noopMetric.MeterProvider{},
+		SpanExporter:    &noopSpanExporter{},
+		TracerProvider:  noopTrace.NewTracerProvider(),
+		TracePropagator: propagation.NewCompositeTextMapPropagator(),
+		LogsExporter:    &noopLogExporter{},
+		LogsProvider:    noopLogs.NewLoggerProvider(),
+	}
 }

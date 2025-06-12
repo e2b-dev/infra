@@ -207,9 +207,15 @@ func run() int {
 	flag.Parse()
 
 	instanceID := uuid.New().String()
-	tel, err := telemetry.New(ctx, serviceName, commitSHA, instanceID)
-	if err != nil {
-		zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
+	var tel *telemetry.Client
+	if env.IsLocal() {
+		tel = telemetry.NewNoopClient()
+	} else {
+		var err error
+		tel, err = telemetry.New(ctx, serviceName, commitSHA, instanceID)
+		if err != nil {
+			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
+		}
 	}
 	defer func() {
 		err := tel.Shutdown(ctx)

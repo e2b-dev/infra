@@ -8,10 +8,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc/encoding/gzip"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
 type noopSpanExporter struct{}
@@ -23,10 +20,6 @@ func (nsb *noopSpanExporter) ExportSpans(context.Context, []sdktrace.ReadOnlySpa
 func (nsb *noopSpanExporter) Shutdown(context.Context) error { return nil }
 
 func NewSpanExporter(ctx context.Context, extraOption ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
-	if env.IsLocal() {
-		return &noopSpanExporter{}, nil
-	}
-
 	opts := []otlptracegrpc.Option{
 		otlptracegrpc.WithInsecure(),
 		otlptracegrpc.WithEndpoint(otelCollectorGRPCEndpoint),
@@ -47,10 +40,6 @@ func NewSpanExporter(ctx context.Context, extraOption ...otlptracegrpc.Option) (
 }
 
 func NewTracerProvider(ctx context.Context, spanExporter sdktrace.SpanExporter, serviceName, serviceVersion string, instanceID string) (trace.TracerProvider, error) {
-	if env.IsLocal() {
-		return noop.NewTracerProvider(), nil
-	}
-
 	res, err := getResource(ctx, serviceName, serviceVersion, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resource: %w", err)

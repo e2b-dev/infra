@@ -8,8 +8,6 @@ import (
 	"go.opentelemetry.io/otel/log"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"google.golang.org/grpc/encoding/gzip"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
 type noopLogExporter struct{}
@@ -21,10 +19,6 @@ func (noopLogExporter) Shutdown(context.Context) error { return nil }
 func (noopLogExporter) ForceFlush(context.Context) error { return nil }
 
 func NewLogExporter(ctx context.Context, extraOption ...otlploggrpc.Option) (sdklog.Exporter, error) {
-	if env.IsLocal() {
-		return &noopLogExporter{}, nil
-	}
-
 	opts := []otlploggrpc.Option{
 		otlploggrpc.WithInsecure(),
 		otlploggrpc.WithEndpoint(otelCollectorGRPCEndpoint),

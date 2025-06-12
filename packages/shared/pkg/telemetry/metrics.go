@@ -7,11 +7,8 @@ import (
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
 type noopMetricExporter struct{}
@@ -33,9 +30,6 @@ func (noopMetricExporter) Shutdown(context.Context) error {
 }
 
 func NewMeterExporter(ctx context.Context, extraOption ...otlpmetricgrpc.Option) (sdkmetric.Exporter, error) {
-	if env.IsLocal() {
-		return &noopMetricExporter{}, nil
-	}
 	opts := []otlpmetricgrpc.Option{
 		otlpmetricgrpc.WithInsecure(),
 		otlpmetricgrpc.WithEndpoint(otelCollectorGRPCEndpoint),
@@ -54,10 +48,6 @@ func NewMeterExporter(ctx context.Context, extraOption ...otlpmetricgrpc.Option)
 }
 
 func NewMeterProvider(ctx context.Context, metricsExporter sdkmetric.Exporter, metricExportPeriod time.Duration, serviceName, serviceVersion string, instanceID string, extraOption ...sdkmetric.Option) (metric.MeterProvider, error) {
-	if env.IsLocal() {
-		return noop.NewMeterProvider(), nil
-	}
-
 	res, err := getResource(ctx, serviceName, serviceVersion, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resource: %w", err)
