@@ -74,10 +74,7 @@ init:
 download-prod-env:
 	@ hcp auth login
 	@ hcp profile init --vault-secrets
-	@ hcp vault-secrets secrets read env_$(ENV) >/dev/null 2>&1 && echo "Environment found, writing to the .env.$(ENV) file" || { echo "Environment $(ENV) does not exist"; exit 1; }
-	@ rm -f ".env.$(ENV)"
-	@ hcp vault-secrets secrets open env_$(ENV) -o ".env.$(ENV)"
-	@ DECODED=$$(cat ".env.$(ENV)" | base64 -d) && echo "$$DECODED" > ".env.$(ENV)"
+	@  ./scripts/download-prod-env.sh ${ENV}
 
 # Updates production environment from .env file, this is used only for E2B.dev production
 # Uses HCP CLI to update secrets from HCP Vault Secrets
@@ -85,7 +82,7 @@ download-prod-env:
 update-prod-env:
 	@ hcp auth login
 	@ hcp profile init --vault-secrets
-	@ cat ".env.$(ENV)" | base64 -w 0 | tr -d '\n' | hcp vault-secrets secrets create env_$(ENV) --data-file=-
+	@ ./scripts/update-prod-env.sh ${ENV}
 
 .PHONY: plan
 plan:
