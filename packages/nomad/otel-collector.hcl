@@ -151,7 +151,7 @@ processors:
           - ClickHouseProfileEvents_FailedSelectQuery
           - ClickHouseProfileEvents_SelectQueryTimeMicroseconds
           - ClickHouseProfileEvents_InsertQuery
-          - ClickHouseProfileEvents_FailedSelectQuery
+          - ClickHouseProfileEvents_FailedInsertQuery
           - ClickHouseProfileEvents_InsertQueryTimeMicroseconds
           - ClickHouseProfileEvents_QueryTimeMicroseconds
           - ClickHouseProfileEvents_Query
