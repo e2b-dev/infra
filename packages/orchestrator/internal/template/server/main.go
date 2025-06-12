@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
@@ -50,6 +51,7 @@ func New(
 	devicePool *nbd.DevicePool,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
+	templateCache *sbxtemplate.Cache,
 ) (*ServerStore, error) {
 	logger.Info("Initializing template manager")
 
@@ -76,6 +78,7 @@ func New(
 		networkPool,
 		proxy,
 		sandboxes,
+		templateCache,
 	)
 
 	store := &ServerStore{

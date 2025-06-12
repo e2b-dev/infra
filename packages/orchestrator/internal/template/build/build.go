@@ -4,23 +4,26 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"text/template"
+	tt "text/template"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 )
 
 //go:embed provision.sh
 var provisionScriptFile string
-var ProvisionScriptTemplate = template.Must(template.New("provisioning-script").Parse(provisionScriptFile))
+var ProvisionScriptTemplate = tt.Must(tt.New("provisioning-script").Parse(provisionScriptFile))
 
 //go:embed configure.sh
 var configureScriptFile string
-var ConfigureScriptTemplate = template.Must(template.New("provisioning-finish-script").Parse(configureScriptFile))
+var ConfigureScriptTemplate = tt.Must(tt.New("provisioning-finish-script").Parse(configureScriptFile))
 
 func Build(
 	ctx context.Context,
@@ -28,6 +31,9 @@ func Build(
 	templateConfig *TemplateConfig,
 	postProcessor *writer.PostProcessor,
 	artifactRegistry artifactsregistry.ArtifactsRegistry,
+	networkPool *network.Pool,
+	templateCache *template.Cache,
+	devicePool *nbd.DevicePool,
 	templateBuildDir string,
 	rootfsPath string,
 ) (r *block.Local, m *block.Local, e error) {
@@ -35,7 +41,13 @@ func Build(
 	defer childSpan.End()
 
 	// Create a rootfs file
-	rtfs := NewRootfs(artifactRegistry, templateConfig)
+	rtfs := NewRootfs(
+		artifactRegistry,
+		templateConfig,
+		networkPool,
+		templateCache,
+		devicePool,
+	)
 	err := rtfs.createExt4Filesystem(childCtx, tracer, postProcessor, rootfsPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating rootfs for template '%s' during build '%s': %w", templateConfig.TemplateId, templateConfig.BuildId, err)

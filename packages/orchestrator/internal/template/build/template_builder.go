@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
+	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	templatelocal "github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/ext4"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
@@ -44,6 +45,7 @@ type TemplateBuilder struct {
 	artifactRegistry artifactsregistry.ArtifactsRegistry
 	proxy            *proxy.SandboxProxy
 	sandboxes        *smap.Map[*sandbox.Sandbox]
+	templateCache    *sbxtemplate.Cache
 }
 
 const (
@@ -68,6 +70,7 @@ func NewBuilder(
 	networkPool *network.Pool,
 	proxy *proxy.SandboxProxy,
 	sandboxes *smap.Map[*sandbox.Sandbox],
+	templateCache *sbxtemplate.Cache,
 ) *TemplateBuilder {
 	return &TemplateBuilder{
 		logger:           logger,
@@ -80,6 +83,7 @@ func NewBuilder(
 		networkPool:      networkPool,
 		proxy:            proxy,
 		sandboxes:        sandboxes,
+		templateCache:    templateCache,
 	}
 }
 
@@ -143,6 +147,9 @@ func (b *TemplateBuilder) Build(ctx context.Context, template *TemplateConfig) (
 		template,
 		postProcessor,
 		b.artifactRegistry,
+		b.networkPool,
+		b.templateCache,
+		b.devicePool,
 		templateBuildDir,
 		rootfsPath,
 	)
