@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/log/global"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -53,7 +52,6 @@ func run() int {
 			log.Printf("telemetry shutdown:%v\n", err)
 		}
 	}()
-	global.SetLoggerProvider(telemetryClient.LogsProvider)
 
 	meter := telemetryClient.MeterProvider.Meter(serviceName)
 
@@ -61,7 +59,7 @@ func run() int {
 		ServiceName: serviceName,
 		IsInternal:  true,
 		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{e2bLogger.GetOTELCore(serviceName)},
+		Cores:       []zapcore.Core{e2bLogger.GetOTELCore(telemetryClient.LogsProvider, serviceName)},
 	}))
 	defer func() {
 		err := logger.Sync()

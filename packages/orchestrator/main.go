@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"go.opentelemetry.io/otel/log/global"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -153,7 +152,6 @@ func run(port, proxyPort uint) (success bool) {
 			success = false
 		}
 	}()
-	global.SetLoggerProvider(telemetryClient.LogsProvider)
 
 	meter := telemetryClient.MeterProvider.Meter(serviceName)
 
@@ -161,7 +159,7 @@ func run(port, proxyPort uint) (success bool) {
 		ServiceName: serviceName,
 		IsInternal:  true,
 		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{logger.GetOTELCore(serviceName)},
+		Cores:       []zapcore.Core{logger.GetOTELCore(telemetryClient.LogsProvider, serviceName)},
 	}))
 	defer func(l *zap.Logger) {
 		err := l.Sync()
@@ -174,6 +172,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
+		telemetryClient.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       false,
@@ -191,6 +190,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	sbxLoggerInternal := sbxlogger.NewLogger(
 		ctx,
+		telemetryClient.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       true,
@@ -240,6 +240,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
+		telemetryClient.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      constants.ServiceNameTemplate,
 			IsInternal:       false,

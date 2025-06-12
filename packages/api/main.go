@@ -24,7 +24,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	middleware "github.com/oapi-codegen/gin-middleware"
-	"go.opentelemetry.io/otel/log/global"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -218,19 +217,19 @@ func run() int {
 			log.Printf("telemetry shutdown:%v\n", err)
 		}
 	}()
-	global.SetLoggerProvider(telemetryClient.LogsProvider)
 
 	logger := zap.Must(l.NewLogger(ctx, l.LoggerConfig{
 		ServiceName: serviceName,
 		IsInternal:  true,
 		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{l.GetOTELCore(serviceName)},
+		Cores:       []zapcore.Core{l.GetOTELCore(telemetryClient.LogsProvider, serviceName)},
 	}))
 	defer logger.Sync()
 	zap.ReplaceGlobals(logger)
 
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
+		telemetryClient.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       false,
@@ -242,6 +241,7 @@ func run() int {
 
 	sbxLoggerInternal := sbxlogger.NewLogger(
 		ctx,
+		telemetryClient.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       true,

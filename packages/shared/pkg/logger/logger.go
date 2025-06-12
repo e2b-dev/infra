@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"go.opentelemetry.io/contrib/bridges/otelzap"
-	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -88,8 +88,6 @@ func GetEncoderConfig(lineEnding string) zapcore.EncoderConfig {
 	}
 }
 
-func GetOTELCore(serviceName string) zapcore.Core {
-	provider := global.GetLoggerProvider()
-
+func GetOTELCore(provider log.LoggerProvider, serviceName string) zapcore.Core {
 	return otelzap.NewCore(serviceName, otelzap.WithLoggerProvider(provider))
 }
