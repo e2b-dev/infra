@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"strings"
 )
 
 const (
@@ -19,7 +18,7 @@ var hasher Hasher = NewSHA256Hashing()
 type Key struct {
 	PrefixedRawValue string
 	HashedValue      string
-	MaskedValue      string
+	Masked           MaskedIdentifier
 }
 
 type MaskedIdentifier struct {
@@ -29,9 +28,8 @@ type MaskedIdentifier struct {
 	MaskedValueSuffix string
 }
 
-// GetMaskedIdentifierProperties returns identifier masking properties in accordance to the OpenAPI response spec
-// NOTE: This is a temporary function which should eventually replace [MaskKey]/[GenerateKey] when db migration is completed
-func GetMaskedIdentifierProperties(prefix, value string) (MaskedIdentifier, error) {
+// MaskKey returns identifier masking properties in accordance to the OpenAPI response spec
+func MaskKey(prefix, value string) (MaskedIdentifier, error) {
 	valueLength := len(value)
 
 	suffixOffset := valueLength - identifierValueSuffixLength
@@ -63,22 +61,6 @@ func GetMaskedIdentifierProperties(prefix, value string) (MaskedIdentifier, erro
 	return maskedIdentifierProperties, nil
 }
 
-func MaskKey(prefix string, value string) (string, error) {
-	suffixOffset := len(value) - identifierValueSuffixLength
-
-	if suffixOffset < 0 {
-		return "", fmt.Errorf("mask value length is less than or equal to key suffix length (%d)", identifierValueSuffixLength)
-	}
-
-	if suffixOffset == 0 {
-		return "", fmt.Errorf("mask value length is equal to key suffix length (%d), which would expose the entire key in the mask", identifierValueSuffixLength)
-	}
-
-	lastFour := value[suffixOffset:]
-	stars := strings.Repeat("*", suffixOffset)
-	return prefix + stars + lastFour, nil
-}
-
 func GenerateKey(prefix string) (Key, error) {
 	keyBytes := make([]byte, keyLength)
 
@@ -97,6 +79,6 @@ func GenerateKey(prefix string) (Key, error) {
 	return Key{
 		PrefixedRawValue: prefix + generatedIdentifier,
 		HashedValue:      hasher.Hash(keyBytes),
-		MaskedValue:      mask,
+		Masked:           mask,
 	}, nil
 }

@@ -28,8 +28,11 @@ func CreateAPIKey(ctx context.Context, db *db.DB, teamID uuid.UUID, userID uuid.
 		SetLastUsed(time.Now()).
 		SetUpdatedAt(time.Now()).
 		SetAPIKey(teamApiKey.PrefixedRawValue).
-		SetAPIKeyMask(teamApiKey.MaskedValue).
 		SetAPIKeyHash(teamApiKey.HashedValue).
+		SetAPIKeyPrefix(teamApiKey.Masked.Prefix).
+		SetAPIKeyLength(teamApiKey.Masked.ValueLength).
+		SetAPIKeyMaskPrefix(teamApiKey.Masked.MaskedValuePrefix).
+		SetAPIKeyMaskSuffix(teamApiKey.Masked.MaskedValueSuffix).
 		SetName(name).
 		Save(ctx)
 	if err != nil {

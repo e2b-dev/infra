@@ -12,6 +12,8 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -37,7 +39,7 @@ type GRPCServer struct {
 	}
 }
 
-func New(info *service.ServiceInfo) *GRPCServer {
+func New(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, info *service.ServiceInfo) *GRPCServer {
 	opts := []logging.Option{
 		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
@@ -59,7 +61,10 @@ func New(info *service.ServiceInfo) *GRPCServer {
 			Time:    15 * time.Second, // Server sends keepalive pings every 15s
 			Timeout: 5 * time.Second,  // Wait 5s for response before considering dead
 		}),
-		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler())),
+		grpc.StatsHandler(e2bgrpc.NewStatsWrapper(otelgrpc.NewServerHandler(
+			otelgrpc.WithTracerProvider(tracerProvider),
+			otelgrpc.WithMeterProvider(meterProvider),
+		))),
 		grpc.ChainUnaryInterceptor(
 			recovery.UnaryServerInterceptor(),
 			selector.UnaryServerInterceptor(

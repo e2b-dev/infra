@@ -9,6 +9,8 @@ import (
 	"github.com/flowchartsman/retry"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
@@ -37,8 +39,8 @@ const (
 	syncWaitingStateDeadline = time.Minute * 40
 )
 
-func New(ctx context.Context, db *db.DB, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
-	client, err := NewClient(ctx)
+func New(ctx context.Context, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, db *db.DB, buildCache *templatecache.TemplatesBuildCache) (*TemplateManager, error) {
+	client, err := NewClient(ctx, tracerProvider, meterProvider)
 	if err != nil {
 		return nil, err
 	}

@@ -36,6 +36,10 @@ func (s *Sandbox) GetMetrics(ctx context.Context) (SandboxMetrics, error) {
 		return SandboxMetrics{}, err
 	}
 
+	if s.Metadata.Config.EnvdAccessToken != nil {
+		request.Header.Set("X-Access-Token", *s.Metadata.Config.EnvdAccessToken)
+	}
+
 	response, err := httpClient.Do(request)
 	if err != nil {
 		return SandboxMetrics{}, err

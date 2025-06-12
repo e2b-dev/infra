@@ -16,8 +16,8 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/node"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -151,6 +151,7 @@ type InstanceCache struct {
 
 func NewCache(
 	ctx context.Context,
+	meterProvider metric.MeterProvider,
 	analytics analyticscollector.AnalyticsCollectorClient,
 	insertInstance func(data *InstanceInfo) error,
 	deleteInstance func(data *InstanceInfo) error,
@@ -159,12 +160,13 @@ func NewCache(
 	// right now we load them from Orchestrator
 	cache := newLifecycleCache[*InstanceInfo]()
 
-	sandboxCounter, err := meters.GetUpDownCounter(meters.SandboxCountMeterName)
+	meter := meterProvider.Meter("api.cache.sandbox")
+	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
 	if err != nil {
 		zap.L().Error("error getting counter", zap.Error(err))
 	}
 
-	createdCounter, err := meters.GetCounter(meters.SandboxCreateMeterName)
+	createdCounter, err := telemetry.GetCounter(meter, telemetry.SandboxCreateMeterName)
 	if err != nil {
 		zap.L().Error("error getting counter", zap.Error(err))
 	}

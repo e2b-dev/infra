@@ -66,6 +66,9 @@ job "otel-collector" {
         memory_max = ${memory_mb * 1.5}
         memory     = ${memory_mb}
         cpu        = ${cpu_count * 1000}
+        memory_max = ${memory_mb * 1.5}
+        memory     = ${memory_mb}
+        cpu        = ${cpu_count * 1000}
       }
 
       template {
@@ -110,11 +113,14 @@ receivers:
           relabel_configs:
           - source_labels: [__address__]
             regex: '(.*):9000'
-            replacement: '$1:9363'
+            replacement: $1:9363
             target_label: __address__
+
 processors:
   batch:
     timeout: 5s
+
+  # keep only metrics that are used
 
   # keep only metrics that are used
   filter:
@@ -193,6 +199,59 @@ processors:
           - ClickHouseMetrics_TCPConnection
           - ClickHouseMetrics_HTTPConnectionsTotal
 
+
+  filter/clickhouse:
+    metrics:
+      include:
+        match_type: strict
+        metric_names:
+          # ──────  Query load & latency ──────
+          - ClickHouseProfileEvents_SelectQuery
+          - ClickHouseProfileEvents_FailedSelectQuery
+          - ClickHouseProfileEvents_SelectQueryTimeMicroseconds
+          - ClickHouseProfileEvents_InsertQuery
+          - ClickHouseProfileEvents_FailedInsertQuery
+          - ClickHouseProfileEvents_InsertQueryTimeMicroseconds
+          - ClickHouseProfileEvents_QueryTimeMicroseconds
+          - ClickHouseProfileEvents_Query
+          - ClickHouseMetrics_Query
+          - ClickHouseProfileEvents_QueryMemoryLimitExceeded
+
+          # ──────  Table stats ──────
+          - ClickHouseAsyncMetrics_TotalRowsOfMergeTreeTables
+          - ClickHouseAsyncMetrics_TotalPartsOfMergeTreeTables
+          - ClickHouseAsyncMetrics_TotalBytesOfMergeTreeTables
+
+          # ──────  Read / write throughput ──────
+          - ClickHouseProfileEvents_AsyncInsertBytes
+          - ClickHouseProfileEvents_AsyncInsertRows
+          - ClickHouseProfileEvents_InsertedBytes
+          - ClickHouseProfileEvents_InsertedRows
+          - ClickHouseProfileEvents_SelectedBytes
+          - ClickHouseProfileEvents_SelectedRows
+          - ClickHouseProfileEvents_SlowRead
+
+          # ──────  Memory ──────
+          - ClickHouseAsyncMetrics_CGroupMemoryUsed
+          - ClickHouseAsyncMetrics_CGroupMemoryTotal
+
+          # ──────  Network ──────
+          - ClickHouseMetrics_NetworkSend
+          - ClickHouseMetrics_NetworkReceive
+
+          # ──────  Disk / S3 traffic ──────
+          - ClickHouseAsyncMetrics_DiskTotal_default
+          - ClickHouseAsyncMetrics_DiskAvailable_default
+          - ClickHouseAsyncMetrics_DiskUsed_default
+          - ClickHouseProfileEvents_S3GetObject
+          - ClickHouseProfileEvents_S3PutObject
+          - ClickHouseProfileEvents_ReadBufferFromS3Bytes
+          - ClickHouseProfileEvents_WriteBufferFromS3Bytes
+
+          # ──────  Connections ──────
+          - ClickHouseMetrics_TCPConnection
+          - ClickHouseMetrics_HTTPConnectionsTotal
+
   metricstransform:
     transforms:
       - include: "nomad_client_host_cpu_idle"
@@ -202,6 +261,7 @@ processors:
           - action: aggregate_labels
             aggregation_type: sum
             label_set: [instance, node_id, node_status, node_pool]
+
 
   filter/rpc_duration_only:
     metrics:
@@ -252,6 +312,11 @@ service:
         - prometheus
         - otlp
       processors: [filter/rpc_duration_only, resource/remove_instance, batch]
+      exporters:
+        - otlphttp/grafana_cloud
+    metrics/clickhouse:
+      receivers:  [prometheus/clickhouse]
+      processors: [filter/clickhouse, batch]
       exporters:
         - otlphttp/grafana_cloud
     metrics/clickhouse:

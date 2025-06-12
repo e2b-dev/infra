@@ -82,7 +82,7 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 		keyValue := strings.Split(apiKey.APIKey, keys.ApiKeyPrefix)[1]
 
 		// TODO: remove this once we migrate to hashed API keys
-		maskedKeyProperties, err := keys.GetMaskedIdentifierProperties(keys.ApiKeyPrefix, keyValue)
+		maskedKeyProperties, err := keys.MaskKey(keys.ApiKeyPrefix, keyValue)
 		if err != nil {
 			fmt.Printf("masking API key failed %d: %v", apiKey.ID, err)
 			continue
@@ -163,26 +163,15 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		return
 	}
 
-	valueWithoutPrefix := strings.TrimPrefix(apiKey.APIKey, keys.ApiKeyPrefix)
-
-	maskedKeyProperties, err := keys.GetMaskedIdentifierProperties(keys.ApiKeyPrefix, valueWithoutPrefix)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating response key mask: %s", err))
-
-		telemetry.ReportCriticalError(ctx, fmt.Sprintf("error when masking response key for creating API key %d", apiKey.ID), err)
-
-		return
-	}
-
 	c.JSON(http.StatusCreated, api.CreatedTeamAPIKey{
 		Id:   apiKey.ID,
 		Name: apiKey.Name,
 		Key:  apiKey.APIKey,
 		Mask: api.IdentifierMaskingDetails{
-			Prefix:            maskedKeyProperties.Prefix,
-			ValueLength:       maskedKeyProperties.ValueLength,
-			MaskedValuePrefix: maskedKeyProperties.MaskedValuePrefix,
-			MaskedValueSuffix: maskedKeyProperties.MaskedValueSuffix,
+			Prefix:            apiKey.APIKeyPrefix,
+			ValueLength:       apiKey.APIKeyLength,
+			MaskedValuePrefix: apiKey.APIKeyMaskPrefix,
+			MaskedValueSuffix: apiKey.APIKeyMaskSuffix,
 		},
 		CreatedBy: &api.TeamUser{
 			Id:    user.ID,

@@ -3,6 +3,7 @@ package sbxlogger
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -19,13 +20,13 @@ type SandboxLoggerConfig struct {
 	CollectorAddress string
 }
 
-func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
+func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config SandboxLoggerConfig) *zap.Logger {
 	level := zap.NewAtomicLevelAt(zap.DebugLevel)
 
 	var core zapcore.Core
 	if !config.IsInternal && config.CollectorAddress != "" {
 		// Add Vector exporter to the core
-		vectorEncoder := zapcore.NewJSONEncoder(logger.GetEncoderConfig(zapcore.DefaultLineEnding))
+		vectorEncoder := zapcore.NewJSONEncoder(GetSandboxEncoderConfig())
 		httpWriter := logger.NewBufferedHTTPWriter(ctx, config.CollectorAddress)
 		core = zapcore.NewCore(
 			vectorEncoder,
@@ -33,7 +34,7 @@ func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
 			level,
 		)
 	} else {
-		core = logger.GetOTELCore(config.ServiceName)
+		core = logger.GetOTELCore(loggerProvider, config.ServiceName)
 	}
 
 	lg, err := logger.NewLogger(ctx, logger.LoggerConfig{
@@ -51,4 +52,17 @@ func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
 	}
 
 	return lg
+}
+
+func GetSandboxEncoderConfig() zapcore.EncoderConfig {
+	return zapcore.EncoderConfig{
+		TimeKey:       "timestamp",
+		MessageKey:    "message",
+		LevelKey:      "level",
+		EncodeLevel:   zapcore.LowercaseLevelEncoder,
+		NameKey:       "logger",
+		StacktraceKey: "stacktrace",
+		EncodeTime:    zapcore.RFC3339NanoTimeEncoder,
+		LineEnding:    zapcore.DefaultLineEnding,
+	}
 }
