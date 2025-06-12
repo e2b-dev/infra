@@ -263,6 +263,11 @@ variable "clickhouse_server_count" {
   type = number
 }
 
+variable "clickhouse_metrics_port" {
+  type    = number
+  default = 9363
+}
+
 variable "clickhouse_server_port" {
   type = object({
     name = string
