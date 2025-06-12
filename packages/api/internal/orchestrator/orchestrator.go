@@ -31,20 +31,20 @@ const (
 )
 
 type Orchestrator struct {
-	httpClient      *http.Client
-	nomadClient     *nomadapi.Client
-	instanceCache   *instance.InstanceCache
-	nodes           *smap.Map[*Node]
-	tracer          trace.Tracer
-	analytics       *analyticscollector.Analytics
-	dns             *dns.DNS
-	dbClient        *db.DB
-	telemetryClient *telemetry.Client
+	httpClient    *http.Client
+	nomadClient   *nomadapi.Client
+	instanceCache *instance.InstanceCache
+	nodes         *smap.Map[*Node]
+	tracer        trace.Tracer
+	analytics     *analyticscollector.Analytics
+	dns           *dns.DNS
+	dbClient      *db.DB
+	tel           *telemetry.Client
 }
 
 func New(
 	ctx context.Context,
-	telemetryClient *telemetry.Client,
+	tel *telemetry.Client,
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
@@ -71,17 +71,17 @@ func New(
 	}
 
 	o := Orchestrator{
-		httpClient:      httpClient,
-		analytics:       analyticsInstance,
-		nomadClient:     nomadClient,
-		tracer:          tracer,
-		nodes:           smap.New[*Node](),
-		dns:             dnsServer,
-		dbClient:        dbClient,
-		telemetryClient: telemetryClient,
+		httpClient:  httpClient,
+		analytics:   analyticsInstance,
+		nomadClient: nomadClient,
+		tracer:      tracer,
+		nodes:       smap.New[*Node](),
+		dns:         dnsServer,
+		dbClient:    dbClient,
+		tel:         tel,
 	}
 
-	meter := telemetryClient.MeterProvider.Meter("api[")
+	meter := tel.MeterProvider.Meter("api-orchestrator")
 	cache := instance.NewCache(
 		ctx,
 		meter,

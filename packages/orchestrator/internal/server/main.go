@@ -64,7 +64,7 @@ type Service struct {
 func New(
 	ctx context.Context,
 	grpc *grpcserver.GRPCServer,
-	telemetryClient *telemetry.Client,
+	tel *telemetry.Client,
 	networkPool *network.Pool,
 	devicePool *nbd.DevicePool,
 	tracer trace.Tracer,
@@ -123,7 +123,7 @@ func New(
 			persistence:          persistence,
 		}
 
-		meter := telemetryClient.MeterProvider.Meter("orchestrator")
+		meter := tel.MeterProvider.Meter("orchestrator")
 		_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
 			observer.Observe(int64(srv.server.sandboxes.Count()))
 

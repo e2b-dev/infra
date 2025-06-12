@@ -79,7 +79,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 	defer childSpan.End()
 
-	client, err := NewClient(o.telemetryClient.TracerProvider, o.telemetryClient.MeterProvider, node.OrchestratorAddress)
+	client, err := NewClient(o.tel.TracerProvider, o.tel.MeterProvider, node.OrchestratorAddress)
 	if err != nil {
 		return err
 	}

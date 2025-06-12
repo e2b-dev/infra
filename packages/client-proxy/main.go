@@ -42,24 +42,24 @@ func run() int {
 
 	instanceID := uuid.New().String()
 	// Setup telemetry
-	telemetryClient, err := telemetry.New(ctx, serviceName, commitSHA, instanceID)
+	tel, err := telemetry.New(ctx, serviceName, commitSHA, instanceID)
 	if err != nil {
 		zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
 	}
 	defer func() {
-		err := telemetryClient.Shutdown(ctx)
+		err := tel.Shutdown(ctx)
 		if err != nil {
 			log.Printf("telemetry shutdown:%v\n", err)
 		}
 	}()
 
-	meter := telemetryClient.MeterProvider.Meter(serviceName)
+	meter := tel.MeterProvider.Meter(serviceName)
 
 	logger := zap.Must(e2bLogger.NewLogger(ctx, e2bLogger.LoggerConfig{
 		ServiceName: serviceName,
 		IsInternal:  true,
 		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{e2bLogger.GetOTELCore(telemetryClient.LogsProvider, serviceName)},
+		Cores:       []zapcore.Core{e2bLogger.GetOTELCore(tel.LogsProvider, serviceName)},
 	}))
 	defer func() {
 		err := logger.Sync()

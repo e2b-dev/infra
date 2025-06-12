@@ -67,8 +67,8 @@ type APIStore struct {
 	readMetricsFromClickHouse string
 }
 
-func NewAPIStore(ctx context.Context, telemetryClient *telemetry.Client) *APIStore {
-	tracer := telemetryClient.TracerProvider.Tracer("api")
+func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
+	tracer := tel.TracerProvider.Tracer("api")
 
 	zap.L().Info("initializing API store and services")
 
@@ -146,13 +146,13 @@ func NewAPIStore(ctx context.Context, telemetryClient *telemetry.Client) *APISto
 		zap.L().Info("connected to Redis cluster", zap.String("url", redisClusterUrl))
 	}
 
-	orch, err := orchestrator.New(ctx, telemetryClient, tracer, nomadClient, posthogClient, redisClient, redisClusterClient, dbClient)
+	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, redisClusterClient, dbClient)
 	if err != nil {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
 
 	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(ctx, telemetryClient.TracerProvider, telemetryClient.MeterProvider, dbClient, templateBuildsCache)
+	templateManager, err := template_manager.New(ctx, tel.TracerProvider, tel.MeterProvider, dbClient, templateBuildsCache)
 	if err != nil {
 		zap.L().Fatal("initializing Template manager client", zap.Error(err))
 	}
@@ -184,7 +184,7 @@ func NewAPIStore(ctx context.Context, telemetryClient *telemetry.Client) *APISto
 		templateManager:           templateManager,
 		db:                        dbClient,
 		sqlcDB:                    sqlcDB,
-		Telemetry:                 telemetryClient,
+		Telemetry:                 tel,
 		Tracer:                    tracer,
 		posthog:                   posthogClient,
 		lokiClient:                lokiClient,

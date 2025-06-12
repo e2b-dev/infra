@@ -141,25 +141,25 @@ func run(port, proxyPort uint) (success bool) {
 	}(&g)
 
 	// Setup telemetry
-	telemetryClient, err := telemetry.New(ctx, serviceName, commitSHA, clientID)
+	tel, err := telemetry.New(ctx, serviceName, commitSHA, clientID)
 	if err != nil {
 		zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
 	}
 	defer func() {
-		err := telemetryClient.Shutdown(ctx)
+		err := tel.Shutdown(ctx)
 		if err != nil {
 			log.Printf("error while shutting down metrics provider: %v", err)
 			success = false
 		}
 	}()
 
-	meter := telemetryClient.MeterProvider.Meter(serviceName)
+	meter := tel.MeterProvider.Meter(serviceName)
 
 	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName: serviceName,
 		IsInternal:  true,
 		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{logger.GetOTELCore(telemetryClient.LogsProvider, serviceName)},
+		Cores:       []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
 	}))
 	defer func(l *zap.Logger) {
 		err := l.Sync()
@@ -172,7 +172,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
-		telemetryClient.LogsProvider,
+		tel.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       false,
@@ -190,7 +190,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	sbxLoggerInternal := sbxlogger.NewLogger(
 		ctx,
-		telemetryClient.LogsProvider,
+		tel.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       true,
@@ -217,7 +217,7 @@ func run(port, proxyPort uint) (success bool) {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	tracer := telemetryClient.TracerProvider.Tracer(serviceName)
+	tracer := tel.TracerProvider.Tracer(serviceName)
 
 	networkPool, err := network.NewPool(ctx, meter, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
 	if err != nil {
@@ -231,16 +231,16 @@ func run(port, proxyPort uint) (success bool) {
 
 	serviceInfo := service.NewInfoContainer(clientID, version, commitSHA)
 
-	grpcSrv := grpcserver.New(telemetryClient.TracerProvider, telemetryClient.MeterProvider, serviceInfo)
+	grpcSrv := grpcserver.New(tel.TracerProvider, tel.MeterProvider, serviceInfo)
 
-	_, err = server.New(ctx, grpcSrv, telemetryClient, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
 
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
-		telemetryClient.LogsProvider,
+		tel.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      constants.ServiceNameTemplate,
 			IsInternal:       false,
