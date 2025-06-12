@@ -39,7 +39,6 @@ require (
 	github.com/pressly/goose/v3 v3.24.2
 	github.com/redis/go-redis/v9 v9.7.3
 	github.com/stretchr/testify v1.10.0
-	go.opentelemetry.io/otel/log v0.10.0
 	golang.org/x/mod v0.24.0
 	google.golang.org/grpc v1.72.1
 )
@@ -213,6 +212,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.34.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.36.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.34.0 // indirect
+	go.opentelemetry.io/otel/log v0.10.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.36.0 // indirect
 	go.opentelemetry.io/otel/sdk/log v0.10.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.35.0 // indirect
