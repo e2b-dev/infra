@@ -102,9 +102,10 @@ var gaugeIntDesc = map[GaugeIntType]string{
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
-	// TODO: is mebibyte small enough? shouldn't we just log bytes?
-	SandboxRamUsedGaugeName:  "{mebibyte}",
-	SandboxRamTotalGaugeName: "{mebibyte}",
+	// TODO: mebibyte may not be small enough,
+	//  we may need to improve how envd reports memory usage
+	SandboxRamUsedGaugeName:  "{MiBy}",
+	SandboxRamTotalGaugeName: "{MiBy}",
 	SandboxCpuTotalGaugeName: "{count}",
 }
 
