@@ -11,6 +11,8 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -47,8 +49,11 @@ var (
 	}
 )
 
-func NewClient(host string) (*GRPCClient, error) {
-	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()), grpc.WithBlock(), grpc.WithTimeout(time.Second))
+func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*GRPCClient, error) {
+	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler(
+		otelgrpc.WithTracerProvider(tracerProvider),
+		otelgrpc.WithMeterProvider(meterProvider),
+	)), grpc.WithBlock(), grpc.WithTimeout(time.Second))
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
@@ -74,7 +79,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, node *node.NodeInfo) e
 
 	defer childSpan.End()
 
-	client, err := NewClient(node.OrchestratorAddress)
+	client, err := NewClient(o.tel.TracerProvider, o.tel.MeterProvider, node.OrchestratorAddress)
 	if err != nil {
 		return err
 	}

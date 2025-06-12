@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -140,21 +139,30 @@ func run(port, proxyPort uint) (success bool) {
 		}
 	}(&g)
 
-	if !env.IsLocal() {
-		shutdown := telemetry.InitOTLPExporter(ctx, serviceName, commitSHA, clientID)
-		defer func() {
-			if err := shutdown(ctx); err != nil {
-				log.Printf("telemetry shutdown: %v", err)
-				success = false
-			}
-		}()
+	// Setup telemetry
+	var tel *telemetry.Client
+	if env.IsLocal() {
+		tel = telemetry.NewNoopClient()
+	} else {
+		var err error
+		tel, err = telemetry.New(ctx, serviceName, commitSHA, clientID)
+		if err != nil {
+			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
+		}
 	}
+	defer func() {
+		err := tel.Shutdown(ctx)
+		if err != nil {
+			log.Printf("error while shutting down metrics provider: %v", err)
+			success = false
+		}
+	}()
 
 	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName: serviceName,
 		IsInternal:  true,
 		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{logger.GetOTELCore(serviceName)},
+		Cores:       []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
 	}))
 	defer func(l *zap.Logger) {
 		err := l.Sync()
@@ -167,6 +175,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	sbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
+		tel.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       false,
@@ -184,6 +193,7 @@ func run(port, proxyPort uint) (success bool) {
 
 	sbxLoggerInternal := sbxlogger.NewLogger(
 		ctx,
+		tel.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       true,
@@ -205,34 +215,35 @@ func run(port, proxyPort uint) (success bool) {
 	// to propagate information about sandbox routing.
 	sandboxes := smap.New[*sandbox.Sandbox]()
 
-	sandboxProxy, err := proxy.NewSandboxProxy(proxyPort, sandboxes)
+	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, proxyPort, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
-	tracer := otel.Tracer(serviceName)
+	tracer := tel.TracerProvider.Tracer(serviceName)
 
-	networkPool, err := network.NewPool(ctx, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
+	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
 
-	devicePool, err := nbd.NewDevicePool(ctx)
+	devicePool, err := nbd.NewDevicePool(ctx, tel.MeterProvider)
 	if err != nil {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
 
 	serviceInfo := service.NewInfoContainer(clientID, version, commitSHA)
 
-	grpcSrv := grpcserver.New(serviceInfo)
+	grpcSrv := grpcserver.New(tel.TracerProvider, tel.MeterProvider, serviceInfo)
 
-	_, err = server.New(ctx, grpcSrv, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
+	_, err = server.New(ctx, grpcSrv, tel, networkPool, devicePool, tracer, serviceInfo, sandboxProxy, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create server", zap.Error(err))
 	}
 
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
 		ctx,
+		tel.LogsProvider,
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      constants.ServiceNameTemplate,
 			IsInternal:       false,
@@ -260,6 +271,7 @@ func run(port, proxyPort uint) (success bool) {
 		tmpl, err := tmplserver.New(
 			ctx,
 			tracer,
+			tel.MeterProvider,
 			globalLogger,
 			tmplSbxLoggerExternal,
 			grpcSrv,

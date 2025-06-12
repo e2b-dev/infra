@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -38,10 +39,12 @@ type Orchestrator struct {
 	analytics     *analyticscollector.Analytics
 	dns           *dns.DNS
 	dbClient      *db.DB
+	tel           *telemetry.Client
 }
 
 func New(
 	ctx context.Context,
+	tel *telemetry.Client,
 	tracer trace.Tracer,
 	nomadClient *nomadapi.Client,
 	posthogClient *analyticscollector.PosthogClient,
@@ -75,10 +78,12 @@ func New(
 		nodes:       smap.New[*Node](),
 		dns:         dnsServer,
 		dbClient:    dbClient,
+		tel:         tel,
 	}
 
 	cache := instance.NewCache(
 		ctx,
+		tel.MeterProvider,
 		analyticsInstance.Client,
 		o.getInsertInstanceFunction(ctx, cacheHookTimeout),
 		o.getDeleteInstanceFunction(ctx, posthogClient, cacheHookTimeout),

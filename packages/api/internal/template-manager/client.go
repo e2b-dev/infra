@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -32,14 +34,17 @@ type GRPCClient struct {
 	health            orchestratorinfo.ServiceInfoStatus
 }
 
-func NewClient(ctx context.Context) (*GRPCClient, error) {
+func NewClient(ctx context.Context, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider) (*GRPCClient, error) {
 	keepaliveParam := grpc.WithKeepaliveParams(keepalive.ClientParameters{
 		Time:                10 * time.Second, // Send ping every 10s
 		Timeout:             2 * time.Second,  // Wait 2s for response
 		PermitWithoutStream: true,
 	})
 
-	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler()), keepaliveParam)
+	conn, err := e2bgrpc.GetConnection(host, false, grpc.WithStatsHandler(otelgrpc.NewClientHandler(
+		otelgrpc.WithTracerProvider(tracerProvider),
+		otelgrpc.WithMeterProvider(meterProvider),
+	)), keepaliveParam)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}

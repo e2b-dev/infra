@@ -1,19 +1,16 @@
-package meters
+package telemetry
 
-import (
-	"sync"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/metric"
-)
+import "go.opentelemetry.io/otel/metric"
 
 type CounterType string
+type GaugeFloatType string
+type GaugeIntType string
+type UpDownCounterType string
+type ObservableUpDownCounterType string
 
 const (
 	SandboxCreateMeterName CounterType = "api.env.instance.started"
 )
-
-type UpDownCounterType string
 
 const (
 	SandboxCountMeterName                  UpDownCounterType = "api.env.instance.running"
@@ -21,8 +18,6 @@ const (
 	ReusedNetworkSlotSPoolCounterMeterName UpDownCounterType = "orchestrator.network.slots_pool.reused"
 	NBDkSlotSReadyPoolCounterMeterName     UpDownCounterType = "orchestrator.nbd.slots_pool.read"
 )
-
-type ObservableUpDownCounterType string
 
 const (
 	OrchestratorSandboxCountMeterName ObservableUpDownCounterType = "orchestrator.env.sandbox.running"
@@ -38,11 +33,15 @@ const (
 	BuildCounterMeterName ObservableUpDownCounterType = "api.env.build.running"
 )
 
-var meter = otel.GetMeterProvider().Meter("nomad")
-var meterLock = sync.Mutex{}
-var counters = make(map[CounterType]metric.Int64Counter)
-var upDownCounters = make(map[UpDownCounterType]metric.Int64UpDownCounter)
-var observableUpDownCounters = make(map[ObservableUpDownCounterType]metric.Int64ObservableUpDownCounter)
+const (
+	SandboxCpuUsedGaugeName GaugeFloatType = "e2b.sandbox.cpu.used"
+)
+
+const (
+	SandboxRamUsedGaugeName  GaugeIntType = "e2b.sandbox.ram.used"
+	SandboxRamTotalGaugeName GaugeIntType = "e2b.sandbox.ram.total"
+	SandboxCpuTotalGaugeName GaugeIntType = "e2b.sandbox.cpu.total"
+)
 
 var counterDesc = map[CounterType]string{
 	SandboxCreateMeterName: "Number of currently waiting requests to create a new sandbox",
@@ -88,56 +87,70 @@ var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
 	BuildCounterMeterName:                              "{build}",
 }
 
-func GetCounter(name CounterType) (metric.Int64Counter, error) {
-	meterLock.Lock()
-	defer meterLock.Unlock()
-
-	if counter, ok := counters[name]; ok {
-		return counter, nil
-	}
-
-	counter, err := meter.Int64Counter(string(name), metric.WithDescription(counterDesc[name]), metric.WithUnit(counterUnits[name]))
-	if err != nil {
-		return nil, err
-	}
-
-	counters[name] = counter
-
-	return counter, nil
+var gaugeFloatDesc = map[GaugeFloatType]string{
+	SandboxCpuUsedGaugeName: "Amount of CPU used by the sandbox.",
 }
 
-func GetUpDownCounter(name UpDownCounterType) (metric.Int64UpDownCounter, error) {
-	meterLock.Lock()
-	defer meterLock.Unlock()
-
-	if counter, ok := upDownCounters[name]; ok {
-		return counter, nil
-	}
-
-	counter, err := meter.Int64UpDownCounter(string(name), metric.WithDescription(upDownCounterDesc[name]), metric.WithUnit(upDownCounterUnits[name]))
-	if err != nil {
-		return nil, err
-	}
-
-	upDownCounters[name] = counter
-
-	return counter, nil
+var gaugeFloatUnits = map[GaugeFloatType]string{
+	SandboxCpuUsedGaugeName: "{percent}",
 }
 
-func GetObservableUpDownCounter(name ObservableUpDownCounterType, callback metric.Int64Callback) (metric.Int64ObservableUpDownCounter, error) {
-	meterLock.Lock()
-	defer meterLock.Unlock()
+var gaugeIntDesc = map[GaugeIntType]string{
+	SandboxRamUsedGaugeName:  "Amount of RAM used by the sandbox.",
+	SandboxRamTotalGaugeName: "Amount of RAM available to the sandbox.",
+	SandboxCpuTotalGaugeName: "Amount of CPU available to the sandbox.",
+}
 
-	if counter, ok := observableUpDownCounters[name]; ok {
-		return counter, nil
-	}
+var gaugeIntUnits = map[GaugeIntType]string{
+	// TODO: mebibyte may not be small enough,
+	//  we may need to improve how envd reports memory usage
+	SandboxRamUsedGaugeName:  "{MiBy}",
+	SandboxRamTotalGaugeName: "{MiBy}",
+	SandboxCpuTotalGaugeName: "{count}",
+}
 
-	counter, err := meter.Int64ObservableUpDownCounter(string(name), metric.WithDescription(observableUpDownCounterDesc[name]), metric.WithUnit(observableUpDownCounterUnits[name]), metric.WithInt64Callback(callback))
-	if err != nil {
-		return nil, err
-	}
+func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {
+	desc := counterDesc[name]
+	unit := counterUnits[name]
+	return meter.Int64Counter(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+	)
+}
 
-	observableUpDownCounters[name] = counter
+func GetUpDownCounter(meter metric.Meter, name UpDownCounterType) (metric.Int64UpDownCounter, error) {
+	desc := upDownCounterDesc[name]
+	unit := upDownCounterUnits[name]
+	return meter.Int64UpDownCounter(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+	)
+}
 
-	return counter, nil
+func GetObservableUpDownCounter(meter metric.Meter, name ObservableUpDownCounterType, callback metric.Int64Callback) (metric.Int64ObservableUpDownCounter, error) {
+	desc := observableUpDownCounterDesc[name]
+	unit := observableUpDownCounterUnits[name]
+	return meter.Int64ObservableUpDownCounter(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+		metric.WithInt64Callback(callback),
+	)
+}
+
+func GetGaugeFloat(meter metric.Meter, name GaugeFloatType) (metric.Float64ObservableGauge, error) {
+	desc := gaugeFloatDesc[name]
+	unit := gaugeFloatUnits[name]
+	return meter.Float64ObservableGauge(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+	)
+}
+
+func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableGauge, error) {
+	desc := gaugeIntDesc[name]
+	unit := gaugeIntUnits[name]
+	return meter.Int64ObservableGauge(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+	)
 }

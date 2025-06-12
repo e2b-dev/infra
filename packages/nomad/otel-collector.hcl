@@ -110,8 +110,9 @@ receivers:
           relabel_configs:
           - source_labels: [__address__]
             regex: '(.*):9000'
-            replacement: '$1:9363'
+            replacement: $1:9363
             target_label: __address__
+
 processors:
   batch:
     timeout: 5s

@@ -3,6 +3,7 @@ package sbxlogger
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -19,7 +20,7 @@ type SandboxLoggerConfig struct {
 	CollectorAddress string
 }
 
-func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
+func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config SandboxLoggerConfig) *zap.Logger {
 	level := zap.NewAtomicLevelAt(zap.DebugLevel)
 
 	var core zapcore.Core
@@ -33,7 +34,7 @@ func NewLogger(ctx context.Context, config SandboxLoggerConfig) *zap.Logger {
 			level,
 		)
 	} else {
-		core = logger.GetOTELCore(config.ServiceName)
+		core = logger.GetOTELCore(loggerProvider, config.ServiceName)
 	}
 
 	lg, err := logger.NewLogger(ctx, logger.LoggerConfig{

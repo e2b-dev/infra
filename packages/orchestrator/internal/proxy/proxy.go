@@ -12,10 +12,10 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
 	reverse_proxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -29,7 +29,7 @@ type SandboxProxy struct {
 	proxy *reverse_proxy.Proxy
 }
 
-func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxProxy, error) {
+func NewSandboxProxy(meterProvider metric.MeterProvider, port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxProxy, error) {
 	proxy := reverse_proxy.New(
 		port,
 		idleTimeout,
@@ -70,31 +70,32 @@ func NewSandboxProxy(port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*Sandbox
 		},
 	)
 
-	_, err := meters.GetObservableUpDownCounter(meters.OrchestratorProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	meter := meterProvider.Meter("orchestrator.proxy.sandbox")
+	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(proxy.CurrentServerConnections())
 
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error registering orchestrator proxy connections metric (%s): %w", meters.OrchestratorProxyServerConnectionsMeterCounterName, err)
+		return nil, fmt.Errorf("error registering orchestrator proxy connections metric (%s): %w", telemetry.OrchestratorProxyServerConnectionsMeterCounterName, err)
 	}
 
-	_, err = meters.GetObservableUpDownCounter(meters.OrchestratorProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(proxy.CurrentPoolConnections())
 
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error registering orchestrator proxy connections metric (%s): %w", meters.OrchestratorProxyPoolConnectionsMeterCounterName, err)
+		return nil, fmt.Errorf("error registering orchestrator proxy connections metric (%s): %w", telemetry.OrchestratorProxyPoolConnectionsMeterCounterName, err)
 	}
 
-	_, err = meters.GetObservableUpDownCounter(meters.OrchestratorProxyPoolSizeMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorProxyPoolSizeMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(proxy.CurrentPoolSize()))
 
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error registering orchestrator proxy pool size metric (%s): %w", meters.OrchestratorProxyPoolSizeMeterCounterName, err)
+		return nil, fmt.Errorf("error registering orchestrator proxy pool size metric (%s): %w", telemetry.OrchestratorProxyPoolSizeMeterCounterName, err)
 	}
 
 	return &SandboxProxy{proxy}, nil

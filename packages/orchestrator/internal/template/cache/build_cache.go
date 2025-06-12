@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/meters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -75,9 +75,11 @@ type BuildCache struct {
 	mu sync.Mutex
 }
 
-func NewBuildCache() *BuildCache {
+func NewBuildCache(meterProvider metric.MeterProvider) *BuildCache {
+	meter := meterProvider.Meter("orchestrator.cache.build")
+
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
-	_, err := meters.GetObservableUpDownCounter(meters.BuildCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.BuildCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		items := utils.MapValues(cache.Items())
 
 		// Filter running builds
@@ -89,7 +91,7 @@ func NewBuildCache() *BuildCache {
 		return nil
 	})
 	if err != nil {
-		zap.L().Error("error creating counter", zap.Error(err), zap.Any("counter_name", meters.BuildCounterMeterName))
+		zap.L().Error("error creating counter", zap.Error(err), zap.Any("counter_name", telemetry.BuildCounterMeterName))
 	}
 
 	go cache.Start()

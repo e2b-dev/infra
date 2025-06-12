@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 )
 
 const (
@@ -17,7 +18,7 @@ var teamID = uuid.New()
 
 func newInstanceCache() (*InstanceCache, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cache := NewCache(ctx, nil, nil, nil)
+	cache := NewCache(ctx, noop.MeterProvider{}, nil, nil, nil)
 	return cache, cancel
 }
 
