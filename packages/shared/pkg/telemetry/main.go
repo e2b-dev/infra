@@ -33,6 +33,7 @@ type Client struct {
 }
 
 func New(ctx context.Context, serviceName, commitSHA, clientID string) (*Client, error) {
+	// Setup metrics
 	metricsExporter, err := NewMeterExporter(ctx, otlpmetricgrpc.WithAggregationSelector(func(kind sdkmetric.InstrumentKind) sdkmetric.Aggregation {
 		if kind == sdkmetric.InstrumentKindHistogram {
 			// Defaults from https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/sdk.md#base2-exponential-bucket-histogram-aggregation
@@ -47,6 +48,7 @@ func New(ctx context.Context, serviceName, commitSHA, clientID string) (*Client,
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metrics exporter: %w", err)
 	}
+
 	meterProvider, err := NewMeterProvider(ctx, metricsExporter, metricExportPeriod, serviceName, commitSHA, clientID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metrics provider: %w", err)
