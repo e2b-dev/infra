@@ -33,7 +33,7 @@ func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPo
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
-	meter := meterProvider.Meter("network-pool")
+	meter := meterProvider.Meter("orchestrator.network.pool")
 
 	newSlotCounter, err := telemetry.GetUpDownCounter(meter, telemetry.NewNetworkSlotSPoolCounterMeterName)
 	if err != nil {

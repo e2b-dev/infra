@@ -24,7 +24,7 @@ func GetRecorder(meterProvider metric.MeterProvider, metricsPrefix string) Recor
 		return metricName
 	}
 
-	meter := meterProvider.Meter("middleware")
+	meter := meterProvider.Meter("api.server.middleware")
 	totalDuration, _ := meter.Float64Histogram(
 		metricName("http.server.duration"),
 		metric.WithDescription("Time Taken by request"),

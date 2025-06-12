@@ -76,7 +76,7 @@ type BuildCache struct {
 }
 
 func NewBuildCache(meterProvider metric.MeterProvider) *BuildCache {
-	meter := meterProvider.Meter("build-cache")
+	meter := meterProvider.Meter("orchestrator.cache.build")
 
 	cache := ttlcache.New(ttlcache.WithTTL[string, *BuildInfo](buildInfoExpiration))
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.BuildCounterMeterName, func(ctx context.Context, observer metric.Int64Observer) error {

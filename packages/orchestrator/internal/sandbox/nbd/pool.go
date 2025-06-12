@@ -69,7 +69,7 @@ func NewDevicePool(ctx context.Context, meterProvider metric.MeterProvider) (*De
 		return nil, errors.New("max devices is 0")
 	}
 
-	meter := meterProvider.Meter("device-pool")
+	meter := meterProvider.Meter("orchestrator.device.pool")
 	counter, err := telemetry.GetUpDownCounter(meter, telemetry.NBDkSlotSReadyPoolCounterMeterName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get slot pool counter: %w", err)

@@ -160,7 +160,7 @@ func NewCache(
 	// right now we load them from Orchestrator
 	cache := newLifecycleCache[*InstanceInfo]()
 
-	meter := meterProvider.Meter("sandbox-cache")
+	meter := meterProvider.Meter("api.cache.sandbox")
 	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
 	if err != nil {
 		zap.L().Error("error getting counter", zap.Error(err))

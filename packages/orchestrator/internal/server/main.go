@@ -123,7 +123,7 @@ func New(
 			persistence:          persistence,
 		}
 
-		meter := tel.MeterProvider.Meter("orchestrator")
+		meter := tel.MeterProvider.Meter("orchestrator.sandbox")
 		_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(ctx context.Context, observer metric.Int64Observer) error {
 			observer.Observe(int64(srv.server.sandboxes.Count()))
 

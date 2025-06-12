@@ -70,7 +70,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint, sandboxes *s
 		},
 	)
 
-	meter := meterProvider.Meter("sandbox-proxy")
+	meter := meterProvider.Meter("orchestrator.proxy.sandbox")
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(proxy.CurrentServerConnections())
 
