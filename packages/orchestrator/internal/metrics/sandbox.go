@@ -47,9 +47,10 @@ func (mp *MeterProvider) StartMonitoringSandbox(sandboxID, teamID string, getMet
 			}
 
 			o.ObserveInt64(cpuTotal, sbxMetrics.CPUCount, attributes)
-			o.ObserveInt64(memoryTotal, sbxMetrics.MemTotalMiB, attributes)
-			o.ObserveInt64(memoryUsed, sbxMetrics.MemUsedMiB, attributes)
 			o.ObserveFloat64(cpuUsed, sbxMetrics.CPUUsedPercent, attributes)
+			// Save as KiB for future, so we can return more accurate values
+			o.ObserveInt64(memoryTotal, sbxMetrics.MemTotalMiB*1024, attributes)
+			o.ObserveInt64(memoryUsed, sbxMetrics.MemUsedMiB*1024, attributes)
 			return nil
 		}, cpuTotal, cpuUsed, memoryTotal, memoryUsed)
 
