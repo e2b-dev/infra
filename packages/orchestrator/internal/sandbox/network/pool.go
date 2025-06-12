@@ -29,9 +29,11 @@ type Pool struct {
 	slotStorage Storage
 }
 
-func NewPool(ctx context.Context, meter metric.Meter, newSlotsPoolSize, reusedSlotsPoolSize int, clientID string, tracer trace.Tracer) (*Pool, error) {
+func NewPool(ctx context.Context, meterProvider metric.MeterProvider, newSlotsPoolSize, reusedSlotsPoolSize int, clientID string, tracer trace.Tracer) (*Pool, error) {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
+
+	meter := meterProvider.Meter("network-pool")
 
 	newSlotCounter, err := telemetry.GetUpDownCounter(meter, telemetry.NewNetworkSlotSPoolCounterMeterName)
 	if err != nil {

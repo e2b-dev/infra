@@ -36,7 +36,7 @@ const (
 
 var dnsClient = dns.Client{}
 
-func NewClientProxy(serviceMeter metric.Meter, port uint) (*reverse_proxy.Proxy, error) {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint) (*reverse_proxy.Proxy, error) {
 	proxy := reverse_proxy.New(
 		port,
 		idleTimeout,
@@ -110,7 +110,8 @@ func NewClientProxy(serviceMeter metric.Meter, port uint) (*reverse_proxy.Proxy,
 		},
 	)
 
-	_, err := telemetry.GetObservableUpDownCounter(serviceMeter, telemetry.ClientProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	meter := meterProvider.Meter(serviceName)
+	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.ClientProxyPoolConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(proxy.CurrentServerConnections()))
 
 		return nil
@@ -119,7 +120,7 @@ func NewClientProxy(serviceMeter metric.Meter, port uint) (*reverse_proxy.Proxy,
 		return nil, fmt.Errorf("error registering client proxy connections metric (%s): %w", telemetry.ClientProxyPoolConnectionsMeterCounterName, err)
 	}
 
-	_, err = telemetry.GetObservableUpDownCounter(serviceMeter, telemetry.ClientProxyPoolSizeMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.ClientProxyPoolSizeMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(proxy.CurrentPoolSize()))
 
 		return nil
@@ -128,7 +129,7 @@ func NewClientProxy(serviceMeter metric.Meter, port uint) (*reverse_proxy.Proxy,
 		return nil, fmt.Errorf("error registering client proxy pool size metric (%s): %w", telemetry.ClientProxyPoolSizeMeterCounterName, err)
 	}
 
-	_, err = telemetry.GetObservableUpDownCounter(serviceMeter, telemetry.ClientProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
+	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.ClientProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(proxy.CurrentPoolConnections()))
 
 		return nil

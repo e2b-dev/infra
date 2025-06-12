@@ -73,7 +73,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 	// to propagate information about sandbox routing.
 	sandboxes := smap.New[*sandbox.Sandbox]()
 
-	sandboxProxy, err := proxy.NewSandboxProxy(noop.Meter{}, proxyPort, sandboxes)
+	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
 	if err != nil {
 		logger.Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
@@ -95,7 +95,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
 
-	devicePool, err := nbd.NewDevicePool(ctx, noop.Meter{})
+	devicePool, err := nbd.NewDevicePool(ctx, noop.MeterProvider{})
 	if err != nil {
 		return fmt.Errorf("could not create device pool: %w", err)
 	}
@@ -106,7 +106,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		}
 	}()
 
-	networkPool, err := network.NewPool(ctx, noop.Meter{}, 8, 8, clientID, tracer)
+	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID, tracer)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}

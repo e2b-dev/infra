@@ -77,7 +77,7 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 			"/templates/:templateID/builds/:buildID/status",
 		),
 		customMiddleware.IncludeRoutes(
-			metricsMiddleware.Middleware(tel.MeterProvider.Meter("api-metrics"), serviceName),
+			metricsMiddleware.Middleware(tel.MeterProvider, serviceName),
 			"/sandboxes",
 			"/sandboxes/:sandboxID",
 			"/sandboxes/:sandboxID/pause",

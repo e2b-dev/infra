@@ -29,7 +29,7 @@ type SandboxProxy struct {
 	proxy *reverse_proxy.Proxy
 }
 
-func NewSandboxProxy(meter metric.Meter, port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxProxy, error) {
+func NewSandboxProxy(meterProvider metric.MeterProvider, port uint, sandboxes *smap.Map[*sandbox.Sandbox]) (*SandboxProxy, error) {
 	proxy := reverse_proxy.New(
 		port,
 		idleTimeout,
@@ -70,6 +70,7 @@ func NewSandboxProxy(meter metric.Meter, port uint, sandboxes *smap.Map[*sandbox
 		},
 	)
 
+	meter := meterProvider.Meter("sandbox-proxy")
 	_, err := telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorProxyServerConnectionsMeterCounterName, func(ctx context.Context, observer metric.Int64Observer) error {
 		observer.Observe(proxy.CurrentServerConnections())
 

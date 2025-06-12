@@ -42,7 +42,7 @@ type ServerStore struct {
 func New(
 	ctx context.Context,
 	tracer trace.Tracer,
-	meter metric.Meter,
+	meterProvider metric.MeterProvider,
 	logger *zap.Logger,
 	buildLogger *zap.Logger,
 	grpc *grpcserver.GRPCServer,
@@ -63,6 +63,7 @@ func New(
 		return nil, fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
+	meter := meterProvider.Meter("template-manager")
 	templateStorage := template.NewStorage(persistence)
 	buildCache := cache.NewBuildCache(meter)
 	builder := build.NewBuilder(

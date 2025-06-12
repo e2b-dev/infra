@@ -59,8 +59,6 @@ func run() int {
 		}
 	}()
 
-	meter := tel.MeterProvider.Meter(serviceName)
-
 	logger := zap.Must(e2bLogger.NewLogger(ctx, e2bLogger.LoggerConfig{
 		ServiceName: serviceName,
 		IsInternal:  true,
@@ -102,7 +100,7 @@ func run() int {
 	}()
 
 	// Proxy request to the correct node
-	proxy, err := client_proxy.NewClientProxy(meter, port)
+	proxy, err := client_proxy.NewClientProxy(tel.MeterProvider, serviceName, port)
 	if err != nil {
 		logger.Error("failed to create client proxy", zap.Error(err))
 

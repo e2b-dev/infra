@@ -159,8 +159,6 @@ func run(port, proxyPort uint) (success bool) {
 		}
 	}()
 
-	meter := tel.MeterProvider.Meter(serviceName)
-
 	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
 		ServiceName: serviceName,
 		IsInternal:  true,
@@ -218,19 +216,19 @@ func run(port, proxyPort uint) (success bool) {
 	// to propagate information about sandbox routing.
 	sandboxes := smap.New[*sandbox.Sandbox]()
 
-	sandboxProxy, err := proxy.NewSandboxProxy(meter, proxyPort, sandboxes)
+	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, proxyPort, sandboxes)
 	if err != nil {
 		zap.L().Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
 
 	tracer := tel.TracerProvider.Tracer(serviceName)
 
-	networkPool, err := network.NewPool(ctx, meter, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
+	networkPool, err := network.NewPool(ctx, tel.MeterProvider, network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, clientID, tracer)
 	if err != nil {
 		zap.L().Fatal("failed to create network pool", zap.Error(err))
 	}
 
-	devicePool, err := nbd.NewDevicePool(ctx, meter)
+	devicePool, err := nbd.NewDevicePool(ctx, tel.MeterProvider)
 	if err != nil {
 		zap.L().Fatal("failed to create device pool", zap.Error(err))
 	}
@@ -274,7 +272,7 @@ func run(port, proxyPort uint) (success bool) {
 		tmpl, err := tmplserver.New(
 			ctx,
 			tracer,
-			meter,
+			tel.MeterProvider,
 			globalLogger,
 			tmplSbxLoggerExternal,
 			grpcSrv,

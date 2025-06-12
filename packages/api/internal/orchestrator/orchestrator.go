@@ -81,10 +81,9 @@ func New(
 		tel:         tel,
 	}
 
-	meter := tel.MeterProvider.Meter("api-orchestrator")
 	cache := instance.NewCache(
 		ctx,
-		meter,
+		tel.MeterProvider,
 		analyticsInstance.Client,
 		o.getInsertInstanceFunction(ctx, cacheHookTimeout),
 		o.getDeleteInstanceFunction(ctx, posthogClient, cacheHookTimeout),

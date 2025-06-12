@@ -15,7 +15,7 @@ type otelRecorder struct {
 	totalDuration metric.Float64Histogram
 }
 
-func GetRecorder(meter metric.Meter, metricsPrefix string) Recorder {
+func GetRecorder(meterProvider metric.MeterProvider, metricsPrefix string) Recorder {
 	metricName := func(metricName string) string {
 		if len(metricsPrefix) > 0 {
 			return metricsPrefix + "." + metricName
@@ -24,6 +24,7 @@ func GetRecorder(meter metric.Meter, metricsPrefix string) Recorder {
 		return metricName
 	}
 
+	meter := meterProvider.Meter("middleware")
 	totalDuration, _ := meter.Float64Histogram(
 		metricName("http.server.duration"),
 		metric.WithDescription("Time Taken by request"),

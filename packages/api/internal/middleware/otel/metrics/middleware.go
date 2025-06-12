@@ -16,7 +16,7 @@ const MetricPrefix = "metric."
 // Middleware returns middleware that will trace incoming requests.
 // The service parameter should describe the name of the (virtual)
 // server handling the request.
-func Middleware(meter metric.Meter, service string, options ...Option) gin.HandlerFunc {
+func Middleware(meterProvider metric.MeterProvider, service string, options ...Option) gin.HandlerFunc {
 	cfg := defaultConfig()
 	for _, option := range options {
 		option.apply(cfg)
@@ -24,7 +24,7 @@ func Middleware(meter metric.Meter, service string, options ...Option) gin.Handl
 
 	recorder := cfg.recorder
 	if recorder == nil {
-		recorder = GetRecorder(meter, service)
+		recorder = GetRecorder(meterProvider, service)
 	}
 
 	return func(ginCtx *gin.Context) {

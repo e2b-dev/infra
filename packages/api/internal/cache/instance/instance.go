@@ -151,7 +151,7 @@ type InstanceCache struct {
 
 func NewCache(
 	ctx context.Context,
-	meter metric.Meter,
+	meterProvider metric.MeterProvider,
 	analytics analyticscollector.AnalyticsCollectorClient,
 	insertInstance func(data *InstanceInfo) error,
 	deleteInstance func(data *InstanceInfo) error,
@@ -160,6 +160,7 @@ func NewCache(
 	// right now we load them from Orchestrator
 	cache := newLifecycleCache[*InstanceInfo]()
 
+	meter := meterProvider.Meter("sandbox-cache")
 	sandboxCounter, err := telemetry.GetUpDownCounter(meter, telemetry.SandboxCountMeterName)
 	if err != nil {
 		zap.L().Error("error getting counter", zap.Error(err))
