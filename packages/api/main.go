@@ -153,7 +153,6 @@ func NewGinServer(ctx context.Context, tel *telemetry.Client, logger *zap.Logger
 				reqLogger := logger
 				if teamID != "" {
 					reqLogger = logger.With(l.WithTeamID(teamID))
-					reqLogger = logger.With(l.WithTeamID(teamID))
 				}
 
 				ginzap.Ginzap(reqLogger, time.RFC3339Nano, true)(c)
