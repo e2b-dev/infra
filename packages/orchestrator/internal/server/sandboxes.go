@@ -51,7 +51,7 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 	sbx, cleanup, err := sandbox.ResumeSandbox(
 		childCtx,
 		s.tracer,
-		s.meterProvider,
+		s.sandboxObserver,
 		s.networkPool,
 		s.templateCache,
 		req.Sandbox,

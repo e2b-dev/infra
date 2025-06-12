@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/fc"
@@ -232,7 +231,7 @@ func CreateSandbox(
 func ResumeSandbox(
 	ctx context.Context,
 	tracer trace.Tracer,
-	metricsProvider *metrics.MeterProvider,
+	sandboxObserver *telemetry.SandboxObserver,
 	networkPool *network.Pool,
 	templateCache *template.Cache,
 	config *orchestrator.SandboxConfig,
@@ -404,7 +403,7 @@ func ResumeSandbox(
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
-	checks, err := NewChecks(metricsProvider, sbx, useLokiMetrics, useClickhouseMetrics)
+	checks, err := NewChecks(sandboxObserver, sbx, useLokiMetrics, useClickhouseMetrics)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create health check: %w", err)
 	}

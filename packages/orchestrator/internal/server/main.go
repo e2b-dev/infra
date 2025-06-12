@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/grpcserver"
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -29,16 +28,16 @@ const metricExportPeriod = 5 * time.Second
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 
-	info          *service.ServiceInfo
-	sandboxes     *smap.Map[*sandbox.Sandbox]
-	proxy         *proxy.SandboxProxy
-	tracer        trace.Tracer
-	networkPool   *network.Pool
-	templateCache *template.Cache
-	pauseMu       sync.Mutex
-	devicePool    *nbd.DevicePool
-	persistence   storage.StorageProvider
-	meterProvider *metrics.MeterProvider
+	info            *service.ServiceInfo
+	sandboxes       *smap.Map[*sandbox.Sandbox]
+	proxy           *proxy.SandboxProxy
+	tracer          trace.Tracer
+	networkPool     *network.Pool
+	templateCache   *template.Cache
+	pauseMu         sync.Mutex
+	devicePool      *nbd.DevicePool
+	persistence     storage.StorageProvider
+	sandboxObserver *telemetry.SandboxObserver
 }
 
 type Service struct {
@@ -89,21 +88,21 @@ func New(
 
 		srv.persistence = persistence
 
-		meterProvider, err := metrics.NewSandboxMetricProvider(ctx, info.SourceVersion, info.ClientId, metricExportPeriod)
+		sandboxObserver, err := telemetry.NewSandboxObserver(ctx, info.SourceCommit, info.ClientId)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create meter provider: %w", err)
+			return nil, fmt.Errorf("failed to create sandbox observer: %w", err)
 		}
 
 		srv.server = &server{
-			info:          info,
-			tracer:        tracer,
-			proxy:         srv.proxy,
-			sandboxes:     sandboxes,
-			networkPool:   networkPool,
-			templateCache: templateCache,
-			devicePool:    devicePool,
-			meterProvider: meterProvider,
-			persistence:   persistence,
+			info:            info,
+			tracer:          tracer,
+			proxy:           srv.proxy,
+			sandboxes:       sandboxes,
+			networkPool:     networkPool,
+			templateCache:   templateCache,
+			devicePool:      devicePool,
+			sandboxObserver: sandboxObserver,
+			persistence:     persistence,
 		}
 
 		meter := tel.MeterProvider.Meter("orchestrator.sandbox")

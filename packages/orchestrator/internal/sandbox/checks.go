@@ -8,8 +8,8 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/mod/semver"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -30,7 +30,7 @@ type Checks struct {
 	unregisterMetrics func() error
 }
 
-func NewChecks(metricsProvider *metrics.MeterProvider, sandbox *Sandbox, useLokiMetrics, useClickhouseMetrics bool) (*Checks, error) {
+func NewChecks(sandboxObserver *telemetry.SandboxObserver, sandbox *Sandbox, useLokiMetrics, useClickhouseMetrics bool) (*Checks, error) {
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	h := &Checks{
@@ -43,8 +43,8 @@ func NewChecks(metricsProvider *metrics.MeterProvider, sandbox *Sandbox, useLoki
 	// By default, the sandbox should be healthy, if the status change we report it.
 	h.healthy.Store(true)
 
-	if metricsProvider != nil && useClickhouseMetrics {
-		unregister, err := metricsProvider.StartMonitoringSandbox(sandbox.Config.SandboxId, sandbox.Config.TeamId, h.getMetrics)
+	if sandboxObserver != nil && useClickhouseMetrics {
+		unregister, err := sandboxObserver.StartObserving(sandbox.Config.SandboxId, sandbox.Config.TeamId, h.getMetrics)
 		if err != nil {
 			return nil, err
 		}
@@ -55,7 +55,7 @@ func NewChecks(metricsProvider *metrics.MeterProvider, sandbox *Sandbox, useLoki
 	return h, nil
 }
 
-func (c *Checks) getMetrics(ctx context.Context) (*metrics.SandboxMetrics, error) {
+func (c *Checks) getMetrics(ctx context.Context) (*telemetry.SandboxMetrics, error) {
 	if !isGTEVersion(c.sandbox.Config.EnvdVersion, minEnvdVersionForMetrics) {
 		return nil, nil
 	}

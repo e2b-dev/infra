@@ -9,9 +9,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -19,7 +19,7 @@ const (
 	sbxCpuThresholdPct = 80
 )
 
-func (s *Sandbox) GetMetrics(ctx context.Context) (*metrics.SandboxMetrics, error) {
+func (s *Sandbox) GetMetrics(ctx context.Context) (*telemetry.SandboxMetrics, error) {
 	address := fmt.Sprintf("http://%s:%d/metrics", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
 	request, err := http.NewRequestWithContext(ctx, "GET", address, nil)
@@ -42,7 +42,7 @@ func (s *Sandbox) GetMetrics(ctx context.Context) (*metrics.SandboxMetrics, erro
 		return nil, err
 	}
 
-	var m metrics.SandboxMetrics
+	var m telemetry.SandboxMetrics
 	err = json.NewDecoder(response.Body).Decode(&m)
 	if err != nil {
 		return nil, err
