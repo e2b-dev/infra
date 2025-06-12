@@ -63,9 +63,8 @@ func New(
 		return nil, fmt.Errorf("error getting artifacts registry provider: %v", err)
 	}
 
-	meter := meterProvider.Meter("template-manager")
 	templateStorage := template.NewStorage(persistence)
-	buildCache := cache.NewBuildCache(meter)
+	buildCache := cache.NewBuildCache(meterProvider)
 	builder := build.NewBuilder(
 		logger,
 		buildLogger,
