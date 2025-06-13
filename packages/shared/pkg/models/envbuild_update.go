@@ -297,6 +297,26 @@ func (ebu *EnvBuildUpdate) ClearEnvdVersion() *EnvBuildUpdate {
 	return ebu
 }
 
+// SetClusterNodeID sets the "cluster_node_id" field.
+func (ebu *EnvBuildUpdate) SetClusterNodeID(s string) *EnvBuildUpdate {
+	ebu.mutation.SetClusterNodeID(s)
+	return ebu
+}
+
+// SetNillableClusterNodeID sets the "cluster_node_id" field if the given value is not nil.
+func (ebu *EnvBuildUpdate) SetNillableClusterNodeID(s *string) *EnvBuildUpdate {
+	if s != nil {
+		ebu.SetClusterNodeID(*s)
+	}
+	return ebu
+}
+
+// ClearClusterNodeID clears the value of the "cluster_node_id" field.
+func (ebu *EnvBuildUpdate) ClearClusterNodeID() *EnvBuildUpdate {
+	ebu.mutation.ClearClusterNodeID()
+	return ebu
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (ebu *EnvBuildUpdate) SetEnv(e *Env) *EnvBuildUpdate {
 	return ebu.SetEnvID(e.ID)
@@ -436,6 +456,12 @@ func (ebu *EnvBuildUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if ebu.mutation.EnvdVersionCleared() {
 		_spec.ClearField(envbuild.FieldEnvdVersion, field.TypeString)
+	}
+	if value, ok := ebu.mutation.ClusterNodeID(); ok {
+		_spec.SetField(envbuild.FieldClusterNodeID, field.TypeString, value)
+	}
+	if ebu.mutation.ClusterNodeIDCleared() {
+		_spec.ClearField(envbuild.FieldClusterNodeID, field.TypeString)
 	}
 	if ebu.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -758,6 +784,26 @@ func (ebuo *EnvBuildUpdateOne) ClearEnvdVersion() *EnvBuildUpdateOne {
 	return ebuo
 }
 
+// SetClusterNodeID sets the "cluster_node_id" field.
+func (ebuo *EnvBuildUpdateOne) SetClusterNodeID(s string) *EnvBuildUpdateOne {
+	ebuo.mutation.SetClusterNodeID(s)
+	return ebuo
+}
+
+// SetNillableClusterNodeID sets the "cluster_node_id" field if the given value is not nil.
+func (ebuo *EnvBuildUpdateOne) SetNillableClusterNodeID(s *string) *EnvBuildUpdateOne {
+	if s != nil {
+		ebuo.SetClusterNodeID(*s)
+	}
+	return ebuo
+}
+
+// ClearClusterNodeID clears the value of the "cluster_node_id" field.
+func (ebuo *EnvBuildUpdateOne) ClearClusterNodeID() *EnvBuildUpdateOne {
+	ebuo.mutation.ClearClusterNodeID()
+	return ebuo
+}
+
 // SetEnv sets the "env" edge to the Env entity.
 func (ebuo *EnvBuildUpdateOne) SetEnv(e *Env) *EnvBuildUpdateOne {
 	return ebuo.SetEnvID(e.ID)
@@ -927,6 +973,12 @@ func (ebuo *EnvBuildUpdateOne) sqlSave(ctx context.Context) (_node *EnvBuild, er
 	}
 	if ebuo.mutation.EnvdVersionCleared() {
 		_spec.ClearField(envbuild.FieldEnvdVersion, field.TypeString)
+	}
+	if value, ok := ebuo.mutation.ClusterNodeID(); ok {
+		_spec.SetField(envbuild.FieldClusterNodeID, field.TypeString, value)
+	}
+	if ebuo.mutation.ClusterNodeIDCleared() {
+		_spec.ClearField(envbuild.FieldClusterNodeID, field.TypeString)
 	}
 	if ebuo.mutation.EnvCleared() {
 		edge := &sqlgraph.EdgeSpec{

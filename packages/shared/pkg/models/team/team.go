@@ -28,6 +28,8 @@ const (
 	FieldTier = "tier"
 	// FieldEmail holds the string denoting the email field in the database.
 	FieldEmail = "email"
+	// FieldClusterID holds the string denoting the cluster_id field in the database.
+	FieldClusterID = "cluster_id"
 	// EdgeUsers holds the string denoting the users edge name in mutations.
 	EdgeUsers = "users"
 	// EdgeTeamAPIKeys holds the string denoting the team_api_keys edge name in mutations.
@@ -85,6 +87,7 @@ var Columns = []string{
 	FieldName,
 	FieldTier,
 	FieldEmail,
+	FieldClusterID,
 }
 
 var (
@@ -151,6 +154,11 @@ func ByTier(opts ...sql.OrderTermOption) OrderOption {
 // ByEmail orders the results by the email field.
 func ByEmail(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEmail, opts...).ToFunc()
+}
+
+// ByClusterID orders the results by the cluster_id field.
+func ByClusterID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClusterID, opts...).ToFunc()
 }
 
 // ByUsersCount orders the results by users count.

@@ -27,6 +27,7 @@ func (Team) Fields() []ent.Field {
 		field.String("name").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("tier").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("email").MaxLen(255).SchemaType(map[string]string{dialect.Postgres: "character varying(255)"}),
+		field.UUID("cluster_id", uuid.UUID{}).Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "uuid"}),
 	}
 }
 

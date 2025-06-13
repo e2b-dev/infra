@@ -33,6 +33,8 @@ type Team struct {
 	Tier string `json:"tier,omitempty"`
 	// Email holds the value of the "email" field.
 	Email string `json:"email,omitempty"`
+	// ClusterID holds the value of the "cluster_id" field.
+	ClusterID *uuid.UUID `json:"cluster_id,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the TeamQuery when eager-loading is set.
 	Edges        TeamEdges `json:"edges"`
@@ -110,6 +112,8 @@ func (*Team) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case team.FieldClusterID:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case team.FieldIsBanned, team.FieldIsBlocked:
 			values[i] = new(sql.NullBool)
 		case team.FieldBlockedReason, team.FieldName, team.FieldTier, team.FieldEmail:
@@ -181,6 +185,13 @@ func (t *Team) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field email", values[i])
 			} else if value.Valid {
 				t.Email = value.String
+			}
+		case team.FieldClusterID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field cluster_id", values[i])
+			} else if value.Valid {
+				t.ClusterID = new(uuid.UUID)
+				*t.ClusterID = *value.S.(*uuid.UUID)
 			}
 		default:
 			t.selectValues.Set(columns[i], values[i])
@@ -265,6 +276,11 @@ func (t *Team) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("email=")
 	builder.WriteString(t.Email)
+	builder.WriteString(", ")
+	if v := t.ClusterID; v != nil {
+		builder.WriteString("cluster_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }
