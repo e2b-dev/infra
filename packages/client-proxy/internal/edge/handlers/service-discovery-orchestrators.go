@@ -26,6 +26,7 @@ func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
 				NodeId:    node.NodeId,
 				Version:   node.SourceVersion,
 				Commit:    node.SourceCommit,
+				Host:      node.Host,
 				StartedAt: node.Startup,
 
 				Status: getOrchestratorStatusResolved(node.Status),
