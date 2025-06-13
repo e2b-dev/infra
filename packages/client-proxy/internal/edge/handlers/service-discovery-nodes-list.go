@@ -10,6 +10,9 @@ import (
 )
 
 func (a *APIStore) V1ServiceDiscoveryNodes(c *gin.Context) {
+	_, templateSpan := a.tracer.Start(c, "service-discovery-list-nodes-handler")
+	defer templateSpan.End()
+
 	response := make([]api.ClusterNode, 0)
 
 	// iterate orchestrator pool

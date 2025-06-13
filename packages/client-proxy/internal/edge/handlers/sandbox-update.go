@@ -25,6 +25,9 @@ func (a *APIStore) V1UpdateSandbox(c *gin.Context, sandboxId api.SandboxId) {
 		return
 	}
 
+	_, templateSpan := a.tracer.Start(ctx, "update-sandbox-handler")
+	defer templateSpan.End()
+
 	sbx, err := a.sandboxes.GetSandbox(sandboxId)
 	if err != nil {
 		if errors.Is(err, sandboxes.ErrSandboxNotFound) {

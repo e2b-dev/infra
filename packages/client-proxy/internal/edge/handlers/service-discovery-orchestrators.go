@@ -13,6 +13,9 @@ import (
 )
 
 func (a *APIStore) V1ServiceDiscoveryGetOrchestrators(c *gin.Context) {
+	_, templateSpan := a.tracer.Start(c, "service-discovery-list-orchestrators-handler")
+	defer templateSpan.End()
+
 	response := make([]api.ClusterOrchestratorNode, 0)
 
 	for _, node := range a.orchestratorPool.GetOrchestrators() {

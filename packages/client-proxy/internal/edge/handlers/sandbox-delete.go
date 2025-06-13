@@ -16,6 +16,9 @@ import (
 func (a *APIStore) V1DeleteSandbox(c *gin.Context, sandboxId api.SandboxId) {
 	ctx := c.Request.Context()
 
+	_, templateSpan := a.tracer.Start(ctx, "create-delete-handler")
+	defer templateSpan.End()
+
 	sbx, err := a.sandboxes.GetSandbox(sandboxId)
 	if err != nil {
 		if errors.Is(err, sandboxes.ErrSandboxNotFound) {
