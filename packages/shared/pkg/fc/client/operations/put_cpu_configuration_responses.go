@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PutCPUConfigurationNoContent) Code() int {
 }
 
 func (o *PutCPUConfigurationNoContent) Error() string {
-	return fmt.Sprintf("[PUT /cpu-config][%d] putCpuConfigurationNoContent ", 204)
+	return fmt.Sprintf("[PUT /cpu-config][%d] putCpuConfigurationNoContent", 204)
 }
 
 func (o *PutCPUConfigurationNoContent) String() string {
-	return fmt.Sprintf("[PUT /cpu-config][%d] putCpuConfigurationNoContent ", 204)
+	return fmt.Sprintf("[PUT /cpu-config][%d] putCpuConfigurationNoContent", 204)
 }
 
 func (o *PutCPUConfigurationNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PutCPUConfigurationBadRequest) Code() int {
 }
 
 func (o *PutCPUConfigurationBadRequest) Error() string {
-	return fmt.Sprintf("[PUT /cpu-config][%d] putCpuConfigurationBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /cpu-config][%d] putCpuConfigurationBadRequest %s", 400, payload)
 }
 
 func (o *PutCPUConfigurationBadRequest) String() string {
-	return fmt.Sprintf("[PUT /cpu-config][%d] putCpuConfigurationBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /cpu-config][%d] putCpuConfigurationBadRequest %s", 400, payload)
 }
 
 func (o *PutCPUConfigurationBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PutCPUConfigurationDefault) Code() int {
 }
 
 func (o *PutCPUConfigurationDefault) Error() string {
-	return fmt.Sprintf("[PUT /cpu-config][%d] putCpuConfiguration default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /cpu-config][%d] putCpuConfiguration default %s", o._statusCode, payload)
 }
 
 func (o *PutCPUConfigurationDefault) String() string {
-	return fmt.Sprintf("[PUT /cpu-config][%d] putCpuConfiguration default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /cpu-config][%d] putCpuConfiguration default %s", o._statusCode, payload)
 }
 
 func (o *PutCPUConfigurationDefault) GetPayload() *models.Error {

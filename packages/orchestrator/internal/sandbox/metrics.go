@@ -10,9 +10,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb/chmodels"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
 )
 
 const (

@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PatchMmdsNoContent) Code() int {
 }
 
 func (o *PatchMmdsNoContent) Error() string {
-	return fmt.Sprintf("[PATCH /mmds][%d] patchMmdsNoContent ", 204)
+	return fmt.Sprintf("[PATCH /mmds][%d] patchMmdsNoContent", 204)
 }
 
 func (o *PatchMmdsNoContent) String() string {
-	return fmt.Sprintf("[PATCH /mmds][%d] patchMmdsNoContent ", 204)
+	return fmt.Sprintf("[PATCH /mmds][%d] patchMmdsNoContent", 204)
 }
 
 func (o *PatchMmdsNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PatchMmdsBadRequest) Code() int {
 }
 
 func (o *PatchMmdsBadRequest) Error() string {
-	return fmt.Sprintf("[PATCH /mmds][%d] patchMmdsBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /mmds][%d] patchMmdsBadRequest %s", 400, payload)
 }
 
 func (o *PatchMmdsBadRequest) String() string {
-	return fmt.Sprintf("[PATCH /mmds][%d] patchMmdsBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /mmds][%d] patchMmdsBadRequest %s", 400, payload)
 }
 
 func (o *PatchMmdsBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PatchMmdsDefault) Code() int {
 }
 
 func (o *PatchMmdsDefault) Error() string {
-	return fmt.Sprintf("[PATCH /mmds][%d] patchMmds default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /mmds][%d] patchMmds default %s", o._statusCode, payload)
 }
 
 func (o *PatchMmdsDefault) String() string {
-	return fmt.Sprintf("[PATCH /mmds][%d] patchMmds default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /mmds][%d] patchMmds default %s", o._statusCode, payload)
 }
 
 func (o *PatchMmdsDefault) GetPayload() *models.Error {

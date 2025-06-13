@@ -9,7 +9,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/models/chmodels"
+	"github.com/e2b-dev/infra/packages/shared/pkg/chdb/chmodels"
 )
 
 type Store interface {

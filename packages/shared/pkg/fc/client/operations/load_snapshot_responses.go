@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *LoadSnapshotNoContent) Code() int {
 }
 
 func (o *LoadSnapshotNoContent) Error() string {
-	return fmt.Sprintf("[PUT /snapshot/load][%d] loadSnapshotNoContent ", 204)
+	return fmt.Sprintf("[PUT /snapshot/load][%d] loadSnapshotNoContent", 204)
 }
 
 func (o *LoadSnapshotNoContent) String() string {
-	return fmt.Sprintf("[PUT /snapshot/load][%d] loadSnapshotNoContent ", 204)
+	return fmt.Sprintf("[PUT /snapshot/load][%d] loadSnapshotNoContent", 204)
 }
 
 func (o *LoadSnapshotNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *LoadSnapshotBadRequest) Code() int {
 }
 
 func (o *LoadSnapshotBadRequest) Error() string {
-	return fmt.Sprintf("[PUT /snapshot/load][%d] loadSnapshotBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /snapshot/load][%d] loadSnapshotBadRequest %s", 400, payload)
 }
 
 func (o *LoadSnapshotBadRequest) String() string {
-	return fmt.Sprintf("[PUT /snapshot/load][%d] loadSnapshotBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /snapshot/load][%d] loadSnapshotBadRequest %s", 400, payload)
 }
 
 func (o *LoadSnapshotBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *LoadSnapshotDefault) Code() int {
 }
 
 func (o *LoadSnapshotDefault) Error() string {
-	return fmt.Sprintf("[PUT /snapshot/load][%d] loadSnapshot default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /snapshot/load][%d] loadSnapshot default %s", o._statusCode, payload)
 }
 
 func (o *LoadSnapshotDefault) String() string {
-	return fmt.Sprintf("[PUT /snapshot/load][%d] loadSnapshot default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /snapshot/load][%d] loadSnapshot default %s", o._statusCode, payload)
 }
 
 func (o *LoadSnapshotDefault) GetPayload() *models.Error {

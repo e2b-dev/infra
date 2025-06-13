@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PutMachineConfigurationNoContent) Code() int {
 }
 
 func (o *PutMachineConfigurationNoContent) Error() string {
-	return fmt.Sprintf("[PUT /machine-config][%d] putMachineConfigurationNoContent ", 204)
+	return fmt.Sprintf("[PUT /machine-config][%d] putMachineConfigurationNoContent", 204)
 }
 
 func (o *PutMachineConfigurationNoContent) String() string {
-	return fmt.Sprintf("[PUT /machine-config][%d] putMachineConfigurationNoContent ", 204)
+	return fmt.Sprintf("[PUT /machine-config][%d] putMachineConfigurationNoContent", 204)
 }
 
 func (o *PutMachineConfigurationNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PutMachineConfigurationBadRequest) Code() int {
 }
 
 func (o *PutMachineConfigurationBadRequest) Error() string {
-	return fmt.Sprintf("[PUT /machine-config][%d] putMachineConfigurationBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /machine-config][%d] putMachineConfigurationBadRequest %s", 400, payload)
 }
 
 func (o *PutMachineConfigurationBadRequest) String() string {
-	return fmt.Sprintf("[PUT /machine-config][%d] putMachineConfigurationBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /machine-config][%d] putMachineConfigurationBadRequest %s", 400, payload)
 }
 
 func (o *PutMachineConfigurationBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PutMachineConfigurationDefault) Code() int {
 }
 
 func (o *PutMachineConfigurationDefault) Error() string {
-	return fmt.Sprintf("[PUT /machine-config][%d] putMachineConfiguration default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /machine-config][%d] putMachineConfiguration default %s", o._statusCode, payload)
 }
 
 func (o *PutMachineConfigurationDefault) String() string {
-	return fmt.Sprintf("[PUT /machine-config][%d] putMachineConfiguration default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PUT /machine-config][%d] putMachineConfiguration default %s", o._statusCode, payload)
 }
 
 func (o *PutMachineConfigurationDefault) GetPayload() *models.Error {

@@ -22,7 +22,7 @@ type InstanceActionInfo struct {
 
 	// Enumeration indicating what type of action is contained in the payload
 	// Required: true
-	// Enum: [FlushMetrics InstanceStart SendCtrlAltDel]
+	// Enum: ["FlushMetrics","InstanceStart","SendCtrlAltDel"]
 	ActionType *string `json:"action_type"`
 }
 

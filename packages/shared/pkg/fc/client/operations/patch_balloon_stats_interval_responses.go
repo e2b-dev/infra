@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PatchBalloonStatsIntervalNoContent) Code() int {
 }
 
 func (o *PatchBalloonStatsIntervalNoContent) Error() string {
-	return fmt.Sprintf("[PATCH /balloon/statistics][%d] patchBalloonStatsIntervalNoContent ", 204)
+	return fmt.Sprintf("[PATCH /balloon/statistics][%d] patchBalloonStatsIntervalNoContent", 204)
 }
 
 func (o *PatchBalloonStatsIntervalNoContent) String() string {
-	return fmt.Sprintf("[PATCH /balloon/statistics][%d] patchBalloonStatsIntervalNoContent ", 204)
+	return fmt.Sprintf("[PATCH /balloon/statistics][%d] patchBalloonStatsIntervalNoContent", 204)
 }
 
 func (o *PatchBalloonStatsIntervalNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PatchBalloonStatsIntervalBadRequest) Code() int {
 }
 
 func (o *PatchBalloonStatsIntervalBadRequest) Error() string {
-	return fmt.Sprintf("[PATCH /balloon/statistics][%d] patchBalloonStatsIntervalBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /balloon/statistics][%d] patchBalloonStatsIntervalBadRequest %s", 400, payload)
 }
 
 func (o *PatchBalloonStatsIntervalBadRequest) String() string {
-	return fmt.Sprintf("[PATCH /balloon/statistics][%d] patchBalloonStatsIntervalBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /balloon/statistics][%d] patchBalloonStatsIntervalBadRequest %s", 400, payload)
 }
 
 func (o *PatchBalloonStatsIntervalBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PatchBalloonStatsIntervalDefault) Code() int {
 }
 
 func (o *PatchBalloonStatsIntervalDefault) Error() string {
-	return fmt.Sprintf("[PATCH /balloon/statistics][%d] patchBalloonStatsInterval default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /balloon/statistics][%d] patchBalloonStatsInterval default %s", o._statusCode, payload)
 }
 
 func (o *PatchBalloonStatsIntervalDefault) String() string {
-	return fmt.Sprintf("[PATCH /balloon/statistics][%d] patchBalloonStatsInterval default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /balloon/statistics][%d] patchBalloonStatsInterval default %s", o._statusCode, payload)
 }
 
 func (o *PatchBalloonStatsIntervalDefault) GetPayload() *models.Error {

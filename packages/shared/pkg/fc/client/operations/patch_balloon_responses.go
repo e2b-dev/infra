@@ -6,6 +6,7 @@ package operations
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -91,11 +92,11 @@ func (o *PatchBalloonNoContent) Code() int {
 }
 
 func (o *PatchBalloonNoContent) Error() string {
-	return fmt.Sprintf("[PATCH /balloon][%d] patchBalloonNoContent ", 204)
+	return fmt.Sprintf("[PATCH /balloon][%d] patchBalloonNoContent", 204)
 }
 
 func (o *PatchBalloonNoContent) String() string {
-	return fmt.Sprintf("[PATCH /balloon][%d] patchBalloonNoContent ", 204)
+	return fmt.Sprintf("[PATCH /balloon][%d] patchBalloonNoContent", 204)
 }
 
 func (o *PatchBalloonNoContent) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
@@ -148,11 +149,13 @@ func (o *PatchBalloonBadRequest) Code() int {
 }
 
 func (o *PatchBalloonBadRequest) Error() string {
-	return fmt.Sprintf("[PATCH /balloon][%d] patchBalloonBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /balloon][%d] patchBalloonBadRequest %s", 400, payload)
 }
 
 func (o *PatchBalloonBadRequest) String() string {
-	return fmt.Sprintf("[PATCH /balloon][%d] patchBalloonBadRequest  %+v", 400, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /balloon][%d] patchBalloonBadRequest %s", 400, payload)
 }
 
 func (o *PatchBalloonBadRequest) GetPayload() *models.Error {
@@ -220,11 +223,13 @@ func (o *PatchBalloonDefault) Code() int {
 }
 
 func (o *PatchBalloonDefault) Error() string {
-	return fmt.Sprintf("[PATCH /balloon][%d] patchBalloon default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /balloon][%d] patchBalloon default %s", o._statusCode, payload)
 }
 
 func (o *PatchBalloonDefault) String() string {
-	return fmt.Sprintf("[PATCH /balloon][%d] patchBalloon default  %+v", o._statusCode, o.Payload)
+	payload, _ := json.Marshal(o.Payload)
+	return fmt.Sprintf("[PATCH /balloon][%d] patchBalloon default %s", o._statusCode, payload)
 }
 
 func (o *PatchBalloonDefault) GetPayload() *models.Error {

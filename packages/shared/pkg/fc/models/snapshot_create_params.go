@@ -29,7 +29,7 @@ type SnapshotCreateParams struct {
 	SnapshotPath *string `json:"snapshot_path"`
 
 	// Type of snapshot to create. It is optional and by default, a full snapshot is created.
-	// Enum: [Full Diff]
+	// Enum: ["Full","Diff"]
 	SnapshotType string `json:"snapshot_type,omitempty"`
 }
 
