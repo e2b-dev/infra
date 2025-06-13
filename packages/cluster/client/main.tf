@@ -1,3 +1,7 @@
+locals {
+  max_replicas = max(var.cluster_size, var.cluster_size_max)
+}
+
 resource "google_compute_health_check" "nomad_check" {
   name                = "${var.cluster_name}-nomad-client-check"
   check_interval_sec  = 15
@@ -23,10 +27,10 @@ resource "google_compute_region_autoscaler" "client" {
   target = google_compute_region_instance_group_manager.client_cluster.id
 
   autoscaling_policy {
-    max_replicas    = max(var.cluster_size, var.cluster_size_max)
+    max_replicas    = max(local.max_replicas, var.cluster_size)
     min_replicas    = var.cluster_size
     cooldown_period = 240
-    mode            = "ONLY_SCALE_OUT"
+    mode            = local.max_replicas != var.cluster_size ? "ONLY_SCALE_OUT" : "OFF"
 
     cpu_utilization {
       target = 0.6
