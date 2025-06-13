@@ -13,9 +13,9 @@ import (
 )
 
 // TODO: this should be removed once we have a better way to handle node sync
-// Don't sync instances that were started in the grace period on node sync
-// This is to prevent add/remove instances that are still being started
-const syncSandboxGracePeriod = 10 * time.Second
+// Don't remove instances that were started in the grace period on node sync
+// This is to prevent remove instances that are still being started
+const syncSandboxRemoveGracePeriod = 10 * time.Second
 
 func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
 	timeLeft := maxInstanceLength - now.Sub(startTime)
@@ -68,7 +68,7 @@ func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nod
 		if item.Instance.ClientID != nodeID {
 			continue
 		}
-		if time.Since(item.StartTime) <= syncSandboxGracePeriod {
+		if time.Since(item.StartTime) <= syncSandboxRemoveGracePeriod {
 			continue
 		}
 		_, found := instanceMap[item.Instance.SandboxID]
@@ -79,9 +79,6 @@ func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nod
 
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
-		if time.Since(instance.StartTime) <= syncSandboxGracePeriod {
-			continue
-		}
 		if c.Exists(instance.Instance.SandboxID) {
 			continue
 		}
