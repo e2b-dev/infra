@@ -3,19 +3,19 @@ package template_manager
 import (
 	"context"
 	"fmt"
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	loki "github.com/grafana/loki/pkg/logcli/client"
-	"go.opentelemetry.io/otel/metric"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	loki "github.com/grafana/loki/pkg/logcli/client"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -181,7 +181,7 @@ func (tm *TemplateManager) CreateTemplate(t trace.Tracer, ctx context.Context, t
 	)
 
 	if err != nil {
-		return nil
+		return err
 	}
 
 	telemetry.ReportEvent(ctx, "Template build started")
