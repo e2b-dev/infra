@@ -102,8 +102,8 @@ var gaugeIntDesc = map[GaugeIntType]string{
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
-	SandboxRamUsedGaugeName:  "{KiBy}",
-	SandboxRamTotalGaugeName: "{KiBy}",
+	SandboxRamUsedGaugeName:  "{By}",
+	SandboxRamTotalGaugeName: "{By}",
 	SandboxCpuTotalGaugeName: "{count}",
 }
 

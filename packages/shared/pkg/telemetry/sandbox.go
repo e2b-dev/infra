@@ -29,6 +29,8 @@ type SandboxObserver struct {
 	memoryUsed  metric.Int64ObservableGauge
 }
 
+const shiftFromMiBToBytes = 20 // Shift to convert MiB to bytes
+
 func NewSandboxObserver(ctx context.Context, commitSHA, clientID string) (*SandboxObserver, error) {
 	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		// Use delta temporality for gauges and cumulative for all other instrument kinds.
@@ -91,9 +93,9 @@ func (mp *SandboxObserver) StartObserving(sandboxID, teamID string, getMetrics G
 
 			o.ObserveInt64(mp.cpuTotal, sbxMetrics.CPUCount, attributes)
 			o.ObserveFloat64(mp.cpuUsed, sbxMetrics.CPUUsedPercent, attributes)
-			// Save as KiB for future, so we can return more accurate values
-			o.ObserveInt64(mp.memoryTotal, sbxMetrics.MemTotalMiB*1024, attributes)
-			o.ObserveInt64(mp.memoryUsed, sbxMetrics.MemUsedMiB*1024, attributes)
+			// Save as bytes for future, so we can return more accurate values
+			o.ObserveInt64(mp.memoryTotal, sbxMetrics.MemTotalMiB<<shiftFromMiBToBytes, attributes)
+			o.ObserveInt64(mp.memoryUsed, sbxMetrics.MemUsedMiB<<shiftFromMiBToBytes, attributes)
 			return nil
 		}, mp.cpuTotal, mp.cpuUsed, mp.memoryTotal, mp.memoryUsed)
 
