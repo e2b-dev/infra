@@ -45,12 +45,8 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 
 	// try to find orchestrator node first
 	o, ok := a.orchestratorPool.GetOrchestrator(serviceId)
-	if !ok {
-		return errors.New("orchestrator node not found")
-	}
-
-	if o != nil {
-		logger.Info("found orchestrator node, calling drain request")
+	if ok {
+		logger.Info("found orchestrator node, calling status change request")
 
 		var orchestratorStatus orchestratorinfo.ServiceInfoStatus
 
@@ -81,7 +77,7 @@ func (a *APIStore) sendNodeRequest(ctx context.Context, serviceId string, status
 	// try to find edge node
 	e, err := a.edgePool.GetNode(serviceId)
 	if err != nil {
-		logger.Error("failed to get edge node", zap.Error(err))
+		logger.Error("failed to get node from edge pool", zap.Error(err))
 		return errors.New("failed to get edge node")
 	}
 

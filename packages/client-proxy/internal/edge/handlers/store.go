@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"slices"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,7 +15,6 @@ import (
 	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
-	e2borchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -115,44 +112,4 @@ func parseBody[B any](ctx context.Context, c *gin.Context) (body B, err error) {
 	}
 
 	return body, nil
-}
-
-func (a *APIStore) getOrchestratorNode(orchestratorId string) (*e2borchestrators.OrchestratorNode, *APIUserFacingError) {
-	orchestrator, ok := a.orchestratorPool.GetOrchestrator(orchestratorId)
-	if !ok {
-		return nil, &APIUserFacingError{
-			internalError:      fmt.Errorf("orchestrator not found: %s", orchestratorId),
-			prettyErrorCode:    http.StatusBadRequest,
-			prettyErrorMessage: "Orchestrator not found",
-		}
-	}
-
-	if orchestrator.Status != e2borchestrators.OrchestratorStatusHealthy {
-		return nil, &APIUserFacingError{
-			internalError:      fmt.Errorf("orchestrator is not ready for build placement"),
-			prettyErrorCode:    http.StatusBadRequest,
-			prettyErrorMessage: "Orchestrator is not ready for build placement",
-		}
-	}
-
-	return orchestrator, nil
-}
-
-func (a *APIStore) getTemplateManagerNode(orchestratorId string) (*e2borchestrators.OrchestratorNode, *APIUserFacingError) {
-	orchestrator, err := a.getOrchestratorNode(orchestratorId)
-	if err != nil {
-		return nil, err
-	}
-
-	if !slices.Contains(
-
-		orchestrator.Roles, e2borchestrator.ServiceInfoRole_TemplateManager) {
-		return nil, &APIUserFacingError{
-			internalError:      errors.New("orchestrator is not marked as template builder"),
-			prettyErrorCode:    http.StatusBadRequest,
-			prettyErrorMessage: "Orchestrator does not support template builds",
-		}
-	}
-
-	return orchestrator, nil
 }

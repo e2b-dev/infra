@@ -464,7 +464,7 @@ paths:
   /v1/service-discovery/nodes/{node_id}/kill:
     post:
       operationId: v1ServiceDiscoveryNodeKill
-      description: Mark node as unhealthy
+      description: Kill the node
       security:
         - ApiKeyAuth: [ ]
       tags: [service-discovery]
@@ -477,7 +477,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Successfully updated the node
+          description: Successfully start of node kill
         "400":
           $ref: "#/components/responses/400"
         "401":

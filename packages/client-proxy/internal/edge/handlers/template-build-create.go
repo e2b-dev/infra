@@ -24,14 +24,14 @@ func (a *APIStore) V1TemplateBuildCreate(c *gin.Context) {
 		return
 	}
 
-	orchestrator, findErr := a.getTemplateManagerNode(body.OrchestratorId)
+	templateManager, findErr := a.getTemplateManagerNode(body.OrchestratorId)
 	if findErr != nil {
 		a.sendAPIStoreError(c, findErr.prettyErrorCode, findErr.prettyErrorMessage)
 		telemetry.ReportCriticalError(ctx, findErr.prettyErrorMessage, findErr.internalError)
 		return
 	}
 
-	_, err = orchestrator.Client.Template.TemplateCreate(
+	_, err = templateManager.Client.Template.TemplateCreate(
 		ctx, &e2btemplatemanager.TemplateCreateRequest{
 			Template: &e2btemplatemanager.TemplateConfig{
 				BuildID:    body.BuildId,

@@ -29,7 +29,7 @@ job "client-proxy" {
       check {
         type     = "http"
         name     = "health"
-        path     = "/health"
+        path     = "/health/traffic"
         interval = "3s"
         timeout  = "3s"
         port     = "${api_port_name}"
