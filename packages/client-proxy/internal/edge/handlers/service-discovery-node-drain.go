@@ -14,6 +14,9 @@ import (
 )
 
 func (a *APIStore) V1ServiceDiscoveryNodeDrain(c *gin.Context, serviceId string) {
+	_, templateSpan := a.tracer.Start(c, "service-discovery-node-drain-handler")
+	defer templateSpan.End()
+
 	// requests was for this node
 	if serviceId == a.info.ServiceId {
 		a.info.SetStatus(api.Draining)

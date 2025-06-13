@@ -24,6 +24,9 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 		return
 	}
 
+	_, templateSpan := a.tracer.Start(ctx, "create-sandbox-handler")
+	defer templateSpan.End()
+
 	orchestrator, findErr := a.getOrchestratorNode(body.Sandbox.OrchestratorId)
 	if findErr != nil {
 		a.sendAPIStoreError(c, findErr.prettyErrorCode, findErr.prettyErrorMessage)

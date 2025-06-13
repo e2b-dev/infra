@@ -14,6 +14,9 @@ import (
 func (a *APIStore) V1TemplateBuildCreate(c *gin.Context) {
 	ctx := c.Request.Context()
 
+	_, templateSpan := a.tracer.Start(c, "template-build-create-handler")
+	defer templateSpan.End()
+
 	body, err := parseBody[api.TemplateBuildCreateRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))

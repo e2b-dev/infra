@@ -20,6 +20,9 @@ const (
 func (a *APIStore) V1TemplateBuildStatus(c *gin.Context, buildId string, params api.V1TemplateBuildStatusParams) {
 	ctx := c.Request.Context()
 
+	_, templateSpan := a.tracer.Start(c, "template-build-status-handler")
+	defer templateSpan.End()
+
 	orchestrator, findErr := a.getTemplateManagerNode(params.OrchestratorId)
 	if findErr != nil {
 		a.sendAPIStoreError(c, findErr.prettyErrorCode, findErr.prettyErrorMessage)

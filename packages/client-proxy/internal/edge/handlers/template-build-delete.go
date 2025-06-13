@@ -13,6 +13,9 @@ import (
 func (a *APIStore) V1TemplateBuildDelete(c *gin.Context, buildId string, params api.V1TemplateBuildDeleteParams) {
 	ctx := c.Request.Context()
 
+	_, templateSpan := a.tracer.Start(c, "template-build-delete-handler")
+	defer templateSpan.End()
+
 	orchestrator, findErr := a.getTemplateManagerNode(params.OrchestratorId)
 	if findErr != nil {
 		a.sendAPIStoreError(c, findErr.prettyErrorCode, findErr.prettyErrorMessage)

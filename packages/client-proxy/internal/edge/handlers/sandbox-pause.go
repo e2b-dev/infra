@@ -24,6 +24,9 @@ func (a *APIStore) V1PauseSandbox(c *gin.Context, sandboxId api.SandboxId) {
 		return
 	}
 
+	_, templateSpan := a.tracer.Start(ctx, "pause-sandbox-handler")
+	defer templateSpan.End()
+
 	sbx, err := a.sandboxes.GetSandbox(sandboxId)
 	if err != nil {
 		if errors.Is(err, sandboxes.ErrSandboxNotFound) {

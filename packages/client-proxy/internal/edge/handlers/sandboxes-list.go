@@ -14,6 +14,9 @@ import (
 func (a *APIStore) V1ListSandboxes(c *gin.Context, params api.V1ListSandboxesParams) {
 	ctx := c.Request.Context()
 
+	_, templateSpan := a.tracer.Start(ctx, "list-sandboxes-handler")
+	defer templateSpan.End()
+
 	orchestrator, findErr := a.getOrchestratorNode(params.OrchestratorId)
 	if findErr != nil {
 		a.sendAPIStoreError(c, findErr.prettyErrorCode, findErr.prettyErrorMessage)
