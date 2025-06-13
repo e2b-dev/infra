@@ -27,7 +27,7 @@ func NewLogger(ctx context.Context, loggerProvider log.LoggerProvider, config Sa
 	if !config.IsInternal && config.CollectorAddress != "" {
 		// Add Vector exporter to the core
 		vectorEncoder := zapcore.NewJSONEncoder(GetSandboxEncoderConfig())
-		httpWriter := logger.NewBufferedHTTPWriter(ctx, config.CollectorAddress)
+		httpWriter := logger.NewHTTPWriter(ctx, config.CollectorAddress)
 		core = zapcore.NewCore(
 			vectorEncoder,
 			httpWriter,
