@@ -50,11 +50,20 @@ func (a *APIStore) V1TemplateBuildStatus(c *gin.Context, buildId string, params 
 		zap.L().Error("Unknown template build status", zap.String("status", resp.Status.String()))
 	}
 
+	var metadata *api.TemplateBuildMetadata
+	if resp.Metadata != nil {
+		metadata = &api.TemplateBuildMetadata{
+			RootfsSizeKey:  resp.Metadata.RootfsSizeKey,
+			EnvdVersionKey: resp.Metadata.EnvdVersionKey,
+		}
+	}
+
 	c.JSON(
 		http.StatusOK,
 		api.TemplateBuildStatusResponse{
 			TemplateID: params.TemplateId,
 			BuildID:    buildId,
+			Metadata:   metadata,
 			Status:     status,
 		},
 	)
