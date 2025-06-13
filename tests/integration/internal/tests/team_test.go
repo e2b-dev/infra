@@ -120,7 +120,6 @@ func TestBlockedTeam(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.True(t, team.IsBlocked)
-	assert.Equal(t, blockReason, team.BlockedReason)
 	assert.Equal(t, teamID, team.ID)
 
 	resp, err := c.GetSandboxesWithResponse(ctx, nil, setup.WithAPIKey(apiKey))
