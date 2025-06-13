@@ -12,6 +12,11 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
+// TODO: this should be removed once we have a better way to handle node sync
+// Don't sync instances that were started in the grace period on node sync
+// This is to prevent add/remove instances that are still being started
+const syncSandboxGracePeriod = 10 * time.Second
+
 func getMaxAllowedTTL(now time.Time, startTime time.Time, duration, maxInstanceLength time.Duration) time.Duration {
 	timeLeft := maxInstanceLength - now.Sub(startTime)
 	if timeLeft <= 0 {
@@ -53,7 +58,7 @@ func (c *InstanceCache) KeepAliveFor(instanceID string, duration time.Duration, 
 func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nodeID string) {
 	instanceMap := make(map[string]*InstanceInfo)
 
-	// Use map for faster lookup
+	// Use a map for faster lookup
 	for _, instance := range instances {
 		instanceMap[instance.Instance.SandboxID] = instance
 	}
@@ -61,6 +66,9 @@ func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nod
 	// Delete instances that are not in Orchestrator anymore
 	for _, item := range c.cache.Items() {
 		if item.Instance.ClientID != nodeID {
+			continue
+		}
+		if time.Since(item.StartTime) <= syncSandboxGracePeriod {
 			continue
 		}
 		_, found := instanceMap[item.Instance.SandboxID]
@@ -71,11 +79,15 @@ func (c *InstanceCache) Sync(ctx context.Context, instances []*InstanceInfo, nod
 
 	// Add instances that are not in the cache with the default TTL
 	for _, instance := range instances {
-		if !c.Exists(instance.Instance.SandboxID) {
-			err := c.Add(ctx, instance, false)
-			if err != nil {
-				zap.L().Error("error adding instance to cache", zap.Error(err))
-			}
+		if time.Since(instance.StartTime) <= syncSandboxGracePeriod {
+			continue
+		}
+		if c.Exists(instance.Instance.SandboxID) {
+			continue
+		}
+		err := c.Add(ctx, instance, false)
+		if err != nil {
+			zap.L().Error("error adding instance to cache", zap.Error(err))
 		}
 	}
 }
