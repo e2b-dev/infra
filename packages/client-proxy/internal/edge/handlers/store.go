@@ -65,7 +65,7 @@ func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info
 			return
 		}
 
-		ticker := time.NewTicker(5 * time.Millisecond)
+		ticker := time.NewTicker(100 * time.Millisecond)
 		for {
 			select {
 			case <-ctx.Done():
