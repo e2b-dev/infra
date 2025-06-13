@@ -49,7 +49,6 @@ type Service struct {
 		op   func(context.Context) error
 		err  error
 	}
-	useClickhouseMetrics string
 
 	persistence storage.StorageProvider
 }
