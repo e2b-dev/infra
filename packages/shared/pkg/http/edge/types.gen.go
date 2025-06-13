@@ -218,13 +218,16 @@ type TemplateBuildCreateRequest struct {
 	VCPU               int64  `json:"vCPU"`
 }
 
+// TemplateBuildLogsResponse defines model for TemplateBuildLogsResponse.
+type TemplateBuildLogsResponse struct {
+	// Logs Build logs
+	Logs []string `json:"logs"`
+}
+
 // TemplateBuildStatusResponse defines model for TemplateBuildStatusResponse.
 type TemplateBuildStatusResponse struct {
 	// BuildID Identifier of the build
 	BuildID string `json:"buildID"`
-
-	// Logs Build logs
-	Logs []string `json:"logs"`
 
 	// Status Status of the template
 	Status TemplateBuildStatusResponseStatus `json:"status"`
@@ -259,19 +262,25 @@ type V1ListSandboxesParams struct {
 	OrchestratorId string `form:"orchestratorId" json:"orchestratorId"`
 }
 
+// V1TemplateBuildStatusParams defines parameters for V1TemplateBuildStatus.
+type V1TemplateBuildStatusParams struct {
+	OrchestratorId string `form:"orchestrator_id" json:"orchestrator_id"`
+	TemplateId     string `form:"template_id" json:"template_id"`
+}
+
 // V1TemplateBuildDeleteParams defines parameters for V1TemplateBuildDelete.
 type V1TemplateBuildDeleteParams struct {
 	TemplateId     string `form:"template_id" json:"template_id"`
 	OrchestratorId string `form:"orchestrator_id" json:"orchestrator_id"`
 }
 
-// V1TemplateBuildStatusParams defines parameters for V1TemplateBuildStatus.
-type V1TemplateBuildStatusParams struct {
+// V1TemplateBuildLogsParams defines parameters for V1TemplateBuildLogs.
+type V1TemplateBuildLogsParams struct {
 	OrchestratorId string `form:"orchestrator_id" json:"orchestrator_id"`
 	TemplateId     string `form:"template_id" json:"template_id"`
 
-	// LogsOffset Index of the starting build log that should be returned with the template
-	LogsOffset *int32 `form:"logs_offset,omitempty" json:"logs_offset,omitempty"`
+	// Offset Index of the starting build log that should be returned with the template
+	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // V1CreateSandboxJSONRequestBody defines body for V1CreateSandbox for application/json ContentType.

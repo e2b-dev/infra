@@ -330,14 +330,7 @@ components:
         - templateID
         - buildID
         - status
-        - logs
       properties:
-        logs:
-          default: []
-          description: Build logs
-          type: array
-          items:
-            type: string
         templateID:
           type: string
           description: Identifier of the template
@@ -352,6 +345,17 @@ components:
             - waiting
             - ready
             - error
+
+    TemplateBuildLogsResponse:
+      required:
+        - logs
+      properties:
+        logs:
+          default: []
+          description: Build logs
+          type: array
+          items:
+            type: string
 
     Timestamp:
       type: string
@@ -672,8 +676,45 @@ paths:
           required: true
           schema:
             type: string
+      responses:
+        "200":
+          description: Successfully returned the template build status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateBuildStatusResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/templates/builds/{build_id}/logs:
+    get:
+      operationId: v1TemplateBuildLogs
+      summary: Template build logs
+      security:
+        - ApiKeyAuth: [ ]
+      tags: [templates]
+      parameters:
+        - name: build_id
+          in: path
+          required: true
+          schema:
+            type: string
         - in: query
-          name: logs_offset
+          name: orchestrator_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: template_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: offset
           schema:
             default: 0
             type: integer
@@ -686,7 +727,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TemplateBuildStatusResponse"
+                $ref: "#/components/schemas/TemplateBuildLogsResponse"
         "400":
           $ref: "#/components/responses/400"
         "401":

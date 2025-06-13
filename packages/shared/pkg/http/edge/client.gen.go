@@ -136,11 +136,14 @@ type ClientInterface interface {
 
 	V1TemplateBuildCreate(ctx context.Context, body V1TemplateBuildCreateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// V1TemplateBuildStatus request
+	V1TemplateBuildStatus(ctx context.Context, buildId string, params *V1TemplateBuildStatusParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// V1TemplateBuildDelete request
 	V1TemplateBuildDelete(ctx context.Context, buildId string, params *V1TemplateBuildDeleteParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// V1TemplateBuildStatus request
-	V1TemplateBuildStatus(ctx context.Context, buildId string, params *V1TemplateBuildStatusParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// V1TemplateBuildLogs request
+	V1TemplateBuildLogs(ctx context.Context, buildId string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) HealthCheck(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -347,6 +350,18 @@ func (c *Client) V1TemplateBuildCreate(ctx context.Context, body V1TemplateBuild
 	return c.Client.Do(req)
 }
 
+func (c *Client) V1TemplateBuildStatus(ctx context.Context, buildId string, params *V1TemplateBuildStatusParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1TemplateBuildStatusRequest(c.Server, buildId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) V1TemplateBuildDelete(ctx context.Context, buildId string, params *V1TemplateBuildDeleteParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewV1TemplateBuildDeleteRequest(c.Server, buildId, params)
 	if err != nil {
@@ -359,8 +374,8 @@ func (c *Client) V1TemplateBuildDelete(ctx context.Context, buildId string, para
 	return c.Client.Do(req)
 }
 
-func (c *Client) V1TemplateBuildStatus(ctx context.Context, buildId string, params *V1TemplateBuildStatusParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewV1TemplateBuildStatusRequest(c.Server, buildId, params)
+func (c *Client) V1TemplateBuildLogs(ctx context.Context, buildId string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1TemplateBuildLogsRequest(c.Server, buildId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -827,70 +842,6 @@ func NewV1TemplateBuildCreateRequestWithBody(server string, contentType string, 
 	return req, nil
 }
 
-// NewV1TemplateBuildDeleteRequest generates requests for V1TemplateBuildDelete
-func NewV1TemplateBuildDeleteRequest(server string, buildId string, params *V1TemplateBuildDeleteParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "build_id", runtime.ParamLocationPath, buildId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/templates/builds/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "template_id", runtime.ParamLocationQuery, params.TemplateId); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "orchestrator_id", runtime.ParamLocationQuery, params.OrchestratorId); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 // NewV1TemplateBuildStatusRequest generates requests for V1TemplateBuildStatus
 func NewV1TemplateBuildStatusRequest(server string, buildId string, params *V1TemplateBuildStatusParams) (*http.Request, error) {
 	var err error
@@ -944,9 +895,137 @@ func NewV1TemplateBuildStatusRequest(server string, buildId string, params *V1Te
 			}
 		}
 
-		if params.LogsOffset != nil {
+		queryURL.RawQuery = queryValues.Encode()
+	}
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "logs_offset", runtime.ParamLocationQuery, *params.LogsOffset); err != nil {
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewV1TemplateBuildDeleteRequest generates requests for V1TemplateBuildDelete
+func NewV1TemplateBuildDeleteRequest(server string, buildId string, params *V1TemplateBuildDeleteParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "build_id", runtime.ParamLocationPath, buildId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/templates/builds/%s/logs", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "template_id", runtime.ParamLocationQuery, params.TemplateId); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "orchestrator_id", runtime.ParamLocationQuery, params.OrchestratorId); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewV1TemplateBuildLogsRequest generates requests for V1TemplateBuildLogs
+func NewV1TemplateBuildLogsRequest(server string, buildId string, params *V1TemplateBuildLogsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "build_id", runtime.ParamLocationPath, buildId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/templates/builds/%s/logs", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "orchestrator_id", runtime.ParamLocationQuery, params.OrchestratorId); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "template_id", runtime.ParamLocationQuery, params.TemplateId); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -1061,11 +1140,14 @@ type ClientWithResponsesInterface interface {
 
 	V1TemplateBuildCreateWithResponse(ctx context.Context, body V1TemplateBuildCreateJSONRequestBody, reqEditors ...RequestEditorFn) (*V1TemplateBuildCreateResponse, error)
 
+	// V1TemplateBuildStatusWithResponse request
+	V1TemplateBuildStatusWithResponse(ctx context.Context, buildId string, params *V1TemplateBuildStatusParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildStatusResponse, error)
+
 	// V1TemplateBuildDeleteWithResponse request
 	V1TemplateBuildDeleteWithResponse(ctx context.Context, buildId string, params *V1TemplateBuildDeleteParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildDeleteResponse, error)
 
-	// V1TemplateBuildStatusWithResponse request
-	V1TemplateBuildStatusWithResponse(ctx context.Context, buildId string, params *V1TemplateBuildStatusParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildStatusResponse, error)
+	// V1TemplateBuildLogsWithResponse request
+	V1TemplateBuildLogsWithResponse(ctx context.Context, buildId string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildLogsResponse, error)
 }
 
 type HealthCheckResponse struct {
@@ -1162,7 +1244,7 @@ func (r V1ListSandboxesResponse) StatusCode() int {
 type V1CreateSandboxResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *SandboxCreateResponse
+	JSON200      *SandboxCreateResponse
 	JSON400      *N400
 	JSON401      *N401
 	JSON500      *N500
@@ -1378,6 +1460,31 @@ func (r V1TemplateBuildCreateResponse) StatusCode() int {
 	return 0
 }
 
+type V1TemplateBuildStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *TemplateBuildStatusResponse
+	JSON400      *N400
+	JSON401      *N401
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r V1TemplateBuildStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r V1TemplateBuildStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type V1TemplateBuildDeleteResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -1402,17 +1509,17 @@ func (r V1TemplateBuildDeleteResponse) StatusCode() int {
 	return 0
 }
 
-type V1TemplateBuildStatusResponse struct {
+type V1TemplateBuildLogsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *TemplateBuildStatusResponse
+	JSON200      *TemplateBuildLogsResponse
 	JSON400      *N400
 	JSON401      *N401
 	JSON500      *N500
 }
 
 // Status returns HTTPResponse.Status
-func (r V1TemplateBuildStatusResponse) Status() string {
+func (r V1TemplateBuildLogsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1420,7 +1527,7 @@ func (r V1TemplateBuildStatusResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r V1TemplateBuildStatusResponse) StatusCode() int {
+func (r V1TemplateBuildLogsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1576,6 +1683,15 @@ func (c *ClientWithResponses) V1TemplateBuildCreateWithResponse(ctx context.Cont
 	return ParseV1TemplateBuildCreateResponse(rsp)
 }
 
+// V1TemplateBuildStatusWithResponse request returning *V1TemplateBuildStatusResponse
+func (c *ClientWithResponses) V1TemplateBuildStatusWithResponse(ctx context.Context, buildId string, params *V1TemplateBuildStatusParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildStatusResponse, error) {
+	rsp, err := c.V1TemplateBuildStatus(ctx, buildId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseV1TemplateBuildStatusResponse(rsp)
+}
+
 // V1TemplateBuildDeleteWithResponse request returning *V1TemplateBuildDeleteResponse
 func (c *ClientWithResponses) V1TemplateBuildDeleteWithResponse(ctx context.Context, buildId string, params *V1TemplateBuildDeleteParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildDeleteResponse, error) {
 	rsp, err := c.V1TemplateBuildDelete(ctx, buildId, params, reqEditors...)
@@ -1585,13 +1701,13 @@ func (c *ClientWithResponses) V1TemplateBuildDeleteWithResponse(ctx context.Cont
 	return ParseV1TemplateBuildDeleteResponse(rsp)
 }
 
-// V1TemplateBuildStatusWithResponse request returning *V1TemplateBuildStatusResponse
-func (c *ClientWithResponses) V1TemplateBuildStatusWithResponse(ctx context.Context, buildId string, params *V1TemplateBuildStatusParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildStatusResponse, error) {
-	rsp, err := c.V1TemplateBuildStatus(ctx, buildId, params, reqEditors...)
+// V1TemplateBuildLogsWithResponse request returning *V1TemplateBuildLogsResponse
+func (c *ClientWithResponses) V1TemplateBuildLogsWithResponse(ctx context.Context, buildId string, params *V1TemplateBuildLogsParams, reqEditors ...RequestEditorFn) (*V1TemplateBuildLogsResponse, error) {
+	rsp, err := c.V1TemplateBuildLogs(ctx, buildId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseV1TemplateBuildStatusResponse(rsp)
+	return ParseV1TemplateBuildLogsResponse(rsp)
 }
 
 // ParseHealthCheckResponse parses an HTTP response from a HealthCheckWithResponse call
@@ -1727,12 +1843,12 @@ func ParseV1CreateSandboxResponse(rsp *http.Response) (*V1CreateSandboxResponse,
 	}
 
 	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest SandboxCreateResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON201 = &dest
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest N400
@@ -2094,6 +2210,53 @@ func ParseV1TemplateBuildCreateResponse(rsp *http.Response) (*V1TemplateBuildCre
 	return response, nil
 }
 
+// ParseV1TemplateBuildStatusResponse parses an HTTP response from a V1TemplateBuildStatusWithResponse call
+func ParseV1TemplateBuildStatusResponse(rsp *http.Response) (*V1TemplateBuildStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &V1TemplateBuildStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TemplateBuildStatusResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseV1TemplateBuildDeleteResponse parses an HTTP response from a V1TemplateBuildDeleteWithResponse call
 func ParseV1TemplateBuildDeleteResponse(rsp *http.Response) (*V1TemplateBuildDeleteResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -2134,22 +2297,22 @@ func ParseV1TemplateBuildDeleteResponse(rsp *http.Response) (*V1TemplateBuildDel
 	return response, nil
 }
 
-// ParseV1TemplateBuildStatusResponse parses an HTTP response from a V1TemplateBuildStatusWithResponse call
-func ParseV1TemplateBuildStatusResponse(rsp *http.Response) (*V1TemplateBuildStatusResponse, error) {
+// ParseV1TemplateBuildLogsResponse parses an HTTP response from a V1TemplateBuildLogsWithResponse call
+func ParseV1TemplateBuildLogsResponse(rsp *http.Response) (*V1TemplateBuildLogsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &V1TemplateBuildStatusResponse{
+	response := &V1TemplateBuildLogsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest TemplateBuildStatusResponse
+		var dest TemplateBuildLogsResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

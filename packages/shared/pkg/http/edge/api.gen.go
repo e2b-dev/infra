@@ -52,12 +52,15 @@ type ServerInterface interface {
 	// Create a new template build
 	// (POST /v1/templates/builds)
 	V1TemplateBuildCreate(c *gin.Context)
-	// Template build delete
-	// (DELETE /v1/templates/builds/{build_id})
-	V1TemplateBuildDelete(c *gin.Context, buildId string, params V1TemplateBuildDeleteParams)
 	// Template build status
 	// (GET /v1/templates/builds/{build_id})
 	V1TemplateBuildStatus(c *gin.Context, buildId string, params V1TemplateBuildStatusParams)
+	// Template build delete
+	// (DELETE /v1/templates/builds/{build_id}/logs)
+	V1TemplateBuildDelete(c *gin.Context, buildId string, params V1TemplateBuildDeleteParams)
+	// Template build logs
+	// (GET /v1/templates/builds/{build_id}/logs)
+	V1TemplateBuildLogs(c *gin.Context, buildId string, params V1TemplateBuildLogsParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -333,6 +336,65 @@ func (siw *ServerInterfaceWrapper) V1TemplateBuildCreate(c *gin.Context) {
 	siw.Handler.V1TemplateBuildCreate(c)
 }
 
+// V1TemplateBuildStatus operation middleware
+func (siw *ServerInterfaceWrapper) V1TemplateBuildStatus(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "build_id" -------------
+	var buildId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "build_id", c.Param("build_id"), &buildId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter build_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ApiKeyAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params V1TemplateBuildStatusParams
+
+	// ------------- Required query parameter "orchestrator_id" -------------
+
+	if paramValue := c.Query("orchestrator_id"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument orchestrator_id is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "orchestrator_id", c.Request.URL.Query(), &params.OrchestratorId)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter orchestrator_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Required query parameter "template_id" -------------
+
+	if paramValue := c.Query("template_id"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument template_id is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "template_id", c.Request.URL.Query(), &params.TemplateId)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter template_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.V1TemplateBuildStatus(c, buildId, params)
+}
+
 // V1TemplateBuildDelete operation middleware
 func (siw *ServerInterfaceWrapper) V1TemplateBuildDelete(c *gin.Context) {
 
@@ -392,8 +454,8 @@ func (siw *ServerInterfaceWrapper) V1TemplateBuildDelete(c *gin.Context) {
 	siw.Handler.V1TemplateBuildDelete(c, buildId, params)
 }
 
-// V1TemplateBuildStatus operation middleware
-func (siw *ServerInterfaceWrapper) V1TemplateBuildStatus(c *gin.Context) {
+// V1TemplateBuildLogs operation middleware
+func (siw *ServerInterfaceWrapper) V1TemplateBuildLogs(c *gin.Context) {
 
 	var err error
 
@@ -409,7 +471,7 @@ func (siw *ServerInterfaceWrapper) V1TemplateBuildStatus(c *gin.Context) {
 	c.Set(ApiKeyAuthScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params V1TemplateBuildStatusParams
+	var params V1TemplateBuildLogsParams
 
 	// ------------- Required query parameter "orchestrator_id" -------------
 
@@ -441,11 +503,11 @@ func (siw *ServerInterfaceWrapper) V1TemplateBuildStatus(c *gin.Context) {
 		return
 	}
 
-	// ------------- Optional query parameter "logs_offset" -------------
+	// ------------- Optional query parameter "offset" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "logs_offset", c.Request.URL.Query(), &params.LogsOffset)
+	err = runtime.BindQueryParameter("form", true, false, "offset", c.Request.URL.Query(), &params.Offset)
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter logs_offset: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter offset: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -456,7 +518,7 @@ func (siw *ServerInterfaceWrapper) V1TemplateBuildStatus(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.V1TemplateBuildStatus(c, buildId, params)
+	siw.Handler.V1TemplateBuildLogs(c, buildId, params)
 }
 
 // GinServerOptions provides options for the Gin server.
@@ -499,6 +561,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:node_id/drain", wrapper.V1ServiceDiscoveryNodeDrain)
 	router.POST(options.BaseURL+"/v1/service-discovery/nodes/:node_id/kill", wrapper.V1ServiceDiscoveryNodeKill)
 	router.POST(options.BaseURL+"/v1/templates/builds", wrapper.V1TemplateBuildCreate)
-	router.DELETE(options.BaseURL+"/v1/templates/builds/:build_id", wrapper.V1TemplateBuildDelete)
 	router.GET(options.BaseURL+"/v1/templates/builds/:build_id", wrapper.V1TemplateBuildStatus)
+	router.DELETE(options.BaseURL+"/v1/templates/builds/:build_id/logs", wrapper.V1TemplateBuildDelete)
+	router.GET(options.BaseURL+"/v1/templates/builds/:build_id/logs", wrapper.V1TemplateBuildLogs)
 }
