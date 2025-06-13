@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models"
@@ -48,7 +49,7 @@ func createTeam(t *testing.T, cancel context.CancelFunc, ctx context.Context, c 
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+	require.Equal(t, http.StatusCreated, resp.StatusCode())
 	apiKey := resp.JSON201.Key
 
 	t.Cleanup(func() {
