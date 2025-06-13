@@ -292,6 +292,19 @@ components:
         endTime:
           $ref: '#/components/schemas/Timestamp'
 
+    TemplateBuildMetadata:
+      required:
+        - rootfsSizeKey
+        - envdVersionKey
+      properties:
+        rootfsSizeKey:
+          type: integer
+          format: int32
+          description: Key for the root filesystem size
+        envdVersionKey:
+          type: string
+          description: Key for the version of envd used in the build
+
     TemplateBuildCreateRequest:
       type: object
       properties:
@@ -345,6 +358,8 @@ components:
             - waiting
             - ready
             - error
+        metadata:
+          $ref: '#/components/schemas/TemplateBuildMetadata'
 
     TemplateBuildLogsResponse:
       required:

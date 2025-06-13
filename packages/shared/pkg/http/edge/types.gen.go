@@ -224,10 +224,20 @@ type TemplateBuildLogsResponse struct {
 	Logs []string `json:"logs"`
 }
 
+// TemplateBuildMetadata defines model for TemplateBuildMetadata.
+type TemplateBuildMetadata struct {
+	// EnvdVersionKey Key for the version of envd used in the build
+	EnvdVersionKey string `json:"envdVersionKey"`
+
+	// RootfsSizeKey Key for the root filesystem size
+	RootfsSizeKey int32 `json:"rootfsSizeKey"`
+}
+
 // TemplateBuildStatusResponse defines model for TemplateBuildStatusResponse.
 type TemplateBuildStatusResponse struct {
 	// BuildID Identifier of the build
-	BuildID string `json:"buildID"`
+	BuildID  string                 `json:"buildID"`
+	Metadata *TemplateBuildMetadata `json:"metadata,omitempty"`
 
 	// Status Status of the template
 	Status TemplateBuildStatusResponseStatus `json:"status"`
