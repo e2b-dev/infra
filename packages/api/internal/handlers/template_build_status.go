@@ -3,17 +3,17 @@ package handlers
 import (
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"go.uber.org/zap"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/db"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/models/envbuild"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )

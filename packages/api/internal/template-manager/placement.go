@@ -2,8 +2,9 @@ package template_manager
 
 import (
 	"context"
-	loki "github.com/grafana/loki/pkg/logcli/client"
 	"time"
+
+	loki "github.com/grafana/loki/pkg/logcli/client"
 
 	tempaltemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 )

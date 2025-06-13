@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/api/internal/edge"
 	tempaltemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
-	"go.uber.org/zap"
 )
 
 type ClusteredBuildPlacement struct {
