@@ -25,12 +25,7 @@ variable "client_cluster_size" {
   default = 0
 }
 
-variable "client_regional_cluster_size" {
-  type    = number
-  default = 0
-}
-
-variable "client_cluster_auto_scaling_max" {
+variable "client_cluster_size_max" {
   type    = number
   default = 0
 }

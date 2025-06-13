@@ -33,13 +33,7 @@ variable "cluster_size" {
   type        = number
 }
 
-variable "regional_cluster_size" {
-  description = "The number of nodes to have in the regional cluster."
-  type        = number
-}
-
-
-variable "cluster_auto_scaling_max" {
+variable "cluster_size_max" {
   description = "The maximum number of additional nodes to have in the Nomad cluster based on the load."
   type        = number
 }
