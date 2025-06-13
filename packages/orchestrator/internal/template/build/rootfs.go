@@ -20,7 +20,6 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapio"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
@@ -392,13 +391,14 @@ func (r *Rootfs) todoBuildLayers(
 		return "", fmt.Errorf("failed to set Dagger environment variable: %w", err)
 	}
 
-	loggerWriter := &zapio.Writer{Log: zap.L(), Level: zap.DebugLevel}
-	defer loggerWriter.Close()
-	userWriter := &writer.PrefixFilteredWriter{Writer: postProcessor, PrefixFilter: ""}
-	defer userWriter.Close()
-
-	daggerWriters := io.MultiWriter(userWriter, loggerWriter)
-	client, err := dagger.Connect(ctx, dagger.WithLogOutput(daggerWriters))
+	logsBuffer := &bytes.Buffer{}
+	defer func() {
+		zap.L().Debug("Dagger logs",
+			zap.String("logs", logsBuffer.String()),
+			zap.Int("length", logsBuffer.Len()),
+		)
+	}()
+	client, err := dagger.Connect(ctx, dagger.WithLogOutput(logsBuffer))
 	if err != nil {
 		return "", fmt.Errorf("failed to connect to Dagger: %w", err)
 	}
@@ -416,7 +416,8 @@ func (r *Rootfs) todoBuildLayers(
 	}
 	layerSourceImagePath := layerSourceImage.Name()
 
-	for i := 0; i < 5; i++ {
+	layersCnt := 5
+	for i := 0; i < layersCnt; i++ {
 		err := func() error {
 			defer os.Remove(layerSourceImagePath)
 
@@ -427,7 +428,30 @@ func (r *Rootfs) todoBuildLayers(
 			defer layerOutputImage.Close()
 			layerOutputImagePath := layerOutputImage.Name()
 
-			hash, err := r.buildLayer(ctx, tracer, client, layerSourceImagePath, layerOutputImagePath, img, strconv.Itoa(i))
+			cmd := "echo Hello Dagger! > /info-" + strconv.Itoa(i) + ".txt"
+			zap.L().Debug("building layer",
+				zap.String("source_file_path", layerSourceImagePath),
+				zap.String("target_file_path", layerOutputImagePath),
+				zap.String("command", cmd),
+			)
+
+			cached := ""
+			if false {
+				cached = "CACHED "
+			}
+			prefix := fmt.Sprintf("[builder %d/%d]", i+1, layersCnt)
+			postProcessor.WriteMsg(fmt.Sprintf("%s%s: %s", cached, prefix, cmd))
+			hash, err := r.buildLayer(
+				ctx,
+				tracer,
+				postProcessor,
+				client,
+				prefix,
+				layerSourceImagePath,
+				layerOutputImagePath,
+				img,
+				cmd,
+			)
 			if err != nil {
 				return err
 			}
@@ -449,32 +473,45 @@ func (r *Rootfs) todoBuildLayers(
 	return layerSourceImagePath, nil
 }
 
-func (r *Rootfs) buildLayer(ctx context.Context, tracer trace.Tracer, client *dagger.Client, sourceFilePath string, targetFilePath string, img containerregistry.Image, command string) (string, error) {
+func (r *Rootfs) buildLayer(
+	ctx context.Context,
+	tracer trace.Tracer,
+	postProcessor *writer.PostProcessor,
+	client *dagger.Client,
+	prefix string,
+	sourceFilePath string,
+	targetFilePath string,
+	img containerregistry.Image,
+	command string,
+) (string, error) {
 	ctx, span := tracer.Start(ctx, "build-layer")
 	defer span.End()
-
-	zap.L().Debug("building layer",
-		zap.String("source_file_path", sourceFilePath),
-		zap.String("target_file_path", targetFilePath),
-		zap.String("command", command),
-	)
 
 	sourceLayer := client.Host().File(sourceFilePath)
 	container := client.Container().
 		Import(sourceLayer).
-		WithExec([]string{"sh", "-c", "echo Hello Dagger! > /info-" + command + ".txt"})
+		WithExec([]string{"sh", "-c", command})
 
 	stderr, err := container.Stderr(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to get container stderr: %w", err)
 	}
-	zap.L().Debug("container stderr", zap.String("stderr", stderr))
-
 	stdout, err := container.Stdout(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to get container stdout: %w", err)
 	}
-	zap.L().Debug("container stdout", zap.String("stdout", stdout))
+
+	if stderr != "" {
+		postProcessor.WriteMsg(fmt.Sprintf("%s [stderr]: %s", prefix, stderr))
+	}
+	if stdout != "" {
+		postProcessor.WriteMsg(fmt.Sprintf("%s [stdout]: %s", prefix, stdout))
+	}
+
+	zap.L().Debug("container output",
+		zap.String("stdout", stdout),
+		zap.String("stderr", stderr),
+	)
 
 	tar := container.AsTarball()
 	export, err := tar.Export(ctx, targetFilePath)
