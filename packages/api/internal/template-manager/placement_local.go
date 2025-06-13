@@ -4,22 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	tempaltemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"strings"
+	"time"
+
 	loki "github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
-	"strings"
-	"time"
+
+	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	tempaltemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func NewLocalBuildPlacement(client *GRPCClient, lokiClient *loki.DefaultClient) *LocalBuildPlacement {
 	return &LocalBuildPlacement{
-		client: client,
+		client:     client,
+		lokiClient: lokiClient,
 	}
 }
 
@@ -66,6 +69,10 @@ func (l *LocalBuildPlacement) DeleteBuild(ctx context.Context, buildId string, t
 }
 
 func (l *LocalBuildPlacement) GetLogs(ctx context.Context, buildId string, templateId string, offset *int32) (*[]string, error) {
+	if l.lokiClient == nil {
+		return nil, fmt.Errorf("loki client is not configured")
+	}
+
 	// Sanitize env ID
 	// https://grafana.com/blog/2021/01/05/how-to-escape-special-characters-with-lokis-logql/
 	templateIdSanitized := strings.ReplaceAll(templateId, "`", "")
