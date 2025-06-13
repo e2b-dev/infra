@@ -105,7 +105,10 @@ func main() {
 		SetUser(user).
 		SetAccessToken(accessToken).
 		SetAccessTokenHash(accessTokenHash).
-		SetAccessTokenMask(accessTokenMask).
+		SetAccessTokenPrefix(accessTokenMask.Prefix).
+		SetAccessTokenLength(accessTokenMask.ValueLength).
+		SetAccessTokenMaskPrefix(accessTokenMask.MaskedValuePrefix).
+		SetAccessTokenMaskSuffix(accessTokenMask.MaskedValueSuffix).
 		SetName("Seed Access Token").
 		Save(ctx)
 	if err != nil {
@@ -127,7 +130,10 @@ func main() {
 		SetTeam(t).
 		SetAPIKey(teamAPIKey).
 		SetAPIKeyHash(apiKeyHash).
-		SetAPIKeyMask(apiKeyMask).
+		SetAPIKeyPrefix(apiKeyMask.Prefix).
+		SetAPIKeyLength(apiKeyMask.ValueLength).
+		SetAPIKeyMaskPrefix(apiKeyMask.MaskedValuePrefix).
+		SetAPIKeyMaskSuffix(apiKeyMask.MaskedValueSuffix).
 		SetName("Seed API Key").
 		Save(ctx)
 	if err != nil {

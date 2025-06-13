@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -38,8 +39,10 @@ type ServerStore struct {
 	wg                *sync.WaitGroup // wait group for running builds
 }
 
-func New(ctx context.Context,
+func New(
+	ctx context.Context,
 	tracer trace.Tracer,
+	meterProvider metric.MeterProvider,
 	logger *zap.Logger,
 	buildLogger *zap.Logger,
 	grpc *grpcserver.GRPCServer,
@@ -61,7 +64,7 @@ func New(ctx context.Context,
 	}
 
 	templateStorage := template.NewStorage(persistence)
-	buildCache := cache.NewBuildCache()
+	buildCache := cache.NewBuildCache(meterProvider)
 	builder := build.NewBuilder(
 		logger,
 		buildLogger,

@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -30,7 +29,7 @@ func (tm *TemplateManager) CreateTemplate(
 ) error {
 	ctx, span := t.Start(ctx, "create-template",
 		trace.WithAttributes(
-			attribute.String("env.id", templateID),
+			telemetry.WithTemplateID(templateID),
 		),
 	)
 	defer span.End()

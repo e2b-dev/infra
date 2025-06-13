@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -24,8 +23,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 
-		errMsg := fmt.Errorf("error when parsing request: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
 
 		return
 	}
@@ -34,8 +32,7 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when generating access token: %s", err))
 
-		errMsg := fmt.Errorf("error when generating access token: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when generating access token", err)
 
 		return
 	}
@@ -46,27 +43,17 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 		SetUserID(userID).
 		SetAccessToken(accessToken.PrefixedRawValue).
 		SetAccessTokenHash(accessToken.HashedValue).
-		SetAccessTokenMask(accessToken.MaskedValue).
+		SetAccessTokenPrefix(accessToken.Masked.Prefix).
+		SetAccessTokenLength(accessToken.Masked.ValueLength).
+		SetAccessTokenMaskPrefix(accessToken.Masked.MaskedValuePrefix).
+		SetAccessTokenMaskSuffix(accessToken.Masked.MaskedValueSuffix).
 		SetName(body.Name).
 		Save(ctx)
 
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating access token: %s", err))
 
-		errMsg := fmt.Errorf("error when creating access token: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
-
-		return
-	}
-
-	valueWithoutPrefix := strings.TrimPrefix(accessToken.PrefixedRawValue, keys.AccessTokenPrefix)
-
-	maskedToken, err := keys.GetMaskedIdentifierProperties(keys.AccessTokenPrefix, valueWithoutPrefix)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when masking access token: %s", err))
-
-		errMsg := fmt.Errorf("error when masking access token: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when creating access token", err)
 
 		return
 	}
@@ -75,10 +62,10 @@ func (a *APIStore) PostAccessTokens(c *gin.Context) {
 		Id:    accessTokenDB.ID,
 		Token: accessToken.PrefixedRawValue,
 		Mask: api.IdentifierMaskingDetails{
-			Prefix:            maskedToken.Prefix,
-			ValueLength:       maskedToken.ValueLength,
-			MaskedValuePrefix: maskedToken.MaskedValuePrefix,
-			MaskedValueSuffix: maskedToken.MaskedValueSuffix,
+			Prefix:            accessTokenDB.AccessTokenPrefix,
+			ValueLength:       accessTokenDB.AccessTokenLength,
+			MaskedValuePrefix: accessTokenDB.AccessTokenMaskPrefix,
+			MaskedValueSuffix: accessTokenDB.AccessTokenMaskSuffix,
 		},
 		Name:      accessTokenDB.Name,
 		CreatedAt: accessTokenDB.CreatedAt,
@@ -94,8 +81,8 @@ func (a *APIStore) DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing access token ID: %s", err))
 
-		errMsg := fmt.Errorf("error when parsing access token ID: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when parsing access token ID", err)
+
 		return
 	}
 
@@ -108,8 +95,8 @@ func (a *APIStore) DeleteAccessTokensAccessTokenID(c *gin.Context, accessTokenID
 	} else if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting access token: %s", err))
 
-		errMsg := fmt.Errorf("error when deleting access token: %w", err)
-		telemetry.ReportCriticalError(ctx, errMsg)
+		telemetry.ReportCriticalError(ctx, "error when deleting access token", err)
+
 		return
 	}
 

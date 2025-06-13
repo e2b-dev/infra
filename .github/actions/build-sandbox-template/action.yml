@@ -23,6 +23,7 @@ runs:
 
         make -C packages/orchestrator build-template \
           ARTIFACTS_REGISTRY_PROVIDER=Local \
+          STORAGE_PROVIDER=Local \
           TEMPLATE_ID=${TEMPLATE_ID} \
           BUILD_ID=${BUILD_ID} \
           KERNEL_VERSION=${KERNEL_VERSION} \

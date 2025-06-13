@@ -106,16 +106,16 @@ variable "client_cluster_size" {
   type = number
 }
 
-variable "client_regional_cluster_size" {
-  type = number
-}
-
-variable "client_cluster_auto_scaling_max" {
+variable "client_cluster_size_max" {
   type = number
 }
 
 variable "client_machine_type" {
   type = string
+}
+
+variable "client_cluster_cache_disk_size_gb" {
+  type = number
 }
 
 variable "gcp_project_id" {

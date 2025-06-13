@@ -78,7 +78,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	// Now, we need to get the API key from the request
 	headerKey, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, fmt.Errorf("%v %w", a.errorMessage, err))
+		telemetry.ReportCriticalError(ctx, a.errorMessage, err)
 
 		return fmt.Errorf("%v %w", a.errorMessage, err)
 	}
@@ -89,7 +89,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, input *openap
 	result, validationError := a.validationFunction(ctx, headerKey)
 	if validationError != nil {
 		zap.L().Info("validation error", zap.Error(validationError.Err))
-		telemetry.ReportError(ctx, fmt.Errorf("%s %w", a.errorMessage, validationError.Err))
+		telemetry.ReportError(ctx, a.errorMessage, validationError.Err)
 
 		var forbiddenError *db.TeamForbiddenError
 		if errors.As(validationError.Err, &forbiddenError) {

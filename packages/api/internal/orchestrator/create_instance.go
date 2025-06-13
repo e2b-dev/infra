@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -61,7 +62,7 @@ func (o *Orchestrator) CreateSandbox(
 		var limitErr *instance.ErrSandboxLimitExceeded
 		var alreadyErr *instance.ErrAlreadyBeingStarted
 
-		telemetry.ReportCriticalError(ctx, err)
+		telemetry.ReportCriticalError(ctx, "failed to reserve sandbox for team", err)
 
 		switch {
 		case errors.As(err, &limitErr):
@@ -73,14 +74,14 @@ func (o *Orchestrator) CreateSandbox(
 				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.Team.ID, team.Tier.ConcurrentInstances),
 			}
 		case errors.As(err, &alreadyErr):
-			zap.L().Warn("sandbox already being started", zap.String("sandboxID", sandboxID), zap.Error(err))
+			zap.L().Warn("sandbox already being started", logger.WithSandboxID(sandboxID), zap.Error(err))
 			return nil, &api.APIError{
 				Code:      http.StatusConflict,
 				ClientMsg: fmt.Sprintf("Sandbox %s is already being started", sandboxID),
 				Err:       err,
 			}
 		default:
-			zap.L().Error("failed to reserve sandbox for team", zap.String("sandboxID", sandboxID), zap.Error(err))
+			zap.L().Error("failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
 			return nil, &api.APIError{
 				Code:      http.StatusInternalServerError,
 				ClientMsg: fmt.Sprintf("Failed to create sandbox: %s", err),
@@ -167,13 +168,12 @@ func (o *Orchestrator) CreateSandbox(
 		if node == nil {
 			node, err = o.getLeastBusyNode(childCtx, nodesExcluded)
 			if err != nil {
-				errMsg := fmt.Errorf("failed to get least busy node: %w", err)
-				telemetry.ReportError(childCtx, errMsg)
+				telemetry.ReportError(childCtx, "failed to get least busy node", err)
 
 				return nil, &api.APIError{
 					Code:      http.StatusInternalServerError,
 					ClientMsg: "Failed to get node to place sandbox on.",
-					Err:       errMsg,
+					Err:       fmt.Errorf("failed to get least busy node: %w", err),
 				}
 			}
 		}
@@ -248,8 +248,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	cacheErr := o.instanceCache.Add(childCtx, instanceInfo, true)
 	if cacheErr != nil {
-		errMsg := fmt.Errorf("error when adding instance to cache: %w", cacheErr)
-		telemetry.ReportError(ctx, errMsg)
+		telemetry.ReportError(ctx, "error when adding instance to cache", cacheErr)
 
 		deleted := o.DeleteInstance(childCtx, sbx.SandboxID, false)
 		if !deleted {
@@ -259,7 +258,7 @@ func (o *Orchestrator) CreateSandbox(
 		return nil, &api.APIError{
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Failed to create sandbox",
-			Err:       errMsg,
+			Err:       fmt.Errorf("error when adding instance to cache: %w", cacheErr),
 		}
 	}
 

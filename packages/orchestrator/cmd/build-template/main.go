@@ -11,6 +11,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -22,7 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/build/writer"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/template/template"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -52,7 +53,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 	defer cancel()
 
 	clientID := "build-template-cmd"
-	logger, err := logger.NewLogger(ctx, logger.LoggerConfig{
+	logger, err := l.NewLogger(ctx, l.LoggerConfig{
 		ServiceName: clientID,
 		IsInternal:  true,
 		IsDebug:     true,
@@ -66,13 +67,13 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 
 	tracer := otel.Tracer("test")
 
-	logger.Info("building template", zap.String("templateID", templateID), zap.String("buildID", buildID))
+	logger.Info("building template", l.WithTemplateID(templateID), l.WithBuildID(buildID))
 
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
 	sandboxes := smap.New[*sandbox.Sandbox]()
 
-	sandboxProxy, err := proxy.NewSandboxProxy(proxyPort, sandboxes)
+	sandboxProxy, err := proxy.NewSandboxProxy(noop.MeterProvider{}, proxyPort, sandboxes)
 	if err != nil {
 		logger.Fatal("failed to create sandbox proxy", zap.Error(err))
 	}
@@ -94,7 +95,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		return fmt.Errorf("could not create storage provider: %w", err)
 	}
 
-	devicePool, err := nbd.NewDevicePool(ctx)
+	devicePool, err := nbd.NewDevicePool(ctx, noop.MeterProvider{})
 	if err != nil {
 		return fmt.Errorf("could not create device pool: %w", err)
 	}
@@ -105,7 +106,7 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 		}
 	}()
 
-	networkPool, err := network.NewPool(ctx, 8, 8, clientID, tracer)
+	networkPool, err := network.NewPool(ctx, noop.MeterProvider{}, 8, 8, clientID, tracer)
 	if err != nil {
 		return fmt.Errorf("could not create network pool: %w", err)
 	}

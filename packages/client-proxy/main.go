@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	ServiceName     = "client-proxy"
+	serviceName     = "client-proxy"
 	healthCheckPort = 3001
 	port            = 3002
 )
@@ -41,19 +41,29 @@ func run() int {
 	defer sigCancel()
 
 	instanceID := uuid.New().String()
-	stopOtlp := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA, instanceID)
+	// Setup telemetry
+	var tel *telemetry.Client
+	if env.IsLocal() {
+		tel = telemetry.NewNoopClient()
+	} else {
+		var err error
+		tel, err = telemetry.New(ctx, serviceName, commitSHA, instanceID)
+		if err != nil {
+			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
+		}
+	}
 	defer func() {
-		err := stopOtlp(ctx)
+		err := tel.Shutdown(ctx)
 		if err != nil {
 			log.Printf("telemetry shutdown:%v\n", err)
 		}
 	}()
 
 	logger := zap.Must(e2bLogger.NewLogger(ctx, e2bLogger.LoggerConfig{
-		ServiceName: ServiceName,
+		ServiceName: serviceName,
 		IsInternal:  true,
 		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{e2bLogger.GetOTELCore(ServiceName)},
+		Cores:       []zapcore.Core{e2bLogger.GetOTELCore(tel.LogsProvider, serviceName)},
 	}))
 	defer func() {
 		err := logger.Sync()
@@ -90,7 +100,7 @@ func run() int {
 	}()
 
 	// Proxy request to the correct node
-	proxy, err := client_proxy.NewClientProxy(port)
+	proxy, err := client_proxy.NewClientProxy(tel.MeterProvider, serviceName, port)
 	if err != nil {
 		logger.Error("failed to create client proxy", zap.Error(err))
 

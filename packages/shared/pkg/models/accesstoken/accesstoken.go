@@ -16,8 +16,14 @@ const (
 	FieldAccessToken = "access_token"
 	// FieldAccessTokenHash holds the string denoting the access_token_hash field in the database.
 	FieldAccessTokenHash = "access_token_hash"
-	// FieldAccessTokenMask holds the string denoting the access_token_mask field in the database.
-	FieldAccessTokenMask = "access_token_mask"
+	// FieldAccessTokenPrefix holds the string denoting the access_token_prefix field in the database.
+	FieldAccessTokenPrefix = "access_token_prefix"
+	// FieldAccessTokenLength holds the string denoting the access_token_length field in the database.
+	FieldAccessTokenLength = "access_token_length"
+	// FieldAccessTokenMaskPrefix holds the string denoting the access_token_mask_prefix field in the database.
+	FieldAccessTokenMaskPrefix = "access_token_mask_prefix"
+	// FieldAccessTokenMaskSuffix holds the string denoting the access_token_mask_suffix field in the database.
+	FieldAccessTokenMaskSuffix = "access_token_mask_suffix"
 	// FieldName holds the string denoting the name field in the database.
 	FieldName = "name"
 	// FieldUserID holds the string denoting the user_id field in the database.
@@ -42,7 +48,10 @@ var Columns = []string{
 	FieldID,
 	FieldAccessToken,
 	FieldAccessTokenHash,
-	FieldAccessTokenMask,
+	FieldAccessTokenPrefix,
+	FieldAccessTokenLength,
+	FieldAccessTokenMaskPrefix,
+	FieldAccessTokenMaskSuffix,
 	FieldName,
 	FieldUserID,
 	FieldCreatedAt,
@@ -81,9 +90,24 @@ func ByAccessTokenHash(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAccessTokenHash, opts...).ToFunc()
 }
 
-// ByAccessTokenMask orders the results by the access_token_mask field.
-func ByAccessTokenMask(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldAccessTokenMask, opts...).ToFunc()
+// ByAccessTokenPrefix orders the results by the access_token_prefix field.
+func ByAccessTokenPrefix(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAccessTokenPrefix, opts...).ToFunc()
+}
+
+// ByAccessTokenLength orders the results by the access_token_length field.
+func ByAccessTokenLength(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAccessTokenLength, opts...).ToFunc()
+}
+
+// ByAccessTokenMaskPrefix orders the results by the access_token_mask_prefix field.
+func ByAccessTokenMaskPrefix(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAccessTokenMaskPrefix, opts...).ToFunc()
+}
+
+// ByAccessTokenMaskSuffix orders the results by the access_token_mask_suffix field.
+func ByAccessTokenMaskSuffix(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAccessTokenMaskSuffix, opts...).ToFunc()
 }
 
 // ByName orders the results by the name field.

@@ -5,6 +5,13 @@ job "client-proxy" {
   priority = 80
 
   group "client-proxy" {
+  count = ${count}
+
+  constraint {
+    operator  = "distinct_hosts"
+    value     = "true"
+  }
+
     network {
       port "${port_name}" {
         static = "${port_number}"
@@ -58,9 +65,9 @@ job "client-proxy" {
       kill_signal  = "SIGTERM"
 
       resources {
-        memory_max = 4096
-        memory     = 1024
-        cpu        = 1000
+        memory_max = ${memory_mb * 1.5}
+        memory     = ${memory_mb}
+        cpu        = ${cpu_count * 1000}
       }
 
       env {
