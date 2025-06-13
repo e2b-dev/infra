@@ -35,8 +35,7 @@ import (
 )
 
 const (
-	ServiceName        = "client-proxy"
-	TracingServiceName = "edge-api"
+	serviceName = "client-proxy"
 
 	shutdownDrainingWait  = 30 * time.Second
 	shutdownUnhealthyWait = 30 * time.Second
@@ -51,10 +50,21 @@ func run() int {
 	defer ctxCancel()
 
 	instanceID := uuid.New().String()
-	stopOTLP := telemetry.InitOTLPExporter(ctx, ServiceName, commitSHA, instanceID)
+
+	// Setup telemetry
+	var tel *telemetry.Client
+	if env.IsLocal() {
+		tel = telemetry.NewNoopClient()
+	} else {
+		var err error
+		tel, err = telemetry.New(ctx, serviceName, commitSHA, instanceID)
+		if err != nil {
+			zap.L().Fatal("failed to create metrics exporter", zap.Error(err))
+		}
+	}
 
 	defer func() {
-		err := stopOTLP(ctx)
+		err := tel.Shutdown(ctx)
 		if err != nil {
 			log.Printf("telemetry shutdown:%v\n", err)
 		}
@@ -95,7 +105,7 @@ func run() int {
 
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
-	tracer := otel.Tracer(TracingServiceName)
+	tracer := otel.Tracer(serviceName)
 
 	edgeSD, orchestratorsSD, err := service_discovery.NewServiceDiscoveryProvider(ctx, edgePort, orchestratorPort, logger)
 	if err != nil {
@@ -116,7 +126,7 @@ func run() int {
 	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, logger, orchestratorsSD, tracer)
 
 	// Proxy request to the correct node
-	proxy, err := e2bproxy.NewClientProxy(uint(proxyPort), catalog, orchestrators)
+	proxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, orchestrators)
 	if err != nil {
 		logger.Error("failed to create client proxy", zap.Error(err))
 		return 1
@@ -135,7 +145,7 @@ func run() int {
 	}
 
 	// Edge API server
-	edgerGinServer := edge.NewGinServer(ctx, logger, edgeApiStore, edgeApiSwagger, tracer, edgePort, edgeSecret)
+	edgeGinServer := edge.NewGinServer(ctx, logger, edgeApiStore, edgeApiSwagger, tracer, edgePort, edgeSecret)
 
 	wg.Add(1)
 	go func() {
@@ -150,7 +160,7 @@ func run() int {
 		edgeRunLogger := logger.With(zap.Int("edge_port", edgePort))
 		edgeRunLogger.Info("edge http service starting")
 
-		err := edgerGinServer.ListenAndServe()
+		err := edgeGinServer.ListenAndServe()
 		if err != nil {
 			switch {
 			case errors.Is(err, http.ErrServerClosed):
@@ -229,7 +239,7 @@ func run() int {
 
 		edgeApiStore.GracefullyShutdown()
 
-		ginErr := edgerGinServer.Shutdown(ctx)
+		ginErr := edgeGinServer.Shutdown(ctx)
 		if ginErr != nil {
 			exitCode.Add(1)
 			shutdownLogger.Error("edge http service shutdown error", zap.Error(ginErr))
