@@ -3,6 +3,7 @@ package template_manager
 import (
 	"context"
 	"fmt"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	loki "github.com/grafana/loki/pkg/logcli/client"
 	"go.opentelemetry.io/otel/metric"
 	"sync"
@@ -25,14 +26,16 @@ type processingBuilds struct {
 }
 
 type TemplateManager struct {
-	grpc       *GRPCClient
-	edgePool   *edge.Pool
-	db         *db.DB
+	grpc     *GRPCClient
+	edgePool *edge.Pool
+	db       *db.DB
+
 	lock       sync.Mutex
 	tracer     trace.Tracer
 	processing map[uuid.UUID]processingBuilds
 	buildCache *templatecache.TemplatesBuildCache
 	lokiClient *loki.DefaultClient
+	sqlcDB     *sqlcdb.Client
 }
 
 type DeleteBuild struct {
@@ -49,7 +52,7 @@ const (
 	syncWaitingStateDeadline = time.Minute * 40
 )
 
-func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, db *db.DB, buildCache *templatecache.TemplatesBuildCache, edgePool *edge.Pool, lokiClient *loki.DefaultClient) (*TemplateManager, error) {
+func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, db *db.DB, sqlcDB *sqlcdb.Client, buildCache *templatecache.TemplatesBuildCache, edgePool *edge.Pool, lokiClient *loki.DefaultClient) (*TemplateManager, error) {
 	client, err := NewClient(ctx, tracerProvider, meterProvider)
 	if err != nil {
 		return nil, err
@@ -58,6 +61,7 @@ func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerPr
 	return &TemplateManager{
 		grpc:       client,
 		db:         db,
+		sqlcDB:     sqlcDB,
 		tracer:     tracer,
 		lock:       sync.Mutex{},
 		processing: make(map[uuid.UUID]processingBuilds),
@@ -79,22 +83,17 @@ func (tm *TemplateManager) BuildsStatusPeriodicalSync(ctx context.Context) {
 			return
 		case <-ticker.C:
 			dbCtx, dbxCtxCancel := context.WithTimeout(ctx, 5*time.Second)
-			buildsRunning, err := tm.db.GetRunningEnvBuilds(dbCtx)
+			buildsRunning, err := tm.sqlcDB.GetRunningEnvBuilds(dbCtx)
 			if err != nil {
 				zap.L().Error("Error getting running builds for periodical sync", zap.Error(err))
 				dbxCtxCancel()
 				continue
 			}
 
-			// todo: we need to get team here soe i can get cludster id
 			zap.L().Info("Running periodical sync of builds statuses", zap.Int("count", len(buildsRunning)))
-			//for _, buildDB := range buildsRunning {
-			//
-			//	buildDB.
-			//
-			//
-			//	go tm.BuildStatusSync(ctx, buildDB.ID, *buildDB.EnvID, nil, buildDB.ClusterNodeID)
-			//}
+			for _, b := range buildsRunning {
+				go tm.BuildStatusSync(ctx, b.EnvBuild.ID, b.Env.ID, b.Team.ClusterID, b.EnvBuild.ClusterNodeID)
+			}
 
 			dbxCtxCancel()
 		}
