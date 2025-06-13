@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"testing"
 
 	"github.com/google/uuid"
@@ -31,6 +32,16 @@ func createTeam(t *testing.T, cancel context.CancelFunc, ctx context.Context, c 
 	assert.Equal(t, teamName, team.Name)
 	assert.Equal(t, teamID, team.ID)
 
+	userID := uuid.MustParse(os.Getenv("TESTS_SANDBOX_USER_ID"))
+	userTeam, err := db.Client.UsersTeams.Create().
+		SetUserID(userID).
+		SetTeamID(teamID).
+		SetIsDefault(true).
+		Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	resp, err := c.PostApiKeysWithResponse(ctx, api.PostApiKeysJSONRequestBody{
 		Name: fmt.Sprintf("test-%s", teamID),
 	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t, teamID.String()))
@@ -41,6 +52,7 @@ func createTeam(t *testing.T, cancel context.CancelFunc, ctx context.Context, c 
 	apiKey := resp.JSON201.Key
 
 	t.Cleanup(func() {
+		db.Client.UsersTeams.DeleteOne(userTeam)
 		db.Client.Team.DeleteOneID(teamID).Exec(ctx)
 		db.Client.TeamAPIKey.DeleteOneID(teamID).Exec(ctx)
 		cancel()
