@@ -17,7 +17,6 @@ import (
 	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -105,7 +104,7 @@ func run() int {
 
 	logger.Info("Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
 
-	tracer := otel.Tracer(serviceName)
+	tracer := tel.TracerProvider.Tracer(serviceName)
 
 	edgeSD, orchestratorsSD, err := service_discovery.NewServiceDiscoveryProvider(ctx, edgePort, orchestratorPort, logger)
 	if err != nil {

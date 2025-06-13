@@ -77,7 +77,7 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 	ctxTimeout, ctxCancel := context.WithTimeout(ctx, cacheRefreshInterval)
 	defer ctxCancel()
 
-	ips := make(map[string]string)
+	ips := make(map[string]struct{})
 
 	select {
 	case <-ctxTimeout.Done():
@@ -94,7 +94,7 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 				}
 
 				for _, ip := range hostIps {
-					ips[ip.String()] = ip.String()
+					ips[ip.String()] = struct{}{}
 				}
 
 				break
@@ -103,7 +103,7 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 	}
 
 	// create or update the entries
-	for _, ip := range ips {
+	for ip, _ := range ips {
 		key := fmt.Sprintf("%s:%d", ip, sd.servicePort)
 		sd.entries.Insert(
 			key, &ServiceDiscoveryItem{NodeIp: ip, NodePort: sd.servicePort},

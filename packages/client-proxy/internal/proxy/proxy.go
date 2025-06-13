@@ -15,6 +15,7 @@ import (
 
 	orchestratorspool "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -109,7 +110,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 
 			logger := zap.L().With(
 				zap.String("host", r.Host),
-				zap.String("sandbox_id", sandboxId),
+				l.WithSandboxID(sandboxId),
 				zap.Uint64("sandbox_req_port", port),
 				zap.String("sandbox_req_path", r.URL.Path),
 			)

@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	grpcorchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
+	l "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -97,7 +98,7 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 		return
 	}
 
-	zap.L().Info("Created sandbox", zap.String("sandbox_id", body.Sandbox.SandboxId))
+	zap.L().Info("Created sandbox", l.WithSandboxID(body.Sandbox.SandboxId))
 
 	c.JSON(
 		http.StatusCreated,

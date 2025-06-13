@@ -11,7 +11,6 @@ import (
 func (a *APIStore) V1Info(c *gin.Context) {
 	info := a.info
 
-	c.Status(http.StatusOK)
 	c.JSON(
 		http.StatusOK,
 		api.ClusterNodeInfo{
