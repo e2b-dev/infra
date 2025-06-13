@@ -3,6 +3,8 @@ package template_manager
 import (
 	"context"
 	"fmt"
+	loki "github.com/grafana/loki/pkg/logcli/client"
+	"go.opentelemetry.io/otel/metric"
 	"sync"
 	"time"
 
@@ -30,6 +32,7 @@ type TemplateManager struct {
 	tracer     trace.Tracer
 	processing map[uuid.UUID]processingBuilds
 	buildCache *templatecache.TemplatesBuildCache
+	lokiClient *loki.DefaultClient
 }
 
 type DeleteBuild struct {
@@ -46,8 +49,8 @@ const (
 	syncWaitingStateDeadline = time.Minute * 40
 )
 
-func New(ctx context.Context, tracer trace.Tracer, db *db.DB, buildCache *templatecache.TemplatesBuildCache, edgePool *edge.Pool) (*TemplateManager, error) {
-	client, err := NewClient(ctx)
+func New(ctx context.Context, tracer trace.Tracer, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, db *db.DB, buildCache *templatecache.TemplatesBuildCache, edgePool *edge.Pool, lokiClient *loki.DefaultClient) (*TemplateManager, error) {
+	client, err := NewClient(ctx, tracerProvider, meterProvider)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +63,7 @@ func New(ctx context.Context, tracer trace.Tracer, db *db.DB, buildCache *templa
 		processing: make(map[uuid.UUID]processingBuilds),
 		edgePool:   edgePool,
 		buildCache: buildCache,
+		lokiClient: lokiClient,
 	}, nil
 }
 
@@ -103,7 +107,7 @@ func (tm *TemplateManager) getPlacement(clusterId *uuid.UUID, nodeId *string) (B
 			return nil, fmt.Errorf("local template manager is not ready for build placement")
 		}
 
-		return NewLocalBuildPlacement(tm.grpc), nil
+		return NewLocalBuildPlacement(tm.grpc, tm.lokiClient), nil
 	}
 
 	cluster, found := tm.edgePool.GetClusterById(*clusterId)
@@ -183,4 +187,21 @@ func (tm *TemplateManager) CreateTemplate(t trace.Tracer, ctx context.Context, t
 
 	telemetry.ReportEvent(ctx, "Template build started")
 	return nil
+}
+
+func (tm *TemplateManager) GetLogs(ctx context.Context, buildId uuid.UUID, templateId string, clusterId *uuid.UUID, clusterNodeId *string, offset *int32) (*[]string, error) {
+	ctx, span := tm.tracer.Start(ctx, "get-build-logs",
+		trace.WithAttributes(
+			telemetry.WithTemplateID(templateId),
+			telemetry.WithBuildID(buildId.String()),
+		),
+	)
+	defer span.End()
+
+	buildPlacement, err := tm.getPlacement(clusterId, clusterNodeId)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildPlacement.GetLogs(ctx, buildId.String(), templateId, offset)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	edge "github.com/e2b-dev/infra/packages/api/internal/edge"
 	"net/http"
 	"os"
 	"strings"
@@ -62,6 +63,7 @@ type APIStore struct {
 	templateSpawnCounter     *utils.TemplateSpawnCounter
 	clickhouseStore          chdb.Store
 	envdAccessTokenGenerator *sandbox.EnvdAccessTokenGenerator
+	edgePool                 *edge.Pool
 	// should use something like this: https://github.com/spf13/viper
 	// but for now this is good
 	readMetricsFromClickHouse string
@@ -151,14 +153,10 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
 
-	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
-	templateManager, err := template_manager.New(ctx, tel.TracerProvider, tel.MeterProvider, dbClient, templateBuildsCache)
+	edgePool, err := edge.NewPool(ctx, sqlcDB, tracer)
 	if err != nil {
-		zap.L().Fatal("initializing Template manager client", zap.Error(err))
+		zap.L().Fatal("initializing Edge pool", zap.Error(err))
 	}
-
-	// Start the periodic sync of template builds statuses
-	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	var lokiClient *loki.DefaultClient
 	if laddr := os.Getenv("LOKI_ADDRESS"); laddr != "" {
@@ -168,6 +166,15 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 	} else {
 		zap.L().Warn("LOKI_ADDRESS not set, disabling Loki client")
 	}
+
+	templateBuildsCache := templatecache.NewTemplateBuildCache(dbClient)
+	templateManager, err := template_manager.New(ctx, tracer, tel.TracerProvider, tel.MeterProvider, dbClient, templateBuildsCache, edgePool, lokiClient)
+	if err != nil {
+		zap.L().Fatal("initializing Template manager client", zap.Error(err))
+	}
+
+	// Start the periodic sync of template builds statuses
+	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
 	authCache := authcache.NewTeamAuthCache()
 	templateCache := templatecache.NewTemplateCache(sqlcDB)
@@ -195,6 +202,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		clickhouseStore:           clickhouseStore,
 		envdAccessTokenGenerator:  accessTokenGenerator,
 		readMetricsFromClickHouse: readMetricsFromClickHouse,
+		edgePool:                  edgePool,
 	}
 
 	// Wait till there's at least one, otherwise we can't create sandboxes yet
