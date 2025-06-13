@@ -23,6 +23,12 @@ type AccessToken struct {
 	Name            string
 }
 
+type Cluster struct {
+	ID       uuid.UUID
+	Endpoint string
+	Token    string
+}
+
 type Env struct {
 	ID         string
 	CreatedAt  time.Time
@@ -35,6 +41,7 @@ type Env struct {
 	LastSpawnedAt *time.Time
 	TeamID        uuid.UUID
 	CreatedBy     *uuid.UUID
+	ClusterID     *uuid.UUID
 }
 
 type EnvAlias struct {
@@ -60,6 +67,7 @@ type EnvBuild struct {
 	EnvID              *string
 	EnvdVersion        *string
 	ReadyCmd           *string
+	ClusterNodeID      *string
 }
 
 type Snapshot struct {
@@ -82,6 +90,7 @@ type Team struct {
 	Email         string
 	IsBanned      bool
 	BlockedReason *string
+	ClusterID     *uuid.UUID
 }
 
 type TeamApiKey struct {
