@@ -43,6 +43,7 @@ test/%:
 	export TESTS_E2B_ACCESS_TOKEN=$(TESTS_E2B_ACCESS_TOKEN); \
 	export TESTS_SUPABASE_TOKEN=$(TESTS_SUPABASE_TOKEN); \
 	export TESTS_SANDBOX_TEAM_ID=$(TESTS_SANDBOX_TEAM_ID); \
+	export TESTS_SANDBOX_USER_ID=$(TESTS_SANDBOX_USER_ID); \
 	go test -v ./internal/main_test.go -count=1 && \
 	TEST_PATH="./internal/tests/$(subst test/,,$@)"; \
 	case "$${TEST_PATH}" in \
