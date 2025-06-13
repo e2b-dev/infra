@@ -85,9 +85,8 @@ func (a *APIStore) V1ListSandboxes(c *gin.Context, params api.V1ListSandboxesPar
 		)
 	}
 
-	c.Status(http.StatusOK)
 	c.JSON(
-		http.StatusCreated,
+		http.StatusOK,
 		api.SandboxListResponse{Sandboxes: sandboxes},
 	)
 }
