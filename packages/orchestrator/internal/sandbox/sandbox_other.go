@@ -17,7 +17,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -44,15 +43,14 @@ type Sandbox struct {
 	// YOU ARE IN SANDBOX_OTHER.GO
 	// YOU PROBABLY WANT TO BE IN SANDBOX_LINUX.GO
 
-	Config          *orchestrator.SandboxConfig
-	process         NoOpProcess
-	uffdExit        chan error
-	cleanup         NoOpCleanup
-	healthy         atomic.Bool
-	Slot            network.Slot
-	EndAt           time.Time
-	StartedAt       time.Time
-	ClickhouseStore chdb.Store
+	Config    *orchestrator.SandboxConfig
+	process   NoOpProcess
+	uffdExit  chan error
+	cleanup   NoOpCleanup
+	healthy   atomic.Bool
+	Slot      network.Slot
+	EndAt     time.Time
+	StartedAt time.Time
 
 	useLokiMetrics       string
 	useClickhouseMetrics string
@@ -82,7 +80,6 @@ func NewSandbox(
 	baseTemplateID string,
 	clientID string,
 	devicePool *nbd.DevicePool,
-	clickhouseStore chdb.Store,
 	useLokiMetrics string,
 	useClickhouseMetrics string,
 ) (*Sandbox, *Cleanup, error) {

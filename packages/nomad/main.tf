@@ -211,6 +211,12 @@ resource "nomad_job" "otel_collector" {
     consul_token                 = var.consul_acl_token_secret
     clickhouse_metrics_port      = var.clickhouse_metrics_port
 
+    clickhouse_username = var.clickhouse_username
+    clickhouse_password = random_password.clickhouse_password.result
+    clickhouse_port     = var.clickhouse_server_port.port
+    clickhouse_host     = "clickhouse.service.consul"
+    clickhouse_database = var.clickhouse_database
+
     gcp_zone = var.gcp_zone
   })
 }
@@ -333,10 +339,8 @@ locals {
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
-    clickhouse_connection_string = "clickhouse.service.consul:9000"
-    clickhouse_username          = var.clickhouse_username
-    clickhouse_password          = random_password.clickhouse_password.result
-    clickhouse_database          = var.clickhouse_database
+    write_to_loki                = var.write_loki_metrics
+    write_to_clickhouse          = var.environment == "dev" ? true : var.write_clickhouse_metrics
     allow_sandbox_internet       = var.allow_sandbox_internet
   }
 

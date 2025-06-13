@@ -9,19 +9,15 @@ import (
 	"golang.org/x/mod/semver"
 
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
 	healthCheckInterval      = 20 * time.Second
 	metricsCheckInterval     = 5 * time.Second
-	minEnvdVersionForMetrcis = "0.1.5"
+	minEnvdVersionForMetrics = "0.1.5"
 )
-
-type metricLogging interface {
-	LogMetricsLoki(ctx context.Context)
-	LogMetricsClickhouse(ctx context.Context)
-}
 
 type Checks struct {
 	sandbox *Sandbox
@@ -30,11 +26,11 @@ type Checks struct {
 	healthy atomic.Bool
 
 	// Metrics target
-	useLokiMetrics       string
-	useClickhouseMetrics string
+	useLokiMetrics    bool
+	unregisterMetrics func() error
 }
 
-func NewChecks(sandbox *Sandbox, useLokiMetrics, useClickhouseMetrics string) *Checks {
+func NewChecks(sandboxObserver *telemetry.SandboxObserver, sandbox *Sandbox, useLokiMetrics, useClickhouseMetrics bool) (*Checks, error) {
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	h := &Checks{
@@ -42,13 +38,34 @@ func NewChecks(sandbox *Sandbox, useLokiMetrics, useClickhouseMetrics string) *C
 		ctx:     healthcheckCtx,
 		healthy: atomic.Bool{}, // defaults to `false`
 
-		useLokiMetrics:       useLokiMetrics,
-		useClickhouseMetrics: useClickhouseMetrics,
+		useLokiMetrics: useLokiMetrics,
 	}
 	// By default, the sandbox should be healthy, if the status change we report it.
 	h.healthy.Store(true)
 
-	return h
+	if sandboxObserver != nil && useClickhouseMetrics {
+		unregister, err := sandboxObserver.StartObserving(sandbox.Config.SandboxId, sandbox.Config.TeamId, h.getMetrics)
+		if err != nil {
+			return nil, err
+		}
+
+		h.unregisterMetrics = unregister.Unregister
+	}
+
+	return h, nil
+}
+
+func (c *Checks) getMetrics(ctx context.Context) (*telemetry.SandboxMetrics, error) {
+	if !isGTEVersion(c.sandbox.Config.EnvdVersion, minEnvdVersionForMetrics) {
+		return nil, nil
+	}
+
+	envdMetrics, err := c.sandbox.GetMetrics(ctx)
+	if err != nil {
+		sbxlogger.E(c.sandbox).Warn("failed to get metrics from envd", zap.Error(err))
+	}
+
+	return envdMetrics, err
 }
 
 func (c *Checks) IsHealthy() bool {
@@ -61,23 +78,21 @@ func (c *Checks) Start() {
 
 func (c *Checks) Stop() {
 	c.ctx.Lock()
+	defer c.ctx.Unlock()
+
 	c.ctx.Cancel()
-	c.ctx.Unlock()
+
+	if c.unregisterMetrics != nil {
+		if err := c.unregisterMetrics(); err != nil {
+			sbxlogger.I(c.sandbox).Error("failed to unregister metrics", zap.Error(err))
+		}
+	}
 }
 
 func (c *Checks) LogMetrics(ctx context.Context) {
 	logger := c.sandbox
 
-	if c.useLokiMetrics == "true" {
-		logger.LogMetricsLoki(ctx)
-	}
-
-	if c.useClickhouseMetrics == "true" {
-		logger.LogMetricsClickhouse(ctx)
-	}
-
-	// ensure backward compatibility if neither are set
-	if c.useClickhouseMetrics != "true" && c.useLokiMetrics != "true" {
+	if c.useLokiMetrics {
 		logger.LogMetricsLoki(ctx)
 	}
 }
