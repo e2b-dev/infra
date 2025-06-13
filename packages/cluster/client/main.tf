@@ -23,7 +23,7 @@ resource "google_compute_region_autoscaler" "client" {
   target = google_compute_region_instance_group_manager.client_cluster.id
 
   autoscaling_policy {
-    max_replicas    = var.cluster_size_max
+    max_replicas    = max(var.cluster_size, var.cluster_size_max)
     min_replicas    = var.cluster_size
     cooldown_period = 240
     mode            = "ONLY_SCALE_OUT"
