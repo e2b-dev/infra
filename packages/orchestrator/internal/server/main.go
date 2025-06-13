@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -17,12 +17,13 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/internal/service"
-	"github.com/e2b-dev/infra/packages/shared/pkg/chdb"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+const metricExportPeriod = 5 * time.Second
 
 type server struct {
 	orchestrator.UnimplementedSandboxServiceServer
@@ -35,11 +36,8 @@ type server struct {
 	templateCache   *template.Cache
 	pauseMu         sync.Mutex
 	devicePool      *nbd.DevicePool
-	clickhouseStore chdb.Store
 	persistence     storage.StorageProvider
-
-	useLokiMetrics       string
-	useClickhouseMetrics string
+	sandboxObserver *telemetry.SandboxObserver
 }
 
 type Service struct {
@@ -90,37 +88,21 @@ func New(
 
 		srv.persistence = persistence
 
-		useLokiMetrics := os.Getenv("WRITE_LOKI_METRICS")
-		useClickhouseMetrics := os.Getenv("WRITE_CLICKHOUSE_METRICS")
-		readClickhouseMetrics := os.Getenv("READ_CLICKHOUSE_METRICS")
-
-		var clickhouseStore chdb.Store = nil
-
-		if readClickhouseMetrics == "true" || useClickhouseMetrics == "true" {
-			clickhouseStore, err = chdb.NewStore(chdb.ClickHouseConfig{
-				ConnectionString: os.Getenv("CLICKHOUSE_CONNECTION_STRING"),
-				Username:         os.Getenv("CLICKHOUSE_USERNAME"),
-				Password:         os.Getenv("CLICKHOUSE_PASSWORD"),
-				Database:         os.Getenv("CLICKHOUSE_DATABASE"),
-				Debug:            os.Getenv("CLICKHOUSE_DEBUG") == "true",
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to create clickhouse store: %w", err)
-			}
+		sandboxObserver, err := telemetry.NewSandboxObserver(ctx, info.SourceCommit, info.ClientId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create sandbox observer: %w", err)
 		}
 
 		srv.server = &server{
-			info:                 info,
-			tracer:               tracer,
-			proxy:                srv.proxy,
-			sandboxes:            sandboxes,
-			networkPool:          networkPool,
-			templateCache:        templateCache,
-			devicePool:           devicePool,
-			clickhouseStore:      clickhouseStore,
-			useLokiMetrics:       useLokiMetrics,
-			useClickhouseMetrics: useClickhouseMetrics,
-			persistence:          persistence,
+			info:            info,
+			tracer:          tracer,
+			proxy:           srv.proxy,
+			sandboxes:       sandboxes,
+			networkPool:     networkPool,
+			templateCache:   templateCache,
+			devicePool:      devicePool,
+			sandboxObserver: sandboxObserver,
+			persistence:     persistence,
 		}
 
 		meter := tel.MeterProvider.Meter("orchestrator.sandbox")
