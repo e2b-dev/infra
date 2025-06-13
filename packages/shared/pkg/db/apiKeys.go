@@ -19,17 +19,21 @@ func (e *TeamForbiddenError) Error() string {
 	return e.message
 }
 
+type TeamBlockedError struct {
+	message string
+}
+
+func (e *TeamBlockedError) Error() string {
+	return e.message
+}
+
 func validateTeamUsage(team *models.Team) error {
 	if team.IsBanned {
 		return &TeamForbiddenError{message: "team is banned"}
 	}
 
 	if team.IsBlocked {
-		if team.BlockedReason == nil {
-			return &TeamForbiddenError{message: "team was blocked"}
-		}
-
-		return &TeamForbiddenError{message: fmt.Sprintf("team was blocked, reason: %s", *team.BlockedReason)}
+		return &TeamBlockedError{message: "team is blocked"}
 	}
 
 	return nil
