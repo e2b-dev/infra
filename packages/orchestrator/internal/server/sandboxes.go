@@ -61,7 +61,6 @@ func (s *server) Create(ctxConn context.Context, req *orchestrator.SandboxCreate
 		req.Sandbox.BaseTemplateId,
 		s.devicePool,
 		config.AllowSandboxInternet,
-		config.WriteLokiMetrics,
 		config.WriteClickhouseMetrics,
 	)
 	if err != nil {

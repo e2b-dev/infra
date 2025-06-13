@@ -212,7 +212,7 @@ func CreateSandbox(
 		cleanup: cleanup,
 	}
 
-	checks, err := NewChecks(nil, sbx, false, false)
+	checks, err := NewChecks(nil, sbx, false)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create health check: %w", err)
 	}
@@ -241,7 +241,6 @@ func ResumeSandbox(
 	baseTemplateID string,
 	devicePool *nbd.DevicePool,
 	allowInternet,
-	useLokiMetrics,
 	useClickhouseMetrics bool,
 ) (*Sandbox, *Cleanup, error) {
 	childCtx, childSpan := tracer.Start(ctx, "new-sandbox")
@@ -403,7 +402,7 @@ func ResumeSandbox(
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
-	checks, err := NewChecks(sandboxObserver, sbx, useLokiMetrics, useClickhouseMetrics)
+	checks, err := NewChecks(sandboxObserver, sbx, useClickhouseMetrics)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("failed to create health check: %w", err)
 	}

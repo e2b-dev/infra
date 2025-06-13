@@ -26,19 +26,16 @@ type Checks struct {
 	healthy atomic.Bool
 
 	// Metrics target
-	useLokiMetrics    bool
 	unregisterMetrics func() error
 }
 
-func NewChecks(sandboxObserver *telemetry.SandboxObserver, sandbox *Sandbox, useLokiMetrics, useClickhouseMetrics bool) (*Checks, error) {
+func NewChecks(sandboxObserver *telemetry.SandboxObserver, sandbox *Sandbox, useClickhouseMetrics bool) (*Checks, error) {
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	h := &Checks{
 		sandbox: sandbox,
 		ctx:     healthcheckCtx,
 		healthy: atomic.Bool{}, // defaults to `false`
-
-		useLokiMetrics: useLokiMetrics,
 	}
 	// By default, the sandbox should be healthy, if the status change we report it.
 	h.healthy.Store(true)

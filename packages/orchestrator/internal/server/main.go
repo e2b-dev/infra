@@ -49,11 +49,6 @@ type Service struct {
 		op   func(context.Context) error
 		err  error
 	}
-	// there really should be a config struct for this
-	// using something like viper to read the config
-	// but for now this is just a quick hack
-	// see https://linear.app/e2b/issue/E2B-1731/use-viper-to-read-env-vars
-	useLokiMetrics       string
 	useClickhouseMetrics string
 
 	persistence storage.StorageProvider
