@@ -197,7 +197,7 @@ func (s *server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(loggingCtx, true)
-	sbx.Checks.LogMetrics(loggingCtx)
+	sbx.Checks.LogMetricsThresholdExceeded(loggingCtx)
 
 	err := sbx.Stop(ctx)
 	if err != nil {

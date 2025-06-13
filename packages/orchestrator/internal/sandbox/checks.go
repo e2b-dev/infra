@@ -89,12 +89,8 @@ func (c *Checks) Stop() {
 	}
 }
 
-func (c *Checks) LogMetrics(ctx context.Context) {
-	logger := c.sandbox
-
-	if c.useLokiMetrics {
-		logger.LogMetricsLoki(ctx)
-	}
+func (c *Checks) LogMetricsThresholdExceeded(ctx context.Context) {
+	c.sandbox.LogMetricsThresholdExceeded(ctx)
 }
 
 func (c *Checks) logHeathAndUsage() {
@@ -107,7 +103,7 @@ func (c *Checks) logHeathAndUsage() {
 
 	// Get metrics and health status on sandbox startup
 
-	go c.LogMetrics(c.ctx)
+	go c.LogMetricsThresholdExceeded(c.ctx)
 	go c.Healthcheck(c.ctx, false)
 
 	for {
@@ -121,7 +117,7 @@ func (c *Checks) logHeathAndUsage() {
 
 			cancel()
 		case <-metricsTicker.C:
-			go c.LogMetrics(c.ctx)
+			go c.LogMetricsThresholdExceeded(c.ctx)
 		case <-c.ctx.Done():
 			return
 		}
