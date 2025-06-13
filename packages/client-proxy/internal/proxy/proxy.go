@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -18,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/proxy/internal/edge/sandboxes"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
