@@ -15,6 +15,7 @@ import (
 	loki "github.com/grafana/loki/pkg/logcli/client"
 	nomadapi "github.com/hashicorp/nomad/api"
 	middleware "github.com/oapi-codegen/gin-middleware"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -114,7 +116,35 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("initializing Nomad client", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, posthogClient, dbClient)
+	var redisClient dns.Rediser
+	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
+		// For managed Redis Cluster in GCP we should use Cluster Client, because
+		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
+		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
+		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
+		redisClient = redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs:        []string{redisClusterUrl},
+			MinIdleConns: 1,
+		})
+	} else if rurl := os.Getenv("REDIS_URL"); rurl != "" {
+		redisClient = redis.NewClient(&redis.Options{
+			Addr:         rurl,
+			MinIdleConns: 1,
+		})
+	} else {
+		zap.L().Warn("REDIS_URL not set, using local caches")
+	}
+
+	if redisClient != nil {
+		_, err := redisClient.Ping(ctx).Result()
+		if err != nil {
+			zap.L().Fatal("could not connect to Redis", zap.Error(err))
+		}
+
+		zap.L().Info("connected to Redis cluster")
+	}
+
+	orch, err := orchestrator.New(ctx, tracer, nomadClient, posthogClient, redisClient, dbClient)
 	if err != nil {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
