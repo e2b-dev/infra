@@ -31,7 +31,7 @@ resource "google_compute_region_autoscaler" "client" {
     min_replicas    = var.cluster_size
     cooldown_period = 240
     # Turn off autoscaling when the cluster size is equal to the maximum size.
-    mode            = local.max_replicas != var.cluster_size ? "ONLY_SCALE_OUT" : "OFF"
+    mode = local.max_replicas != var.cluster_size ? "ONLY_SCALE_OUT" : "OFF"
 
     cpu_utilization {
       target = 0.6
