@@ -192,8 +192,8 @@ module "api_cluster" {
 
   network_name = var.network_name
 
-  client_proxy_port        = var.client_proxy_port
-  client_proxy_health_port = var.client_proxy_health_port
+  edge_proxy_port = var.edge_proxy_port
+  edge_api_port   = var.edge_api_port
 
   api_port   = var.api_port
   nomad_port = var.nomad_port
@@ -306,8 +306,8 @@ module "network" {
   additional_domains        = var.additional_domains
 
   client_instance_group    = module.client_cluster.instance_group
-  client_proxy_port        = var.client_proxy_port
-  client_proxy_health_port = var.client_proxy_health_port
+  client_proxy_port        = var.edge_proxy_port
+  client_proxy_health_port = var.edge_api_port
 
   api_instance_group    = module.api_cluster.instance_group
   build_instance_group  = module.build_cluster.instance_group
