@@ -338,6 +338,7 @@ locals {
     logs_collector_public_ip     = var.logs_proxy_address
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
+    template_cache_proxy_url     = var.template_cache_proxy_url
     otel_collector_grpc_endpoint = "localhost:4317"
     write_to_clickhouse          = var.environment == "dev" ? true : var.write_clickhouse_metrics
     allow_sandbox_internet       = var.allow_sandbox_internet
@@ -418,6 +419,7 @@ resource "nomad_job" "template_manager" {
     template_manager_checksum    = data.external.template_manager.result.hex
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
+    template_cache_proxy_url     = var.template_cache_proxy_url
     otel_collector_grpc_endpoint = "localhost:4317"
     logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
     logs_collector_public_ip     = var.logs_proxy_address
@@ -438,6 +440,15 @@ resource "nomad_job" "loki" {
     cpu_count                = var.loki_resources_cpu_count
     loki_service_port_number = var.loki_service_port.port
     loki_service_port_name   = var.loki_service_port.name
+  })
+}
+
+resource "nomad_job" "template-cache" {
+  jobspec = templatefile("${path.module}/template-cache.hcl", {
+    gcp_zone           = var.gcp_zone
+    port_number        = var.template_cache_port.port
+    status_port_number = var.template_cache_port.status_port
+    port_name          = var.template_cache_port.name
   })
 }
 

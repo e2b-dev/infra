@@ -141,6 +141,20 @@ variable "client_proxy_port" {
   }
 }
 
+variable "template_cache_port" {
+  type = object({
+    name        = string
+    port        = number
+    status_port = number
+  })
+  default = {
+    name        = "template-cache"
+    port        = 28778
+    status_port = 3004
+  }
+}
+
+
 variable "logs_proxy_port" {
   type = object({
     name = string
@@ -314,6 +328,12 @@ variable "template_bucket_location" {
 variable "template_bucket_name" {
   type        = string
   description = "The name of the FC template bucket"
+  default     = ""
+}
+
+variable "template_cache_proxy_url" {
+  type        = string
+  description = "The URL of the template cache proxy"
   default     = ""
 }
 
