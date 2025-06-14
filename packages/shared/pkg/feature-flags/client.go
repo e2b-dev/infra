@@ -1,6 +1,7 @@
 package feature_flags
 
 import (
+	"context"
 	"os"
 	"time"
 
@@ -39,7 +40,7 @@ func NewClient(waitForInitialize time.Duration) (*Client, error) {
 	return &Client{Ld: ldClient}, nil
 }
 
-func (c *Client) Close() error {
+func (c *Client) Close(ctx context.Context) error {
 	if c.Ld == nil {
 		return nil
 	}
