@@ -5,9 +5,8 @@ ENV=$1
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 # Check if the ENV variable is set to "prod"
 if [[ "$ENV" == prod* ]]; then
-  # Replace prod with e2b
-  ENV=$(echo $ENV | sed 's/prod/e2b/')
-  if [ "$ENV" != "$BRANCH" ]; then
+  # Check if the current branch is "main"
+  if [ "$BRANCH" != "main" ]; then
     echo "You are trying to deploy to $ENV from $BRANCH"
     exit 1
   fi
