@@ -332,9 +332,3 @@ variable "write_clickhouse_metrics" {
   type        = bool
   default     = false
 }
-
-variable "write_loki_metrics" {
-  description = "Whether to write metrics to Loki"
-  type        = bool
-  default     = true
-}
