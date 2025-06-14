@@ -69,7 +69,6 @@ EOT
         ENVIRONMENT                  = "${environment}"
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
-        WRITE_LOKI_METRICS           = "${write_to_loki}"
         WRITE_CLICKHOUSE_METRICS     = "${write_to_clickhouse}"
         ALLOW_SANDBOX_INTERNET       = "${allow_sandbox_internet}"
       }
