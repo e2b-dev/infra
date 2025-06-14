@@ -75,7 +75,7 @@ EOT
 
       config {
         command = "/bin/bash"
-        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port} --proxy-port ${proxy_port} --wait 0"]
+        args    = ["-c", " chmod +x local/orchestrator && local/orchestrator --port ${port} --proxy-port ${proxy_port}"]
       }
 
       artifact {
