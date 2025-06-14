@@ -339,8 +339,8 @@ locals {
     otel_tracing_print           = var.otel_tracing_print
     template_bucket_name         = var.template_bucket_name
     otel_collector_grpc_endpoint = "localhost:4317"
-    write_to_clickhouse          = var.environment == "dev" ? true : var.write_clickhouse_metrics
     allow_sandbox_internet       = var.allow_sandbox_internet
+    launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   }
 
   orchestrator_job_check = templatefile("${path.module}/orchestrator.hcl", merge(
