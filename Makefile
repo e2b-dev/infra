@@ -60,7 +60,7 @@ login-gcloud:
 .PHONY: init
 init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
 	$(TF) init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 	$(tf_vars) $(TF) apply -target=module.init -target=module.buckets -auto-approve -input=false -compact-warnings
@@ -116,7 +116,7 @@ plan-only-jobs/%:
 .PHONY: apply
 apply:
 	@ printf "Applying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(tf_vars) \
 	$(TF) apply \
 	-auto-approve \
@@ -141,7 +141,7 @@ plan-without-jobs:
 .PHONY: destroy
 destroy:
 	@ printf "Destroying Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(tf_vars) \
 	$(TF) destroy \
 	-compact-warnings \
@@ -164,13 +164,13 @@ build-and-upload:build-and-upload/orchestrator
 build-and-upload:build-and-upload/template-manager
 build-and-upload:build-and-upload/envd
 build-and-upload/template-manager:
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/template-manager
 build-and-upload/orchestrator:
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/orchestrator
 build-and-upload/%:
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
 
 .PHONY: copy-public-builds
@@ -203,7 +203,7 @@ switch-env:
 .PHONY: import
 import:
 	@ printf "Importing resources for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	./scripts/confirm.sh $(ENV)
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(tf_vars) $(TF) import $(TARGET) $(ID)
 
 .PHONY: setup-ssh
