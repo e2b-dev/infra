@@ -75,7 +75,7 @@ func (d *DNS) Add(ctx context.Context, sandboxID, ip string) {
 			Value: ip,
 		})
 		if err != nil {
-			zap.L().Warn("error adding DNS item to redis cache", zap.Error(err), logger.WithSandboxID(sandboxID))
+			zap.L().Error("error adding DNS item to redis cache", zap.Error(err), logger.WithSandboxID(sandboxID))
 		}
 	case d.local != nil:
 		d.local.Insert(sandboxID, ip)
@@ -99,7 +99,7 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 	case d.redisCache != nil:
 		if err := d.redisCache.Get(ctx, d.cacheKey(sandboxID), &res); err != nil {
 			if errors.Is(err, cache.ErrCacheMiss) {
-				zap.L().Warn("item missing in redisCache DNS cache", logger.WithSandboxID(sandboxID))
+				zap.L().Debug("item missing in redisCache DNS cache", logger.WithSandboxID(sandboxID))
 			} else {
 				zap.L().Error("resolving item from redisCache DNS cache", logger.WithSandboxID(sandboxID), zap.Error(err))
 			}
@@ -108,7 +108,7 @@ func (d *DNS) Get(ctx context.Context, sandboxID string) net.IP {
 		var ok bool
 		res, ok = d.local.Get(d.cacheKey(sandboxID))
 		if !ok {
-			zap.L().Warn("item not found in local DNS cache", logger.WithSandboxID(sandboxID))
+			zap.L().Debug("item not found in local DNS cache", logger.WithSandboxID(sandboxID))
 		}
 	}
 
