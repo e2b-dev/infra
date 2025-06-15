@@ -11,7 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/internal/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type benchmarkConfig struct {
@@ -22,8 +22,8 @@ type benchmarkConfig struct {
 }
 
 type node struct {
-	meterProvider *metrics.MeterProvider
-	sbxCount      int
+	sbxCount        int
+	sandboxObserver *telemetry.SandboxObserver
 }
 
 func runBenchmark(ctx context.Context, cfg benchmarkConfig) error {
@@ -42,21 +42,20 @@ func runBenchmark(ctx context.Context, cfg benchmarkConfig) error {
 
 	// Launch goroutines for each node
 	for i := 0; i < cfg.nodeCount; i++ {
-		mp, err := metrics.NewSandboxMetricProvider(ctx, "benchmark-metrics", strconv.Itoa(i), cfg.emitInterval)
+		sandboxObserver, err := telemetry.NewSandboxObserver(ctx, "benchmark-metrics", strconv.Itoa(i), cfg.emitInterval)
 		if err != nil {
 			return fmt.Errorf("failed to create metrics provider for node %d: %w", i, err)
 		}
 
 		n := &node{
 			// Put some randomness in the client creation to simulate different nodes
-			sbxCount:      int((0.5 + rand.Float64()) * float64(cfg.sandboxesPerNodeCount)),
-			meterProvider: mp,
+			sbxCount:        int((0.5 + rand.Float64()) * float64(cfg.sandboxesPerNodeCount)),
+			sandboxObserver: sandboxObserver,
 		}
 
 		wg.Add(1)
 		go func(nodeID int) {
 			defer wg.Done()
-			defer mp.Close(context.Background())
 			zap.L().Info("Starting node", zap.Int("nodeID", nodeID), zap.Int("sandboxesPerNodeCount", n.sbxCount))
 
 			// Jitter
@@ -69,10 +68,10 @@ func runBenchmark(ctx context.Context, cfg benchmarkConfig) error {
 				default:
 					sandboxID := fmt.Sprintf("sandbox-%d-%d", nodeID, j)
 					teamID := fmt.Sprintf("team-%d", nodeID)
-					unregister, err := n.meterProvider.StartMonitoringSandbox(sandboxID, teamID, func(ctx context.Context) (*metrics.SandboxMetrics, error) {
+					unregister, err := n.sandboxObserver.StartObserving(sandboxID, teamID, func(ctx context.Context) (*telemetry.SandboxMetrics, error) {
 						// Simulate getting metrics from a sandbox
 						// In a real scenario, this would fetch actual metrics from the sandbox
-						return &metrics.SandboxMetrics{
+						return &telemetry.SandboxMetrics{
 							Timestamp:      time.Now().Unix(),
 							CPUCount:       rand.Int63n(16) + 1,       // Random CPU count between 1 and 16
 							CPUUsedPercent: rand.Float64() * 100,      // Random CPU usage percentage
