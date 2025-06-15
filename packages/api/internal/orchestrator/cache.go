@@ -334,6 +334,8 @@ func (o *Orchestrator) getInsertInstanceFunction(parentCtx context.Context, time
 		}
 
 		if created {
+			// Run in separate goroutine to not block sandbox creation
+			// Also use parentCtx to not cancel the request with this hook timeout
 			go reportInstanceStartAnalytics(
 				parentCtx,
 				o.analytics,
