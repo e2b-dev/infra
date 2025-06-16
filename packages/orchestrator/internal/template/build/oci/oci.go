@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
+	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"go.opentelemetry.io/otel/trace"
 
@@ -17,11 +17,11 @@ import (
 
 const ToMBShift = 20
 
-func GetImage(ctx context.Context, tracer trace.Tracer, artifactRegistry artifactsregistry.ArtifactsRegistry, templateId string, buildId string) (v1.Image, error) {
+func GetImage(ctx context.Context, tracer trace.Tracer, artifactRegistry artifactsregistry.ArtifactsRegistry, templateId string, buildId string) (containerregistry.Image, error) {
 	childCtx, childSpan := tracer.Start(ctx, "pull-docker-image")
 	defer childSpan.End()
 
-	platform := v1.Platform{
+	platform := containerregistry.Platform{
 		OS:           "linux",
 		Architecture: "amd64",
 	}
@@ -35,7 +35,7 @@ func GetImage(ctx context.Context, tracer trace.Tracer, artifactRegistry artifac
 	return img, nil
 }
 
-func GetImageSize(img v1.Image) (int64, error) {
+func GetImageSize(img containerregistry.Image) (int64, error) {
 	imageSize := int64(0)
 
 	layers, err := img.Layers()
@@ -54,7 +54,7 @@ func GetImageSize(img v1.Image) (int64, error) {
 	return imageSize, nil
 }
 
-func ToExt4(ctx context.Context, img v1.Image, rootfsPath string, sizeLimit int64) error {
+func ToExt4(ctx context.Context, img containerregistry.Image, rootfsPath string, sizeLimit int64) error {
 	r := mutate.Extract(img)
 	defer r.Close()
 
@@ -86,4 +86,23 @@ func ToExt4(ctx context.Context, img v1.Image, rootfsPath string, sizeLimit int6
 	}
 
 	return nil
+}
+
+func ParseEnvs(envs []string) map[string]string {
+	envMap := make(map[string]string, len(envs))
+	for _, env := range envs {
+		if strings.TrimSpace(env) == "" {
+			continue
+		}
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if key != "" && value != "" {
+			envMap[key] = value
+		}
+	}
+	return envMap
 }
