@@ -19,7 +19,7 @@ type EdgePool struct {
 
 	nodeSelfHost string
 	nodes        *smap.Map[*EdgeNode]
-	mutex        sync.Mutex
+	mutex        sync.RWMutex
 
 	tracer trace.Tracer
 	logger *zap.Logger
@@ -39,7 +39,7 @@ func NewEdgePool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDi
 
 		nodeSelfHost: nodeSelfHost,
 		nodes:        smap.New[*EdgeNode](),
-		mutex:        sync.Mutex{},
+		mutex:        sync.RWMutex{},
 
 		logger: logger,
 		tracer: tracer,
@@ -52,10 +52,16 @@ func NewEdgePool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDi
 }
 
 func (p *EdgePool) GetNodes() map[string]*EdgeNode {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
 	return p.nodes.Items()
 }
 
 func (p *EdgePool) GetNode(id string) (*EdgeNode, error) {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
 	o, ok := p.nodes.Get(id)
 	if !ok {
 		return nil, ErrEdgeNodeNotFound
@@ -129,12 +135,6 @@ func (p *EdgePool) syncNodes(ctx context.Context) {
 
 				return
 			}
-
-			// already discovered orchestrator, just sync status etc
-			err := p.syncNode(spanCtx, found, true)
-			if err != nil {
-				p.logger.Error("Error syncing orchestrator node", zap.Error(err))
-			}
 		}(sdNode)
 	}
 
@@ -159,7 +159,7 @@ func (p *EdgePool) syncNodes(ctx context.Context) {
 
 			// orchestrator is no longer in the list coming from service discovery
 			if !found {
-				err := p.syncNode(spanCtx, node, false)
+				err := p.removeNode(spanCtx, node)
 				if err != nil {
 					p.logger.Error("Error during edge node sync", zap.Error(err))
 				}
@@ -182,36 +182,36 @@ func (p *EdgePool) connectNode(ctx context.Context, node *sd.ServiceDiscoveryIte
 		return err
 	}
 
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
 	p.nodes.Insert(o.ServiceId, o)
 
-	// call initial node sync
-	return p.syncNode(ctx, o, true)
+	return nil
 }
 
-func (p *EdgePool) syncNode(ctx context.Context, node *EdgeNode, foundWithDiscovery bool) error {
+func (p *EdgePool) removeNode(ctx context.Context, node *EdgeNode) error {
 	_, childSpan := p.tracer.Start(ctx, "sync-edge-node")
 	defer childSpan.End()
 
-	// close connection with node
-	if !foundWithDiscovery {
-		p.logger.Info("Edge node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
+	p.logger.Info("Edge node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
 
-		err := node.Close()
-		if err != nil {
-			p.logger.Error("Error closing connection to node", zap.Error(err))
-		}
-
-		// stop background sync and close everything
-		err = node.Kill()
-		if err != nil {
-			p.logger.Error("Error closing connection to node", zap.Error(err))
-		}
-
-		p.nodes.Remove(node.ServiceId) // remove from pool
-
-		p.logger.Info("Edge node node connection has been closed.", zap.String("node_id", node.ServiceId))
-		return nil
+	err := node.Close()
+	if err != nil {
+		p.logger.Error("Error closing connection to node", zap.Error(err))
 	}
 
+	// stop background sync and close everything
+	err = node.Kill()
+	if err != nil {
+		p.logger.Error("Error closing connection to node", zap.Error(err))
+	}
+
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	p.nodes.Remove(node.ServiceId)
+
+	p.logger.Info("Edge node node connection has been closed.", zap.String("node_id", node.ServiceId))
 	return nil
 }
