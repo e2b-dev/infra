@@ -104,11 +104,11 @@ func (g *AWSArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 	return img, nil
 }
 
-func (g *AWSArtifactsRegistry) GetLayer(ctx context.Context, buildId string, layerHash string, platform v1.Platform) (v1.Image, error) {
+func (g *AWSArtifactsRegistry) GetLayer(ctx context.Context, buildId string, layerHash string, platform containerregistry.Platform) (containerregistry.Image, error) {
 	panic("not implemented")
 }
 
-func (g *AWSArtifactsRegistry) PushLayer(ctx context.Context, buildId string, layerHash string, layer v1.Image) error {
+func (g *AWSArtifactsRegistry) PushLayer(ctx context.Context, buildId string, layerHash string, layer containerregistry.Image) error {
 	panic("not implemented")
 }
 

@@ -39,6 +39,9 @@ type TemplateConfig struct {
 
 	// Command to run to check if the template is ready.
 	ReadyCmd string
+
+	// Layers TODO: implement
+	Layers []string
 }
 
 // Real size in MB of rootfs after building the template

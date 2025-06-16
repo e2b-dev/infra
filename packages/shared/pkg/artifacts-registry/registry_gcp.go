@@ -78,7 +78,7 @@ func (g *GCPArtifactsRegistry) GetImage(ctx context.Context, templateId string, 
 	return img, nil
 }
 
-func (g *GCPArtifactsRegistry) GetLayer(ctx context.Context, buildId string, layerHash string, platform v1.Platform) (v1.Image, error) {
+func (g *GCPArtifactsRegistry) GetLayer(ctx context.Context, buildId string, layerHash string, platform containerregistry.Platform) (containerregistry.Image, error) {
 	imageUrl, err := g.GetTag(ctx, buildId, layerHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get image URL: %w", err)
@@ -102,7 +102,7 @@ func (g *GCPArtifactsRegistry) GetLayer(ctx context.Context, buildId string, lay
 	return img, nil
 }
 
-func (g *GCPArtifactsRegistry) PushLayer(ctx context.Context, buildId string, layerHash string, layer v1.Image) error {
+func (g *GCPArtifactsRegistry) PushLayer(ctx context.Context, buildId string, layerHash string, layer containerregistry.Image) error {
 	imageUrl, err := g.GetTag(ctx, buildId, layerHash)
 	if err != nil {
 		return fmt.Errorf("failed to get image URL: %w", err)
