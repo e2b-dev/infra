@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/mod/semver"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -30,6 +31,8 @@ type Checks struct {
 }
 
 func NewChecks(sandboxObserver *telemetry.SandboxObserver, sandbox *Sandbox, useClickhouseMetrics bool) (*Checks, error) {
+	zap.L().Info("creating checks", logger.WithSandboxID(sandbox.Metadata.Config.SandboxId), zap.Bool("use_clickhouse_metrics", useClickhouseMetrics))
+
 	healthcheckCtx := utils.NewLockableCancelableContext(context.Background())
 
 	h := &Checks{
