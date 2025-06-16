@@ -60,10 +60,11 @@ func run() int {
 	}()
 
 	logger := zap.Must(e2bLogger.NewLogger(ctx, e2bLogger.LoggerConfig{
-		ServiceName: serviceName,
-		IsInternal:  true,
-		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{e2bLogger.GetOTELCore(tel.LogsProvider, serviceName)},
+		ServiceName:   serviceName,
+		IsInternal:    true,
+		IsDebug:       env.IsDebug(),
+		Cores:         []zapcore.Core{e2bLogger.GetOTELCore(tel.LogsProvider, serviceName)},
+		EnableConsole: true,
 	}))
 	defer func() {
 		err := logger.Sync()
