@@ -55,11 +55,11 @@ func (a *APIStore) V1ListSandboxes(c *gin.Context, params api.V1ListSandboxesPar
 			EnvdVersion:     sbx.Config.EnvdVersion,
 
 			HugePages:        sbx.Config.HugePages,
-			MaxSandboxLength: sbx.Config.MaxSandboxLength,
 			AutoPause:        sbx.Config.AutoPause,
+			Snapshot:         sbx.Config.Snapshot,
+			MaxSandboxLength: sbx.Config.MaxSandboxLength,
 
 			RamMB:           sbx.Config.RamMb,
-			Snapshot:        sbx.Config.Snapshot,
 			TotalDiskSizeMB: sbx.Config.TotalDiskSizeMb,
 			VCPU:            sbx.Config.Vcpu,
 
