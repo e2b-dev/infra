@@ -144,7 +144,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Info("connected to Redis cluster")
 	}
 
-	orch, err := orchestrator.New(ctx, tracer, nomadClient, posthogClient, redisClient, dbClient)
+	orch, err := orchestrator.New(ctx, tel, tracer, nomadClient, posthogClient, redisClient, dbClient)
 	if err != nil {
 		zap.L().Fatal("initializing Orchestrator client", zap.Error(err))
 	}
