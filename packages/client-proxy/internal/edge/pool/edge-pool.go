@@ -196,13 +196,8 @@ func (p *EdgePool) removeNode(ctx context.Context, node *EdgeNode) error {
 
 	p.logger.Info("Edge node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
 
-	err := node.Close()
-	if err != nil {
-		p.logger.Error("Error closing connection to node", zap.Error(err))
-	}
-
 	// stop background sync and close everything
-	err = node.Kill()
+	err := node.Close()
 	if err != nil {
 		p.logger.Error("Error closing connection to node", zap.Error(err))
 	}

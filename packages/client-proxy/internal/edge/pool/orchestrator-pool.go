@@ -175,13 +175,8 @@ func (p *OrchestratorsPool) removeNode(ctx context.Context, node *OrchestratorNo
 
 	p.logger.Info("Orchestrator node node connection is not active anymore, closing.", zap.String("node_id", node.ServiceId))
 
-	err := node.Close()
-	if err != nil {
-		p.logger.Error("Error closing connection to node", zap.Error(err))
-	}
-
 	// stop background sync and close everything
-	err = node.Kill()
+	err := node.Close()
 	if err != nil {
 		p.logger.Error("Error closing connection to node", zap.Error(err))
 	}

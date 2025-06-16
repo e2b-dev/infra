@@ -96,11 +96,6 @@ func NewOrchestrator(ctx context.Context, ip string, port int) (*OrchestratorNod
 	return o, nil
 }
 
-func (o *OrchestratorNode) Kill() error {
-	o.ctxCancel()
-	return o.Client.close()
-}
-
 func (o *OrchestratorNode) sync() {
 	ticker := time.NewTicker(orchestratorSyncInterval)
 	defer ticker.Stop()

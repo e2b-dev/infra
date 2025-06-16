@@ -64,11 +64,6 @@ func NewEdgeNode(ctx context.Context, host string) (*EdgeNode, error) {
 	return o, nil
 }
 
-func (o *EdgeNode) Kill() error {
-	o.ctxCancel()
-	return nil
-}
-
 func (o *EdgeNode) sync() {
 	ticker := time.NewTicker(orchestratorSyncInterval)
 	defer ticker.Stop()
