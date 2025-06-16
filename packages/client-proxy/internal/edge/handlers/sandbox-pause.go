@@ -64,6 +64,11 @@ func (a *APIStore) V1PauseSandbox(c *gin.Context, sandboxId api.SandboxId) {
 		return
 	}
 
+	err = a.sandboxes.DeleteSandbox(sandboxId)
+	if err != nil {
+		zap.L().Error("Error when deleting sandbox from cache", zap.Error(err))
+	}
+
 	zap.L().Info("Sandbox paused", l.WithSandboxID(sandboxId))
 	c.Status(http.StatusOK)
 }
