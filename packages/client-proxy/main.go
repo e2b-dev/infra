@@ -30,7 +30,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	e2bLogger "github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -112,16 +111,24 @@ func run() int {
 		return 1
 	}
 
-	redisUrl := utils.RequiredEnv("REDIS_URL", "Redis cluster URL")
-	opts, err := redis.ParseURL(redisUrl)
-	if err != nil {
-		zap.L().Fatal("invalid redis URL", zap.String("url", redisUrl), zap.Error(err))
+	var redisClient *redis.Client
+	var catalog sandboxes.SandboxesCatalog
+
+	redisUrl := os.Getenv("REDIS_URL")
+	if redisUrl == "" {
+		logger.Warn("Redis URL environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
+		catalog = sandboxes.NewMemorySandboxesCatalog(ctx, tracer)
+	} else {
+		opts, err := redis.ParseURL(redisUrl)
+		if err != nil {
+			zap.L().Fatal("invalid redis URL", zap.String("url", redisUrl), zap.Error(err))
+		}
+
+		redisClient = redis.NewClient(opts)
+		redisSync := redsync.New(goredis.NewPool(redisClient))
+		catalog = sandboxes.NewRedisSandboxesCatalog(ctx, tracer, redisClient, redisSync)
 	}
 
-	redisClient := redis.NewClient(opts)
-	redisSync := redsync.New(goredis.NewPool(redisClient))
-
-	catalog := sandboxes.NewSandboxesCatalog(ctx, redisClient, redisSync, tracer)
 	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, logger, orchestratorsSD, tracer)
 
 	// Proxy request to the correct node

@@ -26,7 +26,7 @@ func NewEdgeAPIStore(
 	serviceVersion string,
 	edgeSD service_discovery.ServiceDiscoveryAdapter,
 	orchestrators *e2borchestrators.OrchestratorsPool,
-	catalog *sandboxes.SandboxesCatalog,
+	catalog sandboxes.SandboxesCatalog,
 ) (*handlers.APIStore, error) {
 	edgePort := internal.GetEdgeServicePort()
 	info := &e2binfo.ServiceInfo{

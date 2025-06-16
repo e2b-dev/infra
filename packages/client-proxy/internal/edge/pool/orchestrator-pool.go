@@ -2,7 +2,6 @@ package pool
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -24,10 +23,6 @@ type OrchestratorsPool struct {
 
 const (
 	orchestratorsCacheRefreshInterval = 10 * time.Second
-)
-
-var (
-	ErrOrchestratorNotFound = errors.New("orchestrator not found")
 )
 
 func NewOrchestratorsPool(ctx context.Context, logger *zap.Logger, discovery sd.ServiceDiscoveryAdapter, tracer trace.Tracer) *OrchestratorsPool {

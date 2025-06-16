@@ -1,0 +1,64 @@
+package sandboxes
+
+import (
+	"context"
+	"sync"
+
+	"github.com/jellydator/ttlcache/v3"
+	"go.opentelemetry.io/otel/trace"
+)
+
+type MemorySandboxCatalog struct {
+	cache  *ttlcache.Cache[string, *SandboxInfo]
+	mtx    sync.RWMutex
+	ctx    context.Context
+	tracer trace.Tracer
+}
+
+func NewMemorySandboxesCatalog(ctx context.Context, tracer trace.Tracer) SandboxesCatalog {
+	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogCacheExpiration))
+	go cache.Start()
+
+	return &MemorySandboxCatalog{
+		tracer: tracer,
+		cache:  cache,
+		ctx:    ctx,
+	}
+}
+
+func (c *MemorySandboxCatalog) GetSandbox(sandboxId string) (*SandboxInfo, error) {
+	_, span := c.tracer.Start(c.ctx, "sandbox-catalog-get")
+	defer span.End()
+
+	c.mtx.RLock()
+	defer c.mtx.RUnlock()
+
+	sandboxInfo := c.cache.Get(sandboxId)
+	if sandboxInfo != nil {
+		return sandboxInfo.Value(), nil
+	}
+
+	return nil, ErrSandboxNotFound
+}
+
+func (c *MemorySandboxCatalog) StoreSandbox(sandboxId string, sandboxInfo *SandboxInfo) error {
+	_, span := c.tracer.Start(c.ctx, "sandbox-catalog-store")
+	defer span.End()
+
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	c.cache.Set(sandboxId, sandboxInfo, catalogCacheExpiration)
+	return nil
+}
+
+func (c *MemorySandboxCatalog) DeleteSandbox(sandboxId string) error {
+	_, span := c.tracer.Start(c.ctx, "sandbox-catalog-delete")
+	defer span.End()
+
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	c.cache.Delete(sandboxId)
+	return nil
+}

@@ -82,7 +82,7 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 	return node, nil
 }
 
-func redisResolution(sandboxId string, logger *zap.Logger, catalog *sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
+func redisResolution(sandboxId string, logger *zap.Logger, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
 	s, err := catalog.GetSandbox(sandboxId)
 	if err != nil {
 		if !errors.Is(err, sandboxes.ErrSandboxNotFound) {
@@ -98,7 +98,7 @@ func redisResolution(sandboxId string, logger *zap.Logger, catalog *sandboxes.Sa
 	return o.Ip, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint, catalog *sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (*reverseproxy.Proxy, error) {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (*reverseproxy.Proxy, error) {
 	proxy := reverseproxy.New(
 		port,
 		idleTimeout,

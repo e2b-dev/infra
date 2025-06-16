@@ -25,7 +25,7 @@ type APIStore struct {
 	info              *info.ServiceInfo
 	orchestratorPool  *e2borchestrators.OrchestratorsPool
 	edgePool          *e2borchestrators.EdgePool
-	sandboxes         *sandboxes.SandboxesCatalog
+	sandboxes         sandboxes.SandboxesCatalog
 	queryLogsProvider logger_provider.LogsQueryProvider
 }
 
@@ -36,7 +36,7 @@ type APIUserFacingError struct {
 	prettyErrorCode    int
 }
 
-func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info *info.ServiceInfo, orchestratorsPool *e2borchestrators.OrchestratorsPool, edgePool *e2borchestrators.EdgePool, catalog *sandboxes.SandboxesCatalog) (*APIStore, error) {
+func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info *info.ServiceInfo, orchestratorsPool *e2borchestrators.OrchestratorsPool, edgePool *e2borchestrators.EdgePool, catalog sandboxes.SandboxesCatalog) (*APIStore, error) {
 	queryLogsProvider, err := logger_provider.GetLogsQueryProvider()
 	if err != nil {
 		return nil, fmt.Errorf("error when getting logs query provider: %w", err)
