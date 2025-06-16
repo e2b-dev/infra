@@ -18,7 +18,7 @@ const (
 
 	// this is just how long we are keeping sandbox in local cache so we don't have to query redis every time
 	// we don't want to go too high because then sbx can be run on different orchestrator, and we will not be able to find it
-	catalogRedisLocalCacheTtl = time.Second * 10
+	catalogRedisLocalCacheTtl = time.Second * 5
 )
 
 type RedisSandboxCatalog struct {
@@ -68,7 +68,8 @@ func (c *RedisSandboxCatalog) GetSandbox(sandboxId string) (*SandboxInfo, error)
 		return nil, fmt.Errorf("failed to unmarshal sandbox info: %w", err)
 	}
 
-	err = c.StoreSandbox(sandboxId, info)
+	lifetime := time.Duration(info.MaxSandboxLength * int64(time.Second))
+	err = c.StoreSandbox(sandboxId, info, lifetime)
 	if err != nil {
 		return nil, fmt.Errorf("failed to store sandbox info taken from redis: %w", err)
 	}
@@ -76,7 +77,7 @@ func (c *RedisSandboxCatalog) GetSandbox(sandboxId string) (*SandboxInfo, error)
 	return info, nil
 }
 
-func (c *RedisSandboxCatalog) StoreSandbox(sandboxId string, sandboxInfo *SandboxInfo) error {
+func (c *RedisSandboxCatalog) StoreSandbox(sandboxId string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
 	spanCtx, span := c.tracer.Start(c.ctx, "sandbox-catalog-store")
 	defer span.End()
 
@@ -90,7 +91,7 @@ func (c *RedisSandboxCatalog) StoreSandbox(sandboxId string, sandboxInfo *Sandbo
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
 
-	c.redisClient.Set(ctx, c.getCatalogKey(sandboxId), sandboxInfo, catalogCacheExpiration)
+	c.redisClient.Set(ctx, c.getCatalogKey(sandboxId), sandboxInfo, expiration)
 	c.cache.Set(sandboxId, sandboxInfo, catalogRedisLocalCacheTtl)
 
 	return nil

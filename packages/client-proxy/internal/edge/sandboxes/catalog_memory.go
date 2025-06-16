@@ -3,6 +3,7 @@ package sandboxes
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/trace"
@@ -16,7 +17,7 @@ type MemorySandboxCatalog struct {
 }
 
 func NewMemorySandboxesCatalog(ctx context.Context, tracer trace.Tracer) SandboxesCatalog {
-	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogCacheExpiration))
+	cache := ttlcache.New[string, *SandboxInfo]()
 	go cache.Start()
 
 	return &MemorySandboxCatalog{
@@ -41,14 +42,14 @@ func (c *MemorySandboxCatalog) GetSandbox(sandboxId string) (*SandboxInfo, error
 	return nil, ErrSandboxNotFound
 }
 
-func (c *MemorySandboxCatalog) StoreSandbox(sandboxId string, sandboxInfo *SandboxInfo) error {
+func (c *MemorySandboxCatalog) StoreSandbox(sandboxId string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
 	_, span := c.tracer.Start(c.ctx, "sandbox-catalog-store")
 	defer span.End()
 
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	c.cache.Set(sandboxId, sandboxInfo, catalogCacheExpiration)
+	c.cache.Set(sandboxId, sandboxInfo, expiration)
 	return nil
 }
 

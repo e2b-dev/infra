@@ -74,7 +74,7 @@ func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info
 			store.info.SetStatus(api.Healthy)
 			return
 		}
-
+		zap.L().Info("Waiting for at least one orchestrator to be available before marking API as healthy")
 		ticker := time.NewTicker(100 * time.Millisecond)
 		for {
 			select {

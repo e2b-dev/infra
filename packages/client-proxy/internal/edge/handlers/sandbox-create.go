@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -83,14 +84,14 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 		return
 	}
 
-	err = a.sandboxes.StoreSandbox(
-		body.Sandbox.SandboxId,
-		&sandboxes.SandboxInfo{
-			OrchestratorId: body.Sandbox.OrchestratorId,
-			TemplateId:     body.Sandbox.TemplateId,
-		},
-	)
+	sbxMaxLifetime := time.Duration(body.Sandbox.MaxSandboxLength) * time.Second
+	sbxInfo := &sandboxes.SandboxInfo{
+		OrchestratorId:   body.Sandbox.OrchestratorId,
+		TemplateId:       body.Sandbox.TemplateId,
+		MaxSandboxLength: body.Sandbox.MaxSandboxLength,
+	}
 
+	err = a.sandboxes.StoreSandbox(body.Sandbox.SandboxId, sbxInfo, sbxMaxLifetime)
 	if err != nil {
 		zap.L().Error("Error when storing sandbox metadata", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when storing sandbox metadata")
