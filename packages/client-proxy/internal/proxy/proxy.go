@@ -82,7 +82,7 @@ func dnsResolution(sandboxId string, logger *zap.Logger) (string, error) {
 	return node, nil
 }
 
-func redisResolution(sandboxId string, logger *zap.Logger, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
+func catalogResolution(sandboxId string, logger *zap.Logger, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (string, error) {
 	s, err := catalog.GetSandbox(sandboxId)
 	if err != nil {
 		if !errors.Is(err, sandboxes.ErrSandboxNotFound) {
@@ -98,7 +98,7 @@ func redisResolution(sandboxId string, logger *zap.Logger, catalog sandboxes.San
 	return o.Ip, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool) (*reverseproxy.Proxy, error) {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint, catalog sandboxes.SandboxesCatalog, orchestrators *orchestratorspool.OrchestratorsPool, useCatalogResolution bool) (*reverseproxy.Proxy, error) {
 	proxy := reverseproxy.New(
 		port,
 		idleTimeout,
@@ -117,9 +117,8 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 
 			var nodeIp string
 
-			/*
-				// todo: support for Redis and backwards compatibility DNS resolution
-				nodeIp, err = redisResolution(sandboxId, logger, catalog, orchestrators)
+			if useCatalogResolution {
+				nodeIp, err = catalogResolution(sandboxId, logger, catalog, orchestrators)
 				if err != nil {
 					if !errors.Is(err, ErrNodeNotFound) {
 						logger.Warn("failed to resolve node ip with Redis resolution", zap.Error(err))
@@ -134,15 +133,15 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 						return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 					}
 				}
-			*/
+			} else {
+				nodeIp, err = dnsResolution(sandboxId, logger)
+				if err != nil {
+					if !errors.Is(err, ErrNodeNotFound) {
+						logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err))
+					}
 
-			nodeIp, err = dnsResolution(sandboxId, logger)
-			if err != nil {
-				if !errors.Is(err, ErrNodeNotFound) {
-					logger.Warn("failed to resolve node ip with DNS resolution", zap.Error(err))
+					return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 				}
-
-				return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
 			}
 
 			logger.Debug("Proxying request", zap.String("node_ip", nodeIp))

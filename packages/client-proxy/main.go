@@ -41,7 +41,11 @@ const (
 	version = "1.0.0"
 )
 
-var commitSHA string
+var (
+	commitSHA string
+
+	useProxyCatalogResolution = os.Getenv("USE_PROXY_CATALOG_RESOLUTION") == "true"
+)
 
 func run() int {
 	ctx, ctxCancel := context.WithCancel(context.Background())
@@ -131,8 +135,12 @@ func run() int {
 
 	orchestrators := e2borchestrators.NewOrchestratorsPool(ctx, logger, orchestratorsSD, tracer)
 
+	if !useProxyCatalogResolution {
+		logger.Warn("Skipping proxy catalog resolution, using just DNS resolution instead. This is not recommended for production use, as it may lead to issues with sandbox resolution.")
+	}
+
 	// Proxy request to the correct node
-	proxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, orchestrators)
+	proxy, err := e2bproxy.NewClientProxy(tel.MeterProvider, serviceName, uint(proxyPort), catalog, orchestrators, useProxyCatalogResolution)
 	if err != nil {
 		logger.Error("failed to create client proxy", zap.Error(err))
 		return 1

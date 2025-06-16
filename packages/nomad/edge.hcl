@@ -98,6 +98,9 @@ job "client-proxy" {
         SERVICE_DISCOVERY_EDGE_PROVIDER  = "DNS"
         SERVICE_DISCOVERY_EDGE_DNS_QUERY = "edge-api.service.consul"
 
+        // use legacy dns resolution for orchestrator services
+        USE_PROXY_CATALOG_RESOLUTION = "false"
+
         OTEL_COLLECTOR_GRPC_ENDPOINT  = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS        = "${logs_collector_address}"
         REDIS_URL                     = "${redis_url}"
