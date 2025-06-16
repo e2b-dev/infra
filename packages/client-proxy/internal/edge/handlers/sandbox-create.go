@@ -64,7 +64,7 @@ func (a *APIStore) V1CreateSandbox(c *gin.Context) {
 			EnvdAccessToken:    body.Sandbox.EnvdAccessToken,
 			Metadata:           sbxMetadata,
 			EnvVars:            sbxEnvVars,
-			MaxSandboxLength:   24 * 60 * 60,
+			MaxSandboxLength:   body.Sandbox.MaxSandboxLength,
 			HugePages:          body.Sandbox.HugePages,
 			RamMb:              body.Sandbox.RamMB,
 			Vcpu:               body.Sandbox.VCPU,
