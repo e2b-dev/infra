@@ -112,7 +112,7 @@ resource "nomad_job" "client_proxy" {
       gcp_zone    = var.gcp_zone
       environment = var.environment
 
-      redis_url = "redis://redis.service.consul:${var.redis_port.port}"
+      redis_url = data.google_secret_manager_secret_version.redis_url.secret_data != "redis.service.consul" ? "${data.google_secret_manager_secret_version.redis_url.secret_data}:${var.redis_port.port}" : "redis.service.consul:${var.redis_port.port}"
       loki_url  = "http://loki.service.consul:${var.loki_service_port.port}"
 
       proxy_port_name   = var.edge_proxy_port.name
