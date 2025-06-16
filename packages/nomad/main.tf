@@ -203,20 +203,22 @@ resource "nomad_job" "otel_collector" {
   jobspec = templatefile("${path.module}/otel-collector.hcl", {
     memory_mb = var.otel_collector_resources_memory_mb
     cpu_count = var.otel_collector_resources_cpu_count
+    gcp_zone  = var.gcp_zone
 
-    grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
-    grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
-    grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
-    consul_token                 = var.consul_acl_token_secret
-    clickhouse_metrics_port      = var.clickhouse_metrics_port
+    otel_collector_grpc_port = var.otel_collector_grpc_port
 
-    clickhouse_username = var.clickhouse_username
-    clickhouse_password = random_password.clickhouse_password.result
-    clickhouse_port     = var.clickhouse_server_port.port
-    clickhouse_host     = "clickhouse.service.consul"
-    clickhouse_database = var.clickhouse_database
+    otel_collector_config = templatefile("${path.module}/configs/otel-collector.yaml", {
+      grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
+      grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
+      grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+      consul_token                 = var.consul_acl_token_secret
 
-    gcp_zone = var.gcp_zone
+      clickhouse_username = var.clickhouse_username
+      clickhouse_password = random_password.clickhouse_password.result
+      clickhouse_port     = var.clickhouse_server_port.port
+      clickhouse_host     = "clickhouse.service.consul"
+      clickhouse_database = var.clickhouse_database
+    })
   })
 }
 
