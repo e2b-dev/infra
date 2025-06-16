@@ -23,7 +23,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	authcache "github.com/e2b-dev/infra/packages/api/internal/cache/auth"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/dns"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -116,7 +115,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client) *APIStore {
 		zap.L().Fatal("initializing Nomad client", zap.Error(err))
 	}
 
-	var redisClient dns.Rediser
+	var redisClient redis.UniversalClient
 	if redisClusterUrl := os.Getenv("REDIS_CLUSTER_URL"); redisClusterUrl != "" {
 		// For managed Redis Cluster in GCP we should use Cluster Client, because
 		// > Redis node endpoints can change and can be recycled as nodes are added and removed over time.
