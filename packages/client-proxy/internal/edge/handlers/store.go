@@ -71,6 +71,7 @@ func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info
 		// so we are not propagating API without not yet registered orchestrators
 		if skipInitialOrchestratorCheck {
 			time.Sleep(10 * time.Second)
+			store.info.SetStatus(api.Healthy)
 			return
 		}
 
