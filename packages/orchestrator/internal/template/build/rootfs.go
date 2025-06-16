@@ -8,7 +8,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"strconv"
 	"time"
 
 	"dagger.io/dagger"
@@ -416,8 +415,7 @@ func (r *Rootfs) todoBuildLayers(
 	}
 	layerSourceImagePath := layerSourceImage.Name()
 
-	layersCnt := 5
-	for i := 0; i < layersCnt; i++ {
+	for i, layer := range r.template.Layers {
 		err := func() error {
 			defer os.Remove(layerSourceImagePath)
 
@@ -428,7 +426,7 @@ func (r *Rootfs) todoBuildLayers(
 			defer layerOutputImage.Close()
 			layerOutputImagePath := layerOutputImage.Name()
 
-			cmd := "echo Hello Dagger! > /info-" + strconv.Itoa(i) + ".txt"
+			cmd := layer
 			zap.L().Debug("building layer",
 				zap.String("source_file_path", layerSourceImagePath),
 				zap.String("target_file_path", layerOutputImagePath),
@@ -439,7 +437,7 @@ func (r *Rootfs) todoBuildLayers(
 			if false {
 				cached = "CACHED "
 			}
-			prefix := fmt.Sprintf("[builder %d/%d]", i+1, layersCnt)
+			prefix := fmt.Sprintf("[builder %d/%d]", i+1, len(r.template.Layers))
 			postProcessor.WriteMsg(fmt.Sprintf("%s%s: %s", cached, prefix, cmd))
 			hash, err := r.buildLayer(
 				ctx,

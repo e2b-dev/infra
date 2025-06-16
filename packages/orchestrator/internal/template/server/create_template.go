@@ -60,6 +60,13 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		DiskSizeMB:      int64(config.DiskSizeMB),
 		BuildLogsWriter: logsWriter,
 		HugePages:       config.HugePages,
+		Layers: []string{
+			"echo Hello Dagger! > /info-1.txt",
+			"echo Hello Dagger! > /info-2.txt",
+			"echo Hello Dagger! > /info-3.txt",
+			"echo Hello Dagger! > /info-4.txt",
+			"echo Hello Dagger! > /info-5.txt",
+		},
 	}
 
 	buildInfo, err := s.buildCache.Create(config.BuildID)
