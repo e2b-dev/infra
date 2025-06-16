@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -36,6 +37,10 @@ type APIUserFacingError struct {
 	prettyErrorCode    int
 }
 
+var (
+	skipInitialOrchestratorCheck = os.Getenv("SKIP_ORCHESTRATOR_READINESS_CHECK") == "true"
+)
+
 func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info *info.ServiceInfo, orchestratorsPool *e2borchestrators.OrchestratorsPool, edgePool *e2borchestrators.EdgePool, catalog sandboxes.SandboxesCatalog) (*APIStore, error) {
 	queryLogsProvider, err := logger_provider.GetLogsQueryProvider()
 	if err != nil {
@@ -59,6 +64,13 @@ func NewStore(ctx context.Context, logger *zap.Logger, tracer trace.Tracer, info
 		if env.IsDebug() {
 			zap.L().Info("Skipping orchestrator readiness check in debug mode")
 			store.info.SetStatus(api.Healthy)
+			return
+		}
+
+		// we don't want to skip it entirely, and we want to wait few seconds in case of cluster already contains orchestrators
+		// so we are not propagating API without not yet registered orchestrators
+		if skipInitialOrchestratorCheck {
+			time.Sleep(10 * time.Second)
 			return
 		}
 
