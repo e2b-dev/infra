@@ -3,10 +3,11 @@ package handlers
 import (
 	"errors"
 	"fmt"
-	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
-	e2borchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"net/http"
 	"slices"
+
+	e2borchestrators "github.com/e2b-dev/infra/packages/proxy/internal/edge/pool"
+	e2borchestrator "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
 func (a *APIStore) getOrchestratorNode(orchestratorId string) (*e2borchestrators.OrchestratorNode, *APIUserFacingError) {

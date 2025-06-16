@@ -253,31 +253,58 @@ components:
     SandboxConfig:
       type: object
       properties:
-        orchestratorId:     { type: string }
-        templateId:         { type: string }
-        buildId:            { type: string }
-        sandboxId:          { type: string }
-        teamId:             { type: string }
-        baseTemplateId:     { type: string, nullable: true }
-        kernelVersion:      { type: string }
-        firecrackerVersion: { type: string }
-        envdVersion:        { type: string }
-        alias:              { type: string, nullable: true }
-        envdAccessToken:    { type: string }
-        snapshot:           { type: boolean }
-        autoPause:          { type: boolean }
-        hugePages:          { type: boolean }
-        ramMB:              { type: integer, format: int64 }
-        vCPU:               { type: integer, format: int64 }
-        totalDiskSizeMB:    { type: integer, format: int64 }
-        maxSandboxLength:   { type: integer, format: int64, description: Maximum duration in hours }
+        orchestratorId:
+          type: string
+        templateId:
+          type: string
+        buildId:
+          type: string
+        sandboxId:
+          type: string
+        teamId:
+          type: string
+        baseTemplateId:
+          type: string
+          nullable: true
+        kernelVersion:
+          type: string
+        firecrackerVersion:
+          type: string
+        envdVersion:
+          type: string
+        alias:
+          type: string
+          nullable: true
+        envdAccessToken:
+          type: string
+        snapshot:
+          type: boolean
+        autoPause:
+          type: boolean
+        hugePages:
+          type: boolean
+        ramMB:
+          type: integer
+          format: int64
+        vCPU:
+          type: integer
+          format: int64
+        totalDiskSizeMB:
+          type: integer
+          format: int64
+        maxSandboxLength:
+          type: integer
+          format: int64
+          description: Maximum duration in hours
         envVars:
           type: object
-          additionalProperties: { type: string }
+          additionalProperties:
+            type: string
         metadata:
           type: object
           nullable: true
-          additionalProperties: { type: string }
+          additionalProperties:
+            type: string
       required: [orchestratorId, templateId, buildId, sandboxId, teamId, kernelVersion, firecrackerVersion, envdVersion, snapshot, hugePages, totalDiskSizeMB, vCPU, ramMB, maxSandboxLength]
 
     RunningSandbox:
@@ -308,20 +335,31 @@ components:
     TemplateBuildCreateRequest:
       type: object
       properties:
-        orchestratorId: { type: string }
-        buildId:        { type: string }
-        templateId:     { type: string }
-
-        hugePages:       { type: boolean }
-        ramMB:           { type: integer, format: int64 }
-        vCPU:            { type: integer, format: int64 }
-        diskSizeMB: { type: integer, format: int64 }
-
-        kernelVersion:      { type: string }
-        firecrackerVersion: { type: string }
-
-        startCommand: { type: string }
-        readyCommand: { type: string }
+        orchestratorId:
+          type: string
+        buildId:
+          type: string
+        templateId:
+          type: string
+        hugePages:
+          type: boolean
+        ramMB:
+          type: integer
+          format: int64
+        vCPU:
+          type: integer
+          format: int64
+        diskSizeMB:
+          type: integer
+          format: int64
+        kernelVersion:
+          type: string
+        firecrackerVersion:
+          type: string
+        startCommand:
+          type: string
+        readyCommand:
+          type: string
       required:
         - orchestratorId
         - templateId
