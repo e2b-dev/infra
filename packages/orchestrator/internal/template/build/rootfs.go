@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"strings"
 	"time"
 
 	"dagger.io/dagger"
@@ -108,7 +109,13 @@ func (r *Rootfs) createExt4Filesystem(
 
 	postProcessor.WriteMsg("Requesting Docker Image")
 
-	img, err := oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateId, r.template.BuildId)
+	var img containerregistry.Image
+	var err error
+	if r.template.FromImage != "" {
+		img, err = oci.GetPublicImage(childCtx, tracer, r.template.FromImage)
+	} else {
+		img, err = oci.GetImage(childCtx, tracer, r.artifactRegistry, r.template.TemplateId, r.template.BuildId)
+	}
 	if err != nil {
 		return containerregistry.Config{}, fmt.Errorf("error requesting docker image: %w", err)
 	}
@@ -415,7 +422,7 @@ func (r *Rootfs) todoBuildLayers(
 	}
 	layerSourceImagePath := layerSourceImage.Name()
 
-	for i, layer := range r.template.Layers {
+	for i, step := range r.template.Steps {
 		err := func() error {
 			defer os.Remove(layerSourceImagePath)
 
@@ -426,7 +433,7 @@ func (r *Rootfs) todoBuildLayers(
 			defer layerOutputImage.Close()
 			layerOutputImagePath := layerOutputImage.Name()
 
-			cmd := layer
+			cmd := fmt.Sprintf("%s %s", step.Type, strings.Join(step.Args, " "))
 			zap.L().Debug("building layer",
 				zap.String("source_file_path", layerSourceImagePath),
 				zap.String("target_file_path", layerOutputImagePath),
@@ -437,7 +444,7 @@ func (r *Rootfs) todoBuildLayers(
 			if false {
 				cached = "CACHED "
 			}
-			prefix := fmt.Sprintf("[builder %d/%d]", i+1, len(r.template.Layers))
+			prefix := fmt.Sprintf("[builder %d/%d]", i+1, len(r.template.Steps))
 			postProcessor.WriteMsg(fmt.Sprintf("%s%s: %s", cached, prefix, cmd))
 			hash, err := r.buildLayer(
 				ctx,

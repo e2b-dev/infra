@@ -4,6 +4,16 @@ import "google/protobuf/empty.proto";
 
 option go_package = "https://github.com/e2b-dev/infra/template-manager";
 
+message TemplateStep {
+  string id = 1;
+  string type = 2;
+  repeated string args = 3;
+
+  string hash = 4;
+  optional string filesHash = 5;
+
+  optional bool force = 6;
+}
 
 message TemplateConfig {
   string templateID = 1;
@@ -19,6 +29,9 @@ message TemplateConfig {
   bool hugePages = 9;
 
   string readyCommand = 10;
+
+  string fromImage = 11;
+  repeated TemplateStep steps = 12;
 }
 
 message TemplateCreateRequest {

@@ -497,6 +497,69 @@ components:
         memoryMB:
           $ref: "#/components/schemas/MemoryMB"
 
+    TemplateStep:
+      description: Step in the template build process
+      required:
+        - id
+        - type
+        - hash
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identifier of the step
+        type:
+          type: string
+          description: Type of the step
+        args:
+          default: []
+          type: array
+          description: Arguments for the step
+          items:
+            type: string
+        hash:
+          type: string
+          description: Hash of the step
+        filesHash:
+          type: string
+          description: Hash of the files used in the step
+        force:
+          default: false
+          type: boolean
+          description: Whether the step should be forced to run regardless of the cache
+
+    TemplateBuildRequestV2:
+      required:
+        - alias
+        - teamID
+        - fromImage
+      properties:
+        alias:
+          description: Alias of the template
+          type: string
+        teamID:
+          type: string
+          description: Identifier of the team
+        fromImage:
+          type: string
+          description: Image to use as a base for the template build
+        steps:
+          default: []
+          description: List of steps to execute in the template build
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateStep"
+        startCmd:
+          description: Start command to execute in the template after the build
+          type: string
+        readyCmd:
+          description: Ready check command to execute in the template after the build
+          type: string
+        cpuCount:
+          $ref: "#/components/schemas/CPUCount"
+        memoryMB:
+          $ref: "#/components/schemas/MemoryMB"
+
     TemplateBuild:
       required:
         - templateID
@@ -1177,6 +1240,33 @@ paths:
         "404":
           $ref: "#/components/responses/404"
 
+  /v2/templates:
+    post:
+      description: Create a new template
+      tags: [templates]
+      security:
+        - AccessTokenAuth: []
+        - Supabase1TokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateBuildRequestV2"
+
+      responses:
+        "202":
+          description: The build was built successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
   /templates:
     get:
       description: List all templates
