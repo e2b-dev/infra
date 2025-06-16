@@ -103,6 +103,9 @@ type ServerInterface interface {
 
 	// (GET /v2/sandboxes)
 	GetV2Sandboxes(c *gin.Context, params GetV2SandboxesParams)
+
+	// (POST /v2/templates)
+	PostV2Templates(c *gin.Context)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -952,6 +955,23 @@ func (siw *ServerInterfaceWrapper) GetV2Sandboxes(c *gin.Context) {
 	siw.Handler.GetV2Sandboxes(c, params)
 }
 
+// PostV2Templates operation middleware
+func (siw *ServerInterfaceWrapper) PostV2Templates(c *gin.Context) {
+
+	c.Set(AccessTokenAuthScopes, []string{})
+
+	c.Set(Supabase1TokenAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostV2Templates(c)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -1009,4 +1029,5 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/templates/:templateID/builds/:buildID", wrapper.PostTemplatesTemplateIDBuildsBuildID)
 	router.GET(options.BaseURL+"/templates/:templateID/builds/:buildID/status", wrapper.GetTemplatesTemplateIDBuildsBuildIDStatus)
 	router.GET(options.BaseURL+"/v2/sandboxes", wrapper.GetV2Sandboxes)
+	router.POST(options.BaseURL+"/v2/templates", wrapper.PostV2Templates)
 }

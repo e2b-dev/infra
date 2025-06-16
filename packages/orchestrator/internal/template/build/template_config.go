@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -40,8 +41,11 @@ type TemplateConfig struct {
 	// Command to run to check if the template is ready.
 	ReadyCmd string
 
-	// Layers TODO: implement
-	Layers []string
+	// FromImage is the base image to use for building the template.
+	FromImage string
+
+	// Steps to build the template.
+	Steps []*templatemanager.TemplateStep
 }
 
 // Real size in MB of rootfs after building the template

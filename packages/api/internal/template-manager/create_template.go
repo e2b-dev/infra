@@ -8,9 +8,10 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	template_manager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -20,12 +21,14 @@ func (tm *TemplateManager) CreateTemplate(
 	templateID string,
 	buildID uuid.UUID,
 	kernelVersion,
-	firecrackerVersion,
-	startCommand string,
+	firecrackerVersion string,
+	startCommand *string,
 	vCpuCount,
 	diskSizeMB,
 	memoryMB int64,
-	readyCommand string,
+	readyCommand *string,
+	fromImage string,
+	steps *[]api.TemplateStep,
 ) error {
 	ctx, span := t.Start(ctx, "create-template",
 		trace.WithAttributes(
@@ -45,6 +48,16 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("template manager is not ready for build placement")
 	}
 
+	var startCmd string
+	if startCommand != nil {
+		startCmd = *startCommand
+	}
+
+	var readyCmd string
+	if readyCommand != nil {
+		readyCmd = *readyCommand
+	}
+
 	_, err = tm.grpc.TemplateClient.TemplateCreate(ctx, &template_manager.TemplateCreateRequest{
 		Template: &template_manager.TemplateConfig{
 			TemplateID:         templateID,
@@ -55,8 +68,10 @@ func (tm *TemplateManager) CreateTemplate(
 			KernelVersion:      kernelVersion,
 			FirecrackerVersion: firecrackerVersion,
 			HugePages:          features.HasHugePages(),
-			StartCommand:       startCommand,
-			ReadyCommand:       readyCommand,
+			StartCommand:       startCmd,
+			ReadyCommand:       readyCmd,
+			FromImage:          fromImage,
+			Steps:              convertTemplateSteps(steps),
 		},
 	})
 
@@ -68,4 +83,28 @@ func (tm *TemplateManager) CreateTemplate(
 	telemetry.ReportEvent(ctx, "Template build started")
 
 	return nil
+}
+
+func convertTemplateSteps(steps *[]api.TemplateStep) []*template_manager.TemplateStep {
+	if steps == nil {
+		return nil
+	}
+
+	result := make([]*template_manager.TemplateStep, len(*steps))
+	for i, step := range *steps {
+		var args []string
+		if step.Args != nil {
+			args = *step.Args
+		}
+
+		result[i] = &template_manager.TemplateStep{
+			Id:        step.Id.String(),
+			Type:      step.Type,
+			Args:      args,
+			Hash:      step.Hash,
+			FilesHash: step.FilesHash,
+			Force:     step.Force,
+		}
+	}
+	return result
 }

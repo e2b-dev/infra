@@ -22,6 +22,45 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// checkAndCancelConcurrentBuilds checks for concurrent builds and cancels them if found
+func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateID api.TemplateID, buildID uuid.UUID) error {
+	concurrentlyRunningBuilds, err := a.db.
+		Client.
+		EnvBuild.
+		Query().
+		Where(
+			envbuild.EnvID(templateID),
+			envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding),
+			envbuild.IDNotIn(buildID),
+		).
+		All(ctx)
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "Error when getting running builds", err)
+		return fmt.Errorf("error when getting running builds: %w", err)
+	}
+
+	// make sure there is no other build in progress for the same template
+	if len(concurrentlyRunningBuilds) > 0 {
+		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b *models.EnvBuild) template_manager.DeleteBuild {
+			return template_manager.DeleteBuild{
+				TemplateId: templateID,
+				BuildID:    b.ID,
+			}
+		})
+		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b template_manager.DeleteBuild) string {
+			return fmt.Sprintf("%s/%s", b.TemplateId, b.BuildID)
+		})))
+		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
+		if deleteJobErr != nil {
+			telemetry.ReportCriticalError(ctx, "error when canceling running build", deleteJobErr)
+			return fmt.Errorf("error when canceling running build: %w", deleteJobErr)
+		}
+		telemetry.ReportEvent(ctx, "canceled running builds")
+	}
+
+	return nil
+}
+
 // PostTemplatesTemplateIDBuildsBuildID triggers a new build after the user pushes the Docker image to the registry
 func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, templateID api.TemplateID, buildID api.BuildID) {
 	ctx := c.Request.Context()
@@ -86,53 +125,14 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		telemetry.WithTemplateID(templateID),
 	)
 
-	concurrentlyRunningBuilds, err := a.db.
-		Client.
-		EnvBuild.
-		Query().
-		Where(
-			envbuild.EnvID(envDB.ID),
-			envbuild.StatusIn(envbuild.StatusWaiting, envbuild.StatusBuilding),
-			envbuild.IDNotIn(buildUUID),
-		).
-		All(ctx)
-	if err != nil {
+	// Check and cancel concurrent builds
+	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
-		telemetry.ReportCriticalError(ctx, "Error when getting running builds", err)
 		return
-	}
-
-	// make sure there is no other build in progress for the same template
-	if len(concurrentlyRunningBuilds) > 0 {
-		buildIDs := utils.Map(concurrentlyRunningBuilds, func(b *models.EnvBuild) template_manager.DeleteBuild {
-			return template_manager.DeleteBuild{
-				TemplateId: envDB.ID,
-				BuildID:    b.ID,
-			}
-		})
-		telemetry.ReportEvent(ctx, "canceling running builds", attribute.StringSlice("ids", utils.Map(buildIDs, func(b template_manager.DeleteBuild) string {
-			return fmt.Sprintf("%s/%s", b.TemplateId, b.BuildID)
-		})))
-		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
-		if deleteJobErr != nil {
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build cancel request")
-			telemetry.ReportCriticalError(ctx, "error when canceling running build", deleteJobErr)
-			return
-		}
-		telemetry.ReportEvent(ctx, "canceled running builds")
 	}
 
 	startTime := time.Now()
 	build := envDB.Edges.Builds[0]
-	var startCmd string
-	if build.StartCmd != nil {
-		startCmd = *build.StartCmd
-	}
-
-	var readyCmd string
-	if build.ReadyCmd != nil {
-		readyCmd = *build.ReadyCmd
-	}
 
 	// only waiting builds can be triggered
 	if build.Status != envbuild.StatusWaiting {
@@ -149,11 +149,13 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		buildUUID,
 		build.KernelVersion,
 		build.FirecrackerVersion,
-		startCmd,
+		build.StartCmd,
 		build.Vcpu,
 		build.FreeDiskSizeMB,
 		build.RAMMB,
-		readyCmd,
+		build.ReadyCmd,
+		"",
+		nil,
 	)
 
 	if buildErr != nil {
