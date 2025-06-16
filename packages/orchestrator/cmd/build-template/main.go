@@ -54,9 +54,10 @@ func buildTemplate(parentCtx context.Context, kernelVersion, fcVersion, template
 
 	clientID := "build-template-cmd"
 	logger, err := l.NewLogger(ctx, l.LoggerConfig{
-		ServiceName: clientID,
-		IsInternal:  true,
-		IsDebug:     true,
+		ServiceName:   clientID,
+		IsInternal:    true,
+		IsDebug:       true,
+		EnableConsole: true,
 	})
 	if err != nil {
 		return fmt.Errorf("could not create logger: %w", err)

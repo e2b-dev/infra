@@ -26,6 +26,8 @@ type LoggerConfig struct {
 	InitialFields []zap.Field
 	// Cores additional processing cores for the logger.
 	Cores []zapcore.Core
+	// EnableConsole enables console logging.
+	EnableConsole bool
 }
 
 func NewLogger(_ context.Context, loggerConfig LoggerConfig) (*zap.Logger, error) {
@@ -36,22 +38,22 @@ func NewLogger(_ context.Context, loggerConfig LoggerConfig) (*zap.Logger, error
 		level = zap.NewAtomicLevelAt(zap.InfoLevel)
 	}
 
+	// Console logging configuration
 	config := zap.Config{
 		DisableStacktrace: loggerConfig.DisableStacktrace,
 		// Takes stacktraces more liberally
 		Development: true,
 		Sampling:    nil,
 
-		// Console core
-		Encoding:      "console",
-		EncoderConfig: GetConsoleEncoderConfig(),
-		Level:         level,
-		OutputPaths: []string{
-			"stdout",
-		},
-		ErrorOutputPaths: []string{
-			"stderr",
-		},
+		Encoding:         "console",
+		EncoderConfig:    GetConsoleEncoderConfig(),
+		Level:            level,
+		OutputPaths:      []string{},
+		ErrorOutputPaths: []string{},
+	}
+	if loggerConfig.EnableConsole {
+		config.OutputPaths = []string{"stdout"}
+		config.ErrorOutputPaths = []string{"stderr"}
 	}
 
 	cores := make([]zapcore.Core, 0)

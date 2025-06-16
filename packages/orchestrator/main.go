@@ -151,10 +151,11 @@ func run(port, proxyPort uint) (success bool) {
 	}()
 
 	globalLogger := zap.Must(logger.NewLogger(ctx, logger.LoggerConfig{
-		ServiceName: serviceName,
-		IsInternal:  true,
-		IsDebug:     env.IsDebug(),
-		Cores:       []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
+		ServiceName:   serviceName,
+		IsInternal:    true,
+		IsDebug:       env.IsDebug(),
+		Cores:         []zapcore.Core{logger.GetOTELCore(tel.LogsProvider, serviceName)},
+		EnableConsole: true,
 	}))
 	defer func(l *zap.Logger) {
 		err := l.Sync()
